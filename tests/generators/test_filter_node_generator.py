@@ -1,5 +1,5 @@
 from trilogy.core.enums import ComparisonOperator, Derivation
-from trilogy.core.models.author import Comparison, WhereClause
+from trilogy.core.models.build import BuildComparison, BuildWhereClause
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import gen_filter_node
@@ -26,7 +26,7 @@ def test_gen_filter_node_parents(test_environment: Environment, test_environment
 
 
 def test_gen_filter_node(test_environment, test_environment_graph):
-
+    test_environment = test_environment.materialize_for_select()
     _ = gen_filter_node(
         concept=test_environment.concepts["products_with_revenue_over_50"],
         local_optional=[],
@@ -38,18 +38,19 @@ def test_gen_filter_node(test_environment, test_environment_graph):
 
 
 def test_gen_filter_node_same_concept(test_environment, test_environment_graph):
-    conditional = Comparison(
+    test_environment = test_environment.materialize_for_select()
+    conditional = BuildComparison(
         left=test_environment.concepts["category_name"],
         operator=ComparisonOperator.LIKE,
         right="%abc%",
     )
     node = gen_filter_node(
         concept=test_environment.concepts["product_id"].with_filter(
-            conditional, test_environment
+            conditional
         ),
         local_optional=[
             test_environment.concepts["category_id"].with_filter(
-                conditional, test_environment
+                conditional
             )
         ],
         environment=test_environment,
@@ -61,25 +62,26 @@ def test_gen_filter_node_same_concept(test_environment, test_environment_graph):
 
 
 def test_gen_filter_node_include_all(test_environment, test_environment_graph):
-    conditional = Comparison(
+    test_environment = test_environment.materialize_for_select()
+    conditional = BuildComparison(
         left=test_environment.concepts["category_name"],
         operator=ComparisonOperator.LIKE,
         right="%abc%",
     )
     node = gen_filter_node(
         concept=test_environment.concepts["product_id"].with_filter(
-            conditional, test_environment
+            conditional
         ),
         local_optional=[
             test_environment.concepts["category_id"].with_filter(
-                conditional, test_environment
+                conditional
             )
         ],
         environment=test_environment,
         g=test_environment_graph,
         depth=0,
         source_concepts=search_concepts,
-        conditions=WhereClause(conditional=conditional),
+        conditions=BuildWhereClause(conditional=conditional),
     )
     assert (
         node.conditions == conditional

@@ -6,17 +6,19 @@ from trilogy.core.graph_models import (
 from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.author import Concept
 from trilogy.core.models.datasource import Datasource
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.environment import Environment, BuildEnvironment
 
 
 def add_concept(
-    concept: Concept, g: ReferenceGraph, concept_mapping: dict[str, Concept]
+    concept: BuildConcept, g: ReferenceGraph, concept_mapping: dict[str, BuildConcept]
 ):
     g.add_node(concept)
     # if we have sources, recursively add them
     node_name = concept_to_node(concept)
     if concept.concept_arguments:
         for source in concept.concept_arguments:
+            if not isinstance(source, BuildConcept):
+                raise ValueError(f'Invalid non-build concept {source} passed into graph generation from {concept}')
             generic = source.with_default_grain()
             add_concept(generic, g, concept_mapping)
 
@@ -77,6 +79,8 @@ def generate_adhoc_graph(
 def generate_graph(
     environment: Environment,
 ) -> ReferenceGraph:
+    if not isinstance(environment, BuildEnvironment):
+        environment = environment.materialize_for_select()
     return generate_adhoc_graph(
         list(environment.concepts.values())
         + list(environment.alias_origin_lookup.values()),

@@ -9,27 +9,23 @@ from trilogy.core.enums import (
     SourceType,
 )
 from trilogy.core.models.author import (
-    Comparison,
-    Concept,
-    Conditional,
     Grain,
     LooseConceptList,
-    Parenthetical,
 )
-from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import ConceptPair, QueryDatasource, UnnestJoin
+from trilogy.core.models.build import BuildOrderBy, BuildConditional, BuildParenthetical, BuildComparison, BuildConcept, BuildDatasource
 from trilogy.utility import unique
 
 
 def resolve_concept_map(
-    inputs: List[QueryDatasource | Datasource],
-    targets: List[Concept],
-    inherited_inputs: List[Concept],
-    full_joins: List[Concept] | None = None,
-) -> dict[str, set[Datasource | QueryDatasource | UnnestJoin]]:
+    inputs: List[QueryDatasource | BuildDatasource],
+    targets: List[BuildConcept],
+    inherited_inputs: List[BuildConcept],
+    full_joins: List[BuildConcept] | None = None,
+) -> dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]]:
     targets = targets or []
-    concept_map: dict[str, set[Datasource | QueryDatasource | UnnestJoin]] = (
+    concept_map: dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]] = (
         defaultdict(set)
     )
     full_addresses = {c.address for c in full_joins} if full_joins else set()
@@ -74,8 +70,8 @@ def resolve_concept_map(
 
 
 def get_all_parent_partial(
-    all_concepts: List[Concept], parents: List["StrategyNode"]
-) -> List[Concept]:
+    all_concepts: List[BuildConcept], parents: List["StrategyNode"]
+) -> List[BuildConcept]:
     return unique(
         [
             c
@@ -101,8 +97,8 @@ def get_all_parent_partial(
 
 
 def get_all_parent_nullable(
-    all_concepts: List[Concept], parents: List["StrategyNode"]
-) -> List[Concept]:
+    all_concepts: List[BuildConcept], parents: List["StrategyNode"]
+) -> List[BuildConcept]:
     return unique(
         [
             c
@@ -125,27 +121,28 @@ class StrategyNode:
 
     def __init__(
         self,
-        input_concepts: List[Concept],
-        output_concepts: List[Concept],
+        input_concepts: List[BuildConcept],
+        output_concepts: List[BuildConcept],
         environment: Environment,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
-        partial_concepts: List[Concept] | None = None,
-        nullable_concepts: List[Concept] | None = None,
+        partial_concepts: List[BuildConcept] | None = None,
+        nullable_concepts: List[BuildConcept] | None = None,
         depth: int = 0,
-        conditions: Conditional | Comparison | Parenthetical | None = None,
-        preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
+        conditions: BuildConditional | BuildComparison | BuildParenthetical | None = None,
+        preexisting_conditions: BuildConditional | BuildComparison | BuildParenthetical | None = None,
         force_group: bool | None = None,
         grain: Optional[Grain] = None,
         hidden_concepts: set[str] | None = None,
-        existence_concepts: List[Concept] | None = None,
-        virtual_output_concepts: List[Concept] | None = None,
+        existence_concepts: List[BuildConcept] | None = None,
+        virtual_output_concepts: List[BuildConcept] | None = None,
+        ordering: BuildOrderBy | None = None
     ):
-        self.input_concepts: List[Concept] = (
+        self.input_concepts: List[BuildConcept] = (
             unique(input_concepts, "address") if input_concepts else []
         )
         self.input_lcl = LooseConceptList(concepts=self.input_concepts)
-        self.output_concepts: List[Concept] = unique(output_concepts, "address")
+        self.output_concepts: List[BuildConcept] = unique(output_concepts, "address")
         self.output_lcl = LooseConceptList(concepts=self.output_concepts)
 
         self.environment = environment
@@ -158,7 +155,7 @@ class StrategyNode:
         self.nullable_concepts = nullable_concepts or get_all_parent_nullable(
             self.output_concepts, self.parents
         )
-
+        self.ordering = ordering
         self.depth = depth
         self.conditions = conditions
         self.grain = grain
@@ -175,7 +172,7 @@ class StrategyNode:
             and self.preexisting_conditions
             and self.conditions != self.preexisting_conditions
         ):
-            self.preexisting_conditions = Conditional(
+            self.preexisting_conditions = BuildConditional(
                 left=self.conditions,
                 right=self.preexisting_conditions,
                 operator=BooleanOperator.AND,
@@ -183,6 +180,7 @@ class StrategyNode:
         self.validate_parents()
         self.validate_inputs()
         self.log = True
+ 
 
     def validate_inputs(self):
         if not self.parents:
@@ -205,16 +203,16 @@ class StrategyNode:
         return self
 
     def set_preexisting_conditions(
-        self, conditions: Conditional | Comparison | Parenthetical
+        self, conditions: BuildConditional | BuildComparison | BuildParenthetical
     ):
         self.preexisting_conditions = conditions
         return self
 
-    def add_condition(self, condition: Conditional | Comparison | Parenthetical):
+    def add_condition(self, condition: BuildConditional | BuildComparison | BuildParenthetical):
         if self.conditions and condition == self.conditions:
             return self
         if self.conditions:
-            self.conditions = Conditional(
+            self.conditions = BuildConditional(
                 left=self.conditions, right=condition, operator=BooleanOperator.AND
             )
         else:
@@ -238,7 +236,7 @@ class StrategyNode:
 
         self.partial_lcl = LooseConceptList(concepts=self.partial_concepts)
 
-    def add_output_concepts(self, concepts: List[Concept], rebuild: bool = True):
+    def add_output_concepts(self, concepts: List[BuildConcept], rebuild: bool = True):
         for concept in concepts:
             if concept.address not in self.output_lcl.addresses:
                 self.output_concepts.append(concept)
@@ -247,7 +245,7 @@ class StrategyNode:
             self.rebuild_cache()
         return self
 
-    def add_partial_concepts(self, concepts: List[Concept], rebuild: bool = True):
+    def add_partial_concepts(self, concepts: List[BuildConcept], rebuild: bool = True):
         for concept in concepts:
             if concept.address not in self.partial_lcl.addresses:
                 self.partial_concepts.append(concept)
@@ -256,7 +254,7 @@ class StrategyNode:
             self.rebuild_cache()
         return self
 
-    def add_existence_concepts(self, concepts: List[Concept], rebuild: bool = True):
+    def add_existence_concepts(self, concepts: List[BuildConcept], rebuild: bool = True):
         for concept in concepts:
             if concept.address not in self.output_concepts:
                 self.existence_concepts.append(concept)
@@ -264,7 +262,7 @@ class StrategyNode:
             self.rebuild_cache()
         return self
 
-    def set_output_concepts(self, concepts: List[Concept], rebuild: bool = True):
+    def set_output_concepts(self, concepts: List[BuildConcept], rebuild: bool = True):
         # exit if no changes
         if self.output_concepts == concepts:
             return self
@@ -275,23 +273,23 @@ class StrategyNode:
             self.rebuild_cache()
         return self
 
-    def add_output_concept(self, concept: Concept, rebuild: bool = True):
+    def add_output_concept(self, concept: BuildConcept, rebuild: bool = True):
         return self.add_output_concepts([concept], rebuild)
 
-    def hide_output_concepts(self, concepts: List[Concept], rebuild: bool = True):
+    def hide_output_concepts(self, concepts: List[BuildConcept], rebuild: bool = True):
         for x in concepts:
             self.hidden_concepts.add(x.address)
         if rebuild:
             self.rebuild_cache()
         return self
 
-    def unhide_output_concepts(self, concepts: List[Concept], rebuild: bool = True):
+    def unhide_output_concepts(self, concepts: List[BuildConcept], rebuild: bool = True):
         self.hidden_concepts = set(x for x in self.hidden_concepts if x not in concepts)
         if rebuild:
             self.rebuild_cache()
         return self
 
-    def remove_output_concepts(self, concepts: List[Concept], rebuild: bool = True):
+    def remove_output_concepts(self, concepts: List[BuildConcept], rebuild: bool = True):
         for x in concepts:
             self.hidden_concepts.add(x.address)
         addresses = [x.address for x in concepts]
@@ -303,7 +301,7 @@ class StrategyNode:
         return self
 
     @property
-    def usable_outputs(self) -> list[Concept]:
+    def usable_outputs(self) -> list[BuildConcept]:
         return [
             x for x in self.output_concepts if x.address not in self.hidden_concepts
         ]
@@ -313,11 +311,11 @@ class StrategyNode:
         return "\t" * self.depth
 
     @property
-    def all_concepts(self) -> list[Concept]:
+    def all_concepts(self) -> list[BuildConcept]:
         return [*self.output_concepts]
 
     @property
-    def all_used_concepts(self) -> list[Concept]:
+    def all_used_concepts(self) -> list[BuildConcept]:
         return [*self.input_concepts, *self.existence_concepts]
 
     def __repr__(self):
@@ -330,7 +328,7 @@ class StrategyNode:
         return f"{self.__class__.__name__}<{contents}>"
 
     def _resolve(self) -> QueryDatasource:
-        parent_sources: List[QueryDatasource | Datasource] = [
+        parent_sources: List[QueryDatasource | BuildDatasource] = [
             p.resolve() for p in self.parents
         ]
 
@@ -354,6 +352,7 @@ class StrategyNode:
             nullable_concepts=self.nullable_concepts,
             force_group=self.force_group,
             hidden_concepts=self.hidden_concepts,
+            ordering=self.ordering
         )
 
     def rebuild_cache(self) -> QueryDatasource:
@@ -388,6 +387,7 @@ class StrategyNode:
             hidden_concepts=set(self.hidden_concepts),
             existence_concepts=list(self.existence_concepts),
             virtual_output_concepts=list(self.virtual_output_concepts),
+            ordering=self.ordering,
         )
 
 
@@ -395,12 +395,14 @@ class StrategyNode:
 class NodeJoin:
     left_node: StrategyNode
     right_node: StrategyNode
-    concepts: List[Concept]
+    concepts: List[BuildConcept]
     join_type: JoinType
     filter_to_mutual: bool = False
     concept_pairs: list[ConceptPair] | None = None
 
     def __post_init__(self):
+        if self.left_node == self.right_node:
+            raise SyntaxError("Invalid join, left and right nodes are the same")
         if self.concept_pairs:
             return
         final_concepts = []

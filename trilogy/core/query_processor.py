@@ -12,9 +12,9 @@ from trilogy.core.models.author import (
     MultiSelectLineage,
     SelectLineage,
 )
-from trilogy.core.models.build import BuildConditional, BuildOrderBy
+from trilogy.core.models.build import BuildConditional, BuildOrderBy, BuildSelectLineage, BuildMultiSelectLineage
 from trilogy.core.models.datasource import Datasource
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.environment import Environment, BuildEnvironment
 from trilogy.core.models.execute import (
     CTE,
     BaseJoin,
@@ -278,6 +278,7 @@ def datasource_to_cte(
                 for c in query_datasource.output_concepts
             ],
             grain=direct_parents[0].grain,
+            order_by=query_datasource.ordering,
         )
         return final
 
@@ -346,6 +347,7 @@ def datasource_to_cte(
         hidden_concepts=query_datasource.hidden_concepts,
         base_name_override=base_name,
         base_alias_override=base_alias,
+        order_by=query_datasource.ordering,
     )
     if cte.grain != query_datasource.grain:
         raise ValueError("Grain was corrupted in CTE generation")
@@ -366,10 +368,13 @@ def get_query_node(
     environment: Environment,
     statement: SelectLineage | MultiSelectLineage,
     history: History | None = None,
-) -> Tuple[StrategyNode, BuildOrderBy | None]:
-    statement = statement.build_for_select(environment=environment)
+) -> StrategyNode:
+    if not isinstance(statement, (BuildSelectLineage, BuildMultiSelectLineage)):
+        statement = statement.build_for_select(environment=environment)
+    # statement = statement.build_for_select(environment=environment)
     history = history or History(base_environment=environment)
-    environment = environment.materialize_for_select(statement.local_concepts)
+    if not isinstance(environment, BuildEnvironment):
+        environment = environment.materialize_for_select(statement.local_concepts)
     # statement = statement.build_for_select(environment=environment)
     # for k, v in statement.local_concepts.items():
     #     environment.concepts[k] = v
@@ -411,8 +416,10 @@ def get_query_node(
             conditions=final,
         )
     ds.hidden_concepts = statement.hidden_components
-    ordering = statement.order_by
-    return ds, ordering
+    ds.ordering = statement.order_by
+    #TODO: avoid this
+    ds.rebuild_cache()
+    return ds
 
 
 def get_query_datasources(
@@ -420,14 +427,13 @@ def get_query_datasources(
     statement: SelectStatement | MultiSelectStatement,
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
-    ds, ordering = get_query_node(environment, statement.as_lineage(environment))
-
+    ds= get_query_node(environment, statement.as_lineage(environment))
     final_qds = ds.resolve()
     if hooks:
         for hook in hooks:
             hook.process_root_strategy_node(ds)
 
-    return final_qds, ordering
+    return final_qds
 
 
 def flatten_ctes(input: CTE | UnionCTE) -> list[CTE | UnionCTE]:
@@ -494,9 +500,11 @@ def process_query(
 ) -> ProcessedQuery:
     hooks = hooks or []
 
-    root_datasource, ordering = get_query_datasources(
+    root_datasource= get_query_datasources(
         environment=environment, statement=statement, hooks=hooks
     )
+    print('ordering')
+    print(root_datasource.ordering)
     for hook in hooks:
         hook.process_root_datasource(root_datasource)
     # this should always return 1 - TODO, refactor
@@ -518,19 +526,18 @@ def process_query(
     deduped_ctes: List[CTE | UnionCTE] = list(seen.values())
     from trilogy.core.models.author import Grain
 
-    root_cte.order_by = ordering
     root_cte.limit = statement.limit
     root_cte.hidden_concepts = statement.hidden_components
 
     final_ctes = optimize_ctes(deduped_ctes, root_cte, statement)
     mapping = {x.address: x for x in cte.output_columns}
     return ProcessedQuery(
-        order_by=ordering,
+        order_by=root_cte.order_by,
         grain=statement.grain,
         limit=statement.limit,
         where_clause=statement.where_clause,
         having_clause=statement.having_clause,
-        output_columns=[mapping[x] for x in statement.output_components],
+        output_columns=[mapping[x.address] for x in statement.output_components],
         ctes=final_ctes,
         base=root_cte,
         # we no longer do any joins at final level, this should always happen in parent CTEs

@@ -70,6 +70,7 @@ def test_merged_env_behavior(normalized_engine, test_env: Environment):
 merge rich_info.last_name into ~passenger.last_name;
     """
     normalized_engine.parse_text(test_pre)
+    test_env = test_env.materialize_for_select()
     g = generate_graph(test_env)
     found = search_concepts(
         [
@@ -103,6 +104,7 @@ def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environme
     test_pre = """merge rich_info.last_name into ~passenger.last_name;"""
     normalized_engine.parse_text(test_pre)
     # raw = executor.generate_sql(test)
+    test_env = test_env.materialize_for_select()
     g = generate_graph(test_env)
     # from trilogy.hooks.graph_hook import GraphHook
     # GraphHook().query_graph_built(g)

@@ -3,22 +3,16 @@ from datetime import date, datetime, timedelta
 from typing import List, Tuple, TypeVar
 
 from trilogy.core.enums import ComparisonOperator, FunctionType
-from trilogy.core.models.author import (
-    Comparison,
-    Concept,
-    Conditional,
-    Function,
-    Parenthetical,
-)
+
+from trilogy.core.models.build import BuildComparison, BuildConditional, BuildParenthetical, BuildConcept, BuildFunction, BuildDatasource
 from trilogy.core.models.core import DataType
-from trilogy.core.models.datasource import Datasource
 
 # Define a generic type that ensures start and end are the same type
 T = TypeVar("T", int, date, datetime)
 
 
 def reduce_expression(
-    var: Concept, group_tuple: list[tuple[ComparisonOperator, T]]
+    var: BuildConcept, group_tuple: list[tuple[ComparisonOperator, T]]
 ) -> bool:
     # Track ranges
     lower_check: T
@@ -94,27 +88,27 @@ def reduce_expression(
 
 
 def simplify_conditions(
-    conditions: list[Comparison | Conditional | Parenthetical],
+    conditions: list[BuildComparison | BuildConditional | BuildParenthetical],
 ) -> bool:
     # Group conditions by variable
-    grouped: dict[Concept, list[tuple[ComparisonOperator, datetime | int | date]]] = (
+    grouped: dict[BuildConcept, list[tuple[ComparisonOperator, datetime | int | date]]] = (
         defaultdict(list)
     )
     for condition in conditions:
-        if not isinstance(condition, Comparison):
+        if not isinstance(condition, BuildComparison):
             return False
         if not isinstance(
-            condition.left, (int, date, datetime, Function)
-        ) and not isinstance(condition.right, (int, date, datetime, Function)):
+            condition.left, (int, date, datetime, BuildFunction)
+        ) and not isinstance(condition.right, (int, date, datetime, BuildFunction)):
             return False
-        if not isinstance(condition.left, Concept) and not isinstance(
-            condition.right, Concept
+        if not isinstance(condition.left, BuildConcept) and not isinstance(
+            condition.right, BuildConcept
         ):
             return False
         vars = [condition.left, condition.right]
-        concept = [x for x in vars if isinstance(x, Concept)][0]
-        comparison = [x for x in vars if not isinstance(x, Concept)][0]
-        if isinstance(comparison, Function):
+        concept = [x for x in vars if isinstance(x, BuildConcept)][0]
+        comparison = [x for x in vars if not isinstance(x, BuildConcept)][0]
+        if isinstance(comparison, BuildFunction):
             if not comparison.operator == FunctionType.CONSTANT:
                 return False
             first_arg = comparison.arguments[0]
@@ -169,8 +163,8 @@ def is_fully_covered(
     return current_end >= end
 
 
-def get_union_sources(datasources: list[Datasource], concepts: list[Concept]):
-    candidates: list[Datasource] = []
+def get_union_sources(datasources: list[BuildDatasource], concepts: list[BuildConcept]):
+    candidates: list[BuildDatasource] = []
     for x in datasources:
         if all([c.address in x.output_concepts for c in concepts]):
             if (
@@ -179,7 +173,7 @@ def get_union_sources(datasources: list[Datasource], concepts: list[Concept]):
             ):
                 candidates.append(x)
 
-    assocs: dict[str, list[Datasource]] = defaultdict(list[Datasource])
+    assocs: dict[str, list[BuildDatasource]] = defaultdict(list[BuildDatasource])
     for x in candidates:
         if not x.non_partial_for:
             continue
@@ -187,7 +181,7 @@ def get_union_sources(datasources: list[Datasource], concepts: list[Concept]):
             continue
         merge_key = x.non_partial_for.concept_arguments[0]
         assocs[merge_key.address].append(x)
-    final: list[list[Datasource]] = []
+    final: list[list[BuildDatasource]] = []
     for _, dses in assocs.items():
 
         conditions = [c.non_partial_for.conditional for c in dses if c.non_partial_for]

@@ -10,7 +10,7 @@ from trilogy.core.models.author import (
     LooseConceptList,
     WhereClause,
 )
-from trilogy.core.models.build import BuildAggregateWrapper, BuildFilterItem, BuildFunction
+from trilogy.core.models.build import BuildAggregateWrapper, BuildFilterItem, BuildFunction, BuildConcept, BuildWhereClause
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import (
     History,
@@ -150,14 +150,14 @@ def gen_property_enrichment_node(
 def gen_enrichment_node(
     base_node: StrategyNode,
     join_keys: List[Concept],
-    local_optional: list[Concept],
+    local_optional: list[BuildConcept],
     environment: Environment,
     g,
     depth: int,
     source_concepts,
     log_lambda,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ):
     local_opts = LooseConceptList(concepts=local_optional)
 

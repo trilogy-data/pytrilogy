@@ -16,7 +16,6 @@ from trilogy.core.models.environment import Environment, LazyEnvironment
 def test_environment_serialization(test_environment: Environment):
 
     path = test_environment.to_cache()
-    print(path)
     test_environment2 = Environment.from_cache(path)
     assert test_environment2
 
@@ -48,7 +47,6 @@ def test_lazy_environment_from_path():
 
 def test_frozen_environment():
     env = Environment.from_file(Path(__file__).parent / "test_env.preql")
-    env.freeze()
 
     exec = Dialects.DUCK_DB.default_executor(environment=env)
 
@@ -56,7 +54,7 @@ def test_frozen_environment():
         """select id+5 ->id_plus_5 order by id_plus_5 asc;"""
     ).fetchall()
     assert run[0].id_plus_5 == 6
-
+    env.freeze()
     with raises(FrozenEnvironmentException):
         env.add_concept(
             Concept(name="test", datatype=DataType.INTEGER, purpose=Purpose.KEY)

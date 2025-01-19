@@ -20,6 +20,7 @@ address x_source;
         """
     )
     x = BaseDialect()
+    env = env.materialize_for_select()
     concept = env.concepts["x"]
     y_concept = env.concepts["y"]
     ds = env.datasources["x_source"]
@@ -64,6 +65,7 @@ address x_source;
         """
     )
     x = BaseDialect()
+    env = env.materialize_for_select()
     concept = env.concepts["x"]
     y_concept = env.concepts["y"]
     ds = env.datasources["x_source"]

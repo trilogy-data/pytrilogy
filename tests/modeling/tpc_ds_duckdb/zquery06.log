@@ -1,5 +1,5 @@
 query_id = 6
-gen_length = 4298
+gen_length = 3481
 generated_sql = """
 
 WITH 
@@ -14,7 +14,7 @@ GROUP BY
     store_sales_store_sales.\"SS_CUSTOMER_SK\",
     store_sales_store_sales.\"SS_ITEM_SK\",
     store_sales_store_sales.\"SS_SOLD_DATE_SK\"),
-uneven as (
+abundant as (
 SELECT
     avg(item_items.\"I_CURRENT_PRICE\") as \"_virt_5942253052406187\",
     item_items.\"I_CATEGORY\" as \"item_category\"
@@ -41,8 +41,9 @@ FROM
 WHERE
     cast(store_sales_date_date.\"D_YEAR\" as int) = 2001 and store_sales_date_date.\"D_MOY\" = 1 and store_sales_item_items.\"I_CATEGORY\" is not null
 ),
-abundant as (
+uneven as (
 SELECT
+    abundant.\"_virt_5942253052406187\" as \"_virt_5942253052406187\",
     questionable.\"item_category\" as \"item_category\",
     questionable.\"store_sales_customer_id\" as \"store_sales_customer_id\",
     questionable.\"store_sales_customer_state\" as \"store_sales_customer_state\",
@@ -52,40 +53,20 @@ SELECT
     questionable.\"store_sales_item_current_price\" as \"store_sales_item_current_price\"
 FROM
     questionable
-GROUP BY 
-    questionable.\"item_category\",
-    questionable.\"store_sales_customer_id\",
-    questionable.\"store_sales_customer_state\",
-    questionable.\"store_sales_date_month_of_year\",
-    questionable.\"store_sales_date_year\",
-    questionable.\"store_sales_item_category\",
-    questionable.\"store_sales_item_current_price\"),
-yummy as (
-SELECT
-    abundant.\"item_category\" as \"item_category\",
-    abundant.\"store_sales_customer_id\" as \"store_sales_customer_id\",
-    abundant.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    abundant.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    abundant.\"store_sales_date_year\" as \"store_sales_date_year\",
-    abundant.\"store_sales_item_category\" as \"store_sales_item_category\",
-    abundant.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    uneven.\"_virt_5942253052406187\" as \"_virt_5942253052406187\"
-FROM
-    abundant
-    INNER JOIN uneven on (abundant.\"item_category\" = uneven.\"item_category\" or (abundant.\"item_category\" is null and uneven.\"item_category\" is null))
+    INNER JOIN abundant on (questionable.\"item_category\" = abundant.\"item_category\" or (questionable.\"item_category\" is null and abundant.\"item_category\" is null))
 WHERE
-    abundant.\"store_sales_date_year\" = 2001 and abundant.\"store_sales_date_month_of_year\" = 1 and abundant.\"store_sales_item_current_price\" > 1.2 * uneven.\"_virt_5942253052406187\" and abundant.\"store_sales_item_category\" is not null
+    questionable.\"store_sales_date_year\" = 2001 and questionable.\"store_sales_date_month_of_year\" = 1 and questionable.\"store_sales_item_current_price\" > 1.2 * abundant.\"_virt_5942253052406187\" and questionable.\"store_sales_item_category\" is not null
 )
 SELECT
-    yummy.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    count(yummy.\"store_sales_customer_id\") as \"customer_count\"
+    uneven.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    count(uneven.\"store_sales_customer_id\") as \"customer_count\"
 FROM
-    yummy
+    uneven
 GROUP BY 
-    yummy.\"store_sales_customer_state\"
+    uneven.\"store_sales_customer_state\"
 HAVING
-    count(yummy.\"store_sales_customer_id\") >= 10
+    count(uneven.\"store_sales_customer_id\") >= 10
 
 ORDER BY 
-    count(yummy.\"store_sales_customer_id\") asc nulls first,
-    yummy.\"store_sales_customer_state\" asc nulls first"""
+    count(uneven.\"store_sales_customer_id\") asc nulls first,
+    uneven.\"store_sales_customer_state\" asc nulls first"""

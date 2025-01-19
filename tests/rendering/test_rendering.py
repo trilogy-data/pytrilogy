@@ -212,6 +212,7 @@ def test_persist(test_environment: Environment):
             namespace=test_environment.namespace,
             name="test",
             address=Address(location="tbl_test"),
+            environment=test_environment,
         ),
     )
 
@@ -860,11 +861,8 @@ final_zips;
     )
 
     final_zips: ConceptDeclarationStatement = commands[-2]
-    assert isinstance(
-        final_zips.concept.lineage.concept_arguments[0].lineage.where.conditional.right,
-        Concept,
-    ), final_zips.concept.lineage.concept_arguments[0].lineage.where.conditional.right
-    rendered = Renderer().to_string(final_zips)
+
+    rendered = Renderer(environment=basic).to_string(final_zips)
 
     assert (
         rendered

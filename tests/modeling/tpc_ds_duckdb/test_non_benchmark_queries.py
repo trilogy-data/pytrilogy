@@ -100,8 +100,9 @@ ORDER BY
 LIMIT 100;"""
 
     r1 = engine.execute_text(x)[0].fetchall()
+    
     r2 = list(engine.execute_text(y)[0].fetchall())
-
+    # assert 1 == 0
     for idx, row in enumerate(r1):
         r2_row = r2[idx]
         assert row.web_order_count == r2_row.web_order_count

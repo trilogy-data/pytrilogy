@@ -11,7 +11,7 @@ from trilogy.core.models.author import (
     Grain,
     Parenthetical,
 )
-from trilogy.core.models.build import BuildDatasource
+from trilogy.core.models.build import BuildDatasource, BuildOrderBy
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
@@ -45,6 +45,7 @@ class SelectNode(StrategyNode):
         conditions: Conditional | Comparison | Parenthetical | None = None,
         preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
         hidden_concepts: set[str] | None = None,
+        ordering: BuildOrderBy | None = None
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -60,9 +61,11 @@ class SelectNode(StrategyNode):
             conditions=conditions,
             preexisting_conditions=preexisting_conditions,
             hidden_concepts=hidden_concepts,
+            ordering=ordering,
         )
         self.accept_partial = accept_partial
         self.datasource = datasource
+
 
 
     def validate_inputs(self):
@@ -127,10 +130,11 @@ class SelectNode(StrategyNode):
             # select nodes should never group
             force_group=self.force_group,
             hidden_concepts=self.hidden_concepts,
+            ordering=self.ordering,
         )
 
     def resolve_from_constant_datasources(self) -> QueryDatasource:
-        datasource = Datasource(
+        datasource = BuildDatasource(
             name=CONSTANT_DATASET, address=CONSTANT_DATASET, columns=[]
         )
         return QueryDatasource(
@@ -144,6 +148,7 @@ class SelectNode(StrategyNode):
             partial_concepts=[],
             source_type=SourceType.CONSTANT,
             hidden_concepts=self.hidden_concepts,
+            ordering=self.ordering,
         )
 
     def _resolve(self) -> QueryDatasource:
@@ -165,6 +170,8 @@ class SelectNode(StrategyNode):
                 f"{self.logging_prefix}{LOGGER_PREFIX} have a constant datasource"
             )
             resolution = self.resolve_from_constant_datasources()
+            return resolution
+        
         if self.datasource and not resolution:
             resolution = self.resolve_from_provided_datasource()
 
@@ -187,7 +194,7 @@ class SelectNode(StrategyNode):
                 if v and k not in resolution.source_map:
                     resolution.source_map[k] = v
         if not resolution:
-            raise ValueError("No select node could be generated")
+            raise ValueError(f"No select node could be generated for {self}")
         return resolution
 
     def copy(self) -> "SelectNode":
@@ -207,6 +214,7 @@ class SelectNode(StrategyNode):
             conditions=self.conditions,
             preexisting_conditions=self.preexisting_conditions,
             hidden_concepts=self.hidden_concepts,
+            ordering=self.ordering,
         )
 
 
@@ -224,4 +232,8 @@ class ConstantNode(SelectNode):
             conditions=self.conditions,
             preexisting_conditions=self.preexisting_conditions,
             hidden_concepts=self.hidden_concepts,
+            ordering=self.ordering,
         )
+    
+    def _resolve(self) -> QueryDatasource:
+        return self.resolve_from_constant_datasources()

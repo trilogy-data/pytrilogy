@@ -2,7 +2,7 @@ from logging import INFO
 from pathlib import Path
 
 from trilogy import Dialects, parse
-from trilogy.core.enums import Granularity, Purpose
+from trilogy.core.enums import Granularity, Purpose, Derivation
 from trilogy.core.functions import CurrentDatetime
 from trilogy.core.models.author import Concept, Function
 from trilogy.core.models.core import (
@@ -24,6 +24,8 @@ ENVIRONMENT_CONCEPTS = [
         datatype=DataType.DATETIME,
         purpose=Purpose.CONSTANT,
         lineage=CurrentDatetime([]),
+        granularity = Granularity.SINGLE_ROW,
+        derivation = Derivation.CONSTANT
     )
 ]
 
@@ -80,6 +82,7 @@ def test_daily_job():
         sql, environment=Environment(working_path=Path(__file__).parent)
     )
     enrich_environment(env)
+    env = env.materialize_for_select()
     local_static = env.concepts["local.static"]
     assert local_static.granularity == Granularity.SINGLE_ROW
 
@@ -139,6 +142,7 @@ def test_counts():
         sql, environment=Environment(working_path=Path(__file__).parent)
     )
     enrich_environment(env)
+    env = env.materialize_for_select()
     local_static = env.concepts["local.static"]
     assert local_static.granularity == Granularity.SINGLE_ROW
 

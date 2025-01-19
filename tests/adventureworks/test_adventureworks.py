@@ -54,6 +54,7 @@ def test_query_datasources(environment: Environment):
     ) as f:
         file = f.read()
     environment, statements = parse(file, environment=environment)
+    select_env = environment.materialize_for_select()
     assert (
         str(environment.datasources["internet_sales.fact_internet_sales"].grain)
         == "Grain<internet_sales.order_line_number,internet_sales.order_number>"
@@ -67,8 +68,9 @@ def test_query_datasources(environment: Environment):
         "internet_sales.order_number",
         "internet_sales.total_sales_amount",
     }
-
-    environment_graph = generate_graph(environment)
+    # build environment
+    
+    environment_graph = generate_graph(select_env)
     from trilogy.hooks.query_debugger import DebuggingHook
 
     # assert a group up to the first name works
@@ -76,11 +78,11 @@ def test_query_datasources(environment: Environment):
     # source query concepts includes extra group by to grain
     customer_node = search_concepts(
         [
-            environment.concepts[
+            select_env.concepts[
                 "internet_sales.customer.first_name"
             ].with_default_grain()
         ],
-        environment=environment,
+        environment=select_env,
         g=environment_graph,
         depth=0,
     )
@@ -95,22 +97,22 @@ def test_query_datasources(environment: Environment):
     # assert a join before the group by works
     t_grain = Grain(
         components=[
-            environment.concepts["internet_sales.order_number"],
-            environment.concepts["internet_sales.customer.first_name"],
+            select_env.concepts["internet_sales.order_number"],
+            select_env.concepts["internet_sales.customer.first_name"],
         ]
     )
     customer_datasource = search_concepts(
-        [environment.concepts["internet_sales.order_number"]]
-        + [environment.concepts[x] for x in t_grain.components],
-        environment=environment,
+        [select_env.concepts["internet_sales.order_number"]]
+        + [select_env.concepts[x] for x in t_grain.components],
+        environment=select_env,
         g=environment_graph,
         depth=0,
     ).resolve()
 
     # assert a group up to the first name works
     customer_datasource = search_concepts(
-        [environment.concepts["internet_sales.customer.first_name"]],
-        environment=environment,
+        [select_env.concepts["internet_sales.customer.first_name"]],
+        environment=select_env,
         g=environment_graph,
         depth=0,
     ).resolve()
@@ -160,7 +162,8 @@ def test_two_properties(environment: Environment):
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:
         file = f.read()
-    environment, statements = parse(file, environment=environment)
+    base_env, statements = parse(file, environment=environment)
+    environment = environment.materialize_for_select()
     test: SelectStatement = statements[-3]
 
     environment_graph = generate_graph(environment)
@@ -199,7 +202,7 @@ def test_two_properties(environment: Environment):
         )
     )
 
-    get_query_datasources(environment=environment, statement=test)
+    get_query_datasources(environment=base_env, statement=test)
 
 
 @pytest.mark.adventureworks
@@ -210,7 +213,8 @@ def test_grain(environment: Environment):
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:
         file = f.read()
-    environment, statements = parse(file, environment=environment)
+    base_env, statements = parse(file, environment=environment)
+    environment=base_env.materialize_for_select()
     environment_graph = generate_graph(environment)
     test = search_concepts(
         [
@@ -245,7 +249,8 @@ def test_group_to_grain(environment: Environment):
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:
         file = f.read()
-    environment, statements = parse(file, environment=environment)
+    base_env, statements = parse(file, environment=environment)
+    environment=base_env.materialize_for_select()
     environment_graph = generate_graph(environment)
     assert (
         len(
@@ -275,7 +280,7 @@ def test_group_to_grain(environment: Environment):
             environment.concepts["internet_sales.order_number"],
         ]
     )
-    assert resolved.grain == expected_grain, [resolved.grain.set, expected_grain.set]
+    assert resolved.grain == expected_grain, [resolved.grain.components, expected_grain.components]
     assert resolved.force_group is False
     assert resolved.group_required is False
 
@@ -289,7 +294,8 @@ def test_two_properties_query(environment: Environment):
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:
         file = f.read()
-    environment, statements = parse(file, environment=environment)
+    orig_environment, statements = parse(file, environment=environment)
+    environment=orig_environment.materialize_for_select()
     assert "local.total_sales_amount_debug_2" in set(list(environment.concepts.keys()))
     environment_graph = generate_graph(environment)
     assert (
@@ -311,7 +317,7 @@ def test_two_properties_query(environment: Environment):
 
     test: SelectStatement = statements[-3]
     generator = SqlServerDialect()
-    sql2 = generator.generate_queries(environment, [test])
+    sql2 = generator.generate_queries(orig_environment, [test])
     generator.compile_statement(sql2[0])
 
 

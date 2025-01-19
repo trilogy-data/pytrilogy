@@ -201,7 +201,7 @@ class Environment(BaseModel):
         local_concepts = local_concepts or {}
         from trilogy.core.models.author import Grain
         from trilogy.core.models.build import BuildConcept
-        base = Environment(namespace=self.namespace, working_path=self.working_path, cte_name_map = self.cte_name_map)
+        base = BuildEnvironment(namespace=self.namespace, working_path=self.working_path, cte_name_map = self.cte_name_map)
 
   
         for k, v in self.concepts.items():
@@ -586,7 +586,7 @@ class Environment(BaseModel):
                     != ConceptSource.PERSIST_STATEMENT
                 ):
                     new_concept = current_concept.model_copy(
-                        deep=True, update={"name": persisted}
+                        deep=True, update={"name": persisted, }
                     )
                     self.add_concept(
                         new_concept, meta=meta, force=True, _ignore_cache=True
@@ -600,6 +600,7 @@ class Environment(BaseModel):
                                     "concept_source": ConceptSource.PERSIST_STATEMENT
                                 }
                             ),
+                            "derivation": Derivation.ROOT,
                         },
                     ).with_default_grain()
                     self.add_concept(
@@ -664,6 +665,8 @@ class Environment(BaseModel):
                 ds.merge_concept(source, target, modifiers=modifiers)
         return True
 
+class BuildEnvironment(Environment):
+    pass
 
 class LazyEnvironment(Environment):
     """Variant of environment to defer parsing of a path

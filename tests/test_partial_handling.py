@@ -108,6 +108,7 @@ def test_partial_assignment():
     test = """property passenger.id.family <- split(passenger.name, ',')[1]; 
     auto surviving_passenger<- filter passenger.id where passenger.survived =1;"""
     _ = executor.parse_text(test)
+    env = env.materialize_for_select()
     family = env.concepts["passenger.family"]
     # id = env.concepts["passenger.id"]
     # survived = env.concepts["passenger.survived"]

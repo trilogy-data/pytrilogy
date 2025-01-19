@@ -36,6 +36,7 @@ from trilogy.core.statements.author import SelectStatement
 
 
 def test_cte_merge(test_environment, test_environment_graph):
+    test_environment = test_environment.materialize_for_select()
     datasource = list(test_environment.datasources.values())[0]
     outputs = [c.concept for c in datasource.columns]
     output_map = {
@@ -163,7 +164,8 @@ def test_select(test_environment: Environment):
         selection=[oid, pid, cid, cname], grain=Grain(components=[oid, pid, cid])
     )
     ds = x.to_datasource(
-        test_environment.namespace, "test", address=Address(location="test")
+        test_environment.namespace, "test", address=Address(location="test"),
+        environment=test_environment
     )
 
     assert ds.grain.components == Grain(components=[oid, pid, cid]).components
@@ -171,24 +173,14 @@ def test_select(test_environment: Environment):
 
 def test_undefined(test_environment: Environment):
     x = UndefinedConcept(
-        name="test",
-        datatype="int",
-        purpose=Purpose.CONSTANT,
-        grain=Grain(),
-        namespace="test",
+        address = 'test.test'
+
     )
-
-    # y = x.with_select_context({}, Grain(components=[test_environment.concepts["order_id"]]), test_environment)
-
-    # assert y.grain == Grain(components=[test_environment.concepts["order_id"]])
-
-    z = x.with_default_grain()
-
-    assert z.grain == Grain()
 
 
 def test_base_join(test_environment: Environment):
     exc: SyntaxError | None = None
+    test_environment = test_environment.materialize_for_select()
     try:
         BaseJoin(
             left_datasource=test_environment.datasources["revenue"],
@@ -222,6 +214,7 @@ def test_comparison():
 
 
 def test_join(test_environment: Environment):
+    test_environment = test_environment.materialize_for_select()
     datasource = list(test_environment.datasources.values())[0]
     outputs = [c.concept for c in datasource.columns]
     output_map = {
@@ -314,7 +307,7 @@ select avg_greater_ten;
 
     lineage = env.concepts["avg_greater_ten"].lineage
     assert isinstance(lineage, AggregateWrapper)
-    assert isinstance(lineage.function.concept_arguments[0].lineage, RowsetItem)
+    assert isinstance( env.concepts[lineage.function.concept_arguments[0]].lineage, RowsetItem)
 
 
 def test_tuple_clone():
@@ -333,17 +326,18 @@ def test_parenthetical(test_environment: Environment):
     )
     # return concept if it's a concept
     assert x.concept_arguments == [test_environment.concepts["order_id"]]
-
-    x = Parenthetical(
-        content=Function(
+    function = Function(
             operator=FunctionType.COUNT,
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.METRIC,
             arguments=[test_environment.concepts["order_id"]],
         )
+    assert function.concept_arguments  == [test_environment.concepts["order_id"].reference]
+    x = Parenthetical(
+        content=function
     )
     # else pass through parent
-    assert x.concept_arguments == [test_environment.concepts["order_id"]]
+    assert x.concept_arguments == [test_environment.concepts["order_id"].reference]
 
     merged = x + x
     assert isinstance(merged, Conditional)

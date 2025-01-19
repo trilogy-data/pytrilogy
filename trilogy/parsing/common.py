@@ -130,8 +130,11 @@ def get_purpose_and_keys(
 def concept_list_to_keys(concepts: Tuple[Concept, ...], environment:Environment) -> set[str]:
     final_keys: List[str] = []
     for concept in concepts:
+
         if isinstance(concept, ConceptRef):
             concept = environment.concepts[concept]
+        if isinstance(concept, UndefinedConcept):
+            continue
         if concept.keys:
             final_keys += list(concept.keys)
         elif concept.purpose != Purpose.PROPERTY:
@@ -169,20 +172,25 @@ def constant_to_concept(
 
 def concept_is_relevant(concept: Concept, others: list[Concept], environment:Environment) -> bool:
     if isinstance(concept, UndefinedConcept):
+   
         return False
     if isinstance(concept, ConceptRef):
         concept = environment.concepts[concept]
+
     if concept.is_aggregate and not (
         isinstance(concept.lineage, AggregateWrapper) and concept.lineage.by
     ):
+        
         return False
     if concept.purpose in (Purpose.PROPERTY, Purpose.METRIC) and concept.keys:
         if any([c in others for c in concept.keys]):
+           
             return False
     if concept.purpose in (Purpose.METRIC,):
         if all([c in others for c in concept.grain.components]):
             return False
     if concept.derivation in (Derivation.BASIC,):
+       
         return any(concept_is_relevant(c, others, environment) for c in concept.concept_arguments)
     if concept.granularity == Granularity.SINGLE_ROW:
         return False
@@ -199,12 +207,17 @@ def concepts_to_grain_concepts(
         elif environment:
             pconcepts.append(environment.concepts[c])
         else:
-            raise ValueError(f'UNable to resolve input {c} without environment provided to concepts_to_grain call')
+            raise ValueError(f'Unable to resolve input {c} without environment provided to concepts_to_grain call')
 
     final: List[Concept] = []
+    print('----')
     for sub in pconcepts:
+        print(sub)
         if not concept_is_relevant(sub, pconcepts, environment):
+            print('irrelevant')
             continue
+        else:
+            print('relevant')
         final.append(sub)
     final = unique(final, "address")
     v2 = sorted(final, key=lambda x: x.name)
@@ -248,7 +261,7 @@ def function_to_concept(
     fmetadata = metadata or Metadata()
     if parent.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
         derivation = Derivation.AGGREGATE
-        if all(x.endswith(ALL_ROWS_CONCEPT) for x in grain.components):
+        if grain.components and all(x.endswith(ALL_ROWS_CONCEPT) for x in grain.components):
             granularity = Granularity.SINGLE_ROW
         else:
             granularity = Granularity.MULTI_ROW
@@ -261,13 +274,14 @@ def function_to_concept(
     elif parent.operator in FunctionClass.SINGLE_ROW.value:
         derivation = Derivation.CONSTANT
         granularity = Granularity.SINGLE_ROW
-    elif all(x.derivation == Derivation.CONSTANT for x in concrete_args):
+    elif concrete_args and all(x.derivation == Derivation.CONSTANT for x in concrete_args):
         derivation = Derivation.CONSTANT
         granularity = Granularity.SINGLE_ROW
     else:
         derivation = Derivation.BASIC
         granularity = Granularity.MULTI_ROW
     # granularity = Concept.calculate_granularity(derivation, grain, parent)
+
     if grain is not None:
         r = Concept(
             name=name,
@@ -347,6 +361,8 @@ def window_item_to_concept(
 ) -> Concept:
     fmetadata = metadata or Metadata()
     bcontent = environment.concepts[parent.content]
+    if isinstance(bcontent, UndefinedConcept):
+        return UndefinedConcept(address= f'{namespace}.{name}', metadata=fmetadata)
     local_purpose, keys = get_purpose_and_keys(purpose, (bcontent,), environment)
     
     if parent.order_by:
@@ -428,15 +444,11 @@ def align_item_to_concept(
 ) -> Concept:
     align = parent
     datatypes = set([c.datatype for c in align.concepts])
-    purposes = set([c.purpose for c in align.concepts])
     if len(datatypes) > 1:
         raise InvalidSyntaxException(
             f"Datatypes do not align for merged statements {align.alias}, have {datatypes}"
         )
-    if len(purposes) > 1:
-        purpose = Purpose.KEY
-    else:
-        purpose = list(purposes)[0]
+    
     new_selects = [x.as_lineage(environment) for x in selects]
     parent = MultiSelectLineage(
             selects=new_selects,
@@ -448,18 +460,17 @@ def align_item_to_concept(
             limit=limit,
             hidden_components=set(y for x in new_selects for y in x.hidden_components),
         )
-    derivation = Concept.calculate_derivation(parent, Purpose.PROPERTY)
     grain = Grain()
-    granularity = Concept.calculate_granularity(derivation, grain, parent)
     new = Concept(
         name=align.alias,
         datatype=datatypes.pop(),
-        purpose=purpose,
+        purpose=Purpose.PROPERTY,
         lineage=parent,
         grain=grain,
         namespace=align.namespace,
-        granularity=granularity,
-        derivation=derivation
+        granularity=Granularity.MULTI_ROW,
+        derivation=Derivation.MULTISELECT,
+        keys=[x.address for x in align.concepts]
     )
     return new
 

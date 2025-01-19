@@ -11,7 +11,7 @@ from trilogy.hooks.query_debugger import DebuggingHook
 
 
 def test_direct_select(test_environment, test_environment_graph):
-    DebuggingHook()
+    test_environment = test_environment.materialize_for_select()
     product = test_environment.concepts["product_id"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
     # test_environment = test_environment.materialize_for_select({})
@@ -31,7 +31,7 @@ def test_direct_select(test_environment, test_environment_graph):
 def test_get_datasource_from_window_function(
     test_environment: Environment, test_environment_graph
 ):
-    # test without grouping
+    test_environment = test_environment.materialize_for_select()
     product_rank = test_environment.concepts["product_revenue_rank"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
     # assert product_rank.grain.components[0] == test_environment.concepts['name']
@@ -73,6 +73,7 @@ def test_get_datasource_from_window_function(
 def test_get_datasource_for_filter(
     test_environment: Environment, test_environment_graph
 ):
+    test_environment = test_environment.materialize_for_select()
     hi_rev_product = test_environment.concepts["products_with_revenue_over_50"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
 
@@ -96,7 +97,7 @@ def test_get_datasource_for_filter(
 def test_select_output(test_environment, test_environment_graph):
     from trilogy.hooks.query_debugger import DebuggingHook
 
-    DebuggingHook()
+    test_environment = test_environment.materialize_for_select()
     product = test_environment.concepts["product_id"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
 
@@ -114,6 +115,7 @@ def test_select_output(test_environment, test_environment_graph):
 
 
 def test_basic_aggregate(test_environment: Environment, test_environment_graph):
+    test_environment = test_environment.materialize_for_select()
     product = test_environment.concepts["product_id"]
     total_revenue = test_environment.concepts["total_revenue"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
@@ -129,9 +131,7 @@ def test_basic_aggregate(test_environment: Environment, test_environment_graph):
 
 
 def test_join_aggregate(test_environment: Environment, test_environment_graph):
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    DebuggingHook()
+    test_environment = test_environment.materialize_for_select()
     category_id = test_environment.concepts["category_id"]
     total_revenue = test_environment.concepts["total_revenue"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph

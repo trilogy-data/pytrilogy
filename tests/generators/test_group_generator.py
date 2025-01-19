@@ -1,5 +1,6 @@
 from trilogy.core.enums import Derivation, FunctionType, Purpose
 from trilogy.core.models.author import AggregateWrapper, Function
+from trilogy.core.models.build import BuildAggregateWrapper
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
@@ -26,6 +27,7 @@ def test_gen_group_node_parents(test_environment: Environment):
 
 
 def test_gen_group_node_basic(test_environment, test_environment_graph):
+    test_environment = test_environment.materialize_for_select()
     prod = test_environment.concepts["product_id"]
     test_environment.concepts["revenue"]
     prod_r = test_environment.concepts["total_revenue"]
@@ -43,9 +45,7 @@ def test_gen_group_node_basic(test_environment, test_environment_graph):
 
 
 def test_gen_group_node(test_environment: Environment, test_environment_graph):
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    DebuggingHook()
+    test_environment = test_environment.materialize_for_select()
     cat = test_environment.concepts["category_id"]
     test_environment.concepts["category_top_50_revenue_products"]
     immediate_aggregate_input = test_environment.concepts[
@@ -73,31 +73,38 @@ def test_gen_group_node(test_environment: Environment, test_environment_graph):
     parent.resolve()
 
 
-def test_proper_parents(test_environment):
+def test_proper_parents(test_environment:Environment):
     base = Function(
         operator=FunctionType.COUNT,
         arguments=[test_environment.concepts["category_name"]],
         output_purpose=Purpose.PROPERTY,
         output_datatype=DataType.INTEGER,
     )
-
-    resolved = resolve_function_parent_concepts(
-        function_to_concept(
+    
+    new_agg = function_to_concept(
             base, name="base_agg", namespace="local", environment=test_environment
-        ),
-        environment=test_environment,
-    )
-    assert len(resolved) == 2
-    assert test_environment.concepts["category_id"] in resolved
-    resolved = resolve_function_parent_concepts(
-        agg_wrapper_to_concept(
+        )
+    new_wrapper =  agg_wrapper_to_concept(
             AggregateWrapper(
                 function=base,
                 by=[test_environment.concepts["category_name"]],
             ),
             name="agg_to_alt_grain",
             namespace="local",
-        ),
+            environment=test_environment
+        )
+    test_environment.add_concept(new_agg)
+    test_environment.add_concept(new_wrapper)
+    test_environment = test_environment.materialize_for_select()
+
+    resolved = resolve_function_parent_concepts(
+        test_environment.concepts[new_agg.address],
+        environment=test_environment,
+    )
+    assert len(resolved) == 2
+    assert test_environment.concepts["category_id"] in resolved
+    resolved = resolve_function_parent_concepts(
+        test_environment.concepts[new_wrapper.address],
         environment=test_environment,
     )
 

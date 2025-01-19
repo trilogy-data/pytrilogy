@@ -6,6 +6,7 @@ from trilogy.core.enums import (
     Purpose,
 )
 from trilogy.core.models.author import Comparison, Conditional, Function, Grain
+from trilogy.core.models.build import BuildComparison, BuildConditional, BuildFunction
 from trilogy.core.models.core import (
     DataType,
 )
@@ -22,44 +23,44 @@ from trilogy.core.processing.utility import decompose_condition
 
 
 def test_is_child_function():
-    condition = Conditional(
-        left=Comparison(left=1, right=2, operator=ComparisonOperator.EQ),
-        right=Comparison(left=3, right=4, operator=ComparisonOperator.EQ),
+    condition = BuildConditional(
+        left=BuildComparison(left=1, right=2, operator=ComparisonOperator.EQ),
+        right=BuildComparison(left=3, right=4, operator=ComparisonOperator.EQ),
         operator=BooleanOperator.AND,
     )
     assert (
         is_child_of(
-            Comparison(left=1, right=2, operator=ComparisonOperator.EQ), condition
+            BuildComparison(left=1, right=2, operator=ComparisonOperator.EQ), condition
         )
         is True
     )
     assert (
         is_child_of(
-            Comparison(left=3, right=4, operator=ComparisonOperator.EQ), condition
+            BuildComparison(left=3, right=4, operator=ComparisonOperator.EQ), condition
         )
         is True
     )
     assert (
         is_child_of(
-            Comparison(left=1, right=2, operator=ComparisonOperator.EQ), condition.left
+            BuildComparison(left=1, right=2, operator=ComparisonOperator.EQ), condition.left
         )
         is True
     )
     assert (
         is_child_of(
-            Comparison(left=3, right=4, operator=ComparisonOperator.EQ), condition.right
+            BuildComparison(left=3, right=4, operator=ComparisonOperator.EQ), condition.right
         )
         is True
     )
     assert (
         is_child_of(
-            Comparison(left=1, right=2, operator=ComparisonOperator.EQ), condition.right
+            BuildComparison(left=1, right=2, operator=ComparisonOperator.EQ), condition.right
         )
         is False
     )
     assert (
         is_child_of(
-            Comparison(left=3, right=4, operator=ComparisonOperator.EQ), condition.left
+            BuildComparison(left=3, right=4, operator=ComparisonOperator.EQ), condition.left
         )
         is False
     )
@@ -75,21 +76,22 @@ key year int;
                    key current_price float;               
 """
     )
-    comp = Conditional(
-        left=Conditional(
-            left=Comparison(
+    env =env.materialize_for_select()
+    comp = BuildConditional(
+        left=BuildConditional(
+            left=BuildComparison(
                 left=env.concepts["customer_count"],
                 right=10,
                 operator=ComparisonOperator.GT,
             ),
-            right=Comparison(
+            right=BuildComparison(
                 left=env.concepts["year"], right=2001, operator=ComparisonOperator.EQ
             ),
             operator=BooleanOperator.AND,
         ),
-        right=Comparison(
+        right=BuildComparison(
             left=env.concepts["current_price"],
-            right=Function(
+            right=BuildFunction(
                 operator=FunctionType.MULTIPLY,
                 output_purpose=Purpose.PROPERTY,
                 output_datatype=DataType.FLOAT,
@@ -118,6 +120,7 @@ def test_decomposition_function():
 
 
 def test_basic_pushdown(test_environment: Environment, test_environment_graph):
+    test_environment = test_environment.materialize_for_select()
     datasource = list(test_environment.datasources.values())[0]
     outputs = [c.concept for c in datasource.columns]
     cte_source_map = {outputs[0].address: [datasource.name]}
@@ -150,7 +153,7 @@ def test_basic_pushdown(test_environment: Environment, test_environment_graph):
         ),
         output_columns=[],
         parent_ctes=[parent],
-        condition=Comparison(
+        condition=BuildComparison(
             left=outputs[0], right=outputs[0], operator=ComparisonOperator.EQ
         ),
         grain=Grain(),
@@ -169,6 +172,7 @@ def test_basic_pushdown(test_environment: Environment, test_environment_graph):
 
 
 def test_invalid_pushdown(test_environment: Environment, test_environment_graph):
+    test_environment = test_environment.materialize_for_select()
     datasource = list(test_environment.datasources.values())[0]
     outputs = [c.concept for c in datasource.columns]
     cte_source_map = {outputs[0].address: [datasource.name]}
@@ -215,7 +219,7 @@ def test_invalid_pushdown(test_environment: Environment, test_environment_graph)
         ),
         output_columns=[],
         parent_ctes=[parent],
-        condition=Comparison(
+        condition=BuildComparison(
             left=outputs[0], right=outputs[0], operator=ComparisonOperator.EQ
         ),
         grain=Grain(),
@@ -234,6 +238,7 @@ def test_invalid_pushdown(test_environment: Environment, test_environment_graph)
 def test_invalid_aggregate_pushdown(
     test_environment: Environment, test_environment_graph
 ):
+    test_environment = test_environment.materialize_for_select()
     datasource = list(test_environment.datasources.values())[0]
     outputs = [c.concept for c in datasource.columns]
     cte_source_map = {outputs[0].address: [datasource.name]}
@@ -264,8 +269,8 @@ def test_invalid_aggregate_pushdown(
         ),
         output_columns=[],
         parent_ctes=[parent],
-        condition=Comparison(
-            left=Function(
+        condition=BuildComparison(
+            left=BuildFunction(
                 operator=FunctionType.COUNT,
                 arguments=[outputs[0]],
                 output_datatype=DataType.INTEGER,
@@ -288,6 +293,7 @@ def test_invalid_aggregate_pushdown(
 
 
 def test_decomposition_pushdown(test_environment: Environment, test_environment_graph):
+    test_environment = test_environment.materialize_for_select()
     category_ds = test_environment.datasources["category"]
     products = test_environment.datasources["products"]
     product_id = test_environment.concepts["product_id"]
@@ -307,7 +313,7 @@ def test_decomposition_pushdown(test_environment: Environment, test_environment_
             },
         ),
         output_columns=[],
-        condition=Comparison(left=product_id, right=1, operator=ComparisonOperator.EQ),
+        condition=BuildComparison(left=product_id, right=1, operator=ComparisonOperator.EQ),
         grain=Grain(),
         source_map={
             product_id.address: [products.name],
@@ -350,11 +356,11 @@ def test_decomposition_pushdown(test_environment: Environment, test_environment_
         ),
         output_columns=[],
         parent_ctes=[parent1, parent2],
-        condition=Conditional(
-            left=Comparison(
+        condition=BuildConditional(
+            left=BuildComparison(
                 left=product_id, right=product_id, operator=ComparisonOperator.EQ
             ),
-            right=Comparison(
+            right=BuildComparison(
                 left=category_name, right=category_name, operator=ComparisonOperator.EQ
             ),
             operator=BooleanOperator.AND,
@@ -374,19 +380,19 @@ def test_decomposition_pushdown(test_environment: Environment, test_environment_
     # two to pushup, then last will fail
     assert rule.optimize(cte1, inverse_map) is True
     assert rule.optimize(cte1, inverse_map) is False
-    assert parent1.condition == Conditional(
-        left=Comparison(left=product_id, right=1, operator=ComparisonOperator.EQ),
-        right=Comparison(
+    assert parent1.condition == BuildConditional(
+        left=BuildComparison(left=product_id, right=1, operator=ComparisonOperator.EQ),
+        right=BuildComparison(
             left=product_id, right=product_id, operator=ComparisonOperator.EQ
         ),
         operator=BooleanOperator.AND,
     )
-    assert isinstance(parent2.condition, Comparison)
+    assert isinstance(parent2.condition, BuildComparison)
     assert parent2.condition.left == category_name
     assert parent2.condition.right == category_name
     assert parent2.condition.operator == ComparisonOperator.EQ
     assert str(parent2.condition) == str(
-        Comparison(
+        BuildComparison(
             left=category_name, right=category_name, operator=ComparisonOperator.EQ
         )
     )

@@ -634,9 +634,9 @@ def sort_select_output(
     if isinstance(query, ProcessedQuery):
         return sort_select_output_processed(cte, query)
     output_addresses = [
-        c
+        c.address
         for c in query.output_components
-        if c not in query.hidden_components
+        if c.address not in query.hidden_components
     ]
 
     mapping = {x.address: x for x in cte.output_columns}

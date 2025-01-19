@@ -20,6 +20,7 @@ from trilogy.core.models.author import (
     Function,
     Parenthetical,
     WindowItem,
+    UndefinedConcept
 )
 from trilogy.core.models.core import (
     CONCRETE_TYPES,
@@ -711,6 +712,8 @@ def create_function_derived_concept(
 
 
 def argument_to_purpose(arg) -> Purpose:
+    if isinstance(arg, UndefinedConcept):
+        return Purpose.UNKNOWN
     if isinstance(arg, Function):
         return arg.output_purpose
     elif isinstance(arg, AggregateWrapper):

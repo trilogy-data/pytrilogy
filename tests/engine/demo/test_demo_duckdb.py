@@ -180,6 +180,7 @@ select
 
     executor.parse_text(test)
     ratio = env.concepts["ratio"]
+    rate = env.concepts['survival_rate']
     assert ratio.purpose == Purpose.PROPERTY
     assert set(x for x in env.concepts["survivors"].keys) == {
         "passenger.class",
@@ -207,6 +208,7 @@ select
     assert env.concepts["survivors"].grain.components == {
         env.concepts["passenger.class"].address
     }
+    
     results = executor.execute_text(test)
 
     for row in results[0]:

@@ -28,6 +28,19 @@ class ColumnAssignment(BaseModel):
     concept: ConceptRef
     modifiers: List[Modifier] = Field(default_factory=list)
 
+    @field_validator("concept", mode="before")
+    def force_reference(cls, v: ConceptRef, info: ValidationInfo):
+        if isinstance(v, Concept):
+            return v.reference
+        return v
+    def __eq__(self, other):
+        if not isinstance(other, ColumnAssignment):
+            return False
+        return (
+            self.alias == other.alias
+            and self.concept == other.concept
+            and self.modifiers == other.modifiers
+        )
     @property
     def is_complete(self) -> bool:
         return Modifier.PARTIAL not in self.modifiers
@@ -111,6 +124,19 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     )
     where: Optional[WhereClause] = None
     non_partial_for: Optional[WhereClause] = None
+
+    def __eq__(self, other):
+        if not isinstance(other, Datasource):
+            return False
+        return (
+            self.name == other.name and
+            self.namespace == other.namespace and
+            self.grain == other.grain and
+            self.address == other.address and
+            self.where == other.where
+            and self.columns == other.columns
+            and self.non_partial_for == other.non_partial_for
+        )
 
     def build_for_select(self, environment):
         from trilogy.core.models.build import BuildDatasource

@@ -13,6 +13,9 @@ from trilogy.core.models.author import (
     LooseConceptList,
     SubselectComparison,
 )
+from trilogy.core.models.build import (
+    BuildSubselectComparison, BuildFilterItem
+)
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import get_upstream_concepts
 from trilogy.core.processing.node_generators.common import (
@@ -345,12 +348,13 @@ select
 ;
     """
     _ = default_duckdb_engine.parse_text(test)[-1]
-    env = default_duckdb_engine.environment
+    orig_env = default_duckdb_engine.environment
+    env = orig_env.materialize_for_select()
     agg = env.concepts["f_ord_count"]
     agg_parent = resolve_function_parent_concepts(agg, environment=env)[0]
     assert agg_parent.address == "local.filtered_even_orders"
-    assert isinstance(agg_parent.lineage, FilterItem)
-    assert isinstance(agg_parent.lineage.where.conditional, SubselectComparison)
+    assert isinstance(agg_parent.lineage, BuildFilterItem)
+    assert isinstance(agg_parent.lineage.where.conditional, BuildSubselectComparison)
     _, _, existence = resolve_filter_parent_concepts(agg_parent, environment=env)
     assert len(existence) == 1
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
@@ -377,11 +381,12 @@ select
 ;
     """
     _ = default_duckdb_engine.parse_text(test)[-1]
-    env = default_duckdb_engine.environment
+    orig_env = default_duckdb_engine.environment
+    env = orig_env.materialize_for_select()
     agg = env.concepts["f_ord_count"]
     agg_parent = resolve_function_parent_concepts(agg, environment=env)[0]
     assert agg_parent.address == "local.filtered_even_orders"
-    assert isinstance(agg_parent.lineage, FilterItem)
+    assert isinstance(agg_parent.lineage, BuildFilterItem)
     _, _, existence = resolve_filter_parent_concepts(agg_parent, environment=env)
     assert len(existence) == 1
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
@@ -426,22 +431,22 @@ select
     avg(count(orid) by store) -> avg_store_orders,
 ;"""
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
-
-    customer_orders = default_duckdb_engine.environment.concepts["customer_orders"]
+    build_env = default_duckdb_engine.environment.materialize_for_select()
+    customer_orders = build_env.concepts["customer_orders"]
     assert set([x for x in customer_orders.keys]) == {"local.customer"}
     assert set([x for x in customer_orders.grain.components]) == {"local.customer"}
 
     customer_orders_2 = customer_orders.with_select_context(
         {},
         Grain(
-            components=[default_duckdb_engine.environment.concepts["local.customer"]]
+            components=[build_env.concepts["local.customer"]]
         ),
         default_duckdb_engine.environment,
     )
     assert set([x for x in customer_orders_2.keys]) == {"local.customer"}
     assert set([x for x in customer_orders_2.grain.components]) == {"local.customer"}
 
-    count_by_customer = default_duckdb_engine.environment.concepts[
+    count_by_customer = build_env.concepts[
         "avg_customer_orders"
     ].lineage.concept_arguments[0]
     # assert isinstance(count_by_customer, AggregateWrapper)

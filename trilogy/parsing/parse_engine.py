@@ -34,6 +34,8 @@ from trilogy.core.enums import (
     ShowCategory,
     WindowOrder,
     WindowType,
+    Granularity,
+    Derivation
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.functions import (
@@ -189,16 +191,18 @@ def unwrap_transformation(
         float,
         bool,
     ],
+    environment: Environment,
 ) -> Function | FilterItem | WindowItem | AggregateWrapper:
     if isinstance(input, Function):
         return input
     elif isinstance(input, AggregateWrapper):
         return input
-    elif isinstance(input, Concept):
+    elif isinstance(input, ConceptRef):
+        concept = environment.concepts[input.address]
         return Function(
             operator=FunctionType.ALIAS,
-            output_datatype=input.datatype,
-            output_purpose=input.purpose,
+            output_datatype=concept.datatype,
+            output_purpose=concept.purpose,
             arguments=[input],
         )
     elif isinstance(input, FilterItem):
@@ -206,7 +210,7 @@ def unwrap_transformation(
     elif isinstance(input, WindowItem):
         return input
     elif isinstance(input, Parenthetical):
-        return unwrap_transformation(input.content)
+        return unwrap_transformation(input.content, environment)
     else:
         return Function(
             operator=FunctionType.CONSTANT,
@@ -313,9 +317,10 @@ class ParseToObjects(Transformer):
         address = args[0]
         if '.' not in address and self.environment.namespace == DEFAULT_NAMESPACE:
             address = f'{DEFAULT_NAMESPACE}.{address}'
-        datatype = self.environment.concepts[address].output_datatype
-
-        return ConceptRef(address=address, line_no=meta.line, datatype= datatype)
+        mapping = self.environment.concepts[address]
+        datatype = mapping.output_datatype
+        return ConceptRef(address=mapping.address, metadata=Metadata(line_number=meta.line), datatype= datatype)
+    
     def ADDRESS(self, args) -> Address:
         return Address(location=args.value, quoted=False)
 
@@ -488,6 +493,8 @@ class ParseToObjects(Transformer):
             metadata=metadata,
             namespace=namespace,
             modifiers=modifiers,
+            derivation = Derivation.ROOT,
+            granularity = Granularity.MULTI_ROW
         )
         if concept.metadata:
             concept.metadata.line_number = meta.line
@@ -690,12 +697,13 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def select_transform(self, meta: Meta, args) -> ConceptTransform:
         output: str = args[1]
-        transformation = unwrap_transformation(args[0])
+        transformation = unwrap_transformation(args[0], self.environment)
         lookup, namespace, output, parent = parse_concept_reference(
             output, self.environment
         )
 
         metadata = Metadata(line_number=meta.line, concept_source=ConceptSource.SELECT)
+
         concept = arbitrary_to_concept(transformation, environment=self.environment,
                                        namespace=namespace, name=output, metadata=metadata)
   
@@ -939,7 +947,7 @@ class ParseToObjects(Transformer):
         return AlignItem(
             alias=args[0],
             namespace=self.environment.namespace,
-            concepts=[self.environment.concepts[arg] for arg in args[1:]],
+            concepts = [self.environment.concepts[arg].reference for arg in args[1:]],
         )
 
     @v_args(meta=True)

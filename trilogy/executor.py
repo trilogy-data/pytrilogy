@@ -8,7 +8,7 @@ from sqlalchemy.engine import CursorResult, Engine
 
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionType, Granularity, IOType
-from trilogy.core.models.author import Concept, Function
+from trilogy.core.models.author import Concept, Function, ConceptRef
 from trilogy.core.models.core import ListWrapper, MapWrapper
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
@@ -392,7 +392,26 @@ class Executor(object):
 
             if persist and isinstance(x, ProcessedQueryPersist):
                 self.environment.add_datasource(x.datasource)
-
+    def _concept_to_value(self, concept: Concept, local_concepts: dict[str, Concept] | None = None) -> Any:
+        if not concept.granularity == Granularity.SINGLE_ROW:
+            raise SyntaxError(f"Cannot bind non-singleton concept {concept.address}")
+        if (
+            isinstance(concept.lineage, Function)
+            and concept.lineage.operator == FunctionType.CONSTANT
+        ):
+            rval = concept.lineage.arguments[0]
+            if isinstance(rval, ListWrapper):
+                return [x for x in rval]
+            if isinstance(rval, MapWrapper):
+                return {k: v for k, v in rval.items()}
+            # if isinstance(rval, ConceptRef):
+            #     return self._concept_to_value(self.environment.concepts[rval.address], local_concepts=local_concepts)
+            return rval
+        else:
+            results = self.execute_query(f"select {concept.name} limit 1;").fetchone()
+        if not results:
+            return None
+        return results[0]
     def _hydrate_param(
         self, param: str, local_concepts: dict[str, Concept] | None = None
     ) -> Any:
@@ -411,23 +430,7 @@ class Executor(object):
             raise SyntaxError(f"No concept found for parameter {param}")
 
         concept: Concept = matched.pop()
-        if not concept.granularity == Granularity.SINGLE_ROW:
-            raise SyntaxError(f"Cannot bind non-singleton concept {concept.address}")
-        if (
-            isinstance(concept.lineage, Function)
-            and concept.lineage.operator == FunctionType.CONSTANT
-        ):
-            rval = concept.lineage.arguments[0]
-            if isinstance(rval, ListWrapper):
-                return [x for x in rval]
-            if isinstance(rval, MapWrapper):
-                return {k: v for k, v in rval.items()}
-            return rval
-        else:
-            results = self.execute_query(f"select {concept.name} limit 1;").fetchone()
-        if not results:
-            return None
-        return results[0]
+        return self._concept_to_value(concept, local_concepts=local_concepts)
 
     def execute_raw_sql(
         self,

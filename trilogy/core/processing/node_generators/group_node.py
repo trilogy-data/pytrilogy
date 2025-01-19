@@ -87,7 +87,7 @@ def gen_group_node(
                     )
                 else:
                     logger.info(
-                        f"{padding(depth)}{LOGGER_PREFIX} mismatched grain {Grain.from_concepts(agg_parents)} vs {Grain.from_concepts(parent_concepts)}"
+                        f"{padding(depth)}{LOGGER_PREFIX} cannot include optional agg; mismatched grain {Grain.from_concepts(agg_parents)} vs {Grain.from_concepts(parent_concepts)}"
                     )
     if parent_concepts:
         logger.info(
@@ -127,6 +127,9 @@ def gen_group_node(
     # early exit if no optional
 
     if not local_optional:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} no optional concepts, returning group node"
+        )
         return group_node
     missing_optional = [
         x.address for x in local_optional if x.address not in group_node.output_concepts

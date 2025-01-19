@@ -6,6 +6,8 @@ from trilogy.core.enums import (
     Modifier,
     Purpose,
     WindowType,
+    Derivation,
+    Granularity
 )
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.functions import Count, CountDistinct, Max, Min
@@ -177,6 +179,7 @@ def test_environment():
             ),
         ),
         grain=product_id,
+        derivation = Derivation.FILTER
     )
 
     category_top_50_revenue_products = Concept(
@@ -187,6 +190,7 @@ def test_environment():
             function=Count([products_with_revenue_over_50], env), by=[category_id]
         ),
         grain=Grain(components=[category_id]),
+        derivation = Derivation.AGGREGATE
     )
 
     category_products = Concept(
@@ -194,6 +198,7 @@ def test_environment():
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
         lineage=AggregateWrapper(function=Count([product_id], env), by=[category_id]),
+        derivation = Derivation.AGGREGATE
     )
 
     test_revenue = Datasource(
@@ -232,8 +237,6 @@ def test_environment():
         grain=Grain(components=[category_id]),
     )
 
-    for item in [test_product, test_category, test_revenue]:
-        env.add_datasource(item)
 
     for item in [
         constant_one,
@@ -259,6 +262,9 @@ def test_environment():
     ]:
         env.add_concept(item)
         # env.concepts[item.name] = item
+    for item in [test_product, test_category, test_revenue]:
+        env.add_datasource(item)
+
     env.gen_concept_list_caches()
     yield env
 

@@ -72,10 +72,12 @@ class SelectItem(BaseModel):
         return v
 
     @property
-    def concept(self)->str:
-        if isinstance(self.content, (Concept, ConceptRef)):
-            return self.content.address
-        return self.content.output.address
+    def concept(self)->ConceptRef:
+        if isinstance(self.content, (ConceptRef)):
+            return self.content
+        elif isinstance(self.content, Concept):
+            return self.content.reference
+        return self.content.output.reference
     
 
     @property
@@ -126,15 +128,18 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         )
         output.grain = output.calculate_grain(environment)
         for x in selection:
+            
             if x.is_undefined and environment.concepts.fail_on_missing:
                 environment.concepts.raise_undefined(
                     x.concept, meta.line_number if meta else None
                 )
             elif isinstance(x.content, ConceptTransform):
+                if isinstance(x.content.output, UndefinedConcept):
+                    continue
                 if (
                     CONFIG.select_as_definition
                     and not environment.frozen
-                    and x.concept  not in environment.concepts
+                    and x.concept.address  not in environment.concepts
                 ):
                     environment.add_concept(x.content.output)
                 x.content.output = x.content.output.set_select_grain(
@@ -144,8 +149,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                 output.local_concepts[x.content.output.address] = x.content.output
 
             elif isinstance(x.content, ConceptRef):
-                # x.content = x.content
-                output.local_concepts[x.content.address] = environment.concepts[x.content.address].set_select_grain(output.grain, environment)
+                output.local_concepts[x.content.address] = environment.concepts[x.content.address] #.set_select_grain(output.grain, environment)
 
         output.validate_syntax(environment)
         return output
@@ -228,17 +232,17 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         locally_derived: set[str] = set()
         for item in self.selection:
             if isinstance(item.content, ConceptTransform):
-                locally_derived.add(item.concept)
+                locally_derived.add(item.concept.address)
         return locally_derived
 
     @property
-    def output_components(self) -> List[str]:
+    def output_components(self) -> List[ConceptRef]:
         return [x.concept for x in self.selection]
 
     @property
     def hidden_components(self) -> set[str]:
         return set(
-            x.concept for x in self.selection if Modifier.HIDDEN in x.modifiers
+            x.concept.address for x in self.selection if Modifier.HIDDEN in x.modifiers
         )
 
     def to_datasource(
@@ -258,9 +262,9 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             # if the concept is a locally derived concept, it cannot ever be partial
             # but if it's a concept pulled in from upstream and we have a where clause, it should be partial
             ColumnAssignment(
-                alias=c.replace(".", "_"),
+                alias=c.address.replace(".", "_"),
                 concept=environment.concepts[c].reference,
-                modifiers=modifiers if c not in self.locally_derived else [],
+                modifiers=modifiers if c.address not in self.locally_derived else [],
             )
             for c in self.output_components
         ]
@@ -344,13 +348,13 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         )
 
     @property
-    def output_components(self) -> List[str]:
-        output = [x.address for x in self.derived_concepts]
+    def output_components(self) -> List[ConceptRef]:
+        output = [x.reference for x in self.derived_concepts]
         for select in self.selects:
             output += [
                 x
                 for x in select.output_components
-                if x not in select.hidden_components
+                if x.address not in select.hidden_components
             ]
         return unique(output, "address")
 

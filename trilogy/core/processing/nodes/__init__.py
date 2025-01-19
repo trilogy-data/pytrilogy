@@ -17,7 +17,7 @@ class History(BaseModel):
     history: dict[str, StrategyNode | None] = Field(default_factory=dict)
     select_history: dict[str, StrategyNode | None] = Field(default_factory=dict)
     started: set[str] = Field(default_factory=set)
-    base_environment:Environment
+    base_environment:Environment | None = None
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def _concepts_to_lookup(

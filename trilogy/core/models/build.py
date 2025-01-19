@@ -13,6 +13,7 @@ from typing import (
     Set,
     Tuple,
     Union,
+    Iterable,
 )
 
 from pydantic import (
@@ -20,8 +21,10 @@ from pydantic import (
     ConfigDict,
     Field,
     computed_field,
+    ValidationInfo,
+    field_validator,
 )
-
+from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
 from trilogy.core.enums import (
     BooleanOperator,
@@ -87,7 +90,7 @@ from trilogy.core.models.datasource import (
     DatasourceMetadata,
     RawColumnExpr
 )
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.environment import Environment, BuildEnvironment
 from trilogy.utility import unique
 
 # TODO: refactor to avoid these
@@ -136,7 +139,121 @@ def get_concept_arguments(expr) -> List["BuildConcept"]:
         output += expr.concept_arguments
     return output
 
+class BuildGrain(BaseModel):
+    components: set[str] = Field(default_factory=set)
+    where_clause: Optional["BuildWhereClause"] = None
 
+    def without_condition(self):
+        return BuildGrain(components=self.components)
+
+
+    @classmethod
+    def from_concepts(
+        cls,
+        concepts: Iterable[Concept | str],
+        environment: BuildEnvironment | None = None,
+        where_clause: BuildWhereClause | None = None,
+    ) -> "Grain":
+        from trilogy.parsing.common import concepts_to_grain_concepts
+
+        return BuildGrain(
+            components={
+                c.address
+                for c in concepts_to_grain_concepts(concepts, environment=environment)
+            },
+            where_clause=where_clause,
+        )
+
+    @field_validator("components", mode="before")
+    def component_validator(cls, v, info: ValidationInfo):
+        output = set()
+        if isinstance(v, list):
+            for vc in v:
+                if isinstance(vc, BuildConcept):
+                    output.add(vc.address)
+                else:
+                    output.add(vc)
+        else:
+            output = v
+        if not isinstance(output, set):
+            raise ValueError(f"Invalid grain component {output}, is not set")
+        if not all(isinstance(x, str) for x in output):
+            raise ValueError(f"Invalid component {output}")
+        return output
+
+    def __add__(self, other: "Grain") -> "Grain":
+        if not other:
+            return self
+        where = self.where_clause
+        if other.where_clause:
+            if not self.where_clause:
+                where = other.where_clause
+            elif not other.where_clause == self.where_clause:
+                where = BuildWhereClause(
+                    conditional=BuildConditional(
+                        left=self.where_clause.conditional,
+                        right=other.where_clause.conditional,
+                        operator=BooleanOperator.AND,
+                    )
+                )
+                # raise NotImplementedError(
+                #     f"Cannot merge grains with where clauses, self {self.where_clause} other {other.where_clause}"
+                # )
+        return BuildGrain(
+            components=self.components.union(other.components), where_clause=where
+        )
+
+    def __sub__(self, other: "Grain") -> "Grain":
+        return BuildGrain(
+            components=self.components.difference(other.components),
+            where_clause=self.where_clause,
+        )
+
+    @property
+    def abstract(self):
+        return not self.components or all(
+            [c.endswith(ALL_ROWS_CONCEPT) for c in self.components]
+        )
+
+    def __eq__(self, other: object):
+        if isinstance(other, list):
+            if not all([isinstance(c, BuildConcept) for c in other]):
+                return False
+            return self.components == set([c.address for c in other])
+        if not isinstance(other, BuildGrain):
+            return False
+        if self.components == other.components:
+            return True
+        return False
+
+    def issubset(self, other: "BuildGrain"):
+        return self.components.issubset(other.components)
+
+    def union(self, other: "BuildGrain"):
+        addresses = self.components.union(other.components)
+        return BuildGrain(components=addresses, where_clause=self.where_clause)
+
+    def isdisjoint(self, other: "BuildGrain"):
+        return self.components.isdisjoint(other.components)
+
+    def intersection(self, other: "BuildGrain") -> "BuildGrain":
+        intersection = self.components.intersection(other.components)
+        return BuildGrain(components=intersection)
+
+    def __str__(self):
+        if self.abstract:
+            base = "BuildGrain<Abstract>"
+        else:
+            base = "BuildGrain<" + ",".join([c for c in sorted(list(self.components))]) + ">"
+        if self.where_clause:
+            base += f"|{str(self.where_clause)}"
+        return base
+
+    def __radd__(self, other) -> "BuildGrain":
+        if other == 0:
+            return self
+        else:
+            return self.__add__(other)
 class BuildParenthetical(Parenthetical):
     content: "BuildExpr"
 
@@ -356,8 +473,8 @@ class BuildHavingClause(BuildWhereClause):
     pass
 
 
-# class BuildComparison(ConceptArgs, ConstantInlineable, BaseModel):
-class BuildComparison(Comparison):
+class BuildComparison(ConceptArgs, ConstantInlineable, BaseModel):
+
     left: Union[
         int,
         str,
@@ -368,10 +485,10 @@ class BuildComparison(Comparison):
         date,
         BuildFunction,
         BuildConcept,
-        "BuildConditional",
+        BuildConditional,
         DataType,
-        "BuildComparison",
-        "BuildParenthetical",
+        BuildComparison,
+        BuildParenthetical,
         MagicConstants,
         BuildWindowItem,
         BuildAggregateWrapper,
@@ -386,10 +503,10 @@ class BuildComparison(Comparison):
         datetime,
         BuildConcept,
         BuildFunction,
-        "BuildConditional",
+        BuildConditional,
         DataType,
-        "BuildComparison",
-        "BuildParenthetical",
+        BuildComparison,
+        BuildParenthetical,
         MagicConstants,
         BuildWindowItem,
         BuildAggregateWrapper,
@@ -523,7 +640,7 @@ class BuildComparison(Comparison):
         return output
 
 
-class BuildSubselectComparison(SubselectComparison):
+class BuildSubselectComparison(BuildComparison):
     left: Union[
         int,
         str,
@@ -564,7 +681,7 @@ class BuildSubselectComparison(SubselectComparison):
     operator: ComparisonOperator
 
     def __eq__(self, other):
-        if not isinstance(other, SubselectComparison):
+        if not isinstance(other, BuildSubselectComparison):
             return False
 
         comp = (
@@ -592,20 +709,17 @@ class BuildConcept(Concept, BaseModel):
     lineage: Optional[
         Union[
             BuildFunction,
-            Function,
             BuildWindowItem,
-            WindowItem,
-            FilterItem,
             BuildFilterItem,
-            AggregateWrapper,
             BuildAggregateWrapper,
             BuildRowsetItem,
-            RowsetItem,
-            MultiSelectLineage,
+            BuildMultiSelectLineage
         ]
     ] = None
-    def with_select_context(self):
+    def with_select_context(self, *args, **kwargs):
+        return self
         raise NotImplementedError
+    
     @classmethod
     def build(
         cls, base: Concept, grain: Grain, environment: Environment, local_concepts
@@ -641,7 +755,33 @@ class BuildConcept(Concept, BaseModel):
             build_is_aggregate=is_aggregate,
         )
 
+    def with_filter(
+        self,
+        condition: BuildConditional | BuildComparison | Parenthetical,
+    ) -> "Concept":
+        from trilogy.utility import string_to_hash
 
+        if self.lineage and isinstance(self.lineage, BuildFilterItem):
+            if self.lineage.where.conditional == condition:
+                return self
+        hash = string_to_hash(self.name + str(condition))
+        new_lineage = BuildFilterItem(content=self, where=BuildWhereClause(conditional=condition))
+        new = BuildConcept(
+            name=f"{self.name}_filter_{hash}",
+            datatype=self.datatype,
+            purpose=self.purpose,
+            derivation=self.calculate_derivation(new_lineage, self.purpose),
+            granularity=self.granularity,
+            metadata=self.metadata,
+            lineage=new_lineage,
+            keys=(self.keys if self.purpose == Purpose.PROPERTY else None),
+            grain=self.grain if self.grain else Grain(components=set()),
+            namespace=self.namespace,
+            modifiers=self.modifiers,
+            pseudonyms=self.pseudonyms,
+            build_is_aggregate=self.build_is_aggregate,
+        )
+        return new
 
     def with_merge(self, source: Self, target: Self, modifiers: List[Modifier]) -> Self:
         if self.address == source.address:
@@ -807,6 +947,8 @@ class BuildConcept(Concept, BaseModel):
                 ],
                 output: List[BuildConcept],
             ):
+                if isinstance(expr, BuildMultiSelectLineage):
+                    return 
                 for item in expr.concept_arguments:
                     if isinstance(item, BuildConcept):
                         if item.address == self.address:
@@ -1111,16 +1253,30 @@ class BuildSelectLineage(BaseModel):
 
 
 class BuildMultiSelectLineage(ConceptArgs, BaseModel):
-    selects: List[SelectLineage]
-    align: AlignClause
+    selects: List[BuildSelectLineage]
+    align: BuildAlignClause
     namespace: str
-    order_by: Optional[OrderBy] = None
+    order_by: Optional[BuildOrderBy] = None
     limit: Optional[int] = None
-    where_clause: Union["WhereClause", None] = Field(default=None)
-    having_clause: Union["HavingClause", None] = Field(default=None)
+    where_clause: Union["BuildWhereClause", None] = Field(default=None)
+    having_clause: Union["BuildHavingClause", None] = Field(default=None)
     local_concepts: dict[str, BuildConcept]
     hidden_components: set[str]
 
+    # @property
+    # def arguments(self):
+    #     output = []
+    #     for select in self.selects:
+    #         output += select.output_components
+    #     return output
+
+    @property
+    def derived_concepts(self) -> set[str]:
+        output = set()
+        for item in self.align.items:
+            output.add(item.aligned_concept)
+        return output
+    
     @property
     def grain(self):
         base = Grain()
@@ -1320,7 +1476,15 @@ class BuildDatasource(Datasource):
 
 
 BuildExpr = (
-    bool
+    BuildWindowItem
+    | BuildFilterItem
+    | BuildConcept
+    | BuildComparison
+    | BuildConditional
+    | BuildParenthetical
+    | BuildFunction
+    | BuildAggregateWrapper
+    | bool
     | MagicConstants
     | int
     | str
@@ -1334,14 +1498,7 @@ BuildExpr = (
     # | Parenthetical
     # | Function
     # | AggregateWrapper
-    | BuildWindowItem
-    | BuildFilterItem
-    | BuildConcept
-    | BuildComparison
-    | BuildConditional
-    | BuildParenthetical
-    | BuildFunction
-    | BuildAggregateWrapper
+
 )
 
 BuildConcept.model_rebuild()

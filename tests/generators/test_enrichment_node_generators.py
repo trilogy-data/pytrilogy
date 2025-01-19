@@ -8,6 +8,7 @@ def address_set(concepts):
 
 
 def test_gen_property_enrichment_node(test_environment, test_environment_graph):
+    test_environment = test_environment.materialize_for_select()
     prod = test_environment.concepts["category_id"]
     prod_r = test_environment.concepts["total_revenue"]
     gnode = gen_group_node(

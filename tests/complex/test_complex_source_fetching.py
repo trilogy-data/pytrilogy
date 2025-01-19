@@ -74,7 +74,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
 
     assert user_post_count.purpose == Purpose.METRIC
 
-    posts = env.datasources["posts"].build_for_select(env)
+    posts = env.datasources["posts"]
     post_grain = Grain(components=[env.concepts["post_id"]])
 
     assert posts.grain == post_grain

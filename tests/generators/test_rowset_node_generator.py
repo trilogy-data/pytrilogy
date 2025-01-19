@@ -1,13 +1,14 @@
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import gen_rowset_node
+from trilogy.core.processing.nodes import History
 from trilogy.hooks.query_debugger import DebuggingHook
 
 
 def test_gen_rowset_node_with_filter(
     test_environment: Environment, test_environment_graph
 ):
-    DebuggingHook()
+
     test_environment.parse(
         """
                            
@@ -18,7 +19,8 @@ select product_id
 where rev_sum>5;
                            """
     )
-
+    orig_env = test_environment
+    test_environment = test_environment.materialize_for_select()
     node = gen_rowset_node(
         concept=test_environment.concepts["p1.product_id"],
         local_optional=[
@@ -29,6 +31,7 @@ where rev_sum>5;
         g=test_environment_graph,
         depth=0,
         source_concepts=search_concepts,
+        history=History(base_environment=orig_env),
     )
 
     assert "local.rev_sum" in node.output_concepts
@@ -39,7 +42,7 @@ where rev_sum>5;
 def test_gen_rowset_node_group_parent(
     test_environment: Environment, test_environment_graph
 ):
-    DebuggingHook()
+
     test_environment.parse(
         """
                            
@@ -54,7 +57,8 @@ select product_id
 where rev_sum>2;
                            """
     )
-
+    orig_env = test_environment
+    test_environment = test_environment.materialize_for_select()
     _ = gen_rowset_node(
         concept=test_environment.concepts["p1.product_id"],
         local_optional=[
@@ -64,13 +68,14 @@ where rev_sum>2;
         g=test_environment_graph,
         depth=0,
         source_concepts=search_concepts,
+        history=History(base_environment=orig_env),
     )
 
 
 def test_gen_rowset_node_merge_parent(
     test_environment: Environment, test_environment_graph
 ):
-    DebuggingHook()
+
     test_environment.parse(
         """
                            
@@ -85,7 +90,8 @@ select product_id
 where rev_sum>2;
                            """
     )
-
+    orig_env = test_environment
+    test_environment = test_environment.materialize_for_select()
     _ = gen_rowset_node(
         concept=test_environment.concepts["p1.product_id"],
         local_optional=[
@@ -95,4 +101,5 @@ where rev_sum>2;
         g=test_environment_graph,
         depth=0,
         source_concepts=search_concepts,
+                history=History(base_environment=orig_env),
     )

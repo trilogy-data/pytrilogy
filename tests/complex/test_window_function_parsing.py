@@ -1,13 +1,13 @@
 from trilogy import Dialects
 from trilogy.core.enums import Derivation, Granularity, Purpose
-from trilogy.core.models.author import WindowItem
+from trilogy.core.models.build import BuildWindowItem
 from trilogy.core.processing.concept_strategies_v3 import (
     generate_graph,
     search_concepts,
 )
 from trilogy.core.processing.utility import concept_to_relevant_joins
 from trilogy.core.query_processor import get_query_datasources, process_query
-from trilogy.core.statements.author import SelectStatement
+from trilogy.core.statements.author import SelectStatement, WindowItem
 from trilogy.dialect import duckdb
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.parser import parse
@@ -56,10 +56,11 @@ limit 100
 
 
     """
-    env, parsed = parse(declarations)
+    orig_env, parsed = parse(declarations)
+    env = orig_env.materialize_for_select()
     select: SelectStatement = parsed[-1]
 
-    assert isinstance(env.concepts["user_rank"].lineage, WindowItem)
+    assert isinstance(env.concepts["user_rank"].lineage, BuildWindowItem)
 
     ds = search_concepts(
         [env.concepts["post_count"], env.concepts["user_id"]],
@@ -70,7 +71,7 @@ limit 100
     # ds.validate()
     ds.get_alias(env.concepts["post_count"].with_grain(ds.grain))
 
-    get_query_datasources(environment=env, statement=select)
+    get_query_datasources(environment=orig_env, statement=select)
     # raise ValueError
 
     query = process_query(statement=select, environment=env)
@@ -155,7 +156,8 @@ auto z <- rank x order by x desc;
 
 select x, z 
 order by x asc;"""
-    env, parsed = parse(declarations)
+    org_env, parsed = parse(declarations)
+    env = org_env.materialize_for_select()
     select: SelectStatement = parsed[-1]
     x = env.concepts["x"]
     assert x.granularity == Granularity.MULTI_ROW
@@ -185,7 +187,7 @@ order by x asc;"""
     query = process_query(statement=select, environment=env)
     compiled = generator.compile_statement(query)
     assert "unnest" in compiled
-    exec = Dialects.DUCK_DB.default_executor(environment=env)
+    exec = Dialects.DUCK_DB.default_executor(environment=org_env)
     results = exec.execute_text(declarations)
     select = results[-1]
     assert [row.x for row in select] == [1, 2, 2, 3]

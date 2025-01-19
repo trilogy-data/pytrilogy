@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.core.enums import SourceType
-from trilogy.core.models.author import Concept
+from trilogy.core.models.build import BuildConcept, BuildOrderBy
 from trilogy.core.models.execute import QueryDatasource
 from trilogy.core.processing.nodes.base_node import StrategyNode
 
@@ -11,12 +11,13 @@ class WindowNode(StrategyNode):
 
     def __init__(
         self,
-        input_concepts: List[Concept],
-        output_concepts: List[Concept],
+        input_concepts: List[BuildConcept],
+        output_concepts: List[BuildConcept],
         environment,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
+        ordering: BuildOrderBy | None = None
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -25,6 +26,7 @@ class WindowNode(StrategyNode):
             whole_grain=whole_grain,
             parents=parents,
             depth=depth,
+            ordering=ordering
         )
 
     def _resolve(self) -> QueryDatasource:
@@ -39,4 +41,5 @@ class WindowNode(StrategyNode):
             whole_grain=self.whole_grain,
             parents=self.parents,
             depth=self.depth,
+            ordering=self.ordering,
         )

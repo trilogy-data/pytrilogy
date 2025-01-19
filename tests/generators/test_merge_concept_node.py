@@ -42,7 +42,6 @@ def query_to_lines(query):
 
 
 def test_merge_concept_remapping():
-    DebuggingHook()
     env1 = Environment()
     env2 = Environment()
     parse(
@@ -92,8 +91,8 @@ address num1;
         len({x.alias: x.concept.address for x in env1.datasources["num1"].columns}) == 2
     )
 
-    assert str(env1.concepts["name"].with_grain(env1.concepts["env2.one"])) in [
-        str(x) for x in env1.datasources["num1"].concepts
+    assert env1.concepts["name"].with_grain(env1.concepts["env2.one"]) in [
+        x for x in env1.datasources["num1"].concepts
     ]
     bd = BaseDialect()
     _, queries = env1.parse(

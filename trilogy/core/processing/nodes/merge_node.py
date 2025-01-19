@@ -6,11 +6,15 @@ from trilogy.core.enums import (
     SourceType,
 )
 from trilogy.core.models.author import (
-    Comparison,
-    Concept,
-    Conditional,
     Grain,
-    Parenthetical,
+)
+from trilogy.core.models.build import (
+    BuildComparison,
+    BuildConcept,
+    BuildConditional,
+    BuildParenthetical,
+    BuildDatasource,
+    BuildOrderBy
 )
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
@@ -27,10 +31,10 @@ LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
 
 
 def deduplicate_nodes(
-    merged: dict[str, QueryDatasource | Datasource],
+    merged: dict[str, QueryDatasource | BuildDatasource],
     logging_prefix: str,
     environment: Environment,
-) -> tuple[bool, dict[str, QueryDatasource | Datasource], set[str]]:
+) -> tuple[bool, dict[str, QueryDatasource | BuildDatasource], set[str]]:
     duplicates = False
     removed: set[str] = set()
     set_map: dict[str, set[str]] = {}
@@ -73,10 +77,10 @@ def deduplicate_nodes(
 
 def deduplicate_nodes_and_joins(
     joins: List[NodeJoin] | None,
-    merged: dict[str, QueryDatasource | Datasource],
+    merged: dict[str, QueryDatasource | BuildDatasource],
     logging_prefix: str,
     environment: Environment,
-) -> Tuple[List[NodeJoin] | None, dict[str, QueryDatasource | Datasource]]:
+) -> Tuple[List[NodeJoin] | None, dict[str, QueryDatasource | BuildDatasource]]:
     # it's possible that we have more sources than we need
     duplicates = True
     while duplicates:
@@ -100,24 +104,25 @@ class MergeNode(StrategyNode):
 
     def __init__(
         self,
-        input_concepts: List[Concept],
-        output_concepts: List[Concept],
+        input_concepts: List[BuildConcept],
+        output_concepts: List[BuildConcept],
         environment,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         node_joins: List[NodeJoin] | None = None,
         join_concepts: Optional[List] = None,
         force_join_type: Optional[JoinType] = None,
-        partial_concepts: Optional[List[Concept]] = None,
-        nullable_concepts: Optional[List[Concept]] = None,
+        partial_concepts: Optional[List[BuildConcept]] = None,
+        nullable_concepts: Optional[List[BuildConcept]] = None,
         force_group: bool | None = None,
         depth: int = 0,
         grain: Grain | None = None,
-        conditions: Conditional | Comparison | Parenthetical | None = None,
-        preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
+        conditions: BuildConditional | BuildComparison | BuildParenthetical | None = None,
+        preexisting_conditions: BuildConditional | BuildComparison | BuildParenthetical | None = None,
         hidden_concepts: set[str] | None = None,
-        virtual_output_concepts: List[Concept] | None = None,
-        existence_concepts: List[Concept] | None = None,
+        virtual_output_concepts: List[BuildConcept] | None = None,
+        existence_concepts: List[BuildConcept] | None = None,
+        ordering: BuildOrderBy | None = None
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -135,6 +140,7 @@ class MergeNode(StrategyNode):
             hidden_concepts=hidden_concepts,
             virtual_output_concepts=virtual_output_concepts,
             existence_concepts=existence_concepts,
+            ordering=ordering
         )
         self.join_concepts = join_concepts
         self.force_join_type = force_join_type
@@ -166,7 +172,7 @@ class MergeNode(StrategyNode):
             )
         return joins
 
-    def create_full_joins(self, dataset_list: List[QueryDatasource | Datasource]):
+    def create_full_joins(self, dataset_list: List[QueryDatasource | BuildDatasource]):
         joins = []
         seen = set()
         for left_value in dataset_list:
@@ -352,6 +358,7 @@ class MergeNode(StrategyNode):
             force_group=force_group,
             condition=self.conditions,
             hidden_concepts=self.hidden_concepts,
+            ordering=self.ordering
         )
         return qds
 
@@ -375,4 +382,5 @@ class MergeNode(StrategyNode):
             join_concepts=list(self.join_concepts) if self.join_concepts else None,
             force_join_type=self.force_join_type,
             existence_concepts=list(self.existence_concepts),
+            ordering=self.ordering
         )

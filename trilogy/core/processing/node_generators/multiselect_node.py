@@ -7,9 +7,9 @@ from trilogy.core.enums import JoinType, Purpose
 from trilogy.core.models.author import (
     Concept,
     Grain,
-    MultiSelectLineage,
     WhereClause,
 )
+from trilogy.core.models.build import BuildMultiSelectLineage
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.common import resolve_join_order
 from trilogy.core.processing.nodes import History, MergeNode, NodeJoin
@@ -20,7 +20,7 @@ LOGGER_PREFIX = "[GEN_MULTISELECT_NODE]"
 
 
 def extra_align_joins(
-    base: MultiSelectLineage, environment: Environment, parents: List[StrategyNode]
+    base: BuildMultiSelectLineage, environment: Environment, parents: List[StrategyNode]
 ) -> List[NodeJoin]:
     node_merge_concept_map = defaultdict(list)
     output = []
@@ -62,12 +62,12 @@ def gen_multiselect_node(
 ) -> MergeNode | None:
     from trilogy.core.query_processor import get_query_node
 
-    if not isinstance(concept.lineage, MultiSelectLineage):
+    if not isinstance(concept.lineage, BuildMultiSelectLineage):
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Cannot generate multiselect node for {concept}"
         )
         return None
-    lineage: MultiSelectLineage = concept.lineage
+    lineage: BuildMultiSelectLineage = concept.lineage
 
     base_parents: List[StrategyNode] = []
     partial = []

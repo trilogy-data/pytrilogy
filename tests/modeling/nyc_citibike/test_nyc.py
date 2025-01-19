@@ -9,7 +9,7 @@ def test_datasource_func_namespace():
     year_assignment = env.datasources["trip.citibike_trips"].columns[-1]
 
     assert isinstance(year_assignment.alias, Function)
-    assert year_assignment.alias.arguments[0].namespace == "trip"
+    assert year_assignment.alias.arguments[0].address.startswith("trip.")
 
 
 def test_rendering():

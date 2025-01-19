@@ -34,13 +34,13 @@ def gen_rowset_node(
 
     if not isinstance(concept.lineage, BuildRowsetItem):
         raise SyntaxError(
-            f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {RowsetItem}"
+            f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {BuildRowsetItem}"
         )
     lineage: RowsetItem = concept.lineage
     rowset: RowsetLineage = lineage.rowset
     select: SelectLineage | MultiSelectLineage = lineage.rowset.select
 
-    node, _ = get_query_node(history.base_environment, select)
+    node  = get_query_node(history.base_environment, select)
 
     if not node:
         logger.info(

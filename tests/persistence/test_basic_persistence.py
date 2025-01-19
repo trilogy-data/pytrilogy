@@ -65,6 +65,7 @@ def test_derivations():
 
     """
     env, parsed = parse(declarations)
+
     for dialect in TEST_DIALECTS:
         compiled = []
 
@@ -78,22 +79,21 @@ def test_derivations():
             # force add since we didn't run it
             if isinstance(processed, ProcessedQueryPersist):
                 env.add_datasource(processed.datasource)
-
-        test_concept = env.concepts["test_upper_case_2"]
+        build_env = env.materialize_for_select()
+        test_concept = build_env.concepts["test_upper_case_2"]
         assert test_concept.purpose == Purpose.PROPERTY
-        env.gen_concept_list_caches()
-        assert test_concept.address in env.materialized_concepts
+        assert test_concept.address in build_env.materialized_concepts
         assert test_concept.derivation == Derivation.ROOT
 
         persist: PersistStatement = parsed[-2]
         assert persist.select.grain == Grain(components=[test_concept])
         assert len(compiled) == 2
 
-        g = generate_graph(env)
+        g = generate_graph(build_env)
 
         path = nx.shortest_path(
             g,
-            source=datasource_to_node(env.datasources["bool_is_upper_name"]),
+            source=datasource_to_node(build_env.datasources["bool_is_upper_name"]),
             target=concept_to_node(test_concept.with_default_grain()),
         )
         assert len(path) == 3, path
@@ -102,7 +102,7 @@ def test_derivations():
         static = gen_select_node(
             concept=test_concept,
             local_optional=[],
-            environment=env,
+            environment=build_env,
             g=g,
             depth=0,
         )

@@ -195,8 +195,7 @@ def test_environment():
         grain=Grain(components=[category_id]),
     )
 
-    for item in [test_product, test_category, test_revenue]:
-        env.add_datasource(item)
+
 
     for item in [
         category_id,
@@ -217,7 +216,8 @@ def test_environment():
         category_name_length_sum,
     ]:
         env.add_concept(item)
-        # env.concepts[item.name] = item
+    for item in [test_product, test_category, test_revenue]:
+        env.add_datasource(item)
     yield env
 
 
