@@ -2,7 +2,7 @@ from typing import ItemsView, List, Optional, Union, ValuesView
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
-from trilogy.constants import DEFAULT_NAMESPACE
+from trilogy.constants import DEFAULT_NAMESPACE, logger
 from trilogy.core.enums import Modifier
 from trilogy.core.models.author import (
     Concept,
@@ -177,6 +177,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             c for c in self.columns if c.concept.address == target.address
         ]
         if early_exit_check:
+            logger.info(f'No concept merge needed on merge of {source} to {target}, have {[x.concept.address for x in self.columns]}')
             return None
         if len(original) != 1:
             raise ValueError(

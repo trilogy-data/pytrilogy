@@ -254,8 +254,10 @@ class BuildGrain(BaseModel):
             return self
         else:
             return self.__add__(other)
-class BuildParenthetical(Parenthetical):
+class BuildParenthetical(BaseModel):
     content: "BuildExpr"
+
+
 
     def __add__(self, other) -> Union["BuildParenthetical", "BuildConditional"]:
         if other is None:
@@ -748,7 +750,7 @@ class BuildConcept(Concept, BaseModel):
             namespace=base.namespace,
             keys=base.keys,
             modifiers=base.modifiers,
-            pseudonyms=(environment.concepts.get(base.address) or base).pseudonyms,
+            pseudonyms=base.pseudonyms,
             ## instantiated values
             derivation=derivation,
             granularity=granularity,

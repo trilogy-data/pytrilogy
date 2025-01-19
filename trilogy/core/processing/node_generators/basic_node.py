@@ -46,6 +46,7 @@ def gen_basic_node(
         f"{depth_prefix}{LOGGER_PREFIX} basic node for {concept} with lineage {concept.lineage} has parents {[x for x in parent_concepts]}"
     )
 
+
     equivalent_optional = [
         x
         for x in local_optional

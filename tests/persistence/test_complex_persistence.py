@@ -20,6 +20,7 @@ def test_complex():
     env = Environment(working_path=Path(__file__).parent)
     engine = Dialects.DUCK_DB.default_executor(environment=env, hooks=hooks)
     engine.execute_file(Path(__file__).parent / "optimize.preql")
+    assert 'generic.__pre_persist_split' in engine.environment.datasources['split_04d2c2b1c72fd3be7d8ba5dea1534aae9959d5c5a80b05b06d26b5fd9d8b82f4'].output_concepts
     r2 = engine.execute_text(
         """select 
         generic.split, 

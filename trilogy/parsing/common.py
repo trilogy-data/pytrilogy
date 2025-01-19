@@ -210,14 +210,9 @@ def concepts_to_grain_concepts(
             raise ValueError(f'Unable to resolve input {c} without environment provided to concepts_to_grain call')
 
     final: List[Concept] = []
-    print('----')
     for sub in pconcepts:
-        print(sub)
         if not concept_is_relevant(sub, pconcepts, environment):
-            print('irrelevant')
             continue
-        else:
-            print('relevant')
         final.append(sub)
     final = unique(final, "address")
     v2 = sorted(final, key=lambda x: x.name)

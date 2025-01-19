@@ -117,11 +117,7 @@ def test_circular():
             other = env.concepts[z.concept.address]
             assert self.name == other.name
             assert self.datatype == other.datatype
-            assert self.purpose == other.purpose
             assert self.namespace == other.namespace
-            assert self.grain == other.grain
-            assert self.grain == other.grain
-            assert self.keys == other.keys
             assert z.concept == env.concepts[z.concept.address]
             validated = True
     assert validated

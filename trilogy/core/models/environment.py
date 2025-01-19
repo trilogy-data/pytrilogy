@@ -567,8 +567,8 @@ class Environment(BaseModel):
 
         eligible_to_promote_roots = datasource.non_partial_for is None
         # mark this as canonical source
-        for cref in datasource.output_concepts:
-
+        for c in datasource.columns:
+            cref = c.concept
             current_concept = self.concepts[cref.address]
             if isinstance(current_concept, UndefinedConcept):
                 continue
@@ -579,6 +579,7 @@ class Environment(BaseModel):
             # TODO: refine this section;
             # too hacky for maintainability
             if current_derivation not in (Derivation.ROOT, Derivation.CONSTANT):
+                logger.info(f'A datasource has been added which will persist derived concept {current_concept.address}')
                 persisted = f"{PERSISTED_CONCEPT_PREFIX}_" + current_concept.name
                 # override the current concept source to reflect that it's now coming from a datasource
                 if (
@@ -588,6 +589,7 @@ class Environment(BaseModel):
                     new_concept = current_concept.model_copy(
                         deep=True, update={"name": persisted, }
                     )
+                    logger.info(new_concept.address)
                     self.add_concept(
                         new_concept, meta=meta, force=True, _ignore_cache=True
                     )
@@ -606,6 +608,7 @@ class Environment(BaseModel):
                     self.add_concept(
                         current_concept, meta=meta, force=True, _ignore_cache=True
                     )
+                    datasource.add_column(new_concept, alias=c.alias, modifiers = c.modifiers)
                     self.merge_concept(new_concept, current_concept, [])
                 else:
                     self.add_concept(current_concept, meta=meta, _ignore_cache=True)

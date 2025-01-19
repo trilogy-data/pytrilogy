@@ -4,6 +4,7 @@ import hashlib
 from abc import ABC
 from datetime import date, datetime
 from functools import cached_property
+from trilogy.constants import logger
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -152,8 +153,9 @@ class ConceptRef(Namespaced, DataTyped, SelectContext, Mergeable, BaseModel):
         return self.datatype
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier])->ConceptRef:
+        logger.info(f"ConceptRef with merge {self.address} {source.address} {target.address}")
         if self.address == source.address:
-            self.address = target.address
+            return ConceptRef(address=target.address, datatype=target.datatype, metadata=self.metadata)
         return self
 
     def with_namespace(self, namespace: str):
@@ -934,8 +936,10 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
 
     def __init__(self, **data):
         super().__init__(**data)
-        if self.name == 'join_last_name' and self.derivation == Derivation.ROOT:
-            raise SyntaxError
+        if self.name == 'composite_id_alt':
+            if 'local.composite_id_alt' in self.pseudonyms:
+                raise SyntaxError
+
 
     def duplicate(self) -> Concept:
         return self.model_copy(deep=True)
@@ -1080,7 +1084,7 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
         grain = str(self.grain) if self.grain else "Grain<>"
         return f"{self.namespace}.{self.name}@{grain}"
 
-    @cached_property
+    @property
     def address(self) -> str:
         return f"{self.namespace}.{self.name}"
 

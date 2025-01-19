@@ -529,6 +529,9 @@ def validate_concept(
     seen: set[str],
     environment: Environment,
 ):
+    logger.info('validating')
+    logger.info(concept)
+    logger.info(concept.pseudonyms)
     found_map[str(node)].add(concept)
     seen.add(concept.address)
     if concept not in node.partial_concepts:
@@ -554,7 +557,6 @@ def validate_concept(
             return
         if v.address == concept.address:
             return
-
         validate_concept(
             v,
             node,

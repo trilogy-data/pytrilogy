@@ -512,6 +512,7 @@ def gen_select_merge_node(
     sub_nodes = resolve_subgraphs(pruned_concept_graph, relevant=non_constant, conditions=conditions)
 
     logger.info(f"{padding(depth)}{LOGGER_PREFIX} fetching subgraphs {sub_nodes}")
+
     parents = [
         create_select_node(
             k,
@@ -545,6 +546,7 @@ def gen_select_merge_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} Multiple parent DS nodes resolved - {[type(x) for x in parents]}, wrapping in merge"
     )
+    
     preexisting_conditions = None
     if conditions and all(
         [

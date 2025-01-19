@@ -503,8 +503,6 @@ def process_query(
     root_datasource= get_query_datasources(
         environment=environment, statement=statement, hooks=hooks
     )
-    print('ordering')
-    print(root_datasource.ordering)
     for hook in hooks:
         hook.process_root_datasource(root_datasource)
     # this should always return 1 - TODO, refactor
