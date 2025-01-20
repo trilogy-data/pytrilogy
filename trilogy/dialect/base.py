@@ -11,23 +11,21 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.internal import DEFAULT_CONCEPTS
-
 from trilogy.core.models.build import (
-    BuildConcept,
     BuildAggregateWrapper,
     BuildCaseElse,
     BuildCaseWhen,
     BuildComparison,
+    BuildConcept,
     BuildConditional,
     BuildFilterItem,
     BuildFunction,
+    BuildMultiSelectLineage,
+    BuildOrderItem,
     BuildParenthetical,
+    BuildRowsetItem,
     BuildSubselectComparison,
     BuildWindowItem,
-    BuildMultiSelectLineage,
-    BuildSelectLineage,
-    BuildRowsetItem,
-    BuildOrderItem,
 )
 from trilogy.core.models.core import (
     DataType,

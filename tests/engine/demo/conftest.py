@@ -206,6 +206,7 @@ def setup_richest_environment(env: Environment):
                 ColumnAssignment(alias="Name", concept=name),
                 ColumnAssignment(alias="Net Worth 1918 Dollars", concept=money),
             ],
+            grain=Grain(components={name.address}),
         )
     )
 

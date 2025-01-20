@@ -8,7 +8,7 @@ from sqlalchemy.engine import CursorResult, Engine
 
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionType, Granularity, IOType
-from trilogy.core.models.author import Concept, Function, ConceptRef
+from trilogy.core.models.author import Concept, Function
 from trilogy.core.models.core import ListWrapper, MapWrapper
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment

@@ -2,7 +2,7 @@ from logging import INFO
 from pathlib import Path
 
 from trilogy import Dialects, parse
-from trilogy.core.enums import Granularity, Purpose, Derivation
+from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.functions import CurrentDatetime
 from trilogy.core.models.author import Concept, Function
 from trilogy.core.models.core import (

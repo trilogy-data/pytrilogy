@@ -1,4 +1,4 @@
-from trilogy import parse, Environment
+from trilogy import Environment, parse
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import search_concepts

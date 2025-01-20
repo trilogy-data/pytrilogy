@@ -7,7 +7,6 @@ from trilogy.core.models.author import (
     Concept,
     Grain,
     HavingClause,
-    OrderBy,
     WhereClause,
 )
 from trilogy.core.models.build import BuildConcept, BuildOrderBy

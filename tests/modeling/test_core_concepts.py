@@ -189,7 +189,6 @@ def test_datasource_properties(test_environment: Environment, test_executor: Exe
 
 
 def test_filter_grain_different(test_environment: Environment, test_executor: Executor):
-    from trilogy.hooks.query_debugger import DebuggingHook
 
     test_select = """
 

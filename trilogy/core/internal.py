@@ -1,5 +1,5 @@
 from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
-from trilogy.core.enums import FunctionType, Purpose, Granularity, Derivation
+from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.models.author import Concept, Function, Grain
 from trilogy.core.models.core import DataType
 

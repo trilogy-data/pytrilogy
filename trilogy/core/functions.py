@@ -19,8 +19,8 @@ from trilogy.core.models.author import (
     Concept,
     Function,
     Parenthetical,
-    WindowItem,
     UndefinedConcept,
+    WindowItem,
 )
 from trilogy.core.models.core import (
     CONCRETE_TYPES,

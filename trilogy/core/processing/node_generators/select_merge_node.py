@@ -7,11 +7,10 @@ from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.graph_models import concept_to_node
 from trilogy.core.models.author import (
-    Concept,
     Grain,
     LooseConceptList,
 )
-from trilogy.core.models.build import BuildDatasource, BuildWhereClause, BuildConcept
+from trilogy.core.models.build import BuildConcept, BuildDatasource, BuildWhereClause
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (

@@ -12,9 +12,9 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
+    BuildConcept,
     BuildFilterItem,
     BuildFunction,
-    BuildConcept,
     BuildWhereClause,
 )
 from trilogy.core.models.environment import Environment

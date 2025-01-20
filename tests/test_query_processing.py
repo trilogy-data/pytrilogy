@@ -7,7 +7,6 @@ from trilogy.core.models.execute import QueryDatasource
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.query_processor import get_query_datasources, process_query
 from trilogy.core.statements.author import SelectStatement
-from trilogy.hooks.query_debugger import DebuggingHook
 
 
 def test_direct_select(test_environment, test_environment_graph):
@@ -95,7 +94,6 @@ def test_get_datasource_for_filter(
 
 
 def test_select_output(test_environment, test_environment_graph):
-    from trilogy.hooks.query_debugger import DebuggingHook
 
     test_environment = test_environment.materialize_for_select()
     product = test_environment.concepts["product_id"]

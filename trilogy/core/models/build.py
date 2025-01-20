@@ -6,6 +6,7 @@ from functools import cached_property
 from typing import (
     TYPE_CHECKING,
     Any,
+    Iterable,
     List,
     Optional,
     Self,
@@ -13,19 +14,19 @@ from typing import (
     Set,
     Tuple,
     Union,
-    Iterable,
 )
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    computed_field,
     ValidationInfo,
+    computed_field,
     field_validator,
 )
-from trilogy.core.constants import ALL_ROWS_CONCEPT
+
 from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
+from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
     BooleanOperator,
     ComparisonOperator,
@@ -34,7 +35,6 @@ from trilogy.core.enums import (
     Derivation,
     FunctionClass,
     FunctionType,
-    Granularity,
     Modifier,
     Ordering,
     Purpose,
@@ -42,33 +42,26 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.models.author import (
-    AggregateWrapper,
-    AlignClause,
     CaseElse,
     CaseWhen,
     Comparison,
     Concept,
     ConceptArgs,
     Conditional,
-    FilterItem,
     Function,
     Grain,
     HavingClause,
     LooseConceptList,
     Metadata,
-    MultiSelectLineage,
-    OrderBy,
     OrderItem,
     Parenthetical,
     RowsetItem,
-    SelectContext,
-    SelectLineage,
-    SubselectComparison,
-    WhereClause,
-    WindowItem,
     RowsetLineage,
     # get_concept_arguments,
     # get_concept_row_arguments,
+    SelectContext,
+    SubselectComparison,
+    WhereClause,
 )
 from trilogy.core.models.core import (
     DataType,
@@ -85,12 +78,11 @@ from trilogy.core.models.core import (
 )
 from trilogy.core.models.datasource import (
     Address,
-    ColumnAssignment,
     Datasource,
     DatasourceMetadata,
     RawColumnExpr,
 )
-from trilogy.core.models.environment import Environment, BuildEnvironment
+from trilogy.core.models.environment import BuildEnvironment, Environment
 from trilogy.utility import unique
 
 # TODO: refactor to avoid these

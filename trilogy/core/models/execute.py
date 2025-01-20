@@ -21,13 +21,13 @@ from trilogy.core.models.author import (
     LooseConceptList,
 )
 from trilogy.core.models.build import (
-    BuildDatasource,
-    BuildConditional,
-    BuildParenthetical,
     BuildComparison,
     BuildConcept,
-    BuildOrderBy,
+    BuildConditional,
+    BuildDatasource,
     BuildFunction,
+    BuildOrderBy,
+    BuildParenthetical,
     BuildRowsetItem,
 )
 from trilogy.core.models.datasource import Address, Datasource
@@ -574,19 +574,6 @@ class QueryDatasource(BaseModel):
         Field(default_factory=dict)
     )
     ordering: BuildOrderBy | None = None
-
-    def __init__(self, **data: Any):
-        super().__init__(**data)
-        concepts = [x.address for x in self.output_concepts]
-        hidden = [x.address for x in self.hidden_concepts]
-        DEBUG_CONCEPTS = ["customer.county", "catalog_sales.date.id"]
-        if all([x in concepts for x in DEBUG_CONCEPTS]):
-            logger.debug(
-                f"{LOGGER_PREFIX} {self.identifier} has {DEBUG_CONCEPTS} concepts"
-            )
-            # if not all([x in hidden for x in DEBUG_CONCEPTS]):
-            #     raise SyntaxError(
-            #         f"Hidden concepts {hidden} not in output concepts {concepts}")
 
     def __repr__(self):
         return f"{self.identifier}@<{self.grain}>"

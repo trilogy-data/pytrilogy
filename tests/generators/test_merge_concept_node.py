@@ -1,7 +1,6 @@
 from trilogy import parse
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.base import BaseDialect
-from trilogy.hooks.query_debugger import DebuggingHook
 
 
 def test_merge_concepts():

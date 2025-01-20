@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import date, datetime
+from enum import Enum
 from os.path import dirname, join
 from pathlib import Path
 from re import IGNORECASE
@@ -26,7 +27,9 @@ from trilogy.core.enums import (
     ComparisonOperator,
     ConceptSource,
     DatePart,
+    Derivation,
     FunctionType,
+    Granularity,
     IOType,
     Modifier,
     Ordering,
@@ -34,8 +37,6 @@ from trilogy.core.enums import (
     ShowCategory,
     WindowOrder,
     WindowType,
-    Granularity,
-    Derivation,
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.functions import (
@@ -53,6 +54,7 @@ from trilogy.core.models.author import (
     Comment,
     Comparison,
     Concept,
+    ConceptRef,
     Conditional,
     FilterItem,
     Function,
@@ -68,7 +70,6 @@ from trilogy.core.models.author import (
     WindowItem,
     WindowItemOrder,
     WindowItemOver,
-    ConceptRef,
 )
 from trilogy.core.models.core import (
     DataType,
@@ -109,18 +110,13 @@ from trilogy.core.statements.author import (
     ShowStatement,
 )
 from trilogy.parsing.common import (
-    agg_wrapper_to_concept,
     align_item_to_concept,
     arbitrary_to_concept,
     constant_to_concept,
-    filter_item_to_concept,
-    function_to_concept,
     process_function_args,
     rowset_to_concepts,
-    window_item_to_concept,
 )
 from trilogy.parsing.exceptions import ParseError
-from enum import Enum
 
 
 class ParsePass(Enum):

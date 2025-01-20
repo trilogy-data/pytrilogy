@@ -12,16 +12,16 @@ from trilogy.core.models.author import (
     Grain,
     LooseConceptList,
 )
-from trilogy.core.models.environment import Environment
-from trilogy.core.models.execute import ConceptPair, QueryDatasource, UnnestJoin
 from trilogy.core.models.build import (
-    BuildOrderBy,
-    BuildConditional,
-    BuildParenthetical,
     BuildComparison,
     BuildConcept,
+    BuildConditional,
     BuildDatasource,
+    BuildOrderBy,
+    BuildParenthetical,
 )
+from trilogy.core.models.environment import Environment
+from trilogy.core.models.execute import ConceptPair, QueryDatasource, UnnestJoin
 from trilogy.utility import unique
 
 

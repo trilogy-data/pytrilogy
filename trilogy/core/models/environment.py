@@ -17,9 +17,9 @@ from trilogy.core.enums import (
     ConceptSource,
     Derivation,
     FunctionType,
+    Granularity,
     Modifier,
     Purpose,
-    Granularity,
 )
 from trilogy.core.exceptions import (
     FrozenEnvironmentException,
@@ -27,10 +27,10 @@ from trilogy.core.exceptions import (
 )
 from trilogy.core.models.author import (
     Concept,
+    ConceptRef,
     Function,
     UndefinedConcept,
     address_with_namespace,
-    ConceptRef,
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import Datasource, EnvironmentDatasourceDict

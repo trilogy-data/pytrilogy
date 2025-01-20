@@ -36,12 +36,12 @@ from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConditional,
+    BuildDatasource,
     BuildFilterItem,
     BuildFunction,
     BuildParenthetical,
     BuildSubselectComparison,
     BuildWindowItem,
-    BuildDatasource,
 )
 from trilogy.core.models.core import (
     DataType,

@@ -1,5 +1,6 @@
 from trilogy.core.enums import ComparisonOperator
 from trilogy.core.env_processor import generate_graph
+from trilogy.core.models.author import Grain
 from trilogy.core.models.build import BuildComparison, BuildWhereClause
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators import gen_select_node
@@ -9,7 +10,6 @@ from trilogy.core.processing.node_generators.select_merge_node import (
 )
 from trilogy.core.processing.nodes import ConstantNode, SelectNode
 from trilogy.core.statements.author import PersistStatement
-from trilogy.core.models.author import Grain
 from trilogy.hooks.query_debugger import DebuggingHook
 
 

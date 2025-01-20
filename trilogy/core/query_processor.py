@@ -14,12 +14,11 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.build import (
     BuildConditional,
-    BuildOrderBy,
-    BuildSelectLineage,
     BuildMultiSelectLineage,
+    BuildSelectLineage,
 )
 from trilogy.core.models.datasource import Datasource
-from trilogy.core.models.environment import Environment, BuildEnvironment
+from trilogy.core.models.environment import BuildEnvironment, Environment
 from trilogy.core.models.execute import (
     CTE,
     BaseJoin,
@@ -527,7 +526,6 @@ def process_query(
     for cte in raw_ctes:
         cte.parent_ctes = [seen[x.name] for x in cte.parent_ctes]
     deduped_ctes: List[CTE | UnionCTE] = list(seen.values())
-    from trilogy.core.models.author import Grain
 
     root_cte.limit = statement.limit
     root_cte.hidden_concepts = statement.hidden_components

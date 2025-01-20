@@ -1,9 +1,9 @@
 from pathlib import Path
 
 from trilogy import Dialects
+from trilogy.core.enums import FunctionType
 from trilogy.core.statements.execute import ProcessedCopyStatement
 from trilogy.parser import parse
-from trilogy.core.enums import FunctionType
 
 # from trilogy.compiler import compile
 

@@ -3,13 +3,12 @@ from trilogy.core.enums import (
 )
 from trilogy.core.models.build import (
     BuildComparison,
-    ConceptArgs,
     BuildConditional,
+    BuildDatasource,
     BuildParenthetical,
     BuildWindowItem,
-    BuildDatasource,
+    ConceptArgs,
 )
-from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.optimizations.base_optimization import OptimizationRule
 from trilogy.core.processing.utility import is_scalar_condition

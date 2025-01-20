@@ -50,7 +50,6 @@ class DebuggingHook(BaseHook):
     def print(self, *args):
         merged = " ".join([str(x) for x in args])
         self.messages.append(merged)
-        print(args)
 
     def write(self):
         with open(f"debug_{self.uuid}.log", "w") as f:

@@ -1,9 +1,9 @@
 from trilogy.core.enums import Purpose
 from trilogy.core.models.author import Comparison
+from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
     CTE,
 )
-from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import SelectNode
 from trilogy.core.processing.nodes.base_node import StrategyNode
 

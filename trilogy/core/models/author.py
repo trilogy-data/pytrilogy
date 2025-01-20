@@ -4,7 +4,6 @@ import hashlib
 from abc import ABC
 from datetime import date, datetime
 from functools import cached_property
-from trilogy.constants import logger
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -1333,8 +1332,8 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             BuildAggregateWrapper,
             BuildFilterItem,
             BuildFunction,
-            BuildRowsetItem,
             BuildMultiSelectLineage,
+            BuildRowsetItem,
             BuildWindowItem,
         )
 
@@ -1845,8 +1844,8 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Bas
     @field_validator("arguments", mode="before")
     @classmethod
     def parse_arguments(cls, v, info: ValidationInfo):
-        from trilogy.parsing.exceptions import ParseError
         from trilogy.core.models.build import BuildConcept
+        from trilogy.parsing.exceptions import ParseError
 
         values = info.data
         arg_count = len(v)

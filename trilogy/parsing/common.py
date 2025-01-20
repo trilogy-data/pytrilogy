@@ -3,10 +3,10 @@ from typing import Iterable, List, Tuple
 
 from lark.tree import Meta
 
-from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.constants import (
     VIRTUAL_CONCEPT_PREFIX,
 )
+from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
     ConceptSource,
     Derivation,
@@ -24,6 +24,7 @@ from trilogy.core.models.author import (
     AlignClause,
     AlignItem,
     Concept,
+    ConceptRef,
     FilterItem,
     Function,
     Grain,
@@ -35,10 +36,9 @@ from trilogy.core.models.author import (
     Parenthetical,
     RowsetItem,
     RowsetLineage,
+    UndefinedConcept,
     WhereClause,
     WindowItem,
-    ConceptRef,
-    UndefinedConcept,
 )
 from trilogy.core.models.core import DataType, arg_to_datatype
 from trilogy.core.models.environment import Environment

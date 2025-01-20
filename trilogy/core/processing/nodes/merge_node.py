@@ -12,9 +12,9 @@ from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConditional,
-    BuildParenthetical,
     BuildDatasource,
     BuildOrderBy,
+    BuildParenthetical,
 )
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment

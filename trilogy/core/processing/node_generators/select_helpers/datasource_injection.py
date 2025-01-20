@@ -3,14 +3,13 @@ from datetime import date, datetime, timedelta
 from typing import List, Tuple, TypeVar
 
 from trilogy.core.enums import ComparisonOperator, FunctionType
-
 from trilogy.core.models.build import (
     BuildComparison,
-    BuildConditional,
-    BuildParenthetical,
     BuildConcept,
-    BuildFunction,
+    BuildConditional,
     BuildDatasource,
+    BuildFunction,
+    BuildParenthetical,
 )
 from trilogy.core.models.core import DataType
 

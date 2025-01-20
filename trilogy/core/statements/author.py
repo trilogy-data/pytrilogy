@@ -5,7 +5,7 @@ from typing import Annotated, List, Optional, Union
 from pydantic import BaseModel, Field, computed_field, field_validator
 from pydantic.functional_validators import PlainValidator
 
-from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
+from trilogy.constants import CONFIG
 from trilogy.core.enums import (
     FunctionClass,
     IOType,
@@ -16,6 +16,7 @@ from trilogy.core.models.author import (
     AggregateWrapper,
     AlignClause,
     Concept,
+    ConceptRef,
     FilterItem,
     Function,
     Grain,
@@ -28,7 +29,6 @@ from trilogy.core.models.author import (
     UndefinedConcept,
     WhereClause,
     WindowItem,
-    ConceptRef,
 )
 from trilogy.core.models.datasource import Address, ColumnAssignment, Datasource
 from trilogy.core.models.environment import (

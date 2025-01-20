@@ -204,7 +204,7 @@ def resolve_weak_components(
     reduced_concept_sets: list[set[str]] = []
 
     # loop through, removing new nodes we find
-    # to ensure there are not ambiguous loops
+    # to ensure there are not ambiguous discovery paths
     # (if we did not care about raising ambiguity errors, we could just use the first one)
     count = 0
     node_list = [
@@ -215,6 +215,9 @@ def resolve_weak_components(
     synonyms: set[str] = set()
     for x in all_concepts:
         synonyms = synonyms.union(x.pseudonyms)
+    # from trilogy.hooks.graph_hook import GraphHook
+    # GraphHook().query_graph_built(search_graph, highlight_nodes=[concept_to_node(c.with_default_grain()) for c in all_concepts if "__preql_internal" not in c.address])
+    logger.info(search_graph.edges)
     while break_flag is not True:
         count += 1
         if count > AMBIGUITY_CHECK_LIMIT:
@@ -243,6 +246,7 @@ def resolve_weak_components(
             new = [x for x in all_graph_concepts if x.address not in all_concepts]
 
             new_addresses = set([x.address for x in new if x.address not in synonyms])
+
             if not new:
                 break_flag = True
             # remove our new nodes for the next search path
@@ -388,7 +392,11 @@ def gen_merge_node(
             filter_downstream=filter_downstream,
             accept_partial=accept_partial,
         )
-        if weak_resolve:
+        if not weak_resolve:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} wasn't able to resolve graph through intermediate concept injection with accept_partial {accept_partial}, filter_downstream {filter_downstream}"
+            )
+        else:
             log_graph = [[y.address for y in x] for x in weak_resolve]
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} Was able to resolve graph through weak component resolution - final graph {log_graph}"
@@ -427,6 +435,7 @@ def gen_merge_node(
                 conditions=conditions,
                 enable_early_exit=False,
                 search_conditions=search_conditions,
+                output_concepts=[concept],
             )
             if test:
                 return test

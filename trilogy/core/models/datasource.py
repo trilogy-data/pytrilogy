@@ -1,4 +1,4 @@
-from typing import ItemsView, List, Optional, Union, ValuesView, TYPE_CHECKING
+from typing import TYPE_CHECKING, ItemsView, List, Optional, Union, ValuesView
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
@@ -6,14 +6,13 @@ from trilogy.constants import DEFAULT_NAMESPACE, logger
 from trilogy.core.enums import Modifier
 from trilogy.core.models.author import (
     Concept,
+    ConceptRef,
     Function,
     Grain,
     HasUUID,
     LooseConceptList,
     Namespaced,
     WhereClause,
-    ConceptRef,
-    UndefinedConcept,
 )
 
 LOGGER_PREFIX = "[MODELS_DATASOURCE]"

@@ -3,10 +3,10 @@ from trilogy.core.graph_models import (
     concept_to_node,
     datasource_to_node,
 )
-from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.author import Concept
+from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.datasource import Datasource
-from trilogy.core.models.environment import Environment, BuildEnvironment
+from trilogy.core.models.environment import BuildEnvironment, Environment
 
 
 def add_concept(
@@ -83,9 +83,6 @@ def generate_graph(
 ) -> ReferenceGraph:
     if not isinstance(environment, BuildEnvironment):
         environment = environment.materialize_for_select()
-    for x in environment.alias_origin_lookup.values():
-        print(x)
-        print(x.pseudonyms)
     return generate_adhoc_graph(
         list(environment.concepts.values())
         + list(environment.alias_origin_lookup.values()),

@@ -1,6 +1,5 @@
 from trilogy.core.enums import Derivation, FunctionType, Purpose
 from trilogy.core.models.author import AggregateWrapper, Function
-from trilogy.core.models.build import BuildAggregateWrapper
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import search_concepts

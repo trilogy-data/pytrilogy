@@ -2,12 +2,11 @@ from pytest import fixture
 
 from trilogy.core.enums import (
     ComparisonOperator,
+    Derivation,
     FunctionType,
     Modifier,
     Purpose,
     WindowType,
-    Derivation,
-    Granularity,
 )
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.functions import Count, CountDistinct, Max, Min

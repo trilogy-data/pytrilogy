@@ -8,12 +8,10 @@ from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.models.author import (
     Concept,
-    FilterItem,
     Grain,
     LooseConceptList,
-    SubselectComparison,
 )
-from trilogy.core.models.build import BuildSubselectComparison, BuildFilterItem
+from trilogy.core.models.build import BuildFilterItem, BuildSubselectComparison
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import get_upstream_concepts
 from trilogy.core.processing.node_generators.common import (
