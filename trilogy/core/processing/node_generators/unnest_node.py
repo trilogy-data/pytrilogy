@@ -13,11 +13,10 @@ def gen_unnest_node(
     concept: BuildConcept,
     local_optional: List[BuildConcept],
     history: History,
-    environment:BuildEnvironment,
+    environment: BuildEnvironment,
     g,
     depth: int,
     source_concepts,
-    
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     arguments = []

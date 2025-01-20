@@ -103,7 +103,11 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert user_post_count in expected_parent.output_concepts
 
     datasource = search_concepts(
-        [avg_user_post_count], environment=env, depth=0, g=generate_graph(env)
+        [avg_user_post_count],
+        history=history,
+        environment=env,
+        depth=0,
+        g=generate_graph(env),
     ).resolve()
 
     assert isinstance(datasource, QueryDatasource)

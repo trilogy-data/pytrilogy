@@ -44,7 +44,6 @@ from trilogy.core.enums import (
 )
 from trilogy.core.models.author import (
     Concept,
-    ConceptArgs,
     Function,
     Grain,
     HavingClause,
@@ -82,6 +81,19 @@ if TYPE_CHECKING:
     from trilogy.core.models.execute import CTE, UnionCTE
 
 LOGGER_PREFIX = "[MODELS_BUILD]"
+
+class BuildConceptArgs(ABC):
+    @property
+    def concept_arguments(self) -> Sequence["BuildConcept"]:
+        raise NotImplementedError
+
+    @property
+    def existence_arguments(self) -> Sequence[tuple["BuildConcept", ...]]:
+        return []
+
+    @property
+    def row_arguments(self) -> Sequence["BuildConcept"]:
+        return self.concept_arguments
 
 
 def concept_is_relevant(
@@ -203,7 +215,7 @@ def get_concept_row_arguments(expr) -> List["BuildConcept"]:
     if isinstance(expr, BuildConcept):
         output += [expr]
 
-    elif isinstance(expr, ConceptArgs):
+    elif isinstance(expr, BuildConceptArgs):
         output += expr.row_arguments
     return output
 
@@ -215,7 +227,7 @@ def get_concept_arguments(expr) -> List["BuildConcept"]:
 
     elif isinstance(
         expr,
-        ConceptArgs,
+        BuildConceptArgs,
     ):
         output += expr.concept_arguments
     return output
@@ -349,7 +361,7 @@ class BuildGrain(BaseModel):
             return self.__add__(other)
 
 
-class BuildParenthetical(DataTyped, ConstantInlineable, ConceptArgs, BaseModel):
+class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs, BaseModel):
     content: "BuildExpr"
 
     def __add__(self, other) -> Union["BuildParenthetical", "BuildConditional"]:
@@ -382,19 +394,19 @@ class BuildParenthetical(DataTyped, ConstantInlineable, ConceptArgs, BaseModel):
         x = self.content
         if isinstance(x, BuildConcept):
             base += [x]
-        elif isinstance(x, ConceptArgs):
+        elif isinstance(x, BuildConceptArgs):
             base += x.concept_arguments
         return base
 
     @property
     def row_arguments(self) -> List[BuildConcept]:
-        if isinstance(self.content, ConceptArgs):
+        if isinstance(self.content, BuildConceptArgs):
             return self.content.row_arguments
         return self.concept_arguments
 
     @property
     def existence_arguments(self) -> list[tuple["BuildConcept", ...]]:
-        if isinstance(self.content, ConceptArgs):
+        if isinstance(self.content, BuildConceptArgs):
             return self.content.existence_arguments
         return []
 
@@ -403,7 +415,7 @@ class BuildParenthetical(DataTyped, ConstantInlineable, ConceptArgs, BaseModel):
         return arg_to_datatype(self.content)
 
 
-class BuildConditional(ConceptArgs, ConstantInlineable, BaseModel):
+class BuildConditional(BuildConceptArgs, ConstantInlineable, BaseModel):
     left: Union[
         int,
         str,
@@ -512,9 +524,9 @@ class BuildConditional(ConceptArgs, ConstantInlineable, BaseModel):
     @property
     def existence_arguments(self) -> list[tuple["BuildConcept", ...]]:
         output = []
-        if isinstance(self.left, ConceptArgs):
+        if isinstance(self.left, BuildConceptArgs):
             output += self.left.existence_arguments
-        if isinstance(self.right, ConceptArgs):
+        if isinstance(self.right, BuildConceptArgs):
             output += self.right.existence_arguments
         return output
 
@@ -531,7 +543,7 @@ class BuildConditional(ConceptArgs, ConstantInlineable, BaseModel):
         return chunks
 
 
-class BuildWhereClause(ConceptArgs, BaseModel):
+class BuildWhereClause(BuildConceptArgs, BaseModel):
     conditional: Union[
         BuildSubselectComparison,
         BuildComparison,
@@ -567,7 +579,7 @@ class BuildHavingClause(BuildWhereClause):
     pass
 
 
-class BuildComparison(ConceptArgs, ConstantInlineable, BaseModel):
+class BuildComparison(BuildConceptArgs, ConstantInlineable, BaseModel):
 
     left: Union[
         int,
@@ -727,9 +739,9 @@ class BuildComparison(ConceptArgs, ConstantInlineable, BaseModel):
     def existence_arguments(self) -> List[Tuple[BuildConcept, ...]]:
         """Return BuildConcepts directly referenced in where clause"""
         output: List[Tuple[BuildConcept, ...]] = []
-        if isinstance(self.left, ConceptArgs):
+        if isinstance(self.left, BuildConceptArgs):
             output += self.left.existence_arguments
-        if isinstance(self.right, ConceptArgs):
+        if isinstance(self.right, BuildConceptArgs):
             output += self.right.existence_arguments
         return output
 
@@ -795,7 +807,7 @@ class BuildSubselectComparison(BuildComparison):
 
 
 # class BuildConcept(Concept, BaseModel):
-class BuildConcept(Addressable, ConceptArgs, DataTyped, BaseModel):
+class BuildConcept(Addressable, BuildConceptArgs, DataTyped, BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str
     datatype: DataType | ListType | StructType | MapType | NumericType
@@ -1031,7 +1043,7 @@ class BuildOrderItem(BaseModel):
         return self.expr.output
 
 
-class BuildWindowItem(DataTyped, ConceptArgs, BaseModel):
+class BuildWindowItem(DataTyped, BuildConceptArgs, BaseModel):
     type: WindowType
     content: BuildConcept
     order_by: List[BuildOrderItem]
@@ -1083,7 +1095,7 @@ def get_basic_type(
     return type
 
 
-class BuildCaseWhen(ConceptArgs, BaseModel):
+class BuildCaseWhen(BuildConceptArgs, BaseModel):
     comparison: BuildConditional | BuildSubselectComparison | BuildComparison
     expr: "BuildExpr"
 
@@ -1104,7 +1116,7 @@ class BuildCaseWhen(ConceptArgs, BaseModel):
         )
 
 
-class BuildCaseElse(ConceptArgs, BaseModel):
+class BuildCaseElse(BuildConceptArgs, BaseModel):
     expr: "BuildExpr"
     # this ensures that it's easily differentiable from CaseWhen
     discriminant: ComparisonOperator = ComparisonOperator.ELSE
@@ -1114,7 +1126,7 @@ class BuildCaseElse(ConceptArgs, BaseModel):
         return get_concept_arguments(self.expr)
 
 
-class BuildFunction(DataTyped, ConceptArgs, BaseModel):
+class BuildFunction(DataTyped, BuildConceptArgs, BaseModel):
     # class BuildFunction(Function):
     operator: FunctionType
     arg_count: int = Field(default=1)
@@ -1180,7 +1192,7 @@ class BuildFunction(DataTyped, ConceptArgs, BaseModel):
         return base_grain
 
 
-class BuildAggregateWrapper(ConceptArgs, DataTyped, BaseModel):
+class BuildAggregateWrapper(BuildConceptArgs, DataTyped, BaseModel):
     function: BuildFunction
     by: List[BuildConcept] = Field(default_factory=list)
 
@@ -1209,7 +1221,7 @@ class BuildAggregateWrapper(ConceptArgs, DataTyped, BaseModel):
         return self.function.arguments
 
 
-class BuildFilterItem(ConceptArgs, BaseModel):
+class BuildFilterItem(BuildConceptArgs, BaseModel):
     content: BuildConcept
     where: BuildWhereClause
 
@@ -1235,7 +1247,7 @@ class BuildRowsetLineage(BaseModel):
     select: BuildSelectLineage | BuildMultiSelectLineage
 
 
-class BuildRowsetItem(DataTyped, ConceptArgs, BaseModel):
+class BuildRowsetItem(DataTyped, BuildConceptArgs, BaseModel):
     content: BuildConcept
     rowset: RowsetLineage
 
@@ -1294,7 +1306,7 @@ class BuildSelectLineage(BaseModel):
         return self.selection
 
 
-class BuildMultiSelectLineage(ConceptArgs, BaseModel):
+class BuildMultiSelectLineage(BuildConceptArgs, BaseModel):
     selects: List[SelectLineage]
     grain: BuildGrain
     align: BuildAlignClause

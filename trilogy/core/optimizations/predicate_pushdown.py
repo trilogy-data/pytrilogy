@@ -7,7 +7,7 @@ from trilogy.core.models.build import (
     BuildDatasource,
     BuildParenthetical,
     BuildWindowItem,
-    ConceptArgs,
+    BuildConceptArgs,
 )
 from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.optimizations.base_optimization import OptimizationRule
@@ -38,7 +38,7 @@ class PredicatePushdown(OptimizationRule):
         candidate: BuildConditional | BuildComparison | BuildParenthetical | None,
         inverse_map: dict[str, list[CTE | UnionCTE]],
     ):
-        if not isinstance(candidate, ConceptArgs):
+        if not isinstance(candidate, BuildConceptArgs):
             return False
         if not isinstance(parent_cte, CTE):
             return False

@@ -41,7 +41,7 @@ def test_gen_group_node_basic(test_environment, test_environment_graph):
         g=test_environment_graph,
         depth=0,
         source_concepts=search_concepts,
-        history=history
+        history=history,
     )
     assert isinstance(gnode, (GroupNode, MergeNode))
     assert {x.address for x in gnode.output_concepts} == {prod_r.address, prod.address}
@@ -63,7 +63,7 @@ def test_gen_group_node(test_environment: Environment, test_environment_graph):
         g=test_environment_graph,
         depth=0,
         source_concepts=search_concepts,
-        history=history
+        history=history,
     )
     assert len(gnode.parents) == 1
     parent = gnode.parents[0]

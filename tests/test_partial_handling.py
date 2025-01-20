@@ -133,7 +133,11 @@ def test_partial_assignment():
 
     # check at the source level
     sourced = search_concepts(
-        [family, env.concepts["surviving_passenger"]],         history=history, environment=env, g=g, depth=0
+        [family, env.concepts["surviving_passenger"]],
+        history=history,
+        environment=env,
+        g=g,
+        depth=0,
     )
     assert isinstance(sourced, MergeNode)
     assert len(sourced.parents) == 2

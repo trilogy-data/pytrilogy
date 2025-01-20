@@ -25,7 +25,7 @@ def test_group_node(test_environment, test_environment_graph):
                 environment=test_environment,
                 g=test_environment_graph,
                 depth=0,
-                history=history
+                history=history,
             )
         ],
     )

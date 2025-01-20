@@ -52,15 +52,16 @@ class ValidationResult(Enum):
 LOGGER_PREFIX = "[CONCEPT DETAIL]"
 
 
+
 class SearchConceptsType(Protocol):
     def __call__(
         self,
         mandatory_list: List[BuildConcept],
         environment: BuildEnvironment,
+        history: History,
         depth: int,
         g: ReferenceGraph,
         accept_partial: bool = False,
-        history: Optional[History] = None,
         conditions: Optional[BuildWhereClause] = None,
     ) -> Union[StrategyNode, None]: ...
 
@@ -676,7 +677,10 @@ def append_existence_check(
                 f"{LOGGER_PREFIX} fetching existence clause inputs {[str(c) for c in subselect]}"
             )
             parent = source_query_concepts(
-                [*subselect], history=history, environment=environment, g=graph, 
+                [*subselect],
+                history=history,
+                environment=environment,
+                g=graph,
             )
             assert parent, "Could not resolve existence clause"
             node.add_parents([parent])
@@ -989,7 +993,6 @@ def source_query_concepts(
     environment: BuildEnvironment,
     g: Optional[ReferenceGraph] = None,
     conditions: Optional[BuildWhereClause] = None,
-    
 ):
     if not output_concepts:
         raise ValueError(f"No output concepts provided {output_concepts}")

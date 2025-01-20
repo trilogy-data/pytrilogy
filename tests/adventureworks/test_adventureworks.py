@@ -83,7 +83,7 @@ def test_query_datasources(environment: Environment):
                 "internet_sales.customer.first_name"
             ].with_default_grain()
         ],
-        history = History(base_environment=environment),
+        history=History(base_environment=environment),
         environment=select_env,
         g=environment_graph,
         depth=0,
@@ -106,7 +106,7 @@ def test_query_datasources(environment: Environment):
     customer_datasource = search_concepts(
         [select_env.concepts["internet_sales.order_number"]]
         + [select_env.concepts[x] for x in t_grain.components],
-        history = History(base_environment=environment),
+        history=History(base_environment=environment),
         environment=select_env,
         g=environment_graph,
         depth=0,
@@ -115,7 +115,7 @@ def test_query_datasources(environment: Environment):
     # assert a group up to the first name works
     customer_datasource = search_concepts(
         [select_env.concepts["internet_sales.customer.first_name"]],
-        history = History(base_environment=environment),
+        history=History(base_environment=environment),
         environment=select_env,
         g=environment_graph,
         depth=0,

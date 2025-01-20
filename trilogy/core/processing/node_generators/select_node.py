@@ -6,7 +6,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
     LooseBuildConceptList,
 )
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.select_merge_node import (
     gen_select_merge_node,
 )
@@ -21,7 +21,7 @@ LOGGER_PREFIX = "[GEN_SELECT_NODE]"
 def gen_select_node(
     concept: BuildConcept,
     local_optional: list[BuildConcept],
-    environment: Environment,
+    environment: BuildEnvironment,
     g,
     depth: int,
     accept_partial: bool = False,

@@ -106,7 +106,6 @@ def gen_property_enrichment_node(
     depth: int,
     source_concepts,
     log_lambda: Callable,
-
     conditions: BuildWhereClause | None = None,
 ):
     required_keys: dict[str, set[str]] = defaultdict(set)
@@ -159,7 +158,7 @@ def gen_enrichment_node(
     depth: int,
     source_concepts,
     log_lambda,
-    history: History | None = None,
+    history: History,
     conditions: BuildWhereClause | None = None,
 ):
     local_opts = LooseBuildConceptList(concepts=local_optional)

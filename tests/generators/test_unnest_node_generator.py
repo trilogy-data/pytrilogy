@@ -17,5 +17,5 @@ def test_gen_unnest_node(test_environment, test_environment_graph):
         g=test_environment_graph,
         depth=0,
         source_concepts=search_concepts,
-        history=history
+        history=history,
     )

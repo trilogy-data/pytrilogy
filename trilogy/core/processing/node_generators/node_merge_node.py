@@ -193,17 +193,17 @@ def filter_relevant_subgraphs(
     ]
 
 
-def filter_duplicate_subgraphs(subgraphs: list[list[str]]) -> list[list[str]]:
+def filter_duplicate_subgraphs(subgraphs: list[list[BuildConcept]]) -> list[list[BuildConcept]]:
     seen: list[set[str]] = []
 
     for graph in subgraphs:
-        seen.append(set(graph))
+        seen.append(set([x.address for x in graph]))
     final = []
     # sometimes w can get two subcomponents that are the same
     # due to alias resolution
     # if so, drop any that are strict subsets.
     for graph in subgraphs:
-        set_x = set(graph)
+        set_x = set([x.address for x in graph])
         if any([set_x.issubset(y) and set_x != y for y in seen]):
             continue
         final.append(graph)
@@ -320,9 +320,10 @@ def subgraphs_to_merge_node(
     source_concepts,
     history,
     conditions,
+    output_concepts: List[BuildConcept],
     search_conditions: BuildWhereClause | None = None,
     enable_early_exit: bool = True,
-    output_concepts: List[BuildConcept] | None = None,
+
 ):
     parents: List[StrategyNode] = []
     logger.info(

@@ -310,7 +310,7 @@ def resolve_subgraphs(
         if not keep:
             logger.debug(f"Pruning node {node} as irrelevant after subgraph resolution")
             pruned_subgraphs = {
-                k: [n for n in v if n != node ] for k, v in pruned_subgraphs.items()
+                k: [n for n in v if n != node] for k, v in pruned_subgraphs.items()
             }
 
     return pruned_subgraphs

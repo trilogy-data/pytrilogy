@@ -20,7 +20,9 @@ LOGGER_PREFIX = "[GEN_MULTISELECT_NODE]"
 
 
 def extra_align_joins(
-    base: BuildMultiSelectLineage, environment: BuildEnvironment, parents: List[StrategyNode]
+    base: BuildMultiSelectLineage,
+    environment: BuildEnvironment,
+    parents: List[StrategyNode],
 ) -> List[NodeJoin]:
     node_merge_concept_map = defaultdict(list)
     output = []

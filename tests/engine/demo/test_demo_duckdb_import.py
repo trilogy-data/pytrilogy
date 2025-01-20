@@ -82,7 +82,7 @@ merge rich_info.last_name into ~passenger.last_name;
                 "rich_info.last_name",
             ]
         ],
-        history = history,
+        history=history,
         g=g,
         environment=test_env,
         depth=0,
@@ -145,7 +145,7 @@ def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environme
 
     mn = gen_merge_node(
         target_select_concepts,
-        history = history,
+        history=history,
         environment=test_env,
         g=g,
         depth=0,

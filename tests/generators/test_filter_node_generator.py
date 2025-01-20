@@ -37,7 +37,7 @@ def test_gen_filter_node(test_environment, test_environment_graph):
         g=test_environment_graph,
         depth=0,
         source_concepts=search_concepts,
-        history = history
+        history=history,
     )
 
 
@@ -64,7 +64,7 @@ def test_gen_filter_node_same_concept(test_environment, test_environment_graph):
         g=test_environment_graph,
         depth=0,
         source_concepts=search_concepts,
-              history=history
+        history=history,
     )
     assert node.conditions == conditional.with_select_context(
         {}, Grain(), og_test_environment
@@ -97,7 +97,7 @@ def test_gen_filter_node_include_all(test_environment, test_environment_graph):
         depth=0,
         source_concepts=search_concepts,
         conditions=BuildWhereClause(conditional=build_conditional),
-        history=history
+        history=history,
     )
     assert (
         node.conditions == build_conditional

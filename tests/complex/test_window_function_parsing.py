@@ -4,7 +4,7 @@ from trilogy.core.models.build import BuildWindowItem
 from trilogy.core.processing.concept_strategies_v3 import (
     generate_graph,
     search_concepts,
-    History
+    History,
 )
 from trilogy.core.processing.utility import concept_to_relevant_joins
 from trilogy.core.query_processor import get_query_datasources, process_query
@@ -58,7 +58,7 @@ limit 100
 
     """
     orig_env, parsed = parse(declarations)
-    history =History(base_environment=orig_env)
+    history = History(base_environment=orig_env)
     env = orig_env.materialize_for_select()
     select: SelectStatement = parsed[-1]
 
@@ -131,7 +131,7 @@ limit 100
     """
     env, parsed = parse(declarations)
     orig_env = env
-    history =History(base_environment=orig_env)
+    history = History(base_environment=orig_env)
     env = env.materialize_for_select()
     select: SelectStatement = parsed[-1]
 
@@ -155,7 +155,7 @@ limit 100
 
 
 def test_const_by():
-    
+
     declarations = """
 const x <- unnest([1,2,2,3]);
 const y <- 5;
@@ -164,7 +164,7 @@ auto z <- rank x order by x desc;
 select x, z 
 order by x asc;"""
     org_env, parsed = parse(declarations)
-    history =History(base_environment=org_env)
+    history = History(base_environment=org_env)
     env = org_env.materialize_for_select()
     select: SelectStatement = parsed[-1]
     x = env.concepts["x"]
@@ -182,7 +182,11 @@ order by x asc;"""
     }
 
     ds = search_concepts(
-        [z.with_grain(x), x], history=history, environment=env, g=generate_graph(env), depth=0
+        [z.with_grain(x), x],
+        history=history,
+        environment=env,
+        g=generate_graph(env),
+        depth=0,
     ).resolve()
 
     assert x.address in ds.output_concepts
