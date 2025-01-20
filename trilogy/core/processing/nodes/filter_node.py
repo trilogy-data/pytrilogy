@@ -3,12 +3,12 @@ from typing import List
 from trilogy.core.enums import (
     SourceType,
 )
-from trilogy.core.models.author import (
-    Comparison,
-    Concept,
-    Conditional,
+from trilogy.core.models.build import (
+    BuildComparison,
+    BuildConcept,
+    BuildConditional,
     Grain,
-    Parenthetical,
+    BuildParenthetical,
 )
 from trilogy.core.processing.nodes.base_node import StrategyNode
 
@@ -26,18 +26,18 @@ class FilterNode(StrategyNode):
 
     def __init__(
         self,
-        input_concepts: List[Concept],
-        output_concepts: List[Concept],
+        input_concepts: List[BuildConcept],
+        output_concepts: List[BuildConcept],
         environment,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
-        conditions: Conditional | Comparison | Parenthetical | None = None,
-        preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
-        partial_concepts: List[Concept] | None = None,
+        conditions: BuildConditional | BuildComparison | BuildParenthetical | None = None,
+        preexisting_conditions: BuildConditional | BuildComparison | BuildParenthetical | None = None,
+        partial_concepts: List[BuildConcept] | None = None,
         force_group: bool | None = False,
         grain: Grain | None = None,
-        existence_concepts: List[Concept] | None = None,
+        existence_concepts: List[BuildConcept] | None = None,
     ):
         super().__init__(
             output_concepts=output_concepts,

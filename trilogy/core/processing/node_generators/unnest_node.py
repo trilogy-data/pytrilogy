@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models.author import Concept, Function, WhereClause
+from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
 from trilogy.core.processing.nodes import History, StrategyNode, UnnestNode
 from trilogy.core.processing.utility import padding
 
@@ -9,17 +9,17 @@ LOGGER_PREFIX = "[GEN_UNNEST_NODE]"
 
 
 def gen_unnest_node(
-    concept: Concept,
-    local_optional: List[Concept],
+    concept: BuildConcept,
+    local_optional: List[BuildConcept],
     environment,
     g,
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     arguments = []
-    if isinstance(concept.lineage, Function):
+    if isinstance(concept.lineage, BuildFunction):
         arguments = concept.lineage.concept_arguments
 
     equivalent_optional = [x for x in local_optional if x.lineage == concept.lineage]

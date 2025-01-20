@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.core.enums import SourceType
-from trilogy.core.models.author import Concept, Function
+from trilogy.core.models.build import BuildConcept, BuildFunction
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
 from trilogy.core.processing.nodes.base_node import StrategyNode
 
@@ -15,9 +15,9 @@ class UnnestNode(StrategyNode):
 
     def __init__(
         self,
-        unnest_concepts: List[Concept],
-        input_concepts: List[Concept],
-        output_concepts: List[Concept],
+        unnest_concepts: List[BuildConcept],
+        input_concepts: List[BuildConcept],
+        output_concepts: List[BuildConcept],
         environment,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
@@ -37,7 +37,7 @@ class UnnestNode(StrategyNode):
         """We need to ensure that any filtered values are removed from the output to avoid inappropriate references"""
         base = super()._resolve()
         lineage = self.unnest_concepts[0].lineage
-        assert isinstance(lineage, Function)
+        assert isinstance(lineage, BuildFunction)
         final = "_".join(set([c.address for c in self.unnest_concepts]))
         unnest = UnnestJoin(
             concepts=self.unnest_concepts,

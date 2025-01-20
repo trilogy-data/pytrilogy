@@ -7,11 +7,11 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildMultiSelectLineage,
     BuildRowsetItem,
-    BuildRowsetLineage,
     BuildSelectLineage,
     BuildWhereClause,
     Grain,
 )
+from trilogy.core.models.author import RowsetLineage, SelectLineage, MultiSelectLineage
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
@@ -26,7 +26,7 @@ def gen_rowset_node(
     g,
     depth: int,
     source_concepts,
-    history: History | None = None,
+    history: History,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     from trilogy.core.query_processor import get_query_node
@@ -36,8 +36,8 @@ def gen_rowset_node(
             f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {BuildRowsetItem}"
         )
     lineage: BuildRowsetItem = concept.lineage
-    rowset: BuildRowsetLineage = lineage.rowset
-    select: BuildSelectLineage | BuildMultiSelectLineage = lineage.rowset.select
+    rowset: RowsetLineage = lineage.rowset
+    select: SelectLineage | MultiSelectLineage = lineage.rowset.select
 
     node = get_query_node(history.base_environment, select)
 
@@ -50,13 +50,13 @@ def gen_rowset_node(
         )
     enrichment = set([x.address for x in local_optional])
     rowset_relevant = [
-        x.with_select_context({}, lineage.rowset.select.grain, environment)
+        x.with_select_context({}, select.grain, environment)
         for x in rowset.derived_concepts
     ]
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} rowset relevant nodes are {rowset_relevant}"
     )
-    select_hidden = select.hidden_components
+    select_hidden = node.hidden_concepts
     rowset_hidden = [
         x for x in rowset_relevant if x.lineage.content.address in select_hidden
     ]
@@ -66,7 +66,6 @@ def gen_rowset_node(
         if x.address in enrichment
     ]
     # add in other other concepts
-
     node.add_output_concepts(rowset_relevant + additional_relevant)
     if select.where_clause:
         for item in additional_relevant:

@@ -64,6 +64,7 @@ from trilogy.utility import unique
 if TYPE_CHECKING:
     from trilogy.core.models.environment import Environment, EnvironmentConceptDict
     from trilogy.core.models.execute import CTE, UnionCTE
+    from trilogy.core.models.build import BuildWhereClause, BuildHavingClause, BuildAggregateWrapper, BuildAlignClause
 
 
 class Namespaced(ABC):
@@ -480,7 +481,7 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
 
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ) -> Self:
+    ) -> "BuildWhereClause":
         from trilogy.core.models.build import BuildWhereClause
 
         return BuildWhereClause(

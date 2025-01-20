@@ -97,14 +97,6 @@ def address_with_namespace(address: str, namespace: str) -> str:
     return f"{namespace}.{address}"
 
 
-# class BuildParenthetical(
-#     DataTyped,
-#     ConceptArgs,
-#     ConstantInlineable,
-#     BaseModel,
-# ):
-
-
 def get_concept_row_arguments(expr) -> List["BuildConcept"]:
     output = []
     if isinstance(expr, BuildConcept):
@@ -312,8 +304,8 @@ class BuildConditional(ConceptArgs, ConstantInlineable, BaseModel):
         MagicConstants,
         BuildConcept,
         BuildComparison,
-        "BuildConditional",
-        "BuildParenthetical",
+        BuildConditional,
+        BuildParenthetical,
         BuildSubselectComparison,
         BuildFunction,
         BuildFilterItem,
@@ -327,8 +319,8 @@ class BuildConditional(ConceptArgs, ConstantInlineable, BaseModel):
         MagicConstants,
         BuildConcept,
         BuildComparison,
-        "BuildConditional",
-        "BuildParenthetical",
+        BuildConditional,
+        BuildParenthetical,
         BuildSubselectComparison,
         BuildFunction,
         BuildFilterItem,
@@ -712,7 +704,6 @@ class BuildConcept(Concept, BaseModel):
 
     def with_select_context(self, *args, **kwargs):
         return self
-        raise NotImplementedError
 
     @classmethod
     def build(
@@ -747,65 +738,7 @@ class BuildConcept(Concept, BaseModel):
             build_is_aggregate=is_aggregate,
         )
 
-    def with_filter(
-        self,
-        condition: BuildConditional | BuildComparison | BuildParenthetical,
-    ) -> "Concept":
-        from trilogy.utility import string_to_hash
 
-        if self.lineage and isinstance(self.lineage, BuildFilterItem):
-            if self.lineage.where.conditional == condition:
-                return self
-        hash = string_to_hash(self.name + str(condition))
-        new_lineage = BuildFilterItem(
-            content=self, where=BuildWhereClause(conditional=condition)
-        )
-        new = BuildConcept(
-            name=f"{self.name}_filter_{hash}",
-            datatype=self.datatype,
-            purpose=self.purpose,
-            derivation=self.calculate_derivation(new_lineage, self.purpose),
-            granularity=self.granularity,
-            metadata=self.metadata,
-            lineage=new_lineage,
-            keys=(self.keys if self.purpose == Purpose.PROPERTY else None),
-            grain=self.grain if self.grain else Grain(components=set()),
-            namespace=self.namespace,
-            modifiers=self.modifiers,
-            pseudonyms=self.pseudonyms,
-            build_is_aggregate=self.build_is_aggregate,
-        )
-        return new
-
-    def with_merge(self, source: Self, target: Self, modifiers: List[Modifier]) -> Self:
-        if self.address == source.address:
-            new = target.with_grain(self.grain.with_merge(source, target, modifiers))
-            new.pseudonyms.add(self.address)
-            return new
-        return self.__class__(
-            name=self.name,
-            datatype=self.datatype,
-            purpose=self.purpose,
-            metadata=self.metadata,
-            lineage=(
-                self.lineage.with_merge(source, target, modifiers)
-                if self.lineage
-                else None
-            ),
-            grain=self.grain.with_merge(source, target, modifiers),
-            namespace=self.namespace,
-            keys=(
-                set(x if x != source.address else target.address for x in self.keys)
-                if self.keys
-                else None
-            ),
-            modifiers=self.modifiers,
-            pseudonyms=self.pseudonyms,
-            # build
-            _derivation=self.derivation,
-            granularity=self.granularity,
-            build_is_aggregate=self.build_is_aggregate,
-        )
 
     @property
     def is_aggregate(self) -> bool:

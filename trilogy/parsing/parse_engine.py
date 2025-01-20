@@ -820,15 +820,16 @@ class ParseToObjects(Transformer):
                 for k, v in self.environment.concepts.items()
                 if v.namespace == source_wildcard
             ]
-            targets = {}
+            targets:list[Concept] = {}
             for x in sources:
                 target = target_wildcard + "." + x.name
                 if target in self.environment.concepts:
                     targets[x.address] = self.environment.concepts[target]
-            sources = [x for x in sources if x.address in targets]
+            sources:list[Concept] = [x for x in sources if x.address in targets]
         else:
             sources = [self.environment.concepts[source]]
             targets = {sources[0].address: self.environment.concepts[target]}
+        
         new = MergeStatementV2(
             sources=sources,
             targets=targets,

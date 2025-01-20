@@ -264,7 +264,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             # but if it's a concept pulled in from upstream and we have a where clause, it should be partial
             ColumnAssignment(
                 alias=c.address.replace(".", "_"),
-                concept=environment.concepts[c].reference,
+                concept=environment.concepts[c.address].reference,
                 modifiers=modifiers if c.address not in self.locally_derived else [],
             )
             for c in self.output_components

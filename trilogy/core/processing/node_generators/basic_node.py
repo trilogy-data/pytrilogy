@@ -8,7 +8,7 @@ from trilogy.core.processing.node_generators.common import (
 )
 from trilogy.core.processing.nodes import History, StrategyNode
 from trilogy.utility import unique
-
+from trilogy.core.models.environment import BuildEnvironment
 LOGGER_PREFIX = "[GEN_BASIC_NODE]"
 
 
@@ -33,7 +33,7 @@ def is_equivalent_basic_function_lineage(
 def gen_basic_node(
     concept: BuildConcept,
     local_optional: List[BuildConcept],
-    environment,
+    environment:BuildEnvironment,
     g,
     depth: int,
     source_concepts,

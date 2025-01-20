@@ -16,7 +16,6 @@ from trilogy.core.models.build import (
     BuildOrderBy,
     BuildParenthetical,
 )
-from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import BaseJoin, QueryDatasource, UnnestJoin
 from trilogy.core.processing.nodes.base_node import (
@@ -206,7 +205,7 @@ class MergeNode(StrategyNode):
         environment: Environment,
     ) -> List[BaseJoin | UnnestJoin]:
         # only finally, join between them for unique values
-        dataset_list: List[QueryDatasource | Datasource] = sorted(
+        dataset_list: List[QueryDatasource | BuildDatasource] = sorted(
             final_datasets, key=lambda x: -len(x.grain.components)
         )
 
@@ -237,10 +236,10 @@ class MergeNode(StrategyNode):
         return joins
 
     def _resolve(self) -> QueryDatasource:
-        parent_sources: List[QueryDatasource | Datasource] = [
+        parent_sources: List[QueryDatasource | BuildDatasource] = [
             p.resolve() for p in self.parents
         ]
-        merged: dict[str, QueryDatasource | Datasource] = {}
+        merged: dict[str, QueryDatasource | BuildDatasource] = {}
         final_joins: List[NodeJoin] | None = self.node_joins
         for source in parent_sources:
             if source.identifier in merged:
@@ -256,7 +255,7 @@ class MergeNode(StrategyNode):
             final_joins, merged, self.logging_prefix, self.environment
         )
         # early exit if we can just return the parent
-        final_datasets: List[QueryDatasource | Datasource] = list(merged.values())
+        final_datasets: List[QueryDatasource | BuildDatasource] = list(merged.values())
 
         existence_final = [
             x
@@ -264,7 +263,7 @@ class MergeNode(StrategyNode):
             if all([y in self.existence_concepts for y in x.output_concepts])
         ]
         if len(merged.keys()) == 1:
-            final: QueryDatasource | Datasource = list(merged.values())[0]
+            final: QueryDatasource | BuildDatasource = list(merged.values())[0]
             if (
                 set([c.address for c in final.output_concepts])
                 == set([c.address for c in self.output_concepts])

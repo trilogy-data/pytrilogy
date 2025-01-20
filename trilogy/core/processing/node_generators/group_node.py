@@ -9,7 +9,7 @@ from trilogy.core.models.build import (
     Grain,
     LooseConceptList,
 )
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
     gen_enrichment_node,
     resolve_function_parent_concepts,
@@ -24,7 +24,7 @@ LOGGER_PREFIX = "[GEN_GROUP_NODE]"
 def gen_group_node(
     concept: BuildConcept,
     local_optional: List[BuildConcept],
-    environment: Environment,
+    environment: BuildEnvironment,
     g,
     depth: int,
     source_concepts,

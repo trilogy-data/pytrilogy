@@ -10,7 +10,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
     LooseConceptList,
 )
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.environment import BuildEnvironment
 from trilogy.core.processing.nodes import (
     History,
     NodeJoin,
@@ -24,7 +24,7 @@ FUNCTION_TYPES = (BuildFunction,)
 
 
 def resolve_function_parent_concepts(
-    concept: BuildConcept, environment: Environment
+    concept: BuildConcept, environment: BuildEnvironment
 ) -> List[BuildConcept]:
     if not isinstance(concept.lineage, (*FUNCTION_TYPES, *AGGREGATE_TYPES)):
         raise ValueError(
@@ -66,7 +66,7 @@ def resolve_condition_parent_concepts(
 
 def resolve_filter_parent_concepts(
     concept: BuildConcept,
-    environment: Environment,
+    environment: BuildEnvironment,
 ) -> Tuple[BuildConcept, List[BuildConcept], List[Tuple[BuildConcept, ...]]]:
     if not isinstance(concept.lineage, (BuildFilterItem,)):
         raise ValueError(
@@ -100,7 +100,7 @@ def resolve_filter_parent_concepts(
 def gen_property_enrichment_node(
     base_node: StrategyNode,
     extra_properties: list[BuildConcept],
-    environment: Environment,
+    environment: BuildEnvironment,
     g,
     depth: int,
     source_concepts,
@@ -153,7 +153,7 @@ def gen_enrichment_node(
     base_node: StrategyNode,
     join_keys: List[BuildConcept],
     local_optional: list[BuildConcept],
-    environment: Environment,
+    environment: BuildEnvironment,
     g,
     depth: int,
     source_concepts,
