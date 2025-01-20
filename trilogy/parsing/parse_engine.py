@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import date, datetime
+from enum import Enum
 from os.path import dirname, join
 from pathlib import Path
 from re import IGNORECASE
@@ -26,7 +27,9 @@ from trilogy.core.enums import (
     ComparisonOperator,
     ConceptSource,
     DatePart,
+    Derivation,
     FunctionType,
+    Granularity,
     IOType,
     Modifier,
     Ordering,
@@ -51,6 +54,7 @@ from trilogy.core.models.author import (
     Comment,
     Comparison,
     Concept,
+    ConceptRef,
     Conditional,
     FilterItem,
     Function,
@@ -88,7 +92,7 @@ from trilogy.core.models.datasource import (
     Query,
     RawColumnExpr,
 )
-from trilogy.core.models.environment import Environment, EnvironmentConceptDict, Import
+from trilogy.core.models.environment import Environment, Import
 from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     ConceptDerivationStatement,
@@ -106,17 +110,19 @@ from trilogy.core.statements.author import (
     ShowStatement,
 )
 from trilogy.parsing.common import (
-    agg_wrapper_to_concept,
     align_item_to_concept,
     arbitrary_to_concept,
     constant_to_concept,
-    filter_item_to_concept,
-    function_to_concept,
     process_function_args,
     rowset_to_concepts,
-    window_item_to_concept,
 )
 from trilogy.parsing.exceptions import ParseError
+
+
+class ParsePass(Enum):
+    INITIAL = 1
+    VALIDATION = 2
+
 
 CONSTANT_TYPES = (int, float, str, bool, list, ListWrapper, MapWrapper)
 
@@ -188,16 +194,18 @@ def unwrap_transformation(
         float,
         bool,
     ],
+    environment: Environment,
 ) -> Function | FilterItem | WindowItem | AggregateWrapper:
     if isinstance(input, Function):
         return input
     elif isinstance(input, AggregateWrapper):
         return input
-    elif isinstance(input, Concept):
+    elif isinstance(input, ConceptRef):
+        concept = environment.concepts[input.address]
         return Function(
             operator=FunctionType.ALIAS,
-            output_datatype=input.datatype,
-            output_purpose=input.purpose,
+            output_datatype=concept.datatype,
+            output_purpose=concept.purpose,
             arguments=[input],
         )
     elif isinstance(input, FilterItem):
@@ -205,7 +213,7 @@ def unwrap_transformation(
     elif isinstance(input, WindowItem):
         return input
     elif isinstance(input, Parenthetical):
-        return unwrap_transformation(input.content)
+        return unwrap_transformation(input.content, environment)
     else:
         return Function(
             operator=FunctionType.CONSTANT,
@@ -236,7 +244,7 @@ class ParseToObjects(Transformer):
         )
         # we do a second pass to pick up circular dependencies
         # after initial parsing
-        self.pass_count = 1
+        self.parse_pass = ParsePass.INITIAL
         self.function_factory = FunctionFactory(self.environment)
 
     def set_text(self, text: str):
@@ -248,15 +256,15 @@ class ParseToObjects(Transformer):
         return results
 
     def prepare_parse(self):
-        self.pass_count = 1
+        self.parse_pass = ParsePass.INITIAL
         self.environment.concepts.fail_on_missing = False
         for _, v in self.parsed.items():
             v.prepare_parse()
 
     def hydrate_missing(self):
-        self.pass_count = 2
+        self.parse_pass = ParsePass.VALIDATION
         for k, v in self.parsed.items():
-            if v.pass_count == 2:
+            if v.parse_pass == ParsePass.VALIDATION:
                 continue
             v.hydrate_missing()
         reparsed = self.transform(self.tokens[self.token_address])
@@ -302,10 +310,23 @@ class ParseToObjects(Transformer):
     def QUOTED_IDENTIFIER(self, args) -> str:
         return args.value[1:-1]
 
+    # @v_args(meta=True)
+    # def concept_lit(self, meta: Meta, args) -> ConceptRef:
+    #     address = args[0]
+    #     return self.environment.concepts.__getitem__(address, meta.line)
+    #     return ConceptRef(address=address, line_no=meta.line)
     @v_args(meta=True)
-    def concept_lit(self, meta: Meta, args) -> Concept:
+    def concept_lit(self, meta: Meta, args) -> ConceptRef:
         address = args[0]
-        return self.environment.concepts.__getitem__(address, meta.line)
+        if "." not in address and self.environment.namespace == DEFAULT_NAMESPACE:
+            address = f"{DEFAULT_NAMESPACE}.{address}"
+        mapping = self.environment.concepts[address]
+        datatype = mapping.output_datatype
+        return ConceptRef(
+            address=mapping.address,
+            metadata=Metadata(line_number=meta.line),
+            datatype=datatype,
+        )
 
     def ADDRESS(self, args) -> Address:
         return Address(location=args.value, quoted=False)
@@ -389,7 +410,9 @@ class ParseToObjects(Transformer):
         resolved = self.environment.concepts.__getitem__(  # type: ignore
             key=concept, line_no=meta.line, file=self.token_address
         )
-        return ColumnAssignment(alias=alias, modifiers=modifiers, concept=resolved)
+        return ColumnAssignment(
+            alias=alias, modifiers=modifiers, concept=resolved.reference
+        )
 
     def _TERMINATOR(self, args):
         return None
@@ -479,10 +502,12 @@ class ParseToObjects(Transformer):
             metadata=metadata,
             namespace=namespace,
             modifiers=modifiers,
+            derivation=Derivation.ROOT,
+            granularity=Granularity.MULTI_ROW,
         )
         if concept.metadata:
             concept.metadata.line_number = meta.line
-        self.environment.add_concept(concept, meta=meta, force=True)
+        self.environment.add_concept(concept, meta=meta)
         return ConceptDeclarationStatement(concept=concept)
 
     @v_args(meta=True)
@@ -661,15 +686,14 @@ class ParseToObjects(Transformer):
             where=where,
             non_partial_for=non_partial_for,
         )
-        for column in columns:
-            column.concept = column.concept.with_grain(datasource.grain)
         if datasource.where:
             for x in datasource.where.concept_arguments:
                 if x.address not in datasource.output_concepts:
                     raise ValueError(
                         f"Datasource {name} where condition depends on concept {x.address} that does not exist on the datasource, line {meta.line}."
                     )
-        self.environment.add_datasource(datasource, meta=meta)
+        if self.parse_pass == ParsePass.VALIDATION:
+            self.environment.add_datasource(datasource, meta=meta)
         return datasource
 
     @v_args(meta=True)
@@ -683,39 +707,20 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def select_transform(self, meta: Meta, args) -> ConceptTransform:
         output: str = args[1]
-        transformation = unwrap_transformation(args[0])
+        transformation = unwrap_transformation(args[0], self.environment)
         lookup, namespace, output, parent = parse_concept_reference(
             output, self.environment
         )
 
         metadata = Metadata(line_number=meta.line, concept_source=ConceptSource.SELECT)
 
-        if isinstance(transformation, AggregateWrapper):
-            concept = agg_wrapper_to_concept(
-                transformation, namespace=namespace, name=output, metadata=metadata
-            )
-        elif isinstance(transformation, WindowItem):
-            concept = window_item_to_concept(
-                transformation, namespace=namespace, name=output, metadata=metadata
-            )
-        elif isinstance(transformation, FilterItem):
-            concept = filter_item_to_concept(
-                transformation, namespace=namespace, name=output, metadata=metadata
-            )
-        elif isinstance(transformation, CONSTANT_TYPES):
-            concept = constant_to_concept(
-                transformation, namespace=namespace, name=output, metadata=metadata
-            )
-        elif isinstance(transformation, Function):
-            concept = function_to_concept(
-                transformation,
-                namespace=namespace,
-                name=output,
-                metadata=metadata,
-                environment=self.environment,
-            )
-        else:
-            raise SyntaxError("Invalid transformation")
+        concept = arbitrary_to_concept(
+            transformation,
+            environment=self.environment,
+            namespace=namespace,
+            name=output,
+            metadata=metadata,
+        )
 
         return ConceptTransform(function=transformation, output=concept)
 
@@ -766,10 +771,14 @@ class ParseToObjects(Transformer):
 
     def order_list(self, args):
         def handle_order_item(x, namespace: str):
-            if not isinstance(x, Concept):
+            if isinstance(x, ConceptRef):
+                x = self.environment.concepts[x.address]
+
+            else:
                 x = arbitrary_to_concept(
                     x, namespace=namespace, environment=self.environment
                 )
+
             return x
 
         return [
@@ -806,12 +815,12 @@ class ParseToObjects(Transformer):
                 raise ValueError("Invalid merge, source is wildcard, target is not")
             source_wildcard = source[:-2]
             target_wildcard = target[:-2]
-            sources = [
+            sources: list[Concept] = [
                 v
                 for k, v in self.environment.concepts.items()
                 if v.namespace == source_wildcard
             ]
-            targets = {}
+            targets: list[Concept] = {}
             for x in sources:
                 target = target_wildcard + "." + x.name
                 if target in self.environment.concepts:
@@ -820,6 +829,7 @@ class ParseToObjects(Transformer):
         else:
             sources = [self.environment.concepts[source]]
             targets = {sources[0].address: self.environment.concepts[target]}
+
         new = MergeStatementV2(
             sources=sources,
             targets=targets,
@@ -827,10 +837,11 @@ class ParseToObjects(Transformer):
             source_wildcard=source_wildcard,
             target_wildcard=target_wildcard,
         )
-        for source_c in new.sources:
-            self.environment.merge_concept(
-                source_c, targets[source_c.address], modifiers
-            )
+        if self.parse_pass == ParsePass.VALIDATION:
+            for source_c in new.sources:
+                self.environment.merge_concept(
+                    source_c, targets[source_c.address], modifiers
+                )
 
         return new
 
@@ -940,6 +951,7 @@ class ParseToObjects(Transformer):
             name=identifier,
             address=Address(location=address),
             grain=grain,
+            environment=self.environment,
         )
         return PersistStatement(
             select=select,
@@ -952,7 +964,7 @@ class ParseToObjects(Transformer):
         return AlignItem(
             alias=args[0],
             namespace=self.environment.namespace,
-            concepts=[self.environment.concepts[arg] for arg in args[1:]],
+            concepts=[self.environment.concepts[arg].reference for arg in args[1:]],
         )
 
     @v_args(meta=True)
@@ -984,17 +996,13 @@ class ParseToObjects(Transformer):
 
         assert align
         assert align is not None
-        base_local: EnvironmentConceptDict = selects[0].local_concepts
-        for select in selects[1:]:
-            for k, v in select.local_concepts.items():
-                base_local[k] = v
+
         derived_concepts = []
         for x in align.items:
             concept = align_item_to_concept(
                 x,
                 align,
                 selects,
-                local_concepts=base_local,
                 where=where,
                 having=having,
                 limit=limit,
@@ -1002,7 +1010,6 @@ class ParseToObjects(Transformer):
             )
             derived_concepts.append(concept)
             self.environment.add_concept(concept, meta=meta)
-            base_local[concept.address] = concept
         multi = MultiSelectStatement(
             selects=selects,
             align=align,
@@ -1011,7 +1018,6 @@ class ParseToObjects(Transformer):
             order_by=order_by,
             limit=limit,
             meta=Metadata(line_number=meta.line),
-            local_concepts=base_local,
             derived_concepts=derived_concepts,
         )
         return multi
@@ -1146,6 +1152,7 @@ class ParseToObjects(Transformer):
                 environment=self.environment,
             )
             self.environment.add_concept(left)
+            left = left.reference
         else:
             left = args[0]
         if isinstance(args[2], AggregateWrapper):
@@ -1154,6 +1161,7 @@ class ParseToObjects(Transformer):
                 environment=self.environment,
             )
             self.environment.add_concept(right)
+            right = right.reference
         else:
             right = args[2]
         return Comparison(left=left, right=right, operator=args[1])
@@ -1189,8 +1197,9 @@ class ParseToObjects(Transformer):
         ):
             right = right.content
         if isinstance(right, (Function, FilterItem, WindowItem, AggregateWrapper)):
-            right = arbitrary_to_concept(right, environment=self.environment)
-            self.environment.add_concept(right, meta=meta)
+            right_concept = arbitrary_to_concept(right, environment=self.environment)
+            self.environment.add_concept(right_concept, meta=meta)
+            right = right_concept.reference
         return SubselectComparison(
             left=args[0],
             right=right,
@@ -1259,8 +1268,8 @@ class ParseToObjects(Transformer):
                 over = item.contents
             elif isinstance(item, str):
                 concept = self.environment.concepts[item]
-            elif isinstance(item, Concept):
-                concept = item
+            elif isinstance(item, ConceptRef):
+                concept = self.environment.concepts[item]
             elif isinstance(item, WindowType):
                 type = item
             else:
@@ -1268,7 +1277,11 @@ class ParseToObjects(Transformer):
                 self.environment.add_concept(concept, meta=meta)
         assert concept
         return WindowItem(
-            type=type, content=concept, over=over, order_by=order_by, index=index
+            type=type,
+            content=concept.reference,
+            over=over,
+            order_by=order_by,
+            index=index,
         )
 
     def filter_item(self, args) -> FilterItem:
@@ -1278,7 +1291,7 @@ class ParseToObjects(Transformer):
             where = raw
         else:
             where = WhereClause(conditional=raw)
-        concept = self.environment.concepts[string_concept]
+        concept = self.environment.concepts[string_concept].reference
         return FilterItem(content=concept, where=where)
 
     # BEGIN FUNCTIONS
@@ -1295,7 +1308,12 @@ class ParseToObjects(Transformer):
         return args[0]
 
     def aggregate_all(self, args):
-        return [self.environment.concepts[f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"]]
+        return [
+            ConceptRef(
+                address=f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}",
+                datatype=DataType.INTEGER,
+            )
+        ]
 
     def aggregate_functions(self, args):
         if len(args) == 2:
@@ -1616,6 +1634,7 @@ def parse_text(text: str, environment: Optional[Environment] = None) -> Tuple[
         pass_two = parser.hydrate_missing()
         output = [v for v in pass_two if v]
         environment.concepts.fail_on_missing = True
+        environment.gen_concept_list_caches()
     except VisitError as e:
         unpack_visit_error(e)
         # this will never be reached

@@ -15,9 +15,10 @@ working_path = Path(__file__).parent
 @pytest.fixture(scope="session")
 def engine():
     env = Environment(working_path=working_path)
+    debugger = DebuggingHook(level=INFO, process_other=False, process_ctes=False)
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=env,
-        hooks=[DebuggingHook(level=INFO, process_other=False, process_ctes=False)],
+        hooks=[debugger],
         conf=DuckDBConfig(),
     )
     memory = working_path / "memory" / "schema.sql"
@@ -36,6 +37,7 @@ def engine():
         EXPORT DATABASE '{import_path}' (FORMAT PARQUET);"""
         )
     yield engine
+    # debugger.write()
 
 
 @pytest.fixture(autouse=True, scope="session")

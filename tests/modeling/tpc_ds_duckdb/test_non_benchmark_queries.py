@@ -58,7 +58,7 @@ import web_sales as web_sales;
     duration = end - start
     dumped = env.model_dump_json()
 
-    assert duration.total_seconds() < 1.0, f"{len(dumped)}, {duration}"
+    assert duration.total_seconds() < 0.5, f"{len(dumped)}, {duration}"
 
 
 def test_merge_comparison(engine):
@@ -82,6 +82,8 @@ ALIGN
 ORDER BY
     report_date asc;"""
 
+    r1 = engine.execute_text(x)[0].fetchall()
+
     y = """
 import store_sales as store_sales;
 import web_sales as web_sales;
@@ -99,9 +101,8 @@ ORDER BY
     date.year asc
 LIMIT 100;"""
 
-    r1 = engine.execute_text(x)[0].fetchall()
     r2 = list(engine.execute_text(y)[0].fetchall())
-
+    # assert 1 == 0
     for idx, row in enumerate(r1):
         r2_row = r2[idx]
         assert row.web_order_count == r2_row.web_order_count
@@ -161,6 +162,11 @@ ORDER BY
     store_sales.store.name asc
 LIMIT 100;"""
     r1 = engine.parse_text(y)[-1]
-    assert "store_sales.is_returned" in [
-        x.address for x in r1.where_clause.conditional.row_arguments
-    ], [x.address for x in r1.where_clause.conditional.row_arguments]
+    found = False
+    for cte in r1.ctes:
+        if cte.condition:
+            found = True
+            assert "store_sales.is_returned" in [
+                x.address for x in cte.condition.row_arguments
+            ], [x.address for x in cte.condition.row_arguments]
+    assert found

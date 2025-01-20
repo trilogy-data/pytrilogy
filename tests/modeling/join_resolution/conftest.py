@@ -102,8 +102,8 @@ select 3, 2, 2
 ''';
 
 datasource join_store_warehouse (
-    store_id:~store_id,
-    wh_id:~wh_id,
+    store_id:store_id,
+    wh_id:wh_id,
 )
 grain (store_id, wh_id)
 query '''

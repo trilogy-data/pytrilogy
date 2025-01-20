@@ -3,24 +3,29 @@ from trilogy.core.graph_models import (
     concept_to_node,
     datasource_to_node,
 )
-from trilogy.core.models.author import Concept
-from trilogy.core.models.datasource import Datasource
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build import BuildConcept, BuildDatasource
+from trilogy.core.models.build_environment import BuildEnvironment
 
 
 def add_concept(
-    concept: Concept, g: ReferenceGraph, concept_mapping: dict[str, Concept]
+    concept: BuildConcept, g: ReferenceGraph, concept_mapping: dict[str, BuildConcept]
 ):
     g.add_node(concept)
     # if we have sources, recursively add them
     node_name = concept_to_node(concept)
     if concept.concept_arguments:
         for source in concept.concept_arguments:
+            if not isinstance(source, BuildConcept):
+                raise ValueError(
+                    f"Invalid non-build concept {source} passed into graph generation from {concept}"
+                )
             generic = source.with_default_grain()
             add_concept(generic, g, concept_mapping)
 
             g.add_edge(generic, node_name)
     for ps_address in concept.pseudonyms:
+        if ps_address not in concept_mapping:
+            raise SyntaxError(f"Concept {concept} has invalid pseudonym {ps_address}")
         pseudonym = concept_mapping[ps_address]
         pseudonym = pseudonym.with_default_grain()
         pseudonym_node = concept_to_node(pseudonym)
@@ -37,15 +42,19 @@ def add_concept(
 
 
 def generate_adhoc_graph(
-    concepts: list[Concept],
-    datasources: list[Datasource],
+    concepts: list[BuildConcept],
+    datasources: list[BuildDatasource],
     restrict_to_listed: bool = False,
 ) -> ReferenceGraph:
     g = ReferenceGraph()
     concept_mapping = {x.address: x for x in concepts}
+    for concept in concepts:
+        if not isinstance(concept, BuildConcept):
+            raise ValueError(f"Invalid non-build concept {concept}")
 
     # add all parsed concepts
     for concept in concepts:
+
         add_concept(concept, g, concept_mapping)
 
     for dataset in datasources:
@@ -68,8 +77,9 @@ def generate_adhoc_graph(
 
 
 def generate_graph(
-    environment: Environment,
+    environment: BuildEnvironment,
 ) -> ReferenceGraph:
+
     return generate_adhoc_graph(
         list(environment.concepts.values())
         + list(environment.alias_origin_lookup.values()),

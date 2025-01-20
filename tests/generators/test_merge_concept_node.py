@@ -90,8 +90,8 @@ address num1;
         len({x.alias: x.concept.address for x in env1.datasources["num1"].columns}) == 2
     )
 
-    assert str(env1.concepts["name"].with_grain(env1.concepts["env2.one"])) in [
-        str(x) for x in env1.datasources["num1"].concepts
+    assert env1.concepts["name"].with_grain(env1.concepts["env2.one"]) in [
+        x for x in env1.datasources["num1"].concepts
     ]
     bd = BaseDialect()
     _, queries = env1.parse(
@@ -109,4 +109,4 @@ address num1;
              	env2_num1.`one` as `env2_one`
              FROM
              	num1 as env2_num1"""
-        )
+        ), compiled

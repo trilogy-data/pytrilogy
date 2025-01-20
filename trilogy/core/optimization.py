@@ -1,7 +1,7 @@
 from trilogy.constants import CONFIG, logger
 from trilogy.core.enums import BooleanOperator, Derivation
-from trilogy.core.models.author import (
-    Conditional,
+from trilogy.core.models.build import (
+    BuildConditional,
 )
 from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.optimizations import (
@@ -179,7 +179,7 @@ def optimize_ctes(
         )
         if root_cte.condition:
             if direct_parent.condition:
-                direct_parent.condition = Conditional(
+                direct_parent.condition = BuildConditional(
                     left=direct_parent.condition,
                     operator=BooleanOperator.AND,
                     right=root_cte.condition,

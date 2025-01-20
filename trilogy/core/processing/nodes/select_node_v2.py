@@ -3,16 +3,17 @@ from typing import List, Optional
 from trilogy.constants import logger
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import Derivation, Purpose, SourceType
-from trilogy.core.models.author import (
-    Comparison,
-    Concept,
-    Conditional,
-    Function,
-    Grain,
-    Parenthetical,
+from trilogy.core.models.build import (
+    BuildComparison,
+    BuildConcept,
+    BuildConditional,
+    BuildDatasource,
+    BuildFunction,
+    BuildGrain,
+    BuildOrderBy,
+    BuildParenthetical,
 )
-from trilogy.core.models.datasource import Datasource
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
 from trilogy.core.processing.nodes.base_node import StrategyNode, resolve_concept_map
 from trilogy.utility import unique
@@ -29,21 +30,26 @@ class SelectNode(StrategyNode):
 
     def __init__(
         self,
-        input_concepts: List[Concept],
-        output_concepts: List[Concept],
-        environment: Environment,
-        datasource: Datasource | None = None,
+        input_concepts: List[BuildConcept],
+        output_concepts: List[BuildConcept],
+        environment: BuildEnvironment,
+        datasource: BuildDatasource | None = None,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
-        partial_concepts: List[Concept] | None = None,
-        nullable_concepts: List[Concept] | None = None,
+        partial_concepts: List[BuildConcept] | None = None,
+        nullable_concepts: List[BuildConcept] | None = None,
         accept_partial: bool = False,
-        grain: Optional[Grain] = None,
+        grain: Optional[BuildGrain] = None,
         force_group: bool | None = False,
-        conditions: Conditional | Comparison | Parenthetical | None = None,
-        preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
+        conditions: (
+            BuildConditional | BuildComparison | BuildParenthetical | None
+        ) = None,
+        preexisting_conditions: (
+            BuildConditional | BuildComparison | BuildParenthetical | None
+        ) = None,
         hidden_concepts: set[str] | None = None,
+        ordering: BuildOrderBy | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -59,6 +65,7 @@ class SelectNode(StrategyNode):
             conditions=conditions,
             preexisting_conditions=preexisting_conditions,
             hidden_concepts=hidden_concepts,
+            ordering=ordering,
         )
         self.accept_partial = accept_partial
         self.datasource = datasource
@@ -73,20 +80,20 @@ class SelectNode(StrategyNode):
     ) -> QueryDatasource:
         if not self.datasource:
             raise ValueError("Datasource not provided")
-        datasource: Datasource = self.datasource
+        datasource: BuildDatasource = self.datasource
 
-        all_concepts_final: List[Concept] = unique(self.all_concepts, "address")
-        source_map: dict[str, set[Datasource | QueryDatasource | UnnestJoin]] = {
+        all_concepts_final: List[BuildConcept] = unique(self.all_concepts, "address")
+        source_map: dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]] = {
             concept.address: {datasource} for concept in self.input_concepts
         }
 
         derived_concepts = [
             c
             for c in datasource.columns
-            if isinstance(c.alias, Function) and c.concept.address in source_map
+            if isinstance(c.alias, BuildFunction) and c.concept.address in source_map
         ]
         for c in derived_concepts:
-            if not isinstance(c.alias, Function):
+            if not isinstance(c.alias, BuildFunction):
                 continue
             for x in c.alias.concept_arguments:
                 source_map[x.address] = {datasource}
@@ -107,7 +114,7 @@ class SelectNode(StrategyNode):
         if self.force_group is False:
             grain = datasource.grain
         else:
-            grain = self.grain or Grain()
+            grain = self.grain or BuildGrain()
         return QueryDatasource(
             input_concepts=self.input_concepts,
             output_concepts=all_concepts_final,
@@ -125,10 +132,11 @@ class SelectNode(StrategyNode):
             # select nodes should never group
             force_group=self.force_group,
             hidden_concepts=self.hidden_concepts,
+            ordering=self.ordering,
         )
 
     def resolve_from_constant_datasources(self) -> QueryDatasource:
-        datasource = Datasource(
+        datasource = BuildDatasource(
             name=CONSTANT_DATASET, address=CONSTANT_DATASET, columns=[]
         )
         return QueryDatasource(
@@ -142,6 +150,7 @@ class SelectNode(StrategyNode):
             partial_concepts=[],
             source_type=SourceType.CONSTANT,
             hidden_concepts=self.hidden_concepts,
+            ordering=self.ordering,
         )
 
     def _resolve(self) -> QueryDatasource:
@@ -163,6 +172,8 @@ class SelectNode(StrategyNode):
                 f"{self.logging_prefix}{LOGGER_PREFIX} have a constant datasource"
             )
             resolution = self.resolve_from_constant_datasources()
+            return resolution
+
         if self.datasource and not resolution:
             resolution = self.resolve_from_provided_datasource()
 
@@ -170,7 +181,7 @@ class SelectNode(StrategyNode):
             if not resolution:
                 return super()._resolve()
             # zip in our parent source map
-            parent_sources: List[QueryDatasource | Datasource] = [
+            parent_sources: List[QueryDatasource | BuildDatasource] = [
                 p.resolve() for p in self.parents
             ]
 
@@ -185,7 +196,7 @@ class SelectNode(StrategyNode):
                 if v and k not in resolution.source_map:
                     resolution.source_map[k] = v
         if not resolution:
-            raise ValueError("No select node could be generated")
+            raise ValueError(f"No select node could be generated for {self}")
         return resolution
 
     def copy(self) -> "SelectNode":
@@ -205,6 +216,7 @@ class SelectNode(StrategyNode):
             conditions=self.conditions,
             preexisting_conditions=self.preexisting_conditions,
             hidden_concepts=self.hidden_concepts,
+            ordering=self.ordering,
         )
 
 
@@ -222,4 +234,8 @@ class ConstantNode(SelectNode):
             conditions=self.conditions,
             preexisting_conditions=self.preexisting_conditions,
             hidden_concepts=self.hidden_concepts,
+            ordering=self.ordering,
         )
+
+    def _resolve(self) -> QueryDatasource:
+        return self.resolve_from_constant_datasources()

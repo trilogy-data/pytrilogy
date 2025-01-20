@@ -7,12 +7,15 @@ from trilogy.core.enums import Derivation, FunctionType, Granularity
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import (
-    Concept,
-    Function,
-    RowsetItem,
     UndefinedConcept,
-    WhereClause,
 )
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildFunction,
+    BuildRowsetItem,
+    BuildWhereClause,
+)
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators import (
     gen_basic_node,
@@ -52,17 +55,17 @@ LOGGER_PREFIX = "[CONCEPT DETAIL]"
 class SearchConceptsType(Protocol):
     def __call__(
         self,
-        mandatory_list: List[Concept],
-        environment: Environment,
+        mandatory_list: List[BuildConcept],
+        history: History,
+        environment: BuildEnvironment,
         depth: int,
         g: ReferenceGraph,
         accept_partial: bool = False,
-        history: Optional[History] = None,
-        conditions: Optional[WhereClause] = None,
+        conditions: Optional[BuildWhereClause] = None,
     ) -> Union[StrategyNode, None]: ...
 
 
-def get_upstream_concepts(base: Concept, nested: bool = False) -> set[str]:
+def get_upstream_concepts(base: BuildConcept, nested: bool = False) -> set[str]:
     upstream = set()
     if nested:
         upstream.add(base.address)
@@ -71,16 +74,17 @@ def get_upstream_concepts(base: Concept, nested: bool = False) -> set[str]:
     for x in base.lineage.concept_arguments:
         # if it's derived from any value in a rowset, ALL rowset items are upstream
         if x.derivation == Derivation.ROWSET:
-            assert isinstance(x.lineage, RowsetItem)
+            assert isinstance(x.lineage, BuildRowsetItem)
             for y in x.lineage.rowset.derived_concepts:
-                upstream = upstream.union(get_upstream_concepts(y, nested=True))
+                upstream.add(y.address)
+                # upstream = upstream.union(get_upstream_concepts(y, nested=True))
         upstream = upstream.union(get_upstream_concepts(x, nested=True))
     return upstream
 
 
 def restrict_node_outputs_targets(
-    node: StrategyNode, targets: list[Concept], depth: int
-) -> list[Concept]:
+    node: StrategyNode, targets: list[BuildConcept], depth: int
+) -> list[BuildConcept]:
     ex_resolve = node.resolve()
     extra = [
         x
@@ -88,10 +92,10 @@ def restrict_node_outputs_targets(
         if x.address not in [y.address for y in targets]
     ]
 
-    logger.info(
-        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} reducing final outputs, was {[c.address for c in ex_resolve.output_concepts]} with extra {[c.address for c in extra]}"
-    )
     base = [x for x in ex_resolve.output_concepts if x.address not in extra]
+    logger.info(
+        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} reducing final outputs, was {[c.address for c in ex_resolve.output_concepts]} with extra {[c.address for c in extra]}, remaining {base}"
+    )
     for x in targets:
         if x.address not in base:
             base.append(x)
@@ -100,11 +104,11 @@ def restrict_node_outputs_targets(
 
 
 def get_priority_concept(
-    all_concepts: List[Concept],
+    all_concepts: List[BuildConcept],
     attempted_addresses: set[str],
     found_concepts: set[str],
     depth: int,
-) -> Concept:
+) -> BuildConcept:
     # optimized search for missing concepts
     pass_one = [
         c
@@ -178,12 +182,12 @@ def get_priority_concept(
 
 
 def generate_candidates_restrictive(
-    priority_concept: Concept,
-    candidates: list[Concept],
+    priority_concept: BuildConcept,
+    candidates: list[BuildConcept],
     exhausted: set[str],
     depth: int,
-    conditions: WhereClause | None = None,
-) -> List[List[Concept]]:
+    conditions: BuildWhereClause | None = None,
+) -> List[List[BuildConcept]]:
     # if it's single row, joins are irrelevant. Fetch without keys.
     if priority_concept.granularity == Granularity.SINGLE_ROW:
         return [[]]
@@ -208,18 +212,17 @@ def generate_candidates_restrictive(
 
 
 def generate_node(
-    concept: Concept,
-    local_optional: List[Concept],
-    environment: Environment,
+    concept: BuildConcept,
+    local_optional: List[BuildConcept],
+    environment: BuildEnvironment,
     g: ReferenceGraph,
     depth: int,
     source_concepts: SearchConceptsType,
+    history: History,
     accept_partial: bool = False,
-    history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     # first check in case there is a materialized_concept
-    history = history or History()
     candidate = history.gen_select_node(
         concept,
         local_optional,
@@ -243,11 +246,11 @@ def generate_node(
         return gen_window_node(
             concept,
             local_optional,
-            environment,
-            g,
-            depth + 1,
-            source_concepts,
-            history,
+            history=history,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+            source_concepts=source_concepts,
             conditions=conditions,
         )
 
@@ -258,11 +261,11 @@ def generate_node(
         return gen_filter_node(
             concept,
             local_optional,
-            environment,
-            g,
-            depth + 1,
-            source_concepts=source_concepts,
             history=history,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+            source_concepts=source_concepts,
             conditions=conditions,
         )
     elif concept.derivation == Derivation.UNNEST:
@@ -272,11 +275,11 @@ def generate_node(
         return gen_unnest_node(
             concept,
             local_optional,
-            environment,
-            g,
-            depth + 1,
-            source_concepts,
-            history,
+            history=history,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+            source_concepts=source_concepts,
             conditions=conditions,
         )
     elif concept.derivation == Derivation.UNION:
@@ -309,11 +312,11 @@ def generate_node(
         return gen_group_node(
             concept,
             agg_optional,
-            environment,
-            g,
-            depth + 1,
-            source_concepts,
-            history,
+            history=history,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+            source_concepts=source_concepts,
             conditions=conditions,
         )
     elif concept.derivation == Derivation.ROWSET:
@@ -388,7 +391,7 @@ def generate_node(
     elif concept.derivation == Derivation.BASIC:
         # this is special case handling for group bys
         if (
-            isinstance(concept.lineage, Function)
+            isinstance(concept.lineage, BuildFunction)
             and concept.lineage.operator == FunctionType.GROUP
         ):
             logger.info(
@@ -410,11 +413,11 @@ def generate_node(
         return gen_basic_node(
             concept,
             local_optional,
-            environment,
-            g,
-            depth + 1,
-            source_concepts,
-            history,
+            history=history,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+            source_concepts=source_concepts,
             conditions=conditions,
         )
 
@@ -511,21 +514,21 @@ def generate_node(
             )
             return None
     else:
-        raise ValueError(f"Unknown derivation {concept.derivation}")
+        raise ValueError(f"Unknown derivation {concept.derivation} on {concept}")
     return None
 
 
 def validate_concept(
-    concept: Concept,
+    concept: BuildConcept,
     node: StrategyNode,
     found_addresses: set[str],
     non_partial_addresses: set[str],
     partial_addresses: set[str],
     virtual_addresses: set[str],
-    found_map: dict[str, set[Concept]],
+    found_map: dict[str, set[BuildConcept]],
     accept_partial: bool,
     seen: set[str],
-    environment: Environment,
+    environment: BuildEnvironment,
 ):
     found_map[str(node)].add(concept)
     seen.add(concept.address)
@@ -552,7 +555,6 @@ def validate_concept(
             return
         if v.address == concept.address:
             return
-
         validate_concept(
             v,
             node,
@@ -568,14 +570,14 @@ def validate_concept(
 
 
 def validate_stack(
-    environment: Environment,
+    environment: BuildEnvironment,
     stack: List[StrategyNode],
-    concepts: List[Concept],
-    mandatory_with_filter: List[Concept],
-    conditions: WhereClause | None = None,
+    concepts: List[BuildConcept],
+    mandatory_with_filter: List[BuildConcept],
+    conditions: BuildWhereClause | None = None,
     accept_partial: bool = False,
 ) -> tuple[ValidationResult, set[str], set[str], set[str], set[str]]:
-    found_map: dict[str, set[Concept]] = defaultdict(set)
+    found_map: dict[str, set[BuildConcept]] = defaultdict(set)
     found_addresses: set[str] = set()
     non_partial_addresses: set[str] = set()
     partial_addresses: set[str] = set()
@@ -654,10 +656,10 @@ def depth_to_prefix(depth: int) -> str:
 
 def append_existence_check(
     node: StrategyNode,
-    environment: Environment,
+    environment: BuildEnvironment,
     graph: ReferenceGraph,
-    where: WhereClause,
-    history: History | None = None,
+    where: BuildWhereClause,
+    history: History,
 ):
     # we if we have a where clause doing an existence check
     # treat that as separate subquery
@@ -674,7 +676,10 @@ def append_existence_check(
                 f"{LOGGER_PREFIX} fetching existence clause inputs {[str(c) for c in subselect]}"
             )
             parent = source_query_concepts(
-                [*subselect], environment=environment, g=graph, history=history
+                [*subselect],
+                history=history,
+                environment=environment,
+                g=graph,
             )
             assert parent, "Could not resolve existence clause"
             node.add_parents([parent])
@@ -685,15 +690,14 @@ def append_existence_check(
 
 
 def search_concepts(
-    mandatory_list: List[Concept],
-    environment: Environment,
+    mandatory_list: List[BuildConcept],
+    history: History,
+    environment: BuildEnvironment,
     depth: int,
     g: ReferenceGraph,
     accept_partial: bool = False,
-    history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
-    history = history or History()
     hist = history.get_history(
         search=mandatory_list, accept_partial=accept_partial, conditions=conditions
     )
@@ -724,13 +728,13 @@ def search_concepts(
 
 
 def _search_concepts(
-    mandatory_list: List[Concept],
-    environment: Environment,
+    mandatory_list: List[BuildConcept],
+    environment: BuildEnvironment,
     depth: int,
     g: ReferenceGraph,
     history: History,
     accept_partial: bool = False,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     # these are the concepts we need in the output projection
     mandatory_list = unique(mandatory_list, "address")
@@ -755,9 +759,17 @@ def _search_concepts(
                 for x in mandatory_list
             ]
         ):
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} derived condition row input present in mandatory list, forcing condition evaluation at this level. "
+            )
             mandatory_list = completion_mandatory
             must_evaluate_condition_on_this_level_not_push_down = True
+        else:
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Do not need to evaluate conditions yet."
+            )
     else:
+
         completion_mandatory = mandatory_list
 
     attempted: set[str] = set()
@@ -812,7 +824,7 @@ def _search_concepts(
             local_conditions = conditions
 
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {str(priority_concept)} derivation {priority_concept.derivation} with conditions {local_conditions}"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {str(priority_concept)} derivation {priority_concept.derivation} granularity {priority_concept.granularity} with conditions {local_conditions}"
         )
 
         candidates = [
@@ -921,6 +933,9 @@ def _search_concepts(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Source stack has single node, returning that {type(output)}"
             )
         else:
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} wrapping multiple parent nodes {[type(x) for x in stack]} in merge node"
+            )
             output = MergeNode(
                 input_concepts=non_virtual,
                 output_concepts=non_virtual,
@@ -937,6 +952,8 @@ def _search_concepts(
                 append_existence_check(
                     output, environment, g, where=conditions, history=history
                 )
+        elif conditions:
+            output.preexisting_conditions = conditions.conditional
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Graph is connected, returning {type(output)} node partial {[c.address for c in output.partial_concepts]}"
         )
@@ -970,18 +987,17 @@ def _search_concepts(
 
 
 def source_query_concepts(
-    output_concepts: List[Concept],
-    environment: Environment,
+    output_concepts: List[BuildConcept],
+    history: History,
+    environment: BuildEnvironment,
     g: Optional[ReferenceGraph] = None,
-    conditions: Optional[WhereClause] = None,
-    history: Optional[History] = None,
+    conditions: Optional[BuildWhereClause] = None,
 ):
     if not output_concepts:
         raise ValueError(f"No output concepts provided {output_concepts}")
     if not g:
         g = generate_graph(environment)
 
-    history = history or History()
     root = search_concepts(
         mandatory_list=output_concepts,
         environment=environment,

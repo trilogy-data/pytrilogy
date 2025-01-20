@@ -72,6 +72,10 @@ LIMIT {{ limit }}{% endif %}
 
 
 class Renderer:
+
+    def __init__(self, environment: Environment | None = None):
+        self.environment = environment
+
     @singledispatchmethod
     def to_string(self, arg):
         raise NotImplementedError("Cannot render type {}".format(type(arg)))
@@ -399,6 +403,8 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "ConceptRef"):
+        if arg.name.startswith(VIRTUAL_CONCEPT_PREFIX) and self.environment:
+            return self.to_string(self.environment.concepts[arg.address])
         ns, base = arg.address.rsplit(".", 1)
         if ns == DEFAULT_NAMESPACE:
             return base

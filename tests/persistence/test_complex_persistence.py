@@ -20,6 +20,7 @@ def test_complex():
     env = Environment(working_path=Path(__file__).parent)
     engine = Dialects.DUCK_DB.default_executor(environment=env, hooks=hooks)
     engine.execute_file(Path(__file__).parent / "optimize.preql")
+
     r2 = engine.execute_text(
         """select 
         generic.split, 

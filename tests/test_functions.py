@@ -109,6 +109,7 @@ def test_date_functions(test_environment):
 
     select
         order_id,
+        order_timestamp,
         date(order_timestamp) -> order_date,
         datetime(order_timestamp) -> order_timestamp_datetime,
         timestamp(order_timestamp) -> order_timestamp_dos,

@@ -206,6 +206,7 @@ def setup_richest_environment(env: Environment):
                 ColumnAssignment(alias="Name", concept=name),
                 ColumnAssignment(alias="Net Worth 1918 Dollars", concept=money),
             ],
+            grain=Grain(components={name.address}),
         )
     )
 
@@ -329,6 +330,7 @@ def setup_titanic_distributed(env: Environment):
         cabin,
         embarked,
         survived_count,
+        split_name,
         last_name,
         class_id,
     ]:

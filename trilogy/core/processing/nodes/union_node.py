@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.core.enums import SourceType
-from trilogy.core.models.author import Concept
+from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.execute import QueryDatasource
 from trilogy.core.processing.nodes.base_node import StrategyNode
 
@@ -13,8 +13,8 @@ class UnionNode(StrategyNode):
 
     def __init__(
         self,
-        input_concepts: List[Concept],
-        output_concepts: List[Concept],
+        input_concepts: List[BuildConcept],
+        output_concepts: List[BuildConcept],
         environment,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,

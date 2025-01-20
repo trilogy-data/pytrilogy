@@ -2,26 +2,29 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionType, Purpose
-from trilogy.core.models.author import Concept, Function, WhereClause
+from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
 from trilogy.core.processing.nodes import History, StrategyNode, UnionNode
 from trilogy.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_UNION_NODE]"
 
 
-def is_union(c: Concept):
-    return isinstance(c.lineage, Function) and c.lineage.operator == FunctionType.UNION
+def is_union(c: BuildConcept):
+    return (
+        isinstance(c.lineage, BuildFunction)
+        and c.lineage.operator == FunctionType.UNION
+    )
 
 
 def gen_union_node(
-    concept: Concept,
-    local_optional: List[Concept],
+    concept: BuildConcept,
+    local_optional: List[BuildConcept],
     environment,
     g,
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     all_unions = [x for x in local_optional if is_union(x)] + [concept]
 
@@ -30,10 +33,10 @@ def gen_union_node(
     base = keys.pop()
     remaining = [x for x in all_unions if x.address != base.address]
     arguments = []
-    if isinstance(base.lineage, Function):
+    if isinstance(base.lineage, BuildFunction):
         arguments = base.lineage.concept_arguments
     for arg in arguments:
-        relevant_parents: list[Concept] = []
+        relevant_parents: list[BuildConcept] = []
         for other_union in remaining:
             assert other_union.lineage
             potential_parents = [z for z in other_union.lineage.concept_arguments]
