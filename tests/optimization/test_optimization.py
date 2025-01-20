@@ -111,15 +111,15 @@ key year int;
 
 
 def test_decomposition_function():
-    condition = Conditional(
-        left=Comparison(left=1, right=2, operator=ComparisonOperator.EQ),
-        right=Comparison(left=3, right=4, operator=ComparisonOperator.EQ),
+    condition = BuildConditional(
+        left=BuildComparison(left=1, right=2, operator=ComparisonOperator.EQ),
+        right=BuildComparison(left=3, right=4, operator=ComparisonOperator.EQ),
         operator=BooleanOperator.AND,
     )
     decomposed = decompose_condition(condition)
     assert decomposed == [
-        Comparison(left=1, right=2, operator=ComparisonOperator.EQ),
-        Comparison(left=3, right=4, operator=ComparisonOperator.EQ),
+        BuildComparison(left=1, right=2, operator=ComparisonOperator.EQ),
+        BuildComparison(left=3, right=4, operator=ComparisonOperator.EQ),
     ]
 
 

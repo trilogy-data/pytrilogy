@@ -16,18 +16,13 @@ from trilogy.core.enums import (
     Purpose,
 )
 from trilogy.core.models.author import (
-    AggregateWrapper,
-    CaseElse,
-    CaseWhen,
+
     Comparison,
     Concept,
     Conditional,
-    FilterItem,
-    Function,
     LooseConceptList,
     Parenthetical,
     SubselectComparison,
-    WindowItem,
 )
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
@@ -66,14 +61,14 @@ from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.core.statements.execute import ProcessedQuery
 from trilogy.utility import unique
 
-AGGREGATE_TYPES = (AggregateWrapper, BuildAggregateWrapper)
-SUBSELECT_TYPES = (SubselectComparison, BuildSubselectComparison)
-COMPARISON_TYPES = (Comparison, BuildComparison)
-FUNCTION_TYPES = (Function, BuildFunction)
-PARENTHETICAL_TYPES = (Parenthetical, BuildParenthetical)
-CONDITIONAL_TYPES = (Conditional, BuildConditional)
-CONCEPT_TYPES = (Concept, BuildConcept)
-WINDOW_TYPES = (WindowItem, BuildWindowItem)
+AGGREGATE_TYPES = (BuildAggregateWrapper,)
+SUBSELECT_TYPES = (BuildSubselectComparison,)
+COMPARISON_TYPES = (BuildComparison,)
+FUNCTION_TYPES = (BuildFunction,)
+PARENTHETICAL_TYPES = ( BuildParenthetical,)
+CONDITIONAL_TYPES = (BuildConditional,)
+CONCEPT_TYPES = (BuildConcept,)
+WINDOW_TYPES = (BuildWindowItem,)
 
 
 class NodeType(Enum):
@@ -239,7 +234,7 @@ def resolve_join_order_v2(
     return output
 
 
-def concept_to_relevant_joins(concepts: list[Concept]) -> List[Concept]:
+def concept_to_relevant_joins(concepts: list[BuildConcept]) -> List[BuildConcept]:
     addresses = LooseConceptList(concepts=concepts)
     sub_props = LooseConceptList(
         concepts=[
@@ -264,7 +259,7 @@ def create_log_lambda(prefix: str, depth: int, logger: Logger):
 
 
 def calculate_graph_relevance(
-    g: nx.DiGraph, subset_nodes: set[str], concepts: set[Concept]
+    g: nx.DiGraph, subset_nodes: set[str], concepts: set[BuildConcept]
 ) -> int:
     """Calculate the relevance of each node in a graph
     Relevance is used to prune irrelevant nodes from the graph
@@ -299,8 +294,8 @@ def calculate_graph_relevance(
 
 def add_node_join_concept(
     graph: nx.DiGraph,
-    concept: Concept,
-    concept_map: dict[str, Concept],
+    concept: BuildConcept,
+    concept_map: dict[str, BuildConcept],
     ds_node: str,
     environment: Environment,
 ):
@@ -325,8 +320,8 @@ def add_node_join_concept(
 
 
 def resolve_instantiated_concept(
-    concept: Concept, datasource: QueryDatasource | Datasource
-) -> Concept:
+    concept: BuildConcept, datasource: QueryDatasource | BuildDatasource
+) -> BuildConcept:
     if concept.address in datasource.output_concepts:
         return concept
     for k in concept.pseudonyms:
@@ -364,13 +359,13 @@ def reduce_concept_pairs(input: list[ConceptPair]) -> list[ConceptPair]:
 
 
 def get_node_joins(
-    datasources: List[QueryDatasource | Datasource],
+    datasources: List[QueryDatasource | BuildDatasource],
     environment: Environment,
     # concepts:List[Concept],
 ) -> List[BaseJoin]:
     graph = nx.Graph()
     partials: dict[str, list[str]] = {}
-    ds_node_map: dict[str, QueryDatasource | Datasource] = {}
+    ds_node_map: dict[str, QueryDatasource | BuildDatasource] = {}
     concept_map: dict[str, Concept] = {}
     for datasource in datasources:
         ds_node = f"ds~{datasource.identifier}"
@@ -417,7 +412,7 @@ def get_node_joins(
 
 
 def get_disconnected_components(
-    concept_map: Dict[str, Set[Concept]]
+    concept_map: Dict[str, Set[BuildConcept]]
 ) -> Tuple[int, List]:
     """Find if any of the datasources are not linked"""
     import networkx as nx
@@ -445,26 +440,17 @@ def is_scalar_condition(
         | date
         | datetime
         | list[Any]
-        | WindowItem
+        | BuildConcept
         | BuildWindowItem
-        | FilterItem
         | BuildFilterItem
-        | Concept
-        | Comparison
         | BuildConditional
-        | Conditional
         | BuildParenthetical
-        | Parenthetical
         | BuildFunction
-        | Function
-        | AggregateWrapper
         | BuildAggregateWrapper
-        | MagicConstants
-        | DataType
-        | CaseWhen
-        | CaseElse
         | BuildCaseWhen
         | BuildCaseElse
+        | MagicConstants
+        | DataType
         | MapWrapper[Any, Any]
         | ListType
         | MapType
@@ -501,11 +487,11 @@ def is_scalar_condition(
         return is_scalar_condition(element.left, materialized) and is_scalar_condition(
             element.right, materialized
         )
-    elif isinstance(element, (BuildCaseWhen, CaseWhen)):
+    elif isinstance(element, (BuildCaseWhen,)):
         return is_scalar_condition(
             element.comparison, materialized
         ) and is_scalar_condition(element.expr, materialized)
-    elif isinstance(element, (BuildCaseElse, CaseElse)):
+    elif isinstance(element, (BuildCaseElse,)):
         return is_scalar_condition(element.expr, materialized)
     elif isinstance(element, MagicConstants):
         return True
@@ -513,22 +499,18 @@ def is_scalar_condition(
 
 
 CONDITION_TYPES = (
-    SubselectComparison,
     BuildSubselectComparison,
-    Comparison,
     BuildComparison,
-    Conditional,
     BuildConditional,
-    Parenthetical,
     BuildParenthetical,
 )
 
 
 def decompose_condition(
-    conditional: Conditional | Comparison | Parenthetical,
-) -> list[SubselectComparison | Comparison | Conditional | Parenthetical]:
-    chunks: list[SubselectComparison | Comparison | Conditional | Parenthetical] = []
-    if not isinstance(conditional, (Conditional, BuildConditional)):
+    conditional: BuildConditional | BuildComparison | BuildParenthetical,
+) -> list[BuildSubselectComparison | BuildComparison | BuildConditional | BuildParenthetical]:
+    chunks: list[BuildSubselectComparison | BuildComparison | BuildConditional | BuildParenthetical] = []
+    if not isinstance(conditional, BuildConditional):
         return [conditional]
     if conditional.operator == BooleanOperator.AND:
         if not (
@@ -541,7 +523,7 @@ def decompose_condition(
             chunks.append(conditional)
         else:
             for val in [conditional.left, conditional.right]:
-                if isinstance(val, (Conditional, BuildConditional)):
+                if isinstance(val,  BuildConditional):
                     chunks.extend(decompose_condition(val))
                 else:
                     chunks.append(val)
@@ -551,7 +533,7 @@ def decompose_condition(
 
 
 def find_nullable_concepts(
-    source_map: Dict[str, set[Datasource | QueryDatasource | UnnestJoin]],
+    source_map: Dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]],
     datasources: List[Datasource | QueryDatasource],
     joins: List[BaseJoin | UnnestJoin],
 ) -> List[str]:
