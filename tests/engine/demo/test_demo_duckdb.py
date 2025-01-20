@@ -180,7 +180,6 @@ select
 
     executor.parse_text(test)
     ratio = env.concepts["ratio"]
-    rate = env.concepts["survival_rate"]
     assert ratio.purpose == Purpose.PROPERTY
     assert set(x for x in env.concepts["survivors"].keys) == {
         "passenger.class",

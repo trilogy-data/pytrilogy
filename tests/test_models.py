@@ -174,7 +174,7 @@ def test_select(test_environment: Environment):
 
 
 def test_undefined(test_environment: Environment):
-    x = UndefinedConcept(address="test.test")
+    UndefinedConcept(address="test.test")
 
 
 def test_base_join(test_environment: Environment):
