@@ -9,6 +9,7 @@ from trilogy.core.models.build import (
     BuildGrain,
     BuildRowsetItem,
     BuildWhereClause,
+    Factory
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
@@ -47,8 +48,10 @@ def gen_rowset_node(
             f"Cannot generate parent select for concept {concept} in rowset {rowset.name}; ensure the rowset is a valid statement."
         )
     enrichment = set([x.address for x in local_optional])
-    rowset_relevant = [
-        x.with_select_context({}, select.grain, history.base_environment)
+
+    factory = Factory(environment=history.base_environment, grain = select.grain)
+    rowset_relevant:list[BuildConcept] = [
+        factory.build(x)
         for x in rowset.derived_concepts
     ]
     logger.info(
@@ -59,9 +62,7 @@ def gen_rowset_node(
         x for x in rowset_relevant if x.lineage.content.address in select_hidden
     ]
     additional_relevant = [
-        x.with_select_context(
-            select.local_concepts, select.grain, history.base_environment
-        )
+        factory.build(x)
         for x in select.output_components
         if x.address in enrichment
     ]

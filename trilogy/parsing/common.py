@@ -333,7 +333,7 @@ def filter_item_to_concept(
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
-    cparent = environment.concepts[parent.content]
+    cparent = environment.concepts[parent.content.address]
     modifiers = get_upstream_modifiers(
         cparent.concept_arguments, environment=environment
     )

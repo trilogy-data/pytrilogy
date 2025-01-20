@@ -52,13 +52,12 @@ class ValidationResult(Enum):
 LOGGER_PREFIX = "[CONCEPT DETAIL]"
 
 
-
 class SearchConceptsType(Protocol):
     def __call__(
         self,
         mandatory_list: List[BuildConcept],
-        environment: BuildEnvironment,
         history: History,
+        environment: BuildEnvironment,
         depth: int,
         g: ReferenceGraph,
         accept_partial: bool = False,

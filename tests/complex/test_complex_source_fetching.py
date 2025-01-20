@@ -5,7 +5,7 @@
 import re
 
 from trilogy.core.enums import Purpose
-from trilogy.core.models.build import BuildDatasource, BuildGrain
+from trilogy.core.models.build import BuildDatasource, BuildGrain, Factory
 from trilogy.core.models.environment import (
     Environment,
 )
@@ -27,6 +27,8 @@ def test_aggregate_of_property_function(stackoverflow_environment: Environment) 
     user_id = env.concepts["user_id"]
     select: SelectStatement = SelectStatement(selection=[avg_user_post_count, user_id])
 
+    factory = Factory(environment=env)
+
     query = process_query(statement=select, environment=env)
     generator = SqlServerDialect()
     # raise SyntaxError(generator.compile_statement(query))
@@ -34,7 +36,7 @@ def test_aggregate_of_property_function(stackoverflow_environment: Environment) 
         found = False
         if avg_user_post_count.address in [z.address for z in cte.output_columns]:
             rendered = generator.render_concept_sql(
-                avg_user_post_count.with_select_context({}, None, env), cte
+                factory.build(avg_user_post_count), cte
             )
             '"post_length") as "user_avg_post_length"' in rendered
             found = True

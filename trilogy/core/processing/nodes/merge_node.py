@@ -14,7 +14,7 @@ from trilogy.core.models.build import (
     BuildOrderBy,
     BuildParenthetical,
 )
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import BaseJoin, QueryDatasource, UnnestJoin
 from trilogy.core.processing.nodes.base_node import (
     NodeJoin,
@@ -30,7 +30,7 @@ LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
 def deduplicate_nodes(
     merged: dict[str, QueryDatasource | BuildDatasource],
     logging_prefix: str,
-    environment: Environment,
+    environment: BuildEnvironment,
 ) -> tuple[bool, dict[str, QueryDatasource | BuildDatasource], set[str]]:
     duplicates = False
     removed: set[str] = set()
@@ -76,7 +76,7 @@ def deduplicate_nodes_and_joins(
     joins: List[NodeJoin] | None,
     merged: dict[str, QueryDatasource | BuildDatasource],
     logging_prefix: str,
-    environment: Environment,
+    environment: BuildEnvironment,
 ) -> Tuple[List[NodeJoin] | None, dict[str, QueryDatasource | BuildDatasource]]:
     # it's possible that we have more sources than we need
     duplicates = True
@@ -200,7 +200,7 @@ class MergeNode(StrategyNode):
         final_joins: List[NodeJoin] | None,
         pregrain: BuildGrain,
         grain: BuildGrain,
-        environment: Environment,
+        environment: BuildEnvironment,
     ) -> List[BaseJoin | UnnestJoin]:
         # only finally, join between them for unique values
         dataset_list: List[QueryDatasource | BuildDatasource] = sorted(

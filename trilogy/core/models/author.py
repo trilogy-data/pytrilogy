@@ -100,15 +100,15 @@ class SelectContext(ABC):
 
 class ConceptArgs(ABC):
     @property
-    def concept_arguments(self) -> Sequence["Concept"]:
+    def concept_arguments(self) -> Sequence["ConceptRef"]:
         raise NotImplementedError
 
     @property
-    def existence_arguments(self) -> Sequence[tuple["Concept", ...]]:
+    def existence_arguments(self) -> Sequence[tuple["ConceptRef", ...]]:
         return []
 
     @property
-    def row_arguments(self) -> Sequence["Concept"]:
+    def row_arguments(self) -> Sequence["ConceptRef"]:
         return self.concept_arguments
 
 
@@ -176,19 +176,7 @@ class ConceptRef(
             line_no=self.line_no,
         )
 
-    def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ):
-        from trilogy.core.models.build import BuildConcept
 
-        if self.address in local_concepts:
-            full = local_concepts[self.address]
-            if isinstance(full, BuildConcept):
-                return full
-        full = environment.concepts[self.address]
-        if isinstance(full, BuildConcept):
-            return full
-        return full.with_select_context(local_concepts, grain, environment)
 
 
 class UndefinedConcept(ConceptRef):
@@ -486,16 +474,6 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
     def with_namespace(self, namespace: str) -> Self:
         return self.__class__(conditional=self.conditional.with_namespace(namespace))
 
-    def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ) -> "BuildWhereClause":
-        from trilogy.core.models.build import BuildWhereClause
-
-        return BuildWhereClause(
-            conditional=self.conditional.with_select_context(
-                local_concepts, grain, environment
-            )
-        )
 
 
 class HavingClause(WhereClause):
@@ -504,16 +482,6 @@ class HavingClause(WhereClause):
     def hydrate_missing(self, concepts: EnvironmentConceptDict):
         self.conditional.hydrate_missing(concepts)
 
-    def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ) -> Self:
-        from trilogy.core.models.build import BuildHavingClause
-
-        return BuildHavingClause(
-            conditional=self.conditional.with_select_context(
-                local_concepts, grain, environment
-            )
-        )
 
 
 class Grain(Namespaced, BaseModel):
@@ -1187,7 +1155,7 @@ class Concept(
             pkeys: set[str] = set()
             assert new_lineage
             for x_ref in new_lineage.concept_arguments:
-                x = environment.concepts[x_ref]
+                x = environment.concepts[x_ref.address]
                 if isinstance(x, UndefinedConcept):
                     continue
                 _, _, parent_keys = x.get_select_grain_and_keys(grain, environment)
@@ -1476,17 +1444,6 @@ class OrderItem(Mergeable, SelectContext, Namespaced, BaseModel):
     def with_namespace(self, namespace: str) -> "OrderItem":
         return OrderItem(expr=self.expr.with_namespace(namespace), order=self.order)
 
-    def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ) -> "OrderItem":
-        from trilogy.core.models.build import BuildOrderItem
-
-        return BuildOrderItem(
-            expr=self.expr.with_select_context(
-                local_concepts, grain, environment=environment
-            ),
-            order=self.order,
-        )
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
@@ -1548,26 +1505,7 @@ class WindowItem(
             index=self.index,
         )
 
-    def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ) -> "WindowItem":
-        from trilogy.core.models.build import BuildWindowItem
 
-        return BuildWindowItem(
-            type=self.type,
-            content=self.content.with_select_context(
-                local_concepts, grain, environment
-            ),
-            over=[
-                x.with_select_context(local_concepts, grain, environment)
-                for x in self.over
-            ],
-            order_by=[
-                x.with_select_context(local_concepts, grain, environment)
-                for x in self.order_by
-            ],
-            index=self.index,
-        )
 
     @property
     def concept_arguments(self) -> List[ConceptRef]:
@@ -1814,30 +1752,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Bas
     def datatype(self):
         return self.output_datatype
 
-    def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ) -> "Function":
-        from trilogy.core.models.build import BuildFunction
 
-        base = BuildFunction(
-            operator=self.operator,
-            arguments=[
-                (
-                    c.with_select_context(local_concepts, grain, environment)
-                    if isinstance(
-                        c,
-                        SelectContext,
-                    )
-                    else c
-                )
-                for c in self.arguments
-            ],
-            output_datatype=self.output_datatype,
-            output_purpose=self.output_purpose,
-            valid_inputs=self.valid_inputs,
-            arg_count=self.arg_count,
-        )
-        return base
 
     @field_validator("arguments", mode="before")
     @classmethod
@@ -2029,20 +1944,6 @@ class AggregateWrapper(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseMo
             by=[c.with_namespace(namespace) for c in self.by] if self.by else [],
         )
 
-    def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ) -> "AggregateWrapper":
-        from trilogy.core.models.build import BuildAggregateWrapper
-
-        if not self.by:
-            by = [environment.concepts[c] for c in grain.components]
-        else:
-            by = [
-                x.with_select_context(local_concepts, grain, environment)
-                for x in self.by
-            ]
-        parent = self.function.with_select_context(local_concepts, grain, environment)
-        return BuildAggregateWrapper(function=parent, by=by)
 
 
 class FilterItem(Namespaced, ConceptArgs, SelectContext, BaseModel):
@@ -2160,16 +2061,6 @@ class RowsetItem(SelectContext, Mergeable, ConceptArgs, Namespaced, BaseModel):
     def concept_arguments(self):
         return [self.content]
 
-    def with_select_context(self, local_concepts, grain, environment):
-        from trilogy.core.models.build import BuildRowsetItem
-
-        return BuildRowsetItem(
-            content=self.content.with_select_context(
-                local_concepts, self.rowset.select.grain, environment
-            ),
-            rowset=self.rowset,
-        )
-
 
 class OrderBy(SelectContext, Mergeable, Namespaced, BaseModel):
     items: List[OrderItem]
@@ -2184,15 +2075,7 @@ class OrderBy(SelectContext, Mergeable, Namespaced, BaseModel):
             items=[x.with_merge(source, target, modifiers) for x in self.items]
         )
 
-    def with_select_context(self, local_concepts, grain, environment):
-        from trilogy.core.models.build import BuildOrderBy
 
-        return BuildOrderBy(
-            items=[
-                x.with_select_context(local_concepts, grain, environment)
-                for x in self.items
-            ]
-        )
 
     @property
     def concept_arguments(self):
@@ -2232,11 +2115,14 @@ class SelectLineage(Mergeable, SelectContext, Namespaced, BaseModel):
             BuildConcept,
             BuildGrain,
             BuildSelectLineage,
+            Factory
         )
 
         materialized: dict[str, BuildConcept] = {}
+        factory = Factory(grain = self.grain, environment=environment, local_concepts=materialized)
+        where_factory = Factory(grain = Grain(), environment=environment, local_concepts={})
         local_concepts = {
-            k: v.with_select_context(materialized, self.grain, environment)
+            k: factory.build(v)
             for k, v in self.local_concepts.items()
         }
         local_concepts = {**local_concepts, **materialized}
@@ -2247,21 +2133,12 @@ class SelectLineage(Mergeable, SelectContext, Namespaced, BaseModel):
             # so rebuild at this point in the tree
             # TODO: simplify
             if new.address in local_concepts:
-                new = new.with_select_context(
-                    local_concepts,
-                    # the first pass grain will be incorrect
-                    self.grain,
-                    environment=environment,
-                )
+                new = factory.build(new)
                 local_concepts[new.address] = new
             else:
                 # Sometimes cached values here don't have the latest info
                 # but we can't just use environment, as it might not have the right grain.
-                new = new.with_select_context(
-                    local_concepts,
-                    self.grain,
-                    environment=environment,
-                )
+                new = factory.build(new)
                 local_concepts[new.address] = new
             final.append(new)
 
@@ -2269,11 +2146,7 @@ class SelectLineage(Mergeable, SelectContext, Namespaced, BaseModel):
             selection=final,
             hidden_components=self.hidden_components,
             order_by=(
-                self.order_by.with_select_context(
-                    local_concepts=local_concepts,
-                    grain=self.grain,
-                    environment=environment,
-                )
+                factory.build(self.order_by)
                 if self.order_by
                 else None
             ),
@@ -2282,18 +2155,13 @@ class SelectLineage(Mergeable, SelectContext, Namespaced, BaseModel):
             local_concepts=local_concepts,
             grain=BuildGrain.build(self.grain, environment, local_concepts),
             having_clause=(
-                self.having_clause.with_select_context(
-                    local_concepts=local_concepts,
-                    grain=self.grain,
-                    environment=environment,
-                )
+                factory.build(self.having_clause)
                 if self.having_clause
                 else None
             ),
+            # this uses a different grain factory
             where_clause=(
-                self.where_clause.with_select_context(
-                    local_concepts={}, grain=Grain(), environment=environment
-                )
+                where_factory.build(self.where_clause)
                 if self.where_clause
                 else None
             ),
@@ -2348,9 +2216,11 @@ class MultiSelectLineage(SelectContext, Mergeable, ConceptArgs, Namespaced, Base
             BuildConcept,
             BuildGrain,
             BuildMultiSelectLineage,
+            Factory,
         )
 
         local_build_cache: dict[str, BuildConcept] = {}
+        
         parents = [x.build_for_select(environment) for x in self.selects]
         base_local = parents[0].local_concepts
 
@@ -2382,37 +2252,27 @@ class MultiSelectLineage(SelectContext, Mergeable, ConceptArgs, Namespaced, Base
         final: list[BuildConcept] = [
             x for x in all_output if x.address not in self.hidden_components
         ]
+        factory = Factory(grain=self.grain, environment=environment, local_concepts=local_build_cache)
+        where_factory = Factory(environment=environment)
         lineage = BuildMultiSelectLineage(
             # we don't build selects here; they'll be built automatically in query discovery
             selects=self.selects,
             grain=final_grain,
-            align=self.align.with_select_context(
-                local_build_cache, self.grain, environment
-            ),
+            align=factory.build(self.align) ,
+            # self.align.with_select_context(
+            #     local_build_cache, self.grain, environment
+            # ),
             namespace=self.namespace,
             hidden_components=self.hidden_components,
-            order_by=(
-                self.order_by.with_select_context(
-                    local_build_cache, self.grain, environment
-                )
-                if self.order_by
-                else None
-            ),
+            order_by=factory.build(self.order_by) if self.order_by else None,
             limit=self.limit,
             where_clause=(
-                self.where_clause.with_select_context(
-                    local_build_cache, self.grain, environment
-                )
+                where_factory.build(self.where_clause)
                 if self.where_clause
                 else None
             ),
-            having_clause=(
-                self.having_clause.with_select_context(
-                    local_build_cache, self.grain, environment
-                )
-                if self.having_clause
-                else None
-            ),
+            having_clause= factory.build(self.having_clause)if self.having_clause else None
+            ,
             local_concepts=base_local,
             build_output_components=final,
             build_concept_arguments=all_input,

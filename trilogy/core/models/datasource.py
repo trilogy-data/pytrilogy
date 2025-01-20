@@ -53,22 +53,6 @@ class ColumnAssignment(BaseModel):
     def is_nullable(self) -> bool:
         return Modifier.NULLABLE in self.modifiers
 
-    def with_select_context(
-        self, context: dict, grain, environment: "Environment"
-    ) -> "ColumnAssignment":
-        from trilogy.core.models.build import BuildColumnAssignment
-
-        return BuildColumnAssignment(
-            alias=(
-                self.alias.with_select_context(context, grain, environment)
-                if isinstance(self.alias, Function)
-                else self.alias
-            ),
-            concept=environment.concepts[self.concept]
-            .with_grain(grain)
-            .with_select_context(context, grain, environment),
-            modifiers=self.modifiers,
-        )
 
     def with_namespace(self, namespace: str) -> "ColumnAssignment":
         return ColumnAssignment(
@@ -148,31 +132,22 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         )
 
     def build_for_select(self, environment):
-        from trilogy.core.models.build import BuildDatasource, BuildGrain
+        from trilogy.core.models.build import BuildDatasource, BuildGrain, Factory
 
         local_cache = {}
+        factory = Factory(
+            grain=self.grain, environment=environment, local_concepts=local_cache
+        )
         return BuildDatasource(
             name=self.name,
-            columns=[
-                c.with_select_context({}, self.grain, environment) for c in self.columns
-            ],
+            columns=[factory.build(c) for c in self.columns],
             address=self.address,
             grain=BuildGrain.build(self.grain, environment, local_cache),
             namespace=self.namespace,
             metadata=self.metadata,
-            where=(
-                self.where.with_select_context(
-                    local_cache, Grain(), environment=environment
-                )
-                if self.where
-                else None
-            ),
+            where=(factory.build(self.where) if self.where else None),
             non_partial_for=(
-                self.non_partial_for.with_select_context(
-                    local_cache, Grain(), environment=environment
-                )
-                if self.non_partial_for
-                else None
+                factory.build(self.non_partial_for) if self.non_partial_for else None
             ),
         )
 
@@ -221,10 +196,6 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     @property
     def safe_identifier(self) -> str:
         return self.identifier.replace(".", "_")
-
-    @property
-    def condition(self):
-        return None
 
     @property
     def output_lcl(self) -> LooseConceptList:

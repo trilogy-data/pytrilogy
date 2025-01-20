@@ -81,15 +81,16 @@ def get_graph_grains(g: nx.DiGraph) -> dict[str, list[str]]:
     datasources: dict[str, BuildDatasource | list[BuildDatasource]] = (
         nx.get_node_attributes(g, "datasource")
     )
-    grain_length: dict[str, int] = {}
+    grain_length: dict[str, list[str]] = {}
     for node in g.nodes:
         if node in datasources:
+            base:str = set()
             lookup = datasources[node]
             if not isinstance(lookup, list):
                 lookup = [lookup]
             assert isinstance(lookup, list)
             grain_length[node] = reduce(
-                lambda x, y: x.union(y.grain.components), lookup, set()
+                lambda x, y: x.union(y.grain.components), lookup, base
             )
     return grain_length
 
@@ -499,11 +500,7 @@ def gen_select_merge_node(
             conditions=conditions,
             datasources=list(
                 [
-                    (
-                        x.build_for_select(environment)
-                        if not isinstance(x, BuildDatasource)
-                        else x
-                    )
+                    x
                     for x in environment.datasources.values()
                 ]
             ),

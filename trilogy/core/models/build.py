@@ -52,6 +52,18 @@ from trilogy.core.models.author import (
     SelectContext,
     SelectLineage,
     WhereClause,
+    ConceptRef,
+    AggregateWrapper,
+    OrderBy,
+    OrderItem,
+    WindowItem,
+    Conditional,
+    Comparison,
+    AlignItem,
+    AlignClause,
+    MultiSelectLineage,
+    RowsetItem,
+    FilterItem,
 )
 from trilogy.core.models.core import (
     Addressable,
@@ -71,6 +83,7 @@ from trilogy.core.models.datasource import (
     Address,
     DatasourceMetadata,
     RawColumnExpr,
+    ColumnAssignment,
 )
 from trilogy.core.models.environment import Environment
 from trilogy.utility import unique
@@ -81,6 +94,7 @@ if TYPE_CHECKING:
     from trilogy.core.models.execute import CTE, UnionCTE
 
 LOGGER_PREFIX = "[MODELS_BUILD]"
+
 
 class BuildConceptArgs(ABC):
     @property
@@ -399,7 +413,7 @@ class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs, BaseMo
         return base
 
     @property
-    def row_arguments(self) -> List[BuildConcept]:
+    def row_arguments(self) -> Sequence[BuildConcept]:
         if isinstance(self.content, BuildConceptArgs):
             return self.content.row_arguments
         return self.concept_arguments
@@ -838,39 +852,6 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped, BaseModel):
 
     def with_select_context(self, *args, **kwargs):
         return self
-
-    @classmethod
-    def build(
-        cls, base: Concept, grain: BuildGrain, environment: Environment, local_concepts
-    ) -> BuildConcept:
-
-        new_lineage, final_grain, _ = base.get_select_grain_and_keys(grain, environment)
-        if isinstance(new_lineage, SelectContext):
-            new_lineage = new_lineage.with_select_context(
-                local_concepts=local_concepts, grain=grain, environment=environment
-            )
-
-        derivation = Concept.calculate_derivation(new_lineage, base.purpose)
-        granularity = Concept.calculate_granularity(
-            derivation, final_grain, new_lineage
-        )
-        is_aggregate = Concept.calculate_is_aggregate(new_lineage)
-        return BuildConcept(
-            name=base.name,
-            datatype=base.datatype,
-            purpose=base.purpose,
-            metadata=base.metadata,
-            lineage=new_lineage,
-            grain=BuildGrain.build(final_grain, environment, local_concepts),
-            namespace=base.namespace,
-            keys=base.keys,
-            modifiers=base.modifiers,
-            pseudonyms=base.pseudonyms,
-            ## instantiated values
-            derivation=derivation,
-            granularity=granularity,
-            build_is_aggregate=is_aggregate,
-        )
 
     @property
     def is_aggregate(self) -> bool:
@@ -1448,6 +1429,10 @@ class BuildDatasource(BaseModel):
         return self
 
     @property
+    def condition(self):
+        return None
+
+    @property
     def can_be_inlined(self) -> bool:
         if isinstance(self.address, Address) and self.address.is_query:
             return False
@@ -1534,14 +1519,267 @@ BuildExpr = (
     | str
     | float
     | list
-    # | WindowItem
-    # | FilterItem
-    # | Concept
-    # | ComparisonOperator
-    # | Conditional
-    # | Parenthetical
-    # | Function
-    # | AggregateWrapper
 )
 
 BuildConcept.model_rebuild()
+
+from functools import singledispatchmethod
+
+
+class Factory:
+
+    def __init__(
+        self,
+        environment: Environment,
+        local_concepts: dict[str, BuildConcept] | None = None,
+        grain: Grain | None = None,
+    ):
+        self.grain = grain or Grain()
+        self.environment = environment
+        self.local_concepts: dict[str, BuildConcept] = local_concepts or {}
+
+    def process_item(self, item):
+        if isinstance(item, SelectContext):
+            return self.build(item)
+        return item
+
+    @singledispatchmethod
+    def build(self, arg):
+        raise NotImplementedError("Cannot build {}".format(type(arg)))
+
+    @build.register
+    def _(self, base: Function):
+        from trilogy.core.models.build import BuildFunction
+
+        base = BuildFunction(
+            operator=base.operator,
+            arguments=[
+                (
+                    self.build(c)
+                    if isinstance(
+                        c,
+                        SelectContext,
+                    )
+                    else c
+                )
+                for c in base.arguments
+            ],
+            output_datatype=base.output_datatype,
+            output_purpose=base.output_purpose,
+            valid_inputs=base.valid_inputs,
+            arg_count=base.arg_count,
+        )
+        return base
+
+    @build.register
+    def _(self, base: ConceptRef):
+        if base.address in self.local_concepts:
+            full = self.local_concepts[base.address]
+            if isinstance(full, BuildConcept):
+                return full
+        full = self.environment.concepts[base.address]
+        if isinstance(full, BuildConcept):
+            return full
+        return self.build(full)
+
+    @build.register
+    def _(self, base: Concept) -> BuildConcept:
+        new_lineage, final_grain, _ = base.get_select_grain_and_keys(
+            self.grain, self.environment
+        )
+        if isinstance(new_lineage, SelectContext):
+            new_lineage = self.build(new_lineage)
+
+        derivation = Concept.calculate_derivation(new_lineage, base.purpose)
+        granularity = Concept.calculate_granularity(
+            derivation, final_grain, new_lineage
+        )
+        is_aggregate = Concept.calculate_is_aggregate(new_lineage)
+        return BuildConcept(
+            name=base.name,
+            datatype=base.datatype,
+            purpose=base.purpose,
+            metadata=base.metadata,
+            lineage=new_lineage,
+            grain=BuildGrain.build(final_grain, self.environment, self.local_concepts),
+            namespace=base.namespace,
+            keys=base.keys,
+            modifiers=base.modifiers,
+            pseudonyms=base.pseudonyms,
+            ## instantiated values
+            derivation=derivation,
+            granularity=granularity,
+            build_is_aggregate=is_aggregate,
+        )
+
+    @build.register
+    def _(self, base: AggregateWrapper):
+
+        if not base.by:
+            by = [self.environment.concepts[c] for c in self.grain.components]
+        else:
+            by = [self.build(x) for x in base.by]
+        parent = self.build(base.function)
+        return BuildAggregateWrapper(function=parent, by=by)
+
+    @build.register
+    def _(self, base: ColumnAssignment):
+
+        return BuildColumnAssignment(
+            alias=(
+                self.build(base.alias)
+                if isinstance(base.alias, Function)
+                else base.alias
+            ),
+            concept=self.build(
+                self.environment.concepts[base.concept].with_grain(self.grain)
+            ),
+            modifiers=base.modifiers,
+        )
+
+    @build.register
+    def _(self, base: OrderBy):
+        return BuildOrderBy(items=[self.build(x) for x in base.items])
+
+    @build.register
+    def _(self, base: OrderItem):
+        return BuildOrderItem(
+            expr=self.build(base.expr),
+            order=base.order,
+        )
+
+    @build.register
+    def _(self, base: WhereClause):
+        return BuildWhereClause(conditional=self.build(base.conditional))
+
+    @build.register
+    def _(self, base: HavingClause):
+        return BuildHavingClause(conditional=self.build(base.conditional))
+
+    @build.register
+    def _(self, base: WindowItem):
+        return BuildWindowItem(
+            type=base.type,
+            content=self.build(base.content),
+            order_by=[self.build(x) for x in base.order_by],
+            over=[self.build(x) for x in base.over],
+            index=base.index,
+        )
+
+    @build.register
+    def _(self, base: Conditional):
+        return BuildConditional(
+            left=(
+                self.build(base.left)
+                if isinstance(base.left, SelectContext)
+                else base.left
+            ),
+            right=(
+                self.build(base.right)
+                if isinstance(base.right, SelectContext)
+                else base.right
+            ),
+            operator=base.operator,
+        )
+
+    @build.register
+    def _(self, base: Comparison):
+        return BuildComparison(
+            left=(
+                self.build(base.left)
+                if isinstance(base.left, SelectContext)
+                else base.left
+            ),
+            right=(
+                self.build(base.right)
+                if isinstance(base.right, SelectContext)
+                else base.right
+            ),
+            operator=base.operator,
+        )
+
+    @build.register
+    def _(self, base:AlignItem):
+        return BuildAlignItem(
+            alias=base.alias,
+            concepts=[self.build(x) for x in base.concepts],
+            namespace=base.namespace,
+        )
+    
+    @build.register
+    def _(self, base:AlignClause):
+        return BuildAlignClause(items=[self.build(x) for x in base.items])
+    
+    @build.register
+    def _(self, base:RowsetItem):
+        return BuildRowsetItem(content=self.build(base.content), rowset=base.rowset)
+    
+    @build.register
+    def _(self, base:FilterItem):
+        return BuildFilterItem(content=self.build(base.content), where=self.build(base.where))
+    
+    @build.register
+    def _(self, base: MultiSelectLineage):
+
+
+        local_build_cache: dict[str, BuildConcept] = {}
+        
+        parents = [x.build_for_select(self.environment) for x in base.selects]
+        base_local = parents[0].local_concepts
+
+        for select in parents[1:]:
+            for k, v in select.local_concepts.items():
+                base_local[k] = v
+
+        # this requires custom handling to avoid circular dependencies
+        final_grain = BuildGrain.build(base.grain, self.environment, {})
+        derived_base = []
+        for k in base.derived_concepts:
+            base_concept = self.environment.concepts[k]
+            x = BuildConcept(
+                name=base_concept.name,
+                datatype=base_concept.datatype,
+                purpose=base_concept.purpose,
+                build_is_aggregate=False,
+                derivation=Derivation.MULTISELECT,
+                lineage=None,
+                grain=final_grain,
+                namespace=base_concept.namespace,
+            )
+            local_build_cache[k] = x
+            derived_base.append(x)
+        all_input: list[BuildConcept] = []
+        for x in parents:
+            all_input += x.output_components
+        all_output: list[BuildConcept] = derived_base + all_input
+        final: list[BuildConcept] = [
+            x for x in all_output if x.address not in base.hidden_components
+        ]
+        factory = Factory(grain=base.grain, environment=self.environment, local_concepts=local_build_cache)
+        where_factory = Factory(environment=self.environment)
+        lineage = BuildMultiSelectLineage(
+            # we don't build selects here; they'll be built automatically in query discovery
+            selects=base.selects,
+            grain=final_grain,
+            align=factory.build(base.align) ,
+            # self.align.with_select_context(
+            #     local_build_cache, self.grain, environment
+            # ),
+            namespace=base.namespace,
+            hidden_components=base.hidden_components,
+            order_by=factory.build(base.order_by) if base.order_by else None,
+            limit=base.limit,
+            where_clause=(
+                where_factory.build(base.where_clause)
+                if base.where_clause
+                else None
+            ),
+            having_clause= factory.build(base.having_clause)if base.having_clause else None
+            ,
+            local_concepts=base_local,
+            build_output_components=final,
+            build_concept_arguments=all_input,
+        )
+        for k in base.derived_concepts:
+            local_build_cache[k].lineage = lineage
+        return lineage

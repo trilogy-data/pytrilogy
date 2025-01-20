@@ -197,10 +197,13 @@ class Environment(BaseModel):
         self.frozen = False
 
     def materialize_for_select(self, local_concepts: dict[str, Concept] | None = None):
-        local_concepts = local_concepts or {}
         from trilogy.core.models.author import Grain
-        from trilogy.core.models.build import BuildConcept
+        from trilogy.core.models.build import Factory
         from trilogy.core.models.build_environment import BuildEnvironment
+
+        local_concepts = local_concepts or {}
+
+        env_factory = Factory(grain = Grain(), environment=self, local_concepts = local_concepts)
 
         base = BuildEnvironment(
             namespace=self.namespace,
@@ -212,27 +215,17 @@ class Environment(BaseModel):
             if k in local_concepts:
                 base.concepts[k] = v
             else:
-                base.concepts[k] = v.with_select_context(local_concepts, Grain(), self)
+                base.concepts[k] = env_factory.build(v)
         for k, v in local_concepts.items():
             base.concepts[k] = v
-        # now materialize
         for (
             k,
             d,
         ) in self.datasources.items():
             base.datasources[k] = d.build_for_select(self)
         for k, a in self.alias_origin_lookup.items():
-            base.alias_origin_lookup[k] = BuildConcept.build(
-                a, Grain(), self, local_concepts
-            )
+            base.alias_origin_lookup[k] = env_factory.build(a)
         base.gen_concept_list_caches()
-        # for k, v in self.concepts.items():
-        #     assert k in base.concepts
-        #     for p in v.pseudonyms:
-        #         assert p in self.concepts
-        #         assert p in base.concepts
-        # for k, v in self.alias_origin_lookup.items():
-        #     assert k in base.alias_origin_lookup
         return base
 
     def duplicate(self):

@@ -815,7 +815,7 @@ class ParseToObjects(Transformer):
                 raise ValueError("Invalid merge, source is wildcard, target is not")
             source_wildcard = source[:-2]
             target_wildcard = target[:-2]
-            sources = [
+            sources: list[Concept] = [
                 v
                 for k, v in self.environment.concepts.items()
                 if v.namespace == source_wildcard
@@ -825,7 +825,7 @@ class ParseToObjects(Transformer):
                 target = target_wildcard + "." + x.name
                 if target in self.environment.concepts:
                     targets[x.address] = self.environment.concepts[target]
-            sources: list[Concept] = [x for x in sources if x.address in targets]
+            sources = [x for x in sources if x.address in targets]
         else:
             sources = [self.environment.concepts[source]]
             targets = {sources[0].address: self.environment.concepts[target]}
