@@ -30,6 +30,7 @@ from trilogy.core.models.author import (
     ConceptRef,
     Function,
     UndefinedConcept,
+    UndefinedConceptFull,
     address_with_namespace,
 )
 from trilogy.core.models.core import DataType
@@ -94,7 +95,7 @@ class EnvironmentConceptDict(dict):
 
     def __getitem__(
         self, key: str, line_no: int | None = None, file: Path | None = None
-    ) -> Concept | UndefinedConcept:
+    ) -> Concept | UndefinedConceptFull:
         if isinstance(key, ConceptRef):
             return self.__getitem__(key.address, line_no=line_no, file=file)
         try:
@@ -112,15 +113,12 @@ class EnvironmentConceptDict(dict):
                     rest = key
                 if key in self.undefined:
                     return self.undefined[key]
-                undefined = UndefinedConcept(
-                    address=f"{ns}.{rest}",
+                undefined = UndefinedConceptFull(
                     line_no=line_no,
                     datatype=DataType.UNKNOWN,
-                    # name=rest,
-                    # line_no=line_no,
-                    # datatype=DataType.UNKNOWN,
-                    # purpose=Purpose.UNKNOWN,
-                    # namespace=ns,
+                    name=rest,
+                    purpose=Purpose.UNKNOWN,
+                    namespace=ns,
                 )
                 self.undefined[key] = undefined
                 return undefined
@@ -202,6 +200,7 @@ class Environment(BaseModel):
         local_concepts = local_concepts or {}
         from trilogy.core.models.author import Grain
         from trilogy.core.models.build import BuildConcept
+        from trilogy.core.models.build_environment import BuildEnvironment
 
         base = BuildEnvironment(
             namespace=self.namespace,
@@ -221,7 +220,7 @@ class Environment(BaseModel):
             k,
             d,
         ) in self.datasources.items():
-            base.datasources[k] = d.build_for_select(base)
+            base.datasources[k] = d.build_for_select(self)
         for k, a in self.alias_origin_lookup.items():
             base.alias_origin_lookup[k] = BuildConcept.build(
                 a, Grain(), self, local_concepts
@@ -699,10 +698,6 @@ class Environment(BaseModel):
             if source.address in ds.output_lcl:
                 ds.merge_concept(source, target, modifiers=modifiers)
         return True
-
-
-class BuildEnvironment(Environment):
-    pass
 
 
 class LazyEnvironment(Environment):

@@ -398,8 +398,8 @@ class Executor(object):
 
     def _concept_to_value(
         self,
-        concept: BuildConcept,
-        local_concepts: dict[str, BuildConcept] | None = None,
+        concept: Concept,
+        local_concepts: dict[str, Concept] | None = None,
     ) -> Any:
         if not concept.granularity == Granularity.SINGLE_ROW:
             raise SyntaxError(f"Cannot bind non-singleton concept {concept.address}")

@@ -148,25 +148,28 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         )
 
     def build_for_select(self, environment):
-        from trilogy.core.models.build import BuildDatasource
+        from trilogy.core.models.build import BuildDatasource, BuildGrain
 
+        local_cache = {}
         return BuildDatasource(
             name=self.name,
             columns=[
                 c.with_select_context({}, self.grain, environment) for c in self.columns
             ],
             address=self.address,
-            grain=self.grain,
+            grain=BuildGrain.build(self.grain, environment, local_cache),
             namespace=self.namespace,
             metadata=self.metadata,
             where=(
-                self.where.with_select_context({}, Grain(), environment=environment)
+                self.where.with_select_context(
+                    local_cache, Grain(), environment=environment
+                )
                 if self.where
                 else None
             ),
             non_partial_for=(
                 self.non_partial_for.with_select_context(
-                    {}, Grain(), environment=environment
+                    local_cache, Grain(), environment=environment
                 )
                 if self.non_partial_for
                 else None
@@ -226,15 +229,6 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     @property
     def output_lcl(self) -> LooseConceptList:
         return LooseConceptList(concepts=self.output_concepts)
-
-    @property
-    def can_be_inlined(self) -> bool:
-        if isinstance(self.address, Address) and self.address.is_query:
-            return False
-        # for x in self.columns:
-        #     if not isinstance(x.alias, str):
-        #         return False
-        return True
 
     @property
     def non_partial_concept_addresses(self) -> set[str]:

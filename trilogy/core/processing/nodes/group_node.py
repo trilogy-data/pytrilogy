@@ -3,25 +3,22 @@ from typing import List, Optional
 
 from trilogy.constants import logger
 from trilogy.core.enums import SourceType
-from trilogy.core.models.author import (
-    Grain,
-)
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConditional,
     BuildDatasource,
+    BuildGrain,
     BuildOrderBy,
     BuildParenthetical,
 )
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource
 from trilogy.core.processing.nodes.base_node import (
     StrategyNode,
     resolve_concept_map,
 )
 from trilogy.core.processing.utility import find_nullable_concepts, is_scalar_condition
-from trilogy.parsing.common import concepts_to_grain_concepts
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"
@@ -29,8 +26,8 @@ LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"
 
 @dataclass
 class GroupRequiredResponse:
-    target: Grain
-    upstream: Grain
+    target: BuildGrain
+    upstream: BuildGrain
     required: bool
 
 
@@ -41,7 +38,7 @@ class GroupNode(StrategyNode):
         self,
         output_concepts: List[BuildConcept],
         input_concepts: List[BuildConcept],
-        environment: Environment,
+        environment: BuildEnvironment,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
@@ -80,19 +77,17 @@ class GroupNode(StrategyNode):
         cls,
         downstream_concepts: List[BuildConcept],
         parents: list[QueryDatasource | BuildDatasource],
-        environment: Environment,
+        environment: BuildEnvironment,
     ) -> GroupRequiredResponse:
-        target_grain = Grain.from_concepts(
-            concepts_to_grain_concepts(
-                downstream_concepts,
-                environment=environment,
-            )
+        target_grain = BuildGrain.from_concepts(
+            downstream_concepts,
+            environment=environment,
         )
 
         # the concepts of the souce grain might not exist in the output environment
         # so we need to construct a new
         concept_map: dict[str, BuildConcept] = {}
-        comp_grain = Grain()
+        comp_grain = BuildGrain()
         for source in parents:
             comp_grain += source.grain
             for x in source.output_concepts:
@@ -100,9 +95,7 @@ class GroupNode(StrategyNode):
         lookups = [
             concept_map[x] if x in concept_map else x for x in comp_grain.components
         ]
-        comp_grain = Grain.from_concepts(
-            concepts_to_grain_concepts(lookups, environment=environment)
-        )
+        comp_grain = BuildGrain.from_concepts(lookups, environment=environment)
         # dynamically select if we need to group
         # because sometimes, we are already at required grain
         if comp_grain.issubset(target_grain):

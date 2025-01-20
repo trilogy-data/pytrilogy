@@ -478,6 +478,7 @@ class BaseDialect:
             BuildSubselectComparison,
             BuildWindowItem,
             BuildFilterItem,
+            BuildParenthetical,
             str,
             int,
             list,

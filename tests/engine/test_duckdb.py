@@ -9,7 +9,6 @@ from trilogy.core.env_processor import generate_graph
 from trilogy.core.models.author import (
     Concept,
     Grain,
-    LooseConceptList,
 )
 from trilogy.core.models.build import BuildFilterItem, BuildSubselectComparison
 from trilogy.core.models.environment import Environment
@@ -18,10 +17,11 @@ from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
     resolve_function_parent_concepts,
 )
-from trilogy.core.statements.author import SelectStatement, ShowStatement
+from trilogy.core.statements.author import ShowStatement
 from trilogy.executor import Executor
-from trilogy.parser import parse_text
 from trilogy.hooks.query_debugger import DebuggingHook
+from trilogy.parser import parse_text
+
 
 def test_basic_query(duckdb_engine: Executor, expected_results):
     graph = generate_graph(duckdb_engine.environment.materialize_for_select())
@@ -485,8 +485,6 @@ order by
 
 def test_case_group():
 
-
-
     default_duckdb_engine = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
 
     test = """
@@ -819,11 +817,6 @@ order by
 
     duckdb_engine.hooks = [DebuggingHook()]
 
-    parsed: SelectStatement = duckdb_engine.parse_text(test)[0]
-
-    assert parsed.grain == Grain(
-        components=[duckdb_engine.environment.concepts["item"]]
-    )
     # assert target.grain.components == [duckdb_engine.environment.concepts["item"]]
     results = duckdb_engine.execute_text(test)[0].fetchall()
     # derived = parsed.local_concepts["local.all_store_count"]

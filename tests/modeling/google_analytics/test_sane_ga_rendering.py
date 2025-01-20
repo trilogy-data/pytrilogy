@@ -84,7 +84,7 @@ def test_daily_job():
     )
     enrich_environment(env)
     orig_env = env
-    
+
     local_static = env.concepts["local.static"]
     assert local_static.granularity == Granularity.SINGLE_ROW
     env = env.materialize_for_select()

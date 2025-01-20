@@ -3,8 +3,8 @@ from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import NoDatasourceException
 from trilogy.core.models.build import (
     BuildConcept,
-    LooseBuildConceptList,
     BuildWhereClause,
+    LooseBuildConceptList,
 )
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.select_merge_node import (

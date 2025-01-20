@@ -7,8 +7,8 @@ from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
 from trilogy.core.graph_models import concept_to_node
-from trilogy.core.models.author import Concept, Conditional, WhereClause
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build import BuildConcept, BuildConditional, BuildWhereClause
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import padding
 from trilogy.utility import unique
@@ -34,7 +34,7 @@ def extract_address(node: str):
     return node.split("~")[1].split("@")[0]
 
 
-def extract_concept(node: str, env: Environment):
+def extract_concept(node: str, env: BuildEnvironment):
     if node in env.alias_origin_lookup:
         return env.alias_origin_lookup[node]
     return env.concepts[node]
@@ -77,7 +77,7 @@ def extract_ds_components(g: nx.DiGraph, nodelist: list[str]) -> list[list[str]]
 def determine_induced_minimal_nodes(
     G: nx.DiGraph,
     nodelist: list[str],
-    environment: Environment,
+    environment: BuildEnvironment,
     filter_downstream: bool,
     accept_partial: bool = False,
 ) -> nx.DiGraph | None:
@@ -87,7 +87,7 @@ def determine_induced_minimal_nodes(
 
     for node in G.nodes:
         if concepts.get(node):
-            lookup: Concept = concepts[node]
+            lookup: BuildConcept = concepts[node]
             if lookup.derivation in (Derivation.CONSTANT,):
                 nodes_to_remove.append(node)
             # purge a node if we're already looking for all it's parents
@@ -151,7 +151,7 @@ def determine_induced_minimal_nodes(
 
 
 def detect_ambiguity_and_raise(
-    all_concepts: list[Concept], reduced_concept_sets: list[set[str]]
+    all_concepts: list[BuildConcept], reduced_concept_sets: list[set[str]]
 ) -> None:
     final_candidates: list[set[str]] = []
     common: set[str] = set()
@@ -171,7 +171,7 @@ def detect_ambiguity_and_raise(
         )
 
 
-def has_synonym(concept: Concept, others: list[list[Concept]]) -> bool:
+def has_synonym(concept: BuildConcept, others: list[list[BuildConcept]]) -> bool:
     return any(
         c.address in concept.pseudonyms or concept.address in c.pseudonyms
         for sublist in others
@@ -179,7 +179,9 @@ def has_synonym(concept: Concept, others: list[list[Concept]]) -> bool:
     )
 
 
-def filter_relevant_subgraphs(subgraphs: list[list[Concept]]) -> list[list[Concept]]:
+def filter_relevant_subgraphs(
+    subgraphs: list[list[BuildConcept]],
+) -> list[list[BuildConcept]]:
     return [
         subgraph
         for subgraph in subgraphs
@@ -191,13 +193,30 @@ def filter_relevant_subgraphs(subgraphs: list[list[Concept]]) -> list[list[Conce
     ]
 
 
+def filter_duplicate_subgraphs(subgraphs: list[list[str]]) -> list[list[str]]:
+    seen: list[set[str]] = []
+
+    for graph in subgraphs:
+        seen.append(set(graph))
+    final = []
+    # sometimes w can get two subcomponents that are the same
+    # due to alias resolution
+    # if so, drop any that are strict subsets.
+    for graph in subgraphs:
+        set_x = set(graph)
+        if any([set_x.issubset(y) and set_x != y for y in seen]):
+            continue
+        final.append(graph)
+    return final
+
+
 def resolve_weak_components(
-    all_concepts: List[Concept],
-    environment: Environment,
+    all_concepts: List[BuildConcept],
+    environment: BuildEnvironment,
     environment_graph: nx.DiGraph,
     filter_downstream: bool = True,
     accept_partial: bool = False,
-) -> list[list[Concept]] | None:
+) -> list[list[BuildConcept]] | None:
     break_flag = False
     found = []
     search_graph = environment_graph.copy()
@@ -217,7 +236,6 @@ def resolve_weak_components(
         synonyms = synonyms.union(x.pseudonyms)
     # from trilogy.hooks.graph_hook import GraphHook
     # GraphHook().query_graph_built(search_graph, highlight_nodes=[concept_to_node(c.with_default_grain()) for c in all_concepts if "__preql_internal" not in c.address])
-    logger.info(search_graph.edges)
     while break_flag is not True:
         count += 1
         if count > AMBIGUITY_CHECK_LIMIT:
@@ -272,7 +290,7 @@ def resolve_weak_components(
     # take our first one as the actual graph
     g = found[0]
 
-    subgraphs: list[list[Concept]] = []
+    subgraphs: list[list[BuildConcept]] = []
     # components = nx.strongly_connected_components(g)
     node_list = [x for x in g.nodes if x.startswith("c~")]
     components = extract_ds_components(g, node_list)
@@ -288,35 +306,23 @@ def resolve_weak_components(
         if not sub_component:
             continue
         subgraphs.append(sub_component)
-    seen = []
-
-    for x in subgraphs:
-        seen.append(set(x))
-    final = []
-    # sometimes w can get two subcomponents that are the same
-    # due to alias resolution
-    # if so, drop any that are strict subsets.
-    for x in subgraphs:
-        set_x = set(x)
-        if any([set_x.issubset(y) and set_x != y for y in seen]):
-            continue
-        final.append(x)
+    final = filter_duplicate_subgraphs(subgraphs)
     return final
     # return filter_relevant_subgraphs(subgraphs)
 
 
 def subgraphs_to_merge_node(
-    concept_subgraphs: list[list[Concept]],
+    concept_subgraphs: list[list[BuildConcept]],
     depth: int,
-    all_concepts: List[Concept],
+    all_concepts: List[BuildConcept],
     environment,
     g,
     source_concepts,
     history,
     conditions,
-    search_conditions: WhereClause | None = None,
+    search_conditions: BuildWhereClause | None = None,
     enable_early_exit: bool = True,
-    output_concepts: List[Concept] | None = None,
+    output_concepts: List[BuildConcept] | None = None,
 ):
     parents: List[StrategyNode] = []
     logger.info(
@@ -368,15 +374,15 @@ def subgraphs_to_merge_node(
 
 
 def gen_merge_node(
-    all_concepts: List[Concept],
+    all_concepts: List[BuildConcept],
     g: nx.DiGraph,
-    environment: Environment,
+    environment: BuildEnvironment,
     depth: int,
     source_concepts,
     accept_partial: bool = False,
     history: History | None = None,
-    conditions: Conditional | None = None,
-    search_conditions: WhereClause | None = None,
+    conditions: BuildConditional | None = None,
+    search_conditions: BuildWhereClause | None = None,
 ) -> Optional[MergeNode]:
     if search_conditions:
         all_search_concepts = unique(

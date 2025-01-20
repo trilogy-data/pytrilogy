@@ -9,11 +9,11 @@ from trilogy.core.models.build import (
     BuildConditional,
     BuildDatasource,
     BuildFunction,
+    BuildGrain,
     BuildOrderBy,
     BuildParenthetical,
-    Grain,
 )
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
 from trilogy.core.processing.nodes.base_node import StrategyNode, resolve_concept_map
 from trilogy.utility import unique
@@ -32,7 +32,7 @@ class SelectNode(StrategyNode):
         self,
         input_concepts: List[BuildConcept],
         output_concepts: List[BuildConcept],
-        environment: Environment,
+        environment: BuildEnvironment,
         datasource: BuildDatasource | None = None,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
@@ -40,7 +40,7 @@ class SelectNode(StrategyNode):
         partial_concepts: List[BuildConcept] | None = None,
         nullable_concepts: List[BuildConcept] | None = None,
         accept_partial: bool = False,
-        grain: Optional[Grain] = None,
+        grain: Optional[BuildGrain] = None,
         force_group: bool | None = False,
         conditions: (
             BuildConditional | BuildComparison | BuildParenthetical | None
@@ -114,7 +114,7 @@ class SelectNode(StrategyNode):
         if self.force_group is False:
             grain = datasource.grain
         else:
-            grain = self.grain or Grain()
+            grain = self.grain or BuildGrain()
         return QueryDatasource(
             input_concepts=self.input_concepts,
             output_concepts=all_concepts_final,

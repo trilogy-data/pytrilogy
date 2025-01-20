@@ -118,7 +118,9 @@ class HasUUID(ABC):
         return hashlib.md5(str(self).encode()).hexdigest()
 
 
-class ConceptRef(Addressable, Namespaced, DataTyped, SelectContext, Mergeable, BaseModel):
+class ConceptRef(
+    Addressable, Namespaced, DataTyped, SelectContext, Mergeable, BaseModel
+):
     address: str
     datatype: DataType | ListType | StructType | MapType | NumericType = (
         DataType.UNKNOWN
@@ -180,7 +182,9 @@ class ConceptRef(Addressable, Namespaced, DataTyped, SelectContext, Mergeable, B
         from trilogy.core.models.build import BuildConcept
 
         if self.address in local_concepts:
-            return local_concepts[self.address]
+            full = local_concepts[self.address]
+            if isinstance(full, BuildConcept):
+                return full
         full = environment.concepts[self.address]
         if isinstance(full, BuildConcept):
             return full
@@ -919,7 +923,9 @@ class SubselectComparison(Comparison):
         )
 
 
-class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, BaseModel):
+class Concept(
+    Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, BaseModel
+):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -1218,14 +1224,10 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, Select
         local_concepts: dict[str, Concept],
         grain: Grain | None,
         environment: Environment,
-    ) -> Concept:
+    ):
         """Propagate the select context to the lineage of the concept"""
         from trilogy.core.models.build import BuildConcept
 
-        if isinstance(self, BuildConcept):
-            if self.address not in local_concepts:
-                local_concepts[self.address] = self
-            return self
         if self.address in local_concepts:
             check = local_concepts[self.address]
             if not isinstance(check, BuildConcept):
@@ -1237,7 +1239,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, Select
         local_concepts[self.address] = new
         return new
 
-    def with_grain(self, grain: Optional["Grain" ] = None) -> Self:
+    def with_grain(self, grain: Optional["Grain"] = None) -> Self:
 
         return self.__class__(
             name=self.name,
@@ -1452,28 +1454,18 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, Select
         return new
 
 
-# class UndefinedConcept(Concept, Mergeable, Namespaced):
-#     model_config = ConfigDict(arbitrary_types_allowed=True)
-#     name: str
-#     line_no: int | None = None
-#     datatype: DataType | ListType | StructType | MapType | NumericType = (
-#         DataType.UNKNOWN
-#     )
-#     purpose: Purpose = Purpose.UNKNOWN
+class UndefinedConceptFull(Concept, Mergeable, Namespaced):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    name: str
+    line_no: int | None = None
+    datatype: DataType | ListType | StructType | MapType | NumericType = (
+        DataType.UNKNOWN
+    )
+    purpose: Purpose = Purpose.UNKNOWN
 
-#     def with_select_context(
-#         self,
-#         local_concepts: dict[str, Concept],
-#         grain: Grain,
-#         environment: Environment,
-#     ) -> "Concept":
-#         if self.address in local_concepts:
-#             rval = local_concepts[self.address]
-#             rval = rval.with_select_context(local_concepts, grain, environment)
-#             return rval
-#         if environment.concepts.fail_on_missing:
-#             environment.concepts.raise_undefined(self.address, line_no=self.line_no)
-#         return self
+    @property
+    def reference(self) -> UndefinedConcept:
+        return UndefinedConcept(address=self.address)
 
 
 class OrderItem(Mergeable, SelectContext, Namespaced, BaseModel):
@@ -2225,7 +2217,7 @@ class AlignClause(Namespaced, SelectContext, BaseModel):
 
 
 class SelectLineage(Mergeable, SelectContext, Namespaced, BaseModel):
-    selection: List[Concept]
+    selection: List[ConceptRef]
     hidden_components: set[str]
     local_concepts: dict[str, Concept]
     order_by: Optional[OrderBy] = None
@@ -2236,7 +2228,11 @@ class SelectLineage(Mergeable, SelectContext, Namespaced, BaseModel):
     having_clause: Union["HavingClause", None] = Field(default=None)
 
     def build_for_select(self, environment: Environment):
-        from trilogy.core.models.build import BuildConcept, BuildSelectLineage
+        from trilogy.core.models.build import (
+            BuildConcept,
+            BuildGrain,
+            BuildSelectLineage,
+        )
 
         materialized: dict[str, BuildConcept] = {}
         local_concepts = {
@@ -2244,7 +2240,7 @@ class SelectLineage(Mergeable, SelectContext, Namespaced, BaseModel):
             for k, v in self.local_concepts.items()
         }
         local_concepts = {**local_concepts, **materialized}
-        final: List[Concept] = []
+        final: List[BuildConcept] = []
         for original in self.selection:
             new = original
             # we don't know the grain of an aggregate at assignment time
@@ -2284,7 +2280,7 @@ class SelectLineage(Mergeable, SelectContext, Namespaced, BaseModel):
             limit=self.limit,
             meta=self.meta,
             local_concepts=local_concepts,
-            grain=self.grain,
+            grain=BuildGrain.build(self.grain, environment, local_concepts),
             having_clause=(
                 self.having_clause.with_select_context(
                     local_concepts=local_concepts,
@@ -2304,7 +2300,7 @@ class SelectLineage(Mergeable, SelectContext, Namespaced, BaseModel):
         )
 
     @property
-    def output_components(self) -> List[Concept]:
+    def output_components(self) -> List[ConceptRef]:
         return self.selection
 
     def with_merge(
@@ -2345,16 +2341,51 @@ class MultiSelectLineage(SelectContext, Mergeable, ConceptArgs, Namespaced, Base
     limit: Optional[int] = None
     where_clause: Union["WhereClause", None] = Field(default=None)
     having_clause: Union["HavingClause", None] = Field(default=None)
-    local_concepts: dict[str, Concept]
     hidden_components: set[str]
 
     def build_for_select(self, environment: Environment):
-        from trilogy.core.models.build import BuildMultiSelectLineage
+        from trilogy.core.models.build import (
+            BuildConcept,
+            BuildGrain,
+            BuildMultiSelectLineage,
+        )
 
-        local_build_cache = {}
-        return BuildMultiSelectLineage(
+        local_build_cache: dict[str, BuildConcept] = {}
+        parents = [x.build_for_select(environment) for x in self.selects]
+        base_local = parents[0].local_concepts
+
+        for select in parents[1:]:
+            for k, v in select.local_concepts.items():
+                base_local[k] = v
+
+        # this requires custom handling to avoid circular dependencies
+        final_grain = BuildGrain.build(self.grain, environment, {})
+        derived_base = []
+        for k in self.derived_concepts:
+            base = environment.concepts[k]
+            x = BuildConcept(
+                name=base.name,
+                datatype=base.datatype,
+                purpose=base.purpose,
+                build_is_aggregate=False,
+                derivation=Derivation.MULTISELECT,
+                lineage=None,
+                grain=final_grain,
+                namespace=base.namespace,
+            )
+            local_build_cache[k] = x
+            derived_base.append(x)
+        all_input: list[BuildConcept] = []
+        for x in parents:
+            all_input += x.output_components
+        all_output: list[BuildConcept] = derived_base + all_input
+        final: list[BuildConcept] = [
+            x for x in all_output if x.address not in self.hidden_components
+        ]
+        lineage = BuildMultiSelectLineage(
             # we don't build selects here; they'll be built automatically in query discovery
-            selects=[x.build_for_select(environment) for x in self.selects],
+            selects=self.selects,
+            grain=final_grain,
             align=self.align.with_select_context(
                 local_build_cache, self.grain, environment
             ),
@@ -2382,11 +2413,13 @@ class MultiSelectLineage(SelectContext, Mergeable, ConceptArgs, Namespaced, Base
                 if self.having_clause
                 else None
             ),
-            local_concepts={
-                x: y.with_select_context(local_build_cache, self.grain, environment)
-                for x, y in self.local_concepts.items()
-            },
+            local_concepts=base_local,
+            build_output_components=final,
+            build_concept_arguments=all_input,
         )
+        for k in self.derived_concepts:
+            local_build_cache[k].lineage = lineage
+        return lineage
 
     def with_select_context(self, local_concepts, grain, environment):
         return self.build_for_select(environment)
@@ -2397,6 +2430,16 @@ class MultiSelectLineage(SelectContext, Mergeable, ConceptArgs, Namespaced, Base
         for select in self.selects:
             base += select.grain
         return base
+
+    @property
+    def output_components(self) -> list[ConceptRef]:
+        output = [
+            ConceptRef(address=x, datatype=DataType.UNKNOWN)
+            for x in self.derived_concepts
+        ]
+        for select in self.selects:
+            output += select.output_components
+        return [x for x in output if x.address not in self.hidden_components]
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
@@ -2422,10 +2465,6 @@ class MultiSelectLineage(SelectContext, Mergeable, ConceptArgs, Namespaced, Base
                 if self.having_clause
                 else None
             ),
-            local_concepts={
-                x: y.with_merge(source, target, modifiers)
-                for x, y in self.local_concepts.items()
-            },
         )
         return new
 
@@ -2447,17 +2486,7 @@ class MultiSelectLineage(SelectContext, Mergeable, ConceptArgs, Namespaced, Base
                 if self.having_clause
                 else None
             ),
-            local_concepts={
-                x: y.with_namespace(namespace) for x, y in self.local_concepts.items()
-            },
         )
-
-    @property
-    def output_components(self) -> list[Concept]:
-        output = [self.local_concepts[x] for x in self.derived_concepts]
-        for select in self.selects:
-            output += select.output_components
-        return [x for x in output if x.address not in self.hidden_components]
 
     @property
     def derived_concepts(self) -> set[str]:

@@ -5,14 +5,12 @@ from trilogy.core.enums import (
     JoinType,
     SourceType,
 )
-from trilogy.core.models.author import (
-    Grain,
-)
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConditional,
     BuildDatasource,
+    BuildGrain,
     BuildOrderBy,
     BuildParenthetical,
 )
@@ -115,7 +113,7 @@ class MergeNode(StrategyNode):
         nullable_concepts: Optional[List[BuildConcept]] = None,
         force_group: bool | None = None,
         depth: int = 0,
-        grain: Grain | None = None,
+        grain: BuildGrain | None = None,
         conditions: (
             BuildConditional | BuildComparison | BuildParenthetical | None
         ) = None,
@@ -200,8 +198,8 @@ class MergeNode(StrategyNode):
         self,
         final_datasets,
         final_joins: List[NodeJoin] | None,
-        pregrain: Grain,
-        grain: Grain,
+        pregrain: BuildGrain,
+        grain: BuildGrain,
         environment: Environment,
     ) -> List[BaseJoin | UnnestJoin]:
         # only finally, join between them for unique values
@@ -297,7 +295,7 @@ class MergeNode(StrategyNode):
                 )
                 return dataset
 
-        pregrain = Grain()
+        pregrain = BuildGrain()
         for source in final_datasets:
             pregrain += source.grain
 

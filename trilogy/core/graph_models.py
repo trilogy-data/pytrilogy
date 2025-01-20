@@ -1,6 +1,6 @@
 import networkx as nx
 
-from trilogy.core.models.build  import BuildConcept, BuildDatasource
+from trilogy.core.models.build import BuildConcept, BuildDatasource
 
 
 def concept_to_node(input: BuildConcept) -> str:

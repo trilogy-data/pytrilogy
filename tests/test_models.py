@@ -19,6 +19,7 @@ from trilogy.core.models.author import (
     RowsetItem,
     UndefinedConcept,
 )
+from trilogy.core.models.build import BuildGrain
 from trilogy.core.models.core import (
     DataType,
     TupleWrapper,
@@ -48,12 +49,12 @@ def test_cte_merge(test_environment, test_environment_graph):
     a = CTE(
         name="test",
         output_columns=[outputs[0]],
-        grain=Grain(),
+        grain=BuildGrain(),
         source=QueryDatasource(
             input_concepts=[outputs[0]],
             output_concepts=[outputs[0]],
             datasources=[datasource],
-            grain=Grain(),
+            grain=BuildGrain(),
             joins=[],
             source_map={outputs[0].address: {datasource}},
         ),
@@ -62,12 +63,12 @@ def test_cte_merge(test_environment, test_environment_graph):
     b = CTE(
         name="testb",
         output_columns=outputs,
-        grain=Grain(),
+        grain=BuildGrain(),
         source=QueryDatasource(
             input_concepts=outputs,
             output_concepts=outputs,
             datasources=[datasource],
-            grain=Grain(),
+            grain=BuildGrain(),
             joins=[],
             source_map=output_map,
         ),
@@ -225,12 +226,12 @@ def test_join(test_environment: Environment):
     a = CTE(
         name="test",
         output_columns=[outputs[0]],
-        grain=Grain(),
+        grain=BuildGrain(),
         source=QueryDatasource(
             input_concepts=[outputs[0]],
             output_concepts=[outputs[0]],
             datasources=[datasource],
-            grain=Grain(),
+            grain=BuildGrain(),
             joins=[],
             source_map={outputs[0].address: {datasource}},
         ),
@@ -240,12 +241,12 @@ def test_join(test_environment: Environment):
     b = CTE(
         name="testb",
         output_columns=outputs,
-        grain=Grain(),
+        grain=BuildGrain(),
         source=QueryDatasource(
             input_concepts=outputs,
             output_concepts=outputs,
             datasources=[datasource],
-            grain=Grain(),
+            grain=BuildGrain(),
             joins=[],
             source_map=output_map,
         ),

@@ -3,6 +3,7 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
 from trilogy.core.processing.nodes import History, StrategyNode, UnnestNode
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_UNNEST_NODE]"
@@ -11,11 +12,12 @@ LOGGER_PREFIX = "[GEN_UNNEST_NODE]"
 def gen_unnest_node(
     concept: BuildConcept,
     local_optional: List[BuildConcept],
-    environment,
+    history: History,
+    environment:BuildEnvironment,
     g,
     depth: int,
     source_concepts,
-    history: History | None = None,
+    
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     arguments = []

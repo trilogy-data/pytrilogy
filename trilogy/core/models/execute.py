@@ -16,16 +16,13 @@ from trilogy.core.enums import (
     Purpose,
     SourceType,
 )
-from trilogy.core.models.author import (
-    Grain,
-
-)
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConditional,
     BuildDatasource,
     BuildFunction,
+    BuildGrain,
     BuildOrderBy,
     BuildParenthetical,
     BuildRowsetItem,
@@ -44,7 +41,7 @@ class CTE(BaseModel):
     source: "QueryDatasource"
     output_columns: List[BuildConcept]
     source_map: Dict[str, list[str]]
-    grain: Grain
+    grain: BuildGrain
     base: bool = False
     group_to_grain: bool = False
     existence_source_map: Dict[str, list[str]] = Field(default_factory=dict)
@@ -559,7 +556,7 @@ class QueryDatasource(BaseModel):
     datasources: List[Union[BuildDatasource, "QueryDatasource"]]
     source_map: Dict[str, Set[Union[BuildDatasource, "QueryDatasource", "UnnestJoin"]]]
 
-    grain: Grain
+    grain: BuildGrain
     joins: List[BaseJoin | UnnestJoin]
     limit: Optional[int] = None
     condition: Optional[
@@ -809,7 +806,7 @@ class UnionCTE(BaseModel):
     parent_ctes: list[CTE | UnionCTE]
     internal_ctes: list[CTE | UnionCTE]
     output_columns: List[BuildConcept]
-    grain: Grain
+    grain: BuildGrain
     operator: str = "UNION ALL"
     order_by: Optional[BuildOrderBy] = None
     limit: Optional[int] = None

@@ -3,7 +3,7 @@ from trilogy.core.models.author import AggregateWrapper, Function
 from trilogy.core.models.build import BuildAggregateWrapper
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
-from trilogy.core.processing.concept_strategies_v3 import search_concepts
+from trilogy.core.processing.concept_strategies_v3 import search_concepts, History
 from trilogy.core.processing.node_generators import gen_group_node
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
@@ -28,6 +28,7 @@ def test_gen_group_node_parents(test_environment: Environment):
 
 
 def test_gen_group_node_basic(test_environment, test_environment_graph):
+    history = History(base_environment=test_environment)
     test_environment = test_environment.materialize_for_select()
     prod = test_environment.concepts["product_id"]
     test_environment.concepts["revenue"]
@@ -40,12 +41,14 @@ def test_gen_group_node_basic(test_environment, test_environment_graph):
         g=test_environment_graph,
         depth=0,
         source_concepts=search_concepts,
+        history=history
     )
     assert isinstance(gnode, (GroupNode, MergeNode))
     assert {x.address for x in gnode.output_concepts} == {prod_r.address, prod.address}
 
 
 def test_gen_group_node(test_environment: Environment, test_environment_graph):
+    history = History(base_environment=test_environment)
     test_environment = test_environment.materialize_for_select()
     cat = test_environment.concepts["category_id"]
     test_environment.concepts["category_top_50_revenue_products"]
@@ -60,6 +63,7 @@ def test_gen_group_node(test_environment: Environment, test_environment_graph):
         g=test_environment_graph,
         depth=0,
         source_concepts=search_concepts,
+        history=history
     )
     assert len(gnode.parents) == 1
     parent = gnode.parents[0]

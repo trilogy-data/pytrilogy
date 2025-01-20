@@ -96,7 +96,9 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
 
     def as_lineage(self, environment: Environment) -> SelectLineage:
         return SelectLineage(
-            selection=[environment.concepts[x.concept] for x in self.selection],
+            selection=[
+                environment.concepts[x.concept].reference for x in self.selection
+            ],
             order_by=self.order_by,
             limit=self.limit,
             where_clause=self.where_clause,

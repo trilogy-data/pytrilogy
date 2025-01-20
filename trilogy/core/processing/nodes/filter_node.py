@@ -7,8 +7,8 @@ from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConditional,
+    BuildGrain,
     BuildParenthetical,
-    Grain,
 )
 from trilogy.core.processing.nodes.base_node import StrategyNode
 
@@ -40,7 +40,7 @@ class FilterNode(StrategyNode):
         ) = None,
         partial_concepts: List[BuildConcept] | None = None,
         force_group: bool | None = False,
-        grain: Grain | None = None,
+        grain: BuildGrain | None = None,
         existence_concepts: List[BuildConcept] | None = None,
     ):
         super().__init__(

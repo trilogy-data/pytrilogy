@@ -3,7 +3,7 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionClass, SourceType
 from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
-from trilogy.core.models.environment import BuildEnvironment
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )

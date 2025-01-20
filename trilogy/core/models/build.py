@@ -35,12 +35,12 @@ from trilogy.core.enums import (
     Derivation,
     FunctionClass,
     FunctionType,
+    Granularity,
     Modifier,
     Ordering,
     Purpose,
     WindowOrder,
     WindowType,
-    Granularity,
 )
 from trilogy.core.models.author import (
     Concept,
@@ -49,9 +49,9 @@ from trilogy.core.models.author import (
     Grain,
     HavingClause,
     Metadata,
-    OrderItem,
     RowsetLineage,
     SelectContext,
+    SelectLineage,
     WhereClause,
 )
 from trilogy.core.models.core import (
@@ -70,18 +70,72 @@ from trilogy.core.models.core import (
 )
 from trilogy.core.models.datasource import (
     Address,
-    Datasource,
     DatasourceMetadata,
     RawColumnExpr,
 )
-from trilogy.core.models.environment import BuildEnvironment, Environment
+from trilogy.core.models.environment import Environment
 from trilogy.utility import unique
 
 # TODO: refactor to avoid these
 if TYPE_CHECKING:
+    from trilogy.core.models.build_environment import BuildEnvironment
     from trilogy.core.models.execute import CTE, UnionCTE
 
 LOGGER_PREFIX = "[MODELS_BUILD]"
+
+
+def concept_is_relevant(
+    concept: BuildConcept, others: list[BuildConcept], environment: BuildEnvironment
+) -> bool:
+
+    if concept.is_aggregate and not (
+        isinstance(concept.lineage, BuildAggregateWrapper) and concept.lineage.by
+    ):
+
+        return False
+    if concept.purpose in (Purpose.PROPERTY, Purpose.METRIC) and concept.keys:
+        if any([c in others for c in concept.keys]):
+
+            return False
+    if concept.purpose in (Purpose.METRIC,):
+        if all([c in others for c in concept.grain.components]):
+            return False
+    if concept.derivation in (Derivation.BASIC,):
+
+        return any(
+            concept_is_relevant(c, others, environment)
+            for c in concept.concept_arguments
+        )
+    if concept.granularity == Granularity.SINGLE_ROW:
+        return False
+    return True
+
+
+def concepts_to_build_grain_concepts(
+    concepts: Iterable[BuildConcept | str], environment: Environment | None
+) -> list[Concept]:
+    pconcepts = []
+    for c in concepts:
+        if isinstance(c, Concept):
+            pconcepts.append(c)
+        elif isinstance(c, BuildConcept):
+            pconcepts.append(c)
+        elif environment:
+            pconcepts.append(environment.concepts[c])
+        else:
+            raise ValueError(
+                f"Unable to resolve input {c} without environment provided to concepts_to_grain call"
+            )
+
+    final: List[Concept] = []
+    for sub in pconcepts:
+        if not concept_is_relevant(sub, pconcepts, environment):
+            continue
+        final.append(sub)
+    final = unique(final, "address")
+    v2 = sorted(final, key=lambda x: x.name)
+    return v2
+
 
 class LooseBuildConceptList(BaseModel):
     concepts: Sequence[BuildConcept]
@@ -131,6 +185,7 @@ class LooseBuildConceptList(BaseModel):
             return False
         return self.addresses.isdisjoint(other.addresses)
 
+
 class ConstantInlineable(ABC):
 
     def inline_constant(self, concept: BuildConcept):
@@ -168,24 +223,36 @@ def get_concept_arguments(expr) -> List["BuildConcept"]:
 
 class BuildGrain(BaseModel):
     components: set[str] = Field(default_factory=set)
-    where_clause: Optional["BuildWhereClause"] = None
+    where_clause: Optional[BuildWhereClause] = None
 
     def without_condition(self):
         return BuildGrain(components=self.components)
 
     @classmethod
+    def build(cls, grain: Grain, environment, local_concepts):
+        if grain.where_clause:
+            where = None
+            # where = grain.where_clause.with_select_context(
+            #     local_concepts, Grain(), environment
+            # )
+        else:
+            where = None
+        return BuildGrain(components=grain.components, where_clause=where)
+
+    @classmethod
     def from_concepts(
         cls,
-        concepts: Iterable[Concept | str],
+        concepts: Iterable[BuildConcept | str],
         environment: BuildEnvironment | None = None,
         where_clause: BuildWhereClause | None = None,
-    ) -> "Grain":
-        from trilogy.parsing.common import concepts_to_grain_concepts
+    ) -> "BuildGrain":
 
         return BuildGrain(
             components={
                 c.address
-                for c in concepts_to_grain_concepts(concepts, environment=environment)
+                for c in concepts_to_build_grain_concepts(
+                    concepts, environment=environment
+                )
             },
             where_clause=where_clause,
         )
@@ -207,7 +274,7 @@ class BuildGrain(BaseModel):
             raise ValueError(f"Invalid component {output}")
         return output
 
-    def __add__(self, other: "Grain") -> "Grain":
+    def __add__(self, other: "BuildGrain") -> "BuildGrain":
         if not other:
             return self
         where = self.where_clause
@@ -229,7 +296,7 @@ class BuildGrain(BaseModel):
             components=self.components.union(other.components), where_clause=where
         )
 
-    def __sub__(self, other: "Grain") -> "Grain":
+    def __sub__(self, other: "BuildGrain") -> "BuildGrain":
         return BuildGrain(
             components=self.components.difference(other.components),
             where_clause=self.where_clause,
@@ -268,13 +335,9 @@ class BuildGrain(BaseModel):
 
     def __str__(self):
         if self.abstract:
-            base = "BuildGrain<Abstract>"
+            base = "Grain<Abstract>"
         else:
-            base = (
-                "BuildGrain<"
-                + ",".join([c for c in sorted(list(self.components))])
-                + ">"
-            )
+            base = "Grain<" + ",".join([c for c in sorted(list(self.components))]) + ">"
         if self.where_clause:
             base += f"|{str(self.where_clause)}"
         return base
@@ -733,10 +796,7 @@ class BuildSubselectComparison(BuildComparison):
 
 # class BuildConcept(Concept, BaseModel):
 class BuildConcept(Addressable, ConceptArgs, DataTyped, BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        frozen=True
-    )
+    model_config = ConfigDict(extra="forbid")
     name: str
     datatype: DataType | ListType | StructType | MapType | NumericType
     purpose: Purpose
@@ -759,19 +819,17 @@ class BuildConcept(Addressable, ConceptArgs, DataTyped, BaseModel):
         ]
     ] = None
 
-
     keys: Optional[set[str]] = None
-    grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
+    grain: BuildGrain = Field(default=None, validate_default=True)  # type: ignore
     modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = Field(default_factory=set)
-
 
     def with_select_context(self, *args, **kwargs):
         return self
 
     @classmethod
     def build(
-        cls, base: Concept, grain: Grain, environment: Environment, local_concepts
+        cls, base: Concept, grain: BuildGrain, environment: Environment, local_concepts
     ) -> BuildConcept:
 
         new_lineage, final_grain, _ = base.get_select_grain_and_keys(grain, environment)
@@ -791,7 +849,7 @@ class BuildConcept(Addressable, ConceptArgs, DataTyped, BaseModel):
             purpose=base.purpose,
             metadata=base.metadata,
             lineage=new_lineage,
-            grain=final_grain,
+            grain=BuildGrain.build(final_grain, environment, local_concepts),
             namespace=base.namespace,
             keys=base.keys,
             modifiers=base.modifiers,
@@ -801,8 +859,6 @@ class BuildConcept(Addressable, ConceptArgs, DataTyped, BaseModel):
             granularity=granularity,
             build_is_aggregate=is_aggregate,
         )
-
-
 
     @property
     def is_aggregate(self) -> bool:
@@ -859,16 +915,22 @@ class BuildConcept(Addressable, ConceptArgs, DataTyped, BaseModel):
             return f"{self.namespace.replace('.','_')}_{self.name.replace('.','_')}"
         return self.name.replace(".", "_")
 
-    def with_grain(self, grain: Optional["Grain" | BuildConcept] = None) -> Self:
+    def with_grain(self, grain: Optional["BuildGrain" | BuildConcept] = None) -> Self:
         if isinstance(grain, BuildConcept):
-            grain = Grain(components= set([grain.address,]))
+            grain = BuildGrain(
+                components=set(
+                    [
+                        grain.address,
+                    ]
+                )
+            )
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage,
-            grain=grain if grain else Grain(components=set()),
+            grain=grain if grain else BuildGrain(components=set()),
             namespace=self.namespace,
             keys=self.keys,
             modifiers=self.modifiers,
@@ -883,7 +945,7 @@ class BuildConcept(Addressable, ConceptArgs, DataTyped, BaseModel):
     def _with_default_grain(self) -> Self:
         if self.purpose == Purpose.KEY:
             # we need to make this abstract
-            grain = Grain(components={self.address})
+            grain = BuildGrain(components={self.address})
         elif self.purpose == Purpose.PROPERTY:
             components = []
             if self.keys:
@@ -892,14 +954,14 @@ class BuildConcept(Addressable, ConceptArgs, DataTyped, BaseModel):
                 for item in self.lineage.concept_arguments:
                     components += [x.address for x in item.sources]
             # TODO: set synonyms
-            grain = Grain(
+            grain = BuildGrain(
                 components=set([x for x in components]),
             )  # synonym_set=generate_BuildConcept_synonyms(components))
         elif self.purpose == Purpose.METRIC:
-            grain = Grain()
+            grain = BuildGrain()
         elif self.purpose == Purpose.CONSTANT:
             if self.derivation != Derivation.CONSTANT:
-                grain = Grain(components={self.address})
+                grain = BuildGrain(components={self.address})
             else:
                 grain = self.grain
         else:
@@ -972,7 +1034,7 @@ class BuildOrderItem(BaseModel):
 class BuildWindowItem(DataTyped, ConceptArgs, BaseModel):
     type: WindowType
     content: BuildConcept
-    order_by: List[BuildOrderItem | OrderItem]
+    order_by: List[BuildOrderItem]
     over: List["BuildConcept"] = Field(default_factory=list)
     index: Optional[int] = None
 
@@ -1053,7 +1115,7 @@ class BuildCaseElse(ConceptArgs, BaseModel):
 
 
 class BuildFunction(DataTyped, ConceptArgs, BaseModel):
-# class BuildFunction(Function):
+    # class BuildFunction(Function):
     operator: FunctionType
     arg_count: int = Field(default=1)
     output_datatype: DataType | ListType | StructType | MapType | NumericType
@@ -1109,7 +1171,7 @@ class BuildFunction(DataTyped, ConceptArgs, BaseModel):
     @property
     def output_grain(self):
         # aggregates have an abstract grain
-        base_grain = Grain(components=[])
+        base_grain = BuildGrain(components=[])
         if self.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
             return base_grain
         # scalars have implicit grain of all arguments
@@ -1223,7 +1285,7 @@ class BuildSelectLineage(BaseModel):
     order_by: Optional[BuildOrderBy] = None
     limit: Optional[int] = None
     meta: Metadata = Field(default_factory=lambda: Metadata())
-    grain: Grain = Field(default_factory=Grain)
+    grain: BuildGrain = Field(default_factory=BuildGrain)
     where_clause: WhereClause | BuildWhereClause | None = Field(default=None)
     having_clause: HavingClause | BuildHavingClause | None = Field(default=None)
 
@@ -1233,7 +1295,8 @@ class BuildSelectLineage(BaseModel):
 
 
 class BuildMultiSelectLineage(ConceptArgs, BaseModel):
-    selects: List[BuildSelectLineage]
+    selects: List[SelectLineage]
+    grain: BuildGrain
     align: BuildAlignClause
     namespace: str
     order_by: Optional[BuildOrderBy] = None
@@ -1241,6 +1304,8 @@ class BuildMultiSelectLineage(ConceptArgs, BaseModel):
     where_clause: Union["BuildWhereClause", None] = Field(default=None)
     having_clause: Union["BuildHavingClause", None] = Field(default=None)
     local_concepts: dict[str, BuildConcept]
+    build_concept_arguments: list[BuildConcept]
+    build_output_components: list[BuildConcept]
     hidden_components: set[str]
 
     # @property
@@ -1258,18 +1323,8 @@ class BuildMultiSelectLineage(ConceptArgs, BaseModel):
         return output
 
     @property
-    def grain(self):
-        base = Grain()
-        for select in self.selects:
-            base += select.grain
-        return base
-
-    @property
     def output_components(self) -> list[BuildConcept]:
-        output = [self.local_concepts[x] for x in self.derived_concept]
-        for select in self.selects:
-            output += select.output_components
-        return [x for x in output if x.address not in self.hidden_components]
+        return self.build_output_components
 
     @property
     def derived_concept(self) -> set[str]:
@@ -1279,11 +1334,8 @@ class BuildMultiSelectLineage(ConceptArgs, BaseModel):
         return output
 
     @property
-    def concept_arguments(self):
-        output = []
-        for select in self.selects:
-            output += select.output_components
-        return unique(output, "address")
+    def concept_arguments(self) -> list[BuildConcept]:
+        return self.build_concept_arguments
 
     # these are needed to help disambiguate between parents
     def get_merge_concept(self, check: BuildConcept) -> str | None:
@@ -1303,7 +1355,6 @@ class BuildMultiSelectLineage(ConceptArgs, BaseModel):
         raise SyntaxError(
             f"Could not find upstream map for multiselect {str(BuildConcept)} on cte ({cte})"
         )
-
 
 
 class BuildAlignItem(BaseModel):
@@ -1360,12 +1411,12 @@ class BuildColumnAssignment(BaseModel):
         return Modifier.NULLABLE in self.modifiers
 
 
-class BuildDatasource(Datasource):
+class BuildDatasource(BaseModel):
     name: str
     columns: List[BuildColumnAssignment]
     address: Union[Address, str]
-    grain: Grain = Field(
-        default_factory=lambda: Grain(components=set()), validate_default=True
+    grain: BuildGrain = Field(
+        default_factory=lambda: BuildGrain(components=set()), validate_default=True
     )
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     metadata: DatasourceMetadata = Field(
@@ -1376,6 +1427,19 @@ class BuildDatasource(Datasource):
 
     def __hash__(self):
         return self.identifier.__hash__()
+
+    def __add__(self, other):
+        if not other == self:
+            raise ValueError(
+                "Attempted to add two datasources that are not identical, this is not a valid operation"
+            )
+        return self
+
+    @property
+    def can_be_inlined(self) -> bool:
+        if isinstance(self.address, Address) and self.address.is_query:
+            return False
+        return True
 
     @property
     def identifier(self) -> str:
@@ -1437,7 +1501,7 @@ class BuildDatasource(Datasource):
         if isinstance(self.address, Address):
             return self.address.location
         return self.address
-    
+
     @property
     def output_lcl(self) -> LooseBuildConceptList:
         return LooseBuildConceptList(concepts=self.output_concepts)

@@ -1,5 +1,5 @@
 from trilogy import parse
-from trilogy.core.models.author import Grain
+from trilogy.core.models.build import BuildGrain
 from trilogy.core.models.execute import CTE, QueryDatasource
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.common import render_join_concept
@@ -29,12 +29,12 @@ address x_source;
         cte=CTE(
             name="test",
             output_columns=[concept, y_concept],
-            grain=Grain(),
+            grain=BuildGrain(),
             source=QueryDatasource(
                 input_concepts=[concept, y_concept],
                 output_concepts=[concept, y_concept],
                 datasources=[ds],
-                grain=Grain(),
+                grain=BuildGrain(),
                 joins=[],
                 source_map={concept.address: {ds}, y_concept.address: {ds}},
             ),
@@ -74,12 +74,12 @@ address x_source;
         cte=CTE(
             name="test",
             output_columns=[concept, y_concept],
-            grain=Grain(),
+            grain=BuildGrain(),
             source=QueryDatasource(
                 input_concepts=[concept, y_concept],
                 output_concepts=[concept, y_concept],
                 datasources=[ds],
-                grain=Grain(),
+                grain=BuildGrain(),
                 joins=[],
                 source_map={concept.address: {ds}, y_concept.address: {ds}},
             ),

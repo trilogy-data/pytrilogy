@@ -6,12 +6,14 @@ import networkx as nx
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.graph_models import concept_to_node
-from trilogy.core.models.author import (
-    Grain,
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildDatasource,
+    BuildGrain,
+    BuildWhereClause,
+    LooseBuildConceptList,
 )
-from trilogy.core.models.build import BuildConcept, BuildDatasource, BuildWhereClause, LooseBuildConceptList
-from trilogy.core.models.datasource import Datasource
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
 )
@@ -114,7 +116,7 @@ def create_pruned_concept_graph(
 
     target_addresses = set([c.address for c in all_concepts])
     concepts: dict[str, BuildConcept] = nx.get_node_attributes(orig_g, "concept")
-    datasource_map: dict[str, Datasource | list[BuildDatasource]] = (
+    datasource_map: dict[str, BuildDatasource | list[BuildDatasource]] = (
         nx.get_node_attributes(orig_g, "datasource")
     )
     relevant_concepts_pre = {
@@ -293,22 +295,22 @@ def resolve_subgraphs(
         # filter out synonyms
         if (x := concepts.get(n, None)) and x.address in relevant
     }
-    for x in final_nodes:
+    for node in final_nodes:
         keep = True
-        if x.startswith("c~") and x not in relevant_concepts_pre:
+        if node.startswith("c~") and node not in relevant_concepts_pre:
             keep = (
                 sum(
                     [
-                        1 if x in sub_nodes else 0
+                        1 if node in sub_nodes else 0
                         for _, sub_nodes in pruned_subgraphs.items()
                     ]
                 )
                 > 1
             )
         if not keep:
-            logger.debug(f"Pruning node {x} as irrelevant after subgraph resolution")
+            logger.debug(f"Pruning node {node} as irrelevant after subgraph resolution")
             pruned_subgraphs = {
-                k: [n for n in v if n != x] for k, v in pruned_subgraphs.items()
+                k: [n for n in v if n != node ] for k, v in pruned_subgraphs.items()
             }
 
     return pruned_subgraphs
@@ -318,12 +320,12 @@ def create_datasource_node(
     datasource: BuildDatasource,
     all_concepts: List[BuildConcept],
     accept_partial: bool,
-    environment: Environment,
+    environment: BuildEnvironment,
     depth: int,
     conditions: BuildWhereClause | None = None,
 ) -> tuple[StrategyNode, bool]:
     logger.info(all_concepts)
-    target_grain = Grain.from_concepts(all_concepts, environment=environment)
+    target_grain = BuildGrain.from_concepts(all_concepts, environment=environment)
     force_group = False
     if not datasource.grain.issubset(target_grain):
         logger.info(
@@ -380,7 +382,7 @@ def create_select_node(
     subgraph: list[str],
     accept_partial: bool,
     g,
-    environment: Environment,
+    environment: BuildEnvironment,
     depth: int,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode:
@@ -472,7 +474,7 @@ def create_select_node(
 def gen_select_merge_node(
     all_concepts: List[BuildConcept],
     g: nx.DiGraph,
-    environment: Environment,
+    environment: BuildEnvironment,
     depth: int,
     accept_partial: bool = False,
     conditions: BuildWhereClause | None = None,
@@ -574,22 +576,5 @@ def gen_select_merge_node(
         parents=parents,
         preexisting_conditions=preexisting_conditions,
     )
-    # logger.info(
-    #         f"{padding(depth)}{LOGGER_PREFIX} generated merge node to wrap ")
-    # target_grain = Grain.from_concepts(all_concepts, environment=environment)
-    # if GroupNode.check_if_required(downstream_concepts=all_concepts, parents=[base], environment=environment).required:
-    #     logger.info(
-    #         f"{padding(depth)}{LOGGER_PREFIX} Merged node grain {base.resolve().grain} not subset of target grain {target_grain}, wrapping in group node")
-    #     return GroupNode(
-    #         output_concepts=all_concepts,
-    #         input_concepts=all_concepts,
-    #         environment=environment,
-    #         parents=[base],
-    #         depth=depth,
-    #         preexisting_conditions=preexisting_conditions,
-    #         partial_concepts=base.partial_concepts,
-    #     )
-    # else:
-    #     logger.info(
-    #         f"{padding(depth)}{LOGGER_PREFIX} Merged node grain {base.resolve().grain} subset of target grain {target_grain}, no group node required")
+
     return base

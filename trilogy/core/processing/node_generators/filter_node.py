@@ -4,10 +4,9 @@ from trilogy.constants import logger
 from trilogy.core.models.build import (
     BuildConcept,
     BuildFilterItem,
+    BuildGrain,
     BuildWhereClause,
-    Grain,
 )
-from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
 )
@@ -19,7 +18,7 @@ from trilogy.core.processing.nodes import (
     StrategyNode,
 )
 from trilogy.core.processing.utility import is_scalar_condition, padding, unique
-
+from trilogy.core.models.build_environment import BuildEnvironment
 LOGGER_PREFIX = "[GEN_FILTER_NODE]"
 
 FILTER_TYPES = (BuildFilterItem,)
@@ -28,7 +27,7 @@ FILTER_TYPES = (BuildFilterItem,)
 def gen_filter_node(
     concept: BuildConcept,
     local_optional: List[BuildConcept],
-    environment: Environment,
+    environment: BuildEnvironment,
     g,
     depth: int,
     source_concepts,
@@ -144,7 +143,7 @@ def gen_filter_node(
         parent.add_existence_concepts(flattened_existence, False).set_output_concepts(
             expected_output, False
         )
-        parent.grain = Grain.from_concepts(
+        parent.grain = BuildGrain.from_concepts(
             (
                 [environment.concepts[k] for k in immediate_parent.keys]
                 if immediate_parent.keys
@@ -170,7 +169,7 @@ def gen_filter_node(
             output_concepts=[concept, immediate_parent] + parent_row_concepts,
             environment=environment,
             parents=core_parents,
-            grain=Grain.from_concepts(
+            grain=BuildGrain.from_concepts(
                 [immediate_parent] + parent_row_concepts,
             ),
             preexisting_conditions=conditions.conditional if conditions else None,

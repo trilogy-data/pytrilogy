@@ -10,7 +10,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
     LooseBuildConceptList,
 )
-from trilogy.core.models.environment import BuildEnvironment
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import (
     History,
     NodeJoin,
@@ -100,12 +100,13 @@ def resolve_filter_parent_concepts(
 def gen_property_enrichment_node(
     base_node: StrategyNode,
     extra_properties: list[BuildConcept],
+    history: History,
     environment: BuildEnvironment,
     g,
     depth: int,
     source_concepts,
     log_lambda: Callable,
-    history: History | None = None,
+
     conditions: BuildWhereClause | None = None,
 ):
     required_keys: dict[str, set[str]] = defaultdict(set)
@@ -183,10 +184,10 @@ def gen_enrichment_node(
             return gen_property_enrichment_node(
                 base_node,
                 extra_required,
-                environment,
-                g,
-                depth,
-                source_concepts,
+                environment=environment,
+                g=g,
+                depth=depth,
+                source_concepts=source_concepts,
                 history=history,
                 conditions=conditions,
                 log_lambda=log_lambda,

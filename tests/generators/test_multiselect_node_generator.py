@@ -1,9 +1,8 @@
 from trilogy import Environment, parse
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.processing.concept_strategies_v3 import search_concepts
+from trilogy.core.processing.concept_strategies_v3 import History, search_concepts
 from trilogy.core.processing.node_generators import gen_multiselect_node
 from trilogy.core.query_processor import datasource_to_cte
-from trilogy.hooks.query_debugger import DebuggingHook
 
 
 def test_multi_select():
@@ -40,6 +39,7 @@ ALIGN
 
     # c = test_environment.concepts['one']
     # assert c.with_default_grain().grain.components == [c,]
+    orig_env = env
     test_environment = env.materialize_for_select()
     gnode = gen_multiselect_node(
         concept=test_environment.concepts["one_key"],
@@ -48,6 +48,7 @@ ALIGN
         g=generate_graph(test_environment),
         depth=0,
         source_concepts=search_concepts,
+        history=History(base_environment=orig_env),
     )
     assert len(gnode.parents) == 2
     assert len(gnode.node_joins) == 1
@@ -62,7 +63,6 @@ ALIGN
 
 def test_multi_select_constant():
     env = Environment()
-    DebuggingHook()
     parse(
         """
 const one <- 1;
@@ -80,6 +80,7 @@ ALIGN
           """,
         env,
     )
+    orig_env = env
     test_environment = env.materialize_for_select()
     gnode = gen_multiselect_node(
         concept=test_environment.concepts["true_one"],
@@ -88,6 +89,7 @@ ALIGN
         g=generate_graph(test_environment),
         depth=0,
         source_concepts=search_concepts,
+        history=History(base_environment=orig_env),
     )
     assert len(gnode.parents) == 2
     assert len(gnode.node_joins) == 0

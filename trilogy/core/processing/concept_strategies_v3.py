@@ -15,6 +15,7 @@ from trilogy.core.models.build import (
     BuildRowsetItem,
     BuildWhereClause,
 )
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators import (
     gen_basic_node,
@@ -55,7 +56,7 @@ class SearchConceptsType(Protocol):
     def __call__(
         self,
         mandatory_list: List[BuildConcept],
-        environment: Environment,
+        environment: BuildEnvironment,
         depth: int,
         g: ReferenceGraph,
         accept_partial: bool = False,
@@ -213,16 +214,15 @@ def generate_candidates_restrictive(
 def generate_node(
     concept: BuildConcept,
     local_optional: List[BuildConcept],
-    environment: Environment,
+    environment: BuildEnvironment,
     g: ReferenceGraph,
     depth: int,
     source_concepts: SearchConceptsType,
+    history: History,
     accept_partial: bool = False,
-    history: History | None = None,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     # first check in case there is a materialized_concept
-    history = history or History()
     candidate = history.gen_select_node(
         concept,
         local_optional,
@@ -246,11 +246,11 @@ def generate_node(
         return gen_window_node(
             concept,
             local_optional,
-            environment,
-            g,
-            depth + 1,
-            source_concepts,
-            history,
+            history=history,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+            source_concepts=source_concepts,
             conditions=conditions,
         )
 
@@ -261,11 +261,11 @@ def generate_node(
         return gen_filter_node(
             concept,
             local_optional,
-            environment,
-            g,
-            depth + 1,
-            source_concepts=source_concepts,
             history=history,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+            source_concepts=source_concepts,
             conditions=conditions,
         )
     elif concept.derivation == Derivation.UNNEST:
@@ -275,11 +275,11 @@ def generate_node(
         return gen_unnest_node(
             concept,
             local_optional,
-            environment,
-            g,
-            depth + 1,
-            source_concepts,
-            history,
+            history=history,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+            source_concepts=source_concepts,
             conditions=conditions,
         )
     elif concept.derivation == Derivation.UNION:
@@ -312,11 +312,11 @@ def generate_node(
         return gen_group_node(
             concept,
             agg_optional,
-            environment,
-            g,
-            depth + 1,
-            source_concepts,
-            history,
+            history=history,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+            source_concepts=source_concepts,
             conditions=conditions,
         )
     elif concept.derivation == Derivation.ROWSET:
@@ -413,11 +413,11 @@ def generate_node(
         return gen_basic_node(
             concept,
             local_optional,
-            environment,
-            g,
-            depth + 1,
-            source_concepts,
-            history,
+            history=history,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+            source_concepts=source_concepts,
             conditions=conditions,
         )
 
@@ -528,7 +528,7 @@ def validate_concept(
     found_map: dict[str, set[BuildConcept]],
     accept_partial: bool,
     seen: set[str],
-    environment: Environment,
+    environment: BuildEnvironment,
 ):
     found_map[str(node)].add(concept)
     seen.add(concept.address)
@@ -570,7 +570,7 @@ def validate_concept(
 
 
 def validate_stack(
-    environment: Environment,
+    environment: BuildEnvironment,
     stack: List[StrategyNode],
     concepts: List[BuildConcept],
     mandatory_with_filter: List[BuildConcept],
@@ -656,10 +656,10 @@ def depth_to_prefix(depth: int) -> str:
 
 def append_existence_check(
     node: StrategyNode,
-    environment: Environment,
+    environment: BuildEnvironment,
     graph: ReferenceGraph,
     where: BuildWhereClause,
-    history: History | None = None,
+    history: History,
 ):
     # we if we have a where clause doing an existence check
     # treat that as separate subquery
@@ -676,7 +676,7 @@ def append_existence_check(
                 f"{LOGGER_PREFIX} fetching existence clause inputs {[str(c) for c in subselect]}"
             )
             parent = source_query_concepts(
-                [*subselect], environment=environment, g=graph, history=history
+                [*subselect], history=history, environment=environment, g=graph, 
             )
             assert parent, "Could not resolve existence clause"
             node.add_parents([parent])
@@ -688,14 +688,13 @@ def append_existence_check(
 
 def search_concepts(
     mandatory_list: List[BuildConcept],
-    environment: Environment,
+    history: History,
+    environment: BuildEnvironment,
     depth: int,
     g: ReferenceGraph,
     accept_partial: bool = False,
-    history: History | None = None,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
-    history = history or History()
     hist = history.get_history(
         search=mandatory_list, accept_partial=accept_partial, conditions=conditions
     )
@@ -727,7 +726,7 @@ def search_concepts(
 
 def _search_concepts(
     mandatory_list: List[BuildConcept],
-    environment: Environment,
+    environment: BuildEnvironment,
     depth: int,
     g: ReferenceGraph,
     history: History,
@@ -986,17 +985,17 @@ def _search_concepts(
 
 def source_query_concepts(
     output_concepts: List[BuildConcept],
-    environment: Environment,
+    history: History,
+    environment: BuildEnvironment,
     g: Optional[ReferenceGraph] = None,
     conditions: Optional[BuildWhereClause] = None,
-    history: Optional[History] = None,
+    
 ):
     if not output_concepts:
         raise ValueError(f"No output concepts provided {output_concepts}")
     if not g:
         g = generate_graph(environment)
 
-    history = history or History()
     root = search_concepts(
         mandatory_list=output_concepts,
         environment=environment,

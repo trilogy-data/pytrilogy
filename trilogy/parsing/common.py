@@ -19,7 +19,6 @@ from trilogy.core.enums import (
 )
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.functions import function_args_to_output_purpose
-from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.author import (
     AggregateWrapper,
     AlignClause,
@@ -210,13 +209,11 @@ def concept_is_relevant(
 
 
 def concepts_to_grain_concepts(
-    concepts: Iterable[Concept | BuildConcept | str], environment: Environment | None
+    concepts: Iterable[Concept | ConceptRef | str], environment: Environment | None
 ) -> list[Concept]:
     pconcepts = []
     for c in concepts:
         if isinstance(c, Concept):
-            pconcepts.append(c)
-        elif isinstance(c, BuildConcept):
             pconcepts.append(c)
         elif environment:
             pconcepts.append(environment.concepts[c])
@@ -448,7 +445,6 @@ def align_item_to_concept(
     parent: AlignItem,
     align_clause: AlignClause,
     selects: list[SelectStatement],
-    local_concepts: dict[str, Concept],
     environment: Environment,
     where: WhereClause | None = None,
     having: HavingClause | None = None,
@@ -466,7 +462,6 @@ def align_item_to_concept(
         selects=new_selects,
         align=align_clause,
         namespace=align.namespace,
-        local_concepts=local_concepts,
         where_clause=where,
         having_clause=having,
         limit=limit,

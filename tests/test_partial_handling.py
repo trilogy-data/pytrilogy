@@ -8,7 +8,7 @@ from trilogy.core.models.core import (
 )
 from trilogy.core.models.datasource import ColumnAssignment, Datasource
 from trilogy.core.models.environment import Environment
-from trilogy.core.processing.concept_strategies_v3 import search_concepts
+from trilogy.core.processing.concept_strategies_v3 import search_concepts, History
 from trilogy.core.processing.node_generators import (
     gen_filter_node,
 )
@@ -102,6 +102,7 @@ def test_partial_assignment():
 
     executor = setup_engine()
     env = Environment()
+    history = History(base_environment=env)
     setup_titanic(env)
     executor.environment = env
     executor.hooks = [DebuggingHook()]
@@ -116,6 +117,7 @@ def test_partial_assignment():
     filtered_node = gen_filter_node(
         env.concepts["surviving_passenger"],
         [family],
+        history=history,
         environment=env,
         g=g,
         depth=0,
@@ -131,7 +133,7 @@ def test_partial_assignment():
 
     # check at the source level
     sourced = search_concepts(
-        [family, env.concepts["surviving_passenger"]], environment=env, g=g, depth=0
+        [family, env.concepts["surviving_passenger"]],         history=history, environment=env, g=g, depth=0
     )
     assert isinstance(sourced, MergeNode)
     assert len(sourced.parents) == 2

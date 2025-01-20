@@ -5,11 +5,11 @@ from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
     BuildFunction,
+    BuildGrain,
     BuildWhereClause,
-    Grain,
     LooseBuildConceptList,
 )
-from trilogy.core.models.environment import BuildEnvironment
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
     gen_enrichment_node,
     resolve_function_parent_concepts,
@@ -28,7 +28,7 @@ def gen_group_node(
     g,
     depth: int,
     source_concepts,
-    history: History | None = None,
+    history: History,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     # aggregates MUST always group to the proper grain
@@ -75,7 +75,7 @@ def gen_group_node(
                     logger.info(
                         f"{padding(depth)}{LOGGER_PREFIX} found equivalent group by optional concept {possible_agg.address} for {concept.address}"
                     )
-                elif Grain.from_concepts(agg_parents) == Grain.from_concepts(
+                elif BuildGrain.from_concepts(agg_parents) == BuildGrain.from_concepts(
                     parent_concepts
                 ):
                     extra = [x for x in agg_parents if x.address not in parent_concepts]
@@ -86,7 +86,7 @@ def gen_group_node(
                     )
                 else:
                     logger.info(
-                        f"{padding(depth)}{LOGGER_PREFIX} cannot include optional agg; mismatched grain {Grain.from_concepts(agg_parents)} vs {Grain.from_concepts(parent_concepts)}"
+                        f"{padding(depth)}{LOGGER_PREFIX} cannot include optional agg; mismatched grain {BuildGrain.from_concepts(agg_parents)} vs {BuildGrain.from_concepts(parent_concepts)}"
                     )
     if parent_concepts:
         logger.info(

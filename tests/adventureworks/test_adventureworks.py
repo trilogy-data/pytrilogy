@@ -6,11 +6,12 @@ import pytest
 from trilogy import Executor
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.models.author import Concept, Grain
+from trilogy.core.models.build import BuildGrain
 from trilogy.core.models.environment import (
     Environment,
 )
 from trilogy.core.models.execute import QueryDatasource
-from trilogy.core.processing.concept_strategies_v3 import search_concepts
+from trilogy.core.processing.concept_strategies_v3 import search_concepts, History
 from trilogy.core.processing.nodes import MergeNode, SelectNode
 from trilogy.core.query_processor import datasource_to_cte, get_query_datasources
 from trilogy.core.statements.author import SelectStatement
@@ -82,6 +83,7 @@ def test_query_datasources(environment: Environment):
                 "internet_sales.customer.first_name"
             ].with_default_grain()
         ],
+        history = History(base_environment=environment),
         environment=select_env,
         g=environment_graph,
         depth=0,
@@ -104,6 +106,7 @@ def test_query_datasources(environment: Environment):
     customer_datasource = search_concepts(
         [select_env.concepts["internet_sales.order_number"]]
         + [select_env.concepts[x] for x in t_grain.components],
+        history = History(base_environment=environment),
         environment=select_env,
         g=environment_graph,
         depth=0,
@@ -112,6 +115,7 @@ def test_query_datasources(environment: Environment):
     # assert a group up to the first name works
     customer_datasource = search_concepts(
         [select_env.concepts["internet_sales.customer.first_name"]],
+        history = History(base_environment=environment),
         environment=select_env,
         g=environment_graph,
         depth=0,
@@ -167,11 +171,12 @@ def test_two_properties(environment: Environment):
     test: SelectStatement = statements[-3]
 
     environment_graph = generate_graph(environment)
-
+    history = History(base_environment=base_env)
     # assert a group up to the first name works
     _customer_datasource = search_concepts(
         [environment.concepts["internet_sales.customer.first_name"]]
         + [environment.concepts[x] for x in test.grain.components],
+        history=history,
         environment=environment,
         g=environment_graph,
         depth=0,
@@ -190,6 +195,7 @@ def test_two_properties(environment: Environment):
     order_date_datasource = search_concepts(
         [environment.concepts["internet_sales.dates.order_date"]]
         + [environment.concepts[x] for x in test.grain.components],
+        history=history,
         environment=environment,
         g=environment_graph,
         depth=0,
@@ -216,11 +222,13 @@ def test_grain(environment: Environment):
     base_env, statements = parse(file, environment=environment)
     environment = base_env.materialize_for_select()
     environment_graph = generate_graph(environment)
+    history = History(base_environment=base_env)
     test = search_concepts(
         [
             environment.concepts["dates.order_date"],
             environment.concepts["dates.order_key"],
         ],
+        history=history,
         environment=environment,
         depth=0,
         g=environment_graph,
@@ -236,7 +244,9 @@ def test_grain(environment: Environment):
         == Grain(components=[environment.concepts["dates.order_key"]]).components
     )
     resolved = test.resolve()
-    assert resolved.grain == Grain(components=[environment.concepts["dates.order_key"]])
+    assert resolved.grain == BuildGrain(
+        components=[environment.concepts["dates.order_key"]]
+    )
     assert test.grain == resolved.grain
     assert resolved.group_required is False
 
@@ -250,6 +260,7 @@ def test_group_to_grain(environment: Environment):
     ) as f:
         file = f.read()
     base_env, statements = parse(file, environment=environment)
+    history = History(base_environment=base_env)
     environment = base_env.materialize_for_select()
     environment_graph = generate_graph(environment)
     assert (
@@ -265,6 +276,7 @@ def test_group_to_grain(environment: Environment):
             environment.concepts["internet_sales.total_sales_amount_debug"],
             environment.concepts["internet_sales.dates.order_date"],
         ],
+        history=history,
         environment=environment,
         depth=0,
         g=environment_graph,
@@ -273,7 +285,7 @@ def test_group_to_grain(environment: Environment):
     assert test.whole_grain is True
     assert len(test.parents) == 2
     resolved = test.resolve()
-    expected_grain = Grain(
+    expected_grain = BuildGrain(
         components=[
             environment.concepts["internet_sales.dates.order_key"],
             environment.concepts["internet_sales.order_line_number"],
@@ -315,6 +327,7 @@ def test_two_properties_query(environment: Environment):
         environment=environment,
         depth=0,
         g=environment_graph,
+        history=History(base_environment=orig_environment),
         source_concepts=search_concepts,
     )
 

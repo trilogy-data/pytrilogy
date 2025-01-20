@@ -42,8 +42,10 @@ class DataTyped(ABC):
             return self.__dict__["output_datatype"]
         raise NotImplementedError
 
+
 class Addressable(ABC):
     pass
+
 
 TYPEDEF_TYPES = Union[
     "DataType", "MapType", "ListType", "NumericType", "StructType", "DataTyped"

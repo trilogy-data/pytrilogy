@@ -92,7 +92,7 @@ from trilogy.core.models.datasource import (
     Query,
     RawColumnExpr,
 )
-from trilogy.core.models.environment import Environment, EnvironmentConceptDict, Import
+from trilogy.core.models.environment import Environment, Import
 from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     ConceptDerivationStatement,
@@ -996,17 +996,13 @@ class ParseToObjects(Transformer):
 
         assert align
         assert align is not None
-        base_local: EnvironmentConceptDict = selects[0].local_concepts
-        for select in selects[1:]:
-            for k, v in select.local_concepts.items():
-                base_local[k] = v
+
         derived_concepts = []
         for x in align.items:
             concept = align_item_to_concept(
                 x,
                 align,
                 selects,
-                local_concepts=base_local,
                 where=where,
                 having=having,
                 limit=limit,
@@ -1014,7 +1010,6 @@ class ParseToObjects(Transformer):
             )
             derived_concepts.append(concept)
             self.environment.add_concept(concept, meta=meta)
-            base_local[concept.address] = concept
         multi = MultiSelectStatement(
             selects=selects,
             align=align,
@@ -1023,7 +1018,6 @@ class ParseToObjects(Transformer):
             order_by=order_by,
             limit=limit,
             meta=Metadata(line_number=meta.line),
-            local_concepts=base_local,
             derived_concepts=derived_concepts,
         )
         return multi

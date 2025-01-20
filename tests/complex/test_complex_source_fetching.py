@@ -5,8 +5,7 @@
 import re
 
 from trilogy.core.enums import Purpose
-from trilogy.core.models.author import Grain
-from trilogy.core.models.build import BuildDatasource
+from trilogy.core.models.build import BuildDatasource, BuildGrain
 from trilogy.core.models.environment import (
     Environment,
 )
@@ -14,6 +13,7 @@ from trilogy.core.models.execute import QueryDatasource
 from trilogy.core.processing.concept_strategies_v3 import (
     generate_graph,
     search_concepts,
+    History,
 )
 from trilogy.core.query_processor import datasource_to_cte, process_query
 from trilogy.core.statements.author import SelectStatement
@@ -73,6 +73,7 @@ def test_aggregate_to_grain(stackoverflow_environment: Environment):
 
 def test_aggregate_of_aggregate(stackoverflow_environment):
     orig_env = stackoverflow_environment
+    history = History(base_environment=orig_env)
     env = stackoverflow_environment.materialize_for_select()
     post_id = env.concepts["post_id"]
     avg_user_post_count = env.concepts["avg_user_post_count"]
@@ -81,7 +82,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert user_post_count.purpose == Purpose.METRIC
 
     posts = env.datasources["posts"]
-    post_grain = Grain(components=[env.concepts["post_id"]])
+    post_grain = BuildGrain(components=[env.concepts["post_id"]])
 
     assert posts.grain == post_grain
 
@@ -89,6 +90,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
         [user_post_count, env.concepts["user_id"]],
         environment=env,
         depth=0,
+        history=history,
         g=generate_graph(env),
     ).resolve()
 
@@ -105,7 +107,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     ).resolve()
 
     assert isinstance(datasource, QueryDatasource)
-    assert datasource.grain == Grain()
+    assert datasource.grain == BuildGrain()
     # ensure we identify aggregates of aggregates properly
     assert datasource.output_concepts[0] == avg_user_post_count
     assert len(datasource.datasources) == 1

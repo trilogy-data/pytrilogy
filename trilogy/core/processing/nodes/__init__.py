@@ -2,6 +2,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.environment import Environment
+from trilogy.core.models.build_environment import BuildEnvironment
 
 from .base_node import NodeJoin, StrategyNode
 from .filter_node import FilterNode
@@ -14,10 +15,10 @@ from .window_node import WindowNode
 
 
 class History(BaseModel):
+    base_environment: Environment
     history: dict[str, StrategyNode | None] = Field(default_factory=dict)
     select_history: dict[str, StrategyNode | None] = Field(default_factory=dict)
     started: set[str] = Field(default_factory=set)
-    base_environment: Environment | None = None
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def _concepts_to_lookup(
@@ -120,7 +121,7 @@ class History(BaseModel):
         self,
         concept: BuildConcept,
         local_optional: list[BuildConcept],
-        environment: Environment,
+        environment: BuildEnvironment,
         g,
         depth: int,
         source_concepts,

@@ -6,11 +6,11 @@ from trilogy.constants import logger
 from trilogy.core.enums import JoinType, Purpose
 from trilogy.core.models.build import (
     BuildConcept,
+    BuildGrain,
     BuildMultiSelectLineage,
     BuildWhereClause,
-    Grain,
 )
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import resolve_join_order
 from trilogy.core.processing.nodes import History, MergeNode, NodeJoin
 from trilogy.core.processing.nodes.base_node import StrategyNode
@@ -20,7 +20,7 @@ LOGGER_PREFIX = "[GEN_MULTISELECT_NODE]"
 
 
 def extra_align_joins(
-    base: BuildMultiSelectLineage, environment: Environment, parents: List[StrategyNode]
+    base: BuildMultiSelectLineage, environment: BuildEnvironment, parents: List[StrategyNode]
 ) -> List[NodeJoin]:
     node_merge_concept_map = defaultdict(list)
     output = []
@@ -53,11 +53,11 @@ def extra_align_joins(
 def gen_multiselect_node(
     concept: BuildConcept,
     local_optional: List[BuildConcept],
-    environment: Environment,
+    environment: BuildEnvironment,
     g,
     depth: int,
     source_concepts,
-    history: History | None = None,
+    history: History,
     conditions: BuildWhereClause | None = None,
 ) -> MergeNode | None:
     from trilogy.core.query_processor import get_query_node
@@ -73,7 +73,7 @@ def gen_multiselect_node(
     partial = []
     for select in lineage.selects:
 
-        snode: StrategyNode = get_query_node(environment, select)
+        snode: StrategyNode = get_query_node(history.base_environment, select)
         # raise SyntaxError(select.output_components)
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Fetched parent node with outputs {select.output_components}"
@@ -121,7 +121,7 @@ def gen_multiselect_node(
         depth=depth,
         parents=base_parents,
         node_joins=node_joins,
-        grain=Grain.from_concepts(
+        grain=BuildGrain.from_concepts(
             [
                 x
                 for y in base_parents
@@ -148,7 +148,7 @@ def gen_multiselect_node(
     # if select.where_clause:
     #     for item in additional_relevant:
     #         node.partial_concepts.append(item)
-    node.grain = Grain.from_concepts(node.output_concepts, environment=environment)
+    node.grain = BuildGrain.from_concepts(node.output_concepts, environment=environment)
     node.rebuild_cache()
     # we need a better API for refreshing a nodes QDS
     possible_joins = concept_to_relevant_joins(additional_relevant)

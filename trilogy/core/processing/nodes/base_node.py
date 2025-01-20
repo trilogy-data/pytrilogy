@@ -8,20 +8,17 @@ from trilogy.core.enums import (
     JoinType,
     SourceType,
 )
-from trilogy.core.models.author import (
-    Grain,
-
-)
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConditional,
     BuildDatasource,
+    BuildGrain,
     BuildOrderBy,
     BuildParenthetical,
-        LooseBuildConceptList,
+    LooseBuildConceptList,
 )
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import ConceptPair, QueryDatasource, UnnestJoin
 from trilogy.utility import unique
 
@@ -131,7 +128,7 @@ class StrategyNode:
         self,
         input_concepts: List[BuildConcept],
         output_concepts: List[BuildConcept],
-        environment: Environment,
+        environment: BuildEnvironment,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         partial_concepts: List[BuildConcept] | None = None,
@@ -144,7 +141,7 @@ class StrategyNode:
             BuildConditional | BuildComparison | BuildParenthetical | None
         ) = None,
         force_group: bool | None = None,
-        grain: Optional[Grain] = None,
+        grain: Optional[BuildGrain] = None,
         hidden_concepts: set[str] | None = None,
         existence_concepts: List[BuildConcept] | None = None,
         virtual_output_concepts: List[BuildConcept] | None = None,
@@ -351,7 +348,9 @@ class StrategyNode:
             p.resolve() for p in self.parents
         ]
 
-        grain = self.grain if self.grain else Grain.from_concepts(self.output_concepts)
+        grain = (
+            self.grain if self.grain else BuildGrain.from_concepts(self.output_concepts)
+        )
         source_map = resolve_concept_map(
             parent_sources,
             targets=self.output_concepts,

@@ -17,7 +17,6 @@ from trilogy.core.enums import (
 )
 from trilogy.core.models.author import (
     Concept,
-    LooseConceptList,
 )
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
@@ -43,8 +42,7 @@ from trilogy.core.models.core import (
     NumericType,
     TupleWrapper,
 )
-from trilogy.core.models.datasource import Datasource
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import (
     CTE,
     BaseJoin,
@@ -292,7 +290,7 @@ def add_node_join_concept(
     concept: BuildConcept,
     concept_map: dict[str, BuildConcept],
     ds_node: str,
-    environment: Environment,
+    environment: BuildEnvironment,
 ):
     name = f"c~{concept.address}"
     graph.add_node(name, type=NodeType.CONCEPT)
@@ -355,7 +353,7 @@ def reduce_concept_pairs(input: list[ConceptPair]) -> list[ConceptPair]:
 
 def get_node_joins(
     datasources: List[QueryDatasource | BuildDatasource],
-    environment: Environment,
+    environment: BuildEnvironment,
     # concepts:List[Concept],
 ) -> List[BaseJoin]:
     graph = nx.Graph()
@@ -439,6 +437,7 @@ def is_scalar_condition(
         | BuildWindowItem
         | BuildFilterItem
         | BuildConditional
+        | BuildComparison
         | BuildParenthetical
         | BuildFunction
         | BuildAggregateWrapper
@@ -536,7 +535,7 @@ def decompose_condition(
 
 def find_nullable_concepts(
     source_map: Dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]],
-    datasources: List[Datasource | QueryDatasource],
+    datasources: List[BuildDatasource | QueryDatasource],
     joins: List[BaseJoin | UnnestJoin],
 ) -> List[str]:
     """give a set of datasources and joins, find the concepts

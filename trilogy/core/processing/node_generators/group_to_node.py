@@ -2,7 +2,7 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import (
     GroupNode,
     History,
@@ -17,7 +17,7 @@ LOGGER_PREFIX = "[GEN_GROUP_TO_NODE]"
 def gen_group_to_node(
     concept: BuildConcept,
     local_optional,
-    environment: Environment,
+    environment: BuildEnvironment,
     g,
     depth: int,
     source_concepts,

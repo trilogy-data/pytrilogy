@@ -4,7 +4,7 @@ from typing import Union
 from uuid import uuid4
 
 from trilogy.constants import logger
-from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.build import BuildDatasource
 from trilogy.core.models.execute import (
     CTE,
     QueryDatasource,
@@ -79,7 +79,10 @@ class DebuggingHook(BaseHook):
                 self.print("".join([str(v) for v in row]))
 
     def print_recursive_resolved(
-        self, input: Union[QueryDatasource, Datasource], mode: PrintMode, depth: int = 0
+        self,
+        input: Union[QueryDatasource, BuildDatasource],
+        mode: PrintMode,
+        depth: int = 0,
     ):
         extra = []
         if isinstance(input, QueryDatasource):

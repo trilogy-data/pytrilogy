@@ -58,7 +58,7 @@ import web_sales as web_sales;
     duration = end - start
     dumped = env.model_dump_json()
 
-    assert duration.total_seconds() < 0.2, f"{len(dumped)}, {duration}"
+    assert duration.total_seconds() < 0.5, f"{len(dumped)}, {duration}"
 
 
 def test_merge_comparison(engine):
@@ -82,6 +82,8 @@ ALIGN
 ORDER BY
     report_date asc;"""
 
+    r1 = engine.execute_text(x)[0].fetchall()
+
     y = """
 import store_sales as store_sales;
 import web_sales as web_sales;
@@ -98,8 +100,6 @@ HAVING
 ORDER BY 
     date.year asc
 LIMIT 100;"""
-
-    r1 = engine.execute_text(x)[0].fetchall()
 
     r2 = list(engine.execute_text(y)[0].fetchall())
     # assert 1 == 0

@@ -133,7 +133,7 @@ address blended;
     )
 
     gnode = resolve_subgraphs(
-        g=generate_graph(env),
+        g=generate_graph(env.materialize_for_select()),
         conditions=None,
         relevant=[
             env.concepts[x]

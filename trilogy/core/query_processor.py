@@ -14,7 +14,9 @@ from trilogy.core.models.build import (
     BuildMultiSelectLineage,
     BuildSelectLineage,
 )
-from trilogy.core.models.environment import BuildEnvironment, Environment
+from trilogy.core.models.author import SelectLineage, MultiSelectLineage
+from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
     CTE,
     BaseJoin,
@@ -366,32 +368,29 @@ def datasource_to_cte(
 
 def get_query_node(
     environment: Environment,
-    statement: BuildSelectLineage | BuildMultiSelectLineage,
+    statement: SelectLineage | MultiSelectLineage,
     history: History | None = None,
 ) -> StrategyNode:
-    if not isinstance(statement, (BuildSelectLineage, BuildMultiSelectLineage)):
-        statement = statement.build_for_select(environment=environment)
-    # statement = statement.build_for_select(environment=environment)
-    history = history or History(base_environment=environment)
-    if not isinstance(environment, BuildEnvironment):
-        environment = environment.materialize_for_select(statement.local_concepts)
-    # statement = statement.build_for_select(environment=environment)
-    # for k, v in statement.local_concepts.items():
-    #     environment.concepts[k] = v
-    graph = generate_graph(environment)
-    logger.info(
-        f"{LOGGER_PREFIX} getting source datasource for outputs {statement.output_components} grain {statement.grain}"
-    )
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
 
-    search_concepts: list[BuildConcept] = statement.output_components
+    history = history or History(base_environment=environment)
+    build_statement = statement.build_for_select(environment=environment)
+    build_environment = environment.materialize_for_select(
+        build_statement.local_concepts
+    )
+    graph = generate_graph(build_environment)
+    logger.info(
+        f"{LOGGER_PREFIX} getting source datasource for outputs {statement.output_components} grain {build_statement.grain}"
+    )
+
+    search_concepts: list[BuildConcept] = build_statement.output_components
 
     ods: StrategyNode = source_query_concepts(
-        search_concepts,
-        environment=environment,
+        output_concepts=search_concepts,
+        environment=build_environment,
         g=graph,
-        conditions=(statement.where_clause if statement.where_clause else None),
+        conditions=build_statement.where_clause,
         history=history,
     )
     if not ods:
@@ -399,24 +398,24 @@ def get_query_node(
             f"Could not find source query concepts for {[x.address for x in search_concepts]}"
         )
     ds: StrategyNode = ods
-    if statement.having_clause:
-        final = statement.having_clause.conditional
+    if build_statement.having_clause:
+        final = build_statement.having_clause.conditional
         if ds.conditions:
             final = BuildConditional(
                 left=ds.conditions,
-                right=statement.having_clause.conditional,
+                right=build_statement.having_clause.conditional,
                 operator=BooleanOperator.AND,
             )
         ds = SelectNode(
-            output_concepts=statement.output_components,
+            output_concepts=build_statement.output_components,
             input_concepts=ds.output_concepts,
             parents=[ds],
             environment=ds.environment,
             partial_concepts=ds.partial_concepts,
             conditions=final,
         )
-    ds.hidden_concepts = statement.hidden_components
-    ds.ordering = statement.order_by
+    ds.hidden_concepts = build_statement.hidden_components
+    ds.ordering = build_statement.order_by
     # TODO: avoid this
     ds.rebuild_cache()
     return ds
@@ -530,7 +529,6 @@ def process_query(
     mapping = {x.address: x for x in cte.output_columns}
     return ProcessedQuery(
         order_by=root_cte.order_by,
-        grain=statement.grain,
         limit=statement.limit,
         output_columns=[mapping[x.address] for x in statement.output_components],
         ctes=final_ctes,

@@ -2,7 +2,7 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.models.build import BuildConcept, BuildWhereClause, BuildWindowItem
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, StrategyNode, WindowNode
 from trilogy.core.processing.utility import padding
 from trilogy.utility import unique
@@ -14,7 +14,7 @@ WINDOW_TYPES = (BuildWindowItem,)
 
 
 def resolve_window_parent_concepts(
-    concept: BuildConcept, environment: Environment
+    concept: BuildConcept, environment: BuildEnvironment
 ) -> tuple[BuildConcept, List[BuildConcept]]:
     if not isinstance(concept.lineage, WINDOW_TYPES):
         raise ValueError
@@ -23,11 +23,6 @@ def resolve_window_parent_concepts(
         base += concept.lineage.over
     if concept.lineage.order_by:
         for item in concept.lineage.order_by:
-            # TODO: we do want to use the rehydrated value, but
-            # that introduces a circular dependency on an aggregate
-            # that is grouped by a window
-            # need to figure out how to resolve this
-            # base += [environment.concepts[item.expr.output.address]]
             base += [item.expr.output]
     return concept.lineage.content, unique(base, "address")
 
@@ -35,7 +30,7 @@ def resolve_window_parent_concepts(
 def gen_window_node(
     concept: BuildConcept,
     local_optional: list[BuildConcept],
-    environment: Environment,
+    environment: BuildEnvironment,
     g,
     depth: int,
     source_concepts,

@@ -6,12 +6,11 @@ from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.author import MultiSelectLineage, RowsetLineage, SelectLineage
 from trilogy.core.models.build import (
     BuildConcept,
+    BuildGrain,
     BuildRowsetItem,
     BuildWhereClause,
-    LooseBuildConceptList,
-    Grain,
 )
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
 
@@ -21,7 +20,7 @@ LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
 def gen_rowset_node(
     concept: BuildConcept,
     local_optional: List[BuildConcept],
-    environment: Environment,
+    environment: BuildEnvironment,
     g,
     depth: int,
     source_concepts,
@@ -60,7 +59,9 @@ def gen_rowset_node(
         x for x in rowset_relevant if x.lineage.content.address in select_hidden
     ]
     additional_relevant = [
-        x.with_select_context(select.local_concepts, select.grain, history.base_environment)
+        x.with_select_context(
+            select.local_concepts, select.grain, history.base_environment
+        )
         for x in select.output_components
         if x.address in enrichment
     ]
@@ -83,7 +84,7 @@ def gen_rowset_node(
     assert node.resolution_cache
     # assume grain to be output of select
     # but don't include anything hidden(the non-rowset concepts)
-    node.grain = Grain.from_concepts(
+    node.grain = BuildGrain.from_concepts(
         [
             x
             for x in node.output_concepts
