@@ -60,6 +60,7 @@ key product_id int;
 property product_id.price float;
               """
     )
+    env = env.materialize_for_select()
     x = StrategyNode(
         input_concepts=[],
         output_concepts=[env.concepts["order_id"], env.concepts["product_id"]],

@@ -224,7 +224,7 @@ class Environment(BaseModel):
             base.datasources[k] = d.build_for_select(base)
         for k, a in self.alias_origin_lookup.items():
             base.alias_origin_lookup[k] = BuildConcept.build(
-                a, Grain(), base, local_concepts
+                a, Grain(), self, local_concepts
             )
         base.gen_concept_list_caches()
         # for k, v in self.concepts.items():

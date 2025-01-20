@@ -8,6 +8,7 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildRowsetItem,
     BuildWhereClause,
+    LooseBuildConceptList,
     Grain,
 )
 from trilogy.core.models.environment import Environment
@@ -48,7 +49,7 @@ def gen_rowset_node(
         )
     enrichment = set([x.address for x in local_optional])
     rowset_relevant = [
-        x.with_select_context({}, select.grain, environment)
+        x.with_select_context({}, select.grain, history.base_environment)
         for x in rowset.derived_concepts
     ]
     logger.info(
@@ -59,7 +60,7 @@ def gen_rowset_node(
         x for x in rowset_relevant if x.lineage.content.address in select_hidden
     ]
     additional_relevant = [
-        x.with_select_context(select.local_concepts, select.grain, environment)
+        x.with_select_context(select.local_concepts, select.grain, history.base_environment)
         for x in select.output_components
         if x.address in enrichment
     ]

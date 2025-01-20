@@ -21,7 +21,7 @@ from trilogy.core.processing.node_generators.common import (
 from trilogy.core.statements.author import SelectStatement, ShowStatement
 from trilogy.executor import Executor
 from trilogy.parser import parse_text
-
+from trilogy.hooks.query_debugger import DebuggingHook
 
 def test_basic_query(duckdb_engine: Executor, expected_results):
     graph = generate_graph(duckdb_engine.environment.materialize_for_select())
@@ -484,9 +484,9 @@ order by
 
 
 def test_case_group():
-    from trilogy.hooks.query_debugger import DebuggingHook
 
-    DebuggingHook()
+
+
     default_duckdb_engine = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
 
     test = """
@@ -524,8 +524,8 @@ select
     # for x in total.lineage.concept_arguments:
     #     if isinstance(x, Concept) and x.purpose == Purpose.PROPERTY and x.keys:
     #         raise SyntaxError(x.keys)
-    assert "local.cased" in LooseConceptList(concepts=x)
-    assert "local.orid" in LooseConceptList(concepts=x)
+    assert "local.cased" in x
+    assert "local.orid" in x
     # function_to_concept(
     #     parent=function_to_concept()
     # )

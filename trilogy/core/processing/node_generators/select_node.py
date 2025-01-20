@@ -1,10 +1,10 @@
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import NoDatasourceException
-from trilogy.core.models.author import (
-    Concept,
-    LooseConceptList,
-    WhereClause,
+from trilogy.core.models.build import (
+    BuildConcept,
+    LooseBuildConceptList,
+    BuildWhereClause,
 )
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.select_merge_node import (
@@ -19,18 +19,18 @@ LOGGER_PREFIX = "[GEN_SELECT_NODE]"
 
 
 def gen_select_node(
-    concept: Concept,
-    local_optional: list[Concept],
+    concept: BuildConcept,
+    local_optional: list[BuildConcept],
     environment: Environment,
     g,
     depth: int,
     accept_partial: bool = False,
     fail_if_not_found: bool = True,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     all_concepts = [concept] + local_optional
-    all_lcl = LooseConceptList(concepts=all_concepts)
-    materialized_lcl = LooseConceptList(
+    all_lcl = LooseBuildConceptList(concepts=all_concepts)
+    materialized_lcl = LooseBuildConceptList(
         concepts=[
             x
             for x in all_concepts

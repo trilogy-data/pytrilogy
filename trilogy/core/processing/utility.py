@@ -32,6 +32,7 @@ from trilogy.core.models.build import (
     BuildParenthetical,
     BuildSubselectComparison,
     BuildWindowItem,
+    LooseBuildConceptList,
 )
 from trilogy.core.models.core import (
     DataType,
@@ -230,10 +231,9 @@ def resolve_join_order_v2(
 
 
 def concept_to_relevant_joins(concepts: list[BuildConcept]) -> List[BuildConcept]:
-    addresses = LooseConceptList(concepts=concepts)
-    sub_props = LooseConceptList(
+    sub_props = LooseBuildConceptList(
         concepts=[
-            x for x in concepts if x.keys and all([key in addresses for key in x.keys])
+            x for x in concepts if x.keys and all([key in concepts for key in x.keys])
         ]
     )
     final = [c for c in concepts if c.address not in sub_props]

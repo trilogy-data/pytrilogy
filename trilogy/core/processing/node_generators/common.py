@@ -8,7 +8,7 @@ from trilogy.core.models.build import (
     BuildFilterItem,
     BuildFunction,
     BuildWhereClause,
-    LooseConceptList,
+    LooseBuildConceptList,
 )
 from trilogy.core.models.environment import BuildEnvironment
 from trilogy.core.processing.nodes import (
@@ -161,7 +161,7 @@ def gen_enrichment_node(
     history: History | None = None,
     conditions: BuildWhereClause | None = None,
 ):
-    local_opts = LooseConceptList(concepts=local_optional)
+    local_opts = LooseBuildConceptList(concepts=local_optional)
 
     extra_required = [
         x
@@ -192,7 +192,7 @@ def gen_enrichment_node(
                 log_lambda=log_lambda,
             )
     log_lambda(
-        f"{str(type(base_node).__name__)} searching for join keys {LooseConceptList(concepts=join_keys)} and extra required {local_opts}"
+        f"{str(type(base_node).__name__)} searching for join keys {LooseBuildConceptList(concepts=join_keys)} and extra required {local_opts}"
     )
     enrich_node: StrategyNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query

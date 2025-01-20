@@ -40,6 +40,7 @@ from trilogy.core.enums import (
     Purpose,
     WindowOrder,
     WindowType,
+    Granularity,
 )
 from trilogy.core.models.author import (
     Concept,
@@ -47,16 +48,14 @@ from trilogy.core.models.author import (
     Function,
     Grain,
     HavingClause,
-    LooseConceptList,
     Metadata,
     OrderItem,
     RowsetLineage,
-    # get_concept_arguments,
-    # get_concept_row_arguments,
     SelectContext,
     WhereClause,
 )
 from trilogy.core.models.core import (
+    Addressable,
     DataType,
     DataTyped,
     ListType,
@@ -84,6 +83,53 @@ if TYPE_CHECKING:
 
 LOGGER_PREFIX = "[MODELS_BUILD]"
 
+class LooseBuildConceptList(BaseModel):
+    concepts: Sequence[BuildConcept]
+
+    @cached_property
+    def addresses(self) -> set[str]:
+        return {s.address for s in self.concepts}
+
+    @classmethod
+    def validate(cls, v):
+        return cls(v)
+
+    @cached_property
+    def sorted_addresses(self) -> List[str]:
+        return sorted(list(self.addresses))
+
+    def __str__(self) -> str:
+        return f"lcl{str(self.sorted_addresses)}"
+
+    def __iter__(self):
+        return iter(self.concepts)
+
+    def __eq__(self, other):
+        if not isinstance(other, LooseBuildConceptList):
+            return False
+        return self.addresses == other.addresses
+
+    def issubset(self, other):
+        if not isinstance(other, LooseBuildConceptList):
+            return False
+        return self.addresses.issubset(other.addresses)
+
+    def __contains__(self, other):
+        if isinstance(other, str):
+            return other in self.addresses
+        if not isinstance(other, BuildConcept):
+            return False
+        return other.address in self.addresses
+
+    def difference(self, other):
+        if not isinstance(other, LooseBuildConceptList):
+            return False
+        return self.addresses.difference(other.addresses)
+
+    def isdisjoint(self, other):
+        if not isinstance(other, LooseBuildConceptList):
+            return False
+        return self.addresses.isdisjoint(other.addresses)
 
 class ConstantInlineable(ABC):
 
@@ -685,12 +731,23 @@ class BuildSubselectComparison(BuildComparison):
         return [tuple(get_concept_arguments(self.right))]
 
 
-class BuildConcept(Concept, BaseModel):
-
+# class BuildConcept(Concept, BaseModel):
+class BuildConcept(Addressable, ConceptArgs, DataTyped, BaseModel):
     model_config = ConfigDict(
         extra="forbid",
+        frozen=True
     )
+    name: str
+    datatype: DataType | ListType | StructType | MapType | NumericType
+    purpose: Purpose
     build_is_aggregate: bool
+    derivation: Derivation = Derivation.ROOT
+    granularity: Granularity = Granularity.MULTI_ROW
+    namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
+    metadata: Metadata = Field(
+        default_factory=lambda: Metadata(description=None, line_number=None),
+        validate_default=True,
+    )
     lineage: Optional[
         Union[
             BuildFunction,
@@ -701,6 +758,13 @@ class BuildConcept(Concept, BaseModel):
             BuildMultiSelectLineage,
         ]
     ] = None
+
+
+    keys: Optional[set[str]] = None
+    grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
+    modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
+    pseudonyms: set[str] = Field(default_factory=set)
+
 
     def with_select_context(self, *args, **kwargs):
         return self
@@ -738,6 +802,8 @@ class BuildConcept(Concept, BaseModel):
             build_is_aggregate=is_aggregate,
         )
 
+
+
     @property
     def is_aggregate(self) -> bool:
         return self.build_is_aggregate
@@ -762,7 +828,7 @@ class BuildConcept(Concept, BaseModel):
         if isinstance(other, str):
             if self.address == other:
                 return True
-        if not isinstance(other, Concept):
+        if not isinstance(other, (BuildConcept, Concept)):
             return False
         return (
             self.name == other.name
@@ -793,7 +859,9 @@ class BuildConcept(Concept, BaseModel):
             return f"{self.namespace.replace('.','_')}_{self.name.replace('.','_')}"
         return self.name.replace(".", "_")
 
-    def with_grain(self, grain: Optional["Grain"] = None) -> Self:
+    def with_grain(self, grain: Optional["Grain" | BuildConcept] = None) -> Self:
+        if isinstance(grain, BuildConcept):
+            grain = Grain(components= set([grain.address,]))
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -985,7 +1053,7 @@ class BuildCaseElse(ConceptArgs, BaseModel):
 
 
 class BuildFunction(DataTyped, ConceptArgs, BaseModel):
-    # class BuildFunction(Function):
+# class BuildFunction(Function):
     operator: FunctionType
     arg_count: int = Field(default=1)
     output_datatype: DataType | ListType | StructType | MapType | NumericType
@@ -1237,50 +1305,6 @@ class BuildMultiSelectLineage(ConceptArgs, BaseModel):
         )
 
 
-class BuildLooseConceptList(BaseModel):
-    BuildConcepts: List[BuildConcept]
-
-    @cached_property
-    def addresses(self) -> set[str]:
-        return {s.address for s in self.BuildConcepts}
-
-    @classmethod
-    def validate(cls, v):
-        return cls(v)
-
-    def __str__(self) -> str:
-        return f"lcl{str(self.addresses)}"
-
-    def __iter__(self):
-        return iter(self.BuildConcepts)
-
-    def __eq__(self, other):
-        if not isinstance(other, LooseConceptList):
-            return False
-        return self.addresses == other.addresses
-
-    def issubset(self, other):
-        if not isinstance(other, LooseConceptList):
-            return False
-        return self.addresses.issubset(other.addresses)
-
-    def __contains__(self, other):
-        if isinstance(other, str):
-            return other in self.addresses
-        if not isinstance(other, BuildConcept):
-            return False
-        return other.address in self.addresses
-
-    def difference(self, other):
-        if not isinstance(other, LooseConceptList):
-            return False
-        return self.addresses.difference(other.addresses)
-
-    def isdisjoint(self, other):
-        if not isinstance(other, LooseConceptList):
-            return False
-        return self.addresses.isdisjoint(other.addresses)
-
 
 class BuildAlignItem(BaseModel):
     alias: str
@@ -1289,8 +1313,8 @@ class BuildAlignItem(BaseModel):
 
     @computed_field  # type: ignore
     @cached_property
-    def concepts_lcl(self) -> LooseConceptList:
-        return LooseConceptList(concepts=self.concepts)
+    def concepts_lcl(self) -> LooseBuildConceptList:
+        return LooseBuildConceptList(concepts=self.concepts)
 
     @property
     def aligned_concept(self) -> str:
@@ -1413,6 +1437,10 @@ class BuildDatasource(Datasource):
         if isinstance(self.address, Address):
             return self.address.location
         return self.address
+    
+    @property
+    def output_lcl(self) -> LooseBuildConceptList:
+        return LooseBuildConceptList(concepts=self.output_concepts)
 
 
 BuildExpr = (

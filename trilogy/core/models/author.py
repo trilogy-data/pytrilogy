@@ -46,6 +46,7 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.models.core import (
+    Addressable,
     DataType,
     DataTyped,
     ListType,
@@ -117,7 +118,7 @@ class HasUUID(ABC):
         return hashlib.md5(str(self).encode()).hexdigest()
 
 
-class ConceptRef(Namespaced, DataTyped, SelectContext, Mergeable, BaseModel):
+class ConceptRef(Addressable, Namespaced, DataTyped, SelectContext, Mergeable, BaseModel):
     address: str
     datatype: DataType | ListType | StructType | MapType | NumericType = (
         DataType.UNKNOWN
@@ -559,9 +560,7 @@ class Grain(Namespaced, BaseModel):
         output = set()
         if isinstance(v, list):
             for vc in v:
-                if isinstance(vc, Concept):
-                    output.add(vc.address)
-                elif isinstance(vc, ConceptRef):
+                if isinstance(vc, Addressable):
                     output.add(vc.address)
                 else:
                     output.add(vc)
@@ -920,7 +919,7 @@ class SubselectComparison(Comparison):
         )
 
 
-class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, BaseModel):
+class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -1238,7 +1237,8 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
         local_concepts[self.address] = new
         return new
 
-    def with_grain(self, grain: Optional["Grain"] = None) -> Self:
+    def with_grain(self, grain: Optional["Grain" ] = None) -> Self:
+
         return self.__class__(
             name=self.name,
             datatype=self.datatype,

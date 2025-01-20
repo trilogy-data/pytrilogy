@@ -7,7 +7,7 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildWhereClause,
     Grain,
-    LooseConceptList,
+    LooseBuildConceptList,
 )
 from trilogy.core.models.environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
@@ -90,7 +90,7 @@ def gen_group_node(
                     )
     if parent_concepts:
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} fetching group node parents {LooseConceptList(concepts=parent_concepts)}"
+            f"{padding(depth)}{LOGGER_PREFIX} fetching group node parents {LooseBuildConceptList(concepts=parent_concepts)}"
         )
         parent_concepts = unique(parent_concepts, "address")
         parent = source_concepts(

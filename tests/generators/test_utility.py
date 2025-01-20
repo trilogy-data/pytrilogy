@@ -21,6 +21,7 @@ key product_id int;
 property product_id.price float;       
                 """
     )
+    env = env.materialize_for_select()
     test_case = []
     x = resolve_join_order(test_case)
     assert x == []

@@ -83,10 +83,11 @@ def test_daily_job():
         sql, environment=Environment(working_path=Path(__file__).parent)
     )
     enrich_environment(env)
-    env = env.materialize_for_select()
+    orig_env = env
+    
     local_static = env.concepts["local.static"]
     assert local_static.granularity == Granularity.SINGLE_ROW
-
+    env = env.materialize_for_select()
     case = env.concepts["all_sites.clean_url"]
 
     assert isinstance(case.lineage, BuildFunction)
@@ -100,7 +101,7 @@ def test_daily_job():
         environment=env, hooks=[DebuggingHook(INFO)]
     )
     statements[-1].select.selection.append(SelectItem(content=local_static))
-    pstatements = engine.generator.generate_queries(env, statements)
+    pstatements = engine.generator.generate_queries(orig_env, statements)
     select: ProcessedQuery = pstatements[-1]
     _ = engine.generator.compile_statement(select)
 
@@ -137,9 +138,10 @@ def test_counts():
         sql, environment=Environment(working_path=Path(__file__).parent)
     )
     enrich_environment(env)
-    env = env.materialize_for_select()
     local_static = env.concepts["local.static"]
     assert local_static.granularity == Granularity.SINGLE_ROW
+    orig_env = env
+    env = env.materialize_for_select()
 
     case = env.concepts["all_sites.clean_url"]
 
@@ -154,7 +156,7 @@ def test_counts():
         environment=env, hooks=[DebuggingHook(INFO)]
     )
     statements[-1].select.selection.append(SelectItem(content=local_static))
-    pstatements = engine.generator.generate_queries(env, statements)
+    pstatements = engine.generator.generate_queries(orig_env, statements)
     select: ProcessedQuery = pstatements[-1]
     comp = engine.generator.compile_statement(select)
     assert '"all_sites__row_id" =' not in comp

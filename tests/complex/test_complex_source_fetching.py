@@ -46,18 +46,19 @@ def test_aggregate_of_property_function(stackoverflow_environment: Environment) 
 
 def test_aggregate_to_grain(stackoverflow_environment: Environment):
     env = stackoverflow_environment
-
+    build_env = env.materialize_for_select()
     avg_post_length = env.concepts["user_avg_post_length"]
     user_id = env.concepts["user_id"]
     select: SelectStatement = SelectStatement(selection=[avg_post_length, user_id])
 
     query = process_query(statement=select, environment=env)
     generator = SqlServerDialect()
+    build_avg_post_length = build_env.concepts["user_avg_post_length"]
     for cte in query.ctes:
         found = False
-        if avg_post_length in cte.output_columns:
+        if build_avg_post_length in cte.output_columns:
             rendered = generator.render_concept_sql(
-                avg_post_length.with_select_context({}, None, env), cte
+                build_avg_post_length.with_select_context({}, None, env), cte
             )
 
             assert re.search(
@@ -71,6 +72,7 @@ def test_aggregate_to_grain(stackoverflow_environment: Environment):
 
 
 def test_aggregate_of_aggregate(stackoverflow_environment):
+    orig_env = stackoverflow_environment
     env = stackoverflow_environment.materialize_for_select()
     post_id = env.concepts["post_id"]
     avg_user_post_count = env.concepts["avg_user_post_count"]
@@ -132,7 +134,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
         selection=[stackoverflow_environment.concepts["avg_user_post_count"]]
     )
 
-    query = process_query(statement=select, environment=env, hooks=[])
+    query = process_query(statement=select, environment=orig_env, hooks=[])
     cte = query.base
     parent_cte = cte.parent_ctes[0]
 

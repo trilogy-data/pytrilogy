@@ -10,7 +10,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.models.author import (
     Grain,
-    LooseConceptList,
+
 )
 from trilogy.core.models.build import (
     BuildComparison,
@@ -19,6 +19,7 @@ from trilogy.core.models.build import (
     BuildDatasource,
     BuildOrderBy,
     BuildParenthetical,
+        LooseBuildConceptList,
 )
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import ConceptPair, QueryDatasource, UnnestJoin
@@ -152,9 +153,9 @@ class StrategyNode:
         self.input_concepts: List[BuildConcept] = (
             unique(input_concepts, "address") if input_concepts else []
         )
-        self.input_lcl = LooseConceptList(concepts=self.input_concepts)
+        self.input_lcl = LooseBuildConceptList(concepts=self.input_concepts)
         self.output_concepts: List[BuildConcept] = unique(output_concepts, "address")
-        self.output_lcl = LooseConceptList(concepts=self.output_concepts)
+        self.output_lcl = LooseBuildConceptList(concepts=self.output_concepts)
 
         self.environment = environment
         self.whole_grain = whole_grain
@@ -246,13 +247,13 @@ class StrategyNode:
                 self.output_concepts, self.parents
             )
 
-        self.partial_lcl = LooseConceptList(concepts=self.partial_concepts)
+        self.partial_lcl = LooseBuildConceptList(concepts=self.partial_concepts)
 
     def add_output_concepts(self, concepts: List[BuildConcept], rebuild: bool = True):
         for concept in concepts:
             if concept.address not in self.output_lcl.addresses:
                 self.output_concepts.append(concept)
-        self.output_lcl = LooseConceptList(concepts=self.output_concepts)
+        self.output_lcl = LooseBuildConceptList(concepts=self.output_concepts)
         if rebuild:
             self.rebuild_cache()
         return self
@@ -261,7 +262,7 @@ class StrategyNode:
         for concept in concepts:
             if concept.address not in self.partial_lcl.addresses:
                 self.partial_concepts.append(concept)
-        self.partial_lcl = LooseConceptList(concepts=self.partial_concepts)
+        self.partial_lcl = LooseBuildConceptList(concepts=self.partial_concepts)
         if rebuild:
             self.rebuild_cache()
         return self
@@ -281,7 +282,7 @@ class StrategyNode:
         if self.output_concepts == concepts:
             return self
         self.output_concepts = concepts
-        self.output_lcl = LooseConceptList(concepts=self.output_concepts)
+        self.output_lcl = LooseBuildConceptList(concepts=self.output_concepts)
 
         if rebuild:
             self.rebuild_cache()
@@ -375,7 +376,7 @@ class StrategyNode:
 
     def rebuild_cache(self) -> QueryDatasource:
         self.tainted = True
-        self.output_lcl = LooseConceptList(concepts=self.output_concepts)
+        self.output_lcl = LooseBuildConceptList(concepts=self.output_concepts)
         if not self.resolution_cache:
             return self.resolve()
         self.resolution_cache = None

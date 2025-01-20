@@ -19,6 +19,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.functions import function_args_to_output_purpose
+from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.author import (
     AggregateWrapper,
     AlignClause,
@@ -209,11 +210,13 @@ def concept_is_relevant(
 
 
 def concepts_to_grain_concepts(
-    concepts: Iterable[Concept | str], environment: Environment | None
+    concepts: Iterable[Concept | BuildConcept | str], environment: Environment | None
 ) -> list[Concept]:
     pconcepts = []
     for c in concepts:
         if isinstance(c, Concept):
+            pconcepts.append(c)
+        elif isinstance(c, BuildConcept):
             pconcepts.append(c)
         elif environment:
             pconcepts.append(environment.concepts[c])

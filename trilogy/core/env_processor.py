@@ -4,7 +4,7 @@ from trilogy.core.graph_models import (
     datasource_to_node,
 )
 from trilogy.core.models.author import Concept
-from trilogy.core.models.build import BuildConcept
+from trilogy.core.models.build import BuildConcept, BuildDatasource
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import BuildEnvironment, Environment
 
@@ -44,8 +44,8 @@ def add_concept(
 
 
 def generate_adhoc_graph(
-    concepts: list[Concept],
-    datasources: list[Datasource],
+    concepts: list[BuildConcept],
+    datasources: list[BuildDatasource],
     restrict_to_listed: bool = False,
 ) -> ReferenceGraph:
     g = ReferenceGraph()

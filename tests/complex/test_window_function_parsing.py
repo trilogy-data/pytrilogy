@@ -74,7 +74,7 @@ limit 100
     get_query_datasources(environment=orig_env, statement=select)
     # raise ValueError
 
-    query = process_query(statement=select, environment=env)
+    query = process_query(statement=select, environment=orig_env)
     query.ctes[0]
 
     generator = BigqueryDialect()
@@ -127,6 +127,8 @@ limit 100
 
     """
     env, parsed = parse(declarations)
+    orig_env = env
+    env = env.materialize_for_select()
     select: SelectStatement = parsed[-1]
 
     assert env.concepts["rank_derived"].keys == {
@@ -135,12 +137,12 @@ limit 100
     assert concept_to_relevant_joins(
         [env.concepts[x] for x in ["user_id", "rank_derived"]]
     ) == [env.concepts["user_id"]]
-    assert isinstance(env.concepts["user_country_rank"].lineage, WindowItem)
+    assert isinstance(orig_env.concepts["user_country_rank"].lineage, WindowItem)
 
-    get_query_datasources(environment=env, statement=select)
+    get_query_datasources(environment=orig_env, statement=select)
     # raise ValueError
 
-    query = process_query(statement=select, environment=env)
+    query = process_query(statement=select, environment=orig_env)
     query.ctes[0]
 
     generator = BigqueryDialect()
@@ -184,7 +186,7 @@ order by x asc;"""
     assert z.derivation != Derivation.CONSTANT
 
     generator = duckdb.DuckDBDialect()
-    query = process_query(statement=select, environment=env)
+    query = process_query(statement=select, environment=org_env)
     compiled = generator.compile_statement(query)
     assert "unnest" in compiled
     exec = Dialects.DUCK_DB.default_executor(environment=org_env)

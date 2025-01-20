@@ -18,7 +18,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.models.author import (
     Grain,
-    LooseConceptList,
+
 )
 from trilogy.core.models.build import (
     BuildComparison,
@@ -29,6 +29,7 @@ from trilogy.core.models.build import (
     BuildOrderBy,
     BuildParenthetical,
     BuildRowsetItem,
+    LooseBuildConceptList,
 )
 from trilogy.core.models.datasource import Address
 from trilogy.utility import unique
@@ -71,8 +72,8 @@ class CTE(BaseModel):
 
     @computed_field  # type: ignore
     @property
-    def output_lcl(self) -> LooseConceptList:
-        return LooseConceptList(concepts=self.output_columns)
+    def output_lcl(self) -> LooseBuildConceptList:
+        return LooseBuildConceptList(concepts=self.output_columns)
 
     @field_validator("output_columns")
     def validate_output_columns(cls, v):
@@ -818,8 +819,8 @@ class UnionCTE(BaseModel):
 
     @computed_field  # type: ignore
     @property
-    def output_lcl(self) -> LooseConceptList:
-        return LooseConceptList(concepts=self.output_columns)
+    def output_lcl(self) -> LooseBuildConceptList:
+        return LooseBuildConceptList(concepts=self.output_columns)
 
     def get_alias(self, concept: BuildConcept, source: str | None = None) -> str:
         for cte in self.parent_ctes:
