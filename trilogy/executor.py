@@ -9,6 +9,7 @@ from sqlalchemy.engine import CursorResult, Engine
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionType, Granularity, IOType
 from trilogy.core.models.author import Concept, Function
+from trilogy.core.models.build import BuildConcept, BuildFunction
 from trilogy.core.models.core import ListWrapper, MapWrapper
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
@@ -57,7 +58,9 @@ class MockResult:
         return self.columns
 
 
-def generate_result_set(columns: List[Concept], output_data: list[Any]) -> MockResult:
+def generate_result_set(
+    columns: List[BuildConcept], output_data: list[Any]
+) -> MockResult:
     names = [x.address.replace(".", "_") for x in columns]
     return MockResult(
         values=[dict(zip(names, [row])) for row in output_data], columns=names
@@ -394,12 +397,15 @@ class Executor(object):
                 self.environment.add_datasource(x.datasource)
 
     def _concept_to_value(
-        self, concept: Concept, local_concepts: dict[str, Concept] | None = None
+        self,
+        concept: BuildConcept,
+        local_concepts: dict[str, BuildConcept] | None = None,
     ) -> Any:
         if not concept.granularity == Granularity.SINGLE_ROW:
             raise SyntaxError(f"Cannot bind non-singleton concept {concept.address}")
+        # TODO: to get rid of function here - need to figure out why it's getting passed in
         if (
-            isinstance(concept.lineage, Function)
+            isinstance(concept.lineage, (BuildFunction, Function))
             and concept.lineage.operator == FunctionType.CONSTANT
         ):
             rval = concept.lineage.arguments[0]
@@ -440,7 +446,7 @@ class Executor(object):
         self,
         command: str,
         variables: dict | None = None,
-        local_concepts: dict[str, Concept] | None = None,
+        local_concepts: dict[str, BuildConcept] | None = None,
     ) -> CursorResult:
         """Run a command against the raw underlying
         execution engine."""

@@ -1,5 +1,6 @@
 from trilogy.core.enums import Derivation, FunctionType, Purpose
 from trilogy.core.models.author import AggregateWrapper, Function
+from trilogy.core.models.build import BuildAggregateWrapper
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
@@ -12,12 +13,13 @@ from trilogy.parsing.common import agg_wrapper_to_concept, function_to_concept
 
 
 def test_gen_group_node_parents(test_environment: Environment):
+    test_environment = test_environment.materialize_for_select()
     comp = test_environment.concepts["category_top_50_revenue_products"]
     assert comp.derivation == Derivation.AGGREGATE
     assert comp.lineage
     assert test_environment.concepts["category_id"] in comp.lineage.concept_arguments
     assert comp.grain.components == {test_environment.concepts["category_id"].address}
-    assert isinstance(comp.lineage, AggregateWrapper)
+    assert isinstance(comp.lineage, BuildAggregateWrapper)
     assert comp.lineage.by == [test_environment.concepts["category_id"]]
     parents = resolve_function_parent_concepts(comp, environment=test_environment)
     # parents should be both the value and the category

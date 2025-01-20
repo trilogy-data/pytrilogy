@@ -2,20 +2,13 @@ from collections import defaultdict
 from typing import Callable, List, Tuple
 
 from trilogy.core.enums import Derivation, Purpose
-from trilogy.core.models.author import (
-    AggregateWrapper,
-    Concept,
-    FilterItem,
-    Function,
-    LooseConceptList,
-    WhereClause,
-)
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
     BuildFilterItem,
     BuildFunction,
     BuildWhereClause,
+    LooseConceptList,
 )
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import (
@@ -26,17 +19,19 @@ from trilogy.core.processing.nodes.base_node import StrategyNode
 from trilogy.core.processing.nodes.merge_node import MergeNode
 from trilogy.utility import unique
 
-AGGREGATE_TYPES = (AggregateWrapper, BuildAggregateWrapper)
-FUNCTION_TYPES = (BuildFunction, Function)
+AGGREGATE_TYPES = (BuildAggregateWrapper,)
+FUNCTION_TYPES = (BuildFunction,)
 
 
 def resolve_function_parent_concepts(
-    concept: Concept, environment: Environment
-) -> List[Concept]:
+    concept: BuildConcept, environment: Environment
+) -> List[BuildConcept]:
     if not isinstance(concept.lineage, (*FUNCTION_TYPES, *AGGREGATE_TYPES)):
-        raise ValueError(f"Concept {concept} lineage is not function or aggregate")
+        raise ValueError(
+            f"Concept {concept} lineage is not function or aggregate, is {type(concept.lineage)}"
+        )
     if concept.derivation == Derivation.AGGREGATE:
-        base: list[Concept] = []
+        base: list[BuildConcept] = []
         if not concept.grain.abstract:
             base = concept.lineage.concept_arguments + [
                 environment.concepts[c] for c in concept.grain.components
@@ -51,7 +46,7 @@ def resolve_function_parent_concepts(
         else:
             extra_property_grain = concept.lineage.concept_arguments
         for x in extra_property_grain:
-            if isinstance(x, Concept) and x.purpose == Purpose.PROPERTY and x.keys:
+            if isinstance(x, BuildConcept) and x.purpose == Purpose.PROPERTY and x.keys:
                 base += [environment.concepts[c] for c in x.keys]
         return unique(base, "address")
     # TODO: handle basic lineage chains?
@@ -59,8 +54,8 @@ def resolve_function_parent_concepts(
 
 
 def resolve_condition_parent_concepts(
-    condition: WhereClause,
-) -> Tuple[List[Concept], List[Tuple[Concept, ...]]]:
+    condition: BuildWhereClause,
+) -> Tuple[List[BuildConcept], List[Tuple[BuildConcept, ...]]]:
     base_existence = []
     base_rows = []
     base_rows += condition.row_arguments
@@ -70,10 +65,10 @@ def resolve_condition_parent_concepts(
 
 
 def resolve_filter_parent_concepts(
-    concept: Concept,
+    concept: BuildConcept,
     environment: Environment,
-) -> Tuple[Concept, List[Concept], List[Tuple[Concept, ...]]]:
-    if not isinstance(concept.lineage, (BuildFilterItem, FilterItem)):
+) -> Tuple[BuildConcept, List[BuildConcept], List[Tuple[BuildConcept, ...]]]:
+    if not isinstance(concept.lineage, (BuildFilterItem,)):
         raise ValueError(
             f"Concept {concept} lineage is not filter item, is {type(concept.lineage)}"
         )
@@ -87,7 +82,7 @@ def resolve_filter_parent_concepts(
     base_existence += condition_existence
     # this is required so that
     if (
-        isinstance(direct_parent, Concept)
+        isinstance(direct_parent, BuildConcept)
         and direct_parent.purpose in (Purpose.PROPERTY, Purpose.METRIC)
         and direct_parent.keys
     ):
@@ -104,14 +99,14 @@ def resolve_filter_parent_concepts(
 
 def gen_property_enrichment_node(
     base_node: StrategyNode,
-    extra_properties: list[Concept],
+    extra_properties: list[BuildConcept],
     environment: Environment,
     g,
     depth: int,
     source_concepts,
     log_lambda: Callable,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ):
     required_keys: dict[str, set[str]] = defaultdict(set)
     for x in extra_properties:
@@ -156,7 +151,7 @@ def gen_property_enrichment_node(
 
 def gen_enrichment_node(
     base_node: StrategyNode,
-    join_keys: List[Concept],
+    join_keys: List[BuildConcept],
     local_optional: list[BuildConcept],
     environment: Environment,
     g,

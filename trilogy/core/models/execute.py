@@ -30,12 +30,12 @@ from trilogy.core.models.build import (
     BuildParenthetical,
     BuildRowsetItem,
 )
-from trilogy.core.models.datasource import Address, Datasource
+from trilogy.core.models.datasource import Address
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[MODELS_EXECUTE]"
 
-DATASOURCE_TYPES = (Datasource, BuildDatasource)
+DATASOURCE_TYPES = (BuildDatasource, BuildDatasource)
 
 
 class CTE(BaseModel):
@@ -420,7 +420,7 @@ class CTE(BaseModel):
 class ConceptPair(BaseModel):
     left: BuildConcept
     right: BuildConcept
-    existing_datasource: Union[Datasource, "QueryDatasource"]
+    existing_datasource: Union[BuildDatasource, "QueryDatasource"]
     modifiers: List[Modifier] = Field(default_factory=list)
 
     @property
@@ -456,10 +456,10 @@ class UnnestJoin(BaseModel):
 
 
 class BaseJoin(BaseModel):
-    right_datasource: Union[Datasource, "QueryDatasource"]
+    right_datasource: Union[BuildDatasource, "QueryDatasource"]
     join_type: JoinType
     concepts: Optional[List[BuildConcept]] = None
-    left_datasource: Optional[Union[Datasource, "QueryDatasource"]] = None
+    left_datasource: Optional[Union[BuildDatasource, "QueryDatasource"]] = None
     concept_pairs: list[ConceptPair] | None = None
 
     def __init__(self, **data: Any):
@@ -700,7 +700,7 @@ class QueryDatasource(BaseModel):
                 merged_datasources[ds.safe_identifier] = ds
 
         final_source_map: defaultdict[
-            str, Set[Union[Datasource, "QueryDatasource", "UnnestJoin"]]
+            str, Set[Union[BuildDatasource, QueryDatasource, UnnestJoin]]
         ] = defaultdict(set)
 
         # add our sources

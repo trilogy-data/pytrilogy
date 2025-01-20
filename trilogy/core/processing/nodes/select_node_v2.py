@@ -3,16 +3,16 @@ from typing import List, Optional
 from trilogy.constants import logger
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import Derivation, Purpose, SourceType
-from trilogy.core.models.author import (
-    Comparison,
-    Concept,
-    Conditional,
-    Function,
+from trilogy.core.models.build import (
+    BuildComparison,
+    BuildConcept,
+    BuildConditional,
+    BuildDatasource,
+    BuildFunction,
+    BuildOrderBy,
+    BuildParenthetical,
     Grain,
-    Parenthetical,
 )
-from trilogy.core.models.build import BuildDatasource, BuildOrderBy
-from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
 from trilogy.core.processing.nodes.base_node import StrategyNode, resolve_concept_map
@@ -30,20 +30,24 @@ class SelectNode(StrategyNode):
 
     def __init__(
         self,
-        input_concepts: List[Concept],
-        output_concepts: List[Concept],
+        input_concepts: List[BuildConcept],
+        output_concepts: List[BuildConcept],
         environment: Environment,
-        datasource: Datasource | None = None,
+        datasource: BuildDatasource | None = None,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
-        partial_concepts: List[Concept] | None = None,
-        nullable_concepts: List[Concept] | None = None,
+        partial_concepts: List[BuildConcept] | None = None,
+        nullable_concepts: List[BuildConcept] | None = None,
         accept_partial: bool = False,
         grain: Optional[Grain] = None,
         force_group: bool | None = False,
-        conditions: Conditional | Comparison | Parenthetical | None = None,
-        preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
+        conditions: (
+            BuildConditional | BuildComparison | BuildParenthetical | None
+        ) = None,
+        preexisting_conditions: (
+            BuildConditional | BuildComparison | BuildParenthetical | None
+        ) = None,
         hidden_concepts: set[str] | None = None,
         ordering: BuildOrderBy | None = None,
     ):
@@ -76,20 +80,20 @@ class SelectNode(StrategyNode):
     ) -> QueryDatasource:
         if not self.datasource:
             raise ValueError("Datasource not provided")
-        datasource: Datasource = self.datasource
+        datasource: BuildDatasource = self.datasource
 
-        all_concepts_final: List[Concept] = unique(self.all_concepts, "address")
-        source_map: dict[str, set[Datasource | QueryDatasource | UnnestJoin]] = {
+        all_concepts_final: List[BuildConcept] = unique(self.all_concepts, "address")
+        source_map: dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]] = {
             concept.address: {datasource} for concept in self.input_concepts
         }
 
         derived_concepts = [
             c
             for c in datasource.columns
-            if isinstance(c.alias, Function) and c.concept.address in source_map
+            if isinstance(c.alias, BuildFunction) and c.concept.address in source_map
         ]
         for c in derived_concepts:
-            if not isinstance(c.alias, Function):
+            if not isinstance(c.alias, BuildFunction):
                 continue
             for x in c.alias.concept_arguments:
                 source_map[x.address] = {datasource}
@@ -177,7 +181,7 @@ class SelectNode(StrategyNode):
             if not resolution:
                 return super()._resolve()
             # zip in our parent source map
-            parent_sources: List[QueryDatasource | Datasource] = [
+            parent_sources: List[QueryDatasource | BuildDatasource] = [
                 p.resolve() for p in self.parents
             ]
 

@@ -7,17 +7,13 @@ from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import BooleanOperator, SourceType
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
-from trilogy.core.models.author import (
-    Concept,
-    MultiSelectLineage,
-    SelectLineage,
-)
 from trilogy.core.models.build import (
+    BuildConcept,
     BuildConditional,
+    BuildDatasource,
     BuildMultiSelectLineage,
     BuildSelectLineage,
 )
-from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import BuildEnvironment, Environment
 from trilogy.core.models.execute import (
     CTE,
@@ -62,7 +58,7 @@ def base_join_to_join(
             alias=base_join.alias,
         )
 
-    def get_datasource_cte(datasource: Datasource | QueryDatasource) -> CTE:
+    def get_datasource_cte(datasource: BuildDatasource | QueryDatasource) -> CTE:
         eligible = set()
         for cte in ctes:
             if cte.source.identifier == datasource.identifier:
@@ -131,7 +127,7 @@ def generate_source_map(
             and isinstance(list(qdv)[0], UnnestJoin)
         ):
             source_map[qdk] = []
-        basic = [x for x in qdv if isinstance(x, Datasource)]
+        basic = [x for x in qdv if isinstance(x, BuildDatasource)]
         for base in basic:
             source_map[qdk].append(base.safe_identifier)
 
@@ -180,8 +176,8 @@ def generate_source_map(
     }, existence_source_map
 
 
-def datasource_to_query_datasource(datasource: Datasource) -> QueryDatasource:
-    sub_select: Dict[str, Set[Union[Datasource, QueryDatasource, UnnestJoin]]] = {
+def datasource_to_query_datasource(datasource: BuildDatasource) -> QueryDatasource:
+    sub_select: Dict[str, Set[Union[BuildDatasource, QueryDatasource, UnnestJoin]]] = {
         **{c.address: {datasource} for c in datasource.concepts},
     }
     concepts = [c for c in datasource.concepts]
@@ -223,7 +219,7 @@ def resolve_cte_base_name_and_alias_v2(
     raw_joins: List[Join | InstantiatedUnnestJoin],
 ) -> Tuple[str | None, str | None]:
     if (
-        isinstance(source.datasources[0], Datasource)
+        isinstance(source.datasources[0], BuildDatasource)
         and not source.datasources[0].name == CONSTANT_DATASET
     ):
         ds = source.datasources[0]
@@ -370,7 +366,7 @@ def datasource_to_cte(
 
 def get_query_node(
     environment: Environment,
-    statement: SelectLineage | MultiSelectLineage,
+    statement: BuildSelectLineage | BuildMultiSelectLineage,
     history: History | None = None,
 ) -> StrategyNode:
     if not isinstance(statement, (BuildSelectLineage, BuildMultiSelectLineage)):
@@ -389,7 +385,7 @@ def get_query_node(
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
 
-    search_concepts: list[Concept] = statement.output_components
+    search_concepts: list[BuildConcept] = statement.output_components
 
     ods: StrategyNode = source_query_concepts(
         search_concepts,
@@ -536,13 +532,9 @@ def process_query(
         order_by=root_cte.order_by,
         grain=statement.grain,
         limit=statement.limit,
-        where_clause=statement.where_clause,
-        having_clause=statement.having_clause,
         output_columns=[mapping[x.address] for x in statement.output_components],
         ctes=final_ctes,
         base=root_cte,
-        # we no longer do any joins at final level, this should always happen in parent CTEs
-        joins=[],
         hidden_columns=set([x for x in statement.hidden_components]),
         local_concepts=statement.local_concepts,
     )

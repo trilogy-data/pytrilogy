@@ -16,13 +16,8 @@ from trilogy.core.enums import (
     Purpose,
 )
 from trilogy.core.models.author import (
-
-    Comparison,
     Concept,
-    Conditional,
     LooseConceptList,
-    Parenthetical,
-    SubselectComparison,
 )
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
@@ -65,7 +60,7 @@ AGGREGATE_TYPES = (BuildAggregateWrapper,)
 SUBSELECT_TYPES = (BuildSubselectComparison,)
 COMPARISON_TYPES = (BuildComparison,)
 FUNCTION_TYPES = (BuildFunction,)
-PARENTHETICAL_TYPES = ( BuildParenthetical,)
+PARENTHETICAL_TYPES = (BuildParenthetical,)
 CONDITIONAL_TYPES = (BuildConditional,)
 CONCEPT_TYPES = (BuildConcept,)
 WINDOW_TYPES = (BuildWindowItem,)
@@ -508,8 +503,15 @@ CONDITION_TYPES = (
 
 def decompose_condition(
     conditional: BuildConditional | BuildComparison | BuildParenthetical,
-) -> list[BuildSubselectComparison | BuildComparison | BuildConditional | BuildParenthetical]:
-    chunks: list[BuildSubselectComparison | BuildComparison | BuildConditional | BuildParenthetical] = []
+) -> list[
+    BuildSubselectComparison | BuildComparison | BuildConditional | BuildParenthetical
+]:
+    chunks: list[
+        BuildSubselectComparison
+        | BuildComparison
+        | BuildConditional
+        | BuildParenthetical
+    ] = []
     if not isinstance(conditional, BuildConditional):
         return [conditional]
     if conditional.operator == BooleanOperator.AND:
@@ -523,7 +525,7 @@ def decompose_condition(
             chunks.append(conditional)
         else:
             for val in [conditional.left, conditional.right]:
-                if isinstance(val,  BuildConditional):
+                if isinstance(val, BuildConditional):
                     chunks.extend(decompose_condition(val))
                 else:
                     chunks.append(val)

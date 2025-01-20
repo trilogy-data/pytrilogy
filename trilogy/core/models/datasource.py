@@ -311,44 +311,20 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         return False
 
     @property
-    def full_concepts(self) -> List[Concept]:
+    def full_concepts(self) -> List[ConceptRef]:
         return [c.concept for c in self.columns if Modifier.PARTIAL not in c.modifiers]
 
     @property
-    def nullable_concepts(self) -> List[Concept]:
+    def nullable_concepts(self) -> List[ConceptRef]:
         return [c.concept for c in self.columns if Modifier.NULLABLE in c.modifiers]
 
     @property
-    def output_concepts(self) -> List[Concept]:
+    def output_concepts(self) -> List[ConceptRef]:
         return self.concepts
 
     @property
-    def partial_concepts(self) -> List[Concept]:
+    def partial_concepts(self) -> List[ConceptRef]:
         return [c.concept for c in self.columns if Modifier.PARTIAL in c.modifiers]
-
-    def get_alias(
-        self, concept: Concept, use_raw_name: bool = True, force_alias: bool = False
-    ) -> Optional[str | RawColumnExpr] | Function:
-        # 2022-01-22
-        # this logic needs to be refined.
-        # if concept.lineage:
-        # #     return None
-        for x in self.columns:
-            if x.concept == concept or x.concept.with_grain(concept.grain) == concept:
-                if use_raw_name:
-                    return x.alias
-                return concept.safe_address
-        existing = [str(c.concept.with_grain(self.grain)) for c in self.columns]
-        raise ValueError(
-            f"{LOGGER_PREFIX} Concept {concept} not found on {self.identifier}; have"
-            f" {existing}."
-        )
-
-    @property
-    def safe_location(self) -> str:
-        if isinstance(self.address, Address):
-            return self.address.location
-        return self.address
 
 
 class EnvironmentDatasourceDict(dict):

@@ -1,9 +1,8 @@
-# directly select out a basic derivation
 from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionClass, SourceType
-from trilogy.core.models.author import Concept, Function, WhereClause
+from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
@@ -14,10 +13,12 @@ LOGGER_PREFIX = "[GEN_BASIC_NODE]"
 
 
 def is_equivalent_basic_function_lineage(
-    x: Concept,
-    y: Concept,
+    x: BuildConcept,
+    y: BuildConcept,
 ):
-    if not isinstance(x.lineage, Function) or not isinstance(y.lineage, Function):
+    if not isinstance(x.lineage, BuildFunction) or not isinstance(
+        y.lineage, BuildFunction
+    ):
         return False
     if x.lineage.operator == y.lineage.operator:
         return True
@@ -30,14 +31,14 @@ def is_equivalent_basic_function_lineage(
 
 
 def gen_basic_node(
-    concept: Concept,
-    local_optional: List[Concept],
+    concept: BuildConcept,
+    local_optional: List[BuildConcept],
     environment,
     g,
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ):
     depth_prefix = "\t" * depth
     parent_concepts = resolve_function_parent_concepts(concept, environment=environment)
@@ -65,7 +66,7 @@ def gen_basic_node(
         if x not in equivalent_optional
         and not any(x.address in y.pseudonyms for y in equivalent_optional)
     ]
-    all_parents: list[Concept] = unique(
+    all_parents: list[BuildConcept] = unique(
         parent_concepts + non_equivalent_optional, "address"
     )
     logger.info(

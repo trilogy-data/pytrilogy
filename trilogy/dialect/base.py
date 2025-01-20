@@ -11,6 +11,7 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.internal import DEFAULT_CONCEPTS
+from trilogy.core.models.author import Grain
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildCaseElse,
@@ -467,6 +468,7 @@ class BaseDialect:
     def render_expr(
         self,
         e: Union[
+            BuildConcept,
             BuildFunction,
             BuildConditional,
             BuildAggregateWrapper,
@@ -856,7 +858,7 @@ class BaseDialect:
                             output_columns=[
                                 environment.concepts[
                                     DEFAULT_CONCEPTS["query_text"].address
-                                ]
+                                ].with_select_context({}, Grain(), environment)
                             ],
                             output_values=[
                                 process_query(

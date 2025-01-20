@@ -1,15 +1,14 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models.author import (
-    AggregateWrapper,
-    Concept,
-    Function,
+from trilogy.core.models.build import (
+    BuildAggregateWrapper,
+    BuildConcept,
+    BuildFunction,
+    BuildWhereClause,
     Grain,
     LooseConceptList,
-    WhereClause,
 )
-from trilogy.core.models.build import BuildAggregateWrapper
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.common import (
     gen_enrichment_node,
@@ -23,18 +22,18 @@ LOGGER_PREFIX = "[GEN_GROUP_NODE]"
 
 
 def gen_group_node(
-    concept: Concept,
-    local_optional: List[Concept],
+    concept: BuildConcept,
+    local_optional: List[BuildConcept],
     environment: Environment,
     g,
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     # aggregates MUST always group to the proper grain
     # except when the
-    parent_concepts: List[Concept] = unique(
+    parent_concepts: List[BuildConcept] = unique(
         resolve_function_parent_concepts(concept, environment=environment), "address"
     )
     logger.info(
@@ -56,7 +55,7 @@ def gen_group_node(
 
             if not isinstance(
                 possible_agg.lineage,
-                (AggregateWrapper, BuildAggregateWrapper, Function),
+                (BuildAggregateWrapper, BuildFunction),
             ):
                 continue
             if possible_agg.grain and possible_agg.grain != concept.grain:
@@ -65,7 +64,7 @@ def gen_group_node(
                 )
 
             if possible_agg.grain and possible_agg.grain == concept.grain:
-                agg_parents: List[Concept] = resolve_function_parent_concepts(
+                agg_parents: List[BuildConcept] = resolve_function_parent_concepts(
                     possible_agg,
                     environment=environment,
                 )

@@ -1212,7 +1212,10 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
         )
 
     def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
+        self,
+        local_concepts: dict[str, Concept],
+        grain: Grain | None,
+        environment: Environment,
     ) -> Concept:
         """Propagate the select context to the lineage of the concept"""
         from trilogy.core.models.build import BuildConcept
@@ -2230,9 +2233,9 @@ class SelectLineage(Mergeable, SelectContext, Namespaced, BaseModel):
     having_clause: Union["HavingClause", None] = Field(default=None)
 
     def build_for_select(self, environment: Environment):
-        from trilogy.core.models.build import BuildSelectLineage
+        from trilogy.core.models.build import BuildConcept, BuildSelectLineage
 
-        materialized = {}
+        materialized: dict[str, BuildConcept] = {}
         local_concepts = {
             k: v.with_select_context(materialized, self.grain, environment)
             for k, v in self.local_concepts.items()

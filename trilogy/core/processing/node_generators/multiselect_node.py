@@ -4,12 +4,12 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import JoinType, Purpose
-from trilogy.core.models.author import (
-    Concept,
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildMultiSelectLineage,
+    BuildWhereClause,
     Grain,
-    WhereClause,
 )
-from trilogy.core.models.build import BuildMultiSelectLineage
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.common import resolve_join_order
 from trilogy.core.processing.nodes import History, MergeNode, NodeJoin
@@ -51,14 +51,14 @@ def extra_align_joins(
 
 
 def gen_multiselect_node(
-    concept: Concept,
-    local_optional: List[Concept],
+    concept: BuildConcept,
+    local_optional: List[BuildConcept],
     environment: Environment,
     g,
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ) -> MergeNode | None:
     from trilogy.core.query_processor import get_query_node
 

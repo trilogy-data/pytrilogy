@@ -7,13 +7,14 @@ from trilogy.core.enums import Derivation, FunctionType, Granularity
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import (
-    Concept,
-    Function,
-    RowsetItem,
     UndefinedConcept,
-    WhereClause,
 )
-from trilogy.core.models.build import BuildWhereClause
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildFunction,
+    BuildRowsetItem,
+    BuildWhereClause,
+)
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators import (
     gen_basic_node,
@@ -53,7 +54,7 @@ LOGGER_PREFIX = "[CONCEPT DETAIL]"
 class SearchConceptsType(Protocol):
     def __call__(
         self,
-        mandatory_list: List[Concept],
+        mandatory_list: List[BuildConcept],
         environment: Environment,
         depth: int,
         g: ReferenceGraph,
@@ -63,7 +64,7 @@ class SearchConceptsType(Protocol):
     ) -> Union[StrategyNode, None]: ...
 
 
-def get_upstream_concepts(base: Concept, nested: bool = False) -> set[str]:
+def get_upstream_concepts(base: BuildConcept, nested: bool = False) -> set[str]:
     upstream = set()
     if nested:
         upstream.add(base.address)
@@ -72,7 +73,7 @@ def get_upstream_concepts(base: Concept, nested: bool = False) -> set[str]:
     for x in base.lineage.concept_arguments:
         # if it's derived from any value in a rowset, ALL rowset items are upstream
         if x.derivation == Derivation.ROWSET:
-            assert isinstance(x.lineage, RowsetItem)
+            assert isinstance(x.lineage, BuildRowsetItem)
             for y in x.lineage.rowset.derived_concepts:
                 upstream.add(y.address)
                 # upstream = upstream.union(get_upstream_concepts(y, nested=True))
@@ -81,8 +82,8 @@ def get_upstream_concepts(base: Concept, nested: bool = False) -> set[str]:
 
 
 def restrict_node_outputs_targets(
-    node: StrategyNode, targets: list[Concept], depth: int
-) -> list[Concept]:
+    node: StrategyNode, targets: list[BuildConcept], depth: int
+) -> list[BuildConcept]:
     ex_resolve = node.resolve()
     extra = [
         x
@@ -102,11 +103,11 @@ def restrict_node_outputs_targets(
 
 
 def get_priority_concept(
-    all_concepts: List[Concept],
+    all_concepts: List[BuildConcept],
     attempted_addresses: set[str],
     found_concepts: set[str],
     depth: int,
-) -> Concept:
+) -> BuildConcept:
     # optimized search for missing concepts
     pass_one = [
         c
@@ -180,12 +181,12 @@ def get_priority_concept(
 
 
 def generate_candidates_restrictive(
-    priority_concept: Concept,
-    candidates: list[Concept],
+    priority_concept: BuildConcept,
+    candidates: list[BuildConcept],
     exhausted: set[str],
     depth: int,
-    conditions: WhereClause | None = None,
-) -> List[List[Concept]]:
+    conditions: BuildWhereClause | None = None,
+) -> List[List[BuildConcept]]:
     # if it's single row, joins are irrelevant. Fetch without keys.
     if priority_concept.granularity == Granularity.SINGLE_ROW:
         return [[]]
@@ -210,15 +211,15 @@ def generate_candidates_restrictive(
 
 
 def generate_node(
-    concept: Concept,
-    local_optional: List[Concept],
+    concept: BuildConcept,
+    local_optional: List[BuildConcept],
     environment: Environment,
     g: ReferenceGraph,
     depth: int,
     source_concepts: SearchConceptsType,
     accept_partial: bool = False,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     # first check in case there is a materialized_concept
     history = history or History()
@@ -390,7 +391,7 @@ def generate_node(
     elif concept.derivation == Derivation.BASIC:
         # this is special case handling for group bys
         if (
-            isinstance(concept.lineage, Function)
+            isinstance(concept.lineage, BuildFunction)
             and concept.lineage.operator == FunctionType.GROUP
         ):
             logger.info(
@@ -518,13 +519,13 @@ def generate_node(
 
 
 def validate_concept(
-    concept: Concept,
+    concept: BuildConcept,
     node: StrategyNode,
     found_addresses: set[str],
     non_partial_addresses: set[str],
     partial_addresses: set[str],
     virtual_addresses: set[str],
-    found_map: dict[str, set[Concept]],
+    found_map: dict[str, set[BuildConcept]],
     accept_partial: bool,
     seen: set[str],
     environment: Environment,
@@ -571,12 +572,12 @@ def validate_concept(
 def validate_stack(
     environment: Environment,
     stack: List[StrategyNode],
-    concepts: List[Concept],
-    mandatory_with_filter: List[Concept],
-    conditions: WhereClause | None = None,
+    concepts: List[BuildConcept],
+    mandatory_with_filter: List[BuildConcept],
+    conditions: BuildWhereClause | None = None,
     accept_partial: bool = False,
 ) -> tuple[ValidationResult, set[str], set[str], set[str], set[str]]:
-    found_map: dict[str, set[Concept]] = defaultdict(set)
+    found_map: dict[str, set[BuildConcept]] = defaultdict(set)
     found_addresses: set[str] = set()
     non_partial_addresses: set[str] = set()
     partial_addresses: set[str] = set()
@@ -686,7 +687,7 @@ def append_existence_check(
 
 
 def search_concepts(
-    mandatory_list: List[Concept],
+    mandatory_list: List[BuildConcept],
     environment: Environment,
     depth: int,
     g: ReferenceGraph,
@@ -725,13 +726,13 @@ def search_concepts(
 
 
 def _search_concepts(
-    mandatory_list: List[Concept],
+    mandatory_list: List[BuildConcept],
     environment: Environment,
     depth: int,
     g: ReferenceGraph,
     history: History,
     accept_partial: bool = False,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     # these are the concepts we need in the output projection
     mandatory_list = unique(mandatory_list, "address")
@@ -984,10 +985,10 @@ def _search_concepts(
 
 
 def source_query_concepts(
-    output_concepts: List[Concept],
+    output_concepts: List[BuildConcept],
     environment: Environment,
     g: Optional[ReferenceGraph] = None,
-    conditions: Optional[WhereClause] = None,
+    conditions: Optional[BuildWhereClause] = None,
     history: Optional[History] = None,
 ):
     if not output_concepts:

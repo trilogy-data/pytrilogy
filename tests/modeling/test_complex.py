@@ -4,7 +4,7 @@ from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
-from trilogy.core.statements.author import SelectStatement
+from trilogy.core.statements.author import Grain, SelectStatement
 
 
 def test_rowset(test_environment: Environment, test_executor: Executor):
@@ -62,7 +62,9 @@ def test_rowset_with_aggregation(
 
     _, statements = parse(test_select, test_environment)
 
-    group = test_environment.concepts["even_order_store_revenue"]
+    group = test_environment.concepts["even_order_store_revenue"].with_select_context(
+        {}, Grain(), test_environment
+    )
 
     assert group.derivation == Derivation.AGGREGATE
     # grain_c_lcl = LooseConceptList(concepts=group.grain.components_copy)

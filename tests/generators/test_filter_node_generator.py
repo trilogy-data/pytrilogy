@@ -9,6 +9,7 @@ from trilogy.core.processing.node_generators.common import (
 
 
 def test_gen_filter_node_parents(test_environment: Environment, test_environment_graph):
+    test_environment = test_environment.materialize_for_select()
     comp = test_environment.concepts["products_with_revenue_over_50"]
     assert comp.derivation == Derivation.FILTER
 

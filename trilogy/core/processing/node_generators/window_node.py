@@ -1,8 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models.author import WhereClause, WindowItem
-from trilogy.core.models.build import BuildConcept, BuildWindowItem
+from trilogy.core.models.build import BuildConcept, BuildWhereClause, BuildWindowItem
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import History, StrategyNode, WindowNode
 from trilogy.core.processing.utility import padding
@@ -11,7 +10,7 @@ from trilogy.utility import unique
 LOGGER_PREFIX = "[GEN_WINDOW_NODE]"
 
 
-WINDOW_TYPES = (WindowItem, BuildWindowItem)
+WINDOW_TYPES = (BuildWindowItem,)
 
 
 def resolve_window_parent_concepts(
@@ -41,7 +40,7 @@ def gen_window_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     base, parent_concepts = resolve_window_parent_concepts(concept, environment)
     equivalent_optional = [

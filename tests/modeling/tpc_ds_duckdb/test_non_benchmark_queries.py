@@ -162,6 +162,11 @@ ORDER BY
     store_sales.store.name asc
 LIMIT 100;"""
     r1 = engine.parse_text(y)[-1]
-    assert "store_sales.is_returned" in [
-        x.address for x in r1.where_clause.conditional.row_arguments
-    ], [x.address for x in r1.where_clause.conditional.row_arguments]
+    found = False
+    for cte in r1.ctes:
+        if cte.condition:
+            found = True
+            assert "store_sales.is_returned" in [
+                x.address for x in cte.condition.row_arguments
+            ], [x.address for x in cte.condition.row_arguments]
+    assert found

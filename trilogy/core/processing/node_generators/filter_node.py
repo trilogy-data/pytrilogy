@@ -1,8 +1,12 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models.author import Concept, FilterItem, Grain, WhereClause
-from trilogy.core.models.build import BuildFilterItem
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildFilterItem,
+    BuildWhereClause,
+    Grain,
+)
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
@@ -18,18 +22,18 @@ from trilogy.core.processing.utility import is_scalar_condition, padding, unique
 
 LOGGER_PREFIX = "[GEN_FILTER_NODE]"
 
-FILTER_TYPES = (FilterItem, BuildFilterItem)
+FILTER_TYPES = (BuildFilterItem,)
 
 
 def gen_filter_node(
-    concept: Concept,
-    local_optional: List[Concept],
+    concept: BuildConcept,
+    local_optional: List[BuildConcept],
     environment: Environment,
     g,
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     immediate_parent, parent_row_concepts, parent_existence_concepts = (
         resolve_filter_parent_concepts(concept, environment)
@@ -38,7 +42,7 @@ def gen_filter_node(
         raise SyntaxError('Filter node must have a filter type lineage"')
     where = concept.lineage.where
 
-    optional_included: list[Concept] = []
+    optional_included: list[BuildConcept] = []
 
     for x in local_optional:
         if isinstance(x.lineage, FILTER_TYPES):

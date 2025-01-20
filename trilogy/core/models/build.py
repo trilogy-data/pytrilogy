@@ -42,25 +42,18 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.models.author import (
-    CaseElse,
-    CaseWhen,
-    Comparison,
     Concept,
     ConceptArgs,
-    Conditional,
     Function,
     Grain,
     HavingClause,
     LooseConceptList,
     Metadata,
     OrderItem,
-    Parenthetical,
-    RowsetItem,
     RowsetLineage,
     # get_concept_arguments,
     # get_concept_row_arguments,
     SelectContext,
-    SubselectComparison,
     WhereClause,
 )
 from trilogy.core.models.core import (
@@ -88,6 +81,8 @@ from trilogy.utility import unique
 # TODO: refactor to avoid these
 if TYPE_CHECKING:
     from trilogy.core.models.execute import CTE, UnionCTE
+
+LOGGER_PREFIX = "[MODELS_BUILD]"
 
 
 class ConstantInlineable(ABC):
@@ -253,7 +248,7 @@ class BuildGrain(BaseModel):
             return self.__add__(other)
 
 
-class BuildParenthetical(DataTyped, ConceptArgs, BaseModel):
+class BuildParenthetical(DataTyped, ConstantInlineable, ConceptArgs, BaseModel):
     content: "BuildExpr"
 
     def __add__(self, other) -> Union["BuildParenthetical", "BuildConditional"]:
@@ -307,8 +302,7 @@ class BuildParenthetical(DataTyped, ConceptArgs, BaseModel):
         return arg_to_datatype(self.content)
 
 
-# class BuildConditional(ConceptArgs, ConstantInlineable, BaseModel):
-class BuildConditional(Conditional):
+class BuildConditional(ConceptArgs, ConstantInlineable, BaseModel):
     left: Union[
         int,
         str,
@@ -441,7 +435,7 @@ class BuildWhereClause(ConceptArgs, BaseModel):
         BuildSubselectComparison,
         BuildComparison,
         BuildConditional,
-        "BuildParenthetical",
+        BuildParenthetical,
     ]
 
     def __eq__(self, other):
@@ -725,9 +719,7 @@ class BuildConcept(Concept, BaseModel):
         cls, base: Concept, grain: Grain, environment: Environment, local_concepts
     ) -> BuildConcept:
 
-        new_lineage, final_grain, keys = base.get_select_grain_and_keys(
-            grain, environment
-        )
+        new_lineage, final_grain, _ = base.get_select_grain_and_keys(grain, environment)
         if isinstance(new_lineage, SelectContext):
             new_lineage = new_lineage.with_select_context(
                 local_concepts=local_concepts, grain=grain, environment=environment
@@ -1031,14 +1023,7 @@ def get_basic_type(
 
 
 class BuildCaseWhen(ConceptArgs, BaseModel):
-    comparison: (
-        BuildConditional
-        | BuildSubselectComparison
-        | BuildComparison
-        | Conditional
-        | Comparison
-        | SubselectComparison
-    )
+    comparison: BuildConditional | BuildSubselectComparison | BuildComparison
     expr: "BuildExpr"
 
     def __str__(self):
@@ -1082,9 +1067,6 @@ class BuildFunction(Function):
     ] = None
     arguments: Sequence[
         Union[
-            BuildConcept,
-            "BuildAggregateWrapper",
-            "BuildFunction",
             int,
             float,
             str,
@@ -1096,15 +1078,15 @@ class BuildFunction(Function):
             MapType,
             NumericType,
             DatePart,
-            Parenthetical,
-            CaseWhen,
-            CaseElse,
+            BuildConcept,
+            BuildAggregateWrapper,
+            BuildFunction,
+            BuildWindowItem,
             BuildParenthetical,
             BuildCaseWhen,
             BuildCaseElse,
             list,
             ListWrapper[Any],
-            BuildWindowItem,
         ]
     ]
 
@@ -1168,7 +1150,7 @@ class BuildAggregateWrapper(ConceptArgs, BaseModel):
 
 class BuildFilterItem(ConceptArgs, BaseModel):
     content: BuildConcept
-    where: "BuildWhereClause"
+    where: BuildWhereClause
 
     def __str__(self):
         return f"<Filter: {str(self.content)} where {str(self.where)}>"
@@ -1192,7 +1174,7 @@ class BuildRowsetLineage(BaseModel):
     select: BuildSelectLineage | BuildMultiSelectLineage
 
 
-class BuildRowsetItem(RowsetItem):
+class BuildRowsetItem(DataTyped, ConceptArgs, BaseModel):
     content: BuildConcept
     rowset: RowsetLineage
 
@@ -1451,7 +1433,7 @@ class BuildDatasource(Datasource):
         return self.identifier.replace(".", "_")
 
     @property
-    def concepts(self) -> List[Concept]:
+    def concepts(self) -> List[BuildConcept]:
         return [c.concept for c in self.columns]
 
     @property
@@ -1459,20 +1441,47 @@ class BuildDatasource(Datasource):
         return False
 
     @property
-    def full_concepts(self) -> List[Concept]:
+    def full_concepts(self) -> List[BuildConcept]:
         return [c.concept for c in self.columns if Modifier.PARTIAL not in c.modifiers]
 
     @property
-    def nullable_concepts(self) -> List[Concept]:
+    def nullable_concepts(self) -> List[BuildConcept]:
         return [c.concept for c in self.columns if Modifier.NULLABLE in c.modifiers]
 
     @property
-    def output_concepts(self) -> List[Concept]:
+    def output_concepts(self) -> List[BuildConcept]:
         return self.concepts
 
     @property
-    def partial_concepts(self) -> List[Concept]:
+    def partial_concepts(self) -> List[BuildConcept]:
         return [c.concept for c in self.columns if Modifier.PARTIAL in c.modifiers]
+
+    def get_alias(
+        self,
+        concept: BuildConcept,
+        use_raw_name: bool = True,
+        force_alias: bool = False,
+    ) -> Optional[str | RawColumnExpr] | Function:
+        # 2022-01-22
+        # this logic needs to be refined.
+        # if concept.lineage:
+        # #     return None
+        for x in self.columns:
+            if x.concept == concept or x.concept.with_grain(concept.grain) == concept:
+                if use_raw_name:
+                    return x.alias
+                return concept.safe_address
+        existing = [str(c.concept) for c in self.columns]
+        raise ValueError(
+            f"{LOGGER_PREFIX} Concept {concept} not found on {self.identifier}; have"
+            f" {existing}."
+        )
+
+    @property
+    def safe_location(self) -> str:
+        if isinstance(self.address, Address):
+            return self.address.location
+        return self.address
 
 
 BuildExpr = (

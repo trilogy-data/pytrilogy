@@ -3,16 +3,15 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import UnresolvableQueryException
-from trilogy.core.models.author import (
-    Concept,
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildMultiSelectLineage,
+    BuildRowsetItem,
+    BuildRowsetLineage,
+    BuildSelectLineage,
+    BuildWhereClause,
     Grain,
-    MultiSelectLineage,
-    RowsetItem,
-    RowsetLineage,
-    SelectLineage,
-    WhereClause,
 )
-from trilogy.core.models.build import BuildRowsetItem
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
@@ -21,14 +20,14 @@ LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
 
 
 def gen_rowset_node(
-    concept: Concept,
-    local_optional: List[Concept],
+    concept: BuildConcept,
+    local_optional: List[BuildConcept],
     environment: Environment,
     g,
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     from trilogy.core.query_processor import get_query_node
 
@@ -36,9 +35,9 @@ def gen_rowset_node(
         raise SyntaxError(
             f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {BuildRowsetItem}"
         )
-    lineage: RowsetItem = concept.lineage
-    rowset: RowsetLineage = lineage.rowset
-    select: SelectLineage | MultiSelectLineage = lineage.rowset.select
+    lineage: BuildRowsetItem = concept.lineage
+    rowset: BuildRowsetLineage = lineage.rowset
+    select: BuildSelectLineage | BuildMultiSelectLineage = lineage.rowset.select
 
     node = get_query_node(history.base_environment, select)
 

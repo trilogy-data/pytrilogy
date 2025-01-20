@@ -175,6 +175,8 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         if self.where_clause:
             for cref in self.where_clause.concept_arguments:
                 concept = environment.concepts[cref]
+                if isinstance(concept, UndefinedConcept):
+                    continue
                 if (
                     concept.lineage
                     and isinstance(concept.lineage, Function)
