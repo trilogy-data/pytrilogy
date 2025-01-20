@@ -7,8 +7,8 @@ from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConditional,
-    Grain,
     BuildParenthetical,
+    Grain,
 )
 from trilogy.core.processing.nodes.base_node import StrategyNode
 
@@ -32,8 +32,12 @@ class FilterNode(StrategyNode):
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
-        conditions: BuildConditional | BuildComparison | BuildParenthetical | None = None,
-        preexisting_conditions: BuildConditional | BuildComparison | BuildParenthetical | None = None,
+        conditions: (
+            BuildConditional | BuildComparison | BuildParenthetical | None
+        ) = None,
+        preexisting_conditions: (
+            BuildConditional | BuildComparison | BuildParenthetical | None
+        ) = None,
         partial_concepts: List[BuildConcept] | None = None,
         force_group: bool | None = False,
         grain: Grain | None = None,

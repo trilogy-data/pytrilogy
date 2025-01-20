@@ -4,7 +4,8 @@ from pathlib import Path
 from trilogy import Dialects, parse
 from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.functions import CurrentDatetime
-from trilogy.core.models.author import Concept, Function
+from trilogy.core.models.author import Concept
+from trilogy.core.models.build import BuildFunction
 from trilogy.core.models.core import (
     DataType,
 )
@@ -88,14 +89,8 @@ def test_daily_job():
 
     case = env.concepts["all_sites.clean_url"]
 
-    assert isinstance(case.lineage, Function)
+    assert isinstance(case.lineage, BuildFunction)
     assert local_static.granularity == Granularity.SINGLE_ROW
-
-    for x in case.lineage.concept_arguments:
-        test = case.lineage.with_namespace("all_sites")
-        for y in test.concept_arguments:
-            assert y.namespace == "all_sites"
-        assert x.namespace == "all_sites", type(case.lineage)
 
     parents = resolve_function_parent_concepts(case, environment=env)
     for x in parents:
@@ -148,14 +143,8 @@ def test_counts():
 
     case = env.concepts["all_sites.clean_url"]
 
-    assert isinstance(case.lineage, Function)
+    assert isinstance(case.lineage, BuildFunction)
     assert local_static.granularity == Granularity.SINGLE_ROW
-
-    for x in case.lineage.concept_arguments:
-        test = case.lineage.with_namespace("all_sites")
-        for y in test.concept_arguments:
-            assert y.namespace == "all_sites"
-        assert x.namespace == "all_sites", type(case.lineage)
 
     parents = resolve_function_parent_concepts(case, environment=env)
     for x in parents:

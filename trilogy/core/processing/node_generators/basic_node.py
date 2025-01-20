@@ -3,12 +3,13 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionClass, SourceType
 from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
+from trilogy.core.models.environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
 from trilogy.core.processing.nodes import History, StrategyNode
 from trilogy.utility import unique
-from trilogy.core.models.environment import BuildEnvironment
+
 LOGGER_PREFIX = "[GEN_BASIC_NODE]"
 
 
@@ -33,7 +34,7 @@ def is_equivalent_basic_function_lineage(
 def gen_basic_node(
     concept: BuildConcept,
     local_optional: List[BuildConcept],
-    environment:BuildEnvironment,
+    environment: BuildEnvironment,
     g,
     depth: int,
     source_concepts,

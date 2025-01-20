@@ -1,6 +1,6 @@
 from trilogy.core.enums import ComparisonOperator, Derivation
-from trilogy.core.models.build import BuildComparison, BuildWhereClause, Grain
 from trilogy.core.models.author import Comparison
+from trilogy.core.models.build import BuildWhereClause, Grain
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import gen_filter_node
@@ -51,7 +51,7 @@ def test_gen_filter_node_same_concept(test_environment, test_environment_graph):
     test_environment.add_concept(f_product_id)
     test_environment.add_concept(f_concept_id)
     test_environment = test_environment.materialize_for_select()
-    
+
     node = gen_filter_node(
         concept=test_environment.concepts[f_product_id.address],
         local_optional=[
@@ -62,11 +62,13 @@ def test_gen_filter_node_same_concept(test_environment, test_environment_graph):
         depth=0,
         source_concepts=search_concepts,
     )
-    assert node.conditions == conditional.with_select_context({}, Grain(), og_test_environment)
+    assert node.conditions == conditional.with_select_context(
+        {}, Grain(), og_test_environment
+    )
 
 
 def test_gen_filter_node_include_all(test_environment, test_environment_graph):
-    
+
     conditional = Comparison(
         left=test_environment.concepts["category_name"],
         operator=ComparisonOperator.LIKE,
@@ -77,12 +79,14 @@ def test_gen_filter_node_include_all(test_environment, test_environment_graph):
     og_test_environment = test_environment
     test_environment.add_concept(f_product_id)
     test_environment.add_concept(f_concept_id)
-    build_conditional = conditional.with_select_context({}, Grain(), og_test_environment)
+    build_conditional = conditional.with_select_context(
+        {}, Grain(), og_test_environment
+    )
     test_environment = test_environment.materialize_for_select()
     node = gen_filter_node(
         concept=test_environment.concepts[f_product_id.address],
         local_optional=[
-             test_environment.concepts[f_concept_id.address],
+            test_environment.concepts[f_concept_id.address],
         ],
         environment=test_environment,
         g=test_environment_graph,

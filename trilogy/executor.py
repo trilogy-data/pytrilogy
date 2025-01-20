@@ -446,7 +446,7 @@ class Executor(object):
         self,
         command: str,
         variables: dict | None = None,
-        local_concepts: dict[str, BuildConcept] | None = None,
+        local_concepts: dict[str, Concept] | None = None,
     ) -> CursorResult:
         """Run a command against the raw underlying
         execution engine."""

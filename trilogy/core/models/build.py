@@ -738,8 +738,6 @@ class BuildConcept(Concept, BaseModel):
             build_is_aggregate=is_aggregate,
         )
 
-
-
     @property
     def is_aggregate(self) -> bool:
         return self.build_is_aggregate
@@ -986,8 +984,8 @@ class BuildCaseElse(ConceptArgs, BaseModel):
         return get_concept_arguments(self.expr)
 
 
-# class BuildFunction(DataTyped, ConceptArgs, BaseModel):
-class BuildFunction(Function):
+class BuildFunction(DataTyped, ConceptArgs, BaseModel):
+    # class BuildFunction(Function):
     operator: FunctionType
     arg_count: int = Field(default=1)
     output_datatype: DataType | ListType | StructType | MapType | NumericType
@@ -1052,7 +1050,7 @@ class BuildFunction(Function):
         return base_grain
 
 
-class BuildAggregateWrapper(ConceptArgs, BaseModel):
+class BuildAggregateWrapper(ConceptArgs, DataTyped, BaseModel):
     function: BuildFunction
     by: List[BuildConcept] = Field(default_factory=list)
 

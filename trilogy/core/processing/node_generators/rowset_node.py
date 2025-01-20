@@ -3,15 +3,13 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import UnresolvableQueryException
+from trilogy.core.models.author import MultiSelectLineage, RowsetLineage, SelectLineage
 from trilogy.core.models.build import (
     BuildConcept,
-    BuildMultiSelectLineage,
     BuildRowsetItem,
-    BuildSelectLineage,
     BuildWhereClause,
     Grain,
 )
-from trilogy.core.models.author import RowsetLineage, SelectLineage, MultiSelectLineage
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding

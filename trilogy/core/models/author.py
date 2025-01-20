@@ -62,9 +62,11 @@ from trilogy.utility import unique
 
 # TODO: refactor to avoid these
 if TYPE_CHECKING:
+    from trilogy.core.models.build import (
+        BuildWhereClause,
+    )
     from trilogy.core.models.environment import Environment, EnvironmentConceptDict
     from trilogy.core.models.execute import CTE, UnionCTE
-    from trilogy.core.models.build import BuildWhereClause, BuildHavingClause, BuildAggregateWrapper, BuildAlignClause
 
 
 class Namespaced(ABC):

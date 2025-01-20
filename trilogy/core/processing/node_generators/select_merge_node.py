@@ -287,7 +287,7 @@ def resolve_subgraphs(
         if not is_subset:
             pruned_subgraphs[key] = nodes
 
-    final_nodes:set[str] = set([n for v in pruned_subgraphs.values() for n in v])
+    final_nodes: set[str] = set([n for v in pruned_subgraphs.values() for n in v])
     relevant_concepts_pre = {
         n: x.address
         for n in g.nodes()
@@ -298,7 +298,12 @@ def resolve_subgraphs(
         keep = True
         if x.startswith("c~") and x not in relevant_concepts_pre:
             keep = (
-                sum([1 if x in sub_nodes else 0 for _, sub_nodes in pruned_subgraphs.items()])
+                sum(
+                    [
+                        1 if x in sub_nodes else 0
+                        for _, sub_nodes in pruned_subgraphs.items()
+                    ]
+                )
                 > 1
             )
         if not keep:
