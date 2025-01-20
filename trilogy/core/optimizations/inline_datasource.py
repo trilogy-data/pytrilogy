@@ -1,6 +1,7 @@
 from collections import defaultdict
 
 from trilogy.constants import CONFIG
+
 # from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.build import BuildDatasource
 from trilogy.core.models.execute import (
@@ -42,7 +43,9 @@ class InlineDatasource(OptimizationRule):
                 self.debug(f"Cannot inline: parent {parent_cte.name} has parents")
                 continue
             if parent_cte.condition:
-                self.debug(f"Cannot inline: parent {parent_cte.name} has condition, cannot be inlined")
+                self.debug(
+                    f"Cannot inline: parent {parent_cte.name} has condition, cannot be inlined"
+                )
                 continue
             raw_root = parent_cte.source.datasources[0]
             if not isinstance(raw_root, BuildDatasource):
@@ -50,7 +53,9 @@ class InlineDatasource(OptimizationRule):
                 continue
             root: BuildDatasource = raw_root
             if not root.can_be_inlined:
-                self.debug(f"Cannot inline: Parent {parent_cte.name} datasource is not inlineable")
+                self.debug(
+                    f"Cannot inline: Parent {parent_cte.name} datasource is not inlineable"
+                )
                 continue
             root_outputs = {x.address for x in root.output_concepts}
             inherited = {

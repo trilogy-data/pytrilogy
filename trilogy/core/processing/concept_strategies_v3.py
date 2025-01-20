@@ -90,10 +90,10 @@ def restrict_node_outputs_targets(
         if x.address not in [y.address for y in targets]
     ]
 
-    logger.info(
-        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} reducing final outputs, was {[c.address for c in ex_resolve.output_concepts]} with extra {[c.address for c in extra]}"
-    )
     base = [x for x in ex_resolve.output_concepts if x.address not in extra]
+    logger.info(
+        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} reducing final outputs, was {[c.address for c in ex_resolve.output_concepts]} with extra {[c.address for c in extra]}, remaining {base}"
+    )
     for x in targets:
         if x.address not in base:
             base.append(x)
@@ -529,9 +529,6 @@ def validate_concept(
     seen: set[str],
     environment: Environment,
 ):
-    logger.info('validating')
-    logger.info(concept)
-    logger.info(concept.pseudonyms)
     found_map[str(node)].add(concept)
     seen.add(concept.address)
     if concept not in node.partial_concepts:

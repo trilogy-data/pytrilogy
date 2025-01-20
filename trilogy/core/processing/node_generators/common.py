@@ -10,7 +10,13 @@ from trilogy.core.models.author import (
     LooseConceptList,
     WhereClause,
 )
-from trilogy.core.models.build import BuildAggregateWrapper, BuildFilterItem, BuildFunction, BuildConcept, BuildWhereClause
+from trilogy.core.models.build import (
+    BuildAggregateWrapper,
+    BuildFilterItem,
+    BuildFunction,
+    BuildConcept,
+    BuildWhereClause,
+)
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import (
     History,
@@ -22,6 +28,7 @@ from trilogy.utility import unique
 
 AGGREGATE_TYPES = (AggregateWrapper, BuildAggregateWrapper)
 FUNCTION_TYPES = (BuildFunction, Function)
+
 
 def resolve_function_parent_concepts(
     concept: Concept, environment: Environment

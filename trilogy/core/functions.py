@@ -20,7 +20,7 @@ from trilogy.core.models.author import (
     Function,
     Parenthetical,
     WindowItem,
-    UndefinedConcept
+    UndefinedConcept,
 )
 from trilogy.core.models.core import (
     CONCRETE_TYPES,

@@ -17,7 +17,7 @@ class WindowNode(StrategyNode):
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
-        ordering: BuildOrderBy | None = None
+        ordering: BuildOrderBy | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -26,7 +26,7 @@ class WindowNode(StrategyNode):
             whole_grain=whole_grain,
             parents=parents,
             depth=depth,
-            ordering=ordering
+            ordering=ordering,
         )
 
     def _resolve(self) -> QueryDatasource:

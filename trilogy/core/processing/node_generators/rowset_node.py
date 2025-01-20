@@ -40,7 +40,7 @@ def gen_rowset_node(
     rowset: RowsetLineage = lineage.rowset
     select: SelectLineage | MultiSelectLineage = lineage.rowset.select
 
-    node  = get_query_node(history.base_environment, select)
+    node = get_query_node(history.base_environment, select)
 
     if not node:
         logger.info(
@@ -50,18 +50,21 @@ def gen_rowset_node(
             f"Cannot generate parent select for concept {concept} in rowset {rowset.name}; ensure the rowset is a valid statement."
         )
     enrichment = set([x.address for x in local_optional])
-    rowset_relevant = [x.with_select_context({}, lineage.rowset.select.grain, environment) for x in rowset.derived_concepts]
+    rowset_relevant = [
+        x.with_select_context({}, lineage.rowset.select.grain, environment)
+        for x in rowset.derived_concepts
+    ]
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} rowset relevant nodes are {rowset_relevant}"
     )
     select_hidden = select.hidden_components
     rowset_hidden = [
-        x
-        for x in rowset_relevant
-        if x.lineage.content.address in select_hidden
+        x for x in rowset_relevant if x.lineage.content.address in select_hidden
     ]
     additional_relevant = [
-        x.with_select_context(select.local_concepts, select.grain, environment) for x in select.output_components if x.address in enrichment
+        x.with_select_context(select.local_concepts, select.grain, environment)
+        for x in select.output_components
+        if x.address in enrichment
     ]
     # add in other other concepts
 

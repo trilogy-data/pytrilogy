@@ -7,7 +7,7 @@ from trilogy.core.models.build import (
     BuildConditional,
     BuildParenthetical,
     BuildWindowItem,
-    BuildDatasource
+    BuildDatasource,
 )
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.execute import CTE, UnionCTE

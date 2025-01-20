@@ -25,7 +25,7 @@ class ProcessedQuery(BaseModel):
     grain: Grain
     hidden_columns: set[str] = Field(default_factory=set)
     limit: Optional[int] = None
-    #TODO: delete, these should be unused
+    # TODO: delete, these should be unused
     where_clause: Optional[WhereClause] = None
     having_clause: Optional[HavingClause] = None
     order_by: Optional[BuildOrderBy] = None

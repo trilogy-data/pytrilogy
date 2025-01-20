@@ -88,7 +88,7 @@ from trilogy.core.models.datasource import (
     ColumnAssignment,
     Datasource,
     DatasourceMetadata,
-    RawColumnExpr
+    RawColumnExpr,
 )
 from trilogy.core.models.environment import Environment, BuildEnvironment
 from trilogy.utility import unique
@@ -117,6 +117,7 @@ def address_with_namespace(address: str, namespace: str) -> str:
 #     BaseModel,
 # ):
 
+
 def get_concept_row_arguments(expr) -> List["BuildConcept"]:
     output = []
     if isinstance(expr, BuildConcept):
@@ -139,13 +140,13 @@ def get_concept_arguments(expr) -> List["BuildConcept"]:
         output += expr.concept_arguments
     return output
 
+
 class BuildGrain(BaseModel):
     components: set[str] = Field(default_factory=set)
     where_clause: Optional["BuildWhereClause"] = None
 
     def without_condition(self):
         return BuildGrain(components=self.components)
-
 
     @classmethod
     def from_concepts(
@@ -244,7 +245,11 @@ class BuildGrain(BaseModel):
         if self.abstract:
             base = "BuildGrain<Abstract>"
         else:
-            base = "BuildGrain<" + ",".join([c for c in sorted(list(self.components))]) + ">"
+            base = (
+                "BuildGrain<"
+                + ",".join([c for c in sorted(list(self.components))])
+                + ">"
+            )
         if self.where_clause:
             base += f"|{str(self.where_clause)}"
         return base
@@ -254,10 +259,10 @@ class BuildGrain(BaseModel):
             return self
         else:
             return self.__add__(other)
-class BuildParenthetical(BaseModel):
+
+
+class BuildParenthetical(DataTyped, ConceptArgs, BaseModel):
     content: "BuildExpr"
-
-
 
     def __add__(self, other) -> Union["BuildParenthetical", "BuildConditional"]:
         if other is None:
@@ -715,13 +720,14 @@ class BuildConcept(Concept, BaseModel):
             BuildFilterItem,
             BuildAggregateWrapper,
             BuildRowsetItem,
-            BuildMultiSelectLineage
+            BuildMultiSelectLineage,
         ]
     ] = None
+
     def with_select_context(self, *args, **kwargs):
         return self
         raise NotImplementedError
-    
+
     @classmethod
     def build(
         cls, base: Concept, grain: Grain, environment: Environment, local_concepts
@@ -759,7 +765,7 @@ class BuildConcept(Concept, BaseModel):
 
     def with_filter(
         self,
-        condition: BuildConditional | BuildComparison | Parenthetical,
+        condition: BuildConditional | BuildComparison | BuildParenthetical,
     ) -> "Concept":
         from trilogy.utility import string_to_hash
 
@@ -767,7 +773,9 @@ class BuildConcept(Concept, BaseModel):
             if self.lineage.where.conditional == condition:
                 return self
         hash = string_to_hash(self.name + str(condition))
-        new_lineage = BuildFilterItem(content=self, where=BuildWhereClause(conditional=condition))
+        new_lineage = BuildFilterItem(
+            content=self, where=BuildWhereClause(conditional=condition)
+        )
         new = BuildConcept(
             name=f"{self.name}_filter_{hash}",
             datatype=self.datatype,
@@ -810,7 +818,7 @@ class BuildConcept(Concept, BaseModel):
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
             # build
-           _derivation=self.derivation,
+            _derivation=self.derivation,
             granularity=self.granularity,
             build_is_aggregate=self.build_is_aggregate,
         )
@@ -950,7 +958,7 @@ class BuildConcept(Concept, BaseModel):
                 output: List[BuildConcept],
             ):
                 if isinstance(expr, BuildMultiSelectLineage):
-                    return 
+                    return
                 for item in expr.concept_arguments:
                     if isinstance(item, BuildConcept):
                         if item.address == self.address:
@@ -1099,9 +1107,9 @@ class BuildFunction(Function):
             Parenthetical,
             CaseWhen,
             CaseElse,
-            "BuildParenthetical",
+            BuildParenthetical,
             BuildCaseWhen,
-            "BuildCaseElse",
+            BuildCaseElse,
             list,
             ListWrapper[Any],
             BuildWindowItem,
@@ -1196,11 +1204,8 @@ class BuildRowsetItem(RowsetItem):
     content: BuildConcept
     rowset: RowsetLineage
 
-
     def __repr__(self):
-        return (
-            f"<Rowset<{self.rowset.name}>: {str(self.content)}>"
-        )
+        return f"<Rowset<{self.rowset.name}>: {str(self.content)}>"
 
     def __str__(self):
         return self.__repr__()
@@ -1278,7 +1283,7 @@ class BuildMultiSelectLineage(ConceptArgs, BaseModel):
         for item in self.align.items:
             output.add(item.aligned_concept)
         return output
-    
+
     @property
     def grain(self):
         base = Grain()
@@ -1411,6 +1416,7 @@ class BuildWindowItemOver(BaseModel):
 class BuildWindowItemOrder(BaseModel):
     contents: List["BuildOrderItem"]
 
+
 class BuildColumnAssignment(BaseModel):
     alias: str | RawColumnExpr | BuildFunction
     concept: BuildConcept
@@ -1423,7 +1429,7 @@ class BuildColumnAssignment(BaseModel):
     @property
     def is_nullable(self) -> bool:
         return Modifier.NULLABLE in self.modifiers
-    
+
 
 class BuildDatasource(Datasource):
     name: str
@@ -1500,7 +1506,6 @@ BuildExpr = (
     # | Parenthetical
     # | Function
     # | AggregateWrapper
-
 )
 
 BuildConcept.model_rebuild()

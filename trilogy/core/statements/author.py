@@ -43,7 +43,7 @@ from trilogy.utility import unique
 
 class ConceptTransform(BaseModel):
     function: Function | FilterItem | WindowItem | AggregateWrapper
-    output: Concept # this has to be a full concept, as it may not exist in environment
+    output: Concept  # this has to be a full concept, as it may not exist in environment
     modifiers: List[Modifier] = Field(default_factory=list)
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
@@ -72,13 +72,12 @@ class SelectItem(BaseModel):
         return v
 
     @property
-    def concept(self)->ConceptRef:
+    def concept(self) -> ConceptRef:
         if isinstance(self.content, (ConceptRef)):
             return self.content
         elif isinstance(self.content, Concept):
             return self.content.reference
         return self.content.output.reference
-    
 
     @property
     def is_undefined(self) -> bool:
@@ -128,7 +127,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         )
         output.grain = output.calculate_grain(environment)
         for x in selection:
-            
+
             if x.is_undefined and environment.concepts.fail_on_missing:
                 environment.concepts.raise_undefined(
                     x.concept, meta.line_number if meta else None
@@ -139,7 +138,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                 if (
                     CONFIG.select_as_definition
                     and not environment.frozen
-                    and x.concept.address  not in environment.concepts
+                    and x.concept.address not in environment.concepts
                 ):
                     environment.add_concept(x.content.output)
                 x.content.output = x.content.output.set_select_grain(
@@ -149,19 +148,19 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                 output.local_concepts[x.content.output.address] = x.content.output
 
             elif isinstance(x.content, ConceptRef):
-                output.local_concepts[x.content.address] = environment.concepts[x.content.address] #.set_select_grain(output.grain, environment)
+                output.local_concepts[x.content.address] = environment.concepts[
+                    x.content.address
+                ]  # .set_select_grain(output.grain, environment)
 
         output.validate_syntax(environment)
         return output
 
-    def calculate_grain(self, environment:Environment|None = None) -> Grain:
+    def calculate_grain(self, environment: Environment | None = None) -> Grain:
         targets = []
         for x in self.selection:
             targets.append(x.concept)
         result = Grain.from_concepts(
-            targets,
-            where_clause=self.where_clause,
-            environment=environment
+            targets, where_clause=self.where_clause, environment=environment
         )
         return result
 
@@ -250,7 +249,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         namespace: str,
         name: str,
         address: Address,
-        environment:Environment,
+        environment: Environment,
         grain: Grain | None = None,
     ) -> Datasource:
         if self.where_clause or self.having_clause:

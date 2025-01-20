@@ -45,7 +45,7 @@ class SelectNode(StrategyNode):
         conditions: Conditional | Comparison | Parenthetical | None = None,
         preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
         hidden_concepts: set[str] | None = None,
-        ordering: BuildOrderBy | None = None
+        ordering: BuildOrderBy | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -65,8 +65,6 @@ class SelectNode(StrategyNode):
         )
         self.accept_partial = accept_partial
         self.datasource = datasource
-
-
 
     def validate_inputs(self):
         # we do not need to validate inputs for a select node
@@ -171,7 +169,7 @@ class SelectNode(StrategyNode):
             )
             resolution = self.resolve_from_constant_datasources()
             return resolution
-        
+
         if self.datasource and not resolution:
             resolution = self.resolve_from_provided_datasource()
 
@@ -234,6 +232,6 @@ class ConstantNode(SelectNode):
             hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,
         )
-    
+
     def _resolve(self) -> QueryDatasource:
         return self.resolve_from_constant_datasources()

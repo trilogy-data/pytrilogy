@@ -38,7 +38,7 @@ from trilogy.core.models.author import (
     WhereClause,
     WindowItem,
     ConceptRef,
-    UndefinedConcept
+    UndefinedConcept,
 )
 from trilogy.core.models.core import DataType, arg_to_datatype
 from trilogy.core.models.environment import Environment
@@ -104,7 +104,9 @@ def process_function_args(
     return final
 
 
-def get_upstream_modifiers(keys: List[Concept], environment:Environment) -> list[Modifier]:
+def get_upstream_modifiers(
+    keys: List[Concept], environment: Environment
+) -> list[Modifier]:
     modifiers = set()
     for pkey in keys:
         if isinstance(pkey, ConceptRef):
@@ -117,7 +119,9 @@ def get_upstream_modifiers(keys: List[Concept], environment:Environment) -> list
 
 
 def get_purpose_and_keys(
-    purpose: Purpose | None, args: Tuple[ConceptRef, ...] | None, environment:Environment
+    purpose: Purpose | None,
+    args: Tuple[ConceptRef, ...] | None,
+    environment: Environment,
 ) -> Tuple[Purpose, set[str] | None]:
     local_purpose = purpose or function_args_to_output_purpose(args)
     if local_purpose in (Purpose.PROPERTY, Purpose.METRIC) and args:
@@ -127,7 +131,9 @@ def get_purpose_and_keys(
     return local_purpose, keys
 
 
-def concept_list_to_keys(concepts: Tuple[Concept, ...], environment:Environment) -> set[str]:
+def concept_list_to_keys(
+    concepts: Tuple[Concept, ...], environment: Environment
+) -> set[str]:
     final_keys: List[str] = []
     for concept in concepts:
 
@@ -161,8 +167,8 @@ def constant_to_concept(
         name=name,
         datatype=const_function.output_datatype,
         purpose=Purpose.CONSTANT,
-        granularity = Granularity.SINGLE_ROW,
-        derivation = Derivation.CONSTANT,
+        granularity=Granularity.SINGLE_ROW,
+        derivation=Derivation.CONSTANT,
         lineage=const_function,
         grain=Grain(),
         namespace=namespace,
@@ -170,9 +176,11 @@ def constant_to_concept(
     )
 
 
-def concept_is_relevant(concept: Concept, others: list[Concept], environment:Environment) -> bool:
+def concept_is_relevant(
+    concept: Concept, others: list[Concept], environment: Environment
+) -> bool:
     if isinstance(concept, UndefinedConcept):
-   
+
         return False
     if isinstance(concept, ConceptRef):
         concept = environment.concepts[concept]
@@ -180,18 +188,21 @@ def concept_is_relevant(concept: Concept, others: list[Concept], environment:Env
     if concept.is_aggregate and not (
         isinstance(concept.lineage, AggregateWrapper) and concept.lineage.by
     ):
-        
+
         return False
     if concept.purpose in (Purpose.PROPERTY, Purpose.METRIC) and concept.keys:
         if any([c in others for c in concept.keys]):
-           
+
             return False
     if concept.purpose in (Purpose.METRIC,):
         if all([c in others for c in concept.grain.components]):
             return False
     if concept.derivation in (Derivation.BASIC,):
-       
-        return any(concept_is_relevant(c, others, environment) for c in concept.concept_arguments)
+
+        return any(
+            concept_is_relevant(c, others, environment)
+            for c in concept.concept_arguments
+        )
     if concept.granularity == Granularity.SINGLE_ROW:
         return False
     return True
@@ -207,7 +218,9 @@ def concepts_to_grain_concepts(
         elif environment:
             pconcepts.append(environment.concepts[c])
         else:
-            raise ValueError(f'Unable to resolve input {c} without environment provided to concepts_to_grain call')
+            raise ValueError(
+                f"Unable to resolve input {c} without environment provided to concepts_to_grain call"
+            )
 
     final: List[Concept] = []
     for sub in pconcepts:
@@ -228,13 +241,13 @@ def function_to_concept(
 ) -> Concept:
     pkeys: List[Concept] = []
     namespace = namespace or environment.namespace
-    concrete_args = [x for x in [environment.concepts[c] for c in parent.concept_arguments] if not isinstance(x, UndefinedConcept)]
-
-    pkeys += [
+    concrete_args = [
         x
-        for x in concrete_args
-        if not x.derivation == Derivation.CONSTANT
+        for x in [environment.concepts[c] for c in parent.concept_arguments]
+        if not isinstance(x, UndefinedConcept)
     ]
+
+    pkeys += [x for x in concrete_args if not x.derivation == Derivation.CONSTANT]
     grain: Grain | None = Grain()
     for x in pkeys:
         grain += x.grain
@@ -256,7 +269,9 @@ def function_to_concept(
     fmetadata = metadata or Metadata()
     if parent.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
         derivation = Derivation.AGGREGATE
-        if grain.components and all(x.endswith(ALL_ROWS_CONCEPT) for x in grain.components):
+        if grain.components and all(
+            x.endswith(ALL_ROWS_CONCEPT) for x in grain.components
+        ):
             granularity = Granularity.SINGLE_ROW
         else:
             granularity = Granularity.MULTI_ROW
@@ -269,7 +284,9 @@ def function_to_concept(
     elif parent.operator in FunctionClass.SINGLE_ROW.value:
         derivation = Derivation.CONSTANT
         granularity = Granularity.SINGLE_ROW
-    elif concrete_args and all(x.derivation == Derivation.CONSTANT for x in concrete_args):
+    elif concrete_args and all(
+        x.derivation == Derivation.CONSTANT for x in concrete_args
+    ):
         derivation = Derivation.CONSTANT
         granularity = Granularity.SINGLE_ROW
     else:
@@ -288,8 +305,8 @@ def function_to_concept(
             modifiers=modifiers,
             grain=grain,
             metadata=fmetadata,
-            derivation = derivation, 
-            granularity= granularity
+            derivation=derivation,
+            granularity=granularity,
         )
         return r
 
@@ -302,8 +319,8 @@ def function_to_concept(
         keys=keys,
         modifiers=modifiers,
         metadata=fmetadata,
-                derivation = derivation, 
-            granularity= granularity
+        derivation=derivation,
+        granularity=granularity,
     )
 
 
@@ -311,18 +328,16 @@ def filter_item_to_concept(
     parent: FilterItem,
     name: str,
     namespace: str,
-    environment:Environment,
+    environment: Environment,
     purpose: Purpose | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
     cparent = environment.concepts[parent.content]
-    modifiers = get_upstream_modifiers(cparent.concept_arguments, environment=environment)
-    grain = (
-            cparent.grain
-            if cparent.purpose == Purpose.PROPERTY
-            else Grain()
-        )
+    modifiers = get_upstream_modifiers(
+        cparent.concept_arguments, environment=environment
+    )
+    grain = cparent.grain if cparent.purpose == Purpose.PROPERTY else Grain()
     granularity = cparent.granularity
     return Concept(
         name=name,
@@ -342,7 +357,7 @@ def filter_item_to_concept(
         grain=grain,
         modifiers=modifiers,
         derivation=Derivation.FILTER,
-        granularity=granularity
+        granularity=granularity,
     )
 
 
@@ -350,16 +365,16 @@ def window_item_to_concept(
     parent: WindowItem,
     name: str,
     namespace: str,
-    environment:Environment,
+    environment: Environment,
     purpose: Purpose | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
     bcontent = environment.concepts[parent.content]
     if isinstance(bcontent, UndefinedConcept):
-        return UndefinedConcept(address= f'{namespace}.{name}', metadata=fmetadata)
+        return UndefinedConcept(address=f"{namespace}.{name}", metadata=fmetadata)
     local_purpose, keys = get_purpose_and_keys(purpose, (bcontent,), environment)
-    
+
     if parent.order_by:
         grain = parent.over + [bcontent.output]
         for item in parent.order_by:
@@ -388,7 +403,7 @@ def window_item_to_concept(
         keys=keys,
         modifiers=modifiers,
         derivation=Derivation.WINDOW,
-        granularity=bcontent.granularity
+        granularity=bcontent.granularity,
     )
 
 
@@ -396,12 +411,11 @@ def agg_wrapper_to_concept(
     parent: AggregateWrapper,
     namespace: str,
     name: str,
-    environment:Environment,
+    environment: Environment,
     metadata: Metadata | None = None,
 ) -> Concept:
     _, keys = get_purpose_and_keys(
-        Purpose.METRIC, tuple(parent.by) if parent.by else None,
-        environment=environment
+        Purpose.METRIC, tuple(parent.by) if parent.by else None, environment=environment
     )
     # anything grouped to a grain should be a property
     # at that grain
@@ -409,7 +423,7 @@ def agg_wrapper_to_concept(
     aggfunction = parent.function
     modifiers = get_upstream_modifiers(parent.concept_arguments, environment)
     # derivation = Concept.calculate_derivation(parent, Purpose.PROPERTY)
-    grain =Grain.from_concepts(parent.by, environment) if parent.by else Grain()
+    grain = Grain.from_concepts(parent.by, environment) if parent.by else Grain()
     granularity = Concept.calculate_granularity(Derivation.AGGREGATE, grain, parent)
     out = Concept(
         name=name,
@@ -443,18 +457,18 @@ def align_item_to_concept(
         raise InvalidSyntaxException(
             f"Datatypes do not align for merged statements {align.alias}, have {datatypes}"
         )
-    
+
     new_selects = [x.as_lineage(environment) for x in selects]
     parent = MultiSelectLineage(
-            selects=new_selects,
-            align=align_clause,
-            namespace=align.namespace,
-            local_concepts=local_concepts,
-            where_clause=where,
-            having_clause=having,
-            limit=limit,
-            hidden_components=set(y for x in new_selects for y in x.hidden_components),
-        )
+        selects=new_selects,
+        align=align_clause,
+        namespace=align.namespace,
+        local_concepts=local_concepts,
+        where_clause=where,
+        having_clause=having,
+        limit=limit,
+        hidden_components=set(y for x in new_selects for y in x.hidden_components),
+    )
     grain = Grain()
     new = Concept(
         name=align.alias,
@@ -465,7 +479,7 @@ def align_item_to_concept(
         namespace=align.namespace,
         granularity=Granularity.MULTI_ROW,
         derivation=Derivation.MULTISELECT,
-        keys=[x.address for x in align.concepts]
+        keys=[x.address for x in align.concepts],
     )
     return new
 
@@ -495,8 +509,8 @@ def rowset_to_concepts(rowset: RowsetDerivationStatement, environment: Environme
                 else rowset.name
             ),
             keys=orig_concept.keys,
-            derivation = Derivation.ROWSET,
-            granularity=orig_concept.granularity
+            derivation=Derivation.ROWSET,
+            granularity=orig_concept.granularity,
         )
         orig[orig_concept.address] = new_concept
         orig_map[new_concept.address] = orig_concept
@@ -550,15 +564,31 @@ def arbitrary_to_concept(
     if isinstance(parent, AggregateWrapper):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
-        return agg_wrapper_to_concept(parent, namespace, name, metadata=metadata, environment=environment)
+        return agg_wrapper_to_concept(
+            parent, namespace, name, metadata=metadata, environment=environment
+        )
     elif isinstance(parent, WindowItem):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_window_{parent.type.value}_{string_to_hash(str(parent))}"
-        return window_item_to_concept(parent, name, namespace, environment=environment, purpose=purpose, metadata=metadata)
+        return window_item_to_concept(
+            parent,
+            name,
+            namespace,
+            environment=environment,
+            purpose=purpose,
+            metadata=metadata,
+        )
     elif isinstance(parent, FilterItem):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_filter_{parent.content.name}_{string_to_hash(str(parent))}"
-        return filter_item_to_concept(parent, name, namespace, environment=environment,  purpose=purpose, metadata=metadata)
+        return filter_item_to_concept(
+            parent,
+            name,
+            namespace,
+            environment=environment,
+            purpose=purpose,
+            metadata=metadata,
+        )
     elif isinstance(parent, Function):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(str(parent))}"

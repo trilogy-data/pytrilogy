@@ -1,4 +1,4 @@
-from typing import ItemsView, List, Optional, Union, ValuesView
+from typing import ItemsView, List, Optional, Union, ValuesView, TYPE_CHECKING
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
@@ -13,10 +13,13 @@ from trilogy.core.models.author import (
     Namespaced,
     WhereClause,
     ConceptRef,
-    UndefinedConcept
+    UndefinedConcept,
 )
 
 LOGGER_PREFIX = "[MODELS_DATASOURCE]"
+
+if TYPE_CHECKING:
+    from trilogy.core.models.environment import Environment
 
 
 class RawColumnExpr(BaseModel):
@@ -33,6 +36,7 @@ class ColumnAssignment(BaseModel):
         if isinstance(v, Concept):
             return v.reference
         return v
+
     def __eq__(self, other):
         if not isinstance(other, ColumnAssignment):
             return False
@@ -41,6 +45,7 @@ class ColumnAssignment(BaseModel):
             and self.concept == other.concept
             and self.modifiers == other.modifiers
         )
+
     @property
     def is_complete(self) -> bool:
         return Modifier.PARTIAL not in self.modifiers
@@ -48,16 +53,21 @@ class ColumnAssignment(BaseModel):
     @property
     def is_nullable(self) -> bool:
         return Modifier.NULLABLE in self.modifiers
-    
-    def with_select_context(self, context: dict, grain, environment) -> "ColumnAssignment":
+
+    def with_select_context(
+        self, context: dict, grain, environment: "Environment"
+    ) -> "ColumnAssignment":
         from trilogy.core.models.build import BuildColumnAssignment
+
         return BuildColumnAssignment(
             alias=(
                 self.alias.with_select_context(context, grain, environment)
                 if isinstance(self.alias, Function)
                 else self.alias
             ),
-            concept=self.concept.with_select_context(context, grain, environment),
+            concept=environment.concepts[self.concept]
+            .with_grain(grain)
+            .with_select_context(context, grain, environment),
             modifiers=self.modifiers,
         )
 
@@ -129,11 +139,11 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         if not isinstance(other, Datasource):
             return False
         return (
-            self.name == other.name and
-            self.namespace == other.namespace and
-            self.grain == other.grain and
-            self.address == other.address and
-            self.where == other.where
+            self.name == other.name
+            and self.namespace == other.namespace
+            and self.grain == other.grain
+            and self.address == other.address
+            and self.where == other.where
             and self.columns == other.columns
             and self.non_partial_for == other.non_partial_for
         )
@@ -143,7 +153,9 @@ class Datasource(HasUUID, Namespaced, BaseModel):
 
         return BuildDatasource(
             name=self.name,
-            columns=[c.with_select_context({}, self.grain, environment) for c in self.columns],
+            columns=[
+                c.with_select_context({}, self.grain, environment) for c in self.columns
+            ],
             address=self.address,
             grain=self.grain,
             namespace=self.namespace,
@@ -177,7 +189,9 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             c for c in self.columns if c.concept.address == target.address
         ]
         if early_exit_check:
-            logger.info(f'No concept merge needed on merge of {source} to {target}, have {[x.concept.address for x in self.columns]}')
+            logger.info(
+                f"No concept merge needed on merge of {source} to {target}, have {[x.concept.address for x in self.columns]}"
+            )
             return None
         if len(original) != 1:
             raise ValueError(
@@ -252,7 +266,9 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         modifiers: List[Modifier] | None = None,
     ):
         self.columns.append(
-            ColumnAssignment(alias=alias, concept=concept.reference, modifiers=modifiers or [])
+            ColumnAssignment(
+                alias=alias, concept=concept.reference, modifiers=modifiers or []
+            )
         )
 
     def __add__(self, other):

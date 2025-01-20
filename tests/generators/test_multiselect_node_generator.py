@@ -6,6 +6,7 @@ from trilogy.core.processing.node_generators import gen_multiselect_node
 from trilogy.core.query_processor import datasource_to_cte
 from trilogy.hooks.query_debugger import DebuggingHook
 
+
 def test_multi_select():
     env = Environment()
     parse(
@@ -80,7 +81,7 @@ ALIGN
           """,
         env,
     )
-    test_environment = env.materialize_for_select() 
+    test_environment = env.materialize_for_select()
     gnode = gen_multiselect_node(
         concept=test_environment.concepts["true_one"],
         local_optional=[],

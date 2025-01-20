@@ -16,7 +16,7 @@ from trilogy.core.models.build import (
     BuildConditional,
     BuildParenthetical,
     BuildConcept,
-    BuildDatasource
+    BuildDatasource,
 )
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
@@ -53,8 +53,12 @@ class GroupNode(StrategyNode):
         partial_concepts: Optional[List[BuildConcept]] = None,
         nullable_concepts: Optional[List[BuildConcept]] = None,
         force_group: bool | None = None,
-        conditions: BuildConditional | BuildComparison | BuildParenthetical | None = None,
-        preexisting_conditions: BuildConditional | BuildComparison | BuildParenthetical | None = None,
+        conditions: (
+            BuildConditional | BuildComparison | BuildParenthetical | None
+        ) = None,
+        preexisting_conditions: (
+            BuildConditional | BuildComparison | BuildParenthetical | None
+        ) = None,
         existence_concepts: List[BuildConcept] | None = None,
         hidden_concepts: set[str] | None = None,
         ordering: BuildOrderBy | None = None,
@@ -73,7 +77,7 @@ class GroupNode(StrategyNode):
             existence_concepts=existence_concepts,
             preexisting_conditions=preexisting_conditions,
             hidden_concepts=hidden_concepts,
-            ordering=ordering
+            ordering=ordering,
         )
 
     @classmethod
@@ -164,7 +168,7 @@ class GroupNode(StrategyNode):
             nullable_concepts=nullable_concepts,
             hidden_concepts=self.hidden_concepts,
             condition=self.conditions,
-            ordering=self.ordering
+            ordering=self.ordering,
         )
         # if there is a condition on a group node and it's not scalar
         # inject an additional CTE
@@ -194,7 +198,7 @@ class GroupNode(StrategyNode):
                 partial_concepts=self.partial_concepts,
                 condition=self.conditions,
                 hidden_concepts=self.hidden_concepts,
-                ordering=self.ordering
+                ordering=self.ordering,
             )
         return base
 
@@ -213,5 +217,5 @@ class GroupNode(StrategyNode):
             preexisting_conditions=self.preexisting_conditions,
             existence_concepts=list(self.existence_concepts),
             hidden_concepts=set(self.hidden_concepts),
-            ordering=self.ordering
+            ordering=self.ordering,
         )

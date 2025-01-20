@@ -12,7 +12,12 @@ from trilogy.core.models.author import (
     MultiSelectLineage,
     SelectLineage,
 )
-from trilogy.core.models.build import BuildConditional, BuildOrderBy, BuildSelectLineage, BuildMultiSelectLineage
+from trilogy.core.models.build import (
+    BuildConditional,
+    BuildOrderBy,
+    BuildSelectLineage,
+    BuildMultiSelectLineage,
+)
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment, BuildEnvironment
 from trilogy.core.models.execute import (
@@ -417,7 +422,7 @@ def get_query_node(
         )
     ds.hidden_concepts = statement.hidden_components
     ds.ordering = statement.order_by
-    #TODO: avoid this
+    # TODO: avoid this
     ds.rebuild_cache()
     return ds
 
@@ -427,7 +432,7 @@ def get_query_datasources(
     statement: SelectStatement | MultiSelectStatement,
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
-    ds= get_query_node(environment, statement.as_lineage(environment))
+    ds = get_query_node(environment, statement.as_lineage(environment))
     final_qds = ds.resolve()
     if hooks:
         for hook in hooks:
@@ -500,7 +505,7 @@ def process_query(
 ) -> ProcessedQuery:
     hooks = hooks or []
 
-    root_datasource= get_query_datasources(
+    root_datasource = get_query_datasources(
         environment=environment, statement=statement, hooks=hooks
     )
     for hook in hooks:

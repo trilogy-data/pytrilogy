@@ -389,8 +389,14 @@ select composite_id;
 """
     executor.parse_text(test_case)
 
-    assert 'local.composite_id_alt' in executor.environment.concepts['local.composite_id'].pseudonyms
-    assert 'local.composite_id' in executor.environment.alias_origin_lookup['local.composite_id_alt'].pseudonyms
+    assert (
+        "local.composite_id_alt"
+        in executor.environment.concepts["local.composite_id"].pseudonyms
+    )
+    assert (
+        "local.composite_id"
+        in executor.environment.alias_origin_lookup["local.composite_id_alt"].pseudonyms
+    )
     results = executor.execute_text(test_case)[0].fetchall()
 
     assert results == [("123-abc",)]

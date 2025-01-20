@@ -56,6 +56,7 @@ def gen_unnest_node(
         output_concepts=base.output_concepts,
         environment=environment,
         parents=[base],
+        # conditions=conditions.conditional if conditions else None,
         preexisting_conditions=conditions.conditional if conditions else None,
     )
     qds = new.resolve()

@@ -24,8 +24,8 @@ ENVIRONMENT_CONCEPTS = [
         datatype=DataType.DATETIME,
         purpose=Purpose.CONSTANT,
         lineage=CurrentDatetime([]),
-        granularity = Granularity.SINGLE_ROW,
-        derivation = Derivation.CONSTANT
+        granularity=Granularity.SINGLE_ROW,
+        derivation=Derivation.CONSTANT,
     )
 ]
 

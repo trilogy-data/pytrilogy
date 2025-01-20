@@ -2,7 +2,11 @@ from pathlib import Path
 
 from trilogy import Dialects, parse
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
-from trilogy.core.models.build import BuildComparison, BuildConditional, BuildSubselectComparison
+from trilogy.core.models.build import (
+    BuildComparison,
+    BuildConditional,
+    BuildSubselectComparison,
+)
 from trilogy.core.optimizations.predicate_pushdown import (
     is_child_of,
 )

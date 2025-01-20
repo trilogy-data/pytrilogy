@@ -18,14 +18,16 @@ def add_concept(
     if concept.concept_arguments:
         for source in concept.concept_arguments:
             if not isinstance(source, BuildConcept):
-                raise ValueError(f'Invalid non-build concept {source} passed into graph generation from {concept}')
+                raise ValueError(
+                    f"Invalid non-build concept {source} passed into graph generation from {concept}"
+                )
             generic = source.with_default_grain()
             add_concept(generic, g, concept_mapping)
 
             g.add_edge(generic, node_name)
     for ps_address in concept.pseudonyms:
         if ps_address not in concept_mapping:
-            raise SyntaxError(f'Concept {concept} has invalid pseudonym {ps_address}')
+            raise SyntaxError(f"Concept {concept} has invalid pseudonym {ps_address}")
         pseudonym = concept_mapping[ps_address]
         pseudonym = pseudonym.with_default_grain()
         pseudonym_node = concept_to_node(pseudonym)
@@ -50,7 +52,7 @@ def generate_adhoc_graph(
     concept_mapping = {x.address: x for x in concepts}
     for concept in concepts:
         if not isinstance(concept, BuildConcept):
-            raise ValueError(f'Invalid non-build concept {concept}')
+            raise ValueError(f"Invalid non-build concept {concept}")
 
     # add all parsed concepts
     for concept in concepts:
@@ -81,6 +83,9 @@ def generate_graph(
 ) -> ReferenceGraph:
     if not isinstance(environment, BuildEnvironment):
         environment = environment.materialize_for_select()
+    for x in environment.alias_origin_lookup.values():
+        print(x)
+        print(x.pseudonyms)
     return generate_adhoc_graph(
         list(environment.concepts.values())
         + list(environment.alias_origin_lookup.values()),

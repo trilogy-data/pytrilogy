@@ -10,7 +10,6 @@ from trilogy.core.models.author import (
     Concept,
     Grain,
     LooseConceptList,
-    WhereClause,
 )
 from trilogy.core.models.build import BuildDatasource, BuildWhereClause, BuildConcept
 from trilogy.core.models.datasource import Datasource
@@ -37,8 +36,8 @@ def extract_address(node: str):
 def get_graph_partial_nodes(
     g: nx.DiGraph, conditions: BuildWhereClause | None
 ) -> dict[str, list[str]]:
-    datasources: dict[str, BuildDatasource | list[BuildDatasource]] = nx.get_node_attributes(
-        g, "datasource"
+    datasources: dict[str, BuildDatasource | list[BuildDatasource]] = (
+        nx.get_node_attributes(g, "datasource")
     )
     partial: dict[str, list[str]] = {}
     for node in g.nodes:
@@ -58,9 +57,11 @@ def get_graph_partial_nodes(
     return partial
 
 
-def get_graph_exact_match(g: nx.DiGraph, conditions: BuildWhereClause | None) -> set[str]:
-    datasources: dict[str, BuildDatasource | list[BuildDatasource]] = nx.get_node_attributes(
-        g, "datasource"
+def get_graph_exact_match(
+    g: nx.DiGraph, conditions: BuildWhereClause | None
+) -> set[str]:
+    datasources: dict[str, BuildDatasource | list[BuildDatasource]] = (
+        nx.get_node_attributes(g, "datasource")
     )
     exact: set[str] = set()
     for node in g.nodes:
@@ -77,8 +78,8 @@ def get_graph_exact_match(g: nx.DiGraph, conditions: BuildWhereClause | None) ->
 
 
 def get_graph_grains(g: nx.DiGraph) -> dict[str, list[str]]:
-    datasources: dict[str, BuildDatasource | list[BuildDatasource]] = nx.get_node_attributes(
-        g, "datasource"
+    datasources: dict[str, BuildDatasource | list[BuildDatasource]] = (
+        nx.get_node_attributes(g, "datasource")
     )
     grain_length: dict[str, int] = {}
     for node in g.nodes:
@@ -103,7 +104,6 @@ def create_pruned_concept_graph(
 ) -> nx.DiGraph:
     orig_g = g
     g = g.copy()
-
     union_options = get_union_sources(datasources, all_concepts)
     for ds_list in union_options:
         node_address = "ds~" + "-".join([x.name for x in ds_list])
@@ -116,8 +116,8 @@ def create_pruned_concept_graph(
 
     target_addresses = set([c.address for c in all_concepts])
     concepts: dict[str, BuildConcept] = nx.get_node_attributes(orig_g, "concept")
-    datasource_map: dict[str, Datasource | list[BuildDatasource]] = nx.get_node_attributes(
-        orig_g, "datasource"
+    datasource_map: dict[str, Datasource | list[BuildDatasource]] = (
+        nx.get_node_attributes(orig_g, "datasource")
     )
     relevant_concepts_pre = {
         n: x.address
@@ -172,6 +172,7 @@ def create_pruned_concept_graph(
             if len(neighbors) > 1:
                 relevant_concepts.append(n)
             roots[root] = set()
+
     g.remove_nodes_from(
         [
             n
@@ -186,6 +187,8 @@ def create_pruned_concept_graph(
             f"{padding(depth)}{LOGGER_PREFIX} cannot resolve root graph - no subgraphs after node prune"
         )
         return None
+    # from trilogy.hooks.graph_hook import GraphHook
+    # GraphHook().query_graph_built(g)
     if subgraphs and len(subgraphs) != 1:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} cannot resolve root graph - subgraphs are split - have {len(subgraphs)} from {subgraphs}"
@@ -206,7 +209,7 @@ def create_pruned_concept_graph(
 
 
 def resolve_subgraphs(
-    g: nx.DiGraph,  relevant :list[Concept], conditions: BuildWhereClause | None
+    g: nx.DiGraph, relevant: list[BuildConcept], conditions: BuildWhereClause | None
 ) -> dict[str, list[str]]:
     """When we have multiple distinct subgraphs within our matched
     nodes that can satisfy a query, resolve which one of those we should
@@ -294,10 +297,13 @@ def resolve_subgraphs(
     }
     for x in nodes:
         keep = True
-        if x.startswith('c~') and x not in relevant_concepts_pre:
-            keep = sum([1 if x in nodes else 0  for _, nodes in pruned_subgraphs.items()])>1
+        if x.startswith("c~") and x not in relevant_concepts_pre:
+            keep = (
+                sum([1 if x in nodes else 0 for _, nodes in pruned_subgraphs.items()])
+                > 1
+            )
         if not keep:
-            logger.debug(f'Pruning node {x} as irrelevant after subgraph resolution')
+            logger.debug(f"Pruning node {x} as irrelevant after subgraph resolution")
             pruned_subgraphs = {
                 k: [n for n in v if n != x] for k, v in pruned_subgraphs.items()
             }
@@ -341,12 +347,7 @@ def create_datasource_node(
     nullable_lcl = LooseConceptList(concepts=nullable_concepts)
     partial_is_full = conditions and (conditions == datasource.non_partial_for)
 
-
-    datasource_conditions = (
-        datasource.where.conditional
-        if datasource.where
-        else None
-    )
+    datasource_conditions = datasource.where.conditional if datasource.where else None
 
     return (
         SelectNode(
@@ -400,9 +401,9 @@ def create_select_node(
             force_group=False,
         )
 
-    datasource: dict[str, BuildDatasource | list[BuildDatasource]] = nx.get_node_attributes(
-        g, "datasource"
-    )[ds_name]
+    datasource: dict[str, BuildDatasource | list[BuildDatasource]] = (
+        nx.get_node_attributes(g, "datasource")[ds_name]
+    )
     if isinstance(datasource, BuildDatasource):
         bcandidate, force_group = create_datasource_node(
             datasource,
@@ -493,8 +494,12 @@ def gen_select_merge_node(
             conditions=conditions,
             datasources=list(
                 [
-                    x.build_for_select(environment) if not isinstance(x, BuildDatasource) else x    
-                    for x in environment.datasources.values() 
+                    (
+                        x.build_for_select(environment)
+                        if not isinstance(x, BuildDatasource)
+                        else x
+                    )
+                    for x in environment.datasources.values()
                 ]
             ),
             depth=depth,
@@ -509,7 +514,9 @@ def gen_select_merge_node(
         logger.info(f"{padding(depth)}{LOGGER_PREFIX} no covering graph found.")
         return None
 
-    sub_nodes = resolve_subgraphs(pruned_concept_graph, relevant=non_constant, conditions=conditions)
+    sub_nodes = resolve_subgraphs(
+        pruned_concept_graph, relevant=non_constant, conditions=conditions
+    )
 
     logger.info(f"{padding(depth)}{LOGGER_PREFIX} fetching subgraphs {sub_nodes}")
 
@@ -546,7 +553,7 @@ def gen_select_merge_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} Multiple parent DS nodes resolved - {[type(x) for x in parents]}, wrapping in merge"
     )
-    
+
     preexisting_conditions = None
     if conditions and all(
         [

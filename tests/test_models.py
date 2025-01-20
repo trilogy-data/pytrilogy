@@ -164,18 +164,17 @@ def test_select(test_environment: Environment):
         selection=[oid, pid, cid, cname], grain=Grain(components=[oid, pid, cid])
     )
     ds = x.to_datasource(
-        test_environment.namespace, "test", address=Address(location="test"),
-        environment=test_environment
+        test_environment.namespace,
+        "test",
+        address=Address(location="test"),
+        environment=test_environment,
     )
 
     assert ds.grain.components == Grain(components=[oid, pid, cid]).components
 
 
 def test_undefined(test_environment: Environment):
-    x = UndefinedConcept(
-        address = 'test.test'
-
-    )
+    x = UndefinedConcept(address="test.test")
 
 
 def test_base_join(test_environment: Environment):
@@ -307,7 +306,9 @@ select avg_greater_ten;
 
     lineage = env.concepts["avg_greater_ten"].lineage
     assert isinstance(lineage, AggregateWrapper)
-    assert isinstance( env.concepts[lineage.function.concept_arguments[0]].lineage, RowsetItem)
+    assert isinstance(
+        env.concepts[lineage.function.concept_arguments[0]].lineage, RowsetItem
+    )
 
 
 def test_tuple_clone():
@@ -327,15 +328,15 @@ def test_parenthetical(test_environment: Environment):
     # return concept if it's a concept
     assert x.concept_arguments == [test_environment.concepts["order_id"]]
     function = Function(
-            operator=FunctionType.COUNT,
-            output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.METRIC,
-            arguments=[test_environment.concepts["order_id"]],
-        )
-    assert function.concept_arguments  == [test_environment.concepts["order_id"].reference]
-    x = Parenthetical(
-        content=function
+        operator=FunctionType.COUNT,
+        output_datatype=DataType.INTEGER,
+        output_purpose=Purpose.METRIC,
+        arguments=[test_environment.concepts["order_id"]],
     )
+    assert function.concept_arguments == [
+        test_environment.concepts["order_id"].reference
+    ]
+    x = Parenthetical(content=function)
     # else pass through parent
     assert x.concept_arguments == [test_environment.concepts["order_id"].reference]
 

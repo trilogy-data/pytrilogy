@@ -17,12 +17,19 @@ from trilogy.core.enums import (
     SourceType,
 )
 from trilogy.core.models.author import (
-
     Grain,
     LooseConceptList,
-
 )
-from trilogy.core.models.build import BuildDatasource, BuildConditional, BuildParenthetical, BuildComparison, BuildConcept, BuildOrderBy, BuildFunction, BuildRowsetItem
+from trilogy.core.models.build import (
+    BuildDatasource,
+    BuildConditional,
+    BuildParenthetical,
+    BuildComparison,
+    BuildConcept,
+    BuildOrderBy,
+    BuildFunction,
+    BuildRowsetItem,
+)
 from trilogy.core.models.datasource import Address, Datasource
 from trilogy.utility import unique
 
@@ -42,7 +49,9 @@ class CTE(BaseModel):
     existence_source_map: Dict[str, list[str]] = Field(default_factory=dict)
     parent_ctes: List[Union["CTE", "UnionCTE"]] = Field(default_factory=list)
     joins: List[Union["Join", "InstantiatedUnnestJoin"]] = Field(default_factory=list)
-    condition: Optional[Union[BuildComparison, BuildConditional, BuildParenthetical]] = None
+    condition: Optional[
+        Union[BuildComparison, BuildConditional, BuildParenthetical]
+    ] = None
     partial_concepts: List[BuildConcept] = Field(default_factory=list)
     nullable_concepts: List[BuildConcept] = Field(default_factory=list)
     join_derived_concepts: List[BuildConcept] = Field(default_factory=list)
@@ -552,19 +561,32 @@ class QueryDatasource(BaseModel):
     grain: Grain
     joins: List[BaseJoin | UnnestJoin]
     limit: Optional[int] = None
-    condition: Optional[Union[ BuildConditional, BuildComparison, BuildParenthetical]] = Field(
-        default=None
-    )
+    condition: Optional[
+        Union[BuildConditional, BuildComparison, BuildParenthetical]
+    ] = Field(default=None)
     source_type: SourceType = SourceType.SELECT
     partial_concepts: List[BuildConcept] = Field(default_factory=list)
     hidden_concepts: set[str] = Field(default_factory=set)
     nullable_concepts: List[BuildConcept] = Field(default_factory=list)
     join_derived_concepts: List[BuildConcept] = Field(default_factory=list)
     force_group: bool | None = None
-    existence_source_map: Dict[str, Set[Union[BuildDatasource, "QueryDatasource"]]] = Field(
-        default_factory=dict
+    existence_source_map: Dict[str, Set[Union[BuildDatasource, "QueryDatasource"]]] = (
+        Field(default_factory=dict)
     )
     ordering: BuildOrderBy | None = None
+
+    def __init__(self, **data: Any):
+        super().__init__(**data)
+        concepts = [x.address for x in self.output_concepts]
+        hidden = [x.address for x in self.hidden_concepts]
+        DEBUG_CONCEPTS = ["customer.county", "catalog_sales.date.id"]
+        if all([x in concepts for x in DEBUG_CONCEPTS]):
+            logger.debug(
+                f"{LOGGER_PREFIX} {self.identifier} has {DEBUG_CONCEPTS} concepts"
+            )
+            # if not all([x in hidden for x in DEBUG_CONCEPTS]):
+            #     raise SyntaxError(
+            #         f"Hidden concepts {hidden} not in output concepts {concepts}")
 
     def __repr__(self):
         return f"{self.identifier}@<{self.grain}>"
@@ -737,7 +759,7 @@ class QueryDatasource(BaseModel):
             join_derived_concepts=self.join_derived_concepts,
             force_group=self.force_group,
             hidden_concepts=hidden,
-            ordering=self.ordering
+            ordering=self.ordering,
         )
 
         return qds

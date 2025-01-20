@@ -44,6 +44,7 @@ if __name__ == "__main__":
     # print(engine.environment.concepts['date._env_working_path'])
 
     import cProfile
+
     pr = cProfile.Profile()
     pr.enable()
     run_query(engine, start, 2)

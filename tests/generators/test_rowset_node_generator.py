@@ -101,5 +101,5 @@ where rev_sum>2;
         g=test_environment_graph,
         depth=0,
         source_concepts=search_concepts,
-                history=History(base_environment=orig_env),
+        history=History(base_environment=orig_env),
     )

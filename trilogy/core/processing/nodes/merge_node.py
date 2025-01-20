@@ -14,7 +14,7 @@ from trilogy.core.models.build import (
     BuildConditional,
     BuildParenthetical,
     BuildDatasource,
-    BuildOrderBy
+    BuildOrderBy,
 )
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
@@ -117,12 +117,16 @@ class MergeNode(StrategyNode):
         force_group: bool | None = None,
         depth: int = 0,
         grain: Grain | None = None,
-        conditions: BuildConditional | BuildComparison | BuildParenthetical | None = None,
-        preexisting_conditions: BuildConditional | BuildComparison | BuildParenthetical | None = None,
+        conditions: (
+            BuildConditional | BuildComparison | BuildParenthetical | None
+        ) = None,
+        preexisting_conditions: (
+            BuildConditional | BuildComparison | BuildParenthetical | None
+        ) = None,
         hidden_concepts: set[str] | None = None,
         virtual_output_concepts: List[BuildConcept] | None = None,
         existence_concepts: List[BuildConcept] | None = None,
-        ordering: BuildOrderBy | None = None
+        ordering: BuildOrderBy | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -140,7 +144,7 @@ class MergeNode(StrategyNode):
             hidden_concepts=hidden_concepts,
             virtual_output_concepts=virtual_output_concepts,
             existence_concepts=existence_concepts,
-            ordering=ordering
+            ordering=ordering,
         )
         self.join_concepts = join_concepts
         self.force_join_type = force_join_type
@@ -358,7 +362,7 @@ class MergeNode(StrategyNode):
             force_group=force_group,
             condition=self.conditions,
             hidden_concepts=self.hidden_concepts,
-            ordering=self.ordering
+            ordering=self.ordering,
         )
         return qds
 
@@ -382,5 +386,5 @@ class MergeNode(StrategyNode):
             join_concepts=list(self.join_concepts) if self.join_concepts else None,
             force_join_type=self.force_join_type,
             existence_concepts=list(self.existence_concepts),
-            ordering=self.ordering
+            ordering=self.ordering,
         )

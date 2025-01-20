@@ -284,7 +284,20 @@ def resolve_weak_components(
         if not sub_component:
             continue
         subgraphs.append(sub_component)
-    return subgraphs
+    seen = []
+
+    for x in subgraphs:
+        seen.append(set(x))
+    final = []
+    # sometimes w can get two subcomponents that are the same
+    # due to alias resolution
+    # if so, drop any that are strict subsets.
+    for x in subgraphs:
+        set_x = set(x)
+        if any([set_x.issubset(y) and set_x != y for y in seen]):
+            continue
+        final.append(x)
+    return final
     # return filter_relevant_subgraphs(subgraphs)
 
 
@@ -299,6 +312,7 @@ def subgraphs_to_merge_node(
     conditions,
     search_conditions: WhereClause | None = None,
     enable_early_exit: bool = True,
+    output_concepts: List[Concept] | None = None,
 ):
     parents: List[StrategyNode] = []
     logger.info(
@@ -335,16 +349,13 @@ def subgraphs_to_merge_node(
             f"{padding(depth)}{LOGGER_PREFIX} only one parent node, exiting early w/ {[c.address for c in parents[0].output_concepts]}"
         )
         return parents[0]
-    base_output = [x for x in all_concepts]
-    # for x in base_output:
-    #     if x not in input_c:
-    #         input_c.append(x)
     return MergeNode(
         input_concepts=unique(input_c, "address"),
-        output_concepts=base_output,
+        output_concepts=output_concepts,
         environment=environment,
         parents=parents,
         depth=depth,
+        # hidden_concepts=[]
         # conditions=conditions,
         # conditions=search_conditions.conditional,
         # preexisting_conditions=search_conditions.conditional,
@@ -364,10 +375,14 @@ def gen_merge_node(
     search_conditions: WhereClause | None = None,
 ) -> Optional[MergeNode]:
     if search_conditions:
-        all_concepts = unique(all_concepts + search_conditions.row_arguments, "address")
+        all_search_concepts = unique(
+            all_concepts + search_conditions.row_arguments, "address"
+        )
+    else:
+        all_search_concepts = all_concepts
     for filter_downstream in [True, False]:
         weak_resolve = resolve_weak_components(
-            all_concepts,
+            all_search_concepts,
             environment,
             g,
             filter_downstream=filter_downstream,
@@ -379,7 +394,7 @@ def gen_merge_node(
                 f"{padding(depth)}{LOGGER_PREFIX} Was able to resolve graph through weak component resolution - final graph {log_graph}"
             )
             for flat in log_graph:
-                if set(flat) == set([x.address for x in all_concepts]):
+                if set(flat) == set([x.address for x in all_search_concepts]):
                     logger.info(
                         f"{padding(depth)}{LOGGER_PREFIX} expanded concept resolution was identical to search resolution; breaking to avoid recursion error."
                     )
@@ -387,18 +402,19 @@ def gen_merge_node(
             return subgraphs_to_merge_node(
                 weak_resolve,
                 depth=depth,
-                all_concepts=all_concepts,
+                all_concepts=all_search_concepts,
                 environment=environment,
                 g=g,
                 source_concepts=source_concepts,
                 history=history,
                 conditions=conditions,
                 search_conditions=search_conditions,
+                output_concepts=all_concepts,
             )
 
     # one concept handling may need to be kicked to alias
-    if len(all_concepts) == 1:
-        concept = all_concepts[0]
+    if len(all_search_concepts) == 1:
+        concept = all_search_concepts[0]
         for v in concept.pseudonyms:
             test = subgraphs_to_merge_node(
                 [[concept, environment.alias_origin_lookup[v]]],

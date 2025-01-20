@@ -42,25 +42,29 @@ def test_is_child_function():
     )
     assert (
         is_child_of(
-            BuildComparison(left=1, right=2, operator=ComparisonOperator.EQ), condition.left
+            BuildComparison(left=1, right=2, operator=ComparisonOperator.EQ),
+            condition.left,
         )
         is True
     )
     assert (
         is_child_of(
-            BuildComparison(left=3, right=4, operator=ComparisonOperator.EQ), condition.right
+            BuildComparison(left=3, right=4, operator=ComparisonOperator.EQ),
+            condition.right,
         )
         is True
     )
     assert (
         is_child_of(
-            BuildComparison(left=1, right=2, operator=ComparisonOperator.EQ), condition.right
+            BuildComparison(left=1, right=2, operator=ComparisonOperator.EQ),
+            condition.right,
         )
         is False
     )
     assert (
         is_child_of(
-            BuildComparison(left=3, right=4, operator=ComparisonOperator.EQ), condition.left
+            BuildComparison(left=3, right=4, operator=ComparisonOperator.EQ),
+            condition.left,
         )
         is False
     )
@@ -76,7 +80,7 @@ key year int;
                    key current_price float;               
 """
     )
-    env =env.materialize_for_select()
+    env = env.materialize_for_select()
     comp = BuildConditional(
         left=BuildConditional(
             left=BuildComparison(
@@ -313,7 +317,9 @@ def test_decomposition_pushdown(test_environment: Environment, test_environment_
             },
         ),
         output_columns=[],
-        condition=BuildComparison(left=product_id, right=1, operator=ComparisonOperator.EQ),
+        condition=BuildComparison(
+            left=product_id, right=1, operator=ComparisonOperator.EQ
+        ),
         grain=Grain(),
         source_map={
             product_id.address: [products.name],

@@ -195,8 +195,6 @@ def test_environment():
         grain=Grain(components=[category_id]),
     )
 
-
-
     for item in [
         category_id,
         category_name,

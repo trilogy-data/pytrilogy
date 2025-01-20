@@ -132,7 +132,14 @@ address blended;
         persist=True,
     )
 
-    gnode = resolve_subgraphs(g=generate_graph(env), conditions=None)
+    gnode = resolve_subgraphs(
+        g=generate_graph(env),
+        conditions=None,
+        relevant=[
+            env.concepts[x]
+            for x in ["order_id", "customer_id", "customer_name", "revenue"]
+        ],
+    )
     # we shoud resolve only the highest level source
     assert len(gnode) == 1
     assert "ds~blended" in gnode
@@ -178,7 +185,6 @@ address blended;
     for n in graph.nodes:
         if n.startswith("c~local.customer_name"):
             to_remove.append(n)
-    print(to_remove)
     for n in to_remove:
         graph.remove_node(n)
     conditions = BuildWhereClause(
@@ -187,7 +193,14 @@ address blended;
         )
     )
     assert get_graph_partial_nodes(graph, conditions)["ds~order"] == []
-    gnode = resolve_subgraphs(g=graph, conditions=conditions)
+    gnode = resolve_subgraphs(
+        g=graph,
+        conditions=conditions,
+        relevant=[
+            env.concepts[x]
+            for x in ["order_id", "customer_id", "customer_name", "revenue"]
+        ],
+    )
     # we shoud resolve only the highest level source
     assert len(gnode) == 1
     assert "ds~order" in gnode

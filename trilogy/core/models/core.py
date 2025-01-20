@@ -358,4 +358,6 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
     elif isinstance(arg, date):
         return DataType.DATE
     else:
-        raise ValueError(f"Cannot parse arg datatype for arg of raw type {type(arg)} value {arg}")
+        raise ValueError(
+            f"Cannot parse arg datatype for arg of raw type {type(arg)} value {arg}"
+        )

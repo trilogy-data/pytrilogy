@@ -69,7 +69,7 @@ def test_query_datasources(environment: Environment):
         "internet_sales.total_sales_amount",
     }
     # build environment
-    
+
     environment_graph = generate_graph(select_env)
     from trilogy.hooks.query_debugger import DebuggingHook
 
@@ -214,7 +214,7 @@ def test_grain(environment: Environment):
     ) as f:
         file = f.read()
     base_env, statements = parse(file, environment=environment)
-    environment=base_env.materialize_for_select()
+    environment = base_env.materialize_for_select()
     environment_graph = generate_graph(environment)
     test = search_concepts(
         [
@@ -250,7 +250,7 @@ def test_group_to_grain(environment: Environment):
     ) as f:
         file = f.read()
     base_env, statements = parse(file, environment=environment)
-    environment=base_env.materialize_for_select()
+    environment = base_env.materialize_for_select()
     environment_graph = generate_graph(environment)
     assert (
         len(
@@ -280,7 +280,10 @@ def test_group_to_grain(environment: Environment):
             environment.concepts["internet_sales.order_number"],
         ]
     )
-    assert resolved.grain == expected_grain, [resolved.grain.components, expected_grain.components]
+    assert resolved.grain == expected_grain, [
+        resolved.grain.components,
+        expected_grain.components,
+    ]
     assert resolved.force_group is False
     assert resolved.group_required is False
 
@@ -295,7 +298,7 @@ def test_two_properties_query(environment: Environment):
     ) as f:
         file = f.read()
     orig_environment, statements = parse(file, environment=environment)
-    environment=orig_environment.materialize_for_select()
+    environment = orig_environment.materialize_for_select()
     assert "local.total_sales_amount_debug_2" in set(list(environment.concepts.keys()))
     environment_graph = generate_graph(environment)
     assert (

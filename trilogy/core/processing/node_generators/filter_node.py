@@ -57,8 +57,7 @@ def gen_filter_node(
     # we'll populate this with the row parent
     # and the existence parent(s)
     core_parents = []
-    if any([x.address == concept.address for x in parent_row_concepts]):
-        raise SyntaxError
+
     row_parent: StrategyNode = source_concepts(
         mandatory_list=parent_row_concepts,
         environment=environment,
@@ -190,7 +189,7 @@ def gen_filter_node(
         )
         return filter_node
 
-    enrich_node = source_concepts(  # this fetches the parent + join keys
+    enrich_node: StrategyNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
         mandatory_list=[immediate_parent] + parent_row_concepts + local_optional,
         environment=environment,
@@ -199,6 +198,11 @@ def gen_filter_node(
         history=history,
         conditions=conditions,
     )
+    if not enrich_node:
+        logger.error(
+            f"{padding(depth)}{LOGGER_PREFIX} filter node enrichment node could not be found"
+        )
+        return filter_node
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} returning filter node and enrich node with {enrich_node.output_concepts} and {enrich_node.input_concepts}"
     )

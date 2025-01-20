@@ -13,9 +13,7 @@ from trilogy.core.models.author import (
     LooseConceptList,
     SubselectComparison,
 )
-from trilogy.core.models.build import (
-    BuildSubselectComparison, BuildFilterItem
-)
+from trilogy.core.models.build import BuildSubselectComparison, BuildFilterItem
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import get_upstream_concepts
 from trilogy.core.processing.node_generators.common import (
@@ -115,9 +113,21 @@ def test_constants(duckdb_engine: Executor, expected_results):
         duckdb_engine.environment.concepts["usd_conversion"].granularity
         == Granularity.SINGLE_ROW
     )
-    parent_arg: Concept = duckdb_engine.environment.concepts[[x for x in scaled_metric.lineage.concept_arguments if x.address == "local.total_count"
-    ][0]]
-    assert len(duckdb_engine.environment.concepts[parent_arg.lineage.concept_arguments[0]].grain.components) == 2
+    parent_arg: Concept = duckdb_engine.environment.concepts[
+        [
+            x
+            for x in scaled_metric.lineage.concept_arguments
+            if x.address == "local.total_count"
+        ][0]
+    ]
+    assert (
+        len(
+            duckdb_engine.environment.concepts[
+                parent_arg.lineage.concept_arguments[0]
+            ].grain.components
+        )
+        == 2
+    )
     # assert Grain(components = [duckdb_engine.environment.concepts['usd_conversion']]) == Grain()
     assert results[0].converted_total_count == expected_results["converted_total_count"]
 
@@ -438,9 +448,7 @@ select
 
     customer_orders_2 = customer_orders.with_select_context(
         {},
-        Grain(
-            components=[build_env.concepts["local.customer"]]
-        ),
+        Grain(components=[build_env.concepts["local.customer"]]),
         default_duckdb_engine.environment,
     )
     assert set([x for x in customer_orders_2.keys]) == {"local.customer"}
@@ -500,8 +508,12 @@ select
     """
 
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    cased = default_duckdb_engine.environment.concepts["cased"].with_select_context({}, Grain(), default_duckdb_engine.environment)
-    total = default_duckdb_engine.environment.concepts["total_mod_two"].with_select_context({}, Grain(), default_duckdb_engine.environment)
+    cased = default_duckdb_engine.environment.concepts["cased"].with_select_context(
+        {}, Grain(), default_duckdb_engine.environment
+    )
+    total = default_duckdb_engine.environment.concepts[
+        "total_mod_two"
+    ].with_select_context({}, Grain(), default_duckdb_engine.environment)
     assert cased.purpose == Purpose.PROPERTY
     assert cased.keys == {"local.orid"}
     assert total.derivation == Derivation.AGGREGATE
@@ -547,6 +559,7 @@ asc
 def test_demo_filter_select():
     from trilogy.hooks.query_debugger import DebuggingHook
 
+    DebuggingHook()
     test = """const x <- unnest([1,2,2,3]);
 
 select

@@ -4,7 +4,14 @@ from typing import List, Tuple, TypeVar
 
 from trilogy.core.enums import ComparisonOperator, FunctionType
 
-from trilogy.core.models.build import BuildComparison, BuildConditional, BuildParenthetical, BuildConcept, BuildFunction, BuildDatasource
+from trilogy.core.models.build import (
+    BuildComparison,
+    BuildConditional,
+    BuildParenthetical,
+    BuildConcept,
+    BuildFunction,
+    BuildDatasource,
+)
 from trilogy.core.models.core import DataType
 
 # Define a generic type that ensures start and end are the same type
@@ -91,9 +98,9 @@ def simplify_conditions(
     conditions: list[BuildComparison | BuildConditional | BuildParenthetical],
 ) -> bool:
     # Group conditions by variable
-    grouped: dict[BuildConcept, list[tuple[ComparisonOperator, datetime | int | date]]] = (
-        defaultdict(list)
-    )
+    grouped: dict[
+        BuildConcept, list[tuple[ComparisonOperator, datetime | int | date]]
+    ] = defaultdict(list)
     for condition in conditions:
         if not isinstance(condition, BuildComparison):
             return False

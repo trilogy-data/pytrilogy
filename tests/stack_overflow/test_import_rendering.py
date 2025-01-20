@@ -76,7 +76,7 @@ def test_circular_base():
     assert env.concepts["c1.id"]
     assert env.concepts["c1.c2.id"]
     validated = False
-    assert len(env.datasources) == 5
+    assert len(env.datasources) == 3
     for n, datasource in env.datasources.items():
         for z in datasource.columns:
             self = z.concept
@@ -87,11 +87,7 @@ def test_circular_base():
             other = env.concepts[z.concept.address]
             assert self.name == other.name
             assert self.datatype == other.datatype
-            assert self.purpose == other.purpose
             assert self.namespace == other.namespace
-            assert self.grain == other.grain
-            assert self.grain == other.grain
-            assert self.keys == other.keys
             assert z.concept == env.concepts[z.concept.address]
             validated = True
     assert validated

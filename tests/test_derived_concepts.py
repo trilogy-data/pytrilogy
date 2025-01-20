@@ -33,7 +33,10 @@ def test_filtering_where_on_derived_aggregate(test_environment):
         )
     except Exception as e:
         exception = True
-        assert "Cannot reference an aggregate derived in the select (local.filtered_cst)" in str(e)
+        assert (
+            "Cannot reference an aggregate derived in the select (local.filtered_cst)"
+            in str(e)
+        )
     assert exception, "should have an exception"
 
 

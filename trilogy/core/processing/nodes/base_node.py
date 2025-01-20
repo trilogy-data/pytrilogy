@@ -14,7 +14,14 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import ConceptPair, QueryDatasource, UnnestJoin
-from trilogy.core.models.build import BuildOrderBy, BuildConditional, BuildParenthetical, BuildComparison, BuildConcept, BuildDatasource
+from trilogy.core.models.build import (
+    BuildOrderBy,
+    BuildConditional,
+    BuildParenthetical,
+    BuildComparison,
+    BuildConcept,
+    BuildDatasource,
+)
 from trilogy.utility import unique
 
 
@@ -129,14 +136,18 @@ class StrategyNode:
         partial_concepts: List[BuildConcept] | None = None,
         nullable_concepts: List[BuildConcept] | None = None,
         depth: int = 0,
-        conditions: BuildConditional | BuildComparison | BuildParenthetical | None = None,
-        preexisting_conditions: BuildConditional | BuildComparison | BuildParenthetical | None = None,
+        conditions: (
+            BuildConditional | BuildComparison | BuildParenthetical | None
+        ) = None,
+        preexisting_conditions: (
+            BuildConditional | BuildComparison | BuildParenthetical | None
+        ) = None,
         force_group: bool | None = None,
         grain: Optional[Grain] = None,
         hidden_concepts: set[str] | None = None,
         existence_concepts: List[BuildConcept] | None = None,
         virtual_output_concepts: List[BuildConcept] | None = None,
-        ordering: BuildOrderBy | None = None
+        ordering: BuildOrderBy | None = None,
     ):
         self.input_concepts: List[BuildConcept] = (
             unique(input_concepts, "address") if input_concepts else []
@@ -180,7 +191,6 @@ class StrategyNode:
         self.validate_parents()
         self.validate_inputs()
         self.log = True
- 
 
     def validate_inputs(self):
         if not self.parents:
@@ -208,7 +218,9 @@ class StrategyNode:
         self.preexisting_conditions = conditions
         return self
 
-    def add_condition(self, condition: BuildConditional | BuildComparison | BuildParenthetical):
+    def add_condition(
+        self, condition: BuildConditional | BuildComparison | BuildParenthetical
+    ):
         if self.conditions and condition == self.conditions:
             return self
         if self.conditions:
@@ -254,7 +266,9 @@ class StrategyNode:
             self.rebuild_cache()
         return self
 
-    def add_existence_concepts(self, concepts: List[BuildConcept], rebuild: bool = True):
+    def add_existence_concepts(
+        self, concepts: List[BuildConcept], rebuild: bool = True
+    ):
         for concept in concepts:
             if concept.address not in self.output_concepts:
                 self.existence_concepts.append(concept)
@@ -283,13 +297,17 @@ class StrategyNode:
             self.rebuild_cache()
         return self
 
-    def unhide_output_concepts(self, concepts: List[BuildConcept], rebuild: bool = True):
+    def unhide_output_concepts(
+        self, concepts: List[BuildConcept], rebuild: bool = True
+    ):
         self.hidden_concepts = set(x for x in self.hidden_concepts if x not in concepts)
         if rebuild:
             self.rebuild_cache()
         return self
 
-    def remove_output_concepts(self, concepts: List[BuildConcept], rebuild: bool = True):
+    def remove_output_concepts(
+        self, concepts: List[BuildConcept], rebuild: bool = True
+    ):
         for x in concepts:
             self.hidden_concepts.add(x.address)
         addresses = [x.address for x in concepts]
@@ -352,7 +370,7 @@ class StrategyNode:
             nullable_concepts=self.nullable_concepts,
             force_group=self.force_group,
             hidden_concepts=self.hidden_concepts,
-            ordering=self.ordering
+            ordering=self.ordering,
         )
 
     def rebuild_cache(self) -> QueryDatasource:

@@ -33,7 +33,9 @@ def test_aggregate_of_property_function(stackoverflow_environment: Environment) 
     for cte in query.ctes:
         found = False
         if avg_user_post_count.address in [z.address for z in cte.output_columns]:
-            rendered = generator.render_concept_sql(avg_user_post_count.with_select_context({}, None, env), cte)
+            rendered = generator.render_concept_sql(
+                avg_user_post_count.with_select_context({}, None, env), cte
+            )
             '"post_length") as "user_avg_post_length"' in rendered
             found = True
         if found:
@@ -44,7 +46,7 @@ def test_aggregate_of_property_function(stackoverflow_environment: Environment) 
 
 def test_aggregate_to_grain(stackoverflow_environment: Environment):
     env = stackoverflow_environment
-    
+
     avg_post_length = env.concepts["user_avg_post_length"]
     user_id = env.concepts["user_id"]
     select: SelectStatement = SelectStatement(selection=[avg_post_length, user_id])
@@ -54,7 +56,9 @@ def test_aggregate_to_grain(stackoverflow_environment: Environment):
     for cte in query.ctes:
         found = False
         if avg_post_length in cte.output_columns:
-            rendered = generator.render_concept_sql(avg_post_length.with_select_context({}, None, env), cte)
+            rendered = generator.render_concept_sql(
+                avg_post_length.with_select_context({}, None, env), cte
+            )
 
             assert re.search(
                 r'avg\([0-9A-z\_]+\."post_length"\) as "user_avg_post_length"',
@@ -124,7 +128,9 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert len(final_cte.parent_ctes) > 0
 
     # now validate
-    select: SelectStatement = SelectStatement(selection=[stackoverflow_environment.concepts["avg_user_post_count"]])
+    select: SelectStatement = SelectStatement(
+        selection=[stackoverflow_environment.concepts["avg_user_post_count"]]
+    )
 
     query = process_query(statement=select, environment=env, hooks=[])
     cte = query.base

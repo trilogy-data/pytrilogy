@@ -73,9 +73,8 @@ LIMIT {{ limit }}{% endif %}
 
 class Renderer:
 
-    def __init__(self, environment:Environment| None = None):
+    def __init__(self, environment: Environment | None = None):
         self.environment = environment
-
 
     @singledispatchmethod
     def to_string(self, arg):

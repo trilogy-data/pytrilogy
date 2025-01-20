@@ -40,7 +40,7 @@ def get_parents(node: StrategyNode):
     return [node.__class__ for node in _get_parents(node)]
 
 
-def test_demo_filter(normalized_engine:Environment, test_env):
+def test_demo_filter(normalized_engine: Environment, test_env):
     executor = normalized_engine
     env = test_env
     assert "passenger.id.count" not in env.materialized_concepts

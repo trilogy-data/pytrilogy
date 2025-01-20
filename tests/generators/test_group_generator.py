@@ -31,7 +31,7 @@ def test_gen_group_node_basic(test_environment, test_environment_graph):
     prod = test_environment.concepts["product_id"]
     test_environment.concepts["revenue"]
     prod_r = test_environment.concepts["total_revenue"]
-    
+
     gnode = gen_group_node(
         concept=prod_r,
         local_optional=[prod],
@@ -73,26 +73,26 @@ def test_gen_group_node(test_environment: Environment, test_environment_graph):
     parent.resolve()
 
 
-def test_proper_parents(test_environment:Environment):
+def test_proper_parents(test_environment: Environment):
     base = Function(
         operator=FunctionType.COUNT,
         arguments=[test_environment.concepts["category_name"]],
         output_purpose=Purpose.PROPERTY,
         output_datatype=DataType.INTEGER,
     )
-    
+
     new_agg = function_to_concept(
-            base, name="base_agg", namespace="local", environment=test_environment
-        )
-    new_wrapper =  agg_wrapper_to_concept(
-            AggregateWrapper(
-                function=base,
-                by=[test_environment.concepts["category_name"]],
-            ),
-            name="agg_to_alt_grain",
-            namespace="local",
-            environment=test_environment
-        )
+        base, name="base_agg", namespace="local", environment=test_environment
+    )
+    new_wrapper = agg_wrapper_to_concept(
+        AggregateWrapper(
+            function=base,
+            by=[test_environment.concepts["category_name"]],
+        ),
+        name="agg_to_alt_grain",
+        namespace="local",
+        environment=test_environment,
+    )
     test_environment.add_concept(new_agg)
     test_environment.add_concept(new_wrapper)
     test_environment = test_environment.materialize_for_select()

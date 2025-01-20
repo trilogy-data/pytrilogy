@@ -392,7 +392,10 @@ class Executor(object):
 
             if persist and isinstance(x, ProcessedQueryPersist):
                 self.environment.add_datasource(x.datasource)
-    def _concept_to_value(self, concept: Concept, local_concepts: dict[str, Concept] | None = None) -> Any:
+
+    def _concept_to_value(
+        self, concept: Concept, local_concepts: dict[str, Concept] | None = None
+    ) -> Any:
         if not concept.granularity == Granularity.SINGLE_ROW:
             raise SyntaxError(f"Cannot bind non-singleton concept {concept.address}")
         if (
@@ -412,6 +415,7 @@ class Executor(object):
         if not results:
             return None
         return results[0]
+
     def _hydrate_param(
         self, param: str, local_concepts: dict[str, Concept] | None = None
     ) -> Any:

@@ -50,6 +50,7 @@ datasource posts (
 
 def test_io_statement():
     from trilogy.hooks.query_debugger import DebuggingHook
+
     DebuggingHook()
     target = Path(__file__).parent / "test_io_statement.csv"
     if target.exists():
@@ -62,7 +63,7 @@ copy into csv '{target}' from select x -> test;
 """
     exec = Dialects.DUCK_DB.default_executor()
     results = exec.parse_text(text)
-    assert exec.environment.concepts['x'].lineage.operator == FunctionType.UNNEST
+    assert exec.environment.concepts["x"].lineage.operator == FunctionType.UNNEST
     assert isinstance(results[-1], ProcessedCopyStatement)
     for z in results:
         exec.execute_query(z)

@@ -27,7 +27,7 @@ from trilogy.core.models.build import (
     BuildMultiSelectLineage,
     BuildSelectLineage,
     BuildRowsetItem,
-    BuildOrderItem
+    BuildOrderItem,
 )
 from trilogy.core.models.core import (
     DataType,
@@ -72,16 +72,16 @@ from trilogy.hooks.base_hook import BaseHook
 
 LOGGER_PREFIX = "[RENDERING]"
 
-WINDOW_ITEMS = ( BuildWindowItem,)
+WINDOW_ITEMS = (BuildWindowItem,)
 FILTER_ITEMS = (BuildFilterItem,)
 AGGREGATE_ITEMS = (BuildAggregateWrapper,)
 FUNCTION_ITEMS = (BuildFunction,)
-PARENTHETICAL_ITEMS = (BuildParenthetical, )
-CASE_WHEN_ITEMS = (BuildCaseWhen, )
-CASE_ELSE_ITEMS = (BuildCaseElse, )
-SUBSELECT_COMPARISON_ITEMS = (BuildSubselectComparison, )
-COMPARISON_ITEMS = (BuildComparison, )
-CONDITIONAL_ITEMS = (BuildConditional, )
+PARENTHETICAL_ITEMS = (BuildParenthetical,)
+CASE_WHEN_ITEMS = (BuildCaseWhen,)
+CASE_ELSE_ITEMS = (BuildCaseElse,)
+SUBSELECT_COMPARISON_ITEMS = (BuildSubselectComparison,)
+COMPARISON_ITEMS = (BuildComparison,)
+CONDITIONAL_ITEMS = (BuildConditional,)
 
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
@@ -469,7 +469,6 @@ class BaseDialect:
     def render_expr(
         self,
         e: Union[
-
             BuildFunction,
             BuildConditional,
             BuildAggregateWrapper,

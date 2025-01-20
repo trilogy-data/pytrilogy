@@ -232,7 +232,14 @@ where
     env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
 
-    assert is_scalar_condition(select.as_lineage(test_environment).build_for_select(test_environment).where_clause.conditional) is False
+    assert (
+        is_scalar_condition(
+            select.as_lineage(test_environment)
+            .build_for_select(test_environment)
+            .where_clause.conditional
+        )
+        is False
+    )
     _ = BaseDialect().compile_statement(process_query(test_environment, select))
 
 

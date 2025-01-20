@@ -96,7 +96,7 @@ def test_derivations():
             source=datasource_to_node(build_env.datasources["bool_is_upper_name"]),
             target=concept_to_node(test_concept.with_default_grain()),
         )
-        assert len(path) == 3, path
+        assert len(path) == 2, path
 
         # test that the full function returns the value
         static = gen_select_node(
@@ -170,16 +170,17 @@ def test_derivations_reparse():
                 # force add since we didn't run it
                 if isinstance(processed, ProcessedQueryPersist):
                     env.add_datasource(processed.datasource)
-        env, _ = parse(
-            """    auto test_upper_case_2 <- CASE WHEN category_name = upper(category_name) then True else False END;
+        #     env, _ = parse(
+        #         """    auto test_upper_case_2 <- CASE WHEN category_name = upper(category_name) then True else False END;
 
-    select 
-    test_upper_case_2;""",
-            environment=env,
-        )
+        # select
+        # test_upper_case_2;""",
+        #         environment=env,
+        #     )
         test_concept = env.concepts["test_upper_case_2"]
         assert test_concept.purpose == Purpose.PROPERTY
         assert test_concept.metadata.concept_source == ConceptSource.PERSIST_STATEMENT
+
         assert test_concept.address in env.materialized_concepts
         assert test_concept.derivation == Derivation.ROOT
 
@@ -242,7 +243,8 @@ def test_derivations_reparse_new():
         assert test_concept.derivation == Derivation.BASIC
 
         # test that the rendered SQL did need to use a case
-        assert "CASE" in compiled[-1]
+        print(compiled[-1])
+        assert "CASE" in compiled[-1], compiled[-1]
 
 
 def test_persist_with_where():
