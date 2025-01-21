@@ -1558,7 +1558,7 @@ class Factory:
     def _(self, base: Function):
         from trilogy.core.models.build import BuildFunction
 
-        base = BuildFunction(
+        new = BuildFunction(
             operator=base.operator,
             arguments=[
                 (
@@ -1576,7 +1576,7 @@ class Factory:
             valid_inputs=base.valid_inputs,
             arg_count=base.arg_count,
         )
-        return base
+        return new
 
     @build.register
     def _(self, base: ConceptRef):

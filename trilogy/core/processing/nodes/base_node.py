@@ -37,7 +37,7 @@ def resolve_concept_map(
     inherited = set([t.address for t in inherited_inputs])
     for input in inputs:
         for concept in input.output_concepts:
-            if concept.address not in input.non_partial_concept_addresses:
+            if concept.address not in input.full_concepts:
                 continue
             if (
                 isinstance(input, QueryDatasource)

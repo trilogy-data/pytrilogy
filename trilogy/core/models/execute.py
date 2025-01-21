@@ -581,9 +581,9 @@ class QueryDatasource(BaseModel):
         return self.identifier.replace(".", "_")
 
     @property
-    def non_partial_concept_addresses(self) -> List[str]:
+    def full_concepts(self) -> List[BuildConcept]:
         return [
-            c.address
+            c
             for c in self.output_concepts
             if c.address not in [z.address for z in self.partial_concepts]
         ]

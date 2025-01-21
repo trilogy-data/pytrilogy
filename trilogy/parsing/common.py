@@ -120,7 +120,7 @@ def get_upstream_modifiers(
 
 def get_purpose_and_keys(
     purpose: Purpose | None,
-    args: Tuple[ConceptRef, ...] | None,
+    args: Tuple[ConceptRef | Concept, ...] | None,
     environment: Environment,
 ) -> Tuple[Purpose, set[str] | None]:
     local_purpose = purpose or function_args_to_output_purpose(args)
@@ -179,13 +179,16 @@ def constant_to_concept(
 def concept_is_relevant(
     concept: Concept | ConceptRef,
     others: list[Concept | ConceptRef],
-    environment: Environment,
+    environment: Environment | None = None,
 ) -> bool:
     if isinstance(concept, UndefinedConcept):
 
         return False
     if isinstance(concept, ConceptRef):
-        concept = environment.concepts[concept.address]
+        if environment:
+            concept = environment.concepts[concept.address]
+        else:
+            raise SyntaxError("Require environment to determine relevance of ConceptRef")
 
     if concept.is_aggregate and not (
         isinstance(concept.lineage, AggregateWrapper) and concept.lineage.by
@@ -247,7 +250,7 @@ def function_to_concept(
     namespace = namespace or environment.namespace
     concrete_args = [
         x
-        for x in [environment.concepts[c] for c in parent.concept_arguments]
+        for x in [environment.concepts[c.address] for c in parent.concept_arguments]
         if not isinstance(x, UndefinedConcept)
     ]
 
@@ -376,7 +379,7 @@ def window_item_to_concept(
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
-    bcontent = environment.concepts[parent.content]
+    bcontent = environment.concepts[parent.content.address]
     if isinstance(bcontent, UndefinedConcept):
         return UndefinedConcept(address=f"{namespace}.{name}", metadata=fmetadata)
     local_purpose, keys = get_purpose_and_keys(purpose, (bcontent,), environment)
