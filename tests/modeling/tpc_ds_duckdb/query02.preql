@@ -26,9 +26,9 @@ SELECT
     SUM(CASE WHEN date.day_of_week = 6 THEN web_sales.extra_sales_price ELSE 0.0 END) +
     SUM(CASE WHEN date.day_of_week = 6 THEN catalog_sales.extra_sales_price ELSE 0.0 END) as saturday_sales,
 ;
+
 WHERE
     yearly_agg.date.week_seq in relevent_week_seq
-    
 SELECT
     yearly_agg.date.week_seq,
     -- (lead 53 yearly_agg.sunday_sales by yearly_agg.date.week_seq asc) -> filter_flag,

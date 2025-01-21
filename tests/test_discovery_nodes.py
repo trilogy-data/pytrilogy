@@ -3,8 +3,8 @@ from trilogy.core.models.build import BuildGrain
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import (
     GroupNode,
-    search_concepts,
     History,
+    search_concepts,
 )
 from trilogy.core.processing.node_generators import gen_group_node
 

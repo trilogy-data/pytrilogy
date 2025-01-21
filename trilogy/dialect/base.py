@@ -11,7 +11,6 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.internal import DEFAULT_CONCEPTS
-from trilogy.core.models.author import Grain
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildCaseElse,
@@ -27,6 +26,7 @@ from trilogy.core.models.build import (
     BuildRowsetItem,
     BuildSubselectComparison,
     BuildWindowItem,
+    Factory,
 )
 from trilogy.core.models.core import (
     DataType,
@@ -824,6 +824,7 @@ class BaseDialect:
             | ProcessedRawSQLStatement
             | ProcessedCopyStatement
         ] = []
+        factory = Factory(environment=environment)
         for statement in statements:
             if isinstance(statement, PersistStatement):
                 if hooks:
@@ -854,12 +855,15 @@ class BaseDialect:
             elif isinstance(statement, ShowStatement):
                 # TODO - encapsulate this a little better
                 if isinstance(statement.content, SelectStatement):
+
                     output.append(
                         ProcessedShowStatement(
                             output_columns=[
-                                environment.concepts[
-                                    DEFAULT_CONCEPTS["query_text"].address
-                                ].with_select_context({}, Grain(), environment)
+                                factory.build(
+                                    environment.concepts[
+                                        DEFAULT_CONCEPTS["query_text"].address
+                                    ]
+                                )
                             ],
                             output_values=[
                                 process_query(

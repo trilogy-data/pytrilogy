@@ -3,11 +3,11 @@ from trilogy.core.enums import (
 )
 from trilogy.core.models.build import (
     BuildComparison,
+    BuildConceptArgs,
     BuildConditional,
     BuildDatasource,
     BuildParenthetical,
     BuildWindowItem,
-    BuildConceptArgs,
 )
 from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.optimizations.base_optimization import OptimizationRule

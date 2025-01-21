@@ -84,7 +84,7 @@ def get_graph_grains(g: nx.DiGraph) -> dict[str, list[str]]:
     grain_length: dict[str, list[str]] = {}
     for node in g.nodes:
         if node in datasources:
-            base:str = set()
+            base: set[str] = set()
             lookup = datasources[node]
             if not isinstance(lookup, list):
                 lookup = [lookup]
@@ -498,12 +498,7 @@ def gen_select_merge_node(
             non_constant,
             accept_partial=attempt,
             conditions=conditions,
-            datasources=list(
-                [
-                    x
-                    for x in environment.datasources.values()
-                ]
-            ),
+            datasources=list([x for x in environment.datasources.values()]),
             depth=depth,
         )
         if pruned_concept_graph:

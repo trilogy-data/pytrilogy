@@ -11,7 +11,7 @@ from trilogy.core.models.environment import (
     Environment,
 )
 from trilogy.core.models.execute import QueryDatasource
-from trilogy.core.processing.concept_strategies_v3 import search_concepts, History
+from trilogy.core.processing.concept_strategies_v3 import History, search_concepts
 from trilogy.core.processing.nodes import MergeNode, SelectNode
 from trilogy.core.query_processor import datasource_to_cte, get_query_datasources
 from trilogy.core.statements.author import SelectStatement

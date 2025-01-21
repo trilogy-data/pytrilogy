@@ -8,7 +8,7 @@ from trilogy.core.models.core import (
 )
 from trilogy.core.models.datasource import ColumnAssignment, Datasource
 from trilogy.core.models.environment import Environment
-from trilogy.core.processing.concept_strategies_v3 import search_concepts, History
+from trilogy.core.processing.concept_strategies_v3 import History, search_concepts
 from trilogy.core.processing.node_generators import (
     gen_filter_node,
 )

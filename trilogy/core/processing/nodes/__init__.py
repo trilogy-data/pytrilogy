@@ -1,8 +1,8 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
-from trilogy.core.models.environment import Environment
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.environment import Environment
 
 from .base_node import NodeJoin, StrategyNode
 from .filter_node import FilterNode

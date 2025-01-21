@@ -1,4 +1,4 @@
-from trilogy.core.processing.concept_strategies_v3 import search_concepts, History
+from trilogy.core.processing.concept_strategies_v3 import History, search_concepts
 from trilogy.core.processing.node_generators.common import gen_property_enrichment_node
 from trilogy.core.processing.node_generators.group_node import gen_group_node
 

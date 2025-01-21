@@ -2,9 +2,9 @@ from trilogy import Dialects
 from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.models.build import BuildWindowItem
 from trilogy.core.processing.concept_strategies_v3 import (
+    History,
     generate_graph,
     search_concepts,
-    History,
 )
 from trilogy.core.processing.utility import concept_to_relevant_joins
 from trilogy.core.query_processor import get_query_datasources, process_query

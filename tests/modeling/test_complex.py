@@ -1,10 +1,11 @@
 from trilogy import Dialects, Executor, parse
 from trilogy.core.enums import Derivation
+from trilogy.core.models.build import Factory
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
-from trilogy.core.statements.author import Grain, SelectStatement
+from trilogy.core.statements.author import SelectStatement
 
 
 def test_rowset(test_environment: Environment, test_executor: Executor):
@@ -47,6 +48,7 @@ def test_rowset_with_addition(test_environment: Environment, test_executor: Exec
 def test_rowset_with_aggregation(
     test_environment: Environment, test_executor: Executor
 ):
+    factory = Factory(environment=test_environment)
     test_select = """   auto even_order_store_revenue <- sum(even_orders.revenue);
     rowset even_orders <- select order_id, store_id, revenue where (order_id % 2) = 0;
     auto even_order_store_revenue <- sum(even_orders.revenue);
@@ -62,9 +64,7 @@ def test_rowset_with_aggregation(
 
     _, statements = parse(test_select, test_environment)
 
-    group = test_environment.concepts["even_order_store_revenue"].with_select_context(
-        {}, Grain(), test_environment
-    )
+    group = factory.build(test_environment.concepts["even_order_store_revenue"])
 
     assert group.derivation == Derivation.AGGREGATE
     # grain_c_lcl = LooseConceptList(concepts=group.grain.components_copy)

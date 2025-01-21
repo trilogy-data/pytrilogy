@@ -820,7 +820,7 @@ class ParseToObjects(Transformer):
                 for k, v in self.environment.concepts.items()
                 if v.namespace == source_wildcard
             ]
-            targets: list[Concept] = {}
+            targets: dict[str, Concept] = {}
             for x in sources:
                 target = target_wildcard + "." + x.name
                 if target in self.environment.concepts:
@@ -1147,21 +1147,21 @@ class ParseToObjects(Transformer):
         if args[1] == ComparisonOperator.IN:
             raise SyntaxError
         if isinstance(args[0], AggregateWrapper):
-            left = arbitrary_to_concept(
+            left_c = arbitrary_to_concept(
                 args[0],
                 environment=self.environment,
             )
-            self.environment.add_concept(left)
-            left = left.reference
+            self.environment.add_concept(left_c)
+            left = left_c.reference
         else:
             left = args[0]
         if isinstance(args[2], AggregateWrapper):
-            right = arbitrary_to_concept(
+            right_c = arbitrary_to_concept(
                 args[2],
                 environment=self.environment,
             )
-            self.environment.add_concept(right)
-            right = right.reference
+            self.environment.add_concept(right_c)
+            right = right_c.reference
         else:
             right = args[2]
         return Comparison(left=left, right=right, operator=args[1])

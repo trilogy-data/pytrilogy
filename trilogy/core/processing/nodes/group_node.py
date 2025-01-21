@@ -163,7 +163,8 @@ class GroupNode(StrategyNode):
         if self.conditions and not is_scalar_condition(self.conditions):
             base.condition = None
             base.output_concepts = unique(
-                base.output_concepts + self.conditions.row_arguments, "address"
+                list(base.output_concepts) + list(self.conditions.row_arguments),
+                "address",
             )
             # re-visible any hidden concepts
             base.hidden_concepts = set(

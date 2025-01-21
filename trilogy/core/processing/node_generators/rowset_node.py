@@ -3,13 +3,14 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import UnresolvableQueryException
-from trilogy.core.models.author import MultiSelectLineage, RowsetLineage, SelectLineage
+from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
     BuildConcept,
     BuildGrain,
     BuildRowsetItem,
+    BuildRowsetLineage,
     BuildWhereClause,
-    Factory
+    Factory,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
@@ -35,7 +36,7 @@ def gen_rowset_node(
             f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {BuildRowsetItem}"
         )
     lineage: BuildRowsetItem = concept.lineage
-    rowset: RowsetLineage = lineage.rowset
+    rowset: BuildRowsetLineage = lineage.rowset
     select: SelectLineage | MultiSelectLineage = lineage.rowset.select
 
     node = get_query_node(history.base_environment, select)
@@ -49,22 +50,25 @@ def gen_rowset_node(
         )
     enrichment = set([x.address for x in local_optional])
 
-    factory = Factory(environment=history.base_environment, grain = select.grain)
-    rowset_relevant:list[BuildConcept] = [
-        factory.build(x)
-        for x in rowset.derived_concepts
+    factory = Factory(environment=history.base_environment, grain=select.grain)
+    rowset_relevant: list[BuildConcept] = [
+        v
+        for v in environment.concepts.values()
+        if isinstance(v.lineage, BuildRowsetItem)
+        and v.lineage.rowset.name == rowset.name
     ]
-    logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} rowset relevant nodes are {rowset_relevant}"
-    )
+    # logger.info(
+    #     f"{padding(depth)}{LOGGER_PREFIX} rowset relevant nodes are {rowset_relevant}"
+    # )
     select_hidden = node.hidden_concepts
     rowset_hidden = [
-        x for x in rowset_relevant if x.lineage.content.address in select_hidden
+        x
+        for x in rowset_relevant
+        if isinstance(x.lineage, BuildRowsetItem)
+        and x.lineage.content.address in select_hidden
     ]
     additional_relevant = [
-        factory.build(x)
-        for x in select.output_components
-        if x.address in enrichment
+        factory.build(x) for x in select.output_components if x.address in enrichment
     ]
     # add in other other concepts
     node.add_output_concepts(rowset_relevant + additional_relevant)

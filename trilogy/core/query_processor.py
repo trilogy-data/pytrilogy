@@ -7,15 +7,13 @@ from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import BooleanOperator, SourceType
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
+from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
     BuildDatasource,
-    BuildMultiSelectLineage,
-    BuildSelectLineage,
+    Factory,
 )
-from trilogy.core.models.author import SelectLineage, MultiSelectLineage
-from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
     CTE,
@@ -375,7 +373,8 @@ def get_query_node(
         raise ValueError(f"Statement has no output components {statement}")
 
     history = history or History(base_environment=environment)
-    build_statement = statement.build_for_select(environment=environment)
+    build_statement = Factory(environment=environment).build(statement)
+    # build_statement = statement
     build_environment = environment.materialize_for_select(
         build_statement.local_concepts
     )

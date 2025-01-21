@@ -2,8 +2,8 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
-from trilogy.core.processing.nodes import History, StrategyNode, UnnestNode
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.nodes import History, StrategyNode, UnnestNode
 from trilogy.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_UNNEST_NODE]"

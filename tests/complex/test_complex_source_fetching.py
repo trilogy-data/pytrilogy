@@ -11,9 +11,9 @@ from trilogy.core.models.environment import (
 )
 from trilogy.core.models.execute import QueryDatasource
 from trilogy.core.processing.concept_strategies_v3 import (
+    History,
     generate_graph,
     search_concepts,
-    History,
 )
 from trilogy.core.query_processor import datasource_to_cte, process_query
 from trilogy.core.statements.author import SelectStatement

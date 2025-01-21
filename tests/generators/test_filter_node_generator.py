@@ -1,8 +1,8 @@
 from trilogy.core.enums import ComparisonOperator, Derivation
 from trilogy.core.models.author import Comparison
-from trilogy.core.models.build import BuildWhereClause, Grain
+from trilogy.core.models.build import BuildWhereClause, Factory
 from trilogy.core.models.environment import Environment
-from trilogy.core.processing.concept_strategies_v3 import search_concepts, History
+from trilogy.core.processing.concept_strategies_v3 import History, search_concepts
 from trilogy.core.processing.node_generators import gen_filter_node
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
@@ -43,6 +43,7 @@ def test_gen_filter_node(test_environment, test_environment_graph):
 
 def test_gen_filter_node_same_concept(test_environment, test_environment_graph):
     history = History(base_environment=test_environment)
+    factory = Factory(environment=test_environment)
     conditional = Comparison(
         left=test_environment.concepts["category_name"],
         operator=ComparisonOperator.LIKE,
@@ -66,13 +67,12 @@ def test_gen_filter_node_same_concept(test_environment, test_environment_graph):
         source_concepts=search_concepts,
         history=history,
     )
-    assert node.conditions == conditional.with_select_context(
-        {}, Grain(), og_test_environment
-    )
+    assert node.conditions == factory.build(conditional)
 
 
 def test_gen_filter_node_include_all(test_environment, test_environment_graph):
     history = History(base_environment=test_environment)
+    factory = Factory(environment=test_environment)
     conditional = Comparison(
         left=test_environment.concepts["category_name"],
         operator=ComparisonOperator.LIKE,
@@ -83,9 +83,7 @@ def test_gen_filter_node_include_all(test_environment, test_environment_graph):
     og_test_environment = test_environment
     test_environment.add_concept(f_product_id)
     test_environment.add_concept(f_concept_id)
-    build_conditional = conditional.with_select_context(
-        {}, Grain(), og_test_environment
-    )
+    build_conditional = factory.build(conditional)
     test_environment = test_environment.materialize_for_select()
     node = gen_filter_node(
         concept=test_environment.concepts[f_product_id.address],

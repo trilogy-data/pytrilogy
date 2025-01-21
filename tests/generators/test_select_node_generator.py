@@ -1,7 +1,6 @@
 from trilogy.core.enums import ComparisonOperator
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.models.author import Grain
-from trilogy.core.models.build import BuildComparison, BuildWhereClause
+from trilogy.core.models.build import BuildComparison, BuildWhereClause, Factory
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators import gen_select_node
 from trilogy.core.processing.node_generators.select_merge_node import (
@@ -208,6 +207,7 @@ address blended;
 
 def test_materialized_select_with_filter():
     env = Environment()
+    factory = Factory(environment=env)
 
     _, statements = env.parse(
         """
@@ -246,7 +246,7 @@ where order_id = 1;
         environment=env,
         g=generate_graph(env),
         depth=0,
-        conditions=persist.select.where_clause.with_select_context({}, Grain(), env),
+        conditions=factory.build(persist.select.where_clause),
     )
 
     resolved = gnode.resolve()

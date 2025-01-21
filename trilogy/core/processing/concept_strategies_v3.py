@@ -16,7 +16,6 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators import (
     gen_basic_node,
     gen_filter_node,
@@ -74,9 +73,9 @@ def get_upstream_concepts(base: BuildConcept, nested: bool = False) -> set[str]:
     for x in base.lineage.concept_arguments:
         # if it's derived from any value in a rowset, ALL rowset items are upstream
         if x.derivation == Derivation.ROWSET:
-            assert isinstance(x.lineage, BuildRowsetItem)
-            for y in x.lineage.rowset.derived_concepts:
-                upstream.add(y.address)
+            assert isinstance(x.lineage, BuildRowsetItem), type(x.lineage)
+            for y in x.lineage.rowset.select.output_components:
+                upstream.add(f"{x.lineage.rowset.name}.{y.address}")
                 # upstream = upstream.union(get_upstream_concepts(y, nested=True))
         upstream = upstream.union(get_upstream_concepts(x, nested=True))
     return upstream
@@ -164,7 +163,15 @@ def get_priority_concept(
         # get the derived copy first
         # as this will usually resolve cleaner
         for x in priority:
-            if any([x.address in get_upstream_concepts(c) for c in priority]):
+            if any(
+                [
+                    x.address
+                    in get_upstream_concepts(
+                        c,
+                    )
+                    for c in priority
+                ]
+            ):
                 logger.info(
                     f"{depth_to_prefix(depth)}{LOGGER_PREFIX} delaying fetch of {x.address} as parent of another concept"
                 )
@@ -752,6 +759,7 @@ def _search_concepts(
         )
         # if anything we need to get is in the filter set and it's a computed value
         # we need to get _everything_ in this loop
+        logger.info(f"{[x.address for x in conditions.row_arguments]}")
         if any(
             [
                 x.derivation not in (Derivation.ROOT, Derivation.CONSTANT)
@@ -771,7 +779,8 @@ def _search_concepts(
     else:
 
         completion_mandatory = mandatory_list
-
+    if "date.month_seq" in completion_mandatory:
+        raise SyntaxError(completion_mandatory)
     attempted: set[str] = set()
 
     found: set[str] = set()

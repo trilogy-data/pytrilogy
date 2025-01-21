@@ -1,6 +1,6 @@
 from trilogy.core.env_processor import concept_to_node, generate_graph
 from trilogy.core.models.environment import Environment
-from trilogy.core.processing.concept_strategies_v3 import search_concepts, History
+from trilogy.core.processing.concept_strategies_v3 import History, search_concepts
 from trilogy.core.processing.node_generators.node_merge_node import (
     determine_induced_minimal_nodes,
     gen_merge_node,

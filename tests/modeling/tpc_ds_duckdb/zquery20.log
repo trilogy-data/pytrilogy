@@ -45,7 +45,7 @@ SELECT
     cheerful.\"cs_item_desc\" as \"cs_item_desc\",
     cheerful.\"cs_item_name\" as \"cs_item_name\",
     cheerful.\"revenue\" as \"revenue\",
-    sum(cheerful.\"revenue\") over (partition by cheerful.\"cs_item_class\") as \"_virt_7783350143669940\"
+    sum(cheerful.\"revenue\") over (partition by cheerful.\"cs_item_class\") as \"_virt_4519707562798106\"
 FROM
     cheerful)
 SELECT
@@ -55,7 +55,7 @@ SELECT
     thoughtful.\"cs_item_class\" as \"cs_item_class\",
     thoughtful.\"cs_item_current_price\" as \"cs_item_current_price\",
     thoughtful.\"revenue\" as \"revenue\",
-    thoughtful.\"revenue\" * 100.0 / (thoughtful.\"_virt_7783350143669940\") as \"revenue_ratio\"
+    thoughtful.\"revenue\" * 100.0 / (thoughtful.\"_virt_4519707562798106\") as \"revenue_ratio\"
 FROM
     thoughtful
 ORDER BY 
@@ -63,5 +63,5 @@ ORDER BY
     thoughtful.\"cs_item_class\" asc nulls first,
     thoughtful.\"cs_item_name\" asc nulls first,
     thoughtful.\"cs_item_desc\" asc nulls first,
-    thoughtful.\"revenue\" * 100.0 / (thoughtful.\"_virt_7783350143669940\") asc nulls first
+    thoughtful.\"revenue\" * 100.0 / (thoughtful.\"_virt_4519707562798106\") asc nulls first
 LIMIT (100)"""

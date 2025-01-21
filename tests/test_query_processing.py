@@ -4,7 +4,7 @@ from trilogy.core.enums import (
 from trilogy.core.models.build import BuildGrain
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import QueryDatasource
-from trilogy.core.processing.concept_strategies_v3 import search_concepts, History
+from trilogy.core.processing.concept_strategies_v3 import History, search_concepts
 from trilogy.core.query_processor import get_query_datasources, process_query
 from trilogy.core.statements.author import SelectStatement
 

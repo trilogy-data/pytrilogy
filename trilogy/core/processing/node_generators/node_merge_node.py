@@ -193,7 +193,9 @@ def filter_relevant_subgraphs(
     ]
 
 
-def filter_duplicate_subgraphs(subgraphs: list[list[BuildConcept]]) -> list[list[BuildConcept]]:
+def filter_duplicate_subgraphs(
+    subgraphs: list[list[BuildConcept]],
+) -> list[list[BuildConcept]]:
     seen: list[set[str]] = []
 
     for graph in subgraphs:
@@ -323,7 +325,6 @@ def subgraphs_to_merge_node(
     output_concepts: List[BuildConcept],
     search_conditions: BuildWhereClause | None = None,
     enable_early_exit: bool = True,
-
 ):
     parents: List[StrategyNode] = []
     logger.info(

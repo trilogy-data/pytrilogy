@@ -10,7 +10,7 @@ from trilogy.core.models.author import (
     Concept,
     Grain,
 )
-from trilogy.core.models.build import BuildFilterItem, BuildSubselectComparison
+from trilogy.core.models.build import BuildFilterItem, BuildSubselectComparison, Factory
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import get_upstream_concepts
 from trilogy.core.processing.node_generators.common import (
@@ -502,14 +502,10 @@ select
     total_mod_two
   ;
     """
-
+    factory = Factory(environment=default_duckdb_engine.environment)
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    cased = default_duckdb_engine.environment.concepts["cased"].with_select_context(
-        {}, Grain(), default_duckdb_engine.environment
-    )
-    total = default_duckdb_engine.environment.concepts[
-        "total_mod_two"
-    ].with_select_context({}, Grain(), default_duckdb_engine.environment)
+    cased = factory.build(default_duckdb_engine.environment.concepts["cased"])
+    total = factory.build(default_duckdb_engine.environment.concepts["total_mod_two"])
     assert cased.purpose == Purpose.PROPERTY
     assert cased.keys == {"local.orid"}
     assert total.derivation == Derivation.AGGREGATE
@@ -976,5 +972,8 @@ select
     )
 
     for idx, x in enumerate(queries):
+        print(type(x))
+        for z in x.output_columns:
+            print(z.lineage)
         results = exec.execute_query(x).fetchall()
         assert results[0].x_next == 2 + idx

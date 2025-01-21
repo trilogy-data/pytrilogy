@@ -33,6 +33,7 @@ from trilogy.core.models.build import (
     BuildWindowItem,
     LooseBuildConceptList,
 )
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import (
     DataType,
     ListType,
@@ -42,7 +43,6 @@ from trilogy.core.models.core import (
     NumericType,
     TupleWrapper,
 )
-from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import (
     CTE,
     BaseJoin,

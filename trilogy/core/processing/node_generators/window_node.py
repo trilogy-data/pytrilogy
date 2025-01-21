@@ -19,6 +19,7 @@ def resolve_window_parent_concepts(
     if not isinstance(concept.lineage, WINDOW_TYPES):
         raise ValueError
     base = []
+    logger.info(concept.lineage)
     if concept.lineage.over:
         base += concept.lineage.over
     if concept.lineage.order_by:
@@ -38,6 +39,9 @@ def gen_window_node(
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     base, parent_concepts = resolve_window_parent_concepts(concept, environment)
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} generating window node for {concept} with parents {parent_concepts}"
+    )
     equivalent_optional = [
         x
         for x in local_optional

@@ -269,8 +269,10 @@ def function_to_concept(
     fmetadata = metadata or Metadata()
     if parent.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
         derivation = Derivation.AGGREGATE
-        if grain.components and all(
-            x.endswith(ALL_ROWS_CONCEPT) for x in grain.components
+        if (
+            grain
+            and grain.components
+            and all(x.endswith(ALL_ROWS_CONCEPT) for x in grain.components)
         ):
             granularity = Granularity.SINGLE_ROW
         else:
@@ -520,7 +522,7 @@ def rowset_to_concepts(rowset: RowsetDerivationStatement, environment: Environme
             # where=rowset.select.where_clause,
             rowset=RowsetLineage(
                 name=rowset.name,
-                derived_concepts=pre_output,
+                derived_concepts=[x.reference for x in pre_output],
                 select=select_lineage,
             ),
         )

@@ -203,7 +203,9 @@ class Environment(BaseModel):
 
         local_concepts = local_concepts or {}
 
-        env_factory = Factory(grain = Grain(), environment=self, local_concepts = local_concepts)
+        env_factory = Factory(
+            grain=Grain(), environment=self, local_concepts=local_concepts
+        )
 
         base = BuildEnvironment(
             namespace=self.namespace,

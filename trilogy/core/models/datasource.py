@@ -18,7 +18,7 @@ from trilogy.core.models.author import (
 LOGGER_PREFIX = "[MODELS_DATASOURCE]"
 
 if TYPE_CHECKING:
-    from trilogy.core.models.environment import Environment
+    pass
 
 
 class RawColumnExpr(BaseModel):
@@ -52,7 +52,6 @@ class ColumnAssignment(BaseModel):
     @property
     def is_nullable(self) -> bool:
         return Modifier.NULLABLE in self.modifiers
-
 
     def with_namespace(self, namespace: str) -> "ColumnAssignment":
         return ColumnAssignment(
