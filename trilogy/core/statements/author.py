@@ -172,12 +172,12 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             for x in self.where_clause.concept_arguments:
                 if isinstance(x, UndefinedConcept):
                     environment.concepts.raise_undefined(
-                        x.address, x.metadata.line_number
+                        x.address, x.metadata.line_number if x.metadata else None
                     )
         all_in_output = [x for x in self.output_components]
         if self.where_clause:
             for cref in self.where_clause.concept_arguments:
-                concept = environment.concepts[cref]
+                concept = environment.concepts[cref.address]
                 if isinstance(concept, UndefinedConcept):
                     continue
                 if (
@@ -340,16 +340,6 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         for select in self.selects:
             base += select.grain
         return base
-
-    def find_source(self, concept: Concept, cte: CTE | UnionCTE) -> Concept:
-        for x in self.align.items:
-            if concept.name == x.alias:
-                for c in x.concepts:
-                    if c.address in cte.output_lcl:
-                        return c
-        raise SyntaxError(
-            f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})"
-        )
 
     @property
     def output_components(self) -> List[ConceptRef]:

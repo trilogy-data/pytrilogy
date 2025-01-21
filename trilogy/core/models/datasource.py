@@ -267,7 +267,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         return new
 
     @property
-    def concepts(self) -> List[Concept]:
+    def concepts(self) -> List[ConceptRef]:
         return [c.concept for c in self.columns]
 
     @property

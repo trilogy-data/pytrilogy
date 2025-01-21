@@ -142,13 +142,11 @@ def concept_is_relevant(
 
 
 def concepts_to_build_grain_concepts(
-    concepts: Iterable[BuildConcept | str], environment: Environment | None
+    concepts: Iterable[BuildConcept | str], environment: BuildEnvironment | None
 ) -> list[Concept]:
     pconcepts = []
     for c in concepts:
-        if isinstance(c, Concept):
-            pconcepts.append(c)
-        elif isinstance(c, BuildConcept):
+        if isinstance(c, BuildConcept):
             pconcepts.append(c)
         elif environment:
             pconcepts.append(environment.concepts[c])
@@ -541,7 +539,7 @@ class BuildConditional(BuildConceptArgs, ConstantInlineable, BaseModel):
 
     @property
     def existence_arguments(self) -> list[tuple["BuildConcept", ...]]:
-        output = []
+        output:list[BuildConcept] = []
         if isinstance(self.left, BuildConceptArgs):
             output += self.left.existence_arguments
         if isinstance(self.right, BuildConceptArgs):
@@ -1645,7 +1643,7 @@ class Factory:
     def _(self, base: AggregateWrapper):
 
         if not base.by:
-            by = [self.environment.concepts[c] for c in self.grain.components]
+            by = [self.build(self.environment.concepts[c]) for c in self.grain.components]
         else:
             by = [self.build(x) for x in base.by]
         parent = self.build(base.function)
@@ -1661,7 +1659,7 @@ class Factory:
                 else base.alias
             ),
             concept=self.build(
-                self.environment.concepts[base.concept].with_grain(self.grain)
+                self.environment.concepts[base.concept.address].with_grain(self.grain)
             ),
             modifiers=base.modifiers,
         )
@@ -1821,13 +1819,13 @@ class Factory:
             # so rebuild at this point in the tree
             # TODO: simplify
             if new.address in materialized:
-                new = materialized[new.address]
+                built = materialized[new.address]
             else:
                 # Sometimes cached values here don't have the latest info
                 # but we can't just use environment, as it might not have the right grain.
-                new = factory.build(new)
-                materialized[new.address] = new
-            final.append(new)
+                built = factory.build(new)
+                materialized[new.address] = built
+            final.append(built)
         return BuildSelectLineage(
             selection=final,
             hidden_components=base.hidden_components,

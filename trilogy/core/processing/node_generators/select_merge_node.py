@@ -89,8 +89,8 @@ def get_graph_grains(g: nx.DiGraph) -> dict[str, list[str]]:
             if not isinstance(lookup, list):
                 lookup = [lookup]
             assert isinstance(lookup, list)
-            grain_length[node] = reduce(  # type: ignore
-                lambda x, y: x.union(y.grain.components), lookup, base
+            grain_length[node] = reduce( 
+                lambda x, y: x.union(y.grain.components), lookup, base #type: ignore
             )
     return grain_length
 

@@ -80,10 +80,6 @@ class Mergeable(ABC):
         return self
 
 
-class ConstantInlineable(ABC):
-    def inline_concept(self, concept: Concept):
-        raise NotImplementedError
-
 
 class Reference(ABC):
     pass
@@ -162,7 +158,7 @@ class ConceptRef(Addressable, Namespaced, DataTyped, Reference, Mergeable, BaseM
         return ConceptRef(
             address=address_with_namespace(self.address, namespace),
             datatype=self.datatype,
-            line_no=self.line_no,
+            metadata=self.metadata
         )
 
 
@@ -192,7 +188,6 @@ class Parenthetical(
     ConceptArgs,
     Mergeable,
     Namespaced,
-    ConstantInlineable,
     Reference,
     BaseModel,
 ):
@@ -247,13 +242,13 @@ class Parenthetical(
         return base
 
     @property
-    def row_arguments(self) -> Sequence[Concept]:
+    def row_arguments(self) -> Sequence[ConceptRef]:
         if isinstance(self.content, ConceptArgs):
             return self.content.row_arguments
         return self.concept_arguments
 
     @property
-    def existence_arguments(self) -> Sequence[tuple["Concept", ...]]:
+    def existence_arguments(self) -> Sequence[tuple["ConceptRef", ...]]:
         if isinstance(self.content, ConceptArgs):
             return self.content.existence_arguments
         return []
@@ -264,7 +259,7 @@ class Parenthetical(
 
 
 class Conditional(
-    Mergeable, ConceptArgs, Namespaced, ConstantInlineable, Reference, BaseModel
+    Mergeable, ConceptArgs, Namespaced, Reference, BaseModel
 ):
     left: Expr
     right: Expr
@@ -292,32 +287,6 @@ class Conditional(
             self.left == other.left
             and self.right == other.right
             and self.operator == other.operator
-        )
-
-    def inline_constant(self, constant: Concept) -> "Conditional":
-        assert isinstance(constant.lineage, Function)
-        new_val = constant.lineage.arguments[0]
-        if isinstance(self.left, ConstantInlineable):
-            new_left = self.left.inline_constant(constant)
-        elif isinstance(self.left, Concept) and self.left.address == constant.address:
-            new_left = new_val
-        else:
-            new_left = self.left
-
-        if isinstance(self.right, ConstantInlineable):
-            new_right = self.right.inline_constant(constant)
-        elif isinstance(self.right, Concept) and self.right.address == constant.address:
-            new_right = new_val
-        else:
-            new_right = self.right
-
-        if self.right == constant:
-            new_right = new_val
-
-        return Conditional(
-            left=new_left,
-            right=new_right,
-            operator=self.operator,
         )
 
     def with_namespace(self, namespace: str) -> "Conditional":
@@ -353,7 +322,7 @@ class Conditional(
         )
 
     @property
-    def concept_arguments(self) -> Sequence[Concept]:
+    def concept_arguments(self) -> Sequence[ConceptRef]:
         """Return concepts directly referenced in where clause"""
         output = []
         output += get_concept_arguments(self.left)
@@ -361,14 +330,14 @@ class Conditional(
         return output
 
     @property
-    def row_arguments(self) -> Sequence[Concept]:
+    def row_arguments(self) -> Sequence[ConceptRef]:
         output = []
         output += get_concept_row_arguments(self.left)
         output += get_concept_row_arguments(self.right)
         return output
 
     @property
-    def existence_arguments(self) -> Sequence[tuple["Concept", ...]]:
+    def existence_arguments(self) -> Sequence[tuple["ConceptRef", ...]]:
         output: list[Concept] = []
         if isinstance(self.left, ConceptArgs):
             output += self.left.existence_arguments
@@ -399,15 +368,15 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, Reference, BaseModel):
         return self.__repr__()
 
     @property
-    def concept_arguments(self) -> List[Concept]:
+    def concept_arguments(self) -> List[ConceptRef]:
         return self.conditional.concept_arguments
 
     @property
-    def row_arguments(self) -> List[Concept]:
+    def row_arguments(self) -> List[ConceptRef]:
         return self.conditional.row_arguments
 
     @property
-    def existence_arguments(self) -> list[tuple["Concept", ...]]:
+    def existence_arguments(self) -> list[tuple["ConceptRef", ...]]:
         return self.conditional.existence_arguments
 
     def with_merge(
@@ -564,7 +533,7 @@ class Grain(Namespaced, BaseModel):
 
 
 class Comparison(
-    ConceptArgs, Mergeable, Namespaced, ConstantInlineable, Reference, BaseModel
+    ConceptArgs, Mergeable, Namespaced, Reference, BaseModel
 ):
     left: Union[
         int,
@@ -689,32 +658,6 @@ class Comparison(
             and self.operator == other.operator
         )
 
-    def inline_constant(self, constant: Concept):
-        assert isinstance(constant.lineage, Function)
-        new_val = constant.lineage.arguments[0]
-        if isinstance(self.left, ConstantInlineable):
-            new_left = self.left.inline_constant(constant)
-        elif (
-            isinstance(self.left, ConceptRef) and self.left.address == constant.address
-        ):
-            new_left = new_val
-        else:
-            new_left = self.left
-        if isinstance(self.right, ConstantInlineable):
-            new_right = self.right.inline_constant(constant)
-        elif (
-            isinstance(self.right, ConceptRef)
-            and self.right.address == constant.address
-        ):
-            new_right = new_val
-        else:
-            new_right = self.right
-
-        return self.__class__(
-            left=new_left,
-            right=new_right,
-            operator=self.operator,
-        )
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         return self.__class__(
@@ -755,14 +698,14 @@ class Comparison(
         return output
 
     @property
-    def row_arguments(self) -> List[Concept]:
+    def row_arguments(self) -> List[ConceptRef]:
         output = []
         output += get_concept_row_arguments(self.left)
         output += get_concept_row_arguments(self.right)
         return output
 
     @property
-    def existence_arguments(self) -> List[Tuple[Concept, ...]]:
+    def existence_arguments(self) -> List[Tuple[ConceptRef, ...]]:
         """Return concepts directly referenced in where clause"""
         output: List[Tuple[Concept, ...]] = []
         if isinstance(self.left, ConceptArgs):
@@ -785,11 +728,11 @@ class SubselectComparison(Comparison):
         return comp
 
     @property
-    def row_arguments(self) -> List[Concept]:
+    def row_arguments(self) -> List[ConceptRef]:
         return get_concept_row_arguments(self.left)
 
     @property
-    def existence_arguments(self) -> list[tuple["Concept", ...]]:
+    def existence_arguments(self) -> list[tuple["ConceptRef", ...]]:
         return [tuple(get_concept_arguments(self.right))]
 
 
@@ -1975,74 +1918,6 @@ class MultiSelectLineage(Reference, Mergeable, ConceptArgs, Namespaced, BaseMode
     where_clause: Union["WhereClause", None] = Field(default=None)
     having_clause: Union["HavingClause", None] = Field(default=None)
     hidden_components: set[str]
-
-    def build_for_select(self, environment: Environment):
-        from trilogy.core.models.build import (
-            BuildConcept,
-            BuildGrain,
-            BuildMultiSelectLineage,
-            Factory,
-        )
-
-        local_build_cache: dict[str, BuildConcept] = {}
-
-        parents = [x.build_for_select(environment) for x in self.selects]
-        base_local = parents[0].local_concepts
-
-        for select in parents[1:]:
-            for k, v in select.local_concepts.items():
-                base_local[k] = v
-
-        # this requires custom handling to avoid circular dependencies
-        final_grain = BuildGrain.build(self.grain, environment, {})
-        derived_base = []
-        for k in self.derived_concepts:
-            base = environment.concepts[k]
-            x = BuildConcept(
-                name=base.name,
-                datatype=base.datatype,
-                purpose=base.purpose,
-                build_is_aggregate=False,
-                derivation=Derivation.MULTISELECT,
-                lineage=None,
-                grain=final_grain,
-                namespace=base.namespace,
-            )
-            local_build_cache[k] = x
-            derived_base.append(x)
-        all_input: list[BuildConcept] = []
-        for x in parents:
-            all_input += x.output_components
-        all_output: list[BuildConcept] = derived_base + all_input
-        final: list[BuildConcept] = [
-            x for x in all_output if x.address not in self.hidden_components
-        ]
-        factory = Factory(
-            grain=self.grain, environment=environment, local_concepts=local_build_cache
-        )
-        where_factory = Factory(environment=environment)
-        lineage = BuildMultiSelectLineage(
-            # we don't build selects here; they'll be built automatically in query discovery
-            selects=self.selects,
-            grain=final_grain,
-            align=factory.build(self.align),
-            namespace=self.namespace,
-            hidden_components=self.hidden_components,
-            order_by=factory.build(self.order_by) if self.order_by else None,
-            limit=self.limit,
-            where_clause=(
-                where_factory.build(self.where_clause) if self.where_clause else None
-            ),
-            having_clause=(
-                factory.build(self.having_clause) if self.having_clause else None
-            ),
-            local_concepts=base_local,
-            build_output_components=final,
-            build_concept_arguments=all_input,
-        )
-        for k in self.derived_concepts:
-            local_build_cache[k].lineage = lineage
-        return lineage
 
     @property
     def grain(self):

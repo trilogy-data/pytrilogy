@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Tuple, Sequence
 
 from lark.tree import Meta
 
@@ -105,12 +105,12 @@ def process_function_args(
 
 
 def get_upstream_modifiers(
-    keys: List[Concept | ConceptRef], environment: Environment
+    keys: Sequence[Concept | ConceptRef], environment: Environment
 ) -> list[Modifier]:
     modifiers = set()
     for pkey in keys:
         if isinstance(pkey, ConceptRef):
-            pkey = environment.concepts[pkey]
+            pkey = environment.concepts[pkey.address]
         if isinstance(pkey, UndefinedConcept):
             continue
         if pkey.modifiers:
@@ -185,7 +185,7 @@ def concept_is_relevant(
 
         return False
     if isinstance(concept, ConceptRef):
-        concept = environment.concepts[concept]
+        concept = environment.concepts[concept.address]
 
     if concept.is_aggregate and not (
         isinstance(concept.lineage, AggregateWrapper) and concept.lineage.by
@@ -217,6 +217,8 @@ def concepts_to_grain_concepts(
     for c in concepts:
         if isinstance(c, Concept):
             pconcepts.append(c)
+        elif isinstance(c, ConceptRef):
+            pconcepts.append(environment.concepts[c.address])
         elif environment:
             pconcepts.append(environment.concepts[c])
         else:
