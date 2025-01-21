@@ -1269,7 +1269,7 @@ class ParseToObjects(Transformer):
             elif isinstance(item, str):
                 concept = self.environment.concepts[item]
             elif isinstance(item, ConceptRef):
-                concept = self.environment.concepts[item]
+                concept = self.environment.concepts[item.address]
             elif isinstance(item, WindowType):
                 type = item
             else:

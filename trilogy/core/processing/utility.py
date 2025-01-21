@@ -359,7 +359,7 @@ def get_node_joins(
     graph = nx.Graph()
     partials: dict[str, list[str]] = {}
     ds_node_map: dict[str, QueryDatasource | BuildDatasource] = {}
-    concept_map: dict[str, Concept] = {}
+    concept_map: dict[str, BuildConcept] = {}
     for datasource in datasources:
         ds_node = f"ds~{datasource.identifier}"
         ds_node_map[ds_node] = datasource

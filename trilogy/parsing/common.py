@@ -105,7 +105,7 @@ def process_function_args(
 
 
 def get_upstream_modifiers(
-    keys: List[Concept], environment: Environment
+    keys: List[Concept | ConceptRef], environment: Environment
 ) -> list[Modifier]:
     modifiers = set()
     for pkey in keys:
@@ -177,7 +177,9 @@ def constant_to_concept(
 
 
 def concept_is_relevant(
-    concept: Concept, others: list[Concept], environment: Environment
+    concept: Concept | ConceptRef,
+    others: list[Concept | ConceptRef],
+    environment: Environment,
 ) -> bool:
     if isinstance(concept, UndefinedConcept):
 
@@ -460,7 +462,7 @@ def align_item_to_concept(
         )
 
     new_selects = [x.as_lineage(environment) for x in selects]
-    parent = MultiSelectLineage(
+    multi_lineage = MultiSelectLineage(
         selects=new_selects,
         align=align_clause,
         namespace=align.namespace,
@@ -474,7 +476,7 @@ def align_item_to_concept(
         name=align.alias,
         datatype=datatypes.pop(),
         purpose=Purpose.PROPERTY,
-        lineage=parent,
+        lineage=multi_lineage,
         grain=grain,
         namespace=align.namespace,
         granularity=Granularity.MULTI_ROW,
@@ -489,7 +491,7 @@ def rowset_to_concepts(rowset: RowsetDerivationStatement, environment: Environme
     orig: dict[str, Concept] = {}
     orig_map: dict[str, Concept] = {}
     for orig_address in rowset.select.output_components:
-        orig_concept = environment.concepts[orig_address]
+        orig_concept = environment.concepts[orig_address.address]
         name = orig_concept.name
         if isinstance(orig_concept.lineage, FilterItem):
             if orig_concept.lineage.where == rowset.select.where_clause:

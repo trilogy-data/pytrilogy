@@ -447,7 +447,7 @@ class Grain(Namespaced, BaseModel):
     @classmethod
     def from_concepts(
         cls,
-        concepts: Iterable[Concept | str],
+        concepts: Iterable[Concept | ConceptRef | str],
         environment: Environment | None = None,
         where_clause: WhereClause | None = None,
     ) -> "Grain":
@@ -1931,57 +1931,6 @@ class SelectLineage(Mergeable, Reference, Namespaced, BaseModel):
     grain: Grain = Field(default_factory=Grain)
     where_clause: Union["WhereClause", None] = Field(default=None)
     having_clause: Union["HavingClause", None] = Field(default=None)
-
-    def build_for_select(self, environment: Environment):
-        from trilogy.core.models.build import (
-            BuildConcept,
-            BuildGrain,
-            BuildSelectLineage,
-            Factory,
-        )
-
-        materialized: dict[str, BuildConcept] = {}
-        factory = Factory(
-            grain=self.grain, environment=environment, local_concepts=materialized
-        )
-        for k, v in self.local_concepts.items():
-
-            materialized[k] = factory.build(v)
-        where_factory = Factory(
-            grain=Grain(), environment=environment, local_concepts={}
-        )
-
-        final: List[BuildConcept] = []
-        for original in self.selection:
-            new = original
-            # we don't know the grain of an aggregate at assignment time
-            # so rebuild at this point in the tree
-            # TODO: simplify
-            if new.address in materialized:
-                new = factory.build(new)
-                materialized[new.address] = new
-            else:
-                # Sometimes cached values here don't have the latest info
-                # but we can't just use environment, as it might not have the right grain.
-                new = factory.build(new)
-                materialized[new.address] = new
-            final.append(new)
-        return BuildSelectLineage(
-            selection=final,
-            hidden_components=self.hidden_components,
-            order_by=(factory.build(self.order_by) if self.order_by else None),
-            limit=self.limit,
-            meta=self.meta,
-            local_concepts=materialized,
-            grain=BuildGrain.build(self.grain, environment, materialized),
-            having_clause=(
-                factory.build(self.having_clause) if self.having_clause else None
-            ),
-            # this uses a different grain factory
-            where_clause=(
-                where_factory.build(self.where_clause) if self.where_clause else None
-            ),
-        )
 
     @property
     def output_components(self) -> List[ConceptRef]:

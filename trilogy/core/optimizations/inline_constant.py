@@ -1,5 +1,5 @@
 from trilogy.core.enums import Derivation
-from trilogy.core.models.author import Concept
+from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.execute import (
     CTE,
     UnionCTE,
@@ -14,7 +14,7 @@ class InlineConstant(OptimizationRule):
         if isinstance(cte, UnionCTE):
             return any(self.optimize(x, inverse_map) for x in cte.internal_ctes)
 
-        to_inline: list[Concept] = []
+        to_inline: list[BuildConcept] = []
         for x in cte.source.input_concepts:
             if x.address not in cte.source_map:
                 continue

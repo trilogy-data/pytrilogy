@@ -1850,7 +1850,7 @@ class Factory:
 
         local_build_cache: dict[str, BuildConcept] = {}
 
-        parents = [x.build_for_select(self.environment) for x in base.selects]
+        parents = [self.build(x) for x in base.selects]
         base_local = parents[0].local_concepts
 
         for select in parents[1:]:
