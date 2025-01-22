@@ -1910,3 +1910,23 @@ class Factory:
         for k in base.derived_concepts:
             local_build_cache[k].lineage = lineage
         return lineage
+
+    @build.register
+    def _(self, base: Environment):
+        from trilogy.core.models.build_environment import BuildEnvironment
+        new = BuildEnvironment(
+            namespace=base.namespace,
+            cte_name_map=base.cte_name_map,
+        )
+
+        for k, v in base.concepts.items():
+            new.concepts[k] = self.build(v)
+        for (
+            k,
+            d,
+        ) in base.datasources.items():
+            new.datasources[k] = d.build_for_select(base)
+        for k, a in base.alias_origin_lookup.items():
+            new.alias_origin_lookup[k] = self.build(a)
+        new.gen_concept_list_caches()
+        return new

@@ -5,7 +5,7 @@ import os
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Dict, ItemsView, List, Never, Optional, Tuple, ValuesView
+from typing import Annotated, Dict, ItemsView, List, Never, Optional, Tuple, ValuesView, TYPE_CHECKING
 
 from lark.tree import Meta
 from pydantic import BaseModel, ConfigDict, Field
@@ -35,6 +35,8 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import Datasource, EnvironmentDatasourceDict
+if TYPE_CHECKING:
+    from trilogy.core.models.build import BuildConcept, BuildEnvironment
 
 
 @dataclass
@@ -196,39 +198,11 @@ class Environment(BaseModel):
     def thaw(self):
         self.frozen = False
 
-    def materialize_for_select(self, local_concepts: dict[str, Concept] | None = None):
-        from trilogy.core.models.author import Grain
+    def materialize_for_select(self, local_concepts: dict[str, "BuildConcept"] | None = None)->"BuildEnvironment":
+        '''helper method'''
         from trilogy.core.models.build import Factory
-        from trilogy.core.models.build_environment import BuildEnvironment
-
-        local_concepts = local_concepts or {}
-
-        env_factory = Factory(
-            grain=Grain(), environment=self, local_concepts=local_concepts
-        )
-
-        base = BuildEnvironment(
-            namespace=self.namespace,
-            cte_name_map=self.cte_name_map,
-        )
-
-        for k, v in self.concepts.items():
-            if k in local_concepts:
-                base.concepts[k] = v
-            else:
-                base.concepts[k] = env_factory.build(v)
-        for k, v in local_concepts.items():
-            base.concepts[k] = v
-        for (
-            k,
-            d,
-        ) in self.datasources.items():
-            base.datasources[k] = d.build_for_select(self)
-        for k, a in self.alias_origin_lookup.items():
-            base.alias_origin_lookup[k] = env_factory.build(a)
-        base.gen_concept_list_caches()
-        return base
-
+        return Factory(self, local_concepts=local_concepts).build(self)
+    
     def duplicate(self):
         return Environment.model_construct(
             datasources=self.datasources.duplicate(),
@@ -268,12 +242,6 @@ class Environment(BaseModel):
         super().__init__(**data)
         self._add_path_concepts()
 
-    # def freeze(self):
-    #     self.frozen = True
-
-    # def thaw(self):
-    #     self.frozen = False
-
     @classmethod
     def from_file(cls, path: str | Path) -> "Environment":
         if isinstance(path, str):
@@ -304,25 +272,7 @@ class Environment(BaseModel):
         with open(ppath, "w") as f:
             f.write(self.model_dump_json())
         return ppath
-
-    def gen_concept_list_caches(self) -> None:
-        concrete_addresses = set()
-        for datasource in self.datasources.values():
-            for concept in datasource.output_concepts:
-                concrete_addresses.add(concept.address)
-        self.materialized_concepts = set(
-            [
-                c.address
-                for c in self.concepts.values()
-                if c.address in concrete_addresses
-            ]
-            + [
-                c.address
-                for c in self.alias_origin_lookup.values()
-                if c.address in concrete_addresses
-            ],
-        )
-
+    
     def validate_concept(self, new_concept: Concept, meta: Meta | None = None):
         lookup = new_concept.address
         existing: Concept = self.concepts.get(lookup)  # type: ignore
@@ -426,10 +376,10 @@ class Environment(BaseModel):
             if INTERNAL_NAMESPACE in concept.address:
                 continue
             if same_namespace:
-                new = self.add_concept(concept, _ignore_cache=True)
+                new = self.add_concept(concept)
             else:
                 new = self.add_concept(
-                    concept.with_namespace(alias), _ignore_cache=True
+                    concept.with_namespace(alias)
                 )
 
                 k = address_with_namespace(k, alias)
@@ -438,10 +388,10 @@ class Environment(BaseModel):
 
         for _, datasource in source.datasources.items():
             if same_namespace:
-                self.add_datasource(datasource, _ignore_cache=True)
+                self.add_datasource(datasource)
             else:
                 self.add_datasource(
-                    datasource.with_namespace(alias), _ignore_cache=True
+                    datasource.with_namespace(alias)
                 )
         for key, val in source.alias_origin_lookup.items():
 
@@ -548,7 +498,6 @@ class Environment(BaseModel):
         meta: Meta | None = None,
         force: bool = False,
         add_derived: bool = True,
-        _ignore_cache: bool = False,
     ):
 
         if self.frozen:
@@ -564,15 +513,13 @@ class Environment(BaseModel):
         from trilogy.core.environment_helpers import generate_related_concepts
 
         generate_related_concepts(concept, self, meta=meta, add_derived=add_derived)
-        # if not _ignore_cache:
-        #     self.gen_concept_list_caches()
+
         return concept
 
     def add_datasource(
         self,
         datasource: Datasource,
         meta: Meta | None = None,
-        _ignore_cache: bool = False,
     ):
         if self.frozen:
             raise FrozenEnvironmentException(
@@ -612,7 +559,7 @@ class Environment(BaseModel):
                         },
                     )
                     self.add_concept(
-                        original_concept, meta=meta, force=True, _ignore_cache=True
+                        original_concept, meta=meta, force=True,
                     )
                     new_persisted_concept = new_persisted_concept.model_copy(
                         deep=True,
@@ -627,16 +574,14 @@ class Environment(BaseModel):
                         },
                     )
                     self.add_concept(
-                        new_persisted_concept, meta=meta, force=True, _ignore_cache=True
+                        new_persisted_concept, meta=meta, force=True,
                     )
                     # datasource.add_column(original_concept, alias=c.alias, modifiers = c.modifiers)
                     self.merge_concept(original_concept, new_persisted_concept, [])
                 else:
                     self.add_concept(
-                        new_persisted_concept, meta=meta, _ignore_cache=True
+                        new_persisted_concept, meta=meta,
                     )
-        if not _ignore_cache:
-            self.gen_concept_list_caches()
         return datasource
 
     def delete_datasource(

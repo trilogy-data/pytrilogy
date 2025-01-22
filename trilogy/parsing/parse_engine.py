@@ -1634,7 +1634,6 @@ def parse_text(text: str, environment: Optional[Environment] = None) -> Tuple[
         pass_two = parser.hydrate_missing()
         output = [v for v in pass_two if v]
         environment.concepts.fail_on_missing = True
-        environment.gen_concept_list_caches()
     except VisitError as e:
         unpack_visit_error(e)
         # this will never be reached
