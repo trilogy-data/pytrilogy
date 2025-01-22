@@ -133,7 +133,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
 
             if x.is_undefined and environment.concepts.fail_on_missing:
                 environment.concepts.raise_undefined(
-                    x.concept, meta.line_number if meta else None
+                    x.concept.address, meta.line_number if meta else None
                 )
             elif isinstance(x.content, ConceptTransform):
                 if isinstance(x.content.output, UndefinedConcept):

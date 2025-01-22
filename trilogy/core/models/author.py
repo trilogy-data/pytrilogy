@@ -337,8 +337,8 @@ class Conditional(
         return output
 
     @property
-    def existence_arguments(self) -> Sequence[tuple["ConceptRef", ...]]:
-        output: list[Concept] = []
+    def existence_arguments(self) -> Sequence[tuple[ConceptRef, ...]]:
+        output: list[tuple[ConceptRef, ...]] = []
         if isinstance(self.left, ConceptArgs):
             output += self.left.existence_arguments
         if isinstance(self.right, ConceptArgs):
@@ -368,15 +368,15 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, Reference, BaseModel):
         return self.__repr__()
 
     @property
-    def concept_arguments(self) -> List[ConceptRef]:
+    def concept_arguments(self) -> Sequence[ConceptRef]:
         return self.conditional.concept_arguments
 
     @property
-    def row_arguments(self) -> List[ConceptRef]:
+    def row_arguments(self) -> Sequence[ConceptRef]:
         return self.conditional.row_arguments
 
     @property
-    def existence_arguments(self) -> list[tuple["ConceptRef", ...]]:
+    def existence_arguments(self) -> Sequence[tuple["ConceptRef", ...]]:
         return self.conditional.existence_arguments
 
     def with_merge(
@@ -1047,48 +1047,48 @@ class Concept(
             pseudonyms=self.pseudonyms,
         )
 
-    @property
-    def _with_default_grain(self) -> Self:
-        if self.purpose == Purpose.KEY:
-            # we need to make this abstract
-            grain = Grain(components={self.address})
-        elif self.purpose == Purpose.PROPERTY:
-            components = []
-            if self.keys:
-                components = [*self.keys]
-            if self.lineage:
-                for item in self.lineage.concept_arguments:
-                    components += [x.address for x in item.sources]
-            # TODO: set synonyms
-            grain = Grain(
-                components=set([x for x in components]),
-            )  # synonym_set=generate_concept_synonyms(components))
-        elif self.purpose == Purpose.METRIC:
-            grain = Grain()
-        elif self.purpose == Purpose.CONSTANT:
-            if self.derivation != Derivation.CONSTANT:
-                grain = Grain(components={self.address})
-            else:
-                grain = self.grain
-        else:
-            grain = self.grain  # type: ignore
-        return self.__class__(
-            name=self.name,
-            datatype=self.datatype,
-            purpose=self.purpose,
-            metadata=self.metadata,
-            lineage=self.lineage,
-            granularity=self.granularity,
-            derivation=self.derivation,
-            grain=grain,
-            keys=self.keys,
-            namespace=self.namespace,
-            modifiers=self.modifiers,
-            pseudonyms=self.pseudonyms,
-        )
+    # @property
+    # def _with_default_grain(self) -> Self:
+    #     if self.purpose == Purpose.KEY:
+    #         # we need to make this abstract
+    #         grain = Grain(components={self.address})
+    #     elif self.purpose == Purpose.PROPERTY:
+    #         components = []
+    #         if self.keys:
+    #             components = [*self.keys]
+    #         if self.lineage:
+    #             for item in self.lineage.concept_arguments:
+    #                 components += [x.address for x in item.sources]
+    #         # TODO: set synonyms
+    #         grain = Grain(
+    #             components=set([x for x in components]),
+    #         )  # synonym_set=generate_concept_synonyms(components))
+    #     elif self.purpose == Purpose.METRIC:
+    #         grain = Grain()
+    #     elif self.purpose == Purpose.CONSTANT:
+    #         if self.derivation != Derivation.CONSTANT:
+    #             grain = Grain(components={self.address})
+    #         else:
+    #             grain = self.grain
+    #     else:
+    #         grain = self.grain  # type: ignore
+    #     return self.__class__(
+    #         name=self.name,
+    #         datatype=self.datatype,
+    #         purpose=self.purpose,
+    #         metadata=self.metadata,
+    #         lineage=self.lineage,
+    #         granularity=self.granularity,
+    #         derivation=self.derivation,
+    #         grain=grain,
+    #         keys=self.keys,
+    #         namespace=self.namespace,
+    #         modifiers=self.modifiers,
+    #         pseudonyms=self.pseudonyms,
+    #     )
 
-    def with_default_grain(self) -> "Concept":
-        return self._with_default_grain
+    # def with_default_grain(self) -> "Concept":
+    #     return self._with_default_grain
 
     @property
     def sources(self) -> List["ConceptRef"]:

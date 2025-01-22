@@ -1794,7 +1794,7 @@ class Factory:
         )
 
     @build.register
-    def _(self, base: SelectLineage):
+    def _(self, base: SelectLineage)->BuildSelectLineage:
 
         from trilogy.core.models.build import (
             BuildGrain,

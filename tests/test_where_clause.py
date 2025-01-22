@@ -1,5 +1,6 @@
 # from trilogy.compiler import compile
 from trilogy.core.models.author import Grain, Parenthetical
+from trilogy.core.models.build import Factory
 from trilogy.core.processing.utility import is_scalar_condition
 from trilogy.core.query_processor import process_query
 from trilogy.core.statements.author import SelectStatement
@@ -231,12 +232,10 @@ where
 """
     env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
-
+    factory = Factory(environment=test_environment)
     assert (
         is_scalar_condition(
-            select.as_lineage(test_environment)
-            .build_for_select(test_environment)
-            .where_clause.conditional
+            factory.build(select.as_lineage(test_environment)).where_clause.conditional
         )
         is False
     )

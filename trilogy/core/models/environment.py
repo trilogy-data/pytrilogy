@@ -626,7 +626,7 @@ class Environment(BaseModel):
                             ),
                             "derivation": Derivation.ROOT,
                         },
-                    ).with_default_grain()
+                    )
                     self.add_concept(
                         new_persisted_concept, meta=meta, force=True, _ignore_cache=True
                     )
