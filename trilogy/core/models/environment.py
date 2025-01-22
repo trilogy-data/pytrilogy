@@ -50,7 +50,7 @@ class EnvironmentOptions(BaseModel):
 class EnvironmentConceptDict(dict):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(self, *args, **kwargs)
-        self.undefined: dict[str, UndefinedConcept] = {}
+        self.undefined: dict[str, UndefinedConceptFull] = {}
         self.fail_on_missing: bool = True
         self.populate_default_concepts()
 
@@ -209,7 +209,6 @@ class Environment(BaseModel):
 
         base = BuildEnvironment(
             namespace=self.namespace,
-            working_path=self.working_path,
             cte_name_map=self.cte_name_map,
         )
 

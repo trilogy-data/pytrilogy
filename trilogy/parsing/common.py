@@ -525,7 +525,7 @@ def rowset_to_concepts(rowset: RowsetDerivationStatement, environment: Environme
     select_lineage = rowset.select.as_lineage(environment)
     for x in pre_output:
         x.lineage = RowsetItem(
-            content=orig_map[x.address],
+            content=orig_map[x.address].reference,
             # where=rowset.select.where_clause,
             rowset=RowsetLineage(
                 name=rowset.name,

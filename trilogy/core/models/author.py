@@ -707,7 +707,7 @@ class Comparison(
     @property
     def existence_arguments(self) -> List[Tuple[ConceptRef, ...]]:
         """Return concepts directly referenced in where clause"""
-        output: List[Tuple[Concept, ...]] = []
+        output: List[Tuple[ConceptRef, ...]] = []
         if isinstance(self.left, ConceptArgs):
             output += self.left.existence_arguments
         if isinstance(self.right, ConceptArgs):
@@ -761,7 +761,7 @@ class Concept(
             MultiSelectLineage,
         ]
     ] = None
-    namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
+    namespace: str = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     keys: Optional[set[str]] = None
     grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
     modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
@@ -1225,7 +1225,7 @@ class Concept(
             if self.lineage.where.conditional == condition:
                 return self
         hash = string_to_hash(self.name + str(condition))
-        new_lineage = FilterItem(content=self, where=WhereClause(conditional=condition))
+        new_lineage = FilterItem(content=self.reference, where=WhereClause(conditional=condition))
         new = Concept(
             name=f"{self.name}_filter_{hash}",
             datatype=self.datatype,
@@ -1293,7 +1293,7 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, Reference, BaseM
         return self.__repr__()
 
     def __repr__(self):
-        return f"{self.type} {self.content} over {self.over} order by {self.order_by}"
+        return f"{self.type}({self.content} {self.index}, {self.over}, {self.order_by})"
 
     @field_validator("content", mode="before")
     def enforce_concept_ref(cls, v):
@@ -1310,9 +1310,6 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, Reference, BaseM
             else:
                 final.append(item)
         return final
-
-    def __repr__(self) -> str:
-        return f"{self.type}({self.content} {self.index}, {self.over}, {self.order_by})"
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
@@ -1796,7 +1793,7 @@ class RowsetLineage(Namespaced, Mergeable, BaseModel):
 
 
 class RowsetItem(Reference, Mergeable, ConceptArgs, Namespaced, BaseModel):
-    content: Concept
+    content: ConceptRef
     rowset: RowsetLineage
 
     def __repr__(self):
@@ -1818,21 +1815,17 @@ class RowsetItem(Reference, Mergeable, ConceptArgs, Namespaced, BaseModel):
         )
 
     @property
-    def arguments(self) -> List[Concept]:
+    def arguments(self) -> List[ConceptRef]:
         output = [self.content]
         return output
 
     @property
-    def output(self) -> Concept:
+    def output(self) -> ConceptRef:
         return self.content
 
     @property
     def output_datatype(self):
         return self.content.datatype
-
-    @property
-    def output_purpose(self):
-        return self.content.purpose
 
     @property
     def concept_arguments(self):
@@ -1997,22 +1990,6 @@ class MultiSelectLineage(Reference, Mergeable, ConceptArgs, Namespaced, BaseMode
             output += select.output_components
         return unique(output, "address")
 
-    # these are needed to help disambiguate between parents
-    def get_merge_concept(self, check: Concept) -> str | None:
-        for item in self.align.items:
-            if check in item.concepts_lcl:
-                return f"{item.namespace}.{item.alias}"
-        return None
-
-    def find_source(self, concept: Concept, cte: CTE | UnionCTE) -> Concept:
-        for x in self.align.items:
-            if concept.name == x.alias:
-                for c in x.concepts:
-                    if c.address in cte.output_lcl:
-                        return c
-        raise SyntaxError(
-            f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})"
-        )
 
 
 class LooseConceptList(BaseModel):

@@ -115,7 +115,7 @@ class BuildConceptArgs(ABC):
 
 
 def concept_is_relevant(
-    concept: BuildConcept, others: list[BuildConcept], environment: BuildEnvironment
+    concept: BuildConcept, others: list[BuildConcept],
 ) -> bool:
 
     if concept.is_aggregate and not (
@@ -133,7 +133,7 @@ def concept_is_relevant(
     if concept.derivation in (Derivation.BASIC,):
 
         return any(
-            concept_is_relevant(c, others, environment)
+            concept_is_relevant(c, others)
             for c in concept.concept_arguments
         )
     if concept.granularity == Granularity.SINGLE_ROW:
@@ -143,7 +143,7 @@ def concept_is_relevant(
 
 def concepts_to_build_grain_concepts(
     concepts: Iterable[BuildConcept | str], environment: BuildEnvironment | None
-) -> list[Concept]:
+) -> list[BuildConcept]:
     pconcepts = []
     for c in concepts:
         if isinstance(c, BuildConcept):
@@ -157,7 +157,7 @@ def concepts_to_build_grain_concepts(
 
     final: List[Concept] = []
     for sub in pconcepts:
-        if not concept_is_relevant(sub, pconcepts, environment):
+        if not concept_is_relevant(sub, pconcepts):
             continue
         final.append(sub)
     final = unique(final, "address")
@@ -538,8 +538,8 @@ class BuildConditional(BuildConceptArgs, ConstantInlineable, BaseModel):
         return output
 
     @property
-    def existence_arguments(self) -> list[tuple["BuildConcept", ...]]:
-        output:list[BuildConcept] = []
+    def existence_arguments(self) -> list[tuple[BuildConcept, ...]]:
+        output:list[tuple[BuildConcept, ...]] = []
         if isinstance(self.left, BuildConceptArgs):
             output += self.left.existence_arguments
         if isinstance(self.right, BuildConceptArgs):
@@ -583,7 +583,7 @@ class BuildWhereClause(BuildConceptArgs, BaseModel):
         return self.conditional.concept_arguments
 
     @property
-    def row_arguments(self) -> List[BuildConcept]:
+    def row_arguments(self) -> Sequence[BuildConcept]:
         return self.conditional.row_arguments
 
     @property
