@@ -84,6 +84,7 @@ CONDITIONAL_ITEMS = (BuildConditional,)
 
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
+    # raise SyntaxError(x)
     return f"INVALID_REFERENCE_BUG_{callsite}<{x}>"
 
 
@@ -286,13 +287,13 @@ class BaseDialect:
         final: bool = False,
         alias: bool = True,
     ) -> str:
-        if final:
-            if not alias:
-                return f"{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
+        # if final:
+        #     if not alias:
+        #         return f"{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
 
-            return f"{cte.name}.{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
+        #     return f"{cte.name}.{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
 
-        return f"{self.render_concept_sql(order_item.expr, cte=cte, alias=False)} {order_item.order.value}"
+        return f"{self.render_expr(order_item.expr, cte=cte, qualify=False)} {order_item.order.value}"
 
     def render_concept_sql(
         self,
@@ -300,6 +301,7 @@ class BaseDialect:
         cte: CTE | UnionCTE,
         alias: bool = True,
         raise_invalid: bool = False,
+        qualify:bool = True
     ) -> str:
         result = None
         if c.pseudonyms:
@@ -313,20 +315,20 @@ class BaseDialect:
                         f"{LOGGER_PREFIX} [{c.address}] Attempting rendering w/ candidate {candidate.address}"
                     )
                     result = self._render_concept_sql(
-                        candidate, cte, raise_invalid=True
+                        candidate, cte, raise_invalid=True, qualify=qualify
                     )
                     if result:
                         break
                 except ValueError:
                     continue
         if not result:
-            result = self._render_concept_sql(c, cte, raise_invalid=raise_invalid)
+            result = self._render_concept_sql(c, cte, raise_invalid=raise_invalid, qualify=qualify)
         if alias:
             return f"{result} as {self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
         return result
 
     def _render_concept_sql(
-        self, c: BuildConcept, cte: CTE | UnionCTE, raise_invalid: bool = False
+        self, c: BuildConcept, cte: CTE | UnionCTE, raise_invalid: bool = False, qualify:bool = True
     ) -> str:
         # only recurse while it's in sources of the current cte
         logger.debug(
@@ -340,7 +342,7 @@ class BaseDialect:
             )
             if isinstance(c.lineage, WINDOW_ITEMS):
                 rendered_order_components = [
-                    f"{self.render_concept_sql(x.expr, cte, alias=False, raise_invalid=raise_invalid)} {x.order.value}"
+                    f"{self.render_expr(x.expr, cte, raise_invalid=raise_invalid)} {x.order.value}"
                     for x in c.lineage.order_by
                 ]
                 rendered_over_components = [
@@ -393,11 +395,11 @@ class BaseDialect:
                     for x in c.lineage.arguments
                     if isinstance(x, BuildConcept) and x.address in cte.output_columns
                 ]
+                # if we're sorting by the output of the union
                 if not local_matched:
-                    raise SyntaxError(
-                        "Could not find appropriate source element for union"
-                    )
-                rval = self.render_expr(local_matched[0], cte)
+                    rval = c.safe_address
+                else:
+                    rval = self.render_expr(local_matched[0], cte)
             elif (
                 isinstance(c.lineage, FUNCTION_ITEMS)
                 and c.lineage.operator == FunctionType.CONSTANT
@@ -438,7 +440,7 @@ class BaseDialect:
                     rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
         else:
             logger.debug(
-                f"{LOGGER_PREFIX} [{c.address}] Rendering basic lookup from {cte.source_map.get(c.address, INVALID_REFERENCE_STRING('Missing source reference'))}"
+                f"{LOGGER_PREFIX} [{c.address}] Rendering basic lookup from {cte.source_map.get(c.address,None)}"
             )
 
             raw_content = cte.get_alias(c)
@@ -500,6 +502,7 @@ class BaseDialect:
         cte: Optional[CTE | UnionCTE] = None,
         cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
         raise_invalid: bool = False,
+        qualify:bool = True
     ) -> str:
         if isinstance(e, SUBSELECT_COMPARISON_ITEMS):
             if isinstance(e.right, BuildConcept):
@@ -619,7 +622,7 @@ class BaseDialect:
                 return f":{e.safe_address}"
             if cte:
                 return self.render_concept_sql(
-                    e, cte, alias=False, raise_invalid=raise_invalid
+                    e, cte, alias=False, raise_invalid=raise_invalid, qualify=qualify,
                 )
             elif cte_map:
                 return f"{cte_map[e.address].name}.{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
@@ -660,6 +663,7 @@ class BaseDialect:
                 [self.render_cte(child).statement for child in cte.internal_ctes]
             )
             if cte.order_by:
+
                 ordering = [
                     self.render_order_item(i, cte, final=True, alias=False)
                     for i in cte.order_by.items

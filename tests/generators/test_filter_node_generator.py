@@ -51,7 +51,6 @@ def test_gen_filter_node_same_concept(test_environment, test_environment_graph):
     )
     f_product_id = test_environment.concepts["product_id"].with_filter(conditional)
     f_concept_id = test_environment.concepts["category_id"].with_filter(conditional)
-    og_test_environment = test_environment
     test_environment.add_concept(f_product_id)
     test_environment.add_concept(f_concept_id)
     test_environment = test_environment.materialize_for_select()
@@ -80,7 +79,6 @@ def test_gen_filter_node_include_all(test_environment, test_environment_graph):
     )
     f_product_id = test_environment.concepts["product_id"].with_filter(conditional)
     f_concept_id = test_environment.concepts["category_id"].with_filter(conditional)
-    og_test_environment = test_environment
     test_environment.add_concept(f_product_id)
     test_environment.add_concept(f_concept_id)
     build_conditional = factory.build(conditional)

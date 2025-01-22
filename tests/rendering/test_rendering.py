@@ -56,7 +56,7 @@ def test_basic_query(test_environment):
         order_by=OrderBy(
             items=[
                 OrderItem(
-                    expr=test_environment.concepts["order_id"],
+                    expr=test_environment.concepts["order_id"].reference,
                     order=Ordering.ASCENDING,
                 )
             ]

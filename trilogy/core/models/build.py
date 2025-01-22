@@ -115,7 +115,8 @@ class BuildConceptArgs(ABC):
 
 
 def concept_is_relevant(
-    concept: BuildConcept, others: list[BuildConcept],
+    concept: BuildConcept,
+    others: list[BuildConcept],
 ) -> bool:
 
     if concept.is_aggregate and not (
@@ -132,10 +133,7 @@ def concept_is_relevant(
             return False
     if concept.derivation in (Derivation.BASIC,):
 
-        return any(
-            concept_is_relevant(c, others)
-            for c in concept.concept_arguments
-        )
+        return any(concept_is_relevant(c, others) for c in concept.concept_arguments)
     if concept.granularity == Granularity.SINGLE_ROW:
         return False
     return True
@@ -155,7 +153,7 @@ def concepts_to_build_grain_concepts(
                 f"Unable to resolve input {c} without environment provided to concepts_to_grain call"
             )
 
-    final: List[Concept] = []
+    final: List[BuildConcept] = []
     for sub in pconcepts:
         if not concept_is_relevant(sub, pconcepts):
             continue
@@ -421,7 +419,7 @@ class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs, BaseMo
         return self.concept_arguments
 
     @property
-    def existence_arguments(self) -> list[tuple["BuildConcept", ...]]:
+    def existence_arguments(self) -> Sequence[tuple["BuildConcept", ...]]:
         if isinstance(self.content, BuildConceptArgs):
             return self.content.existence_arguments
         return []
@@ -539,7 +537,7 @@ class BuildConditional(BuildConceptArgs, ConstantInlineable, BaseModel):
 
     @property
     def existence_arguments(self) -> list[tuple[BuildConcept, ...]]:
-        output:list[tuple[BuildConcept, ...]] = []
+        output: list[tuple[BuildConcept, ...]] = []
         if isinstance(self.left, BuildConceptArgs):
             output += self.left.existence_arguments
         if isinstance(self.right, BuildConceptArgs):
@@ -1017,13 +1015,35 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped, BaseModel):
         return self.lineage.concept_arguments if self.lineage else []
 
 
-class BuildOrderItem(BaseModel):
-    expr: BuildConcept
+class BuildOrderItem(DataTyped, BuildConceptArgs, BaseModel):
+    expr: BuildExpr
     order: Ordering
 
     @property
-    def output(self):
-        return self.expr.output
+    def concept_arguments(self) -> List[BuildConcept]:
+        base: List[BuildConcept] = []
+        x = self.expr
+        if isinstance(x, BuildConcept):
+            base += [x]
+        elif isinstance(x, BuildConceptArgs):
+            base += x.concept_arguments
+        return base
+
+    @property
+    def row_arguments(self) -> Sequence[BuildConcept]:
+        if isinstance(self.expr, BuildConceptArgs):
+            return self.expr.row_arguments
+        return self.concept_arguments
+
+    @property
+    def existence_arguments(self) -> Sequence[tuple["BuildConcept", ...]]:
+        if isinstance(self.expr, BuildConceptArgs):
+            return self.expr.existence_arguments
+        return []
+
+    @property
+    def output_datatype(self):
+        return arg_to_datatype(self.expr)
 
 
 class BuildWindowItem(DataTyped, BuildConceptArgs, BaseModel):
@@ -1047,7 +1067,7 @@ class BuildWindowItem(DataTyped, BuildConceptArgs, BaseModel):
     def arguments(self) -> List[BuildConcept]:
         output = [self.content]
         for order in self.order_by:
-            output += [order.output]
+            output += order.concept_arguments
         for item in self.over:
             output += [item]
         return output
@@ -1486,7 +1506,7 @@ class BuildDatasource(BaseModel):
         concept: BuildConcept,
         use_raw_name: bool = True,
         force_alias: bool = False,
-    ) -> Optional[str | RawColumnExpr] | Function:
+    ) -> Optional[str | RawColumnExpr] | BuildFunction:
         # 2022-01-22
         # this logic needs to be refined.
         # if concept.lineage:
@@ -1584,13 +1604,11 @@ class Factory:
             full = self.local_concepts[base.address]
             if isinstance(full, BuildConcept):
                 return full
-        full = self.environment.concepts[base.address]
-        if isinstance(full, BuildConcept):
-            return full
-        return self.build(full)
+        raw = self.environment.concepts[base.address]
+        return self.build(raw)
 
     @build.register
-    def _(self, base: CaseWhen):
+    def _(self, base: CaseWhen)->BuildCaseWhen:
         return BuildCaseWhen(
             comparison=self.build(base.comparison),
             expr=(
@@ -1599,7 +1617,7 @@ class Factory:
         )
 
     @build.register
-    def _(self, base: CaseElse):
+    def _(self, base: CaseElse)->BuildCaseElse:
         return BuildCaseElse(
             expr=(
                 self.build(base.expr) if isinstance(base.expr, Reference) else base.expr
@@ -1643,7 +1661,9 @@ class Factory:
     def _(self, base: AggregateWrapper):
 
         if not base.by:
-            by = [self.build(self.environment.concepts[c]) for c in self.grain.components]
+            by = [
+                self.build(self.environment.concepts[c]) for c in self.grain.components
+            ]
         else:
             by = [self.build(x) for x in base.by]
         parent = self.build(base.function)
@@ -1671,7 +1691,9 @@ class Factory:
     @build.register
     def _(self, base: OrderItem):
         return BuildOrderItem(
-            expr=self.build(base.expr),
+            expr=(
+                self.build(base.expr) if isinstance(base.expr, Reference) else base.expr
+            ),
             order=base.order,
         )
 
@@ -1794,7 +1816,7 @@ class Factory:
         )
 
     @build.register
-    def _(self, base: SelectLineage)->BuildSelectLineage:
+    def _(self, base: SelectLineage) -> BuildSelectLineage:
 
         from trilogy.core.models.build import (
             BuildGrain,
@@ -1914,6 +1936,7 @@ class Factory:
     @build.register
     def _(self, base: Environment):
         from trilogy.core.models.build_environment import BuildEnvironment
+
         new = BuildEnvironment(
             namespace=base.namespace,
             cte_name_map=base.cte_name_map,

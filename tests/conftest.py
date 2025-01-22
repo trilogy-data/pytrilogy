@@ -225,5 +225,5 @@ def test_environment():
 
 
 @fixture(scope="session")
-def test_environment_graph(test_environment:Environment):
+def test_environment_graph(test_environment: Environment):
     yield generate_graph(test_environment.materialize_for_select())

@@ -64,7 +64,6 @@ from trilogy.utility import unique
 # TODO: refactor to avoid these
 if TYPE_CHECKING:
     from trilogy.core.models.environment import Environment, EnvironmentConceptDict
-    from trilogy.core.models.execute import CTE, UnionCTE
 
 
 class Namespaced(ABC):
@@ -75,10 +74,6 @@ class Namespaced(ABC):
 class Mergeable(ABC):
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         raise NotImplementedError
-
-    def hydrate_missing(self, concepts: EnvironmentConceptDict):
-        return self
-
 
 
 class Reference(ABC):
@@ -158,7 +153,7 @@ class ConceptRef(Addressable, Namespaced, DataTyped, Reference, Mergeable, BaseM
         return ConceptRef(
             address=address_with_namespace(self.address, namespace),
             datatype=self.datatype,
-            metadata=self.metadata
+            metadata=self.metadata,
         )
 
 
@@ -258,9 +253,7 @@ class Parenthetical(
         return arg_to_datatype(self.content)
 
 
-class Conditional(
-    Mergeable, ConceptArgs, Namespaced, Reference, BaseModel
-):
+class Conditional(Mergeable, ConceptArgs, Namespaced, Reference, BaseModel):
     left: Expr
     right: Expr
     operator: BooleanOperator
@@ -392,10 +385,6 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, Reference, BaseModel):
 
 class HavingClause(WhereClause):
     pass
-
-    def hydrate_missing(self, concepts: EnvironmentConceptDict):
-        self.conditional.hydrate_missing(concepts)
-
 
 class Grain(Namespaced, BaseModel):
     components: set[str] = Field(default_factory=set)
@@ -532,9 +521,7 @@ class Grain(Namespaced, BaseModel):
             return self.__add__(other)
 
 
-class Comparison(
-    ConceptArgs, Mergeable, Namespaced, Reference, BaseModel
-):
+class Comparison(ConceptArgs, Mergeable, Namespaced, Reference, BaseModel):
     left: Union[
         int,
         str,
@@ -657,7 +644,6 @@ class Comparison(
             and self.right == other.right
             and self.operator == other.operator
         )
-
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         return self.__class__(
@@ -1225,7 +1211,9 @@ class Concept(
             if self.lineage.where.conditional == condition:
                 return self
         hash = string_to_hash(self.name + str(condition))
-        new_lineage = FilterItem(content=self.reference, where=WhereClause(conditional=condition))
+        new_lineage = FilterItem(
+            content=self.reference, where=WhereClause(conditional=condition)
+        )
         new = Concept(
             name=f"{self.name}_filter_{hash}",
             datatype=self.datatype,
@@ -1259,27 +1247,71 @@ class UndefinedConceptFull(Concept, Mergeable, Namespaced):
         return UndefinedConcept(address=self.address)
 
 
-class OrderItem(Mergeable, Reference, Namespaced, BaseModel):
+class OrderItem(Mergeable, ConceptArgs, Reference, Namespaced, BaseModel):
     # this needs to be a full concept as it may not exist in environment
-    expr: Concept | ConceptRef | UndefinedConcept
+    expr: Expr
     order: Ordering
+
+    @field_validator("expr", mode="before")
+    def enforce_reference(cls, v):
+        if isinstance(v, Concept):
+            return v.reference
+        return v
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
     def with_namespace(self, namespace: str) -> "OrderItem":
-        return OrderItem(expr=self.expr.with_namespace(namespace), order=self.order)
+        return OrderItem(
+            expr=(
+                self.expr.with_namespace(namespace)
+                if isinstance(self.expr, Namespaced)
+                else self.expr
+            ),
+            order=self.order,
+        )
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "OrderItem":
         return OrderItem(
-            expr=self.expr.with_merge(source, target, modifiers), order=self.order
+            expr=(
+                self.expr.with_merge(source, target, modifiers)
+                if isinstance(self.expr, Mergeable)
+                else self.expr
+            ),
+            order=self.order,
         )
 
     @property
     def output(self):
         return self.expr.output
+
+    @property
+    def concept_arguments(self) -> Sequence[ConceptRef]:
+        base: List[ConceptRef] = []
+        x = self.expr
+        if isinstance(x, ConceptRef):
+            base += [x]
+        elif isinstance(x, ConceptArgs):
+            base += x.concept_arguments
+        return base
+
+    @property
+    def row_arguments(self) -> Sequence[ConceptRef]:
+        if isinstance(self.expr, ConceptArgs):
+            return self.expr.row_arguments
+        return self.concept_arguments
+
+    @property
+    def existence_arguments(self) -> Sequence[tuple["ConceptRef", ...]]:
+        if isinstance(self.expr, ConceptArgs):
+            return self.expr.existence_arguments
+        return []
+
+    @property
+    def output_datatype(self):
+        return arg_to_datatype(self.expr)
 
 
 class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, Reference, BaseModel):
@@ -1989,7 +2021,6 @@ class MultiSelectLineage(Reference, Mergeable, ConceptArgs, Namespaced, BaseMode
         for select in self.selects:
             output += select.output_components
         return unique(output, "address")
-
 
 
 class LooseConceptList(BaseModel):

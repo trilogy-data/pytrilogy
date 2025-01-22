@@ -131,7 +131,7 @@ limit 100
     """
     env, parsed = parse(declarations)
     orig_env = env
-    history = History(base_environment=orig_env)
+
     env = env.materialize_for_select()
     select: SelectStatement = parsed[-1]
 

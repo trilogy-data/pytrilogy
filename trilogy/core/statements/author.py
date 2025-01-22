@@ -36,7 +36,6 @@ from trilogy.core.models.environment import (
     EnvironmentConceptDict,
     validate_concepts,
 )
-from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.statements.common import SelectTypeMixin
 from trilogy.utility import unique
 
@@ -202,17 +201,16 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                             f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
                         )
         if self.having_clause:
-            self.having_clause.hydrate_missing(self.local_concepts)
-            for concept in self.having_clause.concept_arguments:
-                if concept.address not in [x for x in self.output_components]:
+            for cref in self.having_clause.concept_arguments:
+                if cref.address not in [x for x in self.output_components]:
                     raise SyntaxError(
-                        f"Cannot reference a column ({concept.address}) that is not in the select projection in the HAVING clause, move to WHERE;  Line: {self.meta.line_number}"
+                        f"Cannot reference a column ({cref.address}) that is not in the select projection in the HAVING clause, move to WHERE;  Line: {self.meta.line_number}"
                     )
         if self.order_by:
-            for concept in self.order_by.concept_arguments:
-                if concept.address not in all_in_output:
+            for cref in self.order_by.concept_arguments:
+                if cref.address not in all_in_output:
                     raise SyntaxError(
-                        f"Cannot order by column {concept.address} that is not in the output projection; line: {self.meta.line_number}"
+                        f"Cannot order by column {cref.address} that is not in the output projection; line: {self.meta.line_number}"
                     )
 
     def __str__(self):
@@ -327,7 +325,6 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             order_by=self.order_by,
             where_clause=self.where_clause,
             having_clause=self.having_clause,
-            local_concepts=self.local_concepts,
             hidden_components=self.hidden_components,
         )
 

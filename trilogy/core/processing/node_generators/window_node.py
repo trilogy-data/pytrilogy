@@ -24,7 +24,7 @@ def resolve_window_parent_concepts(
         base += concept.lineage.over
     if concept.lineage.order_by:
         for item in concept.lineage.order_by:
-            base += [item.expr.output]
+            base += item.concept_arguments
     return concept.lineage.content, unique(base, "address")
 
 

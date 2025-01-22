@@ -769,24 +769,10 @@ class ParseToObjects(Transformer):
             return Ordering(" ".join([base, "nulls", null_sort.lower()]))
         return Ordering(base)
 
-    def order_list(self, args):
-        def handle_order_item(x, namespace: str):
-            if isinstance(x, ConceptRef):
-                x = self.environment.concepts[x.address]
-
-            else:
-                x = arbitrary_to_concept(
-                    x, namespace=namespace, environment=self.environment
-                )
-
-            return x
-
+    def order_list(self, args)->List[OrderItem]:
         return [
             OrderItem(
-                expr=handle_order_item(
-                    x,
-                    self.environment.namespace,
-                ),
+                expr=x,
                 order=y,
             )
             for x, y in zip(args[::2], args[1::2])

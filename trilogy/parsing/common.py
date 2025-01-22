@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Iterable, List, Tuple, Sequence
+from typing import Iterable, List, Sequence, Tuple
 
 from lark.tree import Meta
 
@@ -132,7 +132,7 @@ def get_purpose_and_keys(
 
 
 def concept_list_to_keys(
-    concepts: Tuple[Concept, ...], environment: Environment
+    concepts: Tuple[Concept | ConceptRef, ...], environment: Environment
 ) -> set[str]:
     final_keys: List[str] = []
     for concept in concepts:
@@ -188,7 +188,9 @@ def concept_is_relevant(
         if environment:
             concept = environment.concepts[concept.address]
         else:
-            raise SyntaxError("Require environment to determine relevance of ConceptRef")
+            raise SyntaxError(
+                "Require environment to determine relevance of ConceptRef"
+            )
 
     if concept.is_aggregate and not (
         isinstance(concept.lineage, AggregateWrapper) and concept.lineage.by
@@ -387,9 +389,10 @@ def window_item_to_concept(
     if parent.order_by:
         grain = parent.over + [bcontent.output]
         for item in parent.order_by:
-            grain += [item.expr.output]
+            grain += item.concept_arguments
     else:
         grain = parent.over + [bcontent.output]
+    final_grain = Grain.from_concepts(grain, environment)
     modifiers = get_upstream_modifiers(bcontent.concept_arguments, environment)
     datatype = parent.content.datatype
     if parent.type in (
@@ -407,7 +410,7 @@ def window_item_to_concept(
         lineage=parent,
         metadata=fmetadata,
         # filters are implicitly at the grain of the base item
-        grain=grain,
+        grain=final_grain,
         namespace=namespace,
         keys=keys,
         modifiers=modifiers,

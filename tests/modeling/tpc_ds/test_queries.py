@@ -34,7 +34,10 @@ def test_one():
             found = True
     assert found
     build_env = env.materialize_for_select()
-    assert env.concepts["returns.return_date.year"].address in build_env.materialized_concepts
+    assert (
+        env.concepts["returns.return_date.year"].address
+        in build_env.materialized_concepts
+    )
     assert len(env.datasources["returns.store_returns"].concepts) == 7
     assert (
         len(

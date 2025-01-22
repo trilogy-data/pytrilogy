@@ -388,7 +388,7 @@ def gen_merge_node(
 ) -> Optional[MergeNode]:
     if search_conditions:
         all_search_concepts = unique(
-            all_concepts + search_conditions.row_arguments, "address"
+            all_concepts + list(search_conditions.row_arguments), "address"
         )
     else:
         all_search_concepts = all_concepts

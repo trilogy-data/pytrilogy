@@ -5,7 +5,17 @@ import os
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Dict, ItemsView, List, Never, Optional, Tuple, ValuesView, TYPE_CHECKING
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Dict,
+    ItemsView,
+    List,
+    Never,
+    Optional,
+    Tuple,
+    ValuesView,
+)
 
 from lark.tree import Meta
 from pydantic import BaseModel, ConfigDict, Field
@@ -35,6 +45,7 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import Datasource, EnvironmentDatasourceDict
+
 if TYPE_CHECKING:
     from trilogy.core.models.build import BuildConcept, BuildEnvironment
 
@@ -198,11 +209,14 @@ class Environment(BaseModel):
     def thaw(self):
         self.frozen = False
 
-    def materialize_for_select(self, local_concepts: dict[str, "BuildConcept"] | None = None)->"BuildEnvironment":
-        '''helper method'''
+    def materialize_for_select(
+        self, local_concepts: dict[str, "BuildConcept"] | None = None
+    ) -> "BuildEnvironment":
+        """helper method"""
         from trilogy.core.models.build import Factory
+
         return Factory(self, local_concepts=local_concepts).build(self)
-    
+
     def duplicate(self):
         return Environment.model_construct(
             datasources=self.datasources.duplicate(),
@@ -272,7 +286,7 @@ class Environment(BaseModel):
         with open(ppath, "w") as f:
             f.write(self.model_dump_json())
         return ppath
-    
+
     def validate_concept(self, new_concept: Concept, meta: Meta | None = None):
         lookup = new_concept.address
         existing: Concept = self.concepts.get(lookup)  # type: ignore
@@ -378,9 +392,7 @@ class Environment(BaseModel):
             if same_namespace:
                 new = self.add_concept(concept)
             else:
-                new = self.add_concept(
-                    concept.with_namespace(alias)
-                )
+                new = self.add_concept(concept.with_namespace(alias))
 
                 k = address_with_namespace(k, alias)
             # set this explicitly, to handle aliasing
@@ -390,9 +402,7 @@ class Environment(BaseModel):
             if same_namespace:
                 self.add_datasource(datasource)
             else:
-                self.add_datasource(
-                    datasource.with_namespace(alias)
-                )
+                self.add_datasource(datasource.with_namespace(alias))
         for key, val in source.alias_origin_lookup.items():
 
             if same_namespace:
@@ -559,7 +569,9 @@ class Environment(BaseModel):
                         },
                     )
                     self.add_concept(
-                        original_concept, meta=meta, force=True,
+                        original_concept,
+                        meta=meta,
+                        force=True,
                     )
                     new_persisted_concept = new_persisted_concept.model_copy(
                         deep=True,
@@ -574,13 +586,16 @@ class Environment(BaseModel):
                         },
                     )
                     self.add_concept(
-                        new_persisted_concept, meta=meta, force=True,
+                        new_persisted_concept,
+                        meta=meta,
+                        force=True,
                     )
                     # datasource.add_column(original_concept, alias=c.alias, modifiers = c.modifiers)
                     self.merge_concept(original_concept, new_persisted_concept, [])
                 else:
                     self.add_concept(
-                        new_persisted_concept, meta=meta,
+                        new_persisted_concept,
+                        meta=meta,
                     )
         return datasource
 

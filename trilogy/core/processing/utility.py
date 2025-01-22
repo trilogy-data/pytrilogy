@@ -15,9 +15,6 @@ from trilogy.core.enums import (
     JoinType,
     Purpose,
 )
-from trilogy.core.models.author import (
-    Concept,
-)
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildCaseElse,
