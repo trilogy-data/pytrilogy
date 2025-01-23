@@ -1,5 +1,10 @@
+import sys
 from datetime import datetime
 from pathlib import Path
+
+print(Path(__file__).parents[3].as_posix())
+sys.path.append(Path(__file__).parents[3].as_posix())
+
 
 from trilogy import Dialects, Executor
 from trilogy.core.models.environment import Environment
@@ -50,3 +55,4 @@ if __name__ == "__main__":
     run_query(engine, start, 2)
     pr.disable()
     pr.dump_stats("prof_stats.prof")
+    # snakeviz prof_stats.prof

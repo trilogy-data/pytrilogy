@@ -144,13 +144,13 @@ class ConceptRef(Addressable, Namespaced, DataTyped, Reference, Mergeable, BaseM
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> ConceptRef:
         if self.address == source.address:
-            return ConceptRef(
+            return ConceptRef.model_construct(
                 address=target.address, datatype=target.datatype, metadata=self.metadata
             )
         return self
 
     def with_namespace(self, namespace: str):
-        return ConceptRef(
+        return ConceptRef.model_construct(
             address=address_with_namespace(self.address, namespace),
             datatype=self.datatype,
             metadata=self.metadata,
@@ -209,7 +209,7 @@ class Parenthetical(
         return f"({str(self.content)})"
 
     def with_namespace(self, namespace: str):
-        return Parenthetical(
+        return Parenthetical.model_construct(
             content=(
                 self.content.with_namespace(namespace)
                 if isinstance(self.content, Namespaced)
@@ -218,7 +218,7 @@ class Parenthetical(
         )
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return Parenthetical(
+        return Parenthetical.model_construct(
             content=(
                 self.content.with_merge(source, target, modifiers)
                 if isinstance(self.content, Mergeable)
@@ -283,7 +283,7 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, Reference, BaseModel):
         )
 
     def with_namespace(self, namespace: str) -> "Conditional":
-        return Conditional(
+        return Conditional.model_construct(
             left=(
                 self.left.with_namespace(namespace)
                 if isinstance(self.left, Namespaced)
@@ -300,7 +300,7 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, Reference, BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "Conditional":
-        return Conditional(
+        return Conditional.model_construct(
             left=(
                 self.left.with_merge(source, target, modifiers)
                 if isinstance(self.left, Mergeable)
@@ -412,7 +412,7 @@ class Grain(Namespaced, BaseModel):
     ) -> Grain:
         from trilogy.parsing.common import concepts_to_grain_concepts
 
-        return Grain(
+        return Grain.model_construct(
             components={
                 c.address
                 for c in concepts_to_grain_concepts(concepts, environment=environment)
@@ -421,7 +421,7 @@ class Grain(Namespaced, BaseModel):
         )
 
     def with_namespace(self, namespace: str) -> "Grain":
-        return Grain(
+        return Grain.model_construct(
             components={address_with_namespace(c, namespace) for c in self.components},
             where_clause=(
                 self.where_clause.with_namespace(namespace)
@@ -754,9 +754,6 @@ class Concept(
     modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = Field(default_factory=set)
 
-    def __init__(self, **data):
-        super().__init__(**data)
-
     def duplicate(self) -> Concept:
         return self.model_copy(deep=True)
 
@@ -771,7 +768,7 @@ class Concept(
 
     @property
     def reference(self) -> ConceptRef:
-        return ConceptRef(
+        return ConceptRef.model_construct(
             address=self.address,
             datatype=self.output_datatype,
             metadata=self.metadata,
@@ -800,11 +797,10 @@ class Concept(
 
     def with_merge(self, source: Self, target: Self, modifiers: List[Modifier]) -> Self:
         if self.address == source.address:
-            print(f"concept merged {self.address} {source.address}")
             new = target.with_grain(self.grain.with_merge(source, target, modifiers))
             new.pseudonyms.add(self.address)
             return new
-        return self.__class__(
+        return self.__class__.model_construct(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
@@ -920,7 +916,7 @@ class Concept(
     def with_namespace(self, namespace: str) -> Self:
         if namespace == self.namespace:
             return self
-        return self.__class__(
+        return self.__class__.model_construct(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
@@ -1649,7 +1645,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, Reference, BaseMod
         return v
 
     def with_namespace(self, namespace: str) -> "Function":
-        return Function(
+        return Function.model_construct(
             operator=self.operator,
             arguments=[
                 (
@@ -1671,7 +1667,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, Reference, BaseMod
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "Function":
-        return Function(
+        return Function.model_construct(
             operator=self.operator,
             arguments=[
                 (
@@ -1749,7 +1745,7 @@ class AggregateWrapper(Mergeable, ConceptArgs, Namespaced, Reference, BaseModel)
         return self.function.arguments
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return AggregateWrapper(
+        return AggregateWrapper.model_construct(
             function=self.function.with_merge(source, target, modifiers=modifiers),
             by=(
                 [c.with_merge(source, target, modifiers) for c in self.by]
@@ -1759,7 +1755,7 @@ class AggregateWrapper(Mergeable, ConceptArgs, Namespaced, Reference, BaseModel)
         )
 
     def with_namespace(self, namespace: str) -> "AggregateWrapper":
-        return AggregateWrapper(
+        return AggregateWrapper.model_construct(
             function=self.function.with_namespace(namespace),
             by=[c.with_namespace(namespace) for c in self.by] if self.by else [],
         )
@@ -1781,13 +1777,13 @@ class FilterItem(Namespaced, ConceptArgs, Reference, BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "FilterItem":
-        return FilterItem(
+        return FilterItem.model_construct(
             content=self.content.with_merge(source, target, modifiers),
             where=self.where.with_merge(source, target, modifiers),
         )
 
     def with_namespace(self, namespace: str) -> "FilterItem":
-        return FilterItem(
+        return FilterItem.model_construct(
             content=self.content.with_namespace(namespace),
             where=self.where.with_namespace(namespace),
         )
@@ -1807,7 +1803,7 @@ class RowsetLineage(Namespaced, Mergeable, BaseModel):
     select: SelectLineage | MultiSelectLineage
 
     def with_namespace(self, namespace: str):
-        return RowsetLineage(
+        return RowsetLineage.model_construct(
             name=self.name,
             derived_concepts=[
                 x.with_namespace(namespace) for x in self.derived_concepts
@@ -1816,7 +1812,7 @@ class RowsetLineage(Namespaced, Mergeable, BaseModel):
         )
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return RowsetLineage(
+        return RowsetLineage.model_construct(
             name=self.name,
             derived_concepts=[
                 x.with_merge(source, target, modifiers) for x in self.derived_concepts
@@ -1836,13 +1832,13 @@ class RowsetItem(Reference, Mergeable, ConceptArgs, Namespaced, BaseModel):
         return self.__repr__()
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return RowsetItem(
+        return RowsetItem.model_construct(
             content=self.content.with_merge(source, target, modifiers),
             rowset=self.rowset,
         )
 
     def with_namespace(self, namespace: str) -> "RowsetItem":
-        return RowsetItem(
+        return RowsetItem.model_construct(
             content=self.content.with_namespace(namespace),
             rowset=self.rowset.with_namespace(namespace),
         )
@@ -1869,12 +1865,14 @@ class OrderBy(Reference, Mergeable, Namespaced, BaseModel):
     items: List[OrderItem]
 
     def with_namespace(self, namespace: str) -> "OrderBy":
-        return OrderBy(items=[x.with_namespace(namespace) for x in self.items])
+        return OrderBy.model_construct(
+            items=[x.with_namespace(namespace) for x in self.items]
+        )
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "OrderBy":
-        return OrderBy(
+        return OrderBy.model_construct(
             items=[x.with_merge(source, target, modifiers) for x in self.items]
         )
 
@@ -1887,7 +1885,9 @@ class AlignClause(Namespaced, Reference, BaseModel):
     items: List[AlignItem]
 
     def with_namespace(self, namespace: str) -> "AlignClause":
-        return AlignClause(items=[x.with_namespace(namespace) for x in self.items])
+        return AlignClause.model_construct(
+            items=[x.with_namespace(namespace) for x in self.items]
+        )
 
 
 class SelectLineage(Mergeable, Reference, Namespaced, BaseModel):
@@ -2099,7 +2099,7 @@ class AlignItem(Namespaced, Reference, BaseModel):
         return f"{self.namespace}.{self.alias}"
 
     def with_namespace(self, namespace: str) -> "AlignItem":
-        return AlignItem(
+        return AlignItem.model_construct(
             alias=self.alias,
             concepts=[c.with_namespace(namespace) for c in self.concepts],
             namespace=namespace,
