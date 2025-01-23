@@ -140,7 +140,7 @@ def concept_is_relevant(
 
 
 def concepts_to_build_grain_concepts(
-    concepts: Iterable[BuildConcept | str], environment: BuildEnvironment | None
+    concepts: Iterable[BuildConcept | str], environment: "BuildEnvironment" | None
 ) -> list[BuildConcept]:
     pconcepts = []
     for c in concepts:
@@ -585,7 +585,7 @@ class BuildWhereClause(BuildConceptArgs, BaseModel):
         return self.conditional.row_arguments
 
     @property
-    def existence_arguments(self) -> list[tuple["BuildConcept", ...]]:
+    def existence_arguments(self) -> Sequence[tuple["BuildConcept", ...]]:
         return self.conditional.existence_arguments
 
 
@@ -1571,12 +1571,42 @@ class Factory:
         return item
 
     @singledispatchmethod
-    def build(self, arg):
-        raise NotImplementedError("Cannot build {}".format(type(arg)))
+    def build(self, base):
+        raise NotImplementedError("Cannot build {}".format(type(base)))
 
     @build.register
-    def _(self, base: Function):
-        from trilogy.core.models.build import BuildFunction
+    def _(
+        self,
+        base: (
+            int
+            | str
+            | float
+            | list
+            | date
+            | TupleWrapper
+            | ListWrapper
+            | MagicConstants
+            | MapWrapper
+        ),
+    ) -> (
+        int
+        | str
+        | float
+        | list
+        | date
+        | TupleWrapper
+        | ListWrapper
+        | MagicConstants
+        | MapWrapper
+    ):
+        return base
+
+    @build.register
+    def _(self, base: None) -> None:
+        return base
+
+    @build.register
+    def _(self, base: Function) -> BuildFunction:
 
         new = BuildFunction(
             operator=base.operator,
@@ -1599,7 +1629,7 @@ class Factory:
         return new
 
     @build.register
-    def _(self, base: ConceptRef):
+    def _(self, base: ConceptRef) -> BuildConcept:
         if base.address in self.local_concepts:
             full = self.local_concepts[base.address]
             if isinstance(full, BuildConcept):
@@ -1608,21 +1638,15 @@ class Factory:
         return self.build(raw)
 
     @build.register
-    def _(self, base: CaseWhen)->BuildCaseWhen:
+    def _(self, base: CaseWhen) -> BuildCaseWhen:
         return BuildCaseWhen(
             comparison=self.build(base.comparison),
-            expr=(
-                self.build(base.expr) if isinstance(base.expr, Reference) else base.expr
-            ),
+            expr=(self.build(base.expr)),
         )
 
     @build.register
-    def _(self, base: CaseElse)->BuildCaseElse:
-        return BuildCaseElse(
-            expr=(
-                self.build(base.expr) if isinstance(base.expr, Reference) else base.expr
-            )
-        )
+    def _(self, base: CaseElse) -> BuildCaseElse:
+        return BuildCaseElse(expr=self.build(base.expr))
 
     @build.register
     def _(self, base: Concept) -> BuildConcept:
@@ -1631,20 +1655,18 @@ class Factory:
         new_lineage, final_grain, _ = base.get_select_grain_and_keys(
             self.grain, self.environment
         )
-        if isinstance(new_lineage, Reference):
-            new_lineage = self.build(new_lineage)
-
-        derivation = Concept.calculate_derivation(new_lineage, base.purpose)
+        build_lineage = self.build(new_lineage)
+        derivation = Concept.calculate_derivation(build_lineage, base.purpose)
         granularity = Concept.calculate_granularity(
-            derivation, final_grain, new_lineage
+            derivation, final_grain, build_lineage
         )
-        is_aggregate = Concept.calculate_is_aggregate(new_lineage)
+        is_aggregate = Concept.calculate_is_aggregate(build_lineage)
         rval = BuildConcept(
             name=base.name,
             datatype=base.datatype,
             purpose=base.purpose,
             metadata=base.metadata,
-            lineage=new_lineage,
+            lineage=build_lineage,
             grain=BuildGrain.build(final_grain, self.environment, self.local_concepts),
             namespace=base.namespace,
             keys=base.keys,
@@ -1658,7 +1680,7 @@ class Factory:
         return rval
 
     @build.register
-    def _(self, base: AggregateWrapper):
+    def _(self, base: AggregateWrapper) -> BuildAggregateWrapper:
 
         if not base.by:
             by = [
@@ -1670,7 +1692,7 @@ class Factory:
         return BuildAggregateWrapper(function=parent, by=by)
 
     @build.register
-    def _(self, base: ColumnAssignment):
+    def _(self, base: ColumnAssignment) -> BuildColumnAssignment:
 
         return BuildColumnAssignment(
             alias=(
@@ -1685,29 +1707,26 @@ class Factory:
         )
 
     @build.register
-    def _(self, base: OrderBy):
+    def _(self, base: OrderBy) -> BuildOrderBy:
         return BuildOrderBy(items=[self.build(x) for x in base.items])
 
     @build.register
-    def _(self, base: OrderItem):
+    def _(self, base: OrderItem) -> BuildOrderItem:
         return BuildOrderItem(
-            expr=(
-                self.build(base.expr) if isinstance(base.expr, Reference) else base.expr
-            ),
+            expr=(self.build(base.expr)),
             order=base.order,
         )
 
     @build.register
-    def _(self, base: WhereClause):
+    def _(self, base: WhereClause) -> BuildWhereClause:
         return BuildWhereClause(conditional=self.build(base.conditional))
 
     @build.register
-    def _(self, base: HavingClause):
+    def _(self, base: HavingClause) -> BuildHavingClause:
         return BuildHavingClause(conditional=self.build(base.conditional))
 
     @build.register
-    def _(self, base: WindowItem):
-        print(base)
+    def _(self, base: WindowItem) -> BuildWindowItem:
         return BuildWindowItem(
             type=base.type,
             content=self.build(base.content),
@@ -1717,49 +1736,31 @@ class Factory:
         )
 
     @build.register
-    def _(self, base: Conditional):
+    def _(self, base: Conditional) -> BuildConditional:
         return BuildConditional(
-            left=(
-                self.build(base.left) if isinstance(base.left, Reference) else base.left
-            ),
-            right=(
-                self.build(base.right)
-                if isinstance(base.right, Reference)
-                else base.right
-            ),
+            left=(self.build(base.left)),
+            right=(self.build(base.right)),
             operator=base.operator,
         )
 
     @build.register
-    def _(self, base: SubselectComparison):
+    def _(self, base: SubselectComparison) -> BuildSubselectComparison:
         return BuildSubselectComparison(
-            left=(
-                self.build(base.left) if isinstance(base.left, Reference) else base.left
-            ),
-            right=(
-                self.build(base.right)
-                if isinstance(base.right, Reference)
-                else base.right
-            ),
+            left=(self.build(base.left)),
+            right=(self.build(base.right)),
             operator=base.operator,
         )
 
     @build.register
-    def _(self, base: Comparison):
+    def _(self, base: Comparison) -> BuildComparison:
         return BuildComparison(
-            left=(
-                self.build(base.left) if isinstance(base.left, Reference) else base.left
-            ),
-            right=(
-                self.build(base.right)
-                if isinstance(base.right, Reference)
-                else base.right
-            ),
+            left=(self.build(base.left)),
+            right=(self.build(base.right)),
             operator=base.operator,
         )
 
     @build.register
-    def _(self, base: AlignItem):
+    def _(self, base: AlignItem) -> BuildAlignItem:
         return BuildAlignItem(
             alias=base.alias,
             concepts=[self.build(x) for x in base.concepts],
@@ -1767,7 +1768,7 @@ class Factory:
         )
 
     @build.register
-    def _(self, base: AlignClause):
+    def _(self, base: AlignClause) -> BuildAlignClause:
         return BuildAlignClause(items=[self.build(x) for x in base.items])
 
     @build.register
@@ -1783,7 +1784,7 @@ class Factory:
         )
 
     @build.register
-    def _(self, base: RowsetLineage):
+    def _(self, base: RowsetLineage) -> BuildRowsetLineage:
         out = BuildRowsetLineage(
             name=base.name,
             derived_concepts=[],
@@ -1792,7 +1793,7 @@ class Factory:
         return out
 
     @build.register
-    def _(self, base: Grain):
+    def _(self, base: Grain) -> BuildGrain:
         if base.where_clause:
             where = self.build(base.where_clause)
         else:
@@ -1800,20 +1801,14 @@ class Factory:
         return BuildGrain(components=base.components, where_clause=where)
 
     @build.register
-    def _(self, base: FilterItem):
+    def _(self, base: FilterItem) -> BuildFilterItem:
         return BuildFilterItem(
             content=self.build(base.content), where=self.build(base.where)
         )
 
     @build.register
-    def _(self, base: Parenthetical):
-        return BuildParenthetical(
-            content=(
-                self.build(base.content)
-                if isinstance(base.content, Reference)
-                else base.content
-            )
-        )
+    def _(self, base: Parenthetical) -> BuildParenthetical:
+        return BuildParenthetical(content=(self.build(base.content)))
 
     @build.register
     def _(self, base: SelectLineage) -> BuildSelectLineage:
@@ -1866,11 +1861,11 @@ class Factory:
         )
 
     @build.register
-    def _(self, base: MultiSelectLineage):
+    def _(self, base: MultiSelectLineage) -> BuildMultiSelectLineage:
 
         local_build_cache: dict[str, BuildConcept] = {}
 
-        parents = [self.build(x) for x in base.selects]
+        parents: list[BuildSelectLineage] = [self.build(x) for x in base.selects]
         base_local = parents[0].local_concepts
 
         for select in parents[1:]:

@@ -214,7 +214,7 @@ def generate_candidates_restrictive(
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Injecting additional conditional row arguments as all remaining concepts are roots or constant"
         )
-        return [unique(conditions.row_arguments + local_candidates, "address")]
+        return [unique(list(conditions.row_arguments) + local_candidates, "address")]
     return [local_candidates]
 
 
@@ -755,7 +755,7 @@ def _search_concepts(
     # if we have a filter, we may need to get more values to support that.
     if conditions:
         completion_mandatory = unique(
-            mandatory_list + conditions.row_arguments, "address"
+            mandatory_list + list(conditions.row_arguments), "address"
         )
         # if anything we need to get is in the filter set and it's a computed value
         # we need to get _everything_ in this loop

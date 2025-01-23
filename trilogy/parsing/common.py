@@ -138,7 +138,7 @@ def concept_list_to_keys(
     for concept in concepts:
 
         if isinstance(concept, ConceptRef):
-            concept = environment.concepts[concept]
+            concept = environment.concepts[concept.address]
         if isinstance(concept, UndefinedConcept):
             continue
         if concept.keys:
@@ -218,13 +218,13 @@ def concept_is_relevant(
 def concepts_to_grain_concepts(
     concepts: Iterable[Concept | ConceptRef | str], environment: Environment | None
 ) -> list[Concept]:
-    pconcepts = []
+    pconcepts: list[Concept] = []
     for c in concepts:
         if isinstance(c, Concept):
             pconcepts.append(c)
-        elif isinstance(c, ConceptRef):
+        elif isinstance(c, ConceptRef) and environment:
             pconcepts.append(environment.concepts[c.address])
-        elif environment:
+        elif isinstance(c, str) and environment:
             pconcepts.append(environment.concepts[c])
         else:
             raise ValueError(
@@ -233,7 +233,7 @@ def concepts_to_grain_concepts(
 
     final: List[Concept] = []
     for sub in pconcepts:
-        if not concept_is_relevant(sub, pconcepts, environment):
+        if not concept_is_relevant(sub, pconcepts, environment):  # type: ignore
             continue
         final.append(sub)
     final = unique(final, "address")
@@ -387,12 +387,12 @@ def window_item_to_concept(
     local_purpose, keys = get_purpose_and_keys(purpose, (bcontent,), environment)
 
     if parent.order_by:
-        grain = parent.over + [bcontent.output]
+        grain_components = parent.over + [bcontent.output]
         for item in parent.order_by:
-            grain += item.concept_arguments
+            grain_components += item.concept_arguments
     else:
-        grain = parent.over + [bcontent.output]
-    final_grain = Grain.from_concepts(grain, environment)
+        grain_components = parent.over + [bcontent.output]
+    final_grain = Grain.from_concepts(grain_components, environment)
     modifiers = get_upstream_modifiers(bcontent.concept_arguments, environment)
     datatype = parent.content.datatype
     if parent.type in (
@@ -402,7 +402,6 @@ def window_item_to_concept(
         WindowType.COUNT_DISTINCT,
     ):
         datatype = DataType.INTEGER
-    grain = Grain.from_concepts(grain, environment)
     return Concept(
         name=name,
         datatype=datatype,

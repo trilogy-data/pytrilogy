@@ -769,7 +769,7 @@ class ParseToObjects(Transformer):
             return Ordering(" ".join([base, "nulls", null_sort.lower()]))
         return Ordering(base)
 
-    def order_list(self, args)->List[OrderItem]:
+    def order_list(self, args) -> List[OrderItem]:
         return [
             OrderItem(
                 expr=x,

@@ -301,7 +301,7 @@ class BaseDialect:
         cte: CTE | UnionCTE,
         alias: bool = True,
         raise_invalid: bool = False,
-        qualify:bool = True
+        qualify: bool = True,
     ) -> str:
         result = None
         if c.pseudonyms:
@@ -322,13 +322,19 @@ class BaseDialect:
                 except ValueError:
                     continue
         if not result:
-            result = self._render_concept_sql(c, cte, raise_invalid=raise_invalid, qualify=qualify)
+            result = self._render_concept_sql(
+                c, cte, raise_invalid=raise_invalid, qualify=qualify
+            )
         if alias:
             return f"{result} as {self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
         return result
 
     def _render_concept_sql(
-        self, c: BuildConcept, cte: CTE | UnionCTE, raise_invalid: bool = False, qualify:bool = True
+        self,
+        c: BuildConcept,
+        cte: CTE | UnionCTE,
+        raise_invalid: bool = False,
+        qualify: bool = True,
     ) -> str:
         # only recurse while it's in sources of the current cte
         logger.debug(
@@ -458,13 +464,18 @@ class BaseDialect:
                     self.QUOTE_CHARACTER,
                 )
                 if not rval:
-                    if raise_invalid:
-                        raise ValueError(
-                            f"Invalid reference string found in query: {rval}, this should never occur. Please report this issue."
+                    # unions won't have a specific source mapped; just use a generic column reference
+                    # we shouldn't ever have an expression at this point, so will be safe
+                    if isinstance(cte, UnionCTE):
+                        rval = c.safe_address
+                    else:
+                        if raise_invalid:
+                            raise ValueError(
+                                f"Invalid reference string found in query: {rval}, this should never occur. Please report this issue."
+                            )
+                        rval = INVALID_REFERENCE_STRING(
+                            f"Missing source reference to {c.address}"
                         )
-                    rval = INVALID_REFERENCE_STRING(
-                        f"Missing source reference to {c.address}"
-                    )
         return rval
 
     def render_expr(
@@ -502,7 +513,7 @@ class BaseDialect:
         cte: Optional[CTE | UnionCTE] = None,
         cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
         raise_invalid: bool = False,
-        qualify:bool = True
+        qualify: bool = True,
     ) -> str:
         if isinstance(e, SUBSELECT_COMPARISON_ITEMS):
             if isinstance(e.right, BuildConcept):
@@ -622,7 +633,11 @@ class BaseDialect:
                 return f":{e.safe_address}"
             if cte:
                 return self.render_concept_sql(
-                    e, cte, alias=False, raise_invalid=raise_invalid, qualify=qualify,
+                    e,
+                    cte,
+                    alias=False,
+                    raise_invalid=raise_invalid,
+                    qualify=qualify,
                 )
             elif cte_map:
                 return f"{cte_map[e.address].name}.{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"

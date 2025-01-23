@@ -63,7 +63,7 @@ from trilogy.utility import unique
 
 # TODO: refactor to avoid these
 if TYPE_CHECKING:
-    from trilogy.core.models.environment import Environment, EnvironmentConceptDict
+    from trilogy.core.models.environment import Environment
 
 
 class Namespaced(ABC):
@@ -386,6 +386,7 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, Reference, BaseModel):
 class HavingClause(WhereClause):
     pass
 
+
 class Grain(Namespaced, BaseModel):
     components: set[str] = Field(default_factory=set)
     where_clause: Optional["WhereClause"] = None
@@ -408,7 +409,7 @@ class Grain(Namespaced, BaseModel):
         concepts: Iterable[Concept | ConceptRef | str],
         environment: Environment | None = None,
         where_clause: WhereClause | None = None,
-    ) -> "Grain":
+    ) -> Grain:
         from trilogy.parsing.common import concepts_to_grain_concepts
 
         return Grain(
@@ -435,7 +436,7 @@ class Grain(Namespaced, BaseModel):
         if isinstance(v, list):
             for vc in v:
                 if isinstance(vc, Addressable):
-                    output.add(vc.address)
+                    output.add(vc._address)
                 else:
                     output.add(vc)
         else:

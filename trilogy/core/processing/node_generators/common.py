@@ -57,7 +57,7 @@ def resolve_condition_parent_concepts(
     condition: BuildWhereClause,
 ) -> Tuple[List[BuildConcept], List[Tuple[BuildConcept, ...]]]:
     base_existence = []
-    base_rows = []
+    base_rows: list[BuildConcept] = []
     base_rows += condition.row_arguments
     for ctuple in condition.existence_arguments:
         base_existence.append(ctuple)

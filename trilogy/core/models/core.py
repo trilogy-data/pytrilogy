@@ -44,12 +44,10 @@ class DataTyped(ABC):
 
 
 class Addressable(ABC):
-    pass
-    # @property
-    # def address(self):
-    #     if "address" in self.__dict__:
-    #         return self.__dict__["address"]
-    #     raise NotImplementedError
+
+    @property
+    def _address(self):
+        return self.address
 
 
 TYPEDEF_TYPES = Union[
