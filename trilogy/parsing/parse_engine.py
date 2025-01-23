@@ -56,6 +56,7 @@ from trilogy.core.models.author import (
     Concept,
     ConceptRef,
     Conditional,
+    Expr,
     FilterItem,
     Function,
     Grain,
@@ -183,17 +184,7 @@ def expr_to_boolean(
 
 
 def unwrap_transformation(
-    input: Union[
-        FilterItem,
-        WindowItem,
-        Concept,
-        Function,
-        AggregateWrapper,
-        int,
-        str,
-        float,
-        bool,
-    ],
+    input: Expr,
     environment: Environment,
 ) -> Function | FilterItem | WindowItem | AggregateWrapper:
     if isinstance(input, Function):
