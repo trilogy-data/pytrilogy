@@ -3,7 +3,7 @@ from typing import List, Union
 from pydantic import BaseModel, Field
 
 from trilogy.core.enums import IOType
-from trilogy.core.models.author import Concept, HavingClause, WhereClause
+from trilogy.core.models.author import ConceptRef, HavingClause, WhereClause
 from trilogy.core.models.datasource import Address, Datasource
 
 
@@ -26,5 +26,5 @@ class SelectTypeMixin(BaseModel):
     having_clause: Union["HavingClause", None] = Field(default=None)
 
     @property
-    def output_components(self) -> List[Concept]:
+    def output_components(self) -> List[ConceptRef]:
         raise NotImplementedError

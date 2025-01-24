@@ -161,21 +161,28 @@ SELECT 'John' as firstname, 'Smith' as lastname
     base.add_import("p2", imports)
     base.add_import("p3", imports)
     # merge p1.firstname, p3.firstname and p1.lastname, p3.lastname;
+    c1 = base.concepts["p2.firstname"].copy(deep=True)
     base.parse(
         """
-merge  p2.firstname into p1.firstname;
+merge p2.firstname into p1.firstname;
 merge p2.lastname  into p1.lastname;
 
 """
     )
-    merge = base.merge_concept(
-        base.concepts["p2.firstname"], base.concepts["p1.firstname"], []
-    )
-    assert not merge
-    base_size = base.model_dump_json()
+
+    c2 = base.concepts["p1.firstname"]
+    assert c2.pseudonyms == {"p2.firstname"}
+    merge = base.merge_concept(c1, c2, [])
+    assert merge is False
+    assert base.concepts["p1.firstname"].pseudonyms == {"p2.firstname"}
+    assert base.alias_origin_lookup["p2.firstname"].pseudonyms == {"p1.firstname"}
+    # assert not merge
+    base_size = base.model_dump_json(exclude={"materialized_concepts"})
+
     for x in range(0, 10):
-        merge = base.merge_concept(
-            base.concepts["p2.firstname"], base.concepts["p1.firstname"], [], force=True
-        )
-        new_size = base.model_dump_json()
+        merge = base.merge_concept(c1, c2, [], force=True)
+        assert base.concepts["p1.firstname"].pseudonyms == {"p2.firstname"}
+        assert base.alias_origin_lookup["p2.firstname"].pseudonyms == {"p1.firstname"}
+        new_size = base.model_dump_json(exclude={"materialized_concepts"})
+
         assert len(base_size) == len(new_size)

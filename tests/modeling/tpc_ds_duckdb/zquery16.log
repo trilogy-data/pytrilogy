@@ -21,7 +21,7 @@ GROUP BY
     cr_catalog_returns.\"CR_ORDER_NUMBER\"),
 abundant as (
 SELECT
-    count(questionable.\"cs_warehouse_id\") as \"_virt_agg_count_1322075060662646\",
+    count(questionable.\"cs_warehouse_id\") as \"_virt_agg_count_7777088585630721\",
     questionable.\"cs_order_number\" as \"cs_order_number\"
 FROM
     questionable
@@ -29,7 +29,7 @@ GROUP BY
     questionable.\"cs_order_number\"),
 uneven as (
 SELECT
-    CASE WHEN abundant.\"_virt_agg_count_1322075060662646\" > 1 THEN abundant.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
+    CASE WHEN abundant.\"_virt_agg_count_7777088585630721\" > 1 THEN abundant.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
 FROM
     abundant),
 yummy as (

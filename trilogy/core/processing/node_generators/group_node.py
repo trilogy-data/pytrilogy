@@ -1,15 +1,15 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models.author import (
-    AggregateWrapper,
-    Concept,
-    Function,
-    Grain,
-    LooseConceptList,
-    WhereClause,
+from trilogy.core.models.build import (
+    BuildAggregateWrapper,
+    BuildConcept,
+    BuildFunction,
+    BuildGrain,
+    BuildWhereClause,
+    LooseBuildConceptList,
 )
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
     gen_enrichment_node,
     resolve_function_parent_concepts,
@@ -22,22 +22,22 @@ LOGGER_PREFIX = "[GEN_GROUP_NODE]"
 
 
 def gen_group_node(
-    concept: Concept,
-    local_optional: List[Concept],
-    environment: Environment,
+    concept: BuildConcept,
+    local_optional: List[BuildConcept],
+    environment: BuildEnvironment,
     g,
     depth: int,
     source_concepts,
-    history: History | None = None,
-    conditions: WhereClause | None = None,
+    history: History,
+    conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     # aggregates MUST always group to the proper grain
     # except when the
-    parent_concepts: List[Concept] = unique(
+    parent_concepts: List[BuildConcept] = unique(
         resolve_function_parent_concepts(concept, environment=environment), "address"
     )
     logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} parent concepts are {[x.address for x in parent_concepts]} from group grain {concept.grain}"
+        f"{padding(depth)}{LOGGER_PREFIX} parent concepts for {concept} are {[x.address for x in parent_concepts]} from group grain {concept.grain}"
     )
 
     # if the aggregation has a grain, we need to ensure these are the ONLY optional in the output of the select
@@ -53,16 +53,18 @@ def gen_group_node(
         output_concepts += grain_components
         for possible_agg in local_optional:
 
-            if not isinstance(possible_agg.lineage, (AggregateWrapper, Function)):
+            if not isinstance(
+                possible_agg.lineage,
+                (BuildAggregateWrapper, BuildFunction),
+            ):
                 continue
-            logger.info(possible_agg)
             if possible_agg.grain and possible_agg.grain != concept.grain:
                 logger.info(
                     f"{padding(depth)}{LOGGER_PREFIX} mismatched equivalent group by with grain {possible_agg.grain} for {concept.address}"
                 )
 
             if possible_agg.grain and possible_agg.grain == concept.grain:
-                agg_parents: List[Concept] = resolve_function_parent_concepts(
+                agg_parents: List[BuildConcept] = resolve_function_parent_concepts(
                     possible_agg,
                     environment=environment,
                 )
@@ -73,7 +75,7 @@ def gen_group_node(
                     logger.info(
                         f"{padding(depth)}{LOGGER_PREFIX} found equivalent group by optional concept {possible_agg.address} for {concept.address}"
                     )
-                elif Grain.from_concepts(agg_parents) == Grain.from_concepts(
+                elif BuildGrain.from_concepts(agg_parents) == BuildGrain.from_concepts(
                     parent_concepts
                 ):
                     extra = [x for x in agg_parents if x.address not in parent_concepts]
@@ -84,11 +86,11 @@ def gen_group_node(
                     )
                 else:
                     logger.info(
-                        f"{padding(depth)}{LOGGER_PREFIX} mismatched grain {Grain.from_concepts(agg_parents)} vs {Grain.from_concepts(parent_concepts)}"
+                        f"{padding(depth)}{LOGGER_PREFIX} cannot include optional agg; mismatched grain {BuildGrain.from_concepts(agg_parents)} vs {BuildGrain.from_concepts(parent_concepts)}"
                     )
     if parent_concepts:
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} fetching group node parents {LooseConceptList(concepts=parent_concepts)}"
+            f"{padding(depth)}{LOGGER_PREFIX} fetching group node parents {LooseBuildConceptList(concepts=parent_concepts)}"
         )
         parent_concepts = unique(parent_concepts, "address")
         parent = source_concepts(
@@ -124,6 +126,9 @@ def gen_group_node(
     # early exit if no optional
 
     if not local_optional:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} no optional concepts, returning group node"
+        )
         return group_node
     missing_optional = [
         x.address for x in local_optional if x.address not in group_node.output_concepts

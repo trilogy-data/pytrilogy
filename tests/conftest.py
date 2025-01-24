@@ -29,7 +29,10 @@ def test_environment():
     order_id = Concept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
 
     order_timestamp = Concept(
-        name="order_timestamp", datatype=DataType.TIMESTAMP, purpose=Purpose.PROPERTY
+        name="order_timestamp",
+        datatype=DataType.TIMESTAMP,
+        purpose=Purpose.PROPERTY,
+        keys=set(["local.order_id"]),
     )
 
     order_count = Concept(
@@ -196,9 +199,6 @@ def test_environment():
         grain=Grain(components=[category_id]),
     )
 
-    for item in [test_product, test_category, test_revenue]:
-        env.add_datasource(item)
-
     for item in [
         category_id,
         category_name,
@@ -218,10 +218,12 @@ def test_environment():
         category_name_length_sum,
     ]:
         env.add_concept(item)
-        # env.concepts[item.name] = item
+
+    for item in [test_product, test_category, test_revenue]:
+        env.add_datasource(item)
     yield env
 
 
 @fixture(scope="session")
-def test_environment_graph(test_environment):
-    yield generate_graph(test_environment)
+def test_environment_graph(test_environment: Environment):
+    yield generate_graph(test_environment.materialize_for_select())

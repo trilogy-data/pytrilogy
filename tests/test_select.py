@@ -198,7 +198,7 @@ property id.name string;
 
 select
     class,
-    upper(id.name)-> upper_name,
+    upper(name)-> upper_name,
     count(id) ->class_id_count,
 ;
 """

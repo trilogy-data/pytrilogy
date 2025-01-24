@@ -7,6 +7,7 @@ from trilogy.core.processing.nodes import ConstantNode, MergeNode, NodeJoin
 
 
 def test_same_join_fails(test_environment: Environment, test_environment_graph):
+    test_environment = test_environment.materialize_for_select()
     x = ConstantNode(
         input_concepts=[],
         output_concepts=[test_environment.concepts["constant_one"]],

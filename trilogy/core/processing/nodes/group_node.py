@@ -3,22 +3,22 @@ from typing import List, Optional
 
 from trilogy.constants import logger
 from trilogy.core.enums import SourceType
-from trilogy.core.models.author import (
-    Comparison,
-    Concept,
-    Conditional,
-    Grain,
-    Parenthetical,
+from trilogy.core.models.build import (
+    BuildComparison,
+    BuildConcept,
+    BuildConditional,
+    BuildDatasource,
+    BuildGrain,
+    BuildOrderBy,
+    BuildParenthetical,
 )
-from trilogy.core.models.datasource import Datasource
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource
 from trilogy.core.processing.nodes.base_node import (
     StrategyNode,
     resolve_concept_map,
 )
 from trilogy.core.processing.utility import find_nullable_concepts, is_scalar_condition
-from trilogy.parsing.common import concepts_to_grain_concepts
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"
@@ -26,8 +26,8 @@ LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"
 
 @dataclass
 class GroupRequiredResponse:
-    target: Grain
-    upstream: Grain
+    target: BuildGrain
+    upstream: BuildGrain
     required: bool
 
 
@@ -36,19 +36,24 @@ class GroupNode(StrategyNode):
 
     def __init__(
         self,
-        output_concepts: List[Concept],
-        input_concepts: List[Concept],
-        environment: Environment,
+        output_concepts: List[BuildConcept],
+        input_concepts: List[BuildConcept],
+        environment: BuildEnvironment,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
-        partial_concepts: Optional[List[Concept]] = None,
-        nullable_concepts: Optional[List[Concept]] = None,
+        partial_concepts: Optional[List[BuildConcept]] = None,
+        nullable_concepts: Optional[List[BuildConcept]] = None,
         force_group: bool | None = None,
-        conditions: Conditional | Comparison | Parenthetical | None = None,
-        preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
-        existence_concepts: List[Concept] | None = None,
+        conditions: (
+            BuildConditional | BuildComparison | BuildParenthetical | None
+        ) = None,
+        preexisting_conditions: (
+            BuildConditional | BuildComparison | BuildParenthetical | None
+        ) = None,
+        existence_concepts: List[BuildConcept] | None = None,
         hidden_concepts: set[str] | None = None,
+        ordering: BuildOrderBy | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -64,26 +69,25 @@ class GroupNode(StrategyNode):
             existence_concepts=existence_concepts,
             preexisting_conditions=preexisting_conditions,
             hidden_concepts=hidden_concepts,
+            ordering=ordering,
         )
 
     @classmethod
     def check_if_required(
         cls,
-        downstream_concepts: List[Concept],
-        parents: list[QueryDatasource | Datasource],
-        environment: Environment,
+        downstream_concepts: List[BuildConcept],
+        parents: list[QueryDatasource | BuildDatasource],
+        environment: BuildEnvironment,
     ) -> GroupRequiredResponse:
-        target_grain = Grain.from_concepts(
-            concepts_to_grain_concepts(
-                downstream_concepts,
-                environment=environment,
-            )
+        target_grain = BuildGrain.from_concepts(
+            downstream_concepts,
+            environment=environment,
         )
 
         # the concepts of the souce grain might not exist in the output environment
         # so we need to construct a new
-        concept_map: dict[str, Concept] = {}
-        comp_grain = Grain()
+        concept_map: dict[str, BuildConcept] = {}
+        comp_grain = BuildGrain()
         for source in parents:
             comp_grain += source.grain
             for x in source.output_concepts:
@@ -91,9 +95,7 @@ class GroupNode(StrategyNode):
         lookups = [
             concept_map[x] if x in concept_map else x for x in comp_grain.components
         ]
-        comp_grain = Grain.from_concepts(
-            concepts_to_grain_concepts(lookups, environment=environment)
-        )
+        comp_grain = BuildGrain.from_concepts(lookups, environment=environment)
         # dynamically select if we need to group
         # because sometimes, we are already at required grain
         if comp_grain.issubset(target_grain):
@@ -102,7 +104,7 @@ class GroupNode(StrategyNode):
         return GroupRequiredResponse(target_grain, comp_grain, True)
 
     def _resolve(self) -> QueryDatasource:
-        parent_sources: List[QueryDatasource | Datasource] = [
+        parent_sources: List[QueryDatasource | BuildDatasource] = [
             p.resolve() for p in self.parents
         ]
         grains = self.check_if_required(
@@ -154,13 +156,15 @@ class GroupNode(StrategyNode):
             nullable_concepts=nullable_concepts,
             hidden_concepts=self.hidden_concepts,
             condition=self.conditions,
+            ordering=self.ordering,
         )
         # if there is a condition on a group node and it's not scalar
         # inject an additional CTE
         if self.conditions and not is_scalar_condition(self.conditions):
             base.condition = None
             base.output_concepts = unique(
-                base.output_concepts + self.conditions.row_arguments, "address"
+                list(base.output_concepts) + list(self.conditions.row_arguments),
+                "address",
             )
             # re-visible any hidden concepts
             base.hidden_concepts = set(
@@ -183,6 +187,7 @@ class GroupNode(StrategyNode):
                 partial_concepts=self.partial_concepts,
                 condition=self.conditions,
                 hidden_concepts=self.hidden_concepts,
+                ordering=self.ordering,
             )
         return base
 
@@ -201,4 +206,5 @@ class GroupNode(StrategyNode):
             preexisting_conditions=self.preexisting_conditions,
             existence_concepts=list(self.existence_concepts),
             hidden_concepts=set(self.hidden_concepts),
+            ordering=self.ordering,
         )

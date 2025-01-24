@@ -2,7 +2,11 @@ from pathlib import Path
 
 from trilogy import Dialects, parse
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
-from trilogy.core.models.author import Comparison, Conditional, SubselectComparison
+from trilogy.core.models.build import (
+    BuildComparison,
+    BuildConditional,
+    BuildSubselectComparison,
+)
 from trilogy.core.optimizations.predicate_pushdown import (
     is_child_of,
 )
@@ -25,6 +29,9 @@ def test_pushdown():
 
 
 def test_pushdown_execution():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
     with open(Path(__file__).parent / "pushdown.preql") as f:
         text = f.read()
 
@@ -45,20 +52,21 @@ def test_child_of():
         text = f.read()
 
     env, queries = parse(text)
+    env = env.materialize_for_select()
 
-    test = Conditional(
-        left=SubselectComparison(
+    test = BuildConditional(
+        left=BuildSubselectComparison(
             left=env.concepts["uuid"], right="a", operator=ComparisonOperator.EQ
         ),
-        right=Comparison(left=3, right=4, operator=ComparisonOperator.EQ),
+        right=BuildComparison(left=3, right=4, operator=ComparisonOperator.EQ),
         operator=BooleanOperator.AND,
     )
 
-    test2 = Conditional(
-        left=SubselectComparison(
+    test2 = BuildConditional(
+        left=BuildSubselectComparison(
             left=env.concepts["uuid"], right="a", operator=ComparisonOperator.EQ
         ),
-        right=Comparison(left=3, right=4, operator=ComparisonOperator.EQ),
+        right=BuildComparison(left=3, right=4, operator=ComparisonOperator.EQ),
         operator=BooleanOperator.AND,
     )
     assert is_child_of(test, test2) is True

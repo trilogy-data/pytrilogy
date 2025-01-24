@@ -1,6 +1,6 @@
 from trilogy.core.env_processor import concept_to_node, generate_graph
 from trilogy.core.models.environment import Environment
-from trilogy.core.processing.concept_strategies_v3 import search_concepts
+from trilogy.core.processing.concept_strategies_v3 import History, search_concepts
 from trilogy.core.processing.node_generators.node_merge_node import (
     determine_induced_minimal_nodes,
     gen_merge_node,
@@ -66,10 +66,12 @@ SELECT
 def test_merged_env_behavior(normalized_engine, test_env: Environment):
     assert "passenger.last_name" in test_env.concepts
     normalized_engine.environment = test_env
+    history = History(base_environment=test_env)
     test_pre = """
 merge rich_info.last_name into ~passenger.last_name;
     """
     normalized_engine.parse_text(test_pre)
+    test_env = test_env.materialize_for_select()
     g = generate_graph(test_env)
     found = search_concepts(
         [
@@ -80,6 +82,7 @@ merge rich_info.last_name into ~passenger.last_name;
                 "rich_info.last_name",
             ]
         ],
+        history=history,
         g=g,
         environment=test_env,
         depth=0,
@@ -103,6 +106,8 @@ def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environme
     test_pre = """merge rich_info.last_name into ~passenger.last_name;"""
     normalized_engine.parse_text(test_pre)
     # raw = executor.generate_sql(test)
+    history = History(base_environment=test_env)
+    test_env = test_env.materialize_for_select()
     g = generate_graph(test_env)
     # from trilogy.hooks.graph_hook import GraphHook
     # GraphHook().query_graph_built(g)
@@ -130,6 +135,7 @@ def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environme
                 "rich_info.full_name",
             ]
         ],
+        history=history,
         g=g,
         environment=test_env,
         depth=0,
@@ -139,6 +145,7 @@ def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environme
 
     mn = gen_merge_node(
         target_select_concepts,
+        history=history,
         environment=test_env,
         g=g,
         depth=0,

@@ -15,8 +15,6 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
-    env:
-      UV_PYTHON: ${{ matrix.python-version }}
     permissions:
       contents: 'read'
       id-token: 'write'
@@ -32,28 +30,26 @@ jobs:
         with:
           workload_identity_provider: 'projects/734709568634/locations/global/workloadIdentityPools/github/providers/preql-integration'
           project_id: 'preqldata'
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
       - name: Install dependencies
         run: |
-          uv venv
-          uv pip install wheel
-          uv pip install -r requirements.txt
-          uv pip install -r requirements-test.txt
+          python -m pip install --upgrade pip
+          pip install wheel
+          pip install -r requirements.txt
+          pip install -r requirements-test.txt
       - name: Lint with mypy
         run: |
           # stop the build if there are Python syntax errors or undefined names
-          uv run mypy trilogy
+          mypy trilogy
       - name: Lint with ruff
         run: |
           # stop the build if there are Python syntax errors or undefined names
-          uv run ruff check trilogy
+          ruff check trilogy
       - name: Test with pytest
         run: |
-          uv pip install pytest
-          uv pip install pytest-cov
+          pip install pytest
+          pip install pytest-cov
           # disable active adventureworks queries unless we get docker configured
-          uv run pytest --ignore=docs_src/ --cov=./ -m "not adventureworks_execution" 
+          pytest --ignore=docs_src/ --cov=./ -m "not adventureworks_execution" 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:

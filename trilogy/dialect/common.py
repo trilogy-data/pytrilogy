@@ -1,7 +1,7 @@
 from typing import Callable
 
 from trilogy.core.enums import Modifier, UnnestMode
-from trilogy.core.models.author import Concept, Function
+from trilogy.core.models.build import BuildConcept, BuildFunction
 from trilogy.core.models.datasource import RawColumnExpr
 from trilogy.core.models.execute import (
     CTE,
@@ -19,8 +19,8 @@ def null_wrapper(lval: str, rval: str, modifiers: list[Modifier]) -> str:
 def render_unnest(
     unnest_mode: UnnestMode,
     quote_character: str,
-    concept: Concept,
-    render_func: Callable[[Concept, CTE, bool], str],
+    concept: BuildConcept,
+    render_func: Callable[[BuildConcept, CTE, bool], str],
     cte: CTE,
 ):
     if unnest_mode == UnnestMode.CROSS_JOIN:
@@ -32,7 +32,7 @@ def render_join_concept(
     name: str,
     quote_character: str,
     cte: CTE,
-    concept: Concept,
+    concept: BuildConcept,
     render_expr,
     inlined_ctes: set[str],
 ):
@@ -42,7 +42,7 @@ def render_join_concept(
         if isinstance(raw_content, RawColumnExpr):
             rval = raw_content.text
             return rval
-        elif isinstance(raw_content, Function):
+        elif isinstance(raw_content, BuildFunction):
             rval = render_expr(raw_content, cte=cte)
             return rval
         return f"{name}.{quote_character}{raw_content}{quote_character}"
@@ -52,8 +52,8 @@ def render_join_concept(
 def render_join(
     join: Join | InstantiatedUnnestJoin,
     quote_character: str,
-    render_func: Callable[[Concept, CTE, bool], str],
-    render_expr_func: Callable[[Concept, CTE], str],
+    render_func: Callable[[BuildConcept, CTE, bool], str],
+    render_expr_func: Callable[[BuildConcept, CTE], str],
     cte: CTE,
     unnest_mode: UnnestMode = UnnestMode.CROSS_APPLY,
 ) -> str | None:

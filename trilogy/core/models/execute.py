@@ -16,40 +16,45 @@ from trilogy.core.enums import (
     Purpose,
     SourceType,
 )
-from trilogy.core.models.author import (
-    Comparison,
-    Concept,
-    Conditional,
-    Function,
-    Grain,
-    LooseConceptList,
-    OrderBy,
-    Parenthetical,
-    RowsetItem,
+from trilogy.core.models.build import (
+    BuildComparison,
+    BuildConcept,
+    BuildConditional,
+    BuildDatasource,
+    BuildFunction,
+    BuildGrain,
+    BuildOrderBy,
+    BuildParenthetical,
+    BuildRowsetItem,
+    LooseBuildConceptList,
 )
-from trilogy.core.models.datasource import Address, Datasource
+from trilogy.core.models.datasource import Address
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[MODELS_EXECUTE]"
+
+DATASOURCE_TYPES = (BuildDatasource, BuildDatasource)
 
 
 class CTE(BaseModel):
     name: str
     source: "QueryDatasource"
-    output_columns: List[Concept]
+    output_columns: List[BuildConcept]
     source_map: Dict[str, list[str]]
-    grain: Grain
+    grain: BuildGrain
     base: bool = False
     group_to_grain: bool = False
     existence_source_map: Dict[str, list[str]] = Field(default_factory=dict)
     parent_ctes: List[Union["CTE", "UnionCTE"]] = Field(default_factory=list)
     joins: List[Union["Join", "InstantiatedUnnestJoin"]] = Field(default_factory=list)
-    condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = None
-    partial_concepts: List[Concept] = Field(default_factory=list)
-    nullable_concepts: List[Concept] = Field(default_factory=list)
-    join_derived_concepts: List[Concept] = Field(default_factory=list)
+    condition: Optional[
+        Union[BuildComparison, BuildConditional, BuildParenthetical]
+    ] = None
+    partial_concepts: List[BuildConcept] = Field(default_factory=list)
+    nullable_concepts: List[BuildConcept] = Field(default_factory=list)
+    join_derived_concepts: List[BuildConcept] = Field(default_factory=list)
     hidden_concepts: set[str] = Field(default_factory=set)
-    order_by: Optional[OrderBy] = None
+    order_by: Optional[BuildOrderBy] = None
     limit: Optional[int] = None
     base_name_override: Optional[str] = None
     base_alias_override: Optional[str] = None
@@ -64,17 +69,17 @@ class CTE(BaseModel):
 
     @computed_field  # type: ignore
     @property
-    def output_lcl(self) -> LooseConceptList:
-        return LooseConceptList(concepts=self.output_columns)
+    def output_lcl(self) -> LooseBuildConceptList:
+        return LooseBuildConceptList(concepts=self.output_columns)
 
     @field_validator("output_columns")
     def validate_output_columns(cls, v):
         return unique(v, "address")
 
-    def inline_constant(self, concept: Concept):
+    def inline_constant(self, concept: BuildConcept):
         if not concept.derivation == Derivation.CONSTANT:
             return False
-        if not isinstance(concept.lineage, Function):
+        if not isinstance(concept.lineage, BuildFunction):
             return False
         if not concept.lineage.operator == FunctionType.CONSTANT:
             return False
@@ -157,7 +162,7 @@ class CTE(BaseModel):
     ) -> bool:
         qds_being_inlined = parent.source
         ds_being_inlined = qds_being_inlined.datasources[0]
-        if not isinstance(ds_being_inlined, Datasource):
+        if not isinstance(ds_being_inlined, DATASOURCE_TYPES):
             return False
         if any(
             [
@@ -279,7 +284,7 @@ class CTE(BaseModel):
     def is_root_datasource(self) -> bool:
         return (
             len(self.source.datasources) == 1
-            and isinstance(self.source.datasources[0], Datasource)
+            and isinstance(self.source.datasources[0], DATASOURCE_TYPES)
             and not self.source.datasources[0].name == CONSTANT_DATASET
         )
 
@@ -303,7 +308,7 @@ class CTE(BaseModel):
     def quote_address(self) -> bool:
         if self.is_root_datasource:
             candidate = self.source.datasources[0]
-            if isinstance(candidate, Datasource) and isinstance(
+            if isinstance(candidate, DATASOURCE_TYPES) and isinstance(
                 candidate.address, Address
             ):
                 return candidate.address.quoted
@@ -321,7 +326,7 @@ class CTE(BaseModel):
             return self.parent_ctes[0].name
         return self.name
 
-    def get_concept(self, address: str) -> Concept | None:
+    def get_concept(self, address: str) -> BuildConcept | None:
         for cte in self.parent_ctes:
             if address in cte.output_columns:
                 match = [x for x in cte.output_columns if x.address == address].pop()
@@ -337,7 +342,7 @@ class CTE(BaseModel):
             return match_list.pop()
         return None
 
-    def get_alias(self, concept: Concept, source: str | None = None) -> str:
+    def get_alias(self, concept: BuildConcept, source: str | None = None) -> str:
         for cte in self.parent_ctes:
             if concept.address in cte.output_columns:
                 if source and source != cte.name:
@@ -354,12 +359,12 @@ class CTE(BaseModel):
             return f"INVALID_ALIAS: {str(e)}"
 
     @property
-    def group_concepts(self) -> List[Concept]:
-        def check_is_not_in_group(c: Concept):
+    def group_concepts(self) -> List[BuildConcept]:
+        def check_is_not_in_group(c: BuildConcept):
             if len(self.source_map.get(c.address, [])) > 0:
                 return False
             if c.derivation == Derivation.ROWSET:
-                assert isinstance(c.lineage, RowsetItem)
+                assert isinstance(c.lineage, BuildRowsetItem)
                 return check_is_not_in_group(c.lineage.content)
             if c.derivation == Derivation.CONSTANT:
                 return True
@@ -370,7 +375,7 @@ class CTE(BaseModel):
                 if all([check_is_not_in_group(x) for x in c.lineage.concept_arguments]):
                     return True
                 if (
-                    isinstance(c.lineage, Function)
+                    isinstance(c.lineage, BuildFunction)
                     and c.lineage.operator == FunctionType.GROUP
                 ):
                     return check_is_not_in_group(c.lineage.concept_arguments[0])
@@ -406,14 +411,14 @@ class CTE(BaseModel):
         return True
 
     @property
-    def sourced_concepts(self) -> List[Concept]:
+    def sourced_concepts(self) -> List[BuildConcept]:
         return [c for c in self.output_columns if c.address in self.source_map]
 
 
 class ConceptPair(BaseModel):
-    left: Concept
-    right: Concept
-    existing_datasource: Union[Datasource, "QueryDatasource"]
+    left: BuildConcept
+    right: BuildConcept
+    existing_datasource: Union[BuildDatasource, "QueryDatasource"]
     modifiers: List[Modifier] = Field(default_factory=list)
 
     @property
@@ -430,13 +435,13 @@ class CTEConceptPair(ConceptPair):
 
 
 class InstantiatedUnnestJoin(BaseModel):
-    concept_to_unnest: Concept
+    concept_to_unnest: BuildConcept
     alias: str = "unnest"
 
 
 class UnnestJoin(BaseModel):
-    concepts: list[Concept]
-    parent: Function
+    concepts: list[BuildConcept]
+    parent: BuildFunction
     alias: str = "unnest"
     rendering_required: bool = True
 
@@ -449,10 +454,10 @@ class UnnestJoin(BaseModel):
 
 
 class BaseJoin(BaseModel):
-    right_datasource: Union[Datasource, "QueryDatasource"]
+    right_datasource: Union[BuildDatasource, "QueryDatasource"]
     join_type: JoinType
-    concepts: Optional[List[Concept]] = None
-    left_datasource: Optional[Union[Datasource, "QueryDatasource"]] = None
+    concepts: Optional[List[BuildConcept]] = None
+    left_datasource: Optional[Union[BuildDatasource, "QueryDatasource"]] = None
     concept_pairs: list[ConceptPair] | None = None
 
     def __init__(self, **data: Any):
@@ -524,7 +529,7 @@ class BaseJoin(BaseModel):
         return str(self)
 
     @property
-    def input_concepts(self) -> List[Concept]:
+    def input_concepts(self) -> List[BuildConcept]:
         base = []
         if self.concept_pairs:
             for pair in self.concept_pairs:
@@ -546,27 +551,27 @@ class BaseJoin(BaseModel):
 
 
 class QueryDatasource(BaseModel):
-    input_concepts: List[Concept]
-    output_concepts: List[Concept]
-    datasources: List[Union[Datasource, "QueryDatasource"]]
-    source_map: Dict[str, Set[Union[Datasource, "QueryDatasource", "UnnestJoin"]]]
+    input_concepts: List[BuildConcept]
+    output_concepts: List[BuildConcept]
+    datasources: List[Union[BuildDatasource, "QueryDatasource"]]
+    source_map: Dict[str, Set[Union[BuildDatasource, "QueryDatasource", "UnnestJoin"]]]
 
-    grain: Grain
+    grain: BuildGrain
     joins: List[BaseJoin | UnnestJoin]
     limit: Optional[int] = None
-    condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = Field(
-        default=None
-    )
-    filter_concepts: List[Concept] = Field(default_factory=list)
+    condition: Optional[
+        Union[BuildConditional, BuildComparison, BuildParenthetical]
+    ] = Field(default=None)
     source_type: SourceType = SourceType.SELECT
-    partial_concepts: List[Concept] = Field(default_factory=list)
+    partial_concepts: List[BuildConcept] = Field(default_factory=list)
     hidden_concepts: set[str] = Field(default_factory=set)
-    nullable_concepts: List[Concept] = Field(default_factory=list)
-    join_derived_concepts: List[Concept] = Field(default_factory=list)
+    nullable_concepts: List[BuildConcept] = Field(default_factory=list)
+    join_derived_concepts: List[BuildConcept] = Field(default_factory=list)
     force_group: bool | None = None
-    existence_source_map: Dict[str, Set[Union[Datasource, "QueryDatasource"]]] = Field(
-        default_factory=dict
+    existence_source_map: Dict[str, Set[Union[BuildDatasource, "QueryDatasource"]]] = (
+        Field(default_factory=dict)
     )
+    ordering: BuildOrderBy | None = None
 
     def __repr__(self):
         return f"{self.identifier}@<{self.grain}>"
@@ -576,9 +581,9 @@ class QueryDatasource(BaseModel):
         return self.identifier.replace(".", "_")
 
     @property
-    def non_partial_concept_addresses(self) -> List[str]:
+    def full_concepts(self) -> List[BuildConcept]:
         return [
-            c.address
+            c
             for c in self.output_concepts
             if c.address not in [z.address for z in self.partial_concepts]
         ]
@@ -613,7 +618,7 @@ class QueryDatasource(BaseModel):
         for key in ("input_concepts", "output_concepts"):
             if not values.get(key):
                 continue
-            concept: Concept
+            concept: BuildConcept
             for concept in values[key]:
                 if (
                     concept.address not in v
@@ -682,7 +687,7 @@ class QueryDatasource(BaseModel):
             f" {other.name} with {[c.address for c in other.output_concepts]} concepts"
         )
 
-        merged_datasources: dict[str, Union[Datasource, "QueryDatasource"]] = {}
+        merged_datasources: dict[str, Union[BuildDatasource, "QueryDatasource"]] = {}
 
         for ds in [*self.datasources, *other.datasources]:
             if ds.safe_identifier in merged_datasources:
@@ -693,7 +698,7 @@ class QueryDatasource(BaseModel):
                 merged_datasources[ds.safe_identifier] = ds
 
         final_source_map: defaultdict[
-            str, Set[Union[Datasource, "QueryDatasource", "UnnestJoin"]]
+            str, Set[Union[BuildDatasource, QueryDatasource, UnnestJoin]]
         ] = defaultdict(set)
 
         # add our sources
@@ -739,6 +744,7 @@ class QueryDatasource(BaseModel):
             join_derived_concepts=self.join_derived_concepts,
             force_group=self.force_group,
             hidden_concepts=hidden,
+            ordering=self.ordering,
         )
 
         return qds
@@ -755,7 +761,7 @@ class QueryDatasource(BaseModel):
 
     def get_alias(
         self,
-        concept: Concept,
+        concept: BuildConcept,
         use_raw_name: bool = False,
         force_alias: bool = False,
         source: str | None = None,
@@ -764,7 +770,7 @@ class QueryDatasource(BaseModel):
             # query datasources should be referenced by their alias, always
             force_alias = isinstance(x, QueryDatasource)
             #
-            use_raw_name = isinstance(x, Datasource) and not force_alias
+            use_raw_name = isinstance(x, DATASOURCE_TYPES) and not force_alias
             if source and x.safe_identifier != source:
                 continue
             try:
@@ -799,21 +805,21 @@ class UnionCTE(BaseModel):
     source: QueryDatasource
     parent_ctes: list[CTE | UnionCTE]
     internal_ctes: list[CTE | UnionCTE]
-    output_columns: List[Concept]
-    grain: Grain
+    output_columns: List[BuildConcept]
+    grain: BuildGrain
     operator: str = "UNION ALL"
-    order_by: Optional[OrderBy] = None
+    order_by: Optional[BuildOrderBy] = None
     limit: Optional[int] = None
     hidden_concepts: set[str] = Field(default_factory=set)
-    partial_concepts: list[Concept] = Field(default_factory=list)
+    partial_concepts: list[BuildConcept] = Field(default_factory=list)
     existence_source_map: Dict[str, list[str]] = Field(default_factory=dict)
 
     @computed_field  # type: ignore
     @property
-    def output_lcl(self) -> LooseConceptList:
-        return LooseConceptList(concepts=self.output_columns)
+    def output_lcl(self) -> LooseBuildConceptList:
+        return LooseBuildConceptList(concepts=self.output_columns)
 
-    def get_alias(self, concept: Concept, source: str | None = None) -> str:
+    def get_alias(self, concept: BuildConcept, source: str | None = None) -> str:
         for cte in self.parent_ctes:
             if concept.address in cte.output_columns:
                 if source and source != cte.name:
@@ -821,7 +827,7 @@ class UnionCTE(BaseModel):
                 return concept.safe_address
         return "INVALID_ALIAS"
 
-    def get_concept(self, address: str) -> Concept | None:
+    def get_concept(self, address: str) -> BuildConcept | None:
         for cte in self.internal_ctes:
             if address in cte.output_columns:
                 match = [x for x in cte.output_columns if x.address == address].pop()

@@ -1,4 +1,4 @@
-from trilogy.core.processing.concept_strategies_v3 import search_concepts
+from trilogy.core.processing.concept_strategies_v3 import History, search_concepts
 from trilogy.core.processing.node_generators.common import gen_property_enrichment_node
 from trilogy.core.processing.node_generators.group_node import gen_group_node
 
@@ -8,6 +8,8 @@ def address_set(concepts):
 
 
 def test_gen_property_enrichment_node(test_environment, test_environment_graph):
+    history = History(base_environment=test_environment)
+    test_environment = test_environment.materialize_for_select()
     prod = test_environment.concepts["category_id"]
     prod_r = test_environment.concepts["total_revenue"]
     gnode = gen_group_node(
@@ -17,6 +19,7 @@ def test_gen_property_enrichment_node(test_environment, test_environment_graph):
         g=test_environment_graph,
         depth=0,
         source_concepts=search_concepts,
+        history=history,
     )
 
     node = gen_property_enrichment_node(
@@ -27,6 +30,7 @@ def test_gen_property_enrichment_node(test_environment, test_environment_graph):
         depth=1,
         source_concepts=search_concepts,
         log_lambda=lambda x: x,
+        history=history,
     )
 
     assert address_set(node.output_concepts) == address_set(

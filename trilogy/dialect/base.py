@@ -11,21 +11,22 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.internal import DEFAULT_CONCEPTS
-from trilogy.core.models.author import (
-    AggregateWrapper,
-    CaseElse,
-    CaseWhen,
-    Comparison,
-    Concept,
-    Conditional,
-    FilterItem,
-    Function,
-    MultiSelectLineage,
-    OrderItem,
-    Parenthetical,
-    RowsetItem,
-    SubselectComparison,
-    WindowItem,
+from trilogy.core.models.build import (
+    BuildAggregateWrapper,
+    BuildCaseElse,
+    BuildCaseWhen,
+    BuildComparison,
+    BuildConcept,
+    BuildConditional,
+    BuildFilterItem,
+    BuildFunction,
+    BuildMultiSelectLineage,
+    BuildOrderItem,
+    BuildParenthetical,
+    BuildRowsetItem,
+    BuildSubselectComparison,
+    BuildWindowItem,
+    Factory,
 )
 from trilogy.core.models.core import (
     DataType,
@@ -70,8 +71,20 @@ from trilogy.hooks.base_hook import BaseHook
 
 LOGGER_PREFIX = "[RENDERING]"
 
+WINDOW_ITEMS = (BuildWindowItem,)
+FILTER_ITEMS = (BuildFilterItem,)
+AGGREGATE_ITEMS = (BuildAggregateWrapper,)
+FUNCTION_ITEMS = (BuildFunction,)
+PARENTHETICAL_ITEMS = (BuildParenthetical,)
+CASE_WHEN_ITEMS = (BuildCaseWhen,)
+CASE_ELSE_ITEMS = (BuildCaseElse,)
+SUBSELECT_COMPARISON_ITEMS = (BuildSubselectComparison,)
+COMPARISON_ITEMS = (BuildComparison,)
+CONDITIONAL_ITEMS = (BuildConditional,)
+
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
+    # raise SyntaxError(x)
     return f"INVALID_REFERENCE_BUG_{callsite}<{x}>"
 
 
@@ -241,7 +254,7 @@ def safe_quote(string: str, quote_char: str):
     return ".".join([f"{quote_char}{string}{quote_char}" for string in components])
 
 
-def safe_get_cte_value(coalesce, cte: CTE | UnionCTE, c: Concept, quote_char: str):
+def safe_get_cte_value(coalesce, cte: CTE | UnionCTE, c: BuildConcept, quote_char: str):
     address = c.address
     raw = cte.source_map.get(address, None)
 
@@ -269,25 +282,26 @@ class BaseDialect:
 
     def render_order_item(
         self,
-        order_item: OrderItem,
+        order_item: BuildOrderItem,
         cte: CTE | UnionCTE,
         final: bool = False,
         alias: bool = True,
     ) -> str:
-        if final:
-            if not alias:
-                return f"{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
+        # if final:
+        #     if not alias:
+        #         return f"{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
 
-            return f"{cte.name}.{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
+        #     return f"{cte.name}.{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
 
-        return f"{self.render_concept_sql(order_item.expr, cte=cte, alias=False)} {order_item.order.value}"
+        return f"{self.render_expr(order_item.expr, cte=cte, qualify=False)} {order_item.order.value}"
 
     def render_concept_sql(
         self,
-        c: Concept,
+        c: BuildConcept,
         cte: CTE | UnionCTE,
         alias: bool = True,
         raise_invalid: bool = False,
+        qualify: bool = True,
     ) -> str:
         result = None
         if c.pseudonyms:
@@ -301,20 +315,26 @@ class BaseDialect:
                         f"{LOGGER_PREFIX} [{c.address}] Attempting rendering w/ candidate {candidate.address}"
                     )
                     result = self._render_concept_sql(
-                        candidate, cte, raise_invalid=True
+                        candidate, cte, raise_invalid=True, qualify=qualify
                     )
                     if result:
                         break
                 except ValueError:
                     continue
         if not result:
-            result = self._render_concept_sql(c, cte, raise_invalid=raise_invalid)
+            result = self._render_concept_sql(
+                c, cte, raise_invalid=raise_invalid, qualify=qualify
+            )
         if alias:
             return f"{result} as {self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
         return result
 
     def _render_concept_sql(
-        self, c: Concept, cte: CTE | UnionCTE, raise_invalid: bool = False
+        self,
+        c: BuildConcept,
+        cte: CTE | UnionCTE,
+        raise_invalid: bool = False,
+        qualify: bool = True,
     ) -> str:
         # only recurse while it's in sources of the current cte
         logger.debug(
@@ -326,9 +346,9 @@ class BaseDialect:
             logger.debug(
                 f"{LOGGER_PREFIX} [{c.address}] rendering concept with lineage that is not already existing, have {cte.source_map}"
             )
-            if isinstance(c.lineage, WindowItem):
+            if isinstance(c.lineage, WINDOW_ITEMS):
                 rendered_order_components = [
-                    f"{self.render_concept_sql(x.expr, cte, alias=False, raise_invalid=raise_invalid)} {x.order.value}"
+                    f"{self.render_expr(x.expr, cte, raise_invalid=raise_invalid)} {x.order.value}"
                     for x in c.lineage.order_by
                 ]
                 rendered_over_components = [
@@ -349,17 +369,17 @@ class BaseDialect:
                     sort=",".join(rendered_order_components),
                     offset=c.lineage.index,
                 )
-            elif isinstance(c.lineage, FilterItem):
+            elif isinstance(c.lineage, FILTER_ITEMS):
                 # for cases when we've optimized this
                 if cte.condition == c.lineage.where.conditional:
                     rval = self.render_expr(c.lineage.content, cte=cte)
                 else:
                     rval = f"CASE WHEN {self.render_expr(c.lineage.where.conditional, cte=cte)} THEN {self.render_concept_sql(c.lineage.content, cte=cte, alias=False, raise_invalid=raise_invalid)} ELSE NULL END"
-            elif isinstance(c.lineage, RowsetItem):
+            elif isinstance(c.lineage, BuildRowsetItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False, raise_invalid=raise_invalid)}"
-            elif isinstance(c.lineage, MultiSelectLineage):
+            elif isinstance(c.lineage, BuildMultiSelectLineage):
                 rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False, raise_invalid=raise_invalid)}"
-            elif isinstance(c.lineage, AggregateWrapper):
+            elif isinstance(c.lineage, AGGREGATE_ITEMS):
                 args = [
                     self.render_expr(v, cte)  # , alias=False)
                     for v in c.lineage.function.arguments
@@ -373,21 +393,21 @@ class BaseDialect:
                     )
                     rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.function.operator](args)}"
             elif (
-                isinstance(c.lineage, Function)
+                isinstance(c.lineage, FUNCTION_ITEMS)
                 and c.lineage.operator == FunctionType.UNION
             ):
                 local_matched = [
                     x
                     for x in c.lineage.arguments
-                    if isinstance(x, Concept) and x.address in cte.output_columns
+                    if isinstance(x, BuildConcept) and x.address in cte.output_columns
                 ]
+                # if we're sorting by the output of the union
                 if not local_matched:
-                    raise SyntaxError(
-                        "Could not find appropriate source element for union"
-                    )
-                rval = self.render_expr(local_matched[0], cte)
+                    rval = c.safe_address
+                else:
+                    rval = self.render_expr(local_matched[0], cte)
             elif (
-                isinstance(c.lineage, Function)
+                isinstance(c.lineage, FUNCTION_ITEMS)
                 and c.lineage.operator == FunctionType.CONSTANT
                 and CONFIG.rendering.parameters is True
                 and c.datatype.data_type != DataType.MAP
@@ -397,9 +417,9 @@ class BaseDialect:
                 args = []
                 for arg in c.lineage.arguments:
                     if (
-                        isinstance(arg, Concept)
+                        isinstance(arg, BuildConcept)
                         and arg.lineage
-                        and isinstance(arg.lineage, Function)
+                        and isinstance(arg.lineage, FUNCTION_ITEMS)
                         and arg.lineage.operator
                         in (
                             FunctionType.ADD,
@@ -410,7 +430,7 @@ class BaseDialect:
                     ):
                         args.append(
                             self.render_expr(
-                                Parenthetical(content=arg),
+                                BuildParenthetical(content=arg),
                                 cte=cte,
                                 raise_invalid=raise_invalid,
                             )
@@ -426,13 +446,13 @@ class BaseDialect:
                     rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
         else:
             logger.debug(
-                f"{LOGGER_PREFIX} [{c.address}] Rendering basic lookup from {cte.source_map.get(c.address, INVALID_REFERENCE_STRING('Missing source reference'))}"
+                f"{LOGGER_PREFIX} [{c.address}] Rendering basic lookup from {cte.source_map.get(c.address,None)}"
             )
 
             raw_content = cte.get_alias(c)
             if isinstance(raw_content, RawColumnExpr):
                 rval = raw_content.text
-            elif isinstance(raw_content, Function):
+            elif isinstance(raw_content, FUNCTION_ITEMS):
                 rval = self.render_expr(
                     raw_content, cte=cte, raise_invalid=raise_invalid
                 )
@@ -444,23 +464,34 @@ class BaseDialect:
                     self.QUOTE_CHARACTER,
                 )
                 if not rval:
-                    if raise_invalid:
-                        raise ValueError(
-                            f"Invalid reference string found in query: {rval}, this should never occur. Please report this issue."
+                    # unions won't have a specific source mapped; just use a generic column reference
+                    # we shouldn't ever have an expression at this point, so will be safe
+                    if isinstance(cte, UnionCTE):
+                        rval = c.safe_address
+                    else:
+                        if raise_invalid:
+                            raise ValueError(
+                                f"Invalid reference string found in query: {rval}, this should never occur. Please report this issue."
+                            )
+                        rval = INVALID_REFERENCE_STRING(
+                            f"Missing source reference to {c.address}"
                         )
-                    rval = INVALID_REFERENCE_STRING(
-                        f"Missing source reference to {c.address}"
-                    )
         return rval
 
     def render_expr(
         self,
         e: Union[
-            Function,
-            Conditional,
-            Comparison,
-            SubselectComparison,
-            Concept,
+            BuildConcept,
+            BuildFunction,
+            BuildConditional,
+            BuildAggregateWrapper,
+            BuildComparison,
+            BuildCaseWhen,
+            BuildCaseElse,
+            BuildSubselectComparison,
+            BuildWindowItem,
+            BuildFilterItem,
+            BuildParenthetical,
             str,
             int,
             list,
@@ -469,9 +500,6 @@ class BaseDialect:
             date,
             datetime,
             DataType,
-            Function,
-            Parenthetical,
-            AggregateWrapper,
             MagicConstants,
             MapWrapper[Any, Any],
             MapType,
@@ -481,18 +509,14 @@ class BaseDialect:
             ListWrapper[Any],
             TupleWrapper[Any],
             DatePart,
-            CaseWhen,
-            CaseElse,
-            WindowItem,
-            FilterItem,
-            # FilterItem
         ],
         cte: Optional[CTE | UnionCTE] = None,
         cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
         raise_invalid: bool = False,
+        qualify: bool = True,
     ) -> str:
-        if isinstance(e, SubselectComparison):
-            if isinstance(e.right, Concept):
+        if isinstance(e, SUBSELECT_COMPARISON_ITEMS):
+            if isinstance(e.right, BuildConcept):
                 # we won't always have an existnce map
                 # so fall back to the normal map
                 lookup_cte = cte
@@ -517,7 +541,10 @@ class BaseDialect:
                         f"Missing source CTE for {e.right.address}"
                     )
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} from {target} where {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} is not null)"
-            elif isinstance(e.right, (ListWrapper, TupleWrapper, Parenthetical, list)):
+            elif isinstance(
+                e.right,
+                (ListWrapper, TupleWrapper, BuildParenthetical, list),
+            ):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
 
             elif isinstance(
@@ -532,12 +559,12 @@ class BaseDialect:
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} ({self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
             else:
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
-        elif isinstance(e, Comparison):
+        elif isinstance(e, COMPARISON_ITEMS):
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
-        elif isinstance(e, Conditional):
+        elif isinstance(e, CONDITIONAL_ITEMS):
             # conditions need to be nested in parentheses
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
-        elif isinstance(e, WindowItem):
+        elif isinstance(e, WINDOW_ITEMS):
             rendered_order_components = [
                 f"{self.render_expr(x.expr, cte, cte_map=cte_map, raise_invalid=raise_invalid)} {x.order.value}"
                 for x in e.order_by
@@ -547,22 +574,22 @@ class BaseDialect:
                 for x in e.over
             ]
             return f"{self.WINDOW_FUNCTION_MAP[e.type](concept = self.render_expr(e.content, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
-        elif isinstance(e, Parenthetical):
+        elif isinstance(e, PARENTHETICAL_ITEMS):
             # conditions need to be nested in parentheses
             if isinstance(e.content, list):
                 return f"( {','.join([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) for x in e.content])} )"
             return f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} )"
-        elif isinstance(e, CaseWhen):
+        elif isinstance(e, CASE_WHEN_ITEMS):
             return f"WHEN {self.render_expr(e.comparison, cte=cte, cte_map=cte_map) } THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) }"
-        elif isinstance(e, CaseElse):
+        elif isinstance(e, CASE_ELSE_ITEMS):
             return f"ELSE {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) }"
-        elif isinstance(e, Function):
+        elif isinstance(e, FUNCTION_ITEMS):
             arguments = []
             for arg in e.arguments:
                 if (
-                    isinstance(arg, Concept)
+                    isinstance(arg, BuildConcept)
                     and arg.lineage
-                    and isinstance(arg.lineage, Function)
+                    and isinstance(arg.lineage, FUNCTION_ITEMS)
                     and arg.lineage.operator
                     in (
                         FunctionType.ADD,
@@ -573,7 +600,7 @@ class BaseDialect:
                 ):
                     arguments.append(
                         self.render_expr(
-                            Parenthetical(content=arg),
+                            BuildParenthetical(content=arg),
                             cte=cte,
                             cte_map=cte_map,
                             raise_invalid=raise_invalid,
@@ -590,15 +617,15 @@ class BaseDialect:
                 return self.FUNCTION_MAP[e.operator](arguments)
 
             return self.FUNCTION_GRAIN_MATCH_MAP[e.operator](arguments)
-        elif isinstance(e, AggregateWrapper):
+        elif isinstance(e, AGGREGATE_ITEMS):
             return self.render_expr(
                 e.function, cte, cte_map=cte_map, raise_invalid=raise_invalid
             )
-        elif isinstance(e, FilterItem):
+        elif isinstance(e, FILTER_ITEMS):
             return f"CASE WHEN {self.render_expr(e.where.conditional,cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} THEN {self.render_expr(e.content, cte, cte_map=cte_map, raise_invalid=raise_invalid)} ELSE NULL END"
-        elif isinstance(e, Concept):
+        elif isinstance(e, BuildConcept):
             if (
-                isinstance(e.lineage, Function)
+                isinstance(e.lineage, FUNCTION_ITEMS)
                 and e.lineage.operator == FunctionType.CONSTANT
                 and CONFIG.rendering.parameters is True
                 and e.datatype.data_type != DataType.MAP
@@ -606,7 +633,11 @@ class BaseDialect:
                 return f":{e.safe_address}"
             if cte:
                 return self.render_concept_sql(
-                    e, cte, alias=False, raise_invalid=raise_invalid
+                    e,
+                    cte,
+                    alias=False,
+                    raise_invalid=raise_invalid,
+                    qualify=qualify,
                 )
             elif cte_map:
                 return f"{cte_map[e.address].name}.{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
@@ -647,6 +678,7 @@ class BaseDialect:
                 [self.render_cte(child).statement for child in cte.internal_ctes]
             )
             if cte.order_by:
+
                 ordering = [
                     self.render_order_item(i, cte, final=True, alias=False)
                     for i in cte.order_by.items
@@ -707,8 +739,8 @@ class BaseDialect:
             final_joins = []
         else:
             final_joins = cte.joins or []
-        where: Conditional | Parenthetical | Comparison | None = None
-        having: Conditional | Parenthetical | Comparison | None = None
+        where: BuildConditional | BuildParenthetical | BuildComparison | None = None
+        having: BuildConditional | BuildParenthetical | BuildComparison | None = None
         materialized = {x for x, v in cte.source_map.items() if v}
         if cte.condition:
             if not cte.group_to_grain or is_scalar_condition(
@@ -811,6 +843,7 @@ class BaseDialect:
             | ProcessedRawSQLStatement
             | ProcessedCopyStatement
         ] = []
+        factory = Factory(environment=environment)
         for statement in statements:
             if isinstance(statement, PersistStatement):
                 if hooks:
@@ -841,12 +874,15 @@ class BaseDialect:
             elif isinstance(statement, ShowStatement):
                 # TODO - encapsulate this a little better
                 if isinstance(statement.content, SelectStatement):
+
                     output.append(
                         ProcessedShowStatement(
                             output_columns=[
-                                environment.concepts[
-                                    DEFAULT_CONCEPTS["query_text"].address
-                                ]
+                                factory.build(
+                                    environment.concepts[
+                                        DEFAULT_CONCEPTS["query_text"].address
+                                    ]
+                                )
                             ],
                             output_values=[
                                 process_query(

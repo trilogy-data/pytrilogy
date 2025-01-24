@@ -1,7 +1,9 @@
 from collections import defaultdict
 
 from trilogy.constants import CONFIG
-from trilogy.core.models.datasource import Datasource
+
+# from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.build import BuildDatasource
 from trilogy.core.models.execute import (
     CTE,
     UnionCTE,
@@ -35,21 +37,25 @@ class InlineDatasource(OptimizationRule):
             if isinstance(parent_cte, UnionCTE):
                 continue
             if not parent_cte.is_root_datasource:
-                self.debug(f"parent {parent_cte.name} is not root")
+                self.debug(f"Cannot inline: parent {parent_cte.name} is not root")
                 continue
             if parent_cte.parent_ctes:
-                self.debug(f"parent {parent_cte.name} has parents")
+                self.debug(f"Cannot inline: parent {parent_cte.name} has parents")
                 continue
             if parent_cte.condition:
-                self.debug(f"parent {parent_cte.name} has condition, cannot be inlined")
+                self.debug(
+                    f"Cannot inline: parent {parent_cte.name} has condition, cannot be inlined"
+                )
                 continue
             raw_root = parent_cte.source.datasources[0]
-            if not isinstance(raw_root, Datasource):
-                self.debug(f"Parent {parent_cte.name} is not datasource")
+            if not isinstance(raw_root, BuildDatasource):
+                self.debug(f"Cannot inline: Parent {parent_cte.name} is not datasource")
                 continue
-            root: Datasource = raw_root
+            root: BuildDatasource = raw_root
             if not root.can_be_inlined:
-                self.debug(f"Parent {parent_cte.name} datasource is not inlineable")
+                self.debug(
+                    f"Cannot inline: Parent {parent_cte.name} datasource is not inlineable"
+                )
                 continue
             root_outputs = {x.address for x in root.output_concepts}
             inherited = {
@@ -58,12 +64,12 @@ class InlineDatasource(OptimizationRule):
             if not inherited.issubset(root_outputs):
                 cte_missing = inherited - root_outputs
                 self.log(
-                    f"Not all {parent_cte.name} require inputs are found on datasource, missing {cte_missing}"
+                    f"Cannot inline: Not all required inputs to {parent_cte.name} are found on datasource, missing {cte_missing}"
                 )
                 continue
             if not root.grain.issubset(parent_cte.grain):
                 self.log(
-                    f"{parent_cte.name} is at wrong grain to inline ({root.grain} vs {parent_cte.grain})"
+                    f"Cannot inline: {parent_cte.name} is at wrong grain to inline ({root.grain} vs {parent_cte.grain})"
                 )
                 continue
             to_inline.append(parent_cte)

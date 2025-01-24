@@ -1,8 +1,8 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models.author import Concept, WhereClause, WindowItem
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build import BuildConcept, BuildWhereClause, BuildWindowItem
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, StrategyNode, WindowNode
 from trilogy.core.processing.utility import padding
 from trilogy.utility import unique
@@ -10,40 +10,42 @@ from trilogy.utility import unique
 LOGGER_PREFIX = "[GEN_WINDOW_NODE]"
 
 
+WINDOW_TYPES = (BuildWindowItem,)
+
+
 def resolve_window_parent_concepts(
-    concept: Concept, environment: Environment
-) -> tuple[Concept, List[Concept]]:
-    if not isinstance(concept.lineage, WindowItem):
+    concept: BuildConcept, environment: BuildEnvironment
+) -> tuple[BuildConcept, List[BuildConcept]]:
+    if not isinstance(concept.lineage, WINDOW_TYPES):
         raise ValueError
     base = []
+    logger.info(concept.lineage)
     if concept.lineage.over:
         base += concept.lineage.over
     if concept.lineage.order_by:
         for item in concept.lineage.order_by:
-            # TODO: we do want to use the rehydrated value, but
-            # that introduces a circular dependency on an aggregate
-            # that is grouped by a window
-            # need to figure out how to resolve this
-            # base += [environment.concepts[item.expr.output.address]]
-            base += [item.expr.output]
+            base += item.concept_arguments
     return concept.lineage.content, unique(base, "address")
 
 
 def gen_window_node(
-    concept: Concept,
-    local_optional: list[Concept],
-    environment: Environment,
+    concept: BuildConcept,
+    local_optional: list[BuildConcept],
+    environment: BuildEnvironment,
     g,
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     base, parent_concepts = resolve_window_parent_concepts(concept, environment)
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} generating window node for {concept} with parents {parent_concepts}"
+    )
     equivalent_optional = [
         x
         for x in local_optional
-        if isinstance(x.lineage, WindowItem)
+        if isinstance(x.lineage, WINDOW_TYPES)
         and resolve_window_parent_concepts(x, environment)[1] == parent_concepts
     ]
 
@@ -53,7 +55,7 @@ def gen_window_node(
     targets = [base]
     if equivalent_optional:
         for x in equivalent_optional:
-            assert isinstance(x.lineage, WindowItem)
+            assert isinstance(x.lineage, WINDOW_TYPES)
             targets.append(x.lineage.content)
 
     parent_node: StrategyNode = source_concepts(

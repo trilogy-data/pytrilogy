@@ -3,7 +3,7 @@ from datetime import date, datetime
 
 from trilogy import Dialects
 from trilogy.core.enums import ComparisonOperator
-from trilogy.core.models.author import Comparison
+from trilogy.core.models.build import BuildComparison
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
@@ -52,7 +52,7 @@ where order_date > '2024-01-01'::date
 
     x.parse_text(declarations)
 
-    env = x.environment
+    env = x.environment.materialize_for_select()
 
     unions = get_union_sources(env.datasources.values(), [env.concepts["order_id"]])
     assert unions, unions
@@ -88,6 +88,7 @@ key z float;
 key a datetime;
 """
     )
+    env = env.materialize_for_select()
 
     test_cases = [
         ConditionalTest(2, "x"),
@@ -95,12 +96,12 @@ key a datetime;
         ConditionalTest(datetime.now(), "a"),
     ]
     for case in test_cases:
-        left = Comparison(
+        left = BuildComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.GT,
         )
-        right = Comparison(
+        right = BuildComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.LTE,
@@ -109,12 +110,12 @@ key a datetime;
 
         assert simplify_conditions(conditions)
 
-        left = Comparison(
+        left = BuildComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.GT,
         )
-        right = Comparison(
+        right = BuildComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.LT,
@@ -123,17 +124,17 @@ key a datetime;
 
         assert not simplify_conditions(conditions)
 
-        left = Comparison(
+        left = BuildComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.GT,
         )
-        middle = Comparison(
+        middle = BuildComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.EQ,
         )
-        right = Comparison(
+        right = BuildComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.LT,

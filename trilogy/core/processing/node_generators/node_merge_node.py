@@ -7,8 +7,8 @@ from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
 from trilogy.core.graph_models import concept_to_node
-from trilogy.core.models.author import Concept, Conditional, WhereClause
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build import BuildConcept, BuildConditional, BuildWhereClause
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import padding
 from trilogy.utility import unique
@@ -34,7 +34,7 @@ def extract_address(node: str):
     return node.split("~")[1].split("@")[0]
 
 
-def extract_concept(node: str, env: Environment):
+def extract_concept(node: str, env: BuildEnvironment):
     if node in env.alias_origin_lookup:
         return env.alias_origin_lookup[node]
     return env.concepts[node]
@@ -77,7 +77,7 @@ def extract_ds_components(g: nx.DiGraph, nodelist: list[str]) -> list[list[str]]
 def determine_induced_minimal_nodes(
     G: nx.DiGraph,
     nodelist: list[str],
-    environment: Environment,
+    environment: BuildEnvironment,
     filter_downstream: bool,
     accept_partial: bool = False,
 ) -> nx.DiGraph | None:
@@ -87,7 +87,7 @@ def determine_induced_minimal_nodes(
 
     for node in G.nodes:
         if concepts.get(node):
-            lookup: Concept = concepts[node]
+            lookup: BuildConcept = concepts[node]
             if lookup.derivation in (Derivation.CONSTANT,):
                 nodes_to_remove.append(node)
             # purge a node if we're already looking for all it's parents
@@ -107,8 +107,8 @@ def determine_induced_minimal_nodes(
 
     try:
         paths = nx.multi_source_dijkstra_path(H, nodelist)
-    except nx.exception.NodeNotFound:
-        logger.debug(f"Unable to find paths for {nodelist}")
+    except nx.exception.NodeNotFound as e:
+        logger.debug(f"Unable to find paths for {nodelist}- {str(e)}")
         return None
     H.remove_nodes_from(list(x for x in H.nodes if x not in paths))
     sG: nx.Graph = ax.steinertree.steiner_tree(H, nodelist).copy()
@@ -151,7 +151,7 @@ def determine_induced_minimal_nodes(
 
 
 def detect_ambiguity_and_raise(
-    all_concepts: list[Concept], reduced_concept_sets: list[set[str]]
+    all_concepts: list[BuildConcept], reduced_concept_sets: list[set[str]]
 ) -> None:
     final_candidates: list[set[str]] = []
     common: set[str] = set()
@@ -171,7 +171,7 @@ def detect_ambiguity_and_raise(
         )
 
 
-def has_synonym(concept: Concept, others: list[list[Concept]]) -> bool:
+def has_synonym(concept: BuildConcept, others: list[list[BuildConcept]]) -> bool:
     return any(
         c.address in concept.pseudonyms or concept.address in c.pseudonyms
         for sublist in others
@@ -179,7 +179,9 @@ def has_synonym(concept: Concept, others: list[list[Concept]]) -> bool:
     )
 
 
-def filter_relevant_subgraphs(subgraphs: list[list[Concept]]) -> list[list[Concept]]:
+def filter_relevant_subgraphs(
+    subgraphs: list[list[BuildConcept]],
+) -> list[list[BuildConcept]]:
     return [
         subgraph
         for subgraph in subgraphs
@@ -191,20 +193,39 @@ def filter_relevant_subgraphs(subgraphs: list[list[Concept]]) -> list[list[Conce
     ]
 
 
+def filter_duplicate_subgraphs(
+    subgraphs: list[list[BuildConcept]],
+) -> list[list[BuildConcept]]:
+    seen: list[set[str]] = []
+
+    for graph in subgraphs:
+        seen.append(set([x.address for x in graph]))
+    final = []
+    # sometimes w can get two subcomponents that are the same
+    # due to alias resolution
+    # if so, drop any that are strict subsets.
+    for graph in subgraphs:
+        set_x = set([x.address for x in graph])
+        if any([set_x.issubset(y) and set_x != y for y in seen]):
+            continue
+        final.append(graph)
+    return final
+
+
 def resolve_weak_components(
-    all_concepts: List[Concept],
-    environment: Environment,
+    all_concepts: List[BuildConcept],
+    environment: BuildEnvironment,
     environment_graph: nx.DiGraph,
     filter_downstream: bool = True,
     accept_partial: bool = False,
-) -> list[list[Concept]] | None:
+) -> list[list[BuildConcept]] | None:
     break_flag = False
     found = []
     search_graph = environment_graph.copy()
     reduced_concept_sets: list[set[str]] = []
 
     # loop through, removing new nodes we find
-    # to ensure there are not ambiguous loops
+    # to ensure there are not ambiguous discovery paths
     # (if we did not care about raising ambiguity errors, we could just use the first one)
     count = 0
     node_list = [
@@ -215,6 +236,8 @@ def resolve_weak_components(
     synonyms: set[str] = set()
     for x in all_concepts:
         synonyms = synonyms.union(x.pseudonyms)
+    # from trilogy.hooks.graph_hook import GraphHook
+    # GraphHook().query_graph_built(search_graph, highlight_nodes=[concept_to_node(c.with_default_grain()) for c in all_concepts if "__preql_internal" not in c.address])
     while break_flag is not True:
         count += 1
         if count > AMBIGUITY_CHECK_LIMIT:
@@ -243,6 +266,7 @@ def resolve_weak_components(
             new = [x for x in all_graph_concepts if x.address not in all_concepts]
 
             new_addresses = set([x.address for x in new if x.address not in synonyms])
+
             if not new:
                 break_flag = True
             # remove our new nodes for the next search path
@@ -268,7 +292,7 @@ def resolve_weak_components(
     # take our first one as the actual graph
     g = found[0]
 
-    subgraphs: list[list[Concept]] = []
+    subgraphs: list[list[BuildConcept]] = []
     # components = nx.strongly_connected_components(g)
     node_list = [x for x in g.nodes if x.startswith("c~")]
     components = extract_ds_components(g, node_list)
@@ -284,20 +308,22 @@ def resolve_weak_components(
         if not sub_component:
             continue
         subgraphs.append(sub_component)
-    return subgraphs
+    final = filter_duplicate_subgraphs(subgraphs)
+    return final
     # return filter_relevant_subgraphs(subgraphs)
 
 
 def subgraphs_to_merge_node(
-    concept_subgraphs: list[list[Concept]],
+    concept_subgraphs: list[list[BuildConcept]],
     depth: int,
-    all_concepts: List[Concept],
+    all_concepts: List[BuildConcept],
     environment,
     g,
     source_concepts,
     history,
     conditions,
-    search_conditions: WhereClause | None = None,
+    output_concepts: List[BuildConcept],
+    search_conditions: BuildWhereClause | None = None,
     enable_early_exit: bool = True,
 ):
     parents: List[StrategyNode] = []
@@ -335,16 +361,13 @@ def subgraphs_to_merge_node(
             f"{padding(depth)}{LOGGER_PREFIX} only one parent node, exiting early w/ {[c.address for c in parents[0].output_concepts]}"
         )
         return parents[0]
-    base_output = [x for x in all_concepts]
-    # for x in base_output:
-    #     if x not in input_c:
-    #         input_c.append(x)
     return MergeNode(
         input_concepts=unique(input_c, "address"),
-        output_concepts=base_output,
+        output_concepts=output_concepts,
         environment=environment,
         parents=parents,
         depth=depth,
+        # hidden_concepts=[]
         # conditions=conditions,
         # conditions=search_conditions.conditional,
         # preexisting_conditions=search_conditions.conditional,
@@ -353,33 +376,41 @@ def subgraphs_to_merge_node(
 
 
 def gen_merge_node(
-    all_concepts: List[Concept],
+    all_concepts: List[BuildConcept],
     g: nx.DiGraph,
-    environment: Environment,
+    environment: BuildEnvironment,
     depth: int,
     source_concepts,
     accept_partial: bool = False,
     history: History | None = None,
-    conditions: Conditional | None = None,
-    search_conditions: WhereClause | None = None,
+    conditions: BuildConditional | None = None,
+    search_conditions: BuildWhereClause | None = None,
 ) -> Optional[MergeNode]:
     if search_conditions:
-        all_concepts = unique(all_concepts + search_conditions.row_arguments, "address")
+        all_search_concepts = unique(
+            all_concepts + list(search_conditions.row_arguments), "address"
+        )
+    else:
+        all_search_concepts = all_concepts
     for filter_downstream in [True, False]:
         weak_resolve = resolve_weak_components(
-            all_concepts,
+            all_search_concepts,
             environment,
             g,
             filter_downstream=filter_downstream,
             accept_partial=accept_partial,
         )
-        if weak_resolve:
+        if not weak_resolve:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} wasn't able to resolve graph through intermediate concept injection with accept_partial {accept_partial}, filter_downstream {filter_downstream}"
+            )
+        else:
             log_graph = [[y.address for y in x] for x in weak_resolve]
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} Was able to resolve graph through weak component resolution - final graph {log_graph}"
             )
             for flat in log_graph:
-                if set(flat) == set([x.address for x in all_concepts]):
+                if set(flat) == set([x.address for x in all_search_concepts]):
                     logger.info(
                         f"{padding(depth)}{LOGGER_PREFIX} expanded concept resolution was identical to search resolution; breaking to avoid recursion error."
                     )
@@ -387,18 +418,19 @@ def gen_merge_node(
             return subgraphs_to_merge_node(
                 weak_resolve,
                 depth=depth,
-                all_concepts=all_concepts,
+                all_concepts=all_search_concepts,
                 environment=environment,
                 g=g,
                 source_concepts=source_concepts,
                 history=history,
                 conditions=conditions,
                 search_conditions=search_conditions,
+                output_concepts=all_concepts,
             )
 
     # one concept handling may need to be kicked to alias
-    if len(all_concepts) == 1:
-        concept = all_concepts[0]
+    if len(all_search_concepts) == 1:
+        concept = all_search_concepts[0]
         for v in concept.pseudonyms:
             test = subgraphs_to_merge_node(
                 [[concept, environment.alias_origin_lookup[v]]],
@@ -411,6 +443,7 @@ def gen_merge_node(
                 conditions=conditions,
                 enable_early_exit=False,
                 search_conditions=search_conditions,
+                output_concepts=[concept],
             )
             if test:
                 return test

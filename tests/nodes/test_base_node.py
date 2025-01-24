@@ -18,6 +18,7 @@ def test_hide():
 key order_id int;
 property order_id.profit float;"""
     )
+    env = env.materialize_for_select()
     x = StrategyNode(
         input_concepts=[],
         output_concepts=[env.concepts["order_id"]],
@@ -37,6 +38,7 @@ def test_partial():
 key order_id int;
 property order_id.profit float;"""
     )
+    env = env.materialize_for_select()
     x = StrategyNode(
         input_concepts=[],
         output_concepts=[env.concepts["order_id"]],
@@ -58,6 +60,7 @@ key product_id int;
 property product_id.price float;
               """
     )
+    env = env.materialize_for_select()
     x = StrategyNode(
         input_concepts=[],
         output_concepts=[env.concepts["order_id"], env.concepts["product_id"]],

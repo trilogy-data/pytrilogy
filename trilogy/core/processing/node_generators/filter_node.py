@@ -1,8 +1,13 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models.author import Concept, FilterItem, Grain, WhereClause
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildFilterItem,
+    BuildGrain,
+    BuildWhereClause,
+)
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
 )
@@ -17,28 +22,30 @@ from trilogy.core.processing.utility import is_scalar_condition, padding, unique
 
 LOGGER_PREFIX = "[GEN_FILTER_NODE]"
 
+FILTER_TYPES = (BuildFilterItem,)
+
 
 def gen_filter_node(
-    concept: Concept,
-    local_optional: List[Concept],
-    environment: Environment,
+    concept: BuildConcept,
+    local_optional: List[BuildConcept],
+    environment: BuildEnvironment,
     g,
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     immediate_parent, parent_row_concepts, parent_existence_concepts = (
         resolve_filter_parent_concepts(concept, environment)
     )
-    if not isinstance(concept.lineage, FilterItem):
-        raise SyntaxError('Filter node must have a lineage of type "FilterItem"')
+    if not isinstance(concept.lineage, FILTER_TYPES):
+        raise SyntaxError('Filter node must have a filter type lineage"')
     where = concept.lineage.where
 
-    optional_included: list[Concept] = []
+    optional_included: list[BuildConcept] = []
 
     for x in local_optional:
-        if isinstance(x.lineage, FilterItem):
+        if isinstance(x.lineage, FILTER_TYPES):
             if concept.lineage.where == where:
                 logger.info(
                     f"{padding(depth)}{LOGGER_PREFIX} fetching {x.lineage.content.address} as optional parent with same filter conditions "
@@ -49,7 +56,7 @@ def gen_filter_node(
         if conditions and conditions == where:
             optional_included.append(x)
     logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} filter {concept.address} derived from {immediate_parent.address} row parents {[x.address for x in parent_row_concepts]} and {[[y.address] for x  in parent_existence_concepts for y  in x]} existence parents"
+        f"{padding(depth)}{LOGGER_PREFIX} filter `{concept}` condition `{concept.lineage.where}` derived from {immediate_parent.address} row parents {[x.address for x in parent_row_concepts]} and {[[y.address] for x  in parent_existence_concepts for y  in x]} existence parents"
     )
     # we'll populate this with the row parent
     # and the existence parent(s)
@@ -137,7 +144,7 @@ def gen_filter_node(
         parent.add_existence_concepts(flattened_existence, False).set_output_concepts(
             expected_output, False
         )
-        parent.grain = Grain.from_concepts(
+        parent.grain = BuildGrain.from_concepts(
             (
                 [environment.concepts[k] for k in immediate_parent.keys]
                 if immediate_parent.keys
@@ -163,7 +170,7 @@ def gen_filter_node(
             output_concepts=[concept, immediate_parent] + parent_row_concepts,
             environment=environment,
             parents=core_parents,
-            grain=Grain.from_concepts(
+            grain=BuildGrain.from_concepts(
                 [immediate_parent] + parent_row_concepts,
             ),
             preexisting_conditions=conditions.conditional if conditions else None,
@@ -186,7 +193,7 @@ def gen_filter_node(
         )
         return filter_node
 
-    enrich_node = source_concepts(  # this fetches the parent + join keys
+    enrich_node: StrategyNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
         mandatory_list=[immediate_parent] + parent_row_concepts + local_optional,
         environment=environment,
@@ -195,6 +202,11 @@ def gen_filter_node(
         history=history,
         conditions=conditions,
     )
+    if not enrich_node:
+        logger.error(
+            f"{padding(depth)}{LOGGER_PREFIX} filter node enrichment node could not be found"
+        )
+        return filter_node
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} returning filter node and enrich node with {enrich_node.output_concepts} and {enrich_node.input_concepts}"
     )

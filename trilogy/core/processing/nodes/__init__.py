@@ -1,6 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 
-from trilogy.core.models.author import Concept, WhereClause
+from trilogy.core.models.build import BuildConcept, BuildWhereClause
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.environment import Environment
 
 from .base_node import NodeJoin, StrategyNode
@@ -14,6 +15,7 @@ from .window_node import WindowNode
 
 
 class History(BaseModel):
+    base_environment: Environment
     history: dict[str, StrategyNode | None] = Field(default_factory=dict)
     select_history: dict[str, StrategyNode | None] = Field(default_factory=dict)
     started: set[str] = Field(default_factory=set)
@@ -21,9 +23,9 @@ class History(BaseModel):
 
     def _concepts_to_lookup(
         self,
-        search: list[Concept],
+        search: list[BuildConcept],
         accept_partial: bool,
-        conditions: WhereClause | None = None,
+        conditions: BuildWhereClause | None = None,
     ) -> str:
         if conditions:
             return (
@@ -35,10 +37,10 @@ class History(BaseModel):
 
     def search_to_history(
         self,
-        search: list[Concept],
+        search: list[BuildConcept],
         accept_partial: bool,
         output: StrategyNode | None,
-        conditions: WhereClause | None = None,
+        conditions: BuildWhereClause | None = None,
     ):
         self.history[
             self._concepts_to_lookup(search, accept_partial, conditions=conditions)
@@ -46,8 +48,8 @@ class History(BaseModel):
 
     def get_history(
         self,
-        search: list[Concept],
-        conditions: WhereClause | None = None,
+        search: list[BuildConcept],
+        conditions: BuildWhereClause | None = None,
         accept_partial: bool = False,
         parent_key: str = "",
     ) -> StrategyNode | None | bool:
@@ -69,9 +71,9 @@ class History(BaseModel):
 
     def log_start(
         self,
-        search: list[Concept],
+        search: list[BuildConcept],
         accept_partial: bool = False,
-        conditions: WhereClause | None = None,
+        conditions: BuildWhereClause | None = None,
     ):
         self.started.add(
             self._concepts_to_lookup(
@@ -83,9 +85,9 @@ class History(BaseModel):
 
     def check_started(
         self,
-        search: list[Concept],
+        search: list[BuildConcept],
         accept_partial: bool = False,
-        conditions: WhereClause | None = None,
+        conditions: BuildWhereClause | None = None,
     ):
         return (
             self._concepts_to_lookup(
@@ -98,12 +100,12 @@ class History(BaseModel):
 
     def _select_concepts_to_lookup(
         self,
-        main: Concept,
-        search: list[Concept],
+        main: BuildConcept,
+        search: list[BuildConcept],
         accept_partial: bool,
         fail_if_not_found: bool,
         accept_partial_optional: bool,
-        conditions: WhereClause | None = None,
+        conditions: BuildWhereClause | None = None,
     ) -> str:
         return (
             str(main.address)
@@ -117,16 +119,16 @@ class History(BaseModel):
 
     def gen_select_node(
         self,
-        concept: Concept,
-        local_optional: list[Concept],
-        environment: Environment,
+        concept: BuildConcept,
+        local_optional: list[BuildConcept],
+        environment: BuildEnvironment,
         g,
         depth: int,
         source_concepts,
         fail_if_not_found: bool = False,
         accept_partial: bool = False,
         accept_partial_optional: bool = False,
-        conditions: WhereClause | None = None,
+        conditions: BuildWhereClause | None = None,
     ) -> StrategyNode | None:
         from trilogy.core.processing.node_generators.select_node import gen_select_node
 

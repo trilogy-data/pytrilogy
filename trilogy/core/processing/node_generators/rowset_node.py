@@ -3,16 +3,16 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import UnresolvableQueryException
-from trilogy.core.models.author import (
-    Concept,
-    Grain,
-    MultiSelectLineage,
-    RowsetItem,
-    RowsetLineage,
-    SelectLineage,
-    WhereClause,
+from trilogy.core.models.author import MultiSelectLineage, SelectLineage
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildGrain,
+    BuildRowsetItem,
+    BuildRowsetLineage,
+    BuildWhereClause,
+    Factory,
 )
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
 
@@ -20,26 +20,26 @@ LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
 
 
 def gen_rowset_node(
-    concept: Concept,
-    local_optional: List[Concept],
-    environment: Environment,
+    concept: BuildConcept,
+    local_optional: List[BuildConcept],
+    environment: BuildEnvironment,
     g,
     depth: int,
     source_concepts,
-    history: History | None = None,
-    conditions: WhereClause | None = None,
+    history: History,
+    conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     from trilogy.core.query_processor import get_query_node
 
-    if not isinstance(concept.lineage, RowsetItem):
+    if not isinstance(concept.lineage, BuildRowsetItem):
         raise SyntaxError(
-            f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {RowsetItem}"
+            f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {BuildRowsetItem}"
         )
-    lineage: RowsetItem = concept.lineage
-    rowset: RowsetLineage = lineage.rowset
+    lineage: BuildRowsetItem = concept.lineage
+    rowset: BuildRowsetLineage = lineage.rowset
     select: SelectLineage | MultiSelectLineage = lineage.rowset.select
 
-    node = get_query_node(environment, select)
+    node = get_query_node(history.base_environment, select)
 
     if not node:
         logger.info(
@@ -49,22 +49,28 @@ def gen_rowset_node(
             f"Cannot generate parent select for concept {concept} in rowset {rowset.name}; ensure the rowset is a valid statement."
         )
     enrichment = set([x.address for x in local_optional])
-    rowset_relevant = [x for x in rowset.derived_concepts]
-    logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} rowset relevant nodes are {rowset_relevant}"
-    )
-    select_hidden = select.hidden_components
+
+    factory = Factory(environment=history.base_environment, grain=select.grain)
+    rowset_relevant: list[BuildConcept] = [
+        v
+        for v in environment.concepts.values()
+        if isinstance(v.lineage, BuildRowsetItem)
+        and v.lineage.rowset.name == rowset.name
+    ]
+    # logger.info(
+    #     f"{padding(depth)}{LOGGER_PREFIX} rowset relevant nodes are {rowset_relevant}"
+    # )
+    select_hidden = node.hidden_concepts
     rowset_hidden = [
         x
-        for x in rowset.derived_concepts
-        if isinstance(x.lineage, RowsetItem)
+        for x in rowset_relevant
+        if isinstance(x.lineage, BuildRowsetItem)
         and x.lineage.content.address in select_hidden
     ]
     additional_relevant = [
-        x for x in select.output_components if x.address in enrichment
+        factory.build(x) for x in select.output_components if x.address in enrichment
     ]
     # add in other other concepts
-
     node.add_output_concepts(rowset_relevant + additional_relevant)
     if select.where_clause:
         for item in additional_relevant:
@@ -83,7 +89,7 @@ def gen_rowset_node(
     assert node.resolution_cache
     # assume grain to be output of select
     # but don't include anything hidden(the non-rowset concepts)
-    node.grain = Grain.from_concepts(
+    node.grain = BuildGrain.from_concepts(
         [
             x
             for x in node.output_concepts

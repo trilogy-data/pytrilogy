@@ -15,20 +15,22 @@ from trilogy.core.enums import (
     JoinType,
     Purpose,
 )
-from trilogy.core.models.author import (
-    AggregateWrapper,
-    CaseElse,
-    CaseWhen,
-    Comparison,
-    Concept,
-    Conditional,
-    FilterItem,
-    Function,
-    LooseConceptList,
-    Parenthetical,
-    SubselectComparison,
-    WindowItem,
+from trilogy.core.models.build import (
+    BuildAggregateWrapper,
+    BuildCaseElse,
+    BuildCaseWhen,
+    BuildComparison,
+    BuildConcept,
+    BuildConditional,
+    BuildDatasource,
+    BuildFilterItem,
+    BuildFunction,
+    BuildParenthetical,
+    BuildSubselectComparison,
+    BuildWindowItem,
+    LooseBuildConceptList,
 )
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import (
     DataType,
     ListType,
@@ -38,8 +40,6 @@ from trilogy.core.models.core import (
     NumericType,
     TupleWrapper,
 )
-from trilogy.core.models.datasource import Datasource
-from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
     CTE,
     BaseJoin,
@@ -51,6 +51,15 @@ from trilogy.core.models.execute import (
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.core.statements.execute import ProcessedQuery
 from trilogy.utility import unique
+
+AGGREGATE_TYPES = (BuildAggregateWrapper,)
+SUBSELECT_TYPES = (BuildSubselectComparison,)
+COMPARISON_TYPES = (BuildComparison,)
+FUNCTION_TYPES = (BuildFunction,)
+PARENTHETICAL_TYPES = (BuildParenthetical,)
+CONDITIONAL_TYPES = (BuildConditional,)
+CONCEPT_TYPES = (BuildConcept,)
+WINDOW_TYPES = (BuildWindowItem,)
 
 
 class NodeType(Enum):
@@ -216,11 +225,10 @@ def resolve_join_order_v2(
     return output
 
 
-def concept_to_relevant_joins(concepts: list[Concept]) -> List[Concept]:
-    addresses = LooseConceptList(concepts=concepts)
-    sub_props = LooseConceptList(
+def concept_to_relevant_joins(concepts: list[BuildConcept]) -> List[BuildConcept]:
+    sub_props = LooseBuildConceptList(
         concepts=[
-            x for x in concepts if x.keys and all([key in addresses for key in x.keys])
+            x for x in concepts if x.keys and all([key in concepts for key in x.keys])
         ]
     )
     final = [c for c in concepts if c.address not in sub_props]
@@ -241,7 +249,7 @@ def create_log_lambda(prefix: str, depth: int, logger: Logger):
 
 
 def calculate_graph_relevance(
-    g: nx.DiGraph, subset_nodes: set[str], concepts: set[Concept]
+    g: nx.DiGraph, subset_nodes: set[str], concepts: set[BuildConcept]
 ) -> int:
     """Calculate the relevance of each node in a graph
     Relevance is used to prune irrelevant nodes from the graph
@@ -276,10 +284,10 @@ def calculate_graph_relevance(
 
 def add_node_join_concept(
     graph: nx.DiGraph,
-    concept: Concept,
-    concept_map: dict[str, Concept],
+    concept: BuildConcept,
+    concept_map: dict[str, BuildConcept],
     ds_node: str,
-    environment: Environment,
+    environment: BuildEnvironment,
 ):
     name = f"c~{concept.address}"
     graph.add_node(name, type=NodeType.CONCEPT)
@@ -302,8 +310,8 @@ def add_node_join_concept(
 
 
 def resolve_instantiated_concept(
-    concept: Concept, datasource: QueryDatasource | Datasource
-) -> Concept:
+    concept: BuildConcept, datasource: QueryDatasource | BuildDatasource
+) -> BuildConcept:
     if concept.address in datasource.output_concepts:
         return concept
     for k in concept.pseudonyms:
@@ -341,14 +349,14 @@ def reduce_concept_pairs(input: list[ConceptPair]) -> list[ConceptPair]:
 
 
 def get_node_joins(
-    datasources: List[QueryDatasource | Datasource],
-    environment: Environment,
+    datasources: List[QueryDatasource | BuildDatasource],
+    environment: BuildEnvironment,
     # concepts:List[Concept],
 ) -> List[BaseJoin]:
     graph = nx.Graph()
     partials: dict[str, list[str]] = {}
-    ds_node_map: dict[str, QueryDatasource | Datasource] = {}
-    concept_map: dict[str, Concept] = {}
+    ds_node_map: dict[str, QueryDatasource | BuildDatasource] = {}
+    concept_map: dict[str, BuildConcept] = {}
     for datasource in datasources:
         ds_node = f"ds~{datasource.identifier}"
         ds_node_map[ds_node] = datasource
@@ -375,7 +383,7 @@ def get_node_joins(
             concepts=[] if not j.keys else None,
             concept_pairs=reduce_concept_pairs(
                 [
-                    ConceptPair(
+                    ConceptPair.model_construct(
                         left=resolve_instantiated_concept(
                             concept_map[concept], ds_node_map[k]
                         ),
@@ -394,7 +402,7 @@ def get_node_joins(
 
 
 def get_disconnected_components(
-    concept_map: Dict[str, Set[Concept]]
+    concept_map: Dict[str, Set[BuildConcept]]
 ) -> Tuple[int, List]:
     """Find if any of the datasources are not linked"""
     import networkx as nx
@@ -422,18 +430,18 @@ def is_scalar_condition(
         | date
         | datetime
         | list[Any]
-        | WindowItem
-        | FilterItem
-        | Concept
-        | Comparison
-        | Conditional
-        | Parenthetical
-        | Function
-        | AggregateWrapper
+        | BuildConcept
+        | BuildWindowItem
+        | BuildFilterItem
+        | BuildConditional
+        | BuildComparison
+        | BuildParenthetical
+        | BuildFunction
+        | BuildAggregateWrapper
+        | BuildCaseWhen
+        | BuildCaseElse
         | MagicConstants
         | DataType
-        | CaseWhen
-        | CaseElse
         | MapWrapper[Any, Any]
         | ListType
         | MapType
@@ -444,64 +452,76 @@ def is_scalar_condition(
     ),
     materialized: set[str] | None = None,
 ) -> bool:
-    if isinstance(element, Parenthetical):
+    if isinstance(element, PARENTHETICAL_TYPES):
         return is_scalar_condition(element.content, materialized)
-    elif isinstance(element, SubselectComparison):
+    elif isinstance(element, SUBSELECT_TYPES):
         return True
-    elif isinstance(element, Comparison):
+    elif isinstance(element, COMPARISON_TYPES):
         return is_scalar_condition(element.left, materialized) and is_scalar_condition(
             element.right, materialized
         )
-    elif isinstance(element, Function):
+    elif isinstance(element, FUNCTION_TYPES):
         if element.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
             return False
         return all([is_scalar_condition(x, materialized) for x in element.arguments])
-    elif isinstance(element, Concept):
+    elif isinstance(element, CONCEPT_TYPES):
         if materialized and element.address in materialized:
             return True
-        if element.lineage and isinstance(element.lineage, AggregateWrapper):
+        if element.lineage and isinstance(element.lineage, AGGREGATE_TYPES):
             return is_scalar_condition(element.lineage, materialized)
-        if element.lineage and isinstance(element.lineage, Function):
+        if element.lineage and isinstance(element.lineage, FUNCTION_TYPES):
             return is_scalar_condition(element.lineage, materialized)
         return True
-    elif isinstance(element, AggregateWrapper):
+    elif isinstance(element, AGGREGATE_TYPES):
         return is_scalar_condition(element.function, materialized)
-    elif isinstance(element, Conditional):
+    elif isinstance(element, CONDITIONAL_TYPES):
         return is_scalar_condition(element.left, materialized) and is_scalar_condition(
             element.right, materialized
         )
-    elif isinstance(element, CaseWhen):
+    elif isinstance(element, (BuildCaseWhen,)):
         return is_scalar_condition(
             element.comparison, materialized
         ) and is_scalar_condition(element.expr, materialized)
-    elif isinstance(element, CaseElse):
+    elif isinstance(element, (BuildCaseElse,)):
         return is_scalar_condition(element.expr, materialized)
     elif isinstance(element, MagicConstants):
         return True
     return True
 
 
+CONDITION_TYPES = (
+    BuildSubselectComparison,
+    BuildComparison,
+    BuildConditional,
+    BuildParenthetical,
+)
+
+
 def decompose_condition(
-    conditional: Conditional | Comparison | Parenthetical,
-) -> list[SubselectComparison | Comparison | Conditional | Parenthetical]:
-    chunks: list[SubselectComparison | Comparison | Conditional | Parenthetical] = []
-    if not isinstance(conditional, Conditional):
+    conditional: BuildConditional | BuildComparison | BuildParenthetical,
+) -> list[
+    BuildSubselectComparison | BuildComparison | BuildConditional | BuildParenthetical
+]:
+    chunks: list[
+        BuildSubselectComparison
+        | BuildComparison
+        | BuildConditional
+        | BuildParenthetical
+    ] = []
+    if not isinstance(conditional, BuildConditional):
         return [conditional]
     if conditional.operator == BooleanOperator.AND:
         if not (
-            isinstance(
-                conditional.left,
-                (SubselectComparison, Comparison, Conditional, Parenthetical),
-            )
+            isinstance(conditional.left, CONDITION_TYPES)
             and isinstance(
                 conditional.right,
-                (SubselectComparison, Comparison, Conditional, Parenthetical),
+                CONDITION_TYPES,
             )
         ):
             chunks.append(conditional)
         else:
             for val in [conditional.left, conditional.right]:
-                if isinstance(val, Conditional):
+                if isinstance(val, BuildConditional):
                     chunks.extend(decompose_condition(val))
                 else:
                     chunks.append(val)
@@ -511,8 +531,8 @@ def decompose_condition(
 
 
 def find_nullable_concepts(
-    source_map: Dict[str, set[Datasource | QueryDatasource | UnnestJoin]],
-    datasources: List[Datasource | QueryDatasource],
+    source_map: Dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]],
+    datasources: List[BuildDatasource | QueryDatasource],
     joins: List[BaseJoin | UnnestJoin],
 ) -> List[str]:
     """give a set of datasources and joins, find the concepts
@@ -522,7 +542,7 @@ def find_nullable_concepts(
     datasource_map = {
         x.identifier: x
         for x in datasources
-        if isinstance(x, (Datasource, QueryDatasource))
+        if isinstance(x, (BuildDatasource, QueryDatasource))
     }
     for join in joins:
         is_on_nullable_condition = False

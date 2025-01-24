@@ -2,15 +2,15 @@ from collections import defaultdict
 from typing import Callable, List, Tuple
 
 from trilogy.core.enums import Derivation, Purpose
-from trilogy.core.models.author import (
-    AggregateWrapper,
-    Concept,
-    FilterItem,
-    Function,
-    LooseConceptList,
-    WhereClause,
+from trilogy.core.models.build import (
+    BuildAggregateWrapper,
+    BuildConcept,
+    BuildFilterItem,
+    BuildFunction,
+    BuildWhereClause,
+    LooseBuildConceptList,
 )
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import (
     History,
     NodeJoin,
@@ -19,14 +19,19 @@ from trilogy.core.processing.nodes.base_node import StrategyNode
 from trilogy.core.processing.nodes.merge_node import MergeNode
 from trilogy.utility import unique
 
+AGGREGATE_TYPES = (BuildAggregateWrapper,)
+FUNCTION_TYPES = (BuildFunction,)
+
 
 def resolve_function_parent_concepts(
-    concept: Concept, environment: Environment
-) -> List[Concept]:
-    if not isinstance(concept.lineage, (Function, AggregateWrapper)):
-        raise ValueError(f"Concept {concept} lineage is not function or aggregate")
+    concept: BuildConcept, environment: BuildEnvironment
+) -> List[BuildConcept]:
+    if not isinstance(concept.lineage, (*FUNCTION_TYPES, *AGGREGATE_TYPES)):
+        raise ValueError(
+            f"Concept {concept} lineage is not function or aggregate, is {type(concept.lineage)}"
+        )
     if concept.derivation == Derivation.AGGREGATE:
-        base: list[Concept] = []
+        base: list[BuildConcept] = []
         if not concept.grain.abstract:
             base = concept.lineage.concept_arguments + [
                 environment.concepts[c] for c in concept.grain.components
@@ -35,13 +40,13 @@ def resolve_function_parent_concepts(
             # keep the key as a parent
         else:
             base = concept.lineage.concept_arguments
-        if isinstance(concept.lineage, AggregateWrapper):
+        if isinstance(concept.lineage, AGGREGATE_TYPES):
             # for aggregate wrapper, don't include the by
             extra_property_grain = concept.lineage.function.concept_arguments
         else:
             extra_property_grain = concept.lineage.concept_arguments
         for x in extra_property_grain:
-            if isinstance(x, Concept) and x.purpose == Purpose.PROPERTY and x.keys:
+            if isinstance(x, BuildConcept) and x.purpose == Purpose.PROPERTY and x.keys:
                 base += [environment.concepts[c] for c in x.keys]
         return unique(base, "address")
     # TODO: handle basic lineage chains?
@@ -49,10 +54,10 @@ def resolve_function_parent_concepts(
 
 
 def resolve_condition_parent_concepts(
-    condition: WhereClause,
-) -> Tuple[List[Concept], List[Tuple[Concept, ...]]]:
+    condition: BuildWhereClause,
+) -> Tuple[List[BuildConcept], List[Tuple[BuildConcept, ...]]]:
     base_existence = []
-    base_rows = []
+    base_rows: list[BuildConcept] = []
     base_rows += condition.row_arguments
     for ctuple in condition.existence_arguments:
         base_existence.append(ctuple)
@@ -60,10 +65,10 @@ def resolve_condition_parent_concepts(
 
 
 def resolve_filter_parent_concepts(
-    concept: Concept,
-    environment: Environment,
-) -> Tuple[Concept, List[Concept], List[Tuple[Concept, ...]]]:
-    if not isinstance(concept.lineage, FilterItem):
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+) -> Tuple[BuildConcept, List[BuildConcept], List[Tuple[BuildConcept, ...]]]:
+    if not isinstance(concept.lineage, (BuildFilterItem,)):
         raise ValueError(
             f"Concept {concept} lineage is not filter item, is {type(concept.lineage)}"
         )
@@ -75,14 +80,14 @@ def resolve_filter_parent_concepts(
     )
     base_rows += condition_rows
     base_existence += condition_existence
-    if direct_parent.grain:
-        base_rows += [environment.concepts[c] for c in direct_parent.grain.components]
+    # this is required so that
     if (
-        isinstance(direct_parent, Concept)
-        and direct_parent.purpose == Purpose.PROPERTY
+        isinstance(direct_parent, BuildConcept)
+        and direct_parent.purpose in (Purpose.PROPERTY, Purpose.METRIC)
         and direct_parent.keys
     ):
         base_rows += [environment.concepts[c] for c in direct_parent.keys]
+
     if concept.lineage.where.existence_arguments:
         return (
             concept.lineage.content,
@@ -94,14 +99,14 @@ def resolve_filter_parent_concepts(
 
 def gen_property_enrichment_node(
     base_node: StrategyNode,
-    extra_properties: list[Concept],
-    environment: Environment,
+    extra_properties: list[BuildConcept],
+    history: History,
+    environment: BuildEnvironment,
     g,
     depth: int,
     source_concepts,
     log_lambda: Callable,
-    history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ):
     required_keys: dict[str, set[str]] = defaultdict(set)
     for x in extra_properties:
@@ -146,17 +151,17 @@ def gen_property_enrichment_node(
 
 def gen_enrichment_node(
     base_node: StrategyNode,
-    join_keys: List[Concept],
-    local_optional: list[Concept],
-    environment: Environment,
+    join_keys: List[BuildConcept],
+    local_optional: list[BuildConcept],
+    environment: BuildEnvironment,
     g,
     depth: int,
     source_concepts,
     log_lambda,
-    history: History | None = None,
-    conditions: WhereClause | None = None,
+    history: History,
+    conditions: BuildWhereClause | None = None,
 ):
-    local_opts = LooseConceptList(concepts=local_optional)
+    local_opts = LooseBuildConceptList(concepts=local_optional)
 
     extra_required = [
         x
@@ -165,7 +170,8 @@ def gen_enrichment_node(
     ]
 
     # property lookup optimization
-    # this helps when evaluating a normalized star schema as you only want to lookup the missing properties based on the relevant keys
+    # this helps create ergonomic merge nodes when evaluating a normalized star schema
+    # as we only want to lookup the missing properties based on the relevant keys
     if all([x.purpose == Purpose.PROPERTY for x in extra_required]):
         if all(
             x.keys and all([key in base_node.output_lcl for key in x.keys])
@@ -177,16 +183,16 @@ def gen_enrichment_node(
             return gen_property_enrichment_node(
                 base_node,
                 extra_required,
-                environment,
-                g,
-                depth,
-                source_concepts,
+                environment=environment,
+                g=g,
+                depth=depth,
+                source_concepts=source_concepts,
                 history=history,
                 conditions=conditions,
                 log_lambda=log_lambda,
             )
     log_lambda(
-        f"{str(type(base_node).__name__)} searching for join keys {LooseConceptList(concepts=join_keys)} and extra required {local_opts}"
+        f"{str(type(base_node).__name__)} searching for join keys {LooseBuildConceptList(concepts=join_keys)} and extra required {local_opts}"
     )
     enrich_node: StrategyNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query

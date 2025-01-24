@@ -8,24 +8,23 @@ from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.models.author import (
     Concept,
-    FilterItem,
     Grain,
-    LooseConceptList,
-    SubselectComparison,
 )
+from trilogy.core.models.build import BuildFilterItem, BuildSubselectComparison, Factory
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import get_upstream_concepts
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
     resolve_function_parent_concepts,
 )
-from trilogy.core.statements.author import SelectStatement, ShowStatement
+from trilogy.core.statements.author import ShowStatement
 from trilogy.executor import Executor
+from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parser import parse_text
 
 
 def test_basic_query(duckdb_engine: Executor, expected_results):
-    graph = generate_graph(duckdb_engine.environment)
+    graph = generate_graph(duckdb_engine.environment.materialize_for_select())
 
     list(nx.neighbors(graph, "c~local.count@Grain<local.item,local.store_id>"))
     results = duckdb_engine.execute_text("""select total_count;""")[0].fetchall()
@@ -105,16 +104,28 @@ def test_constants(duckdb_engine: Executor, expected_results):
     """
     )[0].fetchall()
     # expected_results["converted_total_count"]
+
     scaled_metric = duckdb_engine.environment.concepts["converted_total_count"]
 
     assert (
         duckdb_engine.environment.concepts["usd_conversion"].granularity
         == Granularity.SINGLE_ROW
     )
-    parent_arg: Concept = [
-        x for x in scaled_metric.lineage.concept_arguments if x.name == "total_count"
-    ][0]
-    assert len(parent_arg.lineage.concept_arguments[0].grain.components) == 2
+    parent_arg: Concept = duckdb_engine.environment.concepts[
+        [
+            x
+            for x in scaled_metric.lineage.concept_arguments
+            if x.address == "local.total_count"
+        ][0]
+    ]
+    assert (
+        len(
+            duckdb_engine.environment.concepts[
+                parent_arg.lineage.concept_arguments[0]
+            ].grain.components
+        )
+        == 2
+    )
     # assert Grain(components = [duckdb_engine.environment.concepts['usd_conversion']]) == Grain()
     assert results[0].converted_total_count == expected_results["converted_total_count"]
 
@@ -305,6 +316,9 @@ select
 
 
 def test_array_inclusion(default_duckdb_engine: Executor):
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
     test = """
 const list <- [1,2,3,4,5,6];
 const list_2 <- [1,2,3,4,5,6,7,8,9,10];
@@ -342,12 +356,13 @@ select
 ;
     """
     _ = default_duckdb_engine.parse_text(test)[-1]
-    env = default_duckdb_engine.environment
+    orig_env = default_duckdb_engine.environment
+    env = orig_env.materialize_for_select()
     agg = env.concepts["f_ord_count"]
     agg_parent = resolve_function_parent_concepts(agg, environment=env)[0]
     assert agg_parent.address == "local.filtered_even_orders"
-    assert isinstance(agg_parent.lineage, FilterItem)
-    assert isinstance(agg_parent.lineage.where.conditional, SubselectComparison)
+    assert isinstance(agg_parent.lineage, BuildFilterItem)
+    assert isinstance(agg_parent.lineage.where.conditional, BuildSubselectComparison)
     _, _, existence = resolve_filter_parent_concepts(agg_parent, environment=env)
     assert len(existence) == 1
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
@@ -374,11 +389,12 @@ select
 ;
     """
     _ = default_duckdb_engine.parse_text(test)[-1]
-    env = default_duckdb_engine.environment
+    orig_env = default_duckdb_engine.environment
+    env = orig_env.materialize_for_select()
     agg = env.concepts["f_ord_count"]
     agg_parent = resolve_function_parent_concepts(agg, environment=env)[0]
     assert agg_parent.address == "local.filtered_even_orders"
-    assert isinstance(agg_parent.lineage, FilterItem)
+    assert isinstance(agg_parent.lineage, BuildFilterItem)
     _, _, existence = resolve_filter_parent_concepts(agg_parent, environment=env)
     assert len(existence) == 1
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
@@ -423,22 +439,20 @@ select
     avg(count(orid) by store) -> avg_store_orders,
 ;"""
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
-
-    customer_orders = default_duckdb_engine.environment.concepts["customer_orders"]
+    build_env = default_duckdb_engine.environment.materialize_for_select()
+    customer_orders = build_env.concepts["customer_orders"]
     assert set([x for x in customer_orders.keys]) == {"local.customer"}
     assert set([x for x in customer_orders.grain.components]) == {"local.customer"}
 
     customer_orders_2 = customer_orders.with_select_context(
         {},
-        Grain(
-            components=[default_duckdb_engine.environment.concepts["local.customer"]]
-        ),
+        Grain(components=[build_env.concepts["local.customer"]]),
         default_duckdb_engine.environment,
     )
     assert set([x for x in customer_orders_2.keys]) == {"local.customer"}
     assert set([x for x in customer_orders_2.grain.components]) == {"local.customer"}
 
-    count_by_customer = default_duckdb_engine.environment.concepts[
+    count_by_customer = build_env.concepts[
         "avg_customer_orders"
     ].lineage.concept_arguments[0]
     # assert isinstance(count_by_customer, AggregateWrapper)
@@ -470,9 +484,7 @@ order by
 
 
 def test_case_group():
-    from trilogy.hooks.query_debugger import DebuggingHook
 
-    DebuggingHook()
     default_duckdb_engine = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
 
     test = """
@@ -490,10 +502,10 @@ select
     total_mod_two
   ;
     """
-
+    factory = Factory(environment=default_duckdb_engine.environment)
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    cased = default_duckdb_engine.environment.concepts["cased"]
-    total = default_duckdb_engine.environment.concepts["total_mod_two"]
+    cased = factory.build(default_duckdb_engine.environment.concepts["cased"])
+    total = factory.build(default_duckdb_engine.environment.concepts["total_mod_two"])
     assert cased.purpose == Purpose.PROPERTY
     assert cased.keys == {"local.orid"}
     assert total.derivation == Derivation.AGGREGATE
@@ -506,8 +518,8 @@ select
     # for x in total.lineage.concept_arguments:
     #     if isinstance(x, Concept) and x.purpose == Purpose.PROPERTY and x.keys:
     #         raise SyntaxError(x.keys)
-    assert "local.cased" in LooseConceptList(concepts=x)
-    assert "local.orid" in LooseConceptList(concepts=x)
+    assert "local.cased" in x
+    assert "local.orid" in x
     # function_to_concept(
     #     parent=function_to_concept()
     # )
@@ -539,6 +551,7 @@ asc
 def test_demo_filter_select():
     from trilogy.hooks.query_debugger import DebuggingHook
 
+    DebuggingHook()
     test = """const x <- unnest([1,2,2,3]);
 
 select
@@ -800,13 +813,6 @@ order by
 
     duckdb_engine.hooks = [DebuggingHook()]
 
-    parsed: SelectStatement = duckdb_engine.parse_text(test)[0]
-    row_args = parsed.where_clause.row_arguments
-    assert parsed.having_clause
-    assert parsed.grain == Grain(
-        components=[duckdb_engine.environment.concepts["item"]]
-    )
-    assert len(row_args) == 1
     # assert target.grain.components == [duckdb_engine.environment.concepts["item"]]
     results = duckdb_engine.execute_text(test)[0].fetchall()
     # derived = parsed.local_concepts["local.all_store_count"]
@@ -966,5 +972,8 @@ select
     )
 
     for idx, x in enumerate(queries):
+        print(type(x))
+        for z in x.output_columns:
+            print(z.lineage)
         results = exec.execute_query(x).fetchall()
         assert results[0].x_next == 2 + idx

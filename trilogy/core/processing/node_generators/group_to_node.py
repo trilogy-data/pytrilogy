@@ -1,8 +1,8 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models.author import Concept, Function, WhereClause
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import (
     GroupNode,
     History,
@@ -15,20 +15,22 @@ LOGGER_PREFIX = "[GEN_GROUP_TO_NODE]"
 
 
 def gen_group_to_node(
-    concept: Concept,
+    concept: BuildConcept,
     local_optional,
-    environment: Environment,
+    environment: BuildEnvironment,
     g,
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ) -> GroupNode | MergeNode:
     # aggregates MUST always group to the proper grain
-    if not isinstance(concept.lineage, Function):
-        raise SyntaxError("Group to should have function lineage")
+    if not isinstance(concept.lineage, BuildFunction):
+        raise SyntaxError(
+            f"Group to should have function lineage, is {type(concept.lineage)}"
+        )
     group_arg = concept.lineage.arguments[0]
-    parent_concepts: List[Concept] = concept.lineage.concept_arguments
+    parent_concepts: List[BuildConcept] = concept.lineage.concept_arguments
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} group by node has required parents {[x.address for x in parent_concepts]}"
     )
@@ -52,7 +54,7 @@ def gen_group_to_node(
         preexisting_conditions=conditions.conditional if conditions else None,
         hidden_concepts=set(
             [group_arg.address]
-            if isinstance(group_arg, Concept)
+            if isinstance(group_arg, BuildConcept)
             and group_arg.address not in local_optional
             else []
         ),

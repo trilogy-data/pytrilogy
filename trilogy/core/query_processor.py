@@ -7,13 +7,13 @@ from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import BooleanOperator, SourceType
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
-from trilogy.core.models.author import (
-    Concept,
-    Conditional,
-    MultiSelectLineage,
-    SelectLineage,
+from trilogy.core.models.author import MultiSelectLineage, SelectLineage
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildConditional,
+    BuildDatasource,
+    Factory,
 )
-from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
     CTE,
@@ -58,14 +58,19 @@ def base_join_to_join(
             alias=base_join.alias,
         )
 
-    def get_datasource_cte(datasource: Datasource | QueryDatasource) -> CTE:
+    def get_datasource_cte(datasource: BuildDatasource | QueryDatasource) -> CTE:
+        eligible = set()
         for cte in ctes:
             if cte.source.identifier == datasource.identifier:
                 return cte
+            eligible.add(cte.source.identifier)
         for cte in ctes:
             if cte.source.datasources[0].identifier == datasource.identifier:
                 return cte
-        raise ValueError(f"Could not find CTE for datasource {datasource.identifier}")
+            eligible.add(cte.source.datasources[0].identifier)
+        raise ValueError(
+            f"Could not find CTE for datasource {datasource.identifier}; have {eligible}"
+        )
 
     if base_join.left_datasource is not None:
         left_cte = get_datasource_cte(base_join.left_datasource)
@@ -122,7 +127,7 @@ def generate_source_map(
             and isinstance(list(qdv)[0], UnnestJoin)
         ):
             source_map[qdk] = []
-        basic = [x for x in qdv if isinstance(x, Datasource)]
+        basic = [x for x in qdv if isinstance(x, BuildDatasource)]
         for base in basic:
             source_map[qdk].append(base.safe_identifier)
 
@@ -171,8 +176,8 @@ def generate_source_map(
     }, existence_source_map
 
 
-def datasource_to_query_datasource(datasource: Datasource) -> QueryDatasource:
-    sub_select: Dict[str, Set[Union[Datasource, QueryDatasource, UnnestJoin]]] = {
+def datasource_to_query_datasource(datasource: BuildDatasource) -> QueryDatasource:
+    sub_select: Dict[str, Set[Union[BuildDatasource, QueryDatasource, UnnestJoin]]] = {
         **{c.address: {datasource} for c in datasource.concepts},
     }
     concepts = [c for c in datasource.concepts]
@@ -214,7 +219,7 @@ def resolve_cte_base_name_and_alias_v2(
     raw_joins: List[Join | InstantiatedUnnestJoin],
 ) -> Tuple[str | None, str | None]:
     if (
-        isinstance(source.datasources[0], Datasource)
+        isinstance(source.datasources[0], BuildDatasource)
         and not source.datasources[0].name == CONSTANT_DATASET
     ):
         ds = source.datasources[0]
@@ -273,6 +278,7 @@ def datasource_to_cte(
                 for c in query_datasource.output_concepts
             ],
             grain=direct_parents[0].grain,
+            order_by=query_datasource.ordering,
         )
         return final
 
@@ -341,6 +347,7 @@ def datasource_to_cte(
         hidden_concepts=query_datasource.hidden_concepts,
         base_name_override=base_name,
         base_alias_override=base_alias,
+        order_by=query_datasource.ordering,
     )
     if cte.grain != query_datasource.grain:
         raise ValueError("Grain was corrupted in CTE generation")
@@ -362,23 +369,27 @@ def get_query_node(
     statement: SelectLineage | MultiSelectLineage,
     history: History | None = None,
 ) -> StrategyNode:
-    environment = environment.duplicate()
-    for k, v in statement.local_concepts.items():
-        environment.concepts[k] = v
-    graph = generate_graph(environment)
-    logger.info(
-        f"{LOGGER_PREFIX} getting source datasource for outputs {statement.output_components} grain {statement.grain}"
-    )
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
 
-    search_concepts: list[Concept] = statement.output_components
+    history = history or History(base_environment=environment)
+    build_statement = Factory(environment=environment).build(statement)
+    # build_statement = statement
+    build_environment = environment.materialize_for_select(
+        build_statement.local_concepts
+    )
+    graph = generate_graph(build_environment)
+    logger.info(
+        f"{LOGGER_PREFIX} getting source datasource for outputs {statement.output_components} grain {build_statement.grain}"
+    )
+
+    search_concepts: list[BuildConcept] = build_statement.output_components
 
     ods: StrategyNode = source_query_concepts(
-        search_concepts,
-        environment=environment,
+        output_concepts=search_concepts,
+        environment=build_environment,
         g=graph,
-        conditions=(statement.where_clause if statement.where_clause else None),
+        conditions=build_statement.where_clause,
         history=history,
     )
     if not ods:
@@ -386,23 +397,26 @@ def get_query_node(
             f"Could not find source query concepts for {[x.address for x in search_concepts]}"
         )
     ds: StrategyNode = ods
-    if statement.having_clause:
-        final = statement.having_clause.conditional
+    if build_statement.having_clause:
+        final = build_statement.having_clause.conditional
         if ds.conditions:
-            final = Conditional(
+            final = BuildConditional(
                 left=ds.conditions,
-                right=statement.having_clause.conditional,
+                right=build_statement.having_clause.conditional,
                 operator=BooleanOperator.AND,
             )
         ds = SelectNode(
-            output_concepts=statement.output_components,
+            output_concepts=build_statement.output_components,
             input_concepts=ds.output_concepts,
             parents=[ds],
             environment=ds.environment,
             partial_concepts=ds.partial_concepts,
             conditions=final,
         )
-    ds.hidden_concepts = statement.hidden_components
+    ds.hidden_concepts = build_statement.hidden_components
+    ds.ordering = build_statement.order_by
+    # TODO: avoid this
+    ds.rebuild_cache()
     return ds
 
 
@@ -412,7 +426,6 @@ def get_query_datasources(
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
     ds = get_query_node(environment, statement.as_lineage(environment))
-
     final_qds = ds.resolve()
     if hooks:
         for hook in hooks:
@@ -507,22 +520,18 @@ def process_query(
     for cte in raw_ctes:
         cte.parent_ctes = [seen[x.name] for x in cte.parent_ctes]
     deduped_ctes: List[CTE | UnionCTE] = list(seen.values())
-    root_cte.order_by = statement.order_by
+
     root_cte.limit = statement.limit
     root_cte.hidden_concepts = statement.hidden_components
 
     final_ctes = optimize_ctes(deduped_ctes, root_cte, statement)
+    mapping = {x.address: x for x in cte.output_columns}
     return ProcessedQuery(
-        order_by=statement.order_by,
-        grain=statement.grain,
+        order_by=root_cte.order_by,
         limit=statement.limit,
-        where_clause=statement.where_clause,
-        having_clause=statement.having_clause,
-        output_columns=statement.output_components,
+        output_columns=[mapping[x.address] for x in statement.output_components],
         ctes=final_ctes,
         base=root_cte,
-        # we no longer do any joins at final level, this should always happen in parent CTEs
-        joins=[],
         hidden_columns=set([x for x in statement.hidden_components]),
         local_concepts=statement.local_concepts,
     )

@@ -1,11 +1,12 @@
-from typing import ItemsView, List, Optional, Union, ValuesView
+from typing import TYPE_CHECKING, ItemsView, List, Optional, Union, ValuesView
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
-from trilogy.constants import DEFAULT_NAMESPACE
+from trilogy.constants import DEFAULT_NAMESPACE, logger
 from trilogy.core.enums import Modifier
 from trilogy.core.models.author import (
     Concept,
+    ConceptRef,
     Function,
     Grain,
     HasUUID,
@@ -16,6 +17,9 @@ from trilogy.core.models.author import (
 
 LOGGER_PREFIX = "[MODELS_DATASOURCE]"
 
+if TYPE_CHECKING:
+    pass
+
 
 class RawColumnExpr(BaseModel):
     text: str
@@ -23,8 +27,23 @@ class RawColumnExpr(BaseModel):
 
 class ColumnAssignment(BaseModel):
     alias: str | RawColumnExpr | Function
-    concept: Concept
+    concept: ConceptRef
     modifiers: List[Modifier] = Field(default_factory=list)
+
+    @field_validator("concept", mode="before")
+    def force_reference(cls, v: ConceptRef, info: ValidationInfo):
+        if isinstance(v, Concept):
+            return v.reference
+        return v
+
+    def __eq__(self, other):
+        if not isinstance(other, ColumnAssignment):
+            return False
+        return (
+            self.alias == other.alias
+            and self.concept == other.concept
+            and self.modifiers == other.modifiers
+        )
 
     @property
     def is_complete(self) -> bool:
@@ -35,7 +54,7 @@ class ColumnAssignment(BaseModel):
         return Modifier.NULLABLE in self.modifiers
 
     def with_namespace(self, namespace: str) -> "ColumnAssignment":
-        return ColumnAssignment(
+        return ColumnAssignment.model_construct(
             alias=(
                 self.alias.with_namespace(namespace)
                 if isinstance(self.alias, Function)
@@ -48,7 +67,7 @@ class ColumnAssignment(BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "ColumnAssignment":
-        return ColumnAssignment(
+        return ColumnAssignment.model_construct(
             alias=self.alias,
             concept=self.concept.with_merge(source, target, modifiers),
             modifiers=(
@@ -98,6 +117,19 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     where: Optional[WhereClause] = None
     non_partial_for: Optional[WhereClause] = None
 
+    def __eq__(self, other):
+        if not isinstance(other, Datasource):
+            return False
+        return (
+            self.name == other.name
+            and self.namespace == other.namespace
+            and self.grain == other.grain
+            and self.address == other.address
+            and self.where == other.where
+            and self.columns == other.columns
+            and self.non_partial_for == other.non_partial_for
+        )
+
     def duplicate(self) -> "Datasource":
         return self.model_copy(deep=True)
 
@@ -113,6 +145,9 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             c for c in self.columns if c.concept.address == target.address
         ]
         if early_exit_check:
+            logger.info(
+                f"No concept merge needed on merge of {source} to {target}, have {[x.concept.address for x in self.columns]}"
+            )
             return None
         if len(original) != 1:
             raise ValueError(
@@ -142,21 +177,8 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         return self.identifier.replace(".", "_")
 
     @property
-    def condition(self):
-        return None
-
-    @property
     def output_lcl(self) -> LooseConceptList:
         return LooseConceptList(concepts=self.output_concepts)
-
-    @property
-    def can_be_inlined(self) -> bool:
-        if isinstance(self.address, Address) and self.address.is_query:
-            return False
-        # for x in self.columns:
-        #     if not isinstance(x.alias, str):
-        #         return False
-        return True
 
     @property
     def non_partial_concept_addresses(self) -> set[str]:
@@ -187,7 +209,9 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         modifiers: List[Modifier] | None = None,
     ):
         self.columns.append(
-            ColumnAssignment(alias=alias, concept=concept, modifiers=modifiers or [])
+            ColumnAssignment(
+                alias=alias, concept=concept.reference, modifiers=modifiers or []
+            )
         )
 
     def __add__(self, other):
@@ -212,7 +236,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             if self.namespace and self.namespace != DEFAULT_NAMESPACE
             else namespace
         )
-        new = Datasource(
+        new = Datasource.model_construct(
             name=self.name,
             namespace=new_namespace,
             grain=self.grain.with_namespace(namespace),
@@ -223,7 +247,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         return new
 
     @property
-    def concepts(self) -> List[Concept]:
+    def concepts(self) -> List[ConceptRef]:
         return [c.concept for c in self.columns]
 
     @property
@@ -231,44 +255,20 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         return False
 
     @property
-    def full_concepts(self) -> List[Concept]:
+    def full_concepts(self) -> List[ConceptRef]:
         return [c.concept for c in self.columns if Modifier.PARTIAL not in c.modifiers]
 
     @property
-    def nullable_concepts(self) -> List[Concept]:
+    def nullable_concepts(self) -> List[ConceptRef]:
         return [c.concept for c in self.columns if Modifier.NULLABLE in c.modifiers]
 
     @property
-    def output_concepts(self) -> List[Concept]:
+    def output_concepts(self) -> List[ConceptRef]:
         return self.concepts
 
     @property
-    def partial_concepts(self) -> List[Concept]:
+    def partial_concepts(self) -> List[ConceptRef]:
         return [c.concept for c in self.columns if Modifier.PARTIAL in c.modifiers]
-
-    def get_alias(
-        self, concept: Concept, use_raw_name: bool = True, force_alias: bool = False
-    ) -> Optional[str | RawColumnExpr] | Function:
-        # 2022-01-22
-        # this logic needs to be refined.
-        # if concept.lineage:
-        # #     return None
-        for x in self.columns:
-            if x.concept == concept or x.concept.with_grain(concept.grain) == concept:
-                if use_raw_name:
-                    return x.alias
-                return concept.safe_address
-        existing = [str(c.concept.with_grain(self.grain)) for c in self.columns]
-        raise ValueError(
-            f"{LOGGER_PREFIX} Concept {concept} not found on {self.identifier}; have"
-            f" {existing}."
-        )
-
-    @property
-    def safe_location(self) -> str:
-        if isinstance(self.address, Address):
-            return self.address.location
-        return self.address
 
 
 class EnvironmentDatasourceDict(dict):

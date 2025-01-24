@@ -32,7 +32,7 @@ from trilogy.constants import (
 class DataTyped(ABC):
 
     # this is not abstract
-    # because when it's a pydantic property, it fails validation
+    # only because when it's a pydantic property, it fails validation
     @property
     def output_datatype(self) -> CONCRETE_TYPES:  # type: ignore
         """
@@ -41,6 +41,13 @@ class DataTyped(ABC):
         if "output_datatype" in self.__dict__:
             return self.__dict__["output_datatype"]
         raise NotImplementedError
+
+
+class Addressable(ABC):
+
+    @property
+    def _address(self):
+        return self.address
 
 
 TYPEDEF_TYPES = Union[
@@ -358,4 +365,6 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
     elif isinstance(arg, date):
         return DataType.DATE
     else:
-        raise ValueError(f"Cannot parse arg datatype for arg of raw type {type(arg)}")
+        raise ValueError(
+            f"Cannot parse arg datatype for arg of raw type {type(arg)} value {arg}"
+        )
