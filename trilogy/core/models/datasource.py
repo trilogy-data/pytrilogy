@@ -130,26 +130,6 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             and self.non_partial_for == other.non_partial_for
         )
 
-    def build_for_select(self, environment):
-        from trilogy.core.models.build import BuildDatasource, BuildGrain, Factory
-
-        local_cache = {}
-        factory = Factory(
-            grain=self.grain, environment=environment, local_concepts=local_cache
-        )
-        return BuildDatasource(
-            name=self.name,
-            columns=[factory.build(c) for c in self.columns],
-            address=self.address,
-            grain=BuildGrain.build(self.grain, environment, local_cache),
-            namespace=self.namespace,
-            metadata=self.metadata,
-            where=(factory.build(self.where) if self.where else None),
-            non_partial_for=(
-                factory.build(self.non_partial_for) if self.non_partial_for else None
-            ),
-        )
-
     def duplicate(self) -> "Datasource":
         return self.model_copy(deep=True)
 

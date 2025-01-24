@@ -82,6 +82,7 @@ from trilogy.core.models.core import (
 from trilogy.core.models.datasource import (
     Address,
     ColumnAssignment,
+    Datasource,
     DatasourceMetadata,
     RawColumnExpr,
 )
@@ -243,14 +244,6 @@ class BuildGrain(BaseModel):
 
     def without_condition(self):
         return BuildGrain(components=self.components)
-
-    @classmethod
-    def build(cls, grain: Grain, environment, local_concepts):
-        if grain.where_clause:
-            where = Factory(environment).build(grain.where_clause)
-        else:
-            where = None
-        return BuildGrain(components=grain.components, where_clause=where)
 
     @classmethod
     def from_concepts(
@@ -1012,10 +1005,6 @@ class BuildWindowItem(DataTyped, BuildConceptArgs, BaseModel):
 
     @property
     def concept_arguments(self) -> List[BuildConcept]:
-        return self.arguments
-
-    @property
-    def arguments(self) -> List[BuildConcept]:
         output = [self.content]
         for order in self.order_by:
             output += order.concept_arguments
@@ -1159,10 +1148,6 @@ class BuildAggregateWrapper(BuildConceptArgs, DataTyped, BaseModel):
     def output_purpose(self):
         return self.function.output_purpose
 
-    @property
-    def arguments(self):
-        return self.function.arguments
-
 
 class BuildFilterItem(BuildConceptArgs, BaseModel):
     content: BuildConcept
@@ -1199,10 +1184,6 @@ class BuildRowsetItem(DataTyped, BuildConceptArgs, BaseModel):
 
     def __str__(self):
         return self.__repr__()
-
-    @property
-    def arguments(self) -> List[BuildConcept]:
-        return self.concept_arguments
 
     @property
     def output(self) -> BuildConcept:
@@ -1562,7 +1543,7 @@ class Factory:
             purpose=base.purpose,
             metadata=base.metadata,
             lineage=build_lineage,
-            grain=BuildGrain.build(final_grain, self.environment, self.local_concepts),
+            grain=self.build(final_grain),
             namespace=base.namespace,
             keys=base.keys,
             modifiers=base.modifiers,
@@ -1690,7 +1671,8 @@ class Factory:
     @build.register
     def _(self, base: Grain) -> BuildGrain:
         if base.where_clause:
-            where = self.build(base.where_clause)
+            factory = Factory(environment=self.environment)
+            where = factory.build(base.where_clause)
         else:
             where = None
         return BuildGrain(components=base.components, where_clause=where)
@@ -1709,7 +1691,6 @@ class Factory:
     def _(self, base: SelectLineage) -> BuildSelectLineage:
 
         from trilogy.core.models.build import (
-            BuildGrain,
             BuildSelectLineage,
             Factory,
         )
@@ -1745,7 +1726,7 @@ class Factory:
             limit=base.limit,
             meta=base.meta,
             local_concepts=materialized,
-            grain=BuildGrain.build(base.grain, self.environment, materialized),
+            grain=self.build(base.grain),
             having_clause=(
                 factory.build(base.having_clause) if base.having_clause else None
             ),
@@ -1768,7 +1749,7 @@ class Factory:
                 base_local[k] = v
 
         # this requires custom handling to avoid circular dependencies
-        final_grain = BuildGrain.build(base.grain, self.environment, {})
+        final_grain = self.build(base.grain)
         derived_base = []
         for k in base.derived_concepts:
             base_concept = self.environment.concepts[k]
@@ -1838,8 +1819,27 @@ class Factory:
             k,
             d,
         ) in base.datasources.items():
-            new.datasources[k] = d.build_for_select(base)
+            new.datasources[k] = self.build(d)
         for k, a in base.alias_origin_lookup.items():
             new.alias_origin_lookup[k] = self.build(a)
         new.gen_concept_list_caches()
         return new
+
+    @build.register
+    def _(self, base: Datasource):
+        local_cache: dict[str, BuildConcept] = {}
+        factory = Factory(
+            grain=base.grain, environment=self.environment, local_concepts=local_cache
+        )
+        return BuildDatasource(
+            name=base.name,
+            columns=[factory.build(c) for c in base.columns],
+            address=base.address,
+            grain=factory.build(base.grain),
+            namespace=base.namespace,
+            metadata=base.metadata,
+            where=(factory.build(base.where) if base.where else None),
+            non_partial_for=(
+                factory.build(base.non_partial_for) if base.non_partial_for else None
+            ),
+        )
