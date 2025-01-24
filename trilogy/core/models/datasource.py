@@ -54,7 +54,7 @@ class ColumnAssignment(BaseModel):
         return Modifier.NULLABLE in self.modifiers
 
     def with_namespace(self, namespace: str) -> "ColumnAssignment":
-        return ColumnAssignment(
+        return ColumnAssignment.model_construct(
             alias=(
                 self.alias.with_namespace(namespace)
                 if isinstance(self.alias, Function)
@@ -67,7 +67,7 @@ class ColumnAssignment(BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "ColumnAssignment":
-        return ColumnAssignment(
+        return ColumnAssignment.model_construct(
             alias=self.alias,
             concept=self.concept.with_merge(source, target, modifiers),
             modifiers=(
@@ -256,7 +256,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             if self.namespace and self.namespace != DEFAULT_NAMESPACE
             else namespace
         )
-        new = Datasource(
+        new = Datasource.model_construct(
             name=self.name,
             namespace=new_namespace,
             grain=self.grain.with_namespace(namespace),

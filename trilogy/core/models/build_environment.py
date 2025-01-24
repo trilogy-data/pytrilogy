@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import difflib
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Dict, ItemsView, Never, ValuesView
 
@@ -14,12 +13,6 @@ from trilogy.core.exceptions import (
 )
 from trilogy.core.models.build import BuildConcept, BuildDatasource, BuildFunction
 from trilogy.core.models.core import DataType
-
-
-@dataclass
-class Import:
-    alias: str
-    path: Path
 
 
 class BuildEnvironmentConceptDict(dict):

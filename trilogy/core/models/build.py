@@ -30,7 +30,6 @@ from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
     BooleanOperator,
     ComparisonOperator,
-    ConceptSource,
     DatePart,
     Derivation,
     FunctionClass,
@@ -39,7 +38,6 @@ from trilogy.core.enums import (
     Modifier,
     Ordering,
     Purpose,
-    WindowOrder,
     WindowType,
 )
 from trilogy.core.models.author import (
@@ -61,7 +59,6 @@ from trilogy.core.models.author import (
     OrderBy,
     OrderItem,
     Parenthetical,
-    Reference,
     RowsetItem,
     RowsetLineage,
     SelectLineage,
@@ -81,7 +78,6 @@ from trilogy.core.models.core import (
     StructType,
     TupleWrapper,
     arg_to_datatype,
-    is_compatible_datatype,
 )
 from trilogy.core.models.datasource import (
     Address,
@@ -218,12 +214,6 @@ class ConstantInlineable(ABC):
         raise NotImplementedError
 
 
-def address_with_namespace(address: str, namespace: str) -> str:
-    if address.split(".", 1)[0] == DEFAULT_NAMESPACE:
-        return f"{namespace}.{address.split('.',1)[1]}"
-    return f"{namespace}.{address}"
-
-
 def get_concept_row_arguments(expr) -> List["BuildConcept"]:
     output = []
     if isinstance(expr, BuildConcept):
@@ -257,10 +247,7 @@ class BuildGrain(BaseModel):
     @classmethod
     def build(cls, grain: Grain, environment, local_concepts):
         if grain.where_clause:
-            where = None
-            # where = grain.where_clause.with_select_context(
-            #     local_concepts, Grain(), environment
-            # )
+            where = Factory(environment).build(grain.where_clause)
         else:
             where = None
         return BuildGrain(components=grain.components, where_clause=where)
@@ -336,9 +323,9 @@ class BuildGrain(BaseModel):
 
     def __eq__(self, other: object):
         if isinstance(other, list):
-            if not all([isinstance(c, BuildConcept) for c in other]):
-                return False
-            return self.components == set([c.address for c in other])
+            if all([isinstance(c, BuildConcept) for c in other]):
+                return self.components == set([c.address for c in other])
+            return False
         if not isinstance(other, BuildGrain):
             return False
         if self.components == other.components:
@@ -636,41 +623,6 @@ class BuildComparison(BuildConceptArgs, ConstantInlineable, BaseModel):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        if self.operator in (ComparisonOperator.IS, ComparisonOperator.IS_NOT):
-            if self.right != MagicConstants.NULL and DataType.BOOL != arg_to_datatype(
-                self.right
-            ):
-                raise SyntaxError(
-                    f"Cannot use {self.operator.value} with non-null or boolean value {self.right}"
-                )
-        elif self.operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
-            right = arg_to_datatype(self.right)
-            if not isinstance(self.right, BuildConcept) and not isinstance(
-                right, ListType
-            ):
-                raise SyntaxError(
-                    f"Cannot use {self.operator.value} with non-list type {right} in {str(self)}"
-                )
-
-            elif isinstance(right, ListType) and not is_compatible_datatype(
-                arg_to_datatype(self.left), right.value_data_type
-            ):
-                raise SyntaxError(
-                    f"Cannot compare {arg_to_datatype(self.left)} and {right} with operator {self.operator} in {str(self)}"
-                )
-            elif isinstance(self.right, BuildConcept) and not is_compatible_datatype(
-                arg_to_datatype(self.left), arg_to_datatype(self.right)
-            ):
-                raise SyntaxError(
-                    f"Cannot compare {arg_to_datatype(self.left)} and {arg_to_datatype(self.right)} with operator {self.operator} in {str(self)}"
-                )
-        else:
-            if not is_compatible_datatype(
-                arg_to_datatype(self.left), arg_to_datatype(self.right)
-            ):
-                raise SyntaxError(
-                    f"Cannot compare {arg_to_datatype(self.left)} and {arg_to_datatype(self.right)} of different types with operator {self.operator} in {str(self)}"
-                )
 
     def __add__(self, other):
         if other is None:
@@ -820,7 +772,6 @@ class BuildSubselectComparison(BuildComparison):
         return [tuple(get_concept_arguments(self.right))]
 
 
-# class BuildConcept(Concept, BaseModel):
 class BuildConcept(Addressable, BuildConceptArgs, DataTyped, BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str
@@ -917,7 +868,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped, BaseModel):
                     ]
                 )
             )
-        return self.__class__(
+        return self.__class__.model_construct(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
@@ -959,7 +910,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped, BaseModel):
                 grain = self.grain
         else:
             grain = self.grain  # type: ignore
-        return self.__class__(
+        return self.__class__.model_construct(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
@@ -1085,20 +1036,6 @@ class BuildWindowItem(DataTyped, BuildConceptArgs, BaseModel):
     @property
     def output_purpose(self):
         return Purpose.PROPERTY
-
-
-def get_basic_type(
-    type: DataType | ListType | StructType | MapType | NumericType,
-) -> DataType:
-    if isinstance(type, ListType):
-        return DataType.LIST
-    if isinstance(type, StructType):
-        return DataType.STRUCT
-    if isinstance(type, MapType):
-        return DataType.MAP
-    if isinstance(type, NumericType):
-        return DataType.NUMERIC
-    return type
 
 
 class BuildCaseWhen(BuildConceptArgs, BaseModel):
@@ -1326,13 +1263,6 @@ class BuildMultiSelectLineage(BuildConceptArgs, BaseModel):
     build_output_components: list[BuildConcept]
     hidden_components: set[str]
 
-    # @property
-    # def arguments(self):
-    #     output = []
-    #     for select in self.selects:
-    #         output += select.output_components
-    #     return output
-
     @property
     def derived_concepts(self) -> set[str]:
         output = set()
@@ -1362,16 +1292,14 @@ class BuildMultiSelectLineage(BuildConceptArgs, BaseModel):
                 return f"{item.namespace}.{item.alias}"
         return None
 
-    def find_source(
-        self, BuildConcept: BuildConcept, cte: CTE | UnionCTE
-    ) -> BuildConcept:
+    def find_source(self, concept: BuildConcept, cte: CTE | UnionCTE) -> BuildConcept:
         for x in self.align.items:
-            if BuildConcept.name == x.alias:
+            if concept.name == x.alias:
                 for c in x.concepts:
                     if c.address in cte.output_lcl:
                         return c
         raise SyntaxError(
-            f"Could not find upstream map for multiselect {str(BuildConcept)} on cte ({cte})"
+            f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})"
         )
 
 
@@ -1388,31 +1316,6 @@ class BuildAlignItem(BaseModel):
     @property
     def aligned_concept(self) -> str:
         return f"{self.namespace}.{self.alias}"
-
-
-class BuildMetadata(BaseModel):
-    """Metadata container object.
-    TODO: support arbitrary tags"""
-
-    description: Optional[str] = None
-    line_number: Optional[int] = None
-    concept_source: ConceptSource = ConceptSource.MANUAL
-
-
-class BuildWindow(BaseModel):
-    count: int
-    window_order: WindowOrder
-
-    def __str__(self):
-        return f"Window<{self.window_order}>"
-
-
-class BuildWindowItemOver(BaseModel):
-    contents: List[BuildConcept]
-
-
-class BuildWindowItemOrder(BaseModel):
-    contents: List["BuildOrderItem"]
 
 
 class BuildColumnAssignment(BaseModel):
@@ -1565,15 +1468,11 @@ class Factory:
         self.environment = environment
         self.local_concepts: dict[str, BuildConcept] = local_concepts or {}
 
-    def process_item(self, item):
-        if isinstance(item, Reference):
-            return self.build(item)
-        return item
-
     @singledispatchmethod
     def build(self, base):
         raise NotImplementedError("Cannot build {}".format(type(base)))
 
+    @build.register
     @build.register
     def _(
         self,
@@ -1587,6 +1486,9 @@ class Factory:
             | ListWrapper
             | MagicConstants
             | MapWrapper
+            | DataType
+            | DatePart
+            | NumericType
         ),
     ) -> (
         int
@@ -1598,6 +1500,9 @@ class Factory:
         | ListWrapper
         | MagicConstants
         | MapWrapper
+        | DataType
+        | DatePart
+        | NumericType
     ):
         return base
 
@@ -1610,17 +1515,7 @@ class Factory:
 
         new = BuildFunction(
             operator=base.operator,
-            arguments=[
-                (
-                    self.build(c)
-                    if isinstance(
-                        c,
-                        Reference,
-                    )
-                    else c
-                )
-                for c in base.arguments
-            ],
+            arguments=[self.build(c) for c in base.arguments],
             output_datatype=base.output_datatype,
             output_purpose=base.output_purpose,
             valid_inputs=base.valid_inputs,

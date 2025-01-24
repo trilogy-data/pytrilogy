@@ -776,7 +776,7 @@ class ParseToObjects(Transformer):
         return [x for x in args]
 
     @v_args(meta=True)
-    def merge_statement(self, meta: Meta, args) -> MergeStatementV2:
+    def merge_statement(self, meta: Meta, args) -> MergeStatementV2 | None:
         modifiers = []
         cargs: list[str] = []
         source_wildcard = None
@@ -807,20 +807,21 @@ class ParseToObjects(Transformer):
             sources = [self.environment.concepts[source]]
             targets = {sources[0].address: self.environment.concepts[target]}
 
-        new = MergeStatementV2(
-            sources=sources,
-            targets=targets,
-            modifiers=modifiers,
-            source_wildcard=source_wildcard,
-            target_wildcard=target_wildcard,
-        )
         if self.parse_pass == ParsePass.VALIDATION:
+            new = MergeStatementV2(
+                sources=sources,
+                targets=targets,
+                modifiers=modifiers,
+                source_wildcard=source_wildcard,
+                target_wildcard=target_wildcard,
+            )
             for source_c in new.sources:
                 self.environment.merge_concept(
                     source_c, targets[source_c.address], modifiers
                 )
 
-        return new
+            return new
+        return None
 
     @v_args(meta=True)
     def rawsql_statement(self, meta: Meta, args) -> RawSQLStatement:
@@ -910,7 +911,7 @@ class ParseToObjects(Transformer):
         return ShowStatement(content=args[0])
 
     @v_args(meta=True)
-    def persist_statement(self, meta: Meta, args) -> PersistStatement:
+    def persist_statement(self, meta: Meta, args) -> PersistStatement | None:
         identifier: str = args[0]
         address: str = args[1]
         select: SelectStatement = args[2]
@@ -918,23 +919,24 @@ class ParseToObjects(Transformer):
             grain: Grain | None = args[3]
         else:
             grain = None
-
-        new_datasource = select.to_datasource(
-            namespace=(
-                self.environment.namespace
-                if self.environment.namespace
-                else DEFAULT_NAMESPACE
-            ),
-            name=identifier,
-            address=Address(location=address),
-            grain=grain,
-            environment=self.environment,
-        )
-        return PersistStatement(
-            select=select,
-            datasource=new_datasource,
-            meta=Metadata(line_number=meta.line),
-        )
+        if self.parse_pass == ParsePass.VALIDATION:
+            new_datasource = select.to_datasource(
+                namespace=(
+                    self.environment.namespace
+                    if self.environment.namespace
+                    else DEFAULT_NAMESPACE
+                ),
+                name=identifier,
+                address=Address(location=address),
+                grain=grain,
+                environment=self.environment,
+            )
+            return PersistStatement(
+                select=select,
+                datasource=new_datasource,
+                meta=Metadata(line_number=meta.line),
+            )
+        return None
 
     @v_args(meta=True)
     def align_item(self, meta: Meta, args) -> AlignItem:

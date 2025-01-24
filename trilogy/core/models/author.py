@@ -76,10 +76,6 @@ class Mergeable(ABC):
         raise NotImplementedError
 
 
-class Reference(ABC):
-    pass
-
-
 class ConceptArgs(ABC):
     @property
     def concept_arguments(self) -> Sequence["ConceptRef"]:
@@ -100,7 +96,7 @@ class HasUUID(ABC):
         return hashlib.md5(str(self).encode()).hexdigest()
 
 
-class ConceptRef(Addressable, Namespaced, DataTyped, Reference, Mergeable, BaseModel):
+class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
     address: str
     datatype: DataType | ListType | StructType | MapType | NumericType = (
         DataType.UNKNOWN
@@ -183,7 +179,6 @@ class Parenthetical(
     ConceptArgs,
     Mergeable,
     Namespaced,
-    Reference,
     BaseModel,
 ):
     content: "Expr"
@@ -253,7 +248,7 @@ class Parenthetical(
         return arg_to_datatype(self.content)
 
 
-class Conditional(Mergeable, ConceptArgs, Namespaced, Reference, BaseModel):
+class Conditional(Mergeable, ConceptArgs, Namespaced, BaseModel):
     left: Expr
     right: Expr
     operator: BooleanOperator
@@ -264,7 +259,9 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, Reference, BaseModel):
         elif str(other) == str(self):
             return self
         elif isinstance(other, (Comparison, Conditional, Parenthetical)):
-            return Conditional(left=self, right=other, operator=BooleanOperator.AND)
+            return Conditional.model_construct(
+                left=self, right=other, operator=BooleanOperator.AND
+            )
         raise ValueError(f"Cannot add {self.__class__} and {type(other)}")
 
     def __str__(self):
@@ -351,7 +348,7 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, Reference, BaseModel):
         return chunks
 
 
-class WhereClause(Mergeable, ConceptArgs, Namespaced, Reference, BaseModel):
+class WhereClause(Mergeable, ConceptArgs, Namespaced, BaseModel):
     conditional: Union[SubselectComparison, Comparison, Conditional, "Parenthetical"]
 
     def __repr__(self):
@@ -375,12 +372,14 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, Reference, BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> Self:
-        return self.__class__(
+        return self.__class__.model_construct(
             conditional=self.conditional.with_merge(source, target, modifiers)
         )
 
     def with_namespace(self, namespace: str) -> Self:
-        return self.__class__(conditional=self.conditional.with_namespace(namespace))
+        return self.__class__.model_construct(
+            conditional=self.conditional.with_namespace(namespace)
+        )
 
 
 class HavingClause(WhereClause):
@@ -401,7 +400,7 @@ class Grain(Namespaced, BaseModel):
                 new_components.add(target.address)
             else:
                 new_components.add(c)
-        return Grain(components=new_components)
+        return Grain.model_construct(components=new_components)
 
     @classmethod
     def from_concepts(
@@ -455,7 +454,7 @@ class Grain(Namespaced, BaseModel):
             if not self.where_clause:
                 where = other.where_clause
             elif not other.where_clause == self.where_clause:
-                where = WhereClause(
+                where = WhereClause.model_construct(
                     conditional=Conditional(
                         left=self.where_clause.conditional,
                         right=other.where_clause.conditional,
@@ -470,7 +469,7 @@ class Grain(Namespaced, BaseModel):
         )
 
     def __sub__(self, other: "Grain") -> "Grain":
-        return Grain(
+        return Grain.model_construct(
             components=self.components.difference(other.components),
             where_clause=self.where_clause,
         )
@@ -522,7 +521,7 @@ class Grain(Namespaced, BaseModel):
             return self.__add__(other)
 
 
-class Comparison(ConceptArgs, Mergeable, Namespaced, Reference, BaseModel):
+class Comparison(ConceptArgs, Mergeable, Namespaced, BaseModel):
     left: Union[
         int,
         str,
@@ -647,7 +646,7 @@ class Comparison(ConceptArgs, Mergeable, Namespaced, Reference, BaseModel):
         )
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return self.__class__(
+        return self.__class__.model_construct(
             left=(
                 self.left.with_merge(source, target, modifiers)
                 if isinstance(self.left, Mergeable)
@@ -662,7 +661,7 @@ class Comparison(ConceptArgs, Mergeable, Namespaced, Reference, BaseModel):
         )
 
     def with_namespace(self, namespace: str):
-        return self.__class__(
+        return self.__class__.model_construct(
             left=(
                 self.left.with_namespace(namespace)
                 if isinstance(self.left, Namespaced)
@@ -723,9 +722,7 @@ class SubselectComparison(Comparison):
         return [tuple(get_concept_arguments(self.right))]
 
 
-class Concept(
-    Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, Reference, BaseModel
-):
+class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -800,6 +797,8 @@ class Concept(
             new = target.with_grain(self.grain.with_merge(source, target, modifiers))
             new.pseudonyms.add(self.address)
             return new
+        if not self.grain.components and not self.lineage and not self.keys:
+            return self
         return self.__class__.model_construct(
             name=self.name,
             datatype=self.datatype,
@@ -998,7 +997,7 @@ class Concept(
         new_lineage, final_grain, keys = self.get_select_grain_and_keys(
             grain, environment
         )
-        return self.__class__(
+        return self.__class__.model_construct(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
@@ -1015,7 +1014,7 @@ class Concept(
 
     def with_grain(self, grain: Optional["Grain"] = None) -> Self:
 
-        return self.__class__(
+        return self.__class__.model_construct(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
@@ -1029,49 +1028,6 @@ class Concept(
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
         )
-
-    # @property
-    # def _with_default_grain(self) -> Self:
-    #     if self.purpose == Purpose.KEY:
-    #         # we need to make this abstract
-    #         grain = Grain(components={self.address})
-    #     elif self.purpose == Purpose.PROPERTY:
-    #         components = []
-    #         if self.keys:
-    #             components = [*self.keys]
-    #         if self.lineage:
-    #             for item in self.lineage.concept_arguments:
-    #                 components += [x.address for x in item.sources]
-    #         # TODO: set synonyms
-    #         grain = Grain(
-    #             components=set([x for x in components]),
-    #         )  # synonym_set=generate_concept_synonyms(components))
-    #     elif self.purpose == Purpose.METRIC:
-    #         grain = Grain()
-    #     elif self.purpose == Purpose.CONSTANT:
-    #         if self.derivation != Derivation.CONSTANT:
-    #             grain = Grain(components={self.address})
-    #         else:
-    #             grain = self.grain
-    #     else:
-    #         grain = self.grain  # type: ignore
-    #     return self.__class__(
-    #         name=self.name,
-    #         datatype=self.datatype,
-    #         purpose=self.purpose,
-    #         metadata=self.metadata,
-    #         lineage=self.lineage,
-    #         granularity=self.granularity,
-    #         derivation=self.derivation,
-    #         grain=grain,
-    #         keys=self.keys,
-    #         namespace=self.namespace,
-    #         modifiers=self.modifiers,
-    #         pseudonyms=self.pseudonyms,
-    #     )
-
-    # def with_default_grain(self) -> "Concept":
-    #     return self._with_default_grain
 
     @property
     def sources(self) -> List["ConceptRef"]:
@@ -1211,7 +1167,7 @@ class Concept(
         new_lineage = FilterItem(
             content=self.reference, where=WhereClause(conditional=condition)
         )
-        new = Concept(
+        new = Concept.model_construct(
             name=f"{self.name}_filter_{hash}",
             datatype=self.datatype,
             purpose=self.purpose,
@@ -1244,7 +1200,7 @@ class UndefinedConceptFull(Concept, Mergeable, Namespaced):
         return UndefinedConcept(address=self.address)
 
 
-class OrderItem(Mergeable, ConceptArgs, Reference, Namespaced, BaseModel):
+class OrderItem(Mergeable, ConceptArgs, Namespaced, BaseModel):
     # this needs to be a full concept as it may not exist in environment
     expr: Expr
     order: Ordering
@@ -1255,11 +1211,8 @@ class OrderItem(Mergeable, ConceptArgs, Reference, Namespaced, BaseModel):
             return v.reference
         return v
 
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-
     def with_namespace(self, namespace: str) -> "OrderItem":
-        return OrderItem(
+        return OrderItem.model_construct(
             expr=(
                 self.expr.with_namespace(namespace)
                 if isinstance(self.expr, Namespaced)
@@ -1311,7 +1264,7 @@ class OrderItem(Mergeable, ConceptArgs, Reference, Namespaced, BaseModel):
         return arg_to_datatype(self.expr)
 
 
-class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, Reference, BaseModel):
+class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     type: WindowType
     content: ConceptRef
     order_by: List["OrderItem"]
@@ -1343,7 +1296,7 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, Reference, BaseM
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "WindowItem":
-        output = WindowItem(
+        output = WindowItem.model_construct(
             type=self.type,
             content=self.content.with_merge(source, target, modifiers),
             over=[x.with_merge(source, target, modifiers) for x in self.over],
@@ -1353,7 +1306,7 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, Reference, BaseM
         return output
 
     def with_namespace(self, namespace: str) -> "WindowItem":
-        return WindowItem(
+        return WindowItem.model_construct(
             type=self.type,
             content=self.content.with_namespace(namespace),
             over=[x.with_namespace(namespace) for x in self.over],
@@ -1403,7 +1356,7 @@ def get_basic_type(
     return type
 
 
-class CaseWhen(Namespaced, ConceptArgs, Mergeable, Reference, BaseModel):
+class CaseWhen(Namespaced, ConceptArgs, Mergeable, BaseModel):
     comparison: Conditional | SubselectComparison | Comparison
     expr: "Expr"
 
@@ -1430,7 +1383,7 @@ class CaseWhen(Namespaced, ConceptArgs, Mergeable, Reference, BaseModel):
         )
 
     def with_namespace(self, namespace: str) -> CaseWhen:
-        return CaseWhen(
+        return CaseWhen.model_construct(
             comparison=self.comparison.with_namespace(namespace),
             expr=(
                 self.expr.with_namespace(namespace)
@@ -1445,7 +1398,7 @@ class CaseWhen(Namespaced, ConceptArgs, Mergeable, Reference, BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> CaseWhen:
-        return CaseWhen(
+        return CaseWhen.model_construct(
             comparison=self.comparison.with_merge(source, target, modifiers),
             expr=(
                 self.expr.with_merge(source, target, modifiers)
@@ -1455,7 +1408,7 @@ class CaseWhen(Namespaced, ConceptArgs, Mergeable, Reference, BaseModel):
         )
 
 
-class CaseElse(Namespaced, ConceptArgs, Mergeable, Reference, BaseModel):
+class CaseElse(Namespaced, ConceptArgs, Mergeable, BaseModel):
     expr: "Expr"
     # this ensures that it's easily differentiable from CaseWhen
     discriminant: ComparisonOperator = ComparisonOperator.ELSE
@@ -1473,7 +1426,7 @@ class CaseElse(Namespaced, ConceptArgs, Mergeable, Reference, BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> CaseElse:
-        return CaseElse(
+        return CaseElse.model_construct(
             discriminant=self.discriminant,
             expr=(
                 self.expr.with_merge(source, target, modifiers)
@@ -1483,7 +1436,7 @@ class CaseElse(Namespaced, ConceptArgs, Mergeable, Reference, BaseModel):
         )
 
     def with_namespace(self, namespace: str) -> CaseElse:
-        return CaseElse(
+        return CaseElse.model_construct(
             discriminant=self.discriminant,
             expr=(
                 self.expr.with_namespace(namespace)
@@ -1519,7 +1472,7 @@ def get_concept_arguments(expr) -> List["ConceptRef"]:
     return output
 
 
-class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, Reference, BaseModel):
+class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
     output_datatype: DataType | ListType | StructType | MapType | NumericType
@@ -1705,7 +1658,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, Reference, BaseMod
         return base_grain
 
 
-class AggregateWrapper(Mergeable, ConceptArgs, Namespaced, Reference, BaseModel):
+class AggregateWrapper(Mergeable, ConceptArgs, Namespaced, BaseModel):
     function: Function
     by: List[ConceptRef] = Field(default_factory=list)
 
@@ -1761,7 +1714,7 @@ class AggregateWrapper(Mergeable, ConceptArgs, Namespaced, Reference, BaseModel)
         )
 
 
-class FilterItem(Namespaced, ConceptArgs, Reference, BaseModel):
+class FilterItem(Namespaced, ConceptArgs, BaseModel):
     content: ConceptRef
     where: "WhereClause"
 
@@ -1821,7 +1774,7 @@ class RowsetLineage(Namespaced, Mergeable, BaseModel):
         )
 
 
-class RowsetItem(Reference, Mergeable, ConceptArgs, Namespaced, BaseModel):
+class RowsetItem(Mergeable, ConceptArgs, Namespaced, BaseModel):
     content: ConceptRef
     rowset: RowsetLineage
 
@@ -1861,7 +1814,7 @@ class RowsetItem(Reference, Mergeable, ConceptArgs, Namespaced, BaseModel):
         return [self.content]
 
 
-class OrderBy(Reference, Mergeable, Namespaced, BaseModel):
+class OrderBy(Mergeable, Namespaced, BaseModel):
     items: List[OrderItem]
 
     def with_namespace(self, namespace: str) -> "OrderBy":
@@ -1881,7 +1834,7 @@ class OrderBy(Reference, Mergeable, Namespaced, BaseModel):
         return [x.expr for x in self.items]
 
 
-class AlignClause(Namespaced, Reference, BaseModel):
+class AlignClause(Namespaced, BaseModel):
     items: List[AlignItem]
 
     def with_namespace(self, namespace: str) -> "AlignClause":
@@ -1890,7 +1843,7 @@ class AlignClause(Namespaced, Reference, BaseModel):
         )
 
 
-class SelectLineage(Mergeable, Reference, Namespaced, BaseModel):
+class SelectLineage(Mergeable, Namespaced, BaseModel):
     selection: List[ConceptRef]
     hidden_components: set[str]
     local_concepts: dict[str, Concept]
@@ -1908,7 +1861,7 @@ class SelectLineage(Mergeable, Reference, Namespaced, BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> SelectLineage:
-        return SelectLineage(
+        return SelectLineage.model_construct(
             selection=[x.with_merge(source, target, modifiers) for x in self.selection],
             hidden_components=self.hidden_components,
             local_concepts={
@@ -1935,7 +1888,7 @@ class SelectLineage(Mergeable, Reference, Namespaced, BaseModel):
         )
 
 
-class MultiSelectLineage(Reference, Mergeable, ConceptArgs, Namespaced, BaseModel):
+class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
     selects: List[SelectLineage]
     align: AlignClause
     namespace: str
@@ -1955,7 +1908,7 @@ class MultiSelectLineage(Reference, Mergeable, ConceptArgs, Namespaced, BaseMode
     @property
     def output_components(self) -> list[ConceptRef]:
         output = [
-            ConceptRef(address=x, datatype=DataType.UNKNOWN)
+            ConceptRef.model_construct(address=x, datatype=DataType.UNKNOWN)
             for x in self.derived_concepts
         ]
         for select in self.selects:
@@ -1965,7 +1918,7 @@ class MultiSelectLineage(Reference, Mergeable, ConceptArgs, Namespaced, BaseMode
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> MultiSelectLineage:
-        new = MultiSelectLineage(
+        new = MultiSelectLineage.model_construct(
             selects=[s.with_merge(source, target, modifiers) for s in self.selects],
             align=self.align,
             namespace=self.namespace,
@@ -1990,7 +1943,7 @@ class MultiSelectLineage(Reference, Mergeable, ConceptArgs, Namespaced, BaseMode
         return new
 
     def with_namespace(self, namespace: str) -> "MultiSelectLineage":
-        return MultiSelectLineage(
+        return MultiSelectLineage.model_construct(
             selects=[c.with_namespace(namespace) for c in self.selects],
             align=self.align.with_namespace(namespace),
             namespace=namespace,
@@ -2073,7 +2026,7 @@ class LooseConceptList(BaseModel):
         return self.addresses.isdisjoint(other.addresses)
 
 
-class AlignItem(Namespaced, Reference, BaseModel):
+class AlignItem(Namespaced, BaseModel):
     alias: str
     concepts: List[ConceptRef]
     namespace: str = Field(default=DEFAULT_NAMESPACE, validate_default=True)

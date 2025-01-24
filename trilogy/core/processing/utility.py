@@ -383,7 +383,7 @@ def get_node_joins(
             concepts=[] if not j.keys else None,
             concept_pairs=reduce_concept_pairs(
                 [
-                    ConceptPair(
+                    ConceptPair.model_construct(
                         left=resolve_instantiated_concept(
                             concept_map[concept], ds_node_map[k]
                         ),
