@@ -488,7 +488,7 @@ def align_item_to_concept(
         namespace=align.namespace,
         granularity=Granularity.MULTI_ROW,
         derivation=Derivation.MULTISELECT,
-        keys=[x.address for x in align.concepts],
+        keys=set(x.address for x in align.concepts),
     )
     return new
 
