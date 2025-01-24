@@ -242,6 +242,12 @@ class BuildGrain(BaseModel):
     components: set[str] = Field(default_factory=set)
     where_clause: Optional[BuildWhereClause] = None
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        if 'funnel_inputs.step' in self.components:
+            raise SyntaxError
+
     def without_condition(self):
         return BuildGrain(components=self.components)
 
@@ -1447,7 +1453,7 @@ class Factory:
     ):
         self.grain = grain or Grain()
         self.environment = environment
-        self.local_concepts: dict[str, BuildConcept] = local_concepts or {}
+        self.local_concepts: dict[str, BuildConcept] = {} if local_concepts is None else local_concepts
 
     @singledispatchmethod
     def build(self, base):
@@ -1603,6 +1609,7 @@ class Factory:
 
     @build.register
     def _(self, base: WindowItem) -> BuildWindowItem:
+
         return BuildWindowItem(
             type=base.type,
             content=self.build(base.content),

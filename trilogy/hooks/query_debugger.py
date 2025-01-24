@@ -12,7 +12,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.processing.nodes import StrategyNode
 from trilogy.core.statements.author import SelectStatement
-from trilogy.dialect.bigquery import BigqueryDialect
+
 from trilogy.hooks.base_hook import BaseHook
 
 
@@ -20,9 +20,6 @@ class PrintMode(Enum):
     OFF = False
     BASIC = True
     FULL = 3
-
-
-renderer = BigqueryDialect()
 
 
 class DebuggingHook(BaseHook):
@@ -46,6 +43,9 @@ class DebuggingHook(BaseHook):
         self.process_other = PrintMode(process_other)
         self.messages: list[str] = []
         self.uuid = uuid4()
+        from trilogy.dialect.bigquery import BigqueryDialect
+
+        self.renderer = BigqueryDialect()
 
     def print(self, *args):
         merged = " ".join([str(x) for x in args])
@@ -123,7 +123,7 @@ class DebuggingHook(BaseHook):
         self.print(
             "  " * depth, input.name, "->", input.group_to_grain, "->", select_statement
         )
-        sql = renderer.render_cte(input).statement
+        sql = self.renderer.render_cte(input).statement
         for line in sql.split("\n"):
             logger.debug("  " * (depth) + line)
         if isinstance(input, CTE):

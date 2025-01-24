@@ -1,0 +1,54 @@
+
+# Write a funnel analysis.
+
+key step int;
+property step.name <- CASE WHEN step = 1 then 'Visit'
+    WHEN step=2 then 'Sign up'
+    WHEN step=3 then 'Activate'
+    WHEN step=4 then 'Purchase'
+    END;
+
+
+key customer_id int;
+
+
+SELECT
+    --step, 
+    name,
+    count(customer_id) -> customer_count,
+    customer_count/ lag 1  customer_count  order by step asc -> drop_off
+ORDER BY
+    step asc
+;
+
+
+### begin 
+
+key time datetime;
+key event_name string;
+key user_id int;
+key distinct_id int;
+
+datasource events (
+    time:time,
+    name:event_name,
+    distinct_id: distinct_id)
+address events;
+
+
+auto visits <- filter distinct_id where cast(min(time?  event_name = 'View Landing Page') by distinct_id  as date) between '2020-04-01'::date and '2020-05-31'::date;
+# auto sign_up <- filter distinct_id where distinct_id in visits and event_name = 'Sign Up';
+# auto activations <- filter distinct_id where distinct_id in sign_up and event_name = 'New Canvas';
+# auto purchase <- filter distinct_id where distinct_id in activations and event_name = 'Start Subscription';
+
+with funnel_inputs as
+WHERE distinct_id in visits
+SELECT
+    CASE 
+        WHEN event_name = 'View Landing Page' then 1
+        WHEN event_name = 'Sign Up' then 2
+        WHEN event_name = 'New Canvas' then 3
+        WHEN event_name = 'Start Subscription' then 4
+    END -> step,
+    distinct_id
+;
