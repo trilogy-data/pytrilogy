@@ -1499,7 +1499,7 @@ class Factory:
     @build.register
     def _(self, base: Function) -> BuildFunction:
 
-        new = BuildFunction(
+        new = BuildFunction.model_construct(
             operator=base.operator,
             arguments=[self.build(c) for c in base.arguments],
             output_datatype=base.output_datatype,
