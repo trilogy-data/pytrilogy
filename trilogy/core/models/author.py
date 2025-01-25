@@ -585,19 +585,23 @@ class Comparison(ConceptArgs, Mergeable, Namespaced, BaseModel):
                     f"Cannot use {self.operator.value} with non-null or boolean value {self.right}"
                 )
         elif self.operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
-            right = arg_to_datatype(self.right)
-            if not isinstance(
-                self.right, (ConceptRef, Concept, ListType, TupleWrapper)
+            right_type = arg_to_datatype(self.right)
+            if not any(
+                [
+                    isinstance(self.right, ConceptRef),
+                    right_type in (DataType.LIST,),
+                    isinstance(right_type, (ListType, ListWrapper, TupleWrapper)),
+                ]
             ):
                 raise SyntaxError(
-                    f"Cannot use {self.operator.value} with non-list, non-tuple, non-concept object {right} in {str(self)}"
+                    f"Cannot use {self.operator.value} with non-list, non-tuple, non-concept object {self.right} in {str(self)}"
                 )
 
-            elif isinstance(right, ListType) and not is_compatible_datatype(
-                arg_to_datatype(self.left), right.value_data_type
+            elif isinstance(right_type, ListType) and not is_compatible_datatype(
+                arg_to_datatype(self.left), right_type.value_data_type
             ):
                 raise SyntaxError(
-                    f"Cannot compare {arg_to_datatype(self.left)} and {right} with operator {self.operator} in {str(self)}"
+                    f"Cannot compare {arg_to_datatype(self.left)} and {right_type} with operator {self.operator} in {str(self)}"
                 )
             elif isinstance(self.right, Concept) and not is_compatible_datatype(
                 arg_to_datatype(self.left), arg_to_datatype(self.right)

@@ -14,7 +14,9 @@ machine = platform.machine()
 cpu_name = platform.processor()
 cpu_count = os.cpu_count()
 
-fingerprint = f"{machine}-{cpu_name}-{cpu_count}".lower().replace(" ", "_").replace(',', '')
+fingerprint = (
+    f"{machine}-{cpu_name}-{cpu_count}".lower().replace(" ", "_").replace(",", "")
+)
 
 # https://github.com/python/cpython/issues/125235#issuecomment-2412948604
 if not environ.get("TCL_LIBRARY"):
@@ -57,7 +59,7 @@ def analyze(show: bool = False):
 
     # Plot the results
     fig, ax = plt.subplots()
-    ax.set_title("Query Timinng")
+    ax.set_title("Query Timing")
     ax.set_xlabel("Generation")
     ax.set_ylabel("Execution time (s)")
 
