@@ -39,6 +39,7 @@ from trilogy.core.models.author import (
     Concept,
     ConceptRef,
     Function,
+    SelectLineage,
     UndefinedConcept,
     UndefinedConceptFull,
     address_with_namespace,
@@ -189,6 +190,7 @@ class Environment(BaseModel):
     ] = Field(default_factory=EnvironmentDatasourceDict)
     functions: Dict[str, Function] = Field(default_factory=dict)
     data_types: Dict[str, DataType] = Field(default_factory=dict)
+    named_statements: Dict[str, SelectLineage] = Field(default_factory=dict)
     imports: Dict[str, list[Import]] = Field(
         default_factory=lambda: defaultdict(list)  # type: ignore
     )
@@ -216,6 +218,9 @@ class Environment(BaseModel):
         from trilogy.core.models.build import Factory
 
         return Factory(self, local_concepts=local_concepts).build(self)
+
+    def add_rowset(self, name: str, lineage: SelectLineage):
+        self.named_statements[name] = lineage
 
     def duplicate(self):
         return Environment.model_construct(

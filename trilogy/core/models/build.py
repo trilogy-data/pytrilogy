@@ -245,9 +245,6 @@ class BuildGrain(BaseModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        if 'funnel_inputs.step' in self.components:
-            raise SyntaxError
-
     def without_condition(self):
         return BuildGrain(components=self.components)
 
@@ -1177,7 +1174,7 @@ class BuildFilterItem(BuildConceptArgs, BaseModel):
 
 class BuildRowsetLineage(BuildConceptArgs, BaseModel):
     name: str
-    derived_concepts: List[BuildConcept]
+    derived_concepts: List[str]
     select: SelectLineage | MultiSelectLineage
 
 
@@ -1228,8 +1225,8 @@ class BuildSelectLineage(BaseModel):
     limit: Optional[int] = None
     meta: Metadata = Field(default_factory=lambda: Metadata())
     grain: BuildGrain = Field(default_factory=BuildGrain)
-    where_clause: WhereClause | BuildWhereClause | None = Field(default=None)
-    having_clause: HavingClause | BuildHavingClause | None = Field(default=None)
+    where_clause: BuildWhereClause | None = Field(default=None)
+    having_clause: BuildHavingClause | None = Field(default=None)
 
     @property
     def output_components(self) -> List[BuildConcept]:
@@ -1453,7 +1450,9 @@ class Factory:
     ):
         self.grain = grain or Grain()
         self.environment = environment
-        self.local_concepts: dict[str, BuildConcept] = {} if local_concepts is None else local_concepts
+        self.local_concepts: dict[str, BuildConcept] = (
+            {} if local_concepts is None else local_concepts
+        )
 
     @singledispatchmethod
     def build(self, base):
@@ -1521,14 +1520,14 @@ class Factory:
 
     @build.register
     def _(self, base: CaseWhen) -> BuildCaseWhen:
-        return BuildCaseWhen(
+        return BuildCaseWhen.model_construct(
             comparison=self.build(base.comparison),
             expr=(self.build(base.expr)),
         )
 
     @build.register
     def _(self, base: CaseElse) -> BuildCaseElse:
-        return BuildCaseElse(expr=self.build(base.expr))
+        return BuildCaseElse.model_construct(expr=self.build(base.expr))
 
     @build.register
     def _(self, base: Concept) -> BuildConcept:
@@ -1543,7 +1542,7 @@ class Factory:
             derivation, final_grain, build_lineage
         )
         is_aggregate = Concept.calculate_is_aggregate(build_lineage)
-        rval = BuildConcept(
+        rval = BuildConcept.model_construct(
             name=base.name,
             datatype=base.datatype,
             purpose=base.purpose,
@@ -1571,12 +1570,12 @@ class Factory:
         else:
             by = [self.build(x) for x in base.by]
         parent = self.build(base.function)
-        return BuildAggregateWrapper(function=parent, by=by)
+        return BuildAggregateWrapper.model_construct(function=parent, by=by)
 
     @build.register
     def _(self, base: ColumnAssignment) -> BuildColumnAssignment:
 
-        return BuildColumnAssignment(
+        return BuildColumnAssignment.model_construct(
             alias=(
                 self.build(base.alias)
                 if isinstance(base.alias, Function)
@@ -1590,27 +1589,31 @@ class Factory:
 
     @build.register
     def _(self, base: OrderBy) -> BuildOrderBy:
-        return BuildOrderBy(items=[self.build(x) for x in base.items])
+        return BuildOrderBy.model_construct(items=[self.build(x) for x in base.items])
 
     @build.register
     def _(self, base: OrderItem) -> BuildOrderItem:
-        return BuildOrderItem(
+        return BuildOrderItem.model_construct(
             expr=(self.build(base.expr)),
             order=base.order,
         )
 
     @build.register
     def _(self, base: WhereClause) -> BuildWhereClause:
-        return BuildWhereClause(conditional=self.build(base.conditional))
+        return BuildWhereClause.model_construct(
+            conditional=self.build(base.conditional)
+        )
 
     @build.register
     def _(self, base: HavingClause) -> BuildHavingClause:
-        return BuildHavingClause(conditional=self.build(base.conditional))
+        return BuildHavingClause.model_construct(
+            conditional=self.build(base.conditional)
+        )
 
     @build.register
     def _(self, base: WindowItem) -> BuildWindowItem:
 
-        return BuildWindowItem(
+        return BuildWindowItem.model_construct(
             type=base.type,
             content=self.build(base.content),
             order_by=[self.build(x) for x in base.order_by],
@@ -1620,7 +1623,7 @@ class Factory:
 
     @build.register
     def _(self, base: Conditional) -> BuildConditional:
-        return BuildConditional(
+        return BuildConditional.model_construct(
             left=(self.build(base.left)),
             right=(self.build(base.right)),
             operator=base.operator,
@@ -1628,7 +1631,7 @@ class Factory:
 
     @build.register
     def _(self, base: SubselectComparison) -> BuildSubselectComparison:
-        return BuildSubselectComparison(
+        return BuildSubselectComparison.model_construct(
             left=(self.build(base.left)),
             right=(self.build(base.right)),
             operator=base.operator,
@@ -1636,7 +1639,7 @@ class Factory:
 
     @build.register
     def _(self, base: Comparison) -> BuildComparison:
-        return BuildComparison(
+        return BuildComparison.model_construct(
             left=(self.build(base.left)),
             right=(self.build(base.right)),
             operator=base.operator,
@@ -1644,7 +1647,7 @@ class Factory:
 
     @build.register
     def _(self, base: AlignItem) -> BuildAlignItem:
-        return BuildAlignItem(
+        return BuildAlignItem.model_construct(
             alias=base.alias,
             concepts=[self.build(x) for x in base.concepts],
             namespace=base.namespace,
@@ -1652,7 +1655,9 @@ class Factory:
 
     @build.register
     def _(self, base: AlignClause) -> BuildAlignClause:
-        return BuildAlignClause(items=[self.build(x) for x in base.items])
+        return BuildAlignClause.model_construct(
+            items=[self.build(x) for x in base.items]
+        )
 
     @build.register
     def _(self, base: RowsetItem):
@@ -1670,7 +1675,7 @@ class Factory:
     def _(self, base: RowsetLineage) -> BuildRowsetLineage:
         out = BuildRowsetLineage(
             name=base.name,
-            derived_concepts=[],
+            derived_concepts=[x.address for x in base.derived_concepts],
             select=base.select,
         )
         return out
@@ -1682,17 +1687,19 @@ class Factory:
             where = factory.build(base.where_clause)
         else:
             where = None
-        return BuildGrain(components=base.components, where_clause=where)
+        return BuildGrain.model_construct(
+            components=base.components, where_clause=where
+        )
 
     @build.register
     def _(self, base: FilterItem) -> BuildFilterItem:
-        return BuildFilterItem(
+        return BuildFilterItem.model_construct(
             content=self.build(base.content), where=self.build(base.where)
         )
 
     @build.register
     def _(self, base: Parenthetical) -> BuildParenthetical:
-        return BuildParenthetical(content=(self.build(base.content)))
+        return BuildParenthetical.model_construct(content=(self.build(base.content)))
 
     @build.register
     def _(self, base: SelectLineage) -> BuildSelectLineage:
@@ -1760,7 +1767,7 @@ class Factory:
         derived_base = []
         for k in base.derived_concepts:
             base_concept = self.environment.concepts[k]
-            x = BuildConcept(
+            x = BuildConcept.model_construct(
                 name=base_concept.name,
                 datatype=base_concept.datatype,
                 purpose=base_concept.purpose,
@@ -1785,7 +1792,7 @@ class Factory:
             local_concepts=local_build_cache,
         )
         where_factory = Factory(environment=self.environment)
-        lineage = BuildMultiSelectLineage(
+        lineage = BuildMultiSelectLineage.model_construct(
             # we don't build selects here; they'll be built automatically in query discovery
             selects=base.selects,
             grain=final_grain,
@@ -1838,7 +1845,7 @@ class Factory:
         factory = Factory(
             grain=base.grain, environment=self.environment, local_concepts=local_cache
         )
-        return BuildDatasource(
+        return BuildDatasource.model_construct(
             name=base.name,
             columns=[factory.build(c) for c in base.columns],
             address=base.address,

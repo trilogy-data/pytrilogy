@@ -503,6 +503,11 @@ def rowset_to_concepts(rowset: RowsetDerivationStatement, environment: Environme
         if isinstance(orig_concept.lineage, FilterItem):
             if orig_concept.lineage.where == rowset.select.where_clause:
                 name = environment.concepts[orig_concept.lineage.content.address].name
+        base_namespace = (
+            f"{rowset.name}.{orig_concept.namespace}"
+            if orig_concept.namespace != rowset.namespace
+            else rowset.name
+        )
 
         new_concept = Concept(
             name=name,
@@ -512,11 +517,7 @@ def rowset_to_concepts(rowset: RowsetDerivationStatement, environment: Environme
             grain=orig_concept.grain,
             # TODO: add proper metadata
             metadata=Metadata(concept_source=ConceptSource.CTE),
-            namespace=(
-                f"{rowset.name}.{orig_concept.namespace}"
-                if orig_concept.namespace != rowset.namespace
-                else rowset.name
-            ),
+            namespace=base_namespace,
             keys=orig_concept.keys,
             derivation=Derivation.ROWSET,
             granularity=orig_concept.granularity,
@@ -538,6 +539,9 @@ def rowset_to_concepts(rowset: RowsetDerivationStatement, environment: Environme
     default_grain = Grain.from_concepts([*pre_output])
     # remap everything to the properties of the rowset
     for x in pre_output:
+        print("xxxx")
+        print(x.address)
+        print(x.grain)
         if x.keys:
             if all([k in orig for k in x.keys]):
                 x.keys = set([orig[k].address if k in orig else k for k in x.keys])

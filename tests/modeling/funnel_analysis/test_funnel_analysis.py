@@ -1,7 +1,6 @@
 from trilogy import Executor, parse
-from trilogy.core.models.author import Grain
 from trilogy.core.models.environment import Environment
-from trilogy.hooks.query_debugger import DebuggingHook
+
 
 def test_funnel_analysis(test_environment: Environment, test_executor: Executor):
     # test keys
@@ -36,7 +35,7 @@ ORDER BY
 
     _, statements = parse(test_select, test_environment)
     query = test_executor.generate_sql(test_select)[0]
-
+    assert "INVALID_REFERENCE_BUG" not in query
 
 
 def test_funnel_basic(test_environment: Environment, test_executor: Executor):
@@ -46,7 +45,7 @@ with funnel_inputs as
 WHERE distinct_id in visits
 SELECT
     CASE 
-        WHEN event_name = 'Landing Page' then 1
+        WHEN event_name = 'View Landing Page' then 1
         WHEN event_name = 'Sign Up' then 2
         WHEN event_name = 'New Canvas' then 3
         WHEN event_name = 'Start Subscription' then 4
@@ -73,4 +72,4 @@ ORDER BY
     _, statements = parse(test_select, test_environment)
     query = test_executor.generate_sql(test_select)[0]
 
-
+    assert "INVALID_REFERENCE_BUG" not in query

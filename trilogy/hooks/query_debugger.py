@@ -12,7 +12,6 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.processing.nodes import StrategyNode
 from trilogy.core.statements.author import SelectStatement
-
 from trilogy.hooks.base_hook import BaseHook
 
 
