@@ -19,7 +19,6 @@ def resolve_window_parent_concepts(
     if not isinstance(concept.lineage, WINDOW_TYPES):
         raise ValueError
     base = []
-    logger.info(concept.lineage)
     if concept.lineage.over:
         base += concept.lineage.over
     if concept.lineage.order_by:

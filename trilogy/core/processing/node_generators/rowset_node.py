@@ -54,17 +54,15 @@ def gen_rowset_node(
     rowset_relevant: list[BuildConcept] = [
         v
         for v in environment.concepts.values()
-        if isinstance(v.lineage, BuildRowsetItem)
-        and v.lineage.rowset.name == rowset.name
+        if v.address in lineage.rowset.derived_concepts
     ]
-    # logger.info(
-    #     f"{padding(depth)}{LOGGER_PREFIX} rowset relevant nodes are {rowset_relevant}"
-    # )
+
     select_hidden = node.hidden_concepts
     rowset_hidden = [
         x
         for x in rowset_relevant
-        if isinstance(x.lineage, BuildRowsetItem)
+        if x.address in lineage.rowset.derived_concepts
+        and isinstance(x.lineage, BuildRowsetItem)
         and x.lineage.content.address in select_hidden
     ]
     additional_relevant = [

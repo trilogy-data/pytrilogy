@@ -84,7 +84,9 @@ CONDITIONAL_ITEMS = (BuildConditional,)
 
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
-    # raise SyntaxError(x)
+    # if CONFIG.validate_missing:
+    #     raise SyntaxError(f"INVALID_REFERENCE_BUG_{callsite}<{x}>")
+
     return f"INVALID_REFERENCE_BUG_{callsite}<{x}>"
 
 

@@ -576,11 +576,24 @@ class ParseToObjects(Transformer):
             select=select,
             namespace=self.environment.namespace or DEFAULT_NAMESPACE,
         )
+
+        # clean up current definitions
+        # to_delete = set()
+        # if output.name in self.environment.named_statements:
+        #     for k, v in self.environment.concepts.items():
+        #         if v.derivation == Derivation.ROWSET and v.lineage.rowset.name == name:
+        #             to_delete.add(k)
+        # for k in to_delete:
+        #     self.environment.concepts.pop(k)
+
         for new_concept in rowset_to_concepts(output, self.environment):
             if new_concept.metadata:
                 new_concept.metadata.line_number = meta.line
-            # output.select.local_concepts[new_concept.address] = new_concept
-            self.environment.add_concept(new_concept)
+            self.environment.add_concept(new_concept, force=True)
+
+        self.environment.add_rowset(
+            output.name, output.select.as_lineage(self.environment)
+        )
         return output
 
     @v_args(meta=True)

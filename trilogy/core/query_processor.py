@@ -12,6 +12,8 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
     BuildDatasource,
+    BuildMultiSelectLineage,
+    BuildSelectLineage,
     Factory,
 )
 from trilogy.core.models.environment import Environment
@@ -373,7 +375,10 @@ def get_query_node(
         raise ValueError(f"Statement has no output components {statement}")
 
     history = history or History(base_environment=environment)
-    build_statement = Factory(environment=environment).build(statement)
+    build_statement: BuildSelectLineage | BuildMultiSelectLineage = Factory(
+        environment=environment
+    ).build(statement)
+
     # build_statement = statement
     build_environment = environment.materialize_for_select(
         build_statement.local_concepts

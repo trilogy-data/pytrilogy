@@ -779,8 +779,6 @@ def _search_concepts(
     else:
 
         completion_mandatory = mandatory_list
-    if "date.month_seq" in completion_mandatory:
-        raise SyntaxError(completion_mandatory)
     attempted: set[str] = set()
 
     found: set[str] = set()
