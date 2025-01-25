@@ -7,7 +7,7 @@ def test_render_query(snowflake_engine):
         """
         const today <- date_trunc(current_datetime() , day);
         const ten_days_from_now <- date_add(current_datetime() , day, 10);
-        const ten_day_diff <- date_diff(today, ten_days_from_now, day);
+        auto ten_day_diff <- date_diff(today, ten_days_from_now, day);
         select 
             today,
             ten_days_from_now,
