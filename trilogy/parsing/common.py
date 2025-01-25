@@ -152,7 +152,6 @@ def constant_to_concept(
     parent: ListWrapper | MapWrapper | list | int | float | str,
     name: str,
     namespace: str,
-    purpose: Purpose | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:
     const_function: Function = Function(
@@ -340,7 +339,6 @@ def filter_item_to_concept(
     name: str,
     namespace: str,
     environment: Environment,
-    purpose: Purpose | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
@@ -377,14 +375,13 @@ def window_item_to_concept(
     name: str,
     namespace: str,
     environment: Environment,
-    purpose: Purpose | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
     bcontent = environment.concepts[parent.content.address]
     if isinstance(bcontent, UndefinedConcept):
         return UndefinedConcept(address=f"{namespace}.{name}", metadata=fmetadata)
-    local_purpose, keys = get_purpose_and_keys(purpose, (bcontent,), environment)
+    local_purpose, keys = get_purpose_and_keys(None, (bcontent,), environment)
 
     if parent.order_by:
         grain_components = parent.over + [bcontent.output]
@@ -568,7 +565,6 @@ def arbitrary_to_concept(
     namespace: str | None = None,
     name: str | None = None,
     metadata: Metadata | None = None,
-    purpose: Purpose | None = None,
 ) -> Concept:
     namespace = namespace or environment.namespace
     if isinstance(parent, AggregateWrapper):
@@ -585,7 +581,6 @@ def arbitrary_to_concept(
             name,
             namespace,
             environment=environment,
-            purpose=purpose,
             metadata=metadata,
         )
     elif isinstance(parent, FilterItem):
@@ -596,7 +591,6 @@ def arbitrary_to_concept(
             name,
             namespace,
             environment=environment,
-            purpose=purpose,
             metadata=metadata,
         )
     elif isinstance(parent, Function):
@@ -612,8 +606,8 @@ def arbitrary_to_concept(
     elif isinstance(parent, ListWrapper):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
-        return constant_to_concept(parent, name, namespace, purpose, metadata)
+        return constant_to_concept(parent, name, namespace, metadata)
     else:
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
-        return constant_to_concept(parent, name, namespace, purpose, metadata)
+        return constant_to_concept(parent, name, namespace, metadata)

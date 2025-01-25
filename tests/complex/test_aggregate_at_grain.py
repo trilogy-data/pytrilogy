@@ -27,7 +27,7 @@ datasource posts (
 ;
 
 
-metric avg_user_post_count_double <- avg(user_post_count)*2;
+auto avg_user_post_count_double <- avg(user_post_count)*2;
 
 select
     avg_user_post_count_double

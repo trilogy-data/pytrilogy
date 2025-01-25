@@ -324,8 +324,8 @@ const list <- [1,2,3,4,5,6];
 const list_2 <- [1,2,3,4,5,6,7,8,9,10];
 const orid <- unnest(list);
 const orid_2 <-unnest(list_2);
-const even_orders <- filter orid where (orid % 2) = 0;
-const filtered_even_orders <- filter orid_2 where orid_2 in even_orders;
+auto even_orders <- filter orid where (orid % 2) = 0;
+auto filtered_even_orders <- filter orid_2 where orid_2 in even_orders;
 
 select 
     filtered_even_orders
@@ -468,8 +468,8 @@ def test_constant_group(default_duckdb_engine: Executor):
 const x <- 1;
 const x2 <- x+1;
 
-key constan_group_orid <- unnest([1,2,3]);
-property constan_group_orid.mod_two <- constan_group_orid % 2;
+auto constant_group_orid <- unnest([1,2,3]);
+property constan_group_orid.mod_two <- constant_group_orid % 2;
 
 select 
     mod_two,
@@ -491,7 +491,7 @@ def test_case_group():
 const x <- 1;
 const x2 <- x+1;
 
-key orid <- unnest([1,2,3,6,10]);
+auto orid <- unnest([1,2,3,6,10]);
 property orid.mod_two <- orid % 2;
 
 property orid.cased <-CASE WHEN mod_two = 0 THEN 1 ELSE 0 END;
@@ -531,7 +531,7 @@ def test_demo_filter():
 
     test = """const x <- unnest([1,2,2,3]);
 
-const even_x <- filter x where (x % 2) = 0;
+auto even_x <- filter x where (x % 2) = 0;
 
 select 
     x, 
@@ -596,9 +596,9 @@ def test_filter_count():
 
     test = """const x <- unnest([1,2,2,3]);
 
-const y <- x+1;
+auto y <- x+1;
 
-const odd_y <- filter x where (x % 2) = 0;
+auto odd_y <- filter x where (x % 2) = 0;
 
 select 
     count(odd_y) -> odd_y_count,
@@ -910,7 +910,7 @@ property space_one.one_name string;
 property space_two.two_name string;
 
 auto space_all <- union(space_one, space_two);
-property space_all.name <- union(one_name, two_name);
+auto name <- union(one_name, two_name);
 
 datasource sone (
 x: space_one,

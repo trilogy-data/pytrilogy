@@ -508,8 +508,6 @@ class ParseToObjects(Transformer):
         else:
             metadata = None
         purpose = args[0]
-        if purpose == Purpose.AUTO:
-            purpose = None
         raw_name = args[1]
         # abc.def.property pattern
         if isinstance(raw_name, str):
@@ -538,9 +536,13 @@ class ParseToObjects(Transformer):
                 name=name,
                 namespace=namespace,
                 environment=self.environment,
-                purpose=purpose,
                 metadata=metadata,
             )
+
+            if purpose and purpose != Purpose.AUTO and concept.purpose != purpose:
+                raise SyntaxError(
+                    f'Concept {name} purpose {concept.purpose} does not match declared purpose {purpose}. Suggest defaulting to "auto"'
+                )
 
             if concept.metadata:
                 concept.metadata.line_number = meta.line
@@ -552,7 +554,6 @@ class ParseToObjects(Transformer):
                 source_value,
                 name=name,
                 namespace=namespace,
-                purpose=purpose,
                 metadata=metadata,
             )
             if concept.metadata:
@@ -576,15 +577,6 @@ class ParseToObjects(Transformer):
             select=select,
             namespace=self.environment.namespace or DEFAULT_NAMESPACE,
         )
-
-        # clean up current definitions
-        # to_delete = set()
-        # if output.name in self.environment.named_statements:
-        #     for k, v in self.environment.concepts.items():
-        #         if v.derivation == Derivation.ROWSET and v.lineage.rowset.name == name:
-        #             to_delete.add(k)
-        # for k in to_delete:
-        #     self.environment.concepts.pop(k)
 
         for new_concept in rowset_to_concepts(output, self.environment):
             if new_concept.metadata:

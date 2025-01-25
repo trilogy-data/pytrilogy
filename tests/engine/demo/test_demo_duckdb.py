@@ -145,7 +145,7 @@ def test_demo_e2e(engine):
     setup_titanic(env)
     executor.environment = env
     test = """
-property passenger.id.split_cabin <- unnest(split(passenger.cabin, ' '));
+auto passenger.split_cabin <- unnest(split(passenger.cabin, ' '));
 persist cabin_info into dim_cabins from select passenger.id, passenger.split_cabin;
 select 
     passenger.split_cabin;
@@ -166,7 +166,7 @@ def test_demo_aggregates(engine):
     setup_titanic(env)
     executor.environment = env
     test = """
-key survivor <- filter passenger.id where passenger.survived = 1;
+auto survivor <- filter passenger.id where passenger.survived = 1;
 
 auto survivors <- count(survivor) by passenger.class;
 auto total <- count(passenger.id) by passenger.class;

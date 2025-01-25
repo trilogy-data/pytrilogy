@@ -74,7 +74,7 @@ select 2, 'product2', null
 
 
 # aggregate tests
-property store_id.store_order_count <- count(order_id) by store_id;
+auto store_order_count <- count(order_id) by store_id;
 auto store_order_count_2 <- count(order_id) by store_id;
 
 # property tests
