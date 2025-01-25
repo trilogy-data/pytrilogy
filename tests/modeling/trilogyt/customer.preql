@@ -4,9 +4,9 @@ key id int;
 property id.first_name string;
 property id.last_name string;
 
-property id.first_order_date <-min(order.date) by id;
-property id.most_recent_order_date <- max(order.date) by id;
-property id.raw_number_of_orders <- count(order.id) by id;
+auto first_order_date <-min(order.date) by id;
+auto most_recent_order_date <- max(order.date) by id;
+auto raw_number_of_orders <- count(order.id) by id;
 
 datasource customers_raw (
     id:id,

@@ -89,7 +89,7 @@ select
 
 def test_select_where_attribute_v2(test_environment):
     declarations = """
-key special_category <- filter category_id where like(category_name, '%special%') is True;
+auto special_category <- filter category_id where like(category_name, '%special%') is True;
 
 select
     order_id,

@@ -12,7 +12,7 @@ property id.constant string;
 metric count <- count(id);
 metric avg_length <- avg(length);
 
-key top_ids <- filter id where sum(comment_count) by id >50;
+auto top_ids <- filter id where sum(comment_count) by id >50;
 
 
 datasource posts (
