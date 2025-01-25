@@ -46,7 +46,7 @@ import so_concepts.answer as answer;
 import so_concepts.user_metrics as user_metrics;
 import so_concepts.tag as tag;
 
-key top_ids <- filter answer.question.id whereanswer.question.comment_count >50;
+auto top_ids <- filter answer.question.id whereanswer.question.comment_count >50;
 
 SELECT
     top_ids,

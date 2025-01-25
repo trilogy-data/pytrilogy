@@ -323,7 +323,7 @@ def test_circular_aliasing():
 property composite_id.first <- split(composite_id, '-')[1];
 property composite_id.second <- split(composite_id, '-')[2];
 
-key composite_id_alt <- concat(first, '-', second);
+auto composite_id_alt <- concat(first, '-', second);
 
 merge composite_id_alt into composite_id;
 
@@ -367,7 +367,7 @@ def test_circular_aliasing_inverse():
 property composite_id.first <- split(composite_id, '-')[1];
 property composite_id.second <- split(composite_id, '-')[2];
 
-key composite_id_alt <- concat(first, '-', second);
+auto composite_id_alt <- concat(first, '-', second);
 
 merge composite_id_alt into composite_id;
 
