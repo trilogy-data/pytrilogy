@@ -2,6 +2,36 @@
 
 ## Execution Plan
 
+
+Query discovery is a recursive loop.
+
+Order of concepts to be discovered is prioritized by lineage type, with an additional sort so that if one concept
+is derived from another concept, the parent is delayed in order.
+
+This ensures that the parent is typically included in discovery of the child node path and results in a more 'ergonomic' query.
+
+In rare cases, a node may return partial results. Then the discovery loop will attempt to merge those.
+
+If it cannot merge, it will attempt to discover new concepts to inject into the search path that will result in a mergable graph.
+
+[see concept injection for more.]
+
+## Filtering
+Filtering via where clauses is always pushed up as high as possible by passing the condition object through to sourcing. 
+
+If at any point we have a discovery loop where the contents of the where clause are included in the filtering, we need to immediately inject them.
+
+If we never hit that point, filtering will be injected when we have only root or constant nodes left.
+
+## Psuedonyms
+
+Pseudonyms should always be handled by a node returning the pseudonymous type.
+
+Ex: if A* has been merged into B*, and B* cannot be found, but A* can, the node returning A* should return A* and let the merge loop reconcile. 
+
+
+
+
 ## Always pass up local optional
 ## pass up filter
 Eg

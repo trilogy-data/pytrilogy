@@ -295,7 +295,9 @@ class BaseDialect:
 
         #     return f"{cte.name}.{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
 
-        return f"{self.render_expr(order_item.expr, cte=cte, qualify=False)} {order_item.order.value}"
+        return (
+            f"{self.render_expr(order_item.expr, cte=cte, )} {order_item.order.value}"
+        )
 
     def render_concept_sql(
         self,
@@ -303,7 +305,6 @@ class BaseDialect:
         cte: CTE | UnionCTE,
         alias: bool = True,
         raise_invalid: bool = False,
-        qualify: bool = True,
     ) -> str:
         result = None
         if c.pseudonyms:
@@ -317,7 +318,9 @@ class BaseDialect:
                         f"{LOGGER_PREFIX} [{c.address}] Attempting rendering w/ candidate {candidate.address}"
                     )
                     result = self._render_concept_sql(
-                        candidate, cte, raise_invalid=True, qualify=qualify
+                        candidate,
+                        cte,
+                        raise_invalid=True,
                     )
                     if result:
                         break
@@ -325,7 +328,9 @@ class BaseDialect:
                     continue
         if not result:
             result = self._render_concept_sql(
-                c, cte, raise_invalid=raise_invalid, qualify=qualify
+                c,
+                cte,
+                raise_invalid=raise_invalid,
             )
         if alias:
             return f"{result} as {self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
@@ -336,7 +341,6 @@ class BaseDialect:
         c: BuildConcept,
         cte: CTE | UnionCTE,
         raise_invalid: bool = False,
-        qualify: bool = True,
     ) -> str:
         # only recurse while it's in sources of the current cte
         logger.debug(
@@ -515,7 +519,6 @@ class BaseDialect:
         cte: Optional[CTE | UnionCTE] = None,
         cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
         raise_invalid: bool = False,
-        qualify: bool = True,
     ) -> str:
         if isinstance(e, SUBSELECT_COMPARISON_ITEMS):
             if isinstance(e.right, BuildConcept):
@@ -639,7 +642,6 @@ class BaseDialect:
                     cte,
                     alias=False,
                     raise_invalid=raise_invalid,
-                    qualify=qualify,
                 )
             elif cte_map:
                 return f"{cte_map[e.address].name}.{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
