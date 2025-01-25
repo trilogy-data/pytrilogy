@@ -9,7 +9,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, StrategyNode
 from trilogy.core.processing.utility import padding
 
-LOGGER_PREFIX = "[GEN_UNION_NODE]"
+LOGGER_PREFIX = "[GEN_SYNONYM_NODE]"
 
 
 def is_union(c: BuildConcept):
@@ -29,6 +29,7 @@ def gen_synonym_node(
     conditions: BuildWhereClause | None = None,
     accept_partial: bool = False,
 ) -> StrategyNode | None:
+    local_prefix = f"[GEN_SYNONYM_NODE] {padding(depth)}"
     base_fingerprint = tuple([x.address for x in all_concepts])
     synonyms = defaultdict(list)
     synonym_count = 0
@@ -44,10 +45,8 @@ def gen_synonym_node(
                 synonym_count += 1
     if synonym_count == 0:
         return None
-    LOGGER_PREFIX = padding(depth) + "[GEN_SYNONYM_NODE]"
-    logger.info(
-        f"{LOGGER_PREFIX} Generating Synonym Node with {len(synonyms)} synonyms"
-    )
+
+    logger.info(f"{local_prefix} Generating Synonym Node with {len(synonyms)} synonyms")
 
     combinations = itertools.product(*(synonyms[obj] for obj in synonyms.keys()))
     for combo in combinations:
@@ -64,6 +63,6 @@ def gen_synonym_node(
             accept_partial=accept_partial,
         )
         if attempt:
-            # attempt.set_output_concepts(all_concepts)
+            logger.info(f"{local_prefix} found inputs with {combo}")
             return attempt
     return None

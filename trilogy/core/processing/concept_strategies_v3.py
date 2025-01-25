@@ -583,7 +583,6 @@ def validate_concept(
             found_map[str(node)].add(concept)
     for v_address in concept.pseudonyms:
         if v_address in seen:
-            logger.info
             return
         v = environment.concepts[v_address]
         if v.address in seen:
