@@ -1,5 +1,7 @@
 from copy import deepcopy
 
+from pytest import raises
+
 from trilogy import parse
 from trilogy.core.enums import (
     BooleanOperator,
@@ -22,6 +24,7 @@ from trilogy.core.models.author import (
 from trilogy.core.models.build import BuildGrain
 from trilogy.core.models.core import (
     DataType,
+    ListWrapper,
     TupleWrapper,
 )
 from trilogy.core.models.datasource import Address
@@ -204,6 +207,19 @@ def test_base_join(test_environment: Environment):
     )
 
     assert x.concepts == [test_environment.concepts["product_id"]]
+
+
+def test_comparison():
+    with raises(SyntaxError):
+        Comparison(left=1, right="abc", operator=ComparisonOperator.EQ)
+
+    with raises(SyntaxError):
+        Comparison(left=1, right=1, operator=ComparisonOperator.IN)
+
+    # this should not error
+    Comparison(left=1, right=[1, 2, 3], operator=ComparisonOperator.IN)
+
+    Comparison(left=1, right=ListWrapper([1, 2, 3]), operator=ComparisonOperator.IN)
 
 
 def test_comparison():
