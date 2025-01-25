@@ -151,7 +151,7 @@ def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environme
         depth=0,
         source_concepts=search_concepts,
         accept_partial=False,
-        search_conditions=None
+        search_conditions=None,
     )
     assert mn
 

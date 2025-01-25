@@ -24,6 +24,7 @@ from trilogy.core.processing.node_generators import (
     gen_merge_node,
     gen_multiselect_node,
     gen_rowset_node,
+    gen_synonym_node,
     gen_union_node,
     gen_unnest_node,
     gen_window_node,
@@ -491,7 +492,7 @@ def generate_node(
                     all_concepts=root_targets,
                     environment=environment,
                     g=g,
-                    depth=depth+1,
+                    depth=depth + 1,
                     source_concepts=source_concepts,
                     history=history,
                     search_conditions=conditions,
@@ -516,9 +517,35 @@ def generate_node(
                         f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Found connections for {[c.address for c in root_targets]} via concept addition; removing extra {[c.address for c in extra]}"
                     )
                     return expanded
+
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} could not find additional concept(s) to inject"
             )
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve root concepts, checking for synonyms"
+            )
+            if not history.check_started(
+                root_targets, accept_partial=accept_partial, conditions=conditions
+            ):
+                history.log_start(
+                    root_targets, accept_partial=accept_partial, conditions=conditions
+                )
+                resolved = gen_synonym_node(
+                    all_concepts=root_targets,
+                    environment=environment,
+                    g=g,
+                    depth=depth + 1,
+                    source_concepts=source_concepts,
+                    history=history,
+                    conditions=conditions,
+                    accept_partial=accept_partial,
+                )
+                if resolved:
+                    logger.info(
+                        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} resolved concepts through synonyms"
+                    )
+                    return resolved
+
             return None
     else:
         raise ValueError(f"Unknown derivation {concept.derivation} on {concept}")
