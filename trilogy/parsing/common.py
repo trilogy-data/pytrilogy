@@ -539,9 +539,6 @@ def rowset_to_concepts(rowset: RowsetDerivationStatement, environment: Environme
     default_grain = Grain.from_concepts([*pre_output])
     # remap everything to the properties of the rowset
     for x in pre_output:
-        print("xxxx")
-        print(x.address)
-        print(x.grain)
         if x.keys:
             if all([k in orig for k in x.keys]):
                 x.keys = set([orig[k].address if k in orig else k for k in x.keys])

@@ -364,7 +364,7 @@ def generate_node(
                 x.address for x in local_optional if x.derivation != Derivation.CONSTANT
             ]
             logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} including filter concepts, there is non root filter requirements {non_root}. Recursing with all of these as mandatory"
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} including filter concepts, there are non root/non constant concepts we should find first: {non_root}. Recursing with all of these as mandatory"
             )
 
             if not history.check_started(
@@ -448,7 +448,7 @@ def generate_node(
                 if x.derivation not in (Derivation.ROOT, Derivation.CONSTANT)
             ]
             logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} including filter concepts, there is non root filter requirements {non_root}. Recursing with all of these as mandatory"
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} including any filters, there are non-root concepts we should expand first: {non_root}. Recursing with all of these as mandatory"
             )
 
             if not history.check_started(
@@ -491,7 +491,7 @@ def generate_node(
                     all_concepts=root_targets,
                     environment=environment,
                     g=g,
-                    depth=depth,
+                    depth=depth+1,
                     source_concepts=source_concepts,
                     history=history,
                     search_conditions=conditions,
@@ -517,7 +517,7 @@ def generate_node(
                     )
                     return expanded
             logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} could not find additional concept to inject"
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} could not find additional concept(s) to inject"
             )
             return None
     else:
@@ -556,6 +556,7 @@ def validate_concept(
             found_map[str(node)].add(concept)
     for v_address in concept.pseudonyms:
         if v_address in seen:
+            logger.info
             return
         v = environment.concepts[v_address]
         if v.address in seen:

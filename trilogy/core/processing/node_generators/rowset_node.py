@@ -51,10 +51,15 @@ def gen_rowset_node(
     enrichment = set([x.address for x in local_optional])
 
     factory = Factory(environment=history.base_environment, grain=select.grain)
+    logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} rowset derived concepts are {lineage.rowset.derived_concepts}"
+        )
+    concept_pool = list(environment.concepts.values())+ list(environment.alias_origin_lookup.values())
+    rowset_outputs = [x.address for x in concept_pool if x.address in lineage.rowset.derived_concepts]
     rowset_relevant: list[BuildConcept] = [
         v
-        for v in environment.concepts.values()
-        if v.address in lineage.rowset.derived_concepts
+        for v in concept_pool
+        if v.address in rowset_outputs
     ]
 
     select_hidden = node.hidden_concepts
@@ -69,7 +74,7 @@ def gen_rowset_node(
         factory.build(x) for x in select.output_components if x.address in enrichment
     ]
     # add in other other concepts
-    node.add_output_concepts(rowset_relevant + additional_relevant)
+    node.set_output_concepts(rowset_relevant + additional_relevant)
     if select.where_clause:
         for item in additional_relevant:
             logger.info(
@@ -82,7 +87,9 @@ def gen_rowset_node(
         for x in node.output_concepts
         if x.address not in local_optional + [concept]
         and x.derivation != Derivation.ROWSET
+        and not any(z in lineage.rowset.derived_concepts for z in x.pseudonyms)
     ]
+    logger.info(f'{padding(depth)}{LOGGER_PREFIX} hiding {final_hidden}')
     node.hide_output_concepts(final_hidden)
     assert node.resolution_cache
     # assume grain to be output of select
@@ -102,6 +109,7 @@ def gen_rowset_node(
     )
 
     node.rebuild_cache()
+    logger.info(f'{padding(depth)}{LOGGER_PREFIX} final output is {[x.address for x in node.output_concepts]}')
     if not local_optional or all(
         x.address in node.output_concepts and x.address not in node.partial_concepts
         for x in local_optional
