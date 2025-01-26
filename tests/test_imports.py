@@ -1,8 +1,6 @@
 from pathlib import Path
 
-from trilogy_public_models.models import LazyEnvironment
-
-from trilogy.core.models.environment import Environment  # , LazyEnvironment
+from trilogy.core.models.environment import Environment, LazyEnvironment
 
 
 def test_multi_environment():

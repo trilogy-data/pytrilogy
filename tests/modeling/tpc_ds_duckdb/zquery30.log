@@ -1,9 +1,9 @@
 query_id = 30
-gen_length = 12114
+gen_length = 12111
 generated_sql = """
 
 WITH 
-highfalutin as (
+cheerful as (
 SELECT
     web_returns_web_returns.\"WR_RETURNING_ADDR_SK\" as \"web_returns_return_address_id\",
     web_returns_web_returns.\"WR_RETURNING_CUSTOMER_SK\" as \"web_returns_customer_id\"
@@ -38,13 +38,13 @@ WHERE
 ),
 thoughtful as (
 SELECT
-    highfalutin.\"web_returns_customer_id\" as \"web_returns_customer_id\",
     web_returns_customer_customer_address.\"CA_STATE\" as \"web_returns_customer_state\",
     web_returns_customer_customers.\"C_BIRTH_COUNTRY\" as \"web_returns_customer_birth_country\",
     web_returns_customer_customers.\"C_BIRTH_DAY\" as \"web_returns_customer_birth_day\",
     web_returns_customer_customers.\"C_BIRTH_MONTH\" as \"web_returns_customer_birth_month\",
     web_returns_customer_customers.\"C_BIRTH_YEAR\" as \"web_returns_customer_birth_year\",
     web_returns_customer_customers.\"C_CUSTOMER_ID\" as \"web_returns_customer_text_id\",
+    web_returns_customer_customers.\"C_CUSTOMER_SK\" as \"web_returns_customer_id\",
     web_returns_customer_customers.\"C_EMAIL_ADDRESS\" as \"web_returns_customer_email_address\",
     web_returns_customer_customers.\"C_FIRST_NAME\" as \"web_returns_customer_first_name\",
     web_returns_customer_customers.\"C_LAST_NAME\" as \"web_returns_customer_last_name\",
@@ -56,8 +56,8 @@ SELECT
 FROM
     memory.customer_address as web_returns_customer_customer_address
     INNER JOIN memory.customer as web_returns_customer_customers on web_returns_customer_customer_address.\"CA_ADDRESS_SK\" = web_returns_customer_customers.\"C_CURRENT_ADDR_SK\"
-    INNER JOIN highfalutin on web_returns_customer_customers.\"C_CUSTOMER_SK\" = highfalutin.\"web_returns_customer_id\"
-    INNER JOIN memory.customer_address as web_returns_return_address_customer_address on highfalutin.\"web_returns_return_address_id\" = web_returns_return_address_customer_address.\"CA_ADDRESS_SK\"
+    INNER JOIN cheerful on web_returns_customer_customers.\"C_CUSTOMER_SK\" = cheerful.\"web_returns_customer_id\"
+    INNER JOIN memory.customer_address as web_returns_return_address_customer_address on cheerful.\"web_returns_return_address_id\" = web_returns_return_address_customer_address.\"CA_ADDRESS_SK\"
 WHERE
     web_returns_customer_customer_address.\"CA_STATE\" = 'GA' and web_returns_return_address_customer_address.\"CA_STATE\" is not null
 ),
