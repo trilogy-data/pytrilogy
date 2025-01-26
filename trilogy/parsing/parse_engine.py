@@ -152,7 +152,7 @@ def gen_cache_lookup(path: str, alias: str, parents: list[str]) -> str:
     # path is the path of the file
     # alias is what it's being imported under
     # parent is the...direct parnet?
-    return path + alias + '-'.join(parents)
+    return path + alias + "-".join(parents)
 
 
 def parse_concept_reference(
@@ -245,7 +245,7 @@ class ParseToObjects(Transformer):
         # after initial parsing
         self.parse_pass = ParsePass.INITIAL
         self.function_factory = FunctionFactory(self.environment)
-        self.import_keys:list[str] = import_keys or ['root']
+        self.import_keys: list[str] = import_keys or ["root"]
         self.parse_passes = 0
         print(self.import_keys)
 
@@ -872,13 +872,13 @@ class ParseToObjects(Transformer):
         token_lookup = Path(target)
 
         # parser + env has to be cached by prior import path + current key
-        key_path = self.import_keys+ [cache_key]
-        cache_lookup = '-'.join(key_path)
+        key_path = self.import_keys + [cache_key]
+        cache_lookup = "-".join(key_path)
 
         # we don't iterate past the max parse depth
         if len(key_path) > MAX_PARSE_DEPTH:
             return ImportStatement(alias=alias, path=Path(target))
-        
+
         if token_lookup in self.tokens:
             raw_tokens = self.tokens[token_lookup]
             text = self.text_lookup[token_lookup]
@@ -910,7 +910,7 @@ class ParseToObjects(Transformer):
                     parsed=self.parsed,
                     tokens=self.tokens,
                     text_lookup=self.text_lookup,
-                    import_keys = self.import_keys + [cache_key]
+                    import_keys=self.import_keys + [cache_key],
                 )
                 nparser.transform(raw_tokens)
                 self.parsed[cache_lookup] = nparser
@@ -1631,7 +1631,7 @@ def parse_text(
     environment = environment or (
         Environment(working_path=root) if root else Environment()
     )
-    parser = ParseToObjects(environment=environment, import_keys=['root'])
+    parser = ParseToObjects(environment=environment, import_keys=["root"])
 
     try:
         parser.set_text(text)

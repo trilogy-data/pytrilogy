@@ -454,7 +454,7 @@ class Environment(BaseModel):
                     ),
                     parse_address=parse_address,
                     token_address=target,
-                    import_keys= ['root']
+                    import_keys=["root"],
                 )
                 nparser.set_text(text)
                 nparser.environment.concepts.fail_on_missing = False
