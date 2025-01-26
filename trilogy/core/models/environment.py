@@ -426,7 +426,6 @@ class Environment(BaseModel):
         from trilogy.parsing.parse_engine import (
             PARSER,
             ParseToObjects,
-            gen_cache_lookup,
         )
 
         if isinstance(path, str):
@@ -440,7 +439,8 @@ class Environment(BaseModel):
         else:
             target = path
         if not env:
-            parse_address = gen_cache_lookup(str(target), alias, str(self.working_path))
+            import_keys = ["root", alias]
+            parse_address = "-".join(import_keys)
             try:
                 with open(target, "r", encoding="utf-8") as f:
                     text = f.read()
@@ -454,7 +454,7 @@ class Environment(BaseModel):
                     ),
                     parse_address=parse_address,
                     token_address=target,
-                    import_keys=["root"],
+                    import_keys=import_keys,
                 )
                 nparser.set_text(text)
                 nparser.environment.concepts.fail_on_missing = False

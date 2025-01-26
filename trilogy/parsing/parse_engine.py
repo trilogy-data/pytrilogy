@@ -148,13 +148,6 @@ with open(join(dirname(__file__), "trilogy.lark"), "r") as f:
     )
 
 
-def gen_cache_lookup(path: str, alias: str, parents: list[str]) -> str:
-    # path is the path of the file
-    # alias is what it's being imported under
-    # parent is the...direct parnet?
-    return path + alias + "-".join(parents)
-
-
 def parse_concept_reference(
     name: str, environment: Environment, purpose: Optional[Purpose] = None
 ) -> Tuple[str, str, str, str | None]:
@@ -229,7 +222,7 @@ class ParseToObjects(Transformer):
         tokens: dict[Path | str, ParseTree] | None = None,
         text_lookup: dict[Path | str, str] | None = None,
         environment_lookup: dict[str, Environment] | None = None,
-        import_keys: list[str | None] | None = None,
+        import_keys: list[str] | None = None,
     ):
         Transformer.__init__(self, True)
         self.environment: Environment = environment
@@ -246,8 +239,6 @@ class ParseToObjects(Transformer):
         self.parse_pass = ParsePass.INITIAL
         self.function_factory = FunctionFactory(self.environment)
         self.import_keys: list[str] = import_keys or ["root"]
-        self.parse_passes = 0
-        print(self.import_keys)
 
     def set_text(self, text: str):
         self.text_lookup[self.token_address] = text
