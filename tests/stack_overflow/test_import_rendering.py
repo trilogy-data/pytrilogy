@@ -4,6 +4,7 @@ from os.path import dirname
 from trilogy.core.enums import Modifier
 from trilogy.core.models.environment import Environment
 from trilogy.parser import parse
+from trilogy.parsing.parse_engine import MAX_PARSE_DEPTH
 from trilogy.parsing.render import render_environment
 
 QUERY = """import concepts.core as core;
@@ -76,7 +77,7 @@ def test_circular_base():
     assert env.concepts["c1.id"]
     assert env.concepts["c1.c2.id"]
     validated = False
-    assert len(env.datasources) == 3
+    assert len(env.datasources) == MAX_PARSE_DEPTH-1
     for n, datasource in env.datasources.items():
         for z in datasource.columns:
             self = z.concept

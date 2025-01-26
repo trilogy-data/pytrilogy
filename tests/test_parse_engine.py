@@ -23,7 +23,7 @@ def test_parser():
     try:
         tokens = PARSER.parse(TEXT)
         x.transform(tokens)
-        x.hydrate_missing()
+        x.run_second_parse_pass()
     except Exception as e:
         failed = True
         with raises(UndefinedConceptException):

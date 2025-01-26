@@ -24,7 +24,7 @@ def infinite_parsing():
     parser.transform(PARSER.parse(text))
     # this will reset fail on missing
     try:
-        parser.hydrate_missing()
+        parser.run_second_parse_pass()
     except Exception:
         pass
 
