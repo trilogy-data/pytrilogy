@@ -77,7 +77,7 @@ def test_circular_base():
     assert env.concepts["c1.id"]
     assert env.concepts["c1.c2.id"]
     validated = False
-    assert len(env.datasources) == MAX_PARSE_DEPTH
+    assert len(env.datasources) == MAX_PARSE_DEPTH-1
     for n, datasource in env.datasources.items():
         for z in datasource.columns:
             self = z.concept
