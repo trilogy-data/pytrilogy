@@ -129,6 +129,8 @@ CONSTANT_TYPES = (int, float, str, bool, list, ListWrapper, MapWrapper)
 
 SELF_LABEL = "root"
 
+MAX_PARSE_DEPTH = 10
+
 
 @dataclass
 class WholeGrainWrapper:
@@ -146,11 +148,11 @@ with open(join(dirname(__file__), "trilogy.lark"), "r") as f:
     )
 
 
-def gen_cache_lookup(path: str, alias: str, parent: str) -> str:
+def gen_cache_lookup(path: str, alias: str, parents: list[str]) -> str:
     # path is the path of the file
     # alias is what it's being imported under
     # parent is the...direct parnet?
-    return path + alias + parent
+    return path + alias + '-'.join(parents)
 
 
 def parse_concept_reference(
@@ -226,6 +228,8 @@ class ParseToObjects(Transformer):
         parsed: dict[str, "ParseToObjects"] | None = None,
         tokens: dict[Path | str, ParseTree] | None = None,
         text_lookup: dict[Path | str, str] | None = None,
+        environment_lookup: dict[str, Environment] | None = None,
+        import_keys: list[str | None] | None = None,
     ):
         Transformer.__init__(self, True)
         self.environment: Environment = environment
@@ -233,6 +237,7 @@ class ParseToObjects(Transformer):
         self.token_address: Path | str = token_address or SELF_LABEL
         self.parsed: dict[str, ParseToObjects] = parsed if parsed is not None else {}
         self.tokens: dict[Path | str, ParseTree] = tokens if tokens is not None else {}
+        self.environments: dict[str, Environment] = environment_lookup or {}
         self.text_lookup: dict[Path | str, str] = (
             text_lookup if text_lookup is not None else {}
         )
@@ -240,6 +245,9 @@ class ParseToObjects(Transformer):
         # after initial parsing
         self.parse_pass = ParsePass.INITIAL
         self.function_factory = FunctionFactory(self.environment)
+        self.import_keys:list[str] = import_keys or ['root']
+        self.parse_passes = 0
+        print(self.import_keys)
 
     def set_text(self, text: str):
         self.text_lookup[self.token_address] = text
@@ -255,14 +263,14 @@ class ParseToObjects(Transformer):
         for _, v in self.parsed.items():
             v.prepare_parse()
 
-    def hydrate_missing(self, force: bool = False):
+    def run_second_parse_pass(self, force: bool = False):
         if self.token_address not in self.tokens:
             return []
         self.parse_pass = ParsePass.VALIDATION
         for _, v in list(self.parsed.items()):
-            if v.parse_pass == ParsePass.VALIDATION and not force:
+            if v.parse_pass == ParsePass.VALIDATION:
                 continue
-            v.hydrate_missing()
+            v.run_second_parse_pass()
         reparsed = self.transform(self.tokens[self.token_address])
         self.environment.concepts.undefined = {}
         return reparsed
@@ -306,11 +314,6 @@ class ParseToObjects(Transformer):
     def QUOTED_IDENTIFIER(self, args) -> str:
         return args.value[1:-1]
 
-    # @v_args(meta=True)
-    # def concept_lit(self, meta: Meta, args) -> ConceptRef:
-    #     address = args[0]
-    #     return self.environment.concepts.__getitem__(address, meta.line)
-    #     return ConceptRef(address=address, line_no=meta.line)
     @v_args(meta=True)
     def concept_lit(self, meta: Meta, args) -> ConceptRef:
         address = args[0]
@@ -402,7 +405,6 @@ class ParseToObjects(Transformer):
         if len(concept_list) > 1:
             modifiers += concept_list[:-1]
         concept = concept_list[-1]
-        assert not self.environment.concepts.fail_on_missing
         resolved = self.environment.concepts.__getitem__(  # type: ignore
             key=concept, line_no=meta.line, file=self.token_address
         )
@@ -858,8 +860,10 @@ class ParseToObjects(Transformer):
     def import_statement(self, args: list[str]) -> ImportStatement:
         if len(args) == 2:
             alias = args[-1]
+            cache_key = args[-1]
         else:
             alias = self.environment.namespace
+            cache_key = args[0]
         path = args[0].split(".")
 
         target = join(self.environment.working_path, *path) + ".preql"
@@ -867,10 +871,14 @@ class ParseToObjects(Transformer):
         # tokens + text are cached by path
         token_lookup = Path(target)
 
-        # cache lookups by the target, the alias, and the file we're importing it from
-        cache_lookup = gen_cache_lookup(
-            path=target, alias=alias, parent=str(self.token_address)
-        )
+        # parser + env has to be cached by prior import path + current key
+        key_path = self.import_keys+ [cache_key]
+        cache_lookup = '-'.join(key_path)
+
+        # we don't iterate past the max parse depth
+        if len(key_path) > MAX_PARSE_DEPTH:
+            return ImportStatement(alias=alias, path=Path(target))
+        
         if token_lookup in self.tokens:
             raw_tokens = self.tokens[token_lookup]
             text = self.text_lookup[token_lookup]
@@ -886,7 +894,7 @@ class ParseToObjects(Transformer):
             new_env = nparser.environment
             if nparser.parse_pass != ParsePass.VALIDATION:
                 # nparser.transform(raw_tokens)
-                nparser.hydrate_missing()
+                nparser.run_second_parse_pass()
         else:
             try:
                 new_env = Environment(
@@ -902,6 +910,7 @@ class ParseToObjects(Transformer):
                     parsed=self.parsed,
                     tokens=self.tokens,
                     text_lookup=self.text_lookup,
+                    import_keys = self.import_keys + [cache_key]
                 )
                 nparser.transform(raw_tokens)
                 self.parsed[cache_lookup] = nparser
@@ -909,6 +918,7 @@ class ParseToObjects(Transformer):
                 raise ImportError(
                     f"Unable to import file {target}, parsing error: {e}"
                 ) from e
+
         parsed_path = Path(args[0])
         imps = ImportStatement(alias=alias, path=parsed_path)
 
@@ -1621,7 +1631,7 @@ def parse_text(
     environment = environment or (
         Environment(working_path=root) if root else Environment()
     )
-    parser = ParseToObjects(environment=environment)
+    parser = ParseToObjects(environment=environment, import_keys=['root'])
 
     try:
         parser.set_text(text)
@@ -1629,7 +1639,7 @@ def parse_text(
         parser.prepare_parse()
         parser.transform(PARSER.parse(text))
         # this will reset fail on missing
-        pass_two = parser.hydrate_missing(force=True)
+        pass_two = parser.run_second_parse_pass()
         output = [v for v in pass_two if v]
         environment.concepts.fail_on_missing = True
     except VisitError as e:

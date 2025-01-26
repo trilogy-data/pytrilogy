@@ -454,11 +454,12 @@ class Environment(BaseModel):
                     ),
                     parse_address=parse_address,
                     token_address=target,
+                    import_keys= ['root']
                 )
                 nparser.set_text(text)
                 nparser.environment.concepts.fail_on_missing = False
                 nparser.transform(PARSER.parse(text))
-                nparser.hydrate_missing()
+                nparser.run_second_parse_pass()
                 nparser.environment.concepts.fail_on_missing = True
 
             except Exception as e:
