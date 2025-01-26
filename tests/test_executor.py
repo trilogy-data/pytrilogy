@@ -5,8 +5,11 @@ from trilogy.core.models.environment import Environment
 
 
 def test_file_parsing():
-    target = Path(__file__).parent / "test_env.preql"
-    parsed = Dialects.DUCK_DB.default_executor().parse_file(target)
+    directory = Path(__file__).parent
+    target = directory / "test_env.preql"
+    parsed = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=directory)
+    ).parse_file(target)
     assert len(list(parsed)) == 1
 
 

@@ -147,6 +147,9 @@ with open(join(dirname(__file__), "trilogy.lark"), "r") as f:
 
 
 def gen_cache_lookup(path: str, alias: str, parent: str) -> str:
+    # path is the path of the file
+    # alias is what it's being imported under
+    # parent is the...direct parnet?
     return path + alias + parent
 
 
@@ -252,10 +255,12 @@ class ParseToObjects(Transformer):
         for _, v in self.parsed.items():
             v.prepare_parse()
 
-    def hydrate_missing(self):
+    def hydrate_missing(self, force: bool = False):
+        if self.token_address not in self.tokens:
+            return []
         self.parse_pass = ParsePass.VALIDATION
-        for k, v in self.parsed.items():
-            if v.parse_pass == ParsePass.VALIDATION:
+        for _, v in list(self.parsed.items()):
+            if v.parse_pass == ParsePass.VALIDATION and not force:
                 continue
             v.hydrate_missing()
         reparsed = self.transform(self.tokens[self.token_address])
@@ -390,7 +395,6 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def column_assignment(self, meta: Meta, args):
-        # TODO -> deal with conceptual modifiers
         modifiers = []
         alias = args[0]
         concept_list = args[1]
@@ -398,6 +402,7 @@ class ParseToObjects(Transformer):
         if len(concept_list) > 1:
             modifiers += concept_list[:-1]
         concept = concept_list[-1]
+        assert not self.environment.concepts.fail_on_missing
         resolved = self.environment.concepts.__getitem__(  # type: ignore
             key=concept, line_no=meta.line, file=self.token_address
         )
@@ -879,10 +884,14 @@ class ParseToObjects(Transformer):
         if cache_lookup in self.parsed:
             nparser = self.parsed[cache_lookup]
             new_env = nparser.environment
+            if nparser.parse_pass != ParsePass.VALIDATION:
+                # nparser.transform(raw_tokens)
+                nparser.hydrate_missing()
         else:
             try:
                 new_env = Environment(
                     working_path=dirname(target),
+                    env_file_path=token_lookup,
                 )
                 new_env.concepts.fail_on_missing = False
                 self.parsed[self.parse_address] = self
@@ -900,10 +909,11 @@ class ParseToObjects(Transformer):
                 raise ImportError(
                     f"Unable to import file {target}, parsing error: {e}"
                 ) from e
+        parsed_path = Path(args[0])
+        imps = ImportStatement(alias=alias, path=parsed_path)
 
-        imps = ImportStatement(alias=alias, path=Path(args[0]))
         self.environment.add_import(
-            alias, new_env, Import(alias=alias, path=Path(args[0]))
+            alias, new_env, Import(alias=alias, path=parsed_path)
         )
         return imps
 
@@ -1594,7 +1604,9 @@ def parse_text_raw(text: str, environment: Optional[Environment] = None):
     PARSER.parse(text)
 
 
-def parse_text(text: str, environment: Optional[Environment] = None) -> Tuple[
+def parse_text(
+    text: str, environment: Optional[Environment] = None, root: Path | None = None
+) -> Tuple[
     Environment,
     List[
         Datasource
@@ -1606,7 +1618,9 @@ def parse_text(text: str, environment: Optional[Environment] = None) -> Tuple[
         | None
     ],
 ]:
-    environment = environment or Environment()
+    environment = environment or (
+        Environment(working_path=root) if root else Environment()
+    )
     parser = ParseToObjects(environment=environment)
 
     try:
@@ -1615,7 +1629,7 @@ def parse_text(text: str, environment: Optional[Environment] = None) -> Tuple[
         parser.prepare_parse()
         parser.transform(PARSER.parse(text))
         # this will reset fail on missing
-        pass_two = parser.hydrate_missing()
+        pass_two = parser.hydrate_missing(force=True)
         output = [v for v in pass_two if v]
         environment.concepts.fail_on_missing = True
     except VisitError as e:
