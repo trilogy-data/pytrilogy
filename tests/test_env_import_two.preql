@@ -1,0 +1,9 @@
+key import_key int;
+
+
+datasource import_source (
+ key:import_key
+ )
+ grain (import_key)
+ address `a_real_address`
+ ;

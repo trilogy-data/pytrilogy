@@ -135,6 +135,17 @@ ORDER BY
         assert row.store_order_count is None or row.store_order_count > 1000, row
 
 
+def test_website_demo(engine):
+    query = """import store_sales as store_sales;
+select 
+    store_sales.customer.id, 
+    store_sales.customer.full_name,
+    store_sales.ticket_number, 
+limit 5;    
+"""
+    r1 = engine.execute_query(query).fetchall()
+
+
 def test_where_clause_inputs(engine):
     y = """import store_sales as store_sales;
 import catalog_sales as catalog_sales;

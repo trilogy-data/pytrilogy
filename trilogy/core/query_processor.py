@@ -385,7 +385,7 @@ def get_query_node(
     )
     graph = generate_graph(build_environment)
     logger.info(
-        f"{LOGGER_PREFIX} getting source datasource for outputs {statement.output_components} grain {build_statement.grain}"
+        f"{LOGGER_PREFIX} getting source datasource for outputs {build_statement.output_components} grain {build_statement.grain}"
     )
 
     search_concepts: list[BuildConcept] = build_statement.output_components

@@ -26,6 +26,16 @@ property address_id.country string;
 
 
 
+property id.full_name <- concat(salutation, ' ', first_name, ' ', last_name);
+
+property id.birth_date <- cast(
+    concat(cast(birth_year as string), 
+        '/', cast(birth_month as string), 
+        '/', cast(birth_day as string)
+    ) as date
+);
+
+
 datasource customers (
     C_CUSTOMER_SK: id,
     C_CUSTOMER_ID: text_id,

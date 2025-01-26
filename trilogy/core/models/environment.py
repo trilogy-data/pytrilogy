@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Annotated,
+    Any,
     Dict,
     ItemsView,
     List,
@@ -383,14 +384,13 @@ class Environment(BaseModel):
             ):
                 exists = True
             imp_stm = Import(alias=alias, path=Path(source.working_path))
-        same_namespace = alias == self.namespace
+        same_namespace = alias == DEFAULT_NAMESPACE
 
         if not exists:
             self.imports[alias].append(imp_stm)
         # we can't exit early
         # as there may be new concepts
         for k, concept in source.concepts.items():
-
             # skip internal namespace
             if INTERNAL_NAMESPACE in concept.address:
                 continue
@@ -416,7 +416,6 @@ class Environment(BaseModel):
                 self.alias_origin_lookup[address_with_namespace(key, alias)] = (
                     val.with_namespace(alias)
                 )
-
         return self
 
     def add_file_import(
@@ -457,8 +456,10 @@ class Environment(BaseModel):
                     token_address=target,
                 )
                 nparser.set_text(text)
+                nparser.environment.concepts.fail_on_missing = False
                 nparser.transform(PARSER.parse(text))
                 nparser.hydrate_missing()
+                nparser.environment.concepts.fail_on_missing = True
 
             except Exception as e:
                 raise ImportError(
@@ -664,37 +665,59 @@ class LazyEnvironment(Environment):
     until relevant attributes accessed."""
 
     load_path: Path
+    setup_queries: list[Any] = Field(default_factory=list)
     loaded: bool = False
 
+    @property
+    def setup_path(self) -> Path:
+        return self.load_path.parent / "setup.preql"
+
     def __init__(self, **data):
+        if not data.get("working_path"):
+            data["working_path"] = data["load_path"].parent
         super().__init__(**data)
+        assert self.working_path == self.load_path.parent
 
     def _add_path_concepts(self):
         pass
 
+    def _load(self):
+        if self.loaded:
+            return
+        from trilogy import parse
+
+        env = Environment(working_path=self.load_path.parent)
+        assert env.working_path == self.load_path.parent
+        with open(self.load_path, "r") as f:
+            env, _ = parse(f.read(), env)
+        if self.setup_path.exists():
+            with open(self.setup_path, "r") as f2:
+                env, q = parse(f2.read(), env)
+                for q in q:
+                    self.setup_queries.append(q)
+        self.loaded = True
+        self.datasources = env.datasources
+        self.concepts = env.concepts
+        self.imports = env.imports
+        self.alias_origin_lookup = env.alias_origin_lookup
+        self.materialized_concepts = env.materialized_concepts
+        self.functions = env.functions
+        self.data_types = env.data_types
+        self.cte_name_map = env.cte_name_map
+
     def __getattribute__(self, name):
-        if name in (
-            "load_path",
-            "loaded",
-            "working_path",
-            "model_config",
-            "model_fields",
-            "model_post_init",
+        if name not in (
+            "datasources",
+            "concepts",
+            "imports",
+            "materialized_concepts",
+            "functions",
+            "datatypes",
+            "cte_name_map",
         ) or name.startswith("_"):
             return super().__getattribute__(name)
         if not self.loaded:
-            logger.info(
-                f"lazily evaluating load path {self.load_path} to access {name}"
-            )
-            from trilogy import parse
-
-            env = Environment(working_path=str(self.working_path))
-            with open(self.load_path, "r") as f:
-                parse(f.read(), env)
-            self.loaded = True
-            self.datasources = env.datasources
-            self.concepts = env.concepts
-            self.imports = env.imports
+            self._load()
         return super().__getattribute__(name)
 
 

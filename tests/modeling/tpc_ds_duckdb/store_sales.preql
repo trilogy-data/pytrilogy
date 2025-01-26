@@ -29,8 +29,6 @@ property <ticket_number,item.id>.return_net_loss float?;
 
 auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price;
 
-
-
 datasource store_sales (
     SS_SOLD_DATE_SK: date.id,
     SS_SOLD_TIME_SK: time.id,

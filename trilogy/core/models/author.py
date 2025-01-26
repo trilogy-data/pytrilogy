@@ -166,10 +166,8 @@ class UndefinedConcept(ConceptRef):
 
 
 def address_with_namespace(address: str, namespace: str) -> str:
-    ns = address.split(".", 1)[0]
-    if ns == namespace:
-        return address
-    if ns == DEFAULT_NAMESPACE:
+    existing_ns = address.split(".", 1)[0]
+    if existing_ns == DEFAULT_NAMESPACE:
         return f"{namespace}.{address.split('.',1)[1]}"
     return f"{namespace}.{address}"
 
@@ -203,7 +201,7 @@ class Parenthetical(
     def __repr__(self):
         return f"({str(self.content)})"
 
-    def with_namespace(self, namespace: str):
+    def with_namespace(self, namespace: str) -> Parenthetical:
         return Parenthetical.model_construct(
             content=(
                 self.content.with_namespace(namespace)
@@ -917,8 +915,6 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         return self.name.replace(".", "_")
 
     def with_namespace(self, namespace: str) -> Self:
-        if namespace == self.namespace:
-            return self
         return self.__class__.model_construct(
             name=self.name,
             datatype=self.datatype,

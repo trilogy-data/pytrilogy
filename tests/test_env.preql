@@ -1,4 +1,5 @@
-
+import test_env_import_indirect_one as one;
+import test_env_import_indirect_two as two;
 key id int;
 
 datasource id_source (

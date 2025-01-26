@@ -1046,7 +1046,7 @@ def source_query_concepts(
             f"{c.address}<{c.purpose}>{c.derivation}>" for c in output_concepts
         ]
         raise ValueError(
-            f"Could not resolve conections between {error_strings} from environment graph."
+            f"Could not resolve connections between {error_strings} from environment graph."
         )
     final = [x for x in root.output_concepts if x.address not in root.hidden_concepts]
     logger.info(

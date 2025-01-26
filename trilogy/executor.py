@@ -346,10 +346,10 @@ class Executor(object):
         file = Path(file)
         with open(file, "r") as f:
             command = f.read()
-            return self.parse_text_generator(command, persist=persist)
+            return self.parse_text_generator(command, persist=persist, root=file)
 
     def parse_text(
-        self, command: str, persist: bool = False
+        self, command: str, persist: bool = False, root: Path | None = None
     ) -> List[
         ProcessedQuery
         | ProcessedQueryPersist
@@ -357,9 +357,11 @@ class Executor(object):
         | ProcessedRawSQLStatement
         | ProcessedCopyStatement
     ]:
-        return list(self.parse_text_generator(command, persist=persist))
+        return list(self.parse_text_generator(command, persist=persist, root=root))
 
-    def parse_text_generator(self, command: str, persist: bool = False) -> Generator[
+    def parse_text_generator(
+        self, command: str, persist: bool = False, root: Path | None = None
+    ) -> Generator[
         ProcessedQuery
         | ProcessedQueryPersist
         | ProcessedShowStatement
@@ -369,7 +371,7 @@ class Executor(object):
         None,
     ]:
         """Process a preql text command"""
-        _, parsed = parse_text(command, self.environment)
+        _, parsed = parse_text(command, self.environment, root=root)
         generatable = [
             x
             for x in parsed
