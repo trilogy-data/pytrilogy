@@ -117,6 +117,12 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     where: Optional[WhereClause] = None
     non_partial_for: Optional[WhereClause] = None
 
+    @property
+    def safe_address(self) -> str:
+        if isinstance(self.address, Address):
+            return self.address.location
+        return self.address
+
     def __eq__(self, other):
         if not isinstance(other, Datasource):
             return False

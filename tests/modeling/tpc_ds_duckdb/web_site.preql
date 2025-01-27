@@ -1,0 +1,14 @@
+
+key id int;
+property id.string_id string;
+property id.company_name string;
+
+
+datasource web_site (
+web_site_sk: id,
+web_site_id: string_id,
+web_company_name: company_name
+)
+grain(id)
+address memory.web_site
+;

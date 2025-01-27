@@ -1,6 +1,8 @@
-from typing import Protocol
+from typing import Any, Protocol
 
 from sqlalchemy.engine import Connection, CursorResult, Engine
+
+from trilogy.core.models.environment import Environment
 
 
 class EngineResult(Protocol):
@@ -13,7 +15,7 @@ class EngineResult(Protocol):
 class EngineConnection(Protocol):
     pass
 
-    def execute(self, statement: str) -> EngineResult:
+    def execute(self, statement: str, parameters: Any | None = None) -> EngineResult:
         pass
 
 
@@ -21,6 +23,9 @@ class ExecutionEngine(Protocol):
     pass
 
     def connect(self) -> EngineConnection:
+        pass
+
+    def setup(self, env: Environment, connection):
         pass
 
 
@@ -37,8 +42,10 @@ class SqlAlchemyConnection(EngineConnection):
     def __init__(self, connection: Connection):
         self.connection = connection
 
-    def execute(self, statement: str) -> SqlAlchemyResult:
-        return SqlAlchemyResult(self.connection.execute(statement))
+    def execute(
+        self, statement: str, parameters: Any | None = None
+    ) -> SqlAlchemyResult:
+        return SqlAlchemyResult(self.connection.execute(statement, parameters))
 
 
 class SqlAlchemyEngine(ExecutionEngine):

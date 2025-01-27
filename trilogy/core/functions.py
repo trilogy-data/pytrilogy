@@ -503,32 +503,52 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         arg_count=1,
     ),
     FunctionType.ADD: FunctionConfig(
-        valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
+        valid_inputs={
+            DataType.INTEGER,
+            DataType.FLOAT,
+            DataType.NUMBER,
+            DataType.NUMERIC,
+        },
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.SUBTRACT: FunctionConfig(
-        valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
+        valid_inputs={
+            DataType.INTEGER,
+            DataType.FLOAT,
+            DataType.NUMBER,
+            DataType.NUMERIC,
+        },
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.MULTIPLY: FunctionConfig(
-        valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
+        valid_inputs={
+            DataType.INTEGER,
+            DataType.FLOAT,
+            DataType.NUMBER,
+            DataType.NUMERIC,
+        },
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.DIVIDE: FunctionConfig(
-        valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
+        valid_inputs={
+            DataType.INTEGER,
+            DataType.FLOAT,
+            DataType.NUMBER,
+            DataType.NUMERIC,
+        },
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.MOD: FunctionConfig(
         valid_inputs=[
-            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
+            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER, DataType.NUMERIC},
             {DataType.INTEGER},
         ],
         output_purpose=Purpose.PROPERTY,
@@ -537,7 +557,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     ),
     FunctionType.ROUND: FunctionConfig(
         valid_inputs=[
-            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
+            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER, DataType.NUMERIC},
             {DataType.INTEGER},
         ],
         output_purpose=Purpose.PROPERTY,
