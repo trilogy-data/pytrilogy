@@ -8,7 +8,6 @@ from trilogy.hooks import DebuggingHook
 
 
 def test_dataframe_executor():
-    DebuggingHook()
     df = pd.read_csv(Path(__file__).parent / "test.csv")
 
     env = Environment()
