@@ -1,3 +1,6 @@
+from pandas import DataFrame
+
+
 class DialectConfig:
     def __init__(self):
         pass
@@ -104,3 +107,9 @@ class TrinoConfig(PrestoConfig):
         if self.schema:
             return f"trino://{self.username}:{self.password}@{self.host}:{self.port}/{self.catalog}/{self.schema}"
         return f"trino://{self.username}:{self.password}@{self.host}:{self.port}/{self.catalog}"
+
+
+class DataFrameConfig(DuckDBConfig):
+    def __init__(self, dataframes: dict[str, DataFrame]):
+        super().__init__()
+        self.dataframes = dataframes

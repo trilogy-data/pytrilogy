@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Generator, List, Optional, Protocol
 
 from sqlalchemy import text
-from sqlalchemy.engine import CursorResult, Engine
+from sqlalchemy.engine import CursorResult
 
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionType, Granularity, IOType
@@ -33,6 +33,7 @@ from trilogy.core.statements.execute import (
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects
+from trilogy.engine import ExecutionEngine
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.parser import parse_text
 
@@ -71,7 +72,7 @@ class Executor(object):
     def __init__(
         self,
         dialect: Dialects,
-        engine: Engine,
+        engine: ExecutionEngine,
         environment: Optional[Environment] = None,
         hooks: List[BaseHook] | None = None,
     ):
@@ -109,9 +110,16 @@ class Executor(object):
             from trilogy.dialect.snowflake import SnowflakeDialect
 
             self.generator = SnowflakeDialect()
+        elif self.dialect == Dialects.DATAFRAME:
+            from trilogy.dialect.dataframe import DataframeDialect
+
+            self.generator = DataframeDialect()
         else:
             raise ValueError(f"Unsupported dialect {self.dialect}")
         self.connection = self.engine.connect()
+        # TODO: make generic
+        if self.dialect == Dialects.DATAFRAME:
+            self.engine.setup(self.environment, self.connection)
 
     def execute_statement(self, statement) -> Optional[CursorResult]:
         if not isinstance(

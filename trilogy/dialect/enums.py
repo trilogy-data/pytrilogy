@@ -16,7 +16,7 @@ def default_factory(conf: DialectConfig, config_type):
 
     if not isinstance(conf, config_type):
         raise TypeError(
-            f"Invalid dialect configuration for type {type(config_type).__name__}"
+            f"Invalid dialect configuration for type {type(config_type).__name__}, is {type(conf)}"
         )
     if conf.connect_args:
         return create_engine(
@@ -33,6 +33,7 @@ class Dialects(Enum):
     TRINO = "trino"
     POSTGRES = "postgres"
     SNOWFLAKE = "snowflake"
+    DATAFRAME = "dataframe"
 
     @classmethod
     def _missing_(cls, value):
@@ -88,6 +89,16 @@ class Dialects(Enum):
             from trilogy.dialect.config import TrinoConfig
 
             return _engine_factory(conf, TrinoConfig)
+        elif self == Dialects.DATAFRAME:
+            from trilogy.dialect.config import DataFrameConfig
+            from trilogy.dialect.dataframe import DataframeConnectionWrapper
+
+            if not conf:
+                conf = DataFrameConfig(dataframes={})
+
+            base = _engine_factory(conf, DataFrameConfig)
+
+            return DataframeConnectionWrapper(base, dataframes=conf.dataframes)
         else:
             raise ValueError(
                 f"Unsupported dialect {self} for default engine creation; create one explicitly."

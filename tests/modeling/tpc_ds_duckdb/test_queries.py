@@ -180,6 +180,7 @@ def test_thirty(engine):
     # size gating
     # assert len(query) < 6000, query
 
+
 def test_ninety_five(engine):
     _ = run_query(engine, 95)
 
@@ -221,5 +222,5 @@ SELECT * FROM dsdgen(sf=1);"""
 
 
 if __name__ == "__main__":
-    
+
     run_adhoc(95)
