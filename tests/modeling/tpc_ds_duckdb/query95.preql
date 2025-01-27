@@ -1,0 +1,20 @@
+import web_sales as web_sales;
+
+auto multi_warehouse_order <- web_sales.order_number ? count(web_sales.warehouse.id) by web_sales.order_number >1;
+
+auto returned_orders <- web_sales.order_number ? web_sales.is_returned is True;
+
+WHERE
+    web_sales.ship_date.date BETWEEN '1999-02-01'::date AND '1999-04-02'::date AND
+    web_sales.ship_address.state = 'IL' AND
+    web_sales.web_site.company_name = 'pri' AND
+    web_sales.order_number IN multi_warehouse_order AND
+    web_sales.order_number IN returned_orders
+SELECT
+    count_distinct(web_sales.order_number) -> order_count,
+    sum(web_sales.extra_ship_cost) -> total_shipping_cost,
+    sum(web_sales.net_profit) -> total_net_profit
+ORDER BY
+    order_count desc
+LIMIT 100;
+

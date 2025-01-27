@@ -1,23 +1,57 @@
 import item as item;
 import date as date;
+import date as ship_date;
+import date as return_date;
 import time as time;
+import time as return_time;
 import customer as customer;
+import customer as return_customer;
+import customer as return_refund_customer;
+import web_site as web_site;
+import warehouse as warehouse;
+import address as ship_address;
 
 key order_number int;
+key return_order_number int;
 property <order_number,item.id>.quantity int;
 property <order_number,item.id>.sales_price float;
+property <order_number,item.id>.net_profit float;
 property <order_number,item.id>.extra_sales_price float;
+property <order_number,item.id>.extra_ship_cost float;
+property <order_number,item.id>.return_amount float;
+property <order_number,item.id>.is_returned bool;
+
 
 datasource web_sales (
     WS_SOLD_DATE_SK: date.id,
     WS_SOLD_TIME_SK: time.id,
+    WS_SHIP_DATE_SK: ship_date.id,
     WS_BILL_CUSTOMER_SK: customer.id,
     WS_ORDER_NUMBER: order_number,
     WS_ITEM_SK:item.id,
     WS_SALES_PRICE: sales_price,
-    WS_EXT_SALES_PRICE: extra_sales_price
-
+    WS_EXT_SALES_PRICE: extra_sales_price,
+    WS_EXT_SHIP_COST: extra_ship_cost,
+    WS_NET_PROFIT: net_profit,
+    WS_WEB_SITE_SK: web_site.id,
+    WS_WAREHOUSE_SK: warehouse.id,
+    WS_SHIP_ADDR_SK: ship_address.id,
 )
 grain (order_number, item.id)
 address memory.web_sales
 ;
+
+datasource web_returns (
+    WR_RETURNED_DATE_SK: return_date.id,
+    WR_RETURNED_TIME_SK: return_time.id,
+    WR_ITEM_SK:~item.id,
+    WR_RETURNING_CUSTOMER_SK: return_customer.id,
+    WR_REFUNDED_CUSTOMER_SK: return_refund_customer.id,
+    WR_ORDER_NUMBER: ~order_number,
+    WR_RETURN_AMT: return_amount,
+    raw('''CASE WHEN WR_ORDER_NUMBER IS NOT NULL THEN 1 else 0 END'''): is_returned,
+
+)
+grain (order_number, item.id)
+complete where is_returned is True
+address memory.web_returns;
