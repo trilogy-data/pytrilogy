@@ -45,31 +45,31 @@ SELECT
     sum(CASE
 	WHEN thoughtful.\"date_day_of_week\" = 0 THEN thoughtful.\"web_sales_extra_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_49169315793169\",
+	END) as \"_virt_1430965672846720\",
     sum(CASE
 	WHEN thoughtful.\"date_day_of_week\" = 1 THEN thoughtful.\"web_sales_extra_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_2912862575830796\",
+	END) as \"_virt_9180600749516014\",
     sum(CASE
 	WHEN thoughtful.\"date_day_of_week\" = 2 THEN thoughtful.\"web_sales_extra_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_1328938266169686\",
+	END) as \"_virt_5843356674090839\",
     sum(CASE
 	WHEN thoughtful.\"date_day_of_week\" = 3 THEN thoughtful.\"web_sales_extra_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_5470329340601505\",
+	END) as \"_virt_7719154804838251\",
     sum(CASE
 	WHEN thoughtful.\"date_day_of_week\" = 4 THEN thoughtful.\"web_sales_extra_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_5775092947027919\",
+	END) as \"_virt_2215622277191905\",
     sum(CASE
 	WHEN thoughtful.\"date_day_of_week\" = 5 THEN thoughtful.\"web_sales_extra_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_5833005814951560\",
+	END) as \"_virt_591087579650056\",
     sum(CASE
 	WHEN thoughtful.\"date_day_of_week\" = 6 THEN thoughtful.\"web_sales_extra_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_8799587786554655\",
+	END) as \"_virt_864268046946303\",
     thoughtful.\"date_week_seq\" as \"date_week_seq\"
 FROM
     thoughtful
@@ -81,44 +81,44 @@ SELECT
     sum(CASE
 	WHEN dynamic.\"date_day_of_week\" = 0 THEN dynamic.\"catalog_sales_extra_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_3206853429954902\",
+	END) as \"_virt_9100576239670120\",
     sum(CASE
 	WHEN dynamic.\"date_day_of_week\" = 1 THEN dynamic.\"catalog_sales_extra_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_8825418627246833\",
+	END) as \"_virt_4284672965134623\",
     sum(CASE
 	WHEN dynamic.\"date_day_of_week\" = 2 THEN dynamic.\"catalog_sales_extra_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_7828175270579300\",
+	END) as \"_virt_4203843215898205\",
     sum(CASE
 	WHEN dynamic.\"date_day_of_week\" = 3 THEN dynamic.\"catalog_sales_extra_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_1379048537822601\",
+	END) as \"_virt_3491982279232038\",
     sum(CASE
 	WHEN dynamic.\"date_day_of_week\" = 4 THEN dynamic.\"catalog_sales_extra_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_5022186632416339\",
+	END) as \"_virt_8193012987854847\",
     sum(CASE
 	WHEN dynamic.\"date_day_of_week\" = 5 THEN dynamic.\"catalog_sales_extra_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_7728058346198340\",
+	END) as \"_virt_8649824413129684\",
     sum(CASE
 	WHEN dynamic.\"date_day_of_week\" = 6 THEN dynamic.\"catalog_sales_extra_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_8200581862685388\"
+	END) as \"_virt_2181143902401134\"
 FROM
     dynamic
 GROUP BY 
     dynamic.\"date_week_seq\"),
 uneven as (
 SELECT
-    cooperative.\"_virt_1328938266169686\" + wakeful.\"_virt_7828175270579300\" as \"yearly_agg_tuesday_sales\",
-    cooperative.\"_virt_2912862575830796\" + wakeful.\"_virt_8825418627246833\" as \"yearly_agg_monday_sales\",
-    cooperative.\"_virt_49169315793169\" + wakeful.\"_virt_3206853429954902\" as \"yearly_agg_sunday_sales\",
-    cooperative.\"_virt_5470329340601505\" + wakeful.\"_virt_1379048537822601\" as \"yearly_agg_wednesday_sales\",
-    cooperative.\"_virt_5775092947027919\" + wakeful.\"_virt_5022186632416339\" as \"yearly_agg_thursday_sales\",
-    cooperative.\"_virt_5833005814951560\" + wakeful.\"_virt_7728058346198340\" as \"yearly_agg_friday_sales\",
-    cooperative.\"_virt_8799587786554655\" + wakeful.\"_virt_8200581862685388\" as \"yearly_agg_saturday_sales\",
+    cooperative.\"_virt_1430965672846720\" + wakeful.\"_virt_9100576239670120\" as \"yearly_agg_sunday_sales\",
+    cooperative.\"_virt_2215622277191905\" + wakeful.\"_virt_8193012987854847\" as \"yearly_agg_thursday_sales\",
+    cooperative.\"_virt_5843356674090839\" + wakeful.\"_virt_4203843215898205\" as \"yearly_agg_tuesday_sales\",
+    cooperative.\"_virt_591087579650056\" + wakeful.\"_virt_8649824413129684\" as \"yearly_agg_friday_sales\",
+    cooperative.\"_virt_7719154804838251\" + wakeful.\"_virt_3491982279232038\" as \"yearly_agg_wednesday_sales\",
+    cooperative.\"_virt_864268046946303\" + wakeful.\"_virt_2181143902401134\" as \"yearly_agg_saturday_sales\",
+    cooperative.\"_virt_9180600749516014\" + wakeful.\"_virt_4284672965134623\" as \"yearly_agg_monday_sales\",
     wakeful.\"date_week_seq\" as \"yearly_agg_date_week_seq\"
 FROM
     wakeful

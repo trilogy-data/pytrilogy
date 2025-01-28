@@ -4,7 +4,6 @@ import pandas as pd
 
 from trilogy import Dialects, Environment, Executor
 from trilogy.dialect.config import DataFrameConfig
-from trilogy.hooks import DebuggingHook
 
 
 def test_dataframe_executor():

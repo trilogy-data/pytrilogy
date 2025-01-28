@@ -1,5 +1,10 @@
-from pandas import DataFrame
+from typing import TYPE_CHECKING, Any
 
+if TYPE_CHECKING:
+    try:
+        from pandas import DataFrame
+    except ImportError:
+        DataFrame = Any
 
 class DialectConfig:
     def __init__(self):
@@ -110,6 +115,6 @@ class TrinoConfig(PrestoConfig):
 
 
 class DataFrameConfig(DuckDBConfig):
-    def __init__(self, dataframes: dict[str, DataFrame]):
+    def __init__(self, dataframes: dict[str, "DataFrame"]):
         super().__init__()
         self.dataframes = dataframes

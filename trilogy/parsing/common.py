@@ -86,8 +86,10 @@ def process_function_args(
             environment.add_concept(concept, meta=meta)
             final.append(concept)
         elif isinstance(
-            arg, (FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
-        ):
+            arg, 
+            #(FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
+            (WindowItem, FilterItem,  )
+        ): 
             id_hash = string_to_hash(str(arg))
             concept = arbitrary_to_concept(
                 arg,
@@ -180,6 +182,7 @@ def concept_is_relevant(
     others: list[Concept | ConceptRef],
     environment: Environment | None = None,
 ) -> bool:
+
     if isinstance(concept, UndefinedConcept):
 
         return False
@@ -190,7 +193,6 @@ def concept_is_relevant(
             raise SyntaxError(
                 "Require environment to determine relevance of ConceptRef"
             )
-
     if concept.is_aggregate and not (
         isinstance(concept.lineage, AggregateWrapper) and concept.lineage.by
     ):
@@ -204,7 +206,6 @@ def concept_is_relevant(
         if all([c in others for c in concept.grain.components]):
             return False
     if concept.derivation in (Derivation.BASIC,):
-
         return any(
             concept_is_relevant(c, others, environment)
             for c in concept.concept_arguments
@@ -232,8 +233,13 @@ def concepts_to_grain_concepts(
 
     final: List[Concept] = []
     for sub in pconcepts:
+        print(sub)
+        print(type(sub))
+        print(sub.purpose)
+        print(sub.keys)
         if not concept_is_relevant(sub, pconcepts, environment):  # type: ignore
             continue
+        print('is relevant')
         final.append(sub)
     final = unique(final, "address")
     v2 = sorted(final, key=lambda x: x.name)
@@ -247,11 +253,18 @@ def function_to_concept(
     namespace: str | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:
+    from trilogy.core.models.author import get_concept_arguments
     pkeys: List[Concept] = []
     namespace = namespace or environment.namespace
+    concrete_args = []
+    for x in parent.arguments:
+        if isinstance(x, Function) and x.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+            continue
+        else:
+            concrete_args+= get_concept_arguments(x)
     concrete_args = [
         x
-        for x in [environment.concepts[c.address] for c in parent.concept_arguments]
+        for x in [environment.concepts[c.address] for c in concrete_args]
         if not isinstance(x, UndefinedConcept)
     ]
 

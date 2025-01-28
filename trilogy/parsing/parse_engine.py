@@ -46,6 +46,7 @@ from trilogy.core.functions import (
 )
 from trilogy.core.internal import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.models.author import (
+    ArgBinding,
     AggregateWrapper,
     AlignClause,
     AlignItem,
@@ -71,6 +72,7 @@ from trilogy.core.models.author import (
     WindowItem,
     WindowItemOrder,
     WindowItemOver,
+    Mergeable
 )
 from trilogy.core.models.core import (
     DataType,
@@ -1080,22 +1082,46 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def function_binding_item(self, meta: Meta, args) -> Concept:
-        return args
+        if len(args) == 2:
+            return ArgBinding(name=args[0], default=args[1])
+        return ArgBinding(name=args[0], default=None)
 
     @v_args(meta=True)
     def raw_function(self, meta: Meta, args) -> Function:
         identity = args[0]
-        fargs = args[1]
+        fargs:list[ArgBinding] = args[1]
         output = args[2]
-        item = Function(
-            operator=FunctionType.SUM,
-            arguments=[x[1] for x in fargs],
-            output_datatype=output,
-            output_purpose=Purpose.PROPERTY,
-            arg_count=len(fargs) + 1,
-        )
-        self.environment.functions[identity] = item
-        return item
+        print(args[1:])
+        def function(*args:list[Expr]):
+            nout = output.copy(deep=True)
+            args = list(args)
+            if len(args)< len(fargs):
+                for x in fargs[len(args):]:
+                    if x.default is None:
+                        raise ValueError(f"Missing argument {x.name}")
+                    args.append(x.default)
+            if isinstance(nout, Mergeable):
+                for idx, x in enumerate(args):
+                    # these will always be local namespace
+                    nout = nout.with_reference_replacement(f'{DEFAULT_NAMESPACE}.{fargs[idx].name}', x)
+            return nout
+        # item = Function(
+        #     operator=FunctionType.SUM,
+        #     arguments=[x[1] for x in fargs],
+        #     output_datatype=output,
+        #     output_purpose=Purpose.PROPERTY,
+        #     arg_count=len(fargs) + 1,
+        # )
+        self.environment.functions[identity] = function
+        return function
+    
+    def custom_function(self, args):
+        name = args[0]
+        args = args[1:]
+        remapped = self.environment.functions[name](*args)
+        print(remapped)
+        return remapped
+   
 
     @v_args(meta=True)
     def function(self, meta: Meta, args) -> Function:
@@ -1141,24 +1167,24 @@ class ParseToObjects(Transformer):
     def comparison(self, args) -> Comparison:
         if args[1] == ComparisonOperator.IN:
             raise SyntaxError
-        if isinstance(args[0], AggregateWrapper):
-            left_c = arbitrary_to_concept(
-                args[0],
-                environment=self.environment,
-            )
-            self.environment.add_concept(left_c)
-            left = left_c.reference
-        else:
-            left = args[0]
-        if isinstance(args[2], AggregateWrapper):
-            right_c = arbitrary_to_concept(
-                args[2],
-                environment=self.environment,
-            )
-            self.environment.add_concept(right_c)
-            right = right_c.reference
-        else:
-            right = args[2]
+        # if isinstance(args[0], AggregateWrapper):
+        #     left_c = arbitrary_to_concept(
+        #         args[0],
+        #         environment=self.environment,
+        #     )
+        #     self.environment.add_concept(left_c)
+        #     left = left_c.reference
+        # else:
+        left = args[0]
+        # if isinstance(args[2], AggregateWrapper):
+        #     right_c = arbitrary_to_concept(
+        #         args[2],
+        #         environment=self.environment,
+        #     )
+        #     self.environment.add_concept(right_c)
+        #     right = right_c.reference
+        # else:
+        right = args[2]
         return Comparison(left=left, right=right, operator=args[1])
 
     def between_comparison(self, args) -> Conditional:
