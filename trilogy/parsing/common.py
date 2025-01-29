@@ -46,6 +46,56 @@ from trilogy.core.statements.author import RowsetDerivationStatement, SelectStat
 from trilogy.utility import string_to_hash, unique
 
 
+def process_function_arg(
+    arg,
+    meta: Meta | None,
+    environment: Environment,
+):
+    # if a function has an anonymous function argument
+    # create an implicit concept
+    if isinstance(arg, Parenthetical):
+        processed = process_function_args([arg.content], meta, environment)
+        return Function(
+            operator=FunctionType.PARENTHETICAL,
+            arguments=processed,
+            output_datatype=arg_to_datatype(processed[0]),
+            output_purpose=function_args_to_output_purpose(processed),
+        )
+    elif isinstance(arg, Function):
+        # if it's not an aggregate function, we can skip the virtual concepts
+        # to simplify anonymous function handling
+        if (
+            arg.operator not in FunctionClass.AGGREGATE_FUNCTIONS.value
+            and arg.operator != FunctionType.UNNEST
+        ):
+            return arg
+        id_hash = string_to_hash(str(arg))
+        concept = function_to_concept(
+            arg,
+            name=f"{VIRTUAL_CONCEPT_PREFIX}_{arg.operator.value}_{id_hash}",
+            environment=environment,
+        )
+        # to satisfy mypy, concept will always have metadata
+        if concept.metadata and meta:
+            concept.metadata.line_number = meta.line
+        environment.add_concept(concept, meta=meta)
+        return concept
+    elif isinstance(
+        arg, (FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
+    ):
+        id_hash = string_to_hash(str(arg))
+        concept = arbitrary_to_concept(
+            arg,
+            name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
+            environment=environment,
+        )
+        if concept.metadata and meta:
+            concept.metadata.line_number = meta.line
+        environment.add_concept(concept, meta=meta)
+        return concept
+    return arg
+
+
 def process_function_args(
     args,
     meta: Meta | None,
@@ -53,54 +103,7 @@ def process_function_args(
 ) -> List[Concept | Function | str | int | float | date | datetime]:
     final: List[Concept | Function | str | int | float | date | datetime] = []
     for arg in args:
-        # if a function has an anonymous function argument
-        # create an implicit concept
-        if isinstance(arg, Parenthetical):
-            processed = process_function_args([arg.content], meta, environment)
-            final.append(
-                Function(
-                    operator=FunctionType.PARENTHETICAL,
-                    arguments=processed,
-                    output_datatype=arg_to_datatype(processed[0]),
-                    output_purpose=function_args_to_output_purpose(processed),
-                )
-            )
-        elif isinstance(arg, Function):
-            # if it's not an aggregate function, we can skip the virtual concepts
-            # to simplify anonymous function handling
-            if (
-                arg.operator not in FunctionClass.AGGREGATE_FUNCTIONS.value
-                and arg.operator != FunctionType.UNNEST
-            ):
-                final.append(arg)
-                continue
-            id_hash = string_to_hash(str(arg))
-            concept = function_to_concept(
-                arg,
-                name=f"{VIRTUAL_CONCEPT_PREFIX}_{arg.operator.value}_{id_hash}",
-                environment=environment,
-            )
-            # to satisfy mypy, concept will always have metadata
-            if concept.metadata and meta:
-                concept.metadata.line_number = meta.line
-            environment.add_concept(concept, meta=meta)
-            final.append(concept)
-        elif isinstance(
-            arg, (FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
-        ):
-            id_hash = string_to_hash(str(arg))
-            concept = arbitrary_to_concept(
-                arg,
-                name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
-                environment=environment,
-            )
-            if concept.metadata and meta:
-                concept.metadata.line_number = meta.line
-            environment.add_concept(concept, meta=meta)
-            final.append(concept)
-
-        else:
-            final.append(arg)
+        final.append(process_function_arg(arg, meta, environment))
     return final
 
 

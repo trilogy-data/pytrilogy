@@ -804,18 +804,6 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
 
     @classmethod
     def calculate_is_aggregate(cls, lineage):
-        def is_aggregate_function(lineage):
-            if lineage and isinstance(lineage, Function):
-                if lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
-                    return True
-            if (
-                lineage
-                and isinstance(lineage, AggregateWrapper)
-                and lineage.function.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
-            ):
-                return True
-            return False
-
         if lineage and isinstance(lineage, Function):
             if lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
                 return True
@@ -1761,10 +1749,6 @@ class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel)
     def output_purpose(self):
         return self.function.output_purpose
 
-    @property
-    def arguments(self):
-        return self.function.arguments
-
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         return AggregateWrapper.model_construct(
             function=self.function.with_merge(source, target, modifiers=modifiers),
@@ -1873,11 +1857,6 @@ class RowsetItem(Mergeable, ConceptArgs, Namespaced, BaseModel):
             content=self.content.with_namespace(namespace),
             rowset=self.rowset.with_namespace(namespace),
         )
-
-    @property
-    def arguments(self) -> List[ConceptRef]:
-        output = [self.content]
-        return output
 
     @property
     def output(self) -> ConceptRef:
