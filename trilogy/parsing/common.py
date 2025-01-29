@@ -84,8 +84,8 @@ def process_function_arg(
         environment.add_concept(concept, meta=meta)
         return concept
     elif isinstance(
-        arg, (FilterItem, WindowItem,  ListWrapper, MapWrapper )
-        
+        arg,
+        (FilterItem, WindowItem, ListWrapper, MapWrapper),
         # (FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
     ):
         id_hash = string_to_hash(str(arg))
@@ -250,8 +250,10 @@ def concepts_to_grain_concepts(
     v2 = sorted(final, key=lambda x: x.name)
     return v2
 
+
 def get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
     from trilogy.core.models.author import get_concept_arguments
+
     is_metric = False
     if isinstance(arg, Function):
         all = []
@@ -263,11 +265,10 @@ def get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
     elif isinstance(arg, AggregateWrapper) and not arg.by:
         return [], True
     elif isinstance(arg, AggregateWrapper) and arg.by:
-        # return [], False
-        #TODO: debug, should be this
-        # return arg.by, False
-    return get_concept_arguments(arg), False    
-    
+        return arg.by, True
+    return get_concept_arguments(arg), False
+
+
 def function_to_concept(
     parent: Function,
     name: str,
@@ -275,13 +276,12 @@ def function_to_concept(
     namespace: str | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:
-    
+
     pkeys: List[Concept] = []
     namespace = namespace or environment.namespace
     is_metric = False
     ref_args, is_metric = get_relevant_parent_concepts(parent)
-    concrete_args =  [environment.concepts[c.address] for c in ref_args] 
-
+    concrete_args = [environment.concepts[c.address] for c in ref_args]
     pkeys += [x for x in concrete_args if not x.derivation == Derivation.CONSTANT]
     grain: Grain | None = Grain()
     for x in pkeys:
@@ -292,12 +292,16 @@ def function_to_concept(
     modifiers = get_upstream_modifiers(pkeys, environment)
     key_grain: list[str] = []
     for x in pkeys:
-        if x.keys:
+        # metrics will group to keys, so do no do key traversal
+        if is_metric:
+            key_grain.append(x.address)
+        # otherwse, for row ops, assume keys are transitive
+        elif x.keys:
             key_grain += [*x.keys]
         else:
             key_grain.append(x.address)
     keys = set(key_grain)
-    if not pkeys and is_metric:
+    if is_metric:
         purpose = Purpose.METRIC
     elif not pkeys:
         purpose = Purpose.CONSTANT

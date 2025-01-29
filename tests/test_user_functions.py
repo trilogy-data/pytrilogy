@@ -1,6 +1,7 @@
 from trilogy import Dialects
 from trilogy.core.enums import Derivation, Purpose, Granularity
 
+
 def test_user_function_def():
     x = Dialects.DUCK_DB.default_executor()
 
@@ -15,7 +16,6 @@ select @percent_ratio(10, 100) as ratio;
     )
 
     assert results.fetchall()[0].ratio == 10.0
-
 
 
 def test_user_function_aggregate():
@@ -48,7 +48,6 @@ select @sum_times(10) as total;
     )
 
     assert results.fetchall()[0].total == 130
-
 
 
 def test_user_function_nested():
@@ -117,9 +116,9 @@ select rowset.total;
     assert results.fetchall()[0].rowset_total == 230
 
 
-
 def test_user_function_case():
     from trilogy.hooks.query_debugger import DebuggingHook
+
     DebuggingHook()
     x = Dialects.DUCK_DB.default_executor()
 
@@ -201,7 +200,7 @@ auto test <-SUM(CASE WHEN 10 = weekday THEN x ELSE 0 END) +
                  
 """
     )
-    test = x.environment.concepts['test']
+    test = x.environment.concepts["test"]
     assert test.keys == set()
     assert test.purpose == Purpose.METRIC
     assert test.derivation == Derivation.BASIC

@@ -1499,6 +1499,7 @@ class Factory:
     @build.register
     def _(self, base: Function) -> BuildFunction:
         from trilogy.parsing.common import arbitrary_to_concept
+
         raw_args = []
         for arg in base.arguments:
             if isinstance(arg, AggregateWrapper):

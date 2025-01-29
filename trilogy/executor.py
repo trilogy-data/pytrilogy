@@ -166,7 +166,7 @@ class Executor(object):
         )
 
     @execute_query.register
-    def _(self, query: str) -> CursorResult| None:
+    def _(self, query: str) -> CursorResult | None:
         results = self.execute_text(query)
         if results:
             return results[-1]
