@@ -1454,8 +1454,6 @@ class Factory:
             {} if local_concepts is None else local_concepts
         )
         self.seen_concepts = set()
-        if 'local.sunday_sales' in self.grain.components:
-            raise SyntaxError
 
     @singledispatchmethod
     def build(self, base):
@@ -1546,32 +1544,13 @@ class Factory:
             granularity=granularity,
             build_is_aggregate=is_aggregate,
         )
-        if rval.address == 'local.sunday_sales':
-            from trilogy.constants import logger
-            logger.info(f'BUILT RVAL {base}- {base.lineage}')
-            logger.info(f'BUILT RVAL {rval}- {rval.lineage}')
         return rval
     
     @build.register
     def _(self, base: Function) -> BuildFunction:
-        from trilogy.parsing.common import arbitrary_to_concept, string_to_hash, VIRTUAL_CONCEPT_PREFIX
-        final_args = []
-        for arg in base.arguments:
-            if isinstance(
-                arg, (FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
-            ):
-                id_hash = string_to_hash(str(arg))
-                concept = arbitrary_to_concept(
-                    arg,
-                    name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
-                    environment=self.environment,
-                )
-                final_args.append(concept)
-            else:
-                final_args.append(arg)
         new = BuildFunction.model_construct(
             operator=base.operator,
-            arguments=[self.build(c) for c in final_args],
+            arguments=[self.build(c) for c in base.arguments],
             output_datatype=base.output_datatype,
             output_purpose=base.output_purpose,
             valid_inputs=base.valid_inputs,
@@ -1769,8 +1748,6 @@ class Factory:
         base_grain = Grain.from_concepts(
             targets, where_clause=base.where_clause, environment=self.environment
         )
-        if 'local.sunday_sales' in base_grain.components:
-            raise SyntaxError(f'FOUND SUNDAY SALES {base_grain.components}')
         factory = Factory(
             grain=base_grain, environment=self.environment, local_concepts=materialized
         )

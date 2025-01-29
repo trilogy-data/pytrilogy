@@ -86,10 +86,8 @@ def process_function_args(
             environment.add_concept(concept, meta=meta)
             final.append(concept)
         elif isinstance(
-            arg, 
-            #(FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
-            (WindowItem, FilterItem, AggregateWrapper, ListWrapper, MapWrapper)
-        ): 
+            arg, (FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
+        ):
             id_hash = string_to_hash(str(arg))
             concept = arbitrary_to_concept(
                 arg,
@@ -182,7 +180,6 @@ def concept_is_relevant(
     others: list[Concept | ConceptRef],
     environment: Environment | None = None,
 ) -> bool:
-
     if isinstance(concept, UndefinedConcept):
 
         return False
@@ -193,6 +190,7 @@ def concept_is_relevant(
             raise SyntaxError(
                 "Require environment to determine relevance of ConceptRef"
             )
+
     if concept.is_aggregate and not (
         isinstance(concept.lineage, AggregateWrapper) and concept.lineage.by
     ):
@@ -206,6 +204,7 @@ def concept_is_relevant(
         if all([c in others for c in concept.grain.components]):
             return False
     if concept.derivation in (Derivation.BASIC,):
+
         return any(
             concept_is_relevant(c, others, environment)
             for c in concept.concept_arguments
@@ -248,18 +247,11 @@ def function_to_concept(
     namespace: str | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:
-    from trilogy.core.models.author import get_concept_arguments
     pkeys: List[Concept] = []
     namespace = namespace or environment.namespace
-    concrete_args = []
-    for x in parent.arguments:
-        if isinstance(x, Function) and x.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
-            continue
-        else:
-            concrete_args+= get_concept_arguments(x)
     concrete_args = [
         x
-        for x in [environment.concepts[c.address] for c in concrete_args]
+        for x in [environment.concepts[c.address] for c in parent.concept_arguments]
         if not isinstance(x, UndefinedConcept)
     ]
 
@@ -310,6 +302,8 @@ def function_to_concept(
     else:
         derivation = Derivation.BASIC
         granularity = Granularity.MULTI_ROW
+    # granularity = Concept.calculate_granularity(derivation, grain, parent)
+
     if grain is not None:
         r = Concept(
             name=name,
