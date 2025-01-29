@@ -547,6 +547,7 @@ class Comparison(ConceptArgs, Mergeable, Namespaced, BaseModel):
         MagicConstants,
         WindowItem,
         AggregateWrapper,
+        FilterItem,
     ]
     right: Union[
         int,
@@ -566,6 +567,7 @@ class Comparison(ConceptArgs, Mergeable, Namespaced, BaseModel):
         WindowItem,
         AggregateWrapper,
         TupleWrapper,
+        FilterItem,
     ]
     operator: ComparisonOperator
 
@@ -1249,9 +1251,19 @@ class OrderItem(Mergeable, ConceptArgs, Namespaced, BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "OrderItem":
-        return OrderItem(
+        return OrderItem.model_construct(
             expr=(
                 self.expr.with_merge(source, target, modifiers)
+                if isinstance(self.expr, Mergeable)
+                else self.expr
+            ),
+            order=self.order,
+        )
+
+    def with_reference_replacement(self, source, target):
+        return OrderItem.model_construct(
+            expr=(
+                self.expr.with_reference_replacement(source, target)
                 if isinstance(self.expr, Mergeable)
                 else self.expr
             ),
@@ -1319,6 +1331,17 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
             index=self.index,
         )
         return output
+
+    def with_reference_replacement(self, source, target):
+        return WindowItem.model_construct(
+            type=self.type,
+            content=self.content.with_reference_replacement(source, target),
+            over=[x.with_reference_replacement(source, target) for x in self.over],
+            order_by=[
+                x.with_reference_replacement(source, target) for x in self.order_by
+            ],
+            index=self.index,
+        )
 
     def with_namespace(self, namespace: str) -> "WindowItem":
         return WindowItem.model_construct(
@@ -1515,30 +1538,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
             List[Set[DataType]],
         ]
     ] = None
-    arguments: Sequence[
-        Union[
-            ConceptRef,
-            AggregateWrapper,
-            Function,
-            Parenthetical,
-            CaseWhen,
-            CaseElse,
-            WindowItem,
-            int,
-            float,
-            str,
-            date,
-            datetime,
-            MapWrapper[Any, Any],
-            DataType,
-            ListType,
-            MapType,
-            NumericType,
-            DatePart,
-            list,
-            ListWrapper[Any],
-        ]
-    ]
+    arguments: Sequence[FuncArgs]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -2164,6 +2164,7 @@ Expr = (
     | datetime
     | TupleWrapper
     | ListWrapper
+    | MapWrapper
     | WindowItem
     | FilterItem
     | ConceptRef
@@ -2172,4 +2173,30 @@ Expr = (
     | Parenthetical
     | Function
     | AggregateWrapper
+    | CaseWhen
+    | CaseElse
+)
+
+FuncArgs = (
+    ConceptRef
+    | AggregateWrapper
+    | Function
+    | Parenthetical
+    | CaseWhen
+    | CaseElse
+    | WindowItem
+    | FilterItem
+    | int
+    | float
+    | str
+    | date
+    | datetime
+    | MapWrapper[Any, Any]
+    | DataType
+    | ListType
+    | MapType
+    | NumericType
+    | DatePart
+    | list
+    | ListWrapper[Any]
 )

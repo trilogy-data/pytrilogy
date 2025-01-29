@@ -1,5 +1,5 @@
 query_id = 24
-gen_length = 6246
+gen_length = 6310
 generated_sql = """
 
 WITH 
@@ -62,7 +62,7 @@ GROUP BY
     questionable.\"store_sales_store_state\"),
 juicy as (
 SELECT
-    CASE WHEN abundant.\"su_store_sales_item_color\" = 'peach' THEN abundant.\"su_net_paid\" ELSE NULL END as \"_virt_3139932349044856\",
+    CASE WHEN abundant.\"su_store_sales_item_color\" = 'peach' THEN abundant.\"su_net_paid\" ELSE NULL END as \"_virt_filter_net_paid_3139932349044856\",
     abundant.\"su_net_paid\" as \"su_net_paid\",
     abundant.\"su_store_sales_item_color\" as \"su_store_sales_item_color\"
 FROM
@@ -78,7 +78,7 @@ SELECT
     abundant.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     abundant.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
     abundant.\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
-    juicy.\"_virt_3139932349044856\" as \"_virt_3139932349044856\",
+    juicy.\"_virt_filter_net_paid_3139932349044856\" as \"_virt_filter_net_paid_3139932349044856\",
     juicy.\"su_net_paid\" as \"su_net_paid\"
 FROM
     juicy
@@ -90,7 +90,7 @@ FROM
     uneven),
 concerned as (
 SELECT
-    sum(vacuous.\"_virt_3139932349044856\") as \"peach_sales\",
+    sum(vacuous.\"_virt_filter_net_paid_3139932349044856\") as \"peach_sales\",
     vacuous.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     vacuous.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
     vacuous.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
