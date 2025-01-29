@@ -1498,10 +1498,20 @@ class Factory:
 
     @build.register
     def _(self, base: Function) -> BuildFunction:
-
+        from trilogy.parsing.common import arbitrary_to_concept
+        raw_args = []
+        for arg in base.arguments:
+            if isinstance(arg, AggregateWrapper):
+                arg = arbitrary_to_concept(
+                    arg,
+                    environment=self.environment,
+                )
+                raw_args.append(arg)
+            else:
+                raw_args.append(arg)
         new = BuildFunction.model_construct(
             operator=base.operator,
-            arguments=[self.build(c) for c in base.arguments],
+            arguments=[self.build(c) for c in raw_args],
             output_datatype=base.output_datatype,
             output_purpose=base.output_purpose,
             valid_inputs=base.valid_inputs,

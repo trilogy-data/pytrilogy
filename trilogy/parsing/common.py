@@ -84,7 +84,9 @@ def process_function_arg(
         environment.add_concept(concept, meta=meta)
         return concept
     elif isinstance(
-        arg, (FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
+        arg, (FilterItem, WindowItem,  ListWrapper, MapWrapper )
+        
+        # (FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
     ):
         id_hash = string_to_hash(str(arg))
         name = f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}"
@@ -248,7 +250,24 @@ def concepts_to_grain_concepts(
     v2 = sorted(final, key=lambda x: x.name)
     return v2
 
-
+def get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
+    from trilogy.core.models.author import get_concept_arguments
+    is_metric = False
+    if isinstance(arg, Function):
+        all = []
+        for y in arg.arguments:
+            refs, local_flag = get_relevant_parent_concepts(y)
+            all += refs
+            is_metric = is_metric or local_flag
+        return all, is_metric
+    elif isinstance(arg, AggregateWrapper) and not arg.by:
+        return [], True
+    elif isinstance(arg, AggregateWrapper) and arg.by:
+        # return [], False
+        #TODO: debug, should be this
+        # return arg.by, False
+    return get_concept_arguments(arg), False    
+    
 def function_to_concept(
     parent: Function,
     name: str,
@@ -256,13 +275,12 @@ def function_to_concept(
     namespace: str | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:
+    
     pkeys: List[Concept] = []
     namespace = namespace or environment.namespace
-    concrete_args = [
-        x
-        for x in [environment.concepts[c.address] for c in parent.concept_arguments]
-        if not isinstance(x, UndefinedConcept)
-    ]
+    is_metric = False
+    ref_args, is_metric = get_relevant_parent_concepts(parent)
+    concrete_args =  [environment.concepts[c.address] for c in ref_args] 
 
     pkeys += [x for x in concrete_args if not x.derivation == Derivation.CONSTANT]
     grain: Grain | None = Grain()
@@ -279,7 +297,9 @@ def function_to_concept(
         else:
             key_grain.append(x.address)
     keys = set(key_grain)
-    if not pkeys:
+    if not pkeys and is_metric:
+        purpose = Purpose.METRIC
+    elif not pkeys:
         purpose = Purpose.CONSTANT
     else:
         purpose = parent.output_purpose

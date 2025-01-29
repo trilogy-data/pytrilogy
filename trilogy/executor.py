@@ -166,8 +166,11 @@ class Executor(object):
         )
 
     @execute_query.register
-    def _(self, query: str) -> CursorResult:
-        return self.execute_text(query)[-1]
+    def _(self, query: str) -> CursorResult| None:
+        results = self.execute_text(query)
+        if results:
+            return results[-1]
+        return None
 
     @execute_query.register
     def _(self, query: SelectStatement) -> CursorResult:

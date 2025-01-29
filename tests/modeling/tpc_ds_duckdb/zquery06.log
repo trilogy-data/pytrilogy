@@ -1,5 +1,5 @@
 query_id = 6
-gen_length = 3481
+gen_length = 3513
 generated_sql = """
 
 WITH 
@@ -16,7 +16,7 @@ GROUP BY
     store_sales_store_sales.\"SS_SOLD_DATE_SK\"),
 abundant as (
 SELECT
-    avg(item_items.\"I_CURRENT_PRICE\") as \"_virt_5942253052406187\",
+    avg(item_items.\"I_CURRENT_PRICE\") as \"_virt_agg_avg_5942253052406187\",
     item_items.\"I_CATEGORY\" as \"item_category\"
 FROM
     memory.item as item_items
@@ -43,7 +43,7 @@ WHERE
 ),
 uneven as (
 SELECT
-    abundant.\"_virt_5942253052406187\" as \"_virt_5942253052406187\",
+    abundant.\"_virt_agg_avg_5942253052406187\" as \"_virt_agg_avg_5942253052406187\",
     questionable.\"item_category\" as \"item_category\",
     questionable.\"store_sales_customer_id\" as \"store_sales_customer_id\",
     questionable.\"store_sales_customer_state\" as \"store_sales_customer_state\",
@@ -55,7 +55,7 @@ FROM
     questionable
     INNER JOIN abundant on (questionable.\"item_category\" = abundant.\"item_category\" or (questionable.\"item_category\" is null and abundant.\"item_category\" is null))
 WHERE
-    questionable.\"store_sales_date_year\" = 2001 and questionable.\"store_sales_date_month_of_year\" = 1 and questionable.\"store_sales_item_current_price\" > 1.2 * abundant.\"_virt_5942253052406187\" and questionable.\"store_sales_item_category\" is not null
+    questionable.\"store_sales_date_year\" = 2001 and questionable.\"store_sales_date_month_of_year\" = 1 and questionable.\"store_sales_item_current_price\" > 1.2 * abundant.\"_virt_agg_avg_5942253052406187\" and questionable.\"store_sales_item_category\" is not null
 )
 SELECT
     uneven.\"store_sales_customer_state\" as \"store_sales_customer_state\",

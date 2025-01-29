@@ -7,25 +7,26 @@ merge web_sales.date.* into ~date.*;
 
 auto relevent_week_seq <- filter date.week_seq where date.year in (2001, 2002);
 
+def weekday_sales(weekday) ->  
+    SUM(CASE WHEN date.day_of_week = weekday THEN web_sales.extra_sales_price ELSE 0.0 END) + 
+    SUM(CASE WHEN date.day_of_week = weekday THEN catalog_sales.extra_sales_price ELSE 0.0 END)
+;
+
 WITH
     yearly_agg AS
 SELECT
     date.week_seq,
-    SUM(CASE WHEN date.day_of_week = 0 THEN web_sales.extra_sales_price ELSE 0.0 END) + 
-    SUM(CASE WHEN date.day_of_week = 0 THEN catalog_sales.extra_sales_price ELSE 0.0 END) as sunday_sales,
-    SUM(CASE WHEN date.day_of_week = 1 THEN web_sales.extra_sales_price ELSE 0.0 END) +
-    SUM(CASE WHEN date.day_of_week = 1 THEN catalog_sales.extra_sales_price ELSE 0.0 END) as monday_sales,
-    SUM(CASE WHEN date.day_of_week = 2 THEN web_sales.extra_sales_price ELSE 0.0 END) +
-    SUM(CASE WHEN date.day_of_week = 2 THEN catalog_sales.extra_sales_price ELSE 0.0 END) as tuesday_sales,
-    SUM(CASE WHEN date.day_of_week = 3 THEN web_sales.extra_sales_price ELSE 0.0 END) +
-    SUM(CASE WHEN date.day_of_week = 3 THEN catalog_sales.extra_sales_price ELSE 0.0 END) as wednesday_sales,
-    SUM(CASE WHEN date.day_of_week = 4 THEN web_sales.extra_sales_price ELSE 0.0 END) +
-    SUM(CASE WHEN date.day_of_week = 4 THEN catalog_sales.extra_sales_price ELSE 0.0 END) as thursday_sales,
-    SUM(CASE WHEN date.day_of_week = 5 THEN web_sales.extra_sales_price ELSE 0.0 END) +
-    SUM(CASE WHEN date.day_of_week = 5 THEN catalog_sales.extra_sales_price ELSE 0.0 END) as friday_sales,
-    SUM(CASE WHEN date.day_of_week = 6 THEN web_sales.extra_sales_price ELSE 0.0 END) +
-    SUM(CASE WHEN date.day_of_week = 6 THEN catalog_sales.extra_sales_price ELSE 0.0 END) as saturday_sales,
+    @weekday_sales(0) as sunday_sales,
+    @weekday_sales(1) as monday_sales,
+    @weekday_sales(2) as tuesday_sales,
+    @weekday_sales(3) as wednesday_sales,
+    @weekday_sales(4) as thursday_sales,
+    @weekday_sales(5) as friday_sales,
+    @weekday_sales(6) as saturday_sales
 ;
+
+
+# def round_lag(sales)-> round(sales / (lead 53 sales by yearly_agg.date.week_seq asc), 2);
 
 WHERE
     yearly_agg.date.week_seq in relevent_week_seq
@@ -42,4 +43,5 @@ SELECT
 HAVING
     filter_flag is not null
 ORDER BY 
-     yearly_agg.date.week_seq asc NULLS FIRST;
+     yearly_agg.date.week_seq asc NULLS FIRST
+LIMIT 100;
