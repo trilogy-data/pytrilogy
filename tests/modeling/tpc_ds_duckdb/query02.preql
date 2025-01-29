@@ -25,21 +25,20 @@ SELECT
     @weekday_sales(6) as saturday_sales
 ;
 
-
-# def round_lag(sales)-> round(sales / (lead 53 sales by yearly_agg.date.week_seq asc), 2);
+def round_lag(sales)-> round(sales / (lead 53 sales by yearly_agg.date.week_seq asc), 2);
 
 WHERE
     yearly_agg.date.week_seq in relevent_week_seq
 SELECT
     yearly_agg.date.week_seq,
     -- (lead 53 yearly_agg.sunday_sales by yearly_agg.date.week_seq asc) -> filter_flag,
-    round(yearly_agg.sunday_sales / (lead 53 yearly_agg.sunday_sales by yearly_agg.date.week_seq asc)  ,2)  as sunday_increase,
-    round(yearly_agg.monday_sales / (lead 53 yearly_agg.monday_sales by yearly_agg.date.week_seq asc)  ,2) as monday_increase,
-    round(yearly_agg.tuesday_sales / (lead 53 yearly_agg.tuesday_sales by yearly_agg.date.week_seq asc)  ,2)   as tuesday_increase,
-    round(yearly_agg.wednesday_sales / (lead 53 yearly_agg.wednesday_sales by yearly_agg.date.week_seq asc)  ,2)   as wednesday_increase,
-    round(yearly_agg.thursday_sales / (lead 53 yearly_agg.thursday_sales by yearly_agg.date.week_seq asc)  ,2)   as thursday_increase,
-    round(yearly_agg.friday_sales / (lead 53 yearly_agg.friday_sales by yearly_agg.date.week_seq asc)  ,2)  as friday_increase,
-    round(yearly_agg.saturday_sales / (lead 53 yearly_agg.saturday_sales by yearly_agg.date.week_seq asc)  ,2)  as saturday_increase,
+    @round_lag(yearly_agg.sunday_sales) as sunday_increase,
+    @round_lag(yearly_agg.monday_sales) as monday_increase,
+    @round_lag(yearly_agg.tuesday_sales) as tuesday_increase,
+    @round_lag(yearly_agg.wednesday_sales) as wednesday_increase,
+    @round_lag(yearly_agg.thursday_sales) as thursday_increase,
+    @round_lag(yearly_agg.friday_sales) as friday_increase,
+    @round_lag(yearly_agg.saturday_sales) as saturday_increase
 HAVING
     filter_flag is not null
 ORDER BY 

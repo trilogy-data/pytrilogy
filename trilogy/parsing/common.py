@@ -85,8 +85,7 @@ def process_function_arg(
         return concept
     elif isinstance(
         arg,
-        (FilterItem, WindowItem, ListWrapper, MapWrapper),
-        # (FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
+        (ListWrapper, MapWrapper),
     ):
         id_hash = string_to_hash(str(arg))
         name = f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}"

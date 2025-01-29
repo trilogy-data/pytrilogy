@@ -1503,7 +1503,8 @@ class Factory:
 
         raw_args: list[Concept | FuncArgs] = []
         for arg in base.arguments:
-            if isinstance(arg, AggregateWrapper):
+            # to do proper discovery, we need to inject virtual intermediate ocncepts
+            if isinstance(arg, (AggregateWrapper, FilterItem, WindowItem)):
                 narg = arbitrary_to_concept(
                     arg,
                     environment=self.environment,
