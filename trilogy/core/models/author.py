@@ -1515,30 +1515,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
             List[Set[DataType]],
         ]
     ] = None
-    arguments: Sequence[
-        Union[
-            ConceptRef,
-            AggregateWrapper,
-            Function,
-            Parenthetical,
-            CaseWhen,
-            CaseElse,
-            WindowItem,
-            int,
-            float,
-            str,
-            date,
-            datetime,
-            MapWrapper[Any, Any],
-            DataType,
-            ListType,
-            MapType,
-            NumericType,
-            DatePart,
-            list,
-            ListWrapper[Any],
-        ]
-    ]
+    arguments: Sequence[FuncArgs]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -2164,6 +2141,7 @@ Expr = (
     | datetime
     | TupleWrapper
     | ListWrapper
+    | MapWrapper
     | WindowItem
     | FilterItem
     | ConceptRef
@@ -2172,4 +2150,29 @@ Expr = (
     | Parenthetical
     | Function
     | AggregateWrapper
+    | CaseWhen
+    | CaseElse
+)
+
+FuncArgs = (
+    ConceptRef
+    | AggregateWrapper
+    | Function
+    | Parenthetical
+    | CaseWhen
+    | CaseElse
+    | WindowItem
+    | int
+    | float
+    | str
+    | date
+    | datetime
+    | MapWrapper[Any, Any]
+    | DataType
+    | ListType
+    | MapType
+    | NumericType
+    | DatePart
+    | list
+    | ListWrapper[Any]
 )

@@ -1,5 +1,5 @@
 from trilogy import Dialects
-from trilogy.core.enums import Derivation, Purpose, Granularity
+from trilogy.core.enums import Derivation, Purpose
 
 
 def test_user_function_def():
@@ -173,7 +173,7 @@ order by y asc;
 
 def test_parsing():
     x = Dialects.DUCK_DB.default_executor()
-    results = x.execute_query(
+    x.execute_query(
         """
 key x int;
 property x.price float;

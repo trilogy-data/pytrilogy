@@ -51,6 +51,7 @@ from trilogy.core.models.author import (
     ConceptRef,
     Conditional,
     FilterItem,
+    FuncArgs,
     Function,
     Grain,
     HavingClause,
@@ -1500,14 +1501,14 @@ class Factory:
     def _(self, base: Function) -> BuildFunction:
         from trilogy.parsing.common import arbitrary_to_concept
 
-        raw_args = []
+        raw_args: list[Concept | FuncArgs] = []
         for arg in base.arguments:
             if isinstance(arg, AggregateWrapper):
-                arg = arbitrary_to_concept(
+                narg = arbitrary_to_concept(
                     arg,
                     environment=self.environment,
                 )
-                raw_args.append(arg)
+                raw_args.append(narg)
             else:
                 raw_args.append(arg)
         new = BuildFunction.model_construct(
