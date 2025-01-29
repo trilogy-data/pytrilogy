@@ -70,9 +70,12 @@ def process_function_arg(
         ):
             return arg
         id_hash = string_to_hash(str(arg))
+        name = f"{VIRTUAL_CONCEPT_PREFIX}_{arg.operator.value}_{id_hash}"
+        if f"{environment.namespace}.{name}" in environment.concepts:
+            return environment.concepts[f"{environment.namespace}.{name}"]
         concept = function_to_concept(
             arg,
-            name=f"{VIRTUAL_CONCEPT_PREFIX}_{arg.operator.value}_{id_hash}",
+            name=name,
             environment=environment,
         )
         # to satisfy mypy, concept will always have metadata
@@ -84,9 +87,12 @@ def process_function_arg(
         arg, (FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
     ):
         id_hash = string_to_hash(str(arg))
+        name = f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}"
+        if f"{environment.namespace}.{name}" in environment.concepts:
+            return environment.concepts[f"{environment.namespace}.{name}"]
         concept = arbitrary_to_concept(
             arg,
-            name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
+            name=name,
             environment=environment,
         )
         if concept.metadata and meta:
