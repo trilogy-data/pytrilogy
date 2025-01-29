@@ -4,7 +4,7 @@ from enum import Enum
 from os.path import dirname, join
 from pathlib import Path
 from re import IGNORECASE
-from typing import List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 from lark import Lark, ParseTree, Transformer, Tree, v_args
 from lark.exceptions import (
@@ -46,10 +46,10 @@ from trilogy.core.functions import (
 )
 from trilogy.core.internal import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.models.author import (
-    ArgBinding,
     AggregateWrapper,
     AlignClause,
     AlignItem,
+    ArgBinding,
     CaseElse,
     CaseWhen,
     Comment,
@@ -62,6 +62,7 @@ from trilogy.core.models.author import (
     Function,
     Grain,
     HavingClause,
+    Mergeable,
     Metadata,
     OrderBy,
     OrderItem,
@@ -72,7 +73,6 @@ from trilogy.core.models.author import (
     WindowItem,
     WindowItemOrder,
     WindowItemOver,
-    Mergeable
 )
 from trilogy.core.models.core import (
     DataType,
@@ -1077,42 +1077,45 @@ class ParseToObjects(Transformer):
         return HavingClause(conditional=root)
 
     @v_args(meta=True)
-    def function_binding_list(self, meta: Meta, args) -> Concept:
+    def function_binding_list(self, meta: Meta, args) -> list[ArgBinding]:
         return args
 
     @v_args(meta=True)
-    def function_binding_item(self, meta: Meta, args) -> Concept:
+    def function_binding_item(self, meta: Meta, args) -> ArgBinding:
         if len(args) == 2:
             return ArgBinding(name=args[0], default=args[1])
         return ArgBinding(name=args[0], default=None)
 
     @v_args(meta=True)
-    def raw_function(self, meta: Meta, args) -> Function:
+    def raw_function(self, meta: Meta, args) -> Callable[[list[Expr]], Expr]:
         identity = args[0]
-        fargs:list[ArgBinding] = args[1]
+        function_arguments: list[ArgBinding] = args[1]
         output = args[2]
-        def function(*args:list[Expr]):
+
+        def function_factory(*creation_args: list[Expr]):
             nout = output.copy(deep=True)
-            args = list(args)
-            if len(args)< len(fargs):
-                for x in fargs[len(args):]:
-                    if x.default is None:
-                        raise ValueError(f"Missing argument {x.name}")
-                    args.append(x.default)
+            creation_arg_list: list[Expr] = list(creation_args)
+            if len(creation_args) < len(function_arguments):
+                for binding in function_arguments[len(creation_arg_list) :]:
+                    if binding.default is None:
+                        raise ValueError(f"Missing argument {binding.name}")
+                    creation_arg_list.append(binding.default)
             if isinstance(nout, Mergeable):
-                for idx, x in enumerate(args):
+                for idx, x in enumerate(creation_arg_list):
                     # these will always be local namespace
-                    nout = nout.with_reference_replacement(f'{DEFAULT_NAMESPACE}.{fargs[idx].name}', x)
+                    nout = nout.with_reference_replacement(
+                        f"{DEFAULT_NAMESPACE}.{function_arguments[idx].name}", x
+                    )
             return nout
-        self.environment.functions[identity] = function
-        return function
-    
+
+        self.environment.functions[identity] = function_factory
+        return function_factory
+
     def custom_function(self, args):
         name = args[0]
         args = args[1:]
         remapped = self.environment.functions[name](*args)
         return remapped
-   
 
     @v_args(meta=True)
     def function(self, meta: Meta, args) -> Function:

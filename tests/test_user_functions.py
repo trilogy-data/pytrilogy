@@ -1,4 +1,4 @@
-from trilogy import Environment, Dialects
+from trilogy import Dialects
 
 
 def test_user_function_def():

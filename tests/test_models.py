@@ -219,10 +219,14 @@ def test_comparison():
     # this should not error
     Comparison(left=1, right=[1, 2, 3], operator=ComparisonOperator.IN)
 
-    Comparison(left=1, right=ListWrapper([1, 2, 3]), operator=ComparisonOperator.IN)
+    Comparison(
+        left=1,
+        right=ListWrapper([1, 2, 3], type=DataType.INTEGER),
+        operator=ComparisonOperator.IN,
+    )
 
 
-def test_comparison():
+def test_comparison_invalid_type():
     try:
         Comparison(left=1, right="abc", operator=ComparisonOperator.EQ)
     except Exception as exc:

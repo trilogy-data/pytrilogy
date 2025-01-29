@@ -6,6 +6,7 @@ if TYPE_CHECKING:
     except ImportError:
         DataFrame = Any
 
+
 class DialectConfig:
     def __init__(self):
         pass

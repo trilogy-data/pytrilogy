@@ -31,4 +31,3 @@ validate test;
     assert right.content[0] == 1
     rendered = BaseDialect().render_expr(right)
     assert rendered.strip() == "( 1,2,3 )".strip()
-

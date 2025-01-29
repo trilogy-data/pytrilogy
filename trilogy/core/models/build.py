@@ -1453,7 +1453,6 @@ class Factory:
         self.local_concepts: dict[str, BuildConcept] = (
             {} if local_concepts is None else local_concepts
         )
-        self.seen_concepts = set()
 
     @singledispatchmethod
     def build(self, base):
@@ -1497,7 +1496,18 @@ class Factory:
     def _(self, base: None) -> None:
         return base
 
-    
+    @build.register
+    def _(self, base: Function) -> BuildFunction:
+
+        new = BuildFunction.model_construct(
+            operator=base.operator,
+            arguments=[self.build(c) for c in base.arguments],
+            output_datatype=base.output_datatype,
+            output_purpose=base.output_purpose,
+            valid_inputs=base.valid_inputs,
+            arg_count=base.arg_count,
+        )
+        return new
 
     @build.register
     def _(self, base: ConceptRef) -> BuildConcept:
@@ -1505,16 +1515,20 @@ class Factory:
             full = self.local_concepts[base.address]
             if isinstance(full, BuildConcept):
                 return full
-        if base.address in self.seen_concepts:
-            raise SyntaxError(
-                f"Concept {base.address} has a circular reference in {self.seen_concepts} with {self.grain}"
-            )
-        self.seen_concepts.add(base.address)
         raw = self.environment.concepts[base.address]
-        built = self.build(raw)
-        self.local_concepts[base.address] = built
-        return built
-    
+        return self.build(raw)
+
+    @build.register
+    def _(self, base: CaseWhen) -> BuildCaseWhen:
+        return BuildCaseWhen.model_construct(
+            comparison=self.build(base.comparison),
+            expr=(self.build(base.expr)),
+        )
+
+    @build.register
+    def _(self, base: CaseElse) -> BuildCaseElse:
+        return BuildCaseElse.model_construct(expr=self.build(base.expr))
+
     @build.register
     def _(self, base: Concept) -> BuildConcept:
         if base.address in self.local_concepts:
@@ -1545,31 +1559,6 @@ class Factory:
             build_is_aggregate=is_aggregate,
         )
         return rval
-    
-    @build.register
-    def _(self, base: Function) -> BuildFunction:
-        new = BuildFunction.model_construct(
-            operator=base.operator,
-            arguments=[self.build(c) for c in base.arguments],
-            output_datatype=base.output_datatype,
-            output_purpose=base.output_purpose,
-            valid_inputs=base.valid_inputs,
-            arg_count=base.arg_count,
-        )
-        return new
-
-    @build.register
-    def _(self, base: CaseWhen) -> BuildCaseWhen:
-        return BuildCaseWhen.model_construct(
-            comparison=self.build(base.comparison),
-            expr=(self.build(base.expr)),
-        )
-
-    @build.register
-    def _(self, base: CaseElse) -> BuildCaseElse:
-        return BuildCaseElse.model_construct(expr=self.build(base.expr))
-
-    
 
     @build.register
     def _(self, base: AggregateWrapper) -> BuildAggregateWrapper:
@@ -1651,13 +1640,14 @@ class Factory:
     @build.register
     def _(self, base: Comparison) -> BuildComparison:
         from trilogy.parsing.common import arbitrary_to_concept
+
         left = base.left
         if isinstance(left, AggregateWrapper):
             left_c = arbitrary_to_concept(
                 left,
                 environment=self.environment,
             )
-            left = left_c
+            left = left_c  # type: ignore
         right = base.right
         if isinstance(right, AggregateWrapper):
             right_c = arbitrary_to_concept(
@@ -1665,7 +1655,7 @@ class Factory:
                 environment=self.environment,
             )
 
-            right = right_c
+            right = right_c  # type: ignore
         return BuildComparison.model_construct(
             left=(self.build(left)),
             right=(self.build(right)),
@@ -1687,17 +1677,12 @@ class Factory:
         )
 
     @build.register
-    def _(self, base: RowsetItem):
-        targets = []
-        for x in base.rowset.select.selection:
-            targets.append(x)
-        base_grain = Grain.from_concepts(
-            targets, where_clause=base.rowset.select.where_clause, environment=self.environment
-        )
+    def _(self, base: RowsetItem) -> BuildRowsetItem:
+
         factory = Factory(
             environment=self.environment,
             local_concepts={},
-            grain=base_grain,
+            grain=base.rowset.select.grain,
         )
         return BuildRowsetItem(
             content=factory.build(base.content), rowset=factory.build(base.rowset)
@@ -1742,17 +1727,11 @@ class Factory:
         )
 
         materialized: dict[str, BuildConcept] = {}
-        targets = []
-        for x in base.selection:
-            targets.append(x)
-        base_grain = Grain.from_concepts(
-            targets, where_clause=base.where_clause, environment=self.environment
-        )
         factory = Factory(
-            grain=base_grain, environment=self.environment, local_concepts=materialized
+            grain=base.grain, environment=self.environment, local_concepts=materialized
         )
         for k, v in base.local_concepts.items():
-            materialized[k] = factory.build(v.with_grain(base_grain))
+            materialized[k] = factory.build(v)
         where_factory = Factory(
             grain=Grain(), environment=self.environment, local_concepts={}
         )
@@ -1778,7 +1757,7 @@ class Factory:
             limit=base.limit,
             meta=base.meta,
             local_concepts=materialized,
-            grain=self.build(base_grain),
+            grain=self.build(base.grain),
             having_clause=(
                 factory.build(base.having_clause) if base.having_clause else None
             ),
@@ -1790,6 +1769,7 @@ class Factory:
 
     @build.register
     def _(self, base: MultiSelectLineage) -> BuildMultiSelectLineage:
+
         local_build_cache: dict[str, BuildConcept] = {}
 
         parents: list[BuildSelectLineage] = [self.build(x) for x in base.selects]
