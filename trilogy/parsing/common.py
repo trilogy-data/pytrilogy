@@ -88,7 +88,7 @@ def process_function_args(
         elif isinstance(
             arg, 
             #(FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
-            (WindowItem, FilterItem,  )
+            (WindowItem, FilterItem, AggregateWrapper, ListWrapper, MapWrapper)
         ): 
             id_hash = string_to_hash(str(arg))
             concept = arbitrary_to_concept(
@@ -233,13 +233,8 @@ def concepts_to_grain_concepts(
 
     final: List[Concept] = []
     for sub in pconcepts:
-        print(sub)
-        print(type(sub))
-        print(sub.purpose)
-        print(sub.keys)
         if not concept_is_relevant(sub, pconcepts, environment):  # type: ignore
             continue
-        print('is relevant')
         final.append(sub)
     final = unique(final, "address")
     v2 = sorted(final, key=lambda x: x.name)
@@ -315,8 +310,6 @@ def function_to_concept(
     else:
         derivation = Derivation.BASIC
         granularity = Granularity.MULTI_ROW
-    # granularity = Concept.calculate_granularity(derivation, grain, parent)
-
     if grain is not None:
         r = Concept(
             name=name,

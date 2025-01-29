@@ -1091,7 +1091,6 @@ class ParseToObjects(Transformer):
         identity = args[0]
         fargs:list[ArgBinding] = args[1]
         output = args[2]
-        print(args[1:])
         def function(*args:list[Expr]):
             nout = output.copy(deep=True)
             args = list(args)
@@ -1105,13 +1104,6 @@ class ParseToObjects(Transformer):
                     # these will always be local namespace
                     nout = nout.with_reference_replacement(f'{DEFAULT_NAMESPACE}.{fargs[idx].name}', x)
             return nout
-        # item = Function(
-        #     operator=FunctionType.SUM,
-        #     arguments=[x[1] for x in fargs],
-        #     output_datatype=output,
-        #     output_purpose=Purpose.PROPERTY,
-        #     arg_count=len(fargs) + 1,
-        # )
         self.environment.functions[identity] = function
         return function
     
@@ -1119,7 +1111,6 @@ class ParseToObjects(Transformer):
         name = args[0]
         args = args[1:]
         remapped = self.environment.functions[name](*args)
-        print(remapped)
         return remapped
    
 
