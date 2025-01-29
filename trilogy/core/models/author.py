@@ -75,6 +75,9 @@ class Mergeable(ABC):
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         raise NotImplementedError
 
+    def with_reference_replacement(self, source: str, target: Expr):
+        raise NotImplementedError(type(self))
+
 
 class ConceptArgs(ABC):
     @property
@@ -151,6 +154,11 @@ class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
             datatype=self.datatype,
             metadata=self.metadata,
         )
+
+    def with_reference_replacement(self, source: str, target: Expr):
+        if self.address == source:
+            return target
+        return self
 
 
 class UndefinedConcept(ConceptRef):
@@ -409,13 +417,15 @@ class Grain(Namespaced, BaseModel):
     ) -> Grain:
         from trilogy.parsing.common import concepts_to_grain_concepts
 
-        return Grain.model_construct(
+        x = Grain.model_construct(
             components={
                 c.address
                 for c in concepts_to_grain_concepts(concepts, environment=environment)
             },
             where_clause=where_clause,
         )
+
+        return x
 
     def with_namespace(self, namespace: str) -> "Grain":
         return Grain.model_construct(
@@ -656,6 +666,21 @@ class Comparison(ConceptArgs, Mergeable, Namespaced, BaseModel):
             ),
             right=(
                 self.right.with_merge(source, target, modifiers)
+                if isinstance(self.right, Mergeable)
+                else self.right
+            ),
+            operator=self.operator,
+        )
+
+    def with_reference_replacement(self, source, target):
+        return self.__class__.model_construct(
+            left=(
+                self.left.with_reference_replacement(source, target)
+                if isinstance(self.left, Mergeable)
+                else self.left
+            ),
+            right=(
+                self.right.with_reference_replacement(source, target)
                 if isinstance(self.right, Mergeable)
                 else self.right
             ),
@@ -1234,18 +1259,8 @@ class OrderItem(Mergeable, ConceptArgs, Namespaced, BaseModel):
         )
 
     @property
-    def output(self):
-        return self.expr.output
-
-    @property
     def concept_arguments(self) -> Sequence[ConceptRef]:
-        base: List[ConceptRef] = []
-        x = self.expr
-        if isinstance(x, ConceptRef):
-            base += [x]
-        elif isinstance(x, ConceptArgs):
-            base += x.concept_arguments
-        return base
+        return get_concept_arguments(self.expr)
 
     @property
     def row_arguments(self) -> Sequence[ConceptRef]:
@@ -1316,30 +1331,18 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
 
     @property
     def concept_arguments(self) -> List[ConceptRef]:
-        return self.arguments
-
-    @property
-    def arguments(self) -> List[ConceptRef]:
         output = [self.content]
         for order in self.order_by:
-            output += [order.output]
+            output += get_concept_arguments(order)
         for item in self.over:
-            output += [item]
+            output += get_concept_arguments(item)
         return output
-
-    @property
-    def output(self) -> ConceptRef:
-        return self.content
 
     @property
     def output_datatype(self):
         if self.type in (WindowType.RANK, WindowType.ROW_NUMBER):
             return DataType.INTEGER
         return self.content.output_datatype
-
-    @property
-    def output_purpose(self):
-        return Purpose.PROPERTY
 
 
 def get_basic_type(
@@ -1407,11 +1410,27 @@ class CaseWhen(Namespaced, ConceptArgs, Mergeable, BaseModel):
             ),
         )
 
+    def with_reference_replacement(self, source, target):
+        return CaseWhen.model_construct(
+            comparison=self.comparison.with_reference_replacement(source, target),
+            expr=(
+                self.expr.with_reference_replacement(source, target)
+                if isinstance(self.expr, Mergeable)
+                else self.expr
+            ),
+        )
+
 
 class CaseElse(Namespaced, ConceptArgs, Mergeable, BaseModel):
     expr: "Expr"
     # this ensures that it's easily differentiable from CaseWhen
     discriminant: ComparisonOperator = ComparisonOperator.ELSE
+
+    def __str__(self):
+        return self.__repr__()
+
+    def __repr__(self):
+        return f"ELSE {str(self.expr)}"
 
     @field_validator("expr", mode="before")
     def enforce_expr(cls, v):
@@ -1430,6 +1449,19 @@ class CaseElse(Namespaced, ConceptArgs, Mergeable, BaseModel):
             discriminant=self.discriminant,
             expr=(
                 self.expr.with_merge(source, target, modifiers)
+                if isinstance(self.expr, Mergeable)
+                else self.expr
+            ),
+        )
+
+    def with_reference_replacement(self, source, target):
+        return CaseElse.model_construct(
+            discriminant=self.discriminant,
+            expr=(
+                self.expr.with_reference_replacement(
+                    source,
+                    target,
+                )
                 if isinstance(self.expr, Mergeable)
                 else self.expr
             ),
@@ -1510,8 +1542,6 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        if "datatype" in str(self):
-            raise SyntaxError(str(self))
 
     def __repr__(self):
         return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
@@ -1597,6 +1627,29 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
                     )
         return v
 
+    def with_reference_replacement(self, source: str, target: Expr):
+        return Function.model_construct(
+            operator=self.operator,
+            arguments=[
+                (
+                    c.with_reference_replacement(
+                        source,
+                        target,
+                    )
+                    if isinstance(
+                        c,
+                        Mergeable,
+                    )
+                    else c
+                )
+                for c in self.arguments
+            ],
+            output_datatype=self.output_datatype,
+            output_purpose=self.output_purpose,
+            valid_inputs=self.valid_inputs,
+            arg_count=self.arg_count,
+        )
+
     def with_namespace(self, namespace: str) -> "Function":
         return Function.model_construct(
             operator=self.operator,
@@ -1658,9 +1711,12 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         return base_grain
 
 
-class AggregateWrapper(Mergeable, ConceptArgs, Namespaced, BaseModel):
+class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel):
     function: Function
     by: List[ConceptRef] = Field(default_factory=list)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     @field_validator("by", mode="before")
     @classmethod
@@ -1693,15 +1749,21 @@ class AggregateWrapper(Mergeable, ConceptArgs, Namespaced, BaseModel):
     def output_purpose(self):
         return self.function.output_purpose
 
-    @property
-    def arguments(self):
-        return self.function.arguments
-
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         return AggregateWrapper.model_construct(
             function=self.function.with_merge(source, target, modifiers=modifiers),
             by=(
                 [c.with_merge(source, target, modifiers) for c in self.by]
+                if self.by
+                else []
+            ),
+        )
+
+    def with_reference_replacement(self, source, target):
+        return AggregateWrapper.model_construct(
+            function=self.function.with_reference_replacement(source, target),
+            by=(
+                [c.with_reference_replacement(source, target) for c in self.by]
                 if self.by
                 else []
             ),
@@ -1797,11 +1859,6 @@ class RowsetItem(Mergeable, ConceptArgs, Namespaced, BaseModel):
         )
 
     @property
-    def arguments(self) -> List[ConceptRef]:
-        output = [self.content]
-        return output
-
-    @property
     def output(self) -> ConceptRef:
         return self.content
 
@@ -1831,7 +1888,10 @@ class OrderBy(Mergeable, Namespaced, BaseModel):
 
     @property
     def concept_arguments(self):
-        return [x.expr for x in self.items]
+        base = []
+        for x in self.items:
+            base += x.concept_arguments
+        return base
 
 
 class AlignClause(Namespaced, BaseModel):
@@ -2086,6 +2146,11 @@ class WindowItemOrder(BaseModel):
 
 class Comment(BaseModel):
     text: str
+
+
+class ArgBinding(BaseModel):
+    name: str
+    default: Expr | None = None
 
 
 Expr = (

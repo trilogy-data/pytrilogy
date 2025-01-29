@@ -76,7 +76,7 @@ def gen_multiselect_node(
     for select in lineage.selects:
 
         snode: StrategyNode = get_query_node(history.base_environment, select)
-        # raise SyntaxError(select.output_components)
+
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Fetched parent node with outputs {select.output_components}"
         )

@@ -143,7 +143,7 @@ select
     store_sales.ticket_number, 
 limit 5;    
 """
-    r1 = engine.execute_query(query).fetchall()
+    engine.execute_query(query).fetchall()
 
 
 def test_where_clause_inputs(engine):

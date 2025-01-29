@@ -89,9 +89,9 @@
 
     // FUNCTION blocks
     function: raw_function
-    function_binding_item: IDENTIFIER ":" data_type
-    function_binding_list: function_binding_item ("," function_binding_item )* ","?
-    raw_function: "bind" "sql"  IDENTIFIER  "("  function_binding_list ")" "->" data_type "as"i MULTILINE_STRING
+    function_binding_item: IDENTIFIER ("=" literal)?
+    function_binding_list: (function_binding_item ",")* function_binding_item ","?
+    raw_function: "def"  IDENTIFIER  "("  function_binding_list ")" "->" expr
     
     // user_id where state = Mexico
     _filter_alt: IDENTIFIER "?" conditional
@@ -178,7 +178,7 @@
     map_key_access: expr "[" string_lit "]"
     attr_access: expr  "." string_lit 
 
-    expr:  _constant_functions | window_item | filter_item | subselect_comparison | between_comparison |  fgroup |  aggregate_functions | unnest | union | _static_functions |  literal |  concept_lit  | index_access |  map_key_access | attr_access | parenthetical | expr_tuple | comparison |  alt_like 
+    expr:  _constant_functions | window_item | filter_item | subselect_comparison | between_comparison |  fgroup |  aggregate_functions | unnest | union | _static_functions |  literal |  concept_lit  | index_access |  map_key_access | attr_access | parenthetical | expr_tuple | comparison |  alt_like | custom_function 
     
     // functions
     
@@ -296,6 +296,8 @@
     _date_functions: fdate | fdate_add | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part | fdate_trunc
     
     _static_functions:  _string_functions | _math_functions | _generic_functions |  _date_functions
+
+    custom_function:  "@" IDENTIFIER  "(" (expr ",")* expr ")"
 
     // base language constructs
     concept_lit: IDENTIFIER

@@ -9,6 +9,7 @@ from typing import (
     TYPE_CHECKING,
     Annotated,
     Any,
+    Callable,
     Dict,
     ItemsView,
     List,
@@ -189,7 +190,7 @@ class Environment(BaseModel):
     datasources: Annotated[
         EnvironmentDatasourceDict, PlainValidator(validate_datasources)
     ] = Field(default_factory=EnvironmentDatasourceDict)
-    functions: Dict[str, Function] = Field(default_factory=dict)
+    functions: Dict[str, Callable[..., Any]] = Field(default_factory=dict)
     data_types: Dict[str, DataType] = Field(default_factory=dict)
     named_statements: Dict[str, SelectLineage] = Field(default_factory=dict)
     imports: Dict[str, list[Import]] = Field(

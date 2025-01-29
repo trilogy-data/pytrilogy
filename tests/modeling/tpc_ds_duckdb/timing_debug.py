@@ -6,8 +6,8 @@ print(Path(__file__).parents[3].as_posix())
 sys.path.append(Path(__file__).parents[3].as_posix())
 
 
-from trilogy import Dialects, Executor
-from trilogy.core.models.environment import Environment
+from trilogy import Dialects, Executor  # noqa: E402
+from trilogy.core.models.environment import Environment  # noqa: E402
 
 working_path = Path(__file__).parent
 

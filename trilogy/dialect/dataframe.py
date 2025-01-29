@@ -1,11 +1,16 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from pandas import DataFrame
 from sqlalchemy import text
 
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.duckdb import DuckDBDialect
 from trilogy.engine import ExecutionEngine
+
+if TYPE_CHECKING:
+    try:
+        from pandas import DataFrame
+    except ImportError:
+        DataFrame = Any
 
 
 class DataframeDialect(DuckDBDialect):
@@ -13,7 +18,7 @@ class DataframeDialect(DuckDBDialect):
 
 
 class DataframeConnectionWrapper(ExecutionEngine):
-    def __init__(self, engine: ExecutionEngine, dataframes: dict[str, DataFrame]):
+    def __init__(self, engine: ExecutionEngine, dataframes: dict[str, "DataFrame"]):
         self.engine = engine
         self.dataframes = dataframes
         self.connection = None
@@ -34,7 +39,7 @@ class DataframeConnectionWrapper(ExecutionEngine):
                 )
         pass
 
-    def add_dataframe(self, name: str, df: DataFrame, connection, env: Environment):
+    def add_dataframe(self, name: str, df: "DataFrame", connection, env: Environment):
         self.dataframes[name] = df
         self._register_dataframes(env, connection)
 

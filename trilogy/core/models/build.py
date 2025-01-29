@@ -1639,9 +1639,26 @@ class Factory:
 
     @build.register
     def _(self, base: Comparison) -> BuildComparison:
+        from trilogy.parsing.common import arbitrary_to_concept
+
+        left = base.left
+        if isinstance(left, AggregateWrapper):
+            left_c = arbitrary_to_concept(
+                left,
+                environment=self.environment,
+            )
+            left = left_c  # type: ignore
+        right = base.right
+        if isinstance(right, AggregateWrapper):
+            right_c = arbitrary_to_concept(
+                right,
+                environment=self.environment,
+            )
+
+            right = right_c  # type: ignore
         return BuildComparison.model_construct(
-            left=(self.build(base.left)),
-            right=(self.build(base.right)),
+            left=(self.build(left)),
+            right=(self.build(right)),
             operator=base.operator,
         )
 
@@ -1660,7 +1677,7 @@ class Factory:
         )
 
     @build.register
-    def _(self, base: RowsetItem):
+    def _(self, base: RowsetItem) -> BuildRowsetItem:
 
         factory = Factory(
             environment=self.environment,
