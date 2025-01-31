@@ -48,6 +48,7 @@ from trilogy.core.enums import (
 from trilogy.core.models.core import (
     Addressable,
     DataType,
+    TraitDataType,
     DataTyped,
     ListType,
     ListWrapper,
@@ -101,7 +102,7 @@ class HasUUID(ABC):
 
 class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
     address: str
-    datatype: DataType | ListType | StructType | MapType | NumericType = (
+    datatype: DataType | TraitDataType | ListType | StructType | MapType | NumericType = (
         DataType.UNKNOWN
     )
     metadata: Optional["Metadata"] = None
@@ -756,7 +757,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         extra="forbid",
     )
     name: str
-    datatype: DataType | ListType | StructType | MapType | NumericType
+    datatype: DataType | TraitDataType | ListType | StructType | MapType | NumericType
     purpose: Purpose
     derivation: Derivation = Derivation.ROOT
     granularity: Granularity = Granularity.MULTI_ROW
@@ -2151,6 +2152,11 @@ class Comment(BaseModel):
 class ArgBinding(BaseModel):
     name: str
     default: Expr | None = None
+
+
+class CustomType(BaseModel):
+    name: str
+    type: DataType
 
 
 Expr = (

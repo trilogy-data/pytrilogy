@@ -271,6 +271,15 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type=DataType.INTEGER,
         arg_count=2,
     ),
+    FunctionType.CONTAINS: FunctionConfig(
+        valid_inputs=[
+            {DataType.STRING},
+            {DataType.STRING},
+        ],
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.BOOL,
+        arg_count=2,
+    ),
     FunctionType.SUBSTRING: FunctionConfig(
         valid_inputs=[{DataType.STRING}, {DataType.INTEGER}, {DataType.INTEGER}],
         output_purpose=Purpose.PROPERTY,

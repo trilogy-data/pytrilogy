@@ -57,6 +57,7 @@ from trilogy.core.models.author import (
     Concept,
     ConceptRef,
     Conditional,
+    CustomType,
     Expr,
     FilterItem,
     Function,
@@ -76,6 +77,7 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.core import (
     DataType,
+    TraitDataType,
     ListType,
     ListWrapper,
     MapType,
@@ -101,6 +103,7 @@ from trilogy.core.statements.author import (
     ConceptDerivationStatement,
     ConceptTransform,
     CopyStatement,
+    FunctionDeclaration,
     ImportStatement,
     Limit,
     MergeStatementV2,
@@ -111,6 +114,7 @@ from trilogy.core.statements.author import (
     SelectItem,
     SelectStatement,
     ShowStatement,
+    TypeDeclaration,
 )
 from trilogy.parsing.common import (
     align_item_to_concept,
@@ -367,6 +371,7 @@ class ParseToObjects(Transformer):
         self, args
     ) -> DataType | ListType | StructType | MapType | NumericType:
         resolved = args[0]
+        traits = args[2:]
         if isinstance(resolved, StructType):
             return resolved
         elif isinstance(resolved, ListType):
@@ -375,7 +380,10 @@ class ParseToObjects(Transformer):
             return resolved
         elif isinstance(resolved, MapType):
             return resolved
-        return DataType(args[0].lower())
+        base = DataType(args[0].lower())
+        if traits:
+            return TraitDataType(type=base, traits=traits)
+        return base
 
     def array_comparison(self, args) -> ComparisonOperator:
         return ComparisonOperator([x.value.lower() for x in args])
@@ -1109,7 +1117,7 @@ class ParseToObjects(Transformer):
             return nout
 
         self.environment.functions[identity] = function_factory
-        return function_factory
+        return FunctionDeclaration(name=identity, args=function_arguments, expr=output)
 
     def custom_function(self, args):
         name = args[0]
@@ -1120,6 +1128,13 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def function(self, meta: Meta, args) -> Function:
         return args[0]
+
+    @v_args(meta=True)
+    def type_declaration(self, meta: Meta, args) -> TypeDeclaration:
+        key = args[0]
+        datatype = args[1]
+        self.environment.data_types[key] = datatype
+        return TypeDeclaration(type=CustomType(name=key, type=datatype))
 
     def int_lit(self, args):
         return int("".join(args))
@@ -1440,6 +1455,10 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fstrpos(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.STRPOS, meta)
+
+    @v_args(meta=True)
+    def fcontains(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.CONTAINS, meta)
 
     @v_args(meta=True)
     def fsubstring(self, meta, args):

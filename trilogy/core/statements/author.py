@@ -17,7 +17,10 @@ from trilogy.core.models.author import (
     AlignClause,
     Concept,
     ConceptRef,
+    CustomType,
+    Expr,
     FilterItem,
+    FuncArgs,
     Function,
     Grain,
     HasUUID,
@@ -413,3 +416,13 @@ class ConceptDeclarationStatement(HasUUID, BaseModel):
 
 class ConceptDerivationStatement(BaseModel):
     concept: Concept
+
+
+class TypeDeclaration(BaseModel):
+    type: CustomType
+
+
+class FunctionDeclaration(BaseModel):
+    name: str
+    args: list[FuncArgs]
+    expr: Expr

@@ -172,6 +172,7 @@ class FunctionType(Enum):
     UPPER = "upper"
     SUBSTRING = "substring"
     STRPOS = "strpos"
+    CONTAINS = "contains"
 
     # Dates
     DATE = "date"

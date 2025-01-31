@@ -38,6 +38,9 @@ from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     ConceptTransform,
+    MultiSelectStatement,
+    PersistStatement,
+    RawSQLStatement,
     SelectItem,
     SelectStatement,
 )
@@ -87,4 +90,7 @@ __all__ = [
     "DEFAULT_NAMESPACE",
     "arbitrary_to_concept",
     "arg_to_datatype",
+    "MultiSelectStatement",
+    "PersistStatement",
+    "RawSQLStatement",
 ]
