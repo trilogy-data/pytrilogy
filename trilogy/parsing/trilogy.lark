@@ -3,6 +3,7 @@
     ?statement: concept
     | datasource
     | function
+    | type_declaration
     | multi_select_statement
     | select_statement
     | persist_statement
@@ -92,13 +93,14 @@
     function_binding_item: IDENTIFIER ("=" literal)?
     function_binding_list: (function_binding_item ",")* function_binding_item ","?
     raw_function: "def"  IDENTIFIER  "("  function_binding_list ")" "->" expr
-    
+
+    // TYPE blocks
+    type_declaration: "type" IDENTIFIER data_type 
+
     // user_id where state = Mexico
     _filter_alt: IDENTIFIER "?" conditional
     _filter_base: "filter"i IDENTIFIER where
     filter_item: _filter_base | _filter_alt
-
-
 
     // rank/lag/lead
     WINDOW_TYPE: ("row_number"i|"rank"i|"lag"i|"lead"i | "sum"i | "avg"i | "max"i | "min"i )  /[\s]+/
@@ -223,16 +225,18 @@
     alt_like: expr  "like"i expr
     _UPPER.1: "upper("i
     upper: _UPPER expr ")"
-   _LOWER.1: "lower("i
+    _LOWER.1: "lower("i
     lower: _LOWER expr ")"  
     _SPLIT.1: "split("i  
     fsplit: _SPLIT expr "," string_lit ")"
-   _STRPOS.1: "strpos("i
+    _STRPOS.1: "strpos("i
     fstrpos: _STRPOS expr "," expr ")"
+    _CONTAINS.1: "contains("i
+    fcontains: _CONTAINS expr "," expr ")"
     _SUBSTRING.1: "substring("i
     fsubstring: _SUBSTRING expr "," expr "," expr ")"
     
-    _string_functions: like | ilike | upper | lower | fsplit | fstrpos | fsubstring 
+    _string_functions: like | ilike | upper | lower | fsplit | fstrpos | fsubstring | fcontains
     
     // special aggregate
     _GROUP.1: "group("i
@@ -348,7 +352,7 @@
 
     map_type: "map"i "<" data_type "," data_type ">"
 
-    !data_type: "string"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type
+    !data_type:  ("string"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type) ("::" IDENTIFIER)?
     
     PURPOSE:  "key"i | "metric"i  | CONST
     PROPERTY: "property"i
@@ -361,7 +365,7 @@
     show_category: CONCEPTS | DATASOURCES
 
     show_statement: "show"i ( show_category | select_statement | persist_statement) _TERMINATOR
-   COMMENT: /#.*(\n|$)/ |  /\/\/.*\n/  
+    COMMENT: /#.*(\n|$)/ |  /\/\/.*\n/  
     %import common.WS
     %ignore WS
     %ignore COMMENT

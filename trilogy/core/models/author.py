@@ -55,6 +55,7 @@ from trilogy.core.models.core import (
     MapWrapper,
     NumericType,
     StructType,
+    TraitDataType,
     TupleWrapper,
     arg_to_datatype,
     is_compatible_datatype,
@@ -101,9 +102,9 @@ class HasUUID(ABC):
 
 class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
     address: str
-    datatype: DataType | ListType | StructType | MapType | NumericType = (
-        DataType.UNKNOWN
-    )
+    datatype: (
+        DataType | TraitDataType | ListType | StructType | MapType | NumericType
+    ) = DataType.UNKNOWN
     metadata: Optional["Metadata"] = None
 
     @property
@@ -756,7 +757,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         extra="forbid",
     )
     name: str
-    datatype: DataType | ListType | StructType | MapType | NumericType
+    datatype: DataType | TraitDataType | ListType | StructType | MapType | NumericType
     purpose: Purpose
     derivation: Derivation = Derivation.ROOT
     granularity: Granularity = Granularity.MULTI_ROW
@@ -1217,9 +1218,9 @@ class UndefinedConceptFull(Concept, Mergeable, Namespaced):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     name: str
     line_no: int | None = None
-    datatype: DataType | ListType | StructType | MapType | NumericType = (
-        DataType.UNKNOWN
-    )
+    datatype: (
+        DataType | TraitDataType | ListType | StructType | MapType | NumericType
+    ) = DataType.UNKNOWN
     purpose: Purpose = Purpose.UNKNOWN
 
     @property
@@ -2151,6 +2152,11 @@ class Comment(BaseModel):
 class ArgBinding(BaseModel):
     name: str
     default: Expr | None = None
+
+
+class CustomType(BaseModel):
+    name: str
+    type: DataType
 
 
 Expr = (

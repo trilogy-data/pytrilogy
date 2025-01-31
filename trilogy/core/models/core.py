@@ -97,6 +97,19 @@ class DataType(Enum):
         return self
 
 
+class TraitDataType(BaseModel):
+    type: DataType
+    traits: list[str]
+
+    @property
+    def data_type(self):
+        return self.type
+
+    @property
+    def value(self):
+        return self.data_type.value
+
+
 class NumericType(BaseModel):
     precision: int = 20
     scale: int = 5

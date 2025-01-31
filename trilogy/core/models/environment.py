@@ -40,6 +40,7 @@ from trilogy.core.exceptions import (
 from trilogy.core.models.author import (
     Concept,
     ConceptRef,
+    CustomType,
     Function,
     SelectLineage,
     UndefinedConcept,
@@ -191,7 +192,7 @@ class Environment(BaseModel):
         EnvironmentDatasourceDict, PlainValidator(validate_datasources)
     ] = Field(default_factory=EnvironmentDatasourceDict)
     functions: Dict[str, Callable[..., Any]] = Field(default_factory=dict)
-    data_types: Dict[str, DataType] = Field(default_factory=dict)
+    data_types: Dict[str, CustomType] = Field(default_factory=dict)
     named_statements: Dict[str, SelectLineage] = Field(default_factory=dict)
     imports: Dict[str, list[Import]] = Field(
         default_factory=lambda: defaultdict(list)  # type: ignore

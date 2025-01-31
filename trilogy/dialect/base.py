@@ -184,6 +184,7 @@ FUNCTION_MAP = {
     FunctionType.LOWER: lambda x: f"LOWER({x[0]}) ",
     FunctionType.SUBSTRING: lambda x: f"SUBSTRING({x[0]},{x[1]},{x[2]})",
     FunctionType.STRPOS: lambda x: f"STRPOS({x[0]},{x[1]})",
+    FunctionType.CONTAINS: lambda x: f"CONTAINS({x[0]},{x[1]})",
     # FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
     # date types
     FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc({x[0]},{x[1]})",
