@@ -48,7 +48,6 @@ from trilogy.core.enums import (
 from trilogy.core.models.core import (
     Addressable,
     DataType,
-    TraitDataType,
     DataTyped,
     ListType,
     ListWrapper,
@@ -56,6 +55,7 @@ from trilogy.core.models.core import (
     MapWrapper,
     NumericType,
     StructType,
+    TraitDataType,
     TupleWrapper,
     arg_to_datatype,
     is_compatible_datatype,
@@ -102,9 +102,9 @@ class HasUUID(ABC):
 
 class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
     address: str
-    datatype: DataType | TraitDataType | ListType | StructType | MapType | NumericType = (
-        DataType.UNKNOWN
-    )
+    datatype: (
+        DataType | TraitDataType | ListType | StructType | MapType | NumericType
+    ) = DataType.UNKNOWN
     metadata: Optional["Metadata"] = None
 
     @property
@@ -1218,9 +1218,9 @@ class UndefinedConceptFull(Concept, Mergeable, Namespaced):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     name: str
     line_no: int | None = None
-    datatype: DataType | ListType | StructType | MapType | NumericType = (
-        DataType.UNKNOWN
-    )
+    datatype: (
+        DataType | TraitDataType | ListType | StructType | MapType | NumericType
+    ) = DataType.UNKNOWN
     purpose: Purpose = Purpose.UNKNOWN
 
     @property

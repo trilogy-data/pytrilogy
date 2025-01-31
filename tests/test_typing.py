@@ -35,8 +35,8 @@ customer_id,
     )
 
     for row in results.fetchall():
-        assert row.valid == True
+        assert row.valid is True
 
     assert "email" in env.environment.data_types
 
-    assert env.environment.concepts['email'].datatype.traits == ['email']
+    assert env.environment.concepts["email"].datatype.traits == ["email"]

@@ -15,12 +15,12 @@ from trilogy.core.enums import (
 from trilogy.core.models.author import (
     AggregateWrapper,
     AlignClause,
+    ArgBinding,
     Concept,
     ConceptRef,
     CustomType,
     Expr,
     FilterItem,
-    FuncArgs,
     Function,
     Grain,
     HasUUID,
@@ -424,5 +424,5 @@ class TypeDeclaration(BaseModel):
 
 class FunctionDeclaration(BaseModel):
     name: str
-    args: list[FuncArgs]
+    args: list[ArgBinding]
     expr: Expr

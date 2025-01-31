@@ -4,7 +4,7 @@ from enum import Enum
 from os.path import dirname, join
 from pathlib import Path
 from re import IGNORECASE
-from typing import Callable, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 from lark import Lark, ParseTree, Transformer, Tree, v_args
 from lark.exceptions import (
@@ -77,13 +77,13 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.core import (
     DataType,
-    TraitDataType,
     ListType,
     ListWrapper,
     MapType,
     MapWrapper,
     NumericType,
     StructType,
+    TraitDataType,
     TupleWrapper,
     arg_to_datatype,
     dict_to_map_wrapper,
@@ -369,7 +369,7 @@ class ParseToObjects(Transformer):
 
     def data_type(
         self, args
-    ) -> DataType | ListType | StructType | MapType | NumericType:
+    ) -> DataType | TraitDataType | ListType | StructType | MapType | NumericType:
         resolved = args[0]
         traits = args[2:]
         if isinstance(resolved, StructType):
@@ -1095,7 +1095,7 @@ class ParseToObjects(Transformer):
         return ArgBinding(name=args[0], default=None)
 
     @v_args(meta=True)
-    def raw_function(self, meta: Meta, args) -> Callable[[list[Expr]], Expr]:
+    def raw_function(self, meta: Meta, args) -> FunctionDeclaration:
         identity = args[0]
         function_arguments: list[ArgBinding] = args[1]
         output = args[2]
