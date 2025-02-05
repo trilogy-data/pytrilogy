@@ -60,8 +60,23 @@ class Import:
     path: Path
 
 
+class BaseImportResolver(BaseModel):
+    pass
+
+
+class FileSystemImportResolver(BaseImportResolver):
+    pass
+
+
+class DictImportResolver(BaseImportResolver):
+    content: Dict[str, str]
+
+
 class EnvironmentOptions(BaseModel):
     allow_duplicate_declaration: bool = True
+    import_resolver: BaseImportResolver = Field(
+        default_factory=FileSystemImportResolver
+    )
 
 
 class EnvironmentConceptDict(dict):
@@ -199,7 +214,7 @@ class Environment(BaseModel):
     )
     namespace: str = DEFAULT_NAMESPACE
     working_path: str | Path = Field(default_factory=lambda: os.getcwd())
-    environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
+    config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
     version: str = Field(default_factory=get_version)
     cte_name_map: Dict[str, str] = Field(default_factory=dict)
     materialized_concepts: set[str] = Field(default_factory=set)
@@ -234,7 +249,7 @@ class Environment(BaseModel):
             imports=dict(self.imports),
             namespace=self.namespace,
             working_path=self.working_path,
-            environment_config=self.environment_config,
+            environment_config=self.config,
             version=self.version,
             cte_name_map=dict(self.cte_name_map),
             materialized_concepts=set(self.materialized_concepts),
@@ -342,7 +357,7 @@ class Environment(BaseModel):
 
             return None
 
-        if existing and self.environment_config.allow_duplicate_declaration:
+        if existing and self.config.allow_duplicate_declaration:
             if existing.metadata.concept_source == ConceptSource.PERSIST_STATEMENT:
                 return handle_persist()
             return

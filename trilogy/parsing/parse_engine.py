@@ -97,7 +97,12 @@ from trilogy.core.models.datasource import (
     Query,
     RawColumnExpr,
 )
-from trilogy.core.models.environment import Environment, Import
+from trilogy.core.models.environment import (
+    DictImportResolver,
+    Environment,
+    FileSystemImportResolver,
+    Import,
+)
 from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     ConceptDerivationStatement,
@@ -223,7 +228,7 @@ class ParseToObjects(Transformer):
         self,
         environment: Environment,
         parse_address: str | None = None,
-        token_address: Path | None = None,
+        token_address: Path | str | None = None,
         parsed: dict[str, "ParseToObjects"] | None = None,
         tokens: dict[Path | str, ParseTree] | None = None,
         text_lookup: dict[Path | str, str] | None = None,
@@ -854,8 +859,22 @@ class ParseToObjects(Transformer):
         )
 
     def resolve_import_address(self, address) -> str:
-        with open(address, "r", encoding="utf-8") as f:
-            text = f.read()
+        if isinstance(
+            self.environment.config.import_resolver, FileSystemImportResolver
+        ):
+            with open(address, "r", encoding="utf-8") as f:
+                text = f.read()
+        elif isinstance(self.environment.config.import_resolver, DictImportResolver):
+            lookup = address
+            if lookup not in self.environment.config.import_resolver.content:
+                raise ImportError(
+                    f"Unable to import file {lookup}, not found in import resolver"
+                )
+            text = self.environment.config.import_resolver.content[lookup]
+        else:
+            raise ImportError(
+                f"Unable to import file {address}, resolver type {type(self.environment.config.import_resolver)} not supported"
+            )
         return text
 
     def import_statement(self, args: list[str]) -> ImportStatement:
@@ -867,10 +886,17 @@ class ParseToObjects(Transformer):
             cache_key = args[0]
         path = args[0].split(".")
 
-        target = join(self.environment.working_path, *path) + ".preql"
-
-        # tokens + text are cached by path
-        token_lookup = Path(target)
+        if isinstance(
+            self.environment.config.import_resolver, FileSystemImportResolver
+        ):
+            target = join(self.environment.working_path, *path) + ".preql"
+            # tokens + text are cached by path
+            token_lookup: Path | str = Path(target)
+        elif isinstance(self.environment.config.import_resolver, DictImportResolver):
+            target = ".".join(path)
+            token_lookup = target
+        else:
+            raise NotImplementedError
 
         # parser + env has to be cached by prior import path + current key
         key_path = self.import_keys + [cache_key]
@@ -901,6 +927,7 @@ class ParseToObjects(Transformer):
                 new_env = Environment(
                     working_path=dirname(target),
                     env_file_path=token_lookup,
+                    config=self.environment.config,
                 )
                 new_env.concepts.fail_on_missing = False
                 self.parsed[self.parse_address] = self

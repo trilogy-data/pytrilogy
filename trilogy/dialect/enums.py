@@ -41,6 +41,11 @@ class Dialects(Enum):
             return cls.DUCK_DB
         return super()._missing_(value)
 
+    def default_renderer(self, conf=None, _engine_factory: Callable = default_factory):
+        from trilogy.render import get_dialect_generator
+
+        return get_dialect_generator(self)
+
     def default_engine(self, conf=None, _engine_factory: Callable = default_factory):
         if self == Dialects.BIGQUERY:
             from google.auth import default
