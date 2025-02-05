@@ -228,7 +228,7 @@ class ParseToObjects(Transformer):
         self,
         environment: Environment,
         parse_address: str | None = None,
-        token_address: Path | None = None,
+        token_address: Path | str | None = None,
         parsed: dict[str, "ParseToObjects"] | None = None,
         tokens: dict[Path | str, ParseTree] | None = None,
         text_lookup: dict[Path | str, str] | None = None,
@@ -891,7 +891,7 @@ class ParseToObjects(Transformer):
         ):
             target = join(self.environment.working_path, *path) + ".preql"
             # tokens + text are cached by path
-            token_lookup = Path(target)
+            token_lookup: Path | str = Path(target)
         elif isinstance(self.environment.config.import_resolver, DictImportResolver):
             target = ".".join(path)
             token_lookup = target

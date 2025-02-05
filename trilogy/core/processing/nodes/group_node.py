@@ -92,7 +92,7 @@ class GroupNode(StrategyNode):
             comp_grain += source.grain
             for x in source.output_concepts:
                 concept_map[x.address] = x
-        lookups = [
+        lookups: list[BuildConcept | str] = [
             concept_map[x] if x in concept_map else x for x in comp_grain.components
         ]
         comp_grain = BuildGrain.from_concepts(lookups, environment=environment)
