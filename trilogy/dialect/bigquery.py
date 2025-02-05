@@ -42,10 +42,9 @@ CREATE OR REPLACE TABLE {{ output.address.location }} AS
 {% endif %}{%- if ctes %}
 WITH {% for cte in ctes %}
 {{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
-{%- if full_select %}
+{%- if full_select -%}
 {{full_select}}
-{% else -%}
-
+{%- else -%}
 SELECT
 {%- for select in select_columns %}
     {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
