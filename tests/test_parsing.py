@@ -8,7 +8,11 @@ from trilogy.core.models.core import (
     TupleWrapper,
 )
 from trilogy.core.models.datasource import Datasource
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.environment import (
+    DictImportResolver,
+    Environment,
+    EnvironmentOptions,
+)
 from trilogy.core.statements.author import SelectStatement, ShowStatement
 from trilogy.core.statements.execute import ProcessedQuery
 from trilogy.dialect.base import BaseDialect
@@ -619,3 +623,41 @@ select [1,2,3,4] as int_array, 2 as scalar
 
     env, parsed = parse_text(x)
     assert env.concepts["split"].datatype == DataType.INTEGER
+
+
+def test_non_file_imports():
+
+    env = Environment(
+        config=EnvironmentOptions(
+            import_resolver=DictImportResolver(
+                content={
+                    "test": """
+import test_dep as test_dep;
+key x int;
+
+datasource test (
+x: x)
+grain(x)
+query '''
+select 1 as x
+union all
+select 11 as x
+''';
+""",
+                    "test_dep": """
+key x int;
+""",
+                }
+            )
+        )
+    )
+    assert isinstance(env.config.import_resolver, DictImportResolver)
+    env.parse(
+        """
+    import test;
+               
+select x % 10 -> x_mod_10;
+               
+            
+"""
+    )

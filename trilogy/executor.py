@@ -36,6 +36,7 @@ from trilogy.dialect.enums import Dialects
 from trilogy.engine import ExecutionEngine
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.parser import parse_text
+from trilogy.render import get_dialect_generator
 
 
 class ResultProtocol(Protocol):
@@ -82,40 +83,7 @@ class Executor(object):
         self.generator: BaseDialect
         self.logger = logger
         self.hooks = hooks
-        if self.dialect == Dialects.BIGQUERY:
-            from trilogy.dialect.bigquery import BigqueryDialect
-
-            self.generator = BigqueryDialect()
-        elif self.dialect == Dialects.SQL_SERVER:
-            from trilogy.dialect.sql_server import SqlServerDialect
-
-            self.generator = SqlServerDialect()
-        elif self.dialect == Dialects.DUCK_DB:
-            from trilogy.dialect.duckdb import DuckDBDialect
-
-            self.generator = DuckDBDialect()
-        elif self.dialect == Dialects.PRESTO:
-            from trilogy.dialect.presto import PrestoDialect
-
-            self.generator = PrestoDialect()
-        elif self.dialect == Dialects.TRINO:
-            from trilogy.dialect.presto import TrinoDialect
-
-            self.generator = TrinoDialect()
-        elif self.dialect == Dialects.POSTGRES:
-            from trilogy.dialect.postgres import PostgresDialect
-
-            self.generator = PostgresDialect()
-        elif self.dialect == Dialects.SNOWFLAKE:
-            from trilogy.dialect.snowflake import SnowflakeDialect
-
-            self.generator = SnowflakeDialect()
-        elif self.dialect == Dialects.DATAFRAME:
-            from trilogy.dialect.dataframe import DataframeDialect
-
-            self.generator = DataframeDialect()
-        else:
-            raise ValueError(f"Unsupported dialect {self.dialect}")
+        self.generator = get_dialect_generator(self.dialect)
         self.connection = self.engine.connect()
         # TODO: make generic
         if self.dialect == Dialects.DATAFRAME:

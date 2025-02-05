@@ -33,7 +33,13 @@ from trilogy.core.models.author import (
     WindowOrder,
     WindowType,
 )
-from trilogy.core.models.core import DataType, ListType, ListWrapper, StructType
+from trilogy.core.models.core import (
+    DataType,
+    ListType,
+    ListWrapper,
+    MapType,
+    StructType,
+)
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
@@ -63,6 +69,7 @@ __all__ = [
     "DataType",
     "StructType",
     "ListType",
+    "MapType",
     "ListWrapper",
     "FunctionType",
     "FunctionFactory",
