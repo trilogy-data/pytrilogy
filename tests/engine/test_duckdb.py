@@ -952,9 +952,6 @@ limit 100;
 
 
 def test_multi_select_mutation():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor()
 
     queries = exec.parse_text(
@@ -972,8 +969,11 @@ select
     )
 
     for idx, x in enumerate(queries):
-        print(type(x))
-        for z in x.output_columns:
-            print(z.lineage)
         results = exec.execute_query(x).fetchall()
         assert results[0].x_next == 2 + idx
+
+
+def test_commit():
+    exec = Dialects.DUCK_DB.default_executor()
+    exec.execute_query("select 1-> test;")
+    exec.connection.commit()
