@@ -18,6 +18,15 @@ class EngineConnection(Protocol):
     def execute(self, statement: str, parameters: Any | None = None) -> EngineResult:
         pass
 
+    def commit(self):
+        raise NotImplementedError()
+
+    def begin(self):
+        raise NotImplementedError()
+
+    def rollback(self):
+        raise NotImplementedError()
+
 
 class ExecutionEngine(Protocol):
     pass
@@ -40,12 +49,23 @@ class SqlAlchemyResult(EngineResult):
 
 class SqlAlchemyConnection(EngineConnection):
     def __init__(self, connection: Connection):
-        self.connection = connection
+        from sqlalchemy.future import Connection
+
+        self.connection: Connection = connection
 
     def execute(
         self, statement: str, parameters: Any | None = None
     ) -> SqlAlchemyResult:
         return SqlAlchemyResult(self.connection.execute(statement, parameters))
+
+    def commit(self):
+        self.connection.commit()
+
+    def begin(self):
+        self.connection.begin()
+
+    def rollback(self):
+        self.connection.rollback()
 
 
 class SqlAlchemyEngine(ExecutionEngine):

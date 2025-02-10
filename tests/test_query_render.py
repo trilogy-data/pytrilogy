@@ -10,4 +10,4 @@ def test_sql_generators():
     for dialect in Dialects:
         generator = get_dialect_generator(dialect)
         compiled = generator.compile_statement(processed)
-        assert compiled.startswith("""SELECT\n    :a"""), f'{dialect} compiled'
+        assert compiled.startswith("""SELECT\n    :a"""), f"{dialect} compiled"
