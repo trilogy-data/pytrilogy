@@ -975,5 +975,14 @@ select
 
 def test_commit():
     exec = Dialects.DUCK_DB.default_executor()
-    exec.execute_query("select 1-> test;")
+    exec.connection.begin()
+    exec.execute_raw_sql("create table test (test int);")
     exec.connection.commit()
+    exec.connection.begin()
+    exec.execute_raw_sql("insert into test values (1);")
+    exec.execute_raw_sql("insert into test values (2);")
+    results = exec.execute_raw_sql("select * from test;").fetchall()
+    assert len(results) == 2
+    exec.connection.rollback()
+    results = exec.execute_raw_sql("select * from test;").fetchall()
+    assert len(results) == 0

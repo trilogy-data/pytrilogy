@@ -19,7 +19,13 @@ class EngineConnection(Protocol):
         pass
 
     def commit(self):
-        pass
+        raise NotImplementedError()
+
+    def begin(self):
+        raise NotImplementedError()
+
+    def rollback(self):
+        raise NotImplementedError()
 
 
 class ExecutionEngine(Protocol):
@@ -54,6 +60,12 @@ class SqlAlchemyConnection(EngineConnection):
 
     def commit(self):
         self.connection.commit()
+
+    def begin(self):
+        self.connection.begin()
+
+    def rollback(self):
+        self.connection.rollback()
 
 
 class SqlAlchemyEngine(ExecutionEngine):
