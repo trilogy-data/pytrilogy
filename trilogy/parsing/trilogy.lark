@@ -308,7 +308,7 @@
     IDENTIFIER: /[a-zA-Z\_][a-zA-Z0-9\_\.]*/
     WILDCARD_IDENTIFIER: /[a-zA-Z\_][a-zA-Z0-9\_\-\.\*]*/
     QUOTED_IDENTIFIER:  /`[a-zA-Z\_][a-zA-Z0-9\_\.\-\*\:\s]*`/
-    QUOTED_ADDRESS:  /`[a-zA-Z\_][a-zA-Z0-9\_\.\-\*\:]*`/
+    QUOTED_ADDRESS:  /`'?[a-zA-Z\_][a-zA-Z0-9\_\.\\\/\-\*\:\s]*'?`/
     ADDRESS: IDENTIFIER
 
     MULTILINE_STRING: /\'{3}(.*?)\'{3}/s

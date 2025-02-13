@@ -986,3 +986,30 @@ def test_commit():
     exec.connection.rollback()
     results = exec.execute_raw_sql("select * from test;").fetchall()
     assert len(results) == 0
+
+
+def test_parquet_format_access():
+    executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    parquet_path = Path(__file__).parent / "customer.parquet"
+    x = executor.parse_text(
+        f"""
+
+key id int;
+property id.text_id string;
+property id.last_name string;
+property id.first_name string;
+property id.salutation string;
+
+property id.full_name <- concat(salutation, ' ', first_name, ' ', last_name);
+
+datasource customers (
+    C_CUSTKEY: id,
+    C_NAME: full_name,
+)
+grain (id)
+address `{parquet_path}`;"""
+    )
+    r0 = executor.execute_raw_sql(f'select * from "{parquet_path}" limit 1;')
+    r = executor.execute_query("select count(id) as customer_count;")
+
+    assert r.fetchall()[0].customer_count == 1500
