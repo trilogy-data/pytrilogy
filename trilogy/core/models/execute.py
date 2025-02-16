@@ -305,14 +305,17 @@ class CTE(BaseModel):
         return self.source.name
 
     @property
-    def quote_address(self) -> bool:
-        if self.is_root_datasource:
-            candidate = self.source.datasources[0]
-            if isinstance(candidate, DATASOURCE_TYPES) and isinstance(
-                candidate.address, Address
-            ):
-                return candidate.address.quoted
-        return False
+    def quote_address(self) -> dict[str, bool]:
+
+        return {
+            candidate.safe_identifier: (
+                candidate.address.quoted and not candidate.address.is_query
+                if isinstance(candidate, BuildDatasource)
+                and isinstance(candidate.address, Address)
+                else False
+            )
+            for candidate in self.source.datasources
+        }
 
     @property
     def base_alias(self) -> str:
@@ -870,6 +873,7 @@ class Join(BaseModel):
     left_cte: CTE | None = None
     joinkey_pairs: List[CTEConceptPair] | None = None
     inlined_ctes: set[str] = Field(default_factory=set)
+    quote: str | None = None
 
     def inline_cte(self, cte: CTE):
         self.inlined_ctes.add(cte.name)
@@ -887,6 +891,10 @@ class Join(BaseModel):
 
     @property
     def right_ref(self) -> str:
+        if self.quote:
+            if self.right_cte.identifier in self.inlined_ctes:
+                return f"{self.quote}{self.right_cte.source.datasources[0].safe_location}{self.quote} as {self.right_cte.source.datasources[0].safe_identifier}"
+            return f"{self.quote}{self.right_cte.safe_location}{self.quote} as {self.right_cte.safe_identifier}"
         if self.right_cte.identifier in self.inlined_ctes:
             return f"{self.right_cte.source.datasources[0].safe_location} as {self.right_cte.source.datasources[0].safe_identifier}"
         return self.right_cte.safe_identifier

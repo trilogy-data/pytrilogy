@@ -991,7 +991,8 @@ def test_commit():
 def test_parquet_format_access():
     executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
     parquet_path = Path(__file__).parent / "customer.parquet"
-    x = executor.parse_text(
+    nations_path = Path(__file__).parent / "nation.parquet"
+    executor.parse_text(
         f"""
 
 key id int;
@@ -1002,14 +1003,32 @@ property id.salutation string;
 
 property id.full_name <- concat(salutation, ' ', first_name, ' ', last_name);
 
+key nation_id int;
+property nation_id.nation_name string;
+
 datasource customers (
     C_CUSTKEY: id,
     C_NAME: full_name,
+    C_NATIONKEY: nation_id,
 )
 grain (id)
-address `{parquet_path}`;"""
+address `{parquet_path}`;
+
+datasource nations (
+    N_NATIONKEY: nation_id,
+    N_NAME: nation_name,
+)
+grain(nation_id)
+address `{nations_path}`;
+"""
     )
-    r0 = executor.execute_raw_sql(f'select * from "{parquet_path}" limit 1;')
+    _ = executor.execute_raw_sql(f'select * from "{parquet_path}" limit 1;')
     r = executor.execute_query("select count(id) as customer_count;")
 
     assert r.fetchall()[0].customer_count == 1500
+
+    r = executor.execute_query(
+        "select nation_name,  count(id) as customer_count order by customer_count desc;"
+    )
+
+    assert r.fetchall()[0].customer_count == 72

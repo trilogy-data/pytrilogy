@@ -734,7 +734,7 @@ class BaseDialect:
             else:
                 source = None
         else:
-            if cte.quote_address:
+            if cte.quote_address.get(cte.source.datasources[0].safe_identifier, False):
                 source = f"{self.QUOTE_CHARACTER}{cte.base_name}{self.QUOTE_CHARACTER}"
             else:
                 source = cte.base_name

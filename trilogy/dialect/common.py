@@ -70,6 +70,8 @@ def render_join(
         return f"FULL JOIN {render_unnest(unnest_mode, quote_character, join.concept_to_unnest, render_func, cte)}"
     # left_name = join.left_name
     right_name = join.right_name
+    if cte.quote_address.get(join.right_name, False):
+        join.quote = quote_character
     right_base = join.right_ref
     base_joinkeys = []
     if join.joinkey_pairs:
