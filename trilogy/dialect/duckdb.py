@@ -55,11 +55,14 @@ DUCKDB_TEMPLATE = Template(
 CREATE OR REPLACE TABLE {{ output.address.location }} AS
 {% endif %}{%- if ctes %}
 WITH {% for cte in ctes %}
-{{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
-{%- if full_select -%}{{full_select}}
+{{cte.name}} as (
+{{cte.statement}}){% if not loop.last %},{% else %}
+{% endif %}{% endfor %}{% endif %}
+{%- if full_select -%}
+{{full_select}}
 {%- else -%}{%- if comment -%}
--- {{ comment }}{%- endif -%}
-SELECT
+-- {{ comment }}
+{%- endif %}SELECT
 {%- for select in select_columns %}
     {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
 {% if base %}FROM

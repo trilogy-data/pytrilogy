@@ -156,7 +156,7 @@ FUNCTION_MAP = {
     FunctionType.PARENTHETICAL: lambda x: f"({x[0]})",
     # Complex
     FunctionType.INDEX_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
-    FunctionType.MAP_ACCESS: lambda x: f"{x[0]}[{x[1]}][1]",
+    FunctionType.MAP_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.UNNEST: lambda x: f"unnest({x[0]})",
     FunctionType.ATTR_ACCESS: lambda x: f"""{x[0]}.{x[1].replace("'", "")}""",
     FunctionType.STRUCT: lambda x: f"{{{', '.join(struct_arg(x))}}}",
@@ -734,7 +734,7 @@ class BaseDialect:
             else:
                 source = None
         else:
-            if cte.quote_address:
+            if cte.quote_address.get(cte.source.datasources[0].safe_identifier, False):
                 source = f"{self.QUOTE_CHARACTER}{cte.base_name}{self.QUOTE_CHARACTER}"
             else:
                 source = cte.base_name
@@ -769,8 +769,8 @@ class BaseDialect:
                 base=f"{source}" if source else None,
                 grain=cte.grain,
                 limit=cte.limit,
-                # some joins may not need to be rendered
                 comment=cte.comment if CONFIG.show_comments else None,
+                 # some joins may not need to be rendered
                 joins=[
                     j
                     for j in [
