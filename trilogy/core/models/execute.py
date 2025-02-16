@@ -894,7 +894,7 @@ class Join(BaseModel):
         if self.quote:
             if self.right_cte.identifier in self.inlined_ctes:
                 return f"{self.quote}{self.right_cte.source.datasources[0].safe_location}{self.quote} as {self.right_cte.source.datasources[0].safe_identifier}"
-            return f"{self.quote}{self.right_cte.safe_location}{self.quote} as {self.right_cte.safe_identifier}"
+            return self.right_cte.safe_identifier
         if self.right_cte.identifier in self.inlined_ctes:
             return f"{self.right_cte.source.datasources[0].safe_location} as {self.right_cte.source.datasources[0].safe_identifier}"
         return self.right_cte.safe_identifier
