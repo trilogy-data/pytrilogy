@@ -156,7 +156,7 @@ FUNCTION_MAP = {
     FunctionType.PARENTHETICAL: lambda x: f"({x[0]})",
     # Complex
     FunctionType.INDEX_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
-    FunctionType.MAP_ACCESS: lambda x: f"{x[0]}[{x[1]}][1]",
+    FunctionType.MAP_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.UNNEST: lambda x: f"unnest({x[0]})",
     FunctionType.ATTR_ACCESS: lambda x: f"""{x[0]}.{x[1].replace("'", "")}""",
     FunctionType.STRUCT: lambda x: f"{{{', '.join(struct_arg(x))}}}",
