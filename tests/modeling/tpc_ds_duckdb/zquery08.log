@@ -1,63 +1,73 @@
 query_id = 8
-gen_length = 3658
+gen_length = 3668
 generated_sql = """
 
 WITH 
-questionable as (SELECT
+questionable as (
+SELECT
     CASE WHEN customer_customers.\"C_PREFERRED_CUST_FLAG\" = 'Y' THEN customer_customers.\"C_CUSTOMER_SK\" ELSE NULL END as \"_virt_filter_id_8603331542397217\",
     customer_customers.\"C_CUSTOMER_SK\" as \"customer_id\",
     customer_customers.\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\"
 FROM
     memory.customer as customer_customers),
-abundant as (SELECT
+abundant as (
+SELECT
     customer_customer_address.\"CA_ZIP\" as \"customer_zip\",
     customer_customers.\"C_CUSTOMER_SK\" as \"customer_id\",
     customer_customers.\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\"
 FROM
     memory.customer_address as customer_customer_address
     INNER JOIN memory.customer as customer_customers on customer_customer_address.\"CA_ADDRESS_SK\" = customer_customers.\"C_CURRENT_ADDR_SK\"),
-cheerful as (SELECT
+cheerful as (
+SELECT
     unnest(:_virt_7180871482901048) as \"zips_pre\"
 ),
-uneven as (SELECT
+uneven as (
+SELECT
     abundant.\"customer_zip\" as \"customer_zip\",
     questionable.\"_virt_filter_id_8603331542397217\" as \"_virt_filter_id_8603331542397217\",
     questionable.\"customer_id\" as \"customer_id\"
 FROM
     abundant
     INNER JOIN questionable on abundant.\"customer_id\" = questionable.\"customer_id\"),
-yummy as (SELECT
+yummy as (
+SELECT
     count(uneven.\"_virt_filter_id_8603331542397217\") as \"zip_p_count\",
     uneven.\"customer_zip\" as \"customer_zip\"
 FROM
     uneven
 GROUP BY 
     uneven.\"customer_zip\"),
-juicy as (SELECT
+juicy as (
+SELECT
     customer_customer_address.\"CA_ADDRESS_SK\" as \"customer_address_id\",
     customer_customer_address.\"CA_ZIP\" as \"customer_zip\",
     yummy.\"zip_p_count\" as \"zip_p_count\"
 FROM
     yummy
     INNER JOIN memory.customer_address as customer_customer_address on yummy.\"customer_zip\" = customer_customer_address.\"CA_ZIP\"),
-vacuous as (SELECT
+vacuous as (
+SELECT
     SUBSTRING(CASE WHEN juicy.\"zip_p_count\" > 10 THEN juicy.\"customer_zip\" ELSE NULL END,1,5) as \"_virt_func_substring_4293448550966409\"
 FROM
     juicy),
-concerned as (SELECT
+concerned as (
+SELECT
     SUBSTRING(SUBSTRING(cast(cheerful.\"zips_pre\" as string),1,5),1,2) as \"final_zips\"
 FROM
     cheerful
 WHERE
     SUBSTRING(cast(cheerful.\"zips_pre\" as string),1,5) in (select vacuous.\"_virt_func_substring_4293448550966409\" from vacuous where vacuous.\"_virt_func_substring_4293448550966409\" is not null)
 ),
-young as (SELECT
+young as (
+SELECT
     concerned.\"final_zips\" as \"final_zips\"
 FROM
     concerned
 GROUP BY 
     concerned.\"final_zips\"),
-sparkling as (SELECT
+sparkling as (
+SELECT
     cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
     store_sales_date_date.\"D_QOY\" as \"store_sales_date_quarter\",
     store_sales_store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\",

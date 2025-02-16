@@ -1,9 +1,10 @@
 query_id = 98
-gen_length = 7791
+gen_length = 7799
 generated_sql = """
 
 WITH 
-wakeful as (SELECT
+wakeful as (
+SELECT
     store_sales_store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\",
     store_sales_store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
 FROM
@@ -11,7 +12,8 @@ FROM
 GROUP BY 
     store_sales_store_sales.\"SS_ITEM_SK\",
     store_sales_store_sales.\"SS_SOLD_DATE_SK\"),
-thoughtful as (SELECT
+thoughtful as (
+SELECT
     cast(store_sales_date_date.\"D_DATE\" as date) as \"store_sales_date_date\",
     store_sales_item_items.\"I_CATEGORY\" as \"store_sales_item_category\",
     store_sales_item_items.\"I_CLASS\" as \"store_sales_item_class\",
@@ -28,7 +30,8 @@ FROM
 WHERE
     store_sales_item_items.\"I_CATEGORY\" in ('Sports','Books','Home') and cast(store_sales_date_date.\"D_DATE\" as date) >= date '1999-02-22' and cast(store_sales_date_date.\"D_DATE\" as date) <= date '1999-03-24'
 ),
-cheerful as (SELECT
+cheerful as (
+SELECT
     cast(store_sales_date_date.\"D_DATE\" as date) as \"store_sales_date_date\",
     store_sales_item_items.\"I_CATEGORY\" as \"store_sales_item_category\",
     store_sales_item_items.\"I_CLASS\" as \"store_sales_item_class\",
@@ -42,7 +45,8 @@ FROM
 WHERE
     store_sales_item_items.\"I_CATEGORY\" in ('Sports','Books','Home') and cast(store_sales_date_date.\"D_DATE\" as date) >= date '1999-02-22' and cast(store_sales_date_date.\"D_DATE\" as date) <= date '1999-03-24'
 ),
-abundant as (SELECT
+abundant as (
+SELECT
     sum(thoughtful.\"store_sales_ext_sales_price\") as \"_virt_agg_sum_9873055619986236\",
     sum(thoughtful.\"store_sales_ext_sales_price\") as \"item_revenue\",
     thoughtful.\"store_sales_item_category\" as \"store_sales_item_category\",
@@ -58,14 +62,16 @@ GROUP BY
     thoughtful.\"store_sales_item_current_price\",
     thoughtful.\"store_sales_item_desc\",
     thoughtful.\"store_sales_item_name\"),
-cooperative as (SELECT
+cooperative as (
+SELECT
     sum(thoughtful.\"store_sales_ext_sales_price\") as \"_virt_agg_sum_7595906549305205\",
     thoughtful.\"store_sales_item_class\" as \"store_sales_item_class\"
 FROM
     thoughtful
 GROUP BY 
     thoughtful.\"store_sales_item_class\"),
-questionable as (SELECT
+questionable as (
+SELECT
     cheerful.\"store_sales_item_category\" as \"store_sales_item_category\",
     cheerful.\"store_sales_item_class\" as \"store_sales_item_class\",
     cheerful.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
@@ -75,7 +81,8 @@ questionable as (SELECT
 FROM
     cooperative
     INNER JOIN cheerful on (cooperative.\"store_sales_item_class\" = cheerful.\"store_sales_item_class\" or (cooperative.\"store_sales_item_class\" is null and cheerful.\"store_sales_item_class\" is null))),
-uneven as (SELECT
+uneven as (
+SELECT
     abundant.\"_virt_agg_sum_9873055619986236\" * 100.0 / (questionable.\"_virt_agg_sum_7595906549305205\") as \"revenueratio\",
     questionable.\"store_sales_item_category\" as \"store_sales_item_category\",
     questionable.\"store_sales_item_class\" as \"store_sales_item_class\",
@@ -85,7 +92,8 @@ uneven as (SELECT
 FROM
     questionable
     INNER JOIN abundant on (questionable.\"store_sales_item_category\" = abundant.\"store_sales_item_category\" or (questionable.\"store_sales_item_category\" is null and abundant.\"store_sales_item_category\" is null)) AND (questionable.\"store_sales_item_class\" = abundant.\"store_sales_item_class\" or (questionable.\"store_sales_item_class\" is null and abundant.\"store_sales_item_class\" is null)) AND (questionable.\"store_sales_item_current_price\" = abundant.\"store_sales_item_current_price\" or (questionable.\"store_sales_item_current_price\" is null and abundant.\"store_sales_item_current_price\" is null)) AND (questionable.\"store_sales_item_desc\" = abundant.\"store_sales_item_desc\" or (questionable.\"store_sales_item_desc\" is null and abundant.\"store_sales_item_desc\" is null)) AND questionable.\"store_sales_item_name\" = abundant.\"store_sales_item_name\"),
-yummy as (SELECT
+yummy as (
+SELECT
     abundant.\"item_revenue\" as \"item_revenue\",
     uneven.\"revenueratio\" as \"revenueratio\",
     uneven.\"store_sales_item_category\" as \"store_sales_item_category\",

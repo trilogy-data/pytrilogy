@@ -1,9 +1,10 @@
 query_id = 3
-gen_length = 1626
+gen_length = 1627
 generated_sql = """
 
 WITH 
-wakeful as (SELECT
+wakeful as (
+SELECT
     cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
     store_sales_date_date.\"D_MOY\" as \"store_sales_date_month_of_year\",
     store_sales_item_items.\"I_BRAND\" as \"store_sales_item_brand_name\",

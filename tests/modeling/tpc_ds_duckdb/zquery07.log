@@ -1,9 +1,10 @@
 query_id = 7
-gen_length = 2782
+gen_length = 2783
 generated_sql = """
 
 WITH 
-thoughtful as (SELECT
+thoughtful as (
+SELECT
     cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
     store_sales_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" as \"store_sales_customer_demographic_education_status\",
     store_sales_customer_demographic_customer_demographics.\"CD_GENDER\" as \"store_sales_customer_demographic_gender\",

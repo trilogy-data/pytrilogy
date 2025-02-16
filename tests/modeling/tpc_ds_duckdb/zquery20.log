@@ -1,9 +1,10 @@
 query_id = 20
-gen_length = 2736
+gen_length = 2739
 generated_sql = """
 
 WITH 
-wakeful as (SELECT
+wakeful as (
+SELECT
     cast(cs_sold_date_date.\"D_DATE\" as date) as \"cs_sold_date_date\",
     cs_catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
     cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
@@ -20,7 +21,8 @@ FROM
 WHERE
     cs_item_items.\"I_CATEGORY\" in ('Sports','Books','Home') and cast(cs_sold_date_date.\"D_DATE\" as date) >= date '1999-02-22' and cast(cs_sold_date_date.\"D_DATE\" as date) <= date '1999-03-24'
 ),
-cheerful as (SELECT
+cheerful as (
+SELECT
     sum(wakeful.\"cs_extra_sales_price\") as \"revenue\",
     wakeful.\"cs_item_category\" as \"cs_item_category\",
     wakeful.\"cs_item_class\" as \"cs_item_class\",
@@ -35,7 +37,8 @@ GROUP BY
     wakeful.\"cs_item_current_price\",
     wakeful.\"cs_item_desc\",
     wakeful.\"cs_item_name\"),
-thoughtful as (SELECT
+thoughtful as (
+SELECT
     cheerful.\"cs_item_category\" as \"cs_item_category\",
     cheerful.\"cs_item_class\" as \"cs_item_class\",
     cheerful.\"cs_item_current_price\" as \"cs_item_current_price\",

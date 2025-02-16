@@ -1,9 +1,10 @@
 query_id = 21
-gen_length = 2825
+gen_length = 2826
 generated_sql = """
 
 WITH 
-cheerful as (SELECT
+cheerful as (
+SELECT
     cast(inventory_date_date.\"D_DATE\" as date) as \"inventory_date_date\",
     inventory_date_date.\"D_DATE_SK\" as \"inventory_date_id\",
     inventory_item_items.\"I_CURRENT_PRICE\" as \"inventory_item_current_price\",

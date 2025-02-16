@@ -1,9 +1,10 @@
 query_id = 10
-gen_length = 5873
+gen_length = 5879
 generated_sql = """
 
 WITH 
-thoughtful as (SELECT
+thoughtful as (
+SELECT
     store_sales_store_sales.\"SS_CUSTOMER_SK\" as \"customer_id\",
     store_sales_store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
 FROM
@@ -11,7 +12,8 @@ FROM
 GROUP BY 
     store_sales_store_sales.\"SS_CUSTOMER_SK\",
     store_sales_store_sales.\"SS_SOLD_DATE_SK\"),
-abundant as (SELECT
+abundant as (
+SELECT
     web_sales_web_sales.\"WS_BILL_CUSTOMER_SK\" as \"customer_id\",
     web_sales_web_sales.\"WS_SOLD_DATE_SK\" as \"web_sales_date_id\"
 FROM
@@ -19,7 +21,8 @@ FROM
 GROUP BY 
     web_sales_web_sales.\"WS_BILL_CUSTOMER_SK\",
     web_sales_web_sales.\"WS_SOLD_DATE_SK\"),
-juicy as (SELECT
+juicy as (
+SELECT
     catalog_sales_catalog_sales.\"CS_SHIP_CUSTOMER_SK\" as \"customer_id\",
     catalog_sales_catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\"
 FROM
@@ -27,7 +30,8 @@ FROM
 GROUP BY 
     catalog_sales_catalog_sales.\"CS_SHIP_CUSTOMER_SK\",
     catalog_sales_catalog_sales.\"CS_SOLD_DATE_SK\"),
-vacuous as (SELECT
+vacuous as (
+SELECT
     customer_customers.\"C_CUSTOMER_SK\" as \"relevant_customers\"
 FROM
     memory.customer as customer_customers
@@ -41,13 +45,15 @@ FROM
 WHERE
     cast(store_sales_date_date.\"D_YEAR\" as int) = 2002 and store_sales_date_date.\"D_MOY\" in (1,2,3,4) and customer_customer_address.\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( cast(web_sales_date_date.\"D_YEAR\" as int) = 2002 and web_sales_date_date.\"D_MOY\" in (1,2,3,4) ) or ( cast(catalog_sales_date_date.\"D_YEAR\" as int) = 2002 and catalog_sales_date_date.\"D_MOY\" in (1,2,3,4) ) )
 ),
-concerned as (SELECT
+concerned as (
+SELECT
     vacuous.\"relevant_customers\" as \"relevant_customers\"
 FROM
     vacuous
 GROUP BY 
     vacuous.\"relevant_customers\"),
-young as (SELECT
+young as (
+SELECT
     customer_customers.\"C_CUSTOMER_SK\" as \"customer_id\",
     customer_demographics_customer_demographics.\"CD_CREDIT_RATING\" as \"customer_demographics_credit_rating\",
     customer_demographics_customer_demographics.\"CD_DEP_COLLEGE_COUNT\" as \"customer_demographics_college_dependent_count\",

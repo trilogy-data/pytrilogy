@@ -1,9 +1,10 @@
 query_id = 97
-gen_length = 4162
+gen_length = 4169
 generated_sql = """
 
 WITH 
-questionable as (SELECT
+questionable as (
+SELECT
     catalog_sales_catalog_sales.\"CS_BILL_CUSTOMER_SK\" as \"catalog_sales_bill_customer_id\",
     catalog_sales_catalog_sales.\"CS_ITEM_SK\" as \"catalog_sales_item_id\",
     catalog_sales_catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\"
@@ -13,7 +14,8 @@ GROUP BY
     catalog_sales_catalog_sales.\"CS_BILL_CUSTOMER_SK\",
     catalog_sales_catalog_sales.\"CS_ITEM_SK\",
     catalog_sales_catalog_sales.\"CS_SOLD_DATE_SK\"),
-dynamic as (SELECT
+dynamic as (
+SELECT
     store_sales_store_sales.\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
     store_sales_store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\",
     store_sales_store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
@@ -23,7 +25,8 @@ GROUP BY
     store_sales_store_sales.\"SS_CUSTOMER_SK\",
     store_sales_store_sales.\"SS_ITEM_SK\",
     store_sales_store_sales.\"SS_SOLD_DATE_SK\"),
-abundant as (SELECT
+abundant as (
+SELECT
     catalog_sales_date_date.\"D_MONTH_SEQ\" as \"catalog_sales_date_month_seq\",
     questionable.\"catalog_sales_bill_customer_id\" as \"catalog_sales_bill_customer_id\",
     questionable.\"catalog_sales_item_id\" as \"catalog_sales_item_id\"
@@ -33,7 +36,8 @@ FROM
 WHERE
     catalog_sales_date_date.\"D_MONTH_SEQ\" >= 1200 and catalog_sales_date_date.\"D_MONTH_SEQ\" <= 1200 + 11
 ),
-wakeful as (SELECT
+wakeful as (
+SELECT
     dynamic.\"store_sales_customer_id\" as \"store_sales_customer_id\",
     dynamic.\"store_sales_item_id\" as \"store_sales_item_id\",
     store_sales_date_date.\"D_MONTH_SEQ\" as \"store_sales_date_month_seq\"
@@ -43,7 +47,8 @@ FROM
 WHERE
     store_sales_date_date.\"D_MONTH_SEQ\" >= 1200 and store_sales_date_date.\"D_MONTH_SEQ\" <= 1200 + 11
 ),
-uneven as (SELECT
+uneven as (
+SELECT
     abundant.\"catalog_sales_bill_customer_id\" as \"catalog_sales_bill_customer_id\",
     abundant.\"catalog_sales_bill_customer_id\" as \"customer_id\",
     abundant.\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
@@ -54,7 +59,8 @@ GROUP BY
     abundant.\"catalog_sales_bill_customer_id\",
     abundant.\"catalog_sales_date_month_seq\",
     abundant.\"catalog_sales_item_id\"),
-cheerful as (SELECT
+cheerful as (
+SELECT
     wakeful.\"store_sales_customer_id\" as \"customer_id\",
     wakeful.\"store_sales_customer_id\" as \"store_sales_customer_id\",
     wakeful.\"store_sales_item_id\" as \"item_id\",
@@ -65,7 +71,8 @@ GROUP BY
     wakeful.\"store_sales_customer_id\",
     wakeful.\"store_sales_date_month_seq\",
     wakeful.\"store_sales_item_id\"),
-yummy as (SELECT
+yummy as (
+SELECT
     cheerful.\"store_sales_customer_id\" as \"merged_store_sales_customer_id\",
     cheerful.\"store_sales_item_id\" as \"merged_store_sales_item_id\",
     coalesce(cheerful.\"customer_id\",uneven.\"customer_id\") as \"merged_customer_id\",

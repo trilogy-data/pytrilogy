@@ -1,9 +1,10 @@
 query_id = 25
-gen_length = 8987
+gen_length = 8992
 generated_sql = """
 
 WITH 
-yummy as (SELECT
+yummy as (
+SELECT
     catalog_sales_catalog_sales.\"CS_BILL_CUSTOMER_SK\" as \"store_sales_customer_id\",
     catalog_sales_catalog_sales.\"CS_ITEM_SK\" as \"store_sales_item_id\",
     catalog_sales_catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\"
@@ -13,7 +14,8 @@ GROUP BY
     catalog_sales_catalog_sales.\"CS_BILL_CUSTOMER_SK\",
     catalog_sales_catalog_sales.\"CS_ITEM_SK\",
     catalog_sales_catalog_sales.\"CS_SOLD_DATE_SK\"),
-abundant as (SELECT
+abundant as (
+SELECT
     CASE WHEN store_sales_store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END as \"store_sales_is_returned\",
     cast(catalog_sales_date_date.\"D_YEAR\" as int) as \"catalog_sales_date_year\",
     cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
@@ -42,7 +44,8 @@ FROM
 WHERE
     cast(store_sales_date_date.\"D_YEAR\" as int) = 2001 and store_sales_date_date.\"D_MOY\" = 4 and cast(store_sales_return_date_date.\"D_YEAR\" as int) = 2001 and store_sales_return_date_date.\"D_MOY\" >= 4 and store_sales_return_date_date.\"D_MOY\" <= 10 and cast(catalog_sales_date_date.\"D_YEAR\" as int) = 2001 and catalog_sales_date_date.\"D_MOY\" >= 4 and catalog_sales_date_date.\"D_MOY\" <= 10 and store_sales_store_returns.\"SR_CUSTOMER_SK\" = store_sales_store_sales.\"SS_CUSTOMER_SK\" and CASE WHEN store_sales_store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
 ),
-juicy as (SELECT
+juicy as (
+SELECT
     CASE WHEN store_sales_store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END as \"store_sales_is_returned\",
     cast(catalog_sales_date_date.\"D_YEAR\" as int) as \"catalog_sales_date_year\",
     cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
@@ -72,7 +75,8 @@ FROM
 WHERE
     cast(store_sales_date_date.\"D_YEAR\" as int) = 2001 and store_sales_date_date.\"D_MOY\" = 4 and cast(store_sales_return_date_date.\"D_YEAR\" as int) = 2001 and store_sales_return_date_date.\"D_MOY\" >= 4 and store_sales_return_date_date.\"D_MOY\" <= 10 and cast(catalog_sales_date_date.\"D_YEAR\" as int) = 2001 and catalog_sales_date_date.\"D_MOY\" >= 4 and catalog_sales_date_date.\"D_MOY\" <= 10 and store_sales_store_returns.\"SR_CUSTOMER_SK\" = store_sales_store_sales.\"SS_CUSTOMER_SK\" and CASE WHEN store_sales_store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
 ),
-uneven as (SELECT
+uneven as (
+SELECT
     abundant.\"store_sales_item_desc\" as \"store_sales_item_desc\",
     abundant.\"store_sales_item_name\" as \"store_sales_item_name\",
     abundant.\"store_sales_store_name\" as \"store_sales_store_name\",
@@ -85,7 +89,8 @@ GROUP BY
     abundant.\"store_sales_item_name\",
     abundant.\"store_sales_store_name\",
     abundant.\"store_sales_store_text_id\"),
-vacuous as (SELECT
+vacuous as (
+SELECT
     juicy.\"store_sales_item_desc\" as \"store_sales_item_desc\",
     juicy.\"store_sales_item_name\" as \"store_sales_item_name\",
     juicy.\"store_sales_store_name\" as \"store_sales_store_name\",

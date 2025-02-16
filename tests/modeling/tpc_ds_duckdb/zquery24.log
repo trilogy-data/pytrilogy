@@ -1,9 +1,10 @@
 query_id = 24
-gen_length = 6302
+gen_length = 6309
 generated_sql = """
 
 WITH 
-questionable as (SELECT
+questionable as (
+SELECT
     CASE WHEN store_sales_store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END as \"store_sales_is_returned\",
     store_sales_customer_customer_address.\"CA_COUNTRY\" as \"store_sales_customer_country\",
     store_sales_customer_customer_address.\"CA_STATE\" as \"store_sales_customer_state\",
@@ -33,7 +34,8 @@ FROM
 WHERE
     store_sales_store_store.\"S_MARKET_ID\" = 8 and store_sales_customer_customers.\"C_BIRTH_COUNTRY\" != UPPER(store_sales_customer_customer_address.\"CA_COUNTRY\")  and CASE WHEN store_sales_store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END is True and store_sales_store_store.\"S_ZIP\" = store_sales_customer_customer_address.\"CA_ZIP\"
 ),
-abundant as (SELECT
+abundant as (
+SELECT
     questionable.\"store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     questionable.\"store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
     questionable.\"store_sales_customer_state\" as \"su_store_sales_customer_state\",
@@ -58,18 +60,21 @@ GROUP BY
     questionable.\"store_sales_item_units\",
     questionable.\"store_sales_store_name\",
     questionable.\"store_sales_store_state\"),
-juicy as (SELECT
+juicy as (
+SELECT
     CASE WHEN abundant.\"su_store_sales_item_color\" = 'peach' THEN abundant.\"su_net_paid\" ELSE NULL END as \"_virt_filter_net_paid_3139932349044856\",
     abundant.\"su_net_paid\" as \"su_net_paid\",
     abundant.\"su_store_sales_item_color\" as \"su_store_sales_item_color\"
 FROM
     abundant),
-uneven as (SELECT
+uneven as (
+SELECT
     :__preql_internal_all_rows as \"__preql_internal_all_rows\",
     abundant.\"su_net_paid\" as \"su_net_paid\"
 FROM
     abundant),
-vacuous as (SELECT
+vacuous as (
+SELECT
     abundant.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     abundant.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
     abundant.\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
@@ -78,11 +83,13 @@ vacuous as (SELECT
 FROM
     juicy
     INNER JOIN abundant on juicy.\"su_net_paid\" = abundant.\"su_net_paid\" AND juicy.\"su_store_sales_item_color\" = abundant.\"su_store_sales_item_color\"),
-yummy as (SELECT
+yummy as (
+SELECT
     avg(uneven.\"su_net_paid\") as \"avg_store_customer_sales\"
 FROM
     uneven),
-concerned as (SELECT
+concerned as (
+SELECT
     sum(vacuous.\"_virt_filter_net_paid_3139932349044856\") as \"peach_sales\",
     vacuous.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     vacuous.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",

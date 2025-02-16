@@ -1,9 +1,10 @@
 query_id = 1
-gen_length = 1959
+gen_length = 1962
 generated_sql = """
 
 WITH 
-cheerful as (SELECT
+cheerful as (
+SELECT
     cast(returns_return_date_date.\"D_YEAR\" as int) as \"returns_return_date_year\",
     returns_customer_customers.\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
     returns_store_returns.\"SR_ITEM_SK\" as \"returns_item_id\",
@@ -19,7 +20,8 @@ FROM
 WHERE
     returns_store_store.\"S_STATE\" = 'TN' and cast(returns_return_date_date.\"D_YEAR\" as int) = 2000
 ),
-thoughtful as (SELECT
+thoughtful as (
+SELECT
     cheerful.\"returns_customer_text_id\" as \"returns_customer_text_id\",
     cheerful.\"returns_store_id\" as \"returns_store_id\",
     sum(cheerful.\"returns_return_amount\") as \"total_returns\"
@@ -28,7 +30,8 @@ FROM
 GROUP BY 
     cheerful.\"returns_customer_text_id\",
     cheerful.\"returns_store_id\"),
-cooperative as (SELECT
+cooperative as (
+SELECT
     avg(thoughtful.\"total_returns\") as \"avg_store_returns\",
     thoughtful.\"returns_store_id\" as \"returns_store_id\"
 FROM

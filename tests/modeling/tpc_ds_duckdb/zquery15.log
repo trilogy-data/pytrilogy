@@ -1,9 +1,10 @@
 query_id = 15
-gen_length = 1905
+gen_length = 1906
 generated_sql = """
 
 WITH 
-cheerful as (SELECT
+cheerful as (
+SELECT
     cast(catalog_sales_date_date.\"D_YEAR\" as int) as \"catalog_sales_date_year\",
     catalog_sales_bill_customer_customer_address.\"CA_STATE\" as \"catalog_sales_bill_customer_state\",
     catalog_sales_bill_customer_customer_address.\"CA_ZIP\" as \"catalog_sales_bill_customer_zip\",
