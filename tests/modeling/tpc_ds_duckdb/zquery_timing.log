@@ -1,7 +1,7 @@
 [query_01]
-parse_time = 0.407898
-exec_time = 0.040537
-comp_time = 0.107457
+parse_time = 0.392026
+exec_time = 0.03733
+comp_time = 0.101944
 
 [query_02]
 parse_time = 1.037549
