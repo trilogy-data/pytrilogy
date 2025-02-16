@@ -69,31 +69,31 @@ exec_time = 0.118517
 comp_time = 0.036797
 
 [query_26]
-parse_time = 0.383472
-exec_time = 0.088557
-comp_time = 0.076138
+parse_time = 0.392464
+exec_time = 0.087407
+comp_time = 0.079422
 
 [query_30]
-parse_time = 0.336839
-exec_time = 0.079971
-comp_time = 0.052586
+parse_time = 0.354556
+exec_time = 0.070895
+comp_time = 0.04491
 
 [query_95]
-parse_time = 0.213065
-exec_time = 0.107713
-comp_time = 0.518606
+parse_time = 0.204977
+exec_time = 0.102232
+comp_time = 0.515351
 
 [query_97]
-parse_time = 0.77182
-exec_time = 0.246647
-comp_time = 0.064003
+parse_time = 0.764227
+exec_time = 0.236482
+comp_time = 0.061833
 
 [query_98]
-parse_time = 0.231911
-exec_time = 0.288649
-comp_time = 0.184821
+parse_time = 0.195133
+exec_time = 0.280939
+comp_time = 0.165968
 
 [query_99]
-parse_time = 0.220014
-exec_time = 0.338333
-comp_time = 0.069339
+parse_time = 0.196212
+exec_time = 0.355692
+comp_time = 0.057461

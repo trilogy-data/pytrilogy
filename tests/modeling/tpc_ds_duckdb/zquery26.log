@@ -1,10 +1,9 @@
 query_id = 26
-gen_length = 2348
+gen_length = 2346
 generated_sql = """
 
 WITH 
-thoughtful as (
-SELECT
+thoughtful as (SELECT
     cast(cs_date_date.\"D_YEAR\" as int) as \"cs_date_year\",
     cs_bill_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" as \"cs_bill_customer_demographic_education_status\",
     cs_bill_customer_demographic_customer_demographics.\"CD_GENDER\" as \"cs_bill_customer_demographic_gender\",
@@ -26,8 +25,7 @@ FROM
     INNER JOIN memory.promotion as cs_promotion_promotion on cs_catalog_sales.\"CS_PROMO_SK\" = cs_promotion_promotion.\"P_PROMO_SK\"
 WHERE
     cs_bill_customer_demographic_customer_demographics.\"CD_GENDER\" = 'M' and cs_bill_customer_demographic_customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and cs_bill_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( cs_promotion_promotion.\"P_CHANNEL_EMAIL\" = 'N' or cs_promotion_promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(cs_date_date.\"D_YEAR\" as int) = 2000
-)
-SELECT
+)SELECT
     thoughtful.\"cs_item_name\" as \"cs_item_name\",
     avg(thoughtful.\"cs_quantity\") as \"agg1\",
     avg(thoughtful.\"cs_list_price\") as \"agg2\",

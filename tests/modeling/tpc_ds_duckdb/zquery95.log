@@ -1,10 +1,9 @@
 query_id = 95
-gen_length = 5908
+gen_length = 5896
 generated_sql = """
 
 WITH 
-thoughtful as (
-SELECT
+thoughtful as (SELECT
     web_sales_web_sales.\"WS_ORDER_NUMBER\" as \"web_sales_order_number\",
     web_sales_web_sales.\"WS_WAREHOUSE_SK\" as \"web_sales_warehouse_id\"
 FROM
@@ -12,8 +11,7 @@ FROM
 GROUP BY 
     web_sales_web_sales.\"WS_ORDER_NUMBER\",
     web_sales_web_sales.\"WS_WAREHOUSE_SK\"),
-yummy as (
-SELECT
+yummy as (SELECT
     web_sales_web_sales.\"WS_ORDER_NUMBER\" as \"returned_orders\"
 FROM
     memory.web_sales as web_sales_web_sales
@@ -23,35 +21,30 @@ WHERE
 
 GROUP BY 
     web_sales_web_sales.\"WS_ORDER_NUMBER\"),
-cooperative as (
-SELECT
+cooperative as (SELECT
     count(thoughtful.\"web_sales_warehouse_id\") as \"_virt_agg_count_2435454530783120\",
     thoughtful.\"web_sales_order_number\" as \"web_sales_order_number\"
 FROM
     thoughtful
 GROUP BY 
     thoughtful.\"web_sales_order_number\"),
-juicy as (
-SELECT
+juicy as (SELECT
     yummy.\"returned_orders\" as \"returned_orders\"
 FROM
     yummy
 GROUP BY 
     yummy.\"returned_orders\"),
-questionable as (
-SELECT
+questionable as (SELECT
     CASE WHEN cooperative.\"_virt_agg_count_2435454530783120\" > 1 THEN cooperative.\"web_sales_order_number\" ELSE NULL END as \"multi_warehouse_order\"
 FROM
     cooperative),
-abundant as (
-SELECT
+abundant as (SELECT
     questionable.\"multi_warehouse_order\" as \"multi_warehouse_order\"
 FROM
     questionable
 GROUP BY 
     questionable.\"multi_warehouse_order\"),
-cheerful as (
-SELECT
+cheerful as (SELECT
     web_sales_web_sales.\"WS_ORDER_NUMBER\" as \"web_sales_order_number\",
     web_sales_web_sales.\"WS_SHIP_ADDR_SK\" as \"web_sales_ship_address_id\",
     web_sales_web_sales.\"WS_SHIP_DATE_SK\" as \"web_sales_ship_date_id\",
@@ -66,8 +59,7 @@ GROUP BY
     web_sales_web_sales.\"WS_SHIP_ADDR_SK\",
     web_sales_web_sales.\"WS_SHIP_DATE_SK\",
     web_sales_web_sales.\"WS_WEB_SITE_SK\"),
-young as (
-SELECT
+young as (SELECT
     cast(web_sales_ship_date_date.\"D_DATE\" as date) as \"web_sales_ship_date_date\",
     web_sales_ship_address_customer_address.\"CA_STATE\" as \"web_sales_ship_address_state\",
     web_sales_web_sales.\"WS_EXT_SHIP_COST\" as \"web_sales_extra_ship_cost\",
@@ -83,8 +75,7 @@ FROM
 WHERE
     cast(web_sales_ship_date_date.\"D_DATE\" as date) >= date '1999-02-01' and cast(web_sales_ship_date_date.\"D_DATE\" as date) <= date '1999-04-02' and web_sales_ship_address_customer_address.\"CA_STATE\" = 'IL' and web_sales_web_site_web_site.\"web_company_name\" = 'pri' and web_sales_web_sales.\"WS_ORDER_NUMBER\" in (select abundant.\"multi_warehouse_order\" from abundant where abundant.\"multi_warehouse_order\" is not null) and web_sales_web_sales.\"WS_ORDER_NUMBER\" in (select juicy.\"returned_orders\" from juicy where juicy.\"returned_orders\" is not null)
 ),
-vacuous as (
-SELECT
+vacuous as (SELECT
     cast(web_sales_ship_date_date.\"D_DATE\" as date) as \"web_sales_ship_date_date\",
     cheerful.\"web_sales_order_number\" as \"web_sales_order_number\",
     web_sales_ship_address_customer_address.\"CA_STATE\" as \"web_sales_ship_address_state\",
@@ -97,18 +88,15 @@ FROM
 WHERE
     cast(web_sales_ship_date_date.\"D_DATE\" as date) >= date '1999-02-01' and cast(web_sales_ship_date_date.\"D_DATE\" as date) <= date '1999-04-02' and web_sales_ship_address_customer_address.\"CA_STATE\" = 'IL' and web_sales_web_site_web_site.\"web_company_name\" = 'pri' and cheerful.\"web_sales_order_number\" in (select abundant.\"multi_warehouse_order\" from abundant where abundant.\"multi_warehouse_order\" is not null) and cheerful.\"web_sales_order_number\" in (select juicy.\"returned_orders\" from juicy where juicy.\"returned_orders\" is not null)
 ),
-sparkling as (
-SELECT
+sparkling as (SELECT
     sum(young.\"web_sales_extra_ship_cost\") as \"total_shipping_cost\",
     sum(young.\"web_sales_net_profit\") as \"total_net_profit\"
 FROM
     young),
-concerned as (
-SELECT
+concerned as (SELECT
     count(distinct vacuous.\"web_sales_order_number\") as \"order_count\"
 FROM
-    vacuous)
-SELECT
+    vacuous)SELECT
     concerned.\"order_count\" as \"order_count\",
     sparkling.\"total_shipping_cost\" as \"total_shipping_cost\",
     sparkling.\"total_net_profit\" as \"total_net_profit\"
