@@ -1,5 +1,5 @@
 query_id = 3
-gen_length = 1627
+gen_length = 1628
 generated_sql = """
 
 WITH 
@@ -19,7 +19,8 @@ FROM
     INNER JOIN memory.date_dim as store_sales_date_date on store_sales_store_sales.\"SS_SOLD_DATE_SK\" = store_sales_date_date.\"D_DATE_SK\"
 WHERE
     store_sales_date_date.\"D_MOY\" = 11 and store_sales_item_items.\"I_MANUFACT_ID\" = 128
-)SELECT
+)
+SELECT
     wakeful.\"store_sales_date_year\" as \"store_sales_date_year\",
     wakeful.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
     wakeful.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",

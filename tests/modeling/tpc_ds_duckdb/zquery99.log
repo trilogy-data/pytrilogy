@@ -1,5 +1,5 @@
 query_id = 99
-gen_length = 8041
+gen_length = 8042
 generated_sql = """
 
 WITH 
@@ -120,7 +120,8 @@ SELECT
     vacuous.\"warehouse_short_name\" as \"warehouse_short_name\"
 FROM
     vacuous
-    INNER JOIN cheerful on vacuous.\"days_to_ship\" = cheerful.\"days_to_ship\" AND vacuous.\"item_id\" = cheerful.\"item_id\" AND vacuous.\"order_number\" = cheerful.\"order_number\")SELECT
+    INNER JOIN cheerful on vacuous.\"days_to_ship\" = cheerful.\"days_to_ship\" AND vacuous.\"item_id\" = cheerful.\"item_id\" AND vacuous.\"order_number\" = cheerful.\"order_number\")
+SELECT
     concerned.\"warehouse_short_name\" as \"warehouse_short_name\",
     concerned.\"ship_mode_type\" as \"ship_mode_type\",
     concerned.\"cc_name_lower\" as \"cc_name_lower\",

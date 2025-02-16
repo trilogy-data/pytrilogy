@@ -1,5 +1,5 @@
 query_id = 98
-gen_length = 7799
+gen_length = 7800
 generated_sql = """
 
 WITH 
@@ -103,7 +103,8 @@ SELECT
     uneven.\"store_sales_item_name\" as \"store_sales_item_name\"
 FROM
     uneven
-    INNER JOIN abundant on (uneven.\"store_sales_item_category\" = abundant.\"store_sales_item_category\" or (uneven.\"store_sales_item_category\" is null and abundant.\"store_sales_item_category\" is null)) AND (uneven.\"store_sales_item_class\" = abundant.\"store_sales_item_class\" or (uneven.\"store_sales_item_class\" is null and abundant.\"store_sales_item_class\" is null)) AND (uneven.\"store_sales_item_current_price\" = abundant.\"store_sales_item_current_price\" or (uneven.\"store_sales_item_current_price\" is null and abundant.\"store_sales_item_current_price\" is null)) AND (uneven.\"store_sales_item_desc\" = abundant.\"store_sales_item_desc\" or (uneven.\"store_sales_item_desc\" is null and abundant.\"store_sales_item_desc\" is null)) AND uneven.\"store_sales_item_name\" = abundant.\"store_sales_item_name\")SELECT
+    INNER JOIN abundant on (uneven.\"store_sales_item_category\" = abundant.\"store_sales_item_category\" or (uneven.\"store_sales_item_category\" is null and abundant.\"store_sales_item_category\" is null)) AND (uneven.\"store_sales_item_class\" = abundant.\"store_sales_item_class\" or (uneven.\"store_sales_item_class\" is null and abundant.\"store_sales_item_class\" is null)) AND (uneven.\"store_sales_item_current_price\" = abundant.\"store_sales_item_current_price\" or (uneven.\"store_sales_item_current_price\" is null and abundant.\"store_sales_item_current_price\" is null)) AND (uneven.\"store_sales_item_desc\" = abundant.\"store_sales_item_desc\" or (uneven.\"store_sales_item_desc\" is null and abundant.\"store_sales_item_desc\" is null)) AND uneven.\"store_sales_item_name\" = abundant.\"store_sales_item_name\")
+SELECT
     yummy.\"store_sales_item_name\" as \"store_sales_item_name\",
     yummy.\"store_sales_item_desc\" as \"store_sales_item_desc\",
     yummy.\"store_sales_item_category\" as \"store_sales_item_category\",

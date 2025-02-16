@@ -1,5 +1,5 @@
 query_id = 16
-gen_length = 5072
+gen_length = 5073
 generated_sql = """
 
 WITH 
@@ -96,7 +96,8 @@ vacuous as (
 SELECT
     count(distinct juicy.\"cs_order_number\") as \"order_count\"
 FROM
-    juicy)SELECT
+    juicy)
+SELECT
     vacuous.\"order_count\" as \"order_count\",
     young.\"total_shipping_cost\" as \"total_shipping_cost\",
     young.\"total_net_profit\" as \"total_net_profit\"

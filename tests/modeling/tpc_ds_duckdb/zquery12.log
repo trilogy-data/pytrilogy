@@ -1,5 +1,5 @@
 query_id = 12
-gen_length = 3139
+gen_length = 3140
 generated_sql = """
 
 WITH 
@@ -47,7 +47,8 @@ SELECT
     cheerful.\"web_sales_item_name\" as \"web_sales_item_name\",
     sum(cheerful.\"itemrevenue\") over (partition by cheerful.\"web_sales_item_class\") as \"_virt_window_sum_7523689155741339\"
 FROM
-    cheerful)SELECT
+    cheerful)
+SELECT
     thoughtful.\"web_sales_item_name\" as \"web_sales_item_name\",
     thoughtful.\"web_sales_item_desc\" as \"web_sales_item_desc\",
     thoughtful.\"web_sales_item_category\" as \"web_sales_item_category\",

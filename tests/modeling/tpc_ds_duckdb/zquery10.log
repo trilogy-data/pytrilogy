@@ -1,5 +1,5 @@
 query_id = 10
-gen_length = 5879
+gen_length = 5880
 generated_sql = """
 
 WITH 
@@ -68,7 +68,8 @@ FROM
     INNER JOIN memory.customer as customer_customers on customer_demographics_customer_demographics.\"CD_DEMO_SK\" = customer_customers.\"C_CURRENT_CDEMO_SK\"
 WHERE
     customer_customers.\"C_CUSTOMER_SK\" in (select concerned.\"relevant_customers\" from concerned where concerned.\"relevant_customers\" is not null) and customer_demographics_customer_demographics.\"CD_GENDER\" is not null
-)SELECT
+)
+SELECT
     young.\"customer_demographics_gender\" as \"customer_demographics_gender\",
     young.\"customer_demographics_marital_status\" as \"customer_demographics_marital_status\",
     young.\"customer_demographics_education_status\" as \"customer_demographics_education_status\",

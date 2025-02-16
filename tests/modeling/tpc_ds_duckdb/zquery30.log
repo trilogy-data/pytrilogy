@@ -1,5 +1,5 @@
 query_id = 30
-gen_length = 12218
+gen_length = 12219
 generated_sql = """
 
 WITH 
@@ -149,7 +149,8 @@ FROM
     INNER JOIN concerned on (vacuous.\"web_returns_return_address_state\" = concerned.\"web_returns_return_address_state\" or (vacuous.\"web_returns_return_address_state\" is null and concerned.\"web_returns_return_address_state\" is null))
 WHERE
     vacuous.\"customer_state_returns_2002\" > 1.2 * concerned.\"_virt_agg_avg_3885168128306444\" and vacuous.\"web_returns_customer_state\" = 'GA' and vacuous.\"web_returns_return_address_state\" is not null
-)SELECT
+)
+SELECT
     young.\"web_returns_customer_text_id\" as \"web_returns_customer_text_id\",
     young.\"web_returns_customer_salutation\" as \"web_returns_customer_salutation\",
     young.\"web_returns_customer_first_name\" as \"web_returns_customer_first_name\",

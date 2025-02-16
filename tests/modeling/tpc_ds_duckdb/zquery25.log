@@ -1,5 +1,5 @@
 query_id = 25
-gen_length = 8992
+gen_length = 8993
 generated_sql = """
 
 WITH 
@@ -103,7 +103,8 @@ GROUP BY
     juicy.\"store_sales_item_desc\",
     juicy.\"store_sales_item_name\",
     juicy.\"store_sales_store_name\",
-    juicy.\"store_sales_store_text_id\")SELECT
+    juicy.\"store_sales_store_text_id\")
+SELECT
     uneven.\"store_sales_item_name\" as \"store_sales_item_name\",
     uneven.\"store_sales_item_desc\" as \"store_sales_item_desc\",
     uneven.\"store_sales_store_text_id\" as \"store_sales_store_text_id\",

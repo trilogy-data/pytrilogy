@@ -1,5 +1,5 @@
 query_id = 97
-gen_length = 4169
+gen_length = 4170
 generated_sql = """
 
 WITH 
@@ -88,7 +88,8 @@ GROUP BY
     coalesce(cheerful.\"customer_id\",uneven.\"customer_id\"),
     coalesce(cheerful.\"item_id\",uneven.\"item_id\"),
     uneven.\"catalog_sales_bill_customer_id\",
-    uneven.\"catalog_sales_item_id\")SELECT
+    uneven.\"catalog_sales_item_id\")
+SELECT
     sum(CASE
 	WHEN yummy.\"merged_store_sales_customer_id\" is not null and yummy.\"merged_catalog_sales_bill_customer_id\" is null THEN 1
 	ELSE 0

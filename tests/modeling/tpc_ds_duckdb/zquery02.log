@@ -1,5 +1,5 @@
 query_id = 2
-gen_length = 8753
+gen_length = 8754
 generated_sql = """
 
 WITH 
@@ -170,7 +170,8 @@ SELECT
     juicy.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
     lead(juicy.\"yearly_agg_sunday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"filter_flag\"
 FROM
-    juicy)SELECT
+    juicy)
+SELECT
     vacuous.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
     vacuous.\"sunday_increase\" as \"sunday_increase\",
     vacuous.\"monday_increase\" as \"monday_increase\",

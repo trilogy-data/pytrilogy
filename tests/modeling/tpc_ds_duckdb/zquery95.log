@@ -1,5 +1,5 @@
 query_id = 95
-gen_length = 5907
+gen_length = 5908
 generated_sql = """
 
 WITH 
@@ -107,7 +107,8 @@ concerned as (
 SELECT
     count(distinct vacuous.\"web_sales_order_number\") as \"order_count\"
 FROM
-    vacuous)SELECT
+    vacuous)
+SELECT
     concerned.\"order_count\" as \"order_count\",
     sparkling.\"total_shipping_cost\" as \"total_shipping_cost\",
     sparkling.\"total_net_profit\" as \"total_net_profit\"

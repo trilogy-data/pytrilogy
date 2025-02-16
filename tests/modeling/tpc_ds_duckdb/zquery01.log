@@ -1,5 +1,5 @@
 query_id = 1
-gen_length = 1962
+gen_length = 1963
 generated_sql = """
 
 WITH 
@@ -37,7 +37,8 @@ SELECT
 FROM
     thoughtful
 GROUP BY 
-    thoughtful.\"returns_store_id\")SELECT
+    thoughtful.\"returns_store_id\")
+SELECT
     thoughtful.\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
     cooperative

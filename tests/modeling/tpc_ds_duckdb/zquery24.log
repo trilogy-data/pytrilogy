@@ -1,5 +1,5 @@
 query_id = 24
-gen_length = 6309
+gen_length = 6310
 generated_sql = """
 
 WITH 
@@ -99,7 +99,8 @@ FROM
 GROUP BY 
     vacuous.\"su_store_sales_customer_first_name\",
     vacuous.\"su_store_sales_customer_last_name\",
-    vacuous.\"su_store_sales_store_name\")SELECT
+    vacuous.\"su_store_sales_store_name\")
+SELECT
     concerned.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
     concerned.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     concerned.\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
