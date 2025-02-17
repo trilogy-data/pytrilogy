@@ -1,13 +1,12 @@
 import concepts.finance as finance;
-import concepts.organization as organization;
 
 
 select
-    organization.name,
-    organization.key,
+    finance.organization.name,
+    finance.organization.key,
     finance.total_amount
 where
-    organization.name = "Canadian Division"
+    finance.organization.name = "Canadian Division"
 order by
     finance.total_amount desc
 limit 100;
