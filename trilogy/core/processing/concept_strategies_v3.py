@@ -395,6 +395,7 @@ def generate_node(
             environment=environment,
             parents=[],
             depth=depth + 1,
+            preexisting_conditions=conditions.conditional if conditions else None,
         )
     elif concept.derivation == Derivation.BASIC:
         # this is special case handling for group bys
@@ -786,7 +787,6 @@ def _search_concepts(
         )
         # if anything we need to get is in the filter set and it's a computed value
         # we need to get _everything_ in this loop
-        logger.info(f"{[x.address for x in conditions.row_arguments]}")
         if any(
             [
                 x.derivation not in (Derivation.ROOT, Derivation.CONSTANT)

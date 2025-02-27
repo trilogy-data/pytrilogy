@@ -181,3 +181,15 @@ LIMIT 100;"""
                 x.address for x in cte.condition.row_arguments
             ], [x.address for x in cte.condition.row_arguments]
     assert found
+
+
+def test_constant_extra(engine):
+    query = """import store_sales as store_sales;
+
+where store_sales.date.year = 2001
+select 
+    count(store_sales.customer.id)->ccount, 
+    1 as test,
+limit 5;    
+"""
+    engine.execute_query(query).fetchall()
