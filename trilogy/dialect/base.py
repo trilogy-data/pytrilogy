@@ -770,7 +770,7 @@ class BaseDialect:
                 grain=cte.grain,
                 limit=cte.limit,
                 comment=cte.comment if CONFIG.show_comments else None,
-                 # some joins may not need to be rendered
+                # some joins may not need to be rendered
                 joins=[
                     j
                     for j in [

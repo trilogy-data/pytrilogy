@@ -405,6 +405,7 @@ def create_select_node(
             # no partial for constants
             partial_concepts=[],
             force_group=False,
+            preexisting_conditions=conditions.conditional if conditions else None,
         )
 
     datasource: dict[str, BuildDatasource | list[BuildDatasource]] = (
@@ -491,6 +492,7 @@ def gen_select_merge_node(
             depth=depth,
             partial_concepts=[],
             force_group=False,
+            preexisting_conditions=conditions.conditional if conditions else None,
         )
     for attempt in [False, True]:
         pruned_concept_graph = create_pruned_concept_graph(
@@ -542,6 +544,7 @@ def gen_select_merge_node(
                 depth=depth,
                 partial_concepts=[],
                 force_group=False,
+                preexisting_conditions=conditions.conditional if conditions else None,
             )
         )
 
