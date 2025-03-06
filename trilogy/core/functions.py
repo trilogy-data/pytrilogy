@@ -622,7 +622,6 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.AVG: FunctionConfig(
         valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
         output_purpose=Purpose.METRIC,
-        output_type=DataType.INTEGER,
         arg_count=1,
     ),
     FunctionType.UNIX_TO_TIMESTAMP: FunctionConfig(
