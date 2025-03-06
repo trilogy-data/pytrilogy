@@ -40,6 +40,7 @@ from trilogy.core.models.core import (
     MapType,
     StructType,
 )
+from trilogy.core.models.datasource import Datasource, DatasourceMetadata
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
@@ -100,4 +101,6 @@ __all__ = [
     "MultiSelectStatement",
     "PersistStatement",
     "RawSQLStatement",
+    "Datasource",
+    "DatasourceMetadata",
 ]

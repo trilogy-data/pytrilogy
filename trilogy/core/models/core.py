@@ -101,6 +101,16 @@ class TraitDataType(BaseModel):
     type: DataType
     traits: list[str]
 
+    def __hash__(self):
+        return hash(self.type)
+    
+    def __eq__(self, other):
+        if isinstance(other, DataType):
+            return self.type == other
+        elif isinstance(other, TraitDataType):
+            return self.type == other.type and self.traits == other.traits
+        return False
+
     @property
     def data_type(self):
         return self.type
