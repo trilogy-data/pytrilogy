@@ -145,7 +145,10 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                 if (
                     CONFIG.select_as_definition
                     and not environment.frozen
-                    and x.concept.address not in environment.concepts
+                    and (
+                        x.concept.address not in environment.concepts
+                        or x.concept.address in output.locally_derived
+                    )
                 ):
                     environment.add_concept(x.content.output)
                 x.content.output = x.content.output.set_select_grain(

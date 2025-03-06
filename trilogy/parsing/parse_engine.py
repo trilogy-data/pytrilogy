@@ -730,6 +730,7 @@ class ParseToObjects(Transformer):
             name=output,
             metadata=metadata,
         )
+
         return ConceptTransform(function=transformation, output=concept)
 
     @v_args(meta=True)
