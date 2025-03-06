@@ -29,6 +29,7 @@ from trilogy.core.models.core import (
     MapType,
     NumericType,
     StructType,
+    TraitDataType,
     arg_to_datatype,
     merge_datatypes,
 )
@@ -711,7 +712,7 @@ def create_function_derived_concept(
     operator: FunctionType,
     arguments: list[Concept],
     output_type: Optional[
-        DataType | ListType | StructType | MapType | NumericType
+        DataType | ListType | StructType | MapType | NumericType | TraitDataType
     ] = None,
     output_purpose: Optional[Purpose] = None,
 ) -> Concept:

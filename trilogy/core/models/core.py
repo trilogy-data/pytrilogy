@@ -51,7 +51,13 @@ class Addressable(ABC):
 
 
 TYPEDEF_TYPES = Union[
-    "DataType", "MapType", "ListType", "NumericType", "StructType", "DataTyped"
+    "DataType",
+    "MapType",
+    "ListType",
+    "NumericType",
+    "StructType",
+    "DataTyped",
+    "TraitDataType",
 ]
 
 CONCRETE_TYPES = Union[
@@ -60,6 +66,7 @@ CONCRETE_TYPES = Union[
     "ListType",
     "NumericType",
     "StructType",
+    "TraitDataType",
 ]
 
 KT = TypeVar("KT")
@@ -322,8 +329,10 @@ def dict_to_map_wrapper(arg):
 
 
 def merge_datatypes(
-    inputs: list[DataType | ListType | StructType | MapType | NumericType],
-) -> DataType | ListType | StructType | MapType | NumericType:
+    inputs: list[
+        DataType | ListType | StructType | MapType | NumericType | TraitDataType
+    ],
+) -> DataType | ListType | StructType | MapType | NumericType | TraitDataType:
     """This is a temporary hack for doing between
     allowable datatype transformation matrix"""
     if len(inputs) == 1:

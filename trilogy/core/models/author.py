@@ -1370,7 +1370,7 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
 
 
 def get_basic_type(
-    type: DataType | ListType | StructType | MapType | NumericType,
+    type: DataType | ListType | StructType | MapType | NumericType | TraitDataType,
 ) -> DataType:
     if isinstance(type, ListType):
         return DataType.LIST
@@ -1380,6 +1380,8 @@ def get_basic_type(
         return DataType.MAP
     if isinstance(type, NumericType):
         return DataType.NUMERIC
+    if isinstance(type, TraitDataType):
+        return type.type
     return type
 
 
