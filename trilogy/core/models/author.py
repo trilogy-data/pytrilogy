@@ -1370,7 +1370,7 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
 
 
 def get_basic_type(
-    type: DataType | ListType | StructType | MapType | NumericType,
+    type: DataType | ListType | StructType | MapType | NumericType | TraitDataType,
 ) -> DataType:
     if isinstance(type, ListType):
         return DataType.LIST
@@ -1380,6 +1380,8 @@ def get_basic_type(
         return DataType.MAP
     if isinstance(type, NumericType):
         return DataType.NUMERIC
+    if isinstance(type, TraitDataType):
+        return type.type
     return type
 
 
@@ -1531,7 +1533,9 @@ def get_concept_arguments(expr) -> List["ConceptRef"]:
 class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
-    output_datatype: DataType | ListType | StructType | MapType | NumericType
+    output_datatype: (
+        DataType | ListType | StructType | MapType | NumericType | TraitDataType
+    )
     output_purpose: Purpose
     valid_inputs: Optional[
         Union[
@@ -1777,7 +1781,7 @@ class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel)
         )
 
 
-class FilterItem(Namespaced, ConceptArgs, BaseModel):
+class FilterItem(DataTyped, Namespaced, ConceptArgs, BaseModel):
     content: ConceptRef
     where: "WhereClause"
 
