@@ -95,6 +95,10 @@ def get_cast_output_type(
     return args[1]
 
 
+def get_output_type_at_index(args, index: int):
+    return arg_to_datatype(args[index])
+
+
 def validate_case_output(
     args: list[Any],
 ) -> DataType:
@@ -174,7 +178,6 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.BOOL,
         },
         output_purpose=Purpose.METRIC,
-        output_type=DataType.INTEGER,
         arg_count=1,
     ),
     FunctionType.MIN: FunctionConfig(
@@ -187,7 +190,6 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.TIMESTAMP,
         },
         output_purpose=Purpose.METRIC,
-        output_type=DataType.INTEGER,
         arg_count=1,
     ),
     FunctionType.SPLIT: FunctionConfig(
@@ -238,7 +240,6 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.ABS: FunctionConfig(
         valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
         output_purpose=Purpose.PROPERTY,
-        output_type=DataType.INTEGER,
         arg_count=1,
     ),
     FunctionType.COALESCE: FunctionConfig(
@@ -567,6 +568,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             {DataType.INTEGER},
         ],
         output_purpose=Purpose.PROPERTY,
+        output_type_function=lambda args: get_output_type_at_index(args, 0),
         arg_count=2,
     ),
     FunctionType.CUSTOM: FunctionConfig(

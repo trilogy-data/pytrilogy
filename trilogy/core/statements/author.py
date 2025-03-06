@@ -135,7 +135,6 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         output.grain = output.calculate_grain(environment)
 
         for x in selection:
-
             if x.is_undefined and environment.concepts.fail_on_missing:
                 environment.concepts.raise_undefined(
                     x.concept.address, meta.line_number if meta else None
@@ -148,9 +147,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                     and not environment.frozen
                     and (x.concept.address not in environment.concepts)
                 ):
-                    # extra guard so that we only add on the second pass.
-                    if x.content.output.datatype != DataType.UNKNOWN:
-                        environment.add_concept(x.content.output)
+                    environment.add_concept(x.content.output)
                 x.content.output = x.content.output.set_select_grain(
                     output.grain, environment
                 )

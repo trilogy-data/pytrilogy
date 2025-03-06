@@ -16,6 +16,7 @@ from typing import (
     Tuple,
     Type,
     Union,
+    Callable,
 )
 
 from pydantic import (
@@ -1633,23 +1634,34 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         return v
 
     def with_reference_replacement(self, source: str, target: Expr):
+        from trilogy.core.functions import arg_to_datatype, merge_datatypes
+        nargs = [
+            (
+                c.with_reference_replacement(
+                    source,
+                    target,
+                )
+                if isinstance(
+                    c,
+                    Mergeable,
+                )
+                else c
+            )
+            for c in self.arguments
+        ]
+        if self.output_datatype == DataType.UNKNOWN:
+            new_output = merge_datatypes(
+                [
+                    arg_to_datatype(x)
+                    for x in nargs
+                ]
+            )
+        else:
+            new_output = self.output_datatype
         return Function.model_construct(
             operator=self.operator,
-            arguments=[
-                (
-                    c.with_reference_replacement(
-                        source,
-                        target,
-                    )
-                    if isinstance(
-                        c,
-                        Mergeable,
-                    )
-                    else c
-                )
-                for c in self.arguments
-            ],
-            output_datatype=self.output_datatype,
+            arguments=nargs,
+            output_datatype=new_output,
             output_purpose=self.output_purpose,
             valid_inputs=self.valid_inputs,
             arg_count=self.arg_count,

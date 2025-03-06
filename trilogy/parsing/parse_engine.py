@@ -275,6 +275,34 @@ class ParseToObjects(Transformer):
             v.run_second_parse_pass()
         reparsed = self.transform(self.tokens[self.token_address])
         self.environment.concepts.undefined = {}
+        passed = False
+        passes = 0
+        # output datatypes for functions may have been wrong
+        # as they were derived from not fully understood upstream types
+        # so loop through to recreate function lineage until all datatypes are known
+
+        while not passed:
+            new_passed = True
+            for x, y in self.environment.concepts.items():
+                
+                if y.datatype == DataType.UNKNOWN and y.lineage:
+                    print(y)
+                    if isinstance(y.lineage, Function):
+                        y.lineage = self.function_factory.create_function(
+                            y.lineage.arguments,
+                            operator=y.lineage.operator,
+                        )
+                        self.environment.concepts[x] = arbitrary_to_concept(
+                            y.lineage, self.environment, y.namespace, y.name, y.metadata
+                        )
+                        new_passed = False
+                        passes += 1
+            if passes > MAX_PARSE_DEPTH:
+                raise ValueError(
+                    f"Exceeded maximum parse depth {MAX_PARSE_DEPTH} for {self.token_address}"
+                )
+            passed = new_passed
+
         return reparsed
 
     def start(self, args):

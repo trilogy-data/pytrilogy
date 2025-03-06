@@ -367,6 +367,7 @@ def is_compatible_datatype(left, right):
 
 
 def arg_to_datatype(arg) -> CONCRETE_TYPES:
+
     if isinstance(arg, MagicConstants):
         if arg == MagicConstants.NULL:
             return DataType.NULL
