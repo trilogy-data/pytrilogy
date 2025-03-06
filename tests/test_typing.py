@@ -1,5 +1,7 @@
-from trilogy import Dialects
 from decimal import Decimal
+
+from trilogy import Dialects
+
 
 def test_typing():
     env = Dialects.DUCK_DB.default_executor()
@@ -74,7 +76,7 @@ sum(revenue*multiplier)->total;"""
     )
 
     for row in results.fetchall():
-        assert row.total == Decimal('40.00')
+        assert row.total == Decimal("40.00")
 
     assert "money" in env.environment.data_types
     assert env.environment.concepts["direct_total"].datatype.traits == ["money"]

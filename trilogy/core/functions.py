@@ -680,10 +680,10 @@ class FunctionFactory:
             full_args = []
         final_output_type: CONCRETE_TYPES
         if config.output_type_function:
-            
+
             final_output_type = config.output_type_function(full_args)
         elif not base_output_type:
-            
+
             final_output_type = merge_datatypes([arg_to_datatype(x) for x in full_args])
         elif base_output_type:
             final_output_type = base_output_type
@@ -694,7 +694,6 @@ class FunctionFactory:
                 output_purpose = Purpose.METRIC
             else:
                 output_purpose = Purpose.PROPERTY
-
 
         return Function(
             operator=operator,

@@ -1531,7 +1531,9 @@ def get_concept_arguments(expr) -> List["ConceptRef"]:
 class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
-    output_datatype: DataType | ListType | StructType | MapType | NumericType | TraitDataType
+    output_datatype: (
+        DataType | ListType | StructType | MapType | NumericType | TraitDataType
+    )
     output_purpose: Purpose
     valid_inputs: Optional[
         Union[

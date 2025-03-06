@@ -103,7 +103,7 @@ class TraitDataType(BaseModel):
 
     def __hash__(self):
         return hash(self.type)
-    
+
     def __eq__(self, other):
         if isinstance(other, DataType):
             return self.type == other

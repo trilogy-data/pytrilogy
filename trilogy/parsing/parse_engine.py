@@ -552,8 +552,6 @@ class ParseToObjects(Transformer):
                 metadata=metadata,
             )
 
-            
-
             if purpose and purpose != Purpose.AUTO and concept.purpose != purpose:
                 raise SyntaxError(
                     f'Concept {name} purpose {concept.purpose} does not match declared purpose {purpose}. Suggest defaulting to "auto"'
