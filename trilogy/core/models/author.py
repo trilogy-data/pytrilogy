@@ -1781,7 +1781,7 @@ class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel)
         )
 
 
-class FilterItem(Namespaced, ConceptArgs, BaseModel):
+class FilterItem(DataTyped, Namespaced, ConceptArgs, BaseModel):
     content: ConceptRef
     where: "WhereClause"
 
