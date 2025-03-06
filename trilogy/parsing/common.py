@@ -193,6 +193,8 @@ def concept_is_relevant(
     if isinstance(concept, UndefinedConcept):
 
         return False
+    if concept.datatype == DataType.UNKNOWN:
+        return False
     if isinstance(concept, ConceptRef):
         if environment:
             concept = environment.concepts[concept.address]

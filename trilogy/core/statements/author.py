@@ -33,6 +33,7 @@ from trilogy.core.models.author import (
     WhereClause,
     WindowItem,
 )
+from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import Address, ColumnAssignment, Datasource
 from trilogy.core.models.environment import (
     Environment,
@@ -145,12 +146,11 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                 if (
                     CONFIG.select_as_definition
                     and not environment.frozen
-                    and (
-                        x.concept.address not in environment.concepts
-                        or x.concept.address in output.locally_derived
-                    )
+                    and (x.concept.address not in environment.concepts)
                 ):
-                    environment.add_concept(x.content.output)
+                    # extra guard so that we only add on the second pass.
+                    if x.content.output.datatype != DataType.UNKNOWN:
+                        environment.add_concept(x.content.output)
                 x.content.output = x.content.output.set_select_grain(
                     output.grain, environment
                 )
@@ -161,7 +161,6 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                 output.local_concepts[x.content.address] = environment.concepts[
                     x.content.address
                 ]  # .set_select_grain(output.grain, environment)
-
         output.validate_syntax(environment)
         return output
 

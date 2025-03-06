@@ -1549,6 +1549,7 @@ class Factory:
         new_lineage, final_grain, _ = base.get_select_grain_and_keys(
             self.grain, self.environment
         )
+        print(new_lineage)
         build_lineage = self.build(new_lineage)
         derivation = Concept.calculate_derivation(build_lineage, base.purpose)
         granularity = Concept.calculate_granularity(

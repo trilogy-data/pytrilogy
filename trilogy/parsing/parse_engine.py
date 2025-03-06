@@ -1075,7 +1075,7 @@ class ParseToObjects(Transformer):
         if not select_items:
             raise ValueError("Malformed select, missing select items")
 
-        return SelectStatement.from_inputs(
+        base = SelectStatement.from_inputs(
             environment=self.environment,
             selection=select_items,
             order_by=order_by,
@@ -1084,6 +1084,7 @@ class ParseToObjects(Transformer):
             limit=limit,
             meta=Metadata(line_number=meta.line),
         )
+        return base
 
     @v_args(meta=True)
     def address(self, meta: Meta, args):
