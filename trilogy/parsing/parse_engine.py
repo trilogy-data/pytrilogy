@@ -4,7 +4,7 @@ from enum import Enum
 from os.path import dirname, join
 from pathlib import Path
 from re import IGNORECASE
-from typing import List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 from lark import Lark, ParseTree, Transformer, Tree, v_args
 from lark.exceptions import (
@@ -68,6 +68,7 @@ from trilogy.core.models.author import (
     OrderBy,
     OrderItem,
     Parenthetical,
+    RowsetItem,
     SubselectComparison,
     WhereClause,
     Window,
@@ -77,6 +78,7 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.core import (
     DataType,
+    DataTyped,
     ListType,
     ListWrapper,
     MapType,
@@ -223,6 +225,56 @@ def unwrap_transformation(
         )
 
 
+def rehydrate_lineage(
+    lineage: Any, environment: Environment, function_factory: FunctionFactory
+) -> Any:
+    """Fix datatype propagation. This is a hack to fix the fact that we don't know the datatypes of functions until we've parsed all concepts"""
+    if isinstance(lineage, Function):
+        rehydrated = [
+            rehydrate_lineage(x, environment, function_factory)
+            for x in lineage.arguments
+        ]
+        for x in rehydrated:
+            print(x)
+            if isinstance(x, DataTyped):
+                print(x.output_datatype)
+        return function_factory.create_function(
+            rehydrated,
+            operator=lineage.operator,
+        )
+    elif isinstance(lineage, Parenthetical):
+        lineage.content = rehydrate_lineage(
+            lineage.content, environment, function_factory
+        )
+        return lineage
+    elif isinstance(lineage, WindowItem):
+        lineage.content.datatype = environment.concepts[
+            lineage.content.address
+        ].datatype
+        return lineage
+    elif isinstance(lineage, AggregateWrapper):
+        lineage.function = rehydrate_lineage(
+            lineage.function, environment, function_factory
+        )
+        return lineage
+    elif isinstance(lineage, RowsetItem):
+        lineage.content.datatype = environment.concepts[
+            lineage.content.address
+        ].datatype
+        return lineage
+    else:
+        return lineage
+
+
+def rehydrate_concept_lineage(
+    concept: Concept, environment: Environment, function_factory: FunctionFactory
+) -> Concept:
+    concept.lineage = rehydrate_lineage(concept.lineage, environment, function_factory)
+    if isinstance(concept.lineage, DataTyped):
+        concept.datatype = concept.lineage.output_datatype
+    return concept
+
+
 class ParseToObjects(Transformer):
     def __init__(
         self,
@@ -284,23 +336,14 @@ class ParseToObjects(Transformer):
         while not passed:
             new_passed = True
             for x, y in self.environment.concepts.items():
-                
                 if y.datatype == DataType.UNKNOWN and y.lineage:
-                    print(y)
-                    if isinstance(y.lineage, Function):
-                        y.lineage = self.function_factory.create_function(
-                            y.lineage.arguments,
-                            operator=y.lineage.operator,
-                        )
-                        self.environment.concepts[x] = arbitrary_to_concept(
-                            y.lineage, self.environment, y.namespace, y.name, y.metadata
-                        )
-                        new_passed = False
-                        passes += 1
+                    self.environment.concepts[x] = rehydrate_concept_lineage(
+                        y, self.environment, self.function_factory
+                    )
+                    new_passed = False
+            passes += 1
             if passes > MAX_PARSE_DEPTH:
-                raise ValueError(
-                    f"Exceeded maximum parse depth {MAX_PARSE_DEPTH} for {self.token_address}"
-                )
+                break
             passed = new_passed
 
         return reparsed

@@ -100,7 +100,6 @@ revenue-revenue_two->sub_total
     assert env.environment.concepts["sub_total"].datatype.traits == ["money"]
 
 
-
 def test_custom_function_typing():
     env = Dialects.DUCK_DB.default_executor()
     env.environment.parse(
@@ -129,7 +128,7 @@ select 10.0 as revenue, 13.1 as revenue_two, 3.0 as multiplier
 """
     )
 
-    results = env.execute_query(
+    _ = env.execute_query(
         """
 with scaled as
 SELECT
@@ -143,5 +142,4 @@ sum(
 """
     )
 
-
-    assert  env.environment.concepts["total"].datatype.traits == ["money"]
+    assert env.environment.concepts["total"].datatype.traits == ["money"]

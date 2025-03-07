@@ -33,7 +33,6 @@ from trilogy.core.models.author import (
     WhereClause,
     WindowItem,
 )
-from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import Address, ColumnAssignment, Datasource
 from trilogy.core.models.environment import (
     Environment,

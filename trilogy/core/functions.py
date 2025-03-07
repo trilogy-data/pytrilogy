@@ -145,6 +145,9 @@ def get_date_trunc_output(
 
 
 FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
+    FunctionType.PARENTHETICAL: FunctionConfig(
+        arg_count=1,
+    ),
     FunctionType.UNNEST: FunctionConfig(
         valid_inputs={
             DataType.ARRAY,
@@ -637,7 +640,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
 EXCLUDED_FUNCTIONS = {
     FunctionType.CUSTOM,
     FunctionType.ALIAS,
-    FunctionType.PARENTHETICAL,
+    # FunctionType.PARENTHETICAL,
     # Temporary
     FunctionType.DATE_LITERAL,
     FunctionType.DATETIME_LITERAL,

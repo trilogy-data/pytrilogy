@@ -16,7 +16,6 @@ from typing import (
     Tuple,
     Type,
     Union,
-    Callable,
 )
 
 from pydantic import (
@@ -1635,6 +1634,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
 
     def with_reference_replacement(self, source: str, target: Expr):
         from trilogy.core.functions import arg_to_datatype, merge_datatypes
+
         nargs = [
             (
                 c.with_reference_replacement(
@@ -1650,12 +1650,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
             for c in self.arguments
         ]
         if self.output_datatype == DataType.UNKNOWN:
-            new_output = merge_datatypes(
-                [
-                    arg_to_datatype(x)
-                    for x in nargs
-                ]
-            )
+            new_output = merge_datatypes([arg_to_datatype(x) for x in nargs])
         else:
             new_output = self.output_datatype
         return Function.model_construct(
@@ -1853,7 +1848,7 @@ class RowsetLineage(Namespaced, Mergeable, BaseModel):
         )
 
 
-class RowsetItem(Mergeable, ConceptArgs, Namespaced, BaseModel):
+class RowsetItem(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel):
     content: ConceptRef
     rowset: RowsetLineage
 

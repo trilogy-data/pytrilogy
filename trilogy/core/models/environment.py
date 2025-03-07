@@ -267,7 +267,6 @@ class Environment(BaseModel):
                 arguments=[str(self.working_path)],
                 output_datatype=DataType.STRING,
                 output_purpose=Purpose.CONSTANT,
-                output_type_resolver= lambda args: DataType.STRING,
             ),
             datatype=DataType.STRING,
             granularity=Granularity.SINGLE_ROW,

@@ -15,7 +15,6 @@ DEFAULT_CONCEPTS = {
             arguments=[1],
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.CONSTANT,
-            output_type_resolver= lambda args: DataType.INTEGER,
         ),
         granularity=Granularity.SINGLE_ROW,
         derivation=Derivation.CONSTANT,

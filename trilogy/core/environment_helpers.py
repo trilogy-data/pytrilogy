@@ -45,7 +45,6 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             output_datatype=DataType.INTEGER,
             output_purpose=default_type,
             arguments=[concept],
-            output_type_resolver= lambda args: DataType.INTEGER,
         )
         new_concept = Concept(
             name=f"{concept.name}.{fname}",
@@ -133,7 +132,6 @@ def generate_key_concepts(concept: Concept, environment: Environment):
             output_datatype=DataType.INTEGER,
             output_purpose=default_type,
             arguments=[concept],
-            output_type_resolver=lambda args: DataType.INTEGER,
         )
         new_concept = Concept(
             name=f"{concept.name}.{fname}",
