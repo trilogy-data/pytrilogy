@@ -60,7 +60,6 @@ def process_function_arg(
             arguments=processed,
             output_datatype=arg_to_datatype(processed[0]),
             output_purpose=function_args_to_output_purpose(processed),
-            output_type_resolver=lambda args: arg_to_datatype(args[0]),
         )
     elif isinstance(arg, Function):
         # if it's not an aggregate function, we can skip the virtual concepts
