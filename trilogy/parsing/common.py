@@ -100,6 +100,8 @@ def process_function_arg(
             concept.metadata.line_number = meta.line
         environment.add_concept(concept, meta=meta)
         return concept
+    elif isinstance(arg, ConceptRef):
+        return environment.concepts[arg.address]
     return arg
 
 
@@ -192,6 +194,8 @@ def concept_is_relevant(
 ) -> bool:
     if isinstance(concept, UndefinedConcept):
 
+        return False
+    if concept.datatype == DataType.UNKNOWN:
         return False
     if isinstance(concept, ConceptRef):
         if environment:

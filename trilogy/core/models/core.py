@@ -51,7 +51,13 @@ class Addressable(ABC):
 
 
 TYPEDEF_TYPES = Union[
-    "DataType", "MapType", "ListType", "NumericType", "StructType", "DataTyped"
+    "DataType",
+    "MapType",
+    "ListType",
+    "NumericType",
+    "StructType",
+    "DataTyped",
+    "TraitDataType",
 ]
 
 CONCRETE_TYPES = Union[
@@ -60,6 +66,7 @@ CONCRETE_TYPES = Union[
     "ListType",
     "NumericType",
     "StructType",
+    "TraitDataType",
 ]
 
 KT = TypeVar("KT")
@@ -100,6 +107,16 @@ class DataType(Enum):
 class TraitDataType(BaseModel):
     type: DataType
     traits: list[str]
+
+    def __hash__(self):
+        return hash(self.type)
+
+    def __eq__(self, other):
+        if isinstance(other, DataType):
+            return self.type == other
+        elif isinstance(other, TraitDataType):
+            return self.type == other.type and self.traits == other.traits
+        return False
 
     @property
     def data_type(self):
@@ -312,8 +329,10 @@ def dict_to_map_wrapper(arg):
 
 
 def merge_datatypes(
-    inputs: list[DataType | ListType | StructType | MapType | NumericType],
-) -> DataType | ListType | StructType | MapType | NumericType:
+    inputs: list[
+        DataType | ListType | StructType | MapType | NumericType | TraitDataType
+    ],
+) -> DataType | ListType | StructType | MapType | NumericType | TraitDataType:
     """This is a temporary hack for doing between
     allowable datatype transformation matrix"""
     if len(inputs) == 1:
@@ -348,6 +367,7 @@ def is_compatible_datatype(left, right):
 
 
 def arg_to_datatype(arg) -> CONCRETE_TYPES:
+
     if isinstance(arg, MagicConstants):
         if arg == MagicConstants.NULL:
             return DataType.NULL

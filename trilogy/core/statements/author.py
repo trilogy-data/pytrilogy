@@ -134,7 +134,6 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         output.grain = output.calculate_grain(environment)
 
         for x in selection:
-
             if x.is_undefined and environment.concepts.fail_on_missing:
                 environment.concepts.raise_undefined(
                     x.concept.address, meta.line_number if meta else None
@@ -158,7 +157,6 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                 output.local_concepts[x.content.address] = environment.concepts[
                     x.content.address
                 ]  # .set_select_grain(output.grain, environment)
-
         output.validate_syntax(environment)
         return output
 

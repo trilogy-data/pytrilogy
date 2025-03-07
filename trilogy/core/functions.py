@@ -29,6 +29,7 @@ from trilogy.core.models.core import (
     MapType,
     NumericType,
     StructType,
+    TraitDataType,
     arg_to_datatype,
     merge_datatypes,
 )
@@ -94,6 +95,10 @@ def get_cast_output_type(
     return args[1]
 
 
+def get_output_type_at_index(args, index: int):
+    return arg_to_datatype(args[index])
+
+
 def validate_case_output(
     args: list[Any],
 ) -> DataType:
@@ -140,6 +145,9 @@ def get_date_trunc_output(
 
 
 FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
+    FunctionType.PARENTHETICAL: FunctionConfig(
+        arg_count=1,
+    ),
     FunctionType.UNNEST: FunctionConfig(
         valid_inputs={
             DataType.ARRAY,
@@ -173,7 +181,6 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.BOOL,
         },
         output_purpose=Purpose.METRIC,
-        output_type=DataType.INTEGER,
         arg_count=1,
     ),
     FunctionType.MIN: FunctionConfig(
@@ -186,7 +193,6 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.TIMESTAMP,
         },
         output_purpose=Purpose.METRIC,
-        output_type=DataType.INTEGER,
         arg_count=1,
     ),
     FunctionType.SPLIT: FunctionConfig(
@@ -237,7 +243,6 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.ABS: FunctionConfig(
         valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
         output_purpose=Purpose.PROPERTY,
-        output_type=DataType.INTEGER,
         arg_count=1,
     ),
     FunctionType.COALESCE: FunctionConfig(
@@ -519,7 +524,6 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.NUMERIC,
         },
         output_purpose=Purpose.PROPERTY,
-        output_type=DataType.INTEGER,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.SUBTRACT: FunctionConfig(
@@ -530,7 +534,6 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.NUMERIC,
         },
         output_purpose=Purpose.PROPERTY,
-        output_type=DataType.INTEGER,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.MULTIPLY: FunctionConfig(
@@ -541,7 +544,6 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.NUMERIC,
         },
         output_purpose=Purpose.PROPERTY,
-        output_type=DataType.INTEGER,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.DIVIDE: FunctionConfig(
@@ -552,7 +554,6 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.NUMERIC,
         },
         output_purpose=Purpose.PROPERTY,
-        output_type=DataType.INTEGER,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.MOD: FunctionConfig(
@@ -570,7 +571,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             {DataType.INTEGER},
         ],
         output_purpose=Purpose.PROPERTY,
-        output_type=DataType.INTEGER,
+        output_type_function=lambda args: get_output_type_at_index(args, 0),
         arg_count=2,
     ),
     FunctionType.CUSTOM: FunctionConfig(
@@ -621,13 +622,11 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.SUM: FunctionConfig(
         valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
         output_purpose=Purpose.METRIC,
-        output_type=DataType.INTEGER,
         arg_count=1,
     ),
     FunctionType.AVG: FunctionConfig(
         valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
         output_purpose=Purpose.METRIC,
-        output_type=DataType.INTEGER,
         arg_count=1,
     ),
     FunctionType.UNIX_TO_TIMESTAMP: FunctionConfig(
@@ -641,7 +640,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
 EXCLUDED_FUNCTIONS = {
     FunctionType.CUSTOM,
     FunctionType.ALIAS,
-    FunctionType.PARENTHETICAL,
+    # FunctionType.PARENTHETICAL,
     # Temporary
     FunctionType.DATE_LITERAL,
     FunctionType.DATETIME_LITERAL,
@@ -686,8 +685,10 @@ class FunctionFactory:
             full_args = []
         final_output_type: CONCRETE_TYPES
         if config.output_type_function:
+
             final_output_type = config.output_type_function(full_args)
         elif not base_output_type:
+
             final_output_type = merge_datatypes([arg_to_datatype(x) for x in full_args])
         elif base_output_type:
             final_output_type = base_output_type
@@ -715,7 +716,7 @@ def create_function_derived_concept(
     operator: FunctionType,
     arguments: list[Concept],
     output_type: Optional[
-        DataType | ListType | StructType | MapType | NumericType
+        DataType | ListType | StructType | MapType | NumericType | TraitDataType
     ] = None,
     output_purpose: Optional[Purpose] = None,
 ) -> Concept:
