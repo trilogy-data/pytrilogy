@@ -234,10 +234,6 @@ def rehydrate_lineage(
             rehydrate_lineage(x, environment, function_factory)
             for x in lineage.arguments
         ]
-        for x in rehydrated:
-            print(x)
-            if isinstance(x, DataTyped):
-                print(x.output_datatype)
         return function_factory.create_function(
             rehydrated,
             operator=lineage.operator,
