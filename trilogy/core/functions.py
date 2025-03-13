@@ -375,6 +375,21 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type=DataType.DATE,
         arg_count=3,
     ),
+    FunctionType.DATE_SUB: FunctionConfig(
+        valid_inputs=[
+            {
+                DataType.DATE,
+                DataType.TIMESTAMP,
+                DataType.DATETIME,
+                DataType.STRING,
+            },
+            {DataType.DATE_PART},
+            {DataType.INTEGER},
+        ],
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.DATE,
+        arg_count=3,
+    ),
     FunctionType.DATE_DIFF: FunctionConfig(
         valid_inputs=[
             {

@@ -382,7 +382,12 @@ class MergeStatementV2(HasUUID, BaseModel):
 
 
 class ImportStatement(HasUUID, BaseModel):
+    # import abc.def as bar
+    # the bit after 'as', eg bar
     alias: str
+    # the bit after import, abc.def
+    input_path: str
+    # what it actually resolves to, typically a filepath
     path: Path
 
 

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import networkx as nx
@@ -1032,3 +1032,34 @@ address `{nations_path}`;
     )
 
     assert r.fetchall()[0].customer_count == 72
+
+
+def test_duckdb_date_add():
+    executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+
+    r = executor.execute_query(
+        r"""
+auto today <- date_add(current_datetime(), day, -3);
+select today;
+"""
+    )
+
+    results = r.fetchall()
+
+    assert results[0].today.date() == datetime.now().date() - timedelta(days=3)
+
+
+def test_duckdb_alias():
+    executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+
+    r = executor.execute_query(
+        r"""
+auto today <- date_add(current_datetime(), day, -3);
+select today as tomorrow, today;
+"""
+    )
+
+    results = r.fetchall()
+
+    assert results[0].today.date() == datetime.now().date() - timedelta(days=3)
+    assert results[0].tomorrow.date()  == datetime.now().date() - timedelta(days=3)
