@@ -792,10 +792,10 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
     def __repr__(self):
         base = f"{self.address}@{self.grain}"
         return base
-    
+
     @property
-    def is_internal(self)->bool:
-        return self.namespace.startswith('_') or self.name.startswith('_')
+    def is_internal(self) -> bool:
+        return self.namespace.startswith("_") or self.name.startswith("_")
 
     @property
     def reference(self) -> ConceptRef:

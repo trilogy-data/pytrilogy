@@ -1062,4 +1062,4 @@ select today as tomorrow, today;
     results = r.fetchall()
 
     assert results[0].today.date() == datetime.now().date() - timedelta(days=3)
-    assert results[0].tomorrow.date()  == datetime.now().date() - timedelta(days=3)
+    assert results[0].tomorrow.date() == datetime.now().date() - timedelta(days=3)

@@ -972,7 +972,9 @@ class ParseToObjects(Transformer):
 
         # we don't iterate past the max parse depth
         if len(key_path) > MAX_PARSE_DEPTH:
-            return ImportStatement(alias=alias, input_path=input_path, path=Path(target))
+            return ImportStatement(
+                alias=alias, input_path=input_path, path=Path(target)
+            )
 
         if token_lookup in self.tokens:
             raw_tokens = self.tokens[token_lookup]
@@ -1582,9 +1584,11 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fdate_add(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.DATE_ADD, meta)
+
     @v_args(meta=True)
     def fdate_sub(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.DATE_SUB, meta)
+
     @v_args(meta=True)
     def fdate_diff(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.DATE_DIFF, meta)

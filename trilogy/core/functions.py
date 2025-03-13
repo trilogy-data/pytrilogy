@@ -145,6 +145,9 @@ def get_date_trunc_output(
 
 
 FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
+    FunctionType.ALIAS: FunctionConfig(
+        arg_count=1,
+    ),
     FunctionType.PARENTHETICAL: FunctionConfig(
         arg_count=1,
     ),
@@ -654,8 +657,6 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
 
 EXCLUDED_FUNCTIONS = {
     FunctionType.CUSTOM,
-    FunctionType.ALIAS,
-    # FunctionType.PARENTHETICAL,
     # Temporary
     FunctionType.DATE_LITERAL,
     FunctionType.DATETIME_LITERAL,
@@ -664,7 +665,9 @@ EXCLUDED_FUNCTIONS = {
 
 for k in FunctionType.__members__.values():
     if k not in FUNCTION_REGISTRY and k not in EXCLUDED_FUNCTIONS:
-        raise InvalidSyntaxException(f"Function {k} not in registry")
+        raise InvalidSyntaxException(
+            f"Function enum value {k} not in creation registry"
+        )
 
 
 class FunctionFactory:
