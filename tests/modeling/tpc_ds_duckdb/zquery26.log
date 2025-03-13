@@ -1,9 +1,9 @@
 query_id = 26
-gen_length = 2348
+gen_length = 2357
 generated_sql = """
 
 WITH 
-thoughtful as (
+cooperative as (
 SELECT
     cast(cs_date_date.\"D_YEAR\" as int) as \"cs_date_year\",
     cs_bill_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" as \"cs_bill_customer_demographic_education_status\",
@@ -28,15 +28,15 @@ WHERE
     cs_bill_customer_demographic_customer_demographics.\"CD_GENDER\" = 'M' and cs_bill_customer_demographic_customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and cs_bill_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( cs_promotion_promotion.\"P_CHANNEL_EMAIL\" = 'N' or cs_promotion_promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(cs_date_date.\"D_YEAR\" as int) = 2000
 )
 SELECT
-    thoughtful.\"cs_item_name\" as \"cs_item_name\",
-    avg(thoughtful.\"cs_quantity\") as \"agg1\",
-    avg(thoughtful.\"cs_list_price\") as \"agg2\",
-    avg(thoughtful.\"cs_coupon_amt\") as \"agg3\",
-    avg(thoughtful.\"cs_sales_price\") as \"agg4\"
+    cooperative.\"cs_item_name\" as \"cs_item_name\",
+    avg(cooperative.\"cs_quantity\") as \"agg1\",
+    avg(cooperative.\"cs_list_price\") as \"agg2\",
+    avg(cooperative.\"cs_coupon_amt\") as \"agg3\",
+    avg(cooperative.\"cs_sales_price\") as \"agg4\"
 FROM
-    thoughtful
+    cooperative
 GROUP BY 
-    thoughtful.\"cs_item_name\"
+    cooperative.\"cs_item_name\"
 ORDER BY 
-    thoughtful.\"cs_item_name\" asc
+    cooperative.\"cs_item_name\" asc
 LIMIT (100)"""

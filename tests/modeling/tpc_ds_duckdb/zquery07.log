@@ -1,9 +1,9 @@
 query_id = 7
-gen_length = 2784
+gen_length = 2793
 generated_sql = """
 
 WITH 
-thoughtful as (
+cooperative as (
 SELECT
     cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
     store_sales_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" as \"store_sales_customer_demographic_education_status\",
@@ -28,15 +28,15 @@ WHERE
     store_sales_customer_demographic_customer_demographics.\"CD_GENDER\" = 'M' and store_sales_customer_demographic_customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and store_sales_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( store_sales_promotion_promotion.\"P_CHANNEL_EMAIL\" = 'N' or store_sales_promotion_promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(store_sales_date_date.\"D_YEAR\" as int) = 2000
 )
 SELECT
-    thoughtful.\"store_sales_item_name\" as \"store_sales_item_name\",
-    avg(thoughtful.\"store_sales_quantity\") as \"avg_quantity\",
-    avg(thoughtful.\"store_sales_list_price\") as \"avg_list_price\",
-    avg(thoughtful.\"store_sales_coupon_amt\") as \"avg_coupon_amt\",
-    avg(thoughtful.\"store_sales_sales_price\") as \"avg_sales_price\"
+    cooperative.\"store_sales_item_name\" as \"store_sales_item_name\",
+    avg(cooperative.\"store_sales_quantity\") as \"avg_quantity\",
+    avg(cooperative.\"store_sales_list_price\") as \"avg_list_price\",
+    avg(cooperative.\"store_sales_coupon_amt\") as \"avg_coupon_amt\",
+    avg(cooperative.\"store_sales_sales_price\") as \"avg_sales_price\"
 FROM
-    thoughtful
+    cooperative
 GROUP BY 
-    thoughtful.\"store_sales_item_name\"
+    cooperative.\"store_sales_item_name\"
 ORDER BY 
-    thoughtful.\"store_sales_item_name\" asc
+    cooperative.\"store_sales_item_name\" asc
 LIMIT (100)"""

@@ -595,18 +595,22 @@ def test_render_import():
     for obj in [ImportStatement, Import]:
         base = Path("/path/to/file.preql")
         test = Renderer().to_string(
-            obj(alias="user_id", path=str(PureWindowsPath(base)))
+            obj(alias="user_id", path=str(PureWindowsPath(base)), input_path="customer")
         )
 
         assert test == "import path.to.file as user_id;"
 
         base = Path("/path/to/file.preql")
-        test = Renderer().to_string(obj(alias="user_id", path=str(PurePosixPath(base))))
+        test = Renderer().to_string(
+            obj(alias="user_id", path=str(PurePosixPath(base)), input_path="customer")
+        )
 
         assert test == "import path.to.file as user_id;"
 
         base = Path("/path/to/file.preql")
-        test = Renderer().to_string(obj(alias="", path=str(PurePosixPath(base))))
+        test = Renderer().to_string(
+            obj(alias="", path=str(PurePosixPath(base)), input_path="customer")
+        )
 
         assert test == "import path.to.file;"
 

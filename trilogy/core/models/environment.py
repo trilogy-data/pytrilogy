@@ -58,6 +58,7 @@ if TYPE_CHECKING:
 class Import:
     alias: str
     path: Path
+    input_path: str | None = None
 
 
 class BaseImportResolver(BaseModel):

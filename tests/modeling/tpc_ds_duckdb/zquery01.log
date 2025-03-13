@@ -1,9 +1,9 @@
 query_id = 1
-gen_length = 1963
+gen_length = 1991
 generated_sql = """
 
 WITH 
-cheerful as (
+thoughtful as (
 SELECT
     cast(returns_return_date_date.\"D_YEAR\" as int) as \"returns_return_date_year\",
     returns_customer_customers.\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
@@ -20,32 +20,32 @@ FROM
 WHERE
     returns_store_store.\"S_STATE\" = 'TN' and cast(returns_return_date_date.\"D_YEAR\" as int) = 2000
 ),
-thoughtful as (
-SELECT
-    cheerful.\"returns_customer_text_id\" as \"returns_customer_text_id\",
-    cheerful.\"returns_store_id\" as \"returns_store_id\",
-    sum(cheerful.\"returns_return_amount\") as \"total_returns\"
-FROM
-    cheerful
-GROUP BY 
-    cheerful.\"returns_customer_text_id\",
-    cheerful.\"returns_store_id\"),
 cooperative as (
 SELECT
-    avg(thoughtful.\"total_returns\") as \"avg_store_returns\",
+    sum(thoughtful.\"returns_return_amount\") as \"total_returns\",
+    thoughtful.\"returns_customer_text_id\" as \"returns_customer_text_id\",
     thoughtful.\"returns_store_id\" as \"returns_store_id\"
 FROM
     thoughtful
 GROUP BY 
-    thoughtful.\"returns_store_id\")
+    thoughtful.\"returns_customer_text_id\",
+    thoughtful.\"returns_store_id\"),
+questionable as (
 SELECT
-    thoughtful.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+    avg(cooperative.\"total_returns\") as \"avg_store_returns\",
+    cooperative.\"returns_store_id\" as \"returns_store_id\"
 FROM
     cooperative
-    INNER JOIN thoughtful on cooperative.\"returns_store_id\" = thoughtful.\"returns_store_id\"
+GROUP BY 
+    cooperative.\"returns_store_id\")
+SELECT
+    cooperative.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+FROM
+    questionable
+    INNER JOIN cooperative on questionable.\"returns_store_id\" = cooperative.\"returns_store_id\"
 WHERE
-    thoughtful.\"total_returns\" > ( 1.2 * cooperative.\"avg_store_returns\" )
+    cooperative.\"total_returns\" > ( 1.2 * questionable.\"avg_store_returns\" )
 
 ORDER BY 
-    thoughtful.\"returns_customer_text_id\" asc
+    cooperative.\"returns_customer_text_id\" asc
 LIMIT (100)"""
