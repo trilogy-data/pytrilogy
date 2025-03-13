@@ -1,9 +1,9 @@
 query_id = 21
-gen_length = 2827
+gen_length = 2875
 generated_sql = """
 
 WITH 
-cheerful as (
+thoughtful as (
 SELECT
     cast(inventory_date_date.\"D_DATE\" as date) as \"inventory_date_date\",
     inventory_date_date.\"D_DATE_SK\" as \"inventory_date_id\",
@@ -21,49 +21,49 @@ WHERE
     cast(inventory_date_date.\"D_DATE\" as date) >= date '2000-02-10' and cast(inventory_date_date.\"D_DATE\" as date) <= date '2000-04-10' and inventory_item_items.\"I_CURRENT_PRICE\" >= 0.99 and inventory_item_items.\"I_CURRENT_PRICE\" <= 1.49
 )
 SELECT
-    cheerful.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
-    cheerful.\"inventory_item_name\" as \"inventory_item_name\",
+    thoughtful.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
+    thoughtful.\"inventory_item_name\" as \"inventory_item_name\",
     sum(CASE
-	WHEN cheerful.\"inventory_date_date\" < date '2000-03-11' THEN cheerful.\"inventory_quantity_on_hand\"
+	WHEN thoughtful.\"inventory_date_date\" < date '2000-03-11' THEN thoughtful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_before\",
     sum(CASE
-	WHEN cheerful.\"inventory_date_date\" >= date '2000-03-11' THEN cheerful.\"inventory_quantity_on_hand\"
+	WHEN thoughtful.\"inventory_date_date\" >= date '2000-03-11' THEN thoughtful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_after\"
 FROM
-    cheerful
+    thoughtful
 GROUP BY 
-    cheerful.\"inventory_item_name\",
-    cheerful.\"inventory_warehouse_name\"
+    thoughtful.\"inventory_item_name\",
+    thoughtful.\"inventory_warehouse_name\"
 HAVING
     CASE
 	WHEN sum(CASE
-	WHEN cheerful.\"inventory_date_date\" < date '2000-03-11' THEN cheerful.\"inventory_quantity_on_hand\"
+	WHEN thoughtful.\"inventory_date_date\" < date '2000-03-11' THEN thoughtful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) > 0 THEN (sum(CASE
-	WHEN cheerful.\"inventory_date_date\" >= date '2000-03-11' THEN cheerful.\"inventory_quantity_on_hand\"
+	WHEN thoughtful.\"inventory_date_date\" >= date '2000-03-11' THEN thoughtful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) * 1.0) / sum(CASE
-	WHEN cheerful.\"inventory_date_date\" < date '2000-03-11' THEN cheerful.\"inventory_quantity_on_hand\"
+	WHEN thoughtful.\"inventory_date_date\" < date '2000-03-11' THEN thoughtful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END)
 	ELSE null
 	END >= 2.0 / 3.0 and CASE
 	WHEN sum(CASE
-	WHEN cheerful.\"inventory_date_date\" < date '2000-03-11' THEN cheerful.\"inventory_quantity_on_hand\"
+	WHEN thoughtful.\"inventory_date_date\" < date '2000-03-11' THEN thoughtful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) > 0 THEN (sum(CASE
-	WHEN cheerful.\"inventory_date_date\" >= date '2000-03-11' THEN cheerful.\"inventory_quantity_on_hand\"
+	WHEN thoughtful.\"inventory_date_date\" >= date '2000-03-11' THEN thoughtful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) * 1.0) / sum(CASE
-	WHEN cheerful.\"inventory_date_date\" < date '2000-03-11' THEN cheerful.\"inventory_quantity_on_hand\"
+	WHEN thoughtful.\"inventory_date_date\" < date '2000-03-11' THEN thoughtful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END)
 	ELSE null
 	END <= 3.0 / 2.0
 
 ORDER BY 
-    cheerful.\"inventory_warehouse_name\" asc nulls first,
-    cheerful.\"inventory_item_name\" asc nulls first
+    thoughtful.\"inventory_warehouse_name\" asc nulls first,
+    thoughtful.\"inventory_item_name\" asc nulls first
 LIMIT (100)"""

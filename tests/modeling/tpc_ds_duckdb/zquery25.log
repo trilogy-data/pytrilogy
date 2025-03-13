@@ -1,9 +1,9 @@
 query_id = 25
-gen_length = 8993
+gen_length = 8997
 generated_sql = """
 
 WITH 
-yummy as (
+juicy as (
 SELECT
     catalog_sales_catalog_sales.\"CS_BILL_CUSTOMER_SK\" as \"store_sales_customer_id\",
     catalog_sales_catalog_sales.\"CS_ITEM_SK\" as \"store_sales_item_id\",
@@ -14,7 +14,7 @@ GROUP BY
     catalog_sales_catalog_sales.\"CS_BILL_CUSTOMER_SK\",
     catalog_sales_catalog_sales.\"CS_ITEM_SK\",
     catalog_sales_catalog_sales.\"CS_SOLD_DATE_SK\"),
-abundant as (
+uneven as (
 SELECT
     CASE WHEN store_sales_store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END as \"store_sales_is_returned\",
     cast(catalog_sales_date_date.\"D_YEAR\" as int) as \"catalog_sales_date_year\",
@@ -44,7 +44,7 @@ FROM
 WHERE
     cast(store_sales_date_date.\"D_YEAR\" as int) = 2001 and store_sales_date_date.\"D_MOY\" = 4 and cast(store_sales_return_date_date.\"D_YEAR\" as int) = 2001 and store_sales_return_date_date.\"D_MOY\" >= 4 and store_sales_return_date_date.\"D_MOY\" <= 10 and cast(catalog_sales_date_date.\"D_YEAR\" as int) = 2001 and catalog_sales_date_date.\"D_MOY\" >= 4 and catalog_sales_date_date.\"D_MOY\" <= 10 and store_sales_store_returns.\"SR_CUSTOMER_SK\" = store_sales_store_sales.\"SS_CUSTOMER_SK\" and CASE WHEN store_sales_store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
 ),
-juicy as (
+vacuous as (
 SELECT
     CASE WHEN store_sales_store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END as \"store_sales_is_returned\",
     cast(catalog_sales_date_date.\"D_YEAR\" as int) as \"catalog_sales_date_year\",
@@ -64,60 +64,60 @@ SELECT
     store_sales_store_store.\"S_STORE_ID\" as \"store_sales_store_text_id\",
     store_sales_store_store.\"S_STORE_NAME\" as \"store_sales_store_name\"
 FROM
-    yummy
-    INNER JOIN memory.store_sales as store_sales_store_sales on yummy.\"store_sales_customer_id\" = store_sales_store_sales.\"SS_CUSTOMER_SK\" AND yummy.\"store_sales_item_id\" = store_sales_store_sales.\"SS_ITEM_SK\"
-    INNER JOIN memory.item as store_sales_item_items on yummy.\"store_sales_item_id\" = store_sales_item_items.\"I_ITEM_SK\"
-    LEFT OUTER JOIN memory.store_returns as store_sales_store_returns on store_sales_store_sales.\"SS_ITEM_SK\" = store_sales_store_returns.\"SR_ITEM_SK\" AND store_sales_store_sales.\"SS_TICKET_NUMBER\" = store_sales_store_returns.\"SR_TICKET_NUMBER\" AND yummy.\"store_sales_item_id\" = store_sales_store_returns.\"SR_ITEM_SK\"
+    juicy
+    INNER JOIN memory.store_sales as store_sales_store_sales on juicy.\"store_sales_customer_id\" = store_sales_store_sales.\"SS_CUSTOMER_SK\" AND juicy.\"store_sales_item_id\" = store_sales_store_sales.\"SS_ITEM_SK\"
+    INNER JOIN memory.item as store_sales_item_items on juicy.\"store_sales_item_id\" = store_sales_item_items.\"I_ITEM_SK\"
+    LEFT OUTER JOIN memory.store_returns as store_sales_store_returns on juicy.\"store_sales_item_id\" = store_sales_store_returns.\"SR_ITEM_SK\" AND store_sales_store_sales.\"SS_ITEM_SK\" = store_sales_store_returns.\"SR_ITEM_SK\" AND store_sales_store_sales.\"SS_TICKET_NUMBER\" = store_sales_store_returns.\"SR_TICKET_NUMBER\"
     INNER JOIN memory.date_dim as store_sales_date_date on store_sales_store_sales.\"SS_SOLD_DATE_SK\" = store_sales_date_date.\"D_DATE_SK\"
     INNER JOIN memory.store as store_sales_store_store on store_sales_store_sales.\"SS_STORE_SK\" = store_sales_store_store.\"S_STORE_SK\"
-    INNER JOIN memory.date_dim as catalog_sales_date_date on yummy.\"catalog_sales_date_id\" = catalog_sales_date_date.\"D_DATE_SK\"
+    INNER JOIN memory.date_dim as catalog_sales_date_date on juicy.\"catalog_sales_date_id\" = catalog_sales_date_date.\"D_DATE_SK\"
     LEFT OUTER JOIN memory.date_dim as store_sales_return_date_date on store_sales_store_returns.\"SR_RETURNED_DATE_SK\" = store_sales_return_date_date.\"D_DATE_SK\"
 WHERE
     cast(store_sales_date_date.\"D_YEAR\" as int) = 2001 and store_sales_date_date.\"D_MOY\" = 4 and cast(store_sales_return_date_date.\"D_YEAR\" as int) = 2001 and store_sales_return_date_date.\"D_MOY\" >= 4 and store_sales_return_date_date.\"D_MOY\" <= 10 and cast(catalog_sales_date_date.\"D_YEAR\" as int) = 2001 and catalog_sales_date_date.\"D_MOY\" >= 4 and catalog_sales_date_date.\"D_MOY\" <= 10 and store_sales_store_returns.\"SR_CUSTOMER_SK\" = store_sales_store_sales.\"SS_CUSTOMER_SK\" and CASE WHEN store_sales_store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
 ),
-uneven as (
+yummy as (
 SELECT
-    abundant.\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    abundant.\"store_sales_item_name\" as \"store_sales_item_name\",
-    abundant.\"store_sales_store_name\" as \"store_sales_store_name\",
-    abundant.\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
-    sum(abundant.\"catalog_sales_net_profit\") as \"catalog_sales_profit\"
-FROM
-    abundant
-GROUP BY 
-    abundant.\"store_sales_item_desc\",
-    abundant.\"store_sales_item_name\",
-    abundant.\"store_sales_store_name\",
-    abundant.\"store_sales_store_text_id\"),
-vacuous as (
-SELECT
-    juicy.\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    juicy.\"store_sales_item_name\" as \"store_sales_item_name\",
-    juicy.\"store_sales_store_name\" as \"store_sales_store_name\",
-    juicy.\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
-    sum(juicy.\"store_sales_net_profit\") as \"store_sales_profit\",
-    sum(juicy.\"store_sales_return_net_loss\") as \"store_returns_loss\"
-FROM
-    juicy
-GROUP BY 
-    juicy.\"store_sales_item_desc\",
-    juicy.\"store_sales_item_name\",
-    juicy.\"store_sales_store_name\",
-    juicy.\"store_sales_store_text_id\")
-SELECT
-    uneven.\"store_sales_item_name\" as \"store_sales_item_name\",
+    sum(uneven.\"catalog_sales_net_profit\") as \"catalog_sales_profit\",
     uneven.\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    uneven.\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
+    uneven.\"store_sales_item_name\" as \"store_sales_item_name\",
     uneven.\"store_sales_store_name\" as \"store_sales_store_name\",
-    vacuous.\"store_sales_profit\" as \"store_sales_profit\",
-    vacuous.\"store_returns_loss\" as \"store_returns_loss\",
-    uneven.\"catalog_sales_profit\" as \"catalog_sales_profit\"
+    uneven.\"store_sales_store_text_id\" as \"store_sales_store_text_id\"
+FROM
+    uneven
+GROUP BY 
+    uneven.\"store_sales_item_desc\",
+    uneven.\"store_sales_item_name\",
+    uneven.\"store_sales_store_name\",
+    uneven.\"store_sales_store_text_id\"),
+concerned as (
+SELECT
+    sum(vacuous.\"store_sales_net_profit\") as \"store_sales_profit\",
+    sum(vacuous.\"store_sales_return_net_loss\") as \"store_returns_loss\",
+    vacuous.\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    vacuous.\"store_sales_item_name\" as \"store_sales_item_name\",
+    vacuous.\"store_sales_store_name\" as \"store_sales_store_name\",
+    vacuous.\"store_sales_store_text_id\" as \"store_sales_store_text_id\"
 FROM
     vacuous
-    INNER JOIN uneven on (vacuous.\"store_sales_item_desc\" = uneven.\"store_sales_item_desc\" or (vacuous.\"store_sales_item_desc\" is null and uneven.\"store_sales_item_desc\" is null)) AND vacuous.\"store_sales_item_name\" = uneven.\"store_sales_item_name\" AND vacuous.\"store_sales_store_name\" = uneven.\"store_sales_store_name\" AND vacuous.\"store_sales_store_text_id\" = uneven.\"store_sales_store_text_id\"
+GROUP BY 
+    vacuous.\"store_sales_item_desc\",
+    vacuous.\"store_sales_item_name\",
+    vacuous.\"store_sales_store_name\",
+    vacuous.\"store_sales_store_text_id\")
+SELECT
+    yummy.\"store_sales_item_name\" as \"store_sales_item_name\",
+    yummy.\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    yummy.\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
+    yummy.\"store_sales_store_name\" as \"store_sales_store_name\",
+    concerned.\"store_sales_profit\" as \"store_sales_profit\",
+    concerned.\"store_returns_loss\" as \"store_returns_loss\",
+    yummy.\"catalog_sales_profit\" as \"catalog_sales_profit\"
+FROM
+    concerned
+    INNER JOIN yummy on (concerned.\"store_sales_item_desc\" = yummy.\"store_sales_item_desc\" or (concerned.\"store_sales_item_desc\" is null and yummy.\"store_sales_item_desc\" is null)) AND concerned.\"store_sales_item_name\" = yummy.\"store_sales_item_name\" AND concerned.\"store_sales_store_name\" = yummy.\"store_sales_store_name\" AND concerned.\"store_sales_store_text_id\" = yummy.\"store_sales_store_text_id\"
 ORDER BY 
-    uneven.\"store_sales_item_name\" asc,
-    uneven.\"store_sales_item_desc\" asc,
-    uneven.\"store_sales_store_text_id\" asc,
-    uneven.\"store_sales_store_name\" asc
+    yummy.\"store_sales_item_name\" asc,
+    yummy.\"store_sales_item_desc\" asc,
+    yummy.\"store_sales_store_text_id\" asc,
+    yummy.\"store_sales_store_name\" asc
 LIMIT (100)"""

@@ -1,9 +1,9 @@
 query_id = 20
-gen_length = 2740
+gen_length = 2789
 generated_sql = """
 
 WITH 
-wakeful as (
+cheerful as (
 SELECT
     cast(cs_sold_date_date.\"D_DATE\" as date) as \"cs_sold_date_date\",
     cs_catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
@@ -21,22 +21,6 @@ FROM
 WHERE
     cs_item_items.\"I_CATEGORY\" in ('Sports','Books','Home') and cast(cs_sold_date_date.\"D_DATE\" as date) >= date '1999-02-22' and cast(cs_sold_date_date.\"D_DATE\" as date) <= date '1999-03-24'
 ),
-cheerful as (
-SELECT
-    sum(wakeful.\"cs_extra_sales_price\") as \"revenue\",
-    wakeful.\"cs_item_category\" as \"cs_item_category\",
-    wakeful.\"cs_item_class\" as \"cs_item_class\",
-    wakeful.\"cs_item_current_price\" as \"cs_item_current_price\",
-    wakeful.\"cs_item_desc\" as \"cs_item_desc\",
-    wakeful.\"cs_item_name\" as \"cs_item_name\"
-FROM
-    wakeful
-GROUP BY 
-    wakeful.\"cs_item_category\",
-    wakeful.\"cs_item_class\",
-    wakeful.\"cs_item_current_price\",
-    wakeful.\"cs_item_desc\",
-    wakeful.\"cs_item_name\"),
 thoughtful as (
 SELECT
     cheerful.\"cs_item_category\" as \"cs_item_category\",
@@ -44,24 +28,40 @@ SELECT
     cheerful.\"cs_item_current_price\" as \"cs_item_current_price\",
     cheerful.\"cs_item_desc\" as \"cs_item_desc\",
     cheerful.\"cs_item_name\" as \"cs_item_name\",
-    cheerful.\"revenue\" as \"revenue\",
-    sum(cheerful.\"revenue\") over (partition by cheerful.\"cs_item_class\") as \"_virt_window_sum_4519707562798106\"
+    sum(cheerful.\"cs_extra_sales_price\") as \"revenue\"
 FROM
-    cheerful)
+    cheerful
+GROUP BY 
+    cheerful.\"cs_item_category\",
+    cheerful.\"cs_item_class\",
+    cheerful.\"cs_item_current_price\",
+    cheerful.\"cs_item_desc\",
+    cheerful.\"cs_item_name\"),
+cooperative as (
 SELECT
-    thoughtful.\"cs_item_name\" as \"cs_item_name\",
-    thoughtful.\"cs_item_desc\" as \"cs_item_desc\",
+    sum(thoughtful.\"revenue\") over (partition by thoughtful.\"cs_item_class\") as \"_virt_window_sum_4519707562798106\",
     thoughtful.\"cs_item_category\" as \"cs_item_category\",
     thoughtful.\"cs_item_class\" as \"cs_item_class\",
     thoughtful.\"cs_item_current_price\" as \"cs_item_current_price\",
-    thoughtful.\"revenue\" as \"revenue\",
-    thoughtful.\"revenue\" * 100.0 / (thoughtful.\"_virt_window_sum_4519707562798106\") as \"revenue_ratio\"
+    thoughtful.\"cs_item_desc\" as \"cs_item_desc\",
+    thoughtful.\"cs_item_name\" as \"cs_item_name\",
+    thoughtful.\"revenue\" as \"revenue\"
 FROM
-    thoughtful
+    thoughtful)
+SELECT
+    cooperative.\"cs_item_name\" as \"cs_item_name\",
+    cooperative.\"cs_item_desc\" as \"cs_item_desc\",
+    cooperative.\"cs_item_category\" as \"cs_item_category\",
+    cooperative.\"cs_item_class\" as \"cs_item_class\",
+    cooperative.\"cs_item_current_price\" as \"cs_item_current_price\",
+    cooperative.\"revenue\" as \"revenue\",
+    cooperative.\"revenue\" * 100.0 / (cooperative.\"_virt_window_sum_4519707562798106\") as \"revenue_ratio\"
+FROM
+    cooperative
 ORDER BY 
-    thoughtful.\"cs_item_category\" asc nulls first,
-    thoughtful.\"cs_item_class\" asc nulls first,
-    thoughtful.\"cs_item_name\" asc nulls first,
-    thoughtful.\"cs_item_desc\" asc nulls first,
-    thoughtful.\"revenue\" * 100.0 / (thoughtful.\"_virt_window_sum_4519707562798106\") asc nulls first
+    cooperative.\"cs_item_category\" asc nulls first,
+    cooperative.\"cs_item_class\" asc nulls first,
+    cooperative.\"cs_item_name\" asc nulls first,
+    cooperative.\"cs_item_desc\" asc nulls first,
+    cooperative.\"revenue\" * 100.0 / (cooperative.\"_virt_window_sum_4519707562798106\") asc nulls first
 LIMIT (100)"""

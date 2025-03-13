@@ -193,6 +193,7 @@ class FunctionType(Enum):
     DATE_PART = "date_part"
     DATE_TRUNCATE = "date_truncate"
     DATE_ADD = "date_add"
+    DATE_SUB = "date_sub"
     DATE_DIFF = "date_diff"
 
     # UNIX

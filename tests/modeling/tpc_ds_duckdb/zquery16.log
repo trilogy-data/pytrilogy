@@ -1,9 +1,9 @@
 query_id = 16
-gen_length = 5073
+gen_length = 5081
 generated_sql = """
 
 WITH 
-questionable as (
+abundant as (
 SELECT
     cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     cs_catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\"
@@ -12,34 +12,34 @@ FROM
 GROUP BY 
     cs_catalog_sales.\"CS_ORDER_NUMBER\",
     cs_catalog_sales.\"CS_WAREHOUSE_SK\"),
-cooperative as (
+questionable as (
 SELECT
     cr_catalog_returns.\"CR_ORDER_NUMBER\" as \"cr_order_number\"
 FROM
     memory.catalog_returns as cr_catalog_returns
 GROUP BY 
     cr_catalog_returns.\"CR_ORDER_NUMBER\"),
-abundant as (
-SELECT
-    count(questionable.\"cs_warehouse_id\") as \"_virt_agg_count_7777088585630721\",
-    questionable.\"cs_order_number\" as \"cs_order_number\"
-FROM
-    questionable
-GROUP BY 
-    questionable.\"cs_order_number\"),
 uneven as (
 SELECT
-    CASE WHEN abundant.\"_virt_agg_count_7777088585630721\" > 1 THEN abundant.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
+    abundant.\"cs_order_number\" as \"cs_order_number\",
+    count(abundant.\"cs_warehouse_id\") as \"_virt_agg_count_7777088585630721\"
 FROM
-    abundant),
+    abundant
+GROUP BY 
+    abundant.\"cs_order_number\"),
 yummy as (
 SELECT
-    uneven.\"multi_warehouse_sales\" as \"multi_warehouse_sales\"
+    CASE WHEN uneven.\"_virt_agg_count_7777088585630721\" > 1 THEN uneven.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
 FROM
-    uneven
+    uneven),
+juicy as (
+SELECT
+    yummy.\"multi_warehouse_sales\" as \"multi_warehouse_sales\"
+FROM
+    yummy
 GROUP BY 
-    uneven.\"multi_warehouse_sales\"),
-cheerful as (
+    yummy.\"multi_warehouse_sales\"),
+thoughtful as (
 SELECT
     cs_catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
     cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
@@ -48,14 +48,14 @@ SELECT
 FROM
     memory.catalog_sales as cs_catalog_sales
 WHERE
-    cs_catalog_sales.\"CS_ORDER_NUMBER\" not in (select cooperative.\"cr_order_number\" from cooperative where cooperative.\"cr_order_number\" is not null) and cs_catalog_sales.\"CS_ORDER_NUMBER\" in (select yummy.\"multi_warehouse_sales\" from yummy where yummy.\"multi_warehouse_sales\" is not null)
+    cs_catalog_sales.\"CS_ORDER_NUMBER\" not in (select questionable.\"cr_order_number\" from questionable where questionable.\"cr_order_number\" is not null) and cs_catalog_sales.\"CS_ORDER_NUMBER\" in (select juicy.\"multi_warehouse_sales\" from juicy where juicy.\"multi_warehouse_sales\" is not null)
 
 GROUP BY 
     cs_catalog_sales.\"CS_CALL_CENTER_SK\",
     cs_catalog_sales.\"CS_ORDER_NUMBER\",
     cs_catalog_sales.\"CS_SHIP_ADDR_SK\",
     cs_catalog_sales.\"CS_SHIP_DATE_SK\"),
-concerned as (
+young as (
 SELECT
     cast(cs_ship_date_date.\"D_DATE\" as date) as \"cs_ship_date_date\",
     cs_call_center_call_center.\"CC_COUNTY\" as \"cs_call_center_county\",
@@ -70,40 +70,40 @@ FROM
     INNER JOIN memory.date_dim as cs_ship_date_date on cs_catalog_sales.\"CS_SHIP_DATE_SK\" = cs_ship_date_date.\"D_DATE_SK\"
     INNER JOIN memory.call_center as cs_call_center_call_center on cs_catalog_sales.\"CS_CALL_CENTER_SK\" = cs_call_center_call_center.\"CC_CALL_CENTER_SK\"
 WHERE
-    cast(cs_ship_date_date.\"D_DATE\" as date) >= date '2002-02-01' and cast(cs_ship_date_date.\"D_DATE\" as date) <= date '2002-04-02' and cs_customer_customer_address.\"CA_STATE\" = 'GA' and cs_call_center_call_center.\"CC_COUNTY\" = 'Williamson County' and cs_catalog_sales.\"CS_ORDER_NUMBER\" not in (select cooperative.\"cr_order_number\" from cooperative where cooperative.\"cr_order_number\" is not null) and cs_catalog_sales.\"CS_ORDER_NUMBER\" in (select yummy.\"multi_warehouse_sales\" from yummy where yummy.\"multi_warehouse_sales\" is not null)
+    cast(cs_ship_date_date.\"D_DATE\" as date) >= date '2002-02-01' and cast(cs_ship_date_date.\"D_DATE\" as date) <= date '2002-04-02' and cs_customer_customer_address.\"CA_STATE\" = 'GA' and cs_call_center_call_center.\"CC_COUNTY\" = 'Williamson County' and cs_catalog_sales.\"CS_ORDER_NUMBER\" not in (select questionable.\"cr_order_number\" from questionable where questionable.\"cr_order_number\" is not null) and cs_catalog_sales.\"CS_ORDER_NUMBER\" in (select juicy.\"multi_warehouse_sales\" from juicy where juicy.\"multi_warehouse_sales\" is not null)
 ),
-juicy as (
-SELECT
-    cast(cs_ship_date_date.\"D_DATE\" as date) as \"cs_ship_date_date\",
-    cheerful.\"cs_order_number\" as \"cs_order_number\",
-    cs_call_center_call_center.\"CC_COUNTY\" as \"cs_call_center_county\",
-    cs_customer_customer_address.\"CA_STATE\" as \"cs_customer_state\"
-FROM
-    cheerful
-    INNER JOIN memory.customer_address as cs_customer_customer_address on cheerful.\"cs_customer_address_id\" = cs_customer_customer_address.\"CA_ADDRESS_SK\"
-    INNER JOIN memory.date_dim as cs_ship_date_date on cheerful.\"cs_ship_date_id\" = cs_ship_date_date.\"D_DATE_SK\"
-    INNER JOIN memory.call_center as cs_call_center_call_center on cheerful.\"cs_call_center_id\" = cs_call_center_call_center.\"CC_CALL_CENTER_SK\"
-WHERE
-    cast(cs_ship_date_date.\"D_DATE\" as date) >= date '2002-02-01' and cast(cs_ship_date_date.\"D_DATE\" as date) <= date '2002-04-02' and cs_customer_customer_address.\"CA_STATE\" = 'GA' and cs_call_center_call_center.\"CC_COUNTY\" = 'Williamson County' and cheerful.\"cs_order_number\" not in (select cooperative.\"cr_order_number\" from cooperative where cooperative.\"cr_order_number\" is not null) and cheerful.\"cs_order_number\" in (select yummy.\"multi_warehouse_sales\" from yummy where yummy.\"multi_warehouse_sales\" is not null)
-),
-young as (
-SELECT
-    sum(concerned.\"cs_extra_ship_cost\") as \"total_shipping_cost\",
-    sum(concerned.\"cs_net_profit\") as \"total_net_profit\"
-FROM
-    concerned),
 vacuous as (
 SELECT
-    count(distinct juicy.\"cs_order_number\") as \"order_count\"
+    cast(cs_ship_date_date.\"D_DATE\" as date) as \"cs_ship_date_date\",
+    cs_call_center_call_center.\"CC_COUNTY\" as \"cs_call_center_county\",
+    cs_customer_customer_address.\"CA_STATE\" as \"cs_customer_state\",
+    thoughtful.\"cs_order_number\" as \"cs_order_number\"
 FROM
-    juicy)
+    thoughtful
+    INNER JOIN memory.customer_address as cs_customer_customer_address on thoughtful.\"cs_customer_address_id\" = cs_customer_customer_address.\"CA_ADDRESS_SK\"
+    INNER JOIN memory.date_dim as cs_ship_date_date on thoughtful.\"cs_ship_date_id\" = cs_ship_date_date.\"D_DATE_SK\"
+    INNER JOIN memory.call_center as cs_call_center_call_center on thoughtful.\"cs_call_center_id\" = cs_call_center_call_center.\"CC_CALL_CENTER_SK\"
+WHERE
+    cast(cs_ship_date_date.\"D_DATE\" as date) >= date '2002-02-01' and cast(cs_ship_date_date.\"D_DATE\" as date) <= date '2002-04-02' and cs_customer_customer_address.\"CA_STATE\" = 'GA' and cs_call_center_call_center.\"CC_COUNTY\" = 'Williamson County' and thoughtful.\"cs_order_number\" not in (select questionable.\"cr_order_number\" from questionable where questionable.\"cr_order_number\" is not null) and thoughtful.\"cs_order_number\" in (select juicy.\"multi_warehouse_sales\" from juicy where juicy.\"multi_warehouse_sales\" is not null)
+),
+sparkling as (
 SELECT
-    vacuous.\"order_count\" as \"order_count\",
-    young.\"total_shipping_cost\" as \"total_shipping_cost\",
-    young.\"total_net_profit\" as \"total_net_profit\"
+    sum(young.\"cs_extra_ship_cost\") as \"total_shipping_cost\",
+    sum(young.\"cs_net_profit\") as \"total_net_profit\"
 FROM
-    vacuous
-    FULL JOIN young on 1=1
+    young),
+concerned as (
+SELECT
+    count(distinct vacuous.\"cs_order_number\") as \"order_count\"
+FROM
+    vacuous)
+SELECT
+    concerned.\"order_count\" as \"order_count\",
+    sparkling.\"total_shipping_cost\" as \"total_shipping_cost\",
+    sparkling.\"total_net_profit\" as \"total_net_profit\"
+FROM
+    concerned
+    FULL JOIN sparkling on 1=1
 ORDER BY 
-    vacuous.\"order_count\" desc
+    concerned.\"order_count\" desc
 LIMIT (100)"""

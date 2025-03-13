@@ -293,11 +293,13 @@
     _DATE_PART.1: "date_part("i
     fdate_part: _DATE_PART expr "," DATE_PART ")"
     _DATE_ADD.1: "date_add("i
-    fdate_add: _DATE_ADD expr "," DATE_PART "," int_lit ")"
-   _DATE_DIFF.1: "date_diff("i
+    fdate_add: _DATE_ADD expr "," DATE_PART "," expr ")"
+    _DATE_SUB.1: "date_sub("i
+    fdate_sub: _DATE_SUB expr "," DATE_PART "," expr ")"
+    _DATE_DIFF.1: "date_diff("i
     fdate_diff: _DATE_DIFF expr "," expr "," DATE_PART ")"
     
-    _date_functions: fdate | fdate_add | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part | fdate_trunc
+    _date_functions: fdate | fdate_add | fdate_sub | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part | fdate_trunc
     
     _static_functions:  _string_functions | _math_functions | _generic_functions |  _date_functions
 

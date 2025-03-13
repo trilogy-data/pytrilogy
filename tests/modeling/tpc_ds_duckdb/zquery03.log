@@ -1,9 +1,9 @@
 query_id = 3
-gen_length = 1628
+gen_length = 1640
 generated_sql = """
 
 WITH 
-wakeful as (
+cheerful as (
 SELECT
     cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
     store_sales_date_date.\"D_MOY\" as \"store_sales_date_month_of_year\",
@@ -21,18 +21,18 @@ WHERE
     store_sales_date_date.\"D_MOY\" = 11 and store_sales_item_items.\"I_MANUFACT_ID\" = 128
 )
 SELECT
-    wakeful.\"store_sales_date_year\" as \"store_sales_date_year\",
-    wakeful.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
-    wakeful.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    sum(wakeful.\"store_sales_ext_sales_price\") as \"sum_agg\"
+    cheerful.\"store_sales_date_year\" as \"store_sales_date_year\",
+    cheerful.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
+    cheerful.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    sum(cheerful.\"store_sales_ext_sales_price\") as \"sum_agg\"
 FROM
-    wakeful
+    cheerful
 GROUP BY 
-    wakeful.\"store_sales_date_year\",
-    wakeful.\"store_sales_item_brand_id\",
-    wakeful.\"store_sales_item_brand_name\"
+    cheerful.\"store_sales_date_year\",
+    cheerful.\"store_sales_item_brand_id\",
+    cheerful.\"store_sales_item_brand_name\"
 ORDER BY 
-    wakeful.\"store_sales_date_year\" asc,
-    sum(wakeful.\"store_sales_ext_sales_price\") desc,
-    wakeful.\"store_sales_item_brand_id\" asc
+    cheerful.\"store_sales_date_year\" asc,
+    sum(cheerful.\"store_sales_ext_sales_price\") desc,
+    cheerful.\"store_sales_item_brand_id\" asc
 LIMIT (100)"""

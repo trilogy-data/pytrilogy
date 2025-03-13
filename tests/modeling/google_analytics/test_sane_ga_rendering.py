@@ -127,7 +127,7 @@ def test_rolling_analytics():
     compiled = engine.generator.compile_statement(select)
 
     # make sure we got the where clause
-    assert ">= date_add(current_date(), INTERVAL -30 day)" in compiled, compiled
+    assert ">= date_add(current_date(), -30 * INTERVAL 1 day)" in compiled, compiled
 
 
 def test_counts():
