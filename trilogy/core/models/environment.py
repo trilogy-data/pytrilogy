@@ -434,6 +434,12 @@ class Environment(BaseModel):
                 self.alias_origin_lookup[address_with_namespace(key, alias)] = (
                     val.with_namespace(alias)
                 )
+
+        for key, function in source.functions.items():
+            if same_namespace:
+                self.functions[key] = function
+            else:
+                self.functions[address_with_namespace(key, alias)] = function.with_namespace(alias)
         return self
 
     def add_file_import(

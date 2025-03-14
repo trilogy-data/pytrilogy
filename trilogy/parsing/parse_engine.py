@@ -75,6 +75,7 @@ from trilogy.core.models.author import (
     WindowItem,
     WindowItemOrder,
     WindowItemOver,
+    CustomFunctionFactory
 )
 from trilogy.core.models.core import (
     DataType,
@@ -1198,23 +1199,9 @@ class ParseToObjects(Transformer):
         function_arguments: list[ArgBinding] = args[1]
         output = args[2]
 
-        def function_factory(*creation_args: list[Expr]):
-            nout = output.copy(deep=True)
-            creation_arg_list: list[Expr] = list(creation_args)
-            if len(creation_args) < len(function_arguments):
-                for binding in function_arguments[len(creation_arg_list) :]:
-                    if binding.default is None:
-                        raise ValueError(f"Missing argument {binding.name}")
-                    creation_arg_list.append(binding.default)
-            if isinstance(nout, Mergeable):
-                for idx, x in enumerate(creation_arg_list):
-                    # these will always be local namespace
-                    nout = nout.with_reference_replacement(
-                        f"{DEFAULT_NAMESPACE}.{function_arguments[idx].name}", x
-                    )
-            return nout
 
-        self.environment.functions[identity] = function_factory
+        self.environment.functions[identity] = CustomFunctionFactory(
+            function=output, namespace=self.environment.namespace, function_arguments=function_arguments)
         return FunctionDeclaration(name=identity, args=function_arguments, expr=output)
 
     def custom_function(self, args):

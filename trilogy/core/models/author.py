@@ -317,6 +317,21 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, BaseModel):
             ),
             operator=self.operator,
         )
+    
+    def with_reference_replacement(self, source, target):
+        return self.__class__.model_construct(
+            left=(
+                self.left.with_reference_replacement(source, target)
+                if isinstance(self.left, Mergeable)
+                else self.left
+            ),
+            right=(
+                self.right.with_reference_replacement(source, target)
+                if isinstance(self.right, Mergeable)
+                else self.right
+            ),
+            operator=self.operator,
+        )
 
     @property
     def concept_arguments(self) -> Sequence[ConceptRef]:
@@ -2133,6 +2148,35 @@ class AlignItem(Namespaced, BaseModel):
             concepts=[c.with_namespace(namespace) for c in self.concepts],
             namespace=namespace,
         )
+    
+class CustomFunctionFactory():
+    def __init__(self, function:Expr, namespace:str, function_arguments:list[ArgBinding]):
+        self.namespace = namespace
+        self.function = function
+        self.function_arguments=function_arguments
+
+    def with_namespace(self, namespace:str):
+        self.namespace = namespace
+        self.function = self.function.with_namespace(namespace)
+        self.function_arguments = [x.with_namespace(namespace) for x in self.function_arguments]
+        return self
+
+    def __call__(self, *creation_args: list[Expr]):
+        nout = self.function.model_copy(deep=True)
+        creation_arg_list: list[Expr] = list(creation_args)
+        if len(creation_args) < len(self.function_arguments):
+            for binding in self.function_arguments[len(creation_arg_list) :]:
+                if binding.default is None:
+                    raise ValueError(f"Missing argument {binding.name}")
+                creation_arg_list.append(binding.default)
+        if isinstance(nout, Mergeable):
+            for idx, x in enumerate(creation_arg_list):
+                # these will always be local namespace
+                nout = nout.with_reference_replacement(
+                    f"{self.function_arguments[idx].name}", x
+                )
+        return nout
+
 
 
 class Metadata(BaseModel):
@@ -2164,9 +2208,12 @@ class Comment(BaseModel):
     text: str
 
 
-class ArgBinding(BaseModel):
+class ArgBinding(Namespaced, BaseModel):
     name: str
     default: Expr | None = None
+
+    def with_namespace(self, namespace):
+        return ArgBinding(name=address_with_namespace(self.name, namespace), default=self.default.with_namespace(namespace) if isinstance(self.default, Namespaced) else self.default)
 
 
 class CustomType(BaseModel):

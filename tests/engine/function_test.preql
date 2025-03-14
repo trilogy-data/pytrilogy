@@ -1,0 +1,16 @@
+
+key away_team.name string;
+key home_team.name string;
+
+key id int;
+
+def is_team_game(team) -> CASE WHEN away_team.name = team or home_team.name = team THEN TRUE ELSE FALSE END;
+
+
+datasource game (
+    id:id,
+    away_team:away_team.name,
+    home_team:home_team.name
+    )
+grain (id)
+address games;

@@ -1,7 +1,7 @@
 [query_01]
-parse_time = 0.217684
-exec_time = 0.053122
-comp_time = 1.395277
+parse_time = 0.203983
+exec_time = 0.051758
+comp_time = 1.573632
 
 [query_02]
 parse_time = 1.172606
@@ -9,9 +9,9 @@ exec_time = 0.157206
 comp_time = 0.102459
 
 [query_03]
-parse_time = 0.116921
-exec_time = 0.026873
-comp_time = 0.0295
+parse_time = 0.121391
+exec_time = 0.031386
+comp_time = 0.031642
 
 [query_06]
 parse_time = 0.151592
