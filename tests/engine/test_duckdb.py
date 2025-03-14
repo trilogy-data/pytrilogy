@@ -1063,3 +1063,13 @@ select today as tomorrow, today;
 
     assert results[0].today.date() == datetime.now().date() - timedelta(days=3)
     assert results[0].tomorrow.date() == datetime.now().date() - timedelta(days=3)
+
+def test_function_parsing():
+    query = '''import game as game;
+
+def is_team_game(team) -> CASE WHEN game.away_team.name = team or game.home_team.name = team THEN TRUE ELSE FALSE END;
+
+where @is_team_game('Beavers')
+select game.home_team.name, count(game.id)->game_count;'''
+
+    executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
