@@ -9,7 +9,6 @@ from typing import (
     TYPE_CHECKING,
     Annotated,
     Any,
-    Callable,
     Dict,
     ItemsView,
     List,
@@ -40,6 +39,7 @@ from trilogy.core.exceptions import (
 from trilogy.core.models.author import (
     Concept,
     ConceptRef,
+    CustomFunctionFactory,
     CustomType,
     Function,
     SelectLineage,
@@ -207,7 +207,7 @@ class Environment(BaseModel):
     datasources: Annotated[
         EnvironmentDatasourceDict, PlainValidator(validate_datasources)
     ] = Field(default_factory=EnvironmentDatasourceDict)
-    functions: Dict[str, Callable[..., Any]] = Field(default_factory=dict)
+    functions: Dict[str, CustomFunctionFactory] = Field(default_factory=dict)
     data_types: Dict[str, CustomType] = Field(default_factory=dict)
     named_statements: Dict[str, SelectLineage] = Field(default_factory=dict)
     imports: Dict[str, list[Import]] = Field(
@@ -433,6 +433,14 @@ class Environment(BaseModel):
             else:
                 self.alias_origin_lookup[address_with_namespace(key, alias)] = (
                     val.with_namespace(alias)
+                )
+
+        for key, function in source.functions.items():
+            if same_namespace:
+                self.functions[key] = function
+            else:
+                self.functions[address_with_namespace(key, alias)] = (
+                    function.with_namespace(alias)
                 )
         return self
 
