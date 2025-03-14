@@ -317,7 +317,7 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, BaseModel):
             ),
             operator=self.operator,
         )
-    
+
     def with_reference_replacement(self, source, target):
         return self.__class__.model_construct(
             left=(
@@ -2148,21 +2148,34 @@ class AlignItem(Namespaced, BaseModel):
             concepts=[c.with_namespace(namespace) for c in self.concepts],
             namespace=namespace,
         )
-    
-class CustomFunctionFactory():
-    def __init__(self, function:Expr, namespace:str, function_arguments:list[ArgBinding]):
+
+
+class CustomFunctionFactory:
+    def __init__(
+        self, function: Expr, namespace: str, function_arguments: list[ArgBinding]
+    ):
         self.namespace = namespace
         self.function = function
-        self.function_arguments=function_arguments
+        self.function_arguments = function_arguments
 
-    def with_namespace(self, namespace:str):
+    def with_namespace(self, namespace: str):
         self.namespace = namespace
-        self.function = self.function.with_namespace(namespace)
-        self.function_arguments = [x.with_namespace(namespace) for x in self.function_arguments]
+        self.function = (
+            self.function.with_namespace(namespace)
+            if isinstance(self.function, Namespaced)
+            else self.function
+        )
+        self.function_arguments = [
+            x.with_namespace(namespace) for x in self.function_arguments
+        ]
         return self
 
     def __call__(self, *creation_args: list[Expr]):
-        nout = self.function.model_copy(deep=True)
+        nout = (
+            self.function.model_copy(deep=True)
+            if isinstance(self.function, BaseModel)
+            else self.function
+        )
         creation_arg_list: list[Expr] = list(creation_args)
         if len(creation_args) < len(self.function_arguments):
             for binding in self.function_arguments[len(creation_arg_list) :]:
@@ -2171,12 +2184,16 @@ class CustomFunctionFactory():
                 creation_arg_list.append(binding.default)
         if isinstance(nout, Mergeable):
             for idx, x in enumerate(creation_arg_list):
-                # these will always be local namespace
-                nout = nout.with_reference_replacement(
-                    f"{self.function_arguments[idx].name}", x
+                if self.namespace == DEFAULT_NAMESPACE:
+                    target = f"{DEFAULT_NAMESPACE}.{self.function_arguments[idx].name}"
+                else:
+                    target = self.function_arguments[idx].name
+                nout = (
+                    nout.with_reference_replacement(target, x)
+                    if isinstance(nout, Mergeable)
+                    else nout
                 )
         return nout
-
 
 
 class Metadata(BaseModel):
@@ -2213,7 +2230,14 @@ class ArgBinding(Namespaced, BaseModel):
     default: Expr | None = None
 
     def with_namespace(self, namespace):
-        return ArgBinding(name=address_with_namespace(self.name, namespace), default=self.default.with_namespace(namespace) if isinstance(self.default, Namespaced) else self.default)
+        return ArgBinding(
+            name=address_with_namespace(self.name, namespace),
+            default=(
+                self.default.with_namespace(namespace)
+                if isinstance(self.default, Namespaced)
+                else self.default
+            ),
+        )
 
 
 class CustomType(BaseModel):

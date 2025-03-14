@@ -57,13 +57,13 @@ from trilogy.core.models.author import (
     Concept,
     ConceptRef,
     Conditional,
+    CustomFunctionFactory,
     CustomType,
     Expr,
     FilterItem,
     Function,
     Grain,
     HavingClause,
-    Mergeable,
     Metadata,
     OrderBy,
     OrderItem,
@@ -75,7 +75,6 @@ from trilogy.core.models.author import (
     WindowItem,
     WindowItemOrder,
     WindowItemOver,
-    CustomFunctionFactory
 )
 from trilogy.core.models.core import (
     DataType,
@@ -1199,9 +1198,11 @@ class ParseToObjects(Transformer):
         function_arguments: list[ArgBinding] = args[1]
         output = args[2]
 
-
         self.environment.functions[identity] = CustomFunctionFactory(
-            function=output, namespace=self.environment.namespace, function_arguments=function_arguments)
+            function=output,
+            namespace=self.environment.namespace,
+            function_arguments=function_arguments,
+        )
         return FunctionDeclaration(name=identity, args=function_arguments, expr=output)
 
     def custom_function(self, args):
