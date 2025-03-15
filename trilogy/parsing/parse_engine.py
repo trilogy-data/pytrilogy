@@ -983,7 +983,12 @@ class ParseToObjects(Transformer):
             text = self.resolve_import_address(target)
             self.text_lookup[token_lookup] = text
 
-            raw_tokens = PARSER.parse(text)
+            try:
+                raw_tokens = PARSER.parse(text)
+            except Exception as e:
+                raise ImportError(
+                    f"Unable to import '{target}', parsing error: {e}"
+                ) from e
             self.tokens[token_lookup] = raw_tokens
 
         if cache_lookup in self.parsed:
