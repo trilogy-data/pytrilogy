@@ -7,7 +7,7 @@ pytrilogy is an experimental implementation of the Trilogy language, a higher-le
 Trilogy looks like SQL, but simpler. It's a modern SQL refresh targeted at SQL lovers who want more reusability and composability without losing the expressiveness and iterative value of SQL. It compiles to SQL - making it easy to debug or integrate into existing workflows - and can be run against any supported SQL backend.  
 
 > [!TIP]
-> To get an overview of the language and run interactive examples, head to the [documentation](https://trilogydata.dev/).
+> Try it online in a hosted [open-source studio](https://trilogydata.dev/trilogy-studio-core/). To get an overview of the language and run interactive examples, head to the [documentation](https://trilogydata.dev/).
 
 Installation: `pip install pytrilogy`
 
