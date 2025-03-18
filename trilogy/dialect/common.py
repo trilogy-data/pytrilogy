@@ -25,7 +25,9 @@ def render_unnest(
 ):
     if unnest_mode == UnnestMode.CROSS_JOIN:
         return f"{render_func(concept, cte, False)} as {quote_character}{concept.safe_address}{quote_character}"
-    return f"{render_func(concept, cte, False)} as unnest_wrapper ({quote_character}{concept.safe_address}{quote_character})"
+    elif unnest_mode == UnnestMode.CROSS_JOIN_ALIAS:
+        return f"{render_func(concept, cte, False)} as unnest_wrapper ({quote_character}{concept.safe_address}{quote_character})"
+    return f"{render_func(concept, cte, False)} as {quote_character}{concept.safe_address}{quote_character}"
 
 
 def render_join_concept(
