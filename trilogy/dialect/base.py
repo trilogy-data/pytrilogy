@@ -694,6 +694,7 @@ class BaseDialect:
             UnnestMode.CROSS_APPLY,
             UnnestMode.CROSS_JOIN,
             UnnestMode.CROSS_JOIN_ALIAS,
+            UnnestMode.SNOWFLAKE,
         ):
             # for a cross apply, derivation happens in the join
             # so we only use the alias to select
@@ -722,7 +723,9 @@ class BaseDialect:
                     UnnestMode.CROSS_JOIN_ALIAS,
                     UnnestMode.CROSS_JOIN,
                     UnnestMode.CROSS_APPLY,
+                    UnnestMode.SNOWFLAKE,
                 ):
+
                     source = f"{render_unnest(self.UNNEST_MODE, self.QUOTE_CHARACTER, cte.join_derived_concepts[0], self.render_concept_sql, cte)}"
                 # direct - eg DUCK DB - can be directly selected inline
                 elif (

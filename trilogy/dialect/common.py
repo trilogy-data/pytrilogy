@@ -27,6 +27,9 @@ def render_unnest(
         return f"{render_func(concept, cte, False)} as {quote_character}{concept.safe_address}{quote_character}"
     elif unnest_mode == UnnestMode.CROSS_JOIN_ALIAS:
         return f"{render_func(concept, cte, False)} as unnest_wrapper ({quote_character}{concept.safe_address}{quote_character})"
+    elif unnest_mode == UnnestMode.SNOWFLAKE:
+
+        return f"flatten({render_func(concept, cte, False)}) as unnest_wrapper ( unnest1, unnest2, unnest3, {quote_character}{cte.join_derived_concepts[0].safe_address}{quote_character})"
     return f"{render_func(concept, cte, False)} as {quote_character}{concept.safe_address}{quote_character}"
 
 
@@ -69,6 +72,8 @@ def render_join(
             return f"CROSS JOIN {render_unnest(unnest_mode, quote_character, join.concept_to_unnest, render_func, cte)}"
         if unnest_mode == UnnestMode.CROSS_JOIN_ALIAS:
             return f"CROSS JOIN {render_unnest(unnest_mode, quote_character, join.concept_to_unnest, render_func, cte)}"
+        if unnest_mode == UnnestMode.SNOWFLAKE:
+            return f"LEFT JOIN LATERAL {render_unnest(unnest_mode, quote_character, join.concept_to_unnest, render_func, cte)}"
         return f"FULL JOIN {render_unnest(unnest_mode, quote_character, join.concept_to_unnest, render_func, cte)}"
     # left_name = join.left_name
     right_name = join.right_name

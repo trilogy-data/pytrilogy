@@ -85,4 +85,4 @@ class SnowflakeDialect(BaseDialect):
     }
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = BQ_SQL_TEMPLATE
-    UNNEST_MODE = UnnestMode.CROSS_JOIN_ALIAS
+    UNNEST_MODE = UnnestMode.SNOWFLAKE
