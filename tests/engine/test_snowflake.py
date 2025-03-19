@@ -31,7 +31,7 @@ select zeta;"""
     )[0]
     snowflake_engine.use_variables = True
     assert (
-        'as unnest_wrapper ( unnest1, unnest2, unnest3, "zeta")' in results2
+        'as unnest_wrapper ( unnest1, unnest2, unnest3, unnest4, "zeta")' in results2
     ), results2
 
 
@@ -59,7 +59,7 @@ select zeta;"""
 
     assert (
         re.search(
-            r'LEFT JOIN LATERAL flatten\(\w+\."array_int"\) as unnest_wrapper \( unnest1, unnest2, unnest3, "zeta"\)',
+            r'LEFT JOIN LATERAL flatten\(\w+\."array_int"\) as unnest_wrapper \( unnest1, unnest2, unnest3, unnest4, "zeta"\)',
             results2,
         )
         is not None

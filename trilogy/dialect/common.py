@@ -29,7 +29,7 @@ def render_unnest(
         return f"{render_func(concept, cte, False)} as unnest_wrapper ({quote_character}{concept.safe_address}{quote_character})"
     elif unnest_mode == UnnestMode.SNOWFLAKE:
 
-        return f"flatten({render_func(concept, cte, False)}) as unnest_wrapper ( unnest1, unnest2, unnest3, {quote_character}{cte.join_derived_concepts[0].safe_address}{quote_character})"
+        return f"flatten({render_func(concept, cte, False)}) as unnest_wrapper ( unnest1, unnest2, unnest3, unnest4, {quote_character}{cte.join_derived_concepts[0].safe_address}{quote_character})"
     return f"{render_func(concept, cte, False)} as {quote_character}{concept.safe_address}{quote_character}"
 
 
