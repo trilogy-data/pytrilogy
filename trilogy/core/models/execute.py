@@ -59,6 +59,14 @@ class CTE(BaseModel):
     base_name_override: Optional[str] = None
     base_alias_override: Optional[str] = None
 
+    @field_validator("join_derived_concepts")
+    def validate_join_derived_concepts(cls, v):
+        if len(v) > 1:
+            raise NotImplementedError(
+                "Multiple join derived concepts not yet supported."
+            )
+        return unique(v, "address")
+
     @property
     def identifier(self):
         return self.name

@@ -30,6 +30,8 @@ FUNCTION_MAP = {
     FunctionType.QUARTER: lambda x: f"EXTRACT(QUARTER from {x[0]})",
     # math
     FunctionType.DIVIDE: lambda x: f"DIV0({x[0]},{x[1]})",
+    FunctionType.UNNEST: lambda x: f"table(flatten({x[0]}))",
+    FunctionType.ARRAY: lambda x: f"ARRAY_CONSTRUCT({', '.join(x)})",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
@@ -83,4 +85,4 @@ class SnowflakeDialect(BaseDialect):
     }
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = BQ_SQL_TEMPLATE
-    UNNEST_MODE = UnnestMode.CROSS_JOIN
+    UNNEST_MODE = UnnestMode.SNOWFLAKE

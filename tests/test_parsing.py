@@ -1,3 +1,5 @@
+from pytest import raises
+
 from trilogy import Dialects
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
@@ -661,3 +663,44 @@ select x % 10 -> x_mod_10;
             
 """
     )
+
+
+def test_import_shows_source():
+
+    env = Environment(
+        config=EnvironmentOptions(
+            import_resolver=DictImportResolver(
+                content={
+                    "test": """
+import test_dep as test_dep;
+key x int;
+datasource test (
+x: x)
+grain(x)
+query '''
+select 1 as x
+union all
+select 11 as x
+''' TYPO
+""",
+                    "test_dep": """
+key x int;
+""",
+                }
+            )
+        )
+    )
+    assert isinstance(env.config.import_resolver, DictImportResolver)
+
+    with raises(Exception, match="Unable to import 'test', parsing error") as e:
+        env.parse(
+            """
+        import test;
+                
+    select x % 10 -> x_mod_10;
+                
+                
+    """
+        )
+        assert "TYPO" in str(e.value)
+        assert 1 == 0
