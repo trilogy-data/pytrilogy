@@ -209,32 +209,36 @@ def postgres_engine(presto_model) -> Generator[Executor, None, None]:
 
 
 @fixture(scope="session")
-def snowflake_engine(presto_model) -> Generator[Executor, None, None]:
+def fakesnow_happening():
     import fakesnow
 
     with fakesnow.patch():
-        executor = Dialects.SNOWFLAKE.default_executor(
-            environment=presto_model,
-            conf=SnowflakeConfig(
-                account="account", username="user", password="password"
-            ),
-            rendering=Rendering(parameters=False),
-        )
-        yield executor
+        yield
 
 
 @fixture(scope="session")
-def snowflake_engine_parameterized(presto_model) -> Generator[Executor, None, None]:
-    import fakesnow
+def snowflake_engine(
+    presto_model, fakesnow_happening
+) -> Generator[Executor, None, None]:
 
-    with fakesnow.patch():
-        executor = Dialects.SNOWFLAKE.default_executor(
-            environment=presto_model,
-            conf=SnowflakeConfig(
-                account="account", username="user", password="password"
-            ),
-        )
-        yield executor
+    executor = Dialects.SNOWFLAKE.default_executor(
+        environment=presto_model,
+        conf=SnowflakeConfig(account="account", username="user", password="password"),
+        rendering=Rendering(parameters=False),
+    )
+    yield executor
+
+
+@fixture(scope="session")
+def snowflake_engine_parameterized(
+    presto_model, fakesnow_happening
+) -> Generator[Executor, None, None]:
+
+    executor = Dialects.SNOWFLAKE.default_executor(
+        environment=presto_model,
+        conf=SnowflakeConfig(account="account", username="user", password="password"),
+    )
+    yield executor
 
 
 @fixture(scope="session")
