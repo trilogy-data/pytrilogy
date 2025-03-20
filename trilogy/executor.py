@@ -6,7 +6,7 @@ from typing import Any, Generator, List, Optional, Protocol
 from sqlalchemy import text
 from sqlalchemy.engine import CursorResult
 
-from trilogy.constants import logger
+from trilogy.constants import Rendering, logger
 from trilogy.core.enums import FunctionType, Granularity, IOType
 from trilogy.core.models.author import Concept, Function
 from trilogy.core.models.build import BuildConcept, BuildFunction
@@ -75,6 +75,7 @@ class Executor(object):
         dialect: Dialects,
         engine: ExecutionEngine,
         environment: Optional[Environment] = None,
+        rendering: Rendering | None = None,
         hooks: List[BaseHook] | None = None,
     ):
         self.dialect: Dialects = dialect
@@ -83,7 +84,7 @@ class Executor(object):
         self.generator: BaseDialect
         self.logger = logger
         self.hooks = hooks
-        self.generator = get_dialect_generator(self.dialect)
+        self.generator = get_dialect_generator(self.dialect, rendering)
         self.connection = self.engine.connect()
         # TODO: make generic
         if self.dialect == Dialects.DATAFRAME:

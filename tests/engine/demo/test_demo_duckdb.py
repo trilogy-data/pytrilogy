@@ -235,12 +235,13 @@ def test_demo_filter(engine):
     results = executor.execute_text(test)[-1].fetchall()
 
     assert results[0].passenger_last_name == "Baclini"
-
+    del env.concepts["local.surviving_size"]
     test = """
     auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
     select     
-        passenger.last_name,    passenger.id.count,   
-      count(surviving_passenger) -> surviving_size
+        passenger.last_name,    
+        passenger.id.count,   
+        count(surviving_passenger) -> surviving_size
     order by surviving_size desc, passenger.id.count desc
     limit 5;"""
 

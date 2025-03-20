@@ -142,7 +142,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                 if isinstance(x.content.output, UndefinedConcept):
                     continue
                 if (
-                    CONFIG.select_as_definition
+                    CONFIG.parsing.select_as_definition
                     and not environment.frozen
                     and x.concept.address not in environment.concepts
                 ):
@@ -156,7 +156,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             elif isinstance(x.content, ConceptRef):
                 output.local_concepts[x.content.address] = environment.concepts[
                     x.content.address
-                ]  # .set_select_grain(output.grain, environment)
+                ]
         output.validate_syntax(environment)
         return output
 

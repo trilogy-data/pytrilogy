@@ -47,6 +47,14 @@ class Rendering:
     concise: bool = False
 
 
+@dataclass
+class Parsing:
+    """Control Parsing"""
+
+    strict_name_shadow_enforcement: bool = False
+    select_as_definition: bool = True
+
+
 # TODO: support loading from environments
 @dataclass
 class Config:
@@ -57,7 +65,7 @@ class Config:
     comments: Comments = field(default_factory=Comments)
     optimizations: Optimizations = field(default_factory=Optimizations)
     rendering: Rendering = field(default_factory=Rendering)
-    select_as_definition: bool = True
+    parsing: Parsing = field(default_factory=Parsing)
 
     @property
     def show_comments(self) -> bool:

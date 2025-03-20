@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import create_engine
 
 from trilogy import Dialects, Executor, parse
+from trilogy.constants import Rendering
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.config import PrestoConfig, SnowflakeConfig, TrinoConfig
 from trilogy.dialect.enums import DialectConfig
@@ -209,6 +210,21 @@ def postgres_engine(presto_model) -> Generator[Executor, None, None]:
 
 @fixture(scope="session")
 def snowflake_engine(presto_model) -> Generator[Executor, None, None]:
+    import fakesnow
+
+    with fakesnow.patch():
+        executor = Dialects.SNOWFLAKE.default_executor(
+            environment=presto_model,
+            conf=SnowflakeConfig(
+                account="account", username="user", password="password"
+            ),
+            rendering=Rendering(parameters=False),
+        )
+        yield executor
+
+
+@fixture(scope="session")
+def snowflake_engine_parameterized(presto_model) -> Generator[Executor, None, None]:
     import fakesnow
 
     with fakesnow.patch():
