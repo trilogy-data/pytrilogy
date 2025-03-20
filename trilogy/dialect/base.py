@@ -3,7 +3,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from jinja2 import Template
 
-from trilogy.constants import CONFIG, MagicConstants, logger
+from trilogy.constants import CONFIG, MagicConstants, Rendering, logger
 from trilogy.core.enums import (
     DatePart,
     FunctionType,
@@ -283,6 +283,9 @@ class BaseDialect:
     DATATYPE_MAP = DATATYPE_MAP
     UNNEST_MODE = UnnestMode.CROSS_APPLY
 
+    def __init__(self, rendering: Rendering | None = None):
+        self.rendering = rendering or CONFIG.rendering
+
     def render_order_item(
         self,
         order_item: BuildOrderItem,
@@ -416,7 +419,7 @@ class BaseDialect:
             elif (
                 isinstance(c.lineage, FUNCTION_ITEMS)
                 and c.lineage.operator == FunctionType.CONSTANT
-                and CONFIG.rendering.parameters is True
+                and self.rendering.parameters is True
                 and c.datatype.data_type != DataType.MAP
             ):
                 rval = f":{c.safe_address}"
@@ -633,7 +636,7 @@ class BaseDialect:
             if (
                 isinstance(e.lineage, FUNCTION_ITEMS)
                 and e.lineage.operator == FunctionType.CONSTANT
-                and CONFIG.rendering.parameters is True
+                and self.rendering.parameters is True
                 and e.datatype.data_type != DataType.MAP
             ):
                 return f":{e.safe_address}"
@@ -723,9 +726,13 @@ class BaseDialect:
                     UnnestMode.CROSS_JOIN_ALIAS,
                     UnnestMode.CROSS_JOIN,
                     UnnestMode.CROSS_APPLY,
-                    UnnestMode.SNOWFLAKE,
                 ):
 
+                    source = f"{render_unnest(self.UNNEST_MODE, self.QUOTE_CHARACTER, cte.join_derived_concepts[0], self.render_concept_sql, cte)}"
+                elif (
+                    cte.join_derived_concepts
+                    and self.UNNEST_MODE == UnnestMode.SNOWFLAKE
+                ):
                     source = f"{render_unnest(self.UNNEST_MODE, self.QUOTE_CHARACTER, cte.join_derived_concepts[0], self.render_concept_sql, cte)}"
                 # direct - eg DUCK DB - can be directly selected inline
                 elif (

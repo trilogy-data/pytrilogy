@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from trilogy import Executor
     from trilogy.hooks.base_hook import BaseHook
 
-from trilogy.constants import logger
+from trilogy.constants import Rendering, logger
 from trilogy.dialect.config import DialectConfig
 
 
@@ -114,6 +114,7 @@ class Dialects(Enum):
         environment: Optional["Environment"] = None,
         hooks: List["BaseHook"] | None = None,
         conf: DialectConfig | None = None,
+        rendering: Rendering | None = None,
         _engine_factory: Callable | None = None,
     ) -> "Executor":
         from trilogy import Executor
@@ -123,6 +124,7 @@ class Dialects(Enum):
                 engine=self.default_engine(conf=conf, _engine_factory=_engine_factory),
                 environment=environment or Environment(),
                 dialect=self,
+                rendering=rendering,
                 hooks=hooks,
             )
 
@@ -130,5 +132,6 @@ class Dialects(Enum):
             engine=self.default_engine(conf=conf),
             environment=environment or Environment(),
             dialect=self,
+            rendering=rendering,
             hooks=hooks,
         )

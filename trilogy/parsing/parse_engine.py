@@ -18,9 +18,11 @@ from lark.tree import Meta
 from pydantic import ValidationError
 
 from trilogy.constants import (
+    CONFIG,
     DEFAULT_NAMESPACE,
     NULL_VALUE,
     MagicConstants,
+    Parsing,
 )
 from trilogy.core.enums import (
     BooleanOperator,
@@ -282,6 +284,7 @@ class ParseToObjects(Transformer):
         text_lookup: dict[Path | str, str] | None = None,
         environment_lookup: dict[str, Environment] | None = None,
         import_keys: list[str] | None = None,
+        parse_config: Parsing | None = None,
     ):
         Transformer.__init__(self, True)
         self.environment: Environment = environment
@@ -298,6 +301,7 @@ class ParseToObjects(Transformer):
         self.parse_pass = ParsePass.INITIAL
         self.function_factory = FunctionFactory(self.environment)
         self.import_keys: list[str] = import_keys or ["root"]
+        self.parse_config: Parsing = parse_config or CONFIG.parsing
 
     def set_text(self, text: str):
         self.text_lookup[self.token_address] = text
@@ -1014,6 +1018,7 @@ class ParseToObjects(Transformer):
                     tokens=self.tokens,
                     text_lookup=self.text_lookup,
                     import_keys=self.import_keys + [cache_key],
+                    parse_config=self.parse_config,
                 )
                 nparser.transform(raw_tokens)
                 self.parsed[cache_lookup] = nparser
@@ -1148,8 +1153,8 @@ class ParseToObjects(Transformer):
             elif isinstance(arg, HavingClause):
                 having = arg
         if not select_items:
-            raise ValueError("Malformed select, missing select items")
-
+            raise ParseError("Malformed select, missing select items")
+        pre_keys = set(self.environment.concepts.keys())
         base = SelectStatement.from_inputs(
             environment=self.environment,
             selection=select_items,
@@ -1159,6 +1164,15 @@ class ParseToObjects(Transformer):
             limit=limit,
             meta=Metadata(line_number=meta.line),
         )
+        if (
+            self.parse_pass == ParsePass.INITIAL
+            and self.parse_config.strict_name_shadow_enforcement
+        ):
+            intersection = base.locally_derived.intersection(pre_keys)
+            if intersection:
+                raise ParseError(
+                    f"Select statement {base} has derived concepts {list(intersection)} that shadow existing environment concepts, which may cause unexpected behavior. Rename these."
+                )
         return base
 
     @v_args(meta=True)
@@ -1740,7 +1754,10 @@ def parse_text_raw(text: str, environment: Optional[Environment] = None):
 
 
 def parse_text(
-    text: str, environment: Optional[Environment] = None, root: Path | None = None
+    text: str,
+    environment: Optional[Environment] = None,
+    root: Path | None = None,
+    parse_config: Parsing | None = None,
 ) -> Tuple[
     Environment,
     List[
@@ -1756,7 +1773,9 @@ def parse_text(
     environment = environment or (
         Environment(working_path=root) if root else Environment()
     )
-    parser = ParseToObjects(environment=environment, import_keys=["root"])
+    parser = ParseToObjects(
+        environment=environment, import_keys=["root"], parse_config=parse_config
+    )
 
     try:
         parser.set_text(text)

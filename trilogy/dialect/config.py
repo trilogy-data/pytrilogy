@@ -76,12 +76,22 @@ class SnowflakeConfig(DialectConfig):
         account: str,
         username: str,
         password: str,
+        database: str | None = None,
+        schema: str | None = None,
     ):
         self.account = account
         self.username = username
         self.password = password
+        self.database = database
+        self.schema = schema
+        if self.schema and not self.database:
+            raise ValueError("Setting snowflake schema also requires setting database")
 
     def connection_string(self) -> str:
+        if self.schema:
+            return f"snowflake://{self.username}:{self.password}@{self.account}/{self.database}/{self.schema}"
+        if self.database:
+            return f"snowflake://{self.username}:{self.password}@{self.account}/{self.database}"
         return f"snowflake://{self.username}:{self.password}@{self.account}"
 
 
