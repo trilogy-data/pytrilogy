@@ -223,7 +223,13 @@ def snowflake_engine(
 
     executor = Dialects.SNOWFLAKE.default_executor(
         environment=presto_model,
-        conf=SnowflakeConfig(account="account", username="user", password="password"),
+        conf=SnowflakeConfig(
+            account="account",
+            username="user",
+            password="password",
+            database="test",
+            schema="public",
+        ),
         rendering=Rendering(parameters=False),
     )
     yield executor
