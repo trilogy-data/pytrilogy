@@ -49,7 +49,7 @@ setuptools.setup(
         "snowflake": ["snowflake-sqlalchemy"],
     },
     entry_points={
-        "console_scripts": ["trilogy=preql.scripts.trilogy:cli"],
+        "console_scripts": ["trilogy=trilogy.scripts.trilogy:cli"],
     },
     classifiers=[
         "Programming Language :: Python",
