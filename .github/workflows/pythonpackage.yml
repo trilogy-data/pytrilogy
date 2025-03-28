@@ -53,4 +53,11 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          token: ${{ secrets.CODECOV_TOKEN }} # required`
+          token: ${{ secrets.CODECOV_TOKEN }} # required
+      - name: Test package cli
+        run: |
+          python -m venv venv
+          .venv/bin/python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python .
+          .venv/bin/python trilogy --help
