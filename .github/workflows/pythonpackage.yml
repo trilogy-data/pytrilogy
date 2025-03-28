@@ -59,4 +59,4 @@ jobs:
           python -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
           .venv/bin/python .
-          .venv/bin/python trilogy --help
+          .venv/bin/trilogy --help
