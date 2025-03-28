@@ -58,5 +58,5 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python .
+          .venv/bin/python -m pip install .
           .venv/bin/trilogy --help
