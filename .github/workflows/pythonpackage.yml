@@ -60,3 +60,4 @@ jobs:
           .venv/bin/python -m pip install --upgrade pip
           .venv/bin/python -m pip install .
           .venv/bin/trilogy --help
+          .venv/bin/trilogy run "SELECT 1 + 1->test;" duckdb
