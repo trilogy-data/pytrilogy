@@ -56,8 +56,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }} # required
       - name: Test package cli
         run: |
-          python -m venv venv
-          .venv/bin/python -m venv .venv
+          python -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
           .venv/bin/python .
           .venv/bin/python trilogy --help
