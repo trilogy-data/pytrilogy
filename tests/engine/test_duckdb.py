@@ -1077,3 +1077,51 @@ select game.home_team.name, count(game.id)->game_count;"""
     )
 
     executor.parse_text(query)
+
+
+
+def test_global_aggregate_inclusion():
+    from trilogy.hooks.query_debugger import DebuggingHook
+    """ check that including a global aggregate constant in output select doesn't force changed evaluation orde"""
+    query = """
+    key id int;
+key date date;
+property <id, date>.score int;
+
+datasource raw (
+    id: id,
+    date: date,
+    score: score
+)
+grain (id,date)
+query '''
+select 1 as id, '2023-01-01' as date, 10 as score
+union all
+select 2, '2023-01-02', 20
+union all
+select 3, '2023-01-03', 30
+union all
+select 4, '2023-01-03', 40
+''';
+
+auto max_date <- max(date) by *;
+
+"""
+
+    executor: Executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=Path(__file__).parent)
+    )
+    executor.parse_text(query)
+
+    results = executor.execute_text("""where date = max_date and id >2
+select date, avg(score) as avg_id;""")[0].fetchall()
+
+    assert len(results) == 1
+    assert results[0].avg_id == 35.0
+    
+
+    results = executor.execute_text("""where date = max_date and id >2
+select max_date, date, avg(score) as avg_id;""")[0].fetchall()
+
+    assert len(results) == 1
+    assert results[0].avg_id ==  35.0
