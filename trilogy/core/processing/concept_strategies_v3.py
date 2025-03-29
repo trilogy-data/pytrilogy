@@ -787,15 +787,17 @@ def _search_concepts(
         )
         # if anything we need to get is in the filter set and it's a computed value
         # we need to get _everything_ in this loop
-        if any(
-            [
-                x.derivation not in (Derivation.ROOT, Derivation.CONSTANT)
+        required_filters = [
+                x 
+                for x in mandatory_list if x.derivation not in (Derivation.ROOT, Derivation.CONSTANT)
+                and not (x.derivation == Derivation.AGGREGATE and x.granularity == Granularity.SINGLE_ROW)
                 and x.address in conditions.row_arguments
-                for x in mandatory_list
             ]
+        if any(
+            required_filters
         ):
             logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} derived condition row input present in mandatory list, forcing condition evaluation at this level. "
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} derived condition row inputs {[x.address for x in required_filters]} present in mandatory list, forcing condition evaluation at this level. "
             )
             mandatory_list = completion_mandatory
             must_evaluate_condition_on_this_level_not_push_down = True

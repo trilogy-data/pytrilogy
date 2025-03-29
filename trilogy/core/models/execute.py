@@ -162,7 +162,7 @@ class CTE(BaseModel):
             base += (
                 f"\n-- Nullable: {', '.join([str(x) for x in self.nullable_concepts])}."
             )
-
+        base +='\n'
         return base
 
     def inline_parent_datasource(
