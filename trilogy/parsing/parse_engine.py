@@ -1342,7 +1342,10 @@ class ParseToObjects(Transformer):
         )
 
     def expr_tuple(self, args):
-        return TupleWrapper(content=tuple(args))
+        datatypes = set([arg_to_datatype(x) for x in args])
+        if len(datatypes) != 1:
+            raise ParseError("Tuple must have same type for all elements")
+        return TupleWrapper(val=tuple(args), type=datatypes.pop())
 
     def parenthetical(self, args):
         return Parenthetical(content=args[0])
