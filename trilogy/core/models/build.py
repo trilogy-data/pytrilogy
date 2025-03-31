@@ -1722,6 +1722,10 @@ class Factory:
         )
 
     @build.register
+    def _(self, base: TupleWrapper) -> TupleWrapper:
+        return TupleWrapper(val=[self.build(x) for x in base.val], type=base.type)
+
+    @build.register
     def _(self, base: FilterItem) -> BuildFilterItem:
         return BuildFilterItem.model_construct(
             content=self.build(base.content), where=self.build(base.where)

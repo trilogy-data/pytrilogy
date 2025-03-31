@@ -1079,10 +1079,8 @@ select game.home_team.name, count(game.id)->game_count;"""
     executor.parse_text(query)
 
 
-
 def test_global_aggregate_inclusion():
-    from trilogy.hooks.query_debugger import DebuggingHook
-    """ check that including a global aggregate constant in output select doesn't force changed evaluation orde"""
+    """check that including a global aggregate constant in output select doesn't force changed evaluation orde"""
     query = """
     key id int;
 key date date;
@@ -1113,15 +1111,57 @@ auto max_date <- max(date) by *;
     )
     executor.parse_text(query)
 
-    results = executor.execute_text("""where date = max_date and id >2
-select date, avg(score) as avg_id;""")[0].fetchall()
+    results = executor.execute_text(
+        """where date = max_date and id >2
+select date, avg(score) as avg_id;"""
+    )[0].fetchall()
 
     assert len(results) == 1
     assert results[0].avg_id == 35.0
-    
 
-    results = executor.execute_text("""where date = max_date and id >2
-select max_date, date, avg(score) as avg_id;""")[0].fetchall()
+    results = executor.execute_text(
+        """where date = max_date and id >2
+select max_date, date, avg(score) as avg_id;"""
+    )[0].fetchall()
 
     assert len(results) == 1
-    assert results[0].avg_id ==  35.0
+    assert results[0].avg_id == 35.0
+
+
+def test_tuple_filtering():
+    query = """
+    key case_number int;
+property case_number.primary_type string;
+property case_number.ward string;
+
+datasource crimes (
+    case_number: case_number,
+    primary_type: primary_type,
+    ward: ward
+)
+grain (case_number)
+query '''
+select 1 as case_number, 'HOMICIDE' as primary_type, 'Ward 1' as ward
+union all
+select 2, 'ASSAULT', 'Ward 2'
+union all
+select 3, 'ROBBERY', 'Ward 1'
+''';
+
+"""
+
+    executor: Executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=Path(__file__).parent)
+    )
+    executor.parse_text(query)
+
+    results = executor.execute_text(
+        """select local.ward, count_distinct(local.case_number) as violent_crime_count  
+where local.primary_type in ("HOMICIDE"::string, "ASSAULT"::string, "ROBBERY"::string, "AGGRAVATED ASSAULT"::string)  
+having violent_crime_count > 0
+order by local.ward asc
+                                    ; """
+    )[0].fetchall()
+
+    assert len(results) == 2
+    assert results[0].violent_crime_count == 2
