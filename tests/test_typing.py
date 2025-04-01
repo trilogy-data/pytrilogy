@@ -1,6 +1,25 @@
 from decimal import Decimal
+from pathlib import Path
+
+from pytest import raises
 
 from trilogy import Dialects
+from trilogy.parsing.exceptions import ParseError
+
+FILE = Path(__file__)
+
+
+def test_invalid_typing():
+    env = Dialects.DUCK_DB.default_executor()
+    with raises(ParseError):
+        env.environment.parse(
+            """
+    key customer_id int;
+    property customer_id.email string::email;
+
+
+    """
+        )
 
 
 def test_typing():
@@ -42,6 +61,58 @@ customer_id,
     assert "email" in env.environment.data_types
 
     assert env.environment.concepts["email"].datatype.traits == ["email"]
+
+
+def test_type_import_and_cast():
+    env = Dialects.DUCK_DB.default_executor()
+    env.environment.add_file_import(FILE.parent / "test_env_types.preql", "dtypes")
+    env.environment.parse(
+        """
+
+type year int;
+key customer_id int;
+property customer_id.signup_date date;
+
+datasource customers (
+    id:customer_id,
+    signup_date: signup_date
+)
+grain (customer_id)
+query '''
+select 1 as id, cast('2023-01-01' as date) as signup_date
+union all
+select 2 as id, cast('2023-01-02' as date) as signup_date
+''';
+
+"""
+    )
+    assert env.environment.concepts["signup_date"].keys == {"local.customer_id"}
+    assert env.environment.concepts["signup_date.year"].keys == {"local.signup_date"}
+    results = env.execute_query(
+        """SELECT
+    signup_date.year::int::year as signup_year;"""
+    )
+
+    for row in results.fetchall():
+        assert row.signup_year == 2023
+
+    assert "year" in env.environment.data_types
+
+    assert env.environment.concepts["signup_year"].datatype.traits == ["year"]
+
+    results = env.execute_query(
+        """SELECT
+signup_date.year::int::dtypes.year as signup_year_two;"""
+    )
+
+    for row in results.fetchall():
+        assert row.signup_year_two == 2023
+
+    assert "dtypes.year" in env.environment.data_types
+
+    assert env.environment.concepts["signup_year_two"].datatype.traits == [
+        "dtypes.year"
+    ]
 
 
 def test_typing_aggregate():

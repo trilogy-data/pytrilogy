@@ -38,6 +38,7 @@ from trilogy.core.models.core import (
     MapType,
     MapWrapper,
     NumericType,
+    TraitDataType,
     TupleWrapper,
 )
 from trilogy.core.models.execute import (
@@ -441,6 +442,7 @@ def is_scalar_condition(
         | BuildCaseWhen
         | BuildCaseElse
         | MagicConstants
+        | TraitDataType
         | DataType
         | MapWrapper[Any, Any]
         | ListType

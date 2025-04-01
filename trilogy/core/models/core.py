@@ -111,6 +111,9 @@ class TraitDataType(BaseModel):
     def __hash__(self):
         return hash(self.type)
 
+    def __str__(self) -> str:
+        return f"Trait<{self.type}, {self.traits}>"
+
     def __eq__(self, other):
         if isinstance(other, DataType):
             return self.type == other
@@ -381,6 +384,8 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
     elif isinstance(arg, float):
         return DataType.FLOAT
     elif isinstance(arg, NumericType):
+        return arg
+    elif isinstance(arg, TraitDataType):
         return arg
     elif isinstance(arg, ListWrapper):
         return ListType(type=arg.type)

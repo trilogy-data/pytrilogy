@@ -1035,6 +1035,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
                     pkeys.update(parent_keys)
             raw_keys = pkeys
             # deduplicate
+
             final_grain = Grain.from_concepts(raw_keys, environment)
             keys = final_grain.components
         return new_lineage, final_grain, keys
@@ -2244,6 +2245,11 @@ class CustomType(BaseModel):
     name: str
     type: DataType
 
+    def with_namespace(self, namespace: str) -> "CustomType":
+        return CustomType.model_construct(
+            name=address_with_namespace(self.name, namespace), type=self.type
+        )
+
 
 Expr = (
     MagicConstants
@@ -2284,6 +2290,7 @@ FuncArgs = (
     | date
     | datetime
     | MapWrapper[Any, Any]
+    | TraitDataType
     | DataType
     | ListType
     | MapType

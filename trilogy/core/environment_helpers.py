@@ -54,7 +54,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             grain=concept.grain,
             namespace=concept.namespace,
             keys=set(
-                concept.address,
+                [concept.address],
             ),
             metadata=Metadata(
                 description=f"Auto-derived from {base_description}. {FUNCTION_DESCRIPTION_MAPS.get(ftype, ftype.value)}. ",
@@ -102,7 +102,7 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
             grain=concept.grain,
             namespace=concept.namespace,
             keys=set(
-                concept.address,
+                [concept.address],
             ),
             metadata=Metadata(
                 description=f"Auto-derived from {base_description}. {FUNCTION_DESCRIPTION_MAPS.get(ftype, ftype.value)}.",

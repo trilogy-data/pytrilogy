@@ -443,8 +443,9 @@ class ParseToObjects(Transformer):
     def map_type(self, args) -> MapType:
         return MapType(key_type=args[0], value_type=args[1])
 
+    @v_args(meta=True)
     def data_type(
-        self, args
+        self, meta: Meta, args
     ) -> DataType | TraitDataType | ListType | StructType | MapType | NumericType:
         resolved = args[0]
         traits = args[2:]
@@ -458,7 +459,13 @@ class ParseToObjects(Transformer):
             return resolved
         base = DataType(args[0].lower())
         if traits:
+            for trait in traits:
+                if trait not in self.environment.data_types:
+                    raise ParseError(
+                        f"Invalid type trait {trait} for {base}, line {meta.line}"
+                    )
             return TraitDataType(type=base, traits=traits)
+
         return base
 
     def array_comparison(self, args) -> ComparisonOperator:
@@ -1238,8 +1245,9 @@ class ParseToObjects(Transformer):
     def type_declaration(self, meta: Meta, args) -> TypeDeclaration:
         key = args[0]
         datatype = args[1]
-        self.environment.data_types[key] = datatype
-        return TypeDeclaration(type=CustomType(name=key, type=datatype))
+        new = CustomType(name=key, type=datatype)
+        self.environment.data_types[key] = new
+        return TypeDeclaration(type=new)
 
     def int_lit(self, args):
         return int("".join(args))
