@@ -1,0 +1,6 @@
+
+
+type year int;
+type month int;
+type day int;
+

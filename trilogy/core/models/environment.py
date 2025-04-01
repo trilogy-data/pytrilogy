@@ -442,6 +442,13 @@ class Environment(BaseModel):
                 self.functions[address_with_namespace(key, alias)] = (
                     function.with_namespace(alias)
                 )
+        for key, type in source.data_types.items():
+            if same_namespace:
+                self.data_types[key] = type
+            else:
+                self.data_types[address_with_namespace(key, alias)] = (
+                    type.with_namespace(alias)
+                )
         return self
 
     def add_file_import(

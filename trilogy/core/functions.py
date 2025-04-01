@@ -717,7 +717,6 @@ class FunctionFactory:
                 output_purpose = Purpose.METRIC
             else:
                 output_purpose = Purpose.PROPERTY
-
         return Function(
             operator=operator,
             arguments=full_args,

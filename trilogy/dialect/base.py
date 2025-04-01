@@ -36,6 +36,7 @@ from trilogy.core.models.core import (
     MapWrapper,
     NumericType,
     StructType,
+    TraitDataType,
     TupleWrapper,
 )
 from trilogy.core.models.datasource import Datasource, RawColumnExpr
@@ -510,6 +511,7 @@ class BaseDialect:
             date,
             datetime,
             DataType,
+            TraitDataType,
             MagicConstants,
             MapWrapper[Any, Any],
             MapType,
@@ -677,6 +679,8 @@ class BaseDialect:
             return self.FUNCTION_MAP[FunctionType.DATE_LITERAL](e)
         elif isinstance(e, datetime):
             return self.FUNCTION_MAP[FunctionType.DATETIME_LITERAL](e)
+        elif isinstance(e, TraitDataType):
+            return self.DATATYPE_MAP.get(e.type, e.type.value)
         else:
             raise ValueError(f"Unable to render type {type(e)} {e}")
 

@@ -77,6 +77,7 @@ from trilogy.core.models.core import (
     MapWrapper,
     NumericType,
     StructType,
+    TraitDataType,
     TupleWrapper,
     arg_to_datatype,
 )
@@ -1066,7 +1067,9 @@ class BuildFunction(DataTyped, BuildConceptArgs, BaseModel):
     # class BuildFunction(Function):
     operator: FunctionType
     arg_count: int = Field(default=1)
-    output_datatype: DataType | ListType | StructType | MapType | NumericType
+    output_datatype: (
+        DataType | ListType | StructType | MapType | NumericType | TraitDataType
+    )
     output_purpose: Purpose
     valid_inputs: Optional[
         Union[
@@ -1082,6 +1085,7 @@ class BuildFunction(DataTyped, BuildConceptArgs, BaseModel):
             date,
             datetime,
             MapWrapper[Any, Any],
+            TraitDataType,
             DataType,
             ListType,
             MapType,
@@ -1872,6 +1876,10 @@ class Factory:
             new.alias_origin_lookup[k] = self.build(a)
         new.gen_concept_list_caches()
         return new
+
+    @build.register
+    def _(self, base: TraitDataType):
+        return base
 
     @build.register
     def _(self, base: Datasource):
