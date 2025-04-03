@@ -1,0 +1,6 @@
+
+
+
+type usd number;
+type eur number;
+type gbp number;

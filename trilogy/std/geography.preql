@@ -1,0 +1,11 @@
+
+
+
+type us_state string; # US state abbreviation
+type latitude float; # Latitude in degrees
+type longitude float; # Longitude in degrees
+type city string; # City name
+type country string; # Country name
+type timezone string; # Timezone name
+type region string; # Region name
+type lat_long string; # Latitude and longitude in degrees
