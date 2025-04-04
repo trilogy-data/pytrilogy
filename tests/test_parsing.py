@@ -657,7 +657,10 @@ key x int;
     assert isinstance(env.config.import_resolver, DictImportResolver)
     env.parse(
         """
-    import test;
+import std.geography;
+import test;
+
+key fun_lat float::latitude;
                
 select x % 10 -> x_mod_10;
                
