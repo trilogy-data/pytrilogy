@@ -255,7 +255,7 @@ class Parenthetical(
         return arg_to_datatype(self.content)
 
 
-class Conditional(Mergeable, ConceptArgs, Namespaced, BaseModel):
+class Conditional(Mergeable, ConceptArgs, Namespaced, DataTyped, BaseModel):
     left: Expr
     right: Expr
     operator: BooleanOperator
@@ -356,6 +356,11 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, BaseModel):
         if isinstance(self.right, ConceptArgs):
             output += self.right.existence_arguments
         return output
+
+    @property
+    def output_datatype(self):
+        # a conditional is always a boolean
+        return DataType.BOOL
 
     def decompose(self):
         chunks = []
@@ -545,7 +550,7 @@ class Grain(Namespaced, BaseModel):
             return self.__add__(other)
 
 
-class Comparison(ConceptArgs, Mergeable, Namespaced, BaseModel):
+class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
     left: Union[
         int,
         str,
@@ -744,6 +749,11 @@ class Comparison(ConceptArgs, Mergeable, Namespaced, BaseModel):
         if isinstance(self.right, ConceptArgs):
             output += self.right.existence_arguments
         return output
+
+    @property
+    def output_datatype(self):
+        # a conditional is always a boolean
+        return DataType.BOOL
 
 
 class SubselectComparison(Comparison):

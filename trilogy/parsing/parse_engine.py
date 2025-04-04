@@ -91,6 +91,7 @@ from trilogy.core.models.core import (
     TupleWrapper,
     arg_to_datatype,
     dict_to_map_wrapper,
+    is_compatible_datatype,
     list_to_wrapper,
     tuple_to_wrapper,
 )
@@ -147,6 +148,7 @@ SELF_LABEL = "root"
 MAX_PARSE_DEPTH = 10
 
 STDLIB_ROOT = Path(__file__).parent.parent
+
 
 @dataclass
 class WholeGrainWrapper:
@@ -451,19 +453,25 @@ class ParseToObjects(Transformer):
         resolved = args[0]
         traits = args[2:]
         if isinstance(resolved, StructType):
-            return resolved
+            base = resolved
         elif isinstance(resolved, ListType):
-            return resolved
+            base = resolved
         elif isinstance(resolved, NumericType):
-            return resolved
+            base = resolved
         elif isinstance(resolved, MapType):
-            return resolved
-        base = DataType(args[0].lower())
+            base = resolved
+        else:
+            base = DataType(args[0].lower())
         if traits:
             for trait in traits:
                 if trait not in self.environment.data_types:
                     raise ParseError(
-                        f"Invalid type trait {trait} for {base}, line {meta.line}"
+                        f"Invalid trait (type) {trait} for {base}, line {meta.line}."
+                    )
+                matched = self.environment.data_types[trait]
+                if not is_compatible_datatype(matched.type, base):
+                    raise ParseError(
+                        f"Invalid trait (type) {trait} for {base}, line {meta.line}. Trait expects type {matched.type}, has {base}"
                     )
             return TraitDataType(type=base, traits=traits)
 
@@ -937,10 +945,13 @@ class ParseToObjects(Transformer):
             select=args[-1],
         )
 
-    def resolve_import_address(self, address, is_stdlib:bool = False) -> str:
-        if isinstance(
-            self.environment.config.import_resolver, FileSystemImportResolver
-        ) or is_stdlib:
+    def resolve_import_address(self, address, is_stdlib: bool = False) -> str:
+        if (
+            isinstance(
+                self.environment.config.import_resolver, FileSystemImportResolver
+            )
+            or is_stdlib
+        ):
             with open(address, "r", encoding="utf-8") as f:
                 text = f.read()
         elif isinstance(self.environment.config.import_resolver, DictImportResolver):
@@ -966,7 +977,7 @@ class ParseToObjects(Transformer):
         input_path = args[0]
         path = input_path.split(".")
         is_stdlib = False
-        if path[0] == 'std':
+        if path[0] == "std":
             is_stdlib = True
             target = join(STDLIB_ROOT, *path) + ".preql"
             token_lookup: Path | str = Path(target)
