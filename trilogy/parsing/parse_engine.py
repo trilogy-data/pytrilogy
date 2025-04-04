@@ -452,6 +452,7 @@ class ParseToObjects(Transformer):
     ) -> DataType | TraitDataType | ListType | StructType | MapType | NumericType:
         resolved = args[0]
         traits = args[2:]
+        base: DataType | TraitDataType | ListType | StructType | MapType | NumericType
         if isinstance(resolved, StructType):
             base = resolved
         elif isinstance(resolved, ListType):
@@ -986,7 +987,7 @@ class ParseToObjects(Transformer):
         ):
             target = join(self.environment.working_path, *path) + ".preql"
             # tokens + text are cached by path
-            token_lookup: Path | str = Path(target)
+            token_lookup = Path(target)
         elif isinstance(self.environment.config.import_resolver, DictImportResolver):
             target = ".".join(path)
             token_lookup = target

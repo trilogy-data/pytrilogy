@@ -105,7 +105,7 @@ class DataType(Enum):
 
 
 class TraitDataType(BaseModel):
-    type: DataType | NumericType
+    type: DataType | NumericType | StructType | ListType | MapType
     traits: list[str]
 
     def __hash__(self):

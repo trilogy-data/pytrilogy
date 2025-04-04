@@ -680,7 +680,7 @@ class BaseDialect:
         elif isinstance(e, datetime):
             return self.FUNCTION_MAP[FunctionType.DATETIME_LITERAL](e)
         elif isinstance(e, TraitDataType):
-            return self.DATATYPE_MAP.get(e.type, e.type.value)
+            return self.render_expr(e.type, cte=cte, cte_map=cte_map)
         else:
             raise ValueError(f"Unable to render type {type(e)} {e}")
 

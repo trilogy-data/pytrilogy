@@ -1411,7 +1411,7 @@ def get_basic_type(
     if isinstance(type, NumericType):
         return DataType.NUMERIC
     if isinstance(type, TraitDataType):
-        return type.type
+        return get_basic_type(type.type)
     return type
 
 
