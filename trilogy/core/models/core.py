@@ -105,7 +105,7 @@ class DataType(Enum):
 
 
 class TraitDataType(BaseModel):
-    type: DataType
+    type: DataType | NumericType | StructType | ListType | MapType
     traits: list[str]
 
     def __hash__(self):
@@ -133,6 +133,9 @@ class TraitDataType(BaseModel):
 class NumericType(BaseModel):
     precision: int = 20
     scale: int = 5
+
+    def __str__(self) -> str:
+        return f"Numeric({self.precision},{self.scale})"
 
     @property
     def data_type(self):
@@ -356,12 +359,21 @@ def merge_datatypes(
 
 def is_compatible_datatype(left, right):
     # for unknown types, we can't make any assumptions
+    if all(
+        isinstance(x, NumericType)
+        or x in (DataType.INTEGER, DataType.FLOAT, DataType.NUMERIC)
+        for x in (left, right)
+    ):
+        return True
+    elif isinstance(left, NumericType) or isinstance(right, NumericType):
+        return False
     if right == DataType.UNKNOWN or left == DataType.UNKNOWN:
         return True
     if left == right:
         return True
     if {left, right} == {DataType.NUMERIC, DataType.FLOAT}:
         return True
+
     if {left, right} == {DataType.NUMERIC, DataType.INTEGER}:
         return True
     if {left, right} == {DataType.FLOAT, DataType.INTEGER}:

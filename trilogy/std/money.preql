@@ -1,0 +1,6 @@
+
+
+# generic currency types
+type usd numeric;
+type eur numeric;
+type gbp numeric;
