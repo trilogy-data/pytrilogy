@@ -136,6 +136,7 @@ def test_date_functions(test_environment):
         date_part(order_timestamp, second) -> order_second_part,
         date_part(order_timestamp, quarter) -> order_quarter_part,
         date_part(order_timestamp, week) -> order_week_part,
+        date_part(order_timestamp, day_of_week) -> order_day_of_week_part,
     ;
     
     
