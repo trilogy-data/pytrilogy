@@ -417,7 +417,14 @@ def window_item_to_concept(
     bcontent = environment.concepts[parent.content.address]
     if isinstance(bcontent, UndefinedConcept):
         return UndefinedConcept(address=f"{namespace}.{name}", metadata=fmetadata)
-    local_purpose, keys = get_purpose_and_keys(None, (bcontent,), environment)
+
+    if bcontent.purpose == Purpose.METRIC:
+        local_purpose, keys = get_purpose_and_keys(None, (bcontent,), environment)
+    else:
+        local_purpose = Purpose.PROPERTY
+        keys = {
+            bcontent.address,
+        }
 
     if parent.order_by:
         grain_components = parent.over + [bcontent.output]

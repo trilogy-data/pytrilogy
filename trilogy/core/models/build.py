@@ -1610,8 +1610,18 @@ class Factory:
 
     @build.register
     def _(self, base: OrderItem) -> BuildOrderItem:
+        from trilogy.parsing.common import arbitrary_to_concept
+
+        bexpr: Any
+        if isinstance(base.expr, AggregateWrapper):
+            bexpr = arbitrary_to_concept(
+                base.expr,
+                environment=self.environment,
+            )
+        else:
+            bexpr = base.expr
         return BuildOrderItem.model_construct(
-            expr=(self.build(base.expr)),
+            expr=(self.build(bexpr)),
             order=base.order,
         )
 

@@ -1,5 +1,5 @@
 query_id = 12
-gen_length = 3189
+gen_length = 3326
 generated_sql = """
 
 WITH 
@@ -39,29 +39,33 @@ GROUP BY
     cheerful.\"web_sales_item_name\"),
 cooperative as (
 SELECT
-    sum(thoughtful.\"itemrevenue\") over (partition by thoughtful.\"web_sales_item_class\") as \"_virt_window_sum_7523689155741339\",
+    sum(thoughtful.\"itemrevenue\") over (partition by thoughtful.\"web_sales_item_class\") as \"itemclassrevenue\",
     thoughtful.\"itemrevenue\" as \"itemrevenue\",
+    thoughtful.\"web_sales_item_class\" as \"web_sales_item_class\"
+FROM
+    thoughtful),
+questionable as (
+SELECT
+    cooperative.\"itemclassrevenue\" as \"itemclassrevenue\",
+    cooperative.\"itemrevenue\" as \"itemrevenue\",
+    cooperative.\"web_sales_item_class\" as \"web_sales_item_class\"
+FROM
+    cooperative)
+SELECT
+    thoughtful.\"web_sales_item_name\" as \"web_sales_item_name\",
+    thoughtful.\"web_sales_item_desc\" as \"web_sales_item_desc\",
     thoughtful.\"web_sales_item_category\" as \"web_sales_item_category\",
     thoughtful.\"web_sales_item_class\" as \"web_sales_item_class\",
     thoughtful.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    thoughtful.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    thoughtful.\"web_sales_item_name\" as \"web_sales_item_name\"
+    thoughtful.\"itemrevenue\" as \"itemrevenue\",
+    (thoughtful.\"itemrevenue\" * 100.0) / questionable.\"itemclassrevenue\" as \"revenueratio\"
 FROM
-    thoughtful)
-SELECT
-    cooperative.\"web_sales_item_name\" as \"web_sales_item_name\",
-    cooperative.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    cooperative.\"web_sales_item_category\" as \"web_sales_item_category\",
-    cooperative.\"web_sales_item_class\" as \"web_sales_item_class\",
-    cooperative.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    cooperative.\"itemrevenue\" as \"itemrevenue\",
-    (cooperative.\"itemrevenue\" * 100.0) / cooperative.\"_virt_window_sum_7523689155741339\" as \"revenueratio\"
-FROM
-    cooperative
+    questionable
+    INNER JOIN thoughtful on (questionable.\"web_sales_item_class\" = thoughtful.\"web_sales_item_class\" or (questionable.\"web_sales_item_class\" is null and thoughtful.\"web_sales_item_class\" is null)) AND questionable.\"itemrevenue\" = thoughtful.\"itemrevenue\"
 ORDER BY 
-    cooperative.\"web_sales_item_category\" asc,
-    cooperative.\"web_sales_item_class\" asc,
-    cooperative.\"web_sales_item_name\" asc,
-    cooperative.\"web_sales_item_desc\" asc,
-    (cooperative.\"itemrevenue\" * 100.0) / cooperative.\"_virt_window_sum_7523689155741339\" asc
+    thoughtful.\"web_sales_item_category\" asc,
+    thoughtful.\"web_sales_item_class\" asc,
+    thoughtful.\"web_sales_item_name\" asc,
+    thoughtful.\"web_sales_item_desc\" asc,
+    (thoughtful.\"itemrevenue\" * 100.0) / questionable.\"itemclassrevenue\" asc
 LIMIT (100)"""

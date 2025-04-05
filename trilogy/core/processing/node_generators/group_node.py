@@ -86,7 +86,7 @@ def gen_group_node(
                     )
                 else:
                     logger.info(
-                        f"{padding(depth)}{LOGGER_PREFIX} cannot include optional agg; mismatched grain {BuildGrain.from_concepts(agg_parents)} vs {BuildGrain.from_concepts(parent_concepts)}"
+                        f"{padding(depth)}{LOGGER_PREFIX} cannot include optional agg {possible_agg.address}; mismatched grain {BuildGrain.from_concepts(agg_parents)} vs {BuildGrain.from_concepts(parent_concepts)}"
                     )
     if parent_concepts:
         logger.info(
@@ -139,7 +139,7 @@ def gen_group_node(
         )
         return group_node
     logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} group node requires enrichment, missing {missing_optional}"
+        f"{padding(depth)}{LOGGER_PREFIX} group node for {concept.address} requires enrichment, missing {missing_optional}"
     )
     return gen_enrichment_node(
         group_node,
