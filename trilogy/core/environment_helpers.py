@@ -1,6 +1,6 @@
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import ConceptSource, FunctionType, Purpose
-from trilogy.core.functions import AttrAccess
+from trilogy.core.functions import AttrAccess, FunctionFactory
 from trilogy.core.models.author import Concept, Function, Metadata
 from trilogy.core.models.core import DataType, StructType, arg_to_datatype
 from trilogy.core.models.environment import Environment
@@ -19,6 +19,7 @@ FUNCTION_DESCRIPTION_MAPS = {
 
 
 def generate_date_concepts(concept: Concept, environment: Environment):
+    factory = FunctionFactory(environment=environment)
     if concept.metadata and concept.metadata.description:
         base_description = concept.metadata.description
     else:
@@ -40,17 +41,15 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             if concept.purpose == Purpose.CONSTANT
             else Purpose.PROPERTY
         )
-        const_function: Function = Function(
+        function = factory.create_function(
             operator=ftype,
-            output_datatype=DataType.INTEGER,
-            output_purpose=default_type,
-            arguments=[concept],
+            args=[concept],
         )
         new_concept = Concept(
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
             purpose=default_type,
-            lineage=const_function,
+            lineage=function,
             grain=concept.grain,
             namespace=concept.namespace,
             keys=set(
@@ -68,6 +67,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
 
 
 def generate_datetime_concepts(concept: Concept, environment: Environment):
+    factory = FunctionFactory(environment=environment)
     if concept.metadata and concept.metadata.description:
         base_description = concept.metadata.description
     else:
@@ -88,11 +88,10 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
             if concept.purpose == Purpose.CONSTANT
             else Purpose.PROPERTY
         )
-        const_function: Function = Function(
+
+        const_function = factory.create_function(
             operator=ftype,
-            output_datatype=DataType.INTEGER,
-            output_purpose=default_type,
-            arguments=[concept],
+            args=[concept],
         )
         new_concept = Concept(
             name=f"{concept.name}.{fname}",

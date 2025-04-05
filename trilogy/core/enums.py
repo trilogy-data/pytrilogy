@@ -298,6 +298,7 @@ class DatePart(Enum):
     HOUR = "hour"
     MINUTE = "minute"
     SECOND = "second"
+    DAY_OF_WEEK = "day_of_week"
 
     @classmethod
     def _missing_(cls, value):

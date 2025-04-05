@@ -122,8 +122,21 @@ def test_date_functions(test_environment):
         quarter(order_timestamp) -> order_quarter,
         year(order_timestamp) -> order_year,
         date_trunc(order_timestamp, month) -> order_month_trunc,
-        date_part(order_timestamp, month) -> order_month_part,
         date_add(order_timestamp, month, 1) -> one_month_post_order,
+        date_trunc(order_timestamp, day) -> order_day_trunc,
+        date_trunc(order_timestamp, year) -> order_year_trunc,
+        date_trunc(order_timestamp, hour) -> order_hour_trunc,
+        date_trunc(order_timestamp, minute) -> order_minute_trunc,
+        date_trunc(order_timestamp, second) -> order_second_trunc,
+        date_part(order_timestamp, month) -> order_month_part,
+        date_part(order_timestamp, day) -> order_day_part,
+        date_part(order_timestamp, year) -> order_year_part,
+        date_part(order_timestamp, hour) -> order_hour_part,
+        date_part(order_timestamp, minute) -> order_minute_part,
+        date_part(order_timestamp, second) -> order_second_part,
+        date_part(order_timestamp, quarter) -> order_quarter_part,
+        date_part(order_timestamp, week) -> order_week_part,
+        date_part(order_timestamp, day_of_week) -> order_day_of_week_part,
     ;
     
     
