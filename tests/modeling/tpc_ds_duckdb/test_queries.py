@@ -95,7 +95,8 @@ def test_one(engine):
 
 
 def test_two(engine):
-    run_query(engine, 2, sql_override=True)
+    query = run_query(engine, 2, sql_override=True)
+    assert len(query) < 9000, query
 
 
 def test_three(engine):

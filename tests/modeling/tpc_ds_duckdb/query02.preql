@@ -14,6 +14,8 @@ def weekday_sales(weekday) ->
 
 WITH
     yearly_agg AS
+WHERE
+    date.week_seq in relevent_week_seq
 SELECT
     date.week_seq,
     @weekday_sales(0) as sunday_sales,
@@ -22,16 +24,14 @@ SELECT
     @weekday_sales(3) as wednesday_sales,
     @weekday_sales(4) as thursday_sales,
     @weekday_sales(5) as friday_sales,
-    @weekday_sales(6) as saturday_sales
+    @weekday_sales(6) as saturday_sales,
 ;
 
 def round_lag(sales)-> round(sales / (lead 53 sales by yearly_agg.date.week_seq asc), 2);
 
-WHERE
-    yearly_agg.date.week_seq in relevent_week_seq
+
 SELECT
     yearly_agg.date.week_seq,
-    -- (lead 53 yearly_agg.sunday_sales by yearly_agg.date.week_seq asc) -> filter_flag,
     @round_lag(yearly_agg.sunday_sales) as sunday_increase,
     @round_lag(yearly_agg.monday_sales) as monday_increase,
     @round_lag(yearly_agg.tuesday_sales) as tuesday_increase,
@@ -39,8 +39,9 @@ SELECT
     @round_lag(yearly_agg.thursday_sales) as thursday_increase,
     @round_lag(yearly_agg.friday_sales) as friday_increase,
     @round_lag(yearly_agg.saturday_sales) as saturday_increase
-HAVING
-    filter_flag is not null
+    # -- (lead 53 yearly_agg.sunday_sales by yearly_agg.date.week_seq asc) -> filter_flag,
+having 
+    sunday_increase is not null
 ORDER BY 
      yearly_agg.date.week_seq asc NULLS FIRST
 LIMIT 100;

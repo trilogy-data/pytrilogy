@@ -9,7 +9,8 @@ select
     web_sales.item.class,
     web_sales.item.current_price,
     sum(web_sales.extra_sales_price) -> itemrevenue,
-    (itemrevenue *100.00) / sum itemrevenue over web_sales.item.class ->revenueratio
+    -- sum itemrevenue over web_sales.item.class ->itemclassrevenue,
+    (itemrevenue *100.00) / itemclassrevenue ->revenueratio
 WHERE
     web_sales.date.date between cast('1999-02-22' AS date) AND cast('1999-03-24' AS date)
     and web_sales.item.category in (

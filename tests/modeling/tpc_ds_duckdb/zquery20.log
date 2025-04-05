@@ -1,5 +1,5 @@
 query_id = 20
-gen_length = 2789
+gen_length = 3009
 generated_sql = """
 
 WITH 
@@ -40,28 +40,32 @@ GROUP BY
 cooperative as (
 SELECT
     sum(thoughtful.\"revenue\") over (partition by thoughtful.\"cs_item_class\") as \"_virt_window_sum_4519707562798106\",
+    thoughtful.\"cs_item_class\" as \"cs_item_class\",
+    thoughtful.\"revenue\" as \"revenue\"
+FROM
+    thoughtful),
+questionable as (
+SELECT
+    cooperative.\"_virt_window_sum_4519707562798106\" as \"_virt_window_sum_4519707562798106\",
+    cooperative.\"cs_item_class\" as \"cs_item_class\",
+    cooperative.\"revenue\" as \"revenue\"
+FROM
+    cooperative)
+SELECT
+    thoughtful.\"cs_item_name\" as \"cs_item_name\",
+    thoughtful.\"cs_item_desc\" as \"cs_item_desc\",
     thoughtful.\"cs_item_category\" as \"cs_item_category\",
     thoughtful.\"cs_item_class\" as \"cs_item_class\",
     thoughtful.\"cs_item_current_price\" as \"cs_item_current_price\",
-    thoughtful.\"cs_item_desc\" as \"cs_item_desc\",
-    thoughtful.\"cs_item_name\" as \"cs_item_name\",
-    thoughtful.\"revenue\" as \"revenue\"
+    thoughtful.\"revenue\" as \"revenue\",
+    thoughtful.\"revenue\" * 100.0 / (questionable.\"_virt_window_sum_4519707562798106\") as \"revenue_ratio\"
 FROM
-    thoughtful)
-SELECT
-    cooperative.\"cs_item_name\" as \"cs_item_name\",
-    cooperative.\"cs_item_desc\" as \"cs_item_desc\",
-    cooperative.\"cs_item_category\" as \"cs_item_category\",
-    cooperative.\"cs_item_class\" as \"cs_item_class\",
-    cooperative.\"cs_item_current_price\" as \"cs_item_current_price\",
-    cooperative.\"revenue\" as \"revenue\",
-    cooperative.\"revenue\" * 100.0 / (cooperative.\"_virt_window_sum_4519707562798106\") as \"revenue_ratio\"
-FROM
-    cooperative
+    questionable
+    INNER JOIN thoughtful on (questionable.\"cs_item_class\" = thoughtful.\"cs_item_class\" or (questionable.\"cs_item_class\" is null and thoughtful.\"cs_item_class\" is null)) AND questionable.\"revenue\" = thoughtful.\"revenue\"
 ORDER BY 
-    cooperative.\"cs_item_category\" asc nulls first,
-    cooperative.\"cs_item_class\" asc nulls first,
-    cooperative.\"cs_item_name\" asc nulls first,
-    cooperative.\"cs_item_desc\" asc nulls first,
-    cooperative.\"revenue\" * 100.0 / (cooperative.\"_virt_window_sum_4519707562798106\") asc nulls first
+    thoughtful.\"cs_item_category\" asc nulls first,
+    thoughtful.\"cs_item_class\" asc nulls first,
+    thoughtful.\"cs_item_name\" asc nulls first,
+    thoughtful.\"cs_item_desc\" asc nulls first,
+    thoughtful.\"revenue\" * 100.0 / (questionable.\"_virt_window_sum_4519707562798106\") asc nulls first
 LIMIT (100)"""
