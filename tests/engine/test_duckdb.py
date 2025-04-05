@@ -1212,3 +1212,55 @@ order by local.ward asc
 
     assert len(results) == 1
     assert results[0].violent_crime_count == 1
+
+
+# def test_variable_plan_generation():
+#     from trilogy.hooks import DebuggingHook
+#     DebuggingHook()
+#     query = """
+#     key case_number int;
+# property case_number.primary_type string;
+# property case_number.ward string;
+
+# datasource crimes (
+#     case_number: case_number,
+#     primary_type: primary_type,
+#     ward: ward
+# )
+# grain (case_number)
+# query '''
+# select 1 as case_number, 'HOMICIDE' as primary_type, 'Ward 1' as ward
+# union all
+# select 2, 'ASSAULT', 'Ward 2'
+# union all
+# select 3, 'ROBBERY', 'Ward 1'
+# ''';
+
+# """
+
+#     executor: Executor = Dialects.DUCK_DB.default_executor(
+#         environment=Environment(working_path=Path(__file__).parent)
+#     )
+#     executor.parse_text(query)
+
+#     base =  executor.generate_sql(
+#         """select local.ward, count_distinct(local.case_number) as violent_crime_count
+# where local.primary_type in ("HOMICIDE"::string, "ASSAULT"::string, "ROBBERY"::string, "AGGRAVATED ASSAULT"::string)
+# having violent_crime_count > 0
+# order by local.ward asc
+#                                     ; """
+#     )[0]
+#     comp = executor.generate_sql(
+#         """
+# auto homicide <- "HOMICIDE"::string;
+# auto assault <- "ASSAULT"::string;
+# auto robbery <- "ROBBERY"::string;
+
+# select local.ward, count_distinct(local.case_number) as violent_crime_count
+# where local.primary_type in (homicide, assault, robbery)
+# having violent_crime_count > 0
+# order by local.ward asc
+#                                     ; """
+#     )[0]
+
+#     assert base == comp

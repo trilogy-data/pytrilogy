@@ -124,6 +124,30 @@ def create_struct_output(
     return StructType(fields=types, fields_map=zipped)
 
 
+def get_date_part_output(args: list[Any]):
+    target = args[1]
+    if target == DatePart.YEAR:
+        return TraitDataType(type=DataType.INTEGER, traits=["year"])
+    elif target == DatePart.MONTH:
+        return TraitDataType(type=DataType.INTEGER, traits=["month"])
+    elif target == DatePart.DAY:
+        return TraitDataType(type=DataType.INTEGER, traits=["day"])
+    elif target == DatePart.HOUR:
+        return TraitDataType(type=DataType.INTEGER, traits=["hour"])
+    elif target == DatePart.MINUTE:
+        return TraitDataType(type=DataType.INTEGER, traits=["minute"])
+    elif target == DatePart.SECOND:
+        return TraitDataType(type=DataType.INTEGER, traits=["second"])
+    elif target == DatePart.WEEK:
+        return TraitDataType(type=DataType.INTEGER, traits=["week"])
+    elif target == DatePart.QUARTER:
+        return TraitDataType(type=DataType.INTEGER, traits=["quarter"])
+    elif target == DatePart.DAY_OF_WEEK:
+        return TraitDataType(type=DataType.INTEGER, traits=["day_of_week"])
+    else:
+        raise InvalidSyntaxException(f"Date part not supported for {target}")
+
+
 def get_date_trunc_output(
     args: list[Any],
 ):
@@ -360,7 +384,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             {DataType.DATE_PART},
         ],
         output_purpose=Purpose.PROPERTY,
-        output_type=DataType.INTEGER,
+        output_type_function=get_date_part_output,
         arg_count=2,
     ),
     FunctionType.DATE_ADD: FunctionConfig(
@@ -443,7 +467,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.STRING,
         },
         output_purpose=Purpose.PROPERTY,
-        output_type=DataType.INTEGER,
+        output_type=TraitDataType(type=DataType.INTEGER, traits=["second"]),
         arg_count=1,
     ),
     FunctionType.MINUTE: FunctionConfig(
@@ -454,7 +478,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.STRING,
         },
         output_purpose=Purpose.PROPERTY,
-        output_type=DataType.INTEGER,
+        output_type=TraitDataType(type=DataType.INTEGER, traits=["minute"]),
         arg_count=1,
     ),
     FunctionType.HOUR: FunctionConfig(
@@ -465,7 +489,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.STRING,
         },
         output_purpose=Purpose.PROPERTY,
-        output_type=DataType.INTEGER,
+        output_type=TraitDataType(type=DataType.INTEGER, traits=["hour"]),
         arg_count=1,
     ),
     FunctionType.DAY: FunctionConfig(
@@ -476,7 +500,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.STRING,
         },
         output_purpose=Purpose.PROPERTY,
-        output_type=DataType.INTEGER,
+        output_type=TraitDataType(type=DataType.INTEGER, traits=["day"]),
         arg_count=1,
     ),
     FunctionType.WEEK: FunctionConfig(
@@ -487,7 +511,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.STRING,
         },
         output_purpose=Purpose.PROPERTY,
-        output_type=DataType.INTEGER,
+        output_type=TraitDataType(type=DataType.INTEGER, traits=["week"]),
         arg_count=1,
     ),
     FunctionType.MONTH: FunctionConfig(
@@ -498,7 +522,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.STRING,
         },
         output_purpose=Purpose.PROPERTY,
-        output_type=DataType.INTEGER,
+        output_type=TraitDataType(type=DataType.INTEGER, traits=["month"]),
         arg_count=1,
     ),
     FunctionType.QUARTER: FunctionConfig(
@@ -509,7 +533,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.STRING,
         },
         output_purpose=Purpose.PROPERTY,
-        output_type=DataType.INTEGER,
+        output_type=TraitDataType(type=DataType.INTEGER, traits=["quarter"]),
         arg_count=1,
     ),
     FunctionType.YEAR: FunctionConfig(
@@ -520,7 +544,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.STRING,
         },
         output_purpose=Purpose.PROPERTY,
-        output_type=DataType.INTEGER,
+        output_type=TraitDataType(type=DataType.INTEGER, traits=["year"]),
         arg_count=1,
     ),
     FunctionType.DAY_OF_WEEK: FunctionConfig(
@@ -531,7 +555,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.STRING,
         },
         output_purpose=Purpose.PROPERTY,
-        output_type=DataType.INTEGER,
+        output_type=TraitDataType(type=DataType.INTEGER, traits=["day_of_week"]),
         arg_count=1,
     ),
     FunctionType.ADD: FunctionConfig(
