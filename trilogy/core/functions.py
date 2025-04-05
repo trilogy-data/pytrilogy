@@ -43,7 +43,9 @@ class FunctionConfig:
     arg_count: int = 1
     valid_inputs: set[DataType] | list[set[DataType]] | None = None
     output_purpose: Purpose | None = None
-    output_type: DataType | ListType | MapType | StructType | NumericType | None = None
+    output_type: (
+        DataType | ListType | MapType | StructType | NumericType | TraitDataType | None
+    ) = None
     output_type_function: Optional[Callable] = None
 
 
