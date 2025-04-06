@@ -1,10 +1,10 @@
 
 
 ## us types
-type us_state string; # US state abbreviation
-type us_zip_code string; # US ZIP code
-type us_state string; # US state name
+type us_state_short string; # US state abbreviation - ex MA, CA, NY
+type us_state string; # US state name - ex Massachusetts, California, New York
 
+type us_zip_code string; # US ZIP code
 
 ## generic types
 type latitude float; # Latitude in degrees
