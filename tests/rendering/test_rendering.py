@@ -957,3 +957,17 @@ select
     for idx, cmd in enumerate(commands):
         rendered = Renderer().to_string(cmd)
         assert rendered == expected[idx], rendered
+
+    env, commands = basic.parse(
+        """
+    select round(@add_thrice(1),2) as test_sum;
+                """
+    )
+    expected = [
+        """SELECT
+    round(@add_thrice(1),2) -> test_sum,
+;""",
+    ]
+    for idx, cmd in enumerate(commands):
+        rendered = Renderer().to_string(cmd)
+        assert rendered == expected[idx], rendered
