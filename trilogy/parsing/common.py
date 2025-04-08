@@ -39,6 +39,7 @@ from trilogy.core.models.author import (
     UndefinedConcept,
     WhereClause,
     WindowItem,
+    FunctionCallWrapper,
 )
 from trilogy.core.models.core import DataType, arg_to_datatype
 from trilogy.core.models.environment import Environment
@@ -610,7 +611,12 @@ def arbitrary_to_concept(
     metadata: Metadata | None = None,
 ) -> Concept:
     namespace = namespace or environment.namespace
-    if isinstance(parent, AggregateWrapper):
+    # this is purely for the parse tree, discard from derivation
+    if isinstance(parent, FunctionCallWrapper):
+        return arbitrary_to_concept(
+            parent.content, environment, namespace, name, metadata
+        )
+    elif isinstance(parent, AggregateWrapper):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
         return agg_wrapper_to_concept(

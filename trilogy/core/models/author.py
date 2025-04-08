@@ -1753,6 +1753,11 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         return base_grain
 
 
+class FunctionCallWrapper(Parenthetical):
+    name: str
+    args: List[Expr]
+
+
 class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel):
     function: Function
     by: List[ConceptRef] = Field(default_factory=list)

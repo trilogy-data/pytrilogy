@@ -64,6 +64,7 @@ from trilogy.core.models.author import (
     Expr,
     FilterItem,
     Function,
+    FunctionCallWrapper,
     Grain,
     HavingClause,
     Metadata,
@@ -202,7 +203,7 @@ def expr_to_boolean(
 def unwrap_transformation(
     input: Expr,
     environment: Environment,
-) -> Function | FilterItem | WindowItem | AggregateWrapper:
+) -> Function | FilterItem | WindowItem | AggregateWrapper | FunctionCallWrapper:
     if isinstance(input, Function):
         return input
     elif isinstance(input, AggregateWrapper):
@@ -218,6 +219,8 @@ def unwrap_transformation(
     elif isinstance(input, FilterItem):
         return input
     elif isinstance(input, WindowItem):
+        return input
+    elif isinstance(input, FunctionCallWrapper):
         return input
     elif isinstance(input, Parenthetical):
         return unwrap_transformation(input.content, environment)
@@ -1248,10 +1251,12 @@ class ParseToObjects(Transformer):
         )
         return FunctionDeclaration(name=identity, args=function_arguments, expr=output)
 
-    def custom_function(self, args):
+    def custom_function(self, args) -> FunctionCallWrapper:
         name = args[0]
         args = args[1:]
-        remapped = self.environment.functions[name](*args)
+        remapped = FunctionCallWrapper(
+            content=self.environment.functions[name](*args), name=name, args=args
+        )
         return remapped
 
     @v_args(meta=True)
