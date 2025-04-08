@@ -1757,6 +1757,40 @@ class FunctionCallWrapper(Parenthetical):
     name: str
     args: List[Expr]
 
+    def with_namespace(self, namespace) -> "FunctionCallWrapper":
+        return FunctionCallWrapper.model_construct(
+            content=(
+                self.content.with_namespace(namespace)
+                if isinstance(self.content, Namespaced)
+                else self.content
+            ),
+            name=self.name,
+            args=[
+                x.with_namespace(namespace) if isinstance(x, Namespaced) else x
+                for x in self.args
+            ],
+        )
+
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> "FunctionCallWrapper":
+        return FunctionCallWrapper.model_construct(
+            content=(
+                self.content.with_merge(source, target, modifiers)
+                if isinstance(self.content, Mergeable)
+                else self.content
+            ),
+            name=self.name,
+            args=[
+                (
+                    x.with_merge(source, target, modifiers)
+                    if isinstance(x, Mergeable)
+                    else x
+                )
+                for x in self.args
+            ],
+        )
+
 
 class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel):
     function: Function

@@ -27,6 +27,7 @@ from trilogy.core.models.author import (
     ConceptRef,
     FilterItem,
     Function,
+    FunctionCallWrapper,
     Grain,
     HavingClause,
     ListWrapper,
@@ -39,7 +40,6 @@ from trilogy.core.models.author import (
     UndefinedConcept,
     WhereClause,
     WindowItem,
-    FunctionCallWrapper,
 )
 from trilogy.core.models.core import DataType, arg_to_datatype
 from trilogy.core.models.environment import Environment
@@ -596,6 +596,7 @@ def rowset_to_concepts(rowset: RowsetDerivationStatement, environment: Environme
 def arbitrary_to_concept(
     parent: (
         AggregateWrapper
+        | FunctionCallWrapper
         | WindowItem
         | FilterItem
         | Function
@@ -614,7 +615,7 @@ def arbitrary_to_concept(
     # this is purely for the parse tree, discard from derivation
     if isinstance(parent, FunctionCallWrapper):
         return arbitrary_to_concept(
-            parent.content, environment, namespace, name, metadata
+            parent.content, environment, namespace, name, metadata  # type: ignore
         )
     elif isinstance(parent, AggregateWrapper):
         if not name:
