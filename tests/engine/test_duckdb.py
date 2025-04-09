@@ -1264,3 +1264,40 @@ order by local.ward asc
 #     )[0]
 
 #     assert base == comp
+
+
+
+def test_null_filtering():
+    executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+
+    test = """key orid int;
+key store string;
+key customer int;
+
+auto customer_orders <- count(orid) by customer;
+datasource filtered_orders(
+  orid: orid,
+  store: store,
+  customer:customer,
+)
+grain(orid)
+query '''
+select 1 orid, 'store1' store, 145 customer
+union all
+select 2, 'store2', 244
+union all
+select 3, 'store2', null
+union all
+select 4, 'store3', 244
+'''
+where store = 'store2';
+
+where store = 'store2' and customer IS NULL
+select 
+    avg(customer_orders) -> avg_customer_orders,
+    avg(count(orid) by store) -> avg_store_orders,
+;"""
+    results = executor.execute_text(test)[0].fetchall()
+
+    assert len(results) == 1
+    assert results[0].avg_customer_orders == 1

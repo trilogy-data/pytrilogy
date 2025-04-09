@@ -287,6 +287,8 @@ class ComparisonOperator(Enum):
                 return ComparisonOperator.IS_NOT
             if value == ["in"]:
                 return ComparisonOperator.IN
+        if str(value).lower() != str(value):
+            return ComparisonOperator(str(value).lower())
         return super()._missing_(str(value).lower())
 
 

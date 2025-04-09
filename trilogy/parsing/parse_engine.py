@@ -961,7 +961,7 @@ class ParseToObjects(Transformer):
             lookup = address
             if lookup not in self.environment.config.import_resolver.content:
                 raise ImportError(
-                    f"Unable to import file {lookup}, not found in imsport resolver"
+                    f"Unable to import file {lookup}, not resolvable from provided source files."
                 )
             text = self.environment.config.import_resolver.content[lookup]
         else:
