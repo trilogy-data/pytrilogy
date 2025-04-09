@@ -1813,18 +1813,6 @@ class FunctionCallWrapper(
         return base
 
     @property
-    def row_arguments(self) -> Sequence[ConceptRef]:
-        if isinstance(self.content, ConceptArgs):
-            return self.content.row_arguments
-        return self.concept_arguments
-
-    @property
-    def existence_arguments(self) -> Sequence[tuple["ConceptRef", ...]]:
-        if isinstance(self.content, ConceptArgs):
-            return self.content.existence_arguments
-        return []
-
-    @property
     def output_datatype(self):
         return arg_to_datatype(self.content)
 
