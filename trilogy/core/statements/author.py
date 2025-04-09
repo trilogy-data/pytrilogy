@@ -22,6 +22,7 @@ from trilogy.core.models.author import (
     Expr,
     FilterItem,
     Function,
+    FunctionCallWrapper,
     Grain,
     HasUUID,
     HavingClause,
@@ -44,7 +45,9 @@ from trilogy.utility import unique
 
 
 class ConceptTransform(BaseModel):
-    function: Function | FilterItem | WindowItem | AggregateWrapper
+    function: (
+        Function | FilterItem | WindowItem | AggregateWrapper | FunctionCallWrapper
+    )
     output: Concept  # this has to be a full concept, as it may not exist in environment
     modifiers: List[Modifier] = Field(default_factory=list)
 

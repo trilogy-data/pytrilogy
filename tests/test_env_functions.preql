@@ -1,0 +1,7 @@
+
+
+
+def quadratic(a,b,c) -> a*a + b*b + sqrt(c);
+
+
+const quad_test <- (@quadratic(1, -3, 2) +5);

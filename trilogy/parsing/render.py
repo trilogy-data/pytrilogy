@@ -18,6 +18,7 @@ from trilogy.core.models.author import (
     Conditional,
     FilterItem,
     Function,
+    FunctionCallWrapper,
     Grain,
     OrderBy,
     OrderItem,
@@ -31,6 +32,7 @@ from trilogy.core.models.core import (
     ListType,
     ListWrapper,
     NumericType,
+    TraitDataType,
     TupleWrapper,
 )
 from trilogy.core.models.datasource import (
@@ -42,10 +44,12 @@ from trilogy.core.models.datasource import (
 )
 from trilogy.core.models.environment import Environment, Import
 from trilogy.core.statements.author import (
+    ArgBinding,
     ConceptDeclarationStatement,
     ConceptDerivationStatement,
     ConceptTransform,
     CopyStatement,
+    FunctionDeclaration,
     ImportStatement,
     MergeStatementV2,
     MultiSelectStatement,
@@ -54,6 +58,7 @@ from trilogy.core.statements.author import (
     RowsetDerivationStatement,
     SelectItem,
     SelectStatement,
+    TypeDeclaration,
 )
 
 QUERY_TEMPLATE = Template(
@@ -150,6 +155,21 @@ class Renderer:
         return final
 
     @to_string.register
+    def _(self, arg: TypeDeclaration):
+        return f"type {arg.type.name} {self.to_string(arg.type.type)};"
+
+    @to_string.register
+    def _(self, arg: ArgBinding):
+        if arg.default:
+            return f"{arg.name}={self.to_string(arg.default)}"
+        return f"{arg.name}"
+
+    @to_string.register
+    def _(self, arg: FunctionDeclaration):
+        args = ", ".join([self.to_string(x) for x in arg.args])
+        return f"def {arg.name}({args}) -> {self.to_string(arg.expr)};"
+
+    @to_string.register
     def _(self, arg: Datasource):
         assignments = ",\n    ".join([self.to_string(x) for x in arg.columns])
         if arg.non_partial_for:
@@ -199,6 +219,12 @@ class Renderer:
         return f"""ELSE {self.to_string(arg.expr)}"""
 
     @to_string.register
+    def _(self, arg: "FunctionCallWrapper"):
+        args = [self.to_string(c) for c in arg.args]
+        arg_string = ", ".join(args)
+        return f"""@{arg.name}({arg_string})"""
+
+    @to_string.register
     def _(self, arg: "Parenthetical"):
         return f"""({self.to_string(arg.content)})"""
 
@@ -209,6 +235,11 @@ class Renderer:
     @to_string.register
     def _(self, arg: "NumericType"):
         return f"""Numeric({arg.precision},{arg.scale})"""
+
+    @to_string.register
+    def _(self, arg: TraitDataType):
+        traits = "::".join([x for x in arg.traits])
+        return f"{self.to_string(arg.data_type)}::{traits}"
 
     @to_string.register
     def _(self, arg: ListWrapper):

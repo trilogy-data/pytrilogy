@@ -607,7 +607,15 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         ],
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
-        arg_count=InfiniteFunctionArgs,
+        arg_count=2,
+    ),
+    FunctionType.SQRT: FunctionConfig(
+        valid_inputs=[
+            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER, DataType.NUMERIC},
+        ],
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.INTEGER,
+        arg_count=1,
     ),
     FunctionType.ROUND: FunctionConfig(
         valid_inputs=[

@@ -171,6 +171,7 @@ FUNCTION_MAP = {
     FunctionType.MULTIPLY: lambda x: " * ".join(x),
     FunctionType.ROUND: lambda x: f"round({x[0]},{x[1]})",
     FunctionType.MOD: lambda x: f"({x[0]} % {x[1]})",
+    FunctionType.SQRT: lambda x: f"sqrt({x[0]})",
     # aggregate types
     FunctionType.COUNT_DISTINCT: lambda x: f"count(distinct {x[0]})",
     FunctionType.COUNT: lambda x: f"count({x[0]})",

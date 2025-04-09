@@ -153,6 +153,7 @@ class FunctionType(Enum):
     MOD = "mod"
     ROUND = "round"
     ABS = "abs"
+    SQRT = "sqrt"
 
     # Aggregates
     ## group is not a real aggregate - it just means group by this + some other set of fields

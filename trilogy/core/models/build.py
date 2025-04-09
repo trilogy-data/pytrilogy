@@ -53,6 +53,7 @@ from trilogy.core.models.author import (
     FilterItem,
     FuncArgs,
     Function,
+    FunctionCallWrapper,
     Grain,
     HavingClause,
     Metadata,
@@ -1607,6 +1608,12 @@ class Factory:
     @build.register
     def _(self, base: OrderBy) -> BuildOrderBy:
         return BuildOrderBy.model_construct(items=[self.build(x) for x in base.items])
+
+    @build.register
+    def _(self, base: FunctionCallWrapper) -> BuildExpr:
+        # function calls are kept around purely for the parse tree
+        # so discard at the build point
+        return self.build(base.content)
 
     @build.register
     def _(self, base: OrderItem) -> BuildOrderItem:

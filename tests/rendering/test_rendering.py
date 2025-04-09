@@ -917,3 +917,57 @@ property y.y_name string;
     )
 
     assert test == "property y.y_name string;"
+
+
+def test_render_trait_type():
+    basic = Environment()
+
+    env, commands = basic.parse(
+        """
+type email string;
+
+key id string::email;
+
+""",
+    )
+    expectation = ["type email string;", "key id string::email;"]
+    for idx, cmd in enumerate(commands):
+        rendered = Renderer().to_string(cmd)
+        assert rendered == expectation[idx], rendered
+
+
+def test_render_function():
+    basic = Environment()
+
+    env, commands = basic.parse(
+        """
+
+def add_thrice(x)-> x +x + x;
+
+select
+    @add_thrice(1) as test;
+""",
+    )
+    expected = [
+        """def add_thrice(x) -> x + x + x;""",
+        """SELECT
+    @add_thrice(1) -> test,
+;""",
+    ]
+    for idx, cmd in enumerate(commands):
+        rendered = Renderer().to_string(cmd)
+        assert rendered == expected[idx], rendered
+
+    env, commands = basic.parse(
+        """
+    select round(@add_thrice(1),2) as test_sum;
+                """
+    )
+    expected = [
+        """SELECT
+    round(@add_thrice(1),2) -> test_sum,
+;""",
+    ]
+    for idx, cmd in enumerate(commands):
+        rendered = Renderer().to_string(cmd)
+        assert rendered == expected[idx], rendered

@@ -376,7 +376,7 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, DataTyped, BaseModel):
 
 
 class WhereClause(Mergeable, ConceptArgs, Namespaced, BaseModel):
-    conditional: Union[SubselectComparison, Comparison, Conditional, "Parenthetical"]
+    conditional: Union[SubselectComparison, Comparison, Conditional, Parenthetical]
 
     def __repr__(self):
         return str(self.conditional)
@@ -564,6 +564,7 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
         "Conditional",
         DataType,
         "Comparison",
+        FunctionCallWrapper,
         "Parenthetical",
         MagicConstants,
         WindowItem,
@@ -583,6 +584,7 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
         Conditional,
         DataType,
         Comparison,
+        FunctionCallWrapper,
         Parenthetical,
         MagicConstants,
         WindowItem,
@@ -1622,7 +1624,6 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         elif not valid_inputs:
             return v
         for idx, arg in enumerate(v):
-
             if (
                 isinstance(arg, ConceptRef)
                 and get_basic_type(arg.datatype.data_type) not in valid_inputs[idx]
@@ -1751,6 +1752,69 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         for input in self.concept_arguments:
             base_grain += input.grain
         return base_grain
+
+
+class FunctionCallWrapper(
+    DataTyped,
+    ConceptArgs,
+    Mergeable,
+    Namespaced,
+    BaseModel,
+):
+    content: Expr
+    name: str
+    args: List[Expr]
+
+    def __str__(self):
+        return f'@{self.name}({",".join([str(x) for x in self.args])})'
+
+    def with_namespace(self, namespace) -> "FunctionCallWrapper":
+        return FunctionCallWrapper.model_construct(
+            content=(
+                self.content.with_namespace(namespace)
+                if isinstance(self.content, Namespaced)
+                else self.content
+            ),
+            name=self.name,
+            args=[
+                x.with_namespace(namespace) if isinstance(x, Namespaced) else x
+                for x in self.args
+            ],
+        )
+
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> "FunctionCallWrapper":
+        return FunctionCallWrapper.model_construct(
+            content=(
+                self.content.with_merge(source, target, modifiers)
+                if isinstance(self.content, Mergeable)
+                else self.content
+            ),
+            name=self.name,
+            args=[
+                (
+                    x.with_merge(source, target, modifiers)
+                    if isinstance(x, Mergeable)
+                    else x
+                )
+                for x in self.args
+            ],
+        )
+
+    @property
+    def concept_arguments(self) -> Sequence[ConceptRef]:
+        base: List[ConceptRef] = []
+        x = self.content
+        if isinstance(x, ConceptRef):
+            base += [x]
+        elif isinstance(x, ConceptArgs):
+            base += x.concept_arguments
+        return base
+
+    @property
+    def output_datatype(self):
+        return arg_to_datatype(self.content)
 
 
 class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel):
@@ -2278,6 +2342,7 @@ Expr = (
     | ConceptRef
     | Comparison
     | Conditional
+    | FunctionCallWrapper
     | Parenthetical
     | Function
     | AggregateWrapper
@@ -2289,6 +2354,7 @@ FuncArgs = (
     ConceptRef
     | AggregateWrapper
     | Function
+    | FunctionCallWrapper
     | Parenthetical
     | CaseWhen
     | CaseElse
