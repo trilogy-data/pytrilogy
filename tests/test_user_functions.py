@@ -217,7 +217,8 @@ def test_user_function_import():
 import test_env_functions as test_env_functions;
 
 select 
-    test_env_functions.quad_test as quad_test;
+    test_env_functions.quad_test as quad_test,
+    @test_env_functions.quadratic(2, 3, 4) as quad_two;
 
 """
     )
