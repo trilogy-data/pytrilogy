@@ -180,6 +180,7 @@
     map_key_access: expr "[" string_lit "]"
     attr_access: expr  "." string_lit 
 
+
     expr:  _constant_functions | window_item | filter_item | subselect_comparison | between_comparison |  fgroup |  aggregate_functions | unnest | union | _static_functions |  literal |  concept_lit  | index_access |  map_key_access | attr_access | parenthetical | expr_tuple | comparison |  alt_like | custom_function 
     
     // functions
@@ -191,8 +192,9 @@
     fmod: ( "mod"i "(" expr "," (int_lit | concept_lit ) ")") | ( expr "%" (int_lit | concept_lit ) )
     fround: "round"i "(" expr "," expr ")"
     fabs: "abs"i "(" expr ")"
+    fsqrt: "sqrt"i "(" expr ")"
         
-    _math_functions: fmul | fdiv | fadd | fsub | fround | fmod | fabs
+    _math_functions: fmul | fdiv | fadd | fsub | fround | fmod | fabs | fsqrt
     
     //generic
     _fcast_primary: "cast"i "(" expr "as"i data_type ")"
@@ -306,7 +308,7 @@
     custom_function:  "@" IDENTIFIER  "(" (expr ",")* expr ")"
 
     // base language constructs
-    concept_lit: IDENTIFIER
+    concept_lit: MINUS? IDENTIFIER
     IDENTIFIER: /[a-zA-Z\_][a-zA-Z0-9\_\.]*/
     WILDCARD_IDENTIFIER: /[a-zA-Z\_][a-zA-Z0-9\_\-\.\*]*/
     QUOTED_IDENTIFIER:  /`[a-zA-Z\_][a-zA-Z0-9\_\.\-\*\:\s]*`/

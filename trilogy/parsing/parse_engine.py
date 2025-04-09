@@ -807,16 +807,12 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def select_transform(self, meta: Meta, args) -> ConceptTransform:
         output: str = args[1]
-        print("pre")
-        print(type(args[0]))
-        print(args[0])
         transformation = unwrap_transformation(args[0], self.environment)
         lookup, namespace, output, parent = parse_concept_reference(
             output, self.environment
         )
 
         metadata = Metadata(line_number=meta.line, concept_source=ConceptSource.SELECT)
-        print(transformation)
         concept = arbitrary_to_concept(
             transformation,
             environment=self.environment,
@@ -1730,6 +1726,10 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fmod(self, meta: Meta, args) -> Function:
         return self.function_factory.create_function(args, FunctionType.MOD, meta)
+
+    @v_args(meta=True)
+    def fsqrt(self, meta: Meta, args) -> Function:
+        return self.function_factory.create_function(args, FunctionType.SQRT, meta)
 
     @v_args(meta=True)
     def fround(self, meta, args) -> Function:

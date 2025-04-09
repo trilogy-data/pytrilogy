@@ -1,4 +1,6 @@
-from trilogy import Dialects
+from pathlib import Path
+
+from trilogy import Dialects, Environment
 from trilogy.core.enums import Derivation, Purpose
 
 
@@ -204,3 +206,20 @@ auto test <-SUM(CASE WHEN 10 = weekday THEN x ELSE 0 END) +
     assert test.keys == set()
     assert test.purpose == Purpose.METRIC
     assert test.derivation == Derivation.BASIC
+
+
+def test_user_function_import():
+    env = Environment(working_path=Path(__file__).parent)
+    x = Dialects.DUCK_DB.default_executor(environment=env)
+
+    results = x.execute_query(
+        """
+import test_env_functions as test_env_functions;
+
+select 
+    test_env_functions.quad_test as quad_test;
+
+"""
+    )
+    results = results.fetchall()
+    assert results[0].quad_test == 16.414213562373096

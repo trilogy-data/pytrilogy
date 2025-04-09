@@ -376,9 +376,7 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, DataTyped, BaseModel):
 
 
 class WhereClause(Mergeable, ConceptArgs, Namespaced, BaseModel):
-    conditional: Union[
-        SubselectComparison, Comparison, Conditional, Parenthetical
-    ]
+    conditional: Union[SubselectComparison, Comparison, Conditional, Parenthetical]
 
     def __repr__(self):
         return str(self.conditional)
