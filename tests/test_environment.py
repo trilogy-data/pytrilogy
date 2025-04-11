@@ -13,6 +13,63 @@ from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment, LazyEnvironment
 
 
+def test_concept_rehydration():
+    test = {
+        "name": "order_timestamp.month_start",
+        "datatype": "date",
+        "purpose": "property",
+        "derivation": "root",
+        "granularity": "multi_row",
+        "metadata": {
+            "description": "Auto-derived from a local.order_timestamp. The date truncated to the month.",
+            "line_number": None,
+            "concept_source": "auto_derived",
+        },
+        "lineage": {
+            "operator": "date_truncate",
+            "arg_count": 2,
+            "output_datatype": "date",
+            "output_purpose": "property",
+            "valid_inputs": [
+                ["datetime", "string", "timestamp", "date"],
+                ["date_part"],
+            ],
+            "arguments": [
+                {
+                    "address": "local.order_timestamp",
+                    "datatype": "timestamp",
+                    "metadata": {
+                        "description": None,
+                        "line_number": None,
+                        "concept_source": "manual",
+                    },
+                },
+                "month",
+            ],
+        },
+        "namespace": "local",
+        "keys": ["local.order_timestamp"],
+        "grain": {"components": ["local.order_id"], "where_clause": None},
+        "modifiers": [],
+        "pseudonyms": [],
+    }
+    Concept.model_validate(test)
+    test["lineage"]["arguments"] = [
+        {
+            "address": "local.order_timestamp",
+            "datatype": "timestamp",
+            "metadata": {
+                "description": None,
+                "line_number": None,
+                "concept_source": "manual",
+            },
+        },
+        "monthz",
+    ]
+    with raises(TypeError):
+        Concept.model_validate(test)
+
+
 def test_environment_serialization(test_environment: Environment):
 
     path = test_environment.to_cache()

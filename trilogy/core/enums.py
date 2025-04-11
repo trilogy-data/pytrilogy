@@ -292,7 +292,7 @@ class ComparisonOperator(Enum):
         return super()._missing_(str(value).lower())
 
 
-class DatePart(Enum):
+class DatePart(str, Enum):
     MONTH = "month"
     YEAR = "year"
     WEEK = "week"

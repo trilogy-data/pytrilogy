@@ -250,7 +250,7 @@ class Environment(BaseModel):
             imports=dict(self.imports),
             namespace=self.namespace,
             working_path=self.working_path,
-            environment_config=self.config,
+            environment_config=self.config.model_copy(deep=True),
             version=self.version,
             cte_name_map=dict(self.cte_name_map),
             materialized_concepts=set(self.materialized_concepts),
