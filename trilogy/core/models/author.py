@@ -1658,8 +1658,13 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
                     # attempt to exit early to avoid checking all types
                     break
                 elif isinstance(arg, ptype):
+                    if isinstance(arg, str) and DataType.DATE_PART in valid_inputs[idx]:
+                        if arg not in [x.value for x in DatePart]:
+                            pass
+                        else:
+                            break
                     raise TypeError(
-                        f"Invalid {dtype} constant passed into {operator_name} {arg}, expecting one of {valid_inputs[idx]}"
+                        f'Invalid {dtype} constant passed into {operator_name} "{arg}", expecting one of {valid_inputs[idx]}'
                     )
         return v
 
@@ -2362,6 +2367,7 @@ FuncArgs = (
     | FilterItem
     | int
     | float
+    | DatePart
     | str
     | date
     | datetime
@@ -2371,7 +2377,6 @@ FuncArgs = (
     | ListType
     | MapType
     | NumericType
-    | DatePart
     | list
     | ListWrapper[Any]
 )
