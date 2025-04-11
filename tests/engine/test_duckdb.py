@@ -40,6 +40,7 @@ def test_concept_derivation():
     """
     )
     for property, check in [
+        ["date", test_datetime.date()],
         ["hour", test_datetime.hour],
         ["second", test_datetime.second],
         ["minute", test_datetime.minute],
@@ -59,6 +60,28 @@ def test_concept_derivation():
         assert query[-1].output_columns[0].address == f"local.test.{property}"
         results = duckdb_engine.execute_text(test_query)[0].fetchall()
         assert results[0][0] == check
+    for truncation in [
+        "month",
+        "year",
+    ]:
+        test_query = f"""
+        select local.test.{truncation}_start;
+        """
+        query = duckdb_engine.parse_text(test_query)
+        name = f"local.test.{truncation}_start"
+        assert duckdb_engine.environment.concepts[name].address == name
+        assert query[-1].output_columns[0].address == f"local.test.{truncation}_start"
+        results = duckdb_engine.execute_text(test_query)[0].fetchall()
+        assert (
+            results[0][0]
+            == test_datetime.replace(
+                day=1,
+                month=1 if truncation == "year" else test_datetime.month,
+                hour=0,
+                minute=0,
+                second=0,
+            ).date()
+        )
 
 
 def test_render_query(duckdb_engine: Executor, expected_results):
@@ -1264,7 +1287,6 @@ order by local.ward asc
 #     )[0]
 
 #     assert base == comp
-
 
 
 def test_null_filtering():

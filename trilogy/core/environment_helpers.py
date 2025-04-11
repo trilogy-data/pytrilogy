@@ -1,5 +1,5 @@
 from trilogy.constants import DEFAULT_NAMESPACE
-from trilogy.core.enums import ConceptSource, FunctionType, Purpose
+from trilogy.core.enums import ConceptSource, DatePart, FunctionType, Purpose
 from trilogy.core.functions import AttrAccess, FunctionFactory
 from trilogy.core.models.author import Concept, Function, Metadata
 from trilogy.core.models.core import DataType, StructType, arg_to_datatype
@@ -57,6 +57,30 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             ),
             metadata=Metadata(
                 description=f"Auto-derived from {base_description}. {FUNCTION_DESCRIPTION_MAPS.get(ftype, ftype.value)}. ",
+                line_number=base_line_number,
+                concept_source=ConceptSource.AUTO_DERIVED,
+            ),
+        )
+        if new_concept.name in environment.concepts:
+            continue
+        environment.add_concept(new_concept, add_derived=False)
+    for grain in [DatePart.MONTH, DatePart.YEAR]:
+        function = factory.create_function(
+            operator=FunctionType.DATE_TRUNCATE,
+            args=[concept, grain],
+        )
+        new_concept = Concept(
+            name=f"{concept.name}.{grain.value}_start",
+            datatype=DataType.DATE,
+            purpose=Purpose.PROPERTY,
+            lineage=function,
+            grain=concept.grain,
+            namespace=concept.namespace,
+            keys=set(
+                [concept.address],
+            ),
+            metadata=Metadata(
+                description=f"Auto-derived from {base_description}. The date truncated to the {grain.value}.",
                 line_number=base_line_number,
                 concept_source=ConceptSource.AUTO_DERIVED,
             ),
