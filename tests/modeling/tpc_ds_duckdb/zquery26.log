@@ -1,28 +1,22 @@
 query_id = 26
-gen_length = 2357
+gen_length = 1780
 generated_sql = """
 
 WITH 
 cooperative as (
 SELECT
-    cast(cs_date_date.\"D_YEAR\" as int) as \"cs_date_year\",
-    cs_bill_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" as \"cs_bill_customer_demographic_education_status\",
-    cs_bill_customer_demographic_customer_demographics.\"CD_GENDER\" as \"cs_bill_customer_demographic_gender\",
-    cs_bill_customer_demographic_customer_demographics.\"CD_MARITAL_STATUS\" as \"cs_bill_customer_demographic_marital_status\",
     cs_catalog_sales.\"CS_COUPON_AMT\" as \"cs_coupon_amt\",
     cs_catalog_sales.\"CS_LIST_PRICE\" as \"cs_list_price\",
     cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     cs_catalog_sales.\"CS_QUANTITY\" as \"cs_quantity\",
     cs_catalog_sales.\"CS_SALES_PRICE\" as \"cs_sales_price\",
     cs_item_items.\"I_ITEM_ID\" as \"cs_item_name\",
-    cs_item_items.\"I_ITEM_SK\" as \"cs_item_id\",
-    cs_promotion_promotion.\"P_CHANNEL_EMAIL\" as \"cs_promotion_channel_email\",
-    cs_promotion_promotion.\"P_CHANNEL_EVENT\" as \"cs_promotion_channel_event\"
+    cs_item_items.\"I_ITEM_SK\" as \"cs_item_id\"
 FROM
     memory.customer_demographics as cs_bill_customer_demographic_customer_demographics
     INNER JOIN memory.catalog_sales as cs_catalog_sales on cs_bill_customer_demographic_customer_demographics.\"CD_DEMO_SK\" = cs_catalog_sales.\"CS_BILL_CDEMO_SK\"
-    INNER JOIN memory.date_dim as cs_date_date on cs_catalog_sales.\"CS_SOLD_DATE_SK\" = cs_date_date.\"D_DATE_SK\"
     INNER JOIN memory.item as cs_item_items on cs_catalog_sales.\"CS_ITEM_SK\" = cs_item_items.\"I_ITEM_SK\"
+    INNER JOIN memory.date_dim as cs_date_date on cs_catalog_sales.\"CS_SOLD_DATE_SK\" = cs_date_date.\"D_DATE_SK\"
     INNER JOIN memory.promotion as cs_promotion_promotion on cs_catalog_sales.\"CS_PROMO_SK\" = cs_promotion_promotion.\"P_PROMO_SK\"
 WHERE
     cs_bill_customer_demographic_customer_demographics.\"CD_GENDER\" = 'M' and cs_bill_customer_demographic_customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and cs_bill_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( cs_promotion_promotion.\"P_CHANNEL_EMAIL\" = 'N' or cs_promotion_promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(cs_date_date.\"D_YEAR\" as int) = 2000

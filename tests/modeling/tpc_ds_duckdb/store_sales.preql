@@ -27,10 +27,17 @@ property <ticket_number,item.id>.net_paid float;
 property <ticket_number,item.id>.return_amount float?;
 property <ticket_number,item.id>.return_net_loss float?;
 
+# define grain equivalent dependencies
+property <ticket_number,item.id>._sale_date_id date;
+merge date.id into _sale_date_id;
+
+property <ticket_number,item.id>._store_id int;
+merge store.id into _store_id;
+
 auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price;
 
 datasource store_sales (
-    SS_SOLD_DATE_SK: date.id,
+    SS_SOLD_DATE_SK: _sale_date_id,
     SS_SOLD_TIME_SK: time.id,
     SS_CUSTOMER_SK: customer.id,
     SS_CDEMO_SK: customer_demographic.id,
@@ -46,7 +53,7 @@ datasource store_sales (
     SS_PROMO_SK: promotion.id,
     SS_QUANTITY: quantity,
     SS_COUPON_AMT: coupon_amt,
-    SS_STORE_SK: store.id,
+    SS_STORE_SK: _store_id,
     SS_NET_PAID: net_paid,
 )
 grain (ticket_number, item.id)

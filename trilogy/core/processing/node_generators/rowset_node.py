@@ -117,7 +117,7 @@ def gen_rowset_node(
         f"{padding(depth)}{LOGGER_PREFIX} final output is {[x.address for x in node.output_concepts]}"
     )
     if not local_optional or all(
-        x.address in node.output_concepts and x.address not in node.partial_concepts
+        (x.address in node.output_concepts or (z in x.pseudonyms for z in node.output_concepts)) and x.address not in node.partial_concepts
         for x in local_optional
     ):
         logger.info(

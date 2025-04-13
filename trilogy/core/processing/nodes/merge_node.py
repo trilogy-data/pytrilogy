@@ -310,6 +310,8 @@ class MergeNode(StrategyNode):
             )
         else:
             joins = []
+
+
         logger.info(
             f"{self.logging_prefix}{LOGGER_PREFIX} Final join count for CTE parent count {len(join_candidates)} is {len(joins)}"
         )
@@ -343,7 +345,25 @@ class MergeNode(StrategyNode):
         nullable_concepts = find_nullable_concepts(
             source_map=source_map, joins=joins, datasources=final_datasets
         )
-
+        # rebuild a more minimal grain excluding concepts joined for filters
+        fgrain = BuildGrain()
+        for source in final_datasets:
+            logger.info('inspect source %s', source.identifier)
+            is_grain_relevant= None
+            for join in joins:
+                if not join.right_datasource or not join.concept_pairs:
+                    continue
+                if source.identifier in join.right_datasource.identifier and not is_grain_relevant:
+                    right_address = [x.right.address for x in join.concept_pairs]
+                    is_grain_relevant = False if all([x in right_address for x in source.grain.components]) else True
+            is_output_relevant = [
+                 x for x in self.output_concepts if source in source_map[x.address]
+            ]
+            logger.info('is source relevant')
+            logger.info(is_grain_relevant)
+            logger.info(is_output_relevant)
+            if is_grain_relevant or len(is_output_relevant)>0:
+                fgrain += source.grain
         qds = QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),
             output_concepts=unique(self.output_concepts, "address"),
@@ -351,7 +371,7 @@ class MergeNode(StrategyNode):
             source_type=self.source_type,
             source_map=source_map,
             joins=qd_joins,
-            grain=grain,
+            grain=self.grain or fgrain,
             nullable_concepts=[
                 x for x in self.output_concepts if x.address in nullable_concepts
             ],

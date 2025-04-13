@@ -1,5 +1,5 @@
 query_id = 16
-gen_length = 5081
+gen_length = 4803
 generated_sql = """
 
 WITH 
@@ -44,7 +44,7 @@ SELECT
     cs_catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
     cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     cs_catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\",
-    cs_catalog_sales.\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\"
+    cs_catalog_sales.\"CS_SHIP_DATE_SK\" as \"cs__ship_date_id\"
 FROM
     memory.catalog_sales as cs_catalog_sales
 WHERE
@@ -55,15 +55,12 @@ GROUP BY
     cs_catalog_sales.\"CS_ORDER_NUMBER\",
     cs_catalog_sales.\"CS_SHIP_ADDR_SK\",
     cs_catalog_sales.\"CS_SHIP_DATE_SK\"),
-young as (
+sparkling as (
 SELECT
-    cast(cs_ship_date_date.\"D_DATE\" as date) as \"cs_ship_date_date\",
-    cs_call_center_call_center.\"CC_COUNTY\" as \"cs_call_center_county\",
     cs_catalog_sales.\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",
     cs_catalog_sales.\"CS_ITEM_SK\" as \"cs_item_id\",
     cs_catalog_sales.\"CS_NET_PROFIT\" as \"cs_net_profit\",
-    cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
-    cs_customer_customer_address.\"CA_STATE\" as \"cs_customer_state\"
+    cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\"
 FROM
     memory.customer_address as cs_customer_customer_address
     INNER JOIN memory.catalog_sales as cs_catalog_sales on cs_customer_customer_address.\"CA_ADDRESS_SK\" = cs_catalog_sales.\"CS_SHIP_ADDR_SK\"
@@ -74,36 +71,40 @@ WHERE
 ),
 vacuous as (
 SELECT
-    cast(cs_ship_date_date.\"D_DATE\" as date) as \"cs_ship_date_date\",
-    cs_call_center_call_center.\"CC_COUNTY\" as \"cs_call_center_county\",
-    cs_customer_customer_address.\"CA_STATE\" as \"cs_customer_state\",
     thoughtful.\"cs_order_number\" as \"cs_order_number\"
 FROM
     thoughtful
     INNER JOIN memory.customer_address as cs_customer_customer_address on thoughtful.\"cs_customer_address_id\" = cs_customer_customer_address.\"CA_ADDRESS_SK\"
-    INNER JOIN memory.date_dim as cs_ship_date_date on thoughtful.\"cs_ship_date_id\" = cs_ship_date_date.\"D_DATE_SK\"
+    INNER JOIN memory.date_dim as cs_ship_date_date on thoughtful.\"cs__ship_date_id\" = cs_ship_date_date.\"D_DATE_SK\"
     INNER JOIN memory.call_center as cs_call_center_call_center on thoughtful.\"cs_call_center_id\" = cs_call_center_call_center.\"CC_CALL_CENTER_SK\"
 WHERE
     cast(cs_ship_date_date.\"D_DATE\" as date) >= date '2002-02-01' and cast(cs_ship_date_date.\"D_DATE\" as date) <= date '2002-04-02' and cs_customer_customer_address.\"CA_STATE\" = 'GA' and cs_call_center_call_center.\"CC_COUNTY\" = 'Williamson County' and thoughtful.\"cs_order_number\" not in (select questionable.\"cr_order_number\" from questionable where questionable.\"cr_order_number\" is not null) and thoughtful.\"cs_order_number\" in (select juicy.\"multi_warehouse_sales\" from juicy where juicy.\"multi_warehouse_sales\" is not null)
 ),
-sparkling as (
+abhorrent as (
 SELECT
-    sum(young.\"cs_extra_ship_cost\") as \"total_shipping_cost\",
-    sum(young.\"cs_net_profit\") as \"total_net_profit\"
+    sum(sparkling.\"cs_extra_ship_cost\") as \"total_shipping_cost\",
+    sum(sparkling.\"cs_net_profit\") as \"total_net_profit\"
 FROM
-    young),
+    sparkling),
 concerned as (
 SELECT
-    count(distinct vacuous.\"cs_order_number\") as \"order_count\"
+    vacuous.\"cs_order_number\" as \"cs_order_number\"
 FROM
-    vacuous)
+    vacuous
+GROUP BY 
+    vacuous.\"cs_order_number\"),
+young as (
 SELECT
-    concerned.\"order_count\" as \"order_count\",
-    sparkling.\"total_shipping_cost\" as \"total_shipping_cost\",
-    sparkling.\"total_net_profit\" as \"total_net_profit\"
+    count(distinct concerned.\"cs_order_number\") as \"order_count\"
 FROM
-    concerned
-    FULL JOIN sparkling on 1=1
+    concerned)
+SELECT
+    young.\"order_count\" as \"order_count\",
+    abhorrent.\"total_shipping_cost\" as \"total_shipping_cost\",
+    abhorrent.\"total_net_profit\" as \"total_net_profit\"
+FROM
+    young
+    FULL JOIN abhorrent on 1=1
 ORDER BY 
-    concerned.\"order_count\" desc
+    young.\"order_count\" desc
 LIMIT (100)"""

@@ -27,6 +27,7 @@ class Purpose(Enum):
     CONSTANT = "const"
     KEY = "key"
     PROPERTY = "property"
+    UNIQUE_PROPERTY = "unique_property"
     METRIC = "metric"
     ROWSET = "rowset"
     AUTO = "auto"

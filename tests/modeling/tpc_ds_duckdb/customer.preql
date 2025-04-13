@@ -1,8 +1,7 @@
 import customer_demographic as demographics;
 
-
 key id int;
-property id.text_id string;
+unique property id.text_id string;
 property id.last_name string;
 property id.first_name string;
 property id.preferred_cust_flag string;
@@ -15,16 +14,6 @@ property id.email_address string;
 property id.login string;
 property id.last_review_date string;
 
-key address_id int;
-property address_id.address_id_string string;
-property address_id.street string;
-property address_id.city string;
-property address_id.state string?;
-property address_id.zip string;
-property address_id.county string;
-property address_id.country string;
-
-
 
 property id.full_name <- concat(salutation, ' ', first_name, ' ', last_name);
 
@@ -34,6 +23,18 @@ property id.birth_date <- cast(
         '/', cast(birth_day as string)
     ) as date
 );
+
+
+
+
+key address_id int;
+unique property address_id.address_id_string string;
+property address_id.street string;
+property address_id.city string;
+property address_id.state string?;
+property address_id.zip string;
+property address_id.county string;
+property address_id.country string;
 
 
 datasource customers (

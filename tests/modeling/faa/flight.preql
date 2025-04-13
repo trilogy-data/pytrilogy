@@ -1,0 +1,43 @@
+import aircraft as aircraft;
+import airport as origin;
+import airport as destination;
+import carrier as carrier;
+
+property id2.origin string; #airport code, such as LAX
+property id2.destination string; #airport code, such as LAX
+property id2.flight_num string;
+property id2.flight_time int;
+property id2.dep_time datetime;
+property id2.arr_time datetime;
+property id2.dep_delay int;
+property id2.arr_delay int;
+property id2.taxi_out int;
+property id2.taxi_in int;
+property id2.distance int;
+property id2.cancelled string;
+property id2.diverted string;
+key id2 int;
+
+auto count <-count(id2);
+auto total_distance <-sum(distance);
+
+datasource flight (
+	carrier:carrier.code,
+	origin:origin.code,
+	destination:destination.code,
+	flight_num:flight_num,
+	flight_time:flight_time,
+	tail_num:aircraft.tail_num,
+	dep_time:dep_time,
+	arr_time:arr_time,
+	dep_delay:dep_delay,
+	arr_delay:arr_delay,
+	taxi_out:taxi_out,
+	taxi_in:taxi_in,
+	distance:distance,
+	cancelled:cancelled,
+	diverted:diverted,
+	id2:id2,
+)
+grain (id2)
+address flight;

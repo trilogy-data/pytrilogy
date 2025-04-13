@@ -1786,6 +1786,10 @@ class FunctionCallWrapper(
                 for x in self.args
             ],
         )
+    
+    def with_reference_replacement(self, source, target):
+        raise NotImplementedError('Cannot reference replace')
+        return self
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]

@@ -1,11 +1,10 @@
 query_id = 20
-gen_length = 3009
+gen_length = 2940
 generated_sql = """
 
 WITH 
 cheerful as (
 SELECT
-    cast(cs_sold_date_date.\"D_DATE\" as date) as \"cs_sold_date_date\",
     cs_catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
     cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     cs_item_items.\"I_CATEGORY\" as \"cs_item_category\",
