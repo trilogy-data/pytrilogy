@@ -21,6 +21,13 @@ property <order_number,item.id>.extra_ship_cost float;
 property <order_number,item.id>.return_amount float;
 property <order_number,item.id>.is_returned bool;
 
+# grain specific key dependencies
+property <order_number,item.id>._web_site_id int;
+merge web_site.id into _web_site_id;
+
+property <order_number,item.id>._date_id int;
+merge date.id into _date_id;
+
 
 datasource web_sales (
     WS_SOLD_DATE_SK: date.id,

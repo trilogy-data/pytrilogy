@@ -1,5 +1,5 @@
 query_id = 97
-gen_length = 3456
+gen_length = 3446
 generated_sql = """
 
 WITH 
@@ -18,7 +18,7 @@ wakeful as (
 SELECT
     store_sales_store_sales.\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
     store_sales_store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\",
-    store_sales_store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales__sale_date_id\"
+    store_sales_store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales__date_id\"
 FROM
     memory.store_sales as store_sales_store_sales
 GROUP BY 
@@ -45,7 +45,7 @@ SELECT
     wakeful.\"store_sales_item_id\" as \"store_sales_item_id\"
 FROM
     wakeful
-    INNER JOIN memory.date_dim as store_sales_date_date on wakeful.\"store_sales__sale_date_id\" = store_sales_date_date.\"D_DATE_SK\"
+    INNER JOIN memory.date_dim as store_sales_date_date on wakeful.\"store_sales__date_id\" = store_sales_date_date.\"D_DATE_SK\"
 WHERE
     store_sales_date_date.\"D_MONTH_SEQ\" >= 1200 and store_sales_date_date.\"D_MONTH_SEQ\" <= 1200 + 11
 ),

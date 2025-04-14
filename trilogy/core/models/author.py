@@ -1358,7 +1358,11 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     ) -> "WindowItem":
         output = WindowItem.model_construct(
             type=self.type,
-            content=self.content.with_merge(source, target, modifiers),
+            content=(
+                self.content.with_merge(source, target, modifiers)
+                if isinstance(self.content, Mergeable)
+                else self.content
+            ),
             over=[x.with_merge(source, target, modifiers) for x in self.over],
             order_by=[x.with_merge(source, target, modifiers) for x in self.order_by],
             index=self.index,
@@ -1379,7 +1383,11 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     def with_namespace(self, namespace: str) -> "WindowItem":
         return WindowItem.model_construct(
             type=self.type,
-            content=self.content.with_namespace(namespace),
+            content=(
+                self.content.with_namespace(namespace)
+                if isinstance(self.content, Namespaced)
+                else self.content
+            ),
             over=[x.with_namespace(namespace) for x in self.over],
             order_by=[x.with_namespace(namespace) for x in self.order_by],
             index=self.index,
@@ -1787,9 +1795,9 @@ class FunctionCallWrapper(
                 for x in self.args
             ],
         )
-    
+
     def with_reference_replacement(self, source, target):
-        raise NotImplementedError('Cannot reference replace')
+        raise NotImplementedError("Cannot reference replace")
         return self
 
     def with_merge(

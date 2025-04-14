@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from trilogy.constants import logger
-from trilogy.core.enums import SourceType, Purpose
+from trilogy.core.enums import Purpose, SourceType
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
@@ -98,29 +98,53 @@ class GroupNode(StrategyNode):
         ]
 
         comp_grain = BuildGrain.from_concepts(lookups, environment=environment)
-        
+
         # dynamically select if we need to group
         # because sometimes, we are already at required grain
         if comp_grain.issubset(target_grain):
+            logger.info(
+                f"{'\t'*depth}{LOGGER_PREFIX} Group requirement check: {comp_grain}, {target_grain}, is subset, no grain required"
+            )
             return GroupRequiredResponse(target_grain, comp_grain, False)
         # find out what extra is in the comp grain vs target grain
-        difference = [environment.concepts[c] for c in (comp_grain-target_grain).components]
+        difference = [
+            environment.concepts[c] for c in (comp_grain - target_grain).components
+        ]
         logger.info(
             f"{'\t'*depth}{LOGGER_PREFIX} Group requirement check: {comp_grain}, {target_grain}, difference {difference}"
         )
-        
+
         # if the difference is all unique properties whose keys are in the source grain
         # we can also suppress the group
-        if all([x.purpose == Purpose.UNIQUE_PROPERTY and all(z in comp_grain.components for z in x.keys) for x in difference]):
+        if all(
+            [
+                x.purpose == Purpose.UNIQUE_PROPERTY
+                and x.keys
+                and all(z in comp_grain.components for z in x.keys)
+                for x in difference
+            ]
+        ):
             logger.info(
                 f"{'\t'*depth}{LOGGER_PREFIX} Group requirement check: skipped due to unique property validation"
             )
             return GroupRequiredResponse(target_grain, comp_grain, False)
         if all([x.purpose == Purpose.KEY for x in difference]):
-            logger.info(f"{'\t'*depth}{LOGGER_PREFIX} checking if downstream is unique properties of key")
-            replaced_grain = [x.keys if x.purpose == Purpose.UNIQUE_PROPERTY else [x] for x in downstream_concepts]
+            logger.info(
+                f"{'\t'*depth}{LOGGER_PREFIX} checking if downstream is unique properties of key"
+            )
+            replaced_grain_raw: list[set[str]] = [
+                (
+                    x.keys or set()
+                    if x.purpose == Purpose.UNIQUE_PROPERTY
+                    else set([x.address])
+                )
+                for x in downstream_concepts
+                if x.address in target_grain.components
+            ]
             # flatten the list of lists
-            replaced_grain = [item for sublist in replaced_grain for item in sublist]
+            replaced_grain = [
+                item for sublist in replaced_grain_raw for item in sublist
+            ]
             # if the replaced grain is a subset of the comp grain, we can skip the group
             unique_grain_comp = BuildGrain.from_concepts(
                 replaced_grain, environment=environment

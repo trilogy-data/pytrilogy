@@ -227,7 +227,6 @@ select
     assert results[0].quad_test == 16.414213562373096
 
 
-
 def test_user_function_nesting():
     x = Dialects.DUCK_DB.default_executor()
 
@@ -274,20 +273,21 @@ auto random_one_f <- @weekday_sales(10) +2;
 auto random <- @plus_two(@weekday_sales(10));
                 
 """
-
     )
     # assert x.environment.concepts['random_no_f'].purpose == Purpose.METRIC, x.environment.concepts['random']
-    assert x.environment.concepts['random_one_f'].purpose == Purpose.METRIC, x.environment.concepts['random']
-    assert x.environment.concepts['random'].purpose == Purpose.METRIC, x.environment.concepts['random']
-
+    assert (
+        x.environment.concepts["random_one_f"].purpose == Purpose.METRIC
+    ), x.environment.concepts["random"]
+    assert (
+        x.environment.concepts["random"].purpose == Purpose.METRIC
+    ), x.environment.concepts["random"]
 
     results = x.execute_query(
-'''select 
+        """select 
         y,
         @plus_two(@weekday_sales(10)) -> test2
-    order by y asc;'''
+    order by y asc;"""
     )
     results = results.fetchall()
     assert results[0].test2 == 10
     assert results[1].test2 == 17
-

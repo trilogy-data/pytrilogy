@@ -275,9 +275,11 @@ def _get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
         return get_relevant_parent_concepts(arg.content)
     return get_concept_arguments(arg), False
 
+
 def get_relevant_parent_concepts(arg):
     results = _get_relevant_parent_concepts(arg)
     return results
+
 
 def function_to_concept(
     parent: Function,
@@ -421,14 +423,31 @@ def window_item_to_concept(
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
+    # if isinstance(
+    #     parent.content,
+    #     (
+    #         AggregateWrapper
+    #         | FunctionCallWrapper
+    #         | WindowItem
+    #         | FilterItem
+    #         | Function
+    #         | ListWrapper
+    #         | MapWrapper
+    #     ),
+    # ):
+    #     new_parent = arbitrary_to_concept(
+    #         parent.content, environment=environment, namespace=namespace
+    #     )
+    #     environment.add_concept(new_parent)
+    #     parent = parent.model_copy(update={"content": new_parent.reference})
+
     if not isinstance(parent.content, ConceptRef):
-        new_parent = arbitrary_to_concept(parent.content, environment=environment, namespace=namespace)
-        environment.add_concept(new_parent, meta=fmetadata)
-        parent = parent.model_copy(update = {"content": new_parent.reference})
+        raise NotImplementedError(
+            f"Window function wiht non ref content {parent.content} not yet supported"
+        )
     bcontent = environment.concepts[parent.content.address]
     if isinstance(bcontent, UndefinedConcept):
         return UndefinedConcept(address=f"{namespace}.{name}", metadata=fmetadata)
-
     if bcontent.purpose == Purpose.METRIC:
         local_purpose, keys = get_purpose_and_keys(None, (bcontent,), environment)
     else:
@@ -574,12 +593,17 @@ def rowset_concept(
         keys=orig_concept.keys,
         derivation=Derivation.ROWSET,
         granularity=orig_concept.granularity,
-        pseudonyms={address_with_namespace(x, rowset.name) for x in orig_concept.pseudonyms},
+        pseudonyms={
+            address_with_namespace(x, rowset.name) for x in orig_concept.pseudonyms
+        },
     )
-    print(new_concept.address)
-    print(new_concept.pseudonyms)
-    print(orig_concept.address)
-    print(orig_concept.pseudonyms)
+    for x in orig_concept.pseudonyms:
+        new_address = address_with_namespace(x, rowset.name)
+        origa = environment.alias_origin_lookup[x]
+        environment.concepts[new_address] = new_concept
+        environment.alias_origin_lookup[new_address] = origa.model_copy(
+            update={"namespace": f"{rowset.name}.{origa.namespace}"}
+        )
     orig[orig_concept.address] = new_concept
     orig_map[new_concept.address] = orig_concept
     pre_output.append(new_concept)

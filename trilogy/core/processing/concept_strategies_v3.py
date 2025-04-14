@@ -621,7 +621,7 @@ def validate_stack(
 
     for node in stack:
         resolved = node.resolve()
-        #(missing {'merged.catalog_sales.bill_customer.id'}
+        # (missing {'merged.catalog_sales.bill_customer.id'}
         for concept in resolved.output_concepts:
             if concept.address in resolved.hidden_concepts:
                 continue
@@ -949,7 +949,7 @@ def _search_concepts(
         f"{depth_to_prefix(depth)}{LOGGER_PREFIX} finished sourcing loop (complete: {complete}), have {found} from {[n for n in stack]} (missing {all_mandatory - found}), attempted {attempted}, virtual {virtual}"
     )
     if complete == ValidationResult.COMPLETE:
-        condition_required = conditions is not None
+        condition_required = True
         non_virtual = [c for c in completion_mandatory if c.address not in virtual]
         non_virtual_output = [c for c in original_mandatory if c.address not in virtual]
         non_virtual_different = len(completion_mandatory) != len(original_mandatory)
@@ -957,6 +957,7 @@ def _search_concepts(
             [x.address for x in completion_mandatory]
         ).difference(set([x.address for x in original_mandatory]))
         if not conditions:
+            condition_required = False
             non_virtual = [c for c in mandatory_list if c.address not in virtual]
 
         elif all([x.preexisting_conditions == conditions.conditional for x in stack]):
@@ -1018,12 +1019,14 @@ def _search_concepts(
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Conditions {conditions} were injected, checking if we need a group to restore grain"
             )
-            if GroupNode.check_if_required(
+            result = GroupNode.check_if_required(
                 downstream_concepts=original_mandatory,
                 parents=[output.resolve()],
                 environment=environment,
                 depth=depth,
-            ).required:
+            )
+            logger.info(f"gcheck result is {result}")
+            if result.required:
                 logger.info(
                     f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Adding group node"
                 )

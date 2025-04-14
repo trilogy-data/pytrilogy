@@ -252,6 +252,8 @@ def rehydrate_lineage(
         )
         return lineage
     elif isinstance(lineage, WindowItem):
+        # this is temporarily guaranteed until we do some upstream work
+        assert isinstance(lineage.content, ConceptRef)
         lineage.content.datatype = environment.concepts[
             lineage.content.address
         ].datatype
@@ -637,7 +639,8 @@ class ParseToObjects(Transformer):
             source_value = source_value.content
 
         if isinstance(
-            source_value, (FilterItem, WindowItem, AggregateWrapper, Function, FunctionCallWrapper)
+            source_value,
+            (FilterItem, WindowItem, AggregateWrapper, Function, FunctionCallWrapper),
         ):
             concept = arbitrary_to_concept(
                 source_value,

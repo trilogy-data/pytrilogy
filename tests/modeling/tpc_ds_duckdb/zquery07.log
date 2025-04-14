@@ -16,8 +16,8 @@ FROM
     memory.customer_demographics as store_sales_customer_demographic_customer_demographics
     INNER JOIN memory.store_sales as store_sales_store_sales on store_sales_customer_demographic_customer_demographics.\"CD_DEMO_SK\" = store_sales_store_sales.\"SS_CDEMO_SK\"
     INNER JOIN memory.item as store_sales_item_items on store_sales_store_sales.\"SS_ITEM_SK\" = store_sales_item_items.\"I_ITEM_SK\"
-    INNER JOIN memory.promotion as store_sales_promotion_promotion on store_sales_store_sales.\"SS_PROMO_SK\" = store_sales_promotion_promotion.\"P_PROMO_SK\"
     INNER JOIN memory.date_dim as store_sales_date_date on store_sales_store_sales.\"SS_SOLD_DATE_SK\" = store_sales_date_date.\"D_DATE_SK\"
+    INNER JOIN memory.promotion as store_sales_promotion_promotion on store_sales_store_sales.\"SS_PROMO_SK\" = store_sales_promotion_promotion.\"P_PROMO_SK\"
 WHERE
     store_sales_customer_demographic_customer_demographics.\"CD_GENDER\" = 'M' and store_sales_customer_demographic_customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and store_sales_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( store_sales_promotion_promotion.\"P_CHANNEL_EMAIL\" = 'N' or store_sales_promotion_promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(store_sales_date_date.\"D_YEAR\" as int) = 2000
 )

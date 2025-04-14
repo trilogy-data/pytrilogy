@@ -1,5 +1,5 @@
 query_id = 16
-gen_length = 4803
+gen_length = 5194
 generated_sql = """
 
 WITH 
@@ -82,10 +82,17 @@ WHERE
 ),
 abhorrent as (
 SELECT
-    sum(sparkling.\"cs_extra_ship_cost\") as \"total_shipping_cost\",
-    sum(sparkling.\"cs_net_profit\") as \"total_net_profit\"
+    sparkling.\"cs_extra_ship_cost\" as \"cs_extra_ship_cost\",
+    sparkling.\"cs_item_id\" as \"cs_item_id\",
+    sparkling.\"cs_net_profit\" as \"cs_net_profit\",
+    sparkling.\"cs_order_number\" as \"cs_order_number\"
 FROM
-    sparkling),
+    sparkling
+GROUP BY 
+    sparkling.\"cs_extra_ship_cost\",
+    sparkling.\"cs_item_id\",
+    sparkling.\"cs_net_profit\",
+    sparkling.\"cs_order_number\"),
 concerned as (
 SELECT
     vacuous.\"cs_order_number\" as \"cs_order_number\"
@@ -93,6 +100,12 @@ FROM
     vacuous
 GROUP BY 
     vacuous.\"cs_order_number\"),
+sweltering as (
+SELECT
+    sum(abhorrent.\"cs_extra_ship_cost\") as \"total_shipping_cost\",
+    sum(abhorrent.\"cs_net_profit\") as \"total_net_profit\"
+FROM
+    abhorrent),
 young as (
 SELECT
     count(distinct concerned.\"cs_order_number\") as \"order_count\"
@@ -100,11 +113,11 @@ FROM
     concerned)
 SELECT
     young.\"order_count\" as \"order_count\",
-    abhorrent.\"total_shipping_cost\" as \"total_shipping_cost\",
-    abhorrent.\"total_net_profit\" as \"total_net_profit\"
+    sweltering.\"total_shipping_cost\" as \"total_shipping_cost\",
+    sweltering.\"total_net_profit\" as \"total_net_profit\"
 FROM
     young
-    FULL JOIN abhorrent on 1=1
+    FULL JOIN sweltering on 1=1
 ORDER BY 
     young.\"order_count\" desc
 LIMIT (100)"""
