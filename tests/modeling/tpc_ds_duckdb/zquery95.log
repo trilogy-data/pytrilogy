@@ -1,5 +1,5 @@
 query_id = 95
-gen_length = 6019
+gen_length = 5405
 generated_sql = """
 
 WITH 
@@ -53,8 +53,8 @@ GROUP BY
 thoughtful as (
 SELECT
     web_sales_web_sales.\"WS_ORDER_NUMBER\" as \"web_sales_order_number\",
-    web_sales_web_sales.\"WS_SHIP_ADDR_SK\" as \"web_sales_ship_address_id\",
-    web_sales_web_sales.\"WS_SHIP_DATE_SK\" as \"web_sales_ship_date_id\",
+    web_sales_web_sales.\"WS_SHIP_ADDR_SK\" as \"web_sales__ship_address_id\",
+    web_sales_web_sales.\"WS_SHIP_DATE_SK\" as \"web_sales__ship_date_id\",
     web_sales_web_sales.\"WS_WEB_SITE_SK\" as \"web_sales__web_site_id\"
 FROM
     memory.web_sales as web_sales_web_sales
@@ -66,7 +66,7 @@ GROUP BY
     web_sales_web_sales.\"WS_SHIP_ADDR_SK\",
     web_sales_web_sales.\"WS_SHIP_DATE_SK\",
     web_sales_web_sales.\"WS_WEB_SITE_SK\"),
-abhorrent as (
+sparkling as (
 SELECT
     web_sales_web_sales.\"WS_EXT_SHIP_COST\" as \"web_sales_extra_ship_cost\",
     web_sales_web_sales.\"WS_ITEM_SK\" as \"web_sales_item_id\",
@@ -85,50 +85,30 @@ SELECT
     thoughtful.\"web_sales_order_number\" as \"web_sales_order_number\"
 FROM
     thoughtful
-    INNER JOIN memory.customer_address as web_sales_ship_address_customer_address on thoughtful.\"web_sales_ship_address_id\" = web_sales_ship_address_customer_address.\"CA_ADDRESS_SK\"
+    INNER JOIN memory.customer_address as web_sales_ship_address_customer_address on thoughtful.\"web_sales__ship_address_id\" = web_sales_ship_address_customer_address.\"CA_ADDRESS_SK\"
     INNER JOIN memory.web_site as web_sales_web_site_web_site on thoughtful.\"web_sales__web_site_id\" = web_sales_web_site_web_site.\"web_site_sk\"
-    INNER JOIN memory.date_dim as web_sales_ship_date_date on thoughtful.\"web_sales_ship_date_id\" = web_sales_ship_date_date.\"D_DATE_SK\"
+    INNER JOIN memory.date_dim as web_sales_ship_date_date on thoughtful.\"web_sales__ship_date_id\" = web_sales_ship_date_date.\"D_DATE_SK\"
 WHERE
     cast(web_sales_ship_date_date.\"D_DATE\" as date) >= date '1999-02-01' and cast(web_sales_ship_date_date.\"D_DATE\" as date) <= date '1999-04-02' and web_sales_ship_address_customer_address.\"CA_STATE\" = 'IL' and web_sales_web_site_web_site.\"web_company_name\" = 'pri' and thoughtful.\"web_sales_order_number\" in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null) and thoughtful.\"web_sales_order_number\" in (select vacuous.\"returned_orders\" from vacuous where vacuous.\"returned_orders\" is not null)
 ),
-sweltering as (
+abhorrent as (
 SELECT
-    abhorrent.\"web_sales_extra_ship_cost\" as \"web_sales_extra_ship_cost\",
-    abhorrent.\"web_sales_item_id\" as \"web_sales_item_id\",
-    abhorrent.\"web_sales_net_profit\" as \"web_sales_net_profit\",
-    abhorrent.\"web_sales_order_number\" as \"web_sales_order_number\"
+    sum(sparkling.\"web_sales_extra_ship_cost\") as \"total_shipping_cost\",
+    sum(sparkling.\"web_sales_net_profit\") as \"total_net_profit\"
 FROM
-    abhorrent
-GROUP BY 
-    abhorrent.\"web_sales_extra_ship_cost\",
-    abhorrent.\"web_sales_item_id\",
-    abhorrent.\"web_sales_net_profit\",
-    abhorrent.\"web_sales_order_number\"),
+    sparkling),
 young as (
 SELECT
-    concerned.\"web_sales_order_number\" as \"web_sales_order_number\"
+    count(distinct concerned.\"web_sales_order_number\") as \"order_count\"
 FROM
-    concerned
-GROUP BY 
-    concerned.\"web_sales_order_number\"),
-late as (
+    concerned)
 SELECT
-    sum(sweltering.\"web_sales_extra_ship_cost\") as \"total_shipping_cost\",
-    sum(sweltering.\"web_sales_net_profit\") as \"total_net_profit\"
+    young.\"order_count\" as \"order_count\",
+    abhorrent.\"total_shipping_cost\" as \"total_shipping_cost\",
+    abhorrent.\"total_net_profit\" as \"total_net_profit\"
 FROM
-    sweltering),
-sparkling as (
-SELECT
-    count(distinct young.\"web_sales_order_number\") as \"order_count\"
-FROM
-    young)
-SELECT
-    sparkling.\"order_count\" as \"order_count\",
-    late.\"total_shipping_cost\" as \"total_shipping_cost\",
-    late.\"total_net_profit\" as \"total_net_profit\"
-FROM
-    sparkling
-    FULL JOIN late on 1=1
+    young
+    FULL JOIN abhorrent on 1=1
 ORDER BY 
-    sparkling.\"order_count\" desc
+    young.\"order_count\" desc
 LIMIT (100)"""

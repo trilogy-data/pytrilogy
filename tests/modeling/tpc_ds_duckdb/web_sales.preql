@@ -28,6 +28,11 @@ merge web_site.id into _web_site_id;
 property <order_number,item.id>._date_id int;
 merge date.id into _date_id;
 
+property <order_number,item.id>._ship_date_id int;
+merge ship_date.id into _ship_date_id;
+
+property <order_number, item.id>._ship_address_id int;
+merge ship_address.id into _ship_address_id;
 
 datasource web_sales (
     WS_SOLD_DATE_SK: date.id,

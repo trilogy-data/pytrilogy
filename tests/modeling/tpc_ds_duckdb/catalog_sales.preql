@@ -45,10 +45,15 @@ merge call_center.id into _call_center_id;
 property <order_number, item.id>._customer_address_id int;  
 merge customer_address.id into _customer_address_id;
 
-# metrics
-property <order_number,item.id>.profit <- list_price - wholesale_cost - discount_amount+ extra_sales_price;
-property <order_number, item.id>.days_to_ship <- date_diff(sold_date.date, ship_date.date, DAY);
+property <order_number, item.id>._promotion_id int;
+merge promotion.id into _promotion_id;
 
+property <order_number, item.id>._bill_customer_demographic_id int;
+merge bill_customer_demographic.id into _bill_customer_demographic_id;
+
+# metrics
+property <order_number,item.id>.profit <- list_price - wholesale_cost - discount_amount + extra_sales_price;
+property <order_number, item.id>.days_to_ship <- date_diff(sold_date.date, ship_date.date, DAY);
 
 
 datasource catalog_sales (

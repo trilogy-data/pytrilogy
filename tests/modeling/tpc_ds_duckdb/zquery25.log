@@ -1,5 +1,5 @@
 query_id = 25
-gen_length = 9182
+gen_length = 8261
 generated_sql = """
 
 WITH 
@@ -79,24 +79,18 @@ GROUP BY
 young as (
 SELECT
     concerned.\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    concerned.\"store_sales_item_id\" as \"store_sales_item_id\",
     concerned.\"store_sales_item_name\" as \"store_sales_item_name\",
-    concerned.\"store_sales_net_profit\" as \"store_sales_net_profit\",
-    concerned.\"store_sales_return_net_loss\" as \"store_sales_return_net_loss\",
     concerned.\"store_sales_store_name\" as \"store_sales_store_name\",
     concerned.\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
-    concerned.\"store_sales_ticket_number\" as \"store_sales_ticket_number\"
+    sum(concerned.\"store_sales_net_profit\") as \"store_sales_profit\",
+    sum(concerned.\"store_sales_return_net_loss\") as \"store_returns_loss\"
 FROM
     concerned
 GROUP BY 
     concerned.\"store_sales_item_desc\",
-    concerned.\"store_sales_item_id\",
     concerned.\"store_sales_item_name\",
-    concerned.\"store_sales_net_profit\",
-    concerned.\"store_sales_return_net_loss\",
     concerned.\"store_sales_store_name\",
-    concerned.\"store_sales_store_text_id\",
-    concerned.\"store_sales_ticket_number\"),
+    concerned.\"store_sales_store_text_id\"),
 juicy as (
 SELECT
     sum(yummy.\"catalog_sales_net_profit\") as \"catalog_sales_profit\",
@@ -110,33 +104,18 @@ GROUP BY
     yummy.\"store_sales_item_desc\",
     yummy.\"store_sales_item_name\",
     yummy.\"store_sales_store_name\",
-    yummy.\"store_sales_store_text_id\"),
-sparkling as (
-SELECT
-    sum(young.\"store_sales_net_profit\") as \"store_sales_profit\",
-    sum(young.\"store_sales_return_net_loss\") as \"store_returns_loss\",
-    young.\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    young.\"store_sales_item_name\" as \"store_sales_item_name\",
-    young.\"store_sales_store_name\" as \"store_sales_store_name\",
-    young.\"store_sales_store_text_id\" as \"store_sales_store_text_id\"
-FROM
-    young
-GROUP BY 
-    young.\"store_sales_item_desc\",
-    young.\"store_sales_item_name\",
-    young.\"store_sales_store_name\",
-    young.\"store_sales_store_text_id\")
+    yummy.\"store_sales_store_text_id\")
 SELECT
     juicy.\"store_sales_item_name\" as \"store_sales_item_name\",
     juicy.\"store_sales_item_desc\" as \"store_sales_item_desc\",
     juicy.\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
     juicy.\"store_sales_store_name\" as \"store_sales_store_name\",
-    sparkling.\"store_sales_profit\" as \"store_sales_profit\",
-    sparkling.\"store_returns_loss\" as \"store_returns_loss\",
+    young.\"store_sales_profit\" as \"store_sales_profit\",
+    young.\"store_returns_loss\" as \"store_returns_loss\",
     juicy.\"catalog_sales_profit\" as \"catalog_sales_profit\"
 FROM
     juicy
-    INNER JOIN sparkling on (juicy.\"store_sales_item_desc\" = sparkling.\"store_sales_item_desc\" or (juicy.\"store_sales_item_desc\" is null and sparkling.\"store_sales_item_desc\" is null)) AND juicy.\"store_sales_item_name\" = sparkling.\"store_sales_item_name\" AND juicy.\"store_sales_store_name\" = sparkling.\"store_sales_store_name\" AND juicy.\"store_sales_store_text_id\" = sparkling.\"store_sales_store_text_id\"
+    INNER JOIN young on (juicy.\"store_sales_item_desc\" = young.\"store_sales_item_desc\" or (juicy.\"store_sales_item_desc\" is null and young.\"store_sales_item_desc\" is null)) AND juicy.\"store_sales_item_name\" = young.\"store_sales_item_name\" AND juicy.\"store_sales_store_name\" = young.\"store_sales_store_name\" AND juicy.\"store_sales_store_text_id\" = young.\"store_sales_store_text_id\"
 ORDER BY 
     juicy.\"store_sales_item_name\" asc,
     juicy.\"store_sales_item_desc\" asc,
