@@ -80,7 +80,7 @@ class GroupNode(StrategyNode):
         environment: BuildEnvironment,
         depth: int = 0,
     ) -> GroupRequiredResponse:
-        padding = '\t'*depth
+        padding = "\t" * depth
         target_grain = BuildGrain.from_concepts(
             downstream_concepts,
             environment=environment,
@@ -132,7 +132,7 @@ class GroupNode(StrategyNode):
             return GroupRequiredResponse(target_grain, comp_grain, False)
         if all([x.purpose == Purpose.KEY for x in difference]):
             logger.info(
-                f"{padding{LOGGER_PREFIX} checking if downstream is unique properties of key"
+                f"{padding}{LOGGER_PREFIX} checking if downstream is unique properties of key"
             )
             replaced_grain_raw: list[set[str]] = [
                 (
@@ -157,9 +157,7 @@ class GroupNode(StrategyNode):
                 )
                 return GroupRequiredResponse(target_grain, comp_grain, False)
 
-        logger.info(
-            f"{padding}{LOGGER_PREFIX} Group requirement check: group required"
-        )
+        logger.info(f"{padding}{LOGGER_PREFIX} Group requirement check: group required")
         return GroupRequiredResponse(target_grain, comp_grain, True)
 
     def _resolve(self) -> QueryDatasource:
