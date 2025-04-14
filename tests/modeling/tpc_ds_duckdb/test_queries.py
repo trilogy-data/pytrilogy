@@ -91,16 +91,17 @@ def run_query(engine: Executor, idx: int, sql_override: bool = False):
 
 def test_one(engine):
     query = run_query(engine, 1)
-    assert len(query) < 9000, query
+    assert len(query) < 2000, query
 
 
 def test_two(engine):
     query = run_query(engine, 2, sql_override=True)
-    assert len(query) < 9000, query
+    assert len(query) < 8800, query
 
 
 def test_three(engine):
-    run_query(engine, 3)
+    query = run_query(engine, 3)
+    assert len(query) < 2000, query
 
 
 @pytest.mark.skip(reason="Is duckdb correct??")
@@ -120,11 +121,12 @@ def test_six(engine):
 
 def test_seven(engine):
     query = run_query(engine, 7)
-    assert len(query) < 3000, query
+    assert len(query) < 2500, query
 
 
 def test_eight(engine):
-    run_query(engine, 8)
+    query = run_query(engine, 8)
+    assert len(query) < 3500, query
 
 
 def test_ten(engine):
@@ -137,7 +139,8 @@ def test_twelve(engine):
 
 
 def test_fifteen(engine):
-    run_query(engine, 15)
+    query = run_query(engine, 15)
+    assert len(query) < 2300, query
 
 
 def test_sixteen(engine):
@@ -197,7 +200,8 @@ def test_ninety_eight(engine):
 
 
 def test_ninety_nine(engine):
-    _ = run_query(engine, 99)
+    query = run_query(engine, 99)
+    assert len(query) < 9000, query
 
 
 def run_adhoc(number: int, text: str | None = None):

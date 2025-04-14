@@ -625,6 +625,7 @@ def validate_stack(
         for concept in resolved.output_concepts:
             if concept.address in resolved.hidden_concepts:
                 continue
+
             validate_concept(
                 concept,
                 node,
@@ -773,6 +774,8 @@ def _search_concepts(
 ) -> StrategyNode | None:
     # these are the concepts we need in the output projection
     mandatory_list = unique(mandatory_list, "address")
+    # cache our values before an filter injection
+    original_mandatory = [*mandatory_list]
     for x in mandatory_list:
         if isinstance(x, UndefinedConcept):
             raise SyntaxError(f"Undefined concept {x.address}")
@@ -921,7 +924,7 @@ def _search_concepts(
         mandatory_completion = [c.address for c in completion_mandatory]
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} finished concept loop for {priority_concept} {priority_concept.derivation} condition {conditions} flag for accepting partial addresses is"
-            f" {accept_partial} (complete: {complete}), have {found} from {[n for n in stack]} (missing {missing} partial {partial} virtual {virtual}), attempted {attempted}, mandatory w/ filter {mandatory_completion}"
+            f" {accept_partial} (complete: {complete}), have {found} from {[n for n in stack]} (missing {missing} synonyms  partial {partial} virtual {virtual}), attempted {attempted}, mandatory w/ filter {mandatory_completion}"
         )
         if complete == ValidationResult.INCOMPLETE_CONDITION:
             cond_dict = {str(node): node.preexisting_conditions for node in stack}
@@ -948,6 +951,11 @@ def _search_concepts(
     if complete == ValidationResult.COMPLETE:
         condition_required = True
         non_virtual = [c for c in completion_mandatory if c.address not in virtual]
+        non_virtual_output = [c for c in original_mandatory if c.address not in virtual]
+        non_virtual_different = len(completion_mandatory) != len(original_mandatory)
+        non_virtual_difference_values = set(
+            [x.address for x in completion_mandatory]
+        ).difference(set([x.address for x in original_mandatory]))
         if not conditions:
             condition_required = False
             non_virtual = [c for c in mandatory_list if c.address not in virtual]
@@ -966,7 +974,19 @@ def _search_concepts(
             )
         if len(stack) == 1:
             output: StrategyNode = stack[0]
-            # _ = restrict_node_outputs_targets(output, mandatory_list, depth)
+            if non_virtual_different:
+                logger.info(
+                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Found different non-virtual output concepts ({non_virtual_difference_values}), removing condition injected values"
+                )
+                output.set_output_concepts(
+                    [
+                        x
+                        for x in output.output_concepts
+                        if x.address in non_virtual_output
+                    ],
+                    rebuild=False,
+                )
+
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Source stack has single node, returning that {type(output)}"
             )
@@ -995,6 +1015,30 @@ def _search_concepts(
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Graph is connected, returning {type(output)} node partial {[c.address for c in output.partial_concepts]}"
         )
+        if condition_required and conditions and non_virtual_different:
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Conditions {conditions} were injected, checking if we need a group to restore grain"
+            )
+            result = GroupNode.check_if_required(
+                downstream_concepts=original_mandatory,
+                parents=[output.resolve()],
+                environment=environment,
+                depth=depth,
+            )
+            logger.info(f"gcheck result is {result}")
+            if result.required:
+                logger.info(
+                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Adding group node"
+                )
+                return GroupNode(
+                    output_concepts=original_mandatory,
+                    input_concepts=original_mandatory,
+                    environment=environment,
+                    parents=[output],
+                    partial_concepts=output.partial_concepts,
+                    preexisting_conditions=conditions.conditional,
+                    depth=depth,
+                )
         return output
 
     # if we can't find it after expanding to a merge, then

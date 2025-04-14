@@ -21,7 +21,8 @@
     concept_declaration: PURPOSE IDENTIFIER data_type concept_nullable_modifier? metadata?
     //customer_id.property first_name STRING;
     //<customer_id,country>.property local_alias STRING
-    concept_property_declaration: PROPERTY (prop_ident | IDENTIFIER) data_type concept_nullable_modifier? metadata?
+    UNIQUE: "UNIQUE"i
+    concept_property_declaration: UNIQUE? PROPERTY (prop_ident | IDENTIFIER) data_type concept_nullable_modifier? metadata?
     //metric post_length <- len(post_text);
     concept_derivation:  (PURPOSE | AUTO | PROPERTY ) (prop_ident | IDENTIFIER) "<-" expr
 

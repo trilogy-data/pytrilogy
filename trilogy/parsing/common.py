@@ -40,6 +40,7 @@ from trilogy.core.models.author import (
     UndefinedConcept,
     WhereClause,
     WindowItem,
+    address_with_namespace,
 )
 from trilogy.core.models.core import DataType, arg_to_datatype
 from trilogy.core.models.environment import Environment
@@ -255,7 +256,7 @@ def concepts_to_grain_concepts(
     return v2
 
 
-def get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
+def _get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
     from trilogy.core.models.author import get_concept_arguments
 
     is_metric = False
@@ -270,7 +271,14 @@ def get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
         return [], True
     elif isinstance(arg, AggregateWrapper) and arg.by:
         return arg.by, True
+    elif isinstance(arg, FunctionCallWrapper):
+        return get_relevant_parent_concepts(arg.content)
     return get_concept_arguments(arg), False
+
+
+def get_relevant_parent_concepts(arg):
+    results = _get_relevant_parent_concepts(arg)
+    return results
 
 
 def function_to_concept(
@@ -415,10 +423,31 @@ def window_item_to_concept(
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
+    # if isinstance(
+    #     parent.content,
+    #     (
+    #         AggregateWrapper
+    #         | FunctionCallWrapper
+    #         | WindowItem
+    #         | FilterItem
+    #         | Function
+    #         | ListWrapper
+    #         | MapWrapper
+    #     ),
+    # ):
+    #     new_parent = arbitrary_to_concept(
+    #         parent.content, environment=environment, namespace=namespace
+    #     )
+    #     environment.add_concept(new_parent)
+    #     parent = parent.model_copy(update={"content": new_parent.reference})
+
+    if not isinstance(parent.content, ConceptRef):
+        raise NotImplementedError(
+            f"Window function wiht non ref content {parent.content} not yet supported"
+        )
     bcontent = environment.concepts[parent.content.address]
     if isinstance(bcontent, UndefinedConcept):
         return UndefinedConcept(address=f"{namespace}.{name}", metadata=fmetadata)
-
     if bcontent.purpose == Purpose.METRIC:
         local_purpose, keys = get_purpose_and_keys(None, (bcontent,), environment)
     else:
@@ -534,38 +563,58 @@ def align_item_to_concept(
     return new
 
 
+def rowset_concept(
+    orig_address: ConceptRef,
+    environment: Environment,
+    rowset: RowsetDerivationStatement,
+    pre_output: list[Concept],
+    orig: dict[str, Concept],
+    orig_map: dict[str, Concept],
+):
+    orig_concept = environment.concepts[orig_address.address]
+    name = orig_concept.name
+    if isinstance(orig_concept.lineage, FilterItem):
+        if orig_concept.lineage.where == rowset.select.where_clause:
+            name = environment.concepts[orig_concept.lineage.content.address].name
+    base_namespace = (
+        f"{rowset.name}.{orig_concept.namespace}"
+        if orig_concept.namespace != rowset.namespace
+        else rowset.name
+    )
+
+    new_concept = Concept(
+        name=name,
+        datatype=orig_concept.datatype,
+        purpose=orig_concept.purpose,
+        lineage=None,
+        grain=orig_concept.grain,
+        metadata=Metadata(concept_source=ConceptSource.CTE),
+        namespace=base_namespace,
+        keys=orig_concept.keys,
+        derivation=Derivation.ROWSET,
+        granularity=orig_concept.granularity,
+        pseudonyms={
+            address_with_namespace(x, rowset.name) for x in orig_concept.pseudonyms
+        },
+    )
+    for x in orig_concept.pseudonyms:
+        new_address = address_with_namespace(x, rowset.name)
+        origa = environment.alias_origin_lookup[x]
+        environment.concepts[new_address] = new_concept
+        environment.alias_origin_lookup[new_address] = origa.model_copy(
+            update={"namespace": f"{rowset.name}.{origa.namespace}"}
+        )
+    orig[orig_concept.address] = new_concept
+    orig_map[new_concept.address] = orig_concept
+    pre_output.append(new_concept)
+
+
 def rowset_to_concepts(rowset: RowsetDerivationStatement, environment: Environment):
     pre_output: list[Concept] = []
     orig: dict[str, Concept] = {}
     orig_map: dict[str, Concept] = {}
     for orig_address in rowset.select.output_components:
-        orig_concept = environment.concepts[orig_address.address]
-        name = orig_concept.name
-        if isinstance(orig_concept.lineage, FilterItem):
-            if orig_concept.lineage.where == rowset.select.where_clause:
-                name = environment.concepts[orig_concept.lineage.content.address].name
-        base_namespace = (
-            f"{rowset.name}.{orig_concept.namespace}"
-            if orig_concept.namespace != rowset.namespace
-            else rowset.name
-        )
-
-        new_concept = Concept(
-            name=name,
-            datatype=orig_concept.datatype,
-            purpose=orig_concept.purpose,
-            lineage=None,
-            grain=orig_concept.grain,
-            # TODO: add proper metadata
-            metadata=Metadata(concept_source=ConceptSource.CTE),
-            namespace=base_namespace,
-            keys=orig_concept.keys,
-            derivation=Derivation.ROWSET,
-            granularity=orig_concept.granularity,
-        )
-        orig[orig_concept.address] = new_concept
-        orig_map[new_concept.address] = orig_concept
-        pre_output.append(new_concept)
+        rowset_concept(orig_address, environment, rowset, pre_output, orig, orig_map)
     select_lineage = rowset.select.as_lineage(environment)
     for x in pre_output:
         x.lineage = RowsetItem(

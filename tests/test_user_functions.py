@@ -119,9 +119,6 @@ select rowset.total;
 
 
 def test_user_function_case():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    DebuggingHook()
     x = Dialects.DUCK_DB.default_executor()
 
     results = x.execute_query(
@@ -228,3 +225,69 @@ select
     )
     results = results.fetchall()
     assert results[0].quad_test == 16.414213562373096
+
+
+def test_user_function_nesting():
+    x = Dialects.DUCK_DB.default_executor()
+
+    results = x.execute_query(
+        """
+key x int;
+key y int;
+property x.price float;
+
+datasource raw_data (
+x: x,
+price: price
+)
+grain (x)
+query '''
+select 1 as x, 2.0 as price
+union all
+select 2 as x, 3.0 as price
+union all
+select 10 as x, 5.0 as price
+''';
+
+datasource join_x_y (
+x: x,
+y: y)
+grain (x, y)
+query '''
+select 1 as x, 1 as y
+union all
+select 2 as x, 1 as y
+union all
+select 10 as x, 2 as y
+''';
+
+def weekday_sales(weekday) ->  
+    SUM(CASE WHEN 10 = weekday THEN x ELSE 0 END) + 
+    SUM(CASE WHEN 10 = weekday THEN price ELSE 0.0 END)
+;
+
+def plus_two(a) -> a + 2;
+
+# auto random_no_f <- SUM(CASE WHEN 10 = weekday THEN x ELSE 0 END) + SUM(CASE WHEN 10 = weekday THEN price ELSE 0.0 END) +2;
+auto random_one_f <- @weekday_sales(10) +2;
+auto random <- @plus_two(@weekday_sales(10));
+                
+"""
+    )
+    # assert x.environment.concepts['random_no_f'].purpose == Purpose.METRIC, x.environment.concepts['random']
+    assert (
+        x.environment.concepts["random_one_f"].purpose == Purpose.METRIC
+    ), x.environment.concepts["random"]
+    assert (
+        x.environment.concepts["random"].purpose == Purpose.METRIC
+    ), x.environment.concepts["random"]
+
+    results = x.execute_query(
+        """select 
+        y,
+        @plus_two(@weekday_sales(10)) -> test2
+    order by y asc;"""
+    )
+    results = results.fetchall()
+    assert results[0].test2 == 10
+    assert results[1].test2 == 17

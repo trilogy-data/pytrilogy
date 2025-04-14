@@ -1,12 +1,12 @@
 query_id = 10
-gen_length = 6004
+gen_length = 6010
 generated_sql = """
 
 WITH 
 cooperative as (
 SELECT
     store_sales_store_sales.\"SS_CUSTOMER_SK\" as \"customer_id\",
-    store_sales_store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
+    store_sales_store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales__date_id\"
 FROM
     memory.store_sales as store_sales_store_sales
 GROUP BY 
@@ -15,7 +15,7 @@ GROUP BY
 uneven as (
 SELECT
     web_sales_web_sales.\"WS_BILL_CUSTOMER_SK\" as \"customer_id\",
-    web_sales_web_sales.\"WS_SOLD_DATE_SK\" as \"web_sales_date_id\"
+    web_sales_web_sales.\"WS_SOLD_DATE_SK\" as \"web_sales__date_id\"
 FROM
     memory.web_sales as web_sales_web_sales
 GROUP BY 
@@ -24,7 +24,7 @@ GROUP BY
 vacuous as (
 SELECT
     catalog_sales_catalog_sales.\"CS_SHIP_CUSTOMER_SK\" as \"customer_id\",
-    catalog_sales_catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\"
+    catalog_sales_catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales__date_id\"
 FROM
     memory.catalog_sales as catalog_sales_catalog_sales
 GROUP BY 
@@ -38,10 +38,10 @@ FROM
     LEFT OUTER JOIN vacuous on customer_customers.\"C_CUSTOMER_SK\" = vacuous.\"customer_id\"
     LEFT OUTER JOIN cooperative on customer_customers.\"C_CUSTOMER_SK\" = cooperative.\"customer_id\"
     LEFT OUTER JOIN uneven on customer_customers.\"C_CUSTOMER_SK\" = uneven.\"customer_id\"
-    LEFT OUTER JOIN memory.date_dim as web_sales_date_date on uneven.\"web_sales_date_id\" = web_sales_date_date.\"D_DATE_SK\"
+    LEFT OUTER JOIN memory.date_dim as web_sales_date_date on uneven.\"web_sales__date_id\" = web_sales_date_date.\"D_DATE_SK\"
     INNER JOIN memory.customer_address as customer_customer_address on customer_customers.\"C_CURRENT_ADDR_SK\" = customer_customer_address.\"CA_ADDRESS_SK\"
-    LEFT OUTER JOIN memory.date_dim as store_sales_date_date on cooperative.\"store_sales_date_id\" = store_sales_date_date.\"D_DATE_SK\"
-    LEFT OUTER JOIN memory.date_dim as catalog_sales_date_date on vacuous.\"catalog_sales_date_id\" = catalog_sales_date_date.\"D_DATE_SK\"
+    LEFT OUTER JOIN memory.date_dim as store_sales_date_date on cooperative.\"store_sales__date_id\" = store_sales_date_date.\"D_DATE_SK\"
+    LEFT OUTER JOIN memory.date_dim as catalog_sales_date_date on vacuous.\"catalog_sales__date_id\" = catalog_sales_date_date.\"D_DATE_SK\"
 WHERE
     cast(store_sales_date_date.\"D_YEAR\" as int) = 2002 and store_sales_date_date.\"D_MOY\" in (1,2,3,4) and customer_customer_address.\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( cast(web_sales_date_date.\"D_YEAR\" as int) = 2002 and web_sales_date_date.\"D_MOY\" in (1,2,3,4) ) or ( cast(catalog_sales_date_date.\"D_YEAR\" as int) = 2002 and catalog_sales_date_date.\"D_MOY\" in (1,2,3,4) ) )
 ),

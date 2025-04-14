@@ -1,5 +1,5 @@
 query_id = 8
-gen_length = 3660
+gen_length = 3455
 generated_sql = """
 
 WITH 
@@ -68,13 +68,10 @@ GROUP BY
     young.\"final_zips\"),
 abhorrent as (
 SELECT
-    cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
-    store_sales_date_date.\"D_QOY\" as \"store_sales_date_quarter\",
     store_sales_store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\",
     store_sales_store_sales.\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
     store_sales_store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
-    store_sales_store_store.\"S_STORE_NAME\" as \"store_sales_store_name\",
-    store_sales_store_store.\"S_ZIP\" as \"store_sales_store_zip\"
+    store_sales_store_store.\"S_STORE_NAME\" as \"store_sales_store_name\"
 FROM
     memory.store_sales as store_sales_store_sales
     INNER JOIN memory.store as store_sales_store_store on store_sales_store_sales.\"SS_STORE_SK\" = store_sales_store_store.\"S_STORE_SK\"

@@ -637,7 +637,7 @@ class QueryDatasource(BaseModel):
                     and CONFIG.validate_missing
                 ):
                     raise SyntaxError(
-                        f"On query datasource missing source map for {concept.address} on {key}, have {v}"
+                        f"On query datasource missing source map for {concept.address} on {key} with pseudonyms {concept.pseudonyms}, have {v}"
                     )
         return v
 

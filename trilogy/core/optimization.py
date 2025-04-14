@@ -94,6 +94,11 @@ def filter_irrelevant_ctes(
     inverse_map = gen_inverse_map(input)
     recurse(root_cte, inverse_map)
     final = [cte for cte in input if cte.name in relevant_ctes]
+    filtered = [cte for cte in input if cte.name not in relevant_ctes]
+    if filtered:
+        logger.info(
+            f"[Optimization][Irrelevent CTE filtering] Removing redundant CTEs {[x.name for x in filtered]}"
+        )
     if len(final) == len(input):
         return input
     return filter_irrelevant_ctes(final, root_cte)
@@ -130,6 +135,9 @@ def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     if not output_addresses.issubset(parent_output_addresses):
         return None
     if not direct_parent.grain == cte.grain:
+        logger.info("grain mismatch, cannot early exit")
+        logger.info(direct_parent.grain)
+        logger.info(cte.grain)
         return None
 
     assert isinstance(cte, CTE)

@@ -252,6 +252,8 @@ def rehydrate_lineage(
         )
         return lineage
     elif isinstance(lineage, WindowItem):
+        # this is temporarily guaranteed until we do some upstream work
+        assert isinstance(lineage.content, ConceptRef)
         lineage.content.datatype = environment.concepts[
             lineage.content.address
         ].datatype
@@ -542,6 +544,10 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def concept_property_declaration(self, meta: Meta, args) -> Concept:
+        unique = False
+        if not args[0] == Purpose.PROPERTY:
+            unique = True
+            args = args[1:]
         metadata = Metadata()
         modifiers = []
         for arg in args:
@@ -569,7 +575,7 @@ class ParseToObjects(Transformer):
         concept = Concept(
             name=name,
             datatype=args[2],
-            purpose=args[0],
+            purpose=Purpose.PROPERTY if not unique else Purpose.UNIQUE_PROPERTY,
             metadata=metadata,
             grain=Grain(components={x.address for x in parents}),
             namespace=namespace,
@@ -633,7 +639,8 @@ class ParseToObjects(Transformer):
             source_value = source_value.content
 
         if isinstance(
-            source_value, (FilterItem, WindowItem, AggregateWrapper, Function)
+            source_value,
+            (FilterItem, WindowItem, AggregateWrapper, Function, FunctionCallWrapper),
         ):
             concept = arbitrary_to_concept(
                 source_value,

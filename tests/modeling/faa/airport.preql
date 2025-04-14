@@ -1,0 +1,65 @@
+import std.geography;
+
+#auto-generated datasource from table/view airport
+
+key id int;
+property key.code string;
+property key.site_number string;
+property key.fac_type string;
+property key.fac_use string;
+property key.faa_region string;
+property key.faa_dist string;
+property key.city string::city;
+property key.county string;
+property key.state string::us_state_short;
+property key.full_name string;
+property key.own_type string;
+property key.longitude float::longitude;
+property key.latitude float::latitude;
+property key.elevation int;
+property key.aero_cht string;
+property key.cbd_dist int;
+property key.cbd_dir string;
+property key.act_date string;
+property key.cert string;
+property key.fed_agree string;
+property key.cust_intl string;
+property key.c_ldg_rts string;
+property key.joint_use string;
+property key.mil_rts string;
+property key.cntl_twr string;
+property key.major string;
+
+auto count <- count(id);
+
+datasource airport (
+	id:id,
+	code:code,
+	site_number:site_number,
+	fac_type:fac_type,
+	fac_use:fac_use,
+	faa_region:faa_region,
+	faa_dist:faa_dist,
+	city:city,
+	county:county,
+	state:state,
+	full_name:full_name,
+	own_type:own_type,
+	longitude:longitude,
+	latitude:latitude,
+	elevation:elevation,
+	aero_cht:aero_cht,
+	cbd_dist:cbd_dist,
+	cbd_dir:cbd_dir,
+	act_date:act_date,
+	cert:cert,
+	fed_agree:fed_agree,
+	cust_intl:cust_intl,
+	c_ldg_rts:c_ldg_rts,
+	joint_use:joint_use,
+	mil_rts:mil_rts,
+	cntl_twr:cntl_twr,
+	major:major,
+)
+grain(id)
+address airport;

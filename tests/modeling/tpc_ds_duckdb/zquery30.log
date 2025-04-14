@@ -1,5 +1,5 @@
 query_id = 30
-gen_length = 12399
+gen_length = 12154
 generated_sql = """
 
 WITH 
@@ -127,7 +127,6 @@ WHERE
 ),
 sparkling as (
 SELECT
-    1.2 * young.\"_virt_agg_avg_3885168128306444\" as \"scaled_state_returns_2002\",
     concerned.\"customer_state_returns_2002\" as \"customer_state_returns_2002\",
     concerned.\"web_returns_customer_birth_country\" as \"web_returns_customer_birth_country\",
     concerned.\"web_returns_customer_birth_day\" as \"web_returns_customer_birth_day\",
@@ -141,9 +140,7 @@ SELECT
     concerned.\"web_returns_customer_login\" as \"web_returns_customer_login\",
     concerned.\"web_returns_customer_preferred_cust_flag\" as \"web_returns_customer_preferred_cust_flag\",
     concerned.\"web_returns_customer_salutation\" as \"web_returns_customer_salutation\",
-    concerned.\"web_returns_customer_state\" as \"web_returns_customer_state\",
-    concerned.\"web_returns_customer_text_id\" as \"web_returns_customer_text_id\",
-    concerned.\"web_returns_return_address_state\" as \"web_returns_return_address_state\"
+    concerned.\"web_returns_customer_text_id\" as \"web_returns_customer_text_id\"
 FROM
     concerned
     INNER JOIN young on (concerned.\"web_returns_return_address_state\" = young.\"web_returns_return_address_state\" or (concerned.\"web_returns_return_address_state\" is null and young.\"web_returns_return_address_state\" is null))

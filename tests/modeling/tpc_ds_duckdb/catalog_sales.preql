@@ -10,6 +10,7 @@ import warehouse as warehouse;
 import customer_demographic as bill_customer_demographic;
 import promotion as promotion;
 import ship_mode as ship_mode;
+import address as customer_address;
 
 key warehouse_id int;
 
@@ -24,17 +25,44 @@ property <order_number,item.id>.extra_ship_cost float;
 property <order_number,item.id>.extra_wholesale_cost float;
 property <order_number,item.id>.net_profit float;
 property <order_number,item.id>.coupon_amt float;
-property <order_number,item.id>.profit <- list_price - wholesale_cost - discount_amount+ extra_sales_price;
+
+# equivalent keys
+property <order_number,item.id>._sold_date_id date;
+merge sold_date.id into _sold_date_id;
+
+property <order_number,item.id>._date_id date;
+merge date.id into _date_id;
+
+property <order_number,item.id>._ship_date_id date;
+merge ship_date.id into _ship_date_id;
+
+property <order_number,item.id>._bill_customer_id int;
+merge bill_customer.id into _bill_customer_id;
+
+property <order_number,item.id>._call_center_id int;
+merge call_center.id into _call_center_id;
+
+property <order_number, item.id>._customer_address_id int;  
+merge customer_address.id into _customer_address_id;
+
+property <order_number, item.id>._promotion_id int;
+merge promotion.id into _promotion_id;
+
+property <order_number, item.id>._bill_customer_demographic_id int;
+merge bill_customer_demographic.id into _bill_customer_demographic_id;
+
+# metrics
+property <order_number,item.id>.profit <- list_price - wholesale_cost - discount_amount + extra_sales_price;
 property <order_number, item.id>.days_to_ship <- date_diff(sold_date.date, ship_date.date, DAY);
 
 
 datasource catalog_sales (
-    CS_SOLD_DATE_SK: date.id,
-    CS_SOLD_DATE_SK: sold_date.id,
+    CS_SOLD_DATE_SK: _date_id,
+    CS_SOLD_DATE_SK: _sold_date_id,
     CS_SOLD_TIME_SK: time.id,
     CS_SHIP_DATE_SK: ship_date.id,
     CS_SHIP_CUSTOMER_SK: customer.id,
-    CS_SHIP_ADDR_SK: customer.address_id,
+    CS_SHIP_ADDR_SK: customer_address.id,
     CS_BILL_CUSTOMER_SK: bill_customer.id,
     CS_BILL_CDEMO_SK: bill_customer_demographic.id,
     CS_ITEM_SK: item.id,

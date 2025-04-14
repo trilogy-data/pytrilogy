@@ -1,16 +1,14 @@
 query_id = 1
-gen_length = 1991
+gen_length = 1849
 generated_sql = """
 
 WITH 
 thoughtful as (
 SELECT
-    cast(returns_return_date_date.\"D_YEAR\" as int) as \"returns_return_date_year\",
     returns_customer_customers.\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
     returns_store_returns.\"SR_ITEM_SK\" as \"returns_item_id\",
     returns_store_returns.\"SR_RETURN_AMT\" as \"returns_return_amount\",
     returns_store_returns.\"SR_TICKET_NUMBER\" as \"returns_store_sales_ticket_number\",
-    returns_store_store.\"S_STATE\" as \"returns_store_state\",
     returns_store_store.\"S_STORE_SK\" as \"returns_store_id\"
 FROM
     memory.store_returns as returns_store_returns

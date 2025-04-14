@@ -1,5 +1,5 @@
 query_id = 95
-gen_length = 5923
+gen_length = 5405
 generated_sql = """
 
 WITH 
@@ -53,9 +53,9 @@ GROUP BY
 thoughtful as (
 SELECT
     web_sales_web_sales.\"WS_ORDER_NUMBER\" as \"web_sales_order_number\",
-    web_sales_web_sales.\"WS_SHIP_ADDR_SK\" as \"web_sales_ship_address_id\",
-    web_sales_web_sales.\"WS_SHIP_DATE_SK\" as \"web_sales_ship_date_id\",
-    web_sales_web_sales.\"WS_WEB_SITE_SK\" as \"web_sales_web_site_id\"
+    web_sales_web_sales.\"WS_SHIP_ADDR_SK\" as \"web_sales__ship_address_id\",
+    web_sales_web_sales.\"WS_SHIP_DATE_SK\" as \"web_sales__ship_date_id\",
+    web_sales_web_sales.\"WS_WEB_SITE_SK\" as \"web_sales__web_site_id\"
 FROM
     memory.web_sales as web_sales_web_sales
 WHERE
@@ -68,13 +68,10 @@ GROUP BY
     web_sales_web_sales.\"WS_WEB_SITE_SK\"),
 sparkling as (
 SELECT
-    cast(web_sales_ship_date_date.\"D_DATE\" as date) as \"web_sales_ship_date_date\",
-    web_sales_ship_address_customer_address.\"CA_STATE\" as \"web_sales_ship_address_state\",
     web_sales_web_sales.\"WS_EXT_SHIP_COST\" as \"web_sales_extra_ship_cost\",
     web_sales_web_sales.\"WS_ITEM_SK\" as \"web_sales_item_id\",
     web_sales_web_sales.\"WS_NET_PROFIT\" as \"web_sales_net_profit\",
-    web_sales_web_sales.\"WS_ORDER_NUMBER\" as \"web_sales_order_number\",
-    web_sales_web_site_web_site.\"web_company_name\" as \"web_sales_web_site_company_name\"
+    web_sales_web_sales.\"WS_ORDER_NUMBER\" as \"web_sales_order_number\"
 FROM
     memory.customer_address as web_sales_ship_address_customer_address
     INNER JOIN memory.web_sales as web_sales_web_sales on web_sales_ship_address_customer_address.\"CA_ADDRESS_SK\" = web_sales_web_sales.\"WS_SHIP_ADDR_SK\"
@@ -85,15 +82,12 @@ WHERE
 ),
 concerned as (
 SELECT
-    cast(web_sales_ship_date_date.\"D_DATE\" as date) as \"web_sales_ship_date_date\",
-    thoughtful.\"web_sales_order_number\" as \"web_sales_order_number\",
-    web_sales_ship_address_customer_address.\"CA_STATE\" as \"web_sales_ship_address_state\",
-    web_sales_web_site_web_site.\"web_company_name\" as \"web_sales_web_site_company_name\"
+    thoughtful.\"web_sales_order_number\" as \"web_sales_order_number\"
 FROM
     thoughtful
-    INNER JOIN memory.customer_address as web_sales_ship_address_customer_address on thoughtful.\"web_sales_ship_address_id\" = web_sales_ship_address_customer_address.\"CA_ADDRESS_SK\"
-    INNER JOIN memory.web_site as web_sales_web_site_web_site on thoughtful.\"web_sales_web_site_id\" = web_sales_web_site_web_site.\"web_site_sk\"
-    INNER JOIN memory.date_dim as web_sales_ship_date_date on thoughtful.\"web_sales_ship_date_id\" = web_sales_ship_date_date.\"D_DATE_SK\"
+    INNER JOIN memory.customer_address as web_sales_ship_address_customer_address on thoughtful.\"web_sales__ship_address_id\" = web_sales_ship_address_customer_address.\"CA_ADDRESS_SK\"
+    INNER JOIN memory.web_site as web_sales_web_site_web_site on thoughtful.\"web_sales__web_site_id\" = web_sales_web_site_web_site.\"web_site_sk\"
+    INNER JOIN memory.date_dim as web_sales_ship_date_date on thoughtful.\"web_sales__ship_date_id\" = web_sales_ship_date_date.\"D_DATE_SK\"
 WHERE
     cast(web_sales_ship_date_date.\"D_DATE\" as date) >= date '1999-02-01' and cast(web_sales_ship_date_date.\"D_DATE\" as date) <= date '1999-04-02' and web_sales_ship_address_customer_address.\"CA_STATE\" = 'IL' and web_sales_web_site_web_site.\"web_company_name\" = 'pri' and thoughtful.\"web_sales_order_number\" in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null) and thoughtful.\"web_sales_order_number\" in (select vacuous.\"returned_orders\" from vacuous where vacuous.\"returned_orders\" is not null)
 ),

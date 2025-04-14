@@ -296,8 +296,20 @@ class MergeNode(StrategyNode):
                 return dataset
 
         pregrain = BuildGrain()
+
         for source in final_datasets:
+            if all(
+                [x.address in self.existence_concepts for x in source.output_concepts]
+            ):
+                logger.info(
+                    f"{self.logging_prefix}{LOGGER_PREFIX} skipping existence only source with {source.output_concepts} from grain accumulation"
+                )
+                continue
             pregrain += source.grain
+
+        pregrain = BuildGrain.from_concepts(
+            pregrain.components, environment=self.environment
+        )
 
         grain = self.grain if self.grain else pregrain
         logger.info(
@@ -310,6 +322,7 @@ class MergeNode(StrategyNode):
             )
         else:
             joins = []
+
         logger.info(
             f"{self.logging_prefix}{LOGGER_PREFIX} Final join count for CTE parent count {len(join_candidates)} is {len(joins)}"
         )
@@ -343,7 +356,6 @@ class MergeNode(StrategyNode):
         nullable_concepts = find_nullable_concepts(
             source_map=source_map, joins=joins, datasources=final_datasets
         )
-
         qds = QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),
             output_concepts=unique(self.output_concepts, "address"),

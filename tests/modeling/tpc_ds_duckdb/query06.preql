@@ -15,6 +15,8 @@ WHERE
     and store_sales.item.category is not null # this is implicit in the raw SQL because of a join on null
 SELECT
     store_sales.customer.state,
+    # the tpc ds query is implicitly grouped by id
+    -- store_sales.item.id,
     count(store_sales.customer.id) as customer_count
 HAVING
     customer_count>=10

@@ -149,7 +149,9 @@ def gen_group_node(
         g=g,
         depth=depth,
         source_concepts=source_concepts,
-        log_lambda=create_log_lambda(LOGGER_PREFIX, depth, logger),
+        log_lambda=create_log_lambda(
+            LOGGER_PREFIX + f" for {concept.address}", depth, logger
+        ),
         history=history,
         conditions=conditions,
     )

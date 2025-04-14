@@ -1,0 +1,12 @@
+
+key code string; #short, two digit code for the airline - UA for United, for example.
+property code.name string;
+property code.nickname string;
+
+datasource carrier (
+	code:code,
+	name:name,
+	nickname:nickname,
+)
+grain (code)
+address carrier;

@@ -1326,7 +1326,7 @@ class OrderItem(Mergeable, ConceptArgs, Namespaced, BaseModel):
 
 class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     type: WindowType
-    content: ConceptRef
+    content: FuncArgs
     order_by: List["OrderItem"]
     over: List["ConceptRef"] = Field(default_factory=list)
     index: Optional[int] = None
@@ -1335,7 +1335,7 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         return self.__repr__()
 
     def __repr__(self):
-        return f"{self.type}({self.content} {self.index}, {self.over}, {self.order_by})"
+        return f"{self.type.value} {self.content} by {self.index} over {self.over} order {self.order_by}"
 
     @field_validator("content", mode="before")
     def enforce_concept_ref(cls, v):
@@ -1358,7 +1358,11 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     ) -> "WindowItem":
         output = WindowItem.model_construct(
             type=self.type,
-            content=self.content.with_merge(source, target, modifiers),
+            content=(
+                self.content.with_merge(source, target, modifiers)
+                if isinstance(self.content, Mergeable)
+                else self.content
+            ),
             over=[x.with_merge(source, target, modifiers) for x in self.over],
             order_by=[x.with_merge(source, target, modifiers) for x in self.order_by],
             index=self.index,
@@ -1379,7 +1383,11 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     def with_namespace(self, namespace: str) -> "WindowItem":
         return WindowItem.model_construct(
             type=self.type,
-            content=self.content.with_namespace(namespace),
+            content=(
+                self.content.with_namespace(namespace)
+                if isinstance(self.content, Namespaced)
+                else self.content
+            ),
             over=[x.with_namespace(namespace) for x in self.over],
             order_by=[x.with_namespace(namespace) for x in self.order_by],
             index=self.index,
@@ -1387,7 +1395,8 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
 
     @property
     def concept_arguments(self) -> List[ConceptRef]:
-        output = [self.content]
+        output = []
+        output += get_concept_arguments(self.content)
         for order in self.order_by:
             output += get_concept_arguments(order)
         for item in self.over:
@@ -1786,6 +1795,10 @@ class FunctionCallWrapper(
                 for x in self.args
             ],
         )
+
+    def with_reference_replacement(self, source, target):
+        raise NotImplementedError("Cannot reference replace")
+        return self
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
