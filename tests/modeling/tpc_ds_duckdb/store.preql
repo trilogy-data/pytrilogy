@@ -1,7 +1,7 @@
 import date as date;
 
 key id int;
-property id.text_id string;
+unique property id.text_id string;
 property id.name string;
 property id.employees int;
 property id.floor_space int;

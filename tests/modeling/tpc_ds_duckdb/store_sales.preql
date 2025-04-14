@@ -31,6 +31,9 @@ property <ticket_number,item.id>.return_net_loss float?;
 property <ticket_number,item.id>._date_id date;
 merge date.id into _date_id;
 
+property <ticket_number,item.id>._return_date_id date;
+merge return_date.id into _return_date_id;
+
 property <ticket_number,item.id>._store_id int;
 merge store.id into _store_id;
 
@@ -39,6 +42,11 @@ merge customer_demographic.id into _customer_demographic_id;
 
 property <ticket_number,item.id>._promotion_id int;
 merge promotion.id into _promotion_id;
+
+property <ticket_number,item.id>._customer_id int;
+merge customer.id into _customer_id;
+
+
 
 auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price;
 

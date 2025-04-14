@@ -1,11 +1,11 @@
 query_id = 97
-gen_length = 3446
+gen_length = 3456
 generated_sql = """
 
 WITH 
 questionable as (
 SELECT
-    catalog_sales_catalog_sales.\"CS_BILL_CUSTOMER_SK\" as \"catalog_sales_bill_customer_id\",
+    catalog_sales_catalog_sales.\"CS_BILL_CUSTOMER_SK\" as \"catalog_sales__bill_customer_id\",
     catalog_sales_catalog_sales.\"CS_ITEM_SK\" as \"catalog_sales_item_id\",
     catalog_sales_catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales__date_id\"
 FROM
@@ -27,8 +27,8 @@ GROUP BY
     store_sales_store_sales.\"SS_SOLD_DATE_SK\"),
 abundant as (
 SELECT
-    questionable.\"catalog_sales_bill_customer_id\" as \"catalog_sales_bill_customer_id\",
-    questionable.\"catalog_sales_bill_customer_id\" as \"customer_id\",
+    questionable.\"catalog_sales__bill_customer_id\" as \"catalog_sales__bill_customer_id\",
+    questionable.\"catalog_sales__bill_customer_id\" as \"customer_id\",
     questionable.\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
     questionable.\"catalog_sales_item_id\" as \"item_id\"
 FROM
@@ -51,7 +51,7 @@ WHERE
 ),
 uneven as (
 SELECT
-    abundant.\"catalog_sales_bill_customer_id\" as \"merged_catalog_sales_bill_customer_id\",
+    abundant.\"catalog_sales__bill_customer_id\" as \"merged_catalog_sales__bill_customer_id\",
     abundant.\"catalog_sales_item_id\" as \"merged_catalog_sales_item_id\",
     cheerful.\"store_sales_customer_id\" as \"merged_store_sales_customer_id\",
     cheerful.\"store_sales_item_id\" as \"merged_store_sales_item_id\",
@@ -61,7 +61,7 @@ FROM
     cheerful
     FULL JOIN abundant on cheerful.\"customer_id\" = abundant.\"customer_id\" AND cheerful.\"item_id\" = abundant.\"item_id\"
 GROUP BY 
-    abundant.\"catalog_sales_bill_customer_id\",
+    abundant.\"catalog_sales__bill_customer_id\",
     abundant.\"catalog_sales_item_id\",
     cheerful.\"store_sales_customer_id\",
     cheerful.\"store_sales_item_id\",
@@ -69,15 +69,15 @@ GROUP BY
     coalesce(abundant.\"item_id\",cheerful.\"item_id\"))
 SELECT
     sum(CASE
-	WHEN uneven.\"merged_store_sales_customer_id\" is not null and uneven.\"merged_catalog_sales_bill_customer_id\" is null THEN 1
+	WHEN uneven.\"merged_store_sales_customer_id\" is not null and uneven.\"merged_catalog_sales__bill_customer_id\" is null THEN 1
 	ELSE 0
 	END) as \"store_sales\",
     sum(CASE
-	WHEN uneven.\"merged_store_sales_customer_id\" is null and uneven.\"merged_catalog_sales_bill_customer_id\" is not null THEN 1
+	WHEN uneven.\"merged_store_sales_customer_id\" is null and uneven.\"merged_catalog_sales__bill_customer_id\" is not null THEN 1
 	ELSE 0
 	END) as \"catalog_sales\",
     sum(CASE
-	WHEN uneven.\"merged_store_sales_customer_id\" is not null and uneven.\"merged_catalog_sales_bill_customer_id\" is not null THEN 1
+	WHEN uneven.\"merged_store_sales_customer_id\" is not null and uneven.\"merged_catalog_sales__bill_customer_id\" is not null THEN 1
 	ELSE 0
 	END) as \"both_sales\"
 FROM

@@ -1,5 +1,5 @@
 query_id = 21
-gen_length = 3519
+gen_length = 2858
 generated_sql = """
 
 WITH 
@@ -8,6 +8,7 @@ SELECT
     cast(inventory_date_date.\"D_DATE\" as date) as \"inventory_date_date\",
     inventory_date_date.\"D_DATE_SK\" as \"inventory_date_id\",
     inventory_item_items.\"I_ITEM_ID\" as \"inventory_item_name\",
+    inventory_item_items.\"I_ITEM_SK\" as \"inventory_item_id\",
     inventory_warehouse_inventory.\"inv_quantity_on_hand\" as \"inventory_quantity_on_hand\",
     inventory_warehouse_warehouse.\"w_warehouse_name\" as \"inventory_warehouse_name\",
     inventory_warehouse_warehouse.\"w_warehouse_sk\" as \"inventory_warehouse_id\"
@@ -18,68 +19,51 @@ FROM
     INNER JOIN memory.item as inventory_item_items on inventory_warehouse_inventory.\"inv_item_sk\" = inventory_item_items.\"I_ITEM_SK\"
 WHERE
     cast(inventory_date_date.\"D_DATE\" as date) >= date '2000-02-10' and cast(inventory_date_date.\"D_DATE\" as date) <= date '2000-04-10' and inventory_item_items.\"I_CURRENT_PRICE\" >= 0.99 and inventory_item_items.\"I_CURRENT_PRICE\" <= 1.49
-),
-cooperative as (
+)
 SELECT
-    thoughtful.\"inventory_date_date\" as \"inventory_date_date\",
-    thoughtful.\"inventory_date_id\" as \"inventory_date_id\",
+    thoughtful.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
     thoughtful.\"inventory_item_name\" as \"inventory_item_name\",
-    thoughtful.\"inventory_quantity_on_hand\" as \"inventory_quantity_on_hand\",
-    thoughtful.\"inventory_warehouse_id\" as \"inventory_warehouse_id\",
-    thoughtful.\"inventory_warehouse_name\" as \"inventory_warehouse_name\"
-FROM
-    thoughtful
-GROUP BY 
-    thoughtful.\"inventory_date_date\",
-    thoughtful.\"inventory_date_id\",
-    thoughtful.\"inventory_item_name\",
-    thoughtful.\"inventory_quantity_on_hand\",
-    thoughtful.\"inventory_warehouse_id\",
-    thoughtful.\"inventory_warehouse_name\")
-SELECT
-    cooperative.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
-    cooperative.\"inventory_item_name\" as \"inventory_item_name\",
     sum(CASE
-	WHEN cooperative.\"inventory_date_date\" < date '2000-03-11' THEN cooperative.\"inventory_quantity_on_hand\"
+	WHEN thoughtful.\"inventory_date_date\" < date '2000-03-11' THEN thoughtful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_before\",
     sum(CASE
-	WHEN cooperative.\"inventory_date_date\" >= date '2000-03-11' THEN cooperative.\"inventory_quantity_on_hand\"
+	WHEN thoughtful.\"inventory_date_date\" >= date '2000-03-11' THEN thoughtful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_after\"
 FROM
-    cooperative
+    thoughtful
 GROUP BY 
-    cooperative.\"inventory_item_name\",
-    cooperative.\"inventory_warehouse_name\"
+    thoughtful.\"inventory_item_name\",
+    thoughtful.\"inventory_warehouse_name\"
 HAVING
     CASE
 	WHEN sum(CASE
-	WHEN cooperative.\"inventory_date_date\" < date '2000-03-11' THEN cooperative.\"inventory_quantity_on_hand\"
+	WHEN thoughtful.\"inventory_date_date\" < date '2000-03-11' THEN thoughtful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) > 0 THEN (sum(CASE
-	WHEN cooperative.\"inventory_date_date\" >= date '2000-03-11' THEN cooperative.\"inventory_quantity_on_hand\"
+	WHEN thoughtful.\"inventory_date_date\" >= date '2000-03-11' THEN thoughtful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) * 1.0) / sum(CASE
-	WHEN cooperative.\"inventory_date_date\" < date '2000-03-11' THEN cooperative.\"inventory_quantity_on_hand\"
+	WHEN thoughtful.\"inventory_date_date\" < date '2000-03-11' THEN thoughtful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END)
 	ELSE null
 	END >= 2.0 / 3.0 and CASE
 	WHEN sum(CASE
-	WHEN cooperative.\"inventory_date_date\" < date '2000-03-11' THEN cooperative.\"inventory_quantity_on_hand\"
+	WHEN thoughtful.\"inventory_date_date\" < date '2000-03-11' THEN thoughtful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) > 0 THEN (sum(CASE
-	WHEN cooperative.\"inventory_date_date\" >= date '2000-03-11' THEN cooperative.\"inventory_quantity_on_hand\"
+	WHEN thoughtful.\"inventory_date_date\" >= date '2000-03-11' THEN thoughtful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) * 1.0) / sum(CASE
-	WHEN cooperative.\"inventory_date_date\" < date '2000-03-11' THEN cooperative.\"inventory_quantity_on_hand\"
+	WHEN thoughtful.\"inventory_date_date\" < date '2000-03-11' THEN thoughtful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END)
 	ELSE null
 	END <= 3.0 / 2.0
 
 ORDER BY 
-    cooperative.\"inventory_warehouse_name\" asc nulls first,
-    cooperative.\"inventory_item_name\" asc nulls first
+    thoughtful.\"inventory_warehouse_name\" asc nulls first,
+    thoughtful.\"inventory_item_name\" asc nulls first
 LIMIT (100)"""

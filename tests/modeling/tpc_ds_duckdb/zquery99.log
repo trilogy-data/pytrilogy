@@ -26,12 +26,12 @@ SELECT
     ship_mode_ship_mode.\"SM_TYPE\" as \"ship_mode_type\",
     warehouse_warehouse.\"w_warehouse_name\" as \"warehouse_name\"
 FROM
-    memory.catalog_sales as catalog_sales
-    INNER JOIN memory.date_dim as sold_date_date on catalog_sales.\"CS_SOLD_DATE_SK\" = sold_date_date.\"D_DATE_SK\"
+    memory.call_center as call_center_call_center
+    INNER JOIN memory.catalog_sales as catalog_sales on call_center_call_center.\"CC_CALL_CENTER_SK\" = catalog_sales.\"CS_CALL_CENTER_SK\"
     INNER JOIN memory.ship_mode as ship_mode_ship_mode on catalog_sales.\"CS_SHIP_MODE_SK\" = ship_mode_ship_mode.\"SM_SHIP_MODE_SK\"
     INNER JOIN memory.warehouse as warehouse_warehouse on catalog_sales.\"CS_WAREHOUSE_SK\" = warehouse_warehouse.\"w_warehouse_sk\"
-    INNER JOIN memory.call_center as call_center_call_center on catalog_sales.\"CS_CALL_CENTER_SK\" = call_center_call_center.\"CC_CALL_CENTER_SK\"
     INNER JOIN memory.date_dim as ship_date_date on catalog_sales.\"CS_SHIP_DATE_SK\" = ship_date_date.\"D_DATE_SK\"
+    INNER JOIN memory.date_dim as sold_date_date on catalog_sales.\"CS_SOLD_DATE_SK\" = sold_date_date.\"D_DATE_SK\"
 WHERE
     ship_date_date.\"D_MONTH_SEQ\" >= 1200 and ship_date_date.\"D_MONTH_SEQ\" <= 1211
 ),

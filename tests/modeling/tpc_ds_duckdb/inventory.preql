@@ -2,7 +2,7 @@ import warehouse as warehouse;
 import item as item;
 import date as date;
 
-property <warehouse.id, date.id>.quantity_on_hand int;
+property <warehouse.id, date.id, item.id>.quantity_on_hand int;
 
 datasource warehouse_inventory (
     inv_warehouse_sk: ?warehouse.id,
@@ -10,5 +10,5 @@ datasource warehouse_inventory (
     inv_quantity_on_hand: quantity_on_hand,
     inv_item_sk:item.id,
     )
-grain (warehouse.id, date.id)
+grain (warehouse.id, date.id, item.id)
 address memory.inventory;
