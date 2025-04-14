@@ -621,7 +621,7 @@ def validate_stack(
 
     for node in stack:
         resolved = node.resolve()
-        
+
         for concept in resolved.output_concepts:
             if concept.address in resolved.hidden_concepts:
                 continue

@@ -306,7 +306,7 @@ class MergeNode(StrategyNode):
                 )
                 continue
             pregrain += source.grain
-            
+
         pregrain = BuildGrain.from_concepts(
             pregrain.components, environment=self.environment
         )
