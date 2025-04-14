@@ -563,8 +563,7 @@ class Environment(BaseModel):
         from trilogy.core.environment_helpers import generate_related_concepts
 
         generate_related_concepts(concept, self, meta=meta, add_derived=add_derived)
-        # if concept.address == 'merged.catalog_sales.bill_customer.id':
-        #     raise SyntaxError(concept.pseudonyms)
+
         return concept
 
     def add_datasource(

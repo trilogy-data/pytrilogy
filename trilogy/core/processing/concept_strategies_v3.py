@@ -621,7 +621,7 @@ def validate_stack(
 
     for node in stack:
         resolved = node.resolve()
-        # (missing {'merged.catalog_sales.bill_customer.id'}
+        
         for concept in resolved.output_concepts:
             if concept.address in resolved.hidden_concepts:
                 continue

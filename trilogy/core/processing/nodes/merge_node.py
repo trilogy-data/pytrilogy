@@ -306,14 +306,11 @@ class MergeNode(StrategyNode):
                 )
                 continue
             pregrain += source.grain
-        try:
-            pregrain = BuildGrain.from_concepts(
-                pregrain.components, environment=self.environment
-            )
-        except Exception as e:
-            logger.error(
-                f"{self.logging_prefix}{LOGGER_PREFIX} unable to deduplicate grain {pregrain.components} with {str(e)}"
-            )
+            
+        pregrain = BuildGrain.from_concepts(
+            pregrain.components, environment=self.environment
+        )
+
         grain = self.grain if self.grain else pregrain
         logger.info(
             f"{self.logging_prefix}{LOGGER_PREFIX} has pre grain {pregrain} and final merge node grain {grain}"
