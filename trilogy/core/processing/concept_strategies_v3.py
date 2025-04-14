@@ -621,10 +621,11 @@ def validate_stack(
 
     for node in stack:
         resolved = node.resolve()
-
+        #(missing {'merged.catalog_sales.bill_customer.id'}
         for concept in resolved.output_concepts:
             if concept.address in resolved.hidden_concepts:
                 continue
+
             validate_concept(
                 concept,
                 node,
@@ -923,7 +924,7 @@ def _search_concepts(
         mandatory_completion = [c.address for c in completion_mandatory]
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} finished concept loop for {priority_concept} {priority_concept.derivation} condition {conditions} flag for accepting partial addresses is"
-            f" {accept_partial} (complete: {complete}), have {found} from {[n for n in stack]} (missing {missing} partial {partial} virtual {virtual}), attempted {attempted}, mandatory w/ filter {mandatory_completion}"
+            f" {accept_partial} (complete: {complete}), have {found} from {[n for n in stack]} (missing {missing} synonyms  partial {partial} virtual {virtual}), attempted {attempted}, mandatory w/ filter {mandatory_completion}"
         )
         if complete == ValidationResult.INCOMPLETE_CONDITION:
             cond_dict = {str(node): node.preexisting_conditions for node in stack}
@@ -948,7 +949,7 @@ def _search_concepts(
         f"{depth_to_prefix(depth)}{LOGGER_PREFIX} finished sourcing loop (complete: {complete}), have {found} from {[n for n in stack]} (missing {all_mandatory - found}), attempted {attempted}, virtual {virtual}"
     )
     if complete == ValidationResult.COMPLETE:
-        condition_required = True
+        condition_required = conditions is not None
         non_virtual = [c for c in completion_mandatory if c.address not in virtual]
         non_virtual_output = [c for c in original_mandatory if c.address not in virtual]
         non_virtual_different = len(completion_mandatory) != len(original_mandatory)
@@ -956,7 +957,6 @@ def _search_concepts(
             [x.address for x in completion_mandatory]
         ).difference(set([x.address for x in original_mandatory]))
         if not conditions:
-            condition_required = False
             non_virtual = [c for c in mandatory_list if c.address not in virtual]
 
         elif all([x.preexisting_conditions == conditions.conditional for x in stack]):

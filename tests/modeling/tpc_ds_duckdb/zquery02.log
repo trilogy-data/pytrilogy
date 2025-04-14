@@ -1,5 +1,5 @@
 query_id = 2
-gen_length = 8570
+gen_length = 8571
 generated_sql = """
 
 WITH 
@@ -134,42 +134,42 @@ vacuous as (
 SELECT
     juicy.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
     juicy.\"yearly_agg_sunday_sales\" as \"yearly_agg_sunday_sales\",
-    lead(juicy.\"yearly_agg_friday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_3748451346260608\",
-    lead(juicy.\"yearly_agg_monday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_8327584394528973\",
-    lead(juicy.\"yearly_agg_saturday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_9991445044615086\",
-    lead(juicy.\"yearly_agg_sunday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_314964953721020\",
-    lead(juicy.\"yearly_agg_thursday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_1001854430011326\",
-    lead(juicy.\"yearly_agg_tuesday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_7658333985524969\",
-    lead(juicy.\"yearly_agg_wednesday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_1939101771545686\"
+    lead(juicy.\"yearly_agg_friday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_840125329441915\",
+    lead(juicy.\"yearly_agg_monday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_1831355371097660\",
+    lead(juicy.\"yearly_agg_saturday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_2858098921271386\",
+    lead(juicy.\"yearly_agg_sunday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_4780721583408487\",
+    lead(juicy.\"yearly_agg_thursday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_8474766537336377\",
+    lead(juicy.\"yearly_agg_tuesday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_3375245317408835\",
+    lead(juicy.\"yearly_agg_wednesday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_6759541963679355\"
 FROM
     juicy),
 concerned as (
 SELECT
-    vacuous.\"_virt_window_lead_1001854430011326\" as \"_virt_window_lead_1001854430011326\",
-    vacuous.\"_virt_window_lead_1939101771545686\" as \"_virt_window_lead_1939101771545686\",
-    vacuous.\"_virt_window_lead_314964953721020\" as \"_virt_window_lead_314964953721020\",
-    vacuous.\"_virt_window_lead_3748451346260608\" as \"_virt_window_lead_3748451346260608\",
-    vacuous.\"_virt_window_lead_7658333985524969\" as \"_virt_window_lead_7658333985524969\",
-    vacuous.\"_virt_window_lead_8327584394528973\" as \"_virt_window_lead_8327584394528973\",
-    vacuous.\"_virt_window_lead_9991445044615086\" as \"_virt_window_lead_9991445044615086\",
+    vacuous.\"_virt_window_lead_1831355371097660\" as \"_virt_window_lead_1831355371097660\",
+    vacuous.\"_virt_window_lead_2858098921271386\" as \"_virt_window_lead_2858098921271386\",
+    vacuous.\"_virt_window_lead_3375245317408835\" as \"_virt_window_lead_3375245317408835\",
+    vacuous.\"_virt_window_lead_4780721583408487\" as \"_virt_window_lead_4780721583408487\",
+    vacuous.\"_virt_window_lead_6759541963679355\" as \"_virt_window_lead_6759541963679355\",
+    vacuous.\"_virt_window_lead_840125329441915\" as \"_virt_window_lead_840125329441915\",
+    vacuous.\"_virt_window_lead_8474766537336377\" as \"_virt_window_lead_8474766537336377\",
     vacuous.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
     vacuous.\"yearly_agg_sunday_sales\" as \"yearly_agg_sunday_sales\"
 FROM
     vacuous)
 SELECT
     juicy.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
-    round(juicy.\"yearly_agg_sunday_sales\" / (concerned.\"_virt_window_lead_314964953721020\"),2) as \"sunday_increase\",
-    round(juicy.\"yearly_agg_monday_sales\" / (concerned.\"_virt_window_lead_8327584394528973\"),2) as \"monday_increase\",
-    round(juicy.\"yearly_agg_tuesday_sales\" / (concerned.\"_virt_window_lead_7658333985524969\"),2) as \"tuesday_increase\",
-    round(juicy.\"yearly_agg_wednesday_sales\" / (concerned.\"_virt_window_lead_1939101771545686\"),2) as \"wednesday_increase\",
-    round(juicy.\"yearly_agg_thursday_sales\" / (concerned.\"_virt_window_lead_1001854430011326\"),2) as \"thursday_increase\",
-    round(juicy.\"yearly_agg_friday_sales\" / (concerned.\"_virt_window_lead_3748451346260608\"),2) as \"friday_increase\",
-    round(juicy.\"yearly_agg_saturday_sales\" / (concerned.\"_virt_window_lead_9991445044615086\"),2) as \"saturday_increase\"
+    round(juicy.\"yearly_agg_sunday_sales\" / (concerned.\"_virt_window_lead_4780721583408487\"),2) as \"sunday_increase\",
+    round(juicy.\"yearly_agg_monday_sales\" / (concerned.\"_virt_window_lead_1831355371097660\"),2) as \"monday_increase\",
+    round(juicy.\"yearly_agg_tuesday_sales\" / (concerned.\"_virt_window_lead_3375245317408835\"),2) as \"tuesday_increase\",
+    round(juicy.\"yearly_agg_wednesday_sales\" / (concerned.\"_virt_window_lead_6759541963679355\"),2) as \"wednesday_increase\",
+    round(juicy.\"yearly_agg_thursday_sales\" / (concerned.\"_virt_window_lead_8474766537336377\"),2) as \"thursday_increase\",
+    round(juicy.\"yearly_agg_friday_sales\" / (concerned.\"_virt_window_lead_840125329441915\"),2) as \"friday_increase\",
+    round(juicy.\"yearly_agg_saturday_sales\" / (concerned.\"_virt_window_lead_2858098921271386\"),2) as \"saturday_increase\"
 FROM
     concerned
     INNER JOIN juicy on concerned.\"yearly_agg_date_week_seq\" = juicy.\"yearly_agg_date_week_seq\" AND concerned.\"yearly_agg_sunday_sales\" = juicy.\"yearly_agg_sunday_sales\"
 WHERE
-    round(juicy.\"yearly_agg_sunday_sales\" / (concerned.\"_virt_window_lead_314964953721020\"),2) is not null
+    round(juicy.\"yearly_agg_sunday_sales\" / (concerned.\"_virt_window_lead_4780721583408487\"),2) is not null
 
 ORDER BY 
     juicy.\"yearly_agg_date_week_seq\" asc nulls first

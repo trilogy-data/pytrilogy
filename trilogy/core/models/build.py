@@ -1646,7 +1646,7 @@ class Factory:
 
     @build.register
     def _(self, base: WindowItem) -> BuildWindowItem:
-
+        # to do proper discovery, we need to inject virtual intermediate ocncepts
         return BuildWindowItem.model_construct(
             type=base.type,
             content=self.build(base.content),

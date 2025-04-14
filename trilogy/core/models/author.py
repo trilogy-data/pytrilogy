@@ -1326,7 +1326,7 @@ class OrderItem(Mergeable, ConceptArgs, Namespaced, BaseModel):
 
 class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     type: WindowType
-    content: ConceptRef
+    content: FuncArgs
     order_by: List["OrderItem"]
     over: List["ConceptRef"] = Field(default_factory=list)
     index: Optional[int] = None
@@ -1335,7 +1335,7 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         return self.__repr__()
 
     def __repr__(self):
-        return f"{self.type}({self.content} {self.index}, {self.over}, {self.order_by})"
+        return f"{self.type.value} {self.content} by {self.index} over {self.over} order {self.order_by}"
 
     @field_validator("content", mode="before")
     def enforce_concept_ref(cls, v):
@@ -1387,7 +1387,8 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
 
     @property
     def concept_arguments(self) -> List[ConceptRef]:
-        output = [self.content]
+        output = []
+        output += get_concept_arguments(self.content)
         for order in self.order_by:
             output += get_concept_arguments(order)
         for item in self.over:

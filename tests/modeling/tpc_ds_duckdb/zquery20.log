@@ -1,5 +1,5 @@
 query_id = 20
-gen_length = 2940
+gen_length = 2930
 generated_sql = """
 
 WITH 
@@ -38,14 +38,14 @@ GROUP BY
     cheerful.\"cs_item_name\"),
 cooperative as (
 SELECT
-    sum(thoughtful.\"revenue\") over (partition by thoughtful.\"cs_item_class\") as \"_virt_window_sum_4519707562798106\",
+    sum(thoughtful.\"revenue\") over (partition by thoughtful.\"cs_item_class\") as \"_virt_window_sum_69632973582362\",
     thoughtful.\"cs_item_class\" as \"cs_item_class\",
     thoughtful.\"revenue\" as \"revenue\"
 FROM
     thoughtful),
 questionable as (
 SELECT
-    cooperative.\"_virt_window_sum_4519707562798106\" as \"_virt_window_sum_4519707562798106\",
+    cooperative.\"_virt_window_sum_69632973582362\" as \"_virt_window_sum_69632973582362\",
     cooperative.\"cs_item_class\" as \"cs_item_class\",
     cooperative.\"revenue\" as \"revenue\"
 FROM
@@ -57,7 +57,7 @@ SELECT
     thoughtful.\"cs_item_class\" as \"cs_item_class\",
     thoughtful.\"cs_item_current_price\" as \"cs_item_current_price\",
     thoughtful.\"revenue\" as \"revenue\",
-    thoughtful.\"revenue\" * 100.0 / (questionable.\"_virt_window_sum_4519707562798106\") as \"revenue_ratio\"
+    thoughtful.\"revenue\" * 100.0 / (questionable.\"_virt_window_sum_69632973582362\") as \"revenue_ratio\"
 FROM
     questionable
     INNER JOIN thoughtful on (questionable.\"cs_item_class\" = thoughtful.\"cs_item_class\" or (questionable.\"cs_item_class\" is null and thoughtful.\"cs_item_class\" is null)) AND questionable.\"revenue\" = thoughtful.\"revenue\"
@@ -66,5 +66,5 @@ ORDER BY
     thoughtful.\"cs_item_class\" asc nulls first,
     thoughtful.\"cs_item_name\" asc nulls first,
     thoughtful.\"cs_item_desc\" asc nulls first,
-    thoughtful.\"revenue\" * 100.0 / (questionable.\"_virt_window_sum_4519707562798106\") asc nulls first
+    thoughtful.\"revenue\" * 100.0 / (questionable.\"_virt_window_sum_69632973582362\") asc nulls first
 LIMIT (100)"""

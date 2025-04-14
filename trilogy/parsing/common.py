@@ -256,7 +256,7 @@ def concepts_to_grain_concepts(
     return v2
 
 
-def get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
+def _get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
     from trilogy.core.models.author import get_concept_arguments
 
     is_metric = False
@@ -275,6 +275,9 @@ def get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
         return get_relevant_parent_concepts(arg.content)
     return get_concept_arguments(arg), False
 
+def get_relevant_parent_concepts(arg):
+    results = _get_relevant_parent_concepts(arg)
+    return results
 
 def function_to_concept(
     parent: Function,
@@ -288,7 +291,6 @@ def function_to_concept(
     namespace = namespace or environment.namespace
     is_metric = False
     ref_args, is_metric = get_relevant_parent_concepts(parent)
-    print(ref_args)
     concrete_args = [environment.concepts[c.address] for c in ref_args]
     pkeys += [x for x in concrete_args if not x.derivation == Derivation.CONSTANT]
     grain: Grain | None = Grain()
@@ -419,6 +421,10 @@ def window_item_to_concept(
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
+    if not isinstance(parent.content, ConceptRef):
+        new_parent = arbitrary_to_concept(parent.content, environment=environment, namespace=namespace)
+        environment.add_concept(new_parent, meta=fmetadata)
+        parent = parent.model_copy(update = {"content": new_parent.reference})
     bcontent = environment.concepts[parent.content.address]
     if isinstance(bcontent, UndefinedConcept):
         return UndefinedConcept(address=f"{namespace}.{name}", metadata=fmetadata)
@@ -563,16 +569,17 @@ def rowset_concept(
         purpose=orig_concept.purpose,
         lineage=None,
         grain=orig_concept.grain,
-        # TODO: add proper metadata
         metadata=Metadata(concept_source=ConceptSource.CTE),
         namespace=base_namespace,
         keys=orig_concept.keys,
         derivation=Derivation.ROWSET,
         granularity=orig_concept.granularity,
-        pseudonyms={
-            address_with_namespace(x, rowset.name) for x in orig_concept.pseudonyms
-        },
+        pseudonyms={address_with_namespace(x, rowset.name) for x in orig_concept.pseudonyms},
     )
+    print(new_concept.address)
+    print(new_concept.pseudonyms)
+    print(orig_concept.address)
+    print(orig_concept.pseudonyms)
     orig[orig_concept.address] = new_concept
     orig_map[new_concept.address] = orig_concept
     pre_output.append(new_concept)
@@ -583,48 +590,7 @@ def rowset_to_concepts(rowset: RowsetDerivationStatement, environment: Environme
     orig: dict[str, Concept] = {}
     orig_map: dict[str, Concept] = {}
     for orig_address in rowset.select.output_components:
-        # actual = environment.concepts.get(orig_address.address)
-        # for x in actual.pseudonyms:
-        #     rowset_concept(
-        #         environment.concepts[x].reference,
-        #         environment,
-        #         rowset,
-        #         pre_output,
-        #         orig,
-        #         orig_map,
-        #     )
-        # rowset_concept(orig_address, environment, rowset, pre_output, orig, orig_map)
-        orig_concept = environment.concepts[orig_address.address]
-        name = orig_concept.name
-        if isinstance(orig_concept.lineage, FilterItem):
-            if orig_concept.lineage.where == rowset.select.where_clause:
-                name = environment.concepts[orig_concept.lineage.content.address].name
-        base_namespace = (
-            f"{rowset.name}.{orig_concept.namespace}"
-            if orig_concept.namespace != rowset.namespace
-            else rowset.name
-        )
-
-        new_concept = Concept(
-            name=name,
-            datatype=orig_concept.datatype,
-            purpose=orig_concept.purpose,
-            lineage=None,
-            grain=orig_concept.grain,
-            # TODO: add proper metadata
-            metadata=Metadata(concept_source=ConceptSource.CTE),
-            namespace=base_namespace,
-            keys=orig_concept.keys,
-            derivation=Derivation.ROWSET,
-            granularity=orig_concept.granularity,
-            pseudonyms={
-                address_with_namespace(x, rowset.name)
-                for x in orig_concept.pseudonyms
-            },
-        )
-        orig[orig_concept.address] = new_concept
-        orig_map[new_concept.address] = orig_concept
-        pre_output.append(new_concept)
+        rowset_concept(orig_address, environment, rowset, pre_output, orig, orig_map)
     select_lineage = rowset.select.as_lineage(environment)
     for x in pre_output:
         x.lineage = RowsetItem(
