@@ -80,6 +80,7 @@ class GroupNode(StrategyNode):
         environment: BuildEnvironment,
         depth: int = 0,
     ) -> GroupRequiredResponse:
+        padding = '\t'*depth
         target_grain = BuildGrain.from_concepts(
             downstream_concepts,
             environment=environment,
@@ -102,8 +103,9 @@ class GroupNode(StrategyNode):
         # dynamically select if we need to group
         # because sometimes, we are already at required grain
         if comp_grain.issubset(target_grain):
+
             logger.info(
-                f"{'\t'*depth}{LOGGER_PREFIX} Group requirement check: {comp_grain}, {target_grain}, is subset, no grain required"
+                f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain}, {target_grain}, is subset, no grain required"
             )
             return GroupRequiredResponse(target_grain, comp_grain, False)
         # find out what extra is in the comp grain vs target grain
@@ -111,7 +113,7 @@ class GroupNode(StrategyNode):
             environment.concepts[c] for c in (comp_grain - target_grain).components
         ]
         logger.info(
-            f"{'\t'*depth}{LOGGER_PREFIX} Group requirement check: {comp_grain}, {target_grain}, difference {difference}"
+            f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain}, {target_grain}, difference {difference}"
         )
 
         # if the difference is all unique properties whose keys are in the source grain
@@ -125,12 +127,12 @@ class GroupNode(StrategyNode):
             ]
         ):
             logger.info(
-                f"{'\t'*depth}{LOGGER_PREFIX} Group requirement check: skipped due to unique property validation"
+                f"{padding}{LOGGER_PREFIX} Group requirement check: skipped due to unique property validation"
             )
             return GroupRequiredResponse(target_grain, comp_grain, False)
         if all([x.purpose == Purpose.KEY for x in difference]):
             logger.info(
-                f"{'\t'*depth}{LOGGER_PREFIX} checking if downstream is unique properties of key"
+                f"{padding{LOGGER_PREFIX} checking if downstream is unique properties of key"
             )
             replaced_grain_raw: list[set[str]] = [
                 (
@@ -151,12 +153,12 @@ class GroupNode(StrategyNode):
             )
             if comp_grain.issubset(unique_grain_comp):
                 logger.info(
-                    f"{'\t'*depth}{LOGGER_PREFIX} Group requirement check: skipped due to unique property validation"
+                    f"{padding}{LOGGER_PREFIX} Group requirement check: skipped due to unique property validation"
                 )
                 return GroupRequiredResponse(target_grain, comp_grain, False)
 
         logger.info(
-            f"{'\t'*depth}{LOGGER_PREFIX} Group requirement check: group required"
+            f"{padding}{LOGGER_PREFIX} Group requirement check: group required"
         )
         return GroupRequiredResponse(target_grain, comp_grain, True)
 
