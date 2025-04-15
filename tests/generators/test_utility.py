@@ -92,7 +92,7 @@ def test_resolve_join_order_v2():
         "ds~customer_address": ["c~customer_id"],
     }
 
-    output = resolve_join_order_v2(g, partials)
+    output = resolve_join_order_v2(g, partials, {})
 
     assert output == [
         JoinOrderOutput(

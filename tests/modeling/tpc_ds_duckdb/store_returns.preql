@@ -7,9 +7,8 @@ import customer as customer;
 
 
 property <store_sales.ticket_number, item.id>.return_amount float;
-property <store_sales.ticket_number, item.id>._return_date date;
 
-merge return_date.id into _return_date;
+merge property <store_sales.ticket_number, item.id> from return_date.id;
 
 datasource store_returns(
     SR_RETURNED_DATE_SK: return_date.id,

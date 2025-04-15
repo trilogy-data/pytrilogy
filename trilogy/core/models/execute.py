@@ -282,6 +282,7 @@ class CTE(BaseModel):
             **self.existence_source_map,
             **other.existence_source_map,
         }
+
         return self
 
     @property
@@ -764,8 +765,15 @@ class QueryDatasource(BaseModel):
     def identifier(self) -> str:
         filters = abs(hash(str(self.condition))) if self.condition else ""
         grain = "_".join([str(c).replace(".", "_") for c in self.grain.components])
+        group = ""
+        if self.source_type == SourceType.GROUP:
+            keys = [
+                x.address for x in self.output_concepts if x.purpose != Purpose.METRIC
+            ]
+            group = "_grouped_by_" + "_".join(keys)
         return (
             "_join_".join([d.identifier for d in self.datasources])
+            + group
             + (f"_at_{grain}" if grain else "_at_abstract")
             + (f"_filtered_by_{filters}" if filters else "")
         )

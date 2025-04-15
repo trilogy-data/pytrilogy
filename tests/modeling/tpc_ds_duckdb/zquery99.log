@@ -1,5 +1,5 @@
 query_id = 99
-gen_length = 8825
+gen_length = 8557
 generated_sql = """
 
 WITH 
@@ -14,26 +14,26 @@ FROM
     INNER JOIN memory.date_dim as sold_date_date on catalog_sales.\"CS_SOLD_DATE_SK\" = sold_date_date.\"D_DATE_SK\"
     INNER JOIN memory.date_dim as ship_date_date on catalog_sales.\"CS_SHIP_DATE_SK\" = ship_date_date.\"D_DATE_SK\"
 WHERE
-    ship_date_date.\"D_MONTH_SEQ\" >= 1200 and ship_date_date.\"D_MONTH_SEQ\" <= 1211
+    ship_date_date.\"D_MONTH_SEQ\" >= 1200 and ship_date_date.\"D_MONTH_SEQ\" <= 1211 and catalog_sales.\"CS_ORDER_NUMBER\" is not null and catalog_sales.\"CS_CALL_CENTER_SK\" is not null and catalog_sales.\"CS_WAREHOUSE_SK\" is not null and catalog_sales.\"CS_SHIP_MODE_SK\" is not null
 ),
 uneven as (
 SELECT
-    call_center_call_center.\"CC_NAME\" as \"call_center_name\",
-    cast(ship_date_date.\"D_DATE\" as date) as \"ship_date_date\",
-    cast(sold_date_date.\"D_DATE\" as date) as \"sold_date_date\",
+    (cast(catalog_sales.\"CS_ORDER_NUMBER\" as string) || cast(catalog_sales.\"CS_ITEM_SK\" as string)) as \"catalog_pk\",
+    LOWER(call_center_call_center.\"CC_NAME\")  as \"cc_name_lower\",
+    SUBSTRING(warehouse_warehouse.\"w_warehouse_name\",1,20) as \"warehouse_short_name\",
     catalog_sales.\"CS_ITEM_SK\" as \"item_id\",
     catalog_sales.\"CS_ORDER_NUMBER\" as \"order_number\",
-    ship_mode_ship_mode.\"SM_TYPE\" as \"ship_mode_type\",
-    warehouse_warehouse.\"w_warehouse_name\" as \"warehouse_name\"
+    date_diff('day', cast(sold_date_date.\"D_DATE\" as date), cast(ship_date_date.\"D_DATE\" as date)) as \"days_to_ship\",
+    ship_mode_ship_mode.\"SM_TYPE\" as \"ship_mode_type\"
 FROM
     memory.call_center as call_center_call_center
-    INNER JOIN memory.catalog_sales as catalog_sales on call_center_call_center.\"CC_CALL_CENTER_SK\" = catalog_sales.\"CS_CALL_CENTER_SK\"
-    INNER JOIN memory.ship_mode as ship_mode_ship_mode on catalog_sales.\"CS_SHIP_MODE_SK\" = ship_mode_ship_mode.\"SM_SHIP_MODE_SK\"
-    INNER JOIN memory.warehouse as warehouse_warehouse on catalog_sales.\"CS_WAREHOUSE_SK\" = warehouse_warehouse.\"w_warehouse_sk\"
-    INNER JOIN memory.date_dim as ship_date_date on catalog_sales.\"CS_SHIP_DATE_SK\" = ship_date_date.\"D_DATE_SK\"
-    INNER JOIN memory.date_dim as sold_date_date on catalog_sales.\"CS_SOLD_DATE_SK\" = sold_date_date.\"D_DATE_SK\"
+    LEFT OUTER JOIN memory.catalog_sales as catalog_sales on call_center_call_center.\"CC_CALL_CENTER_SK\" = catalog_sales.\"CS_CALL_CENTER_SK\"
+    LEFT OUTER JOIN memory.date_dim as ship_date_date on catalog_sales.\"CS_SHIP_DATE_SK\" = ship_date_date.\"D_DATE_SK\"
+    LEFT OUTER JOIN memory.ship_mode as ship_mode_ship_mode on catalog_sales.\"CS_SHIP_MODE_SK\" = ship_mode_ship_mode.\"SM_SHIP_MODE_SK\"
+    LEFT OUTER JOIN memory.date_dim as sold_date_date on catalog_sales.\"CS_SOLD_DATE_SK\" = sold_date_date.\"D_DATE_SK\"
+    LEFT OUTER JOIN memory.warehouse as warehouse_warehouse on catalog_sales.\"CS_WAREHOUSE_SK\" = warehouse_warehouse.\"w_warehouse_sk\"
 WHERE
-    ship_date_date.\"D_MONTH_SEQ\" >= 1200 and ship_date_date.\"D_MONTH_SEQ\" <= 1211
+    ship_date_date.\"D_MONTH_SEQ\" >= 1200 and ship_date_date.\"D_MONTH_SEQ\" <= 1211 and catalog_sales.\"CS_ORDER_NUMBER\" is not null and call_center_call_center.\"CC_CALL_CENTER_SK\" is not null and warehouse_warehouse.\"w_warehouse_sk\" is not null and ship_mode_ship_mode.\"SM_SHIP_MODE_SK\" is not null
 ),
 thoughtful as (
 SELECT
@@ -50,30 +50,25 @@ FROM
     cheerful),
 yummy as (
 SELECT
-    (cast(uneven.\"order_number\" as string) || cast(uneven.\"item_id\" as string)) as \"catalog_pk\",
-    LOWER(uneven.\"call_center_name\")  as \"cc_name_lower\",
-    SUBSTRING(uneven.\"warehouse_name\",1,20) as \"warehouse_short_name\",
-    date_diff('day', uneven.\"sold_date_date\", uneven.\"ship_date_date\") as \"days_to_ship\",
-    uneven.\"item_id\" as \"item_id\",
-    uneven.\"order_number\" as \"order_number\",
-    uneven.\"ship_mode_type\" as \"ship_mode_type\"
-FROM
-    uneven
-GROUP BY 
-    (cast(uneven.\"order_number\" as string) || cast(uneven.\"item_id\" as string)),
-    LOWER(uneven.\"call_center_name\") ,
-    SUBSTRING(uneven.\"warehouse_name\",1,20),
-    date_diff('day', uneven.\"sold_date_date\", uneven.\"ship_date_date\"),
-    uneven.\"item_id\",
-    uneven.\"order_number\",
-    uneven.\"ship_mode_type\"),
-juicy as (
-SELECT
     thoughtful.\"_virt_filter_catalog_pk_5945567725420865\" as \"_virt_filter_catalog_pk_5945567725420865\",
     thoughtful.\"catalog_pk\" as \"catalog_pk\",
     thoughtful.\"days_to_ship\" as \"days_to_ship\",
     thoughtful.\"item_id\" as \"item_id\",
     thoughtful.\"order_number\" as \"order_number\",
+    uneven.\"cc_name_lower\" as \"cc_name_lower\",
+    uneven.\"ship_mode_type\" as \"ship_mode_type\",
+    uneven.\"warehouse_short_name\" as \"warehouse_short_name\"
+FROM
+    thoughtful
+    LEFT OUTER JOIN uneven on thoughtful.\"days_to_ship\" = uneven.\"days_to_ship\" AND thoughtful.\"item_id\" = uneven.\"item_id\" AND thoughtful.\"order_number\" = uneven.\"order_number\"),
+juicy as (
+SELECT
+    thoughtful.\"_virt_filter_catalog_pk_5603765296623263\" as \"_virt_filter_catalog_pk_5603765296623263\",
+    thoughtful.\"catalog_pk\" as \"catalog_pk\",
+    thoughtful.\"days_to_ship\" as \"days_to_ship\",
+    thoughtful.\"item_id\" as \"item_id\",
+    thoughtful.\"order_number\" as \"order_number\",
+    yummy.\"_virt_filter_catalog_pk_5945567725420865\" as \"_virt_filter_catalog_pk_5945567725420865\",
     yummy.\"cc_name_lower\" as \"cc_name_lower\",
     yummy.\"ship_mode_type\" as \"ship_mode_type\",
     yummy.\"warehouse_short_name\" as \"warehouse_short_name\"
@@ -82,11 +77,12 @@ FROM
     INNER JOIN thoughtful on yummy.\"days_to_ship\" = thoughtful.\"days_to_ship\" AND yummy.\"item_id\" = thoughtful.\"item_id\" AND yummy.\"order_number\" = thoughtful.\"order_number\"),
 vacuous as (
 SELECT
+    juicy.\"_virt_filter_catalog_pk_5603765296623263\" as \"_virt_filter_catalog_pk_5603765296623263\",
     juicy.\"_virt_filter_catalog_pk_5945567725420865\" as \"_virt_filter_catalog_pk_5945567725420865\",
     juicy.\"cc_name_lower\" as \"cc_name_lower\",
     juicy.\"ship_mode_type\" as \"ship_mode_type\",
     juicy.\"warehouse_short_name\" as \"warehouse_short_name\",
-    thoughtful.\"_virt_filter_catalog_pk_5603765296623263\" as \"_virt_filter_catalog_pk_5603765296623263\",
+    thoughtful.\"_virt_filter_catalog_pk_3717011266371848\" as \"_virt_filter_catalog_pk_3717011266371848\",
     thoughtful.\"catalog_pk\" as \"catalog_pk\",
     thoughtful.\"days_to_ship\" as \"days_to_ship\",
     thoughtful.\"item_id\" as \"item_id\",
@@ -96,11 +92,12 @@ FROM
     INNER JOIN thoughtful on juicy.\"days_to_ship\" = thoughtful.\"days_to_ship\" AND juicy.\"item_id\" = thoughtful.\"item_id\" AND juicy.\"order_number\" = thoughtful.\"order_number\"),
 concerned as (
 SELECT
-    thoughtful.\"_virt_filter_catalog_pk_3717011266371848\" as \"_virt_filter_catalog_pk_3717011266371848\",
+    thoughtful.\"_virt_filter_catalog_pk_6661083751970711\" as \"_virt_filter_catalog_pk_6661083751970711\",
     thoughtful.\"catalog_pk\" as \"catalog_pk\",
     thoughtful.\"days_to_ship\" as \"days_to_ship\",
     thoughtful.\"item_id\" as \"item_id\",
     thoughtful.\"order_number\" as \"order_number\",
+    vacuous.\"_virt_filter_catalog_pk_3717011266371848\" as \"_virt_filter_catalog_pk_3717011266371848\",
     vacuous.\"_virt_filter_catalog_pk_5603765296623263\" as \"_virt_filter_catalog_pk_5603765296623263\",
     vacuous.\"_virt_filter_catalog_pk_5945567725420865\" as \"_virt_filter_catalog_pk_5945567725420865\",
     vacuous.\"cc_name_lower\" as \"cc_name_lower\",
@@ -114,48 +111,33 @@ SELECT
     concerned.\"_virt_filter_catalog_pk_3717011266371848\" as \"_virt_filter_catalog_pk_3717011266371848\",
     concerned.\"_virt_filter_catalog_pk_5603765296623263\" as \"_virt_filter_catalog_pk_5603765296623263\",
     concerned.\"_virt_filter_catalog_pk_5945567725420865\" as \"_virt_filter_catalog_pk_5945567725420865\",
+    concerned.\"_virt_filter_catalog_pk_6661083751970711\" as \"_virt_filter_catalog_pk_6661083751970711\",
     concerned.\"cc_name_lower\" as \"cc_name_lower\",
     concerned.\"ship_mode_type\" as \"ship_mode_type\",
     concerned.\"warehouse_short_name\" as \"warehouse_short_name\",
-    thoughtful.\"_virt_filter_catalog_pk_6661083751970711\" as \"_virt_filter_catalog_pk_6661083751970711\",
-    thoughtful.\"catalog_pk\" as \"catalog_pk\",
-    thoughtful.\"days_to_ship\" as \"days_to_ship\",
+    thoughtful.\"_virt_filter_catalog_pk_8168372723999465\" as \"_virt_filter_catalog_pk_8168372723999465\",
     thoughtful.\"item_id\" as \"item_id\",
     thoughtful.\"order_number\" as \"order_number\"
 FROM
     concerned
-    INNER JOIN thoughtful on concerned.\"days_to_ship\" = thoughtful.\"days_to_ship\" AND concerned.\"item_id\" = thoughtful.\"item_id\" AND concerned.\"order_number\" = thoughtful.\"order_number\"),
-sparkling as (
+    INNER JOIN thoughtful on concerned.\"days_to_ship\" = thoughtful.\"days_to_ship\" AND concerned.\"item_id\" = thoughtful.\"item_id\" AND concerned.\"order_number\" = thoughtful.\"order_number\")
 SELECT
-    thoughtful.\"_virt_filter_catalog_pk_8168372723999465\" as \"_virt_filter_catalog_pk_8168372723999465\",
-    thoughtful.\"item_id\" as \"item_id\",
-    thoughtful.\"order_number\" as \"order_number\",
-    young.\"_virt_filter_catalog_pk_3717011266371848\" as \"_virt_filter_catalog_pk_3717011266371848\",
-    young.\"_virt_filter_catalog_pk_5603765296623263\" as \"_virt_filter_catalog_pk_5603765296623263\",
-    young.\"_virt_filter_catalog_pk_5945567725420865\" as \"_virt_filter_catalog_pk_5945567725420865\",
-    young.\"_virt_filter_catalog_pk_6661083751970711\" as \"_virt_filter_catalog_pk_6661083751970711\",
-    young.\"cc_name_lower\" as \"cc_name_lower\",
+    young.\"warehouse_short_name\" as \"warehouse_short_name\",
     young.\"ship_mode_type\" as \"ship_mode_type\",
-    young.\"warehouse_short_name\" as \"warehouse_short_name\"
+    young.\"cc_name_lower\" as \"cc_name_lower\",
+    count(young.\"_virt_filter_catalog_pk_8168372723999465\") as \"less_than_30_days\",
+    count(young.\"_virt_filter_catalog_pk_6661083751970711\") as \"between_31_and_60_days\",
+    count(young.\"_virt_filter_catalog_pk_3717011266371848\") as \"between_61_and_90_days\",
+    count(young.\"_virt_filter_catalog_pk_5603765296623263\") as \"between_91_and_120_days\",
+    count(young.\"_virt_filter_catalog_pk_5945567725420865\") as \"over_120_days\"
 FROM
     young
-    INNER JOIN thoughtful on young.\"days_to_ship\" = thoughtful.\"days_to_ship\" AND young.\"item_id\" = thoughtful.\"item_id\" AND young.\"order_number\" = thoughtful.\"order_number\")
-SELECT
-    sparkling.\"warehouse_short_name\" as \"warehouse_short_name\",
-    sparkling.\"ship_mode_type\" as \"ship_mode_type\",
-    sparkling.\"cc_name_lower\" as \"cc_name_lower\",
-    count(sparkling.\"_virt_filter_catalog_pk_8168372723999465\") as \"less_than_30_days\",
-    count(sparkling.\"_virt_filter_catalog_pk_6661083751970711\") as \"between_31_and_60_days\",
-    count(sparkling.\"_virt_filter_catalog_pk_3717011266371848\") as \"between_61_and_90_days\",
-    count(sparkling.\"_virt_filter_catalog_pk_5603765296623263\") as \"between_91_and_120_days\",
-    count(sparkling.\"_virt_filter_catalog_pk_5945567725420865\") as \"over_120_days\"
-FROM
-    sparkling
 GROUP BY 
-    sparkling.\"cc_name_lower\",
-    sparkling.\"ship_mode_type\",
-    sparkling.\"warehouse_short_name\"
+    young.\"cc_name_lower\",
+    young.\"ship_mode_type\",
+    young.\"warehouse_short_name\"
 ORDER BY 
-    sparkling.\"warehouse_short_name\" asc nulls first,
-    sparkling.\"ship_mode_type\" asc nulls first,
-    sparkling.\"cc_name_lower\" asc nulls first"""
+    young.\"warehouse_short_name\" asc nulls first,
+    young.\"ship_mode_type\" asc nulls first,
+    young.\"cc_name_lower\" asc nulls first
+LIMIT (100)"""

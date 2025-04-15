@@ -31,19 +31,12 @@ class BuildEnvironmentConceptDict(dict):
     def raise_undefined(
         self, key: str, line_no: int | None = None, file: Path | str | None = None
     ) -> Never:
-
-        matches = self._find_similar_concepts(key)
-        message = f"Undefined concept: {key}."
-        if matches:
-            message += f" Suggestions: {matches}"
-
-        if line_no:
-            if file:
-                raise UndefinedConceptException(
-                    f"{file}: {line_no}: " + message, matches
-                )
-            raise UndefinedConceptException(f"line: {line_no}: " + message, matches)
-        raise UndefinedConceptException(message, matches)
+        # build environment should never check for missing values.
+        if line_no is not None:
+            message = f"Concept '{key}' not found in environment at line {line_no}."
+        else:
+            message = f"Concept '{key}' not found in environment."
+        raise UndefinedConceptException(message, [])
 
     def __getitem__(
         self, key: str, line_no: int | None = None, file: Path | None = None

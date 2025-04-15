@@ -81,7 +81,7 @@ class JoinOrderOutput:
 
 
 def resolve_join_order_v2(
-    g: nx.Graph, partials: dict[str, list[str]]
+    g: nx.Graph, partials: dict[str, list[str]], nullables: dict[str, list[str]]
 ) -> list[JoinOrderOutput]:
     datasources = [x for x in g.nodes if x.startswith("ds~")]
     concepts = [x for x in g.nodes if x.startswith("c~")]
@@ -118,6 +118,8 @@ def resolve_join_order_v2(
                 base += 3
             # if it has the concept as a partial, lower weight
             if root in partials.get(x, []):
+                base -= 1
+            if root in nullables.get(x, []):
                 base -= 1
             return (base, len(x), x)
 
@@ -159,9 +161,11 @@ def resolve_join_order_v2(
                 )
                 right_is_partial = any(key in partials.get(right, []) for key in common)
                 # we don't care if left is nullable for join type (just keys), but if we did
-                # ex: left_is_nullable = any(key in partials.get(left_candidate, [])
+                # left_is_nullable = any(
+                #     key in nullables.get(left_candidate, []) for key in common
+                # )
                 right_is_nullable = any(
-                    key in partials.get(right, []) for key in common
+                    key in nullables.get(right, []) for key in common
                 )
                 if left_is_partial:
                     join_type = JoinType.FULL
@@ -356,6 +360,7 @@ def get_node_joins(
 ) -> List[BaseJoin]:
     graph = nx.Graph()
     partials: dict[str, list[str]] = {}
+    nullables: dict[str, list[str]] = {}
     ds_node_map: dict[str, QueryDatasource | BuildDatasource] = {}
     concept_map: dict[str, BuildConcept] = {}
     for datasource in datasources:
@@ -363,6 +368,7 @@ def get_node_joins(
         ds_node_map[ds_node] = datasource
         graph.add_node(ds_node, type=NodeType.NODE)
         partials[ds_node] = [f"c~{c.address}" for c in datasource.partial_concepts]
+        nullables[ds_node] = [f"c~{c.address}" for c in datasource.nullable_concepts]
         for concept in datasource.output_concepts:
             if concept.address in datasource.hidden_concepts:
                 continue
@@ -374,7 +380,7 @@ def get_node_joins(
                 environment=environment,
             )
 
-    joins = resolve_join_order_v2(graph, partials=partials)
+    joins = resolve_join_order_v2(graph, partials=partials, nullables=nullables)
     return [
         BaseJoin(
             left_datasource=ds_node_map[j.left] if j.left else None,

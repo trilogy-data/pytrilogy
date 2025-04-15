@@ -14,3 +14,9 @@ While iterating, if the first row is a mismatch, you're generally pretty far off
 
 If a later row is a mismatch, some common error patterns are:
 - implicit null dropping on joins [trilogy will join on field and null matching] - explicitly filter out nulls if needed
+
+## Performance Debugging
+
+run timing_debug.py
+
+analyze flame graph using snakeviz

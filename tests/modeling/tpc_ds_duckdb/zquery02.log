@@ -1,5 +1,5 @@
 query_id = 2
-gen_length = 8760
+gen_length = 8765
 generated_sql = """
 
 WITH 
@@ -168,7 +168,7 @@ SELECT
     round(vacuous.\"yearly_agg_saturday_sales\" / (young.\"_virt_window_lead_2858098921271386\"),2) as \"saturday_increase\"
 FROM
     young
-    INNER JOIN vacuous on young.\"yearly_agg_date_week_seq\" = vacuous.\"yearly_agg_date_week_seq\" AND young.\"yearly_agg_sunday_sales\" = vacuous.\"yearly_agg_sunday_sales\"
+    LEFT OUTER JOIN vacuous on young.\"yearly_agg_date_week_seq\" = vacuous.\"yearly_agg_date_week_seq\" AND young.\"yearly_agg_sunday_sales\" = vacuous.\"yearly_agg_sunday_sales\"
 WHERE
     round(vacuous.\"yearly_agg_sunday_sales\" / (young.\"_virt_window_lead_4780721583408487\"),2) is not null
 

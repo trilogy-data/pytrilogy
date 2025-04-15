@@ -344,12 +344,14 @@ def create_datasource_node(
         for c in datasource.columns
         if not c.is_complete and c.concept.address in all_concepts
     ]
+
     partial_lcl = LooseBuildConceptList(concepts=partial_concepts)
     nullable_concepts = [
         c.concept
         for c in datasource.columns
         if c.is_nullable and c.concept.address in all_concepts
     ]
+
     nullable_lcl = LooseBuildConceptList(concepts=nullable_concepts)
     partial_is_full = conditions and (conditions == datasource.non_partial_for)
 

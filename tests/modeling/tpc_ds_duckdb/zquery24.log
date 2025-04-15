@@ -1,5 +1,5 @@
 query_id = 24
-gen_length = 7195
+gen_length = 7200
 generated_sql = """
 
 WITH 
@@ -106,7 +106,7 @@ SELECT
     concerned.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
 FROM
     abhorrent
-    INNER JOIN concerned on abhorrent.\"su_net_paid\" = concerned.\"su_net_paid\" AND abhorrent.\"su_store_sales_item_color\" = concerned.\"su_store_sales_item_color\"),
+    LEFT OUTER JOIN concerned on abhorrent.\"su_net_paid\" = concerned.\"su_net_paid\" AND abhorrent.\"su_store_sales_item_color\" = concerned.\"su_store_sales_item_color\"),
 sparkling as (
 SELECT
     avg(young.\"su_net_paid\") as \"avg_store_customer_sales\"
