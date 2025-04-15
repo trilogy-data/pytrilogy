@@ -860,7 +860,7 @@ def _search_concepts(
             and priority_concept.address not in conditions.row_arguments
         ):
             logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Force including conditions to push filtering above complex condition that is not condition member or parent"
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Force including conditions in {priority_concept.address} to push filtering above complex condition that is not condition member or parent"
             )
             local_conditions = conditions
 
@@ -936,7 +936,23 @@ def _search_concepts(
         if complete == ValidationResult.COMPLETE and (
             not accept_partial or (accept_partial and not partial)
         ):
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} breaking loop, complete"
+            )
             break
+        elif complete == ValidationResult.COMPLETE and accept_partial and partial:
+            if len(attempted) == len(mandatory_list):
+                logger.info(
+                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Breaking as we have attempted all nodes"
+                )
+                break
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Found complete stack with partials {partial}, continuing search, attempted {attempted} all {len(mandatory_list)}"
+            )
+        else:
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Not complete, continuing search"
+            )
         # if we have attempted on root node, we've tried them all.
         # inject in another search with filter concepts
         if priority_concept.derivation == Derivation.ROOT:

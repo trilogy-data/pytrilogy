@@ -93,7 +93,8 @@ def test_query_datasources(environment: Environment):
 
     assert (
         customer_datasource.safe_identifier
-        == "internet_sales_customer_customers_at_internet_sales_customer_customer_id_at_internet_sales_customer_first_name"
+        # stomer_id_grouped_by_internet_sales_customer_first_name_at_internet_sales_customer_first_name
+        == "internet_sales_customer_customers_at_internet_sales_customer_customer_id_grouped_by_internet_sales_customer_first_name_at_internet_sales_customer_first_name"
     )
 
     # assert a join before the group by works
@@ -123,8 +124,8 @@ def test_query_datasources(environment: Environment):
 
     assert (
         customer_datasource.safe_identifier
-        == "internet_sales_customer_customers_at_internet_sales_customer_customer_id_at_internet_sales_customer_first_name"
-    )
+        == "internet_sales_customer_customers_at_internet_sales_customer_customer_id_grouped_by_internet_sales_customer_first_name_at_internet_sales_customer_first_name"
+    ), customer_datasource.safe_identifier
     assert {c.address for c in test.output_components} == {
         "internet_sales.customer.first_name",
         "internet_sales.order_line_number",

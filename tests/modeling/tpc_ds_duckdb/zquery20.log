@@ -1,5 +1,5 @@
 query_id = 20
-gen_length = 2930
+gen_length = 2984
 generated_sql = """
 
 WITH 
@@ -15,8 +15,8 @@ SELECT
     cs_item_items.\"I_ITEM_SK\" as \"cs_item_id\"
 FROM
     memory.catalog_sales as cs_catalog_sales
-    INNER JOIN memory.date_dim as cs_sold_date_date on cs_catalog_sales.\"CS_SOLD_DATE_SK\" = cs_sold_date_date.\"D_DATE_SK\"
     INNER JOIN memory.item as cs_item_items on cs_catalog_sales.\"CS_ITEM_SK\" = cs_item_items.\"I_ITEM_SK\"
+    INNER JOIN memory.date_dim as cs_sold_date_date on cs_catalog_sales.\"CS_SOLD_DATE_SK\" = cs_sold_date_date.\"D_DATE_SK\"
 WHERE
     cs_item_items.\"I_CATEGORY\" in ('Sports','Books','Home') and cast(cs_sold_date_date.\"D_DATE\" as date) >= date '1999-02-22' and cast(cs_sold_date_date.\"D_DATE\" as date) <= date '1999-03-24'
 ),
@@ -60,7 +60,10 @@ SELECT
     thoughtful.\"revenue\" * 100.0 / (questionable.\"_virt_window_sum_69632973582362\") as \"revenue_ratio\"
 FROM
     questionable
-    INNER JOIN thoughtful on (questionable.\"cs_item_class\" = thoughtful.\"cs_item_class\" or (questionable.\"cs_item_class\" is null and thoughtful.\"cs_item_class\" is null)) AND questionable.\"revenue\" = thoughtful.\"revenue\"
+    LEFT OUTER JOIN thoughtful on (questionable.\"cs_item_class\" = thoughtful.\"cs_item_class\" or (questionable.\"cs_item_class\" is null and thoughtful.\"cs_item_class\" is null)) AND questionable.\"revenue\" = thoughtful.\"revenue\"
+WHERE
+    thoughtful.\"cs_item_name\" is not null
+
 ORDER BY 
     thoughtful.\"cs_item_category\" asc nulls first,
     thoughtful.\"cs_item_class\" asc nulls first,

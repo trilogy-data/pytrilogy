@@ -31,8 +31,8 @@ SELECT
     web_returns_web_returns.\"WR_RETURN_AMT\" as \"web_returns_return_amount\"
 FROM
     memory.web_returns as web_returns_web_returns
-    INNER JOIN memory.customer_address as web_returns_return_address_customer_address on web_returns_web_returns.\"WR_RETURNING_ADDR_SK\" = web_returns_return_address_customer_address.\"CA_ADDRESS_SK\"
     INNER JOIN memory.date_dim as web_returns_return_date_date on web_returns_web_returns.\"WR_RETURNED_DATE_SK\" = web_returns_return_date_date.\"D_DATE_SK\"
+    INNER JOIN memory.customer_address as web_returns_return_address_customer_address on web_returns_web_returns.\"WR_RETURNING_ADDR_SK\" = web_returns_return_address_customer_address.\"CA_ADDRESS_SK\"
 WHERE
     web_returns_return_address_customer_address.\"CA_STATE\" is not null
 ),
@@ -54,10 +54,10 @@ SELECT
     web_returns_customer_customers.\"C_SALUTATION\" as \"web_returns_customer_salutation\",
     web_returns_return_address_customer_address.\"CA_STATE\" as \"web_returns_return_address_state\"
 FROM
-    memory.customer_address as web_returns_customer_customer_address
-    INNER JOIN memory.customer as web_returns_customer_customers on web_returns_customer_customer_address.\"CA_ADDRESS_SK\" = web_returns_customer_customers.\"C_CURRENT_ADDR_SK\"
-    INNER JOIN thoughtful on web_returns_customer_customers.\"C_CUSTOMER_SK\" = thoughtful.\"web_returns_customer_id\"
+    thoughtful
+    INNER JOIN memory.customer as web_returns_customer_customers on thoughtful.\"web_returns_customer_id\" = web_returns_customer_customers.\"C_CUSTOMER_SK\"
     INNER JOIN memory.customer_address as web_returns_return_address_customer_address on thoughtful.\"web_returns_return_address_id\" = web_returns_return_address_customer_address.\"CA_ADDRESS_SK\"
+    INNER JOIN memory.customer_address as web_returns_customer_customer_address on web_returns_customer_customers.\"C_CURRENT_ADDR_SK\" = web_returns_customer_customer_address.\"CA_ADDRESS_SK\"
 WHERE
     web_returns_customer_customer_address.\"CA_STATE\" = 'GA' and web_returns_return_address_customer_address.\"CA_STATE\" is not null
 ),

@@ -51,6 +51,7 @@ from trilogy.core.statements.author import (
     CopyStatement,
     FunctionDeclaration,
     ImportStatement,
+    KeyMergeStatement,
     MergeStatementV2,
     MultiSelectStatement,
     PersistStatement,
@@ -524,6 +525,11 @@ class Renderer:
         if len(arg.sources) == 1:
             return f"MERGE {self.to_string(arg.sources[0])} into {''.join([self.to_string(modifier) for modifier in arg.modifiers])}{self.to_string(arg.targets[arg.sources[0].address])};"
         return f"MERGE {arg.source_wildcard}.* into {''.join([self.to_string(modifier) for modifier in arg.modifiers])}{arg.target_wildcard}.*;"
+
+    @to_string.register
+    def _(self, arg: KeyMergeStatement):
+        keys = ", ".join(sorted(list(arg.keys)))
+        return f"MERGE PROPERTY <{keys}> from {arg.target.address};"
 
     @to_string.register
     def _(self, arg: Modifier):

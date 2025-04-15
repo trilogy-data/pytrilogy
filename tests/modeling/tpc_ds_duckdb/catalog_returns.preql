@@ -4,6 +4,7 @@ import date as date;
 import time as time;
 
 key order_number int;
+
 property<order_number,item.id>.net_loss float;
 property<order_number,item.id>.had_return bool;
 

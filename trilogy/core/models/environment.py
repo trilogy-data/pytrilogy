@@ -686,7 +686,8 @@ class Environment(BaseModel):
                 replacements[k] = target
             # we need to update keys and grains of all concepts
             else:
-                replacements[k] = v.with_merge(source, target, modifiers)
+                if source.address in v.sources or source.address in v.grain.components:
+                    replacements[k] = v.with_merge(source, target, modifiers)
         self.concepts.update(replacements)
         for k, ds in self.datasources.items():
             if source.address in ds.output_lcl:

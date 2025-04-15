@@ -116,6 +116,7 @@ from trilogy.core.statements.author import (
     CopyStatement,
     FunctionDeclaration,
     ImportStatement,
+    KeyMergeStatement,
     Limit,
     MergeStatementV2,
     MultiSelectStatement,
@@ -889,6 +890,29 @@ class ParseToObjects(Transformer):
 
     def over_list(self, args):
         return [x for x in args]
+
+    @v_args(meta=True)
+    def key_merge_statement(self, meta: Meta, args) -> KeyMergeStatement | None:
+        key_inputs = args[:-1]
+        target = args[-1]
+        keys = [self.environment.concepts[grain] for grain in key_inputs]
+        target_c = self.environment.concepts[target]
+        new = KeyMergeStatement(
+            keys=set([x.address for x in keys]),
+            target=target_c.reference,
+        )
+        internal = Concept(
+            name="_" + target_c.address.replace(".", "_"),
+            namespace=self.environment.namespace,
+            purpose=Purpose.PROPERTY,
+            keys=set([x.address for x in keys]),
+            datatype=target_c.datatype,
+            grain=Grain(components={x.address for x in keys}),
+        )
+        self.environment.add_concept(internal)
+        # always a full merge
+        self.environment.merge_concept(target_c, internal, [])
+        return new
 
     @v_args(meta=True)
     def merge_statement(self, meta: Meta, args) -> MergeStatementV2 | None:

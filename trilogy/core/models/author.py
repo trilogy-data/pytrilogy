@@ -1089,7 +1089,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             pseudonyms=self.pseudonyms,
         )
 
-    @property
+    @cached_property
     def sources(self) -> List["ConceptRef"]:
         if self.lineage:
             output: List[ConceptRef] = []

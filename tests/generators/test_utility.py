@@ -92,22 +92,22 @@ def test_resolve_join_order_v2():
         "ds~customer_address": ["c~customer_id"],
     }
 
-    output = resolve_join_order_v2(g, partials)
+    output = resolve_join_order_v2(g, partials, {})
 
     assert output == [
+        JoinOrderOutput(
+            right="ds~orders",
+            type=JoinType.LEFT_OUTER,
+            keys={"ds~products": {"c~product_id"}},
+        ),
+        JoinOrderOutput(
+            right="ds~customer",
+            type=JoinType.FULL,
+            keys={"ds~orders": {"c~customer_id"}},
+        ),
         JoinOrderOutput(
             right="ds~customer_address",
             type=JoinType.LEFT_OUTER,
             keys={"ds~customer": {"c~customer_id"}},
-        ),
-        JoinOrderOutput(
-            right="ds~orders",
-            type=JoinType.LEFT_OUTER,
-            keys={"ds~customer": {"c~customer_id"}},
-        ),
-        JoinOrderOutput(
-            right="ds~products",
-            type=JoinType.FULL,
-            keys={"ds~orders": {"c~product_id"}},
         ),
     ]

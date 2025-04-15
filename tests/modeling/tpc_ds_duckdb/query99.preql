@@ -9,7 +9,7 @@ import catalog_sales;
 auto warehouse_short_name <- substring(warehouse.name, 1, 20);
 auto catalog_pk <- order_number::string || item.id::string;
 
-WHERE ship_date.month_seq BETWEEN 1200 and 1211
+WHERE ship_date.month_seq BETWEEN 1200 and 1211 and order_number is not null and call_center.id is not null and warehouse.id is not null and ship_mode.id is not null
 SELECT
     warehouse_short_name,
     ship_mode.type,
@@ -32,4 +32,5 @@ SELECT
 ORDER BY
     warehouse_short_name asc nulls first,
     ship_mode.type asc nulls first,
-    cc_name_lower asc nulls first;
+    cc_name_lower asc nulls first
+limit 100;

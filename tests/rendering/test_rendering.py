@@ -18,6 +18,7 @@ from trilogy.core.models.author import (
     CaseWhen,
     Comparison,
     Concept,
+    ConceptRef,
     Conditional,
     Function,
     Grain,
@@ -38,6 +39,7 @@ from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     CopyStatement,
     ImportStatement,
+    KeyMergeStatement,
     MergeStatementV2,
     MultiSelectStatement,
     PersistStatement,
@@ -526,6 +528,13 @@ def test_render_merge():
         )
     )
     assert test == "MERGE materialized into ~test.materialized;"
+
+
+def test_render_merge_property():
+    test = Renderer().to_string(
+        KeyMergeStatement(keys=set(["abc", "def"]), target=ConceptRef(address="abc.id"))
+    )
+    assert test == "MERGE PROPERTY <abc, def> from abc.id;"
 
 
 def test_render_persist_to_source():

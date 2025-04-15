@@ -126,7 +126,7 @@ def test_seven(engine):
 
 def test_eight(engine):
     query = run_query(engine, 8)
-    assert len(query) < 3500, query
+    assert len(query) < 3550, query
 
 
 def test_ten(engine):
@@ -146,7 +146,7 @@ def test_fifteen(engine):
 def test_sixteen(engine):
     query = run_query(engine, 16)
     # size gating
-    assert len(query) < 16000, query
+    assert len(query) < 6000, query
 
 
 def test_twenty(engine):

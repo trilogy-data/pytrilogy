@@ -384,6 +384,11 @@ class MergeStatementV2(HasUUID, BaseModel):
     modifiers: List[Modifier] = Field(default_factory=list)
 
 
+class KeyMergeStatement(HasUUID, BaseModel):
+    keys: set[str]
+    target: ConceptRef
+
+
 class ImportStatement(HasUUID, BaseModel):
     # import abc.def as bar
     # the bit after 'as', eg bar
