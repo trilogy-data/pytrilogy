@@ -528,7 +528,7 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: KeyMergeStatement):
-        keys = ", ".join(arg.keys)
+        keys = ", ".join(sorted(list(arg.keys)))
         return f"MERGE PROPERTY <{keys}> from {arg.target.address};"
 
     @to_string.register
