@@ -24,8 +24,8 @@ SELECT
     store_sales_store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\"
 FROM
     memory.store_sales as store_sales_store_sales
-    INNER JOIN memory.date_dim as store_sales_date_date on store_sales_store_sales.\"SS_SOLD_DATE_SK\" = store_sales_date_date.\"D_DATE_SK\"
     INNER JOIN memory.item as store_sales_item_items on store_sales_store_sales.\"SS_ITEM_SK\" = store_sales_item_items.\"I_ITEM_SK\"
+    INNER JOIN memory.date_dim as store_sales_date_date on store_sales_store_sales.\"SS_SOLD_DATE_SK\" = store_sales_date_date.\"D_DATE_SK\"
 WHERE
     store_sales_item_items.\"I_CATEGORY\" in ('Sports','Books','Home') and cast(store_sales_date_date.\"D_DATE\" as date) >= date '1999-02-22' and cast(store_sales_date_date.\"D_DATE\" as date) <= date '1999-03-24'
 ),
@@ -38,8 +38,8 @@ SELECT
     store_sales_item_items.\"I_ITEM_ID\" as \"store_sales_item_name\"
 FROM
     cheerful
-    INNER JOIN memory.date_dim as store_sales_date_date on cheerful.\"store_sales__date_id\" = store_sales_date_date.\"D_DATE_SK\"
     INNER JOIN memory.item as store_sales_item_items on cheerful.\"store_sales_item_id\" = store_sales_item_items.\"I_ITEM_SK\"
+    INNER JOIN memory.date_dim as store_sales_date_date on cheerful.\"store_sales__date_id\" = store_sales_date_date.\"D_DATE_SK\"
 WHERE
     store_sales_item_items.\"I_CATEGORY\" in ('Sports','Books','Home') and cast(store_sales_date_date.\"D_DATE\" as date) >= date '1999-02-22' and cast(store_sales_date_date.\"D_DATE\" as date) <= date '1999-03-24'
 ),

@@ -108,7 +108,7 @@ def resolve_join_order_v2(
             root = next_pivots[0]
             pivots = [x for x in pivots if x != root]
         else:
-            root = pivots.pop()
+            root = pivots.pop(0)
 
         # sort so less partials is last and eligible lefts are
         def score_key(x: str) -> tuple[int, int, str]:

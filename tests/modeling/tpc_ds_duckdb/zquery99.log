@@ -1,5 +1,5 @@
 query_id = 99
-gen_length = 8557
+gen_length = 8532
 generated_sql = """
 
 WITH 
@@ -11,8 +11,8 @@ SELECT
     date_diff('day', cast(sold_date_date.\"D_DATE\" as date), cast(ship_date_date.\"D_DATE\" as date)) as \"days_to_ship\"
 FROM
     memory.catalog_sales as catalog_sales
-    INNER JOIN memory.date_dim as sold_date_date on catalog_sales.\"CS_SOLD_DATE_SK\" = sold_date_date.\"D_DATE_SK\"
     INNER JOIN memory.date_dim as ship_date_date on catalog_sales.\"CS_SHIP_DATE_SK\" = ship_date_date.\"D_DATE_SK\"
+    INNER JOIN memory.date_dim as sold_date_date on catalog_sales.\"CS_SOLD_DATE_SK\" = sold_date_date.\"D_DATE_SK\"
 WHERE
     ship_date_date.\"D_MONTH_SEQ\" >= 1200 and ship_date_date.\"D_MONTH_SEQ\" <= 1211 and catalog_sales.\"CS_ORDER_NUMBER\" is not null and catalog_sales.\"CS_CALL_CENTER_SK\" is not null and catalog_sales.\"CS_WAREHOUSE_SK\" is not null and catalog_sales.\"CS_SHIP_MODE_SK\" is not null
 ),
@@ -26,12 +26,12 @@ SELECT
     date_diff('day', cast(sold_date_date.\"D_DATE\" as date), cast(ship_date_date.\"D_DATE\" as date)) as \"days_to_ship\",
     ship_mode_ship_mode.\"SM_TYPE\" as \"ship_mode_type\"
 FROM
-    memory.call_center as call_center_call_center
-    LEFT OUTER JOIN memory.catalog_sales as catalog_sales on call_center_call_center.\"CC_CALL_CENTER_SK\" = catalog_sales.\"CS_CALL_CENTER_SK\"
-    LEFT OUTER JOIN memory.date_dim as ship_date_date on catalog_sales.\"CS_SHIP_DATE_SK\" = ship_date_date.\"D_DATE_SK\"
-    LEFT OUTER JOIN memory.ship_mode as ship_mode_ship_mode on catalog_sales.\"CS_SHIP_MODE_SK\" = ship_mode_ship_mode.\"SM_SHIP_MODE_SK\"
-    LEFT OUTER JOIN memory.date_dim as sold_date_date on catalog_sales.\"CS_SOLD_DATE_SK\" = sold_date_date.\"D_DATE_SK\"
-    LEFT OUTER JOIN memory.warehouse as warehouse_warehouse on catalog_sales.\"CS_WAREHOUSE_SK\" = warehouse_warehouse.\"w_warehouse_sk\"
+    memory.catalog_sales as catalog_sales
+    INNER JOIN memory.date_dim as ship_date_date on catalog_sales.\"CS_SHIP_DATE_SK\" = ship_date_date.\"D_DATE_SK\"
+    INNER JOIN memory.ship_mode as ship_mode_ship_mode on catalog_sales.\"CS_SHIP_MODE_SK\" = ship_mode_ship_mode.\"SM_SHIP_MODE_SK\"
+    INNER JOIN memory.date_dim as sold_date_date on catalog_sales.\"CS_SOLD_DATE_SK\" = sold_date_date.\"D_DATE_SK\"
+    INNER JOIN memory.warehouse as warehouse_warehouse on catalog_sales.\"CS_WAREHOUSE_SK\" = warehouse_warehouse.\"w_warehouse_sk\"
+    INNER JOIN memory.call_center as call_center_call_center on catalog_sales.\"CS_CALL_CENTER_SK\" = call_center_call_center.\"CC_CALL_CENTER_SK\"
 WHERE
     ship_date_date.\"D_MONTH_SEQ\" >= 1200 and ship_date_date.\"D_MONTH_SEQ\" <= 1211 and catalog_sales.\"CS_ORDER_NUMBER\" is not null and call_center_call_center.\"CC_CALL_CENTER_SK\" is not null and warehouse_warehouse.\"w_warehouse_sk\" is not null and ship_mode_ship_mode.\"SM_SHIP_MODE_SK\" is not null
 ),
@@ -59,8 +59,8 @@ SELECT
     uneven.\"ship_mode_type\" as \"ship_mode_type\",
     uneven.\"warehouse_short_name\" as \"warehouse_short_name\"
 FROM
-    thoughtful
-    LEFT OUTER JOIN uneven on thoughtful.\"days_to_ship\" = uneven.\"days_to_ship\" AND thoughtful.\"item_id\" = uneven.\"item_id\" AND thoughtful.\"order_number\" = uneven.\"order_number\"),
+    uneven
+    INNER JOIN thoughtful on uneven.\"days_to_ship\" = thoughtful.\"days_to_ship\" AND uneven.\"item_id\" = thoughtful.\"item_id\" AND uneven.\"order_number\" = thoughtful.\"order_number\"),
 juicy as (
 SELECT
     thoughtful.\"_virt_filter_catalog_pk_5603765296623263\" as \"_virt_filter_catalog_pk_5603765296623263\",
@@ -73,8 +73,8 @@ SELECT
     yummy.\"ship_mode_type\" as \"ship_mode_type\",
     yummy.\"warehouse_short_name\" as \"warehouse_short_name\"
 FROM
-    yummy
-    INNER JOIN thoughtful on yummy.\"days_to_ship\" = thoughtful.\"days_to_ship\" AND yummy.\"item_id\" = thoughtful.\"item_id\" AND yummy.\"order_number\" = thoughtful.\"order_number\"),
+    thoughtful
+    LEFT OUTER JOIN yummy on thoughtful.\"days_to_ship\" = yummy.\"days_to_ship\" AND thoughtful.\"item_id\" = yummy.\"item_id\" AND thoughtful.\"order_number\" = yummy.\"order_number\"),
 vacuous as (
 SELECT
     juicy.\"_virt_filter_catalog_pk_5603765296623263\" as \"_virt_filter_catalog_pk_5603765296623263\",
