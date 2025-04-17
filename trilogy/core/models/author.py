@@ -1426,7 +1426,7 @@ def get_basic_type(
     return type
 
 
-class CaseWhen(Namespaced, ConceptArgs, Mergeable, BaseModel):
+class CaseWhen(Namespaced, DataTyped, ConceptArgs, Mergeable, BaseModel):
     comparison: Conditional | SubselectComparison | Comparison
     expr: "Expr"
 
@@ -1435,6 +1435,10 @@ class CaseWhen(Namespaced, ConceptArgs, Mergeable, BaseModel):
         if isinstance(v, Concept):
             return v.reference
         return v
+
+    @property
+    def output_datatype(self):
+        return arg_to_datatype(self.expr)
 
     def __str__(self):
         return self.__repr__()
@@ -1488,7 +1492,7 @@ class CaseWhen(Namespaced, ConceptArgs, Mergeable, BaseModel):
         )
 
 
-class CaseElse(Namespaced, ConceptArgs, Mergeable, BaseModel):
+class CaseElse(Namespaced, ConceptArgs, DataTyped, Mergeable, BaseModel):
     expr: "Expr"
     # this ensures that it's easily differentiable from CaseWhen
     discriminant: ComparisonOperator = ComparisonOperator.ELSE
@@ -1498,6 +1502,10 @@ class CaseElse(Namespaced, ConceptArgs, Mergeable, BaseModel):
 
     def __repr__(self):
         return f"ELSE {str(self.expr)}"
+
+    @property
+    def output_datatype(self):
+        return arg_to_datatype(self.expr)
 
     @field_validator("expr", mode="before")
     def enforce_expr(cls, v):
