@@ -1538,9 +1538,23 @@ class Factory:
 
     @build.register
     def _(self, base: CaseWhen) -> BuildCaseWhen:
+        from trilogy.parsing.common import arbitrary_to_concept
+
+        comparison = base.comparison
+        if isinstance(comparison, (AggregateWrapper, FilterItem, WindowItem)):
+            comparison = arbitrary_to_concept(
+                comparison,
+                environment=self.environment,
+            )
+        expr: Concept | FuncArgs = base.expr
+        if isinstance(expr, (AggregateWrapper, FilterItem, WindowItem)):
+            expr = arbitrary_to_concept(
+                expr,
+                environment=self.environment,
+            )
         return BuildCaseWhen.model_construct(
-            comparison=self.build(base.comparison),
-            expr=(self.build(base.expr)),
+            comparison=self.build(comparison),
+            expr=self.build(expr),
         )
 
     @build.register
@@ -1647,10 +1661,27 @@ class Factory:
     @build.register
     def _(self, base: WindowItem) -> BuildWindowItem:
         # to do proper discovery, we need to inject virtual intermediate ocncepts
+        from trilogy.parsing.common import arbitrary_to_concept
+
+        content: Concept | FuncArgs = base.content
+        if isinstance(content, (AggregateWrapper, FilterItem, WindowItem)):
+            content = arbitrary_to_concept(
+                content,
+                environment=self.environment,
+            )
+        final_by = []
+        for x in base.order_by:
+            if (
+                isinstance(x.expr, AggregateWrapper)
+                and not x.expr.by
+                and isinstance(content, (ConceptRef, Concept))
+            ):
+                x.expr.by = [content]
+            final_by.append(x)
         return BuildWindowItem.model_construct(
             type=base.type,
-            content=self.build(base.content),
-            order_by=[self.build(x) for x in base.order_by],
+            content=self.build(content),
+            order_by=[self.build(x) for x in final_by],
             over=[self.build(x) for x in base.over],
             index=base.index,
         )

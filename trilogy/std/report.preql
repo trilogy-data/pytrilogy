@@ -1,0 +1,5 @@
+
+
+
+def top_x_by_metric(val, metric, x=10, default='other') -> case when rank val by metric desc <x+1 then val else default end; # Get the top X of a value by a certain metric, bucket the rest in other
+

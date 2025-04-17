@@ -108,6 +108,10 @@ class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
     metadata: Optional["Metadata"] = None
 
     @property
+    def reference(self):
+        return self
+
+    @property
     def line_no(self) -> int | None:
         if self.metadata:
             return self.metadata.line_number
@@ -1426,7 +1430,7 @@ def get_basic_type(
     return type
 
 
-class CaseWhen(Namespaced, ConceptArgs, Mergeable, BaseModel):
+class CaseWhen(Namespaced, DataTyped, ConceptArgs, Mergeable, BaseModel):
     comparison: Conditional | SubselectComparison | Comparison
     expr: "Expr"
 
@@ -1435,6 +1439,10 @@ class CaseWhen(Namespaced, ConceptArgs, Mergeable, BaseModel):
         if isinstance(v, Concept):
             return v.reference
         return v
+
+    @property
+    def output_datatype(self):
+        return arg_to_datatype(self.expr)
 
     def __str__(self):
         return self.__repr__()
@@ -1488,7 +1496,7 @@ class CaseWhen(Namespaced, ConceptArgs, Mergeable, BaseModel):
         )
 
 
-class CaseElse(Namespaced, ConceptArgs, Mergeable, BaseModel):
+class CaseElse(Namespaced, ConceptArgs, DataTyped, Mergeable, BaseModel):
     expr: "Expr"
     # this ensures that it's easily differentiable from CaseWhen
     discriminant: ComparisonOperator = ComparisonOperator.ELSE
@@ -1498,6 +1506,10 @@ class CaseElse(Namespaced, ConceptArgs, Mergeable, BaseModel):
 
     def __repr__(self):
         return f"ELSE {str(self.expr)}"
+
+    @property
+    def output_datatype(self):
+        return arg_to_datatype(self.expr)
 
     @field_validator("expr", mode="before")
     def enforce_expr(cls, v):
@@ -1837,7 +1849,7 @@ class FunctionCallWrapper(
 
 class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel):
     function: Function
-    by: List[ConceptRef] = Field(default_factory=list)
+    by: List[ConceptRef | Concept] = Field(default_factory=list)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1863,7 +1875,7 @@ class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel)
 
     @property
     def concept_arguments(self) -> List[ConceptRef]:
-        return self.function.concept_arguments + self.by
+        return self.function.concept_arguments + [x.reference for x in self.by]
 
     @property
     def output_datatype(self):
@@ -2392,4 +2404,8 @@ FuncArgs = (
     | NumericType
     | list
     | ListWrapper[Any]
+    | TupleWrapper[Any]
+    | Comparison
+    | Conditional
+    | MagicConstants
 )

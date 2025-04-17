@@ -111,11 +111,14 @@ def validate_case_output(
         if output_datatype != DataType.NULL:
             datatypes.add(output_datatype.data_type)
         mapz[str(arg.expr)] = output_datatype
-    if not len(datatypes) == 1:
+    known = [x for x in datatypes if x != DataType.UNKNOWN]
+    if len(known) == 0:
+        return DataType.UNKNOWN
+    if not len(known) == 1:
         raise SyntaxError(
             f"All case expressions must have the same output datatype, got {datatypes} from {mapz}"
         )
-    return datatypes.pop()
+    return known.pop()
 
 
 def create_struct_output(
@@ -672,12 +675,22 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         arg_count=1,
     ),
     FunctionType.SUM: FunctionConfig(
-        valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
+        valid_inputs={
+            DataType.INTEGER,
+            DataType.FLOAT,
+            DataType.NUMBER,
+            DataType.NUMERIC,
+        },
         output_purpose=Purpose.METRIC,
         arg_count=1,
     ),
     FunctionType.AVG: FunctionConfig(
-        valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
+        valid_inputs={
+            DataType.INTEGER,
+            DataType.FLOAT,
+            DataType.NUMBER,
+            DataType.NUMERIC,
+        },
         output_purpose=Purpose.METRIC,
         arg_count=1,
     ),
