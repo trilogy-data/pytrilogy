@@ -1546,7 +1546,7 @@ class Factory:
                 comparison,
                 environment=self.environment,
             )
-        expr = base.expr
+        expr: Concept | FuncArgs = base.expr
         if isinstance(expr, (AggregateWrapper, FilterItem, WindowItem)):
             expr = arbitrary_to_concept(
                 expr,
@@ -1554,7 +1554,7 @@ class Factory:
             )
         return BuildCaseWhen.model_construct(
             comparison=self.build(comparison),
-            expr=(self.build(expr)),
+            expr=self.build(expr),
         )
 
     @build.register
@@ -1663,15 +1663,19 @@ class Factory:
         # to do proper discovery, we need to inject virtual intermediate ocncepts
         from trilogy.parsing.common import arbitrary_to_concept
 
-        content = base.content
-        if not isinstance(content, ConceptRef):
+        content: Concept | FuncArgs = base.content
+        if isinstance(content, (AggregateWrapper, FilterItem, WindowItem)):
             content = arbitrary_to_concept(
                 content,
                 environment=self.environment,
             )
         final_by = []
         for x in base.order_by:
-            if isinstance(x.expr, AggregateWrapper) and not x.expr.by:
+            if (
+                isinstance(x.expr, AggregateWrapper)
+                and not x.expr.by
+                and isinstance(content, (ConceptRef, Concept))
+            ):
                 x.expr.by = [content]
             final_by.append(x)
         return BuildWindowItem.model_construct(

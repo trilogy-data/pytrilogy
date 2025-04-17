@@ -270,7 +270,7 @@ def _get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
     elif isinstance(arg, AggregateWrapper) and not arg.by:
         return [], True
     elif isinstance(arg, AggregateWrapper) and arg.by:
-        return arg.by, True
+        return [x.reference for x in arg.by], True
     elif isinstance(arg, FunctionCallWrapper):
         return get_relevant_parent_concepts(arg.content)
     return get_concept_arguments(arg), False

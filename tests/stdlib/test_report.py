@@ -1,4 +1,3 @@
-
 from trilogy import Dialects
 from trilogy.hooks import DebuggingHook
 
