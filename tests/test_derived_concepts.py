@@ -11,6 +11,14 @@ def test_derivations(test_environment):
     )
 
 
+def test_hour_derivation(test_environment):
+    hour_derived = test_environment.concepts["order_timestamp.hour"]
+    assert "hour" in hour_derived.datatype.traits, hour_derived
+
+    year_derived = test_environment.concepts["order_timestamp.year"]
+    assert "year" in year_derived.datatype.traits, year_derived
+
+
 def test_filtering_where_on_derived_aggregate(test_environment):
     exception = False
     try:
