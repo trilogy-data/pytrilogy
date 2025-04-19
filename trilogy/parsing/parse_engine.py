@@ -368,18 +368,21 @@ class ParseToObjects(Transformer):
                     output.concept.metadata.description
                     or args[1].text.split("#")[1].strip()
                 )
-        if isinstance(output, ImportStatement):
-            if len(args) > 1 and isinstance(args[1], Comment):
-                comment = args[1].text.split("#")[1].strip()
-                namespace = output.alias
-                for _, v in self.environment.concepts.items():
-                    if v.namespace == namespace:
-                        if v.metadata.description:
-                            v.metadata.description = (
-                                f"{comment}: {v.metadata.description}"
-                            )
-                        else:
-                            v.metadata.description = comment
+        # this is a bad plan for now;
+        # because a comment after an import statement is very common
+        # and it's not intuitive that it modifies the import description
+        # if isinstance(output, ImportStatement):
+        #     if len(args) > 1 and isinstance(args[1], Comment):
+        #         comment = args[1].text.split("#")[1].strip()
+        #         namespace = output.alias
+        #         for _, v in self.environment.concepts.items():
+        #             if v.namespace == namespace:
+        #                 if v.metadata.description:
+        #                     v.metadata.description = (
+        #                         f"{comment}: {v.metadata.description}"
+        #                     )
+        #                 else:
+        #                     v.metadata.description = comment
 
         return args[0]
 

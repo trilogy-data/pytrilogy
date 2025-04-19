@@ -47,7 +47,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
         )
         new_concept = Concept(
             name=f"{concept.name}.{fname}",
-            datatype=DataType.INTEGER,
+            datatype=function.output_datatype,
             purpose=default_type,
             lineage=function,
             grain=concept.grain,
@@ -119,7 +119,7 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
         )
         new_concept = Concept(
             name=f"{concept.name}.{fname}",
-            datatype=DataType.INTEGER,
+            datatype=const_function.output_datatype,
             purpose=default_type,
             lineage=const_function,
             grain=concept.grain,
