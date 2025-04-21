@@ -622,9 +622,9 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     ),
     FunctionType.RANDOM: FunctionConfig(
         valid_inputs=[],
-        output_purpose=Purpose.CONSTANT,
+        output_purpose=Purpose.PROPERTY,
         output_type=DataType.FLOAT,
-        arg_count=0,
+        arg_count=1,
     ),
     FunctionType.ROUND: FunctionConfig(
         valid_inputs=[

@@ -212,7 +212,7 @@ def test_math_functions(test_environment):
     property order_add <- revenue + 2;
     property order_id.order_nested <- revenue * 2/2;
     property order_id.rounded <- round(revenue + 2.01,2);
-    constant random <- random();
+    constant random <- random(1);
     select
         order_id,
         inflated_order_value,
@@ -227,6 +227,22 @@ def test_math_functions(test_environment):
     select: SelectStatement = parsed[-1]
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
+
+
+def test_random_randomness(test_environment):
+    declarations = """
+    auto x <- unnest([1,2,3,4]);
+    select
+        x,
+        random(x) -> random_1,
+    ;"""
+    env, parsed = parse(declarations, environment=test_environment)
+    z = (
+        Dialects.DUCK_DB.default_executor(environment=test_environment)
+        .execute_query(parsed[-1])
+        .fetchall()
+    )
+    assert z[0].random_1 != z[1].random_1, f"{z[0].random_1} == {z[1].random_1}"
 
 
 def test_string_functions(test_environment):

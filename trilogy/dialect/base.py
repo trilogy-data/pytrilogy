@@ -690,7 +690,7 @@ class BaseDialect:
         elif isinstance(e, TraitDataType):
             return self.render_expr(e.type, cte=cte, cte_map=cte_map)
         elif isinstance(e, ListType):
-            return f"{self.COMPLEX_DATATYPE_MAP[DataType.LIST](self.render_expr(e.type, cte=cte, cte_map=cte_map))}"
+            return f"{self.COMPLEX_DATATYPE_MAP[DataType.LIST](self.render_expr(e.value_data_type, cte=cte, cte_map=cte_map))}"
         else:
             raise ValueError(f"Unable to render type {type(e)} {e}")
 

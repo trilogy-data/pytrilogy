@@ -198,7 +198,7 @@
     fabs: "abs"i "(" expr ")"
     fsqrt: "sqrt(" expr ")"
     _RANDOM.1: "random("i
-    frandom: _RANDOM ")"
+    frandom: _RANDOM expr ")"
         
     _math_functions: fmul | fdiv | fadd | fsub | fround | fmod | fabs | fsqrt | frandom
     
