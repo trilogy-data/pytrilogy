@@ -1928,6 +1928,18 @@ class Factory:
     @build.register
     def _(self, base: TraitDataType):
         return base
+    
+    @build.register
+    def _(self, base: ListType):
+        return base
+    
+    @build.register
+    def _(self, base: StructType):
+        return base
+
+    @build.register
+    def _(self, base: MapType):
+        return base
 
     @build.register
     def _(self, base: Datasource):

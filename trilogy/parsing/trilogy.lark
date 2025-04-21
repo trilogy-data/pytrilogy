@@ -196,9 +196,11 @@
     fmod: ( "mod"i "(" expr "," (int_lit | concept_lit ) ")") | ( expr "%" (int_lit | concept_lit ) )
     fround: "round"i "(" expr "," expr ")"
     fabs: "abs"i "(" expr ")"
-    fsqrt: "sqrt"i "(" expr ")"
+    fsqrt: "sqrt(" expr ")"
+    _RANDOM.1: "random("i
+    frandom: _RANDOM ")"
         
-    _math_functions: fmul | fdiv | fadd | fsub | fround | fmod | fabs | fsqrt
+    _math_functions: fmul | fdiv | fadd | fsub | fround | fmod | fabs | fsqrt | frandom
     
     //generic
     _fcast_primary: "cast"i "(" expr "as"i data_type ")"
@@ -354,7 +356,7 @@
 
     struct_type: "struct"i "<" ((data_type | IDENTIFIER) ",")* (data_type | IDENTIFIER) ","? ">" 
 
-    list_type: "list"i "<" data_type ">"
+    list_type: ("list"i "<" data_type ">" ) | ("array"i "<" data_type ">" )
 
     numeric_type: "numeric"i "(" int_lit "," int_lit ")"
 

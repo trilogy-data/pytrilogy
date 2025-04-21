@@ -155,6 +155,7 @@ class FunctionType(Enum):
     ROUND = "round"
     ABS = "abs"
     SQRT = "sqrt"
+    RANDOM = "random"
 
     # Aggregates
     ## group is not a real aggregate - it just means group by this + some other set of fields

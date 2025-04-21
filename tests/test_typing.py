@@ -214,3 +214,26 @@ sum(
     )
 
     assert env.environment.concepts["total"].datatype.traits == ["money"]
+
+
+
+
+def test_custom_trait_unnest_typing():
+    env = Dialects.DUCK_DB.default_executor()
+    env.environment.parse(
+        """
+import std.geography;
+
+const array <- ['VT', 'MA', 'NY', 'CA']::array<string::us_state_short>;
+
+"""
+    )
+
+    _ = env.execute_query(
+        """
+SELECT
+    unnest(array)->state;
+"""
+    )
+
+    assert env.environment.concepts["state"].datatype.traits == ["us_state_short"]

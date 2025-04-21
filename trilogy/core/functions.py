@@ -620,6 +620,12 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type=DataType.INTEGER,
         arg_count=1,
     ),
+    FunctionType.RANDOM: FunctionConfig(
+        valid_inputs=[],
+        output_purpose=Purpose.CONSTANT,
+        output_type=DataType.FLOAT,
+        arg_count=0,
+    ),
     FunctionType.ROUND: FunctionConfig(
         valid_inputs=[
             {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER, DataType.NUMERIC},
