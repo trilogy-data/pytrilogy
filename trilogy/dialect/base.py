@@ -135,7 +135,7 @@ DATATYPE_MAP: dict[DataType, str] = {
     DataType.LIST: "list",
 }
 
-COMPLEX_DATATYPE_MAP  = {
+COMPLEX_DATATYPE_MAP = {
     DataType.LIST: lambda x: f"{x}[]",
 }
 
@@ -177,7 +177,7 @@ FUNCTION_MAP = {
     FunctionType.ROUND: lambda x: f"round({x[0]},{x[1]})",
     FunctionType.MOD: lambda x: f"({x[0]} % {x[1]})",
     FunctionType.SQRT: lambda x: f"sqrt({x[0]})",
-    FunctionType.RANDOM: lambda x: f"random()",
+    FunctionType.RANDOM: lambda x: "random()",
     # aggregate types
     FunctionType.COUNT_DISTINCT: lambda x: f"count(distinct {x[0]})",
     FunctionType.COUNT: lambda x: f"count({x[0]})",
@@ -216,7 +216,6 @@ FUNCTION_MAP = {
     # constant types
     FunctionType.CURRENT_DATE: lambda x: "current_date()",
     FunctionType.CURRENT_DATETIME: lambda x: "current_datetime()",
-
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
