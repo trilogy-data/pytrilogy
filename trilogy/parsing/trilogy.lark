@@ -196,7 +196,8 @@
     fmod: ( "mod"i "(" expr "," (int_lit | concept_lit ) ")") | ( expr "%" (int_lit | concept_lit ) )
     fround: "round"i "(" expr "," expr ")"
     fabs: "abs"i "(" expr ")"
-    fsqrt: "sqrt(" expr ")"
+    _SQRT.1: "sqrt("
+    fsqrt:  _SQRT expr ")"
     _RANDOM.1: "random("i
     frandom: _RANDOM expr ")"
         
