@@ -3,6 +3,9 @@ from typing import Any, Callable, Mapping
 from jinja2 import Template
 
 from trilogy.core.enums import FunctionType, UnnestMode, WindowType
+from trilogy.core.models.core import (
+    DataType,
+)
 from trilogy.dialect.base import BaseDialect
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
@@ -35,6 +38,19 @@ FUNCTION_GRAIN_MATCH_MAP = {
     FunctionType.SUM: lambda args: f"{args[0]}",
     FunctionType.AVG: lambda args: f"{args[0]}",
 }
+
+DATATYPE_MAP: dict[DataType, str] = {
+    DataType.STRING: "STRING",
+    DataType.INTEGER: "INT64",
+    DataType.FLOAT: "FLOAT64",
+    DataType.BOOL: "BOOL",
+    DataType.NUMERIC: "NUMERIC",
+    DataType.MAP: "MAP",
+    DataType.DATE: "DATE",
+    DataType.DATETIME: "DATETIME",
+    DataType.TIMESTAMP: "TIMESTAMP",
+}
+
 
 BQ_SQL_TEMPLATE = Template(
     """{%- if output %}
@@ -80,3 +96,4 @@ class BigqueryDialect(BaseDialect):
     QUOTE_CHARACTER = "`"
     SQL_TEMPLATE = BQ_SQL_TEMPLATE
     UNNEST_MODE = UnnestMode.CROSS_JOIN
+    DATATYPE_MAP = DATATYPE_MAP

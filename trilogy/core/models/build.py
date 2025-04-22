@@ -1930,6 +1930,18 @@ class Factory:
         return base
 
     @build.register
+    def _(self, base: ListType):
+        return base
+
+    @build.register
+    def _(self, base: StructType):
+        return base
+
+    @build.register
+    def _(self, base: MapType):
+        return base
+
+    @build.register
     def _(self, base: Datasource):
         local_cache: dict[str, BuildConcept] = {}
         factory = Factory(

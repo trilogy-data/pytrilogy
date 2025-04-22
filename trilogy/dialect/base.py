@@ -132,6 +132,11 @@ DATATYPE_MAP: dict[DataType, str] = {
     DataType.MAP: "map",
     DataType.DATE: "date",
     DataType.DATETIME: "datetime",
+    DataType.LIST: "list",
+}
+
+COMPLEX_DATATYPE_MAP = {
+    DataType.LIST: lambda x: f"{x}[]",
 }
 
 
@@ -172,6 +177,7 @@ FUNCTION_MAP = {
     FunctionType.ROUND: lambda x: f"round({x[0]},{x[1]})",
     FunctionType.MOD: lambda x: f"({x[0]} % {x[1]})",
     FunctionType.SQRT: lambda x: f"sqrt({x[0]})",
+    FunctionType.RANDOM: lambda x: "random()",
     # aggregate types
     FunctionType.COUNT_DISTINCT: lambda x: f"count(distinct {x[0]})",
     FunctionType.COUNT: lambda x: f"count({x[0]})",
@@ -283,6 +289,7 @@ class BaseDialect:
     QUOTE_CHARACTER = "`"
     SQL_TEMPLATE = GENERIC_SQL_TEMPLATE
     DATATYPE_MAP = DATATYPE_MAP
+    COMPLEX_DATATYPE_MAP = COMPLEX_DATATYPE_MAP
     UNNEST_MODE = UnnestMode.CROSS_APPLY
 
     def __init__(self, rendering: Rendering | None = None):
@@ -682,6 +689,8 @@ class BaseDialect:
             return self.FUNCTION_MAP[FunctionType.DATETIME_LITERAL](e)
         elif isinstance(e, TraitDataType):
             return self.render_expr(e.type, cte=cte, cte_map=cte_map)
+        elif isinstance(e, ListType):
+            return f"{self.COMPLEX_DATATYPE_MAP[DataType.LIST](self.render_expr(e.value_data_type, cte=cte, cte_map=cte_map))}"
         else:
             raise ValueError(f"Unable to render type {type(e)} {e}")
 

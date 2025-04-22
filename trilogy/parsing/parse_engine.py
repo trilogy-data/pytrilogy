@@ -1766,6 +1766,10 @@ class ParseToObjects(Transformer):
         return self.function_factory.create_function(args, FunctionType.SQRT, meta)
 
     @v_args(meta=True)
+    def frandom(self, meta: Meta, args) -> Function:
+        return self.function_factory.create_function(args, FunctionType.RANDOM, meta)
+
+    @v_args(meta=True)
     def fround(self, meta, args) -> Function:
         return self.function_factory.create_function(args, FunctionType.ROUND, meta)
 
