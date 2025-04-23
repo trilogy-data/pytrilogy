@@ -108,12 +108,12 @@
 
     // rank/lag/lead
     WINDOW_TYPE: ("row_number"i|"rank"i|"lag"i|"lead"i | "sum"i | "avg"i | "max"i | "min"i )  /[\s]+/
-    
-    window_item: WINDOW_TYPE int_lit? expr  window_item_over? window_item_order?
-    
+
     window_item_over: ("OVER"i over_list)
-    
+   
     window_item_order: ("ORDER"i? "BY"i order_list)
+
+    window_item: WINDOW_TYPE int_lit? expr window_item_over? window_item_order?
     
     select_hide_modifier: "--"
     select_partial_modifier: "~"
@@ -185,7 +185,7 @@
     attr_access: expr  "." string_lit 
 
 
-    expr:  _constant_functions | window_item | filter_item | subselect_comparison | between_comparison |  fgroup |  aggregate_functions | unnest | union | _static_functions |  literal |  concept_lit  | index_access |  map_key_access | attr_access | parenthetical | expr_tuple | comparison |  alt_like | custom_function 
+    expr:   _constant_functions | window_item | filter_item | subselect_comparison | between_comparison |  fgroup |  aggregate_functions | unnest | union | _static_functions |  literal |  concept_lit  | index_access |  map_key_access | attr_access | parenthetical | expr_tuple | comparison |  alt_like |  aggregate_by | custom_function 
     
     // functions
     
@@ -250,6 +250,10 @@
     // special aggregate
     _GROUP.1: "group("i
     fgroup: _GROUP expr ")" aggregate_over?
+
+    //by:
+    aggregate_by: "group" IDENTIFIER "BY"i (IDENTIFIER ",")* IDENTIFIER
+
     //aggregates
     _COUNT.1: "count("i
     count:   _COUNT  expr ")"

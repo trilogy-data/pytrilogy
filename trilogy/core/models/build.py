@@ -1517,6 +1517,48 @@ class Factory:
                 raw_args.append(narg)
             else:
                 raw_args.append(arg)
+        if base.operator == FunctionType.GROUP:
+            group_base = raw_args[0]
+            if isinstance(group_base, ConceptRef):
+                group_base = self.environment.concepts[group_base.address]
+            # Group is a special function
+            # if we're calling group on an aggregate that is not wrapped in an aggregate wrapper;
+            # promote the group up to wrap the base function.
+            if (
+                isinstance(group_base, Concept)
+                and isinstance(group_base.lineage, AggregateWrapper)
+                and not group_base.lineage.by
+            ):
+                arguments = raw_args[1:]
+                final_args: List[Concept | ConceptRef] = []
+                for x in arguments:
+                    if isinstance(x, (ConceptRef, Concept)):
+                        final_args.append(x)
+                    elif isinstance(x, (AggregateWrapper, FilterItem, WindowItem)):
+                        newx = arbitrary_to_concept(
+                            x,
+                            environment=self.environment,
+                        )
+                        final_args.append(newx)
+                    else:
+                        # constants, etc, can be ignored for group
+                        continue
+                group_base = group_base.model_copy(
+                    deep=True,
+                    update={
+                        "lineage": AggregateWrapper(
+                            function=group_base.lineage.function,
+                            by=final_args,
+                        )
+                    },
+                )
+
+                group_base = group_base.with_grain(
+                    Grain.from_concepts(final_args, environment=self.environment)
+                )
+
+                return self.build(group_base)
+
         new = BuildFunction.model_construct(
             operator=base.operator,
             arguments=[self.build(c) for c in raw_args],

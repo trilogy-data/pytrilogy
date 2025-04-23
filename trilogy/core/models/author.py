@@ -180,8 +180,14 @@ class UndefinedConcept(ConceptRef):
 
 def address_with_namespace(address: str, namespace: str) -> str:
     existing_ns = address.split(".", 1)[0]
+    if "." in address:
+        existing_name = address.split(".", 1)[1]
+    else:
+        existing_name = address
+    if existing_name == ALL_ROWS_CONCEPT:
+        return address
     if existing_ns == DEFAULT_NAMESPACE:
-        return f"{namespace}.{address.split('.',1)[1]}"
+        return f"{namespace}.{existing_name}"
     return f"{namespace}.{address}"
 
 

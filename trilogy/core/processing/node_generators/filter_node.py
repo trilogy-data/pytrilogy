@@ -48,9 +48,10 @@ def gen_filter_node(
         if isinstance(x.lineage, FILTER_TYPES):
             if concept.lineage.where == where:
                 logger.info(
-                    f"{padding(depth)}{LOGGER_PREFIX} fetching {x.lineage.content.address} as optional parent with same filter conditions "
+                    f"{padding(depth)}{LOGGER_PREFIX} fetching {x.lineage.content.address} as optional parent from optional {x} with same filter conditions "
                 )
-                parent_row_concepts.append(x.lineage.content)
+                if x.lineage.content.address not in parent_row_concepts:
+                    parent_row_concepts.append(x.lineage.content)
                 optional_included.append(x)
                 continue
         if conditions and conditions == where:

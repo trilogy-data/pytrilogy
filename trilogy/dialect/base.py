@@ -171,6 +171,7 @@ FUNCTION_MAP = {
     FunctionType.DATETIME_LITERAL: lambda x: f"datetime '{x}'",
     # math
     FunctionType.ADD: lambda x: " + ".join(x),
+    FunctionType.ABS: lambda x: f"abs({x[0]})",
     FunctionType.SUBTRACT: lambda x: " - ".join(x),
     FunctionType.DIVIDE: lambda x: " / ".join(x),
     FunctionType.MULTIPLY: lambda x: " * ".join(x),

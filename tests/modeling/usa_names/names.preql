@@ -1,20 +1,28 @@
 import std.date;
+import std.geography;
+import std.display;
 
-key id string; # Unique identifier for each row
-property id.name string; # Given name of a person at birth 
-property id.gender string; # Sex (M=male or F=female) 
-property id.state string; # The common two character abbreviation for a state, such as MA for Massachusetts or CT for Connecticut
-property id.year int::year; #	4-digit year of birth 
-property id.births int; # Number of occurrences of the name 
+
+key name string; # Given name of a person at birth 
+key gender string; # Sex (M=male or F=female) 
+key state string::us_state_short; # The common two character abbreviation for a state, such as MA for Massachusetts or CT for Connecticut
+key year int::year; #	4-digit year of birth 
+property <name, gender, state, year>.births int; # Number of occurrences of the name 
 auto total_births <- sum(births); # Sum of name count along chosen dimensions
 
+auto percent_of_total <- (sum(births) / sum(births) by *)::float::percent;
+
+auto female_births <- sum(births ? gender = 'F');
+auto male_births <- sum(births ? gender = 'M');
+
 datasource usa_names(
-    raw('''FARM_FINGERPRINT(CONCAT(CAST(name AS STRING), cast(state as string),  cast(year as string), cast(gender as string)))'''):id,
     name:name,
     number:births,
     year:year,
     gender:gender,
     state:state
 )
-grain(id)
+grain(name, year, state, gender)
 address `bigquery-public-data.usa_names.usa_1910_current`;
+
+

@@ -754,6 +754,11 @@ class ParseToObjects(Transformer):
             components=set([self.environment.concepts[a].address for a in args[0]])
         )
 
+    @v_args(meta=True)
+    def aggregate_by(self, meta: Meta, args):
+        args = [self.environment.concepts[a] for a in args]
+        return self.function_factory.create_function(args, FunctionType.GROUP, meta)
+
     def whole_grain_clause(self, args) -> WholeGrainWrapper:
         return WholeGrainWrapper(where=args[0])
 
@@ -1436,12 +1441,14 @@ class ParseToObjects(Transformer):
         return args[0]
 
     def window(self, args):
+
         return Window(count=args[1].value, window_order=args[0])
 
     def WINDOW_TYPE(self, args):
         return WindowType(args.strip())
 
     def window_item_over(self, args):
+
         return WindowItemOver(contents=args[0])
 
     def window_item_order(self, args):
