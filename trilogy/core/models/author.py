@@ -1135,7 +1135,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         return self.lineage.concept_arguments if self.lineage else []
 
     @classmethod
-    def calculate_derivation(self, lineage, purpose):
+    def calculate_derivation(self, lineage, purpose: Purpose) -> Derivation:
         from trilogy.core.models.build import (
             BuildAggregateWrapper,
             BuildFilterItem,

@@ -59,9 +59,7 @@ def test_aggregate_to_grain(stackoverflow_environment: Environment):
     for cte in query.ctes:
         found = False
         if build_avg_post_length in cte.output_columns:
-            rendered = generator.render_concept_sql(
-                build_avg_post_length.with_select_context({}, None, env), cte
-            )
+            rendered = generator.render_concept_sql(build_avg_post_length, cte)
 
             assert re.search(
                 r'avg\([0-9A-z\_]+\."post_length"\) as "user_avg_post_length"',

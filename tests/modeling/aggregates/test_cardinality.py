@@ -93,4 +93,3 @@ ORDER BY total_qty desc
     results = test_executor.execute_text(test_select)[0].fetchall()
 
     assert results[0] == ("STORE1", 4)
-

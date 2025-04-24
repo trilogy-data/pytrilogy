@@ -800,9 +800,6 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped, BaseModel):
     modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = Field(default_factory=set)
 
-    def with_select_context(self, *args, **kwargs):
-        return self
-
     @property
     def is_aggregate(self) -> bool:
         return self.build_is_aggregate
@@ -1520,7 +1517,7 @@ class Factory:
         if base.operator == FunctionType.GROUP:
             group_base = raw_args[0]
             if isinstance(group_base, ConceptRef):
-                group_base = self.environment.concepts[group_base.address]
+                group_base = self.build(group_base)
             # Group is a special function
             # if we're calling group on an aggregate that is not wrapped in an aggregate wrapper;
             # promote the group up to wrap the base function.
@@ -1556,8 +1553,8 @@ class Factory:
                 group_base = group_base.with_grain(
                     Grain.from_concepts(final_args, environment=self.environment)
                 )
-
-                return self.build(group_base)
+                rval = self.build(group_base)
+                return rval
 
         new = BuildFunction.model_construct(
             operator=base.operator,
@@ -1610,7 +1607,10 @@ class Factory:
         new_lineage, final_grain, _ = base.get_select_grain_and_keys(
             self.grain, self.environment
         )
-        build_lineage = self.build(new_lineage)
+        if new_lineage:
+            build_lineage = self.build(new_lineage)
+        else:
+            build_lineage = None
         derivation = Concept.calculate_derivation(build_lineage, base.purpose)
         granularity = Concept.calculate_granularity(
             derivation, final_grain, build_lineage

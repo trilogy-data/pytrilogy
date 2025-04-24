@@ -135,6 +135,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         )
 
         output.grain = output.calculate_grain(environment)
+
         for x in selection:
             if x.is_undefined and environment.concepts.fail_on_missing:
                 environment.concepts.raise_undefined(
@@ -166,6 +167,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         targets = []
         for x in self.selection:
             targets.append(x.concept)
+
         result = Grain.from_concepts(
             targets, where_clause=self.where_clause, environment=environment
         )

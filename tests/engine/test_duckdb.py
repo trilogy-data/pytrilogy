@@ -467,11 +467,7 @@ select
     assert set([x for x in customer_orders.keys]) == {"local.customer"}
     assert set([x for x in customer_orders.grain.components]) == {"local.customer"}
 
-    customer_orders_2 = customer_orders.with_select_context(
-        {},
-        Grain(components=[build_env.concepts["local.customer"]]),
-        default_duckdb_engine.environment,
-    )
+    customer_orders_2 = customer_orders
     assert set([x for x in customer_orders_2.keys]) == {"local.customer"}
     assert set([x for x in customer_orders_2.grain.components]) == {"local.customer"}
 

@@ -431,7 +431,9 @@ def get_query_datasources(
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
     ds = get_query_node(environment, statement.as_lineage(environment))
+
     final_qds = ds.resolve()
+
     if hooks:
         for hook in hooks:
             hook.process_root_strategy_node(ds)
@@ -510,6 +512,7 @@ def process_query(
         hook.process_root_datasource(root_datasource)
     # this should always return 1 - TODO, refactor
     root_cte = datasource_to_cte(root_datasource, environment.cte_name_map)
+
     for hook in hooks:
         hook.process_root_cte(root_cte)
     raw_ctes: List[CTE | UnionCTE] = list(reversed(flatten_ctes(root_cte)))

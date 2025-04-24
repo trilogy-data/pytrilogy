@@ -272,6 +272,8 @@ class MergeNode(StrategyNode):
                     f"{self.logging_prefix}{LOGGER_PREFIX} Merge node has only one parent with the same"
                     " outputs as this merge node, dropping merge node "
                 )
+                # push up any conditions we need
+                final.ordering = self.ordering
                 return final
 
         # if we have multiple candidates, see if one is good enough
@@ -293,6 +295,7 @@ class MergeNode(StrategyNode):
                     f" has all required output properties with partial {[c.address for c in dataset.partial_concepts]}"
                     f" and self has no conditions ({self.conditions})"
                 )
+                dataset.ordering = self.ordering
                 return dataset
 
         pregrain = BuildGrain()

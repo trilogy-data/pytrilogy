@@ -603,15 +603,21 @@ def find_nullable_concepts(
 def sort_select_output_processed(
     cte: CTE | UnionCTE, query: ProcessedQuery
 ) -> CTE | UnionCTE:
-    output_addresses = [
-        c.address for c in query.output_columns if c.address not in query.hidden_columns
-    ]
+    output_addresses = [c.address for c in query.output_columns]
 
     mapping = {x.address: x for x in cte.output_columns}
 
-    new_output = []
+    new_output: list[BuildConcept] = []
     for x in output_addresses:
         new_output.append(mapping[x])
+    for x in cte.output_columns:
+        # add hidden back
+        if x.address not in output_addresses:
+            new_output.append(x)
+
+    cte.hidden_concepts = [
+        c for c in cte.output_columns if c.address not in query.output_columns
+    ]
     cte.output_columns = new_output
     return cte
 
@@ -619,12 +625,14 @@ def sort_select_output_processed(
 def sort_select_output(
     cte: CTE | UnionCTE, query: SelectStatement | MultiSelectStatement | ProcessedQuery
 ) -> CTE | UnionCTE:
+
     if isinstance(query, ProcessedQuery):
         return sort_select_output_processed(cte, query)
+
     output_addresses = [
         c.address
         for c in query.output_components
-        if c.address not in query.hidden_components
+        # if c.address not in query.hidden_components
     ]
 
     mapping = {x.address: x for x in cte.output_columns}
@@ -633,4 +641,8 @@ def sort_select_output(
     for x in output_addresses:
         new_output.append(mapping[x])
     cte.output_columns = new_output
+    cte.hidden_concepts = [
+        c for c in query.output_components if c.address in query.hidden_components
+    ]
+
     return cte

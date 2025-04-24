@@ -220,7 +220,6 @@ def concept_is_relevant(
         if all([c in others for c in concept.grain.components]):
             return False
     if concept.derivation in (Derivation.BASIC,):
-
         return any(
             concept_is_relevant(c, others, environment)
             for c in concept.concept_arguments
@@ -235,6 +234,7 @@ def concepts_to_grain_concepts(
 ) -> list[Concept]:
     pconcepts: list[Concept] = []
     for c in concepts:
+
         if isinstance(c, Concept):
             pconcepts.append(c)
         elif isinstance(c, ConceptRef) and environment:
@@ -279,6 +279,76 @@ def _get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
 def get_relevant_parent_concepts(arg):
     results = _get_relevant_parent_concepts(arg)
     return results
+
+
+def group_function_to_concept(
+    parent: Function,
+    name: str,
+    environment: Environment,
+    namespace: str | None = None,
+    metadata: Metadata | None = None,
+):
+    pkeys: List[Concept] = []
+    namespace = namespace or environment.namespace
+    is_metric = False
+    ref_args, is_metric = get_relevant_parent_concepts(parent)
+    concrete_args = [environment.concepts[c.address] for c in ref_args]
+    pkeys += [x for x in concrete_args if not x.derivation == Derivation.CONSTANT]
+    modifiers = get_upstream_modifiers(pkeys, environment)
+    key_grain: list[str] = []
+    for x in pkeys:
+        # for a group to, if we have a dynamic metric, ignore it
+        # it will end up with the group target grain
+        if x.purpose == Purpose.METRIC and not x.keys:
+            continue
+        # metrics will group to keys, so do no do key traversal
+        elif is_metric:
+            key_grain.append(x.address)
+        else:
+            key_grain.append(x.address)
+    keys = set(key_grain)
+
+    grain = Grain.from_concepts(keys, environment)
+    if is_metric:
+        purpose = Purpose.METRIC
+    elif not pkeys:
+        purpose = Purpose.CONSTANT
+    else:
+        purpose = parent.output_purpose
+    fmetadata = metadata or Metadata()
+    granularity = Granularity.MULTI_ROW
+
+    if grain is not None:
+        # deduplicte
+        grain = Grain.from_concepts(grain.components, environment)
+
+        r = Concept(
+            name=name,
+            datatype=parent.output_datatype,
+            purpose=purpose,
+            lineage=parent,
+            namespace=namespace,
+            keys=keys,
+            modifiers=modifiers,
+            grain=grain,
+            metadata=fmetadata,
+            derivation=Derivation.BASIC,
+            granularity=granularity,
+        )
+        return r
+
+    return Concept(
+        name=name,
+        datatype=parent.output_datatype,
+        purpose=purpose,
+        lineage=parent,
+        namespace=namespace,
+        keys=keys,
+        modifiers=modifiers,
+        metadata=fmetadata,
+        derivation=Derivation.BASIC,
+        granularity=granularity,
+    )
 
 
 def function_to_concept(
@@ -347,7 +417,6 @@ def function_to_concept(
     else:
         derivation = Derivation.BASIC
         granularity = Granularity.MULTI_ROW
-    # granularity = Concept.calculate_granularity(derivation, grain, parent)
 
     if grain is not None:
         r = Concept(
@@ -695,6 +764,14 @@ def arbitrary_to_concept(
     elif isinstance(parent, Function):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(str(parent))}"
+        if parent.operator == FunctionType.GROUP:
+            return group_function_to_concept(
+                parent,
+                name,
+                environment=environment,
+                namespace=namespace,
+                metadata=metadata,
+            )
         return function_to_concept(
             parent,
             name,

@@ -1041,7 +1041,6 @@ def _search_concepts(
                 environment=environment,
                 depth=depth,
             )
-            logger.info(f"gcheck result is {result}")
             if result.required:
                 logger.info(
                     f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Adding group node"
@@ -1104,7 +1103,6 @@ def source_query_concepts(
         history=history,
         conditions=conditions,
     )
-
     if not root:
         error_strings = [
             f"{c.address}<{c.purpose}>{c.derivation}>" for c in output_concepts
@@ -1130,5 +1128,4 @@ def source_query_concepts(
         )
     else:
         candidate = root
-
     return candidate

@@ -98,8 +98,6 @@ def get_cast_output_type(
 
 
 def get_output_type_at_index(args, index: int):
-    print(args)
-    print(arg_to_datatype(args[index]))
     return arg_to_datatype(args[index])
 
 
