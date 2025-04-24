@@ -1,5 +1,5 @@
 query_id = 30
-gen_length = 12154
+gen_length = 12195
 generated_sql = """
 
 WITH 
@@ -171,6 +171,7 @@ GROUP BY
     sparkling.\"web_returns_customer_birth_year\",
     sparkling.\"web_returns_customer_email_address\",
     sparkling.\"web_returns_customer_first_name\",
+    sparkling.\"web_returns_customer_id\",
     sparkling.\"web_returns_customer_last_name\",
     sparkling.\"web_returns_customer_last_review_date\",
     sparkling.\"web_returns_customer_login\",

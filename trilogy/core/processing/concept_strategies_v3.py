@@ -110,11 +110,11 @@ def get_priority_concept(
     depth: int,
 ) -> BuildConcept:
     # optimized search for missing concepts
-    pass_one = [
+    pass_one = sorted([
         c
         for c in all_concepts
         if c.address not in attempted_addresses and c.address not in found_concepts
-    ]
+    ], key = lambda x: x.address)
     # sometimes we need to scan intermediate concepts to get merge keys or filter keys,
     # so do an exhaustive search
     # pass_two = [c for c in all_concepts+filter_only if c.address not in attempted_addresses]
@@ -388,6 +388,7 @@ def generate_node(
                     # conditions=conditions,
                 )
             else:
+                logger.info(f"{depth_to_prefix(depth)}{LOGGER_PREFIX} skipping search, already in a recursion fot these concepts")
                 return None
         return ConstantNode(
             input_concepts=[],
@@ -453,9 +454,10 @@ def generate_node(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} including any filters, there are non-root concepts we should expand first: {non_root}. Recursing with all of these as mandatory"
             )
 
-            if not history.check_started(
-                root_targets, accept_partial=accept_partial, conditions=conditions
-            ):
+            # if not history.check_started(
+            #     root_targets, accept_partial=accept_partial, conditions=conditions
+            # ) or 1==1:
+            if True:
                 history.log_start(
                     root_targets, accept_partial=accept_partial, conditions=conditions
                 )
@@ -470,7 +472,8 @@ def generate_node(
                     # which we do whenever we hit a root node
                     # conditions=conditions,
                 )
-
+            else:
+                logger.info(f"{depth_to_prefix(depth)}{LOGGER_PREFIX} skipping root search, already in a recursion for these concepts")
         check = history.gen_select_node(
             concept,
             local_optional,
@@ -546,7 +549,8 @@ def generate_node(
                         f"{depth_to_prefix(depth)}{LOGGER_PREFIX} resolved concepts through synonyms"
                     )
                     return resolved
-
+            else:
+                logger.info(f"{depth_to_prefix(depth)}{LOGGER_PREFIX} skipping synonym search, already in a recursion for these concepts")
             return None
     else:
         raise ValueError(f"Unknown derivation {concept.derivation} on {concept}")

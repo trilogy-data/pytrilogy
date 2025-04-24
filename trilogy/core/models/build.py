@@ -48,6 +48,7 @@ from trilogy.core.models.author import (
     CaseWhen,
     Comparison,
     Concept,
+    UndefinedConcept,
     ConceptRef,
     Conditional,
     FilterItem,
@@ -1516,8 +1517,33 @@ class Factory:
                 raw_args.append(arg)
         if base.operator == FunctionType.GROUP:
             group_base = raw_args[0]
+            if isinstance(group_base, (AggregateWrapper)):
+                if not group_base.by:
+                    arguments = raw_args[1:]
+                    final_args: List[Concept | ConceptRef] = []
+                    for x in arguments:
+                        if isinstance(x, (ConceptRef, Concept)):
+                            final_args.append(x)
+                        elif isinstance(x, (AggregateWrapper, FilterItem, WindowItem)):
+                            newx = arbitrary_to_concept(
+                                x,
+                                environment=self.environment,
+                            )
+                            final_args.append(newx)
+                        else:
+                            # constant
+                            continue
+                    # return aggregate wrapper directly
+                    return AggregateWrapper(
+                            function=group_base.function,
+                            by=final_args,
+                        )
+
             if isinstance(group_base, ConceptRef):
-                group_base = self.build(group_base)
+                if group_base.address in self.environment.concepts and not isinstance(
+                    self.environment.concepts[group_base.address], UndefinedConcept
+                ):
+                    group_base = self.environment.concepts[group_base.address]
             # Group is a special function
             # if we're calling group on an aggregate that is not wrapped in an aggregate wrapper;
             # promote the group up to wrap the base function.
@@ -1549,12 +1575,18 @@ class Factory:
                         )
                     },
                 )
-
                 group_base = group_base.with_grain(
                     Grain.from_concepts(final_args, environment=self.environment)
                 )
                 rval = self.build(group_base)
-                return rval
+                return BuildFunction.model_construct(
+                    operator=base.operator,
+                    arguments=[rval, *[self.build(c) for c in raw_args[1:]]],
+                    output_datatype=base.output_datatype,
+                    output_purpose=base.output_purpose,
+                    valid_inputs=base.valid_inputs,
+                    arg_count=base.arg_count,
+                )
 
         new = BuildFunction.model_construct(
             operator=base.operator,

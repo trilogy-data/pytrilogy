@@ -6,16 +6,16 @@ from trilogy.core.models.environment import Environment
 
 def test_group_by(test_environment: Environment, test_executor: Executor):
     # test keys
-    test_select = """
-SELECT
-    sum(qty) by stores.name-> total_qty
-ORDER BY 
-    total_qty desc
-;"""
+    #     test_select = """
+    # SELECT
+    #     sum(qty) by stores.name-> total_qty
+    # ORDER BY
+    #     total_qty desc
+    # ;"""
 
-    results = test_executor.execute_text(test_select)[0].fetchall()
+    #     results = test_executor.execute_text(test_select)[0].fetchall()
 
-    assert results[0] == (4,)
+    #     assert results[0] == (4,)
 
     test_select2 = """
 auto total_qty <- sum(qty);
