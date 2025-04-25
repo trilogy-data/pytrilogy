@@ -610,17 +610,22 @@ def sort_select_output_processed(
     new_output: list[BuildConcept] = []
     for x in output_addresses:
         new_output.append(mapping[x])
-    
+
     for oc in cte.output_columns:
         # add hidden back
         if oc.address not in output_addresses:
             new_output.append(oc)
 
-    cte.hidden_concepts = set([
-        c.address
-        for c in cte.output_columns
-        if (c.address not in query.output_columns or c.address in query.hidden_columns)
-    ])
+    cte.hidden_concepts = set(
+        [
+            c.address
+            for c in cte.output_columns
+            if (
+                c.address not in query.output_columns
+                or c.address in query.hidden_columns
+            )
+        ]
+    )
     cte.output_columns = new_output
     return cte
 
@@ -640,12 +645,16 @@ def sort_select_output(
 
     mapping = {x.address: x for x in cte.output_columns}
 
-    new_output:list[BuildConcept] = []
+    new_output: list[BuildConcept] = []
     for x in output_addresses:
         new_output.append(mapping[x])
     cte.output_columns = new_output
-    cte.hidden_concepts = set([
-        c.address for c in query.output_components if c.address in query.hidden_components
-    ])
+    cte.hidden_concepts = set(
+        [
+            c.address
+            for c in query.output_components
+            if c.address in query.hidden_components
+        ]
+    )
 
     return cte

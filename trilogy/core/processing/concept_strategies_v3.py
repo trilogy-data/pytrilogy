@@ -110,11 +110,14 @@ def get_priority_concept(
     depth: int,
 ) -> BuildConcept:
     # optimized search for missing concepts
-    pass_one = sorted([
-        c
-        for c in all_concepts
-        if c.address not in attempted_addresses and c.address not in found_concepts
-    ], key = lambda x: x.address)
+    pass_one = sorted(
+        [
+            c
+            for c in all_concepts
+            if c.address not in attempted_addresses and c.address not in found_concepts
+        ],
+        key=lambda x: x.address,
+    )
     # sometimes we need to scan intermediate concepts to get merge keys or filter keys,
     # so do an exhaustive search
     # pass_two = [c for c in all_concepts+filter_only if c.address not in attempted_addresses]
@@ -388,7 +391,9 @@ def generate_node(
                     # conditions=conditions,
                 )
             else:
-                logger.info(f"{depth_to_prefix(depth)}{LOGGER_PREFIX} skipping search, already in a recursion fot these concepts")
+                logger.info(
+                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} skipping search, already in a recursion fot these concepts"
+                )
                 return None
         return ConstantNode(
             input_concepts=[],
@@ -473,7 +478,9 @@ def generate_node(
                     # conditions=conditions,
                 )
             else:
-                logger.info(f"{depth_to_prefix(depth)}{LOGGER_PREFIX} skipping root search, already in a recursion for these concepts")
+                logger.info(
+                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} skipping root search, already in a recursion for these concepts"
+                )
         check = history.gen_select_node(
             concept,
             local_optional,
@@ -550,7 +557,9 @@ def generate_node(
                     )
                     return resolved
             else:
-                logger.info(f"{depth_to_prefix(depth)}{LOGGER_PREFIX} skipping synonym search, already in a recursion for these concepts")
+                logger.info(
+                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} skipping synonym search, already in a recursion for these concepts"
+                )
             return None
     else:
         raise ValueError(f"Unknown derivation {concept.derivation} on {concept}")

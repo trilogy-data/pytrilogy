@@ -48,7 +48,6 @@ from trilogy.core.models.author import (
     CaseWhen,
     Comparison,
     Concept,
-    UndefinedConcept,
     ConceptRef,
     Conditional,
     FilterItem,
@@ -66,6 +65,7 @@ from trilogy.core.models.author import (
     RowsetLineage,
     SelectLineage,
     SubselectComparison,
+    UndefinedConcept,
     WhereClause,
     WindowItem,
 )
@@ -1535,9 +1535,9 @@ class Factory:
                             continue
                     # return aggregate wrapper directly
                     return AggregateWrapper(
-                            function=group_base.function,
-                            by=final_args,
-                        )
+                        function=group_base.function,
+                        by=final_args,
+                    )
 
             if isinstance(group_base, ConceptRef):
                 if group_base.address in self.environment.concepts and not isinstance(
