@@ -1,0 +1,23 @@
+# trilogy models run on imports to reuse logic
+import lineitem;
+
+# you can define new concepts in line 
+auto discounted_price <- extended_price * (1-discount); #the discounted price is off the extended privce
+auto charge_price <- discounted_price * (1+tax); #charged price includes taxes
+
+# use functions to define repeatable templatized logic
+def part_percent_of_nation(x) -> sum(x) by part.name, supplier.nation.id / sum(x) by supplier.nation.id *100;
+
+
+WHERE ship_date <= '1998-12-01'::date 
+SELECT
+    part.name,
+    supplier.nation.name,
+    sum(charge_price)-> total_charge_price,
+    sum(discounted_price) -> total_discounted_price,
+    # call functions with @
+    @part_percent_of_nation(charge_price) as charge_price_percent_of_nation,
+    @part_percent_of_nation(discounted_price) as discount_price_percent_of_nation
+ORDER BY   
+    total_charge_price desc limit 100
+;

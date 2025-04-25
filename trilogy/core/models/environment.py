@@ -129,6 +129,9 @@ class EnvironmentConceptDict(dict):
     def __getitem__(
         self, key: str, line_no: int | None = None, file: Path | None = None
     ) -> Concept | UndefinedConceptFull:
+        # fast access path
+        if key in self.keys():
+            return super(EnvironmentConceptDict, self).__getitem__(key)
         if isinstance(key, ConceptRef):
             return self.__getitem__(key.address, line_no=line_no, file=file)
         try:
@@ -311,10 +314,12 @@ class Environment(BaseModel):
             f.write(self.model_dump_json())
         return ppath
 
-    def validate_concept(self, new_concept: Concept, meta: Meta | None = None):
+    def validate_concept(self, new_concept: Concept, meta: Meta | None = None)->None:
         lookup = new_concept.address
+        if lookup not in self.concepts:
+            return
         existing: Concept = self.concepts.get(lookup)  # type: ignore
-        if not existing or isinstance(existing, UndefinedConcept):
+        if isinstance(existing, UndefinedConcept):
             return
 
         def handle_persist():

@@ -129,7 +129,7 @@
     
     limit: "LIMIT"i /[0-9]+/
     
-    !window_order: ("TOP"i | "BOTTOM"i)
+    !window_order: /TOP|BOTTOM/i
     
     window: window_order /[0-9]+/
     
@@ -139,19 +139,26 @@
     
     over_list: concept_lit (","  concept_lit )* ","?
     
-    !ordering: ("ASC"i | "DESC"i ) ("NULLS"i ("FIRST"i | "LAST"i | "AUTO"i) )?
+    !ordering: /ASC|DESC/i  ("NULLS"i /FIRST|LAST|AUTO/i )?
     
     order_by: "ORDER"i "BY"i order_list
     
     //WHERE STATEMENT
+    LOGICAL_OR: "or"i
+    LOGICAL_AND: "and"i
     
-    !logical_operator: "and"i | "or"i
-    
+    conditional: _or_condition
+
+    _or_condition: _and_condition
+               | (_or_condition LOGICAL_OR _and_condition)
+
+    _and_condition: _condition_unit
+               | (_and_condition LOGICAL_AND _condition_unit)
+
     condition_parenthetical: "(" conditional ")"
 
-    _condition_unit: (expr | condition_parenthetical)
-
-    conditional: _condition_unit (logical_operator _condition_unit)*
+    _condition_unit: expr
+                  | condition_parenthetical
     
     where: "WHERE"i conditional
     
@@ -159,7 +166,7 @@
 
     !array_comparison: ( ("NOT"i "IN"i) | "IN"i)
 
-    COMPARISON_OPERATOR: (/is[\s]+not/ | "is" |"=" | ">" | "<" | ">=" | "<=" | "!=")
+    COMPARISON_OPERATOR: /(is\s+not|is|=|>=|<=|!=|>|<)/
     
     comparison: expr COMPARISON_OPERATOR expr
 

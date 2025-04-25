@@ -1604,9 +1604,6 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     ] = None
     arguments: Sequence[FuncArgs]
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
     def __repr__(self):
         return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
 
@@ -1620,9 +1617,8 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     @field_validator("arguments", mode="before")
     @classmethod
     def parse_arguments(cls, v, info: ValidationInfo):
-        from trilogy.core.models.build import BuildConcept
         from trilogy.parsing.exceptions import ParseError
-
+        from trilogy.core.models.build import BuildConcept
         values = info.data
         arg_count = len(v)
         final = []

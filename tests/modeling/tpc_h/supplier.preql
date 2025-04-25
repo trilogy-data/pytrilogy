@@ -1,0 +1,20 @@
+import nation as nation;
+
+key id int;
+property id.name string;
+property id.address string;
+property id.phone string;
+property id.account_balance string;
+property id.comment string;
+
+datasource supplier (
+    s_suppkey:id,
+    s_name:name,
+    s_address:address,
+    s_nationkey:nation.id,
+    s_phone:phone,
+    s_acctbal:account_balance,
+    s_comment:comment
+)
+grain (id)
+address `https://shell.duckdb.org/data/tpch/0_01/parquet/supplier.parquet`;
