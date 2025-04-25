@@ -1501,7 +1501,7 @@ class Factory:
         return base
 
     @build.register
-    def _(self, base: Function) -> BuildFunction:
+    def _(self, base: Function) -> BuildFunction | BuildAggregateWrapper:
         from trilogy.parsing.common import arbitrary_to_concept
 
         raw_args: list[Concept | FuncArgs] = []
@@ -1517,10 +1517,10 @@ class Factory:
                 raw_args.append(arg)
         if base.operator == FunctionType.GROUP:
             group_base = raw_args[0]
+            final_args: List[Concept | ConceptRef] = []
             if isinstance(group_base, (AggregateWrapper)):
                 if not group_base.by:
                     arguments = raw_args[1:]
-                    final_args: List[Concept | ConceptRef] = []
                     for x in arguments:
                         if isinstance(x, (ConceptRef, Concept)):
                             final_args.append(x)
@@ -1534,12 +1534,14 @@ class Factory:
                             # constant
                             continue
                     # return aggregate wrapper directly
-                    return AggregateWrapper(
-                        function=group_base.function,
-                        by=final_args,
+                    return self.build(
+                        AggregateWrapper(
+                            function=group_base.function,
+                            by=final_args,
+                        )
                     )
 
-            if isinstance(group_base, ConceptRef):
+            elif isinstance(group_base, ConceptRef):
                 if group_base.address in self.environment.concepts and not isinstance(
                     self.environment.concepts[group_base.address], UndefinedConcept
                 ):
@@ -1553,7 +1555,6 @@ class Factory:
                 and not group_base.lineage.by
             ):
                 arguments = raw_args[1:]
-                final_args: List[Concept | ConceptRef] = []
                 for x in arguments:
                     if isinstance(x, (ConceptRef, Concept)):
                         final_args.append(x)

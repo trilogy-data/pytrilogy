@@ -19,11 +19,13 @@ def is_union(c: BuildConcept):
 def build_layers(
     concepts: list[BuildConcept],
 ) -> tuple[list[list[BuildConcept]], list[BuildConcept]]:
-    sources = {x.address: x.lineage.concept_arguments for x in concepts}
+    sources = {
+        x.address: x.lineage.concept_arguments if x.lineage else [] for x in concepts
+    }
     root = concepts[0]
 
     built_layers = []
-    layers = root.lineage.concept_arguments
+    layers = root.lineage.concept_arguments if root.lineage else []
     sourced = set()
     while layers:
         layer = []
