@@ -1,18 +1,9 @@
 query_id = 98
-gen_length = 7432
+gen_length = 4552
 generated_sql = """
 
 WITH 
 cheerful as (
-SELECT
-    store_sales_store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\",
-    store_sales_store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales__date_id\"
-FROM
-    memory.store_sales as store_sales_store_sales
-GROUP BY 
-    store_sales_store_sales.\"SS_ITEM_SK\",
-    store_sales_store_sales.\"SS_SOLD_DATE_SK\"),
-questionable as (
 SELECT
     store_sales_item_items.\"I_CATEGORY\" as \"store_sales_item_category\",
     store_sales_item_items.\"I_CLASS\" as \"store_sales_item_class\",
@@ -31,45 +22,32 @@ WHERE
 ),
 thoughtful as (
 SELECT
-    store_sales_item_items.\"I_CATEGORY\" as \"store_sales_item_category\",
-    store_sales_item_items.\"I_CLASS\" as \"store_sales_item_class\",
-    store_sales_item_items.\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
-    store_sales_item_items.\"I_ITEM_DESC\" as \"store_sales_item_desc\",
-    store_sales_item_items.\"I_ITEM_ID\" as \"store_sales_item_name\"
+    cheerful.\"store_sales_item_category\" as \"store_sales_item_category\",
+    cheerful.\"store_sales_item_class\" as \"store_sales_item_class\",
+    cheerful.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    cheerful.\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    cheerful.\"store_sales_item_name\" as \"store_sales_item_name\",
+    sum(cheerful.\"store_sales_ext_sales_price\") as \"_virt_agg_sum_9873055619986236\",
+    sum(cheerful.\"store_sales_ext_sales_price\") as \"item_revenue\"
 FROM
     cheerful
-    INNER JOIN memory.item as store_sales_item_items on cheerful.\"store_sales_item_id\" = store_sales_item_items.\"I_ITEM_SK\"
-    INNER JOIN memory.date_dim as store_sales_date_date on cheerful.\"store_sales__date_id\" = store_sales_date_date.\"D_DATE_SK\"
-WHERE
-    store_sales_item_items.\"I_CATEGORY\" in ('Sports','Books','Home') and cast(store_sales_date_date.\"D_DATE\" as date) >= date '1999-02-22' and cast(store_sales_date_date.\"D_DATE\" as date) <= date '1999-03-24'
-),
-yummy as (
-SELECT
-    questionable.\"store_sales_item_category\" as \"store_sales_item_category\",
-    questionable.\"store_sales_item_class\" as \"store_sales_item_class\",
-    questionable.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    questionable.\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    questionable.\"store_sales_item_name\" as \"store_sales_item_name\",
-    sum(questionable.\"store_sales_ext_sales_price\") as \"_virt_agg_sum_9873055619986236\",
-    sum(questionable.\"store_sales_ext_sales_price\") as \"item_revenue\"
-FROM
-    questionable
 GROUP BY 
-    questionable.\"store_sales_item_category\",
-    questionable.\"store_sales_item_class\",
-    questionable.\"store_sales_item_current_price\",
-    questionable.\"store_sales_item_desc\",
-    questionable.\"store_sales_item_name\"),
-abundant as (
-SELECT
-    questionable.\"store_sales_item_class\" as \"store_sales_item_class\",
-    sum(questionable.\"store_sales_ext_sales_price\") as \"_virt_agg_sum_7595906549305205\"
-FROM
-    questionable
-GROUP BY 
-    questionable.\"store_sales_item_class\"),
+    cheerful.\"store_sales_item_category\",
+    cheerful.\"store_sales_item_class\",
+    cheerful.\"store_sales_item_current_price\",
+    cheerful.\"store_sales_item_desc\",
+    cheerful.\"store_sales_item_name\"),
 cooperative as (
 SELECT
+    cheerful.\"store_sales_item_class\" as \"store_sales_item_class\",
+    sum(cheerful.\"store_sales_ext_sales_price\") as \"_virt_agg_sum_7595906549305205\"
+FROM
+    cheerful
+GROUP BY 
+    cheerful.\"store_sales_item_class\"),
+questionable as (
+SELECT
+    thoughtful.\"_virt_agg_sum_9873055619986236\" * 100.0 / (cooperative.\"_virt_agg_sum_7595906549305205\") as \"revenueratio\",
     thoughtful.\"store_sales_item_category\" as \"store_sales_item_category\",
     thoughtful.\"store_sales_item_class\" as \"store_sales_item_class\",
     thoughtful.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
@@ -77,48 +55,21 @@ SELECT
     thoughtful.\"store_sales_item_name\" as \"store_sales_item_name\"
 FROM
     thoughtful
-GROUP BY 
-    thoughtful.\"store_sales_item_category\",
-    thoughtful.\"store_sales_item_class\",
-    thoughtful.\"store_sales_item_current_price\",
-    thoughtful.\"store_sales_item_desc\",
-    thoughtful.\"store_sales_item_name\"),
-uneven as (
+    INNER JOIN cooperative on (thoughtful.\"store_sales_item_class\" = cooperative.\"store_sales_item_class\" or (thoughtful.\"store_sales_item_class\" is null and cooperative.\"store_sales_item_class\" is null)))
 SELECT
-    abundant.\"_virt_agg_sum_7595906549305205\" as \"_virt_agg_sum_7595906549305205\",
-    cooperative.\"store_sales_item_category\" as \"store_sales_item_category\",
-    cooperative.\"store_sales_item_class\" as \"store_sales_item_class\",
-    cooperative.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    cooperative.\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    cooperative.\"store_sales_item_name\" as \"store_sales_item_name\"
+    questionable.\"store_sales_item_name\" as \"store_sales_item_name\",
+    questionable.\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    questionable.\"store_sales_item_category\" as \"store_sales_item_category\",
+    questionable.\"store_sales_item_class\" as \"store_sales_item_class\",
+    questionable.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    thoughtful.\"item_revenue\" as \"item_revenue\",
+    questionable.\"revenueratio\" as \"revenueratio\"
 FROM
-    cooperative
-    INNER JOIN abundant on (cooperative.\"store_sales_item_class\" = abundant.\"store_sales_item_class\" or (cooperative.\"store_sales_item_class\" is null and abundant.\"store_sales_item_class\" is null))),
-juicy as (
-SELECT
-    uneven.\"store_sales_item_category\" as \"store_sales_item_category\",
-    uneven.\"store_sales_item_class\" as \"store_sales_item_class\",
-    uneven.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    uneven.\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    uneven.\"store_sales_item_name\" as \"store_sales_item_name\",
-    yummy.\"_virt_agg_sum_9873055619986236\" * 100.0 / (uneven.\"_virt_agg_sum_7595906549305205\") as \"revenueratio\"
-FROM
-    uneven
-    INNER JOIN yummy on (uneven.\"store_sales_item_category\" = yummy.\"store_sales_item_category\" or (uneven.\"store_sales_item_category\" is null and yummy.\"store_sales_item_category\" is null)) AND (uneven.\"store_sales_item_class\" = yummy.\"store_sales_item_class\" or (uneven.\"store_sales_item_class\" is null and yummy.\"store_sales_item_class\" is null)) AND (uneven.\"store_sales_item_current_price\" = yummy.\"store_sales_item_current_price\" or (uneven.\"store_sales_item_current_price\" is null and yummy.\"store_sales_item_current_price\" is null)) AND (uneven.\"store_sales_item_desc\" = yummy.\"store_sales_item_desc\" or (uneven.\"store_sales_item_desc\" is null and yummy.\"store_sales_item_desc\" is null)) AND uneven.\"store_sales_item_name\" = yummy.\"store_sales_item_name\")
-SELECT
-    juicy.\"store_sales_item_name\" as \"store_sales_item_name\",
-    juicy.\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    juicy.\"store_sales_item_category\" as \"store_sales_item_category\",
-    juicy.\"store_sales_item_class\" as \"store_sales_item_class\",
-    juicy.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    yummy.\"item_revenue\" as \"item_revenue\",
-    juicy.\"revenueratio\" as \"revenueratio\"
-FROM
-    juicy
-    INNER JOIN yummy on (juicy.\"store_sales_item_category\" = yummy.\"store_sales_item_category\" or (juicy.\"store_sales_item_category\" is null and yummy.\"store_sales_item_category\" is null)) AND (juicy.\"store_sales_item_class\" = yummy.\"store_sales_item_class\" or (juicy.\"store_sales_item_class\" is null and yummy.\"store_sales_item_class\" is null)) AND (juicy.\"store_sales_item_current_price\" = yummy.\"store_sales_item_current_price\" or (juicy.\"store_sales_item_current_price\" is null and yummy.\"store_sales_item_current_price\" is null)) AND (juicy.\"store_sales_item_desc\" = yummy.\"store_sales_item_desc\" or (juicy.\"store_sales_item_desc\" is null and yummy.\"store_sales_item_desc\" is null)) AND juicy.\"store_sales_item_name\" = yummy.\"store_sales_item_name\"
+    questionable
+    INNER JOIN thoughtful on (questionable.\"store_sales_item_category\" = thoughtful.\"store_sales_item_category\" or (questionable.\"store_sales_item_category\" is null and thoughtful.\"store_sales_item_category\" is null)) AND (questionable.\"store_sales_item_class\" = thoughtful.\"store_sales_item_class\" or (questionable.\"store_sales_item_class\" is null and thoughtful.\"store_sales_item_class\" is null)) AND (questionable.\"store_sales_item_current_price\" = thoughtful.\"store_sales_item_current_price\" or (questionable.\"store_sales_item_current_price\" is null and thoughtful.\"store_sales_item_current_price\" is null)) AND (questionable.\"store_sales_item_desc\" = thoughtful.\"store_sales_item_desc\" or (questionable.\"store_sales_item_desc\" is null and thoughtful.\"store_sales_item_desc\" is null)) AND questionable.\"store_sales_item_name\" = thoughtful.\"store_sales_item_name\"
 ORDER BY 
-    juicy.\"store_sales_item_category\" asc nulls first,
-    juicy.\"store_sales_item_class\" asc nulls first,
-    juicy.\"store_sales_item_name\" asc nulls first,
-    juicy.\"store_sales_item_desc\" asc nulls first,
-    juicy.\"revenueratio\" asc nulls first"""
+    questionable.\"store_sales_item_category\" asc nulls first,
+    questionable.\"store_sales_item_class\" asc nulls first,
+    questionable.\"store_sales_item_name\" asc nulls first,
+    questionable.\"store_sales_item_desc\" asc nulls first,
+    questionable.\"revenueratio\" asc nulls first"""

@@ -45,6 +45,11 @@ class History(BaseModel):
         self.history[
             self._concepts_to_lookup(search, accept_partial, conditions=conditions)
         ] = output
+        self.log_end(
+            search,
+            accept_partial=accept_partial,
+            conditions=conditions,
+        )
 
     def get_history(
         self,
@@ -76,6 +81,20 @@ class History(BaseModel):
         conditions: BuildWhereClause | None = None,
     ):
         self.started.add(
+            self._concepts_to_lookup(
+                search,
+                accept_partial=accept_partial,
+                conditions=conditions,
+            )
+        )
+
+    def log_end(
+        self,
+        search: list[BuildConcept],
+        accept_partial: bool = False,
+        conditions: BuildWhereClause | None = None,
+    ):
+        self.started.discard(
             self._concepts_to_lookup(
                 search,
                 accept_partial=accept_partial,

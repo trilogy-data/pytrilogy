@@ -141,7 +141,7 @@ SELECT
     lead(vacuous.\"yearly_agg_tuesday_sales\", 53) over (order by vacuous.\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_3375245317408835\",
     lead(vacuous.\"yearly_agg_wednesday_sales\", 53) over (order by vacuous.\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_6759541963679355\",
     vacuous.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
-    vacuous.\"yearly_agg_sunday_sales\" as \"yearly_agg_sunday_sales\"
+    vacuous.\"yearly_agg_monday_sales\" as \"yearly_agg_monday_sales\"
 FROM
     vacuous),
 young as (
@@ -154,7 +154,7 @@ SELECT
     concerned.\"_virt_window_lead_840125329441915\" as \"_virt_window_lead_840125329441915\",
     concerned.\"_virt_window_lead_8474766537336377\" as \"_virt_window_lead_8474766537336377\",
     concerned.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
-    concerned.\"yearly_agg_sunday_sales\" as \"yearly_agg_sunday_sales\"
+    concerned.\"yearly_agg_monday_sales\" as \"yearly_agg_monday_sales\"
 FROM
     concerned)
 SELECT
@@ -168,7 +168,7 @@ SELECT
     round(vacuous.\"yearly_agg_saturday_sales\" / (young.\"_virt_window_lead_2858098921271386\"),2) as \"saturday_increase\"
 FROM
     young
-    LEFT OUTER JOIN vacuous on young.\"yearly_agg_date_week_seq\" = vacuous.\"yearly_agg_date_week_seq\" AND young.\"yearly_agg_sunday_sales\" = vacuous.\"yearly_agg_sunday_sales\"
+    LEFT OUTER JOIN vacuous on young.\"yearly_agg_date_week_seq\" = vacuous.\"yearly_agg_date_week_seq\" AND young.\"yearly_agg_monday_sales\" = vacuous.\"yearly_agg_monday_sales\"
 WHERE
     round(vacuous.\"yearly_agg_sunday_sales\" / (young.\"_virt_window_lead_4780721583408487\"),2) is not null
 

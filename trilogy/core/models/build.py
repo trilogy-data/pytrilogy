@@ -65,6 +65,7 @@ from trilogy.core.models.author import (
     RowsetLineage,
     SelectLineage,
     SubselectComparison,
+    UndefinedConcept,
     WhereClause,
     WindowItem,
 )
@@ -800,9 +801,6 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped, BaseModel):
     modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = Field(default_factory=set)
 
-    def with_select_context(self, *args, **kwargs):
-        return self
-
     @property
     def is_aggregate(self) -> bool:
         return self.build_is_aggregate
@@ -1503,7 +1501,7 @@ class Factory:
         return base
 
     @build.register
-    def _(self, base: Function) -> BuildFunction:
+    def _(self, base: Function) -> BuildFunction | BuildAggregateWrapper:
         from trilogy.parsing.common import arbitrary_to_concept
 
         raw_args: list[Concept | FuncArgs] = []
@@ -1517,6 +1515,54 @@ class Factory:
                 raw_args.append(narg)
             else:
                 raw_args.append(arg)
+        if base.operator == FunctionType.GROUP:
+            group_base = raw_args[0]
+            final_args: List[Concept | ConceptRef] = []
+            if isinstance(group_base, ConceptRef):
+                if group_base.address in self.environment.concepts and not isinstance(
+                    self.environment.concepts[group_base.address], UndefinedConcept
+                ):
+                    group_base = self.environment.concepts[group_base.address]
+            if (
+                isinstance(group_base, Concept)
+                and isinstance(group_base.lineage, AggregateWrapper)
+                and not group_base.lineage.by
+            ):
+                arguments = raw_args[1:]
+                for x in arguments:
+                    if isinstance(x, (ConceptRef, Concept)):
+                        final_args.append(x)
+                    elif isinstance(x, (AggregateWrapper, FilterItem, WindowItem)):
+                        newx = arbitrary_to_concept(
+                            x,
+                            environment=self.environment,
+                        )
+                        final_args.append(newx)
+                    else:
+                        # constants, etc, can be ignored for group
+                        continue
+                group_base = group_base.model_copy(
+                    deep=True,
+                    update={
+                        "lineage": AggregateWrapper(
+                            function=group_base.lineage.function,
+                            by=final_args,
+                        )
+                    },
+                )
+                group_base = group_base.with_grain(
+                    Grain.from_concepts(final_args, environment=self.environment)
+                )
+                rval = self.build(group_base)
+                return BuildFunction.model_construct(
+                    operator=base.operator,
+                    arguments=[rval, *[self.build(c) for c in raw_args[1:]]],
+                    output_datatype=base.output_datatype,
+                    output_purpose=base.output_purpose,
+                    valid_inputs=base.valid_inputs,
+                    arg_count=base.arg_count,
+                )
+
         new = BuildFunction.model_construct(
             operator=base.operator,
             arguments=[self.build(c) for c in raw_args],
@@ -1568,7 +1614,10 @@ class Factory:
         new_lineage, final_grain, _ = base.get_select_grain_and_keys(
             self.grain, self.environment
         )
-        build_lineage = self.build(new_lineage)
+        if new_lineage:
+            build_lineage = self.build(new_lineage)
+        else:
+            build_lineage = None
         derivation = Concept.calculate_derivation(build_lineage, base.purpose)
         granularity = Concept.calculate_granularity(
             derivation, final_grain, build_lineage

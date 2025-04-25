@@ -3,6 +3,8 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
+
+# C:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\node_generators\group_to_node.py
 from trilogy.core.processing.nodes import (
     GroupNode,
     History,
@@ -30,6 +32,7 @@ def gen_group_to_node(
             f"Group to should have function lineage, is {type(concept.lineage)}"
         )
     group_arg = concept.lineage.arguments[0]
+
     parent_concepts: List[BuildConcept] = concept.lineage.concept_arguments
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} group by node has required parents {[x.address for x in parent_concepts]}"
