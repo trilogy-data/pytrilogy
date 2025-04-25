@@ -1518,37 +1518,11 @@ class Factory:
         if base.operator == FunctionType.GROUP:
             group_base = raw_args[0]
             final_args: List[Concept | ConceptRef] = []
-            if isinstance(group_base, (AggregateWrapper)):
-                if not group_base.by:
-                    arguments = raw_args[1:]
-                    for x in arguments:
-                        if isinstance(x, (ConceptRef, Concept)):
-                            final_args.append(x)
-                        elif isinstance(x, (AggregateWrapper, FilterItem, WindowItem)):
-                            newx = arbitrary_to_concept(
-                                x,
-                                environment=self.environment,
-                            )
-                            final_args.append(newx)
-                        else:
-                            # constant
-                            continue
-                    # return aggregate wrapper directly
-                    return self.build(
-                        AggregateWrapper(
-                            function=group_base.function,
-                            by=final_args,
-                        )
-                    )
-
-            elif isinstance(group_base, ConceptRef):
+            if isinstance(group_base, ConceptRef):
                 if group_base.address in self.environment.concepts and not isinstance(
                     self.environment.concepts[group_base.address], UndefinedConcept
                 ):
                     group_base = self.environment.concepts[group_base.address]
-            # Group is a special function
-            # if we're calling group on an aggregate that is not wrapped in an aggregate wrapper;
-            # promote the group up to wrap the base function.
             if (
                 isinstance(group_base, Concept)
                 and isinstance(group_base.lineage, AggregateWrapper)
