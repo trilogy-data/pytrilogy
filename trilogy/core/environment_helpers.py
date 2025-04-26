@@ -27,19 +27,20 @@ def generate_date_concepts(concept: Concept, environment: Environment):
         base_line_number = concept.metadata.line_number
     else:
         base_line_number = None
-    for ftype, dtype in [
-        [FunctionType.MONTH, TraitDataType(type=DataType.INTEGER, traits=["month"])],
-        [FunctionType.YEAR, TraitDataType(type=DataType.INTEGER, traits=["year"])],
-        [
+    arg_tuples: list[tuple[FunctionType, TraitDataType]] = [
+        (FunctionType.MONTH, TraitDataType(type=DataType.INTEGER, traits=["month"])),
+        (FunctionType.YEAR, TraitDataType(type=DataType.INTEGER, traits=["year"])),
+        (
             FunctionType.QUARTER,
             TraitDataType(type=DataType.INTEGER, traits=["quarter"]),
-        ],
-        [FunctionType.DAY, TraitDataType(type=DataType.INTEGER, traits=["day"])],
-        [
+        ),
+        (FunctionType.DAY, TraitDataType(type=DataType.INTEGER, traits=["day"])),
+        (
             FunctionType.DAY_OF_WEEK,
             TraitDataType(type=DataType.INTEGER, traits=["day_of_week"]),
-        ],
-    ]:
+        ),
+    ]
+    for ftype, dtype in arg_tuples:
         fname = ftype.name.lower()
         address = concept.address + f".{fname}"
         if address in environment.concepts:
@@ -112,12 +113,13 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
         base_line_number = concept.metadata.line_number
     else:
         base_line_number = None
-    for ftype, datatype in [
-        [FunctionType.DATE, DataType.DATE],
-        [FunctionType.HOUR, TraitDataType(type=DataType.INTEGER, traits=["hour"])],
-        [FunctionType.MINUTE, TraitDataType(type=DataType.INTEGER, traits=["minute"])],
-        [FunctionType.SECOND, TraitDataType(type=DataType.INTEGER, traits=["second"])],
-    ]:
+    setup_tuples: list[tuple[FunctionType, DataType | TraitDataType]] = [
+        (FunctionType.DATE, DataType.DATE),
+        (FunctionType.HOUR, TraitDataType(type=DataType.INTEGER, traits=["hour"])),
+        (FunctionType.MINUTE, TraitDataType(type=DataType.INTEGER, traits=["minute"])),
+        (FunctionType.SECOND, TraitDataType(type=DataType.INTEGER, traits=["second"])),
+    ]
+    for ftype, datatype in setup_tuples:
         fname = ftype.name.lower()
         address = concept.address + f".{fname}"
         if address in environment.concepts:

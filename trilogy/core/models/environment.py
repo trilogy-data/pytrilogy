@@ -314,13 +314,15 @@ class Environment(BaseModel):
             f.write(self.model_dump_json())
         return ppath
 
-    def validate_concept(self, new_concept: Concept, meta: Meta | None = None) -> None:
+    def validate_concept(
+        self, new_concept: Concept, meta: Meta | None = None
+    ) -> Concept | None:
         lookup = new_concept.address
         if lookup not in self.concepts:
-            return
+            return None
         existing: Concept = self.concepts.get(lookup)  # type: ignore
         if isinstance(existing, UndefinedConcept):
-            return
+            return None
 
         def handle_persist():
             deriv_lookup = (
@@ -366,7 +368,7 @@ class Environment(BaseModel):
         if existing and self.config.allow_duplicate_declaration:
             if existing.metadata.concept_source == ConceptSource.PERSIST_STATEMENT:
                 return handle_persist()
-            return
+            return None
         elif existing.metadata:
             if existing.metadata.concept_source == ConceptSource.PERSIST_STATEMENT:
                 return handle_persist()
