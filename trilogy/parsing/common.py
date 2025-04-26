@@ -102,8 +102,10 @@ def process_function_arg(
             concept.metadata.line_number = meta.line
         environment.add_concept(concept, meta=meta)
         return concept
+    elif isinstance(arg, Concept):
+        return arg.reference
     elif isinstance(arg, ConceptRef):
-        return environment.concepts[arg.address]
+        return environment.concepts[arg.address].reference
     return arg
 
 
@@ -111,8 +113,8 @@ def process_function_args(
     args,
     meta: Meta | None,
     environment: Environment,
-) -> List[Concept | Function | str | int | float | date | datetime]:
-    final: List[Concept | Function | str | int | float | date | datetime] = []
+) -> List[ConceptRef | Function | str | int | float | date | datetime]:
+    final: List[ConceptRef | Function | str | int | float | date | datetime] = []
     for arg in args:
         final.append(process_function_arg(arg, meta, environment))
     return final

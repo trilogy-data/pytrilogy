@@ -4,7 +4,7 @@ from trilogy.core.functions import AttrAccess
 from trilogy.core.models.author import Concept, Function, Metadata, TraitDataType
 from trilogy.core.models.core import DataType, StructType, arg_to_datatype
 from trilogy.core.models.environment import Environment
-from trilogy.parsing.common import Meta, process_function_args
+from trilogy.parsing.common import Meta
 
 FUNCTION_DESCRIPTION_MAPS = {
     FunctionType.DATE: "The date part of a timestamp/date. Integer, 0-31 depending on month.",
@@ -218,9 +218,6 @@ def generate_related_concepts(
 
     if isinstance(concept.datatype, StructType):
         for key, value in concept.datatype.fields_map.items():
-            args = process_function_args(
-                [concept, key], meta=meta, environment=environment
-            )
             auto = Concept.model_construct(
                 name=key,
                 datatype=arg_to_datatype(value),
@@ -231,7 +228,7 @@ def generate_related_concepts(
                     and environment.namespace != DEFAULT_NAMESPACE
                     else concept.name
                 ),
-                lineage=AttrAccess(args, environment=environment),
+                lineage=AttrAccess([concept.reference, key], environment=environment),
                 grain=concept.grain,
             )
             environment.add_concept(auto, meta=meta)
