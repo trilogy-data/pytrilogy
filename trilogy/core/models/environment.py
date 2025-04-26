@@ -129,6 +129,9 @@ class EnvironmentConceptDict(dict):
     def __getitem__(
         self, key: str, line_no: int | None = None, file: Path | None = None
     ) -> Concept | UndefinedConceptFull:
+        # fast access path
+        if key in self.keys():
+            return super(EnvironmentConceptDict, self).__getitem__(key)
         if isinstance(key, ConceptRef):
             return self.__getitem__(key.address, line_no=line_no, file=file)
         try:
@@ -311,11 +314,15 @@ class Environment(BaseModel):
             f.write(self.model_dump_json())
         return ppath
 
-    def validate_concept(self, new_concept: Concept, meta: Meta | None = None):
+    def validate_concept(
+        self, new_concept: Concept, meta: Meta | None = None
+    ) -> Concept | None:
         lookup = new_concept.address
+        if lookup not in self.concepts:
+            return None
         existing: Concept = self.concepts.get(lookup)  # type: ignore
-        if not existing or isinstance(existing, UndefinedConcept):
-            return
+        if isinstance(existing, UndefinedConcept):
+            return None
 
         def handle_persist():
             deriv_lookup = (
@@ -361,7 +368,7 @@ class Environment(BaseModel):
         if existing and self.config.allow_duplicate_declaration:
             if existing.metadata.concept_source == ConceptSource.PERSIST_STATEMENT:
                 return handle_persist()
-            return
+            return None
         elif existing.metadata:
             if existing.metadata.concept_source == ConceptSource.PERSIST_STATEMENT:
                 return handle_persist()

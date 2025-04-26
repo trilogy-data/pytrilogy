@@ -1,0 +1,26 @@
+import std.money;
+
+import customer as customer;
+
+key id int; #order key
+property id.status string;
+property id.total_price float::usd;
+property id.date date;
+property id.priority string;  #enum, one of: 1-URGENT, 2-HIGH, 3-MEDIUM, 4-NOT SPECIFIED
+property id.clerk string;
+property id.ship_priority string;  #enum, one of: 1-URGENT, 2-HIGH, 3-MEDIUM, 4-NOT SPECIFIED
+property id.comment string;
+
+datasource orders(
+    o_orderkey:id,
+    o_custkey:customer.id,
+    o_orderstatus: status,
+    o_totalprice: total_price,
+    o_orderdate: date,
+    o_orderpriority:priority, 
+    o_clerk:clerk,
+    o_comment:comment,
+    o_shippriority:ship_priority 
+)
+grain (id)
+address `https://shell.duckdb.org/data/tpch/0_01/parquet/orders.parquet`;

@@ -1604,9 +1604,6 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     ] = None
     arguments: Sequence[FuncArgs]
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
     def __repr__(self):
         return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
 

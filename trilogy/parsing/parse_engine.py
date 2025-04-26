@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum
+from logging import getLogger
 from os.path import dirname, join
 from pathlib import Path
 from re import IGNORECASE
@@ -136,6 +137,8 @@ from trilogy.parsing.common import (
     rowset_to_concepts,
 )
 from trilogy.parsing.exceptions import ParseError
+
+perf_logger = getLogger("trilogy.parse.performance")
 
 
 class ParsePass(Enum):
@@ -407,6 +410,7 @@ class ParseToObjects(Transformer):
         mapping = self.environment.concepts[address]
         datatype = mapping.output_datatype
         return ConceptRef(
+            # this is load-bearing to handle pseudonyms
             address=mapping.address,
             metadata=Metadata(line_number=meta.line),
             datatype=datatype,
@@ -1010,6 +1014,7 @@ class ParseToObjects(Transformer):
         return text
 
     def import_statement(self, args: list[str]) -> ImportStatement:
+        start = datetime.now()
         if len(args) == 2:
             alias = args[-1]
             cache_key = args[-1]
@@ -1046,9 +1051,11 @@ class ParseToObjects(Transformer):
             )
 
         if token_lookup in self.tokens:
+            perf_logger.debug(f"\tTokens cached for {token_lookup}")
             raw_tokens = self.tokens[token_lookup]
             text = self.text_lookup[token_lookup]
         else:
+            perf_logger.debug(f"\tTokens not cached for {token_lookup}, resolving")
             text = self.resolve_import_address(target, is_stdlib)
             self.text_lookup[token_lookup] = text
 
@@ -1061,12 +1068,19 @@ class ParseToObjects(Transformer):
             self.tokens[token_lookup] = raw_tokens
 
         if cache_lookup in self.parsed:
+            perf_logger.debug(f"\tEnvironment cached for {token_lookup}")
             nparser = self.parsed[cache_lookup]
             new_env = nparser.environment
             if nparser.parse_pass != ParsePass.VALIDATION:
                 # nparser.transform(raw_tokens)
+                second_pass_start = datetime.now()
                 nparser.run_second_parse_pass()
+                second_pass_end = datetime.now()
+                perf_logger.debug(
+                    f"{second_pass_end - second_pass_start} seconds | Import {alias} key ({cache_key}) second pass took {second_pass_end - second_pass_start} to parse, {len(new_env.concepts)} concepts"
+                )
         else:
+            perf_logger.debug(f"\tParsing new for {token_lookup}")
             try:
                 new_env = Environment(
                     working_path=dirname(target),
@@ -1097,6 +1111,10 @@ class ParseToObjects(Transformer):
 
         self.environment.add_import(
             alias, new_env, Import(alias=alias, path=parsed_path)
+        )
+        end = datetime.now()
+        perf_logger.debug(
+            f"{end - start} seconds | Import {alias} key ({cache_key}) took  to parse, {len(new_env.concepts)} concepts"
         )
         return imps
 
@@ -1273,8 +1291,8 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def function_binding_item(self, meta: Meta, args) -> ArgBinding:
         if len(args) == 2:
-            return ArgBinding(name=args[0], default=args[1])
-        return ArgBinding(name=args[0], default=None)
+            return ArgBinding.model_construct(name=args[0], default=args[1])
+        return ArgBinding.model_construct(name=args[0], default=None)
 
     @v_args(meta=True)
     def raw_function(self, meta: Meta, args) -> FunctionDeclaration:
@@ -1857,7 +1875,7 @@ def parse_text(
     parser = ParseToObjects(
         environment=environment, import_keys=["root"], parse_config=parse_config
     )
-
+    start = datetime.now()
     try:
         parser.set_text(text)
         # disable fail on missing to allow for circular dependencies
@@ -1867,6 +1885,10 @@ def parse_text(
         pass_two = parser.run_second_parse_pass()
         output = [v for v in pass_two if v]
         environment.concepts.fail_on_missing = True
+        end = datetime.now()
+        perf_logger.debug(
+            f"Parse time: {end - start} for {len(text)} characters, {len(output)} objects"
+        )
     except VisitError as e:
         unpack_visit_error(e)
         # this will never be reached

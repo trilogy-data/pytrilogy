@@ -1,0 +1,50 @@
+import std.money;
+import std.display;
+import order as order;
+import supplier as supplier;
+import part as part;
+
+
+
+key id int; #unique key identifying a lineitem within an order
+property id.quantity float; #quantity of an part within an order
+property id.extended_price float::usd;
+property id.discount float::percent; # percent discount
+property id.tax float::percent; # tax, as percentage
+property id.return_flag string;
+property id.line_status string;
+property id.ship_date date;
+property id.commit_date date;
+property id.receipt_date date;
+property id.ship_instruct string;
+property id.ship_mode string;
+property id.comment string;
+
+
+property id.revenue <- extended_price* (1 - discount); # revenue is our price, with discount applied
+
+property id.customer_charged <- revenue * (1 + tax); # the customer is charged a total that includes tax based on the revenue
+
+auto total_revenue <- sum(revenue); # total revenue is an aggregated revenue suitable for use in a report
+
+# upper some fileds to fix stats issue
+datasource lineitem(
+    l_orderkey: order.id,
+    l_partkey: part.id,
+    l_suppkey: supplier.id,
+    l_linenumber:id,
+    l_quantity:quantity,
+    l_extendedprice: extended_price,
+    l_discount:discount,
+    l_tax:tax,
+    l_returnflag:return_flag,
+    l_linestatus: line_status,
+    l_shipdate: ship_date,
+    l_commitdate: commit_date,
+    l_receiptdate:receipt_date,
+    l_shipinstruct:ship_instruct,
+    l_shipmode: ship_mode,
+    l_comment:comment
+)
+grain(id)
+address `https://shell.duckdb.org/data/tpch/0_01/parquet/lineitem.parquet`;

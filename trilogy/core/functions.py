@@ -17,6 +17,7 @@ from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import (
     AggregateWrapper,
     Concept,
+    ConceptRef,
     Function,
     Parenthetical,
     UndefinedConcept,
@@ -35,7 +36,7 @@ from trilogy.core.models.core import (
 )
 from trilogy.core.models.environment import Environment
 
-GENERIC_ARGS = Concept | Function | str | int | float | date | datetime
+GENERIC_ARGS = Concept | ConceptRef | Function | str | int | float | date | datetime
 
 
 @dataclass
@@ -773,7 +774,7 @@ class FunctionFactory:
                 output_purpose = Purpose.PROPERTY
         return Function(
             operator=operator,
-            arguments=full_args,
+            arguments=full_args,  # type: ignore
             output_datatype=final_output_type,
             output_purpose=output_purpose,
             valid_inputs=valid_inputs,
@@ -804,7 +805,7 @@ def create_function_derived_concept(
         purpose=purpose,
         lineage=Function(
             operator=operator,
-            arguments=arguments,
+            arguments=[x.reference for x in arguments],
             output_datatype=output_type,
             output_purpose=purpose,
             arg_count=len(arguments),
@@ -896,7 +897,7 @@ def Split(args: list[Concept], environment: Environment) -> Function:
     )
 
 
-def AttrAccess(args: list[GENERIC_ARGS], environment: Environment):
+def AttrAccess(args: list[ConceptRef | str | int], environment: Environment):
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.ATTR_ACCESS
     )
