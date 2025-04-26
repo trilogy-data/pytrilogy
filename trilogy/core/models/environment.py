@@ -314,7 +314,7 @@ class Environment(BaseModel):
             f.write(self.model_dump_json())
         return ppath
 
-    def validate_concept(self, new_concept: Concept, meta: Meta | None = None)->None:
+    def validate_concept(self, new_concept: Concept, meta: Meta | None = None) -> None:
         lookup = new_concept.address
         if lookup not in self.concepts:
             return

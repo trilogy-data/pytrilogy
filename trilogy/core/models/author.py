@@ -1617,8 +1617,9 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     @field_validator("arguments", mode="before")
     @classmethod
     def parse_arguments(cls, v, info: ValidationInfo):
-        from trilogy.parsing.exceptions import ParseError
         from trilogy.core.models.build import BuildConcept
+        from trilogy.parsing.exceptions import ParseError
+
         values = info.data
         arg_count = len(v)
         final = []

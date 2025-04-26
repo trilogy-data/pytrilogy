@@ -1,15 +1,14 @@
 import sys
 from datetime import datetime
+from logging import DEBUG, StreamHandler, getLogger
 from pathlib import Path
 
 path = Path(__file__).parents[3]
 print(path)
 sys.path.insert(0, str(path))
 
-
 from trilogy import Dialects, Executor, __version__  # noqa: E402
 from trilogy.core.models.environment import Environment  # noqa: E402
-from logging import getLogger, StreamHandler, DEBUG
 
 perf_logger = getLogger("trilogy.parse.performance")
 

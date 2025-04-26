@@ -1,7 +1,7 @@
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import ConceptSource, DatePart, FunctionType, Purpose
-from trilogy.core.functions import AttrAccess, FunctionFactory
-from trilogy.core.models.author import Concept, Function, Metadata
+from trilogy.core.functions import AttrAccess
+from trilogy.core.models.author import Concept, Function, Metadata, TraitDataType
 from trilogy.core.models.core import DataType, StructType, arg_to_datatype
 from trilogy.core.models.environment import Environment
 from trilogy.parsing.common import Meta, process_function_args
@@ -19,7 +19,6 @@ FUNCTION_DESCRIPTION_MAPS = {
 
 
 def generate_date_concepts(concept: Concept, environment: Environment):
-    factory = FunctionFactory(environment=environment)
     if concept.metadata and concept.metadata.description:
         base_description = concept.metadata.description
     else:
@@ -28,22 +27,33 @@ def generate_date_concepts(concept: Concept, environment: Environment):
         base_line_number = concept.metadata.line_number
     else:
         base_line_number = None
-    for ftype in [
-        FunctionType.MONTH,
-        FunctionType.YEAR,
-        FunctionType.QUARTER,
-        FunctionType.DAY,
-        FunctionType.DAY_OF_WEEK,
+    for ftype, dtype in [
+        [FunctionType.MONTH, TraitDataType(type=DataType.INTEGER, traits=["month"])],
+        [FunctionType.YEAR, TraitDataType(type=DataType.INTEGER, traits=["year"])],
+        [
+            FunctionType.QUARTER,
+            TraitDataType(type=DataType.INTEGER, traits=["quarter"]),
+        ],
+        [FunctionType.DAY, TraitDataType(type=DataType.INTEGER, traits=["day"])],
+        [
+            FunctionType.DAY_OF_WEEK,
+            TraitDataType(type=DataType.INTEGER, traits=["day_of_week"]),
+        ],
     ]:
         fname = ftype.name.lower()
+        address = concept.address + f".{fname}"
+        if address in environment.concepts:
+            continue
         default_type = (
             Purpose.CONSTANT
             if concept.purpose == Purpose.CONSTANT
             else Purpose.PROPERTY
         )
-        function = factory.create_function(
+        function = Function.model_construct(
             operator=ftype,
-            args=[concept],
+            arguments=[concept.reference],
+            output_datatype=dtype,
+            output_purpose=default_type,
         )
         new_concept = Concept.model_construct(
             name=f"{concept.name}.{fname}",
@@ -61,13 +71,17 @@ def generate_date_concepts(concept: Concept, environment: Environment):
                 concept_source=ConceptSource.AUTO_DERIVED,
             ),
         )
-        if new_concept.name in environment.concepts:
-            continue
         environment.add_concept(new_concept, add_derived=False)
     for grain in [DatePart.MONTH, DatePart.YEAR]:
-        function = factory.create_function(
+        address = concept.address + f".{grain.value}_start"
+        if address in environment.concepts:
+            continue
+        function = Function.model_construct(
             operator=FunctionType.DATE_TRUNCATE,
-            args=[concept, grain],
+            arguments=[concept.reference, grain],
+            output_datatype=DataType.DATE,
+            output_purpose=default_type,
+            arg_count=2,
         )
         new_concept = Concept.model_construct(
             name=f"{concept.name}.{grain.value}_start",
@@ -85,13 +99,11 @@ def generate_date_concepts(concept: Concept, environment: Environment):
                 concept_source=ConceptSource.AUTO_DERIVED,
             ),
         )
-        if new_concept.name in environment.concepts:
-            continue
+
         environment.add_concept(new_concept, add_derived=False)
 
 
 def generate_datetime_concepts(concept: Concept, environment: Environment):
-    factory = FunctionFactory(environment=environment)
     if concept.metadata and concept.metadata.description:
         base_description = concept.metadata.description
     else:
@@ -100,22 +112,26 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
         base_line_number = concept.metadata.line_number
     else:
         base_line_number = None
-    for ftype in [
-        FunctionType.DATE,
-        FunctionType.HOUR,
-        FunctionType.MINUTE,
-        FunctionType.SECOND,
+    for ftype, datatype in [
+        [FunctionType.DATE, DataType.DATE],
+        [FunctionType.HOUR, TraitDataType(type=DataType.INTEGER, traits=["hour"])],
+        [FunctionType.MINUTE, TraitDataType(type=DataType.INTEGER, traits=["minute"])],
+        [FunctionType.SECOND, TraitDataType(type=DataType.INTEGER, traits=["second"])],
     ]:
         fname = ftype.name.lower()
+        address = concept.address + f".{fname}"
+        if address in environment.concepts:
+            continue
         default_type = (
             Purpose.CONSTANT
             if concept.purpose == Purpose.CONSTANT
             else Purpose.PROPERTY
         )
-
-        const_function = factory.create_function(
+        const_function = Function.model_construct(
             operator=ftype,
-            args=[concept],
+            arguments=[concept.reference],
+            output_datatype=datatype,
+            output_purpose=default_type,
         )
         new_concept = Concept.model_construct(
             name=f"{concept.name}.{fname}",
@@ -148,13 +164,16 @@ def generate_key_concepts(concept: Concept, environment: Environment):
     else:
         base_line_number = None
     for ftype in [FunctionType.COUNT]:
+        address = concept.address + f".{ftype.name.lower()}"
+        if address in environment.concepts:
+            continue
         fname = ftype.name.lower()
         default_type = Purpose.METRIC
-        const_function: Function = Function(
+        const_function: Function = Function.model_construct(
             operator=ftype,
             output_datatype=DataType.INTEGER,
             output_purpose=default_type,
-            arguments=[concept],
+            arguments=[concept.reference],
         )
         new_concept = Concept.model_construct(
             name=f"{concept.name}.{fname}",
@@ -172,8 +191,6 @@ def generate_key_concepts(concept: Concept, environment: Environment):
                 concept_source=ConceptSource.AUTO_DERIVED,
             ),
         )
-        if new_concept.name in environment.concepts:
-            continue
         environment.add_concept(new_concept, add_derived=False)
 
 
@@ -213,7 +230,7 @@ def generate_related_concepts(
                     else concept.name
                 ),
                 lineage=AttrAccess(args, environment=environment),
-                grain = concept.grain
+                grain=concept.grain,
             )
             environment.add_concept(auto, meta=meta)
             if isinstance(value, Concept):
