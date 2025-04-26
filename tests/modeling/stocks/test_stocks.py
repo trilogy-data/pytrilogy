@@ -36,7 +36,7 @@ def test_import():
     }
     profitable = env.concepts["holdings.profitable"]
     for x in profitable.lineage.concept_arguments:
-        assert env.concepts[x].grain.components == {
+        assert env.concepts[x.address].grain.components == {
             "holdings.provider.id",
             "symbol.id",
         }, profitable.lineage

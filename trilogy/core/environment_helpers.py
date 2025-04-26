@@ -45,7 +45,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             operator=ftype,
             args=[concept],
         )
-        new_concept = Concept(
+        new_concept = Concept.model_construct(
             name=f"{concept.name}.{fname}",
             datatype=function.output_datatype,
             purpose=default_type,
@@ -69,7 +69,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             operator=FunctionType.DATE_TRUNCATE,
             args=[concept, grain],
         )
-        new_concept = Concept(
+        new_concept = Concept.model_construct(
             name=f"{concept.name}.{grain.value}_start",
             datatype=DataType.DATE,
             purpose=Purpose.PROPERTY,
@@ -117,7 +117,7 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
             operator=ftype,
             args=[concept],
         )
-        new_concept = Concept(
+        new_concept = Concept.model_construct(
             name=f"{concept.name}.{fname}",
             datatype=const_function.output_datatype,
             purpose=default_type,
@@ -156,7 +156,7 @@ def generate_key_concepts(concept: Concept, environment: Environment):
             output_purpose=default_type,
             arguments=[concept],
         )
-        new_concept = Concept(
+        new_concept = Concept.model_construct(
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
             purpose=default_type,
@@ -202,7 +202,7 @@ def generate_related_concepts(
             args = process_function_args(
                 [concept, key], meta=meta, environment=environment
             )
-            auto = Concept(
+            auto = Concept.model_construct(
                 name=key,
                 datatype=arg_to_datatype(value),
                 purpose=Purpose.PROPERTY,
@@ -213,6 +213,7 @@ def generate_related_concepts(
                     else concept.name
                 ),
                 lineage=AttrAccess(args, environment=environment),
+                grain = concept.grain
             )
             environment.add_concept(auto, meta=meta)
             if isinstance(value, Concept):

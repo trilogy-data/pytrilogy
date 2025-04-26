@@ -58,7 +58,7 @@ if __name__ == "__main__":
     print("loaded dataset:", datetime.now() - start)
 
     # print(engine.environment.concepts['date._env_working_path'])
-
+    run_query(engine, start, 1)
     import cProfile
 
     pr = cProfile.Profile()

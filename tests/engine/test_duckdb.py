@@ -136,7 +136,7 @@ def test_constants(duckdb_engine: Executor, expected_results):
     )
     parent_arg: Concept = duckdb_engine.environment.concepts[
         [
-            x
+            x.address
             for x in scaled_metric.lineage.concept_arguments
             if x.address == "local.total_count"
         ][0]
@@ -144,7 +144,7 @@ def test_constants(duckdb_engine: Executor, expected_results):
     assert (
         len(
             duckdb_engine.environment.concepts[
-                parent_arg.lineage.concept_arguments[0]
+                parent_arg.lineage.concept_arguments[0].address
             ].grain.components
         )
         == 2

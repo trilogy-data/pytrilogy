@@ -166,7 +166,7 @@
 
     !array_comparison: ( ("NOT"i "IN"i) | "IN"i)
 
-    COMPARISON_OPERATOR: /(is\s+not|is|=|>=|<=|!=|>|<)/
+    COMPARISON_OPERATOR: /(is\s+not|is|=|>=|<=|!=|>|<)/i
     
     comparison: expr COMPARISON_OPERATOR expr
 
@@ -192,16 +192,28 @@
     attr_access: expr  "." string_lit 
 
 
-    expr:   _constant_functions | window_item | filter_item | subselect_comparison | between_comparison |  fgroup |  aggregate_functions | unnest | union | _static_functions |  literal |  concept_lit  | index_access |  map_key_access | attr_access | parenthetical | expr_tuple | comparison |  alt_like |  aggregate_by | custom_function 
-    
+    expr: _basic_expr | _functional_expr | _operation_expr |  _access_expr
+
+   # Most common/basic expressions
+   _basic_expr: literal | concept_lit | parenthetical | expr_tuple
+
+   # Operations and comparisons 
+   _operation_expr: comparison | alt_like | between_comparison | subselect_comparison
+
+   # Function-like expressions
+   _functional_expr:  _constant_functions | _static_functions  | filter_item | aggregate_functions | window_item | custom_function | fgroup | unnest | union |  aggregate_by
+
+   # Access patterns
+   _access_expr: index_access | map_key_access | attr_access
     // functions
     
-    fadd: ("add"i "(" expr "," expr ")" ) | ( expr "+" expr )
+    fadd: (/add\(/ expr "," expr ")" ) | ( expr "+" expr )
     fsub: ("subtract"i "(" expr "," expr ")" ) | ( expr "-" expr )
     fmul: ("multiply"i "(" expr "," expr ")" ) | ( expr "*" expr )
     fdiv: ( "divide"i "(" expr "," expr ")") | ( expr "/" expr )
     fmod: ( "mod"i "(" expr "," (int_lit | concept_lit ) ")") | ( expr "%" (int_lit | concept_lit ) )
-    fround: "round"i "(" expr "," expr ")"
+    _ROUND.1: "round"i "("
+    fround: _ROUND expr "," expr ")"
     fabs: "abs"i "(" expr ")"
     _SQRT.1: "sqrt("
     fsqrt:  _SQRT expr ")"
@@ -362,9 +374,9 @@
     
     literal: null_lit | string_lit | int_lit | float_lit | bool_lit | array_lit | map_lit | struct_lit | tuple_lit
 
-    MODIFIER: "Optional"i | "Partial"i | "Nullable"i
+    MODIFIER: /OPTIONAL|PARTIAL|NULLABLE/i
 
-    SHORTHAND_MODIFIER: "~" | "?"
+    SHORTHAND_MODIFIER: /~|\?/
 
     struct_type: "struct"i "<" ((data_type | IDENTIFIER) ",")* (data_type | IDENTIFIER) ","? ">" 
 
@@ -380,7 +392,6 @@
     PROPERTY: "property"i
     CONST: "const"i | "constant"i
     AUTO: "AUTO"i 
-
     // meta functions
     CONCEPTS: "CONCEPTS"i
     DATASOURCES: "DATASOURCES"i
