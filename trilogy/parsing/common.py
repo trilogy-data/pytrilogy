@@ -577,6 +577,7 @@ def agg_wrapper_to_concept(
     # derivation = Concept.calculate_derivation(parent, Purpose.PROPERTY)
     grain = Grain.from_concepts(parent.by, environment) if parent.by else Grain()
     granularity = Concept.calculate_granularity(Derivation.AGGREGATE, grain, parent)
+
     out = Concept(
         name=name,
         datatype=aggfunction.output_datatype,
@@ -590,6 +591,11 @@ def agg_wrapper_to_concept(
         derivation=Derivation.AGGREGATE,
         granularity=granularity,
     )
+    for x in parent.function.concept_arguments:
+        if x.address == out.address:
+            raise InvalidSyntaxException(
+                f"Aggregate concept {out.address} cannot reference itself. If defining a new concept in a select, use a new name."
+            )
     return out
 
 

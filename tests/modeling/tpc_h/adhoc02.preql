@@ -1,0 +1,12 @@
+import lineitem;
+
+SELECT
+    order.customer.id,
+    order.customer.name,
+    order.customer.address,
+    order.customer.phone,
+    order.customer.account_balance,
+    order.customer.market_segment,
+    sum(local.total_revenue) AS total_revenue
+ORDER BY
+    total_revenue DESC;

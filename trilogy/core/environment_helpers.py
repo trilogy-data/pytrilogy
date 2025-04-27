@@ -67,7 +67,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
                 [concept.address],
             ),
             metadata=Metadata(
-                description=f"Auto-derived from {base_description}. {FUNCTION_DESCRIPTION_MAPS.get(ftype, ftype.value)}. ",
+                description=f"Auto-derived from {base_description}. {FUNCTION_DESCRIPTION_MAPS.get(ftype, ftype.value)}",
                 line_number=base_line_number,
                 concept_source=ConceptSource.AUTO_DERIVED,
             ),
@@ -89,7 +89,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             datatype=DataType.DATE,
             purpose=Purpose.PROPERTY,
             lineage=function,
-            grain=concept.grain,
+            grain=concept.grain.model_copy(),
             namespace=concept.namespace,
             keys=set(
                 [concept.address],
@@ -137,16 +137,16 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
         )
         new_concept = Concept.model_construct(
             name=f"{concept.name}.{fname}",
-            datatype=const_function.output_datatype,
+            datatype=datatype,
             purpose=default_type,
             lineage=const_function,
-            grain=concept.grain,
+            grain=concept.grain.model_copy(),
             namespace=concept.namespace,
             keys=set(
                 [concept.address],
             ),
             metadata=Metadata(
-                description=f"Auto-derived from {base_description}. {FUNCTION_DESCRIPTION_MAPS.get(ftype, ftype.value)}.",
+                description=f"Auto-derived from {base_description}. {FUNCTION_DESCRIPTION_MAPS.get(ftype, ftype.value)}",
                 line_number=base_line_number,
                 concept_source=ConceptSource.AUTO_DERIVED,
             ),
