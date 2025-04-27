@@ -2,7 +2,7 @@ from pathlib import Path
 
 from pytest import raises
 
-from trilogy import parse, Executor, Dialects
+from trilogy import Dialects, Executor, parse
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.environment import Environment
 from trilogy.hooks import DebuggingHook
@@ -19,7 +19,6 @@ def test_adhoc02_error():
 
 
 def test_adhoc03():
-    x = DebuggingHook()
     env = Environment(working_path=working_path)
     with open(working_path / "adhoc03.preql") as f:
         text = f.read()

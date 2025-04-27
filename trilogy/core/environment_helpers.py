@@ -1,7 +1,7 @@
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import ConceptSource, DatePart, FunctionType, Purpose
 from trilogy.core.functions import AttrAccess
-from trilogy.core.models.author import Concept, Function, Metadata, TraitDataType, Grain
+from trilogy.core.models.author import Concept, Function, Grain, Metadata, TraitDataType
 from trilogy.core.models.core import DataType, StructType, arg_to_datatype
 from trilogy.core.models.environment import Environment
 from trilogy.parsing.common import Meta
