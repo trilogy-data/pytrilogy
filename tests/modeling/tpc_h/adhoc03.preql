@@ -1,0 +1,4 @@
+import lineitem;
+
+where rank order.customer.id by sum(order.total_price) desc <= 10
+select order.id.count;
