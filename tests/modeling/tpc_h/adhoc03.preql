@@ -1,4 +1,4 @@
 import lineitem;
 
 where rank order.customer.id by sum(order.total_price) desc <= 10
-select order.id.count;
+select count(order.id) as order_count, order.id.count as order_count_two;

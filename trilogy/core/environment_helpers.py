@@ -1,7 +1,7 @@
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import ConceptSource, DatePart, FunctionType, Purpose
 from trilogy.core.functions import AttrAccess
-from trilogy.core.models.author import Concept, Function, Metadata, TraitDataType
+from trilogy.core.models.author import Concept, Function, Metadata, TraitDataType, Grain
 from trilogy.core.models.core import DataType, StructType, arg_to_datatype
 from trilogy.core.models.environment import Environment
 from trilogy.parsing.common import Meta
@@ -182,11 +182,9 @@ def generate_key_concepts(concept: Concept, environment: Environment):
             datatype=DataType.INTEGER,
             purpose=default_type,
             lineage=const_function,
-            grain=concept.grain,
+            grain=Grain(),
             namespace=concept.namespace,
-            keys={
-                concept.address,
-            },
+            keys={},
             metadata=Metadata(
                 description=f"Auto-derived integer. The {ftype.value} of {concept.address}, {base_description}",
                 line_number=base_line_number,
