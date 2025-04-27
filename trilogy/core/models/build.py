@@ -1697,6 +1697,7 @@ class Factory:
 
     @build.register
     def _(self, base: WhereClause) -> BuildWhereClause:
+
         return BuildWhereClause.model_construct(
             conditional=self.build(base.conditional)
         )
@@ -1756,14 +1757,14 @@ class Factory:
         from trilogy.parsing.common import arbitrary_to_concept
 
         left = base.left
-        if isinstance(left, AggregateWrapper):
+        if isinstance(left, (AggregateWrapper, WindowItem, FilterItem)):
             left_c = arbitrary_to_concept(
                 left,
                 environment=self.environment,
             )
             left = left_c  # type: ignore
         right = base.right
-        if isinstance(right, AggregateWrapper):
+        if isinstance(right, (AggregateWrapper, WindowItem, FilterItem)):
             right_c = arbitrary_to_concept(
                 right,
                 environment=self.environment,
