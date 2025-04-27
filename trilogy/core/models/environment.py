@@ -420,9 +420,9 @@ class Environment(BaseModel):
             if INTERNAL_NAMESPACE in concept.address:
                 continue
             if same_namespace:
-                new = self.add_concept(concept)
+                new = self.add_concept(concept, add_derived=False)
             else:
-                new = self.add_concept(concept.with_namespace(alias))
+                new = self.add_concept(concept.with_namespace(alias) , add_derived=False)
 
                 k = address_with_namespace(k, alias)
             # set this explicitly, to handle aliasing
