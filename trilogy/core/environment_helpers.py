@@ -184,7 +184,7 @@ def generate_key_concepts(concept: Concept, environment: Environment):
             lineage=const_function,
             grain=Grain(),
             namespace=concept.namespace,
-            keys={},
+            keys=set(),
             metadata=Metadata(
                 description=f"Auto-derived integer. The {ftype.value} of {concept.address}, {base_description}",
                 line_number=base_line_number,
