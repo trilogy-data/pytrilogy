@@ -1,0 +1,17 @@
+import game_tall;
+
+# what leages are there, and how many teams in each leageu?
+
+# SELECT home_team.league.name, home_team.league.id.count
+# order by home_team.league.name asc;
+
+
+# in the NCAA MEN league, which teams score the most points at home?
+
+
+where is_home = true
+and team_league_name = 'NCAA MEN'
+select
+team_name,
+sum(points_game) by team_name as total_points
+order by total_points desc;

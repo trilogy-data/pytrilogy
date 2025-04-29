@@ -1,0 +1,367 @@
+import team as team;
+import std.geography;
+import std.display;
+
+key id string; # [Game data] Unique identifier for the game
+property <id, team.id>.season int; # [Game data] Season the game was played in
+property <id, team.id>.status string; # [Game data] Indicates the last state of Sportradar's game file
+property <id, team.id>.coverage string; # [Game data] Type of coverage provided by Sportradar
+property <id, team.id>.neutral_site bool; # [Game data] Indicator of whether the game was played on a neutral court
+property <id, team.id>.scheduled_date date; # [Game data] Date the game was played
+property <id, team.id>.gametime timestamp; # [Game data] Date and time the game was played
+property <id, team.id>.conference_game bool; # [Game data] Indicator of whether the two teams were in the same conference at the time the game was played
+property <id, team.id>.tournament string; # [Game data] Whether the game was played in a post-season tournament
+property <id, team.id>.tournament_type string; # [Game data] Type of post-season tournament a game was in played
+property <id, team.id>.tournament_round string; # [Game data] Tournament round
+property <id, team.id>.tournament_game_no string; # [Game data] Tournament game number
+property <id, team.id>.attendance int; # [Game data] Attendance of the game
+property <id, team.id>.lead_changes int; # [Game stats] Number of lead changes in the game
+property <id, team.id>.times_tied int; # [Game stats] Number of ties in the game
+property <id, team.id>.periods int; # [Game stats] Number of periods the game
+property <id, team.id>.possession_arrow string; # [Game stats] The unique identifier of the team that would receive the ball the next time a jump ball is called, see https://en.wikipedia.org/wiki/Jump_ball for more information
+
+# Venue data
+property <id, team.id>.venue_id string; # [Game data] Unique identifier for the venue where the game was played
+property <id, team.id>.venue_city string; # [Game data] City where the game was played
+property <id, team.id>.venue_state string::us_state_short; # [Game data] State where the game was played
+property <id, team.id>.venue_address string; # [Game data] Address of the venue where the game was played
+property <id, team.id>.venue_zip string; # [Game data] Address of the venue where the game was played
+property <id, team.id>.venue_country string; # [Game data] Country where the game was played
+property <id, team.id>.venue_name string; # [Game data] Name of the venue where the game was played
+property <id, team.id>.venue_capacity int; # [Game data] Current capacity of the venue where the game was played
+
+# Team properties (combined home/away)
+property <id, team.id>.is_home bool; # Indicator of whether this team was the home team
+property <id, team.id>.team_name string; # Team name
+property <id, team.id>.team_market string; # Team school name
+property <id, team.id>.team_alias string; # Team school alias (unique)
+property <id, team.id>.team_league_id string; # Team school league ID (not unique)
+property <id, team.id>.team_league_name string; # Team school league name (not unique, capitalized)
+property <id, team.id>.team_league_alias string; # Team school league alias (not unique)
+property <id, team.id>.team_conf_id string; # Team current conference ID (not unique)
+property <id, team.id>.team_conf_name string; # Team current conference name (not unique)
+property <id, team.id>.team_conf_alias string; # Team current conference alias (not unique)
+property <id, team.id>.team_division_id string; # Team current division ID (not unique)
+property <id, team.id>.team_division_name string; # Team current division name (not unique)
+property <id, team.id>.team_division_alias string; # Team current division alias (not unique)
+property <id, team.id>.team_logo_large string; # Team logo 200x200
+property <id, team.id>.team_logo_medium string; # Team logo 70x70
+property <id, team.id>.team_logo_small string; # Team logo 24x24
+#property <id, team.id>.team_rank int; # Team rank
+property <id, team.id>.team_minutes string; # Team total minutes played
+
+# Opponent properties
+property <id, team.id>.opponent_team_id string; # Opponent team ID
+property <id, team.id>.opponent_name string; # Opponent team name
+property <id, team.id>.opponent_market string; # Opponent team school name
+property <id, team.id>.opponent_alias string; # Opponent team school alias (unique)
+
+# Team stats
+property <id, team.id>.points_game int; # Team points scored
+property <id, team.id>.field_goals_made int; # Team field goals made
+property <id, team.id>.field_goals_att int; # Team field goals attempted
+property <id, team.id>.field_goals_pct float::percent; # Team field goal percentage
+property <id, team.id>.three_points_att int; # Team three-pointers attempted
+property <id, team.id>.three_points_made int; # Team three-pointers made
+property <id, team.id>.three_points_pct float::percent; # Team three-point shot percentage
+property <id, team.id>.two_points_made int; # Team two-pointers made
+property <id, team.id>.two_points_att int; # Team two-pointers attempted
+property <id, team.id>.two_points_pct float::percent; # Team two-point shot percentage
+property <id, team.id>.blocked_att int; # Number of team's shots blocked by opponent
+property <id, team.id>.free_throws_made int; # Team free throws made
+property <id, team.id>.free_throws_att int; # Team free throws attempted
+property <id, team.id>.free_throws_pct float::percent; # Team free throw percentage
+property <id, team.id>.offensive_rebounds int; # Team offensive rebounds
+property <id, team.id>.defensive_rebounds int; # Team defensive rebounds
+property <id, team.id>.rebounds int; # Team total rebounds
+property <id, team.id>.assists int; # Team assists
+property <id, team.id>.turnovers int; # Team turnovers
+property <id, team.id>.steals int; # Team steals
+property <id, team.id>.blocks int; # Team blocks
+property <id, team.id>.assists_turnover_ratio float; # Team assist-to-turnover ratio
+property <id, team.id>.personal_fouls int; # Team personal fouls committed
+property <id, team.id>.ejections int; # Team player ejections
+property <id, team.id>.foulouts int; # Team player foul-outs
+property <id, team.id>.points int; # Team total points scored
+property <id, team.id>.fast_break_pts int; # Team fast-break points scored
+property <id, team.id>.second_chance_pts int; # Team second-chance points scored
+property <id, team.id>.team_turnovers int; # Team turnovers
+property <id, team.id>.points_off_turnovers int; # Team points off turnovers
+property <id, team.id>.team_rebounds int; # Team rebounds
+property <id, team.id>.flagrant_fouls int; # Team flagrant fouls committed
+property <id, team.id>.player_tech_fouls int; # Team technical fouls committed
+property <id, team.id>.team_tech_fouls int; # Team technical fouls committed by team
+property <id, team.id>.coach_tech_fouls int; # Team technical fouls committed by coach
+
+# Table metadata
+property <id, team.id>.created timestamp; # [Table data] Box score data entry time
+
+
+# Other metrics
+metric game_count <- count_distinct(id); # count of games
+metric wins <- sum(case when points > opponent_points then 1 else 0 end); # count of wins
+property <id, team.id>.opponent_points int; # Opponent points
+
+# Base games source with union query
+datasource team_games_sr (
+    game_id:id,
+    team_id:team.id,
+    is_home:is_home,
+    season:season,
+    status:status,
+    coverage:coverage,
+    scheduled_date:scheduled_date,
+    gametime:gametime,
+    opponent_team_id:opponent_team_id,
+    opponent_name:opponent_name,
+    opponent_market:opponent_market,
+    opponent_alias:opponent_alias,
+    opponent_points:opponent_points,
+    team_name:team_name,
+    team_market:team_market,
+    team_alias:team_alias,
+    team_league_id:team_league_id,
+    team_league_name:team_league_name,
+    team_league_alias:team_league_alias,
+    team_conf_id:team_conf_id,
+    team_conf_name:team_conf_name,
+    team_conf_alias:team_conf_alias,
+    team_division_id:team_division_id,
+    team_division_name:team_division_name,
+    team_division_alias:team_division_alias,
+    team_logo_large:team_logo_large,
+    team_logo_medium:team_logo_medium,
+    team_logo_small:team_logo_small,
+    points_game:points_game,
+    team_minutes:team_minutes,
+    field_goals_made:field_goals_made,
+    field_goals_att:field_goals_att,
+    field_goals_pct:field_goals_pct,
+    three_points_att:three_points_att,
+    three_points_made:three_points_made,
+    three_points_pct:three_points_pct,
+    two_points_made:two_points_made,
+    two_points_att:two_points_att,
+    two_points_pct:two_points_pct,
+    blocked_att:blocked_att,
+    free_throws_made:free_throws_made,
+    free_throws_att:free_throws_att,
+    free_throws_pct:free_throws_pct,
+    offensive_rebounds:offensive_rebounds,
+    defensive_rebounds:defensive_rebounds,
+    rebounds:rebounds,
+    assists:assists,
+    turnovers:turnovers,
+    steals:steals,
+    blocks:blocks,
+    assists_turnover_ratio:assists_turnover_ratio,
+    personal_fouls:personal_fouls,
+    ejections:ejections,
+    foulouts:foulouts,
+    points:points,
+    fast_break_pts:fast_break_pts,
+    second_chance_pts:second_chance_pts,
+    team_turnovers:team_turnovers,
+    points_off_turnovers:points_off_turnovers,
+    team_rebounds:team_rebounds,
+    flagrant_fouls:flagrant_fouls,
+    player_tech_fouls:player_tech_fouls,
+    team_tech_fouls:team_tech_fouls,
+    coach_tech_fouls:coach_tech_fouls,
+    conference_game:conference_game,
+    tournament:tournament,
+    tournament_type:tournament_type,
+    tournament_round:tournament_round,
+    tournament_game_no:tournament_game_no,
+    attendance:attendance,
+    lead_changes:lead_changes,
+    times_tied:times_tied,
+    periods:periods,
+    neutral_site:neutral_site,
+    possession_arrow:possession_arrow,
+    venue_id:venue_id,
+    venue_city:venue_city,
+    venue_state:venue_state,
+    venue_address:venue_address,
+    venue_zip:venue_zip,
+    venue_country:venue_country,
+    venue_name:venue_name,
+    venue_capacity:venue_capacity,
+    created:created
+)
+grain (id, team.id)
+query '''
+SELECT
+  game_id,
+  h_id as team_id,
+  TRUE as is_home,
+  season,
+  status,
+  coverage,
+  scheduled_date,
+  gametime,
+  a_id as opponent_team_id,
+  a_name as opponent_name,
+  a_market as opponent_market,
+  a_alias as opponent_alias,
+  a_points as opponent_points,
+  h_name as team_name,
+  h_market as team_market,
+  h_alias as team_alias,
+  h_league_id as team_league_id,
+  h_league_name as team_league_name,
+  h_league_alias as team_league_alias,
+  h_conf_id as team_conf_id,
+  h_conf_name as team_conf_name,
+  h_conf_alias as team_conf_alias,
+  h_division_id as team_division_id,
+  h_division_name as team_division_name,
+  h_division_alias as team_division_alias,
+  h_logo_large as team_logo_large,
+  h_logo_medium as team_logo_medium,
+  h_logo_small as team_logo_small,
+  h_points_game as points_game,
+  h_minutes as team_minutes,
+  h_field_goals_made as field_goals_made,
+  h_field_goals_att as field_goals_att,
+  h_field_goals_pct as field_goals_pct,
+  h_three_points_att as three_points_att,
+  h_three_points_made as three_points_made,
+  h_three_points_pct as three_points_pct,
+  h_two_points_made as two_points_made,
+  h_two_points_att as two_points_att,
+  h_two_points_pct as two_points_pct,
+  h_blocked_att as blocked_att,
+  h_free_throws_made as free_throws_made,
+  h_free_throws_att as free_throws_att,
+  h_free_throws_pct as free_throws_pct,
+  h_offensive_rebounds as offensive_rebounds,
+  h_defensive_rebounds as defensive_rebounds,
+  h_rebounds as rebounds,
+  h_assists as assists,
+  h_turnovers as turnovers,
+  h_steals as steals,
+  h_blocks as blocks,
+  h_assists_turnover_ratio as assists_turnover_ratio,
+  h_personal_fouls as personal_fouls,
+  h_ejections as ejections,
+  h_foulouts as foulouts,
+  h_points as points,
+  h_fast_break_pts as fast_break_pts,
+  h_second_chance_pts as second_chance_pts,
+  h_team_turnovers as team_turnovers,
+  h_points_off_turnovers as points_off_turnovers,
+  h_team_rebounds as team_rebounds,
+  h_flagrant_fouls as flagrant_fouls,
+  h_player_tech_fouls as player_tech_fouls,
+  h_team_tech_fouls as team_tech_fouls,
+  h_coach_tech_fouls as coach_tech_fouls,
+  conference_game,
+  tournament,
+  tournament_type,
+  tournament_round,
+  tournament_game_no,
+  attendance,
+  lead_changes,
+  times_tied,
+  periods,
+  neutral_site,
+  possession_arrow,
+  venue_id,
+  venue_city,
+  venue_state,
+  venue_address,
+  venue_zip,
+  venue_country,
+  venue_name,
+  venue_capacity,
+  created
+FROM `bigquery-public-data.ncaa_basketball.mbb_games_sr`
+UNION ALL
+SELECT
+  game_id,
+  a_id as team_id,
+  FALSE as is_home,
+  season,
+  status,
+  coverage,
+  scheduled_date,
+  gametime,
+  h_id as opponent_team_id,
+  h_name as opponent_name,
+  h_market as opponent_market,
+  h_alias as opponent_alias,
+  h_points as opponent_points,
+  a_name as team_name,
+  a_market as team_market,
+  a_alias as team_alias,
+  a_league_id as team_league_id,
+  a_league_name as team_league_name,
+  a_league_alias as team_league_alias,
+  a_conf_id as team_conf_id,
+  a_conf_name as team_conf_name,
+  a_conf_alias as team_conf_alias,
+  a_division_id as team_division_id,
+  a_division_name as team_division_name,
+  a_division_alias as team_division_alias,
+  a_logo_large as team_logo_large,
+  a_logo_medium as team_logo_medium,
+  a_logo_small as team_logo_small,
+  a_points_game as points_game,
+  a_minutes as team_minutes,
+  a_field_goals_made as field_goals_made,
+  a_field_goals_att as field_goals_att,
+  a_field_goals_pct as field_goals_pct,
+  a_three_points_att as three_points_att,
+  a_three_points_made as three_points_made,
+  a_three_points_pct as three_points_pct,
+  a_two_points_made as two_points_made,
+  a_two_points_att as two_points_att,
+  a_two_points_pct as two_points_pct,
+  a_blocked_att as blocked_att,
+  a_free_throws_made as free_throws_made,
+  a_free_throws_att as free_throws_att,
+  a_free_throws_pct as free_throws_pct,
+  a_offensive_rebounds as offensive_rebounds,
+  a_defensive_rebounds as defensive_rebounds,
+  a_rebounds as rebounds,
+  a_assists as assists,
+  a_turnovers as turnovers,
+  a_steals as steals,
+  a_blocks as blocks,
+  a_assists_turnover_ratio as assists_turnover_ratio,
+  a_personal_fouls as personal_fouls,
+  a_ejections as ejections,
+  a_foulouts as foulouts,
+  a_points as points,
+  a_fast_break_pts as fast_break_pts,
+  a_second_chance_pts as second_chance_pts,
+  a_team_turnovers as team_turnovers,
+  a_points_off_turnovers as points_off_turnovers,
+  a_team_rebounds as team_rebounds,
+  a_flagrant_fouls as flagrant_fouls,
+  a_player_tech_fouls as player_tech_fouls,
+  a_team_tech_fouls as team_tech_fouls,
+  a_coach_tech_fouls as coach_tech_fouls,
+  conference_game,
+  tournament,
+  tournament_type,
+  tournament_round,
+  tournament_game_no,
+  attendance,
+  lead_changes,
+  times_tied,
+  periods,
+  neutral_site,
+  possession_arrow,
+  venue_id,
+  venue_city,
+  venue_state,
+  venue_address,
+  venue_zip,
+  venue_country,
+  venue_name,
+  venue_capacity,
+  created
+FROM `bigquery-public-data.ncaa_basketball.mbb_games_sr`
+''';

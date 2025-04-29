@@ -1,0 +1,81 @@
+import team as home_team;
+import team as away_team;
+
+key id string; # [Game data] Unique identifier for the game
+property id.season int; # [Game data] Season the game was played in
+property id.neutral_site bool; # [Game data] Indicator of whether the game was played on a neutral court
+property id.scheduled_date date; # [Game data] Date the game was played
+property id.gametime timestamp; # [Game data] Date and time the game was played
+property id.conference_game bool; # [Game data] Indicator of whether the two teams were in the same conference at the time the game was played
+property id.tournament string; # [Game data] Whether the game was played in a post-season tournament
+property id.tournament_type string; # [Game data] Type of post-season tournament a game was in played
+property id.tournament_round string; # [Game data] Tournament round
+property id.tournament_game_no string; # [Game data] Tournament game number
+property id.attendance int; # [Game data] Attendance of the game
+property id.lead_changes int; # [Game stats] Number of lead changes in the game
+property id.times_tied int; # [Game stats] Number of ties in the game
+property id.periods int; # [Game stats] Number of periods the game
+property id.possession_arrow string; # [Game stats] The unique identifier of the team that would receive the ball the next time a jump ball is called, see https://en.wikipedia.org/wiki/Jump_ball for more information
+
+property id.home_market string; # [Home Team data] Home team school name
+property id.home_alias string; # [Home Team data] Home team school alias (unique)
+
+property id.away_market string; # [Away Team data] Away team school name
+property id.away_alias string; # [Away Team data] Away team school alias
+
+
+property id._home_three_points_att int; #  [Home Team data] Three point Attempts
+metric home_three_points_att <- sum(_home_three_points_att); # [Home Team data] Three point Attempts
+property id._home_three_points_made int; #  [Home Team data] Three points made
+metric home_three_points_made <- sum(_home_three_points_made); #  [Home Team data] Three points made
+auto home_three_points_pct <- home_three_points_made / home_three_points_att *100; #[Home Team data] Three point percent
+
+property id._away_three_points_att int; #  [Away Team data] Three point Attempts
+metric away_three_points_att <- sum(_away_three_points_att); #  [Away Team data] Three point Attempts
+property id._away_three_points_made int; #  [Away Team data] Three points made
+metric away_three_points_made <- sum(_away_three_points_made); #  [Away Team data] Three points made
+
+auto away_three_points_pct <- away_three_points_made / away_three_points_att *100; #[Away Team data] Three point percent
+
+
+property id._total_three_points_att <- _away_three_points_att + _home_three_points_att;
+metric total_three_points_att <- sum(_total_three_points_att);
+
+property id._total_three_points_made <- _away_three_points_made + _home_three_points_made;
+metric total_three_points_made <- sum(_total_three_points_made);
+
+# metrics
+metric count <- count_distinct(id); # count of games
+
+# base games source
+datasource games_sr (
+    game_id:id,
+    season:season,
+    scheduled_date:scheduled_date,
+    gametime:gametime,
+    h_id: home_team.id,
+    a_id:away_team.id,
+    h_market: home_market,
+    h_alias: home_alias,
+    a_market: away_market,
+    a_alias:away_alias,
+    h_three_points_att:_home_three_points_att,
+    a_three_points_att: _away_three_points_att,
+    h_three_points_made: _home_three_points_made,
+    a_three_points_made: _away_three_points_made,
+    conference_game:conference_game,
+    tournament:tournament,
+    tournament_type:tournament_type,
+    tournament_round:tournament_round,
+    tournament_game_no:tournament_game_no,
+    attendance:attendance,
+    lead_changes:lead_changes,
+    times_tied:times_tied,
+    periods:periods,
+    neutral_site:neutral_site,
+    possession_arrow: possession_arrow
+)
+grain (id)
+address `bigquery-public-data.ncaa_basketball.mbb_games_sr`
+;
+

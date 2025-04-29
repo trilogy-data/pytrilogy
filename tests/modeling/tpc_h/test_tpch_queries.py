@@ -5,7 +5,6 @@ from pytest import raises
 from trilogy import Dialects, Executor, parse
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.environment import Environment
-from trilogy.hooks import DebuggingHook
 
 working_path = Path(__file__).parent
 
