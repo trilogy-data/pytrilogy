@@ -5,6 +5,7 @@ from typing import List, Optional, Protocol, Union
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation, FunctionType, Granularity
 from trilogy.core.env_processor import generate_graph
+from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import (
     UndefinedConcept,
@@ -1120,8 +1121,8 @@ def source_query_concepts(
         error_strings = [
             f"{c.address}<{c.purpose}>{c.derivation}>" for c in output_concepts
         ]
-        raise ValueError(
-            f"Could not resolve connections between {error_strings} from environment graph."
+        raise UnresolvableQueryException(
+            f"Could not resolve connections for query with output {error_strings} from current model."
         )
     final = [x for x in root.output_concepts if x.address not in root.hidden_concepts]
     logger.info(
