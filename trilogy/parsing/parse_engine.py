@@ -1487,7 +1487,6 @@ class ParseToObjects(Transformer):
                 concept = arbitrary_to_concept(item, environment=self.environment)
                 self.environment.add_concept(concept, meta=meta)
         assert concept
-        print(f"Window item {concept} {type} {over} {order_by} {index}")
         return WindowItem(
             type=type,
             content=concept.reference,
