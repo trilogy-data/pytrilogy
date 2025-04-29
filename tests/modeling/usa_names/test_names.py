@@ -135,8 +135,8 @@ def test_aggregate_filter():
     pattern = r"""[a-z]+ as \(
 SELECT
     ([a-z]+)\."name" as "name",
-    sum\(\1\."_virt_filter_births_\d+"\) as "female_births",
-    sum\(\1\."_virt_filter_births_\d+"\) as "male_births",
+    sum\(\1\."_virt_filter_births_\d+"\) as "_virt_agg_sum_\d+",
+    sum\(\1\."_virt_filter_births_\d+"\) as "_virt_agg_sum_\d+",
     sum\(\1\."births"\) as "_virt_agg_sum_\d+"
 FROM
     \1
@@ -161,11 +161,39 @@ def test_aggregate_filter_short_syntax():
     pattern = r"""[a-z]+ as \(
 SELECT
     ([a-z]+)\."name" as "name",
-    sum\(\1\."_virt_filter_births_\d+"\) as "female_births",
-    sum\(\1\."_virt_filter_births_\d+"\) as "male_births",
+    sum\(\1\."_virt_filter_births_\d+"\) as "_virt_agg_sum_\d+",
+    sum\(\1\."_virt_filter_births_\d+"\) as "_virt_agg_sum_\d+",
     sum\(\1\."births"\) as "_virt_agg_sum_\d+"
 FROM
     \1
 GROUP BY 
     \1\."name"\)"""
     assert re.search(pattern, sql, re.DOTALL) is not None
+
+
+def test_group_by_with_existing():
+    query = """
+    import names;
+    select
+    year,
+    name,
+    total_births,
+    rank name by group total_births by name desc as name_rank
+having 
+    name_rank <6
+order by
+    year asc
+;
+    """
+    env = Environment(working_path=Path(__file__).parent)
+    DebuggingHook()
+    exec = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = exec.generate_sql(query)[0]
+
+    assert (
+        """FROM
+    "bigquery-public-data.usa_names.usa_1910_current" as usa_names
+GROUP BY 
+    usa_names."name"),"""
+        in sql
+    ), sql

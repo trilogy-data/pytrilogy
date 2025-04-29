@@ -590,6 +590,7 @@ class ParseToObjects(Transformer):
             keys=set([x.address for x in parents]),
             modifiers=modifiers,
         )
+
         self.environment.add_concept(concept, meta)
         return concept
 
@@ -1367,23 +1368,7 @@ class ParseToObjects(Transformer):
     def comparison(self, args) -> Comparison:
         if args[1] == ComparisonOperator.IN:
             raise SyntaxError
-        # if isinstance(args[0], AggregateWrapper):
-        #     left_c = arbitrary_to_concept(
-        #         args[0],
-        #         environment=self.environment,
-        #     )
-        #     self.environment.add_concept(left_c)
-        #     left = left_c.reference
-        # else:
         left = args[0]
-        # if isinstance(args[2], AggregateWrapper):
-        #     right_c = arbitrary_to_concept(
-        #         args[2],
-        #         environment=self.environment,
-        #     )
-        #     self.environment.add_concept(right_c)
-        #     right = right_c.reference
-        # else:
         right = args[2]
         return Comparison(left=left, right=right, operator=args[1])
 

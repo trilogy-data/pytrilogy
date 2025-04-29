@@ -1541,18 +1541,14 @@ class Factory:
                     else:
                         # constants, etc, can be ignored for group
                         continue
-                group_base = group_base.model_copy(
-                    deep=True,
-                    update={
-                        "lineage": AggregateWrapper(
-                            function=group_base.lineage.function,
-                            by=final_args,
-                        )
-                    },
+                group_base = arbitrary_to_concept(
+                    AggregateWrapper(
+                        function=group_base.lineage.function,
+                        by=final_args,
+                    ),
+                    environment=self.environment,
                 )
-                group_base = group_base.with_grain(
-                    Grain.from_concepts(final_args, environment=self.environment)
-                )
+
                 rval = self.build(group_base)
                 return BuildFunction.model_construct(
                     operator=base.operator,
@@ -1650,21 +1646,20 @@ class Factory:
             ]
         else:
             by = [self.build(x) for x in base.by]
+
         parent = self.build(base.function)
         return BuildAggregateWrapper.model_construct(function=parent, by=by)
 
     @build.register
     def _(self, base: ColumnAssignment) -> BuildColumnAssignment:
-
+        fetched = self.environment.concepts[base.concept.address]
         return BuildColumnAssignment.model_construct(
             alias=(
                 self.build(base.alias)
                 if isinstance(base.alias, Function)
                 else base.alias
             ),
-            concept=self.build(
-                self.environment.concepts[base.concept.address].with_grain(self.grain)
-            ),
+            concept=self.build(fetched.with_grain(self.grain)),
             modifiers=base.modifiers,
         )
 
@@ -1683,7 +1678,9 @@ class Factory:
         from trilogy.parsing.common import arbitrary_to_concept
 
         bexpr: Any
-        if isinstance(base.expr, AggregateWrapper):
+        if isinstance(base.expr, (AggregateWrapper, WindowItem, FilterItem)) or (
+            isinstance(base.expr, Function) and base.expr.operator == FunctionType.GROUP
+        ):
             bexpr = arbitrary_to_concept(
                 base.expr,
                 environment=self.environment,

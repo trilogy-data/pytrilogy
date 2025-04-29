@@ -1,0 +1,36 @@
+import game as game;
+import player as player;
+import team as event_team;
+
+key id int; #Unique identifier for the event ("play")
+
+property id.description string; #A description of the event
+property id.type string; #Category of event
+property id.sub_type string; #Event subtype giving additional information about the event
+property id.shot_made bool; #Boolean value indicating whether the event was a shot made
+property id.shot_type string; #There are 5 categories of shot types: jump shot, layup, hook shot, dunk, tip shot
+property id.shot_subtype string; #Additional information about shot type (e.g. fadeaway, floating, pullup, step back, turnaround, alley-oop, driving, finger roll, putback, reverse)
+property id.points_scored float; #Number of points scored on the play
+
+metric count <- count(id);
+
+datasource game_events(
+game_id:game.id,
+event_id:id,
+team_id: event_team.id,
+player_id: player.id,
+player_full_name:player.full_name,
+event_type:type,
+type: sub_type,
+shot_type: shot_type,
+shot_subtype: shot_subtype,
+points_scored: points_scored,
+event_description: description,
+shot_made: shot_made
+)
+
+grain (id)
+address `bigquery-public-data.ncaa_basketball.mbb_pbp_sr`;
+
+
+

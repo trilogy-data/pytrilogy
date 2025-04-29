@@ -771,7 +771,13 @@ def arbitrary_to_concept(
         )
     elif isinstance(parent, Function):
         if not name:
-            name = f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(str(parent))}"
+            if parent.operator == FunctionType.GROUP:
+                name = (
+                    f"{VIRTUAL_CONCEPT_PREFIX}_group_to_{string_to_hash(str(parent))}"
+                )
+            else:
+                name = f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(str(parent))}"
+
         if parent.operator == FunctionType.GROUP:
             return group_function_to_concept(
                 parent,

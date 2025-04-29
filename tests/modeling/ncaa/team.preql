@@ -1,0 +1,69 @@
+import division as division;
+import league as league;
+import conference as conference;
+import std.geography;
+
+key id string;
+key code_ncaa int;
+property id.alias string;
+property id.name string;
+property id.kaggle_team_id int;
+property id.school_ncaa string;
+property id.turner_name string;
+property id.color string; # The team color
+
+property id.venue_id string;
+property id.venue_city string;
+property id.venue_state string::us_state_short;
+property id.venue_address string;
+property id.venue_zip string;
+property id.venue_country string::country;
+property id.venue_name string;
+property id.venue_capacity int;
+property id.logo_large string;
+property id.logo_medium string;
+property id.logo_small string;
+
+datasource mbb_teams (
+id:id,
+code_ncaa:code_ncaa,
+alias:alias,
+name:name,
+kaggle_team_id:kaggle_team_id,
+school_ncaa:school_ncaa,
+turner_name:turner_name,
+
+league_name:league.name,
+league_alias:league.alias,
+league_id:league.id,
+
+conf_name:conference.name,
+conf_alias:conference.alias,
+conf_id:conference.id,
+
+division_name:division.name,
+division_alias:division.alias,
+division_id:division.id,
+
+venue_id:venue_id,
+venue_city:venue_city,
+venue_state:venue_state,
+venue_address:venue_address,
+venue_zip:venue_zip,
+venue_country:venue_country,
+venue_name:venue_name,
+venue_capacity:venue_capacity,
+
+logo_large:logo_large,
+logo_medium:logo_medium,
+logo_small:logo_small
+)
+grain (id)
+address `bigquery-public-data.ncaa_basketball.mbb_teams`;
+
+
+datasource team_colors (
+id:id,
+color:color
+)
+address `bigquery-public-data.ncaa_basketball.team_colors`;

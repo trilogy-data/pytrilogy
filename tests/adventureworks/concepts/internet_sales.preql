@@ -6,7 +6,7 @@ key order_number string;
 key order_line_number int;
 property <order_line_number, order_number>.order_quantity int;
 property <order_line_number, order_number>.sales_amount float;
-property total_sales_amount_debug <- group(sales_amount) by order_line_number, order_number;
+property  <order_line_number, order_number>.total_sales_amount_debug <- group(sales_amount) by order_line_number, order_number;
 
 metric total_sales_amount <-sum(group(sales_amount) by order_line_number, order_number);
 metric total_order_quantity <-sum(group(order_quantity) by order_line_number, order_number);

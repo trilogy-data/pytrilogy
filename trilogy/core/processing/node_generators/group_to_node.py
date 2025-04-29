@@ -31,9 +31,9 @@ def gen_group_to_node(
         raise SyntaxError(
             f"Group to should have function lineage, is {type(concept.lineage)}"
         )
-    group_arg = concept.lineage.arguments[0]
 
     parent_concepts: List[BuildConcept] = concept.lineage.concept_arguments
+    root = parent_concepts[0]
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} group by node has required parents {[x.address for x in parent_concepts]}"
     )
@@ -47,7 +47,7 @@ def gen_group_to_node(
             conditions=conditions,
         )
     ]
-
+    outputs = parent_concepts + [concept]
     group_node = GroupNode(
         output_concepts=parent_concepts + [concept],
         input_concepts=parent_concepts,
@@ -56,16 +56,29 @@ def gen_group_to_node(
         depth=depth,
         preexisting_conditions=conditions.conditional if conditions else None,
         hidden_concepts=set(
-            [group_arg.address]
-            if isinstance(group_arg, BuildConcept)
-            and group_arg.address not in local_optional
-            else []
+            [
+                x.address
+                for x in outputs
+                if x.address not in local_optional
+                and x.address != concept.address
+                and x.address != root.address
+            ]
         ),
     )
 
     # early exit if no optional
-    if not local_optional:
+    missing_local_option: list[BuildConcept] = [
+        x for x in local_optional if x not in group_node.output_concepts
+    ]
+    if not missing_local_option:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} no missing local optional required, returning group node only."
+        )
         return group_node
+
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} group by node is missing required optional {[x.address for x in missing_local_option]}"
+    )
 
     # the keys we group by
     # are what we can use for enrichment
@@ -83,7 +96,9 @@ def gen_group_to_node(
             f"{padding(depth)}{LOGGER_PREFIX} group by node enrich node, returning group node only."
         )
         return group_node
-
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} returning group to node with enrichment."
+    )
     return MergeNode(
         input_concepts=[concept]
         + local_optional
