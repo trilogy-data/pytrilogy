@@ -1,3 +1,5 @@
+from pytest import raises
+
 from trilogy import Dialects
 from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.models.build import BuildWindowItem
@@ -13,7 +15,6 @@ from trilogy.dialect import duckdb
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.parser import parse
 from trilogy.parsing.exceptions import ParseError
-from pytest import raises
 
 
 def test_select() -> None:

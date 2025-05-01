@@ -1464,7 +1464,7 @@ class ParseToObjects(Transformer):
         return DatePart(args.value)
 
     @v_args(meta=True)
-    def window_item(self, meta:Meta, args) -> WindowItem:
+    def window_item(self, meta: Meta, args) -> WindowItem:
         type: WindowType = args[0]
         order_by = []
         over = []
@@ -1818,16 +1818,24 @@ class ParseToObjects(Transformer):
         return self.function_factory.create_function(args, FunctionType.BOOL, meta)
 
 
-def unpack_visit_error(e: VisitError):
+def unpack_visit_error(e: VisitError, text: str | None = None):
     """This is required to get exceptions from imports, which would
     raise nested VisitErrors"""
     if isinstance(e.orig_exc, VisitError):
-        unpack_visit_error(e.orig_exc)
+        unpack_visit_error(e.orig_exc, text)
     elif isinstance(e.orig_exc, (UndefinedConceptException, ImportError)):
         raise e.orig_exc
     elif isinstance(e.orig_exc, (SyntaxError, TypeError)):
         if isinstance(e.obj, Tree):
-            raise InvalidSyntaxException(
+            if text:
+                extract = text[e.obj.meta.start_pos - 5 : e.obj.meta.end_pos + 5]
+                raise InvalidSyntaxException(
+                    str(e.orig_exc)
+                    + " in "
+                    + str(e.rule)
+                    + f" Line: {e.obj.meta.line} ({extract})"
+                )
+            InvalidSyntaxException(
                 str(e.orig_exc) + " in " + str(e.rule) + f" Line: {e.obj.meta.line}"
             )
         raise InvalidSyntaxException(str(e.orig_exc)).with_traceback(
@@ -1878,7 +1886,7 @@ def parse_text(
             f"Parse time: {end - start} for {len(text)} characters, {len(output)} objects"
         )
     except VisitError as e:
-        unpack_visit_error(e)
+        unpack_visit_error(e, text)
         # this will never be reached
         raise e
     except (
@@ -1889,6 +1897,12 @@ def parse_text(
         ValidationError,
         TypeError,
     ) as e:
+        if isinstance(
+            e, (UnexpectedCharacters, UnexpectedEOF, UnexpectedInput, UnexpectedToken)
+        ):
+            raise InvalidSyntaxException(
+                str(e) + "\nContext:\n" + e.get_context(text.replace("\n", " "), 20)
+            )
         raise InvalidSyntaxException(str(e))
 
     return environment, output
