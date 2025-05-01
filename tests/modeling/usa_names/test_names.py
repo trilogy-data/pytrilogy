@@ -197,3 +197,44 @@ GROUP BY
     usa_names."name"),"""
         in sql
     ), sql
+
+
+def test_multi_window():
+    query = """
+    import names;
+    where year between 1940 and 1950
+    select
+        name,
+        state,
+        sum(births) as all_births,
+        rank name over state by all_births desc as state_rank,
+        rank name by sum(births) by name desc as all_rank
+    having 
+        state_rank != all_rank
+        and all_rank <10
+    order by
+        all_rank asc;
+        """
+    env = Environment(working_path=Path(__file__).parent)
+
+    exec = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = exec.generate_sql(query)[0]
+    assert (
+        """cooperative as (
+SELECT
+    rank() over (order by thoughtful."_virt_agg_sum_6723478476084862" desc ) as "all_rank",
+    thoughtful."_virt_agg_sum_6723478476084862" as "_virt_agg_sum_6723478476084862",
+    thoughtful."name" as "name"
+FROM
+    thoughtful)"""
+        in sql
+    ), sql
+    pattern = r"""[a-z]+ as \(
+SELECT
+    rank\(\) over \(order by ([a-z]+)\."_virt_agg_sum_\d+" desc \) as "all_rank",
+    \1\."_virt_agg_sum_\d+" as "_virt_agg_sum_\d+",
+    \1\."name" as "name"
+FROM
+    \1\)"""
+
+    assert re.search(pattern, sql, re.DOTALL) is not None

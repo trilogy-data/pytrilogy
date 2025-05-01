@@ -12,6 +12,8 @@ from trilogy.core.statements.author import SelectStatement, WindowItem
 from trilogy.dialect import duckdb
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.parser import parse
+from trilogy.parsing.exceptions import ParseError
+from pytest import raises
 
 
 def test_select() -> None:
@@ -82,6 +84,15 @@ limit 100
 
     generator = BigqueryDialect()
     generator.compile_statement(query)
+
+
+def test_constant_rank():
+    declarations = """
+auto bar <- unnest([1,2,3]);
+auto fun <- rank 1 by bar desc;
+"""
+    with raises(ParseError):
+        _ = parse(declarations)
 
 
 def test_rank_by():

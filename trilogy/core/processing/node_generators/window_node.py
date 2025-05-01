@@ -61,6 +61,7 @@ def gen_window_node(
     # append in keys to get the right grain
     if concept.keys:
         for item in concept.keys:
+            logger.info(f"{padding(depth)}{LOGGER_PREFIX} appending search for key {item}")
             targets.append(environment.concepts[item])
     additional_outputs = []
     if equivalent_optional:
@@ -72,10 +73,11 @@ def gen_window_node(
             additional_outputs.append(x)
 
     grain_equivalents = [
-        x for x in local_optional if x.keys and all([key in targets for key in x.keys])
+        x for x in local_optional if x.keys and all([key in targets for key in x.keys]) and x.grain == concept.grain
     ]
 
     for x in grain_equivalents:
+        logger.info('Appending grain equivalent %s', x)
         targets.append(x)
 
     # finally, the ones we'll need to enrich

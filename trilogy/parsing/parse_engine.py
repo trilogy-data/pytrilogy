@@ -1464,7 +1464,7 @@ class ParseToObjects(Transformer):
         return DatePart(args.value)
 
     @v_args(meta=True)
-    def window_item(self, meta, args) -> WindowItem:
+    def window_item(self, meta:Meta, args) -> WindowItem:
         type: WindowType = args[0]
         order_by = []
         over = []
@@ -1486,7 +1486,10 @@ class ParseToObjects(Transformer):
             else:
                 concept = arbitrary_to_concept(item, environment=self.environment)
                 self.environment.add_concept(concept, meta=meta)
-        assert concept
+        if not concept:
+            raise ParseError(
+                f"Window statements must be on fields, not constants - error in: `{self.text_lookup[self.parse_address][meta.start_pos:meta.end_pos]}`"
+            )
         return WindowItem(
             type=type,
             content=concept.reference,
