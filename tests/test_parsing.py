@@ -1,4 +1,3 @@
-
 from trilogy import Dialects
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
