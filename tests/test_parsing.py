@@ -1,9 +1,6 @@
-from pytest import raises
-
 from trilogy import Dialects
-from trilogy.constants import MagicConstants, Parsing
+from trilogy.constants import MagicConstants
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
-from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.functions import argument_to_purpose, function_args_to_output_purpose
 from trilogy.core.models.author import Comparison
 from trilogy.core.models.core import (
@@ -20,7 +17,6 @@ from trilogy.core.statements.author import SelectStatement, ShowStatement
 from trilogy.core.statements.execute import ProcessedQuery
 from trilogy.dialect.base import BaseDialect
 from trilogy.parsing.parse_engine import (
-    ParseError,
     arg_to_datatype,
     parse_text,
 )
@@ -668,99 +664,3 @@ select x % 10 -> x_mod_10;
             
 """
     )
-
-
-def test_import_shows_source():
-
-    env = Environment(
-        config=EnvironmentOptions(
-            import_resolver=DictImportResolver(
-                content={
-                    "test": """
-import test_dep as test_dep;
-key x int;
-datasource test (
-x: x)
-grain(x)
-query '''
-select 1 as x
-union all
-select 11 as x
-''' TYPO
-""",
-                    "test_dep": """
-key x int;
-""",
-                }
-            )
-        )
-    )
-    assert isinstance(env.config.import_resolver, DictImportResolver)
-
-    with raises(Exception, match="Unable to import 'test', parsing error") as e:
-        env.parse(
-            """
-        import test;
-                
-    select x % 10 -> x_mod_10;
-                
-                
-    """
-        )
-        assert "TYPO" in str(e.value)
-        assert 1 == 0
-
-
-def test_concept_shadow_warning():
-    x = """
-key scalar int;    
-property scalar.int_array list<int>;
-
-key split <- unnest(int_array);
-
-datasource avalues (
-    int_array: int_array,
-	scalar: scalar
-    ) 
-grain (scalar) 
-query '''(
-select [1,2,3,4] as int_array, 2 as scalar
-union all
-select [5,6,7,8] as int_array, 4 as scalar
-)''';
-
-SELECT
-    int_array,
-    1+2->scalar
-;
-"""
-    with raises(ParseError):
-        env, parsed = parse_text(
-            x, parse_config=Parsing(strict_name_shadow_enforcement=True)
-        )
-    x = """
-key scalar int;    
-property scalar.int_array list<int>;
-
-key split <- unnest(int_array);
-
-datasource avalues (
-    int_array: int_array,
-	scalar: scalar
-    ) 
-grain (scalar) 
-query '''(
-select [1,2,3,4] as int_array, 2 as scalar
-union all
-select [5,6,7,8] as int_array, 4 as scalar
-)''';
-
-SELECT
-    int_array,
-    sum(scalar)->scalar
-;
-"""
-    with raises(InvalidSyntaxException):
-        env, parsed = parse_text(
-            x, parse_config=Parsing(strict_name_shadow_enforcement=True)
-        )

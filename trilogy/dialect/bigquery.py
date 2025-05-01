@@ -34,7 +34,7 @@ FUNCTION_MAP = {
 
 FUNCTION_GRAIN_MATCH_MAP = {
     **FUNCTION_MAP,
-    FunctionType.COUNT: lambda args: f"{args[0]}",
+    FunctionType.COUNT: lambda args: "1",
     FunctionType.SUM: lambda args: f"{args[0]}",
     FunctionType.AVG: lambda args: f"{args[0]}",
 }
