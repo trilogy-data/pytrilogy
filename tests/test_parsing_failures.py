@@ -77,10 +77,11 @@ SELECT
     1+2->scalar
 ;
 """
-    with raises(ParseError):
+    with raises(ParseError) as e:
         env, parsed = parse_text(
             x, parse_config=Parsing(strict_name_shadow_enforcement=True)
         )
+        assert 'abc' in str(e)
     x = """
 key scalar int;    
 property scalar.int_array list<int>;

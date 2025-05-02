@@ -1255,7 +1255,7 @@ class ParseToObjects(Transformer):
             intersection = base.locally_derived.intersection(pre_keys)
             if intersection:
                 raise ParseError(
-                    f"Select statement {base} has derived concepts {list(intersection)} that shadow existing environment concepts, which may cause unexpected behavior. Rename these."
+                    f"Select statement {base} creates new dervied concepts {list(intersection)} that have the same name(s) as existing concept(s), which may cause unexpected behavior. Do you mean to use the existing concept? If not, alias this under a new name."
                 )
         return base
 
