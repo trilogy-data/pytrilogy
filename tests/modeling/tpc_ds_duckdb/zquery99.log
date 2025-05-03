@@ -1,5 +1,5 @@
 query_id = 99
-gen_length = 8772
+gen_length = 8532
 generated_sql = """
 
 WITH 
@@ -37,11 +37,11 @@ WHERE
 ),
 thoughtful as (
 SELECT
-    CASE WHEN cheerful.\"days_to_ship\" <= 30 THEN cheerful.\"catalog_pk\" ELSE NULL END as \"_virt_filter_local_catalog_pk_8168372723999465\",
-    CASE WHEN cheerful.\"days_to_ship\" > 120 THEN cheerful.\"catalog_pk\" ELSE NULL END as \"_virt_filter_local_catalog_pk_5945567725420865\",
-    CASE WHEN cheerful.\"days_to_ship\" > 30 and cheerful.\"days_to_ship\" <= 60 THEN cheerful.\"catalog_pk\" ELSE NULL END as \"_virt_filter_local_catalog_pk_6661083751970711\",
-    CASE WHEN cheerful.\"days_to_ship\" > 60 and cheerful.\"days_to_ship\" <= 90 THEN cheerful.\"catalog_pk\" ELSE NULL END as \"_virt_filter_local_catalog_pk_3717011266371848\",
-    CASE WHEN cheerful.\"days_to_ship\" > 90 and cheerful.\"days_to_ship\" <= 120 THEN cheerful.\"catalog_pk\" ELSE NULL END as \"_virt_filter_local_catalog_pk_5603765296623263\",
+    CASE WHEN cheerful.\"days_to_ship\" <= 30 THEN cheerful.\"catalog_pk\" ELSE NULL END as \"_virt_filter_catalog_pk_8168372723999465\",
+    CASE WHEN cheerful.\"days_to_ship\" > 120 THEN cheerful.\"catalog_pk\" ELSE NULL END as \"_virt_filter_catalog_pk_5945567725420865\",
+    CASE WHEN cheerful.\"days_to_ship\" > 30 and cheerful.\"days_to_ship\" <= 60 THEN cheerful.\"catalog_pk\" ELSE NULL END as \"_virt_filter_catalog_pk_6661083751970711\",
+    CASE WHEN cheerful.\"days_to_ship\" > 60 and cheerful.\"days_to_ship\" <= 90 THEN cheerful.\"catalog_pk\" ELSE NULL END as \"_virt_filter_catalog_pk_3717011266371848\",
+    CASE WHEN cheerful.\"days_to_ship\" > 90 and cheerful.\"days_to_ship\" <= 120 THEN cheerful.\"catalog_pk\" ELSE NULL END as \"_virt_filter_catalog_pk_5603765296623263\",
     cheerful.\"catalog_pk\" as \"catalog_pk\",
     cheerful.\"days_to_ship\" as \"days_to_ship\",
     cheerful.\"item_id\" as \"item_id\",
@@ -50,7 +50,7 @@ FROM
     cheerful),
 yummy as (
 SELECT
-    thoughtful.\"_virt_filter_local_catalog_pk_8168372723999465\" as \"_virt_filter_local_catalog_pk_8168372723999465\",
+    thoughtful.\"_virt_filter_catalog_pk_8168372723999465\" as \"_virt_filter_catalog_pk_8168372723999465\",
     thoughtful.\"catalog_pk\" as \"catalog_pk\",
     thoughtful.\"days_to_ship\" as \"days_to_ship\",
     thoughtful.\"item_id\" as \"item_id\",
@@ -63,12 +63,12 @@ FROM
     INNER JOIN thoughtful on uneven.\"days_to_ship\" = thoughtful.\"days_to_ship\" AND uneven.\"item_id\" = thoughtful.\"item_id\" AND uneven.\"order_number\" = thoughtful.\"order_number\"),
 juicy as (
 SELECT
-    thoughtful.\"_virt_filter_local_catalog_pk_6661083751970711\" as \"_virt_filter_local_catalog_pk_6661083751970711\",
+    thoughtful.\"_virt_filter_catalog_pk_6661083751970711\" as \"_virt_filter_catalog_pk_6661083751970711\",
     thoughtful.\"catalog_pk\" as \"catalog_pk\",
     thoughtful.\"days_to_ship\" as \"days_to_ship\",
     thoughtful.\"item_id\" as \"item_id\",
     thoughtful.\"order_number\" as \"order_number\",
-    yummy.\"_virt_filter_local_catalog_pk_8168372723999465\" as \"_virt_filter_local_catalog_pk_8168372723999465\",
+    yummy.\"_virt_filter_catalog_pk_8168372723999465\" as \"_virt_filter_catalog_pk_8168372723999465\",
     yummy.\"cc_name_lower\" as \"cc_name_lower\",
     yummy.\"ship_mode_type\" as \"ship_mode_type\",
     yummy.\"warehouse_short_name\" as \"warehouse_short_name\"
@@ -77,12 +77,12 @@ FROM
     LEFT OUTER JOIN yummy on thoughtful.\"days_to_ship\" = yummy.\"days_to_ship\" AND thoughtful.\"item_id\" = yummy.\"item_id\" AND thoughtful.\"order_number\" = yummy.\"order_number\"),
 vacuous as (
 SELECT
-    juicy.\"_virt_filter_local_catalog_pk_6661083751970711\" as \"_virt_filter_local_catalog_pk_6661083751970711\",
-    juicy.\"_virt_filter_local_catalog_pk_8168372723999465\" as \"_virt_filter_local_catalog_pk_8168372723999465\",
+    juicy.\"_virt_filter_catalog_pk_6661083751970711\" as \"_virt_filter_catalog_pk_6661083751970711\",
+    juicy.\"_virt_filter_catalog_pk_8168372723999465\" as \"_virt_filter_catalog_pk_8168372723999465\",
     juicy.\"cc_name_lower\" as \"cc_name_lower\",
     juicy.\"ship_mode_type\" as \"ship_mode_type\",
     juicy.\"warehouse_short_name\" as \"warehouse_short_name\",
-    thoughtful.\"_virt_filter_local_catalog_pk_5945567725420865\" as \"_virt_filter_local_catalog_pk_5945567725420865\",
+    thoughtful.\"_virt_filter_catalog_pk_5945567725420865\" as \"_virt_filter_catalog_pk_5945567725420865\",
     thoughtful.\"catalog_pk\" as \"catalog_pk\",
     thoughtful.\"days_to_ship\" as \"days_to_ship\",
     thoughtful.\"item_id\" as \"item_id\",
@@ -92,14 +92,14 @@ FROM
     INNER JOIN thoughtful on juicy.\"days_to_ship\" = thoughtful.\"days_to_ship\" AND juicy.\"item_id\" = thoughtful.\"item_id\" AND juicy.\"order_number\" = thoughtful.\"order_number\"),
 concerned as (
 SELECT
-    thoughtful.\"_virt_filter_local_catalog_pk_5603765296623263\" as \"_virt_filter_local_catalog_pk_5603765296623263\",
+    thoughtful.\"_virt_filter_catalog_pk_5603765296623263\" as \"_virt_filter_catalog_pk_5603765296623263\",
     thoughtful.\"catalog_pk\" as \"catalog_pk\",
     thoughtful.\"days_to_ship\" as \"days_to_ship\",
     thoughtful.\"item_id\" as \"item_id\",
     thoughtful.\"order_number\" as \"order_number\",
-    vacuous.\"_virt_filter_local_catalog_pk_5945567725420865\" as \"_virt_filter_local_catalog_pk_5945567725420865\",
-    vacuous.\"_virt_filter_local_catalog_pk_6661083751970711\" as \"_virt_filter_local_catalog_pk_6661083751970711\",
-    vacuous.\"_virt_filter_local_catalog_pk_8168372723999465\" as \"_virt_filter_local_catalog_pk_8168372723999465\",
+    vacuous.\"_virt_filter_catalog_pk_5945567725420865\" as \"_virt_filter_catalog_pk_5945567725420865\",
+    vacuous.\"_virt_filter_catalog_pk_6661083751970711\" as \"_virt_filter_catalog_pk_6661083751970711\",
+    vacuous.\"_virt_filter_catalog_pk_8168372723999465\" as \"_virt_filter_catalog_pk_8168372723999465\",
     vacuous.\"cc_name_lower\" as \"cc_name_lower\",
     vacuous.\"ship_mode_type\" as \"ship_mode_type\",
     vacuous.\"warehouse_short_name\" as \"warehouse_short_name\"
@@ -108,14 +108,14 @@ FROM
     INNER JOIN thoughtful on vacuous.\"days_to_ship\" = thoughtful.\"days_to_ship\" AND vacuous.\"item_id\" = thoughtful.\"item_id\" AND vacuous.\"order_number\" = thoughtful.\"order_number\"),
 young as (
 SELECT
-    concerned.\"_virt_filter_local_catalog_pk_5603765296623263\" as \"_virt_filter_local_catalog_pk_5603765296623263\",
-    concerned.\"_virt_filter_local_catalog_pk_5945567725420865\" as \"_virt_filter_local_catalog_pk_5945567725420865\",
-    concerned.\"_virt_filter_local_catalog_pk_6661083751970711\" as \"_virt_filter_local_catalog_pk_6661083751970711\",
-    concerned.\"_virt_filter_local_catalog_pk_8168372723999465\" as \"_virt_filter_local_catalog_pk_8168372723999465\",
+    concerned.\"_virt_filter_catalog_pk_5603765296623263\" as \"_virt_filter_catalog_pk_5603765296623263\",
+    concerned.\"_virt_filter_catalog_pk_5945567725420865\" as \"_virt_filter_catalog_pk_5945567725420865\",
+    concerned.\"_virt_filter_catalog_pk_6661083751970711\" as \"_virt_filter_catalog_pk_6661083751970711\",
+    concerned.\"_virt_filter_catalog_pk_8168372723999465\" as \"_virt_filter_catalog_pk_8168372723999465\",
     concerned.\"cc_name_lower\" as \"cc_name_lower\",
     concerned.\"ship_mode_type\" as \"ship_mode_type\",
     concerned.\"warehouse_short_name\" as \"warehouse_short_name\",
-    thoughtful.\"_virt_filter_local_catalog_pk_3717011266371848\" as \"_virt_filter_local_catalog_pk_3717011266371848\",
+    thoughtful.\"_virt_filter_catalog_pk_3717011266371848\" as \"_virt_filter_catalog_pk_3717011266371848\",
     thoughtful.\"item_id\" as \"item_id\",
     thoughtful.\"order_number\" as \"order_number\"
 FROM
@@ -125,11 +125,11 @@ SELECT
     young.\"warehouse_short_name\" as \"warehouse_short_name\",
     young.\"ship_mode_type\" as \"ship_mode_type\",
     young.\"cc_name_lower\" as \"cc_name_lower\",
-    count(young.\"_virt_filter_local_catalog_pk_8168372723999465\") as \"less_than_30_days\",
-    count(young.\"_virt_filter_local_catalog_pk_6661083751970711\") as \"between_31_and_60_days\",
-    count(young.\"_virt_filter_local_catalog_pk_3717011266371848\") as \"between_61_and_90_days\",
-    count(young.\"_virt_filter_local_catalog_pk_5603765296623263\") as \"between_91_and_120_days\",
-    count(young.\"_virt_filter_local_catalog_pk_5945567725420865\") as \"over_120_days\"
+    count(young.\"_virt_filter_catalog_pk_8168372723999465\") as \"less_than_30_days\",
+    count(young.\"_virt_filter_catalog_pk_6661083751970711\") as \"between_31_and_60_days\",
+    count(young.\"_virt_filter_catalog_pk_3717011266371848\") as \"between_61_and_90_days\",
+    count(young.\"_virt_filter_catalog_pk_5603765296623263\") as \"between_91_and_120_days\",
+    count(young.\"_virt_filter_catalog_pk_5945567725420865\") as \"over_120_days\"
 FROM
     young
 GROUP BY 
