@@ -1,5 +1,5 @@
 query_id = 30
-gen_length = 12243
+gen_length = 12195
 generated_sql = """
 
 WITH 
@@ -63,7 +63,7 @@ WHERE
 ),
 uneven as (
 SELECT
-    CASE WHEN abundant.\"web_returns_return_date_year\" = 2002 THEN abundant.\"web_returns_return_amount\" ELSE NULL END as \"_virt_filter_web_returns_return_amount_1075768703847083\",
+    CASE WHEN abundant.\"web_returns_return_date_year\" = 2002 THEN abundant.\"web_returns_return_amount\" ELSE NULL END as \"_virt_filter_return_amount_1075768703847083\",
     abundant.\"web_returns_item_id\" as \"web_returns_item_id\",
     abundant.\"web_returns_return_amount\" as \"web_returns_return_amount\",
     abundant.\"web_returns_return_date_year\" as \"web_returns_return_date_year\",
@@ -72,7 +72,7 @@ FROM
     abundant),
 juicy as (
 SELECT
-    uneven.\"_virt_filter_web_returns_return_amount_1075768703847083\" as \"_virt_filter_web_returns_return_amount_1075768703847083\",
+    uneven.\"_virt_filter_return_amount_1075768703847083\" as \"_virt_filter_return_amount_1075768703847083\",
     uneven.\"web_returns_item_id\" as \"web_returns_item_id\",
     uneven.\"web_returns_web_sales_order_number\" as \"web_returns_web_sales_order_number\",
     yummy.\"web_returns_customer_id\" as \"web_returns_customer_id\",
@@ -87,7 +87,7 @@ vacuous as (
 SELECT
     juicy.\"web_returns_customer_id\" as \"web_returns_customer_id\",
     juicy.\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
-    sum(juicy.\"_virt_filter_web_returns_return_amount_1075768703847083\") as \"customer_state_returns_2002\"
+    sum(juicy.\"_virt_filter_return_amount_1075768703847083\") as \"customer_state_returns_2002\"
 FROM
     juicy
 GROUP BY 
