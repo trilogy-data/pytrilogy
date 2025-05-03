@@ -1496,22 +1496,43 @@ class Factory:
     ):
         return base
 
+    def instantiate_concept(
+        self,
+        arg: (
+            AggregateWrapper
+            | FunctionCallWrapper
+            | WindowItem
+            | FilterItem
+            | Function
+            | ListWrapper[Any]
+            | MapWrapper[Any, Any]
+            | int
+            | float
+            | str
+        ),
+    ) -> tuple[Concept, BuildConcept]:
+        from trilogy.parsing.common import arbitrary_to_concept
+
+        new = arbitrary_to_concept(
+            arg,
+            environment=self.environment,
+        )
+        built = self.build(new)
+        self.local_concepts[new.address] = built
+        return new, built
+
     @build.register
     def _(self, base: None) -> None:
         return base
 
     @build.register
     def _(self, base: Function) -> BuildFunction | BuildAggregateWrapper:
-        from trilogy.parsing.common import arbitrary_to_concept
 
         raw_args: list[Concept | FuncArgs] = []
         for arg in base.arguments:
             # to do proper discovery, we need to inject virtual intermediate ocncepts
             if isinstance(arg, (AggregateWrapper, FilterItem, WindowItem)):
-                narg = arbitrary_to_concept(
-                    arg,
-                    environment=self.environment,
-                )
+                narg, _ = self.instantiate_concept(arg)
                 raw_args.append(narg)
             else:
                 raw_args.append(arg)
@@ -1532,24 +1553,16 @@ class Factory:
                 for x in arguments:
                     if isinstance(x, (ConceptRef, Concept)):
                         final_args.append(x)
-                    elif isinstance(x, (AggregateWrapper, FilterItem, WindowItem)):
-                        newx = arbitrary_to_concept(
-                            x,
-                            environment=self.environment,
-                        )
-                        final_args.append(newx)
                     else:
                         # constants, etc, can be ignored for group
                         continue
-                group_base = arbitrary_to_concept(
+                _, rval = self.instantiate_concept(
                     AggregateWrapper(
                         function=group_base.lineage.function,
                         by=final_args,
-                    ),
-                    environment=self.environment,
+                    )
                 )
 
-                rval = self.build(group_base)
                 return BuildFunction.model_construct(
                     operator=base.operator,
                     arguments=[rval, *[self.build(c) for c in raw_args[1:]]],
@@ -1580,20 +1593,13 @@ class Factory:
 
     @build.register
     def _(self, base: CaseWhen) -> BuildCaseWhen:
-        from trilogy.parsing.common import arbitrary_to_concept
 
         comparison = base.comparison
         if isinstance(comparison, (AggregateWrapper, FilterItem, WindowItem)):
-            comparison = arbitrary_to_concept(
-                comparison,
-                environment=self.environment,
-            )
+            comparison, _ = self.instantiate_concept(comparison)
         expr: Concept | FuncArgs = base.expr
         if isinstance(expr, (AggregateWrapper, FilterItem, WindowItem)):
-            expr = arbitrary_to_concept(
-                expr,
-                environment=self.environment,
-            )
+            expr, _ = self.instantiate_concept(expr)
         return BuildCaseWhen.model_construct(
             comparison=self.build(comparison),
             expr=self.build(expr),
@@ -1615,6 +1621,7 @@ class Factory:
         else:
             build_lineage = None
         derivation = Concept.calculate_derivation(build_lineage, base.purpose)
+
         granularity = Concept.calculate_granularity(
             derivation, final_grain, build_lineage
         )
@@ -1675,16 +1682,12 @@ class Factory:
 
     @build.register
     def _(self, base: OrderItem) -> BuildOrderItem:
-        from trilogy.parsing.common import arbitrary_to_concept
 
         bexpr: Any
         if isinstance(base.expr, (AggregateWrapper, WindowItem, FilterItem)) or (
             isinstance(base.expr, Function) and base.expr.operator == FunctionType.GROUP
         ):
-            bexpr = arbitrary_to_concept(
-                base.expr,
-                environment=self.environment,
-            )
+            bexpr, _ = self.instantiate_concept(base.expr)
         else:
             bexpr = base.expr
         return BuildOrderItem.model_construct(
@@ -1707,15 +1710,10 @@ class Factory:
 
     @build.register
     def _(self, base: WindowItem) -> BuildWindowItem:
-        # to do proper discovery, we need to inject virtual intermediate ocncepts
-        from trilogy.parsing.common import arbitrary_to_concept
 
         content: Concept | FuncArgs = base.content
         if isinstance(content, (AggregateWrapper, FilterItem, WindowItem)):
-            content = arbitrary_to_concept(
-                content,
-                environment=self.environment,
-            )
+            content, _ = self.instantiate_concept(content)
         final_by = []
         for x in base.order_by:
             if (
@@ -1743,30 +1741,26 @@ class Factory:
 
     @build.register
     def _(self, base: SubselectComparison) -> BuildSubselectComparison:
+        right: Any = base.right
+        if isinstance(base.right, (AggregateWrapper, WindowItem, FilterItem, Function)):
+            right_c, _ = self.instantiate_concept(base.right)
+            right = right_c
         return BuildSubselectComparison.model_construct(
-            left=(self.build(base.left)),
-            right=(self.build(base.right)),
+            left=self.build(base.left),
+            right=self.build(right),
             operator=base.operator,
         )
 
     @build.register
     def _(self, base: Comparison) -> BuildComparison:
-        from trilogy.parsing.common import arbitrary_to_concept
 
         left = base.left
         if isinstance(left, (AggregateWrapper, WindowItem, FilterItem)):
-            left_c = arbitrary_to_concept(
-                left,
-                environment=self.environment,
-            )
+            left_c, _ = self.instantiate_concept(left)
             left = left_c  # type: ignore
         right = base.right
         if isinstance(right, (AggregateWrapper, WindowItem, FilterItem)):
-            right_c = arbitrary_to_concept(
-                right,
-                environment=self.environment,
-            )
-
+            right_c, _ = self.instantiate_concept(right)
             right = right_c  # type: ignore
         return BuildComparison.model_construct(
             left=(self.build(left)),
@@ -1826,6 +1820,13 @@ class Factory:
 
     @build.register
     def _(self, base: FilterItem) -> BuildFilterItem:
+        if isinstance(
+            base.content, (Function, AggregateWrapper, WindowItem, FilterItem)
+        ):
+            _, built = self.instantiate_concept(base.content)
+            return BuildFilterItem.model_construct(
+                content=built, where=self.build(base.where)
+            )
         return BuildFilterItem.model_construct(
             content=self.build(base.content), where=self.build(base.where)
         )
@@ -1969,6 +1970,10 @@ class Factory:
             new.datasources[k] = self.build(d)
         for k, a in base.alias_origin_lookup.items():
             new.alias_origin_lookup[k] = self.build(a)
+        # add in anything that was built as a side-effect
+        for bk, bv in self.local_concepts.items():
+            if bk not in new.concepts:
+                new.concepts[bk] = bv
         new.gen_concept_list_caches()
         return new
 

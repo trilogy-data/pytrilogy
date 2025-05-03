@@ -178,7 +178,7 @@ def gen_enrichment_node(
             for x in extra_required
         ):
             log_lambda(
-                f"{str(type(base_node).__name__)} returning property optimized enrichment node"
+                f"{str(type(base_node).__name__)} returning property optimized enrichment node for {extra_required[0].keys}"
             )
             return gen_property_enrichment_node(
                 base_node,

@@ -458,7 +458,25 @@ def filter_item_to_concept(
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
-    cparent = environment.concepts[parent.content.address]
+    if isinstance(parent.content, ConceptRef):
+        cparent = environment.concepts[parent.content.address]
+    elif isinstance(
+        parent.content,
+        (
+            FilterItem,
+            AggregateWrapper,
+            FunctionCallWrapper,
+            WindowItem,
+            Function,
+            ListWrapper,
+            MapWrapper,
+        ),
+    ):
+        cparent = arbitrary_to_concept(parent.content, environment, namespace=namespace)
+    else:
+        raise NotImplementedError(
+            f"Filter item with non ref content {parent.content} not yet supported"
+        )
     modifiers = get_upstream_modifiers(
         cparent.concept_arguments, environment=environment
     )
@@ -494,24 +512,6 @@ def window_item_to_concept(
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
-    # if isinstance(
-    #     parent.content,
-    #     (
-    #         AggregateWrapper
-    #         | FunctionCallWrapper
-    #         | WindowItem
-    #         | FilterItem
-    #         | Function
-    #         | ListWrapper
-    #         | MapWrapper
-    #     ),
-    # ):
-    #     new_parent = arbitrary_to_concept(
-    #         parent.content, environment=environment, namespace=namespace
-    #     )
-    #     environment.add_concept(new_parent)
-    #     parent = parent.model_copy(update={"content": new_parent.reference})
-
     if not isinstance(parent.content, ConceptRef):
         raise NotImplementedError(
             f"Window function wiht non ref content {parent.content} not yet supported"
@@ -523,16 +523,26 @@ def window_item_to_concept(
         local_purpose, keys = get_purpose_and_keys(None, (bcontent,), environment)
     else:
         local_purpose = Purpose.PROPERTY
-        keys = {
-            bcontent.address,
-        }
+        keys = Grain.from_concepts(
+            [bcontent.address] + [y.address for y in parent.over], environment
+        ).components
 
+    # when including the order by in discovery grain
     if parent.order_by:
         grain_components = parent.over + [bcontent.output]
         for item in parent.order_by:
-            grain_components += item.concept_arguments
+            # confirm that it's not just an aggregate at the grain of the stuff we're already keying of of
+            # in which case we can ignore contributions
+            if (
+                isinstance(item.expr, AggregateWrapper)
+                and set([x.address for x in item.expr.by]) == keys
+            ):
+                continue
+            else:
+                grain_components += item.concept_arguments
     else:
         grain_components = parent.over + [bcontent.output]
+
     final_grain = Grain.from_concepts(grain_components, environment)
     modifiers = get_upstream_modifiers(bcontent.concept_arguments, environment)
     datatype = parent.content.datatype
@@ -651,7 +661,9 @@ def rowset_concept(
     orig_concept = environment.concepts[orig_address.address]
     name = orig_concept.name
     if isinstance(orig_concept.lineage, FilterItem):
-        if orig_concept.lineage.where == rowset.select.where_clause:
+        if orig_concept.lineage.where == rowset.select.where_clause and isinstance(
+            orig_concept.lineage.content, (ConceptRef, Concept)
+        ):
             name = environment.concepts[orig_concept.lineage.content.address].name
     base_namespace = (
         f"{rowset.name}.{orig_concept.namespace}"
@@ -761,7 +773,10 @@ def arbitrary_to_concept(
         )
     elif isinstance(parent, FilterItem):
         if not name:
-            name = f"{VIRTUAL_CONCEPT_PREFIX}_filter_{parent.content.name}_{string_to_hash(str(parent))}"
+            if isinstance(parent.content, ConceptRef):
+                name = f"{VIRTUAL_CONCEPT_PREFIX}_filter_{parent.content.name}_{string_to_hash(str(parent))}"
+            else:
+                name = f"{VIRTUAL_CONCEPT_PREFIX}_filter_{string_to_hash(str(parent))}"
         return filter_item_to_concept(
             parent,
             name,

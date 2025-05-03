@@ -52,7 +52,7 @@
     
     //column_assignment
     //figure out if we want static
-    column_assignment: (raw_column_assignment | IDENTIFIER | QUOTED_IDENTIFIER |  _static_functions  ) ":" concept_assignment
+    column_assignment: (raw_column_assignment | IDENTIFIER | QUOTED_IDENTIFIER |  expr  ) ":" concept_assignment
     
     RAW_ENTRY.1: /raw\s*\(/s
 
@@ -102,7 +102,7 @@
     type_declaration: "type" IDENTIFIER data_type 
 
     // user_id where state = Mexico
-    _filter_alt: IDENTIFIER "?" conditional
+    _filter_alt: (IDENTIFIER | "(" expr ")") "?" conditional
     _filter_base: "filter"i IDENTIFIER where
     filter_item: _filter_base | _filter_alt
 
@@ -128,12 +128,6 @@
     metadata: "metadata" "(" IDENTIFIER "=" string_lit ")"
     
     limit: "LIMIT"i /[0-9]+/
-    
-    !window_order: /TOP|BOTTOM/i
-    
-    window: window_order /[0-9]+/
-    
-    window_order_by: "BY"i column_list
     
     order_list: expr ordering (","  expr ordering)* ","?
     
@@ -166,11 +160,9 @@
 
     !array_comparison: ( ("NOT"i "IN"i) | "IN"i)
 
-    COMPARISON_OPERATOR: /(is\s+not|is|=|>=|<=|!=|>|<)/i
+    COMPARISON_OPERATOR: /(\s+is\s+not\s|\s+is\s|\s+in\s|\s+not\s+in\s|=|>=|<=|!=|>|<)/i
     
-    comparison: expr COMPARISON_OPERATOR expr
-
-    between_comparison: expr "between"i expr "and"i expr
+    between_comparison: "between"i expr "and"i expr
 
     subselect_comparison: expr array_comparison (literal | _constant_functions | _string_functions | concept_lit | filter_item | window_item | unnest | fgroup |  expr_tuple | parenthetical )
     
@@ -187,31 +179,49 @@
     union: _UNION   (expr ",")* expr ")"
 
     //indexing into an expression is a function
-    index_access: expr "[" int_lit "]"
-    map_key_access: expr "[" string_lit "]"
-    attr_access: expr  "." string_lit 
+    index_access: atom "[" int_lit "]"
+    map_key_access: atom "[" string_lit "]"
+    attr_access: atom  "." string_lit 
 
+    ?expr: comparison_root | between_root
 
-    expr: _basic_expr | _functional_expr | _operation_expr |  _access_expr
+    ?comparison_root: sum_chain (COMPARISON_OPERATOR sum_chain)? -> comparison
+    ?between_root: sum_chain "between"i sum_chain "and"i sum_chain -> between_comparison
 
-   # Most common/basic expressions
-   _basic_expr: literal | concept_lit | parenthetical | expr_tuple
+    PLUS_OR_MINUS: ("+" | /-(?!>)/ | "||" | "like" ) 
 
-   # Operations and comparisons 
-   _operation_expr: comparison | alt_like | between_comparison | subselect_comparison
+    ?sum_chain: product_chain (PLUS_OR_MINUS product_chain)* -> sum_operator
+    
+    MULTIPLY_DIVIDE_PERCENT: ("*" | "/" | "%")
 
-   # Function-like expressions
-   _functional_expr:  _constant_functions | _static_functions  | filter_item | aggregate_functions | window_item | custom_function | fgroup | unnest | union |  aggregate_by
+    ?product_chain: atom ( MULTIPLY_DIVIDE_PERCENT atom)* -> product_operator
+
+    ?atom: literal | concept_lit | parenthetical
+     | expr_tuple
+     | custom_function
+     | _constant_functions
+     | _static_functions
+     | _generic_functions
+     | _date_functions
+     | aggregate_functions
+     | window_item
+     | unnest
+     | union
+     | fgroup
+     | filter_item
+     | _access_expr
+     | aggregate_by
+
 
    # Access patterns
    _access_expr: index_access | map_key_access | attr_access
     // functions
     
-    fadd: (/add\(/ expr "," expr ")" ) | ( expr "+" expr )
-    fsub: ("subtract"i "(" expr "," expr ")" ) | ( expr "-" expr )
-    fmul: ("multiply"i "(" expr "," expr ")" ) | ( expr "*" expr )
-    fdiv: ( "divide"i "(" expr "," expr ")") | ( expr "/" expr )
-    fmod: ( "mod"i "(" expr "," (int_lit | concept_lit ) ")") | ( expr "%" (int_lit | concept_lit ) )
+    fadd: (/add\(/ expr "," expr ")" ) 
+    fsub: ("subtract"i "(" expr "," expr ")" ) 
+    fmul: ("multiply"i "(" expr "," expr ")" ) 
+    fdiv: ( "divide"i "(" expr "," expr ")") 
+    fmod: ( "mod"i "(" expr "," (int_lit | concept_lit ) ")")  
     _ROUND.1: "round"i "("
     fround: _ROUND expr "," expr ")"
     fabs: "abs"i "(" expr ")"
@@ -224,9 +234,9 @@
     
     //generic
     _fcast_primary: "cast"i "(" expr "as"i data_type ")"
-    _fcast_alt: expr "::" data_type
+    _fcast_alt: atom "::" data_type
     fcast: _fcast_primary | _fcast_alt
-    concat: ("concat"i "(" (expr ",")* expr ")") | (expr "||" expr)
+    concat: ("concat"i "(" (expr ",")* expr ")") 
     fcoalesce: "coalesce"i "(" (expr ",")* expr ")"
     fcase_when: "WHEN"i conditional "THEN"i expr
     fcase_else: "ELSE"i expr
@@ -235,7 +245,7 @@
     fnot: "NOT"i expr
     fbool: "bool"i "(" expr ")"
 
-    _generic_functions: fcast | concat | fcoalesce | fcase | len | fnot | fbool
+    _generic_functions: fcast |  concat  | fcoalesce | fcase  | len | fnot | fbool
 
     //constant
     CURRENT_DATE.1: /current_date\(\)/
@@ -333,12 +343,12 @@
     
     _date_functions: fdate | fdate_add | fdate_sub | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part | fdate_trunc
     
-    _static_functions:  _string_functions | _math_functions | _generic_functions |  _date_functions
+    _static_functions:  _string_functions | _math_functions 
 
     custom_function:  "@" IDENTIFIER  "(" (expr ",")* expr ")"
 
     // base language constructs
-    concept_lit: MINUS? IDENTIFIER
+    concept_lit:  IDENTIFIER
     IDENTIFIER: /[a-zA-Z\_][a-zA-Z0-9\_\.]*/
     WILDCARD_IDENTIFIER: /[a-zA-Z\_][a-zA-Z0-9\_\-\.\*]*/
     QUOTED_IDENTIFIER:  /`[a-zA-Z\_][a-zA-Z0-9\_\.\-\*\:\s]*`/
@@ -353,9 +363,9 @@
     _double_quote: "\"" ( DOUBLE_STRING_CHARS )* "\"" 
     string_lit: _single_quote | _double_quote | MULTILINE_STRING
 
-    MINUS: "-"
 
-    int_lit: MINUS? /[0-9]+/
+
+    int_lit:  /\-?[0-9]+/
     
     float_lit: /[0-9]*\.[0-9]+/
 

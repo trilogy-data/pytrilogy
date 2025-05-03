@@ -208,8 +208,8 @@ def test_math_functions(test_environment):
     
     property inflated_order_value<- multiply(revenue, 2);
     property fixed_order_value<- inflated_order_value / 2;
-    property order_sub <- revenue - 2;
     property order_add <- revenue + 2;
+    property order_sub <- revenue - 2;
     property order_id.order_nested <- revenue * 2/2;
     property order_id.rounded <- round(revenue + 2.01,2);
     constant random <- random(1);

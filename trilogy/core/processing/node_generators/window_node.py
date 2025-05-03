@@ -32,7 +32,9 @@ def resolve_window_parent_concepts(
     if concept.lineage.order_by:
         for item in concept.lineage.order_by:
             base += item.concept_arguments
-
+    if concept.grain:
+        for gitem in concept.grain.components:
+            base.append(environment.concepts[gitem])
     return concept.lineage.content, unique(base, "address")
 
 
@@ -131,20 +133,24 @@ def gen_window_node(
     )
     _window_node.rebuild_cache()
     _window_node.resolve()
+
     window_node = StrategyNode(
         input_concepts=[concept] + additional_outputs + parent_concepts + targets,
         output_concepts=[concept] + additional_outputs + parent_concepts + targets,
         environment=environment,
         parents=[_window_node],
         preexisting_conditions=conditions.conditional if conditions else None,
-        # hidden_concepts=[
-        #     x.address for x in parent_concepts if x.address not in local_optional
-        # ],
+        grain=BuildGrain.from_concepts(
+            concepts=[concept] + additional_outputs + parent_concepts + targets,
+            environment=environment,
+        ),
     )
     if not non_equivalent_optional:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no optional concepts, returning window node"
         )
+        # prune outputs if we don't need join keys
+        window_node.set_output_concepts([concept] + additional_outputs + targets)
         return window_node
 
     missing_optional = [

@@ -213,9 +213,6 @@ def test_comparison():
     with raises(SyntaxError):
         Comparison(left=1, right="abc", operator=ComparisonOperator.EQ)
 
-    with raises(SyntaxError):
-        Comparison(left=1, right=1, operator=ComparisonOperator.IN)
-
     # this should not error
     Comparison(left=1, right=[1, 2, 3], operator=ComparisonOperator.IN)
 
