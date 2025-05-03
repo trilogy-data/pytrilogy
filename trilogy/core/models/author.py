@@ -629,18 +629,8 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
                 )
         elif self.operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
             right_type = arg_to_datatype(self.right)
-            if not any(
-                [
-                    isinstance(self.right, ConceptRef),
-                    right_type in (DataType.LIST,),
-                    isinstance(right_type, (ListType, ListWrapper, TupleWrapper)),
-                ]
-            ):
-                raise SyntaxError(
-                    f"Cannot use {self.operator.value} with non-list, non-tuple, non-concept object {self.right} in {str(self)}"
-                )
 
-            elif isinstance(right_type, ListType) and not is_compatible_datatype(
+            if isinstance(right_type, ListType) and not is_compatible_datatype(
                 arg_to_datatype(self.left), right_type.value_data_type
             ):
                 raise SyntaxError(
@@ -1916,7 +1906,7 @@ class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel)
 
 
 class FilterItem(DataTyped, Namespaced, ConceptArgs, BaseModel):
-    content: ConceptRef
+    content: Expr
     where: "WhereClause"
 
     @field_validator("content", mode="before")
@@ -1932,13 +1922,21 @@ class FilterItem(DataTyped, Namespaced, ConceptArgs, BaseModel):
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "FilterItem":
         return FilterItem.model_construct(
-            content=self.content.with_merge(source, target, modifiers),
+            content=(
+                self.content.with_merge(source, target, modifiers)
+                if isinstance(self.content, Mergeable)
+                else self.content
+            ),
             where=self.where.with_merge(source, target, modifiers),
         )
 
     def with_namespace(self, namespace: str) -> "FilterItem":
         return FilterItem.model_construct(
-            content=self.content.with_namespace(namespace),
+            content=(
+                self.content.with_namespace(namespace)
+                if isinstance(self.content, Namespaced)
+                else self.content
+            ),
             where=self.where.with_namespace(namespace),
         )
 

@@ -458,7 +458,25 @@ def filter_item_to_concept(
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
-    cparent = environment.concepts[parent.content.address]
+    if isinstance(parent.content, ConceptRef):
+        cparent = environment.concepts[parent.content.address]
+    elif isinstance(
+        parent.content,
+        (
+            FilterItem,
+            AggregateWrapper,
+            FunctionCallWrapper,
+            WindowItem,
+            Function,
+            ListWrapper,
+            MapWrapper,
+        ),
+    ):
+        cparent = arbitrary_to_concept(parent.content, environment, namespace=namespace)
+    else:
+        raise NotImplementedError(
+            f"Filter item with non ref content {parent.content} not yet supported"
+        )
     modifiers = get_upstream_modifiers(
         cparent.concept_arguments, environment=environment
     )
@@ -661,7 +679,9 @@ def rowset_concept(
     orig_concept = environment.concepts[orig_address.address]
     name = orig_concept.name
     if isinstance(orig_concept.lineage, FilterItem):
-        if orig_concept.lineage.where == rowset.select.where_clause:
+        if orig_concept.lineage.where == rowset.select.where_clause and isinstance(
+            orig_concept.lineage.content, (ConceptRef, Concept)
+        ):
             name = environment.concepts[orig_concept.lineage.content.address].name
     base_namespace = (
         f"{rowset.name}.{orig_concept.namespace}"
@@ -771,7 +791,10 @@ def arbitrary_to_concept(
         )
     elif isinstance(parent, FilterItem):
         if not name:
-            name = f"{VIRTUAL_CONCEPT_PREFIX}_filter_{parent.content.name}_{string_to_hash(str(parent))}"
+            if isinstance(parent.content, ConceptRef):
+                name = f"{VIRTUAL_CONCEPT_PREFIX}_filter_{parent.content.address}_{string_to_hash(str(parent))}"
+            else:
+                name = f"{VIRTUAL_CONCEPT_PREFIX}_filter_{string_to_hash(str(parent))}"
         return filter_item_to_concept(
             parent,
             name,

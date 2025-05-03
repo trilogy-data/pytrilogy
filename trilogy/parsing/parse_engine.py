@@ -495,7 +495,7 @@ class ParseToObjects(Transformer):
         return ComparisonOperator([x.value.lower() for x in args])
 
     def COMPARISON_OPERATOR(self, args) -> ComparisonOperator:
-        return ComparisonOperator(args)
+        return ComparisonOperator(args.strip())
 
     def LOGICAL_OPERATOR(self, args) -> BooleanOperator:
         return BooleanOperator(args.lower())
@@ -682,8 +682,7 @@ class ParseToObjects(Transformer):
             return ConceptDerivationStatement(concept=concept)
 
         raise SyntaxError(
-            f"Received invalid type {type(args[2])} {args[2]} as input to select"
-            " transform"
+            f"Received invalid type {type(args[2])} {args[2]} as input to concept derivation: `{self.text_lookup[self.token_address][meta.start_pos:meta.end_pos]}`"
         )
 
     @v_args(meta=True)
@@ -1365,11 +1364,78 @@ class ParseToObjects(Transformer):
     def literal(self, args):
         return args[0]
 
+    def product_operator(self, args) -> Function | Any:
+        if len(args) == 1:
+            return args[0]
+        result = args[0]
+        for i in range(1, len(args), 2):
+            new_result = None
+            op = args[i]
+            right = args[i + 1]
+            if op == "*":
+                new_result = self.function_factory.create_function(
+                    [result, right], operator=FunctionType.MULTIPLY
+                )
+            elif op == "/":
+                new_result = self.function_factory.create_function(
+                    [result, right], operator=FunctionType.DIVIDE
+                )
+            elif op == "%":
+                new_result = self.function_factory.create_function(
+                    [result, right], operator=FunctionType.MOD
+                )
+            else:
+                raise ValueError(f"Unknown operator: {op}")
+            result = new_result
+        return new_result
+
+    def PLUS_OR_MINUS(self, args) -> str:
+        return args.value
+
+    def MULTIPLY_DIVIDE_PERCENT(self, args) -> str:
+        return args[0]
+
+    @v_args(meta=True)
+    def sum_operator(self, meta: Meta, args) -> Function | Any:
+        if len(args) == 1:
+            return args[0]
+        result = args[0]
+        for i in range(1, len(args), 2):
+            new_result = None
+            op = args[i]
+            right = args[i + 1]
+            if op == "+":
+                new_result = self.function_factory.create_function(
+                    [result, right], operator=FunctionType.ADD, meta=meta
+                )
+            elif op == "-":
+                new_result = self.function_factory.create_function(
+                    [result, right], operator=FunctionType.SUBTRACT, meta=meta
+                )
+            elif op == "||":
+                new_result = self.function_factory.create_function(
+                    [result, right], operator=FunctionType.CONCAT, meta=meta
+                )
+            elif op == "like":
+                new_result = self.function_factory.create_function(
+                    [result, right], operator=FunctionType.LIKE, meta=meta
+                )
+            else:
+                raise ValueError(f"Unknown operator: {op}")
+            result = new_result
+        return result
+
     def comparison(self, args) -> Comparison:
-        if args[1] == ComparisonOperator.IN:
-            raise SyntaxError
+        if len(args) == 1:
+            return args[0]
         left = args[0]
         right = args[2]
+        if args[1] in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
+            return SubselectComparison(
+                left=left,
+                right=right,
+                operator=args[1],
+            )
         return Comparison(left=left, right=right, operator=args[1])
 
     def between_comparison(self, args) -> Conditional:
@@ -1500,13 +1566,14 @@ class ParseToObjects(Transformer):
 
     def filter_item(self, args) -> FilterItem:
         where: WhereClause
-        string_concept, raw = args
+        expr, raw = args
         if isinstance(raw, WhereClause):
             where = raw
         else:
             where = WhereClause(conditional=raw)
-        concept = self.environment.concepts[string_concept].reference
-        return FilterItem(content=concept, where=where)
+        if isinstance(expr, str):
+            expr = self.environment.concepts[expr].reference
+        return FilterItem(content=expr, where=where)
 
     # BEGIN FUNCTIONS
     @v_args(meta=True)
@@ -1725,10 +1792,7 @@ class ParseToObjects(Transformer):
     def fyear(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.YEAR, meta)
 
-    # utility functions
-    @v_args(meta=True)
-    def fcast(self, meta, args) -> Function:
-        # if it's casting a constant, we'll process that directly
+    def internal_fcast(self, meta, args):
         args = process_function_args(args, meta=meta, environment=self.environment)
         if isinstance(args[0], str):
             processed: date | datetime | int | float | bool | str
@@ -1753,9 +1817,15 @@ class ParseToObjects(Transformer):
             )
         return self.function_factory.create_function(args, FunctionType.CAST, meta)
 
+    # utility functions
+    @v_args(meta=True)
+    def fcast(self, meta, args) -> Function:
+        return self.internal_fcast(meta, args)
+
     # math functions
     @v_args(meta=True)
     def fadd(self, meta, args) -> Function:
+
         return self.function_factory.create_function(args, FunctionType.ADD, meta)
 
     @v_args(meta=True)

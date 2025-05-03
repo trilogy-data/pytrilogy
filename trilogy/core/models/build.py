@@ -1621,6 +1621,7 @@ class Factory:
         else:
             build_lineage = None
         derivation = Concept.calculate_derivation(build_lineage, base.purpose)
+
         granularity = Concept.calculate_granularity(
             derivation, final_grain, build_lineage
         )
@@ -1740,9 +1741,13 @@ class Factory:
 
     @build.register
     def _(self, base: SubselectComparison) -> BuildSubselectComparison:
+        right: Any = base.right
+        if isinstance(base.right, (AggregateWrapper, WindowItem, FilterItem, Function)):
+            right_c, _ = self.instantiate_concept(base.right)
+            right = right_c
         return BuildSubselectComparison.model_construct(
-            left=(self.build(base.left)),
-            right=(self.build(base.right)),
+            left=self.build(base.left),
+            right=self.build(right),
             operator=base.operator,
         )
 
@@ -1815,6 +1820,13 @@ class Factory:
 
     @build.register
     def _(self, base: FilterItem) -> BuildFilterItem:
+        if isinstance(
+            base.content, (Function, AggregateWrapper, WindowItem, FilterItem)
+        ):
+            _, built = self.instantiate_concept(base.content)
+            return BuildFilterItem.model_construct(
+                content=built, where=self.build(base.where)
+            )
         return BuildFilterItem.model_construct(
             content=self.build(base.content), where=self.build(base.where)
         )
