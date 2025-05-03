@@ -1532,7 +1532,7 @@ class Factory:
         for arg in base.arguments:
             # to do proper discovery, we need to inject virtual intermediate ocncepts
             if isinstance(arg, (AggregateWrapper, FilterItem, WindowItem)):
-                narg, built = self.instantiate_concept(arg)
+                narg, _ = self.instantiate_concept(arg)
                 raw_args.append(narg)
             else:
                 raw_args.append(arg)
@@ -1553,9 +1553,6 @@ class Factory:
                 for x in arguments:
                     if isinstance(x, (ConceptRef, Concept)):
                         final_args.append(x)
-                    elif isinstance(x, (AggregateWrapper, FilterItem, WindowItem)):
-                        newx, built = self.instantiate_concept(x)
-                        final_args.append(newx)
                     else:
                         # constants, etc, can be ignored for group
                         continue
