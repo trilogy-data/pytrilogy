@@ -512,24 +512,6 @@ def window_item_to_concept(
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
-    # if isinstance(
-    #     parent.content,
-    #     (
-    #         AggregateWrapper
-    #         | FunctionCallWrapper
-    #         | WindowItem
-    #         | FilterItem
-    #         | Function
-    #         | ListWrapper
-    #         | MapWrapper
-    #     ),
-    # ):
-    #     new_parent = arbitrary_to_concept(
-    #         parent.content, environment=environment, namespace=namespace
-    #     )
-    #     environment.add_concept(new_parent)
-    #     parent = parent.model_copy(update={"content": new_parent.reference})
-
     if not isinstance(parent.content, ConceptRef):
         raise NotImplementedError(
             f"Window function wiht non ref content {parent.content} not yet supported"
@@ -792,7 +774,7 @@ def arbitrary_to_concept(
     elif isinstance(parent, FilterItem):
         if not name:
             if isinstance(parent.content, ConceptRef):
-                name = f"{VIRTUAL_CONCEPT_PREFIX}_filter_{parent.content.address}_{string_to_hash(str(parent))}"
+                name = f"{VIRTUAL_CONCEPT_PREFIX}_filter_{parent.content.name}_{string_to_hash(str(parent))}"
             else:
                 name = f"{VIRTUAL_CONCEPT_PREFIX}_filter_{string_to_hash(str(parent))}"
         return filter_item_to_concept(
