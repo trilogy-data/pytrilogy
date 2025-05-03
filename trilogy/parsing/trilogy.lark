@@ -129,12 +129,6 @@
     
     limit: "LIMIT"i /[0-9]+/
     
-    !window_order: /TOP|BOTTOM/i
-    
-    window: window_order /[0-9]+/
-    
-    window_order_by: "BY"i column_list
-    
     order_list: expr ordering (","  expr ordering)* ","?
     
     over_list: concept_lit (","  concept_lit )* ","?
@@ -215,14 +209,9 @@
      | union
      | fgroup
      | filter_item
-     | index_access
-     | map_key_access
-     | attr_access
+     | _access_expr
      | aggregate_by
 
-
-   # Most common/basic expressions
-   _basic_expr: literal | concept_lit | parenthetical | expr_tuple
 
    # Access patterns
    _access_expr: index_access | map_key_access | attr_access
