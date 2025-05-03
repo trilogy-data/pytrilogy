@@ -33,8 +33,8 @@ def resolve_window_parent_concepts(
         for item in concept.lineage.order_by:
             base += item.concept_arguments
     if concept.grain:
-        for item in concept.grain.components:
-            base.append(environment.concepts[item])
+        for gitem in concept.grain.components:
+            base.append(environment.concepts[gitem])
     return concept.lineage.content, unique(base, "address")
 
 
@@ -144,7 +144,6 @@ def gen_window_node(
             concepts=[concept] + additional_outputs + parent_concepts + targets,
             environment=environment,
         ),
-        hidden_concepts=[],
     )
     if not non_equivalent_optional:
         logger.info(

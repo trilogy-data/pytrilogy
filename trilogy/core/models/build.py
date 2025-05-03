@@ -1496,7 +1496,21 @@ class Factory:
     ):
         return base
 
-    def instantiate_concept(self, arg: Concept) -> tuple[Concept, BuildConcept]:
+    def instantiate_concept(
+        self,
+        arg: (
+            AggregateWrapper
+            | FunctionCallWrapper
+            | WindowItem
+            | FilterItem
+            | Function
+            | ListWrapper[Any]
+            | MapWrapper[Any, Any]
+            | int
+            | float
+            | str
+        ),
+    ) -> tuple[Concept, BuildConcept]:
         from trilogy.parsing.common import arbitrary_to_concept
 
         new = arbitrary_to_concept(
@@ -1948,9 +1962,9 @@ class Factory:
         for k, a in base.alias_origin_lookup.items():
             new.alias_origin_lookup[k] = self.build(a)
         # add in anything that was built as a side-effect
-        for k, v in self.local_concepts.items():
-            if k not in new.concepts:
-                new.concepts[k] = v
+        for bk, bv in self.local_concepts.items():
+            if bk not in new.concepts:
+                new.concepts[bk] = bv
         new.gen_concept_list_caches()
         return new
 
