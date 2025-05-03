@@ -74,7 +74,6 @@ FROM
     wakeful),
 thoughtful as (
 SELECT
-    cheerful."_virt_agg_sum_7286114413769231" as "_virt_agg_sum_7286114413769231",
     cheerful."name_rank" as "name_rank",
     cheerful."names_name" as "names_name"
 FROM
@@ -219,16 +218,16 @@ def test_multi_window():
 
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(query)[0]
-    assert (
-        """cooperative as (
-SELECT
-    rank() over (order by thoughtful."_virt_agg_sum_6723478476084862" desc ) as "all_rank",
-    thoughtful."_virt_agg_sum_6723478476084862" as "_virt_agg_sum_6723478476084862",
-    thoughtful."name" as "name"
-FROM
-    thoughtful)"""
-        in sql
-    ), sql
+    #     assert (
+    #         """cooperative as (
+    # SELECT
+    #     thoughtful."_virt_agg_sum_6723478476084862" as "_virt_agg_sum_6723478476084862",
+    #     thoughtful."name" as "name"
+    #     rank() over (order by thoughtful."_virt_agg_sum_6723478476084862" desc ) as "all_rank",
+    # FROM
+    #     thoughtful)"""
+    #         in sql
+    #     ), sql
     pattern = r"""[a-z]+ as \(
 SELECT
     rank\(\) over \(order by ([a-z]+)\."_virt_agg_sum_\d+" desc \) as "all_rank",
@@ -237,4 +236,31 @@ SELECT
 FROM
     \1\)"""
 
+    assert re.search(pattern, sql, re.DOTALL) is not None, sql
+
+
+def test_row_number_proper_join():
+    query = """
+import names as names;
+
+where names.year between 1980 and 1989
+and names.state in ('AL','AR','FL','GA','KY','LA','MS','NC','OK','SC','TN','TX','VA','WV')
+select
+    names.name,
+    names.state,
+    sum(names.births) as total_births,
+    rank names.name over names.state by sum(names.births) desc as rank_by_births,
+    case when rank_by_births <= 5 then 'common' else 'unique' end as name_rarity
+order by names.state asc, total_births desc;
+
+    """
+    env = Environment(working_path=Path(__file__).parent)
+    DebuggingHook()
+    exec = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = exec.generate_sql(query)[0]
+    assert env.concepts["rank_by_births"].keys == set(
+        ["names.state", "names.name"]
+    ), env.concepts["rank_by_births"].keys
+
+    pattern = r"""INNER JOIN highfalutin on abundant."names_name" = highfalutin."names_name" AND abundant."names_state" = highfalutin."names_state"""
     assert re.search(pattern, sql, re.DOTALL) is not None

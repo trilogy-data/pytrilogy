@@ -523,16 +523,33 @@ def window_item_to_concept(
         local_purpose, keys = get_purpose_and_keys(None, (bcontent,), environment)
     else:
         local_purpose = Purpose.PROPERTY
-        keys = {
-            bcontent.address,
-        }
+        keys = Grain.from_concepts([bcontent] + parent.over, environment).components
+    from trilogy.constants import logger
 
+    logger.info("LOOK HERE")
+    logger.info("----------------------")
+    logger.info("keys are")
+    logger.info(keys)
     if parent.order_by:
         grain_components = parent.over + [bcontent.output]
         for item in parent.order_by:
-            grain_components += item.concept_arguments
+            logger.info(item)
+            if (
+                isinstance(item.expr, AggregateWrapper)
+                and set([x.address for x in item.expr.by]) == keys
+            ):
+                logger.info("skipping grain addition")
+                continue
+            else:
+                logger.info("adding concept args")
+                grain_components += item.concept_arguments
     else:
         grain_components = parent.over + [bcontent.output]
+
+    logger.info(
+        f"Window item {parent.content.address} with grain components {[x.address for x in grain_components]}"
+    )
+    logger.info("----------------------")
     final_grain = Grain.from_concepts(grain_components, environment)
     modifiers = get_upstream_modifiers(bcontent.concept_arguments, environment)
     datatype = parent.content.datatype
