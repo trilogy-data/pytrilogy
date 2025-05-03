@@ -84,14 +84,14 @@ exec_time = 0.085014
 comp_time = 0.645075
 
 [query_97]
-parse_time = 0.495495
-exec_time = 0.352852
-comp_time = 0.079867
+parse_time = 0.782598
+exec_time = 0.356515
+comp_time = 0.100221
 
 [query_98]
-parse_time = 0.205801
-exec_time = 0.186001
-comp_time = 0.204496
+parse_time = 0.260576
+exec_time = 0.199757
+comp_time = 0.189877
 
 [query_99]
 parse_time = 0.281666
