@@ -748,7 +748,7 @@ def search_concepts(
     accept_partial: bool = False,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
-    logger.error(f'starting search for {mandatory_list}')
+    logger.error(f"starting search for {mandatory_list}")
     hist = history.get_history(
         search=mandatory_list, accept_partial=accept_partial, conditions=conditions
     )
@@ -1108,7 +1108,7 @@ def source_query_concepts(
 ):
     if not output_concepts:
         raise ValueError(f"No output concepts provided {output_concepts}")
-    if not g: 
+    if not g:
         g = generate_graph(environment)
 
     root = search_concepts(

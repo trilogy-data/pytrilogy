@@ -1,9 +1,9 @@
 from pydantic import BaseModel, ConfigDict, Field
 
+from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.environment import Environment
-from trilogy.core.exceptions import UnresolvableQueryException
 
 from .base_node import NodeJoin, StrategyNode
 from .filter_node import FilterNode
@@ -30,11 +30,7 @@ class History(BaseModel):
     ) -> str:
         base = sorted([c.address for c in search])
         if conditions:
-            return (
-                "-".join(base)
-                + str(accept_partial)
-                + str(conditions)
-            )
+            return "-".join(base) + str(accept_partial) + str(conditions)
         return "-".join(base) + str(accept_partial)
 
     def search_to_history(
@@ -81,12 +77,12 @@ class History(BaseModel):
         search: list[BuildConcept],
         accept_partial: bool = False,
         conditions: BuildWhereClause | None = None,
-    ):  
+    ):
         key = self._concepts_to_lookup(
-                search,
-                accept_partial=accept_partial,
-                conditions=conditions,
-            )
+            search,
+            accept_partial=accept_partial,
+            conditions=conditions,
+        )
         if key in self.started:
             self.started[key] += 1
         else:
@@ -96,7 +92,6 @@ class History(BaseModel):
                 f"Was unable to resolve datasources to serve this query from model; unresolvable set was {search}. You may be querying unrelated concepts."
             )
 
-
     def log_end(
         self,
         search: list[BuildConcept],
@@ -104,14 +99,12 @@ class History(BaseModel):
         conditions: BuildWhereClause | None = None,
     ):
         key = self._concepts_to_lookup(
-                search,
-                accept_partial=accept_partial,
-                conditions=conditions,
-            )
+            search,
+            accept_partial=accept_partial,
+            conditions=conditions,
+        )
         if key in self.started:
-            del self.started[
-                key
-            ]
+            del self.started[key]
 
     def check_started(
         self,
