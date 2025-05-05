@@ -1906,7 +1906,7 @@ class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel)
 
 
 class FilterItem(DataTyped, Namespaced, ConceptArgs, BaseModel):
-    content: Expr
+    content: FuncArgs
     where: "WhereClause"
 
     @field_validator("content", mode="before")

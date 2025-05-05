@@ -1,6 +1,9 @@
 from pathlib import Path
 
+from pytest import raises
+
 from trilogy import Dialects, Executor
+from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.environment import Environment
 
 working_path = Path(__file__).parent
@@ -14,3 +17,13 @@ def test_adhoc01():
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
 
     engine.generate_sql(text)[0]
+
+
+def test_adhoc02():
+    env = Environment(working_path=working_path)
+    with open(working_path / "adhoc02.preql") as f:
+        text = f.read()
+
+    engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
+    with raises(UnresolvableQueryException):
+        engine.generate_sql(text)[0]

@@ -1,0 +1,11 @@
+import game_tall as game_tall;
+import team as team;
+
+select
+    team.color as team_color,
+    sum(game_tall.wins) as total_wins
+where
+    lower(team.color) like '%red%'
+    or lower(team.color) like '%black%'
+    or lower(team.color) like '%dark%'
+order by total_wins desc;

@@ -748,6 +748,7 @@ def search_concepts(
     accept_partial: bool = False,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
+    logger.error(f"starting search for {mandatory_list}")
     hist = history.get_history(
         search=mandatory_list, accept_partial=accept_partial, conditions=conditions
     )
@@ -1094,6 +1095,7 @@ def _search_concepts(
     logger.error(
         f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve concepts {[c.address for c in mandatory_list]}, network outcome was {complete}, missing {all_mandatory - found},"
     )
+
     return None
 
 

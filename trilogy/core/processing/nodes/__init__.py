@@ -1,5 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field
 
+from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.environment import Environment
@@ -18,7 +19,7 @@ class History(BaseModel):
     base_environment: Environment
     history: dict[str, StrategyNode | None] = Field(default_factory=dict)
     select_history: dict[str, StrategyNode | None] = Field(default_factory=dict)
-    started: set[str] = Field(default_factory=set)
+    started: dict[str, int] = Field(default_factory=dict)
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def _concepts_to_lookup(
@@ -27,13 +28,10 @@ class History(BaseModel):
         accept_partial: bool,
         conditions: BuildWhereClause | None = None,
     ) -> str:
+        base = sorted([c.address for c in search])
         if conditions:
-            return (
-                "-".join([c.address for c in search])
-                + str(accept_partial)
-                + str(conditions)
-            )
-        return "-".join([c.address for c in search]) + str(accept_partial)
+            return "-".join(base) + str(accept_partial) + str(conditions)
+        return "-".join(base) + str(accept_partial)
 
     def search_to_history(
         self,
@@ -80,13 +78,19 @@ class History(BaseModel):
         accept_partial: bool = False,
         conditions: BuildWhereClause | None = None,
     ):
-        self.started.add(
-            self._concepts_to_lookup(
-                search,
-                accept_partial=accept_partial,
-                conditions=conditions,
-            )
+        key = self._concepts_to_lookup(
+            search,
+            accept_partial=accept_partial,
+            conditions=conditions,
         )
+        if key in self.started:
+            self.started[key] += 1
+        else:
+            self.started[key] = 1
+        if self.started[key] > 5:
+            raise UnresolvableQueryException(
+                f"Was unable to resolve datasources to serve this query from model; unresolvable set was {search}. You may be querying unrelated concepts."
+            )
 
     def log_end(
         self,
@@ -94,13 +98,13 @@ class History(BaseModel):
         accept_partial: bool = False,
         conditions: BuildWhereClause | None = None,
     ):
-        self.started.discard(
-            self._concepts_to_lookup(
-                search,
-                accept_partial=accept_partial,
-                conditions=conditions,
-            )
+        key = self._concepts_to_lookup(
+            search,
+            accept_partial=accept_partial,
+            conditions=conditions,
         )
+        if key in self.started:
+            del self.started[key]
 
     def check_started(
         self,
