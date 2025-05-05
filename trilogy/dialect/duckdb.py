@@ -79,7 +79,9 @@ GROUP BY {% for group in group_by %}
     {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{% if having %}
 HAVING
     {{ having }}
-{% endif %}{%- if order_by %}
+{% endif %}{% if qualify %}
+QUALIFY
+    {{ qualify }}{% endif %}{%- if order_by %}
 ORDER BY {% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if limit is not none %}

@@ -52,6 +52,7 @@ from trilogy.core.models.execute import (
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.core.statements.execute import ProcessedQuery
 from trilogy.utility import unique
+from enum import Enum
 
 AGGREGATE_TYPES = (BuildAggregateWrapper,)
 SUBSELECT_TYPES = (BuildSubselectComparison,)
@@ -62,6 +63,11 @@ CONDITIONAL_TYPES = (BuildConditional,)
 CONCEPT_TYPES = (BuildConcept,)
 WINDOW_TYPES = (BuildWindowItem,)
 
+
+class ConditionType(Enum):
+    SCALAR = 'SCALAR'
+    AGGREGATE = 'AGGREGATE'
+    WINDOW = 'WINDOW'
 
 class NodeType(Enum):
     CONCEPT = 1
@@ -492,10 +498,119 @@ def is_scalar_condition(
         ) and is_scalar_condition(element.expr, materialized)
     elif isinstance(element, (BuildCaseElse,)):
         return is_scalar_condition(element.expr, materialized)
+    elif isinstance(element, (BuildWindowItem)):
+        #TODO: turn this into an enum
+        # so we can use the qualify clause
+        return True
     elif isinstance(element, MagicConstants):
         return True
     return True
 
+def get_condition_type(
+    element: (
+        int
+        | str
+        | float
+        | date
+        | datetime
+        | list[Any]
+        | BuildConcept
+        | BuildWindowItem
+        | BuildFilterItem
+        | BuildConditional
+        | BuildComparison
+        | BuildParenthetical
+        | BuildFunction
+        | BuildAggregateWrapper
+        | BuildCaseWhen
+        | BuildCaseElse
+        | MagicConstants
+        | TraitDataType
+        | DataType
+        | MapWrapper[Any, Any]
+        | ListType
+        | MapType
+        | NumericType
+        | DatePart
+        | ListWrapper[Any]
+        | TupleWrapper[Any]
+    ),
+    materialized: set[str] | None = None,
+) -> ConditionType:
+    # Default to scalar
+    result = ConditionType.SCALAR
+    
+    if isinstance(element, PARENTHETICAL_TYPES):
+        return get_condition_type(element.content, materialized)
+    elif isinstance(element, SUBSELECT_TYPES):
+        return ConditionType.SCALAR
+    elif isinstance(element, COMPARISON_TYPES):
+        left_type = get_condition_type(element.left, materialized)
+        right_type = get_condition_type(element.right, materialized)
+        
+        # Aggregate or window taints the whole expression
+        if left_type == ConditionType.WINDOW or right_type == ConditionType.WINDOW:
+            return ConditionType.WINDOW
+        elif left_type == ConditionType.AGGREGATE or right_type == ConditionType.AGGREGATE:
+            return ConditionType.AGGREGATE
+        return ConditionType.SCALAR
+    elif isinstance(element, FUNCTION_TYPES):
+        if element.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+            return ConditionType.AGGREGATE
+        
+        # Check all arguments
+        for arg in element.arguments:
+            arg_type = get_condition_type(arg, materialized)
+            # Window taints first, then aggregate
+            if arg_type == ConditionType.WINDOW:
+                return ConditionType.WINDOW
+            elif arg_type == ConditionType.AGGREGATE:
+                result = ConditionType.AGGREGATE
+        
+        return result
+    elif isinstance(element, CONCEPT_TYPES):
+        if materialized and element.address in materialized:
+            return ConditionType.SCALAR
+        if element.lineage and isinstance(element.lineage, AGGREGATE_TYPES):
+            return get_condition_type(element.lineage, materialized)
+        if element.lineage and isinstance(element.lineage, FUNCTION_TYPES):
+            return get_condition_type(element.lineage, materialized)
+        return ConditionType.SCALAR
+    elif isinstance(element, AGGREGATE_TYPES):
+        func_type = get_condition_type(element.function, materialized)
+        # If function is a window, it wins over aggregate
+        if func_type == ConditionType.WINDOW:
+            return ConditionType.WINDOW
+        return ConditionType.AGGREGATE
+    elif isinstance(element, CONDITIONAL_TYPES):
+        left_type = get_condition_type(element.left, materialized)
+        right_type = get_condition_type(element.right, materialized)
+        
+        # Aggregate or window taints the whole expression
+        if left_type == ConditionType.WINDOW or right_type == ConditionType.WINDOW:
+            return ConditionType.WINDOW
+        elif left_type == ConditionType.AGGREGATE or right_type == ConditionType.AGGREGATE:
+            return ConditionType.AGGREGATE
+        return ConditionType.SCALAR
+    elif isinstance(element, (BuildCaseWhen,)):
+        comp_type = get_condition_type(element.comparison, materialized)
+        expr_type = get_condition_type(element.expr, materialized)
+        
+        # Window taints first, then aggregate
+        if comp_type == ConditionType.WINDOW or expr_type == ConditionType.WINDOW:
+            return ConditionType.WINDOW
+        elif comp_type == ConditionType.AGGREGATE or expr_type == ConditionType.AGGREGATE:
+            return ConditionType.AGGREGATE
+        return ConditionType.SCALAR
+    elif isinstance(element, (BuildCaseElse,)):
+        expr_type = get_condition_type(element.expr, materialized)
+        return expr_type
+    elif isinstance(element, (BuildWindowItem)):
+        return ConditionType.WINDOW
+    elif isinstance(element, MagicConstants):
+        return ConditionType.SCALAR
+    
+    return ConditionType.SCALAR
 
 CONDITION_TYPES = (
     BuildSubselectComparison,

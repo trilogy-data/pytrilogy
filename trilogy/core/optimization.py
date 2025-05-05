@@ -97,7 +97,7 @@ def filter_irrelevant_ctes(
     filtered = [cte for cte in input if cte.name not in relevant_ctes]
     if filtered:
         logger.info(
-            f"[Optimization][Irrelevent CTE filtering] Removing redundant CTEs {[x.name for x in filtered]}"
+            f"[Optimization][Irrelevent CTE filtering] Removing unused CTEs {[x.name for x in filtered]}"
         )
     if len(final) == len(input):
         return input

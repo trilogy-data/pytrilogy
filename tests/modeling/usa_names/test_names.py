@@ -169,3 +169,24 @@ FROM
 GROUP BY 
     \1\."name"\)"""
     assert re.search(pattern, sql, re.DOTALL) is not None
+
+
+def test_rank_filtering():
+    env = Environment(working_path=Path(__file__).parent)
+    DebuggingHook()
+    exec = Dialects.DUCK_DB.default_executor(environment=env)
+    query = """import names;
+
+where rank name by total_births desc <=5
+select
+    name,
+    year,
+    total_births
+order by
+    year asc
+;"""
+
+    sql = exec.generate_sql(query)[0]
+
+    assert '''QUALIFY
+    rank() over (order by sum(usa_names."number") desc ) <= 5''' in sql, sql

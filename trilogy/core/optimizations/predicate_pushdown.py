@@ -55,7 +55,12 @@ class PredicatePushdown(OptimizationRule):
         ]
         if any(isinstance(x.lineage, BuildWindowItem) for x in concrete):
             self.debug(
-                f"CTE {parent_cte.name} has window clause calculation, cannot push up to this without changing results"
+                f"CTE {parent_cte.name} has window clause calculation, cannot push this up without triggering filtering error"
+            )
+            return False
+        if any(isinstance(x.lineage, BuildWindowItem) for x in candidate.concept_arguments):
+            self.debug(
+                f"CTE {cte.name} has window clause calculation, cannot push this up without triggering filtering error"
             )
             return False
         materialized = {k for k, v in parent_cte.source_map.items() if v != []}

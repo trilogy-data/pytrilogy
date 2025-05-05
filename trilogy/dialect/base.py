@@ -46,6 +46,9 @@ from trilogy.core.processing.utility import (
     decompose_condition,
     is_scalar_condition,
     sort_select_output,
+    get_condition_type,
+
+    ConditionType,
 )
 from trilogy.core.query_processor import process_copy, process_persist, process_query
 from trilogy.core.statements.author import (
@@ -251,7 +254,9 @@ WHERE
 GROUP BY {% for group in group_by %}
 \t{{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{% if having %}
 HAVING
-\t{{ having }}{% endif %}{%- if order_by %}
+\t{{ having }}{% endif %}{% if qualify %}
+QUALIFY
+\t{{ qualify }}{% endif %}{%- if order_by %}
 ORDER BY{% for order in order_by %}
 \t{{ order }}{% if not loop.last %},{% endif %}{% endfor %}
 {% endif %}{% endif %}
@@ -771,22 +776,29 @@ class BaseDialect:
             final_joins = cte.joins or []
         where: BuildConditional | BuildParenthetical | BuildComparison | None = None
         having: BuildConditional | BuildParenthetical | BuildComparison | None = None
+        qualify: BuildConditional | BuildParenthetical | BuildComparison | None = None
         materialized = {x for x, v in cte.source_map.items() if v}
         if cte.condition:
-            if not cte.group_to_grain or is_scalar_condition(
-                cte.condition, materialized=materialized
-            ):
+            condition_class = get_condition_type(cte.condition, materialized=materialized)
+            if not cte.group_to_grain and condition_class == ConditionType.SCALAR:
                 where = cte.condition
 
             else:
                 components = decompose_condition(cte.condition)
                 for x in components:
-                    if is_scalar_condition(x, materialized=materialized):
+                    subtype = get_condition_type(x, materialized=materialized)
+                    if subtype == ConditionType.SCALAR:
                         where = where + x if where else x
-                    else:
+                    elif subtype == ConditionType.AGGREGATE:
                         having = having + x if having else x
+                    elif subtype == ConditionType.WINDOW:
+                        qualify = qualify + x if qualify else x
 
         logger.info(f"{len(final_joins)} joins for cte {cte.name}")
+        logger.info('QUALIFY DEBUG')
+        logger.info(f"QUALIFY {qualify}")
+        logger.info(f"WHERE {where}")
+        logger.info(f"HAVING {having}")
         return CompiledCTE(
             name=cte.name,
             statement=self.SQL_TEMPLATE.render(
@@ -813,6 +825,7 @@ class BaseDialect:
                 ],
                 where=(self.render_expr(where, cte) if where else None),
                 having=(self.render_expr(having, cte) if having else None),
+                qualify=(self.render_expr(qualify, cte) if qualify else None),
                 order_by=(
                     [self.render_order_item(i, cte) for i in cte.order_by.items]
                     if cte.order_by
