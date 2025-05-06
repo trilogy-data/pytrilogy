@@ -56,12 +56,40 @@ def gen_filter_node(
                 continue
         if conditions and conditions == where:
             optional_included.append(x)
+
+    # sometimes, it's okay to include other local optional above the filter
+    # in case it is, prep our list
+    extra_row_level_optional: list[BuildConcept] = []
+    for x in local_optional:
+        if x.address in optional_included:
+            continue
+        extra_row_level_optional.append(x)
+
+    # this flag controls whether we materialize the filter as a where on the prior CTE
+    # or do the filtering inline as a case statement
+    optimized_pushdown = False
+    if not is_scalar_condition(where.conditional):
+        optimized_pushdown = False
+    elif not local_optional:
+        optimized_pushdown = True
+    elif conditions and conditions == where:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} query conditions are the same as filter conditions, can optimize across all concepts"
+        )
+        optimized_pushdown = True
+    elif optional_included == local_optional:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} all optional concepts are included in the filter, can optimize across all concepts"
+        )
+        optimized_pushdown = True
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} filter `{concept}` condition `{concept.lineage.where}` derived from {immediate_parent.address} row parents {[x.address for x in parent_row_concepts]} and {[[y.address] for x  in parent_existence_concepts for y  in x]} existence parents"
     )
     # we'll populate this with the row parent
     # and the existence parent(s)
     core_parents = []
+    if not optimized_pushdown:
+        parent_row_concepts += extra_row_level_optional
 
     row_parent: StrategyNode = source_concepts(
         mandatory_list=parent_row_concepts,
@@ -99,21 +127,6 @@ def gen_filter_node(
         )
         return None
 
-    optimized_pushdown = False
-    if not is_scalar_condition(where.conditional):
-        optimized_pushdown = False
-    elif not local_optional:
-        optimized_pushdown = True
-    elif conditions and conditions == where:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} query conditions are the same as filter conditions, can optimize across all concepts"
-        )
-        optimized_pushdown = True
-    elif optional_included == local_optional:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} all optional concepts are included in the filter, can optimize across all concepts"
-        )
-        optimized_pushdown = True
     if optimized_pushdown:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} returning optimized filter node with pushdown to parent with condition {where.conditional}"
@@ -193,7 +206,9 @@ def gen_filter_node(
             + optional_outputs
         )
         return filter_node
-
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} need to enrich filter node with additional concepts {[x.address for x in local_optional if x.address not in filter_node.output_concepts]}"
+    )
     enrich_node: StrategyNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
         mandatory_list=[immediate_parent] + parent_row_concepts + local_optional,

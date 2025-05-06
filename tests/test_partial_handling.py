@@ -12,7 +12,7 @@ from trilogy.core.processing.concept_strategies_v3 import History, search_concep
 from trilogy.core.processing.node_generators import (
     gen_filter_node,
 )
-from trilogy.core.processing.nodes import MergeNode
+from trilogy.core.processing.nodes import FilterNode
 from trilogy.core.query_processor import generate_graph
 from trilogy.hooks.query_debugger import DebuggingHook
 
@@ -139,8 +139,8 @@ def test_partial_assignment():
         g=g,
         depth=0,
     )
-    assert isinstance(sourced, MergeNode)
-    assert len(sourced.parents) == 2
+    assert isinstance(sourced, FilterNode)
+    assert len(sourced.parents) == 1
 
 
 def test_filter_query():

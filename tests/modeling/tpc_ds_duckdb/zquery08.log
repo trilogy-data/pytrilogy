@@ -1,16 +1,9 @@
 query_id = 8
-gen_length = 3455
+gen_length = 3067
 generated_sql = """
 
 WITH 
 abundant as (
-SELECT
-    CASE WHEN customer_customers.\"C_PREFERRED_CUST_FLAG\" = 'Y' THEN customer_customers.\"C_CUSTOMER_SK\" ELSE NULL END as \"_virt_filter_id_8603331542397217\",
-    customer_customers.\"C_CUSTOMER_SK\" as \"customer_id\",
-    customer_customers.\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\"
-FROM
-    memory.customer as customer_customers),
-uneven as (
 SELECT
     customer_customer_address.\"CA_ZIP\" as \"customer_zip\",
     customer_customers.\"C_CUSTOMER_SK\" as \"customer_id\",
@@ -22,51 +15,50 @@ thoughtful as (
 SELECT
     unnest(:_virt_7180871482901048) as \"zips_pre\"
 ),
+uneven as (
+SELECT
+    CASE WHEN abundant.\"customer_preferred_cust_flag\" = 'Y' THEN abundant.\"customer_id\" ELSE NULL END as \"_virt_filter_id_8603331542397217\",
+    abundant.\"customer_id\" as \"customer_id\",
+    abundant.\"customer_zip\" as \"customer_zip\"
+FROM
+    abundant),
 yummy as (
 SELECT
-    abundant.\"_virt_filter_id_8603331542397217\" as \"_virt_filter_id_8603331542397217\",
-    abundant.\"customer_id\" as \"customer_id\",
+    count(uneven.\"_virt_filter_id_8603331542397217\") as \"zip_p_count\",
     uneven.\"customer_zip\" as \"customer_zip\"
 FROM
     uneven
-    INNER JOIN abundant on uneven.\"customer_id\" = abundant.\"customer_id\"),
-juicy as (
-SELECT
-    count(yummy.\"_virt_filter_id_8603331542397217\") as \"zip_p_count\",
-    yummy.\"customer_zip\" as \"customer_zip\"
-FROM
-    yummy
 GROUP BY 
-    yummy.\"customer_zip\"),
-vacuous as (
+    uneven.\"customer_zip\"),
+juicy as (
 SELECT
     customer_customer_address.\"CA_ADDRESS_SK\" as \"customer_address_id\",
     customer_customer_address.\"CA_ZIP\" as \"customer_zip\",
-    juicy.\"zip_p_count\" as \"zip_p_count\"
+    yummy.\"zip_p_count\" as \"zip_p_count\"
 FROM
-    juicy
-    INNER JOIN memory.customer_address as customer_customer_address on juicy.\"customer_zip\" = customer_customer_address.\"CA_ZIP\"),
-concerned as (
+    yummy
+    INNER JOIN memory.customer_address as customer_customer_address on yummy.\"customer_zip\" = customer_customer_address.\"CA_ZIP\"),
+vacuous as (
 SELECT
-    SUBSTRING(CASE WHEN vacuous.\"zip_p_count\" > 10 THEN vacuous.\"customer_zip\" ELSE NULL END,1,5) as \"_virt_func_substring_4293448550966409\"
+    SUBSTRING(CASE WHEN juicy.\"zip_p_count\" > 10 THEN juicy.\"customer_zip\" ELSE NULL END,1,5) as \"_virt_func_substring_4293448550966409\"
 FROM
-    vacuous),
-young as (
+    juicy),
+concerned as (
 SELECT
     SUBSTRING(SUBSTRING(cast(thoughtful.\"zips_pre\" as string),1,5),1,2) as \"final_zips\"
 FROM
     thoughtful
 WHERE
-    SUBSTRING(cast(thoughtful.\"zips_pre\" as string),1,5) in (select concerned.\"_virt_func_substring_4293448550966409\" from concerned where concerned.\"_virt_func_substring_4293448550966409\" is not null)
+    SUBSTRING(cast(thoughtful.\"zips_pre\" as string),1,5) in (select vacuous.\"_virt_func_substring_4293448550966409\" from vacuous where vacuous.\"_virt_func_substring_4293448550966409\" is not null)
 ),
-sparkling as (
+young as (
 SELECT
-    young.\"final_zips\" as \"final_zips\"
+    concerned.\"final_zips\" as \"final_zips\"
 FROM
-    young
+    concerned
 GROUP BY 
-    young.\"final_zips\"),
-abhorrent as (
+    concerned.\"final_zips\"),
+sparkling as (
 SELECT
     store_sales_store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\",
     store_sales_store_sales.\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
@@ -77,15 +69,15 @@ FROM
     INNER JOIN memory.date_dim as store_sales_date_date on store_sales_store_sales.\"SS_SOLD_DATE_SK\" = store_sales_date_date.\"D_DATE_SK\"
     INNER JOIN memory.store as store_sales_store_store on store_sales_store_sales.\"SS_STORE_SK\" = store_sales_store_store.\"S_STORE_SK\"
 WHERE
-    store_sales_date_date.\"D_QOY\" = 2 and cast(store_sales_date_date.\"D_YEAR\" as int) = 1998 and SUBSTRING(store_sales_store_store.\"S_ZIP\",1,2) in (select sparkling.\"final_zips\" from sparkling where sparkling.\"final_zips\" is not null)
+    store_sales_date_date.\"D_QOY\" = 2 and cast(store_sales_date_date.\"D_YEAR\" as int) = 1998 and SUBSTRING(store_sales_store_store.\"S_ZIP\",1,2) in (select young.\"final_zips\" from young where young.\"final_zips\" is not null)
 )
 SELECT
-    abhorrent.\"store_sales_store_name\" as \"store_sales_store_name\",
-    sum(abhorrent.\"store_sales_net_profit\") as \"store_net_profit\"
+    sparkling.\"store_sales_store_name\" as \"store_sales_store_name\",
+    sum(sparkling.\"store_sales_net_profit\") as \"store_net_profit\"
 FROM
-    abhorrent
+    sparkling
 GROUP BY 
-    abhorrent.\"store_sales_store_name\"
+    sparkling.\"store_sales_store_name\"
 ORDER BY 
-    abhorrent.\"store_sales_store_name\" asc
+    sparkling.\"store_sales_store_name\" asc
 LIMIT (100)"""

@@ -8,7 +8,7 @@ from trilogy.core.processing.node_generators import gen_group_node
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
-from trilogy.core.processing.nodes import GroupNode, MergeNode
+from trilogy.core.processing.nodes import FilterNode, GroupNode, MergeNode
 from trilogy.parsing.common import agg_wrapper_to_concept, function_to_concept
 
 
@@ -67,7 +67,7 @@ def test_gen_group_node(test_environment: Environment, test_environment_graph):
     )
     assert len(gnode.parents) == 1
     parent = gnode.parents[0]
-    assert isinstance(parent, MergeNode)
+    assert isinstance(parent, FilterNode)
     assert len(parent.all_concepts) == 2
     assert cat in parent.all_concepts
     assert immediate_aggregate_input in parent.all_concepts
