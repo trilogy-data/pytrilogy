@@ -201,7 +201,7 @@ def test_ninety_eight(engine):
 
 def test_ninety_nine(engine):
     query = run_query(engine, 99)
-    assert len(query) < 9000, query
+    assert len(query) < 4000, query
 
 
 def run_adhoc(number: int, text: str | None = None):
