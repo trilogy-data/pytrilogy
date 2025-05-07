@@ -67,7 +67,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
                 [concept.address],
             ),
             metadata=Metadata(
-                description=f"Auto-derived from {base_description}. {FUNCTION_DESCRIPTION_MAPS.get(ftype, ftype.value)}",
+                # description=f"Auto-derived from {base_description}. {FUNCTION_DESCRIPTION_MAPS.get(ftype, ftype.value)}",
                 line_number=base_line_number,
                 concept_source=ConceptSource.AUTO_DERIVED,
             ),
@@ -95,7 +95,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
                 [concept.address],
             ),
             metadata=Metadata(
-                description=f"Auto-derived from {base_description}. The date truncated to the {grain.value}.",
+                # description=f"Auto-derived from {base_description}. The date truncated to the {grain.value}.",
                 line_number=base_line_number,
                 concept_source=ConceptSource.AUTO_DERIVED,
             ),
@@ -146,7 +146,7 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
                 [concept.address],
             ),
             metadata=Metadata(
-                description=f"Auto-derived from {base_description}. {FUNCTION_DESCRIPTION_MAPS.get(ftype, ftype.value)}",
+                # description=f"Auto-derived from {base_description}. {FUNCTION_DESCRIPTION_MAPS.get(ftype, ftype.value)}",
                 line_number=base_line_number,
                 concept_source=ConceptSource.AUTO_DERIVED,
             ),
@@ -186,7 +186,7 @@ def generate_key_concepts(concept: Concept, environment: Environment):
             namespace=concept.namespace,
             keys=set(),
             metadata=Metadata(
-                description=f"Auto-derived integer. The {ftype.value} of {concept.address}, {base_description}",
+                # description=f"Auto-derived integer. The {ftype.value} of {concept.address}, {base_description}",
                 line_number=base_line_number,
                 concept_source=ConceptSource.AUTO_DERIVED,
             ),
