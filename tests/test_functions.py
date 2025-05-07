@@ -123,6 +123,7 @@ def test_date_functions(test_environment):
         year(order_timestamp) -> order_year,
         date_trunc(order_timestamp, month) -> order_month_trunc,
         date_add(order_timestamp, month, 1) -> one_month_post_order,
+        date_sub(order_timestamp, month, 1) -> one_month_pre_order,
         date_trunc(order_timestamp, day) -> order_day_trunc,
         date_trunc(order_timestamp, year) -> order_year_trunc,
         date_trunc(order_timestamp, hour) -> order_hour_trunc,
