@@ -15,7 +15,7 @@ WHERE
     and store_sales.item.category is not null # this is implicit in the raw SQL because of a join on null
 SELECT
     store_sales.customer.state,
-    count(store_sales.customer.id)  as customer_count
+    sum(group(1) by store_sales.ticket_number, store_sales.item.id) as customer_count
 HAVING
     customer_count>=10
     

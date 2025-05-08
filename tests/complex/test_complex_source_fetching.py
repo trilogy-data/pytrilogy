@@ -97,7 +97,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert posts.grain == post_grain
 
     assert set(expected_parent.source_map.keys()) == set(
-        ["local.user_post_count", "local._user_id", "local.post_id"]
+        ["local.user_post_count", "local.user_id", "local.post_id"]
     )
 
     assert user_post_count in expected_parent.output_concepts
@@ -122,7 +122,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert user_post_count in parent.output_concepts
 
     assert set([x.address for x in parent.output_concepts]) == set(
-        ["local.user_post_count", "local._user_id"]
+        ["local.user_post_count", "local.user_id"]
     )
 
     root = parent.datasources[0].datasources[0]

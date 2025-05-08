@@ -1,5 +1,5 @@
 query_id = 16
-gen_length = 4490
+gen_length = 4626
 generated_sql = """
 
 WITH 
@@ -46,7 +46,7 @@ GROUP BY
     cs_catalog_sales.\"CS_ORDER_NUMBER\",
     cs_catalog_sales.\"CS_SHIP_ADDR_SK\",
     cs_catalog_sales.\"CS_SHIP_DATE_SK\"),
-concerned as (
+young as (
 SELECT
     cs_catalog_sales.\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",
     cs_catalog_sales.\"CS_ITEM_SK\" as \"cs_item_id\",
@@ -71,24 +71,31 @@ FROM
 WHERE
     cast(cs_ship_date_date.\"D_DATE\" as date) >= date '2002-02-01' and cast(cs_ship_date_date.\"D_DATE\" as date) <= date '2002-04-02' and cs_customer_address_customer_address.\"CA_STATE\" = 'GA' and cs_call_center_call_center.\"CC_COUNTY\" = 'Williamson County' and thoughtful.\"cs_order_number\" not in (select questionable.\"cr_order_number\" from questionable where questionable.\"cr_order_number\" is not null) and thoughtful.\"cs_order_number\" in (select yummy.\"multi_warehouse_sales\" from yummy where yummy.\"multi_warehouse_sales\" is not null)
 ),
-young as (
+sparkling as (
 SELECT
-    sum(concerned.\"cs_extra_ship_cost\") as \"total_shipping_cost\",
-    sum(concerned.\"cs_net_profit\") as \"total_net_profit\"
+    sum(young.\"cs_extra_ship_cost\") as \"total_shipping_cost\",
+    sum(young.\"cs_net_profit\") as \"total_net_profit\"
 FROM
-    concerned),
+    young),
 vacuous as (
 SELECT
-    count(distinct juicy.\"cs_order_number\") as \"order_count\"
+    juicy.\"cs_order_number\" as \"cs_order_number\"
 FROM
-    juicy)
+    juicy
+GROUP BY 
+    juicy.\"cs_order_number\"),
+concerned as (
 SELECT
-    vacuous.\"order_count\" as \"order_count\",
-    young.\"total_shipping_cost\" as \"total_shipping_cost\",
-    young.\"total_net_profit\" as \"total_net_profit\"
+    count(distinct vacuous.\"cs_order_number\") as \"order_count\"
 FROM
-    vacuous
-    FULL JOIN young on 1=1
+    vacuous)
+SELECT
+    concerned.\"order_count\" as \"order_count\",
+    sparkling.\"total_shipping_cost\" as \"total_shipping_cost\",
+    sparkling.\"total_net_profit\" as \"total_net_profit\"
+FROM
+    concerned
+    FULL JOIN sparkling on 1=1
 ORDER BY 
-    vacuous.\"order_count\" desc
+    concerned.\"order_count\" desc
 LIMIT (100)"""

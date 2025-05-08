@@ -464,19 +464,19 @@ select
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     build_env = default_duckdb_engine.environment.materialize_for_select()
     customer_orders = build_env.concepts["customer_orders"]
-    assert set([x for x in customer_orders.keys]) == {"local._customer"}
-    assert set([x for x in customer_orders.grain.components]) == {"local._customer"}
+    assert set([x for x in customer_orders.keys]) == {"local.customer"}
+    assert set([x for x in customer_orders.grain.components]) == {"local.customer"}
 
     customer_orders_2 = customer_orders
-    assert set([x for x in customer_orders_2.keys]) == {"local._customer"}
-    assert set([x for x in customer_orders_2.grain.components]) == {"local._customer"}
+    assert set([x for x in customer_orders_2.keys]) == {"local.customer"}
+    assert set([x for x in customer_orders_2.grain.components]) == {"local.customer"}
 
     count_by_customer = build_env.concepts[
         "avg_customer_orders"
     ].lineage.concept_arguments[0]
     # assert isinstance(count_by_customer, AggregateWrapper)
-    assert set([x for x in count_by_customer.keys]) == {"local._customer"}
-    assert set([x for x in count_by_customer.grain.components]) == {"local._customer"}
+    assert set([x for x in count_by_customer.keys]) == {"local.customer"}
+    assert set([x for x in count_by_customer.grain.components]) == {"local.customer"}
     assert len(results) == 1
     assert results[0].avg_customer_orders == 2
     assert round(results[0].avg_store_orders, 2) == 1.33

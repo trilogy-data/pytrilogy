@@ -22,12 +22,12 @@ select
     # if we don't have this group by, we will get the wrong result
     assert (
         '''SELECT
-    cheerful."_carrier_code" as "_carrier_code",
+    cheerful."carrier_code" as "carrier_code",
     cheerful."carrier_name" as "carrier_name"
 FROM
     cheerful
 GROUP BY 
-    cheerful."_carrier_code",
+    cheerful."carrier_code",
     cheerful."carrier_name"'''
         in sql
     )

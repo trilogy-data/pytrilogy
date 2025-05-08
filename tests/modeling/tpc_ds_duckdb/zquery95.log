@@ -1,17 +1,18 @@
 query_id = 95
-gen_length = 5131
+gen_length = 5563
 generated_sql = """
 
 WITH 
 cooperative as (
 SELECT
-    count(web_sales_web_sales.\"WS_WAREHOUSE_SK\") as \"_virt_agg_count_7116186864744914\",
-    web_sales_web_sales.\"WS_ORDER_NUMBER\" as \"web_sales_order_number\"
+    web_sales_web_sales.\"WS_ORDER_NUMBER\" as \"web_sales_order_number\",
+    web_sales_web_sales.\"WS_WAREHOUSE_SK\" as \"web_sales_warehouse_id\"
 FROM
     memory.web_sales as web_sales_web_sales
 GROUP BY 
-    web_sales_web_sales.\"WS_ORDER_NUMBER\"),
-yummy as (
+    web_sales_web_sales.\"WS_ORDER_NUMBER\",
+    web_sales_web_sales.\"WS_WAREHOUSE_SK\"),
+juicy as (
 SELECT
     web_sales_web_sales.\"WS_ORDER_NUMBER\" as \"returned_orders\"
 FROM
@@ -24,23 +25,31 @@ GROUP BY
     web_sales_web_sales.\"WS_ORDER_NUMBER\"),
 questionable as (
 SELECT
-    CASE WHEN cooperative.\"_virt_agg_count_7116186864744914\" > 1 THEN cooperative.\"web_sales_order_number\" ELSE NULL END as \"multi_warehouse_order\"
+    cooperative.\"web_sales_order_number\" as \"web_sales_order_number\",
+    count(cooperative.\"web_sales_warehouse_id\") as \"_virt_agg_count_2435454530783120\"
 FROM
-    cooperative),
-juicy as (
-SELECT
-    yummy.\"returned_orders\" as \"returned_orders\"
-FROM
-    yummy
+    cooperative
 GROUP BY 
-    yummy.\"returned_orders\"),
+    cooperative.\"web_sales_order_number\"),
+vacuous as (
+SELECT
+    juicy.\"returned_orders\" as \"returned_orders\"
+FROM
+    juicy
+GROUP BY 
+    juicy.\"returned_orders\"),
 abundant as (
 SELECT
-    questionable.\"multi_warehouse_order\" as \"multi_warehouse_order\"
+    CASE WHEN questionable.\"_virt_agg_count_2435454530783120\" > 1 THEN questionable.\"web_sales_order_number\" ELSE NULL END as \"multi_warehouse_order\"
 FROM
-    questionable
+    questionable),
+uneven as (
+SELECT
+    abundant.\"multi_warehouse_order\" as \"multi_warehouse_order\"
+FROM
+    abundant
 GROUP BY 
-    questionable.\"multi_warehouse_order\"),
+    abundant.\"multi_warehouse_order\"),
 thoughtful as (
 SELECT
     web_sales_web_sales.\"WS_ORDER_NUMBER\" as \"web_sales_order_number\",
@@ -50,14 +59,14 @@ SELECT
 FROM
     memory.web_sales as web_sales_web_sales
 WHERE
-    web_sales_web_sales.\"WS_ORDER_NUMBER\" in (select abundant.\"multi_warehouse_order\" from abundant where abundant.\"multi_warehouse_order\" is not null) and web_sales_web_sales.\"WS_ORDER_NUMBER\" in (select juicy.\"returned_orders\" from juicy where juicy.\"returned_orders\" is not null)
+    web_sales_web_sales.\"WS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null) and web_sales_web_sales.\"WS_ORDER_NUMBER\" in (select vacuous.\"returned_orders\" from vacuous where vacuous.\"returned_orders\" is not null)
 
 GROUP BY 
     web_sales_web_sales.\"WS_ORDER_NUMBER\",
     web_sales_web_sales.\"WS_SHIP_ADDR_SK\",
     web_sales_web_sales.\"WS_SHIP_DATE_SK\",
     web_sales_web_sales.\"WS_WEB_SITE_SK\"),
-young as (
+abhorrent as (
 SELECT
     web_sales_web_sales.\"WS_EXT_SHIP_COST\" as \"web_sales_extra_ship_cost\",
     web_sales_web_sales.\"WS_ITEM_SK\" as \"web_sales_item_id\",
@@ -69,9 +78,9 @@ FROM
     INNER JOIN memory.date_dim as web_sales_ship_date_date on web_sales_web_sales.\"WS_SHIP_DATE_SK\" = web_sales_ship_date_date.\"D_DATE_SK\"
     INNER JOIN memory.customer_address as web_sales_ship_address_customer_address on web_sales_web_sales.\"WS_SHIP_ADDR_SK\" = web_sales_ship_address_customer_address.\"CA_ADDRESS_SK\"
 WHERE
-    cast(web_sales_ship_date_date.\"D_DATE\" as date) >= date '1999-02-01' and cast(web_sales_ship_date_date.\"D_DATE\" as date) <= date '1999-04-02' and web_sales_ship_address_customer_address.\"CA_STATE\" = 'IL' and web_sales_web_site_web_site.\"web_company_name\" = 'pri' and web_sales_web_sales.\"WS_ORDER_NUMBER\" in (select abundant.\"multi_warehouse_order\" from abundant where abundant.\"multi_warehouse_order\" is not null) and web_sales_web_sales.\"WS_ORDER_NUMBER\" in (select juicy.\"returned_orders\" from juicy where juicy.\"returned_orders\" is not null)
+    cast(web_sales_ship_date_date.\"D_DATE\" as date) >= date '1999-02-01' and cast(web_sales_ship_date_date.\"D_DATE\" as date) <= date '1999-04-02' and web_sales_ship_address_customer_address.\"CA_STATE\" = 'IL' and web_sales_web_site_web_site.\"web_company_name\" = 'pri' and web_sales_web_sales.\"WS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null) and web_sales_web_sales.\"WS_ORDER_NUMBER\" in (select vacuous.\"returned_orders\" from vacuous where vacuous.\"returned_orders\" is not null)
 ),
-vacuous as (
+concerned as (
 SELECT
     thoughtful.\"web_sales_order_number\" as \"web_sales_order_number\"
 FROM
@@ -80,26 +89,33 @@ FROM
     INNER JOIN memory.date_dim as web_sales_ship_date_date on thoughtful.\"web_sales__ship_date_id\" = web_sales_ship_date_date.\"D_DATE_SK\"
     INNER JOIN memory.customer_address as web_sales_ship_address_customer_address on thoughtful.\"web_sales__ship_address_id\" = web_sales_ship_address_customer_address.\"CA_ADDRESS_SK\"
 WHERE
-    cast(web_sales_ship_date_date.\"D_DATE\" as date) >= date '1999-02-01' and cast(web_sales_ship_date_date.\"D_DATE\" as date) <= date '1999-04-02' and web_sales_ship_address_customer_address.\"CA_STATE\" = 'IL' and web_sales_web_site_web_site.\"web_company_name\" = 'pri' and thoughtful.\"web_sales_order_number\" in (select abundant.\"multi_warehouse_order\" from abundant where abundant.\"multi_warehouse_order\" is not null) and thoughtful.\"web_sales_order_number\" in (select juicy.\"returned_orders\" from juicy where juicy.\"returned_orders\" is not null)
+    cast(web_sales_ship_date_date.\"D_DATE\" as date) >= date '1999-02-01' and cast(web_sales_ship_date_date.\"D_DATE\" as date) <= date '1999-04-02' and web_sales_ship_address_customer_address.\"CA_STATE\" = 'IL' and web_sales_web_site_web_site.\"web_company_name\" = 'pri' and thoughtful.\"web_sales_order_number\" in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null) and thoughtful.\"web_sales_order_number\" in (select vacuous.\"returned_orders\" from vacuous where vacuous.\"returned_orders\" is not null)
 ),
-sparkling as (
+sweltering as (
 SELECT
-    sum(young.\"web_sales_extra_ship_cost\") as \"total_shipping_cost\",
-    sum(young.\"web_sales_net_profit\") as \"total_net_profit\"
+    sum(abhorrent.\"web_sales_extra_ship_cost\") as \"total_shipping_cost\",
+    sum(abhorrent.\"web_sales_net_profit\") as \"total_net_profit\"
 FROM
-    young),
-concerned as (
+    abhorrent),
+young as (
 SELECT
-    count(distinct vacuous.\"web_sales_order_number\") as \"order_count\"
-FROM
-    vacuous)
-SELECT
-    concerned.\"order_count\" as \"order_count\",
-    sparkling.\"total_shipping_cost\" as \"total_shipping_cost\",
-    sparkling.\"total_net_profit\" as \"total_net_profit\"
+    concerned.\"web_sales_order_number\" as \"web_sales_order_number\"
 FROM
     concerned
-    FULL JOIN sparkling on 1=1
+GROUP BY 
+    concerned.\"web_sales_order_number\"),
+sparkling as (
+SELECT
+    count(young.\"web_sales_order_number\") as \"order_count\"
+FROM
+    young)
+SELECT
+    sparkling.\"order_count\" as \"order_count\",
+    sweltering.\"total_shipping_cost\" as \"total_shipping_cost\",
+    sweltering.\"total_net_profit\" as \"total_net_profit\"
+FROM
+    sparkling
+    FULL JOIN sweltering on 1=1
 ORDER BY 
-    concerned.\"order_count\" desc
+    sparkling.\"order_count\" desc
 LIMIT (100)"""

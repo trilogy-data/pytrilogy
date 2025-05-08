@@ -814,33 +814,26 @@ class ParseToObjects(Transformer):
                     )
         if self.parse_pass == ParsePass.VALIDATION:
             self.environment.add_datasource(datasource, meta=meta)
-        # if we have any foreign keys on the datasource, we can 
-        for column in columns:
-            if not grain:
-                continue
-            if column.concept.address in grain.components:
-                continue
-            target_c = self.environment.concepts[column.concept.address]
-            if target_c.purpose != Purpose.KEY:
-                continue
-            key_inputs = grain.components
+            # if we have any foreign keys on the datasource, we can 
+            # at this point optimize them to properties if they do not have other usage.
+            for column in columns:
+                # skip partial for now
+                if column.modifiers:
+                    continue
+                if not grain:
+                    continue
+                if column.concept.address in grain.components:
+                    continue
+                target_c = self.environment.concepts[column.concept.address]
+                if target_c.purpose != Purpose.KEY:
+                    continue
 
-            keys = [self.environment.concepts[grain] for grain in key_inputs]
-            if target_c.namespace == DEFAULT_NAMESPACE:
-                name = '_'+ target_c.name
-            else:
-                name = "_" + target_c.address.replace(".", "_")
-            internal = Concept(
-                name= name,
-                namespace=self.environment.namespace,
-                purpose=Purpose.PROPERTY,
-                keys=set([x.address for x in keys]),
-                datatype=target_c.datatype,
-                grain=Grain(components={x.address for x in keys}),
-            )
-            self.environment.add_concept(internal)
-            # always a full merge
-            self.environment.merge_concept(target_c, internal, [])
+                key_inputs = grain.components
+                keys = [self.environment.concepts[grain] for grain in key_inputs]
+                # target_c.purpose = Purpose.PROPERTY
+                target_c.keys =  set([x.address for x in keys])
+                # target_c.grain = Grain(components={x.address for x in keys})
+    
         return datasource
 
     @v_args(meta=True)

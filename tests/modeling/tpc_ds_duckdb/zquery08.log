@@ -32,7 +32,7 @@ GROUP BY
     uneven.\"customer_zip\"),
 juicy as (
 SELECT
-    customer_customer_address.\"CA_ADDRESS_SK\" as \"customer__local_address_id\",
+    customer_customer_address.\"CA_ADDRESS_SK\" as \"customer_address_id\",
     customer_customer_address.\"CA_ZIP\" as \"customer_zip\",
     yummy.\"zip_p_count\" as \"zip_p_count\"
 FROM

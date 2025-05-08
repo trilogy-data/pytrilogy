@@ -1,5 +1,5 @@
 query_id = 1
-gen_length = 1858
+gen_length = 1849
 generated_sql = """
 
 WITH 
@@ -9,7 +9,7 @@ SELECT
     returns_store_returns.\"SR_ITEM_SK\" as \"returns_item_id\",
     returns_store_returns.\"SR_RETURN_AMT\" as \"returns_return_amount\",
     returns_store_returns.\"SR_TICKET_NUMBER\" as \"returns_store_sales_ticket_number\",
-    returns_store_store.\"S_STORE_SK\" as \"returns__store_id\"
+    returns_store_store.\"S_STORE_SK\" as \"returns_store_id\"
 FROM
     memory.store_returns as returns_store_returns
     INNER JOIN memory.store as returns_store_store on returns_store_returns.\"SR_STORE_SK\" = returns_store_store.\"S_STORE_SK\"
@@ -21,26 +21,26 @@ WHERE
 cooperative as (
 SELECT
     sum(thoughtful.\"returns_return_amount\") as \"total_returns\",
-    thoughtful.\"returns__store_id\" as \"returns__store_id\",
-    thoughtful.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+    thoughtful.\"returns_customer_text_id\" as \"returns_customer_text_id\",
+    thoughtful.\"returns_store_id\" as \"returns_store_id\"
 FROM
     thoughtful
 GROUP BY 
-    thoughtful.\"returns__store_id\",
-    thoughtful.\"returns_customer_text_id\"),
+    thoughtful.\"returns_customer_text_id\",
+    thoughtful.\"returns_store_id\"),
 questionable as (
 SELECT
     avg(cooperative.\"total_returns\") as \"avg_store_returns\",
-    cooperative.\"returns__store_id\" as \"returns__store_id\"
+    cooperative.\"returns_store_id\" as \"returns_store_id\"
 FROM
     cooperative
 GROUP BY 
-    cooperative.\"returns__store_id\")
+    cooperative.\"returns_store_id\")
 SELECT
     cooperative.\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
     questionable
-    INNER JOIN cooperative on questionable.\"returns__store_id\" = cooperative.\"returns__store_id\"
+    INNER JOIN cooperative on questionable.\"returns_store_id\" = cooperative.\"returns_store_id\"
 WHERE
     cooperative.\"total_returns\" > ( 1.2 * questionable.\"avg_store_returns\" )
 

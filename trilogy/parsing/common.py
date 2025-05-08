@@ -214,8 +214,8 @@ def concept_is_relevant(
     ):
 
         return False
-    if concept.purpose in (Purpose.PROPERTY, Purpose.METRIC) and concept.keys:
-        if any([c in others for c in concept.keys]):
+    if concept.purpose in (Purpose.PROPERTY, Purpose.METRIC, Purpose.KEY) and concept.keys:
+        if all([c in others for c in concept.keys]):
 
             return False
     if concept.purpose in (Purpose.METRIC,):
