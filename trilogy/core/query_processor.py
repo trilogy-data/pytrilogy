@@ -373,12 +373,9 @@ def get_query_node(
 ) -> StrategyNode:
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
-    print(statement.local_concepts)
-    print(statement.grain)
-    raise SyntaxError
     history = history or History(base_environment=environment)
     build_statement: BuildSelectLineage | BuildMultiSelectLineage = Factory(
-        environment=environment
+        environment=environment,
     ).build(statement)
 
     # build_statement = statement

@@ -11,6 +11,7 @@ from trilogy.core.enums import (
     IOType,
     Modifier,
     ShowCategory,
+    ConceptSource
 )
 from trilogy.core.models.author import (
     AggregateWrapper,
@@ -133,7 +134,8 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             order_by=order_by,
             meta=meta or Metadata(),
         )
-
+        print('input to grain')
+        print(output.local_concepts)
         output.grain = output.calculate_grain(environment, output.local_concepts)
 
         for x in selection:
@@ -151,6 +153,10 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                 ):
                     if x.concept.address not in environment.concepts:
                         environment.add_concept(x.content.output)
+                    elif x.concept.address in environment.concepts:
+                        version = environment.concepts[x.concept.address]
+                        if version.metadata.concept_source == ConceptSource.SELECT:
+                            environment.add_concept(x.content.output, force=True)
                 x.content.output = x.content.output.set_select_grain(
                     output.grain, environment
                 )
@@ -161,6 +167,12 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                 output.local_concepts[x.content.address] = environment.concepts[
                     x.content.address
                 ]
+        print('GRAIN DEBUG')
+        print(output.grain)
+        output.grain = output.calculate_grain(environment, output.local_concepts)
+        print(output.grain)
+        print('done grain')
+
         output.validate_syntax(environment)
         return output
 

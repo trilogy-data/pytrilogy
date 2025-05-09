@@ -41,6 +41,7 @@ from trilogy.core.models.author import (
     WhereClause,
     WindowItem,
     address_with_namespace,
+    ConceptArgs,
 )
 from trilogy.core.models.core import DataType, arg_to_datatype
 from trilogy.core.models.environment import Environment
@@ -190,6 +191,41 @@ def constant_to_concept(
         metadata=fmetadata,
     )
 
+def atom_is_relevant(
+    atom: Function| AggregateWrapper,
+    others: list[Concept | ConceptRef],
+    environment: Environment | None = None,
+):
+    if isinstance(atom, (ConceptRef, Concept)):
+        # when we are looking at atoms, if there is a concept that is in others
+        # return directly
+        if atom.address in others:
+            return False
+        return concept_is_relevant(atom, others, environment )
+
+    if isinstance(atom, AggregateWrapper) and not atom.by:
+        return False
+    elif isinstance(atom, AggregateWrapper):
+        return any(atom_is_relevant(x, others, environment) for x in atom.by)
+    
+    if isinstance(atom, Function):
+        relevant = False
+        print('atom args')
+        for arg in atom.arguments:
+            relevant = relevant or atom_is_relevant(arg, others, environment)
+        return relevant
+    # elif isinstance(atom, WindowItem):
+    #     return any(atom_is_relevant(x, others, environment) for x in atom.over)
+    elif isinstance(atom, ConceptArgs):
+        print('atom debug')
+        print(atom)
+        print(atom.concept_arguments)
+        # use atom is relevant here to trigger the early exit behavior for concpets in set
+        return any([atom_is_relevant(x, others, environment) for x in atom.concept_arguments])
+    return False
+                
+    
+
 
 def concept_is_relevant(
     concept: Concept | ConceptRef,
@@ -198,10 +234,10 @@ def concept_is_relevant(
 ) -> bool:
 
     if isinstance(concept, UndefinedConcept):
-
         return False
     if concept.datatype == DataType.UNKNOWN:
         return False
+
     if isinstance(concept, ConceptRef):
         if environment:
             concept = environment.concepts[concept.address]
@@ -209,7 +245,8 @@ def concept_is_relevant(
             raise SyntaxError(
                 "Require environment to determine relevance of ConceptRef"
             )
-
+    if concept.derivation== Derivation.CONSTANT:
+        return False
     if concept.is_aggregate and not (
         isinstance(concept.lineage, AggregateWrapper) and concept.lineage.by
     ):
@@ -229,10 +266,12 @@ def concept_is_relevant(
             return False
     if concept.derivation in (Derivation.BASIC,):
         relevant = False
-        for c in concept.concept_arguments:
-            if c.address in others:
-                continue
-            relevant = relevant or concept_is_relevant(c, others, environment)
+        print('----')
+        print(concept)
+        for arg in concept.lineage.arguments:
+            print(arg)
+            relevant = atom_is_relevant(arg, others, environment) or relevant
+            print(relevant)
         return relevant
     if concept.granularity == Granularity.SINGLE_ROW:
         return False
@@ -263,6 +302,7 @@ def concepts_to_grain_concepts(
 
     final: List[Concept] = []
     for sub in pconcepts:
+        
         if not concept_is_relevant(sub, pconcepts, environment):  # type: ignore
             continue
         final.append(sub)
