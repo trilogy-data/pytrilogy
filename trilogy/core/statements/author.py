@@ -134,7 +134,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             meta=meta or Metadata(),
         )
 
-        output.grain = output.calculate_grain(environment)
+        output.grain = output.calculate_grain(environment, output.local_concepts)
 
         for x in selection:
             if x.is_undefined and environment.concepts.fail_on_missing:
@@ -147,9 +147,10 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                 if (
                     CONFIG.parsing.select_as_definition
                     and not environment.frozen
-                    and x.concept.address not in environment.concepts
+                    
                 ):
-                    environment.add_concept(x.content.output)
+                    if x.concept.address not in environment.concepts:
+                        environment.add_concept(x.content.output)
                 x.content.output = x.content.output.set_select_grain(
                     output.grain, environment
                 )
@@ -163,13 +164,13 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         output.validate_syntax(environment)
         return output
 
-    def calculate_grain(self, environment: Environment | None = None) -> Grain:
+    def calculate_grain(self, environment: Environment | None = None, local_concepts:dict[str, Concept] | None = None) -> Grain:
         targets = []
         for x in self.selection:
             targets.append(x.concept)
 
         result = Grain.from_concepts(
-            targets, where_clause=self.where_clause, environment=environment
+            targets, where_clause=self.where_clause, environment=environment, local_concepts=local_concepts
         )
         return result
 

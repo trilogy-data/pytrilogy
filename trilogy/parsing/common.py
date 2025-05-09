@@ -196,6 +196,7 @@ def concept_is_relevant(
     others: list[Concept | ConceptRef],
     environment: Environment | None = None,
 ) -> bool:
+
     if isinstance(concept, UndefinedConcept):
 
         return False
@@ -214,35 +215,47 @@ def concept_is_relevant(
     ):
 
         return False
-    if concept.purpose in (Purpose.PROPERTY, Purpose.METRIC, Purpose.KEY) and concept.keys:
+    if concept.purpose in (Purpose.PROPERTY, Purpose.METRIC) and concept.keys:
         if all([c in others for c in concept.keys]):
-
             return False
+    if (
+        concept.purpose == Purpose.KEY
+        and concept.keys
+        and all([c in others for c in concept.keys])
+    ):
+        return False
     if concept.purpose in (Purpose.METRIC,):
         if all([c in others for c in concept.grain.components]):
             return False
     if concept.derivation in (Derivation.BASIC,):
-        return any(
-            concept_is_relevant(c, others, environment)
-            for c in concept.concept_arguments
-        )
+        relevant = False
+        for c in concept.concept_arguments:
+            if c.address in others:
+                continue
+            relevant = relevant or concept_is_relevant(c, others, environment)
+        return relevant
     if concept.granularity == Granularity.SINGLE_ROW:
         return False
     return True
 
 
 def concepts_to_grain_concepts(
-    concepts: Iterable[Concept | ConceptRef | str], environment: Environment | None
+    concepts: Iterable[Concept | ConceptRef | str], environment: Environment | None, local_concepts:dict[str, Concept] | None = None
 ) -> list[Concept]:
     pconcepts: list[Concept] = []
     for c in concepts:
-
         if isinstance(c, Concept):
             pconcepts.append(c)
         elif isinstance(c, ConceptRef) and environment:
-            pconcepts.append(environment.concepts[c.address])
+            if local_concepts and c.address in local_concepts:
+                pconcepts.append(local_concepts[c.address])
+            else:
+                pconcepts.append(environment.concepts[c.address])
         elif isinstance(c, str) and environment:
-            pconcepts.append(environment.concepts[c])
+            if local_concepts and c in local_concepts:
+                pconcepts.append(local_concepts[c])
+            else:
+                pconcepts.append(environment.concepts[c])
         else:
             raise ValueError(
                 f"Unable to resolve input {c} without environment provided to concepts_to_grain call"
@@ -366,7 +379,12 @@ def function_to_concept(
     is_metric = False
     ref_args, is_metric = get_relevant_parent_concepts(parent)
     concrete_args = [environment.concepts[c.address] for c in ref_args]
-    pkeys += [x for x in concrete_args if not x.derivation == Derivation.CONSTANT]
+    pkeys += [
+        x
+        for x in concrete_args
+        if not x.derivation == Derivation.CONSTANT
+        and not (x.derivation == Derivation.AGGREGATE and not x.grain.components)
+    ]
     grain: Grain | None = Grain()
     for x in pkeys:
         grain += x.grain
@@ -376,7 +394,7 @@ def function_to_concept(
     modifiers = get_upstream_modifiers(pkeys, environment)
     key_grain: list[str] = []
     for x in pkeys:
-        # metrics will group to keys, so do no do key traversal
+        # metrics will group to keys, so do not do key traversal
         if is_metric:
             key_grain.append(x.address)
         # otherwse, for row ops, assume keys are transitive
@@ -419,7 +437,11 @@ def function_to_concept(
     else:
         derivation = Derivation.BASIC
         granularity = Granularity.MULTI_ROW
-
+    if name == "drop_off":
+        print("----")
+        print(parent)
+        print(grain)
+        print(keys)
     if grain is not None:
         r = Concept(
             name=name,

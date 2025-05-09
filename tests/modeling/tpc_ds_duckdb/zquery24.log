@@ -1,5 +1,5 @@
 query_id = 24
-gen_length = 6726
+gen_length = 7226
 generated_sql = """
 
 WITH 
@@ -63,17 +63,11 @@ SELECT
     questionable.\"store_sales_store_id\" as \"store_sales_store_id\",
     sum(questionable.\"store_sales_net_paid\") as \"net_paid\"
 FROM
-    uneven
-    INNER JOIN juicy on uneven.\"store_sales_item_id\" = juicy.\"store_sales_item_id\"),
-sparkling as (
-SELECT
-    CASE WHEN concerned.\"su_store_sales_item_color\" = 'peach' THEN concerned.\"su_net_paid\" ELSE NULL END as \"_virt_filter_net_paid_3139932349044856\",
-    concerned.\"su_net_paid\" as \"su_net_paid\",
-    concerned.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
-    concerned.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    concerned.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
-FROM
-    vacuous),
+    questionable
+GROUP BY 
+    questionable.\"store_sales_customer_id\",
+    questionable.\"store_sales_item_id\",
+    questionable.\"store_sales_store_id\"),
 concerned as (
 SELECT
     vacuous.\"store_sales_item_color\" as \"store_sales_item_color\",
@@ -108,18 +102,12 @@ sweltering as (
 SELECT
     CASE WHEN young.\"su_store_sales_item_color\" = 'peach' THEN young.\"su_net_paid\" ELSE NULL END as \"_virt_filter_net_paid_3139932349044856\",
     young.\"su_net_paid\" as \"su_net_paid\",
-    young.\"su_store_sales_item_color\" as \"su_store_sales_item_color\"
+    young.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    young.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    young.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
 FROM
-    abhorrent
-GROUP BY 
-    abhorrent.\"su_store_sales_customer_first_name\",
-    abhorrent.\"su_store_sales_customer_last_name\",
-    abhorrent.\"su_store_sales_store_name\"),
+    young),
 sparkling as (
-SELECT
-    avg(young.\"su_net_paid\") as \"avg_store_customer_sales\"
-FROM
-    young)
 SELECT
     :__preql_internal_all_rows as \"__preql_internal_all_rows\",
     young.\"su_net_paid\" as \"su_net_paid\"
@@ -127,14 +115,29 @@ FROM
     young),
 late as (
 SELECT
-    sweltering.\"_virt_filter_net_paid_3139932349044856\" as \"_virt_filter_net_paid_3139932349044856\",
-    sweltering.\"su_net_paid\" as \"su_net_paid\",
-    young.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
-    young.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    young.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
+    sum(sweltering.\"_virt_filter_net_paid_3139932349044856\") as \"peach_sales\",
+    sweltering.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    sweltering.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    sweltering.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
 FROM
     sweltering
-    FULL JOIN sparkling on 1=1
+GROUP BY 
+    sweltering.\"su_store_sales_customer_first_name\",
+    sweltering.\"su_store_sales_customer_last_name\",
+    sweltering.\"su_store_sales_store_name\"),
+abhorrent as (
+SELECT
+    avg(sparkling.\"su_net_paid\") as \"avg_store_customer_sales\"
+FROM
+    sparkling)
+SELECT
+    late.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    late.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    late.\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
+    late.\"peach_sales\" as \"peach_sales\"
+FROM
+    late
+    FULL JOIN abhorrent on 1=1
 WHERE
-    sweltering.\"peach_sales\" > 0.05 * sparkling.\"avg_store_customer_sales\"
+    late.\"peach_sales\" > 0.05 * abhorrent.\"avg_store_customer_sales\"
 """

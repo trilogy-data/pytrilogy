@@ -125,10 +125,15 @@ def concept_is_relevant(
     ):
 
         return False
-    if concept.purpose in (Purpose.PROPERTY, Purpose.METRIC, Purpose.KEY) and concept.keys:
+    if concept.purpose in (Purpose.PROPERTY, Purpose.METRIC) and concept.keys:
         if all([c in others for c in concept.keys]):
-
             return False
+    if (
+        concept.purpose == Purpose.KEY
+        and concept.keys
+        and all([c in others for c in concept.keys])
+    ):
+        return False
     if concept.purpose in (Purpose.METRIC,):
         if all([c in others for c in concept.grain.components]):
             return False
@@ -1646,7 +1651,6 @@ class Factory:
 
     @build.register
     def _(self, base: AggregateWrapper) -> BuildAggregateWrapper:
-
         if not base.by:
             by = [
                 self.build(self.environment.concepts[c]) for c in self.grain.components
