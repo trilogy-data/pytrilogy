@@ -1,3 +1,5 @@
+import os
+import platform
 from datetime import datetime
 from pathlib import Path
 
@@ -7,11 +9,6 @@ import tomllib
 
 from trilogy import Executor
 from trilogy.core.models.environment import Environment
-import os
-import platform
-from pathlib import Path
-
-import tomllib
 
 # Get aggregate info
 machine = platform.machine()

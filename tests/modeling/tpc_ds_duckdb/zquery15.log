@@ -1,5 +1,5 @@
 query_id = 15
-gen_length = 2214
+gen_length = 1670
 generated_sql = """
 
 WITH 
@@ -16,27 +16,14 @@ FROM
     INNER JOIN memory.customer_address as catalog_sales_bill_customer_customer_address on catalog_sales_bill_customer_customers.\"C_CURRENT_ADDR_SK\" = catalog_sales_bill_customer_customer_address.\"CA_ADDRESS_SK\"
 WHERE
     catalog_sales_date_date.\"D_QOY\" = 2 and cast(catalog_sales_date_date.\"D_YEAR\" as int) = 2001 and ( catalog_sales_bill_customer_customer_address.\"CA_STATE\" in ('CA','WA','GA') or catalog_sales_catalog_sales.\"CS_SALES_PRICE\" > 500 or SUBSTRING(catalog_sales_bill_customer_customer_address.\"CA_ZIP\",1,5) in ('85669','86197','88274','83405','86475','85392','85460','80348','81792') )
-),
-cooperative as (
+)
 SELECT
     thoughtful.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
-    thoughtful.\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
-    thoughtful.\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
-    thoughtful.\"catalog_sales_sales_price\" as \"catalog_sales_sales_price\"
+    sum(thoughtful.\"catalog_sales_sales_price\") as \"sales\"
 FROM
     thoughtful
 GROUP BY 
-    thoughtful.\"catalog_sales_bill_customer_zip\",
-    thoughtful.\"catalog_sales_item_id\",
-    thoughtful.\"catalog_sales_order_number\",
-    thoughtful.\"catalog_sales_sales_price\")
-SELECT
-    cooperative.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
-    sum(cooperative.\"catalog_sales_sales_price\") as \"sales\"
-FROM
-    cooperative
-GROUP BY 
-    cooperative.\"catalog_sales_bill_customer_zip\"
+    thoughtful.\"catalog_sales_bill_customer_zip\"
 ORDER BY 
-    cooperative.\"catalog_sales_bill_customer_zip\" asc nulls first
+    thoughtful.\"catalog_sales_bill_customer_zip\" asc nulls first
 LIMIT (100)"""

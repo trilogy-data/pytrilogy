@@ -8,7 +8,6 @@ from trilogy.core.models.environment import (
     EnvironmentOptions,
 )
 from trilogy.parsing.parse_engine import (
-    ParseError,
     NameShadowError,
     parse_text,
 )

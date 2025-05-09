@@ -14,8 +14,8 @@ SELECT
     cs_item_items.\"I_ITEM_SK\" as \"cs_item_id\"
 FROM
     memory.catalog_sales as cs_catalog_sales
-    INNER JOIN memory.item as cs_item_items on cs_catalog_sales.\"CS_ITEM_SK\" = cs_item_items.\"I_ITEM_SK\"
     INNER JOIN memory.date_dim as cs_date_date on cs_catalog_sales.\"CS_SOLD_DATE_SK\" = cs_date_date.\"D_DATE_SK\"
+    INNER JOIN memory.item as cs_item_items on cs_catalog_sales.\"CS_ITEM_SK\" = cs_item_items.\"I_ITEM_SK\"
     INNER JOIN memory.promotion as cs_promotion_promotion on cs_catalog_sales.\"CS_PROMO_SK\" = cs_promotion_promotion.\"P_PROMO_SK\"
     INNER JOIN memory.customer_demographics as cs_bill_customer_demographic_customer_demographics on cs_catalog_sales.\"CS_BILL_CDEMO_SK\" = cs_bill_customer_demographic_customer_demographics.\"CD_DEMO_SK\"
 WHERE

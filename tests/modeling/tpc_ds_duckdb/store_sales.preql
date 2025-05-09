@@ -27,13 +27,6 @@ property <ticket_number,item.id>.net_paid float;
 property <ticket_number,item.id>.return_amount float?;
 property <ticket_number,item.id>.return_net_loss float?;
 
-# define one-to-one joins
-# merge property <ticket_number,item.id> from date.id;
-# merge property <ticket_number,item.id> from time.id;
-# merge property <ticket_number,item.id> from customer.id;
-# merge property <ticket_number,item.id> from customer_demographic.id;
-# merge property <ticket_number,item.id> from promotion.id;
-# merge property <ticket_number,item.id> from store.id;
 
 auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price;
 
