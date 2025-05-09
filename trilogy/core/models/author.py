@@ -452,7 +452,9 @@ class Grain(Namespaced, BaseModel):
         x = Grain.model_construct(
             components={
                 c.address
-                for c in concepts_to_grain_concepts(concepts, environment=environment, local_concepts=local_concepts)
+                for c in concepts_to_grain_concepts(
+                    concepts, environment=environment, local_concepts=local_concepts
+                )
             },
             where_clause=where_clause,
         )

@@ -213,6 +213,7 @@ def test_math_functions(test_environment):
     property order_sub <- revenue - 2;
     property order_id.order_nested <- revenue * 2/2;
     property order_id.rounded <- round(revenue + 2.01,2);
+    property order_id.rounded_default <- round(revenue + 2.01);
     constant random <- random(1);
     select
         order_id,
@@ -222,6 +223,7 @@ def test_math_functions(test_environment):
         order_sub,
         order_add,
         rounded,
+        rounded_default,
         random,
     ;"""
     env, parsed = parse(declarations, environment=test_environment)

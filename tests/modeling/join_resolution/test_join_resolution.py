@@ -71,7 +71,10 @@ property store_by_order <- group(store_id) by order_id;
             test_environment.concepts["order_id"],
         ]
     )
-    assert Grain(components=grouped.lineage.concept_arguments).components == target_grain.components
+    assert (
+        Grain(components=grouped.lineage.concept_arguments).components
+        == target_grain.components
+    )
 
     test_select = """
 SELECT

@@ -7,11 +7,11 @@ from pydantic.functional_validators import PlainValidator
 
 from trilogy.constants import CONFIG
 from trilogy.core.enums import (
+    ConceptSource,
     FunctionClass,
     IOType,
     Modifier,
     ShowCategory,
-    ConceptSource
 )
 from trilogy.core.models.author import (
     AggregateWrapper,
@@ -134,8 +134,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             order_by=order_by,
             meta=meta or Metadata(),
         )
-        print('input to grain')
-        print(output.local_concepts)
+
         output.grain = output.calculate_grain(environment, output.local_concepts)
 
         for x in selection:
@@ -146,11 +145,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             elif isinstance(x.content, ConceptTransform):
                 if isinstance(x.content.output, UndefinedConcept):
                     continue
-                if (
-                    CONFIG.parsing.select_as_definition
-                    and not environment.frozen
-                    
-                ):
+                if CONFIG.parsing.select_as_definition and not environment.frozen:
                     if x.concept.address not in environment.concepts:
                         environment.add_concept(x.content.output)
                     elif x.concept.address in environment.concepts:
@@ -167,22 +162,26 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                 output.local_concepts[x.content.address] = environment.concepts[
                     x.content.address
                 ]
-        print('GRAIN DEBUG')
-        print(output.grain)
+
         output.grain = output.calculate_grain(environment, output.local_concepts)
-        print(output.grain)
-        print('done grain')
 
         output.validate_syntax(environment)
         return output
 
-    def calculate_grain(self, environment: Environment | None = None, local_concepts:dict[str, Concept] | None = None) -> Grain:
+    def calculate_grain(
+        self,
+        environment: Environment | None = None,
+        local_concepts: dict[str, Concept] | None = None,
+    ) -> Grain:
         targets = []
         for x in self.selection:
             targets.append(x.concept)
 
         result = Grain.from_concepts(
-            targets, where_clause=self.where_clause, environment=environment, local_concepts=local_concepts
+            targets,
+            where_clause=self.where_clause,
+            environment=environment,
+            local_concepts=local_concepts,
         )
         return result
 

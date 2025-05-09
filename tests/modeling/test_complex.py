@@ -8,6 +8,7 @@ from trilogy.core.processing.node_generators.common import (
 from trilogy.core.statements.author import SelectStatement
 from trilogy.hooks import DebuggingHook
 
+
 def test_rowset(test_environment: Environment, test_executor: Executor):
     test_select = """
 

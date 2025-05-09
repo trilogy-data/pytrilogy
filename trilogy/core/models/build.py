@@ -1487,6 +1487,7 @@ class Factory:
         built = self.build(new)
         self.local_concepts[new.address] = built
         return new, built
+
     @singledispatchmethod
     def build(self, base):
         raise NotImplementedError("Cannot build {}".format(type(base)))
@@ -1523,8 +1524,6 @@ class Factory:
         | NumericType
     ):
         return base
-
-    
 
     @build.register
     def _(self, base: None) -> None:

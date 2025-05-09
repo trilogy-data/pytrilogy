@@ -223,7 +223,7 @@
     fdiv: ( "divide"i "(" expr "," expr ")") 
     fmod: ( "mod"i "(" expr "," (int_lit | concept_lit ) ")")  
     _ROUND.1: "round"i "("
-    fround: _ROUND expr "," expr ")"
+    fround: _ROUND expr ("," expr)? ")"
     fabs: "abs"i "(" expr ")"
     _SQRT.1: "sqrt("
     fsqrt:  _SQRT expr ")"

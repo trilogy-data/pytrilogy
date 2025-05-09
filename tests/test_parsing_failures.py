@@ -9,6 +9,7 @@ from trilogy.core.models.environment import (
 )
 from trilogy.parsing.parse_engine import (
     ParseError,
+    NameShadowError,
     parse_text,
 )
 
@@ -77,7 +78,7 @@ SELECT
     1+2->scalar
 ;
 """
-    with raises(ParseError) as e:
+    with raises(NameShadowError) as e:
         env, parsed = parse_text(
             x, parse_config=Parsing(strict_name_shadow_enforcement=True)
         )
