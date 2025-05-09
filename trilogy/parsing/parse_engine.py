@@ -817,8 +817,6 @@ class ParseToObjects(Transformer):
             # at this point optimize them to properties if they do not have other usage.
             for column in columns:
                 # skip partial for now
-                # if column.modifiers:
-                #     continue
                 if not grain:
                     continue
                 if column.concept.address in grain.components:
