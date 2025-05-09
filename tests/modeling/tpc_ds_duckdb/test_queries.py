@@ -1,3 +1,5 @@
+import os
+import platform
 from datetime import datetime
 from pathlib import Path
 
@@ -7,6 +9,15 @@ import tomllib
 
 from trilogy import Executor
 from trilogy.core.models.environment import Environment
+
+# Get aggregate info
+machine = platform.machine()
+cpu_name = platform.processor()
+cpu_count = os.cpu_count()
+
+fingerprint = (
+    f"{machine}-{cpu_name}-{cpu_count}".lower().replace(" ", "_").replace(",", "")
+)
 
 working_path = Path(__file__).parent
 
@@ -59,13 +70,13 @@ def run_query(engine: Executor, idx: int, sql_override: bool = False):
             )
         )
 
-    timing = Path(working_path / "zquery_timing.log")
+    timing = Path(working_path / f"zquery_timing_{fingerprint}.log")
 
     if not timing.exists():
-        with open(working_path / "zquery_timing.log", "w") as f:
+        with open(timing, "w") as f:
             pass
 
-    with open(working_path / "zquery_timing.log", "r+") as f:
+    with open(timing, "r+") as f:
         # seek to 0, as we use append to ensure it exists
         current = tomllib.loads(f.read())
         # go back to 0, as we will rewrite the whole thing

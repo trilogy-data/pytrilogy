@@ -1,5 +1,5 @@
 query_id = 6
-gen_length = 3395
+gen_length = 3031
 generated_sql = """
 
 WITH 
@@ -8,7 +8,6 @@ SELECT
     cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
     item_items.\"I_CATEGORY\" as \"item_category\",
     store_sales_customer_customer_address.\"CA_STATE\" as \"store_sales_customer_state\",
-    store_sales_customer_customers.\"C_CUSTOMER_SK\" as \"store_sales__customer_id\",
     store_sales_date_date.\"D_MOY\" as \"store_sales_date_month_of_year\",
     store_sales_item_items.\"I_CATEGORY\" as \"store_sales_item_category\",
     store_sales_item_items.\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
@@ -35,7 +34,6 @@ GROUP BY
 uneven as (
 SELECT
     questionable.\"item_id\" as \"item_id\",
-    questionable.\"store_sales__customer_id\" as \"store_sales__customer_id\",
     questionable.\"store_sales_customer_state\" as \"store_sales_customer_state\",
     questionable.\"store_sales_ticket_number\" as \"store_sales_ticket_number\"
 FROM
@@ -47,26 +45,24 @@ WHERE
 yummy as (
 SELECT
     uneven.\"item_id\" as \"item_id\",
-    uneven.\"store_sales__customer_id\" as \"store_sales__customer_id\",
     uneven.\"store_sales_customer_state\" as \"store_sales_customer_state\",
     uneven.\"store_sales_ticket_number\" as \"store_sales_ticket_number\"
 FROM
     uneven
 GROUP BY 
     uneven.\"item_id\",
-    uneven.\"store_sales__customer_id\",
     uneven.\"store_sales_customer_state\",
     uneven.\"store_sales_ticket_number\")
 SELECT
     yummy.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    count(yummy.\"store_sales__customer_id\") as \"customer_count\"
+    sum(1) as \"customer_count\"
 FROM
     yummy
 GROUP BY 
     yummy.\"store_sales_customer_state\"
 HAVING
-    count(yummy.\"store_sales__customer_id\") >= 10
+    sum(1) >= 10
 
 ORDER BY 
-    count(yummy.\"store_sales__customer_id\") asc nulls first,
+    sum(1) asc nulls first,
     yummy.\"store_sales_customer_state\" asc nulls first"""

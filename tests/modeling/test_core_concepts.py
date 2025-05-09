@@ -134,8 +134,9 @@ SELECT
     statement = statements[-1]
     assert set(statement.grain.components) == set(
         [
-            test_environment.concepts["store_id"].address,
-            test_environment.concepts["product_id"].address,
+            # these are removed as they are implicit on the order grain
+            # test_environment.concepts["store_id"].address,
+            # test_environment.concepts["product_id"].address,
             test_environment.concepts["order_id"].address,
         ]
     )

@@ -1,6 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 from trilogy.core.exceptions import UnresolvableQueryException
+from trilogy.core.models.author import Concept
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.environment import Environment
@@ -17,6 +18,7 @@ from .window_node import WindowNode
 
 class History(BaseModel):
     base_environment: Environment
+    local_base_concepts: dict[str, Concept] = Field(default_factory=dict)
     history: dict[str, StrategyNode | None] = Field(default_factory=dict)
     select_history: dict[str, StrategyNode | None] = Field(default_factory=dict)
     started: dict[str, int] = Field(default_factory=dict)

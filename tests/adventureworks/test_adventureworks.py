@@ -288,7 +288,7 @@ def test_group_to_grain(environment: Environment):
     resolved = test.resolve()
     expected_grain = BuildGrain(
         components=[
-            environment.concepts["internet_sales.dates.order_key"],
+            # environment.concepts["internet_sales.dates.order_key"],
             environment.concepts["internet_sales.order_line_number"],
             environment.concepts["internet_sales.order_number"],
         ]

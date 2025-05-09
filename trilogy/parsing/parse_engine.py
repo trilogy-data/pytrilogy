@@ -117,7 +117,6 @@ from trilogy.core.statements.author import (
     CopyStatement,
     FunctionDeclaration,
     ImportStatement,
-    KeyMergeStatement,
     Limit,
     MergeStatementV2,
     MultiSelectStatement,
@@ -136,7 +135,7 @@ from trilogy.parsing.common import (
     process_function_args,
     rowset_to_concepts,
 )
-from trilogy.parsing.exceptions import ParseError
+from trilogy.parsing.exceptions import NameShadowError, ParseError
 
 perf_logger = getLogger("trilogy.parse.performance")
 
@@ -814,6 +813,24 @@ class ParseToObjects(Transformer):
                     )
         if self.parse_pass == ParsePass.VALIDATION:
             self.environment.add_datasource(datasource, meta=meta)
+            # if we have any foreign keys on the datasource, we can
+            # at this point optimize them to properties if they do not have other usage.
+            for column in columns:
+                # skip partial for now
+                if not grain:
+                    continue
+                if column.concept.address in grain.components:
+                    continue
+                target_c = self.environment.concepts[column.concept.address]
+                if target_c.purpose != Purpose.KEY:
+                    continue
+
+                key_inputs = grain.components
+                keys = [self.environment.concepts[grain] for grain in key_inputs]
+                # target_c.purpose = Purpose.PROPERTY
+                target_c.keys = set([x.address for x in keys])
+                # target_c.grain = Grain(components={x.address for x in keys})
+
         return datasource
 
     @v_args(meta=True)
@@ -902,29 +919,6 @@ class ParseToObjects(Transformer):
 
     def over_list(self, args):
         return [x for x in args]
-
-    @v_args(meta=True)
-    def key_merge_statement(self, meta: Meta, args) -> KeyMergeStatement | None:
-        key_inputs = args[:-1]
-        target = args[-1]
-        keys = [self.environment.concepts[grain] for grain in key_inputs]
-        target_c = self.environment.concepts[target]
-        new = KeyMergeStatement(
-            keys=set([x.address for x in keys]),
-            target=target_c.reference,
-        )
-        internal = Concept(
-            name="_" + target_c.address.replace(".", "_"),
-            namespace=self.environment.namespace,
-            purpose=Purpose.PROPERTY,
-            keys=set([x.address for x in keys]),
-            datatype=target_c.datatype,
-            grain=Grain(components={x.address for x in keys}),
-        )
-        self.environment.add_concept(internal)
-        # always a full merge
-        self.environment.merge_concept(target_c, internal, [])
-        return new
 
     @v_args(meta=True)
     def merge_statement(self, meta: Meta, args) -> MergeStatementV2 | None:
@@ -1253,9 +1247,18 @@ class ParseToObjects(Transformer):
         ):
             intersection = base.locally_derived.intersection(pre_keys)
             if intersection:
-                raise ParseError(
-                    f"Select statement {base} creates new derived concepts {list(intersection)} from transformations with identical name(s) to existing concept(s). Do you mean to drop the calculation and directly use the existing concept? If not, alias these concept(s) under new names."
-                )
+                for x in intersection:
+                    if (
+                        base.local_concepts[x].derivation
+                        == self.environment.concepts[x].derivation
+                    ):
+                        raise NameShadowError(
+                            f"Select statement {base} derives concept {x} with identical derivation as named concept. Use the named concept directly."
+                        )
+                else:
+                    raise NameShadowError(
+                        f"Select statement {base} creates new derived concepts {list(intersection)} with identical name(s) to existing concept(s). If these are identical, reference the concept directly. Otherwise alias your column as a new name."
+                    )
         return base
 
     @v_args(meta=True)
@@ -1854,6 +1857,8 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fround(self, meta, args) -> Function:
+        if len(args) == 1:
+            args.append(0)
         return self.function_factory.create_function(args, FunctionType.ROUND, meta)
 
     @v_args(meta=True)

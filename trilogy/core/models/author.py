@@ -445,13 +445,16 @@ class Grain(Namespaced, BaseModel):
         concepts: Iterable[Concept | ConceptRef | str],
         environment: Environment | None = None,
         where_clause: WhereClause | None = None,
+        local_concepts: dict[str, Concept] | None = None,
     ) -> Grain:
         from trilogy.parsing.common import concepts_to_grain_concepts
 
         x = Grain.model_construct(
             components={
                 c.address
-                for c in concepts_to_grain_concepts(concepts, environment=environment)
+                for c in concepts_to_grain_concepts(
+                    concepts, environment=environment, local_concepts=local_concepts
+                )
             },
             where_clause=where_clause,
         )

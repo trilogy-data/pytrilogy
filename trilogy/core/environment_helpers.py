@@ -6,23 +6,8 @@ from trilogy.core.models.core import DataType, StructType, arg_to_datatype
 from trilogy.core.models.environment import Environment
 from trilogy.parsing.common import Meta
 
-FUNCTION_DESCRIPTION_MAPS = {
-    FunctionType.DATE: "The date part of a timestamp/date. Integer, 0-31 depending on month.",
-    FunctionType.MONTH: "The month part of a timestamp/date. Integer, 1-12.",
-    FunctionType.YEAR: "The year part of a timestamp/date. Integer.",
-    FunctionType.QUARTER: "The quarter part of a timestamp/date. Integer, 1-4.",
-    FunctionType.DAY_OF_WEEK: "The day of the week part of a timestamp/date. Integer, 0-6.",
-    FunctionType.HOUR: "The hour part of a timestamp. Integer, 0-23.",
-    FunctionType.MINUTE: "The minute part of a timestamp. Integer, 0-59.",
-    FunctionType.SECOND: "The second part of a timestamp. Integer, 0-59.",
-}
-
 
 def generate_date_concepts(concept: Concept, environment: Environment):
-    if concept.metadata and concept.metadata.description:
-        base_description = concept.metadata.description
-    else:
-        base_description = f"a {concept.address}"
     if concept.metadata and concept.metadata.line_number:
         base_line_number = concept.metadata.line_number
     else:
@@ -67,7 +52,6 @@ def generate_date_concepts(concept: Concept, environment: Environment):
                 [concept.address],
             ),
             metadata=Metadata(
-                description=f"Auto-derived from {base_description}. {FUNCTION_DESCRIPTION_MAPS.get(ftype, ftype.value)}",
                 line_number=base_line_number,
                 concept_source=ConceptSource.AUTO_DERIVED,
             ),
@@ -95,7 +79,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
                 [concept.address],
             ),
             metadata=Metadata(
-                description=f"Auto-derived from {base_description}. The date truncated to the {grain.value}.",
+                # description=f"Auto-derived from {base_description}. The date truncated to the {grain.value}.",
                 line_number=base_line_number,
                 concept_source=ConceptSource.AUTO_DERIVED,
             ),
@@ -105,10 +89,6 @@ def generate_date_concepts(concept: Concept, environment: Environment):
 
 
 def generate_datetime_concepts(concept: Concept, environment: Environment):
-    if concept.metadata and concept.metadata.description:
-        base_description = concept.metadata.description
-    else:
-        base_description = concept.address
     if concept.metadata and concept.metadata.line_number:
         base_line_number = concept.metadata.line_number
     else:
@@ -146,7 +126,6 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
                 [concept.address],
             ),
             metadata=Metadata(
-                description=f"Auto-derived from {base_description}. {FUNCTION_DESCRIPTION_MAPS.get(ftype, ftype.value)}",
                 line_number=base_line_number,
                 concept_source=ConceptSource.AUTO_DERIVED,
             ),
@@ -157,10 +136,6 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
 
 
 def generate_key_concepts(concept: Concept, environment: Environment):
-    if concept.metadata and concept.metadata.description:
-        base_description = concept.metadata.description
-    else:
-        base_description = f"a {concept.datatype.value}"
     if concept.metadata and concept.metadata.line_number:
         base_line_number = concept.metadata.line_number
     else:
@@ -186,7 +161,7 @@ def generate_key_concepts(concept: Concept, environment: Environment):
             namespace=concept.namespace,
             keys=set(),
             metadata=Metadata(
-                description=f"Auto-derived integer. The {ftype.value} of {concept.address}, {base_description}",
+                # description=f"Auto-derived integer. The {ftype.value} of {concept.address}, {base_description}",
                 line_number=base_line_number,
                 concept_source=ConceptSource.AUTO_DERIVED,
             ),

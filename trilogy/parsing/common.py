@@ -24,6 +24,7 @@ from trilogy.core.models.author import (
     AlignClause,
     AlignItem,
     Concept,
+    ConceptArgs,
     ConceptRef,
     FilterItem,
     Function,
@@ -191,16 +192,53 @@ def constant_to_concept(
     )
 
 
+def atom_is_relevant(
+    atom,
+    others: list[Concept | ConceptRef],
+    environment: Environment | None = None,
+):
+    if isinstance(atom, (ConceptRef, Concept)):
+        # when we are looking at atoms, if there is a concept that is in others
+        # return directly
+        if atom.address in others:
+            return False
+        return concept_is_relevant(atom, others, environment)
+
+    if isinstance(atom, AggregateWrapper) and not atom.by:
+        return False
+    elif isinstance(atom, AggregateWrapper):
+        return any(atom_is_relevant(x, others, environment) for x in atom.by)
+
+    if isinstance(atom, Function):
+        relevant = False
+        print("atom args")
+        for arg in atom.arguments:
+            relevant = relevant or atom_is_relevant(arg, others, environment)
+        return relevant
+    elif isinstance(atom, FunctionCallWrapper):
+        return any(
+            [atom_is_relevant(atom.content, others, environment)]
+            + [atom_is_relevant(x, others, environment) for x in atom.args]
+        )
+    elif isinstance(atom, ConceptArgs):
+        # use atom is relevant here to trigger the early exit behavior for concpets in set
+        return any(
+            [atom_is_relevant(x, others, environment) for x in atom.concept_arguments]
+        )
+    return False
+
+
 def concept_is_relevant(
     concept: Concept | ConceptRef,
     others: list[Concept | ConceptRef],
     environment: Environment | None = None,
 ) -> bool:
-    if isinstance(concept, UndefinedConcept):
 
+    if isinstance(concept, UndefinedConcept):
         return False
     if concept.datatype == DataType.UNKNOWN:
         return False
+
     if isinstance(concept, ConceptRef):
         if environment:
             concept = environment.concepts[concept.address]
@@ -208,41 +246,56 @@ def concept_is_relevant(
             raise SyntaxError(
                 "Require environment to determine relevance of ConceptRef"
             )
-
+    if concept.derivation == Derivation.CONSTANT:
+        return False
     if concept.is_aggregate and not (
         isinstance(concept.lineage, AggregateWrapper) and concept.lineage.by
     ):
 
         return False
     if concept.purpose in (Purpose.PROPERTY, Purpose.METRIC) and concept.keys:
-        if any([c in others for c in concept.keys]):
-
+        if all([c in others for c in concept.keys]):
             return False
+    if (
+        concept.purpose == Purpose.KEY
+        and concept.keys
+        and all([c in others for c in concept.keys])
+    ):
+        return False
     if concept.purpose in (Purpose.METRIC,):
         if all([c in others for c in concept.grain.components]):
             return False
-    if concept.derivation in (Derivation.BASIC,):
-        return any(
-            concept_is_relevant(c, others, environment)
-            for c in concept.concept_arguments
-        )
+    if concept.derivation in (Derivation.BASIC,) and isinstance(
+        concept.lineage, Function
+    ):
+        relevant = False
+        for arg in concept.lineage.arguments:
+            relevant = atom_is_relevant(arg, others, environment) or relevant
+        return relevant
     if concept.granularity == Granularity.SINGLE_ROW:
         return False
     return True
 
 
 def concepts_to_grain_concepts(
-    concepts: Iterable[Concept | ConceptRef | str], environment: Environment | None
+    concepts: Iterable[Concept | ConceptRef | str],
+    environment: Environment | None,
+    local_concepts: dict[str, Concept] | None = None,
 ) -> list[Concept]:
     pconcepts: list[Concept] = []
     for c in concepts:
-
         if isinstance(c, Concept):
             pconcepts.append(c)
         elif isinstance(c, ConceptRef) and environment:
-            pconcepts.append(environment.concepts[c.address])
+            if local_concepts and c.address in local_concepts:
+                pconcepts.append(local_concepts[c.address])
+            else:
+                pconcepts.append(environment.concepts[c.address])
         elif isinstance(c, str) and environment:
-            pconcepts.append(environment.concepts[c])
+            if local_concepts and c in local_concepts:
+                pconcepts.append(local_concepts[c])
+            else:
+                pconcepts.append(environment.concepts[c])
         else:
             raise ValueError(
                 f"Unable to resolve input {c} without environment provided to concepts_to_grain call"
@@ -250,6 +303,7 @@ def concepts_to_grain_concepts(
 
     final: List[Concept] = []
     for sub in pconcepts:
+
         if not concept_is_relevant(sub, pconcepts, environment):  # type: ignore
             continue
         final.append(sub)
@@ -366,7 +420,12 @@ def function_to_concept(
     is_metric = False
     ref_args, is_metric = get_relevant_parent_concepts(parent)
     concrete_args = [environment.concepts[c.address] for c in ref_args]
-    pkeys += [x for x in concrete_args if not x.derivation == Derivation.CONSTANT]
+    pkeys += [
+        x
+        for x in concrete_args
+        if not x.derivation == Derivation.CONSTANT
+        and not (x.derivation == Derivation.AGGREGATE and not x.grain.components)
+    ]
     grain: Grain | None = Grain()
     for x in pkeys:
         grain += x.grain
@@ -376,7 +435,7 @@ def function_to_concept(
     modifiers = get_upstream_modifiers(pkeys, environment)
     key_grain: list[str] = []
     for x in pkeys:
-        # metrics will group to keys, so do no do key traversal
+        # metrics will group to keys, so do not do key traversal
         if is_metric:
             key_grain.append(x.address)
         # otherwse, for row ops, assume keys are transitive
@@ -419,7 +478,6 @@ def function_to_concept(
     else:
         derivation = Derivation.BASIC
         granularity = Granularity.MULTI_ROW
-
     if grain is not None:
         r = Concept(
             name=name,

@@ -10,7 +10,6 @@
     | rowset_derivation_statement
     | import_statement
     | copy_statement
-    | key_merge_statement
     | merge_statement
     | rawsql_statement
     
@@ -76,8 +75,6 @@
     align_item: IDENTIFIER ":" IDENTIFIER ("," IDENTIFIER)*  ","?
 
     align_clause: align_item ("AND"i align_item)*  "AND"i?
-
-    key_merge_statement: "merge"i "property"i "<" IDENTIFIER ("," IDENTIFIER )* ","? ">" "from"i IDENTIFIER 
 
     merge_statement: "merge"i  WILDCARD_IDENTIFIER "into"i SHORTHAND_MODIFIER? WILDCARD_IDENTIFIER
 
@@ -223,7 +220,7 @@
     fdiv: ( "divide"i "(" expr "," expr ")") 
     fmod: ( "mod"i "(" expr "," (int_lit | concept_lit ) ")")  
     _ROUND.1: "round"i "("
-    fround: _ROUND expr "," expr ")"
+    fround: _ROUND expr ("," expr)? ")"
     fabs: "abs"i "(" expr ")"
     _SQRT.1: "sqrt("
     fsqrt:  _SQRT expr ")"

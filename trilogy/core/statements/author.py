@@ -7,6 +7,7 @@ from pydantic.functional_validators import PlainValidator
 
 from trilogy.constants import CONFIG
 from trilogy.core.enums import (
+    ConceptSource,
     FunctionClass,
     IOType,
     Modifier,
@@ -134,7 +135,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             meta=meta or Metadata(),
         )
 
-        output.grain = output.calculate_grain(environment)
+        output.grain = output.calculate_grain(environment, output.local_concepts)
 
         for x in selection:
             if x.is_undefined and environment.concepts.fail_on_missing:
@@ -144,12 +145,13 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             elif isinstance(x.content, ConceptTransform):
                 if isinstance(x.content.output, UndefinedConcept):
                     continue
-                if (
-                    CONFIG.parsing.select_as_definition
-                    and not environment.frozen
-                    and x.concept.address not in environment.concepts
-                ):
-                    environment.add_concept(x.content.output)
+                if CONFIG.parsing.select_as_definition and not environment.frozen:
+                    if x.concept.address not in environment.concepts:
+                        environment.add_concept(x.content.output)
+                    elif x.concept.address in environment.concepts:
+                        version = environment.concepts[x.concept.address]
+                        if version.metadata.concept_source == ConceptSource.SELECT:
+                            environment.add_concept(x.content.output, force=True)
                 x.content.output = x.content.output.set_select_grain(
                     output.grain, environment
                 )
@@ -160,16 +162,26 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                 output.local_concepts[x.content.address] = environment.concepts[
                     x.content.address
                 ]
+
+        output.grain = output.calculate_grain(environment, output.local_concepts)
+
         output.validate_syntax(environment)
         return output
 
-    def calculate_grain(self, environment: Environment | None = None) -> Grain:
+    def calculate_grain(
+        self,
+        environment: Environment | None = None,
+        local_concepts: dict[str, Concept] | None = None,
+    ) -> Grain:
         targets = []
         for x in self.selection:
             targets.append(x.concept)
 
         result = Grain.from_concepts(
-            targets, where_clause=self.where_clause, environment=environment
+            targets,
+            where_clause=self.where_clause,
+            environment=environment,
+            local_concepts=local_concepts,
         )
         return result
 

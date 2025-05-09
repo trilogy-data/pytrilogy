@@ -22,8 +22,6 @@ def test_one():
     for k, c in env.concepts.items():
         if c.namespace == "local":
             continue
-        if c.address != k:
-            raise ValueError(f"{c.address} != {k} for {c.address}")
         if c.address not in env.concepts:
             raise ValueError(f"{c.address} not in env.concepts")
     assert "returns.return_date.date" in env.datasources

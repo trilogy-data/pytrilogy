@@ -126,9 +126,14 @@ def concept_is_relevant(
 
         return False
     if concept.purpose in (Purpose.PROPERTY, Purpose.METRIC) and concept.keys:
-        if any([c in others for c in concept.keys]):
-
+        if all([c in others for c in concept.keys]):
             return False
+    if (
+        concept.purpose == Purpose.KEY
+        and concept.keys
+        and all([c in others for c in concept.keys])
+    ):
+        return False
     if concept.purpose in (Purpose.METRIC,):
         if all([c in others for c in concept.grain.components]):
             return False
@@ -1458,11 +1463,35 @@ class Factory:
             {} if local_concepts is None else local_concepts
         )
 
+    def instantiate_concept(
+        self,
+        arg: (
+            AggregateWrapper
+            | FunctionCallWrapper
+            | WindowItem
+            | FilterItem
+            | Function
+            | ListWrapper[Any]
+            | MapWrapper[Any, Any]
+            | int
+            | float
+            | str
+        ),
+    ) -> tuple[Concept, BuildConcept]:
+        from trilogy.parsing.common import arbitrary_to_concept
+
+        new = arbitrary_to_concept(
+            arg,
+            environment=self.environment,
+        )
+        built = self.build(new)
+        self.local_concepts[new.address] = built
+        return new, built
+
     @singledispatchmethod
     def build(self, base):
         raise NotImplementedError("Cannot build {}".format(type(base)))
 
-    @build.register
     @build.register
     def _(
         self,
@@ -1495,31 +1524,6 @@ class Factory:
         | NumericType
     ):
         return base
-
-    def instantiate_concept(
-        self,
-        arg: (
-            AggregateWrapper
-            | FunctionCallWrapper
-            | WindowItem
-            | FilterItem
-            | Function
-            | ListWrapper[Any]
-            | MapWrapper[Any, Any]
-            | int
-            | float
-            | str
-        ),
-    ) -> tuple[Concept, BuildConcept]:
-        from trilogy.parsing.common import arbitrary_to_concept
-
-        new = arbitrary_to_concept(
-            arg,
-            environment=self.environment,
-        )
-        built = self.build(new)
-        self.local_concepts[new.address] = built
-        return new, built
 
     @build.register
     def _(self, base: None) -> None:
@@ -1626,6 +1630,7 @@ class Factory:
             derivation, final_grain, build_lineage
         )
         is_aggregate = Concept.calculate_is_aggregate(build_lineage)
+
         rval = BuildConcept.model_construct(
             name=base.name,
             datatype=base.datatype,
@@ -1646,7 +1651,6 @@ class Factory:
 
     @build.register
     def _(self, base: AggregateWrapper) -> BuildAggregateWrapper:
-
         if not base.by:
             by = [
                 self.build(self.environment.concepts[c]) for c in self.grain.components

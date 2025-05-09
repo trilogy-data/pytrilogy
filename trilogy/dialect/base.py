@@ -199,6 +199,7 @@ FUNCTION_MAP = {
     FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc({x[0]},{x[1]})",
     FunctionType.DATE_PART: lambda x: f"date_part({x[0]},{x[1]})",
     FunctionType.DATE_ADD: lambda x: f"date_add({x[0]},{x[1]}, {x[2]})",
+    FunctionType.DATE_SUB: lambda x: f"date_sub({x[0]},{x[1]}, {x[2]})",
     FunctionType.DATE_DIFF: lambda x: f"date_diff({x[0]},{x[1]}, {x[2]})",
     FunctionType.DATE: lambda x: f"date({x[0]})",
     FunctionType.DATETIME: lambda x: f"datetime({x[0]})",

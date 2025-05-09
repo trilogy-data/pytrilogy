@@ -123,6 +123,7 @@ def test_date_functions(test_environment):
         year(order_timestamp) -> order_year,
         date_trunc(order_timestamp, month) -> order_month_trunc,
         date_add(order_timestamp, month, 1) -> one_month_post_order,
+        date_sub(order_timestamp, month, 1) -> one_month_pre_order,
         date_trunc(order_timestamp, day) -> order_day_trunc,
         date_trunc(order_timestamp, year) -> order_year_trunc,
         date_trunc(order_timestamp, hour) -> order_hour_trunc,
@@ -212,6 +213,7 @@ def test_math_functions(test_environment):
     property order_sub <- revenue - 2;
     property order_id.order_nested <- revenue * 2/2;
     property order_id.rounded <- round(revenue + 2.01,2);
+    property order_id.rounded_default <- round(revenue + 2.01);
     constant random <- random(1);
     select
         order_id,
@@ -221,6 +223,7 @@ def test_math_functions(test_environment):
         order_sub,
         order_add,
         rounded,
+        rounded_default,
         random,
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
