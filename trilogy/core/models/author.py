@@ -1173,10 +1173,10 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             and isinstance(lineage, (BuildFunction, Function))
             and lineage.operator in FunctionClass.SINGLE_ROW.value
         ):
-            return Derivation.CONSTANT
+            return Derivation.CONSTANT   
 
         elif lineage and isinstance(lineage, (BuildFunction, Function)):
-            if not lineage.concept_arguments:
+            if not lineage.concept_arguments and lineage.arguments:
                 return Derivation.CONSTANT
             elif all(
                 [x.derivation == Derivation.CONSTANT for x in lineage.concept_arguments]

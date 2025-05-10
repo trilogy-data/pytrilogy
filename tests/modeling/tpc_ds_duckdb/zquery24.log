@@ -1,5 +1,5 @@
 query_id = 24
-gen_length = 7226
+gen_length = 7355
 generated_sql = """
 
 WITH 
@@ -35,6 +35,10 @@ FROM
     INNER JOIN memory.item as store_sales_item_items on store_sales_store_sales.\"SS_ITEM_SK\" = store_sales_item_items.\"I_ITEM_SK\"
 WHERE
     store_sales_store_store.\"S_MARKET_ID\" = 8 and store_sales_customer_customers.\"C_BIRTH_COUNTRY\" != UPPER(store_sales_customer_customer_address.\"CA_COUNTRY\")  and CASE WHEN store_sales_store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END is True and store_sales_store_store.\"S_ZIP\" = store_sales_customer_customer_address.\"CA_ZIP\"
+),
+quizzical as (
+SELECT
+    :__preql_internal_all_rows as \"__preql_internal_all_rows\"
 ),
 yummy as (
 SELECT
@@ -109,10 +113,11 @@ FROM
     young),
 sparkling as (
 SELECT
-    :__preql_internal_all_rows as \"__preql_internal_all_rows\",
+    quizzical.\"__preql_internal_all_rows\" as \"__preql_internal_all_rows\",
     young.\"su_net_paid\" as \"su_net_paid\"
 FROM
-    young),
+    young
+    FULL JOIN quizzical on 1=1),
 late as (
 SELECT
     sum(sweltering.\"_virt_filter_net_paid_3139932349044856\") as \"peach_sales\",

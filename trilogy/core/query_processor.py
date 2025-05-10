@@ -55,8 +55,10 @@ def base_join_to_join(
     """This function converts joins at the datasource level
     to joins at the CTE level"""
     if isinstance(base_join, UnnestJoin):
+        object_to_unnest = base_join.parent.arguments[0]
+
         return InstantiatedUnnestJoin(
-            concept_to_unnest=base_join.parent.concept_arguments[0],
+            object_to_unnest=object_to_unnest,
             alias=base_join.alias,
         )
 
@@ -220,6 +222,8 @@ def resolve_cte_base_name_and_alias_v2(
     source_map: Dict[str, list[str]],
     raw_joins: List[Join | InstantiatedUnnestJoin],
 ) -> Tuple[str | None, str | None]:
+    if not source.datasources:
+        return None, None
     if (
         isinstance(source.datasources[0], BuildDatasource)
         and not source.datasources[0].name == CONSTANT_DATASET
@@ -301,18 +305,23 @@ def datasource_to_cte(
 
     else:
         # source is the first datasource of the query datasource
-        source = query_datasource.datasources[0]
-        # this is required to ensure that constant datasets
-        # render properly on initial access; since they have
-        # no actual source
-        if source.name == CONSTANT_DATASET:
-            source_map = {k: [] for k in query_datasource.source_map}
-            existence_map = source_map
+        if query_datasource.datasources:
+
+            source = query_datasource.datasources[0]
+            # this is required to ensure that constant datasets
+            # render properly on initial access; since they have
+            # no actual source
+            if source.name == CONSTANT_DATASET:
+                source_map = {k: [] for k in query_datasource.source_map}
+                existence_map = source_map
+            else:
+                source_map = {
+                    k: [] if not v else [source.safe_identifier]
+                    for k, v in query_datasource.source_map.items()
+                }
+                existence_map = source_map
         else:
-            source_map = {
-                k: [] if not v else [source.safe_identifier]
-                for k, v in query_datasource.source_map.items()
-            }
+            source_map = {k: [] for k in query_datasource.source_map}
             existence_map = source_map
 
     human_id = generate_cte_name(query_datasource.identifier, name_map)

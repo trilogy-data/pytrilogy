@@ -206,8 +206,8 @@ def optimize_ctes(
         REGISTERED_RULES.append(PredicatePushdown())
     if CONFIG.optimizations.predicate_pushdown:
         REGISTERED_RULES.append(PredicatePushdownRemove())
-    if CONFIG.optimizations.constant_inlining:
-        REGISTERED_RULES.append(InlineConstant())
+    # if CONFIG.optimizations.constant_inlining:
+    #     REGISTERED_RULES.append(InlineConstant())
     for rule in REGISTERED_RULES:
         loops = 0
         complete = False

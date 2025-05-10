@@ -1,7 +1,7 @@
 from typing import Callable
 
 from trilogy.core.enums import Modifier, UnnestMode
-from trilogy.core.models.build import BuildConcept, BuildFunction
+from trilogy.core.models.build import BuildConcept, BuildFunction, BuildParamaterizedConceptReference
 from trilogy.core.models.datasource import RawColumnExpr
 from trilogy.core.models.execute import (
     CTE,
@@ -19,7 +19,7 @@ def null_wrapper(lval: str, rval: str, modifiers: list[Modifier]) -> str:
 def render_unnest(
     unnest_mode: UnnestMode,
     quote_character: str,
-    concept: BuildConcept,
+    concept: BuildConcept | BuildParamaterizedConceptReference,
     render_func: Callable[[BuildConcept, CTE, bool], str],
     cte: CTE,
 ):
@@ -72,12 +72,12 @@ def render_join(
         if not cte:
             raise ValueError("must provide a cte to build an unnest joins")
         if unnest_mode == UnnestMode.CROSS_JOIN:
-            return f"CROSS JOIN {render_unnest(unnest_mode, quote_character, join.concept_to_unnest, render_func, cte)}"
+            return f"CROSS JOIN {render_unnest(unnest_mode, quote_character, join.object_to_unnest, render_expr_func, cte)}"
         if unnest_mode == UnnestMode.CROSS_JOIN_ALIAS:
-            return f"CROSS JOIN {render_unnest(unnest_mode, quote_character, join.concept_to_unnest, render_func, cte)}"
+            return f"CROSS JOIN {render_unnest(unnest_mode, quote_character, join.object_to_unnest, render_expr_func, cte)}"
         if unnest_mode == UnnestMode.SNOWFLAKE:
-            return f"LEFT JOIN LATERAL {render_unnest(unnest_mode, quote_character, join.concept_to_unnest, render_func, cte)}"
-        return f"FULL JOIN {render_unnest(unnest_mode, quote_character, join.concept_to_unnest, render_func, cte)}"
+            return f"LEFT JOIN LATERAL {render_unnest(unnest_mode, quote_character, join.object_to_unnest, render_func, cte)}"
+        return f"FULL JOIN {render_unnest(unnest_mode, quote_character, join.object_to_unnest, render_func, cte)}"
     # left_name = join.left_name
     right_name = join.right_name
     if cte.quote_address.get(join.right_name, False):

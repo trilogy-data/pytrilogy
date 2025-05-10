@@ -26,6 +26,7 @@ from trilogy.core.models.build import (
     BuildOrderBy,
     BuildParenthetical,
     BuildRowsetItem,
+    BuildParamaterizedConceptReference,
     LooseBuildConceptList,
 )
 from trilogy.core.models.datasource import Address
@@ -447,7 +448,7 @@ class CTEConceptPair(ConceptPair):
 
 
 class InstantiatedUnnestJoin(BaseModel):
-    concept_to_unnest: BuildConcept
+    object_to_unnest: BuildConcept | BuildFunction | BuildParamaterizedConceptReference
     alias: str = "unnest"
 
 
