@@ -1176,7 +1176,8 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             return Derivation.CONSTANT   
 
         elif lineage and isinstance(lineage, (BuildFunction, Function)):
-            if not lineage.concept_arguments and lineage.arguments:
+            raise SyntaxError('TODO HERE')
+            if not lineage.concept_arguments:
                 return Derivation.CONSTANT
             elif all(
                 [x.derivation == Derivation.CONSTANT for x in lineage.concept_arguments]
