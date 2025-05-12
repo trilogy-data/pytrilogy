@@ -17,6 +17,7 @@ from trilogy.core.processing.node_generators.common import (
 from trilogy.core.processing.nodes import GroupNode, History, StrategyNode
 from trilogy.core.processing.utility import create_log_lambda, padding
 from trilogy.utility import unique
+from trilogy.core.internal import ALL_ROWS_CONCEPT
 
 LOGGER_PREFIX = "[GEN_GROUP_NODE]"
 
@@ -92,7 +93,7 @@ def gen_group_node(
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} fetching group node parents {LooseBuildConceptList(concepts=parent_concepts)}"
         )
-        parent_concepts = unique(parent_concepts, "address")
+        parent_concepts = unique([x for x in parent_concepts if not x.name == ALL_ROWS_CONCEPT ], "address")
         parent = source_concepts(
             mandatory_list=parent_concepts,
             environment=environment,

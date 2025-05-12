@@ -173,9 +173,9 @@ def test_twenty_one(engine):
 
 
 def test_twenty_four(engine):
-    _ = run_query(engine, 24)
-    # size gating
-    # assert len(query) < 6000, query
+    query = run_query(engine, 24)
+    #size gating
+    # assert len(query) < 1000, query
 
 
 def test_twenty_five(engine):
