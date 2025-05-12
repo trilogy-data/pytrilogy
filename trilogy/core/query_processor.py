@@ -12,7 +12,9 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
     BuildDatasource,
+    BuildFunction,
     BuildMultiSelectLineage,
+    BuildParamaterizedConceptReference,
     BuildSelectLineage,
     Factory,
 )
@@ -56,7 +58,11 @@ def base_join_to_join(
     to joins at the CTE level"""
     if isinstance(base_join, UnnestJoin):
         object_to_unnest = base_join.parent.arguments[0]
-
+        if not isinstance(
+            object_to_unnest,
+            (BuildConcept | BuildParamaterizedConceptReference | BuildFunction),
+        ):
+            raise ValueError(f"Unnest join must be a concept; got {object_to_unnest}")
         return InstantiatedUnnestJoin(
             object_to_unnest=object_to_unnest,
             alias=base_join.alias,

@@ -1795,7 +1795,7 @@ class ParseToObjects(Transformer):
     def fyear(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.YEAR, meta)
 
-    def internal_fcast(self, meta, args):
+    def internal_fcast(self, meta, args) -> Function:
         args = process_function_args(args, meta=meta, environment=self.environment)
         if isinstance(args[0], str):
             processed: date | datetime | int | float | bool | str

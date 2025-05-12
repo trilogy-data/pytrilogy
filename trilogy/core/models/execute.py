@@ -448,7 +448,7 @@ class CTEConceptPair(ConceptPair):
 
 
 class InstantiatedUnnestJoin(BaseModel):
-    object_to_unnest: BuildConcept | BuildFunction | BuildParamaterizedConceptReference
+    object_to_unnest: BuildConcept | BuildParamaterizedConceptReference | BuildFunction
     alias: str = "unnest"
 
 

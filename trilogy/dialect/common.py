@@ -23,21 +23,27 @@ def null_wrapper(lval: str, rval: str, modifiers: list[Modifier]) -> str:
 def render_unnest(
     unnest_mode: UnnestMode,
     quote_character: str,
-    concept: BuildConcept | BuildParamaterizedConceptReference,
-    render_func: Callable[[BuildConcept, CTE, bool], str],
+    concept: BuildConcept | BuildParamaterizedConceptReference | BuildFunction,
+    render_func: Callable[
+        [BuildConcept | BuildParamaterizedConceptReference | BuildFunction, CTE], str
+    ],
     cte: CTE,
 ):
+    if not isinstance(concept, (BuildConcept, BuildParamaterizedConceptReference)):
+        address = "anon_function"
+    else:
+        address = concept.safe_address
     if unnest_mode == UnnestMode.CROSS_JOIN:
-        return f"{render_func(concept, cte, False)} as {quote_character}{concept.safe_address}{quote_character}"
+        return f"{render_func(concept, cte)} as {quote_character}{address}{quote_character}"
     elif unnest_mode == UnnestMode.CROSS_JOIN_ALIAS:
-        return f"{render_func(concept, cte, False)} as unnest_wrapper ({quote_character}{concept.safe_address}{quote_character})"
+        return f"{render_func(concept, cte)} as unnest_wrapper ({quote_character}{address}{quote_character})"
     elif unnest_mode == UnnestMode.SNOWFLAKE:
         # if we don't actually have a join, we're directly unnesting a concept, and we can skip the flatten
         if not cte.render_from_clause:
-            return f"{render_func(concept, cte, False)} as unnest_wrapper ( unnest1, unnest2, unnest3, unnest4, {quote_character}{cte.join_derived_concepts[0].safe_address}{quote_character})"
+            return f"{render_func(concept, cte)} as unnest_wrapper ( unnest1, unnest2, unnest3, unnest4, {quote_character}{cte.join_derived_concepts[0].safe_address}{quote_character})"
         # otherwise, flatten the concept for the join
-        return f"flatten({render_func(concept, cte, False)}) as unnest_wrapper ( unnest1, unnest2, unnest3, unnest4, {quote_character}{cte.join_derived_concepts[0].safe_address}{quote_character})"
-    return f"{render_func(concept, cte, False)} as {quote_character}{concept.safe_address}{quote_character}"
+        return f"flatten({render_func(concept, cte)}) as unnest_wrapper ( unnest1, unnest2, unnest3, unnest4, {quote_character}{cte.join_derived_concepts[0].safe_address}{quote_character})"
+    return f"{render_func(concept, cte)} as {quote_character}{address}{quote_character}"
 
 
 def render_join_concept(
@@ -64,8 +70,9 @@ def render_join_concept(
 def render_join(
     join: Join | InstantiatedUnnestJoin,
     quote_character: str,
-    render_func: Callable[[BuildConcept, CTE, bool], str],
-    render_expr_func: Callable[[BuildConcept, CTE], str],
+    render_expr_func: Callable[
+        [BuildConcept | BuildParamaterizedConceptReference | BuildFunction, CTE], str
+    ],
     cte: CTE,
     unnest_mode: UnnestMode = UnnestMode.CROSS_APPLY,
 ) -> str | None:
@@ -80,8 +87,8 @@ def render_join(
         if unnest_mode == UnnestMode.CROSS_JOIN_ALIAS:
             return f"CROSS JOIN {render_unnest(unnest_mode, quote_character, join.object_to_unnest, render_expr_func, cte)}"
         if unnest_mode == UnnestMode.SNOWFLAKE:
-            return f"LEFT JOIN LATERAL {render_unnest(unnest_mode, quote_character, join.object_to_unnest, render_func, cte)}"
-        return f"FULL JOIN {render_unnest(unnest_mode, quote_character, join.object_to_unnest, render_func, cte)}"
+            return f"LEFT JOIN LATERAL {render_unnest(unnest_mode, quote_character, join.object_to_unnest, render_expr_func, cte)}"
+        return f"FULL JOIN {render_unnest(unnest_mode, quote_character, join.object_to_unnest, render_expr_func, cte)}"
     # left_name = join.left_name
     right_name = join.right_name
     if cte.quote_address.get(join.right_name, False):

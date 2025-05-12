@@ -2029,7 +2029,7 @@ class Factory:
             ),
         )
 
-    def handle_constant(self, base: any):
+    def handle_constant(self, base):
         if (
             isinstance(base, BuildConcept)
             and isinstance(base.lineage, BuildFunction)

@@ -520,6 +520,9 @@ class BaseDialect:
             BuildWindowItem,
             BuildFilterItem,
             BuildParenthetical,
+            BuildParamaterizedConceptReference,
+            BuildMultiSelectLineage,
+            BuildRowsetItem,
             str,
             int,
             list,
@@ -705,8 +708,9 @@ class BaseDialect:
                 if e.concept.namespace == DEFAULT_NAMESPACE:
                     return f":{e.concept.name}"
                 return f":{e.concept.address}"
-            else:
+            elif e.concept.lineage:
                 return self.render_expr(e.concept.lineage, cte=cte, cte_map=cte_map)
+            return f"{self.QUOTE_CHARACTER}{e.concept.address}{self.QUOTE_CHARACTER}"
         else:
             raise ValueError(f"Unable to render type {type(e)} {e}")
 
@@ -758,12 +762,12 @@ class BaseDialect:
                     UnnestMode.CROSS_APPLY,
                 ):
 
-                    source = f"{render_unnest(self.UNNEST_MODE, self.QUOTE_CHARACTER, cte.join_derived_concepts[0], self.render_concept_sql, cte)}"
+                    source = f"{render_unnest(self.UNNEST_MODE, self.QUOTE_CHARACTER, cte.join_derived_concepts[0], self.render_expr, cte)}"
                 elif (
                     cte.join_derived_concepts
                     and self.UNNEST_MODE == UnnestMode.SNOWFLAKE
                 ):
-                    source = f"{render_unnest(self.UNNEST_MODE, self.QUOTE_CHARACTER, cte.join_derived_concepts[0], self.render_concept_sql, cte)}"
+                    source = f"{render_unnest(self.UNNEST_MODE, self.QUOTE_CHARACTER, cte.join_derived_concepts[0], self.render_expr, cte)}"
                 # direct - eg DUCK DB - can be directly selected inline
                 elif (
                     cte.join_derived_concepts and self.UNNEST_MODE == UnnestMode.DIRECT
@@ -817,7 +821,6 @@ class BaseDialect:
                         render_join(
                             join,
                             self.QUOTE_CHARACTER,
-                            self.render_concept_sql,
                             self.render_expr,
                             cte,
                             self.UNNEST_MODE,
