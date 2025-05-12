@@ -1173,10 +1173,9 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             and isinstance(lineage, (BuildFunction, Function))
             and lineage.operator in FunctionClass.SINGLE_ROW.value
         ):
-            return Derivation.CONSTANT   
+            return Derivation.CONSTANT
 
         elif lineage and isinstance(lineage, (BuildFunction, Function)):
-            raise SyntaxError('TODO HERE')
             if not lineage.concept_arguments:
                 return Derivation.CONSTANT
             elif all(

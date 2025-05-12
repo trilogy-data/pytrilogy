@@ -394,6 +394,9 @@ class Executor(object):
             if isinstance(rval, ListWrapper):
                 return [x for x in rval]
             if isinstance(rval, MapWrapper):
+                # duckdb expects maps in this format as variables
+                if self.dialect == Dialects.DUCK_DB:
+                    return {"key": [x for x in rval], "value": [rval[x] for x in rval]}
                 return {k: v for k, v in rval.items()}
             # if isinstance(rval, ConceptRef):
             #     return self._concept_to_value(self.environment.concepts[rval.address], local_concepts=local_concepts)

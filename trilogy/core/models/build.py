@@ -246,15 +246,18 @@ def get_concept_arguments(expr) -> List["BuildConcept"]:
         output += expr.concept_arguments
     return output
 
+
 class BuildParamaterizedConceptReference(BaseModel):
     concept: BuildConcept
 
     def __str__(self):
-        return f':{self.concept.address}'
-    
+        return f":{self.concept.address}"
+
     @property
     def safe_address(self) -> str:
         return self.concept.safe_address
+
+
 class BuildGrain(BaseModel):
     components: set[str] = Field(default_factory=set)
     where_clause: Optional[BuildWhereClause] = None
@@ -1470,6 +1473,7 @@ class Factory:
         self.local_concepts: dict[str, BuildConcept] = (
             {} if local_concepts is None else local_concepts
         )
+
     def instantiate_concept(
         self,
         arg: (
@@ -2025,11 +2029,11 @@ class Factory:
             ),
         )
 
-    def handle_constant(self, base:any):
-        if isinstance(base, BuildConcept) and base.derivation == Derivation.CONSTANT:
-            print('parameterizing')
-            print(base)
-            print(base.derivation)
-            print(base.lineage)
+    def handle_constant(self, base: any):
+        if (
+            isinstance(base, BuildConcept)
+            and isinstance(base.lineage, BuildFunction)
+            and base.lineage.operator == FunctionType.CONSTANT
+        ):
             return BuildParamaterizedConceptReference(concept=base)
         return base

@@ -6,7 +6,6 @@ from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
 from trilogy.core.statements.author import SelectStatement
-from trilogy.hooks import DebuggingHook
 
 
 def test_rowset(test_environment: Environment, test_executor: Executor):
@@ -145,7 +144,6 @@ def test_window_alt(test_environment: Environment, test_executor: Executor):
 
 def test_maps():
     test_executor = Dialects.DUCK_DB.default_executor()
-    DebuggingHook()
     test_select = """
     const num_map <- {1: 10, 2: 20};
 

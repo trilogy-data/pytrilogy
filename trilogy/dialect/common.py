@@ -1,7 +1,11 @@
 from typing import Callable
 
 from trilogy.core.enums import Modifier, UnnestMode
-from trilogy.core.models.build import BuildConcept, BuildFunction, BuildParamaterizedConceptReference
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildFunction,
+    BuildParamaterizedConceptReference,
+)
 from trilogy.core.models.datasource import RawColumnExpr
 from trilogy.core.models.execute import (
     CTE,

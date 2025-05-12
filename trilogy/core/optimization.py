@@ -5,7 +5,6 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.optimizations import (
-    InlineConstant,
     InlineDatasource,
     OptimizationRule,
     PredicatePushdown,

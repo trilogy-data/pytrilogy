@@ -3,7 +3,13 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from jinja2 import Template
 
-from trilogy.constants import CONFIG, MagicConstants, Rendering, logger, DEFAULT_NAMESPACE
+from trilogy.constants import (
+    CONFIG,
+    DEFAULT_NAMESPACE,
+    MagicConstants,
+    Rendering,
+    logger,
+)
 from trilogy.core.enums import (
     DatePart,
     FunctionType,
@@ -22,11 +28,11 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildMultiSelectLineage,
     BuildOrderItem,
+    BuildParamaterizedConceptReference,
     BuildParenthetical,
     BuildRowsetItem,
     BuildSubselectComparison,
     BuildWindowItem,
-    BuildParamaterizedConceptReference,
     Factory,
 )
 from trilogy.core.models.core import (

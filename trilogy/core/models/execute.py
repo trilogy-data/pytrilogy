@@ -24,9 +24,9 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildGrain,
     BuildOrderBy,
+    BuildParamaterizedConceptReference,
     BuildParenthetical,
     BuildRowsetItem,
-    BuildParamaterizedConceptReference,
     LooseBuildConceptList,
 )
 from trilogy.core.models.datasource import Address
