@@ -15,7 +15,7 @@ Installation: `pip install pytrilogy`
 
 You can read more about the project [here](https://trilogydata.dev/) and try out an interactive demo [here](https://trilogydata.dev/demo/). 
 
-Trilogy:
+Trilogy looks like SQL:
 ```sql
 WHERE 
     name like '%lvis%'
@@ -27,7 +27,7 @@ ORDER BY
 LIMIT 10;
 ```
 ## Goals
-vs SQL, the goals are:
+And aims to:
 
 Preserve:
 - Correctness
@@ -47,6 +47,7 @@ Maintain:
 Save the following code in a file named `hello.preql`
 
 ```python
+# semantic model is abstract from data
 key sentence_id int;
 property sentence_id.word_one string; # comments after a definition 
 property sentence_id.word_two string; # are syntactic sugar for adding
@@ -54,7 +55,8 @@ property sentence_id.word_three string; # a description to it
 
 # comments in other places are just comments
 
-# define our datasources as queries in duckdb
+# define our datasource to bind the model to data
+# testing using query fixtures is a common pattern
 datasource word_one(
     sentence: sentence_id,
     word:word_one
@@ -88,25 +90,20 @@ union all
 select 2 as sentence, '!'
 ''';
 
+def concat_with_space(x,y) -> x || ' ' || y;
+
 # an actual select statement
 # joins are automatically resolved between the 3 sources
 with sentences as
-select sentence_id, word_one || ' ' || word_two ||  word_three as text;
+select sentence_id, @concat_with_space(word_one, word_two) || word_three as text;
 
-SELECT
-    --sentences.sentence_id,
-    sentences.text
 WHERE 
-    sentences.sentence_id = 1
+    sentences.sentence_id in (1,2)
+SELECT
+    sentences.text
 ;
 
-SELECT
-    --sentences.sentence_id,
-    sentences.text
-WHERE 
-    sentences.sentence_id = 2
-;
-# semicolon termination for all statements
+
 
 ```
 
