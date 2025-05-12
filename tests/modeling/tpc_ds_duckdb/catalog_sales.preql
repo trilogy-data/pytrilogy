@@ -49,6 +49,7 @@ datasource catalog_sales (
     CS_ORDER_NUMBER: order_number,
     CS_WHOLESALE_COST:  wholesale_cost,
     CS_EXT_WHOLESALE_COST: extra_wholesale_cost,
+    CS_EXT_DISCOUNT_AMT: discount_amount,
     CS_CALL_CENTER_SK: ?call_center.id,
     CS_EXT_SHIP_COST: extra_ship_cost,
     CS_EXT_SALES_PRICE: extra_sales_price,

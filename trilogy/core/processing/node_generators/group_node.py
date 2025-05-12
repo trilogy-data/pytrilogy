@@ -1,6 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
+from trilogy.core.internal import ALL_ROWS_CONCEPT
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
@@ -92,7 +93,9 @@ def gen_group_node(
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} fetching group node parents {LooseBuildConceptList(concepts=parent_concepts)}"
         )
-        parent_concepts = unique(parent_concepts, "address")
+        parent_concepts = unique(
+            [x for x in parent_concepts if not x.name == ALL_ROWS_CONCEPT], "address"
+        )
         parent = source_concepts(
             mandatory_list=parent_concepts,
             environment=environment,

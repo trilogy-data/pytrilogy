@@ -3,7 +3,13 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from jinja2 import Template
 
-from trilogy.constants import CONFIG, MagicConstants, Rendering, logger
+from trilogy.constants import (
+    CONFIG,
+    DEFAULT_NAMESPACE,
+    MagicConstants,
+    Rendering,
+    logger,
+)
 from trilogy.core.enums import (
     DatePart,
     FunctionType,
@@ -22,6 +28,7 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildMultiSelectLineage,
     BuildOrderItem,
+    BuildParamaterizedConceptReference,
     BuildParenthetical,
     BuildRowsetItem,
     BuildSubselectComparison,
@@ -513,6 +520,9 @@ class BaseDialect:
             BuildWindowItem,
             BuildFilterItem,
             BuildParenthetical,
+            BuildParamaterizedConceptReference,
+            BuildMultiSelectLineage,
+            BuildRowsetItem,
             str,
             int,
             list,
@@ -693,6 +703,14 @@ class BaseDialect:
             return self.render_expr(e.type, cte=cte, cte_map=cte_map)
         elif isinstance(e, ListType):
             return f"{self.COMPLEX_DATATYPE_MAP[DataType.LIST](self.render_expr(e.value_data_type, cte=cte, cte_map=cte_map))}"
+        elif isinstance(e, BuildParamaterizedConceptReference):
+            if self.rendering.parameters:
+                if e.concept.namespace == DEFAULT_NAMESPACE:
+                    return f":{e.concept.name}"
+                return f":{e.concept.address}"
+            elif e.concept.lineage:
+                return self.render_expr(e.concept.lineage, cte=cte, cte_map=cte_map)
+            return f"{self.QUOTE_CHARACTER}{e.concept.address}{self.QUOTE_CHARACTER}"
         else:
             raise ValueError(f"Unable to render type {type(e)} {e}")
 
@@ -744,12 +762,12 @@ class BaseDialect:
                     UnnestMode.CROSS_APPLY,
                 ):
 
-                    source = f"{render_unnest(self.UNNEST_MODE, self.QUOTE_CHARACTER, cte.join_derived_concepts[0], self.render_concept_sql, cte)}"
+                    source = f"{render_unnest(self.UNNEST_MODE, self.QUOTE_CHARACTER, cte.join_derived_concepts[0], self.render_expr, cte)}"
                 elif (
                     cte.join_derived_concepts
                     and self.UNNEST_MODE == UnnestMode.SNOWFLAKE
                 ):
-                    source = f"{render_unnest(self.UNNEST_MODE, self.QUOTE_CHARACTER, cte.join_derived_concepts[0], self.render_concept_sql, cte)}"
+                    source = f"{render_unnest(self.UNNEST_MODE, self.QUOTE_CHARACTER, cte.join_derived_concepts[0], self.render_expr, cte)}"
                 # direct - eg DUCK DB - can be directly selected inline
                 elif (
                     cte.join_derived_concepts and self.UNNEST_MODE == UnnestMode.DIRECT
@@ -803,7 +821,6 @@ class BaseDialect:
                         render_join(
                             join,
                             self.QUOTE_CHARACTER,
-                            self.render_concept_sql,
                             self.render_expr,
                             cte,
                             self.UNNEST_MODE,

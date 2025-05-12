@@ -247,6 +247,17 @@ def get_concept_arguments(expr) -> List["BuildConcept"]:
     return output
 
 
+class BuildParamaterizedConceptReference(BaseModel):
+    concept: BuildConcept
+
+    def __str__(self):
+        return f":{self.concept.address}"
+
+    @property
+    def safe_address(self) -> str:
+        return self.concept.safe_address
+
+
 class BuildGrain(BaseModel):
     components: set[str] = Field(default_factory=set)
     where_clause: Optional[BuildWhereClause] = None
@@ -1578,7 +1589,7 @@ class Factory:
 
         new = BuildFunction.model_construct(
             operator=base.operator,
-            arguments=[self.build(c) for c in raw_args],
+            arguments=[self.handle_constant(self.build(c)) for c in raw_args],
             output_datatype=base.output_datatype,
             output_purpose=base.output_purpose,
             valid_inputs=base.valid_inputs,
@@ -1615,6 +1626,8 @@ class Factory:
 
     @build.register
     def _(self, base: Concept) -> BuildConcept:
+
+        # TODO: if we are using parameters, wrap it in a new model and use that in rendering
         if base.address in self.local_concepts:
             return self.local_concepts[base.address]
         new_lineage, final_grain, _ = base.get_select_grain_and_keys(
@@ -1738,8 +1751,8 @@ class Factory:
     @build.register
     def _(self, base: Conditional) -> BuildConditional:
         return BuildConditional.model_construct(
-            left=(self.build(base.left)),
-            right=(self.build(base.right)),
+            left=self.handle_constant(self.build(base.left)),
+            right=self.handle_constant(self.build(base.right)),
             operator=base.operator,
         )
 
@@ -1767,8 +1780,8 @@ class Factory:
             right_c, _ = self.instantiate_concept(right)
             right = right_c  # type: ignore
         return BuildComparison.model_construct(
-            left=(self.build(left)),
-            right=(self.build(right)),
+            left=self.handle_constant(self.build(left)),
+            right=self.handle_constant(self.build(right)),
             operator=base.operator,
         )
 
@@ -2015,3 +2028,12 @@ class Factory:
                 factory.build(base.non_partial_for) if base.non_partial_for else None
             ),
         )
+
+    def handle_constant(self, base):
+        if (
+            isinstance(base, BuildConcept)
+            and isinstance(base.lineage, BuildFunction)
+            and base.lineage.operator == FunctionType.CONSTANT
+        ):
+            return BuildParamaterizedConceptReference(concept=base)
+        return base

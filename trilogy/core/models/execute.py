@@ -24,6 +24,7 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildGrain,
     BuildOrderBy,
+    BuildParamaterizedConceptReference,
     BuildParenthetical,
     BuildRowsetItem,
     LooseBuildConceptList,
@@ -447,7 +448,7 @@ class CTEConceptPair(ConceptPair):
 
 
 class InstantiatedUnnestJoin(BaseModel):
-    concept_to_unnest: BuildConcept
+    object_to_unnest: BuildConcept | BuildParamaterizedConceptReference | BuildFunction
     alias: str = "unnest"
 
 

@@ -211,7 +211,6 @@ def atom_is_relevant(
 
     if isinstance(atom, Function):
         relevant = False
-        print("atom args")
         for arg in atom.arguments:
             relevant = relevant or atom_is_relevant(arg, others, environment)
         return relevant

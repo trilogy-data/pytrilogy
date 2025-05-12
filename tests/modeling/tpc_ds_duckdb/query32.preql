@@ -1,0 +1,17 @@
+import catalog_sales;
+
+const start_date <- '2000-01-27'::date;
+const end_date <- '2000-04-26'::date;
+
+# Transform this tpc-ds sql query to trilogy following trilogy syntax
+auto avg_item_disc <- 1.3* avg(discount_amount ? 
+sold_date.date between start_date and end_date) 
+by item.id;
+
+where item.manufacturer_id = 977
+and sold_date.date between start_date and end_date
+# calculate the average discount amount for filtering in the having clause
+and discount_amount>avg_item_disc
+select
+    sum(discount_amount) as total_discount,
+limit 100;
