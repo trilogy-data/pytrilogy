@@ -54,12 +54,13 @@ def gen_filter_node(
                     parent_row_concepts.append(x.lineage.content)
                 optional_included.append(x)
                 continue
-        if conditions and conditions == where:
+        elif conditions and conditions == where:
             optional_included.append(x)
 
     # sometimes, it's okay to include other local optional above the filter
     # in case it is, prep our list
     extra_row_level_optional: list[BuildConcept] = []
+
     for x in local_optional:
         if x.address in optional_included:
             continue
@@ -83,7 +84,7 @@ def gen_filter_node(
         )
         optimized_pushdown = True
     logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} filter `{concept}` condition `{concept.lineage.where}` derived from {immediate_parent.address} row parents {[x.address for x in parent_row_concepts]} and {[[y.address] for x  in parent_existence_concepts for y  in x]} existence parents"
+        f"{padding(depth)}{LOGGER_PREFIX} fetching filter `{concept}` condition `{concept.lineage.where}` derived from {immediate_parent.address} row parents {[x.address for x in parent_row_concepts]} and {[[y.address] for x  in parent_existence_concepts for y  in x]} existence parents"
     )
     # we'll populate this with the row parent
     # and the existence parent(s)
@@ -181,7 +182,7 @@ def gen_filter_node(
                 [immediate_parent] + parent_row_concepts + flattened_existence,
                 "address",
             ),
-            output_concepts=[concept, immediate_parent] + parent_row_concepts,
+            output_concepts=[concept, immediate_parent] + parent_row_concepts+ optional_included,
             environment=environment,
             parents=core_parents,
             grain=BuildGrain.from_concepts(
@@ -190,6 +191,7 @@ def gen_filter_node(
             preexisting_conditions=conditions.conditional if conditions else None,
         )
 
+   
     if not local_optional or all(
         [x.address in filter_node.output_concepts for x in local_optional]
     ):
@@ -199,6 +201,7 @@ def gen_filter_node(
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no extra enrichment needed for filter node, has all of {[x.address for x in local_optional]}"
         )
+        raise SyntaxError
         filter_node.set_output_concepts(
             [
                 concept,

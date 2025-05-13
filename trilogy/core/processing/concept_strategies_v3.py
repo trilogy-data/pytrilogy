@@ -319,7 +319,7 @@ def generate_node(
         ]
 
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating aggregate node with {[x.address for x in agg_optional]}"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating aggregate node with {[x for x in agg_optional]}"
         )
         return gen_group_node(
             concept,
