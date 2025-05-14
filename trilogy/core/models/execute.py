@@ -695,7 +695,7 @@ class QueryDatasource(BaseModel):
                 "can only merge two datasources if the force_group flag is the same"
             )
         logger.debug(
-            f"{LOGGER_PREFIX} merging {self.name} with"
+            f"[Query Datasource] merging {self.name} with"
             f" {[c.address for c in self.output_concepts]} concepts and"
             f" {other.name} with {[c.address for c in other.output_concepts]} concepts"
         )
@@ -759,7 +759,9 @@ class QueryDatasource(BaseModel):
             hidden_concepts=hidden,
             ordering=self.ordering,
         )
-
+        logger.debug(
+            f"[Query Datasource] merged with {[c.address for c in qds.output_concepts]} concepts"
+        )
         return qds
 
     @property
