@@ -25,85 +25,69 @@ LOGGER_PREFIX = "[GEN_FILTER_NODE]"
 FILTER_TYPES = (BuildFilterItem,)
 
 
-def gen_filter_node(
-    concept: BuildConcept,
-    local_optional: List[BuildConcept],
-    environment: BuildEnvironment,
-    g,
-    depth: int,
-    source_concepts,
-    history: History | None = None,
-    conditions: BuildWhereClause | None = None,
-) -> StrategyNode | None:
+def pushdown_filter_to_parent(local_optional:List[BuildConcept], conditions:BuildWhereClause, filter_where:BuildWhereClause, same_filter_optional:list[BuildConcept], depth:int)->bool:
+    optimized_pushdown = False
+    if not is_scalar_condition(filter_where.conditional):
+        optimized_pushdown = False
+    elif not local_optional:
+        optimized_pushdown = True
+    elif conditions and conditions == filter_where:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} query conditions are the same as filter conditions, can optimize across all concepts"
+        )
+        optimized_pushdown = True
+    elif same_filter_optional == local_optional:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} all optional concepts are included in the filter, can optimize across all concepts"
+        )
+        optimized_pushdown = True
+
+    return optimized_pushdown
+
+def build_parent_concepts(
+        concept:BuildConcept, environment:BuildEnvironment,
+        local_optional:List[BuildConcept],
+        conditions: BuildWhereClause | None = None,
+        depth: int = 0,
+        
+):
     immediate_parent, parent_row_concepts, parent_existence_concepts = (
         resolve_filter_parent_concepts(concept, environment)
     )
     if not isinstance(concept.lineage, FILTER_TYPES):
         raise SyntaxError('Filter node must have a filter type lineage"')
-    where = concept.lineage.where
+    filter_where = concept.lineage.where
 
-    optional_included: list[BuildConcept] = []
+    same_filter_optional: list[BuildConcept] = []
 
     for x in local_optional:
         if isinstance(x.lineage, FILTER_TYPES):
-            if concept.lineage.where == where:
+            if concept.lineage.where == filter_where:
                 logger.info(
                     f"{padding(depth)}{LOGGER_PREFIX} fetching {x.lineage.content.address} as optional parent from optional {x} with same filter conditions "
                 )
                 if x.lineage.content.address not in parent_row_concepts:
                     parent_row_concepts.append(x.lineage.content)
-                optional_included.append(x)
+                same_filter_optional.append(x)
                 continue
-        elif conditions and conditions == where:
-            optional_included.append(x)
+        elif conditions and conditions == filter_where:
+            same_filter_optional.append(x)
 
     # sometimes, it's okay to include other local optional above the filter
     # in case it is, prep our list
     extra_row_level_optional: list[BuildConcept] = []
 
     for x in local_optional:
-        if x.address in optional_included:
+        if x.address in same_filter_optional:
             continue
         extra_row_level_optional.append(x)
-
-    # this flag controls whether we materialize the filter as a where on the prior CTE
-    # or do the filtering inline as a case statement
-    optimized_pushdown = False
-    if not is_scalar_condition(where.conditional):
-        optimized_pushdown = False
-    elif not local_optional:
-        optimized_pushdown = True
-    elif conditions and conditions == where:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} query conditions are the same as filter conditions, can optimize across all concepts"
-        )
-        optimized_pushdown = True
-    elif optional_included == local_optional:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} all optional concepts are included in the filter, can optimize across all concepts"
-        )
-        optimized_pushdown = True
-    logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} fetching filter `{concept}` condition `{concept.lineage.where}` derived from {immediate_parent.address} row parents {[x.address for x in parent_row_concepts]} and {[[y.address] for x  in parent_existence_concepts for y  in x]} existence parents"
-    )
-    # we'll populate this with the row parent
-    # and the existence parent(s)
-    core_parents = []
-    if not optimized_pushdown:
+    is_optimized_pushdown = pushdown_filter_to_parent(local_optional, conditions, filter_where, same_filter_optional, depth)
+    if not is_optimized_pushdown:
         parent_row_concepts += extra_row_level_optional
+    return parent_row_concepts, parent_existence_concepts, same_filter_optional, is_optimized_pushdown
 
-    row_parent: StrategyNode = source_concepts(
-        mandatory_list=parent_row_concepts,
-        environment=environment,
-        g=g,
-        depth=depth + 1,
-        history=history,
-        conditions=conditions,
-    )
-
-    flattened_existence = [x for y in parent_existence_concepts for x in y]
-    if parent_existence_concepts:
-        for existence_tuple in parent_existence_concepts:
+def add_existence_sources(core_parent_nodes:list[StrategyNode], parent_existence_concepts:list[tuple[BuildConcept,...]], source_concepts, environment, g, depth, history, ):
+    for existence_tuple in parent_existence_concepts:
             if not existence_tuple:
                 continue
             logger.info(
@@ -121,7 +105,73 @@ def gen_filter_node(
                     f"{padding(depth)}{LOGGER_PREFIX} filter existence node parents could not be found"
                 )
                 return None
-            core_parents.append(parent_existence)
+            core_parent_nodes.append(parent_existence)
+
+def gen_filter_node(
+    concept: BuildConcept,
+    local_optional: List[BuildConcept],
+    environment: BuildEnvironment,
+    g,
+    depth: int,
+    source_concepts,
+    history: History | None = None,
+    conditions: BuildWhereClause | None = None,
+) -> StrategyNode | None:
+    # immediate_parent, parent_row_concepts, parent_existence_concepts = (
+    #     resolve_filter_parent_concepts(concept, environment)
+    # )
+    if not isinstance(concept.lineage, FILTER_TYPES):
+        raise SyntaxError('Filter node must have a filter type lineage"')
+    where = concept.lineage.where
+
+    # optional_included: list[BuildConcept] = []
+
+    # for x in local_optional:
+    #     if isinstance(x.lineage, FILTER_TYPES):
+    #         if concept.lineage.where == where:
+    #             logger.info(
+    #                 f"{padding(depth)}{LOGGER_PREFIX} fetching {x.lineage.content.address} as optional parent from optional {x} with same filter conditions "
+    #             )
+    #             if x.lineage.content.address not in parent_row_concepts:
+    #                 parent_row_concepts.append(x.lineage.content)
+    #             optional_included.append(x)
+    #             continue
+    #     elif conditions and conditions == where:
+    #         optional_included.append(x)
+
+    # # sometimes, it's okay to include other local optional above the filter
+    # # in case it is, prep our list
+    # extra_row_level_optional: list[BuildConcept] = []
+
+    # for x in local_optional:
+    #     if x.address in optional_included:
+    #         continue
+    #     extra_row_level_optional.append(x)
+
+    parent_row_concepts, parent_existence_concepts, same_filter_optional, optimized_pushdown = build_parent_concepts(concept,
+                          environment=environment,
+                          local_optional=local_optional,
+                          conditions=conditions,
+                          depth=depth,)
+
+    # this flag controls whether we materialize the filter as a where on the prior CTE
+    # or do the filtering inline as a case statement
+    
+
+    row_parent: StrategyNode = source_concepts(
+        mandatory_list=parent_row_concepts,
+        environment=environment,
+        g=g,
+        depth=depth + 1,
+        history=history,
+        conditions=conditions,
+    )
+
+    core_parent_nodes = []
+    flattened_existence = [x for y in parent_existence_concepts for x in y]
+    if parent_existence_concepts:
+        add_existence_sources(core_parent_nodes, parent_existence_concepts, source_concepts, environment, g, depth, history)
+        
     if not row_parent:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} filter node row parents {[x.address for x in parent_row_concepts]} could not be found"
@@ -138,7 +188,7 @@ def gen_filter_node(
             )
             parent = StrategyNode(
                 input_concepts=row_parent.output_concepts,
-                output_concepts=[concept] + row_parent.output_concepts,
+                output_concepts=[concept] + same_filter_optional + row_parent.output_concepts,
                 environment=row_parent.environment,
                 parents=[row_parent],
                 depth=row_parent.depth,
@@ -147,46 +197,29 @@ def gen_filter_node(
             )
         else:
             parent = row_parent
-
-        expected_output = [concept] + [
-            x
-            for x in local_optional
-            if x.address in [y for y in parent.output_concepts]
-            or x.address in [y for y in optional_included]
-        ]
-        parent.add_parents(core_parents)
+        parent.add_parents(core_parent_nodes)
         parent.add_condition(where.conditional)
-        parent.add_existence_concepts(flattened_existence, False).set_output_concepts(
-            expected_output, False
-        )
+        parent.add_existence_concepts(flattened_existence, False)
         parent.grain = BuildGrain.from_concepts(
-            (
-                [environment.concepts[k] for k in immediate_parent.keys]
-                if immediate_parent.keys
-                else [immediate_parent]
-            )
-            + [
-                x
-                for x in local_optional
-                if x.address in [y.address for y in parent.output_concepts]
-            ],
+            parent.output_concepts,
             environment=environment,
         )
         parent.rebuild_cache()
         filter_node = parent
     else:
-        core_parents.append(row_parent)
-
+        core_parent_nodes.append(row_parent)
+        filters = [concept] + same_filter_optional
+        parents_for_grain = [x.lineage.content for x in filters]
         filter_node = FilterNode(
             input_concepts=unique(
-                [immediate_parent] + parent_row_concepts + flattened_existence,
+                parent_row_concepts + flattened_existence,
                 "address",
             ),
-            output_concepts=[concept, immediate_parent] + parent_row_concepts+ optional_included,
+            output_concepts=[concept] + same_filter_optional + parent_row_concepts,
             environment=environment,
-            parents=core_parents,
+            parents=core_parent_nodes,
             grain=BuildGrain.from_concepts(
-                [immediate_parent] + parent_row_concepts,
+                parents_for_grain + parent_row_concepts, environment=environment
             ),
             preexisting_conditions=conditions.conditional if conditions else None,
         )
@@ -201,7 +234,7 @@ def gen_filter_node(
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no extra enrichment needed for filter node, has all of {[x.address for x in local_optional]}"
         )
-        raise SyntaxError
+        # raise SyntaxError
         filter_node.set_output_concepts(
             [
                 concept,
@@ -214,7 +247,7 @@ def gen_filter_node(
     )
     enrich_node: StrategyNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
-        mandatory_list=[immediate_parent] + parent_row_concepts + local_optional,
+        mandatory_list=parent_row_concepts + [x for x in local_optional if x.address not in filter_node.output_concepts],
         environment=environment,
         g=g,
         depth=depth + 1,
@@ -230,7 +263,7 @@ def gen_filter_node(
         f"{padding(depth)}{LOGGER_PREFIX} returning filter node and enrich node with {enrich_node.output_concepts} and {enrich_node.input_concepts}"
     )
     return MergeNode(
-        input_concepts=[concept, immediate_parent] + local_optional,
+        input_concepts=filter_node.output_concepts + enrich_node.output_concepts,
         output_concepts=[
             concept,
         ]

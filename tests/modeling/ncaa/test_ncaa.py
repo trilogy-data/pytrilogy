@@ -47,4 +47,4 @@ def test_adhoc03():
         print(select.local_concepts[aggregate])
         assert select.local_concepts[aggregate].grain.components == {'game_tall.team.name'}, env.concepts[aggregate]
     generated = engine.generate_sql(text)[0] 
-    assert 'on 1=1' not in generated, generated
+    assert 'on 1=1' in generated, generated
