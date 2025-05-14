@@ -1,5 +1,5 @@
 query_id = 99
-gen_length = 3682
+gen_length = 3584
 generated_sql = """
 
 WITH 
@@ -29,9 +29,7 @@ SELECT
     CASE WHEN questionable.\"days_to_ship\" > 30 and questionable.\"days_to_ship\" <= 60 THEN questionable.\"catalog_pk\" ELSE NULL END as \"_virt_filter_catalog_pk_6661083751970711\",
     CASE WHEN questionable.\"days_to_ship\" > 60 and questionable.\"days_to_ship\" <= 90 THEN questionable.\"catalog_pk\" ELSE NULL END as \"_virt_filter_catalog_pk_3717011266371848\",
     CASE WHEN questionable.\"days_to_ship\" > 90 and questionable.\"days_to_ship\" <= 120 THEN questionable.\"catalog_pk\" ELSE NULL END as \"_virt_filter_catalog_pk_5603765296623263\",
-    questionable.\"catalog_pk\" as \"catalog_pk\",
     questionable.\"cc_name_lower\" as \"cc_name_lower\",
-    questionable.\"days_to_ship\" as \"days_to_ship\",
     questionable.\"item_id\" as \"item_id\",
     questionable.\"order_number\" as \"order_number\",
     questionable.\"ship_mode_type\" as \"ship_mode_type\",

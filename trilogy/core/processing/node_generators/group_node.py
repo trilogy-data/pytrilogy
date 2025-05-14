@@ -51,9 +51,7 @@ def gen_group_node(
     ):
         grain_components = [environment.concepts[c] for c in concept.grain.components]
         parent_concepts += grain_components
-        build_grain_parents = BuildGrain.from_concepts(
-                    parent_concepts
-                )
+        build_grain_parents = BuildGrain.from_concepts(parent_concepts)
         output_concepts += grain_components
         for possible_agg in local_optional:
 

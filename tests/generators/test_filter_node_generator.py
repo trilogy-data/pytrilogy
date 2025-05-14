@@ -7,6 +7,7 @@ from trilogy.core.processing.node_generators import gen_filter_node
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
 )
+from trilogy.hooks import DebuggingHook
 
 
 def test_gen_filter_node_parents(test_environment: Environment, test_environment_graph):
@@ -42,6 +43,7 @@ def test_gen_filter_node(test_environment, test_environment_graph):
 
 
 def test_gen_filter_node_same_concept(test_environment, test_environment_graph):
+    DebuggingHook()
     history = History(base_environment=test_environment)
     factory = Factory(environment=test_environment)
     conditional = Comparison(

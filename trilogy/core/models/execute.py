@@ -760,7 +760,8 @@ class QueryDatasource(BaseModel):
             ordering=self.ordering,
         )
         logger.debug(
-        f"[Query Datasource] merged with {[c.address for c in qds.output_concepts]} concepts")
+            f"[Query Datasource] merged with {[c.address for c in qds.output_concepts]} concepts"
+        )
         return qds
 
     @property
