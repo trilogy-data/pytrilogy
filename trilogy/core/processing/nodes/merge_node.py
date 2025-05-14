@@ -331,7 +331,6 @@ class MergeNode(StrategyNode):
         )
         full_join_concepts = []
         for join in joins:
-            logger.info(join)
             if isinstance(join, BaseJoin) and join.join_type == JoinType.FULL:
                 full_join_concepts += join.input_concepts
 

@@ -244,7 +244,6 @@ def gen_filter_node(
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no extra enrichment needed for filter node, has all of {[x.address for x in local_optional]}"
         )
-        # raise SyntaxError
         filter_node.set_output_concepts(
             [
                 concept,
@@ -281,7 +280,6 @@ def gen_filter_node(
         + local_optional,
         environment=environment,
         parents=[
-            # this node fetches only what we need to filter
             filter_node,
             enrich_node,
         ],
