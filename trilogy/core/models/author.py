@@ -277,7 +277,7 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, DataTyped, BaseModel):
             return self
         elif isinstance(other, (Comparison, Conditional, Parenthetical)):
             return Conditional.model_construct(
-                left=self, right=other, operator=BooleanOperator.AND
+                left=Parenthetical(content=self), right=Parenthetical(content=other), operator=BooleanOperator.AND
             )
         raise ValueError(f"Cannot add {self.__class__} and {type(other)}")
 
