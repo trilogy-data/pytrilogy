@@ -1258,15 +1258,17 @@ class ParseToObjects(Transformer):
             if intersection:
                 for x in intersection:
                     if (
-                        base.local_concepts[x].derivation
-                        == self.environment.concepts[x].derivation
+                        str(base.local_concepts[x].lineage)
+                        == str(self.environment.concepts[x].lineage)
                     ):
+                        local = base.local_concepts[x]
+                        friendly_name = local.name if local.namespace == DEFAULT_NAMESPACE else local.namespace
                         raise NameShadowError(
-                            f"Select statement {base} derives concept {x} with identical derivation as named concept. Use the named concept directly."
+                            f"Select statement {base} creates a new concept '{friendly_name}' with identical definition as the existing concept '{friendly_name}'. Replace {base.local_concepts[x].lineage} with a direct reference to {friendly_name}."
                         )
                 else:
                     raise NameShadowError(
-                        f"Select statement {base} creates new derived concepts {list(intersection)} with identical name(s) to existing concept(s). If these are identical, reference the concept directly. Otherwise alias your column as a new name."
+                        f"Select statement {base} creates new named concepts from calculations {list(intersection)} with identical name(s) to existing concept(s). Use new unique names for these."
                     )
         return base
 

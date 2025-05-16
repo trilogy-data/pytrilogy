@@ -173,7 +173,6 @@ def get_date_trunc_output(
     else:
         raise InvalidSyntaxException(f"Date truncation not supported for {target}")
 
-
 FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.ALIAS: FunctionConfig(
         arg_count=1,
@@ -868,13 +867,15 @@ def argument_to_purpose(arg) -> Purpose:
         raise ValueError(f"Cannot parse arg purpose for {arg} of type {type(arg)}")
 
 
-def function_args_to_output_purpose(args) -> Purpose:
+def function_args_to_output_purpose(args, environment:Environment) -> Purpose:
     has_metric = False
     has_non_constant = False
     has_non_single_row_constant = False
     if not args:
         return Purpose.CONSTANT
     for arg in args:
+        if isinstance(arg, ConceptRef):
+            arg = environment.concepts[arg.address]
         purpose = argument_to_purpose(arg)
         if purpose == Purpose.METRIC:
             has_metric = True
