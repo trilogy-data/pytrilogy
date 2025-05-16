@@ -51,6 +51,7 @@ def gen_group_node(
     ):
         grain_components = [environment.concepts[c] for c in concept.grain.components]
         parent_concepts += grain_components
+        build_grain_parents = BuildGrain.from_concepts(parent_concepts)
         output_concepts += grain_components
         for possible_agg in local_optional:
 
@@ -76,9 +77,7 @@ def gen_group_node(
                     logger.info(
                         f"{padding(depth)}{LOGGER_PREFIX} found equivalent group by optional concept {possible_agg.address} for {concept.address}"
                     )
-                elif BuildGrain.from_concepts(agg_parents) == BuildGrain.from_concepts(
-                    parent_concepts
-                ):
+                elif BuildGrain.from_concepts(agg_parents) == build_grain_parents:
                     extra = [x for x in agg_parents if x.address not in parent_concepts]
                     parent_concepts += extra
                     output_concepts.append(possible_agg)
@@ -87,7 +86,7 @@ def gen_group_node(
                     )
                 else:
                     logger.info(
-                        f"{padding(depth)}{LOGGER_PREFIX} cannot include optional agg {possible_agg.address}; mismatched grain {BuildGrain.from_concepts(agg_parents)} vs {BuildGrain.from_concepts(parent_concepts)}"
+                        f"{padding(depth)}{LOGGER_PREFIX} cannot include optional agg {possible_agg.address}; mismatched parent grain {BuildGrain.from_concepts(agg_parents)} vs local parent {BuildGrain.from_concepts(parent_concepts)}"
                     )
     if parent_concepts:
         logger.info(

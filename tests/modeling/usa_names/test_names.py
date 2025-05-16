@@ -264,3 +264,38 @@ order by names.state asc, total_births desc;
 
     pattern = r"""INNER JOIN highfalutin on abundant."names_name" = highfalutin."names_name" AND abundant."names_state" = highfalutin."names_state"""
     assert re.search(pattern, sql, re.DOTALL) is not None
+
+
+def test_inline_filter_or():
+    query = """
+import names;
+
+select
+    year,
+    sum(births ? name = 'Luke' or name = 'Leia' or name = 'Anakin') as star_wars_births,
+    sum(births ? not (name = 'Luke' or name = 'Leia' or name = 'Anakin')) as other_births
+order by
+    year asc;
+"""
+
+    env = Environment(working_path=Path(__file__).parent)
+    DebuggingHook()
+    exec = Dialects.DUCK_DB.default_executor(environment=env)
+    exec.generate_sql(query)[0]
+
+
+def test_filter_with_expression():
+    query = """
+import names;
+
+select
+    year,
+    sum(births ? name) as non_null_names
+order by
+    year asc;
+"""
+
+    env = Environment(working_path=Path(__file__).parent)
+    DebuggingHook()
+    exec = Dialects.DUCK_DB.default_executor(environment=env)
+    exec.generate_sql(query)[0]

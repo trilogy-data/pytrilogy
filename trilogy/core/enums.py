@@ -131,6 +131,7 @@ class FunctionType(Enum):
     CONSTANT = "constant"
     COALESCE = "coalesce"
     IS_NULL = "isnull"
+    NULLIF = "nullif"
     BOOL = "bool"
 
     # COMPLEX
@@ -156,6 +157,8 @@ class FunctionType(Enum):
     ABS = "abs"
     SQRT = "sqrt"
     RANDOM = "random"
+    FLOOR = "floor"
+    CEIL = "ceil"
 
     # Aggregates
     ## group is not a real aggregate - it just means group by this + some other set of fields

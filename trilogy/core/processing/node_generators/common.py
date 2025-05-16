@@ -67,14 +67,14 @@ def resolve_condition_parent_concepts(
 def resolve_filter_parent_concepts(
     concept: BuildConcept,
     environment: BuildEnvironment,
-) -> Tuple[BuildConcept, List[BuildConcept], List[Tuple[BuildConcept, ...]]]:
+) -> Tuple[List[BuildConcept], List[Tuple[BuildConcept, ...]]]:
     if not isinstance(concept.lineage, (BuildFilterItem,)):
         raise ValueError(
             f"Concept {concept} lineage is not filter item, is {type(concept.lineage)}"
         )
     direct_parent = concept.lineage.content
     base_existence = []
-    base_rows = [direct_parent]
+    base_rows = [direct_parent] if isinstance(direct_parent, BuildConcept) else []
     condition_rows, condition_existence = resolve_condition_parent_concepts(
         concept.lineage.where
     )
@@ -90,11 +90,10 @@ def resolve_filter_parent_concepts(
 
     if concept.lineage.where.existence_arguments:
         return (
-            concept.lineage.content,
             unique(base_rows, "address"),
             base_existence,
         )
-    return concept.lineage.content, unique(base_rows, "address"), []
+    return unique(base_rows, "address"), []
 
 
 def gen_property_enrichment_node(

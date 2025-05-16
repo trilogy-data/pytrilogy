@@ -35,6 +35,8 @@ FUNCTION_MAP = {
     FunctionType.CONCAT: lambda x: f"({' || '.join(x)})",
     FunctionType.DATE_LITERAL: lambda x: f"date '{x}'",
     FunctionType.DATETIME_LITERAL: lambda x: f"datetime '{x}'",
+    # string
+    FunctionType.CONTAINS: lambda x: f"CONTAINS(LOWER({x[0]}), LOWER({x[1]}))",
 }
 
 # if an aggregate function is called on a source that is at the same grain as the aggregate

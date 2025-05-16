@@ -1,0 +1,10 @@
+import game_tall as game_tall;
+select
+    # this is checking that aliasing here doesn't mess up the grain
+    game_tall.team.id as team_id,
+    abs(
+        (sum(game_tall.win ? game_tall.is_home = true) / sum(1) by game_tall.team.id) -
+        (sum(game_tall.win ? game_tall.is_home = false) / sum(1) by game_tall.team.id)
+    ) as win_rate_difference
+order by win_rate_difference desc
+limit 1;

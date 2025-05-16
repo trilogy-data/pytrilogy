@@ -7,6 +7,7 @@ from trilogy.core.processing.node_generators import gen_filter_node
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
 )
+from trilogy.hooks import DebuggingHook
 
 
 def test_gen_filter_node_parents(test_environment: Environment, test_environment_graph):
@@ -17,11 +18,11 @@ def test_gen_filter_node_parents(test_environment: Environment, test_environment
     assert comp.lineage
     assert test_environment.concepts["product_id"] in comp.lineage.concept_arguments
     # assert test_environment.concepts["total_revenue"] in comp.lineage.concept_arguments
-    filtered, row_parents, existence_parents = resolve_filter_parent_concepts(
+    row_parents, existence_parents = resolve_filter_parent_concepts(
         comp, environment=test_environment
     )
     # parents should be both the value and the category
-    assert filtered == test_environment.concepts["product_id"]
+    assert row_parents[0] == test_environment.concepts["product_id"]
     assert len(row_parents) == 2
     assert test_environment.concepts["product_id"] in row_parents
     # assert test_environment.concepts["total_revenue"] in parents
@@ -42,6 +43,7 @@ def test_gen_filter_node(test_environment, test_environment_graph):
 
 
 def test_gen_filter_node_same_concept(test_environment, test_environment_graph):
+    DebuggingHook()
     history = History(base_environment=test_environment)
     factory = Factory(environment=test_environment)
     conditional = Comparison(

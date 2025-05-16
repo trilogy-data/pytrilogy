@@ -3,7 +3,7 @@ import team as team;
 
 select
     team.color as team_color,
-    sum(game_tall.wins) as total_wins
+    sum(game_tall.win) as total_wins
 where
     lower(team.color) like '%red%'
     or lower(team.color) like '%black%'

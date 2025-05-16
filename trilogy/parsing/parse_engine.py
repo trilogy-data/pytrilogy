@@ -190,16 +190,25 @@ def parse_concept_reference(
 
 def expr_to_boolean(
     root,
+    function_factory: FunctionFactory,
 ) -> Union[Comparison, SubselectComparison, Conditional]:
     if not isinstance(root, (Comparison, SubselectComparison, Conditional)):
         if arg_to_datatype(root) == DataType.BOOL:
             root = Comparison(left=root, right=True, operator=ComparisonOperator.EQ)
+        elif arg_to_datatype(root) == DataType.INTEGER:
+            root = Comparison(
+                left=function_factory.create_function(
+                    [root],
+                    FunctionType.BOOL,
+                ),
+                right=True,
+                operator=ComparisonOperator.EQ,
+            )
         else:
             root = Comparison(
-                left=root,
-                right=MagicConstants.NULL,
-                operator=ComparisonOperator.IS_NOT,
+                left=root, right=NULL_VALUE, operator=ComparisonOperator.IS_NOT
             )
+
     return root
 
 
@@ -1271,7 +1280,7 @@ class ParseToObjects(Transformer):
 
     def where(self, args):
         root = args[0]
-        root = expr_to_boolean(root)
+        root = expr_to_boolean(root, self.function_factory)
         return WhereClause(conditional=root)
 
     def having(self, args):
@@ -1490,7 +1499,14 @@ class ParseToObjects(Transformer):
     def parenthetical(self, args):
         return Parenthetical(content=args[0])
 
-    def condition_parenthetical(self, args):
+    @v_args(meta=True)
+    def condition_parenthetical(self, meta, args):
+        if len(args) == 2:
+            return Comparison(
+                left=Parenthetical(content=args[1]),
+                right=False,
+                operator=ComparisonOperator.EQ,
+            )
         return Parenthetical(content=args[0])
 
     def conditional(self, args):
@@ -1573,7 +1589,7 @@ class ParseToObjects(Transformer):
         if isinstance(raw, WhereClause):
             where = raw
         else:
-            where = WhereClause(conditional=raw)
+            where = WhereClause(conditional=expr_to_boolean(raw, self.function_factory))
         if isinstance(expr, str):
             expr = self.environment.concepts[expr].reference
         return FilterItem(content=expr, where=where)
@@ -1631,6 +1647,10 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fcoalesce(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.COALESCE, meta)
+
+    @v_args(meta=True)
+    def fnullif(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.NULLIF, meta)
 
     @v_args(meta=True)
     def unnest(self, meta, args):
@@ -1862,13 +1882,21 @@ class ParseToObjects(Transformer):
         return self.function_factory.create_function(args, FunctionType.ROUND, meta)
 
     @v_args(meta=True)
+    def ffloor(self, meta, args) -> Function:
+        return self.function_factory.create_function(args, FunctionType.FLOOR, meta)
+
+    @v_args(meta=True)
+    def fceil(self, meta, args) -> Function:
+        return self.function_factory.create_function(args, FunctionType.CEIL, meta)
+
+    @v_args(meta=True)
     def fcase(self, meta, args: List[Union[CaseWhen, CaseElse]]) -> Function:
         return self.function_factory.create_function(args, FunctionType.CASE, meta)
 
     @v_args(meta=True)
     def fcase_when(self, meta, args) -> CaseWhen:
         args = process_function_args(args, meta=meta, environment=self.environment)
-        root = expr_to_boolean(args[0])
+        root = expr_to_boolean(args[0], self.function_factory)
         return CaseWhen(comparison=root, expr=args[1])
 
     @v_args(meta=True)

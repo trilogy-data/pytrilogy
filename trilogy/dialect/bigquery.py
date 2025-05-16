@@ -30,6 +30,8 @@ FUNCTION_MAP = {
     # math
     FunctionType.DIVIDE: lambda x: f"COALESCE(SAFE_DIVIDE({x[0]},{x[1]}),0)",
     FunctionType.DATE_ADD: lambda x: f"DATE_ADD({x[0]}, INTERVAL {x[2]} {x[1]})",
+    # string
+    FunctionType.CONTAINS: lambda x: f"CONTAINS_SUBSTR({x[0]}, {x[1]})",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {

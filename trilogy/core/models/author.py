@@ -1945,11 +1945,15 @@ class FilterItem(DataTyped, Namespaced, ConceptArgs, BaseModel):
 
     @property
     def output_datatype(self):
-        return self.content.datatype
+        return arg_to_datatype(self.content)
 
     @property
     def concept_arguments(self):
-        return [self.content] + self.where.concept_arguments
+        if isinstance(self.content, ConceptRef):
+            return [self.content] + self.where.concept_arguments
+        elif isinstance(self.content, ConceptArgs):
+            return self.content.concept_arguments + self.where.concept_arguments
+        return self.where.concept_arguments
 
 
 class RowsetLineage(Namespaced, Mergeable, BaseModel):

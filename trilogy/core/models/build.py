@@ -1173,7 +1173,7 @@ class BuildAggregateWrapper(BuildConceptArgs, DataTyped, BaseModel):
 
 
 class BuildFilterItem(BuildConceptArgs, BaseModel):
-    content: BuildConcept
+    content: "BuildExpr"
     where: BuildWhereClause
 
     def __str__(self):
@@ -1181,15 +1181,27 @@ class BuildFilterItem(BuildConceptArgs, BaseModel):
 
     @property
     def output_datatype(self):
-        return self.content.datatype
+        return arg_to_datatype(self.content)
 
     @property
     def output_purpose(self):
         return self.content.purpose
 
     @property
+    def content_concept_arguments(self):
+        if isinstance(self.content, BuildConcept):
+            return [self.content]
+        elif isinstance(self.content, BuildConceptArgs):
+            return self.content.concept_arguments
+        return []
+
+    @property
     def concept_arguments(self):
-        return [self.content] + self.where.concept_arguments
+        if isinstance(self.content, BuildConcept):
+            return [self.content] + self.where.concept_arguments
+        elif isinstance(self.content, BuildConceptArgs):
+            return self.content.concept_arguments + self.where.concept_arguments
+        return self.where.concept_arguments
 
 
 class BuildRowsetLineage(BuildConceptArgs, BaseModel):

@@ -279,6 +279,12 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_purpose=Purpose.PROPERTY,
         arg_count=1,
     ),
+    FunctionType.NULLIF: FunctionConfig(
+        valid_inputs={*DataType},
+        output_purpose=Purpose.PROPERTY,
+        output_type_function=lambda args: get_output_type_at_index(args, 0),
+        arg_count=2,
+    ),
     FunctionType.COALESCE: FunctionConfig(
         valid_inputs={*DataType},
         output_purpose=Purpose.PROPERTY,
@@ -636,6 +642,22 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_purpose=Purpose.PROPERTY,
         output_type_function=lambda args: get_output_type_at_index(args, 0),
         arg_count=2,
+    ),
+    FunctionType.FLOOR: FunctionConfig(
+        valid_inputs=[
+            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER, DataType.NUMERIC},
+        ],
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.INTEGER,
+        arg_count=1,
+    ),
+    FunctionType.CEIL: FunctionConfig(
+        valid_inputs=[
+            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER, DataType.NUMERIC},
+        ],
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.INTEGER,
+        arg_count=1,
     ),
     FunctionType.CUSTOM: FunctionConfig(
         output_purpose=Purpose.PROPERTY,
