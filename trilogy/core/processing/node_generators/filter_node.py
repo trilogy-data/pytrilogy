@@ -58,8 +58,8 @@ def build_parent_concepts(
     conditions: BuildWhereClause | None = None,
     depth: int = 0,
 ):
-    immediate_parent, parent_row_concepts, parent_existence_concepts = (
-        resolve_filter_parent_concepts(concept, environment)
+    parent_row_concepts, parent_existence_concepts = resolve_filter_parent_concepts(
+        concept, environment
     )
     if not isinstance(concept.lineage, FILTER_TYPES):
         raise SyntaxError('Filter node must have a filter type lineage"')
@@ -71,10 +71,12 @@ def build_parent_concepts(
         if isinstance(x.lineage, FILTER_TYPES):
             if concept.lineage.where == filter_where:
                 logger.info(
-                    f"{padding(depth)}{LOGGER_PREFIX} fetching {x.lineage.content.address} as optional parent from optional {x} with same filter conditions "
+                    f"{padding(depth)}{LOGGER_PREFIX} fetching parents for peer {x} with same filter conditions"
                 )
-                if x.lineage.content.address not in parent_row_concepts:
-                    parent_row_concepts.append(x.lineage.content)
+
+                for arg in x.lineage.content_concept_arguments:
+                    if arg.address not in parent_row_concepts:
+                        parent_row_concepts.append(arg)
                 same_filter_optional.append(x)
                 continue
         elif conditions and conditions == filter_where:
@@ -220,7 +222,11 @@ def gen_filter_node(
     else:
         core_parent_nodes.append(row_parent)
         filters = [concept] + same_filter_optional
-        parents_for_grain = [x.lineage.content for x in filters]
+        parents_for_grain = [
+            x.lineage.content
+            for x in filters
+            if isinstance(x.lineage.content, BuildConcept)
+        ]
         filter_node = FilterNode(
             input_concepts=unique(
                 parent_row_concepts + flattened_existence,

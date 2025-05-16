@@ -51,3 +51,34 @@ def test_adhoc03():
         }, env.concepts[aggregate]
     generated = engine.generate_sql(text)[0]
     assert "on 1=1" not in generated, generated
+
+
+def test_adhoc04():
+    DebuggingHook()
+    env = Environment(working_path=working_path)
+    with open(working_path / "adhoc04.preql") as f:
+        text = f.read()
+
+    engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
+    env, queries = env.parse(text)
+    generated = engine.generate_sql(text)[0]
+
+    assert '"game_tall_is_home" = False THEN 1 ELSE NULL END' in generated, generated
+
+
+def test_adhoc05():
+    DebuggingHook()
+    env = Environment(working_path=working_path)
+    with open(working_path / "adhoc05.preql") as f:
+        text = f.read()
+
+    engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
+    env, queries = env.parse(text)
+    assert env.concepts["team_id"].grain.components == {"game_tall.team.id"}
+    assert env.concepts["win_rate_difference"].grain.components == {
+        "game_tall.team.id"
+    }, env.concepts["win_rate_difference"]
+    assert queries[-1].grain.components == {
+        "game_tall.team.id",
+    }, queries[-1].grain.components
+    engine.generate_sql(text)[0]

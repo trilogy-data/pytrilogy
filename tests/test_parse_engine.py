@@ -2,7 +2,12 @@ from pytest import raises
 
 from trilogy.core.exceptions import UndefinedConceptException
 from trilogy.core.models.environment import Environment
-from trilogy.parsing.parse_engine import PARSER, ParseToObjects, unpack_visit_error
+from trilogy.parsing.parse_engine import (
+    PARSER,
+    InvalidSyntaxException,
+    ParseToObjects,
+    unpack_visit_error,
+)
 
 TEXT = """
 const a <- 1;
@@ -29,3 +34,20 @@ def test_parser():
         with raises(UndefinedConceptException):
             unpack_visit_error(e)
     assert failed
+
+
+TEXT2 = """
+const a <- 1;
+
+select
+    a,
+FROM a
+;
+"""
+
+
+def test_from_error():
+    env = Environment()
+
+    with raises(InvalidSyntaxException):
+        env.parse(TEXT2)

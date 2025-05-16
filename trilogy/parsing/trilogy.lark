@@ -99,7 +99,7 @@
     type_declaration: "type" IDENTIFIER data_type 
 
     // user_id where state = Mexico
-    _filter_alt: (IDENTIFIER | "(" expr ")") "?" conditional
+    _filter_alt: (IDENTIFIER | literal | "(" expr ")") "?" conditional
     _filter_base: "filter"i IDENTIFIER where
     filter_item: _filter_base | _filter_alt
 
@@ -146,7 +146,8 @@
     _and_condition: _condition_unit
                | (_and_condition LOGICAL_AND _condition_unit)
 
-    condition_parenthetical: "(" conditional ")"
+    CONDITION_NOT: "NOT"i
+    condition_parenthetical: CONDITION_NOT? "(" conditional ")"
 
     _condition_unit: expr
                   | condition_parenthetical
@@ -221,13 +222,17 @@
     fmod: ( "mod"i "(" expr "," (int_lit | concept_lit ) ")")  
     _ROUND.1: "round"i "("
     fround: _ROUND expr ("," expr)? ")"
+    _FLOOR.1: "floor"i "("
+    ffloor: _FLOOR expr ")"
+    _CEIL.1: "ceil"i "("
+    fceil:  _CEIL expr ")"
     fabs: "abs"i "(" expr ")"
     _SQRT.1: "sqrt("
     fsqrt:  _SQRT expr ")"
     _RANDOM.1: "random("i
     frandom: _RANDOM expr ")"
         
-    _math_functions: fmul | fdiv | fadd | fsub | fround | fmod | fabs | fsqrt | frandom
+    _math_functions: fmul | fdiv | fadd | fsub | fround | ffloor | fceil | fmod | fabs | fsqrt | frandom
     
     //generic
     _fcast_primary: "cast"i "(" expr "as"i data_type ")"
@@ -241,8 +246,9 @@
     len: "len"i "(" expr ")"
     fnot: "NOT"i expr
     fbool: "bool"i "(" expr ")"
+    fnullif: "nullif"i "(" expr "," expr ")"
 
-    _generic_functions: fcast |  concat  | fcoalesce | fcase  | len | fnot | fbool
+    _generic_functions: fcast |  concat  | fcoalesce | fnullif | fcase  | len | fnot | fbool
 
     //constant
     CURRENT_DATE.1: /current_date\(\)/

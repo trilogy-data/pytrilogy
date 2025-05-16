@@ -386,7 +386,7 @@ select
     assert agg_parent.address == "local.filtered_even_orders"
     assert isinstance(agg_parent.lineage, BuildFilterItem)
     assert isinstance(agg_parent.lineage.where.conditional, BuildSubselectComparison)
-    _, _, existence = resolve_filter_parent_concepts(agg_parent, environment=env)
+    _, existence = resolve_filter_parent_concepts(agg_parent, environment=env)
     assert len(existence) == 1
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1
@@ -418,7 +418,7 @@ select
     agg_parent = resolve_function_parent_concepts(agg, environment=env)[0]
     assert agg_parent.address == "local.filtered_even_orders"
     assert isinstance(agg_parent.lineage, BuildFilterItem)
-    _, _, existence = resolve_filter_parent_concepts(agg_parent, environment=env)
+    _, existence = resolve_filter_parent_concepts(agg_parent, environment=env)
     assert len(existence) == 1
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1
@@ -629,6 +629,36 @@ select
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert results[0] == (2, 4)
     assert len(results) == 1
+
+
+def test_boolean_filter():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    test = """const x <- unnest([0, 1,2,2,3]);
+
+select 
+    count(x ? x ) -> x_count
+;"""
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+
+    default_duckdb_engine.hooks = [DebuggingHook()]
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert results[0] == (4,)
+
+
+def test_nullif_filter():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    test = """const x <- unnest([0, 1,2,2,3]);
+
+select 
+    count(x ? nullif(x, 2) ) -> x_count
+;"""
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+
+    default_duckdb_engine.hooks = [DebuggingHook()]
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert results[0] == (2,)
 
 
 def test_mod_parse_order():

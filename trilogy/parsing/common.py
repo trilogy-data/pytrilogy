@@ -281,28 +281,38 @@ def concepts_to_grain_concepts(
     environment: Environment | None,
     local_concepts: dict[str, Concept] | None = None,
 ) -> list[Concept]:
-    pconcepts: list[Concept] = []
+    preconcepts: list[Concept] = []
     for c in concepts:
         if isinstance(c, Concept):
-            pconcepts.append(c)
+            preconcepts.append(c)
+
         elif isinstance(c, ConceptRef) and environment:
             if local_concepts and c.address in local_concepts:
-                pconcepts.append(local_concepts[c.address])
+                preconcepts.append(local_concepts[c.address])
             else:
-                pconcepts.append(environment.concepts[c.address])
+                preconcepts.append(environment.concepts[c.address])
         elif isinstance(c, str) and environment:
             if local_concepts and c in local_concepts:
-                pconcepts.append(local_concepts[c])
+                preconcepts.append(local_concepts[c])
             else:
-                pconcepts.append(environment.concepts[c])
+                preconcepts.append(environment.concepts[c])
         else:
             raise ValueError(
                 f"Unable to resolve input {c} without environment provided to concepts_to_grain call"
             )
-
+    pconcepts = []
+    for x in preconcepts:
+        if (
+            x.lineage
+            and isinstance(x.lineage, Function)
+            and x.lineage.operator == FunctionType.ALIAS
+        ):
+            # if the function is an alias, use the unaliased concept to calculate grain
+            pconcepts.append(environment.concepts[x.lineage.arguments[0].address])  # type: ignore
+        else:
+            pconcepts.append(x)
     final: List[Concept] = []
     for sub in pconcepts:
-
         if not concept_is_relevant(sub, pconcepts, environment):  # type: ignore
             continue
         final.append(sub)
@@ -515,8 +525,10 @@ def filter_item_to_concept(
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
+    fallback_keys = set()
     if isinstance(parent.content, ConceptRef):
         cparent = environment.concepts[parent.content.address]
+        fallback_keys = set([cparent.address])
     elif isinstance(
         parent.content,
         (
@@ -527,9 +539,13 @@ def filter_item_to_concept(
             Function,
             ListWrapper,
             MapWrapper,
+            int,
+            str,
+            float,
         ),
     ):
         cparent = arbitrary_to_concept(parent.content, environment, namespace=namespace)
+
     else:
         raise NotImplementedError(
             f"Filter item with non ref content {parent.content} not yet supported"
@@ -547,13 +563,7 @@ def filter_item_to_concept(
         metadata=fmetadata,
         namespace=namespace,
         # filtered copies cannot inherit keys
-        keys=(
-            cparent.keys
-            if cparent.purpose == Purpose.PROPERTY
-            else {
-                cparent.address,
-            }
-        ),
+        keys=(cparent.keys if cparent.purpose == Purpose.PROPERTY else fallback_keys),
         grain=grain,
         modifiers=modifiers,
         derivation=Derivation.FILTER,

@@ -162,9 +162,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                 output.local_concepts[x.content.address] = environment.concepts[
                     x.content.address
                 ]
-
         output.grain = output.calculate_grain(environment, output.local_concepts)
-
         output.validate_syntax(environment)
         return output
 

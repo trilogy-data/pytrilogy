@@ -161,6 +161,7 @@ FUNCTION_MAP = {
     FunctionType.GROUP: lambda x: f"{x[0]}",
     FunctionType.CONSTANT: lambda x: f"{x[0]}",
     FunctionType.COALESCE: lambda x: f"coalesce({','.join(x)})",
+    FunctionType.NULLIF: lambda x: f"nullif({x[0]},{x[1]})",
     FunctionType.CAST: lambda x: f"cast({x[0]} as {x[1]})",
     FunctionType.CASE: lambda x: render_case(x),
     FunctionType.SPLIT: lambda x: f"split({x[0]}, {x[1]})",
@@ -183,6 +184,8 @@ FUNCTION_MAP = {
     FunctionType.DIVIDE: lambda x: " / ".join(x),
     FunctionType.MULTIPLY: lambda x: " * ".join(x),
     FunctionType.ROUND: lambda x: f"round({x[0]},{x[1]})",
+    FunctionType.FLOOR: lambda x: f"floor({x[0]})",
+    FunctionType.CEIL: lambda x: f"ceil({x[0]})",
     FunctionType.MOD: lambda x: f"({x[0]} % {x[1]})",
     FunctionType.SQRT: lambda x: f"sqrt({x[0]})",
     FunctionType.RANDOM: lambda x: "random()",
@@ -400,9 +403,11 @@ class BaseDialect:
             elif isinstance(c.lineage, FILTER_ITEMS):
                 # for cases when we've optimized this
                 if cte.condition == c.lineage.where.conditional:
-                    rval = self.render_expr(c.lineage.content, cte=cte)
+                    rval = self.render_expr(
+                        c.lineage.content, cte=cte, raise_invalid=raise_invalid
+                    )
                 else:
-                    rval = f"CASE WHEN {self.render_expr(c.lineage.where.conditional, cte=cte)} THEN {self.render_concept_sql(c.lineage.content, cte=cte, alias=False, raise_invalid=raise_invalid)} ELSE NULL END"
+                    rval = f"CASE WHEN {self.render_expr(c.lineage.where.conditional, cte=cte)} THEN {self.render_expr(c.lineage.content, cte=cte, raise_invalid=raise_invalid)} ELSE NULL END"
             elif isinstance(c.lineage, BuildRowsetItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False, raise_invalid=raise_invalid)}"
             elif isinstance(c.lineage, BuildMultiSelectLineage):
