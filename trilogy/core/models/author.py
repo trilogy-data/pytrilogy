@@ -1024,7 +1024,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         keys = self.keys
 
         if self.is_aggregate and isinstance(new_lineage, Function) and grain.components:
-            grain_components = [
+            grain_components: list[ConceptRef | Concept] = [
                 environment.concepts[c].reference for c in grain.components
             ]
             new_lineage = AggregateWrapper(function=new_lineage, by=grain_components)

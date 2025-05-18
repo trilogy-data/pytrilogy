@@ -140,7 +140,7 @@ def get_purpose_and_keys(
     args: Tuple[ConceptRef | Concept, ...] | None,
     environment: Environment,
 ) -> Tuple[Purpose, set[str] | None]:
-    local_purpose = purpose or function_args_to_output_purpose(args)
+    local_purpose = purpose or function_args_to_output_purpose(args, environment)
     if local_purpose in (Purpose.PROPERTY, Purpose.METRIC) and args:
         keys = concept_list_to_keys(args, environment)
     else:
