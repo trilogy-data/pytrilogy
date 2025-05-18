@@ -62,7 +62,7 @@ def process_function_arg(
             operator=FunctionType.PARENTHETICAL,
             arguments=processed,
             output_datatype=arg_to_datatype(processed[0]),
-            output_purpose=function_args_to_output_purpose(processed),
+            output_purpose=function_args_to_output_purpose(processed, environment),
         )
     elif isinstance(arg, Function):
         # if it's not an aggregate function, we can skip the virtual concepts
@@ -140,7 +140,7 @@ def get_purpose_and_keys(
     args: Tuple[ConceptRef | Concept, ...] | None,
     environment: Environment,
 ) -> Tuple[Purpose, set[str] | None]:
-    local_purpose = purpose or function_args_to_output_purpose(args)
+    local_purpose = purpose or function_args_to_output_purpose(args, environment)
     if local_purpose in (Purpose.PROPERTY, Purpose.METRIC) and args:
         keys = concept_list_to_keys(args, environment)
     else:
@@ -548,7 +548,7 @@ def filter_item_to_concept(
 
     else:
         raise NotImplementedError(
-            f"Filter item with non ref content {parent.content} not yet supported"
+            f"Filter item with non ref content {parent.content} ({type(parent.content)}) not yet supported"
         )
     modifiers = get_upstream_modifiers(
         cparent.concept_arguments, environment=environment

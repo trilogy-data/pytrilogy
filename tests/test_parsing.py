@@ -92,7 +92,12 @@ def test_arg_to_datatype():
 
 
 def test_argument_to_purpose(test_environment: Environment):
-    assert argument_to_purpose(1.00) == Purpose.CONSTANT
+    assert (
+        argument_to_purpose(
+            1.00,
+        )
+        == Purpose.CONSTANT
+    )
     assert argument_to_purpose("test") == Purpose.CONSTANT
     assert argument_to_purpose(test_environment.concepts["order_id"]) == Purpose.KEY
     assert (
@@ -100,19 +105,22 @@ def test_argument_to_purpose(test_environment: Environment):
             [
                 "test",
                 1.00,
-            ]
+            ],
+            test_environment,
         )
         == Purpose.CONSTANT
     )
     assert (
         function_args_to_output_purpose(
-            ["test", 1.00, test_environment.concepts["order_id"]]
+            ["test", 1.00, test_environment.concepts["order_id"]], test_environment
         )
         == Purpose.PROPERTY
     )
     unnest_env, parsed = parse_text("const random <- unnest([1,2,3,4]);")
     assert (
-        function_args_to_output_purpose([unnest_env.concepts["random"]])
+        function_args_to_output_purpose(
+            [unnest_env.concepts["random"]], test_environment
+        )
         == Purpose.PROPERTY
     )
 

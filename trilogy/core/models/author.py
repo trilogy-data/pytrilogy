@@ -25,6 +25,7 @@ from pydantic import (
     ValidationInfo,
     computed_field,
     field_validator,
+    model_validator,
 )
 
 from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
@@ -621,8 +622,8 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
             return v.reference
         return v
 
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    @model_validator(mode="after")
+    def validate_comparison(self):
         if self.operator in (ComparisonOperator.IS, ComparisonOperator.IS_NOT):
             if self.right != MagicConstants.NULL and DataType.BOOL != arg_to_datatype(
                 self.right
@@ -632,7 +633,6 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
                 )
         elif self.operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
             right_type = arg_to_datatype(self.right)
-
             if isinstance(right_type, ListType) and not is_compatible_datatype(
                 arg_to_datatype(self.left), right_type.value_data_type
             ):
@@ -652,6 +652,8 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
                 raise SyntaxError(
                     f"Cannot compare {arg_to_datatype(self.left)} and {arg_to_datatype(self.right)} of different types with operator {self.operator} in {str(self)}"
                 )
+
+        return self
 
     def __add__(self, other):
         if other is None:
@@ -1022,7 +1024,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         keys = self.keys
 
         if self.is_aggregate and isinstance(new_lineage, Function) and grain.components:
-            grain_components = [
+            grain_components: list[ConceptRef | Concept] = [
                 environment.concepts[c].reference for c in grain.components
             ]
             new_lineage = AggregateWrapper(function=new_lineage, by=grain_components)
@@ -1846,9 +1848,6 @@ class FunctionCallWrapper(
 class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel):
     function: Function
     by: List[ConceptRef | Concept] = Field(default_factory=list)
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
 
     @field_validator("by", mode="before")
     @classmethod

@@ -82,3 +82,15 @@ def test_adhoc05():
         "game_tall.team.id",
     }, queries[-1].grain.components
     engine.generate_sql(text)[0]
+
+
+def test_adhoc06():
+    DebuggingHook()
+    env = Environment(working_path=working_path)
+    with open(working_path / "adhoc06.preql") as f:
+        text = f.read()
+
+    engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
+    env, queries = env.parse(text)
+    with raises(NotImplementedError):
+        engine.generate_sql(text)[0]

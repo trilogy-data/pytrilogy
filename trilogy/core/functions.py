@@ -809,13 +809,14 @@ def create_function_derived_concept(
     namespace: str,
     operator: FunctionType,
     arguments: list[Concept],
+    environment: Environment,
     output_type: Optional[
         DataType | ListType | StructType | MapType | NumericType | TraitDataType
     ] = None,
     output_purpose: Optional[Purpose] = None,
 ) -> Concept:
     purpose = (
-        function_args_to_output_purpose(arguments)
+        function_args_to_output_purpose(arguments, environment=environment)
         if output_purpose is None
         else output_purpose
     )
@@ -868,13 +869,15 @@ def argument_to_purpose(arg) -> Purpose:
         raise ValueError(f"Cannot parse arg purpose for {arg} of type {type(arg)}")
 
 
-def function_args_to_output_purpose(args) -> Purpose:
+def function_args_to_output_purpose(args, environment: Environment) -> Purpose:
     has_metric = False
     has_non_constant = False
     has_non_single_row_constant = False
     if not args:
         return Purpose.CONSTANT
     for arg in args:
+        if isinstance(arg, ConceptRef):
+            arg = environment.concepts[arg.address]
         purpose = argument_to_purpose(arg)
         if purpose == Purpose.METRIC:
             has_metric = True

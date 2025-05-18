@@ -1,0 +1,16 @@
+import game_tall as game_tall;
+select
+    game_tall.team_name,
+    sum(
+            (game_tall.points > game_tall.opponent_points)
+             ? is_home
+             )  as wins,
+#     abs(
+#         (wins
+#         ) -
+#         (
+#           sum(game_count ? not is_home)
+#         )
+#     ) as win_rate_diff
+# order by win_rate_diff desc
+limit 1;

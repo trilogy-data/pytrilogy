@@ -121,12 +121,13 @@ def create_function_derived_concept(
     namespace: str,
     operator: FunctionType,
     arguments: list[Concept],
+    environment: Environment,
     output_type: Optional[DataType] = None,
     output_purpose: Optional[Purpose] = None,
     metadata: Optional[Metadata] = None,
 ) -> Concept:
     purpose = (
-        function_args_to_output_purpose(arguments)
+        function_args_to_output_purpose(arguments, environment)
         if output_purpose is None
         else output_purpose
     )
@@ -317,6 +318,7 @@ def setup_titanic_distributed(env: Environment):
         namespace,
         FunctionType.SUM,
         [survived],
+        env,
         output_purpose=Purpose.METRIC,
     )
 
