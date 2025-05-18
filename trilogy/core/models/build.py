@@ -262,11 +262,8 @@ class BuildGrain(BaseModel):
     components: set[str] = Field(default_factory=set)
     where_clause: Optional[BuildWhereClause] = None
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
     def without_condition(self):
-        return BuildGrain(components=self.components)
+        return BuildGrain.model_construct(components=self.components)
 
     @classmethod
     def from_concepts(
@@ -321,12 +318,12 @@ class BuildGrain(BaseModel):
                 # raise NotImplementedError(
                 #     f"Cannot merge grains with where clauses, self {self.where_clause} other {other.where_clause}"
                 # )
-        return BuildGrain(
+        return BuildGrain.model_construct(
             components=self.components.union(other.components), where_clause=where
         )
 
     def __sub__(self, other: "BuildGrain") -> "BuildGrain":
-        return BuildGrain(
+        return BuildGrain.model_construct(
             components=self.components.difference(other.components),
             where_clause=self.where_clause,
         )
@@ -636,9 +633,6 @@ class BuildComparison(BuildConceptArgs, ConstantInlineable, BaseModel):
         TupleWrapper,
     ]
     operator: ComparisonOperator
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
 
     def __add__(self, other):
         if other is None:

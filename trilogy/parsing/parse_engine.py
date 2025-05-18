@@ -1257,12 +1257,15 @@ class ParseToObjects(Transformer):
             intersection = base.locally_derived.intersection(pre_keys)
             if intersection:
                 for x in intersection:
-                    if (
-                        str(base.local_concepts[x].lineage)
-                        == str(self.environment.concepts[x].lineage)
+                    if str(base.local_concepts[x].lineage) == str(
+                        self.environment.concepts[x].lineage
                     ):
                         local = base.local_concepts[x]
-                        friendly_name = local.name if local.namespace == DEFAULT_NAMESPACE else local.namespace
+                        friendly_name = (
+                            local.name
+                            if local.namespace == DEFAULT_NAMESPACE
+                            else local.namespace
+                        )
                         raise NameShadowError(
                             f"Select statement {base} creates a new concept '{friendly_name}' with identical definition as the existing concept '{friendly_name}'. Replace {base.local_concepts[x].lineage} with a direct reference to {friendly_name}."
                         )
