@@ -173,6 +173,7 @@ def get_date_trunc_output(
     else:
         raise InvalidSyntaxException(f"Date truncation not supported for {target}")
 
+
 FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.ALIAS: FunctionConfig(
         arg_count=1,
