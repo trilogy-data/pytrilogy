@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Dict, List, Optional, Set, Union
 
-from pydantic import BaseModel, Field, ValidationInfo, computed_field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    ValidationInfo,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 from trilogy.constants import CONFIG, logger
 from trilogy.core.constants import CONSTANT_DATASET
@@ -473,8 +480,8 @@ class BaseJoin(BaseModel):
     left_datasource: Optional[Union[BuildDatasource, "QueryDatasource"]] = None
     concept_pairs: list[ConceptPair] | None = None
 
-    @model_validator(mode='after')
-    def validate_join(self) -> 'BaseJoin':
+    @model_validator(mode="after")
+    def validate_join(self) -> "BaseJoin":
         if (
             self.left_datasource
             and self.left_datasource.identifier == self.right_datasource.identifier
@@ -483,18 +490,18 @@ class BaseJoin(BaseModel):
                 f"Cannot join a dataself to itself, joining {self.left_datasource} and"
                 f" {self.right_datasource}"
             )
-            
+
         # Early returns maintained as in original code
         if self.concept_pairs:
             return self
-            
+
         if self.concepts == []:
             return self
-            
+
         # Validation logic
         final_concepts = []
         assert self.left_datasource and self.right_datasource
-        
+
         for concept in self.concepts or []:
             include = True
             for ds in [self.left_datasource, self.right_datasource]:
@@ -511,7 +518,7 @@ class BaseJoin(BaseModel):
                     )
             if include:
                 final_concepts.append(concept)
-                
+
         if not final_concepts and self.concepts:
             # if one datasource only has constants
             # we can join on 1=1
@@ -529,7 +536,7 @@ class BaseJoin(BaseModel):
                 if all([c.grain.abstract for c in ds.output_concepts]):
                     self.concepts = []
                     return self
-            
+
             left_keys = [c.address for c in self.left_datasource.output_concepts]
             right_keys = [c.address for c in self.right_datasource.output_concepts]
             match_concepts = [c.address for c in self.concepts]
@@ -540,7 +547,7 @@ class BaseJoin(BaseModel):
                 f" right_keys {right_keys},"
                 f" provided join concepts {match_concepts}"
             )
-            
+
         self.concepts = final_concepts
         return self
 
