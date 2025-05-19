@@ -1,49 +1,49 @@
 query_id = 1
-gen_length = 1849
+gen_length = 1935
 generated_sql = """
 
 WITH 
 thoughtful as (
 SELECT
-    returns_customer_customers.\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
-    returns_store_returns.\"SR_ITEM_SK\" as \"returns_item_id\",
-    returns_store_returns.\"SR_RETURN_AMT\" as \"returns_return_amount\",
-    returns_store_returns.\"SR_TICKET_NUMBER\" as \"returns_store_sales_ticket_number\",
-    returns_store_store.\"S_STORE_SK\" as \"returns_store_id\"
+    \"returns_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
+    \"returns_store_returns\".\"SR_ITEM_SK\" as \"returns_item_id\",
+    \"returns_store_returns\".\"SR_RETURN_AMT\" as \"returns_return_amount\",
+    \"returns_store_returns\".\"SR_TICKET_NUMBER\" as \"returns_store_sales_ticket_number\",
+    \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_id\"
 FROM
-    memory.store_returns as returns_store_returns
-    INNER JOIN memory.store as returns_store_store on returns_store_returns.\"SR_STORE_SK\" = returns_store_store.\"S_STORE_SK\"
-    INNER JOIN memory.customer as returns_customer_customers on returns_store_returns.\"SR_CUSTOMER_SK\" = returns_customer_customers.\"C_CUSTOMER_SK\"
-    INNER JOIN memory.date_dim as returns_return_date_date on returns_store_returns.\"SR_RETURNED_DATE_SK\" = returns_return_date_date.\"D_DATE_SK\"
+    \"memory\".\"store_returns\" as \"returns_store_returns\"
+    INNER JOIN \"memory\".\"store\" as \"returns_store_store\" on \"returns_store_returns\".\"SR_STORE_SK\" = \"returns_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"returns_customer_customers\" on \"returns_store_returns\".\"SR_CUSTOMER_SK\" = \"returns_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"returns_return_date_date\" on \"returns_store_returns\".\"SR_RETURNED_DATE_SK\" = \"returns_return_date_date\".\"D_DATE_SK\"
 WHERE
-    returns_store_store.\"S_STATE\" = 'TN' and cast(returns_return_date_date.\"D_YEAR\" as int) = 2000
+    \"returns_store_store\".\"S_STATE\" = 'TN' and cast(\"returns_return_date_date\".\"D_YEAR\" as int) = 2000
 ),
 cooperative as (
 SELECT
-    sum(thoughtful.\"returns_return_amount\") as \"total_returns\",
-    thoughtful.\"returns_customer_text_id\" as \"returns_customer_text_id\",
-    thoughtful.\"returns_store_id\" as \"returns_store_id\"
+    \"thoughtful\".\"returns_customer_text_id\" as \"returns_customer_text_id\",
+    \"thoughtful\".\"returns_store_id\" as \"returns_store_id\",
+    sum(\"thoughtful\".\"returns_return_amount\") as \"total_returns\"
 FROM
-    thoughtful
+    \"thoughtful\"
 GROUP BY 
-    thoughtful.\"returns_customer_text_id\",
-    thoughtful.\"returns_store_id\"),
+    \"thoughtful\".\"returns_customer_text_id\",
+    \"thoughtful\".\"returns_store_id\"),
 questionable as (
 SELECT
-    avg(cooperative.\"total_returns\") as \"avg_store_returns\",
-    cooperative.\"returns_store_id\" as \"returns_store_id\"
+    \"cooperative\".\"returns_store_id\" as \"returns_store_id\",
+    avg(\"cooperative\".\"total_returns\") as \"avg_store_returns\"
 FROM
-    cooperative
+    \"cooperative\"
 GROUP BY 
-    cooperative.\"returns_store_id\")
+    \"cooperative\".\"returns_store_id\")
 SELECT
-    cooperative.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+    \"cooperative\".\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
-    questionable
-    INNER JOIN cooperative on questionable.\"returns_store_id\" = cooperative.\"returns_store_id\"
+    \"questionable\"
+    INNER JOIN \"cooperative\" on \"questionable\".\"returns_store_id\" = \"cooperative\".\"returns_store_id\"
 WHERE
-    cooperative.\"total_returns\" > ( 1.2 * questionable.\"avg_store_returns\" )
+    \"cooperative\".\"total_returns\" > ( 1.2 * \"questionable\".\"avg_store_returns\" )
 
 ORDER BY 
-    cooperative.\"returns_customer_text_id\" asc
+    \"cooperative\".\"returns_customer_text_id\" asc
 LIMIT (100)"""

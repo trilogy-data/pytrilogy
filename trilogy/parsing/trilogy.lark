@@ -267,7 +267,7 @@
     _UPPER.1: "upper("i
     upper: _UPPER expr ")"
     _LOWER.1: "lower("i
-    lower: _LOWER expr ")"  
+    flower: _LOWER expr ")"  
     _SPLIT.1: "split("i  
     fsplit: _SPLIT expr "," string_lit ")"
     _STRPOS.1: "strpos("i
@@ -276,8 +276,14 @@
     fcontains: _CONTAINS expr "," expr ")"
     _SUBSTRING.1: "substring("i
     fsubstring: _SUBSTRING expr "," expr "," expr ")"
-    
-    _string_functions: like | ilike | upper | lower | fsplit | fstrpos | fsubstring | fcontains
+    _REGEXP_EXTRACT.1: "regexp_extract("
+    fregexp_extract: _REGEXP_EXTRACT expr "," expr ")"
+    _REGEXP_CONTAINS.1: "regexp_contains("
+    fregexp_contains: _REGEXP_CONTAINS expr "," expr  ")"
+    _REGEXP_REPLACE.1: "regexp_replace("
+    fregexp_replace: _REGEXP_REPLACE expr "," expr "," expr   ")"
+
+    _string_functions: like | ilike | upper | flower | fsplit | fstrpos | fsubstring | fcontains | fregexp_extract | fregexp_contains | fregexp_replace
     
     // special aggregate
     _GROUP.1: "group("i
@@ -311,7 +317,8 @@
     _DATE.1: "date("i
     fdate:  _DATE expr ")"
     fdatetime: "datetime"i "(" expr ")"
-    ftimestamp: "timestamp"i "(" expr ")"
+    _TIMESTAMP.1: "timestamp("i
+    ftimestamp: _TIMESTAMP expr ")"
     
     _SECOND.1: "second("i
     fsecond: _SECOND expr ")"

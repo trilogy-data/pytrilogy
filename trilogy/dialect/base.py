@@ -74,6 +74,7 @@ from trilogy.core.statements.execute import (
     ProcessedRawSQLStatement,
     ProcessedShowStatement,
 )
+from trilogy.core.utility import safe_quote
 from trilogy.dialect.common import render_join, render_unnest
 from trilogy.hooks.base_hook import BaseHook
 
@@ -204,6 +205,9 @@ FUNCTION_MAP = {
     FunctionType.SUBSTRING: lambda x: f"SUBSTRING({x[0]},{x[1]},{x[2]})",
     FunctionType.STRPOS: lambda x: f"STRPOS({x[0]},{x[1]})",
     FunctionType.CONTAINS: lambda x: f"CONTAINS({x[0]},{x[1]})",
+    FunctionType.REGEXP_CONTAINS: lambda x: f"REGEXP_CONTAINS({x[0]},{x[1]})",
+    FunctionType.REGEXP_EXTRACT: lambda x: f"REGEXP_EXTRACT({x[0]},{x[1]})",
+    FunctionType.REGEXP_REPLACE: lambda x: f"REGEXP_REPLACE({x[0]},{x[1]}, {x[2]})",
     # FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
     # date types
     FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc({x[0]},{x[1]})",
@@ -270,13 +274,6 @@ ORDER BY{% for order in order_by %}
 )
 
 
-def safe_quote(string: str, quote_char: str):
-    # split dotted identifiers
-    # TODO: evaluate if we need smarter parsing for strings that could actually include .
-    components = string.split(".")
-    return ".".join([f"{quote_char}{string}{quote_char}" for string in components])
-
-
 def safe_get_cte_value(coalesce, cte: CTE | UnionCTE, c: BuildConcept, quote_char: str):
     address = c.address
     raw = cte.source_map.get(address, None)
@@ -285,12 +282,17 @@ def safe_get_cte_value(coalesce, cte: CTE | UnionCTE, c: BuildConcept, quote_cha
         return None
     if isinstance(raw, str):
         rendered = cte.get_alias(c, raw)
-        return f"{raw}.{safe_quote(rendered, quote_char)}"
+        return f"{quote_char}{raw}{quote_char}.{safe_quote(rendered, quote_char)}"
     if isinstance(raw, list) and len(raw) == 1:
         rendered = cte.get_alias(c, raw[0])
-        return f"{raw[0]}.{safe_quote(rendered, quote_char)}"
+        return f"{quote_char}{raw[0]}{quote_char}.{safe_quote(rendered, quote_char)}"
     return coalesce(
-        sorted([f"{x}.{safe_quote(cte.get_alias(c, x), quote_char)}" for x in raw])
+        sorted(
+            [
+                f"{quote_char}{x}{quote_char}.{safe_quote(cte.get_alias(c, x), quote_char)}"
+                for x in raw
+            ]
+        )
     )
 
 
@@ -783,12 +785,12 @@ class BaseDialect:
             else:
                 source = None
         else:
-            if cte.quote_address.get(cte.source.datasources[0].safe_identifier, False):
-                source = f"{self.QUOTE_CHARACTER}{cte.base_name}{self.QUOTE_CHARACTER}"
+            if cte.quote_address:
+                source = safe_quote(cte.base_name, self.QUOTE_CHARACTER)
             else:
                 source = cte.base_name
             if cte.base_name != cte.base_alias:
-                source = f"{source} as {cte.base_alias}"
+                source = f"{source} as {self.QUOTE_CHARACTER}{cte.base_alias}{self.QUOTE_CHARACTER}"
         if not cte.render_from_clause:
             final_joins = []
         else:

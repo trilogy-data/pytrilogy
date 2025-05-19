@@ -441,16 +441,16 @@ ORDER BY
         results.strip()
         == """
 SELECT
-    raw_data."passengerid" as "passenger_id",
-    raw_data."passengerid" + 1 as "id_one",
-    raw_data."name" as "passenger_name"
+    "raw_data"."passengerid" as "passenger_id",
+    "raw_data"."passengerid" + 1 as "id_one",
+    "raw_data"."name" as "passenger_name"
 FROM
-    raw_titanic as raw_data
+    "raw_titanic" as "raw_data"
 WHERE
-     CASE WHEN raw_data."name" like '%a%' THEN True ELSE False END = True
+     CASE WHEN "raw_data"."name" like '%a%' THEN True ELSE False END = True
 
 ORDER BY 
-    raw_data."name" asc""".strip()
+    "raw_data"."name" asc""".strip()
     )
 
 
@@ -551,14 +551,14 @@ def test_demo_brevity(base_test_env, engine: Executor):
     assert (
         sql[-1].strip()
         == """SELECT
-    raw_data."survived" as "passenger_survived",
-    count(raw_data."passengerid") as "passenger_id_count",
-    count(raw_data."passengerid") as "passenger_count_alt",
-    count(raw_data."passengerid") as "passenger_count_alt_2"
+    "raw_data"."survived" as "passenger_survived",
+    count("raw_data"."passengerid") as "passenger_id_count",
+    count("raw_data"."passengerid") as "passenger_count_alt",
+    count("raw_data"."passengerid") as "passenger_count_alt_2"
 FROM
-    raw_titanic as raw_data
+    "raw_titanic" as "raw_data"
 GROUP BY 
-    raw_data."survived"
+    "raw_data"."survived"
 """.strip()
     )
 

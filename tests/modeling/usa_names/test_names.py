@@ -22,7 +22,7 @@ limit 100
 
     sql = exec.generate_sql(query)[0]
 
-    assert 'sum(names_usa_names."number") as' in sql, sql
+    assert 'sum("names_usa_names"."number") as' in sql, sql
 
 
 def test_ranking_inclusion():
@@ -49,45 +49,45 @@ order by
         == """WITH 
 wakeful as (
 SELECT
-    names_usa_names."name" as "names_name",
-    sum(names_usa_names."number") as "_virt_agg_sum_7286114413769231"
+    "names_usa_names"."name" as "names_name",
+    sum("names_usa_names"."number") as "_virt_agg_sum_7286114413769231"
 FROM
-    "bigquery-public-data.usa_names.usa_1910_current" as names_usa_names
+    "bigquery-public-data"."usa_names"."usa_1910_current" as "names_usa_names"
 GROUP BY 
-    names_usa_names."name"),
+    "names_usa_names"."name"),
 highfalutin as (
 SELECT
-    names_usa_names."name" as "names_name",
-    names_usa_names."year" as "names_year",
-    sum(names_usa_names."number") as "total_births"
+    "names_usa_names"."name" as "names_name",
+    "names_usa_names"."year" as "names_year",
+    sum("names_usa_names"."number") as "total_births"
 FROM
-    "bigquery-public-data.usa_names.usa_1910_current" as names_usa_names
+    "bigquery-public-data"."usa_names"."usa_1910_current" as "names_usa_names"
 GROUP BY 
-    names_usa_names."name",
-    names_usa_names."year"),
+    "names_usa_names"."name",
+    "names_usa_names"."year"),
 cheerful as (
 SELECT
-    rank() over (order by wakeful."_virt_agg_sum_7286114413769231" desc ) as "name_rank",
-    wakeful."_virt_agg_sum_7286114413769231" as "_virt_agg_sum_7286114413769231",
-    wakeful."names_name" as "names_name"
+    "wakeful"."_virt_agg_sum_7286114413769231" as "_virt_agg_sum_7286114413769231",
+    "wakeful"."names_name" as "names_name",
+    rank() over (order by "wakeful"."_virt_agg_sum_7286114413769231" desc ) as "name_rank"
 FROM
-    wakeful),
+    "wakeful"),
 thoughtful as (
 SELECT
-    cheerful."name_rank" as "name_rank",
-    cheerful."names_name" as "names_name"
+    "cheerful"."name_rank" as "name_rank",
+    "cheerful"."names_name" as "names_name"
 FROM
-    cheerful)
+    "cheerful")
 SELECT
-    highfalutin."names_year" as "names_year",
-    highfalutin."names_name" as "names_name",
-    highfalutin."total_births" as "total_births",
-    thoughtful."name_rank" as "name_rank"
+    "highfalutin"."names_year" as "names_year",
+    "highfalutin"."names_name" as "names_name",
+    "highfalutin"."total_births" as "total_births",
+    "thoughtful"."name_rank" as "name_rank"
 FROM
-    thoughtful
-    INNER JOIN highfalutin on thoughtful."names_name" = highfalutin."names_name"
+    "thoughtful"
+    INNER JOIN "highfalutin" on "thoughtful"."names_name" = "highfalutin"."names_name"
 ORDER BY 
-    thoughtful."name_rank" asc""".strip()
+    "thoughtful"."name_rank" asc""".strip()
     )
 
 
@@ -107,7 +107,7 @@ def test_aggregate_filter_anonymous():
 
     pattern = r"""[a-z]+ as \(
 SELECT
-    ([a-z]+)\."name" as "name",
+    (["a-z]+)\."name" as "name",
     sum\(\1\."_virt_filter_births_\d+"\) as "_virt_agg_sum_\d+",
     sum\(\1\."_virt_filter_births_\d+"\) as "_virt_agg_sum_\d+",
     sum\(\1\."births"\) as "_virt_agg_sum_\d+"
@@ -133,7 +133,7 @@ def test_aggregate_filter():
     sql = exec.generate_sql(query)[0]
     pattern = r"""[a-z]+ as \(
 SELECT
-    ([a-z]+)\."name" as "name",
+    (["a-z]+)\."name" as "name",
     sum\(\1\."_virt_filter_births_\d+"\) as "_virt_agg_sum_\d+",
     sum\(\1\."_virt_filter_births_\d+"\) as "_virt_agg_sum_\d+",
     sum\(\1\."births"\) as "_virt_agg_sum_\d+"
@@ -159,7 +159,7 @@ def test_aggregate_filter_short_syntax():
     sql = exec.generate_sql(query)[0]
     pattern = r"""[a-z]+ as \(
 SELECT
-    ([a-z]+)\."name" as "name",
+    (["a-z]+)\."name" as "name",
     sum\(\1\."_virt_filter_births_\d+"\) as "_virt_agg_sum_\d+",
     sum\(\1\."_virt_filter_births_\d+"\) as "_virt_agg_sum_\d+",
     sum\(\1\."births"\) as "_virt_agg_sum_\d+"
@@ -191,9 +191,9 @@ order by
 
     assert (
         """FROM
-    "bigquery-public-data.usa_names.usa_1910_current" as usa_names
+    "bigquery-public-data"."usa_names"."usa_1910_current" as "usa_names"
 GROUP BY 
-    usa_names."name"),"""
+    "usa_names"."name"),"""
         in sql
     ), sql
 
@@ -230,9 +230,9 @@ def test_multi_window():
     #     ), sql
     pattern = r"""[a-z]+ as \(
 SELECT
-    rank\(\) over \(order by ([a-z]+)\."_virt_agg_sum_\d+" desc \) as "all_rank",
-    \1\."_virt_agg_sum_\d+" as "_virt_agg_sum_\d+",
-    \1\."name" as "name"
+    (["a-z]+)\."_virt_agg_sum_\d+" as "_virt_agg_sum_\d+",
+    \1\."name" as "name",
+    rank\(\) over \(order by \1\."_virt_agg_sum_\d+" desc \) as "all_rank"
 FROM
     \1\)"""
 
@@ -262,7 +262,7 @@ order by names.state asc, total_births desc;
         ["names.state", "names.name"]
     ), env.concepts["rank_by_births"].keys
 
-    pattern = r"""INNER JOIN highfalutin on abundant."names_name" = highfalutin."names_name" AND abundant."names_state" = highfalutin."names_state"""
+    pattern = r"""INNER JOIN "highfalutin" on "abundant"."names_name" = "highfalutin"."names_name" AND "abundant"."names_state" = "highfalutin"."names_state"""
     assert re.search(pattern, sql, re.DOTALL) is not None
 
 

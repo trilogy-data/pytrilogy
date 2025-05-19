@@ -63,8 +63,8 @@ def render_join_concept(
         elif isinstance(raw_content, BuildFunction):
             rval = render_expr(raw_content, cte=cte)
             return rval
-        return f"{name}.{quote_character}{raw_content}{quote_character}"
-    return f"{name}.{quote_character}{concept.safe_address}{quote_character}"
+        return f"{quote_character}{name}{quote_character}.{quote_character}{raw_content}{quote_character}"
+    return f"{quote_character}{name}{quote_character}.{quote_character}{concept.safe_address}{quote_character}"
 
 
 def render_join(
@@ -91,8 +91,9 @@ def render_join(
         return f"FULL JOIN {render_unnest(unnest_mode, quote_character, join.object_to_unnest, render_expr_func, cte)}"
     # left_name = join.left_name
     right_name = join.right_name
-    if cte.quote_address.get(join.right_name, False):
-        join.quote = quote_character
+    join.quote = quote_character
+    # if cte.quote_address.get(join.right_name, False):
+    #     join.quote = quote_character
     right_base = join.right_ref
     base_joinkeys = []
     if join.joinkey_pairs:

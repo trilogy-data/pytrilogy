@@ -66,7 +66,7 @@ select zeta order by zeta asc;"""
     results2 = snowflake_engine.generate_sql(text)[0]
     assert (
         re.search(
-            r'LEFT JOIN LATERAL flatten\(\w+\."array_int"\) as unnest_wrapper \( unnest1, unnest2, unnest3, unnest4, "zeta"\)',
+            r'LEFT JOIN LATERAL flatten\([A-z"]+."array_int"\) as unnest_wrapper \( unnest1, unnest2, unnest3, unnest4, "zeta"\)',
             results2,
         )
         is not None

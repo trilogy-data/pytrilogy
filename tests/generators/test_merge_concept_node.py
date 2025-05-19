@@ -105,8 +105,8 @@ address num1;
         compiled = bd.compile_statement(query)
         assert query_to_lines(compiled) == query_to_lines(
             """SELECT
-             	env2_num1.`one` as `env2_one`,
-             	env2_num1.`one` as `env2_one`
+             	`env2_num1`.`one` as `env2_one`,
+             	`env2_num1`.`one` as `env2_one`
              FROM
-             	num1 as env2_num1"""
+             	`num1` as `env2_num1`"""
         ), compiled

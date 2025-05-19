@@ -1,58 +1,58 @@
 query_id = 99
-gen_length = 3584
+gen_length = 3738
 generated_sql = """
 
 WITH 
 questionable as (
 SELECT
-    (cast(catalog_sales.\"CS_ORDER_NUMBER\" as string) || cast(catalog_sales.\"CS_ITEM_SK\" as string)) as \"catalog_pk\",
-    LOWER(call_center_call_center.\"CC_NAME\")  as \"cc_name_lower\",
-    SUBSTRING(warehouse_warehouse.\"w_warehouse_name\",1,20) as \"warehouse_short_name\",
-    catalog_sales.\"CS_ITEM_SK\" as \"item_id\",
-    catalog_sales.\"CS_ORDER_NUMBER\" as \"order_number\",
-    date_diff('day', cast(sold_date_date.\"D_DATE\" as date), cast(ship_date_date.\"D_DATE\" as date)) as \"days_to_ship\",
-    ship_mode_ship_mode.\"SM_TYPE\" as \"ship_mode_type\"
+    \"catalog_sales\".\"CS_ITEM_SK\" as \"item_id\",
+    \"catalog_sales\".\"CS_ORDER_NUMBER\" as \"order_number\",
+    \"ship_mode_ship_mode\".\"SM_TYPE\" as \"ship_mode_type\",
+    (cast(\"catalog_sales\".\"CS_ORDER_NUMBER\" as string) || cast(\"catalog_sales\".\"CS_ITEM_SK\" as string)) as \"catalog_pk\",
+    LOWER(\"call_center_call_center\".\"CC_NAME\")  as \"cc_name_lower\",
+    SUBSTRING(\"warehouse_warehouse\".\"w_warehouse_name\",1,20) as \"warehouse_short_name\",
+    date_diff('day', cast(\"sold_date_date\".\"D_DATE\" as date), cast(\"ship_date_date\".\"D_DATE\" as date)) as \"days_to_ship\"
 FROM
-    memory.catalog_sales as catalog_sales
-    INNER JOIN memory.date_dim as ship_date_date on catalog_sales.\"CS_SHIP_DATE_SK\" = ship_date_date.\"D_DATE_SK\"
-    INNER JOIN memory.ship_mode as ship_mode_ship_mode on catalog_sales.\"CS_SHIP_MODE_SK\" = ship_mode_ship_mode.\"SM_SHIP_MODE_SK\"
-    INNER JOIN memory.date_dim as sold_date_date on catalog_sales.\"CS_SOLD_DATE_SK\" = sold_date_date.\"D_DATE_SK\"
-    INNER JOIN memory.warehouse as warehouse_warehouse on catalog_sales.\"CS_WAREHOUSE_SK\" = warehouse_warehouse.\"w_warehouse_sk\"
-    INNER JOIN memory.call_center as call_center_call_center on catalog_sales.\"CS_CALL_CENTER_SK\" = call_center_call_center.\"CC_CALL_CENTER_SK\"
+    \"memory\".\"catalog_sales\" as \"catalog_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"ship_date_date\" on \"catalog_sales\".\"CS_SHIP_DATE_SK\" = \"ship_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"ship_mode\" as \"ship_mode_ship_mode\" on \"catalog_sales\".\"CS_SHIP_MODE_SK\" = \"ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sold_date_date\" on \"catalog_sales\".\"CS_SOLD_DATE_SK\" = \"sold_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"warehouse\" as \"warehouse_warehouse\" on \"catalog_sales\".\"CS_WAREHOUSE_SK\" = \"warehouse_warehouse\".\"w_warehouse_sk\"
+    INNER JOIN \"memory\".\"call_center\" as \"call_center_call_center\" on \"catalog_sales\".\"CS_CALL_CENTER_SK\" = \"call_center_call_center\".\"CC_CALL_CENTER_SK\"
 WHERE
-    ship_date_date.\"D_MONTH_SEQ\" >= 1200 and ship_date_date.\"D_MONTH_SEQ\" <= 1211 and catalog_sales.\"CS_ORDER_NUMBER\" is not null and call_center_call_center.\"CC_CALL_CENTER_SK\" is not null and warehouse_warehouse.\"w_warehouse_sk\" is not null and ship_mode_ship_mode.\"SM_SHIP_MODE_SK\" is not null
+    \"ship_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ship_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"catalog_sales\".\"CS_ORDER_NUMBER\" is not null and \"call_center_call_center\".\"CC_CALL_CENTER_SK\" is not null and \"warehouse_warehouse\".\"w_warehouse_sk\" is not null and \"ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\" is not null
 ),
 abundant as (
 SELECT
-    CASE WHEN questionable.\"days_to_ship\" <= 30 THEN questionable.\"catalog_pk\" ELSE NULL END as \"_virt_filter_catalog_pk_8168372723999465\",
-    CASE WHEN questionable.\"days_to_ship\" > 120 THEN questionable.\"catalog_pk\" ELSE NULL END as \"_virt_filter_catalog_pk_5945567725420865\",
-    CASE WHEN questionable.\"days_to_ship\" > 30 and questionable.\"days_to_ship\" <= 60 THEN questionable.\"catalog_pk\" ELSE NULL END as \"_virt_filter_catalog_pk_6661083751970711\",
-    CASE WHEN questionable.\"days_to_ship\" > 60 and questionable.\"days_to_ship\" <= 90 THEN questionable.\"catalog_pk\" ELSE NULL END as \"_virt_filter_catalog_pk_3717011266371848\",
-    CASE WHEN questionable.\"days_to_ship\" > 90 and questionable.\"days_to_ship\" <= 120 THEN questionable.\"catalog_pk\" ELSE NULL END as \"_virt_filter_catalog_pk_5603765296623263\",
-    questionable.\"cc_name_lower\" as \"cc_name_lower\",
-    questionable.\"item_id\" as \"item_id\",
-    questionable.\"order_number\" as \"order_number\",
-    questionable.\"ship_mode_type\" as \"ship_mode_type\",
-    questionable.\"warehouse_short_name\" as \"warehouse_short_name\"
+    \"questionable\".\"cc_name_lower\" as \"cc_name_lower\",
+    \"questionable\".\"item_id\" as \"item_id\",
+    \"questionable\".\"order_number\" as \"order_number\",
+    \"questionable\".\"ship_mode_type\" as \"ship_mode_type\",
+    \"questionable\".\"warehouse_short_name\" as \"warehouse_short_name\",
+    CASE WHEN \"questionable\".\"days_to_ship\" <= 30 THEN \"questionable\".\"catalog_pk\" ELSE NULL END as \"_virt_filter_catalog_pk_8168372723999465\",
+    CASE WHEN \"questionable\".\"days_to_ship\" > 120 THEN \"questionable\".\"catalog_pk\" ELSE NULL END as \"_virt_filter_catalog_pk_5945567725420865\",
+    CASE WHEN \"questionable\".\"days_to_ship\" > 30 and \"questionable\".\"days_to_ship\" <= 60 THEN \"questionable\".\"catalog_pk\" ELSE NULL END as \"_virt_filter_catalog_pk_6661083751970711\",
+    CASE WHEN \"questionable\".\"days_to_ship\" > 60 and \"questionable\".\"days_to_ship\" <= 90 THEN \"questionable\".\"catalog_pk\" ELSE NULL END as \"_virt_filter_catalog_pk_3717011266371848\",
+    CASE WHEN \"questionable\".\"days_to_ship\" > 90 and \"questionable\".\"days_to_ship\" <= 120 THEN \"questionable\".\"catalog_pk\" ELSE NULL END as \"_virt_filter_catalog_pk_5603765296623263\"
 FROM
-    questionable)
+    \"questionable\")
 SELECT
-    abundant.\"warehouse_short_name\" as \"warehouse_short_name\",
-    abundant.\"ship_mode_type\" as \"ship_mode_type\",
-    abundant.\"cc_name_lower\" as \"cc_name_lower\",
-    count(abundant.\"_virt_filter_catalog_pk_8168372723999465\") as \"less_than_30_days\",
-    count(abundant.\"_virt_filter_catalog_pk_6661083751970711\") as \"between_31_and_60_days\",
-    count(abundant.\"_virt_filter_catalog_pk_3717011266371848\") as \"between_61_and_90_days\",
-    count(abundant.\"_virt_filter_catalog_pk_5603765296623263\") as \"between_91_and_120_days\",
-    count(abundant.\"_virt_filter_catalog_pk_5945567725420865\") as \"over_120_days\"
+    \"abundant\".\"warehouse_short_name\" as \"warehouse_short_name\",
+    \"abundant\".\"ship_mode_type\" as \"ship_mode_type\",
+    \"abundant\".\"cc_name_lower\" as \"cc_name_lower\",
+    count(\"abundant\".\"_virt_filter_catalog_pk_8168372723999465\") as \"less_than_30_days\",
+    count(\"abundant\".\"_virt_filter_catalog_pk_6661083751970711\") as \"between_31_and_60_days\",
+    count(\"abundant\".\"_virt_filter_catalog_pk_3717011266371848\") as \"between_61_and_90_days\",
+    count(\"abundant\".\"_virt_filter_catalog_pk_5603765296623263\") as \"between_91_and_120_days\",
+    count(\"abundant\".\"_virt_filter_catalog_pk_5945567725420865\") as \"over_120_days\"
 FROM
-    abundant
+    \"abundant\"
 GROUP BY 
-    abundant.\"cc_name_lower\",
-    abundant.\"ship_mode_type\",
-    abundant.\"warehouse_short_name\"
+    \"abundant\".\"cc_name_lower\",
+    \"abundant\".\"ship_mode_type\",
+    \"abundant\".\"warehouse_short_name\"
 ORDER BY 
-    abundant.\"warehouse_short_name\" asc nulls first,
-    abundant.\"ship_mode_type\" asc nulls first,
-    abundant.\"cc_name_lower\" asc nulls first
+    \"abundant\".\"warehouse_short_name\" asc nulls first,
+    \"abundant\".\"ship_mode_type\" asc nulls first,
+    \"abundant\".\"cc_name_lower\" asc nulls first
 LIMIT (100)"""
