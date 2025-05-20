@@ -29,6 +29,7 @@ from trilogy.core.processing.node_generators import (
     gen_union_node,
     gen_unnest_node,
     gen_window_node,
+    gen_recursive_node,
 )
 from trilogy.core.processing.nodes import (
     ConstantNode,
@@ -150,6 +151,7 @@ def get_priority_concept(
             + [c for c in remaining_concept if c.derivation == Derivation.FILTER]
             # unnests are weird?
             + [c for c in remaining_concept if c.derivation == Derivation.UNNEST]
+            + [c for c in remaining_concept if c.derivation == Derivation.RECURSIVE]
             + [c for c in remaining_concept if c.derivation == Derivation.BASIC]
             # finally our plain selects
             + [
@@ -285,6 +287,20 @@ def generate_node(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating unnest node with optional {[x.address for x in local_optional]} and condition {conditions}"
         )
         return gen_unnest_node(
+            concept,
+            local_optional,
+            history=history,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+            source_concepts=source_concepts,
+            conditions=conditions,
+        )
+    elif concept.derivation == Derivation.RECURSIVE:
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating recursive node with optional {[x.address for x in local_optional]} and condition {conditions}"
+        )
+        return gen_recursive_node(
             concept,
             local_optional,
             history=history,
@@ -919,6 +935,7 @@ def _search_concepts(
                     Derivation.AGGREGATE,
                     Derivation.FILTER,
                     Derivation.WINDOW,
+                    Derivation.RECURSIVE,
                     Derivation.UNNEST,
                     Derivation.ROWSET,
                     Derivation.BASIC,

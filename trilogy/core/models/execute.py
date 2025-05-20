@@ -841,6 +841,9 @@ class QueryDatasource(BaseModel):
         return self.identifier
 
 
+class RecursiveCTE(CTE):
+    pass
+
 class UnionCTE(BaseModel):
     name: str
     source: QueryDatasource

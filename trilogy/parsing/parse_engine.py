@@ -605,13 +605,13 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def concept_declaration(self, meta: Meta, args) -> ConceptDeclarationStatement:
         metadata = Metadata()
-        modifiers = []
+        modifiers:list[Modifier] = []
         for arg in args:
             if isinstance(arg, Metadata):
                 metadata = arg
             if isinstance(arg, Modifier):
                 modifiers.append(arg)
-        name = args[1]
+        name:str = args[1]
         _, namespace, name, _ = parse_concept_reference(name, self.environment)
         concept = Concept(
             name=name,
@@ -1656,6 +1656,10 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fnullif(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.NULLIF, meta)
+
+    @v_args(meta=True)
+    def frecurse_edge(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.RECURSE_EDGE, meta)
 
     @v_args(meta=True)
     def unnest(self, meta, args):

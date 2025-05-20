@@ -47,6 +47,7 @@ class Derivation(Enum):
     FILTER = "filter"
     CONSTANT = "constant"
     UNNEST = "unnest"
+    RECURSIVE = "recursive"
     UNION = "union"
     ROOT = "root"
     ROWSET = "rowset"
@@ -118,6 +119,8 @@ class FunctionType(Enum):
     # structural
     UNNEST = "unnest"
 
+    RECURSE_EDGE = "recurse_edge"
+
     UNION = "union"
 
     ALIAS = "alias"
@@ -133,6 +136,7 @@ class FunctionType(Enum):
     IS_NULL = "isnull"
     NULLIF = "nullif"
     BOOL = "bool"
+
 
     # COMPLEX
     INDEX_ACCESS = "index_access"
@@ -233,6 +237,8 @@ class FunctionClass(Enum):
 
     ONE_TO_MANY = [FunctionType.UNNEST]
 
+    RECURSIVE = [FunctionType.RECURSE_EDGE]
+
 
 class Boolean(Enum):
     TRUE = "true"
@@ -328,6 +334,7 @@ class SourceType(Enum):
     GROUP = "group"
     WINDOW = "window"
     UNNEST = "unnest"
+    RECURSIVE = "recursive"
     CONSTANT = "constant"
     ROWSET = "rowset"
     MERGE = "merge"

@@ -13,6 +13,7 @@ from .merge_node import MergeNode
 from .select_node_v2 import ConstantNode, SelectNode
 from .union_node import UnionNode
 from .unnest_node import UnnestNode
+from .recursive_node import RecursiveNode
 from .window_node import WindowNode
 
 

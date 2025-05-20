@@ -27,6 +27,7 @@ from trilogy.core.models.execute import (
     Join,
     QueryDatasource,
     UnionCTE,
+    RecursiveCTE,
     UnnestJoin,
 )
 from trilogy.core.optimization import optimize_ctes
@@ -293,6 +294,10 @@ def datasource_to_cte(
             order_by=query_datasource.ordering,
         )
         return final
+    
+    cte_class = CTE
+    if query_datasource.source_type == SourceType.RECURSIVE:
+        cte_class = RecursiveCTE
 
     if len(query_datasource.datasources) > 1 or any(
         [isinstance(x, QueryDatasource) for x in query_datasource.datasources]
@@ -340,7 +345,7 @@ def datasource_to_cte(
     base_name, base_alias = resolve_cte_base_name_and_alias_v2(
         human_id, query_datasource, source_map, final_joins
     )
-    cte = CTE(
+    cte = cte_class(
         name=human_id,
         source=query_datasource,
         # output columns are what are selected/grouped by

@@ -1349,3 +1349,49 @@ select
 
     assert len(results) == 1
     assert results[0].avg_customer_orders == 1
+
+
+def test_recursive():
+    from trilogy.hooks.query_debugger import DebuggingHook
+    DebuggingHook()
+    query = """
+key id int;
+property id.parent int;
+
+# traverse parent-> id until you hit a null
+auto first_parent <- recurse_edge(parent, id);
+
+datasource edges (
+    id: id,
+    parent: parent
+)
+grain (id)
+query '''
+select 1 as id, null as parent
+union all
+select 2, 1
+union all
+select 3, 2
+union all
+select 4, 3
+union all 
+select 5, null
+union all
+select 6, 5
+''';
+
+"""
+    executor: Executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=Path(__file__).parent)
+    )
+
+    executor.parse_text(query)
+
+    assert executor.environment.concepts["first_parent"].derivation == Derivation.RECURSIVE
+    results = executor.execute_text(
+        """where
+first_parent = 1
+select id;
+"""
+    )[0].fetchall()
+    assert len(results) == 4

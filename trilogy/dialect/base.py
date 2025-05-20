@@ -48,7 +48,7 @@ from trilogy.core.models.core import (
 )
 from trilogy.core.models.datasource import Datasource, RawColumnExpr
 from trilogy.core.models.environment import Environment
-from trilogy.core.models.execute import CTE, CompiledCTE, UnionCTE
+from trilogy.core.models.execute import CTE, CompiledCTE, UnionCTE, RecursiveCTE
 from trilogy.core.processing.utility import (
     decompose_condition,
     is_scalar_condition,
@@ -173,6 +173,7 @@ FUNCTION_MAP = {
     FunctionType.INDEX_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.MAP_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.UNNEST: lambda x: f"unnest({x[0]})",
+    FunctionType.RECURSE_EDGE: lambda x: f"{x[0]}",
     FunctionType.ATTR_ACCESS: lambda x: f"""{x[0]}.{x[1].replace("'", "")}""",
     FunctionType.STRUCT: lambda x: f"{{{', '.join(struct_arg(x))}}}",
     FunctionType.ARRAY: lambda x: f"[{', '.join(x)}]",
@@ -247,7 +248,7 @@ FUNCTION_GRAIN_MATCH_MAP = {
 
 GENERIC_SQL_TEMPLATE = Template(
     """{%- if ctes %}
-WITH {% for cte in ctes %}
+WITH {% if recursive%} RECURSIVE {% endif %}{% for cte in ctes %}
 {{cte.name}} as (
 {{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if full_select -%}
@@ -1001,10 +1002,13 @@ class BaseDialect:
                 f"Did not get all output addresses in select - missing: {missing}, have"
                 f" {selected}"
             )
-
+        recursive = any(isinstance(x, RecursiveCTE) for x in query.ctes)
+        if not recursive:
+            raise ValueError('sdg')
         compiled_ctes = self.generate_ctes(query)
 
         final = self.SQL_TEMPLATE.render(
+            recursive = recursive,
             output=(
                 query.output_to if isinstance(query, ProcessedQueryPersist) else None
             ),
