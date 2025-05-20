@@ -324,10 +324,10 @@ class CTE(BaseModel):
         return self.source.name
 
     @property
-    def quote_address(self) -> dict[str, bool]:
+    def quote_address(self) -> bool:
         if self.is_root_datasource:
             root = self.source.datasources[0]
-            if isinstance(root.address, Address):
+            if isinstance(root, BuildDatasource) and isinstance(root.address, Address):
                 return not root.address.is_query
             return True
         elif not self.source.datasources:

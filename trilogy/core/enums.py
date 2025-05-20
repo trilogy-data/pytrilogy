@@ -181,7 +181,7 @@ class FunctionType(Enum):
     STRPOS = "strpos"
     CONTAINS = "contains"
 
-    #STRING REGEX
+    # STRING REGEX
     REGEXP_CONTAINS = "regexp_contains"
     REGEXP_EXTRACT = "regexp_extract"
     REGEXP_REPLACE = "regexp_replace"
