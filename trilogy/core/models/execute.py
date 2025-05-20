@@ -37,6 +37,7 @@ from trilogy.core.models.build import (
     LooseBuildConceptList,
 )
 from trilogy.core.models.datasource import Address
+from trilogy.core.utility import safe_quote
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[MODELS_EXECUTE]"
@@ -201,6 +202,7 @@ class CTE(BaseModel):
             self.base_name_override = ds_being_inlined.safe_location
             self.base_alias_override = ds_being_inlined.safe_identifier
 
+        # if we have a join to the parent, we need to remove it
         for join in self.joins:
             if isinstance(join, InstantiatedUnnestJoin):
                 continue
@@ -322,17 +324,20 @@ class CTE(BaseModel):
         return self.source.name
 
     @property
-    def quote_address(self) -> dict[str, bool]:
-
-        return {
-            candidate.safe_identifier: (
-                candidate.address.quoted and not candidate.address.is_query
-                if isinstance(candidate, BuildDatasource)
-                and isinstance(candidate.address, Address)
-                else False
-            )
-            for candidate in self.source.datasources
-        }
+    def quote_address(self) -> bool:
+        if self.is_root_datasource:
+            root = self.source.datasources[0]
+            if isinstance(root, BuildDatasource) and isinstance(root.address, Address):
+                return not root.address.is_query
+            return True
+        elif not self.source.datasources:
+            return False
+        base = self.source.datasources[0]
+        if isinstance(base, BuildDatasource):
+            if isinstance(base.address, Address):
+                return not base.address.is_query
+            return True
+        return True
 
     @property
     def base_alias(self) -> str:
@@ -926,8 +931,8 @@ class Join(BaseModel):
     def right_ref(self) -> str:
         if self.quote:
             if self.right_cte.identifier in self.inlined_ctes:
-                return f"{self.quote}{self.right_cte.source.datasources[0].safe_location}{self.quote} as {self.right_cte.source.datasources[0].safe_identifier}"
-            return self.right_cte.safe_identifier
+                return f"{safe_quote(self.right_cte.source.datasources[0].safe_location, self.quote)} as {self.quote}{self.right_cte.source.datasources[0].safe_identifier}{self.quote}"
+            return f"{self.quote}{self.right_cte.safe_identifier}{self.quote}"
         if self.right_cte.identifier in self.inlined_ctes:
             return f"{self.right_cte.source.datasources[0].safe_location} as {self.right_cte.source.datasources[0].safe_identifier}"
         return self.right_cte.safe_identifier

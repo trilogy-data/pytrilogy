@@ -49,7 +49,7 @@ address x_source;
         concept=concept,
     )
 
-    assert rendered == "x_source.`y` + 1"
+    assert rendered == "`x_source`.`y` + 1"
 
     env, _ = parse(
         """key x int;

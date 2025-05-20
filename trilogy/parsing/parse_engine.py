@@ -1744,8 +1744,26 @@ class ParseToObjects(Transformer):
         return self.function_factory.create_function(args, FunctionType.SUBSTRING, meta)
 
     @v_args(meta=True)
-    def lower(self, meta, args):
+    def flower(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.LOWER, meta)
+
+    @v_args(meta=True)
+    def fregexp_contains(self, meta, args):
+        return self.function_factory.create_function(
+            args, FunctionType.REGEXP_CONTAINS, meta
+        )
+
+    @v_args(meta=True)
+    def fregexp_extract(self, meta, args):
+        return self.function_factory.create_function(
+            args, FunctionType.REGEXP_EXTRACT, meta
+        )
+
+    @v_args(meta=True)
+    def fregexp_replace(self, meta, args):
+        return self.function_factory.create_function(
+            args, FunctionType.REGEXP_REPLACE, meta
+        )
 
     # date functions
     @v_args(meta=True)

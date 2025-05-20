@@ -1,106 +1,106 @@
 query_id = 97
-gen_length = 4153
+gen_length = 4323
 generated_sql = """
 
 WITH 
 abundant as (
 SELECT
-    catalog_sales_catalog_sales.\"CS_BILL_CUSTOMER_SK\" as \"catalog_sales_bill_customer_id\",
-    catalog_sales_catalog_sales.\"CS_ITEM_SK\" as \"catalog_sales_item_id\",
-    catalog_sales_catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\"
+    \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" as \"catalog_sales_bill_customer_id\",
+    \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" as \"catalog_sales_item_id\",
+    \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\"
 FROM
-    memory.catalog_sales as catalog_sales_catalog_sales
+    \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
 GROUP BY 
-    catalog_sales_catalog_sales.\"CS_BILL_CUSTOMER_SK\",
-    catalog_sales_catalog_sales.\"CS_ITEM_SK\",
-    catalog_sales_catalog_sales.\"CS_SOLD_DATE_SK\"),
+    \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\",
+    \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\",
+    \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\"),
 wakeful as (
 SELECT
-    store_sales_store_sales.\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
-    store_sales_store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\",
-    store_sales_store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
+    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
+    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
+    \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
 FROM
-    memory.store_sales as store_sales_store_sales
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
 GROUP BY 
-    store_sales_store_sales.\"SS_CUSTOMER_SK\",
-    store_sales_store_sales.\"SS_ITEM_SK\",
-    store_sales_store_sales.\"SS_SOLD_DATE_SK\"),
+    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\",
+    \"store_sales_store_sales\".\"SS_ITEM_SK\",
+    \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\"),
 uneven as (
 SELECT
-    abundant.\"catalog_sales_bill_customer_id\" as \"catalog_sales_bill_customer_id\",
-    abundant.\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
-    catalog_sales_date_date.\"D_MONTH_SEQ\" as \"catalog_sales_date_month_seq\"
+    \"abundant\".\"catalog_sales_bill_customer_id\" as \"catalog_sales_bill_customer_id\",
+    \"abundant\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
+    \"catalog_sales_date_date\".\"D_MONTH_SEQ\" as \"catalog_sales_date_month_seq\"
 FROM
-    abundant
-    INNER JOIN memory.date_dim as catalog_sales_date_date on abundant.\"catalog_sales_date_id\" = catalog_sales_date_date.\"D_DATE_SK\"
+    \"abundant\"
+    INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"abundant\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
 WHERE
-    catalog_sales_date_date.\"D_MONTH_SEQ\" >= 1200 and catalog_sales_date_date.\"D_MONTH_SEQ\" <= 1200 + 11
+    \"catalog_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"catalog_sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
 ),
 cheerful as (
 SELECT
-    store_sales_date_date.\"D_MONTH_SEQ\" as \"store_sales_date_month_seq\",
-    wakeful.\"store_sales_customer_id\" as \"store_sales_customer_id\",
-    wakeful.\"store_sales_item_id\" as \"store_sales_item_id\"
+    \"store_sales_date_date\".\"D_MONTH_SEQ\" as \"store_sales_date_month_seq\",
+    \"wakeful\".\"store_sales_customer_id\" as \"store_sales_customer_id\",
+    \"wakeful\".\"store_sales_item_id\" as \"store_sales_item_id\"
 FROM
-    wakeful
-    INNER JOIN memory.date_dim as store_sales_date_date on wakeful.\"store_sales_date_id\" = store_sales_date_date.\"D_DATE_SK\"
+    \"wakeful\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"wakeful\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
 WHERE
-    store_sales_date_date.\"D_MONTH_SEQ\" >= 1200 and store_sales_date_date.\"D_MONTH_SEQ\" <= 1200 + 11
+    \"store_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"store_sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
 ),
 yummy as (
 SELECT
-    uneven.\"catalog_sales_bill_customer_id\" as \"catalog_sales_bill_customer_id\",
-    uneven.\"catalog_sales_bill_customer_id\" as \"customer_id\",
-    uneven.\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
-    uneven.\"catalog_sales_item_id\" as \"item_id\"
+    \"uneven\".\"catalog_sales_bill_customer_id\" as \"catalog_sales_bill_customer_id\",
+    \"uneven\".\"catalog_sales_bill_customer_id\" as \"customer_id\",
+    \"uneven\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
+    \"uneven\".\"catalog_sales_item_id\" as \"item_id\"
 FROM
-    uneven
+    \"uneven\"
 GROUP BY 
-    uneven.\"catalog_sales_bill_customer_id\",
-    uneven.\"catalog_sales_date_month_seq\",
-    uneven.\"catalog_sales_item_id\"),
+    \"uneven\".\"catalog_sales_bill_customer_id\",
+    \"uneven\".\"catalog_sales_date_month_seq\",
+    \"uneven\".\"catalog_sales_item_id\"),
 thoughtful as (
 SELECT
-    cheerful.\"store_sales_customer_id\" as \"customer_id\",
-    cheerful.\"store_sales_customer_id\" as \"store_sales_customer_id\",
-    cheerful.\"store_sales_item_id\" as \"item_id\",
-    cheerful.\"store_sales_item_id\" as \"store_sales_item_id\"
+    \"cheerful\".\"store_sales_customer_id\" as \"customer_id\",
+    \"cheerful\".\"store_sales_customer_id\" as \"store_sales_customer_id\",
+    \"cheerful\".\"store_sales_item_id\" as \"item_id\",
+    \"cheerful\".\"store_sales_item_id\" as \"store_sales_item_id\"
 FROM
-    cheerful
+    \"cheerful\"
 GROUP BY 
-    cheerful.\"store_sales_customer_id\",
-    cheerful.\"store_sales_date_month_seq\",
-    cheerful.\"store_sales_item_id\"),
+    \"cheerful\".\"store_sales_customer_id\",
+    \"cheerful\".\"store_sales_date_month_seq\",
+    \"cheerful\".\"store_sales_item_id\"),
 juicy as (
 SELECT
-    coalesce(thoughtful.\"customer_id\",yummy.\"customer_id\") as \"merged_customer_id\",
-    coalesce(thoughtful.\"item_id\",yummy.\"item_id\") as \"merged_item_id\",
-    thoughtful.\"store_sales_customer_id\" as \"merged_store_sales_customer_id\",
-    thoughtful.\"store_sales_item_id\" as \"merged_store_sales_item_id\",
-    yummy.\"catalog_sales_bill_customer_id\" as \"merged_catalog_sales_bill_customer_id\",
-    yummy.\"catalog_sales_item_id\" as \"merged_catalog_sales_item_id\"
+    \"thoughtful\".\"store_sales_customer_id\" as \"merged_store_sales_customer_id\",
+    \"thoughtful\".\"store_sales_item_id\" as \"merged_store_sales_item_id\",
+    \"yummy\".\"catalog_sales_bill_customer_id\" as \"merged_catalog_sales_bill_customer_id\",
+    \"yummy\".\"catalog_sales_item_id\" as \"merged_catalog_sales_item_id\",
+    coalesce(\"thoughtful\".\"customer_id\",\"yummy\".\"customer_id\") as \"merged_customer_id\",
+    coalesce(\"thoughtful\".\"item_id\",\"yummy\".\"item_id\") as \"merged_item_id\"
 FROM
-    thoughtful
-    FULL JOIN yummy on thoughtful.\"customer_id\" = yummy.\"customer_id\" AND thoughtful.\"item_id\" = yummy.\"item_id\"
+    \"thoughtful\"
+    FULL JOIN \"yummy\" on \"thoughtful\".\"customer_id\" = \"yummy\".\"customer_id\" AND \"thoughtful\".\"item_id\" = \"yummy\".\"item_id\"
 GROUP BY 
-    coalesce(thoughtful.\"customer_id\",yummy.\"customer_id\"),
-    coalesce(thoughtful.\"item_id\",yummy.\"item_id\"),
-    thoughtful.\"store_sales_customer_id\",
-    thoughtful.\"store_sales_item_id\",
-    yummy.\"catalog_sales_bill_customer_id\",
-    yummy.\"catalog_sales_item_id\")
+    \"thoughtful\".\"store_sales_customer_id\",
+    \"thoughtful\".\"store_sales_item_id\",
+    \"yummy\".\"catalog_sales_bill_customer_id\",
+    \"yummy\".\"catalog_sales_item_id\",
+    coalesce(\"thoughtful\".\"customer_id\",\"yummy\".\"customer_id\"),
+    coalesce(\"thoughtful\".\"item_id\",\"yummy\".\"item_id\"))
 SELECT
     sum(CASE
-	WHEN juicy.\"merged_store_sales_customer_id\" is not null and juicy.\"merged_catalog_sales_bill_customer_id\" is null THEN 1
+	WHEN \"juicy\".\"merged_store_sales_customer_id\" is not null and \"juicy\".\"merged_catalog_sales_bill_customer_id\" is null THEN 1
 	ELSE 0
 	END) as \"store_sales\",
     sum(CASE
-	WHEN juicy.\"merged_store_sales_customer_id\" is null and juicy.\"merged_catalog_sales_bill_customer_id\" is not null THEN 1
+	WHEN \"juicy\".\"merged_store_sales_customer_id\" is null and \"juicy\".\"merged_catalog_sales_bill_customer_id\" is not null THEN 1
 	ELSE 0
 	END) as \"catalog_sales\",
     sum(CASE
-	WHEN juicy.\"merged_store_sales_customer_id\" is not null and juicy.\"merged_catalog_sales_bill_customer_id\" is not null THEN 1
+	WHEN \"juicy\".\"merged_store_sales_customer_id\" is not null and \"juicy\".\"merged_catalog_sales_bill_customer_id\" is not null THEN 1
 	ELSE 0
 	END) as \"both_sales\"
 FROM
-    juicy"""
+    \"juicy\""""

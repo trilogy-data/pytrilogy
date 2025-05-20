@@ -46,6 +46,36 @@ FROM a
 """
 
 
+def test_parse_datatype_in_datasource():
+    env = Environment()
+    x = ParseToObjects(environment=env)
+    test_text = """
+key x int;
+property x.timestamp timestamp;
+
+datasource funky (
+    x: x,
+    timestamp:timestamp)
+address fun;
+
+"""
+    x.set_text(test_text)
+
+    tokens = PARSER.parse(test_text)
+    x.transform(tokens)
+    x.run_second_parse_pass()
+
+
+TEXT2 = """
+const a <- 1;
+
+select
+    a,
+FROM a
+;
+"""
+
+
 def test_from_error():
     env = Environment()
 

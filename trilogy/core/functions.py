@@ -360,6 +360,24 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type=DataType.STRING,
         arg_count=1,
     ),
+    FunctionType.REGEXP_CONTAINS: FunctionConfig(
+        valid_inputs={DataType.STRING},
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.BOOL,
+        arg_count=2,
+    ),
+    FunctionType.REGEXP_EXTRACT: FunctionConfig(
+        valid_inputs={DataType.STRING},
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.STRING,
+        arg_count=2,
+    ),
+    FunctionType.REGEXP_REPLACE: FunctionConfig(
+        valid_inputs={DataType.STRING},
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.STRING,
+        arg_count=3,
+    ),
     FunctionType.DATE: FunctionConfig(
         valid_inputs={
             DataType.DATE,

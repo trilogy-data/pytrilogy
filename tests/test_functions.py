@@ -261,6 +261,9 @@ def test_string_functions(test_environment):
     property strpos_name <- strpos(category_name, 'a');
     property like_name <- like(category_name, 'a%');
     property like_alt <- category_name like 'a%';
+    property regex_contains <- regexp_contains(category_name, 'a');
+    property regex_substring <- regexp_extract(category_name, 'a');
+    property regex_replace <- regexp_replace(category_name, 'a', 'b');
 
     select
         test_name,

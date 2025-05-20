@@ -496,7 +496,7 @@ select x;
 
     results = Dialects.DUCK_DB.default_executor().generate_sql(text)[0]
 
-    assert '"abc:def" as test' in results
+    assert '"abc:def" as "test"' in results
 
     text = """
 key x int;
@@ -516,7 +516,7 @@ select x;
 
     results = Dialects.DUCK_DB.default_executor().generate_sql(text)[0]
 
-    assert "abcdef as test" in results, results
+    assert '"abcdef" as "test"' in results, results
 
 
 def test_datasource_where_equivalent():

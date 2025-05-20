@@ -181,6 +181,11 @@ class FunctionType(Enum):
     STRPOS = "strpos"
     CONTAINS = "contains"
 
+    # STRING REGEX
+    REGEXP_CONTAINS = "regexp_contains"
+    REGEXP_EXTRACT = "regexp_extract"
+    REGEXP_REPLACE = "regexp_replace"
+
     # Dates
     DATE = "date"
     DATETIME = "datetime"

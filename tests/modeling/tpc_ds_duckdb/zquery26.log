@@ -1,36 +1,36 @@
 query_id = 26
-gen_length = 1780
+gen_length = 1868
 generated_sql = """
 
 WITH 
 cooperative as (
 SELECT
-    cs_catalog_sales.\"CS_COUPON_AMT\" as \"cs_coupon_amt\",
-    cs_catalog_sales.\"CS_LIST_PRICE\" as \"cs_list_price\",
-    cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
-    cs_catalog_sales.\"CS_QUANTITY\" as \"cs_quantity\",
-    cs_catalog_sales.\"CS_SALES_PRICE\" as \"cs_sales_price\",
-    cs_item_items.\"I_ITEM_ID\" as \"cs_item_name\",
-    cs_item_items.\"I_ITEM_SK\" as \"cs_item_id\"
+    \"cs_catalog_sales\".\"CS_COUPON_AMT\" as \"cs_coupon_amt\",
+    \"cs_catalog_sales\".\"CS_LIST_PRICE\" as \"cs_list_price\",
+    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    \"cs_catalog_sales\".\"CS_QUANTITY\" as \"cs_quantity\",
+    \"cs_catalog_sales\".\"CS_SALES_PRICE\" as \"cs_sales_price\",
+    \"cs_item_items\".\"I_ITEM_ID\" as \"cs_item_name\",
+    \"cs_item_items\".\"I_ITEM_SK\" as \"cs_item_id\"
 FROM
-    memory.catalog_sales as cs_catalog_sales
-    INNER JOIN memory.date_dim as cs_date_date on cs_catalog_sales.\"CS_SOLD_DATE_SK\" = cs_date_date.\"D_DATE_SK\"
-    INNER JOIN memory.item as cs_item_items on cs_catalog_sales.\"CS_ITEM_SK\" = cs_item_items.\"I_ITEM_SK\"
-    INNER JOIN memory.promotion as cs_promotion_promotion on cs_catalog_sales.\"CS_PROMO_SK\" = cs_promotion_promotion.\"P_PROMO_SK\"
-    INNER JOIN memory.customer_demographics as cs_bill_customer_demographic_customer_demographics on cs_catalog_sales.\"CS_BILL_CDEMO_SK\" = cs_bill_customer_demographic_customer_demographics.\"CD_DEMO_SK\"
+    \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cs_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"promotion\" as \"cs_promotion_promotion\" on \"cs_catalog_sales\".\"CS_PROMO_SK\" = \"cs_promotion_promotion\".\"P_PROMO_SK\"
+    INNER JOIN \"memory\".\"customer_demographics\" as \"cs_bill_customer_demographic_customer_demographics\" on \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\" = \"cs_bill_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    cs_bill_customer_demographic_customer_demographics.\"CD_GENDER\" = 'M' and cs_bill_customer_demographic_customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and cs_bill_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( cs_promotion_promotion.\"P_CHANNEL_EMAIL\" = 'N' or cs_promotion_promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(cs_date_date.\"D_YEAR\" as int) = 2000
+    \"cs_bill_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'M' and \"cs_bill_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'S' and \"cs_bill_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'College' and ( \"cs_promotion_promotion\".\"P_CHANNEL_EMAIL\" = 'N' or \"cs_promotion_promotion\".\"P_CHANNEL_EVENT\" = 'N' ) and cast(\"cs_date_date\".\"D_YEAR\" as int) = 2000
 )
 SELECT
-    cooperative.\"cs_item_name\" as \"cs_item_name\",
-    avg(cooperative.\"cs_quantity\") as \"agg1\",
-    avg(cooperative.\"cs_list_price\") as \"agg2\",
-    avg(cooperative.\"cs_coupon_amt\") as \"agg3\",
-    avg(cooperative.\"cs_sales_price\") as \"agg4\"
+    \"cooperative\".\"cs_item_name\" as \"cs_item_name\",
+    avg(\"cooperative\".\"cs_quantity\") as \"agg1\",
+    avg(\"cooperative\".\"cs_list_price\") as \"agg2\",
+    avg(\"cooperative\".\"cs_coupon_amt\") as \"agg3\",
+    avg(\"cooperative\".\"cs_sales_price\") as \"agg4\"
 FROM
-    cooperative
+    \"cooperative\"
 GROUP BY 
-    cooperative.\"cs_item_name\"
+    \"cooperative\".\"cs_item_name\"
 ORDER BY 
-    cooperative.\"cs_item_name\" asc
+    \"cooperative\".\"cs_item_name\" asc
 LIMIT (100)"""
