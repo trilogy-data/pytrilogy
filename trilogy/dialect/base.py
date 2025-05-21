@@ -173,7 +173,7 @@ FUNCTION_MAP = {
     FunctionType.INDEX_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.MAP_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.UNNEST: lambda x: f"unnest({x[0]})",
-    FunctionType.RECURSE_EDGE: lambda x: f"{x[0]}",
+    FunctionType.RECURSE_EDGE: lambda x: f"CASE WHEN {x[1]} IS NULL THEN {x[0]} ELSE {x[1]} END",
     FunctionType.ATTR_ACCESS: lambda x: f"""{x[0]}.{x[1].replace("'", "")}""",
     FunctionType.STRUCT: lambda x: f"{{{', '.join(struct_arg(x))}}}",
     FunctionType.ARRAY: lambda x: f"[{', '.join(x)}]",
@@ -735,6 +735,18 @@ class BaseDialect:
                 ]
                 base_statement += "\nORDER BY " + ",".join(ordering)
             return CompiledCTE(name=cte.name, statement=base_statement)
+        elif isinstance(cte, RecursiveCTE):
+            base_statement = f"\nUNION ALL\n".join(
+                [self.render_cte(child).statement for child in cte.internal_ctes]
+            )
+            if cte.order_by:
+
+                ordering = [
+                    self.render_order_item(i, cte, final=True, alias=False)
+                    for i in cte.order_by.items
+                ]
+                base_statement += "\nORDER BY " + ",".join(ordering)
+            return CompiledCTE(name=cte.name, statement=base_statement)
         if self.UNNEST_MODE in (
             UnnestMode.CROSS_APPLY,
             UnnestMode.CROSS_JOIN,
@@ -981,7 +993,7 @@ class BaseDialect:
             return query.text
         select_columns: Dict[str, str] = {}
         cte_output_map = {}
-        selected = set()
+        selected:set[str] = set()
         output_addresses = [
             c.address
             for c in query.output_columns
@@ -1003,8 +1015,7 @@ class BaseDialect:
                 f" {selected}"
             )
         recursive = any(isinstance(x, RecursiveCTE) for x in query.ctes)
-        if not recursive:
-            raise ValueError('sdg')
+
         compiled_ctes = self.generate_ctes(query)
 
         final = self.SQL_TEMPLATE.render(

@@ -1359,7 +1359,7 @@ key id int;
 property id.parent int;
 
 # traverse parent-> id until you hit a null
-auto first_parent <- recurse_edge(parent, id);
+auto first_parent <- recurse_edge(id, parent);
 
 datasource edges (
     id: id,
@@ -1388,6 +1388,13 @@ select 6, 5
     executor.parse_text(query)
 
     assert executor.environment.concepts["first_parent"].derivation == Derivation.RECURSIVE
+    sql = executor.generate_sql(
+        """where
+first_parent = 1    
+select id;
+"""
+    )[-1]
+    assert sql == 'fun', sql
     results = executor.execute_text(
         """where
 first_parent = 1

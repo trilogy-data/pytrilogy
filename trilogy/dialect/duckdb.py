@@ -58,7 +58,7 @@ DUCKDB_TEMPLATE = Template(
     """{%- if output %}
 CREATE OR REPLACE TABLE {{ output.address.location }} AS
 {% endif %}{%- if ctes %}
-WITH {% if recursive%} RECURSIVE {% endif %} {% for cte in ctes %}
+WITH {% if recursive%}RECURSIVE{% endif %}{% for cte in ctes %}
 {{cte.name}} as (
 {{cte.statement}}){% if not loop.last %},{% else %}
 {% endif %}{% endfor %}{% endif %}

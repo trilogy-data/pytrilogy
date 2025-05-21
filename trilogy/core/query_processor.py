@@ -296,8 +296,10 @@ def datasource_to_cte(
         return final
     
     cte_class = CTE
+
     if query_datasource.source_type == SourceType.RECURSIVE:
         cte_class = RecursiveCTE
+        # extra_kwargs['left_recursive_concept'] = query_datasource.left
 
     if len(query_datasource.datasources) > 1 or any(
         [isinstance(x, QueryDatasource) for x in query_datasource.datasources]

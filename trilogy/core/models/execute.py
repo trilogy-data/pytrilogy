@@ -12,7 +12,7 @@ from pydantic import (
     model_validator,
 )
 
-from trilogy.constants import CONFIG, logger
+from trilogy.constants import CONFIG, logger, MagicConstants
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import (
     Derivation,
@@ -22,6 +22,8 @@ from trilogy.core.enums import (
     Modifier,
     Purpose,
     SourceType,
+    ComparisonOperator,
+    
 )
 from trilogy.core.models.build import (
     BuildComparison,
@@ -34,6 +36,7 @@ from trilogy.core.models.build import (
     BuildParamaterizedConceptReference,
     BuildParenthetical,
     BuildRowsetItem,
+    BuildExpr,
     LooseBuildConceptList,
 )
 from trilogy.core.models.datasource import Address
@@ -841,8 +844,77 @@ class QueryDatasource(BaseModel):
         return self.identifier
 
 
+class AliasedExpression(BaseModel):
+    expr: BuildExpr
+    alias: str
+
 class RecursiveCTE(CTE):
-    pass
+
+
+    @property
+    def internal_ctes(self) -> List[CTE]:
+        recursive_derived = [x for x in self.output_columns if x.derivation == Derivation.RECURSIVE][0]
+        left_recurse_concept = recursive_derived.lineage.concept_arguments[0]
+        right_recurse_concept = recursive_derived.lineage.concept_arguments[1]     
+        loop_input_cte = self.parent_ctes[0]
+        top = CTE(
+            name=self.name,
+            source=self.source,
+            output_columns=self.output_columns,
+            source_map=self.source_map,
+            grain=self.grain,
+            existence_source_map=self.existence_source_map,
+            parent_ctes=self.parent_ctes,
+            joins=self.joins,
+            condition=self.condition,
+            partial_concepts=self.partial_concepts,
+            hidden_concepts=self.hidden_concepts,
+            nullable_concepts=self.nullable_concepts,
+            join_derived_concepts=self.join_derived_concepts,
+            group_to_grain=self.group_to_grain,
+            order_by=self.order_by,
+            limit=self.limit,
+        )
+        bottom_source_map = {
+            left_recurse_concept.address: [top.identifier],
+            right_recurse_concept.address: [ loop_input_cte.identifier],
+            recursive_derived.address: self.source_map[recursive_derived.address],
+        }
+        bottom = CTE(
+            name=self.name,
+            source=self.source,
+            output_columns=self.output_columns,
+            source_map=bottom_source_map,
+            grain=self.grain,
+            existence_source_map=self.existence_source_map,
+            parent_ctes=[top, loop_input_cte],
+            joins=[
+                Join(
+                    right_cte= loop_input_cte,
+                    jointype=JoinType.LEFT_OUTER,
+                    joinkey_pairs=[
+                        CTEConceptPair(
+                            left=recursive_derived,
+                            right=left_recurse_concept,
+                            existing_datasource=self.parent_ctes[0].source,
+                            modifiers=[],
+                            cte= top
+                        )
+                    ],
+                )
+            ],
+            condition = BuildComparison(left=right_recurse_concept, right=MagicConstants.NULL, operator = ComparisonOperator.IS_NOT),
+            partial_concepts=self.partial_concepts,
+            hidden_concepts=self.hidden_concepts,
+            nullable_concepts=self.nullable_concepts,
+            join_derived_concepts=self.join_derived_concepts,
+            group_to_grain=self.group_to_grain,
+            order_by=self.order_by,
+            limit=self.limit,
+
+        )
+        return [top, bottom]
+
 
 class UnionCTE(BaseModel):
     name: str
