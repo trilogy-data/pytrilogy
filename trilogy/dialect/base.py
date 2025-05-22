@@ -739,13 +739,6 @@ class BaseDialect:
             base_statement = f"\nUNION ALL\n".join(
                 [self.render_cte(child).statement for child in cte.internal_ctes]
             )
-            if cte.order_by:
-
-                ordering = [
-                    self.render_order_item(i, cte, final=True, alias=False)
-                    for i in cte.order_by.items
-                ]
-                base_statement += "\nORDER BY " + ",".join(ordering)
             return CompiledCTE(name=cte.name, statement=base_statement)
         if self.UNNEST_MODE in (
             UnnestMode.CROSS_APPLY,
@@ -771,8 +764,8 @@ class BaseDialect:
                 for c in cte.output_columns
                 if c.address not in cte.hidden_concepts
             ]
-        if auto_sort:
-            select_columns = sorted(select_columns, key=lambda x: x)
+        # if auto_sort:
+        #     select_columns = sorted(select_columns, key=lambda x: x)
         source: str | None = cte.base_name
         if not cte.render_from_clause:
             if len(cte.joins) > 0:

@@ -1353,13 +1353,36 @@ select
 
 def test_recursive():
     from trilogy.hooks.query_debugger import DebuggingHook
+
     DebuggingHook()
     query = """
 key id int;
 property id.parent int;
 
+property id.label string;
+
 # traverse parent-> id until you hit a null
 auto first_parent <- recurse_edge(id, parent);
+
+datasource nodes (
+    id: id,
+    label: label
+)
+grain (id)
+query '''
+select 1 as id, 'A' as label
+union all
+select 2, 'B'
+union all
+select 3, 'C'
+union all
+select 4, 'D'
+union all
+select 5, 'E'
+union all
+select 6, 'F'
+''';
+
 
 datasource edges (
     id: id,
@@ -1387,18 +1410,21 @@ select 6, 5
 
     executor.parse_text(query)
 
-    assert executor.environment.concepts["first_parent"].derivation == Derivation.RECURSIVE
+    assert (
+        executor.environment.concepts["first_parent"].derivation == Derivation.RECURSIVE
+    )
     sql = executor.generate_sql(
         """where
 first_parent = 1    
-select id;
+select id, label
+order by label asc;
 """
     )[-1]
-    assert sql == 'fun', sql
     results = executor.execute_text(
         """where
 first_parent = 1
-select id;
+select id, label;
 """
     )[0].fetchall()
     assert len(results) == 4
+    assert results[0].label == "A"
