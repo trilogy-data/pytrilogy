@@ -8,8 +8,8 @@ SELECT
     \"returns_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
     \"returns_store_returns\".\"SR_ITEM_SK\" as \"returns_item_id\",
     \"returns_store_returns\".\"SR_RETURN_AMT\" as \"returns_return_amount\",
-    \"returns_store_returns\".\"SR_TICKET_NUMBER\" as \"returns_store_sales_ticket_number\",
-    \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_id\"
+    \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_id\",
+    \"returns_store_returns\".\"SR_TICKET_NUMBER\" as \"returns_store_sales_ticket_number\"
 FROM
     \"memory\".\"store_returns\" as \"returns_store_returns\"
     INNER JOIN \"memory\".\"store\" as \"returns_store_store\" on \"returns_store_returns\".\"SR_STORE_SK\" = \"returns_store_store\".\"S_STORE_SK\"
@@ -20,9 +20,9 @@ WHERE
 ),
 cooperative as (
 SELECT
+    sum(\"thoughtful\".\"returns_return_amount\") as \"total_returns\",
     \"thoughtful\".\"returns_customer_text_id\" as \"returns_customer_text_id\",
-    \"thoughtful\".\"returns_store_id\" as \"returns_store_id\",
-    sum(\"thoughtful\".\"returns_return_amount\") as \"total_returns\"
+    \"thoughtful\".\"returns_store_id\" as \"returns_store_id\"
 FROM
     \"thoughtful\"
 GROUP BY 
@@ -30,8 +30,8 @@ GROUP BY
     \"thoughtful\".\"returns_store_id\"),
 questionable as (
 SELECT
-    \"cooperative\".\"returns_store_id\" as \"returns_store_id\",
-    avg(\"cooperative\".\"total_returns\") as \"avg_store_returns\"
+    avg(\"cooperative\".\"total_returns\") as \"avg_store_returns\",
+    \"cooperative\".\"returns_store_id\" as \"returns_store_id\"
 FROM
     \"cooperative\"
 GROUP BY 
