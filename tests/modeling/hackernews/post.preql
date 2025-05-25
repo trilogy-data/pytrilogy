@@ -1,0 +1,36 @@
+
+
+key id int;  #The item's unique id.
+property id.title string;  #Story title
+property id.url string;  #Story url
+property id.text string;  #Story or comment text
+property id.dead bool;  #dead when true; can be false or null
+property id.by string;  #The username of the item's author.
+property id.score int;  #Story score.
+property id.time int;  #Unix time
+property id.create_time timestamp;  #Timestamp for the unix time
+property id.type string;  #type of details (comment comment_ranking poll story job pollopt)
+property id.parent int;  #Parent comment ID
+property id.descendants int;  #Number of story or poll descendants
+property id.ranking int;  #Comment ranking
+property id.deleted bool;  #deleted if true; can be false or null
+
+datasource full (
+	title:title,
+	url:url,
+	text:text,
+	dead:dead,
+	by:by,
+	score:score,
+	time:time,
+    timestamp:create_time,
+	type:type,
+	id:id,
+	parent:parent,
+	descendants:descendants,
+	ranking:ranking,
+	deleted:deleted,
+)
+grain (id)
+
+address `bigquery-public-data.hacker_news.full`;

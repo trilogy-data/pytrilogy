@@ -14,6 +14,7 @@ from .select_node_v2 import ConstantNode, SelectNode
 from .union_node import UnionNode
 from .unnest_node import UnnestNode
 from .window_node import WindowNode
+from .recursive_node import RecursiveNode
 
 
 class History(BaseModel):
@@ -194,4 +195,5 @@ __all__ = [
     "UnionNode",
     "History",
     "WhereSafetyNode",
+    "RecursiveNode",
 ]

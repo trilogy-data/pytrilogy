@@ -7,6 +7,8 @@ logger = getLogger("trilogy")
 
 DEFAULT_NAMESPACE = "local"
 
+RECURSIVE_GATING_CONCEPT = "_terminal"
+
 VIRTUAL_CONCEPT_PREFIX = "_virt"
 
 ENV_CACHE_NAME = ".preql_cache.json"

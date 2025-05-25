@@ -1,0 +1,44 @@
+key id int;
+property id.parent int;
+
+property id.label string;
+
+
+datasource nodes (
+    id: id,
+    label: label
+)
+grain (id)
+query '''
+select 1 as id, 'A' as label
+union all
+select 2, 'B'
+union all
+select 3, 'C'
+union all
+select 4, 'D'
+union all
+select 5, 'E'
+union all
+select 6, 'F'
+''';
+
+
+datasource edges (
+    id: id,
+    parent: parent
+)
+grain (id)
+query '''
+select 1 as id, null as parent
+union all
+select 2, 1
+union all
+select 3, 2
+union all
+select 4, 3
+union all 
+select 5, null
+union all
+select 6, 5
+''';

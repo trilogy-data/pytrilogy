@@ -10,6 +10,7 @@ from .synonym_node import gen_synonym_node
 from .union_node import gen_union_node
 from .unnest_node import gen_unnest_node
 from .window_node import gen_window_node
+from .recursive_node import gen_recursive_node
 
 __all__ = [
     "gen_filter_node",
@@ -24,4 +25,5 @@ __all__ = [
     "gen_rowset_node",
     "gen_multiselect_node",
     "gen_synonym_node",
+    "gen_recursive_node",
 ]

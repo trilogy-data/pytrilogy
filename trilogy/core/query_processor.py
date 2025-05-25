@@ -21,6 +21,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
     CTE,
+    RecursiveCTE,
     BaseJoin,
     CTEConceptPair,
     InstantiatedUnnestJoin,
@@ -294,6 +295,7 @@ def datasource_to_cte(
         )
         return final
 
+
     if len(query_datasource.datasources) > 1 or any(
         [isinstance(x, QueryDatasource) for x in query_datasource.datasources]
     ):
@@ -340,7 +342,12 @@ def datasource_to_cte(
     base_name, base_alias = resolve_cte_base_name_and_alias_v2(
         human_id, query_datasource, source_map, final_joins
     )
-    cte = CTE(
+    cte_class = CTE
+
+    if query_datasource.source_type == SourceType.RECURSIVE:
+        cte_class = RecursiveCTE
+        # extra_kwargs['left_recursive_concept'] = query_datasource.left
+    cte = cte_class(
         name=human_id,
         source=query_datasource,
         # output columns are what are selected/grouped by

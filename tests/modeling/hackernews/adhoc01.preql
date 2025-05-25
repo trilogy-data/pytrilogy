@@ -1,0 +1,3 @@
+import hackernews as hackernews;
+
+select hackernews.id, recurse_edge(hackernews.id, hackernews.parent) as parent limit 10;
