@@ -7,7 +7,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
-from trilogy.core.processing.nodes import History, StrategyNode, WhereSafetyNode
+from trilogy.core.processing.nodes import History, StrategyNode
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[GEN_BASIC_NODE]"

@@ -119,11 +119,13 @@ def gen_inverse_map(input: list[CTE | UnionCTE]) -> dict[str, list[CTE | UnionCT
 
     return inverse_map
 
+
 SENSITIVE_DERIVATIONS = [
     Derivation.UNNEST,
     Derivation.WINDOW,
     # Derivation.AGGREGATE,
 ]
+
 
 def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     # if isinstance(select, (PersistStatement, MultiSelectStatement)):

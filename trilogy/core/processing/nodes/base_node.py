@@ -291,7 +291,9 @@ class StrategyNode:
     def add_output_concept(self, concept: BuildConcept, rebuild: bool = True):
         return self.add_output_concepts([concept], rebuild)
 
-    def hide_output_concepts(self, concepts: List[BuildConcept] | list[str], rebuild: bool = True):
+    def hide_output_concepts(
+        self, concepts: List[BuildConcept] | list[str], rebuild: bool = True
+    ):
         for x in concepts:
             if isinstance(x, BuildConcept):
                 self.hidden_concepts.add(x.address)
@@ -475,10 +477,11 @@ class NodeJoin:
             f" {','.join([str(k) for k in self.concepts])}"
         )
 
+
 class WhereSafetyNode(StrategyNode):
-    '''Specialized node to be used to pad certain
+    """Specialized node to be used to pad certain
     select outputs that can't be immediately used in a where
-    clause; eg window functions. Will remove itself if not required.'''
+    clause; eg window functions. Will remove itself if not required."""
 
     def resolve(self) -> QueryDatasource:
         if not self.conditions and len(self.parents) == 1:
@@ -488,12 +491,12 @@ class WhereSafetyNode(StrategyNode):
             parent.set_output_concepts(self.output_concepts, rebuild=False)
             parent.hide_output_concepts(self.hidden_concepts, rebuild=False)
 
-            #these conditions 
+            # these conditions
             parent.set_preexisting_conditions(self.preexisting_conditions)
             # TODO: add a helper for this
             parent.ordering = self.ordering
-            
-            #actually build the node
+
+            # actually build the node
             parent.rebuild_cache()
             return parent.resolve()
         return super().resolve()
