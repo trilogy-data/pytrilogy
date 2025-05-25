@@ -127,4 +127,7 @@ def render_join(
         base_joinkeys = ["1=1"]
 
     joinkeys = " AND ".join(sorted(base_joinkeys))
-    return f"{join.jointype.value.upper()} JOIN {right_base} on {joinkeys}"
+    base = f"{join.jointype.value.upper()} JOIN {right_base} on {joinkeys}"
+    if join.condition:
+        base = f"{base} and {render_expr_func(join.condition, cte)}"
+    return base

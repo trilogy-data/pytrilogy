@@ -12,9 +12,16 @@ from pydantic import (
     model_validator,
 )
 
-from trilogy.constants import CONFIG, logger
+from trilogy.constants import (
+    CONFIG,
+    DEFAULT_NAMESPACE,
+    RECURSIVE_GATING_CONCEPT,
+    MagicConstants,
+    logger,
+)
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import (
+    ComparisonOperator,
     Derivation,
     FunctionType,
     Granularity,
@@ -22,29 +29,27 @@ from trilogy.core.enums import (
     Modifier,
     Purpose,
     SourceType,
-    ComparisonOperator,
 )
 from trilogy.core.models.build import (
+    BuildCaseElse,
+    BuildCaseWhen,
     BuildComparison,
     BuildConcept,
     BuildConditional,
     BuildDatasource,
+    BuildExpr,
     BuildFunction,
     BuildGrain,
     BuildOrderBy,
     BuildParamaterizedConceptReference,
     BuildParenthetical,
     BuildRowsetItem,
-    BuildCaseWhen,
-    BuildCaseElse,
-    BuildExpr,
+    DataType,
     LooseBuildConceptList,
-    DataType
 )
 from trilogy.core.models.datasource import Address
 from trilogy.core.utility import safe_quote
 from trilogy.utility import unique
-from trilogy.constants import DEFAULT_NAMESPACE, RECURSIVE_GATING_CONCEPT, MagicConstants
 
 LOGGER_PREFIX = "[MODELS_EXECUTE]"
 
@@ -932,7 +937,7 @@ class RecursiveCTE(CTE):
                     ),
                     BuildCaseElse(expr=right_recurse_concept),
                 ],
-                output_datatype=recursive_derived.lineage.datatype,
+                output_datatype=recursive_derived.datatype,
                 output_purpose=recursive_derived.purpose,
             ),
         )
@@ -946,8 +951,14 @@ class RecursiveCTE(CTE):
         recursive_derived = [
             x for x in self.output_columns if x.derivation == Derivation.RECURSIVE
         ][0]
+        if not isinstance(recursive_derived.lineage, BuildFunction):
+            raise SyntaxError(
+                "Recursive CTEs must have a function lineage, found"
+                f" {recursive_derived.lineage}"
+            )
         left_recurse_concept = recursive_derived.lineage.concept_arguments[0]
         right_recurse_concept = recursive_derived.lineage.concept_arguments[1]
+        parent_ctes: List[CTE | UnionCTE]
         if self.parent_ctes:
             base = self.parent_ctes[0]
             loop_input_cte = base
@@ -1080,6 +1091,10 @@ class UnionCTE(BaseModel):
         raise NotImplementedError
 
     @property
+    def identifier(self) -> str:
+        return self.name
+
+    @property
     def safe_identifier(self):
         return self.name
 
@@ -1100,6 +1115,7 @@ class Join(BaseModel):
     joinkey_pairs: List[CTEConceptPair] | None = None
     inlined_ctes: set[str] = Field(default_factory=set)
     quote: str | None = None
+    condition: BuildConditional | BuildComparison | BuildParenthetical | None = None
 
     def inline_cte(self, cte: CTE):
         self.inlined_ctes.add(cte.name)

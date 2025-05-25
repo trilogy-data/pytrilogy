@@ -1,21 +1,20 @@
 from typing import List
 
-from trilogy.constants import logger
+from trilogy.constants import DEFAULT_NAMESPACE, RECURSIVE_GATING_CONCEPT, logger
 from trilogy.core.models.build import (
+    BuildComparison,
     BuildConcept,
     BuildFunction,
-    BuildWhereClause,
-    BuildComparison,
     BuildGrain,
+    BuildWhereClause,
     ComparisonOperator,
     DataType,
     Derivation,
     Purpose,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.nodes import History, StrategyNode, RecursiveNode
+from trilogy.core.processing.nodes import History, RecursiveNode, StrategyNode
 from trilogy.core.processing.utility import padding
-from trilogy.constants import DEFAULT_NAMESPACE, RECURSIVE_GATING_CONCEPT
 
 LOGGER_PREFIX = "[GEN_RECURSIVE_NODE]"
 

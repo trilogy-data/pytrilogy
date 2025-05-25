@@ -1,9 +1,7 @@
 from pathlib import Path
 
-
 from trilogy import Dialects, Executor
 from trilogy.core.models.environment import Environment
-
 from trilogy.dialect.bigquery import BigqueryDialect
 
 working_path = Path(__file__).parent
@@ -39,5 +37,5 @@ def test_adhoc03():
 
     statement = engine.parse_text(text)[-1]
     generated = BigqueryDialect().compile_statement(statement)
-    #TODO: better test
+    # TODO: better test
     assert "WITH RECURSIVE" in generated

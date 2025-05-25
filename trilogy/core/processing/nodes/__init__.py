@@ -10,11 +10,11 @@ from .base_node import NodeJoin, StrategyNode, WhereSafetyNode
 from .filter_node import FilterNode
 from .group_node import GroupNode
 from .merge_node import MergeNode
+from .recursive_node import RecursiveNode
 from .select_node_v2 import ConstantNode, SelectNode
 from .union_node import UnionNode
 from .unnest_node import UnnestNode
 from .window_node import WindowNode
-from .recursive_node import RecursiveNode
 
 
 class History(BaseModel):

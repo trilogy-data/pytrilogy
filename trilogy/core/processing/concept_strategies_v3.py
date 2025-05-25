@@ -24,12 +24,12 @@ from trilogy.core.processing.node_generators import (
     gen_group_to_node,
     gen_merge_node,
     gen_multiselect_node,
+    gen_recursive_node,
     gen_rowset_node,
     gen_synonym_node,
     gen_union_node,
     gen_unnest_node,
     gen_window_node,
-    gen_recursive_node,
 )
 from trilogy.core.processing.nodes import (
     ConstantNode,

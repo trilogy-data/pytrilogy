@@ -21,12 +21,12 @@ from trilogy.core.models.build import (
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
     CTE,
-    RecursiveCTE,
     BaseJoin,
     CTEConceptPair,
     InstantiatedUnnestJoin,
     Join,
     QueryDatasource,
+    RecursiveCTE,
     UnionCTE,
     UnnestJoin,
 )
@@ -294,7 +294,6 @@ def datasource_to_cte(
             order_by=query_datasource.ordering,
         )
         return final
-
 
     if len(query_datasource.datasources) > 1 or any(
         [isinstance(x, QueryDatasource) for x in query_datasource.datasources]

@@ -1165,7 +1165,8 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         ):
             return Derivation.UNNEST
         elif (
-            lineage and isinstance(lineage, (BuildFunction, Function))
+            lineage
+            and isinstance(lineage, (BuildFunction, Function))
             and lineage.operator == FunctionType.RECURSE_EDGE
         ):
             return Derivation.RECURSIVE

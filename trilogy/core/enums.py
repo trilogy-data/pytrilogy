@@ -237,6 +237,7 @@ class FunctionClass(Enum):
 
     RECURSIVE = [FunctionType.RECURSE_EDGE]
 
+
 class Boolean(Enum):
     TRUE = "true"
     FALSE = "false"

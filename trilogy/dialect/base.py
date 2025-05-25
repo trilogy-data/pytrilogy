@@ -48,7 +48,7 @@ from trilogy.core.models.core import (
 )
 from trilogy.core.models.datasource import Datasource, RawColumnExpr
 from trilogy.core.models.environment import Environment
-from trilogy.core.models.execute import CTE, CompiledCTE, UnionCTE, RecursiveCTE
+from trilogy.core.models.execute import CTE, CompiledCTE, RecursiveCTE, UnionCTE
 from trilogy.core.processing.utility import (
     decompose_condition,
     is_scalar_condition,
@@ -273,7 +273,6 @@ ORDER BY{% for order in order_by %}
 {% endif %}{% endif %}
 """
 )
-
 
 
 def safe_get_cte_value(coalesce, cte: CTE | UnionCTE, c: BuildConcept, quote_char: str):
@@ -737,8 +736,8 @@ class BaseDialect:
                 base_statement += "\nORDER BY " + ",".join(ordering)
             return CompiledCTE(name=cte.name, statement=base_statement)
         elif isinstance(cte, RecursiveCTE):
-            base_statement = f"\nUNION ALL\n".join(
-                [self.render_cte(child).statement for child in cte.internal_ctes]
+            base_statement = "\nUNION ALL\n".join(
+                [self.render_cte(child, False).statement for child in cte.internal_ctes]
             )
             return CompiledCTE(name=cte.name, statement=base_statement)
         if self.UNNEST_MODE in (
@@ -1008,7 +1007,7 @@ class BaseDialect:
                 f"Did not get all output addresses in select - missing: {missing}, have"
                 f" {selected}"
             )
-        
+
         recursive = any(isinstance(x, RecursiveCTE) for x in query.ctes)
 
         compiled_ctes = self.generate_ctes(query)

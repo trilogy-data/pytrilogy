@@ -1369,7 +1369,7 @@ auto first_parent <- recurse_edge(id, parent);"""
     assert (
         executor.environment.concepts["first_parent"].derivation == Derivation.RECURSIVE
     )
-    sql = executor.generate_sql(
+    executor.generate_sql(
         """where
 first_parent = 1    
 select id, label
@@ -1408,10 +1408,7 @@ merge first_parent into parent.id;
     )
 
     recursive = executor.environment.alias_origin_lookup["local.first_parent"]
-    assert (
-        recursive.derivation == Derivation.RECURSIVE
-    ), "recursive should be recursive"
-    
+    assert recursive.derivation == Derivation.RECURSIVE, "recursive should be recursive"
 
     results = executor.execute_text(
         """where

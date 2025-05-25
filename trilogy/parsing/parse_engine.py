@@ -1656,13 +1656,13 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fnullif(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.NULLIF, meta)
-    
+
     @v_args(meta=True)
     def frecurse_edge(self, meta, args):
         return self.function_factory.create_function(
             args, FunctionType.RECURSE_EDGE, meta
         )
-    
+
     @v_args(meta=True)
     def unnest(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.UNNEST, meta)
