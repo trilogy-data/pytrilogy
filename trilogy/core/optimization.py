@@ -172,6 +172,8 @@ def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
                 return None
             # this maybe needs to be recursive if we flatten a ton of derivation
             # into one CTE
+            if not x.lineage:
+                continue
             for z in x.lineage.concept_arguments:
                 # if it was preexisting in the parent, it's safe
                 if z.address in direct_parent.source.input_concepts:

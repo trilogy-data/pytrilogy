@@ -292,7 +292,7 @@ class StrategyNode:
         return self.add_output_concepts([concept], rebuild)
 
     def hide_output_concepts(
-        self, concepts: List[BuildConcept] | list[str], rebuild: bool = True
+        self, concepts: List[BuildConcept] | list[str] | set[str], rebuild: bool = True
     ):
         for x in concepts:
             if isinstance(x, BuildConcept):
@@ -492,7 +492,8 @@ class WhereSafetyNode(StrategyNode):
             parent.hide_output_concepts(self.hidden_concepts, rebuild=False)
 
             # these conditions
-            parent.set_preexisting_conditions(self.preexisting_conditions)
+            if self.preexisting_conditions:
+                parent.set_preexisting_conditions(self.preexisting_conditions)
             # TODO: add a helper for this
             parent.ordering = self.ordering
 
