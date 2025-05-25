@@ -119,6 +119,11 @@ def gen_inverse_map(input: list[CTE | UnionCTE]) -> dict[str, list[CTE | UnionCT
 
     return inverse_map
 
+SENSITIVE_DERIVATIONS = [
+    Derivation.UNNEST,
+    Derivation.WINDOW,
+    # Derivation.AGGREGATE,
+]
 
 def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     # if isinstance(select, (PersistStatement, MultiSelectStatement)):
@@ -151,21 +156,29 @@ def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     ]
     condition_arguments = cte.condition.row_arguments if cte.condition else []
     for x in derived_concepts:
-        if x.derivation == Derivation.WINDOW:
-            return None
-        if x.derivation == Derivation.UNNEST:
-            return None
-        if x.derivation == Derivation.AGGREGATE:
+        if x.derivation in SENSITIVE_DERIVATIONS:
             return None
     for x in parent_derived_concepts:
         if x.address not in condition_arguments:
             continue
-        if x.derivation == Derivation.UNNEST:
+        if x.derivation in SENSITIVE_DERIVATIONS:
             return None
-        if x.derivation == Derivation.WINDOW:
-            return None
+    for x in condition_arguments:
+        # if it's derived in the parent
+        if x.address in parent_derived_concepts:
+            if x.derivation in SENSITIVE_DERIVATIONS:
+                return None
+            # this maybe needs to be recursive if we flatten a ton of derivation
+            # into one CTE
+            for z in x.lineage.concept_arguments:
+                # if it was preexisting in the parent, it's safe
+                if z.address in direct_parent.source.input_concepts:
+                    continue
+                # otherwise if it's dangerous, play it safe.
+                if z.derivation in SENSITIVE_DERIVATIONS:
+                    return None
     logger.info(
-        f"[Optimization][EarlyReturn] Removing redundant output CTE with derived_concepts {[x.address for x in derived_concepts]}"
+        f"[Optimization][EarlyReturn] Removing redundant output CTE {cte.name} with derived_concepts {[x.address for x in derived_concepts]}"
     )
     return direct_parent
 
