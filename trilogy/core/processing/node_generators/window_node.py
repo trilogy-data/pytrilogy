@@ -11,7 +11,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
     gen_enrichment_node,
 )
-from trilogy.core.processing.nodes import History, StrategyNode, WindowNode
+from trilogy.core.processing.nodes import History, StrategyNode, WindowNode, WhereSafetyNode
 from trilogy.core.processing.utility import create_log_lambda, padding
 from trilogy.utility import unique
 
@@ -134,7 +134,7 @@ def gen_window_node(
     _window_node.rebuild_cache()
     _window_node.resolve()
 
-    window_node = StrategyNode(
+    window_node = WhereSafetyNode(
         input_concepts=[concept] + additional_outputs + parent_concepts + targets,
         output_concepts=[concept] + additional_outputs + parent_concepts + targets,
         environment=environment,

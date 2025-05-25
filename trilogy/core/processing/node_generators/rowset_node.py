@@ -95,9 +95,7 @@ def gen_rowset_node(
         f"{padding(depth)}{LOGGER_PREFIX} hiding {final_hidden} local optional {local_optional}"
     )
     node.hide_output_concepts(final_hidden)
-    assert node.resolution_cache
-    # assume grain to be output of select
-    # but don't include anything hidden(the non-rowset concepts)
+
     node.grain = BuildGrain.from_concepts(
         [
             x
