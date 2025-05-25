@@ -190,6 +190,9 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type_function=get_unnest_output_type,
         arg_count=1,
     ),
+    FunctionType.RECURSE_EDGE: FunctionConfig(
+        arg_count=2,
+    ),
     FunctionType.GROUP: FunctionConfig(
         arg_count=-1,
         output_type_function=lambda args: get_output_type_at_index(args, 0),

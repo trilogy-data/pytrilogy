@@ -59,8 +59,9 @@ BQ_SQL_TEMPLATE = Template(
     """{%- if output %}
 CREATE OR REPLACE TABLE {{ output.address.location }} AS
 {% endif %}{%- if ctes %}
-WITH {% for cte in ctes %}
-{{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
+WITH {% if recursive%}RECURSIVE{% endif %}{% for cte in ctes %}
+{{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% else%}
+{% endif %}{% endfor %}{% endif %}
 {%- if full_select -%}
 {{full_select}}
 {%- else -%}
@@ -68,10 +69,8 @@ SELECT
 {%- for select in select_columns %}
     {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
 {% if base %}FROM
-    {{ base }}{% endif %}{% if joins %}
-{% for join in joins %}
-{{ join }}
-{% endfor %}{% endif %}
+    {{ base }}{% endif %}{% if joins %}{% for join in joins %}
+    {{ join }}{% endfor %}{% endif %}
 {% if where %}WHERE
     {{ where }}
 {% endif %}

@@ -476,6 +476,9 @@ def function_to_concept(
     elif parent.operator == FunctionType.UNNEST:
         derivation = Derivation.UNNEST
         granularity = Granularity.MULTI_ROW
+    elif parent.operator == FunctionType.RECURSE_EDGE:
+        derivation = Derivation.RECURSIVE
+        granularity = Granularity.MULTI_ROW
     elif parent.operator in FunctionClass.SINGLE_ROW.value:
         derivation = Derivation.CONSTANT
         granularity = Granularity.SINGLE_ROW

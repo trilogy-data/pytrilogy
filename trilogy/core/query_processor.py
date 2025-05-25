@@ -26,6 +26,7 @@ from trilogy.core.models.execute import (
     InstantiatedUnnestJoin,
     Join,
     QueryDatasource,
+    RecursiveCTE,
     UnionCTE,
     UnnestJoin,
 )
@@ -340,7 +341,12 @@ def datasource_to_cte(
     base_name, base_alias = resolve_cte_base_name_and_alias_v2(
         human_id, query_datasource, source_map, final_joins
     )
-    cte = CTE(
+    cte_class = CTE
+
+    if query_datasource.source_type == SourceType.RECURSIVE:
+        cte_class = RecursiveCTE
+        # extra_kwargs['left_recursive_concept'] = query_datasource.left
+    cte = cte_class(
         name=human_id,
         source=query_datasource,
         # output columns are what are selected/grouped by

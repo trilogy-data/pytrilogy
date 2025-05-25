@@ -51,6 +51,7 @@ class Derivation(Enum):
     ROOT = "root"
     ROWSET = "rowset"
     MULTISELECT = "multiselect"
+    RECURSIVE = "recursive"
 
 
 class Granularity(Enum):
@@ -117,6 +118,7 @@ class FunctionType(Enum):
 
     # structural
     UNNEST = "unnest"
+    RECURSE_EDGE = "recurse_edge"
 
     UNION = "union"
 
@@ -233,6 +235,8 @@ class FunctionClass(Enum):
 
     ONE_TO_MANY = [FunctionType.UNNEST]
 
+    RECURSIVE = [FunctionType.RECURSE_EDGE]
+
 
 class Boolean(Enum):
     TRUE = "true"
@@ -333,6 +337,7 @@ class SourceType(Enum):
     MERGE = "merge"
     BASIC = "basic"
     UNION = "union"
+    RECURSIVE = "recursive"
 
 
 class ShowCategory(Enum):

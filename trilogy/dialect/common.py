@@ -2,15 +2,19 @@ from typing import Callable
 
 from trilogy.core.enums import Modifier, UnnestMode
 from trilogy.core.models.build import (
+    BuildComparison,
     BuildConcept,
+    BuildConditional,
     BuildFunction,
     BuildParamaterizedConceptReference,
+    BuildParenthetical,
 )
 from trilogy.core.models.datasource import RawColumnExpr
 from trilogy.core.models.execute import (
     CTE,
     InstantiatedUnnestJoin,
     Join,
+    UnionCTE,
 )
 
 
@@ -49,7 +53,7 @@ def render_unnest(
 def render_join_concept(
     name: str,
     quote_character: str,
-    cte: CTE,
+    cte: CTE | UnionCTE,
     concept: BuildConcept,
     render_expr,
     inlined_ctes: set[str],
@@ -71,7 +75,16 @@ def render_join(
     join: Join | InstantiatedUnnestJoin,
     quote_character: str,
     render_expr_func: Callable[
-        [BuildConcept | BuildParamaterizedConceptReference | BuildFunction, CTE], str
+        [
+            BuildConcept
+            | BuildParamaterizedConceptReference
+            | BuildFunction
+            | BuildConditional
+            | BuildComparison
+            | BuildParenthetical,
+            CTE,
+        ],
+        str,
     ],
     cte: CTE,
     unnest_mode: UnnestMode = UnnestMode.CROSS_APPLY,
@@ -127,4 +140,7 @@ def render_join(
         base_joinkeys = ["1=1"]
 
     joinkeys = " AND ".join(sorted(base_joinkeys))
-    return f"{join.jointype.value.upper()} JOIN {right_base} on {joinkeys}"
+    base = f"{join.jointype.value.upper()} JOIN {right_base} on {joinkeys}"
+    if join.condition:
+        base = f"{base} and {render_expr_func(join.condition, cte)}"
+    return base

@@ -1349,3 +1349,81 @@ select
 
     assert len(results) == 1
     assert results[0].avg_customer_orders == 1
+
+
+def test_recursive():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+
+    executor: Executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=Path(__file__).parent)
+    )
+
+    executor.environment.parse(
+        """import recursive;
+# traverse parent-> id until you hit a null
+auto first_parent <- recurse_edge(id, parent);"""
+    )
+
+    assert (
+        executor.environment.concepts["first_parent"].derivation == Derivation.RECURSIVE
+    )
+    executor.generate_sql(
+        """where
+first_parent = 1    
+select id, label
+order by label asc;
+"""
+    )[-1]
+    results = executor.execute_text(
+        """where
+first_parent = 1
+select id, label;
+"""
+    )[0].fetchall()
+    assert len(results) == 4
+    assert results[0].label == "A"
+
+
+def test_recursive_enrichment():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+
+    executor: Executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=Path(__file__).parent)
+    )
+
+    executor.environment.parse(
+        """
+import recursive;
+import recursive as parent;
+# traverse parent-> id until you hit a null
+auto first_parent <- recurse_edge(id, parent);  
+
+merge first_parent into parent.id;                 
+                               
+                               """
+    )
+
+    recursive = executor.environment.alias_origin_lookup["local.first_parent"]
+    assert recursive.derivation == Derivation.RECURSIVE, "recursive should be recursive"
+
+    results = executor.execute_text(
+        """where
+first_parent = 1
+select id, parent.label;
+"""
+    )[0].fetchall()
+    assert len(results) == 4
+    assert results[-1].parent_label == "A"
+
+    results = executor.execute_text(
+        """where
+parent.label = 'A'
+select count(id) as a_children;
+"""
+    )[0].fetchall()
+    assert len(results) == 1
+    assert results[0].a_children == 4
