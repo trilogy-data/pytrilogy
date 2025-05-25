@@ -3,7 +3,7 @@ from trilogy.core.enums import BooleanOperator, Derivation
 from trilogy.core.models.build import (
     BuildConditional,
 )
-from trilogy.core.models.execute import CTE, UnionCTE
+from trilogy.core.models.execute import CTE, RecursiveCTE, UnionCTE
 from trilogy.core.optimizations import (
     InlineDatasource,
     OptimizationRule,
@@ -123,7 +123,7 @@ def gen_inverse_map(input: list[CTE | UnionCTE]) -> dict[str, list[CTE | UnionCT
 SENSITIVE_DERIVATIONS = [
     Derivation.UNNEST,
     Derivation.WINDOW,
-    # Derivation.AGGREGATE,
+    Derivation.RECURSIVE,
 ]
 
 
@@ -133,7 +133,7 @@ def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     if len(cte.parent_ctes) != 1:
         return None
     direct_parent = cte.parent_ctes[0]
-    if isinstance(direct_parent, UnionCTE):
+    if isinstance(direct_parent, (UnionCTE, RecursiveCTE)):
         return None
 
     output_addresses = set([x.address for x in cte.output_columns])

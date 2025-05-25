@@ -996,6 +996,7 @@ class RecursiveCTE(CTE):
             order_by=self.order_by,
             limit=self.limit,
         )
+        top_cte_array: list[CTE | UnionCTE] = [top]
         bottom_source_map = {
             left_recurse_concept.address: [top.identifier],
             right_recurse_concept.address: [parent_identifier],
@@ -1010,7 +1011,7 @@ class RecursiveCTE(CTE):
             source_map=bottom_source_map,
             grain=self.grain,
             existence_source_map=self.existence_source_map,
-            parent_ctes=[top] + parent_ctes,
+            parent_ctes=top_cte_array + parent_ctes,
             joins=[
                 Join(
                     right_cte=loop_input_cte,
@@ -1109,7 +1110,7 @@ class UnionCTE(BaseModel):
 
 
 class Join(BaseModel):
-    right_cte: CTE
+    right_cte: CTE | UnionCTE
     jointype: JoinType
     left_cte: CTE | None = None
     joinkey_pairs: List[CTEConceptPair] | None = None
