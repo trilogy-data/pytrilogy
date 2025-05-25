@@ -291,9 +291,14 @@ class StrategyNode:
     def add_output_concept(self, concept: BuildConcept, rebuild: bool = True):
         return self.add_output_concepts([concept], rebuild)
 
-    def hide_output_concepts(self, concepts: List[BuildConcept], rebuild: bool = True):
+    def hide_output_concepts(
+        self, concepts: List[BuildConcept] | list[str] | set[str], rebuild: bool = True
+    ):
         for x in concepts:
-            self.hidden_concepts.add(x.address)
+            if isinstance(x, BuildConcept):
+                self.hidden_concepts.add(x.address)
+            else:
+                self.hidden_concepts.add(x)
         if rebuild:
             self.rebuild_cache()
         return self
@@ -471,3 +476,28 @@ class NodeJoin:
             f" {self.right_node} on"
             f" {','.join([str(k) for k in self.concepts])}"
         )
+
+
+class WhereSafetyNode(StrategyNode):
+    """Specialized node to be used to pad certain
+    select outputs that can't be immediately used in a where
+    clause; eg window functions. Will remove itself if not required."""
+
+    def resolve(self) -> QueryDatasource:
+        if not self.conditions and len(self.parents) == 1:
+            parent = self.parents[0]
+            parent = parent.copy()
+            # avoid performance hit by not rebuilding until end
+            parent.set_output_concepts(self.output_concepts, rebuild=False)
+            parent.hide_output_concepts(self.hidden_concepts, rebuild=False)
+
+            # these conditions
+            if self.preexisting_conditions:
+                parent.set_preexisting_conditions(self.preexisting_conditions)
+            # TODO: add a helper for this
+            parent.ordering = self.ordering
+
+            # actually build the node
+            parent.rebuild_cache()
+            return parent.resolve()
+        return super().resolve()

@@ -1,5 +1,5 @@
 query_id = 2
-gen_length = 8626
+gen_length = 7241
 generated_sql = """
 
 WITH 
@@ -132,44 +132,29 @@ FROM
 juicy as (
 SELECT
     \"yummy\".\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
-    \"yummy\".\"yearly_agg_monday_sales\" as \"yearly_agg_monday_sales\",
-    lead(\"yummy\".\"yearly_agg_friday_sales\", 53) over (order by \"yummy\".\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_840125329441915\",
-    lead(\"yummy\".\"yearly_agg_monday_sales\", 53) over (order by \"yummy\".\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_1831355371097660\",
-    lead(\"yummy\".\"yearly_agg_saturday_sales\", 53) over (order by \"yummy\".\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_2858098921271386\",
-    lead(\"yummy\".\"yearly_agg_sunday_sales\", 53) over (order by \"yummy\".\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_4780721583408487\",
-    lead(\"yummy\".\"yearly_agg_thursday_sales\", 53) over (order by \"yummy\".\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_8474766537336377\",
-    lead(\"yummy\".\"yearly_agg_tuesday_sales\", 53) over (order by \"yummy\".\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_3375245317408835\",
-    lead(\"yummy\".\"yearly_agg_wednesday_sales\", 53) over (order by \"yummy\".\"yearly_agg_date_week_seq\" asc ) as \"_virt_window_lead_6759541963679355\"
+    round(\"yummy\".\"yearly_agg_friday_sales\" / (lead(\"yummy\".\"yearly_agg_friday_sales\", 53) over (order by \"yummy\".\"yearly_agg_date_week_seq\" asc )),2) as \"friday_increase\",
+    round(\"yummy\".\"yearly_agg_monday_sales\" / (lead(\"yummy\".\"yearly_agg_monday_sales\", 53) over (order by \"yummy\".\"yearly_agg_date_week_seq\" asc )),2) as \"monday_increase\",
+    round(\"yummy\".\"yearly_agg_saturday_sales\" / (lead(\"yummy\".\"yearly_agg_saturday_sales\", 53) over (order by \"yummy\".\"yearly_agg_date_week_seq\" asc )),2) as \"saturday_increase\",
+    round(\"yummy\".\"yearly_agg_sunday_sales\" / (lead(\"yummy\".\"yearly_agg_sunday_sales\", 53) over (order by \"yummy\".\"yearly_agg_date_week_seq\" asc )),2) as \"sunday_increase\",
+    round(\"yummy\".\"yearly_agg_thursday_sales\" / (lead(\"yummy\".\"yearly_agg_thursday_sales\", 53) over (order by \"yummy\".\"yearly_agg_date_week_seq\" asc )),2) as \"thursday_increase\",
+    round(\"yummy\".\"yearly_agg_tuesday_sales\" / (lead(\"yummy\".\"yearly_agg_tuesday_sales\", 53) over (order by \"yummy\".\"yearly_agg_date_week_seq\" asc )),2) as \"tuesday_increase\",
+    round(\"yummy\".\"yearly_agg_wednesday_sales\" / (lead(\"yummy\".\"yearly_agg_wednesday_sales\", 53) over (order by \"yummy\".\"yearly_agg_date_week_seq\" asc )),2) as \"wednesday_increase\"
 FROM
-    \"yummy\"),
-vacuous as (
+    \"yummy\")
 SELECT
-    \"juicy\".\"_virt_window_lead_1831355371097660\" as \"_virt_window_lead_1831355371097660\",
-    \"juicy\".\"_virt_window_lead_2858098921271386\" as \"_virt_window_lead_2858098921271386\",
-    \"juicy\".\"_virt_window_lead_3375245317408835\" as \"_virt_window_lead_3375245317408835\",
-    \"juicy\".\"_virt_window_lead_4780721583408487\" as \"_virt_window_lead_4780721583408487\",
-    \"juicy\".\"_virt_window_lead_6759541963679355\" as \"_virt_window_lead_6759541963679355\",
-    \"juicy\".\"_virt_window_lead_840125329441915\" as \"_virt_window_lead_840125329441915\",
-    \"juicy\".\"_virt_window_lead_8474766537336377\" as \"_virt_window_lead_8474766537336377\",
     \"juicy\".\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
-    \"juicy\".\"yearly_agg_monday_sales\" as \"yearly_agg_monday_sales\"
+    \"juicy\".\"sunday_increase\" as \"sunday_increase\",
+    \"juicy\".\"monday_increase\" as \"monday_increase\",
+    \"juicy\".\"tuesday_increase\" as \"tuesday_increase\",
+    \"juicy\".\"wednesday_increase\" as \"wednesday_increase\",
+    \"juicy\".\"thursday_increase\" as \"thursday_increase\",
+    \"juicy\".\"friday_increase\" as \"friday_increase\",
+    \"juicy\".\"saturday_increase\" as \"saturday_increase\"
 FROM
-    \"juicy\")
-SELECT
-    \"yummy\".\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
-    round(\"yummy\".\"yearly_agg_sunday_sales\" / (\"vacuous\".\"_virt_window_lead_4780721583408487\"),2) as \"sunday_increase\",
-    round(\"yummy\".\"yearly_agg_monday_sales\" / (\"vacuous\".\"_virt_window_lead_1831355371097660\"),2) as \"monday_increase\",
-    round(\"yummy\".\"yearly_agg_tuesday_sales\" / (\"vacuous\".\"_virt_window_lead_3375245317408835\"),2) as \"tuesday_increase\",
-    round(\"yummy\".\"yearly_agg_wednesday_sales\" / (\"vacuous\".\"_virt_window_lead_6759541963679355\"),2) as \"wednesday_increase\",
-    round(\"yummy\".\"yearly_agg_thursday_sales\" / (\"vacuous\".\"_virt_window_lead_8474766537336377\"),2) as \"thursday_increase\",
-    round(\"yummy\".\"yearly_agg_friday_sales\" / (\"vacuous\".\"_virt_window_lead_840125329441915\"),2) as \"friday_increase\",
-    round(\"yummy\".\"yearly_agg_saturday_sales\" / (\"vacuous\".\"_virt_window_lead_2858098921271386\"),2) as \"saturday_increase\"
-FROM
-    \"vacuous\"
-    LEFT OUTER JOIN \"yummy\" on \"vacuous\".\"yearly_agg_date_week_seq\" = \"yummy\".\"yearly_agg_date_week_seq\" AND \"vacuous\".\"yearly_agg_monday_sales\" = \"yummy\".\"yearly_agg_monday_sales\"
+    \"juicy\"
 WHERE
-    round(\"yummy\".\"yearly_agg_sunday_sales\" / (\"vacuous\".\"_virt_window_lead_4780721583408487\"),2) is not null
+    \"juicy\".\"sunday_increase\" is not null
 
 ORDER BY 
-    \"yummy\".\"yearly_agg_date_week_seq\" asc nulls first
+    \"juicy\".\"yearly_agg_date_week_seq\" asc nulls first
 LIMIT (100)"""

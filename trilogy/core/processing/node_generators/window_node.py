@@ -11,7 +11,12 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
     gen_enrichment_node,
 )
-from trilogy.core.processing.nodes import History, StrategyNode, WindowNode
+from trilogy.core.processing.nodes import (
+    History,
+    StrategyNode,
+    WhereSafetyNode,
+    WindowNode,
+)
 from trilogy.core.processing.utility import create_log_lambda, padding
 from trilogy.utility import unique
 
@@ -71,10 +76,13 @@ def gen_window_node(
     if equivalent_optional:
         for x in equivalent_optional:
             assert isinstance(x.lineage, WINDOW_TYPES)
+            base, parents = resolve_window_parent_concepts(x, environment)
             logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} found equivalent optional {x} with parents {resolve_window_parent_concepts(x, environment)[1]}"
+                f"{padding(depth)}{LOGGER_PREFIX} found equivalent optional {x} with parents {parents}"
             )
             additional_outputs.append(x)
+            # also append the base concept it's being grouped over
+            targets.append(base)
 
     grain_equivalents = [
         x
@@ -85,7 +93,8 @@ def gen_window_node(
     ]
 
     for x in grain_equivalents:
-        logger.info("Appending grain equivalent %s", x)
+        if x.address in additional_outputs:
+            continue
         targets.append(x)
 
     # finally, the ones we'll need to enrich
@@ -134,7 +143,7 @@ def gen_window_node(
     _window_node.rebuild_cache()
     _window_node.resolve()
 
-    window_node = StrategyNode(
+    window_node = WhereSafetyNode(
         input_concepts=[concept] + additional_outputs + parent_concepts + targets,
         output_concepts=[concept] + additional_outputs + parent_concepts + targets,
         environment=environment,

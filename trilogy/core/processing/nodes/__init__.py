@@ -6,7 +6,7 @@ from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.environment import Environment
 
-from .base_node import NodeJoin, StrategyNode
+from .base_node import NodeJoin, StrategyNode, WhereSafetyNode
 from .filter_node import FilterNode
 from .group_node import GroupNode
 from .merge_node import MergeNode
@@ -193,4 +193,5 @@ __all__ = [
     "UnnestNode",
     "UnionNode",
     "History",
+    "WhereSafetyNode",
 ]

@@ -67,27 +67,20 @@ GROUP BY
     "names_usa_names"."year"),
 cheerful as (
 SELECT
-    "wakeful"."_virt_agg_sum_7286114413769231" as "_virt_agg_sum_7286114413769231",
     "wakeful"."names_name" as "names_name",
     rank() over (order by "wakeful"."_virt_agg_sum_7286114413769231" desc ) as "name_rank"
 FROM
-    "wakeful"),
-thoughtful as (
-SELECT
-    "cheerful"."name_rank" as "name_rank",
-    "cheerful"."names_name" as "names_name"
-FROM
-    "cheerful")
+    "wakeful")
 SELECT
     "highfalutin"."names_year" as "names_year",
     "highfalutin"."names_name" as "names_name",
     "highfalutin"."total_births" as "total_births",
-    "thoughtful"."name_rank" as "name_rank"
+    "cheerful"."name_rank" as "name_rank"
 FROM
-    "thoughtful"
-    INNER JOIN "highfalutin" on "thoughtful"."names_name" = "highfalutin"."names_name"
+    "highfalutin"
+    INNER JOIN "cheerful" on "highfalutin"."names_name" = "cheerful"."names_name"
 ORDER BY 
-    "thoughtful"."name_rank" asc""".strip()
+    "cheerful"."name_rank" asc""".strip()
     )
 
 
@@ -262,7 +255,7 @@ order by names.state asc, total_births desc;
         ["names.state", "names.name"]
     ), env.concepts["rank_by_births"].keys
 
-    pattern = r"""INNER JOIN "highfalutin" on "abundant"."names_name" = "highfalutin"."names_name" AND "abundant"."names_state" = "highfalutin"."names_state"""
+    pattern = r"""INNER JOIN "highfalutin" on "questionable"."names_name" = "highfalutin"."names_name" AND "questionable"."names_state" = "highfalutin"."names_state"""
     assert re.search(pattern, sql, re.DOTALL) is not None
 
 
