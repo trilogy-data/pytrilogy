@@ -1,0 +1,5 @@
+import hackernews;
+
+
+where  create_time.year= 2024
+select root_parent.id, create_time.year, id limit 10;

@@ -294,7 +294,7 @@ def datasource_to_cte(
             order_by=query_datasource.ordering,
         )
         return final
-    
+
     cte_class = CTE
 
     if query_datasource.source_type == SourceType.RECURSIVE:
@@ -555,6 +555,19 @@ def process_query(
 
     final_ctes = optimize_ctes(deduped_ctes, root_cte, statement)
     mapping = {x.address: x for x in cte.output_columns}
+    for x in statement.output_components:
+        x_full = environment.concepts[x.address]
+        if x.address not in mapping:
+            found = False
+            for y in x_full.pseudonyms:
+                if y in mapping:
+                    found = True
+                    mapping[x.address] = mapping[y]
+                    break
+            if not found:
+                raise ValueError(
+                    f"Could not find {x.address} in {mapping.keys()} for {statement}"
+                )
     return ProcessedQuery(
         order_by=root_cte.order_by,
         limit=statement.limit,

@@ -51,7 +51,7 @@ def test_group_node_property(test_environment: Environment, test_environment_gra
         for x in group_node.parents[0].output_concepts
         if x not in group_node.parents[0].hidden_concepts
     }
-    assert input_concept_names == {"category_name_length", "category_id"}
+    assert input_concept_names == {"category_name","category_name_length", "category_id"}
     final = group_node.resolve()
     assert len(final.datasources) == 1
     assert final.datasources[0].group_required is False
@@ -79,7 +79,7 @@ def test_group_node_property_all(test_environment: Environment, test_environment
         for x in group_node.parents[0].output_concepts
         if x not in group_node.parents[0].hidden_concepts
     }
-    assert input_concept_names == {"category_name_length", "category_id"}
+    assert input_concept_names == {"category_name","category_name_length", "category_id"}
     final = group_node.resolve()
     assert len(final.datasources) == 1
     assert final.datasources[0].group_required is False

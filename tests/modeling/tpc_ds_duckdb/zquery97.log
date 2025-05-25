@@ -6,8 +6,8 @@ WITH
 abundant as (
 SELECT
     \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" as \"catalog_sales_bill_customer_id\",
-    \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" as \"catalog_sales_item_id\",
-    \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\"
+    \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\",
+    \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" as \"catalog_sales_item_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
 GROUP BY 
@@ -17,8 +17,8 @@ GROUP BY
 wakeful as (
 SELECT
     \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
-    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
-    \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
+    \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
+    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
 GROUP BY 
@@ -28,8 +28,8 @@ GROUP BY
 uneven as (
 SELECT
     \"abundant\".\"catalog_sales_bill_customer_id\" as \"catalog_sales_bill_customer_id\",
-    \"abundant\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
-    \"catalog_sales_date_date\".\"D_MONTH_SEQ\" as \"catalog_sales_date_month_seq\"
+    \"catalog_sales_date_date\".\"D_MONTH_SEQ\" as \"catalog_sales_date_month_seq\",
+    \"abundant\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\"
 FROM
     \"abundant\"
     INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"abundant\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
@@ -38,8 +38,8 @@ WHERE
 ),
 cheerful as (
 SELECT
-    \"store_sales_date_date\".\"D_MONTH_SEQ\" as \"store_sales_date_month_seq\",
     \"wakeful\".\"store_sales_customer_id\" as \"store_sales_customer_id\",
+    \"store_sales_date_date\".\"D_MONTH_SEQ\" as \"store_sales_date_month_seq\",
     \"wakeful\".\"store_sales_item_id\" as \"store_sales_item_id\"
 FROM
     \"wakeful\"
@@ -50,8 +50,8 @@ WHERE
 yummy as (
 SELECT
     \"uneven\".\"catalog_sales_bill_customer_id\" as \"catalog_sales_bill_customer_id\",
-    \"uneven\".\"catalog_sales_bill_customer_id\" as \"customer_id\",
     \"uneven\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
+    \"uneven\".\"catalog_sales_bill_customer_id\" as \"customer_id\",
     \"uneven\".\"catalog_sales_item_id\" as \"item_id\"
 FROM
     \"uneven\"
@@ -62,8 +62,8 @@ GROUP BY
 thoughtful as (
 SELECT
     \"cheerful\".\"store_sales_customer_id\" as \"customer_id\",
-    \"cheerful\".\"store_sales_customer_id\" as \"store_sales_customer_id\",
     \"cheerful\".\"store_sales_item_id\" as \"item_id\",
+    \"cheerful\".\"store_sales_customer_id\" as \"store_sales_customer_id\",
     \"cheerful\".\"store_sales_item_id\" as \"store_sales_item_id\"
 FROM
     \"cheerful\"
@@ -73,12 +73,12 @@ GROUP BY
     \"cheerful\".\"store_sales_item_id\"),
 juicy as (
 SELECT
-    \"thoughtful\".\"store_sales_customer_id\" as \"merged_store_sales_customer_id\",
-    \"thoughtful\".\"store_sales_item_id\" as \"merged_store_sales_item_id\",
     \"yummy\".\"catalog_sales_bill_customer_id\" as \"merged_catalog_sales_bill_customer_id\",
     \"yummy\".\"catalog_sales_item_id\" as \"merged_catalog_sales_item_id\",
     coalesce(\"thoughtful\".\"customer_id\",\"yummy\".\"customer_id\") as \"merged_customer_id\",
-    coalesce(\"thoughtful\".\"item_id\",\"yummy\".\"item_id\") as \"merged_item_id\"
+    coalesce(\"thoughtful\".\"item_id\",\"yummy\".\"item_id\") as \"merged_item_id\",
+    \"thoughtful\".\"store_sales_customer_id\" as \"merged_store_sales_customer_id\",
+    \"thoughtful\".\"store_sales_item_id\" as \"merged_store_sales_item_id\"
 FROM
     \"thoughtful\"
     FULL JOIN \"yummy\" on \"thoughtful\".\"customer_id\" = \"yummy\".\"customer_id\" AND \"thoughtful\".\"item_id\" = \"yummy\".\"item_id\"

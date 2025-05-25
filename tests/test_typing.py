@@ -173,6 +173,8 @@ revenue-revenue_two->sub_total
 
 def test_custom_function_typing():
     env = Dialects.DUCK_DB.default_executor()
+    from trilogy.hooks.query_debugger import DebuggingHook
+    DebuggingHook()
     env.environment.parse(
         """
 

@@ -52,6 +52,7 @@ from trilogy.core.models.execute import (
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.core.statements.execute import ProcessedQuery
 from trilogy.utility import unique
+from trilogy.constants import logger
 
 AGGREGATE_TYPES = (BuildAggregateWrapper,)
 SUBSELECT_TYPES = (BuildSubselectComparison,)
@@ -646,8 +647,11 @@ def sort_select_output(
     mapping = {x.address: x for x in cte.output_columns}
 
     new_output: list[BuildConcept] = []
+    logger.info(mapping)
+    logger.info(output_addresses)
     for x in output_addresses:
         new_output.append(mapping[x])
+
     cte.output_columns = new_output
     cte.hidden_concepts = set(
         [

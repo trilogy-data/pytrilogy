@@ -92,16 +92,14 @@ def gen_basic_node(
     parent_node.add_output_concept(concept)
     for x in equivalent_optional:
         parent_node.add_output_concept(x)
-
-    parent_node.remove_output_concepts(
-        [
-            x
-            for x in parent_node.output_concepts
-            if x.address not in [concept] + local_optional
-        ]
-    )
+    hidden = [
+        x
+        for x in parent_node.output_concepts
+        if x.address not in [concept] + local_optional
+    ]
+    parent_node.hide_output_concepts(hidden)
 
     logger.info(
-        f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept}: output {[x.address for x in parent_node.output_concepts]}"
+        f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept}: output {[x.address for x in parent_node.usable_outputs]}"
     )
     return parent_node

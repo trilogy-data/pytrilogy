@@ -29,9 +29,10 @@ def gen_synonym_node(
     conditions: BuildWhereClause | None = None,
     accept_partial: bool = False,
 ) -> StrategyNode | None:
-    local_prefix = f"[GEN_SYNONYM_NODE] {padding(depth)}"
+    local_prefix = f"{padding(depth)}[GEN_SYNONYM_NODE] "
     base_fingerprint = tuple([x.address for x in all_concepts])
     synonyms = defaultdict(list)
+    inverse_map:dict[str,str] = {}
     synonym_count = 0
     for x in all_concepts:
         synonyms[x.address] = [x]
@@ -40,13 +41,15 @@ def gen_synonym_node(
             if y in environment.alias_origin_lookup:
                 synonyms[x.address].append(environment.alias_origin_lookup[y])
                 synonym_count += 1
+                inverse_map[y] = x.address
             elif y in environment.concepts:
                 synonyms[x.address].append(environment.concepts[y])
+                inverse_map[y] = x.address
                 synonym_count += 1
     if synonym_count == 0:
         return None
 
-    logger.info(f"{local_prefix} Generating Synonym Node with {len(synonyms)} synonyms")
+    logger.info(f"{local_prefix} Checking for synonyms over {len(synonyms)} synonyms")
 
     combinations = itertools.product(*(synonyms[obj] for obj in synonyms.keys()))
     for combo in combinations:
@@ -64,5 +67,18 @@ def gen_synonym_node(
         )
         if attempt:
             logger.info(f"{local_prefix} found inputs with {combo}")
+            final_outputs = []
+            hidden_outputs = []
+            for x in attempt.output_concepts:
+                if x.address in inverse_map:
+                    final_outputs.append(
+                        environment.concepts[inverse_map[x.address]]
+                    )
+                    hidden_outputs.append(x)
+                final_outputs.append(x)
+            attempt.set_output_concepts(
+                final_outputs,
+            )
+            attempt.hide_output_concepts(hidden_outputs)
             return attempt
     return None

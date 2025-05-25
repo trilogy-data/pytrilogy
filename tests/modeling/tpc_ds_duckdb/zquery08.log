@@ -5,9 +5,9 @@ generated_sql = """
 WITH 
 questionable as (
 SELECT
-    \"customer_customer_address\".\"CA_ZIP\" as \"customer_zip\",
     \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_id\",
-    \"customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\"
+    \"customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\",
+    \"customer_customer_address\".\"CA_ZIP\" as \"customer_zip\"
 FROM
     \"memory\".\"customer_address\" as \"customer_customer_address\"
     INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_customer_address\".\"CA_ADDRESS_SK\" = \"customer_customers\".\"C_CURRENT_ADDR_SK\"),
@@ -17,9 +17,9 @@ SELECT
 ),
 abundant as (
 SELECT
+    CASE WHEN \"questionable\".\"customer_preferred_cust_flag\" = 'Y' THEN \"questionable\".\"customer_id\" ELSE NULL END as \"_virt_filter_id_8603331542397217\",
     \"questionable\".\"customer_id\" as \"customer_id\",
-    \"questionable\".\"customer_zip\" as \"customer_zip\",
-    CASE WHEN \"questionable\".\"customer_preferred_cust_flag\" = 'Y' THEN \"questionable\".\"customer_id\" ELSE NULL END as \"_virt_filter_id_8603331542397217\"
+    \"questionable\".\"customer_zip\" as \"customer_zip\"
 FROM
     \"questionable\"),
 uneven as (
@@ -62,8 +62,8 @@ young as (
 SELECT
     \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
     \"store_sales_store_sales\".\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
-    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
-    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\"
+    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
+    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"

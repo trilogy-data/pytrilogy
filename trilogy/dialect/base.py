@@ -336,9 +336,13 @@ class BaseDialect:
     ) -> str:
         result = None
         if c.pseudonyms:
-            candidates = [y for y in [cte.get_concept(x) for x in c.pseudonyms] if y]
             logger.debug(
-                f"{LOGGER_PREFIX} [{c.address}] pseudonym candidates are {[x.address for x in candidates]}"
+                f"{LOGGER_PREFIX} [{c.address}] Found {c.pseudonyms} pseudonym candidates and {cte.output_columns} output columns")
+            
+            candidates = [y for y in [cte.get_concept(x) for x in c.pseudonyms] if y]
+
+            logger.debug(
+                f"{LOGGER_PREFIX} [{c.address}] final pseudonym candidates are {[x.address for x in candidates]}"
             )
             for candidate in [c] + candidates:
                 try:
@@ -764,8 +768,12 @@ class BaseDialect:
                 for c in cte.output_columns
                 if c.address not in cte.hidden_concepts
             ]
-        # if auto_sort:
-        #     select_columns = sorted(select_columns, key=lambda x: x)
+        if auto_sort:
+            # sort by the column alias asc
+            select_columns = sorted(
+                select_columns,
+                key=lambda x: x.split(" ")[-1].replace(self.QUOTE_CHARACTER, ""),
+            )
         source: str | None = cte.base_name
         if not cte.render_from_clause:
             if len(cte.joins) > 0:
@@ -986,7 +994,7 @@ class BaseDialect:
             return query.text
         select_columns: Dict[str, str] = {}
         cte_output_map = {}
-        selected:set[str] = set()
+        selected: set[str] = set()
         output_addresses = [
             c.address
             for c in query.output_columns
@@ -1012,7 +1020,7 @@ class BaseDialect:
         compiled_ctes = self.generate_ctes(query)
 
         final = self.SQL_TEMPLATE.render(
-            recursive = recursive,
+            recursive=recursive,
             output=(
                 query.output_to if isinstance(query, ProcessedQueryPersist) else None
             ),
@@ -1022,7 +1030,7 @@ class BaseDialect:
 
         if CONFIG.strict_mode and INVALID_REFERENCE_STRING(1) in final:
             raise ValueError(
-                f"Invalid reference string found in query: {final}, this should never"
+                f"Invalid concept reference found in query: {final}, this should never"
                 " occur. Please create a GitHub issue to report this."
             )
         logger.info(f"{LOGGER_PREFIX} Compiled query: {final}")

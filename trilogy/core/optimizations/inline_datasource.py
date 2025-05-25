@@ -4,10 +4,7 @@ from trilogy.constants import CONFIG
 
 # from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.build import BuildDatasource
-from trilogy.core.models.execute import (
-    CTE,
-    UnionCTE,
-)
+from trilogy.core.models.execute import CTE, UnionCTE, RecursiveCTE
 from trilogy.core.optimizations.base_optimization import OptimizationRule
 
 
@@ -24,6 +21,8 @@ class InlineDatasource(OptimizationRule):
             return any(
                 self.optimize(x, inverse_map=inverse_map) for x in cte.internal_ctes
             )
+        if isinstance(cte, RecursiveCTE):
+            return False
 
         if not cte.parent_ctes:
             return False
@@ -35,6 +34,8 @@ class InlineDatasource(OptimizationRule):
         force_group = False
         for parent_cte in cte.parent_ctes:
             if isinstance(parent_cte, UnionCTE):
+                continue
+            if isinstance(parent_cte, RecursiveCTE):
                 continue
             if not parent_cte.is_root_datasource:
                 self.debug(f"Cannot inline: parent {parent_cte.name} is not root")

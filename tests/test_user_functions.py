@@ -205,10 +205,11 @@ auto test <-SUM(CASE WHEN 10 = weekday THEN x ELSE 0 END) +
     assert test.derivation == Derivation.BASIC
 
 
-def test_user_function_import():
+def test_user_function_import_alias():
     env = Environment(working_path=Path(__file__).parent)
     x = Dialects.DUCK_DB.default_executor(environment=env)
-
+    from trilogy.hooks import DebuggingHook
+    DebuggingHook()
     results = x.execute_query(
         """
 import test_env_functions as test_env_functions;
@@ -218,13 +219,34 @@ key x int;
 merge test_env_functions.quad_test into x;
 
 select 
-    x as quad_test,
+    x as local_alias;
+"""
+    )
+    results = results.fetchall()
+    assert results[0].local_alias == 16.414213562373096
+
+
+def test_user_function_import():
+    env = Environment(working_path=Path(__file__).parent)
+    x = Dialects.DUCK_DB.default_executor(environment=env)
+    from trilogy.hooks import DebuggingHook
+    DebuggingHook()
+    results = x.execute_query(
+        """
+import test_env_functions as test_env_functions;
+
+key x int;
+
+merge test_env_functions.quad_test into x;
+
+select 
+    x as local_merged,
     @test_env_functions.quadratic(2, 3, 4) as quad_two;
 
 """
     )
     results = results.fetchall()
-    assert results[0].quad_test == 16.414213562373096
+    assert results[0].local_merged == 16.414213562373096
 
 
 def test_user_function_nesting():

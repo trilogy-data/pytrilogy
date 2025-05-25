@@ -25,8 +25,8 @@ GROUP BY
     \"web_sales_web_sales\".\"WS_ORDER_NUMBER\"),
 questionable as (
 SELECT
-    \"cooperative\".\"web_sales_order_number\" as \"web_sales_order_number\",
-    count(\"cooperative\".\"web_sales_warehouse_id\") as \"_virt_agg_count_2435454530783120\"
+    count(\"cooperative\".\"web_sales_warehouse_id\") as \"_virt_agg_count_2435454530783120\",
+    \"cooperative\".\"web_sales_order_number\" as \"web_sales_order_number\"
 FROM
     \"cooperative\"
 GROUP BY 
@@ -93,8 +93,8 @@ WHERE
 ),
 sweltering as (
 SELECT
-    sum(\"abhorrent\".\"web_sales_extra_ship_cost\") as \"total_shipping_cost\",
-    sum(\"abhorrent\".\"web_sales_net_profit\") as \"total_net_profit\"
+    sum(\"abhorrent\".\"web_sales_net_profit\") as \"total_net_profit\",
+    sum(\"abhorrent\".\"web_sales_extra_ship_cost\") as \"total_shipping_cost\"
 FROM
     \"abhorrent\"),
 young as (

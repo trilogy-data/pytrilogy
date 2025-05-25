@@ -19,8 +19,8 @@ LOGGER_PREFIX = "[GEN_SELECT_NODE]"
 
 
 def gen_select_node(
-    concept: BuildConcept,
-    local_optional: list[BuildConcept],
+    # concept: BuildConcept,
+    concepts: list[BuildConcept],
     environment: BuildEnvironment,
     g,
     depth: int,
@@ -28,12 +28,11 @@ def gen_select_node(
     fail_if_not_found: bool = True,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
-    all_concepts = [concept] + local_optional
-    all_lcl = LooseBuildConceptList(concepts=all_concepts)
+    all_lcl = LooseBuildConceptList(concepts=concepts)
     materialized_lcl = LooseBuildConceptList(
         concepts=[
             x
-            for x in all_concepts
+            for x in concepts
             if x.address in environment.materialized_concepts
             or x.derivation == Derivation.CONSTANT
         ]
@@ -41,15 +40,15 @@ def gen_select_node(
     if materialized_lcl != all_lcl:
         missing = all_lcl.difference(materialized_lcl)
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} Skipping select node generation for {concept.address}"
+            f"{padding(depth)}{LOGGER_PREFIX} Skipping select node generation for {concepts}"
             f" as it + optional includes non-materialized concepts (looking for all {all_lcl}, missing {missing}) "
         )
         if fail_if_not_found:
-            raise NoDatasourceException(f"No datasource exists for {concept}")
+            raise NoDatasourceException(f"No datasource exists for {concepts}")
         return None
 
     return gen_select_merge_node(
-        [concept] + local_optional,
+        concepts,
         g=g,
         environment=environment,
         depth=depth,

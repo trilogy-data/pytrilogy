@@ -102,10 +102,9 @@ class GroupNode(StrategyNode):
 
         # dynamically select if we need to group
         # because sometimes, we are already at required grain
-        if comp_grain.issubset(target_grain):
-
+        if not comp_grain.abstract and comp_grain.issubset(target_grain):
             logger.info(
-                f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain}, {target_grain}, is subset, no grain required"
+                f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain} is subset of {target_grain}, no group_required"
             )
             return GroupRequiredResponse(target_grain, comp_grain, False)
         # find out what extra is in the comp grain vs target grain

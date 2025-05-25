@@ -21,8 +21,8 @@ GROUP BY
     \"cr_catalog_returns\".\"CR_ORDER_NUMBER\"),
 uneven as (
 SELECT
-    \"abundant\".\"cs_order_number\" as \"cs_order_number\",
-    count(\"abundant\".\"cs_warehouse_id\") as \"_virt_agg_count_7777088585630721\"
+    count(\"abundant\".\"cs_warehouse_id\") as \"_virt_agg_count_7777088585630721\",
+    \"abundant\".\"cs_order_number\" as \"cs_order_number\"
 FROM
     \"abundant\"
 GROUP BY 
@@ -42,8 +42,8 @@ GROUP BY
 thoughtful as (
 SELECT
     \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
-    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\",
+    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
@@ -82,8 +82,8 @@ WHERE
 ),
 abhorrent as (
 SELECT
-    sum(\"sparkling\".\"cs_extra_ship_cost\") as \"total_shipping_cost\",
-    sum(\"sparkling\".\"cs_net_profit\") as \"total_net_profit\"
+    sum(\"sparkling\".\"cs_net_profit\") as \"total_net_profit\",
+    sum(\"sparkling\".\"cs_extra_ship_cost\") as \"total_shipping_cost\"
 FROM
     \"sparkling\"),
 concerned as (

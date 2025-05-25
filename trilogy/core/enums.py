@@ -137,7 +137,6 @@ class FunctionType(Enum):
     NULLIF = "nullif"
     BOOL = "bool"
 
-
     # COMPLEX
     INDEX_ACCESS = "index_access"
     MAP_ACCESS = "map_access"

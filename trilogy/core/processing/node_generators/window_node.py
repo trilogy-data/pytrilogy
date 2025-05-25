@@ -11,7 +11,8 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
     gen_enrichment_node,
 )
-from trilogy.core.processing.nodes import History, StrategyNode, WindowNode
+from trilogy.core.enums import WindowType
+from trilogy.core.processing.nodes import History, WhereSafetyNode, StrategyNode, WindowNode
 from trilogy.core.processing.utility import create_log_lambda, padding
 from trilogy.utility import unique
 
@@ -61,7 +62,7 @@ def gen_window_node(
 
     targets = [base]
     # append in keys to get the right grain
-    if concept.keys:
+    if concept.keys and concept.lineage.type in (WindowType.SUM, WindowType.AVG, WindowType.COUNT, WindowType.COUNT_DISTINCT):
         for item in concept.keys:
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} appending search for key {item}"
@@ -71,22 +72,13 @@ def gen_window_node(
     if equivalent_optional:
         for x in equivalent_optional:
             assert isinstance(x.lineage, WINDOW_TYPES)
+
+            equi_base, extra = resolve_window_parent_concepts(x, environment)
             logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} found equivalent optional {x} with parents {resolve_window_parent_concepts(x, environment)[1]}"
+                f"{padding(depth)}{LOGGER_PREFIX} found equivalent optional {x} with base {equi_base} and others {extra}"
             )
+            targets.append(equi_base)
             additional_outputs.append(x)
-
-    grain_equivalents = [
-        x
-        for x in local_optional
-        if x.keys
-        and all([key in targets for key in x.keys])
-        and x.grain == concept.grain
-    ]
-
-    for x in grain_equivalents:
-        logger.info("Appending grain equivalent %s", x)
-        targets.append(x)
 
     # finally, the ones we'll need to enrich
     non_equivalent_optional = [x for x in local_optional if x.address not in targets]
@@ -134,9 +126,10 @@ def gen_window_node(
     _window_node.rebuild_cache()
     _window_node.resolve()
 
-    window_node = StrategyNode(
-        input_concepts=[concept] + additional_outputs + parent_concepts + targets,
-        output_concepts=[concept] + additional_outputs + parent_concepts + targets,
+    # avoid any conditions be applied directly to the window node
+    window_node = WhereSafetyNode(
+        input_concepts=[concept] + additional_outputs + parent_concepts,
+        output_concepts=[concept] + additional_outputs + parent_concepts,
         environment=environment,
         parents=[_window_node],
         preexisting_conditions=conditions.conditional if conditions else None,
@@ -145,18 +138,19 @@ def gen_window_node(
             environment=environment,
         ),
     )
+
     if not non_equivalent_optional:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no optional concepts, returning window node"
         )
         # prune outputs if we don't need join keys
-        window_node.set_output_concepts([concept] + additional_outputs + targets)
+        window_node.set_output_concepts([concept] + additional_outputs)
         return window_node
 
     missing_optional = [
         x.address
         for x in local_optional
-        if x.address not in window_node.output_concepts
+        if x.address not in window_node.usable_outputs
     ]
 
     if not missing_optional:

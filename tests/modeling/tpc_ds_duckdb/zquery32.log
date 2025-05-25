@@ -15,9 +15,9 @@ FROM
 cheerful as (
 SELECT
     \"catalog_sales\".\"CS_EXT_DISCOUNT_AMT\" as \"discount_amount\",
-    \"catalog_sales\".\"CS_ORDER_NUMBER\" as \"order_number\",
     \"item_items\".\"I_ITEM_SK\" as \"item_id\",
     \"item_items\".\"I_MANUFACT_ID\" as \"item_manufacturer_id\",
+    \"catalog_sales\".\"CS_ORDER_NUMBER\" as \"order_number\",
     cast(\"sold_date_date\".\"D_DATE\" as date) as \"sold_date_date\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales\"
@@ -28,15 +28,15 @@ WHERE
 ),
 cooperative as (
 SELECT
+    CASE WHEN \"thoughtful\".\"sold_date_date\" >= :start_date and \"thoughtful\".\"sold_date_date\" <= :end_date THEN \"thoughtful\".\"discount_amount\" ELSE NULL END as \"_virt_filter_discount_amount_8859191248994797\",
     \"thoughtful\".\"item_id\" as \"item_id\",
-    \"thoughtful\".\"order_number\" as \"order_number\",
-    CASE WHEN \"thoughtful\".\"sold_date_date\" >= :start_date and \"thoughtful\".\"sold_date_date\" <= :end_date THEN \"thoughtful\".\"discount_amount\" ELSE NULL END as \"_virt_filter_discount_amount_8859191248994797\"
+    \"thoughtful\".\"order_number\" as \"order_number\"
 FROM
     \"thoughtful\"),
 questionable as (
 SELECT
-    \"cooperative\".\"item_id\" as \"item_id\",
-    avg(\"cooperative\".\"_virt_filter_discount_amount_8859191248994797\") as \"_virt_agg_avg_721736882945984\"
+    avg(\"cooperative\".\"_virt_filter_discount_amount_8859191248994797\") as \"_virt_agg_avg_721736882945984\",
+    \"cooperative\".\"item_id\" as \"item_id\"
 FROM
     \"cooperative\"
 GROUP BY 

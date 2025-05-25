@@ -1,17 +1,17 @@
 query_id = 12
-gen_length = 3392
+gen_length = 3159
 generated_sql = """
 
 WITH 
 cheerful as (
 SELECT
+    \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\" as \"web_sales_extra_sales_price\",
     \"web_sales_item_items\".\"I_CATEGORY\" as \"web_sales_item_category\",
     \"web_sales_item_items\".\"I_CLASS\" as \"web_sales_item_class\",
     \"web_sales_item_items\".\"I_CURRENT_PRICE\" as \"web_sales_item_current_price\",
     \"web_sales_item_items\".\"I_ITEM_DESC\" as \"web_sales_item_desc\",
-    \"web_sales_item_items\".\"I_ITEM_ID\" as \"web_sales_item_name\",
     \"web_sales_item_items\".\"I_ITEM_SK\" as \"web_sales_item_id\",
-    \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\" as \"web_sales_extra_sales_price\",
+    \"web_sales_item_items\".\"I_ITEM_ID\" as \"web_sales_item_name\",
     \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" as \"web_sales_order_number\"
 FROM
     \"memory\".\"web_sales\" as \"web_sales_web_sales\"
@@ -22,12 +22,12 @@ WHERE
 ),
 thoughtful as (
 SELECT
+    sum(\"cheerful\".\"web_sales_extra_sales_price\") as \"itemrevenue\",
     \"cheerful\".\"web_sales_item_category\" as \"web_sales_item_category\",
     \"cheerful\".\"web_sales_item_class\" as \"web_sales_item_class\",
     \"cheerful\".\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
     \"cheerful\".\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    \"cheerful\".\"web_sales_item_name\" as \"web_sales_item_name\",
-    sum(\"cheerful\".\"web_sales_extra_sales_price\") as \"itemrevenue\"
+    \"cheerful\".\"web_sales_item_name\" as \"web_sales_item_name\"
 FROM
     \"cheerful\"
 GROUP BY 
@@ -38,18 +38,11 @@ GROUP BY
     \"cheerful\".\"web_sales_item_name\"),
 cooperative as (
 SELECT
+    sum(\"thoughtful\".\"itemrevenue\") over (partition by \"thoughtful\".\"web_sales_item_class\") as \"itemclassrevenue\",
     \"thoughtful\".\"itemrevenue\" as \"itemrevenue\",
-    \"thoughtful\".\"web_sales_item_class\" as \"web_sales_item_class\",
-    sum(\"thoughtful\".\"itemrevenue\") over (partition by \"thoughtful\".\"web_sales_item_class\") as \"itemclassrevenue\"
+    \"thoughtful\".\"web_sales_item_class\" as \"web_sales_item_class\"
 FROM
-    \"thoughtful\"),
-questionable as (
-SELECT
-    \"cooperative\".\"itemclassrevenue\" as \"itemclassrevenue\",
-    \"cooperative\".\"itemrevenue\" as \"itemrevenue\",
-    \"cooperative\".\"web_sales_item_class\" as \"web_sales_item_class\"
-FROM
-    \"cooperative\")
+    \"thoughtful\")
 SELECT
     \"thoughtful\".\"web_sales_item_name\" as \"web_sales_item_name\",
     \"thoughtful\".\"web_sales_item_desc\" as \"web_sales_item_desc\",
@@ -57,14 +50,14 @@ SELECT
     \"thoughtful\".\"web_sales_item_class\" as \"web_sales_item_class\",
     \"thoughtful\".\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
     \"thoughtful\".\"itemrevenue\" as \"itemrevenue\",
-    (\"thoughtful\".\"itemrevenue\" * 100.0) / \"questionable\".\"itemclassrevenue\" as \"revenueratio\"
+    (\"thoughtful\".\"itemrevenue\" * 100.0) / \"cooperative\".\"itemclassrevenue\" as \"revenueratio\"
 FROM
-    \"questionable\"
-    LEFT OUTER JOIN \"thoughtful\" on \"questionable\".\"itemrevenue\" = \"thoughtful\".\"itemrevenue\" AND (\"questionable\".\"web_sales_item_class\" = \"thoughtful\".\"web_sales_item_class\" or (\"questionable\".\"web_sales_item_class\" is null and \"thoughtful\".\"web_sales_item_class\" is null))
+    \"cooperative\"
+    LEFT OUTER JOIN \"thoughtful\" on \"cooperative\".\"itemrevenue\" = \"thoughtful\".\"itemrevenue\" AND (\"cooperative\".\"web_sales_item_class\" = \"thoughtful\".\"web_sales_item_class\" or (\"cooperative\".\"web_sales_item_class\" is null and \"thoughtful\".\"web_sales_item_class\" is null))
 ORDER BY 
     \"thoughtful\".\"web_sales_item_category\" asc,
     \"thoughtful\".\"web_sales_item_class\" asc,
     \"thoughtful\".\"web_sales_item_name\" asc,
     \"thoughtful\".\"web_sales_item_desc\" asc,
-    (\"thoughtful\".\"itemrevenue\" * 100.0) / \"questionable\".\"itemclassrevenue\" asc
+    (\"thoughtful\".\"itemrevenue\" * 100.0) / \"cooperative\".\"itemclassrevenue\" asc
 LIMIT (100)"""

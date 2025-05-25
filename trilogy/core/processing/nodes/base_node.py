@@ -306,19 +306,6 @@ class StrategyNode:
             self.rebuild_cache()
         return self
 
-    def remove_output_concepts(
-        self, concepts: List[BuildConcept], rebuild: bool = True
-    ):
-        for x in concepts:
-            self.hidden_concepts.add(x.address)
-        addresses = [x.address for x in concepts]
-        self.output_concepts = [
-            x for x in self.output_concepts if x.address not in addresses
-        ]
-        if rebuild:
-            self.rebuild_cache()
-        return self
-
     @property
     def usable_outputs(self) -> list[BuildConcept]:
         return [
@@ -471,3 +458,16 @@ class NodeJoin:
             f" {self.right_node} on"
             f" {','.join([str(k) for k in self.concepts])}"
         )
+
+
+class WhereSafetyNode(StrategyNode):
+
+    def resolve(self) -> QueryDatasource:
+        # if not self.conditions and len(self.parents) == 1:
+        #     parent = self.parents[0]
+        #     parent = parent.copy()
+        #     parent.set_output_concepts(self.output_concepts)
+        #     parent.set_preexisting_conditions(self.preexisting_conditions)
+        #     parent.hide_output_concepts(self.hidden_concepts)
+        #     return parent.resolve()
+        return super().resolve()

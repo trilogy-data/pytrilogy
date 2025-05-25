@@ -18,19 +18,23 @@ MAX_OPTIMIZATION_LOOPS = 100
 
 # other optimizations may make a CTE a pure passthrough
 # remove those
-# def is_locally_irrelevant(cte: CTE) -> CTE | bool:
-#     if not len(cte.parent_ctes) == 1:
-#         return False
-#     parent = cte.parent_ctes[0]
-#     if not parent.output_columns == cte.output_columns:
-#         return False
-#     if cte.condition is not None:
-#         return False
-#     if cte.group_to_grain:
-#         return False
-#     if len(cte.joins)>1:
-#         return False
-#     return parent
+def is_locally_irrelevant(cte: CTE) -> CTE | bool:
+    logger.info(f'checking if cte is locally irrelevant {cte.name}')
+    if not len(cte.parent_ctes) == 1:
+        return False
+    parent = cte.parent_ctes[0]
+    if not all(x in parent.output_columns for x in cte.output_columns):
+        logger.info(f'output columns do not match')
+        return False
+    if cte.condition is not None:
+        logger.info(f'cte has condition')
+        return False
+    if cte.group_to_grain:
+        return False
+    if len(cte.joins)>1:
+        return False
+    logger.info(f'cte is locally irrelevant, dropping')
+    return parent
 
 
 def reorder_ctes(
@@ -68,12 +72,19 @@ def filter_irrelevant_ctes(
         # TODO: revisit this
         # if parent := is_locally_irrelevant(cte):
         #     logger.info(
-        #         f"[Optimization][Irrelevent CTE filtering] Removing redundant CTE {cte.name} and replacing with {parent.name}"
+        #         f"[Optimization][Irrelevent CTE filtering] Removing locally irrelevant CTE {cte.name} and replacing with {parent.name}"
         #     )
+        #     logger.info(inverse_map.keys())
         #     for child in inverse_map.get(cte.name, []):
+        #         logger.info(
+        #             f"[Optimization][Irrelevent CTE filtering] updating source map in {child.name} with {child.base_name}")
         #         child.parent_ctes = [
         #             x for x in child.parent_ctes if x.name != cte.name
         #         ] + [parent]
+        #         if child.base_name == cte.name:
+        #             child.source = parent.source
+        #             child.base_name_override = parent.name
+        #         logger.info([x.name for x in child.parent_ctes])
         #         for x in child.source_map:
         #             if cte.name in child.source_map[x]:
         #                 child.source_map[x].remove(cte.name)
@@ -101,6 +112,8 @@ def filter_irrelevant_ctes(
     if len(final) == len(input):
         return input
     return filter_irrelevant_ctes(final, root_cte)
+
+
 
 
 def gen_inverse_map(input: list[CTE | UnionCTE]) -> dict[str, list[CTE | UnionCTE]]:

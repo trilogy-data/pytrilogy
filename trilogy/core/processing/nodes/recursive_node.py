@@ -6,6 +6,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource
 from trilogy.core.processing.nodes.base_node import StrategyNode
 
+
 class RecursiveNode(StrategyNode):
     """Union nodes represent combining two keyspaces"""
 
@@ -15,7 +16,7 @@ class RecursiveNode(StrategyNode):
         self,
         input_concepts: List[BuildConcept],
         output_concepts: List[BuildConcept],
-        environment:BuildEnvironment,
+        environment: BuildEnvironment,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,

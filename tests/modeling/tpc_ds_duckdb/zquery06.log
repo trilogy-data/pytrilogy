@@ -6,13 +6,13 @@ WITH
 questionable as (
 SELECT
     \"item_items\".\"I_CATEGORY\" as \"item_category\",
+    \"store_sales_item_items\".\"I_ITEM_SK\" as \"item_id\",
     \"store_sales_customer_customer_address\".\"CA_STATE\" as \"store_sales_customer_state\",
     \"store_sales_date_date\".\"D_MOY\" as \"store_sales_date_month_of_year\",
+    cast(\"store_sales_date_date\".\"D_YEAR\" as int) as \"store_sales_date_year\",
     \"store_sales_item_items\".\"I_CATEGORY\" as \"store_sales_item_category\",
     \"store_sales_item_items\".\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
-    \"store_sales_item_items\".\"I_ITEM_SK\" as \"item_id\",
-    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
-    cast(\"store_sales_date_date\".\"D_YEAR\" as int) as \"store_sales_date_year\"
+    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
@@ -25,8 +25,8 @@ WHERE
 ),
 abundant as (
 SELECT
-    \"item_items\".\"I_CATEGORY\" as \"item_category\",
-    avg(\"item_items\".\"I_CURRENT_PRICE\") as \"_virt_agg_avg_5942253052406187\"
+    avg(\"item_items\".\"I_CURRENT_PRICE\") as \"_virt_agg_avg_5942253052406187\",
+    \"item_items\".\"I_CATEGORY\" as \"item_category\"
 FROM
     \"memory\".\"item\" as \"item_items\"
 GROUP BY 

@@ -192,7 +192,6 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     ),
     FunctionType.RECURSE_EDGE: FunctionConfig(
         arg_count=2,
-
     ),
     FunctionType.GROUP: FunctionConfig(
         arg_count=-1,

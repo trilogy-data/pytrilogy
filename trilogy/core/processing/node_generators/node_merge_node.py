@@ -4,10 +4,17 @@ import networkx as nx
 from networkx.algorithms import approximation as ax
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation
+from trilogy.core.enums import Derivation, BooleanOperator
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
 from trilogy.core.graph_models import concept_to_node
-from trilogy.core.models.build import BuildConcept, BuildConditional, BuildWhereClause
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildConditional,
+    BuildWhereClause,
+    BuildSubselectComparison,
+    BuildComparison,
+    BuildParenthetical,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import padding
@@ -313,15 +320,27 @@ def resolve_weak_components(
     # return filter_relevant_subgraphs(subgraphs)
 
 
+def build_conditionals(
+    inputs: list[BuildConditional | BuildSubselectComparison | BuildComparison],
+):
+    if len(inputs) == 1:
+        return inputs[0]
+    root = inputs.pop(0)
+    right = inputs.pop(0)
+    base = BuildConditional(left=root, right=right, operator=BooleanOperator.AND)
+    while inputs:
+        right = inputs.pop(0)
+        base = BuildConditional(left=base, right=right, operator=BooleanOperator.AND)
+    return base
+
+
 def subgraphs_to_merge_node(
     concept_subgraphs: list[list[BuildConcept]],
     depth: int,
-    all_concepts: List[BuildConcept],
     environment,
     g,
     source_concepts,
     history,
-    conditions,
     output_concepts: List[BuildConcept],
     search_conditions: BuildWhereClause | None = None,
     enable_early_exit: bool = True,
@@ -330,24 +349,35 @@ def subgraphs_to_merge_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} fetching subgraphs {[[c.address for c in subgraph] for subgraph in concept_subgraphs]}"
     )
+    decomposed = search_conditions.conditional.decompose() if search_conditions else []
     for graph in concept_subgraphs:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} fetching subgraph {[c.address for c in graph]}"
-        )
 
+        local_conditions = []
+        for x in decomposed:
+            if all([z in graph for z in x.concept_arguments]):
+                local_conditions.append(x)
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} fetching subgraph {[c.address for c in graph]} with local conditions {[str(c) for c in local_conditions]}"
+        )
         parent: StrategyNode | None = source_concepts(
             mandatory_list=graph,
             environment=environment,
             g=g,
             depth=depth + 1,
             history=history,
-            # conditions=search_conditions,
+            # conditions = BuildWhereClause(conditional=build_conditionals(local_conditions)) if local_conditions else None,
         )
+
         if not parent:
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} Unable to instantiate target subgraph"
             )
             return None
+        # TODO: adding this back in
+        # This causes nodes to retain more output concepts than they need
+        # we need to diagnose the handoff with conditions there
+        # if local_conditions:
+        #     parent.add_condition(build_conditionals(local_conditions))
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} finished subgraph fetch for {[c.address for c in graph]}, have parent {type(parent)} w/ {[c.address for c in parent.output_concepts]}"
         )
@@ -418,12 +448,10 @@ def gen_merge_node(
             return subgraphs_to_merge_node(
                 weak_resolve,
                 depth=depth,
-                all_concepts=all_search_concepts,
                 environment=environment,
                 g=g,
                 source_concepts=source_concepts,
                 history=history,
-                conditions=conditions,
                 search_conditions=search_conditions,
                 output_concepts=all_concepts,
             )
@@ -435,12 +463,10 @@ def gen_merge_node(
             test = subgraphs_to_merge_node(
                 [[concept, environment.alias_origin_lookup[v]]],
                 g=g,
-                all_concepts=[concept],
                 environment=environment,
                 depth=depth,
                 source_concepts=source_concepts,
                 history=history,
-                conditions=conditions,
                 enable_early_exit=False,
                 search_conditions=search_conditions,
                 output_concepts=[concept],

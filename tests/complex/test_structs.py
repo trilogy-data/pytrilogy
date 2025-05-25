@@ -79,6 +79,7 @@ order by
 ;
                           """
     )
+    assert 'unnest_array.a' in  executor.environment.concepts["a"].pseudonyms
     assert results[-1].fetchall()[0].b == 2
 
 

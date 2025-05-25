@@ -1,29 +1,28 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 from trilogy.core.exceptions import UnresolvableQueryException
-from trilogy.core.models.author import Concept
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.environment import Environment
 
-from .base_node import NodeJoin, StrategyNode
+from .base_node import NodeJoin, StrategyNode, WhereSafetyNode
 from .filter_node import FilterNode
 from .group_node import GroupNode
 from .merge_node import MergeNode
 from .select_node_v2 import ConstantNode, SelectNode
 from .union_node import UnionNode
 from .unnest_node import UnnestNode
-from .recursive_node import RecursiveNode
 from .window_node import WindowNode
+from .recursive_node import RecursiveNode
 
 
 class History(BaseModel):
     base_environment: Environment
-    local_base_concepts: dict[str, Concept] = Field(default_factory=dict)
     history: dict[str, StrategyNode | None] = Field(default_factory=dict)
     select_history: dict[str, StrategyNode | None] = Field(default_factory=dict)
     started: dict[str, int] = Field(default_factory=dict)
     model_config = ConfigDict(arbitrary_types_allowed=True)
+    active_conditions: BuildWhereClause | None = None
 
     def _concepts_to_lookup(
         self,
@@ -94,6 +93,7 @@ class History(BaseModel):
             raise UnresolvableQueryException(
                 f"Was unable to resolve datasources to serve this query from model; unresolvable set was {search}. You may be querying unrelated concepts."
             )
+        self.active_conditions = conditions
 
     def log_end(
         self,
@@ -145,12 +145,10 @@ class History(BaseModel):
 
     def gen_select_node(
         self,
-        concept: BuildConcept,
-        local_optional: list[BuildConcept],
+        concepts: list[BuildConcept],
         environment: BuildEnvironment,
         g,
         depth: int,
-        source_concepts,
         fail_if_not_found: bool = False,
         accept_partial: bool = False,
         accept_partial_optional: bool = False,
@@ -159,8 +157,8 @@ class History(BaseModel):
         from trilogy.core.processing.node_generators.select_node import gen_select_node
 
         fingerprint = self._select_concepts_to_lookup(
-            concept,
-            local_optional,
+            concepts[0],
+            concepts[1:],
             accept_partial,
             fail_if_not_found,
             accept_partial_optional=accept_partial_optional,
@@ -169,8 +167,7 @@ class History(BaseModel):
         if fingerprint in self.select_history:
             return self.select_history[fingerprint]
         gen = gen_select_node(
-            concept,
-            local_optional,
+            concepts,
             environment,
             g,
             depth + 1,
@@ -193,5 +190,7 @@ __all__ = [
     "ConstantNode",
     "UnnestNode",
     "UnionNode",
+    "RecursiveNode",
     "History",
+    "WhereSafetyNode",
 ]

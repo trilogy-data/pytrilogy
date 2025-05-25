@@ -428,6 +428,9 @@ class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs, BaseMo
     def output_datatype(self):
         return arg_to_datatype(self.content)
 
+    def decompose(self):
+        return [self]
+
 
 class BuildConditional(BuildConceptArgs, ConstantInlineable, BaseModel):
     left: Union[
@@ -465,7 +468,7 @@ class BuildConditional(BuildConceptArgs, ConstantInlineable, BaseModel):
     def __add__(self, other) -> "BuildConditional":
         if other is None:
             return self
-        elif str(other) == str(self):
+        elif other == self:
             return self
         elif isinstance(other, (BuildComparison, BuildConditional, BuildParenthetical)):
             return BuildConditional(
@@ -482,11 +485,10 @@ class BuildConditional(BuildConceptArgs, ConstantInlineable, BaseModel):
     def __eq__(self, other):
         if not isinstance(other, BuildConditional):
             return False
-        return (
-            self.left == other.left
-            and self.right == other.right
-            and self.operator == other.operator
-        )
+
+        # compare equality on decomposed results
+        # otherwise different groupings with same logical output might not evaluate to equal
+        return self.decompose() == other.decompose()
 
     def inline_constant(self, constant: BuildConcept) -> "BuildConditional":
         assert isinstance(constant.lineage, BuildFunction)
@@ -544,7 +546,14 @@ class BuildConditional(BuildConceptArgs, ConstantInlineable, BaseModel):
             output += self.right.existence_arguments
         return output
 
-    def decompose(self):
+    def decompose(
+        self,
+    ) -> List[
+        BuildSubselectComparison
+        | BuildComparison
+        | BuildConditional
+        | BuildParenthetical
+    ]:
         chunks = []
         if self.operator == BooleanOperator.AND:
             for val in [self.left, self.right]:
@@ -558,12 +567,12 @@ class BuildConditional(BuildConceptArgs, ConstantInlineable, BaseModel):
 
 
 class BuildWhereClause(BuildConceptArgs, BaseModel):
-    conditional: Union[
-        BuildSubselectComparison,
-        BuildComparison,
-        BuildConditional,
-        BuildParenthetical,
-    ]
+    conditional: (
+        BuildSubselectComparison
+        | BuildComparison
+        | BuildConditional
+        | BuildParenthetical
+    )
 
     def __eq__(self, other):
         if not isinstance(other, (BuildWhereClause, WhereClause)):
@@ -720,6 +729,9 @@ class BuildComparison(BuildConceptArgs, ConstantInlineable, BaseModel):
         if isinstance(self.right, BuildConceptArgs):
             output += self.right.existence_arguments
         return output
+
+    def decompose(self):
+        return [self]
 
 
 class BuildSubselectComparison(BuildComparison):

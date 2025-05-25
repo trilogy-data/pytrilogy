@@ -25,5 +25,5 @@ __all__ = [
     "gen_rowset_node",
     "gen_multiselect_node",
     "gen_synonym_node",
-    "gen_recursive_node,"
+    "gen_recursive_node,",
 ]

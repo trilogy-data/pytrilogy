@@ -5,14 +5,14 @@ generated_sql = """
 WITH 
 cooperative as (
 SELECT
-    \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
+    \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
     \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
     \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
     \"store_sales_store_sales\".\"SS_NET_PAID\" as \"store_sales_net_paid\",
-    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
+    \"store_sales_store_store\".\"S_STORE_SK\" as \"store_sales_store_id\",
     \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
-    \"store_sales_store_store\".\"S_STORE_SK\" as \"store_sales_store_id\"
+    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     LEFT OUTER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
@@ -58,10 +58,10 @@ GROUP BY
     \"cooperative\".\"store_sales_customer_last_name\"),
 questionable as (
 SELECT
+    sum(\"cooperative\".\"store_sales_net_paid\") as \"net_paid\",
     \"cooperative\".\"store_sales_customer_id\" as \"store_sales_customer_id\",
     \"cooperative\".\"store_sales_item_id\" as \"store_sales_item_id\",
-    \"cooperative\".\"store_sales_store_id\" as \"store_sales_store_id\",
-    sum(\"cooperative\".\"store_sales_net_paid\") as \"net_paid\"
+    \"cooperative\".\"store_sales_store_id\" as \"store_sales_store_id\"
 FROM
     \"cooperative\"
 GROUP BY 
@@ -79,11 +79,11 @@ GROUP BY
     \"juicy\".\"store_sales_item_id\"),
 concerned as (
 SELECT
+    \"questionable\".\"net_paid\" as \"su_net_paid\",
     \"abundant\".\"store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     \"abundant\".\"store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    \"questionable\".\"net_paid\" as \"su_net_paid\",
-    \"uneven\".\"store_sales_store_name\" as \"su_store_sales_store_name\",
-    \"vacuous\".\"store_sales_item_color\" as \"su_store_sales_item_color\"
+    \"vacuous\".\"store_sales_item_color\" as \"su_store_sales_item_color\",
+    \"uneven\".\"store_sales_store_name\" as \"su_store_sales_store_name\"
 FROM
     \"questionable\"
     INNER JOIN \"vacuous\" on \"questionable\".\"store_sales_item_id\" = \"vacuous\".\"store_sales_item_id\"
@@ -100,11 +100,11 @@ GROUP BY
     \"vacuous\".\"store_sales_item_color\"),
 sparkling as (
 SELECT
+    CASE WHEN \"concerned\".\"su_store_sales_item_color\" = 'peach' THEN \"concerned\".\"su_net_paid\" ELSE NULL END as \"_virt_filter_net_paid_3139932349044856\",
     \"concerned\".\"su_net_paid\" as \"su_net_paid\",
     \"concerned\".\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     \"concerned\".\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    \"concerned\".\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
-    CASE WHEN \"concerned\".\"su_store_sales_item_color\" = 'peach' THEN \"concerned\".\"su_net_paid\" ELSE NULL END as \"_virt_filter_net_paid_3139932349044856\"
+    \"concerned\".\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
 FROM
     \"concerned\"),
 young as (
@@ -114,10 +114,10 @@ FROM
     \"concerned\"),
 abhorrent as (
 SELECT
+    sum(\"sparkling\".\"_virt_filter_net_paid_3139932349044856\") as \"peach_sales\",
     \"sparkling\".\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     \"sparkling\".\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    \"sparkling\".\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
-    sum(\"sparkling\".\"_virt_filter_net_paid_3139932349044856\") as \"peach_sales\"
+    \"sparkling\".\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
 FROM
     \"sparkling\"
 GROUP BY 

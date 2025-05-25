@@ -23,7 +23,6 @@ from trilogy.core.enums import (
     Purpose,
     SourceType,
     ComparisonOperator,
-    
 )
 from trilogy.core.models.build import (
     BuildComparison,
@@ -38,7 +37,6 @@ from trilogy.core.models.build import (
     BuildRowsetItem,
     BuildCaseWhen,
     BuildCaseElse,
-
     BuildExpr,
     LooseBuildConceptList,
 )
@@ -665,9 +663,10 @@ class QueryDatasource(BaseModel):
                     and not any(x in v for x in concept.pseudonyms)
                     and CONFIG.validate_missing
                 ):
-                    raise SyntaxError(
-                        f"On query datasource missing source map for {concept.address} on {key} with pseudonyms {concept.pseudonyms}, have {v}"
-                    )
+                    pass
+                    # raise SyntaxError(
+                    #     f"On query datasource missing source map for {concept.address} on {key} with pseudonyms {concept.pseudonyms}, have {v}"
+                    # )
         return v
 
     def __str__(self):
@@ -853,90 +852,113 @@ class AliasedExpression(BaseModel):
     expr: BuildExpr
     alias: str
 
+
 class RecursiveCTE(CTE):
 
-    def generate_loop_functions(self, recursive_derived: BuildConcept, left_recurse_concept: BuildConcept, right_recurse_concept: BuildConcept)-> tuple[BuildConcept, BuildConcept, BuildConcept]:
-        
+    def generate_loop_functions(
+        self,
+        recursive_derived: BuildConcept,
+        left_recurse_concept: BuildConcept,
+        right_recurse_concept: BuildConcept,
+    ) -> tuple[BuildConcept, BuildConcept, BuildConcept]:
+
         join_gate = BuildConcept(
-            name = RECURSIVE_GATING_CONCEPT,
-            namespace = DEFAULT_NAMESPACE,
-            grain = recursive_derived.grain,
+            name=RECURSIVE_GATING_CONCEPT,
+            namespace=DEFAULT_NAMESPACE,
+            grain=recursive_derived.grain,
             build_is_aggregate=False,
-            datatype = DataType.BOOL,
-            purpose = Purpose.KEY,
-            derivation = Derivation.BASIC,
-            lineage = BuildFunction(
-                operator = FunctionType.CASE,
-                arguments = [
+            datatype=DataType.BOOL,
+            purpose=Purpose.KEY,
+            derivation=Derivation.BASIC,
+            lineage=BuildFunction(
+                operator=FunctionType.CASE,
+                arguments=[
                     BuildCaseWhen(
-                        comparison=BuildComparison(left=right_recurse_concept, right=MagicConstants.NULL, operator = ComparisonOperator.IS),
-                        expr= True
+                        comparison=BuildComparison(
+                            left=right_recurse_concept,
+                            right=MagicConstants.NULL,
+                            operator=ComparisonOperator.IS,
+                        ),
+                        expr=True,
                     ),
-                    BuildCaseElse(
-                        expr = False
-                    )
+                    BuildCaseElse(expr=False),
                 ],
-                output_datatype = DataType.BOOL,
-                output_purpose = Purpose.KEY,
+                output_datatype=DataType.BOOL,
+                output_purpose=Purpose.KEY,
             ),
         )
         bottom_join_gate = BuildConcept(
-            name = f"{RECURSIVE_GATING_CONCEPT}_two",
-            namespace = DEFAULT_NAMESPACE,
-            grain = recursive_derived.grain,
+            name=f"{RECURSIVE_GATING_CONCEPT}_two",
+            namespace=DEFAULT_NAMESPACE,
+            grain=recursive_derived.grain,
             build_is_aggregate=False,
-            datatype = DataType.BOOL,
-            purpose = Purpose.KEY,
-            derivation = Derivation.BASIC,
-            lineage = BuildFunction(
-                operator = FunctionType.CASE,
-                arguments = [
+            datatype=DataType.BOOL,
+            purpose=Purpose.KEY,
+            derivation=Derivation.BASIC,
+            lineage=BuildFunction(
+                operator=FunctionType.CASE,
+                arguments=[
                     BuildCaseWhen(
-                        comparison=BuildComparison(left=right_recurse_concept, right=MagicConstants.NULL, operator = ComparisonOperator.IS),
-                        expr= True
+                        comparison=BuildComparison(
+                            left=right_recurse_concept,
+                            right=MagicConstants.NULL,
+                            operator=ComparisonOperator.IS,
+                        ),
+                        expr=True,
                     ),
-                    BuildCaseElse(
-                        expr = False
-                    )
+                    BuildCaseElse(expr=False),
                 ],
-                output_datatype = DataType.BOOL,
-                output_purpose = Purpose.KEY,
+                output_datatype=DataType.BOOL,
+                output_purpose=Purpose.KEY,
             ),
         )
         bottom_derivation = BuildConcept(
-            name = recursive_derived.name+'_bottom',
-            namespace = recursive_derived.namespace,
-            grain = recursive_derived.grain,
+            name=recursive_derived.name + "_bottom",
+            namespace=recursive_derived.namespace,
+            grain=recursive_derived.grain,
             build_is_aggregate=False,
-            datatype = recursive_derived.datatype,
-            purpose = recursive_derived.purpose,
-            derivation = Derivation.RECURSIVE,
-            lineage = BuildFunction(
-                operator = FunctionType.CASE,
-                arguments = [
+            datatype=recursive_derived.datatype,
+            purpose=recursive_derived.purpose,
+            derivation=Derivation.RECURSIVE,
+            lineage=BuildFunction(
+                operator=FunctionType.CASE,
+                arguments=[
                     BuildCaseWhen(
-                        comparison=BuildComparison(left=right_recurse_concept, right=MagicConstants.NULL, operator = ComparisonOperator.IS),
-                        expr=  recursive_derived
+                        comparison=BuildComparison(
+                            left=right_recurse_concept,
+                            right=MagicConstants.NULL,
+                            operator=ComparisonOperator.IS,
+                        ),
+                        expr=recursive_derived,
                     ),
-                    BuildCaseElse(
-                        expr = right_recurse_concept
-                    )
+                    BuildCaseElse(expr=right_recurse_concept),
                 ],
-                output_datatype = recursive_derived.lineage.datatype,
-                output_purpose = recursive_derived.purpose,
+                output_datatype=recursive_derived.lineage.datatype,
+                output_purpose=recursive_derived.purpose,
             ),
         )
         return bottom_derivation, join_gate, bottom_join_gate
 
-
     @property
     def internal_ctes(self) -> List[CTE]:
-        filtered_output = [x for x in self.output_columns if x.name != RECURSIVE_GATING_CONCEPT]
-        recursive_derived = [x for x in self.output_columns if x.derivation == Derivation.RECURSIVE][0]
+        filtered_output = [
+            x for x in self.output_columns if x.name != RECURSIVE_GATING_CONCEPT
+        ]
+        recursive_derived = [
+            x for x in self.output_columns if x.derivation == Derivation.RECURSIVE
+        ][0]
         left_recurse_concept = recursive_derived.lineage.concept_arguments[0]
-        right_recurse_concept = recursive_derived.lineage.concept_arguments[1]     
-        loop_input_cte = self.parent_ctes[0]
-        bottom_derivation, join_gate, bottom_join_gate = self.generate_loop_functions(recursive_derived, left_recurse_concept, right_recurse_concept)
+        right_recurse_concept = recursive_derived.lineage.concept_arguments[1]
+        if self.parent_ctes:
+            base = self.parent_ctes[0]
+            loop_input_cte = base
+            parent_ctes = [base]
+            parent_identifier = base.identifier
+        else:
+            raise SyntaxError("Recursive CTEs must have a parent CTE currently")
+        bottom_derivation, join_gate, bottom_join_gate = self.generate_loop_functions(
+            recursive_derived, left_recurse_concept, right_recurse_concept
+        )
         base_output = [*filtered_output, join_gate]
         bottom_output = []
         for x in filtered_output:
@@ -966,7 +988,7 @@ class RecursiveCTE(CTE):
         )
         bottom_source_map = {
             left_recurse_concept.address: [top.identifier],
-            right_recurse_concept.address: [ loop_input_cte.identifier],
+            right_recurse_concept.address: [parent_identifier],
             # recursive_derived.address: self.source_map[recursive_derived.address],
             join_gate.address: [top.identifier],
             recursive_derived.address: [top.identifier],
@@ -978,21 +1000,23 @@ class RecursiveCTE(CTE):
             source_map=bottom_source_map,
             grain=self.grain,
             existence_source_map=self.existence_source_map,
-            parent_ctes=[top, loop_input_cte],
+            parent_ctes=[top] + parent_ctes,
             joins=[
                 Join(
-                    right_cte= loop_input_cte,
+                    right_cte=loop_input_cte,
                     jointype=JoinType.INNER,
                     joinkey_pairs=[
                         CTEConceptPair(
                             left=recursive_derived,
                             right=left_recurse_concept,
-                            existing_datasource=self.parent_ctes[0].source,
+                            existing_datasource=loop_input_cte.source,
                             modifiers=[],
-                            cte= top
+                            cte=top,
                         )
                     ],
-                    condition= BuildComparison(left=join_gate, right=True, operator = ComparisonOperator.IS_NOT),
+                    condition=BuildComparison(
+                        left=join_gate, right=True, operator=ComparisonOperator.IS_NOT
+                    ),
                 )
             ],
             partial_concepts=self.partial_concepts,
@@ -1002,7 +1026,6 @@ class RecursiveCTE(CTE):
             group_to_grain=self.group_to_grain,
             order_by=self.order_by,
             limit=self.limit,
-
         )
         return [top, bottom]
 

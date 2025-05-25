@@ -3,7 +3,7 @@ from enum import Enum
 from typing import List, Optional, Protocol, Union
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, FunctionType, Granularity
+from trilogy.core.enums import Derivation, FunctionType, Granularity, BooleanOperator
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.graph_models import ReferenceGraph
@@ -15,6 +15,7 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildRowsetItem,
     BuildWhereClause,
+    BuildConditional,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators import (
@@ -200,6 +201,7 @@ def generate_candidates_restrictive(
     candidates: list[BuildConcept],
     exhausted: set[str],
     depth: int,
+    force_condition_injection: bool,
     conditions: BuildWhereClause | None = None,
 ) -> List[List[BuildConcept]]:
     # if it's single row, joins are irrelevant. Fetch without keys.
@@ -214,12 +216,9 @@ def generate_candidates_restrictive(
         and x.address not in priority_concept.pseudonyms
         and priority_concept.address not in x.pseudonyms
     ]
-    if conditions and priority_concept.derivation in (
-        Derivation.ROOT,
-        Derivation.CONSTANT,
-    ):
+    if force_condition_injection:
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Injecting additional conditional row arguments as all remaining concepts are roots or constant"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Injecting additional conditional row arguments as all remaining concepts are roots or constant and the graph is connected"
         )
         return [unique(list(conditions.row_arguments) + local_candidates, "address")]
     return [local_candidates]
@@ -238,15 +237,13 @@ def generate_node(
 ) -> StrategyNode | None:
     # first check in case there is a materialized_concept
     candidate = history.gen_select_node(
-        concept,
-        local_optional,
+        [concept] + local_optional,
         environment,
         g,
         depth + 1,
         fail_if_not_found=False,
         accept_partial=accept_partial,
         accept_partial_optional=False,
-        source_concepts=source_concepts,
         conditions=conditions,
     )
 
@@ -385,7 +382,7 @@ def generate_node(
                 x.address for x in local_optional if x.derivation != Derivation.CONSTANT
             ]
             logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} including filter concepts, there are non root/non constant concepts we should find first: {non_root}. Recursing with all of these as mandatory"
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} including filter concepts, there are non-root/non-constant concepts we should find first: {non_root}. Recursing with all of these as mandatory"
             )
 
             if not history.check_started(
@@ -476,42 +473,68 @@ def generate_node(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} including any filters, there are non-root concepts we should expand first: {non_root}. Recursing with all of these as mandatory"
             )
 
-            # if not history.check_started(
-            #     root_targets, accept_partial=accept_partial, conditions=conditions
-            # ) or 1==1:
-            if True:
-                history.log_start(
-                    root_targets, accept_partial=accept_partial, conditions=conditions
-                )
-                return source_concepts(
-                    mandatory_list=root_targets,
-                    environment=environment,
-                    g=g,
-                    depth=depth + 1,
-                    accept_partial=accept_partial,
-                    history=history,
-                    # we DO NOT pass up conditions at this point, as we are now expanding to include conditions in search
-                    # which we do whenever we hit a root node
-                    # conditions=conditions,
-                )
-            else:
-                logger.info(
-                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} skipping root search, already in a recursion for these concepts"
-                )
+            history.log_start(
+                root_targets, accept_partial=accept_partial, conditions=conditions
+            )
+            return source_concepts(
+                mandatory_list=root_targets,
+                environment=environment,
+                g=g,
+                depth=depth + 1,
+                accept_partial=accept_partial,
+                history=history,
+                # we DO NOT pass up conditions at this point, as we are now expanding to include conditions in search
+                # which we do whenever we hit a root node
+                # conditions=conditions,
+            )
         check = history.gen_select_node(
-            concept,
-            local_optional,
+            [concept] + local_optional,
             environment,
             g,
             depth + 1,
             fail_if_not_found=False,
             accept_partial=accept_partial,
             accept_partial_optional=False,
-            source_concepts=source_concepts,
             conditions=conditions,
         )
         if not check:
 
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve root concepts, checking for synonyms"
+            )
+            if not history.check_started(
+                root_targets, accept_partial=accept_partial, conditions=conditions
+            ):
+                history.log_start(
+                    root_targets, accept_partial=accept_partial, conditions=conditions
+                )
+                logger.info(
+                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve root concepts, checking for synonyms"
+                )
+                resolved = gen_synonym_node(
+                    all_concepts=(
+                        root_targets + conditions.row_arguments
+                        if conditions
+                        else root_targets
+                    ),
+                    environment=environment,
+                    g=g,
+                    depth=depth + 1,
+                    source_concepts=source_concepts,
+                    history=history,
+                    conditions=None,
+                    accept_partial=accept_partial,
+                )
+                if resolved:
+
+                    logger.info(
+                        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} resolved concepts through synonyms"
+                    )
+                    return resolved
+            else:
+                logger.info(
+                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} skipping synonym search, already in a recursion for these concepts"
+                )
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve root concepts, checking for expanded concepts"
             )
@@ -549,35 +572,8 @@ def generate_node(
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} could not find additional concept(s) to inject"
             )
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve root concepts, checking for synonyms"
-            )
-            if not history.check_started(
-                root_targets, accept_partial=accept_partial, conditions=conditions
-            ):
-                history.log_start(
-                    root_targets, accept_partial=accept_partial, conditions=conditions
-                )
-                resolved = gen_synonym_node(
-                    all_concepts=root_targets,
-                    environment=environment,
-                    g=g,
-                    depth=depth + 1,
-                    source_concepts=source_concepts,
-                    history=history,
-                    conditions=conditions,
-                    accept_partial=accept_partial,
-                )
-                if resolved:
-                    logger.info(
-                        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} resolved concepts through synonyms"
-                    )
-                    return resolved
-            else:
-                logger.info(
-                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} skipping synonym search, already in a recursion for these concepts"
-                )
             return None
+
     else:
         raise ValueError(f"Unknown derivation {concept.derivation} on {concept}")
     return None
@@ -677,7 +673,18 @@ def validate_stack(
         conditions_met = True
     else:
         conditions_met = all(
-            [node.preexisting_conditions == conditions.conditional for node in stack]
+            [
+                node.preexisting_conditions == conditions.conditional
+                or (
+                    isinstance(node.preexisting_conditions, BuildConditional)
+                    and (
+                        node.preexisting_conditions.left == conditions.conditional
+                        or node.preexisting_conditions.right == conditions.conditional
+                        and node.preexisting_conditions.operator == BooleanOperator.AND
+                    )
+                )
+                for node in stack
+            ]
         ) or all([c.address in found_addresses for c in mandatory_with_filter])
     # zip in those we know we found
     if not all([c.address in found_addresses for c in concepts]) or not conditions_met:
@@ -764,7 +771,6 @@ def search_concepts(
     accept_partial: bool = False,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
-    logger.error(f"starting search for {mandatory_list}")
     hist = history.get_history(
         search=mandatory_list, accept_partial=accept_partial, conditions=conditions
     )
@@ -887,7 +893,10 @@ def _search_concepts(
         if (
             conditions
             and priority_concept.derivation
-            not in (Derivation.ROOT, Derivation.CONSTANT)
+            not in (
+                Derivation.ROOT,
+                Derivation.CONSTANT,
+            )
             and priority_concept.address not in conditions.row_arguments
         ):
             logger.info(
@@ -902,8 +911,21 @@ def _search_concepts(
         candidates = [
             c for c in mandatory_list if c.address != priority_concept.address
         ]
+
+        force_condition_injection = False
+        if conditions and priority_concept.derivation in (
+            Derivation.ROOT,
+            Derivation.CONSTANT,
+        ):
+            force_condition_injection = True
+
         candidate_lists = generate_candidates_restrictive(
-            priority_concept, candidates, skip, depth=depth, conditions=conditions
+            priority_concept,
+            candidates,
+            skip,
+            depth=depth,
+            conditions=conditions,
+            force_condition_injection=force_condition_injection,
         )
         for clist in candidate_lists:
             logger.info(
@@ -999,7 +1021,9 @@ def _search_concepts(
     if complete == ValidationResult.COMPLETE:
         condition_required = True
         non_virtual = [c for c in completion_mandatory if c.address not in virtual]
+
         non_virtual_output = [c for c in original_mandatory if c.address not in virtual]
+
         non_virtual_different = len(completion_mandatory) != len(original_mandatory)
         non_virtual_difference_values = set(
             [x.address for x in completion_mandatory]
@@ -1023,15 +1047,21 @@ def _search_concepts(
         if len(stack) == 1:
             output: StrategyNode = stack[0]
             if non_virtual_different:
+                output_synonyms = [
+                    c
+                    for c in output.output_concepts
+                    if any(c.address in x.pseudonyms for x in original_mandatory)
+                ]
+                output_to_keep = [
+                    x
+                    for x in output.output_concepts
+                    if x.address in non_virtual_output + output_synonyms
+                ]
                 logger.info(
-                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Found different non-virtual output concepts ({non_virtual_difference_values}), removing condition injected values"
+                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Found different non-virtual output concepts ({non_virtual_difference_values}), removing condition injected values. Setting final output to {output_to_keep} vs original {output.output_concepts}"
                 )
                 output.set_output_concepts(
-                    [
-                        x
-                        for x in output.output_concepts
-                        if x.address in non_virtual_output
-                    ],
+                    output_to_keep,
                     rebuild=False,
                 )
 

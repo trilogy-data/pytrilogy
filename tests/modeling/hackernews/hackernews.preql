@@ -1,0 +1,7 @@
+import post;
+import post as root_parent;
+# import post as recursive_children;
+
+auto recursive_parent<- recurse_edge(id, parent);
+
+merge recursive_parent into root_parent.id;

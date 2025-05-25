@@ -5,9 +5,9 @@ generated_sql = """
 WITH 
 uneven as (
 SELECT
+    \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\",
     \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" as \"store_sales_customer_id\",
-    \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" as \"store_sales_item_id\",
-    \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\"
+    \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" as \"store_sales_item_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
 GROUP BY 
@@ -19,10 +19,10 @@ SELECT
     \"catalog_sales_catalog_sales\".\"CS_NET_PROFIT\" as \"catalog_sales_net_profit\",
     \"catalog_sales_catalog_sales\".\"CS_ORDER_NUMBER\" as \"catalog_sales_order_number\",
     \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
-    \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_name\",
     \"store_sales_item_items\".\"I_ITEM_SK\" as \"store_sales_item_id\",
-    \"store_sales_store_store\".\"S_STORE_ID\" as \"store_sales_store_text_id\",
-    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\"
+    \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_name\",
+    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
+    \"store_sales_store_store\".\"S_STORE_ID\" as \"store_sales_store_text_id\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
@@ -38,13 +38,13 @@ WHERE
 yummy as (
 SELECT
     \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
-    \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_name\",
     \"store_sales_item_items\".\"I_ITEM_SK\" as \"store_sales_item_id\",
-    \"store_sales_store_returns\".\"SR_NET_LOSS\" as \"store_sales_return_net_loss\",
+    \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_name\",
     \"store_sales_store_sales\".\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
-    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
+    \"store_sales_store_returns\".\"SR_NET_LOSS\" as \"store_sales_return_net_loss\",
+    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
     \"store_sales_store_store\".\"S_STORE_ID\" as \"store_sales_store_text_id\",
-    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\"
+    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
@@ -99,11 +99,11 @@ GROUP BY
     \"yummy\".\"store_sales_ticket_number\"),
 sparkling as (
 SELECT
+    sum(\"young\".\"catalog_sales_net_profit\") as \"catalog_sales_profit\",
     \"young\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
     \"young\".\"store_sales_item_name\" as \"store_sales_item_name\",
     \"young\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    \"young\".\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
-    sum(\"young\".\"catalog_sales_net_profit\") as \"catalog_sales_profit\"
+    \"young\".\"store_sales_store_text_id\" as \"store_sales_store_text_id\"
 FROM
     \"young\"
 GROUP BY 
@@ -113,12 +113,12 @@ GROUP BY
     \"young\".\"store_sales_store_text_id\"),
 vacuous as (
 SELECT
+    sum(\"juicy\".\"store_sales_return_net_loss\") as \"store_returns_loss\",
     \"juicy\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
     \"juicy\".\"store_sales_item_name\" as \"store_sales_item_name\",
-    \"juicy\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    \"juicy\".\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
     sum(\"juicy\".\"store_sales_net_profit\") as \"store_sales_profit\",
-    sum(\"juicy\".\"store_sales_return_net_loss\") as \"store_returns_loss\"
+    \"juicy\".\"store_sales_store_name\" as \"store_sales_store_name\",
+    \"juicy\".\"store_sales_store_text_id\" as \"store_sales_store_text_id\"
 FROM
     \"juicy\"
 GROUP BY 

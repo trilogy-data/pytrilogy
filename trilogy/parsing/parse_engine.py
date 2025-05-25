@@ -226,7 +226,7 @@ def unwrap_transformation(
             operator=FunctionType.ALIAS,
             output_datatype=concept.datatype,
             output_purpose=concept.purpose,
-            arguments=[input],
+            arguments=[concept.reference],
         )
     elif isinstance(input, FilterItem):
         return input
@@ -605,13 +605,13 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def concept_declaration(self, meta: Meta, args) -> ConceptDeclarationStatement:
         metadata = Metadata()
-        modifiers:list[Modifier] = []
+        modifiers: list[Modifier] = []
         for arg in args:
             if isinstance(arg, Metadata):
                 metadata = arg
             if isinstance(arg, Modifier):
                 modifiers.append(arg)
-        name:str = args[1]
+        name: str = args[1]
         _, namespace, name, _ = parse_concept_reference(name, self.environment)
         concept = Concept(
             name=name,
@@ -1659,7 +1659,9 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def frecurse_edge(self, meta, args):
-        return self.function_factory.create_function(args, FunctionType.RECURSE_EDGE, meta)
+        return self.function_factory.create_function(
+            args, FunctionType.RECURSE_EDGE, meta
+        )
 
     @v_args(meta=True)
     def unnest(self, meta, args):

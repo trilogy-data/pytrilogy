@@ -1355,60 +1355,16 @@ def test_recursive():
     from trilogy.hooks.query_debugger import DebuggingHook
 
     DebuggingHook()
-    query = """
-key id int;
-property id.parent int;
 
-property id.label string;
-
-# traverse parent-> id until you hit a null
-auto first_parent <- recurse_edge(id, parent);
-
-datasource nodes (
-    id: id,
-    label: label
-)
-grain (id)
-query '''
-select 1 as id, 'A' as label
-union all
-select 2, 'B'
-union all
-select 3, 'C'
-union all
-select 4, 'D'
-union all
-select 5, 'E'
-union all
-select 6, 'F'
-''';
-
-
-datasource edges (
-    id: id,
-    parent: parent
-)
-grain (id)
-query '''
-select 1 as id, null as parent
-union all
-select 2, 1
-union all
-select 3, 2
-union all
-select 4, 3
-union all 
-select 5, null
-union all
-select 6, 5
-''';
-
-"""
     executor: Executor = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=Path(__file__).parent)
     )
 
-    executor.parse_text(query)
+    executor.environment.parse(
+        """import recursive;
+# traverse parent-> id until you hit a null
+auto first_parent <- recurse_edge(id, parent);"""
+    )
 
     assert (
         executor.environment.concepts["first_parent"].derivation == Derivation.RECURSIVE
@@ -1428,3 +1384,43 @@ select id, label;
     )[0].fetchall()
     assert len(results) == 4
     assert results[0].label == "A"
+
+
+def test_recursive_enrichment():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+
+    executor: Executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=Path(__file__).parent)
+    )
+
+    executor.environment.parse(
+        """
+import recursive;
+import recursive as parent;
+# traverse parent-> id until you hit a null
+auto first_parent <- recurse_edge(id, parent);  
+
+merge first_parent into parent.id;                 
+                               
+                               """
+    )
+
+    results = executor.execute_text(
+        """where
+first_parent = 1
+select id, parent.label;
+"""
+    )[0].fetchall()
+    assert len(results) == 4
+    assert results[-1].parent_label == "A"
+
+    results = executor.execute_text(
+        """where
+parent.label = 'A'
+select count(id) as a_children;
+"""
+    )[0].fetchall()
+    assert len(results) == 1
+    assert results[0].a_children == 4

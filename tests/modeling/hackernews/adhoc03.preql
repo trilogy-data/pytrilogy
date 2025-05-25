@@ -1,0 +1,5 @@
+import hackernews;
+
+
+where  create_time.year= 2024 and root_parent.type = 'story'
+select root_parent.id, id limit 10;
