@@ -151,6 +151,7 @@ def get_priority_concept(
             + [c for c in remaining_concept if c.derivation == Derivation.FILTER]
             # unnests are weird?
             + [c for c in remaining_concept if c.derivation == Derivation.UNNEST]
+            + [c for c in remaining_concept if c.derivation == Derivation.RECURSIVE]
             + [c for c in remaining_concept if c.derivation == Derivation.BASIC]
             # finally our plain selects
             + [

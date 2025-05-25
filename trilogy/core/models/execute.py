@@ -39,11 +39,12 @@ from trilogy.core.models.build import (
     BuildCaseElse,
     BuildExpr,
     LooseBuildConceptList,
+    DataType
 )
 from trilogy.core.models.datasource import Address
 from trilogy.core.utility import safe_quote
 from trilogy.utility import unique
-from trilogy.constants import DEFAULT_NAMESPACE, RECURSIVE_GATING_CONCEPT
+from trilogy.constants import DEFAULT_NAMESPACE, RECURSIVE_GATING_CONCEPT, MagicConstants
 
 LOGGER_PREFIX = "[MODELS_EXECUTE]"
 

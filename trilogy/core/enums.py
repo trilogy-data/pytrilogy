@@ -235,6 +235,7 @@ class FunctionClass(Enum):
 
     ONE_TO_MANY = [FunctionType.UNNEST]
 
+    RECURSIVE = [FunctionType.RECURSE_EDGE]
 
 class Boolean(Enum):
     TRUE = "true"
