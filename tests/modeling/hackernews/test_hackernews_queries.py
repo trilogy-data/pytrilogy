@@ -1,10 +1,11 @@
 from pathlib import Path
 
+from pytest import raises
+
 from trilogy import Dialects, Executor
+from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.bigquery import BigqueryDialect
-from trilogy.core.exceptions import InvalidSyntaxException
-from pytest import raises
 
 working_path = Path(__file__).parent
 
@@ -49,4 +50,4 @@ def test_adhoc04():
         text = f.read()
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
     with raises(InvalidSyntaxException):
-        statement = engine.parse_text(text)[-1]
+        engine.parse_text(text)[-1]

@@ -74,12 +74,12 @@ from trilogy.core.models.author import (
     Parenthetical,
     RowsetItem,
     SubselectComparison,
+    UndefinedConceptFull,
     WhereClause,
     Window,
     WindowItem,
     WindowItemOrder,
     WindowItemOver,
-    UndefinedConceptFull,
 )
 from trilogy.core.models.core import (
     DataType,
