@@ -15,3 +15,7 @@ type city string; # City name
 type country string; # Country name
 type timezone string; # Timezone name
 type region string; # Region name
+
+
+## special formats
+type geojson string; # GeoJSON format for geographic data
