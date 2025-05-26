@@ -46,7 +46,6 @@ select unnest;
         concepts=[
             env.concepts["unnest"],
         ],
-        local_optional=[],
         environment=env,
         g=generate_graph(env),
         depth=0,
