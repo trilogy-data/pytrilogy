@@ -80,6 +80,7 @@ def get_priority_concept(
             + [c for c in remaining_concept if c.derivation == Derivation.UNNEST]
             + [c for c in remaining_concept if c.derivation == Derivation.RECURSIVE]
             + [c for c in remaining_concept if c.derivation == Derivation.BASIC]
+            + [c for c in remaining_concept if c.derivation == Derivation.GROUP_TO]
             # finally our plain selects
             + [
                 c for c in remaining_concept if c.derivation == Derivation.ROOT

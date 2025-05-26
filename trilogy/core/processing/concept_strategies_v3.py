@@ -40,9 +40,12 @@ SKIPPED_DERIVATIONS = [
     Derivation.RECURSIVE,
     Derivation.ROWSET,
     Derivation.BASIC,
+    Derivation.GROUP_TO,
     Derivation.MULTISELECT,
     Derivation.UNION,
 ]
+
+ROOT_DERIVATIONS = [Derivation.ROOT, Derivation.CONSTANT]
 
 
 def generate_candidates_restrictive(
@@ -64,10 +67,7 @@ def generate_candidates_restrictive(
         and x.address not in priority_concept.pseudonyms
         and priority_concept.address not in x.pseudonyms
     ]
-    if conditions and priority_concept.derivation in (
-        Derivation.ROOT,
-        Derivation.CONSTANT,
-    ):
+    if conditions and priority_concept.derivation in ROOT_DERIVATIONS:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Injecting additional conditional row arguments as all remaining concepts are roots or constant"
         )
@@ -202,7 +202,7 @@ def initialize_loop_context(
         required_filters = [
             x
             for x in mandatory_list
-            if x.derivation not in (Derivation.ROOT, Derivation.CONSTANT)
+            if x.derivation not in ROOT_DERIVATIONS
             and not (
                 x.derivation == Derivation.AGGREGATE
                 and x.granularity == Granularity.SINGLE_ROW
@@ -256,7 +256,7 @@ def evaluate_loop_conditions(
             ]
         ) and not any(
             [
-                x.derivation not in (Derivation.ROOT, Derivation.CONSTANT)
+                x.derivation not in ROOT_DERIVATIONS
                 for x in context.mandatory_list
                 if x.address not in context.conditions.row_arguments
             ]
@@ -275,7 +275,7 @@ def evaluate_loop_conditions(
     # to ensure filtering happens before something like a SUM
     if (
         context.conditions
-        and priority_concept.derivation not in (Derivation.ROOT, Derivation.CONSTANT)
+        and priority_concept.derivation not in ROOT_DERIVATIONS
         and priority_concept.address not in context.conditions.row_arguments
     ):
         logger.info(

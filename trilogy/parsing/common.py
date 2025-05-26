@@ -397,7 +397,7 @@ def group_function_to_concept(
             modifiers=modifiers,
             grain=grain,
             metadata=fmetadata,
-            derivation=Derivation.BASIC,
+            derivation=Derivation.GROUP_TO,
             granularity=granularity,
         )
         return r
@@ -654,7 +654,6 @@ def agg_wrapper_to_concept(
     fmetadata = metadata or Metadata()
     aggfunction = parent.function
     modifiers = get_upstream_modifiers(parent.concept_arguments, environment)
-    # derivation = Concept.calculate_derivation(parent, Purpose.PROPERTY)
     grain = Grain.from_concepts(parent.by, environment) if parent.by else Grain()
     granularity = Concept.calculate_granularity(Derivation.AGGREGATE, grain, parent)
 
@@ -778,7 +777,6 @@ def rowset_to_concepts(rowset: RowsetDerivationStatement, environment: Environme
     for x in pre_output:
         x.lineage = RowsetItem(
             content=orig_map[x.address].reference,
-            # where=rowset.select.where_clause,
             rowset=RowsetLineage(
                 name=rowset.name,
                 derived_concepts=[x.reference for x in pre_output],

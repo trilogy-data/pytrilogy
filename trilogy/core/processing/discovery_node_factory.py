@@ -2,11 +2,10 @@ from dataclasses import dataclass
 from typing import List, Optional, Protocol, Union
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, FunctionType, Granularity
+from trilogy.core.enums import Derivation, Granularity
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BuildConcept,
-    BuildFunction,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -225,48 +224,32 @@ def _generate_multiselect_node(ctx: NodeGenerationContext) -> StrategyNode | Non
     )
 
 
-class BasicNodeHandler:
-    """Handles basic node generation, including special GROUP function handling."""
+def _generate_group_to_node(ctx: NodeGenerationContext) -> StrategyNode | None:
+    ctx.log_generation("group to grain")
+    return gen_group_to_node(
+        ctx.concept,
+        ctx.local_optional,
+        ctx.environment,
+        ctx.g,
+        ctx.next_depth,
+        ctx.source_concepts,
+        ctx.history,
+        conditions=ctx.conditions,
+    )
 
-    def __init__(self, context: NodeGenerationContext):
-        self.ctx = context
 
-    def generate(self) -> StrategyNode | None:
-        if self._is_group_function():
-            return self._generate_group_to_node()
-        return self._generate_basic_node()
-
-    def _is_group_function(self) -> bool:
-        return (
-            isinstance(self.ctx.concept.lineage, BuildFunction)
-            and self.ctx.concept.lineage.operator == FunctionType.GROUP
-        )
-
-    def _generate_group_to_node(self) -> StrategyNode | None:
-        self.ctx.log_generation("group to grain")
-        return gen_group_to_node(
-            self.ctx.concept,
-            self.ctx.local_optional,
-            self.ctx.environment,
-            self.ctx.g,
-            self.ctx.next_depth,
-            self.ctx.source_concepts,
-            self.ctx.history,
-            conditions=self.ctx.conditions,
-        )
-
-    def _generate_basic_node(self) -> StrategyNode | None:
-        self.ctx.log_generation("basic")
-        return gen_basic_node(
-            self.ctx.concept,
-            self.ctx.local_optional,
-            history=self.ctx.history,
-            environment=self.ctx.environment,
-            g=self.ctx.g,
-            depth=self.ctx.next_depth,
-            source_concepts=self.ctx.source_concepts,
-            conditions=self.ctx.conditions,
-        )
+def _generate_basic_node(ctx: NodeGenerationContext) -> StrategyNode | None:
+    ctx.log_generation("basic")
+    return gen_basic_node(
+        ctx.concept,
+        ctx.local_optional,
+        history=ctx.history,
+        environment=ctx.environment,
+        g=ctx.g,
+        depth=ctx.next_depth,
+        source_concepts=ctx.source_concepts,
+        conditions=ctx.conditions,
+    )
 
 
 class RootNodeHandler:
@@ -324,33 +307,11 @@ class RootNodeHandler:
     def _resolve_root_concepts(
         self, root_targets: List[BuildConcept]
     ) -> Optional[StrategyNode]:
-        # Try direct resolution first
-        check = self.ctx.history.gen_select_node(
-            self.ctx.concept,
-            self.ctx.local_optional,
-            self.ctx.environment,
-            self.ctx.g,
-            self.ctx.next_depth,
-            fail_if_not_found=False,
-            accept_partial=self.ctx.accept_partial,
-            accept_partial_optional=False,
-            conditions=self.ctx.conditions,
-        )
 
-        if check:
-            return check
-
-        logger.info(
-            f"{depth_to_prefix(self.ctx.depth)}{LOGGER_PREFIX} "
-            f"Could not resolve root concepts, checking for expanded concepts"
-        )
-
-        # Try merge expansion
         expanded_node = self._try_merge_expansion(root_targets)
         if expanded_node:
             return expanded_node
 
-        # Try synonym resolution
         return self._try_synonym_resolution(root_targets)
 
     def _try_merge_expansion(
@@ -496,7 +457,8 @@ def generate_node(
         Derivation.AGGREGATE: lambda: _generate_aggregate_node(context),
         Derivation.ROWSET: lambda: _generate_rowset_node(context),
         Derivation.MULTISELECT: lambda: _generate_multiselect_node(context),
-        Derivation.BASIC: lambda: BasicNodeHandler(context).generate(),
+        Derivation.GROUP_TO: lambda: _generate_group_to_node(context),
+        Derivation.BASIC: lambda: _generate_basic_node(context),
         Derivation.ROOT: lambda: RootNodeHandler(context).generate(),
     }
 
