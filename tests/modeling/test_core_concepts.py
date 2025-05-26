@@ -82,8 +82,8 @@ def test_source_outputs(test_environment: Environment, test_executor: Executor):
     x = [
         x
         for x in gen_select_node(
-            test_environment.concepts["store_id"],
-            local_optional=[test_environment.concepts["order_id"]],
+            [test_environment.concepts["store_id"]]
+            + [test_environment.concepts["order_id"]],
             environment=test_environment,
             g=generate_graph(test_environment),
             depth=0,

@@ -1,9 +1,8 @@
-from collections import defaultdict
-from enum import Enum
-from typing import List, Optional, Protocol, Union
+from dataclasses import dataclass
+from typing import List, Optional
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, FunctionType, Granularity
+from trilogy.core.enums import Derivation, Granularity
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.graph_models import ReferenceGraph
@@ -12,187 +11,38 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.build import (
     BuildConcept,
-    BuildFunction,
-    BuildRowsetItem,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.node_generators import (
-    gen_basic_node,
-    gen_filter_node,
-    gen_group_node,
-    gen_group_to_node,
-    gen_merge_node,
-    gen_multiselect_node,
-    gen_recursive_node,
-    gen_rowset_node,
-    gen_synonym_node,
-    gen_union_node,
-    gen_unnest_node,
-    gen_window_node,
+from trilogy.core.processing.discovery_node_factory import generate_node
+from trilogy.core.processing.discovery_utility import (
+    LOGGER_PREFIX,
+    depth_to_prefix,
+    get_priority_concept,
+)
+from trilogy.core.processing.discovery_validation import (
+    ValidationResult,
+    validate_stack,
 )
 from trilogy.core.processing.nodes import (
-    ConstantNode,
     GroupNode,
     History,
     MergeNode,
     StrategyNode,
 )
-from trilogy.core.processing.utility import (
-    get_disconnected_components,
-)
 from trilogy.utility import unique
 
-
-class ValidationResult(Enum):
-    COMPLETE = 1
-    DISCONNECTED = 2
-    INCOMPLETE = 3
-    INCOMPLETE_CONDITION = 4
-
-
-LOGGER_PREFIX = "[CONCEPT DETAIL]"
-
-
-class SearchConceptsType(Protocol):
-    def __call__(
-        self,
-        mandatory_list: List[BuildConcept],
-        history: History,
-        environment: BuildEnvironment,
-        depth: int,
-        g: ReferenceGraph,
-        accept_partial: bool = False,
-        conditions: Optional[BuildWhereClause] = None,
-    ) -> Union[StrategyNode, None]: ...
-
-
-def get_upstream_concepts(base: BuildConcept, nested: bool = False) -> set[str]:
-    upstream = set()
-    if nested:
-        upstream.add(base.address)
-    if not base.lineage:
-        return upstream
-    for x in base.lineage.concept_arguments:
-        # if it's derived from any value in a rowset, ALL rowset items are upstream
-        if x.derivation == Derivation.ROWSET:
-            assert isinstance(x.lineage, BuildRowsetItem), type(x.lineage)
-            for y in x.lineage.rowset.select.output_components:
-                upstream.add(f"{x.lineage.rowset.name}.{y.address}")
-                # upstream = upstream.union(get_upstream_concepts(y, nested=True))
-        upstream = upstream.union(get_upstream_concepts(x, nested=True))
-    return upstream
-
-
-def restrict_node_outputs_targets(
-    node: StrategyNode, targets: list[BuildConcept], depth: int
-) -> list[BuildConcept]:
-    ex_resolve = node.resolve()
-    extra = [
-        x
-        for x in ex_resolve.output_concepts
-        if x.address not in [y.address for y in targets]
-    ]
-
-    base = [x for x in ex_resolve.output_concepts if x.address not in extra]
-    logger.info(
-        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} reducing final outputs, was {[c.address for c in ex_resolve.output_concepts]} with extra {[c.address for c in extra]}, remaining {base}"
-    )
-    for x in targets:
-        if x.address not in base:
-            base.append(x)
-    node.set_output_concepts(base)
-    return extra
-
-
-def get_priority_concept(
-    all_concepts: List[BuildConcept],
-    attempted_addresses: set[str],
-    found_concepts: set[str],
-    depth: int,
-) -> BuildConcept:
-    # optimized search for missing concepts
-    pass_one = sorted(
-        [
-            c
-            for c in all_concepts
-            if c.address not in attempted_addresses and c.address not in found_concepts
-        ],
-        key=lambda x: x.address,
-    )
-    # sometimes we need to scan intermediate concepts to get merge keys or filter keys,
-    # so do an exhaustive search
-    # pass_two = [c for c in all_concepts+filter_only if c.address not in attempted_addresses]
-    for remaining_concept in (pass_one,):
-        priority = (
-            # find anything that needs no joins first, so we can exit early
-            [
-                c
-                for c in remaining_concept
-                if c.derivation == Derivation.CONSTANT
-                and c.granularity == Granularity.SINGLE_ROW
-            ]
-            +
-            # then multiselects to remove them from scope
-            [c for c in remaining_concept if c.derivation == Derivation.MULTISELECT]
-            +
-            # then rowsets to remove them from scope, as they cannot get partials
-            [c for c in remaining_concept if c.derivation == Derivation.ROWSET]
-            +
-            # then rowsets to remove them from scope, as they cannot get partials
-            [c for c in remaining_concept if c.derivation == Derivation.UNION]
-            # we should be home-free here
-            +
-            # then aggregates to remove them from scope, as they cannot get partials
-            [c for c in remaining_concept if c.derivation == Derivation.AGGREGATE]
-            # then windows to remove them from scope, as they cannot get partials
-            + [c for c in remaining_concept if c.derivation == Derivation.WINDOW]
-            # then filters to remove them from scope, also cannot get partials
-            + [c for c in remaining_concept if c.derivation == Derivation.FILTER]
-            # unnests are weird?
-            + [c for c in remaining_concept if c.derivation == Derivation.UNNEST]
-            + [c for c in remaining_concept if c.derivation == Derivation.RECURSIVE]
-            + [c for c in remaining_concept if c.derivation == Derivation.BASIC]
-            # finally our plain selects
-            + [
-                c for c in remaining_concept if c.derivation == Derivation.ROOT
-            ]  # and any non-single row constants
-            + [c for c in remaining_concept if c.derivation == Derivation.CONSTANT]
-        )
-
-        priority += [
-            c
-            for c in remaining_concept
-            if c.address not in [x.address for x in priority]
-        ]
-        final = []
-        # if any thing is derived from another concept
-        # get the derived copy first
-        # as this will usually resolve cleaner
-        for x in priority:
-            if any(
-                [
-                    x.address
-                    in get_upstream_concepts(
-                        c,
-                    )
-                    for c in priority
-                ]
-            ):
-                logger.info(
-                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} delaying fetch of {x.address} as parent of another concept"
-                )
-                continue
-            final.append(x)
-        # then append anything we didn't get
-        for x2 in priority:
-            if x2 not in final:
-                final.append(x2)
-        if final:
-            return final[0]
-    raise ValueError(
-        f"Cannot resolve query. No remaining priority concepts, have attempted {attempted_addresses}"
-    )
+SKIPPED_DERIVATIONS = [
+    Derivation.AGGREGATE,
+    Derivation.FILTER,
+    Derivation.WINDOW,
+    Derivation.UNNEST,
+    Derivation.RECURSIVE,
+    Derivation.ROWSET,
+    Derivation.BASIC,
+    Derivation.MULTISELECT,
+    Derivation.UNION,
+]
 
 
 def generate_candidates_restrictive(
@@ -201,10 +51,10 @@ def generate_candidates_restrictive(
     exhausted: set[str],
     depth: int,
     conditions: BuildWhereClause | None = None,
-) -> List[List[BuildConcept]]:
+) -> List[BuildConcept]:
     # if it's single row, joins are irrelevant. Fetch without keys.
     if priority_concept.granularity == Granularity.SINGLE_ROW:
-        return [[]]
+        return []
 
     local_candidates = [
         x
@@ -221,503 +71,8 @@ def generate_candidates_restrictive(
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Injecting additional conditional row arguments as all remaining concepts are roots or constant"
         )
-        return [unique(list(conditions.row_arguments) + local_candidates, "address")]
-    return [local_candidates]
-
-
-def generate_node(
-    concept: BuildConcept,
-    local_optional: List[BuildConcept],
-    environment: BuildEnvironment,
-    g: ReferenceGraph,
-    depth: int,
-    source_concepts: SearchConceptsType,
-    history: History,
-    accept_partial: bool = False,
-    conditions: BuildWhereClause | None = None,
-) -> StrategyNode | None:
-    # first check in case there is a materialized_concept
-    candidate = history.gen_select_node(
-        concept,
-        local_optional,
-        environment,
-        g,
-        depth + 1,
-        fail_if_not_found=False,
-        accept_partial=accept_partial,
-        accept_partial_optional=False,
-        source_concepts=source_concepts,
-        conditions=conditions,
-    )
-
-    if candidate:
-        return candidate
-
-    if concept.derivation == Derivation.WINDOW:
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating window node with optional {[x.address for x in local_optional]}"
-        )
-        return gen_window_node(
-            concept,
-            local_optional,
-            history=history,
-            environment=environment,
-            g=g,
-            depth=depth + 1,
-            source_concepts=source_concepts,
-            conditions=conditions,
-        )
-
-    elif concept.derivation == Derivation.FILTER:
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating filter node with optional {[x.address for x in local_optional]}"
-        )
-        return gen_filter_node(
-            concept,
-            local_optional,
-            history=history,
-            environment=environment,
-            g=g,
-            depth=depth + 1,
-            source_concepts=source_concepts,
-            conditions=conditions,
-        )
-    elif concept.derivation == Derivation.UNNEST:
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating unnest node with optional {[x.address for x in local_optional]} and condition {conditions}"
-        )
-        return gen_unnest_node(
-            concept,
-            local_optional,
-            history=history,
-            environment=environment,
-            g=g,
-            depth=depth + 1,
-            source_concepts=source_concepts,
-            conditions=conditions,
-        )
-    elif concept.derivation == Derivation.RECURSIVE:
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating recursive node with optional {[x.address for x in local_optional]} and condition {conditions}"
-        )
-        return gen_recursive_node(
-            concept,
-            local_optional,
-            history=history,
-            environment=environment,
-            g=g,
-            depth=depth + 1,
-            source_concepts=source_concepts,
-            conditions=conditions,
-        )
-    elif concept.derivation == Derivation.UNION:
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating union node with optional {[x.address for x in local_optional]} and condition {conditions}"
-        )
-        return gen_union_node(
-            concept,
-            local_optional,
-            environment,
-            g,
-            depth + 1,
-            source_concepts,
-            history,
-            conditions=conditions,
-        )
-    elif concept.derivation == Derivation.AGGREGATE:
-        # don't push constants up before aggregation
-        # if not required
-        # to avoid constants multiplication changing default aggregation results
-        # ex sum(x) * 2 w/ no grain should return sum(x) * 2, not sum(x*2)
-        # these should always be sourceable independently
-        agg_optional = [
-            x for x in local_optional if x.granularity != Granularity.SINGLE_ROW
-        ]
-
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating aggregate node with {[x for x in agg_optional]}"
-        )
-        return gen_group_node(
-            concept,
-            agg_optional,
-            history=history,
-            environment=environment,
-            g=g,
-            depth=depth + 1,
-            source_concepts=source_concepts,
-            conditions=conditions,
-        )
-    elif concept.derivation == Derivation.ROWSET:
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating rowset node with optional {[x.address for x in local_optional]}"
-        )
-        return gen_rowset_node(
-            concept,
-            local_optional,
-            environment,
-            g,
-            depth + 1,
-            source_concepts,
-            history,
-            conditions=conditions,
-        )
-    elif concept.derivation == Derivation.MULTISELECT:
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating multiselect node with optional {[x.address for x in local_optional]}"
-        )
-        return gen_multiselect_node(
-            concept,
-            local_optional,
-            environment,
-            g,
-            depth + 1,
-            source_concepts,
-            history,
-            conditions=conditions,
-        )
-    elif concept.derivation == Derivation.CONSTANT:
-        constant_targets = [concept] + local_optional
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating constant node"
-        )
-        if any([x.derivation != Derivation.CONSTANT for x in local_optional]):
-            non_root = [
-                x.address for x in local_optional if x.derivation != Derivation.CONSTANT
-            ]
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} including filter concepts, there are non root/non constant concepts we should find first: {non_root}. Recursing with all of these as mandatory"
-            )
-
-            if not history.check_started(
-                constant_targets, accept_partial=accept_partial, conditions=conditions
-            ):
-                history.log_start(
-                    constant_targets,
-                    accept_partial=accept_partial,
-                    conditions=conditions,
-                )
-                return source_concepts(
-                    mandatory_list=constant_targets,
-                    environment=environment,
-                    g=g,
-                    depth=depth + 1,
-                    accept_partial=accept_partial,
-                    history=history,
-                    # we DO NOT pass up conditions at this point, as we are now expanding to include conditions in search
-                    # which we do whenever we hit a root node
-                    # conditions=conditions,
-                )
-            else:
-                logger.info(
-                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} skipping search, already in a recursion fot these concepts"
-                )
-                return None
-        return ConstantNode(
-            input_concepts=[],
-            output_concepts=constant_targets,
-            environment=environment,
-            parents=[],
-            depth=depth + 1,
-            preexisting_conditions=conditions.conditional if conditions else None,
-        )
-    elif concept.derivation == Derivation.BASIC:
-        # this is special case handling for group bys
-        if (
-            isinstance(concept.lineage, BuildFunction)
-            and concept.lineage.operator == FunctionType.GROUP
-        ):
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating group to grain node with {[x.address for x in local_optional]}"
-            )
-            return gen_group_to_node(
-                concept,
-                local_optional,
-                environment,
-                g,
-                depth + 1,
-                source_concepts,
-                history,
-                conditions=conditions,
-            )
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating basic node with optional {[x.address for x in local_optional]}"
-        )
-        return gen_basic_node(
-            concept,
-            local_optional,
-            history=history,
-            environment=environment,
-            g=g,
-            depth=depth + 1,
-            source_concepts=source_concepts,
-            conditions=conditions,
-        )
-
-    elif concept.derivation == Derivation.ROOT:
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating select node with optional including condition inputs {[x.address for x in local_optional]}"
-        )
-        # we've injected in any conditional concepts that may exist
-        # so if we don't still have just roots, we need to go up
-        root_targets = [concept] + local_optional
-
-        if any(
-            [
-                x.derivation not in (Derivation.ROOT, Derivation.CONSTANT)
-                for x in local_optional
-            ]
-        ):
-            non_root = [
-                x.address
-                for x in local_optional
-                if x.derivation not in (Derivation.ROOT, Derivation.CONSTANT)
-            ]
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} including any filters, there are non-root concepts we should expand first: {non_root}. Recursing with all of these as mandatory"
-            )
-
-            # if not history.check_started(
-            #     root_targets, accept_partial=accept_partial, conditions=conditions
-            # ) or 1==1:
-            if True:
-                history.log_start(
-                    root_targets, accept_partial=accept_partial, conditions=conditions
-                )
-                return source_concepts(
-                    mandatory_list=root_targets,
-                    environment=environment,
-                    g=g,
-                    depth=depth + 1,
-                    accept_partial=accept_partial,
-                    history=history,
-                    # we DO NOT pass up conditions at this point, as we are now expanding to include conditions in search
-                    # which we do whenever we hit a root node
-                    # conditions=conditions,
-                )
-            else:
-                logger.info(
-                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} skipping root search, already in a recursion for these concepts"
-                )
-        check = history.gen_select_node(
-            concept,
-            local_optional,
-            environment,
-            g,
-            depth + 1,
-            fail_if_not_found=False,
-            accept_partial=accept_partial,
-            accept_partial_optional=False,
-            source_concepts=source_concepts,
-            conditions=conditions,
-        )
-        if not check:
-
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve root concepts, checking for expanded concepts"
-            )
-            for accept_partial in [False, True]:
-                expanded = gen_merge_node(
-                    all_concepts=root_targets,
-                    environment=environment,
-                    g=g,
-                    depth=depth + 1,
-                    source_concepts=source_concepts,
-                    history=history,
-                    search_conditions=conditions,
-                    accept_partial=accept_partial,
-                )
-
-                if expanded:
-                    extra = restrict_node_outputs_targets(expanded, root_targets, depth)
-                    pseudonyms = [
-                        x
-                        for x in extra
-                        if any(x.address in y.pseudonyms for y in root_targets)
-                    ]
-                    if pseudonyms:
-                        expanded.add_output_concepts(pseudonyms)
-                        logger.info(
-                            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Hiding pseudonyms{[c.address for c in pseudonyms]}"
-                        )
-                        expanded.hide_output_concepts(pseudonyms)
-
-                    logger.info(
-                        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Found connections for {[c.address for c in root_targets]} via concept addition; removing extra {[c.address for c in extra]}"
-                    )
-                    return expanded
-
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} could not find additional concept(s) to inject"
-            )
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve root concepts, checking for synonyms"
-            )
-            if not history.check_started(
-                root_targets, accept_partial=accept_partial, conditions=conditions
-            ):
-                history.log_start(
-                    root_targets, accept_partial=accept_partial, conditions=conditions
-                )
-                resolved = gen_synonym_node(
-                    all_concepts=root_targets,
-                    environment=environment,
-                    g=g,
-                    depth=depth + 1,
-                    source_concepts=source_concepts,
-                    history=history,
-                    conditions=conditions,
-                    accept_partial=accept_partial,
-                )
-                if resolved:
-                    logger.info(
-                        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} resolved concepts through synonyms"
-                    )
-                    return resolved
-            else:
-                logger.info(
-                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} skipping synonym search, already in a recursion for these concepts"
-                )
-            return None
-    else:
-        raise ValueError(f"Unknown derivation {concept.derivation} on {concept}")
-    return None
-
-
-def validate_concept(
-    concept: BuildConcept,
-    node: StrategyNode,
-    found_addresses: set[str],
-    non_partial_addresses: set[str],
-    partial_addresses: set[str],
-    virtual_addresses: set[str],
-    found_map: dict[str, set[BuildConcept]],
-    accept_partial: bool,
-    seen: set[str],
-    environment: BuildEnvironment,
-):
-    found_map[str(node)].add(concept)
-    seen.add(concept.address)
-    if concept not in node.partial_concepts:
-        found_addresses.add(concept.address)
-        non_partial_addresses.add(concept.address)
-        # remove it from our partial tracking
-        if concept.address in partial_addresses:
-            partial_addresses.remove(concept.address)
-        if concept.address in virtual_addresses:
-            virtual_addresses.remove(concept.address)
-    if concept in node.partial_concepts:
-        if concept.address in non_partial_addresses:
-            return None
-        partial_addresses.add(concept.address)
-        if accept_partial:
-            found_addresses.add(concept.address)
-            found_map[str(node)].add(concept)
-    for v_address in concept.pseudonyms:
-        if v_address in seen:
-            return
-        v = environment.concepts[v_address]
-        if v.address in seen:
-            return
-        if v.address == concept.address:
-            return
-        validate_concept(
-            v,
-            node,
-            found_addresses,
-            non_partial_addresses,
-            partial_addresses,
-            virtual_addresses,
-            found_map,
-            accept_partial,
-            seen=seen,
-            environment=environment,
-        )
-
-
-def validate_stack(
-    environment: BuildEnvironment,
-    stack: List[StrategyNode],
-    concepts: List[BuildConcept],
-    mandatory_with_filter: List[BuildConcept],
-    conditions: BuildWhereClause | None = None,
-    accept_partial: bool = False,
-) -> tuple[ValidationResult, set[str], set[str], set[str], set[str]]:
-    found_map: dict[str, set[BuildConcept]] = defaultdict(set)
-    found_addresses: set[str] = set()
-    non_partial_addresses: set[str] = set()
-    partial_addresses: set[str] = set()
-    virtual_addresses: set[str] = set()
-    seen: set[str] = set()
-
-    for node in stack:
-        resolved = node.resolve()
-
-        for concept in resolved.output_concepts:
-            if concept.address in resolved.hidden_concepts:
-                continue
-
-            validate_concept(
-                concept,
-                node,
-                found_addresses,
-                non_partial_addresses,
-                partial_addresses,
-                virtual_addresses,
-                found_map,
-                accept_partial,
-                seen,
-                environment,
-            )
-        for concept in node.virtual_output_concepts:
-            if concept.address in non_partial_addresses:
-                continue
-            found_addresses.add(concept.address)
-            virtual_addresses.add(concept.address)
-    if not conditions:
-        conditions_met = True
-    else:
-        conditions_met = all(
-            [node.preexisting_conditions == conditions.conditional for node in stack]
-        ) or all([c.address in found_addresses for c in mandatory_with_filter])
-    # zip in those we know we found
-    if not all([c.address in found_addresses for c in concepts]) or not conditions_met:
-        if not all([c.address in found_addresses for c in concepts]):
-            return (
-                ValidationResult.INCOMPLETE,
-                found_addresses,
-                {c.address for c in concepts if c.address not in found_addresses},
-                partial_addresses,
-                virtual_addresses,
-            )
-        return (
-            ValidationResult.INCOMPLETE_CONDITION,
-            found_addresses,
-            {c.address for c in concepts if c.address not in mandatory_with_filter},
-            partial_addresses,
-            virtual_addresses,
-        )
-
-    graph_count, _ = get_disconnected_components(found_map)
-    if graph_count in (0, 1):
-        return (
-            ValidationResult.COMPLETE,
-            found_addresses,
-            set(),
-            partial_addresses,
-            virtual_addresses,
-        )
-    # if we have too many subgraphs, we need to keep searching
-    return (
-        ValidationResult.DISCONNECTED,
-        found_addresses,
-        set(),
-        partial_addresses,
-        virtual_addresses,
-    )
-
-
-def depth_to_prefix(depth: int) -> str:
-    return "\t" * depth
+        return unique(list(conditions.row_arguments) + local_candidates, "address")
+    return local_candidates
 
 
 def append_existence_check(
@@ -764,7 +119,6 @@ def search_concepts(
     accept_partial: bool = False,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
-    logger.error(f"starting search for {mandatory_list}")
     hist = history.get_history(
         search=mandatory_list, accept_partial=accept_partial, conditions=conditions
     )
@@ -794,7 +148,31 @@ def search_concepts(
     return result
 
 
-def _search_concepts(
+@dataclass
+class LoopContext:
+    mandatory_list: List[BuildConcept]
+    environment: BuildEnvironment
+    depth: int
+    g: ReferenceGraph
+    history: History
+    attempted: set[str]
+    found: set[str]
+    skip: set[str]
+    all_mandatory: set[str]
+    original_mandatory: List[BuildConcept]
+    completion_mandatory: List[BuildConcept]
+    stack: List[StrategyNode]
+    complete: ValidationResult = ValidationResult.INCOMPLETE
+    accept_partial: bool = False
+    must_evaluate_condition_on_this_level_not_push_down: bool = False
+    conditions: BuildWhereClause | None = None
+
+    @property
+    def incomplete(self) -> bool:
+        return self.attempted != self.all_mandatory
+
+
+def initialize_loop_context(
     mandatory_list: List[BuildConcept],
     environment: BuildEnvironment,
     depth: int,
@@ -802,7 +180,7 @@ def _search_concepts(
     history: History,
     accept_partial: bool = False,
     conditions: BuildWhereClause | None = None,
-) -> StrategyNode | None:
+):
     # these are the concepts we need in the output projection
     mandatory_list = unique(mandatory_list, "address")
     # cache our values before an filter injection
@@ -844,258 +222,308 @@ def _search_concepts(
     else:
 
         completion_mandatory = mandatory_list
-    attempted: set[str] = set()
+    return LoopContext(
+        mandatory_list=mandatory_list,
+        environment=environment,
+        depth=depth,
+        g=g,
+        history=history,
+        attempted=set(),
+        found=set(),
+        skip=set(),
+        all_mandatory=all_mandatory,
+        original_mandatory=original_mandatory,
+        completion_mandatory=completion_mandatory,
+        stack=[],
+        complete=ValidationResult.INCOMPLETE,
+        accept_partial=accept_partial,
+        must_evaluate_condition_on_this_level_not_push_down=must_evaluate_condition_on_this_level_not_push_down,
+        conditions=conditions,
+    )
 
-    found: set[str] = set()
-    skip: set[str] = set()
-    virtual: set[str] = set()
-    stack: List[StrategyNode] = []
-    complete = ValidationResult.INCOMPLETE
 
-    while attempted != all_mandatory:
+def evaluate_loop_conditions(
+    context: LoopContext, priority_concept: BuildConcept
+) -> BuildWhereClause | None:
+    # filter evaluation
+    # always pass the filter up when we aren't looking at all filter inputs
+    # or there are any non-filter complex types
+    if context.conditions:
+        should_evaluate_filter_on_this_level_not_push_down = all(
+            [
+                x.address in context.mandatory_list
+                for x in context.conditions.row_arguments
+            ]
+        ) and not any(
+            [
+                x.derivation not in (Derivation.ROOT, Derivation.CONSTANT)
+                for x in context.mandatory_list
+                if x.address not in context.conditions.row_arguments
+            ]
+        )
+    else:
+        should_evaluate_filter_on_this_level_not_push_down = True
+    local_conditions = (
+        context.conditions
+        if context.conditions
+        and not context.must_evaluate_condition_on_this_level_not_push_down
+        and not should_evaluate_filter_on_this_level_not_push_down
+        else None
+    )
+    # but if it's not basic, and it's not condition;
+    # we do need to push it down (and have another layer of filter evaluation)
+    # to ensure filtering happens before something like a SUM
+    if (
+        context.conditions
+        and priority_concept.derivation not in (Derivation.ROOT, Derivation.CONSTANT)
+        and priority_concept.address not in context.conditions.row_arguments
+    ):
+        logger.info(
+            f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Force including conditions in {priority_concept.address} to push filtering above complex condition that is not condition member or parent"
+        )
+        local_conditions = context.conditions
+    return local_conditions
+
+
+def check_for_early_exit(
+    complete, partial, context: LoopContext, priority_concept: BuildConcept
+) -> bool:
+    if complete == ValidationResult.INCOMPLETE_CONDITION:
+        cond_dict = {str(node): node.preexisting_conditions for node in context.stack}
+        for node in context.stack:
+            logger.info(
+                f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Node {node} has conditions {node.preexisting_conditions} and {node.conditions}"
+            )
+        raise SyntaxError(f"Have {cond_dict} and need {str(context.conditions)}")
+    # early exit if we have a complete stack with one node
+    # we can only early exit if we have a complete stack
+    # and we are not looking for more non-partial sources
+    if complete == ValidationResult.COMPLETE and (
+        not context.accept_partial or (context.accept_partial and not partial)
+    ):
+        logger.info(
+            f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} breaking loop, complete"
+        )
+        return True
+    elif complete == ValidationResult.COMPLETE and context.accept_partial and partial:
+        if len(context.attempted) == len(context.mandatory_list):
+            logger.info(
+                f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Breaking as we have attempted all nodes"
+            )
+            return True
+        logger.info(
+            f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Found complete stack with partials {partial}, continuing search, attempted {context.attempted} all {len(context.mandatory_list)}"
+        )
+    else:
+        logger.info(
+            f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Not complete, continuing search"
+        )
+    # if we have attempted on root node, we've tried them all.
+    # inject in another search with filter concepts
+    if priority_concept.derivation == Derivation.ROOT:
+        logger.info(
+            f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Breaking as attempted root with no results"
+        )
+        return True
+    return False
+
+
+def generate_loop_completion(context: LoopContext, virtual) -> StrategyNode:
+    condition_required = True
+    non_virtual = [c for c in context.completion_mandatory if c.address not in virtual]
+    non_virtual_output = [
+        c for c in context.original_mandatory if c.address not in virtual
+    ]
+    non_virtual_different = len(context.completion_mandatory) != len(
+        context.original_mandatory
+    )
+    non_virtual_difference_values = set(
+        [x.address for x in context.completion_mandatory]
+    ).difference(set([x.address for x in context.original_mandatory]))
+    if not context.conditions:
+        condition_required = False
+        non_virtual = [c for c in context.mandatory_list if c.address not in virtual]
+
+    elif all(
+        [
+            x.preexisting_conditions == context.conditions.conditional
+            for x in context.stack
+        ]
+    ):
+        condition_required = False
+        non_virtual = [c for c in context.mandatory_list if c.address not in virtual]
+
+    if context.conditions and not condition_required:
+        parent_map = {
+            str(x): x.preexisting_conditions == context.conditions.conditional
+            for x in context.stack
+        }
+        logger.info(
+            f"Condition {context.conditions} not required, parents included filtering! {parent_map }"
+        )
+    if len(context.stack) == 1:
+        output: StrategyNode = context.stack[0]
+        if non_virtual_different:
+            logger.info(
+                f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Found different non-virtual output concepts ({non_virtual_difference_values}), removing condition injected values"
+            )
+            output.set_output_concepts(
+                [x for x in output.output_concepts if x.address in non_virtual_output],
+                rebuild=False,
+            )
+
+        logger.info(
+            f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Source stack has single node, returning that {type(output)}"
+        )
+    else:
+        logger.info(
+            f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} wrapping multiple parent nodes {[type(x) for x in context.stack]} in merge node"
+        )
+        output = MergeNode(
+            input_concepts=non_virtual,
+            output_concepts=non_virtual,
+            environment=context.environment,
+            parents=context.stack,
+            depth=context.depth,
+        )
+
+    # ensure we can resolve our final merge
+    output.resolve()
+    if condition_required and context.conditions:
+        output.add_condition(context.conditions.conditional)
+        if context.conditions.existence_arguments:
+            append_existence_check(
+                output,
+                context.environment,
+                context.g,
+                where=context.conditions,
+                history=context.history,
+            )
+    elif context.conditions:
+        output.preexisting_conditions = context.conditions.conditional
+    logger.info(
+        f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Graph is connected, returning {type(output)} node partial {[c.address for c in output.partial_concepts]} with {context.conditions}"
+    )
+    if condition_required and context.conditions and non_virtual_different:
+        logger.info(
+            f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Conditions {context.conditions} were injected, checking if we need a group to restore grain"
+        )
+        result = GroupNode.check_if_required(
+            downstream_concepts=context.original_mandatory,
+            parents=[output.resolve()],
+            environment=context.environment,
+            depth=context.depth,
+        )
+        if result.required:
+            logger.info(
+                f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Adding group node"
+            )
+            return GroupNode(
+                output_concepts=context.original_mandatory,
+                input_concepts=context.original_mandatory,
+                environment=context.environment,
+                parents=[output],
+                partial_concepts=output.partial_concepts,
+                preexisting_conditions=context.conditions.conditional,
+                depth=context.depth,
+            )
+    return output
+
+
+def _search_concepts(
+    mandatory_list: List[BuildConcept],
+    environment: BuildEnvironment,
+    depth: int,
+    g: ReferenceGraph,
+    history: History,
+    accept_partial: bool = False,
+    conditions: BuildWhereClause | None = None,
+) -> StrategyNode | None:
+
+    context = initialize_loop_context(
+        mandatory_list=mandatory_list,
+        environment=environment,
+        depth=depth,
+        g=g,
+        history=history,
+        accept_partial=accept_partial,
+        conditions=conditions,
+    )
+
+    while context.incomplete:
         priority_concept = get_priority_concept(
-            mandatory_list,
-            attempted,
-            found_concepts=found,
+            context.mandatory_list,
+            context.attempted,
+            found_concepts=context.found,
             depth=depth,
         )
-        # filter evaluation
-        # always pass the filter up when we aren't looking at all filter inputs
-        # or there are any non-filter complex types
-        if conditions:
-            should_evaluate_filter_on_this_level_not_push_down = all(
-                [x.address in mandatory_list for x in conditions.row_arguments]
-            ) and not any(
-                [
-                    x.derivation not in (Derivation.ROOT, Derivation.CONSTANT)
-                    for x in mandatory_list
-                    if x.address not in conditions.row_arguments
-                ]
-            )
-        else:
-            should_evaluate_filter_on_this_level_not_push_down = True
-        local_conditions = (
-            conditions
-            if conditions
-            and not must_evaluate_condition_on_this_level_not_push_down
-            and not should_evaluate_filter_on_this_level_not_push_down
-            else None
-        )
-        # but if it's not basic, and it's not condition;
-        # we do need to push it down (and have another layer of filter evaluation)
-        # to ensure filtering happens before something like a SUM
-        if (
-            conditions
-            and priority_concept.derivation
-            not in (Derivation.ROOT, Derivation.CONSTANT)
-            and priority_concept.address not in conditions.row_arguments
-        ):
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Force including conditions in {priority_concept.address} to push filtering above complex condition that is not condition member or parent"
-            )
-            local_conditions = conditions
 
+        local_conditions = evaluate_loop_conditions(context, priority_concept)
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {str(priority_concept)} derivation {priority_concept.derivation} granularity {priority_concept.granularity} with conditions {local_conditions}"
         )
 
         candidates = [
-            c for c in mandatory_list if c.address != priority_concept.address
+            c for c in context.mandatory_list if c.address != priority_concept.address
         ]
-        candidate_lists = generate_candidates_restrictive(
-            priority_concept, candidates, skip, depth=depth, conditions=conditions
+        candidate_list = generate_candidates_restrictive(
+            priority_concept,
+            candidates,
+            context.skip,
+            depth=depth,
+            conditions=context.conditions,
         )
-        for clist in candidate_lists:
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Beginning sourcing loop for {priority_concept.address}, accept_partial {accept_partial}, optional {[v.address for v in clist]}, exhausted {[c for c in skip]}"
-            )
-            node = generate_node(
-                priority_concept,
-                clist,
-                environment,
-                g,
-                depth,
-                source_concepts=search_concepts,
-                accept_partial=accept_partial,
-                history=history,
-                conditions=local_conditions,
-            )
-            if node:
-                stack.append(node)
-                try:
-                    node.resolve()
-                except Exception as e:
-                    logger.error(
-                        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve node {node} {e}"
-                    )
-                    raise e
-                # these concepts should not be attempted to be sourced again
-                # as fetching them requires operating on a subset of concepts
-                if priority_concept.derivation in [
-                    Derivation.AGGREGATE,
-                    Derivation.FILTER,
-                    Derivation.WINDOW,
-                    Derivation.UNNEST,
-                    Derivation.RECURSIVE,
-                    Derivation.ROWSET,
-                    Derivation.BASIC,
-                    Derivation.MULTISELECT,
-                    Derivation.UNION,
-                ]:
-                    skip.add(priority_concept.address)
-                break
-        attempted.add(priority_concept.address)
-        complete, found, missing, partial, virtual = validate_stack(
+
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Beginning sourcing loop for {priority_concept.address}, accept_partial {accept_partial}, optional {[v.address for v in candidate_list]}, exhausted {[c for c in context.skip]}"
+        )
+        node = generate_node(
+            priority_concept,
+            candidate_list,
             environment,
-            stack,
-            mandatory_list,
-            completion_mandatory,
-            conditions=conditions,
+            g,
+            depth,
+            source_concepts=search_concepts,
+            accept_partial=accept_partial,
+            history=history,
+            conditions=local_conditions,
+        )
+        if node:
+            context.stack.append(node)
+            node.resolve()
+            # these concepts should not be attempted to be sourced again
+            # as fetching them requires operating on a subset of concepts
+            if priority_concept.derivation in SKIPPED_DERIVATIONS:
+                context.skip.add(priority_concept.address)
+        context.attempted.add(priority_concept.address)
+        complete, found_c, missing_c, partial, virtual = validate_stack(
+            environment,
+            context.stack,
+            context.mandatory_list,
+            context.completion_mandatory,
+            conditions=context.conditions,
             accept_partial=accept_partial,
         )
-        mandatory_completion = [c.address for c in completion_mandatory]
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} finished concept loop for {priority_concept} {priority_concept.derivation} condition {conditions} flag for accepting partial addresses is"
-            f" {accept_partial} (complete: {complete}), have {found} from {[n for n in stack]} (missing {missing} synonyms  partial {partial} virtual {virtual}), attempted {attempted}, mandatory w/ filter {mandatory_completion}"
-        )
-        if complete == ValidationResult.INCOMPLETE_CONDITION:
-            cond_dict = {str(node): node.preexisting_conditions for node in stack}
-            logger.error(f"Have {cond_dict} and need {str(conditions)}")
-            raise SyntaxError(f"Have {cond_dict} and need {str(conditions)}")
-        # early exit if we have a complete stack with one node
-        # we can only early exit if we have a complete stack
-        # and we are not looking for more non-partial sources
-        if complete == ValidationResult.COMPLETE and (
-            not accept_partial or (accept_partial and not partial)
-        ):
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} breaking loop, complete"
-            )
-            break
-        elif complete == ValidationResult.COMPLETE and accept_partial and partial:
-            if len(attempted) == len(mandatory_list):
-                logger.info(
-                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Breaking as we have attempted all nodes"
-                )
-                break
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Found complete stack with partials {partial}, continuing search, attempted {attempted} all {len(mandatory_list)}"
-            )
-        else:
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Not complete, continuing search"
-            )
-        # if we have attempted on root node, we've tried them all.
-        # inject in another search with filter concepts
-        if priority_concept.derivation == Derivation.ROOT:
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Breaking as attempted root with no results"
-            )
+        # assig
+        context.found = found_c
+        early_exit = check_for_early_exit(complete, partial, context, priority_concept)
+        if early_exit:
             break
 
     logger.info(
-        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} finished sourcing loop (complete: {complete}), have {found} from {[n for n in stack]} (missing {all_mandatory - found}), attempted {attempted}, virtual {virtual}"
+        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} finished sourcing loop (complete: {complete}), have {context.found} from {[n for n in context.stack]} (missing {context.all_mandatory - context.found}), attempted {context.attempted}, virtual {virtual}"
     )
     if complete == ValidationResult.COMPLETE:
-        condition_required = True
-        non_virtual = [c for c in completion_mandatory if c.address not in virtual]
-        non_virtual_output = [c for c in original_mandatory if c.address not in virtual]
-        non_virtual_different = len(completion_mandatory) != len(original_mandatory)
-        non_virtual_difference_values = set(
-            [x.address for x in completion_mandatory]
-        ).difference(set([x.address for x in original_mandatory]))
-        if not conditions:
-            condition_required = False
-            non_virtual = [c for c in mandatory_list if c.address not in virtual]
-
-        elif all([x.preexisting_conditions == conditions.conditional for x in stack]):
-            condition_required = False
-            non_virtual = [c for c in mandatory_list if c.address not in virtual]
-
-        if conditions and not condition_required:
-            parent_map = {
-                str(x): x.preexisting_conditions == conditions.conditional
-                for x in stack
-            }
-            logger.info(
-                f"Condition {conditions} not required, parents included filtering! {parent_map }"
-            )
-        if len(stack) == 1:
-            output: StrategyNode = stack[0]
-            if non_virtual_different:
-                logger.info(
-                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Found different non-virtual output concepts ({non_virtual_difference_values}), removing condition injected values"
-                )
-                output.set_output_concepts(
-                    [
-                        x
-                        for x in output.output_concepts
-                        if x.address in non_virtual_output
-                    ],
-                    rebuild=False,
-                )
-
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Source stack has single node, returning that {type(output)}"
-            )
-        else:
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} wrapping multiple parent nodes {[type(x) for x in stack]} in merge node"
-            )
-            output = MergeNode(
-                input_concepts=non_virtual,
-                output_concepts=non_virtual,
-                environment=environment,
-                parents=stack,
-                depth=depth,
-            )
-
-        # ensure we can resolve our final merge
-        output.resolve()
-        if condition_required and conditions:
-            output.add_condition(conditions.conditional)
-            if conditions.existence_arguments:
-                append_existence_check(
-                    output, environment, g, where=conditions, history=history
-                )
-        elif conditions:
-            output.preexisting_conditions = conditions.conditional
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Graph is connected, returning {type(output)} node partial {[c.address for c in output.partial_concepts]}"
-        )
-        if condition_required and conditions and non_virtual_different:
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Conditions {conditions} were injected, checking if we need a group to restore grain"
-            )
-            result = GroupNode.check_if_required(
-                downstream_concepts=original_mandatory,
-                parents=[output.resolve()],
-                environment=environment,
-                depth=depth,
-            )
-            if result.required:
-                logger.info(
-                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Adding group node"
-                )
-                return GroupNode(
-                    output_concepts=original_mandatory,
-                    input_concepts=original_mandatory,
-                    environment=environment,
-                    parents=[output],
-                    partial_concepts=output.partial_concepts,
-                    preexisting_conditions=conditions.conditional,
-                    depth=depth,
-                )
-        return output
+        return generate_loop_completion(context, virtual)
 
     # if we can't find it after expanding to a merge, then
     # accept partials in join paths
-
     if not accept_partial:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Stack is not connected graph, flag for accepting partial addresses is {accept_partial}, changing flag"
         )
         partial_search = search_concepts(
+            # use the original mandatory list
             mandatory_list=mandatory_list,
             environment=environment,
             depth=depth,
@@ -1110,7 +538,7 @@ def _search_concepts(
             )
             return partial_search
     logger.error(
-        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve concepts {[c.address for c in mandatory_list]}, network outcome was {complete}, missing {all_mandatory - found},"
+        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve concepts {[c.address for c in mandatory_list]}, network outcome was {complete}, missing {context.all_mandatory - context.found},"
     )
 
     return None

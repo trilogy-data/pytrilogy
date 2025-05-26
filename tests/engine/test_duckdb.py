@@ -12,7 +12,7 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.build import BuildFilterItem, BuildSubselectComparison, Factory
 from trilogy.core.models.environment import Environment
-from trilogy.core.processing.concept_strategies_v3 import get_upstream_concepts
+from trilogy.core.processing.discovery_utility import get_upstream_concepts
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
     resolve_function_parent_concepts,

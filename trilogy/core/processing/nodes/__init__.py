@@ -150,7 +150,6 @@ class History(BaseModel):
         environment: BuildEnvironment,
         g,
         depth: int,
-        source_concepts,
         fail_if_not_found: bool = False,
         accept_partial: bool = False,
         accept_partial_optional: bool = False,
@@ -169,8 +168,7 @@ class History(BaseModel):
         if fingerprint in self.select_history:
             return self.select_history[fingerprint]
         gen = gen_select_node(
-            concept,
-            local_optional,
+            [concept] + local_optional,
             environment,
             g,
             depth + 1,
@@ -190,8 +188,8 @@ __all__ = [
     "WindowNode",
     "StrategyNode",
     "NodeJoin",
-    "ConstantNode",
     "UnnestNode",
+    "ConstantNode",
     "UnionNode",
     "History",
     "WhereSafetyNode",
