@@ -777,7 +777,6 @@ def rowset_to_concepts(rowset: RowsetDerivationStatement, environment: Environme
     for x in pre_output:
         x.lineage = RowsetItem(
             content=orig_map[x.address].reference,
-            # where=rowset.select.where_clause,
             rowset=RowsetLineage(
                 name=rowset.name,
                 derived_concepts=[x.reference for x in pre_output],
