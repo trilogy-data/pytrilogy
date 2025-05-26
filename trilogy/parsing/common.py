@@ -397,7 +397,7 @@ def group_function_to_concept(
             modifiers=modifiers,
             grain=grain,
             metadata=fmetadata,
-            derivation=Derivation.BASIC,
+            derivation=Derivation.GROUP_TO,
             granularity=granularity,
         )
         return r
@@ -482,9 +482,6 @@ def function_to_concept(
     elif parent.operator in FunctionClass.SINGLE_ROW.value:
         derivation = Derivation.CONSTANT
         granularity = Granularity.SINGLE_ROW
-    elif parent.operator == FunctionType.GROUP:
-        derivation = Derivation.GROUP_TO
-        granularity = Granularity.MULTI_ROW
     elif concrete_args and all(
         x.derivation == Derivation.CONSTANT for x in concrete_args
     ):
