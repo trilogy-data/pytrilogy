@@ -1,0 +1,11 @@
+import hackernews;
+
+merge post.parent into direct_parent.id;
+
+where direct_parent.type = 'story'
+select
+    create_time.year,
+    avg(score) as avg_score
+order by
+    create_time.year asc
+limit 50;
