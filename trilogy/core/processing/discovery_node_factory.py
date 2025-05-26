@@ -307,28 +307,7 @@ class RootNodeHandler:
     def _resolve_root_concepts(
         self, root_targets: List[BuildConcept]
     ) -> Optional[StrategyNode]:
-        # Try direct resolution first
-        check = self.ctx.history.gen_select_node(
-            self.ctx.concept,
-            self.ctx.local_optional,
-            self.ctx.environment,
-            self.ctx.g,
-            self.ctx.next_depth,
-            fail_if_not_found=False,
-            accept_partial=self.ctx.accept_partial,
-            accept_partial_optional=False,
-            conditions=self.ctx.conditions,
-        )
 
-        if check:
-            return check
-
-        logger.info(
-            f"{depth_to_prefix(self.ctx.depth)}{LOGGER_PREFIX} "
-            f"Could not resolve root concepts, checking for expanded concepts"
-        )
-
-        # Try merge expansion
         expanded_node = self._try_merge_expansion(root_targets)
         if expanded_node:
             return expanded_node
