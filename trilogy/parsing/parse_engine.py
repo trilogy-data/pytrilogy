@@ -963,10 +963,10 @@ class ParseToObjects(Transformer):
             targets = {sources[0].address: self.environment.concepts[target]}
 
         if self.parse_pass == ParsePass.VALIDATION:
-            for source in sources:
-                if isinstance(source, UndefinedConceptFull):
+            for source_c in sources:
+                if isinstance(source_c, UndefinedConceptFull):
                     raise SyntaxError(
-                        f"Cannot merge non-existent source concept {source.address} on line: {meta.line}"
+                        f"Cannot merge non-existent source concept {source_c.address} on line: {meta.line}"
                     )
             new = MergeStatementV2(
                 sources=sources,
