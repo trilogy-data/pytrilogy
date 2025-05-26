@@ -26,7 +26,6 @@ from trilogy.core.processing.node_generators import (
     gen_window_node,
 )
 from trilogy.core.processing.nodes import (
-    ConstantNode,
     History,
     StrategyNode,
 )
@@ -105,7 +104,7 @@ def restrict_node_outputs_targets(
 
 
 # Simple factory functions for basic derivation types
-def _generate_window_node(ctx: NodeGenerationContext) -> StrategyNode:
+def _generate_window_node(ctx: NodeGenerationContext) -> StrategyNode | None:
     ctx.log_generation("window")
     return gen_window_node(
         ctx.concept,
@@ -119,7 +118,7 @@ def _generate_window_node(ctx: NodeGenerationContext) -> StrategyNode:
     )
 
 
-def _generate_filter_node(ctx: NodeGenerationContext) -> StrategyNode:
+def _generate_filter_node(ctx: NodeGenerationContext) -> StrategyNode | None:
     ctx.log_generation("filter")
     return gen_filter_node(
         ctx.concept,
@@ -133,7 +132,7 @@ def _generate_filter_node(ctx: NodeGenerationContext) -> StrategyNode:
     )
 
 
-def _generate_unnest_node(ctx: NodeGenerationContext) -> StrategyNode:
+def _generate_unnest_node(ctx: NodeGenerationContext) -> StrategyNode | None:
     ctx.log_generation("unnest", f"condition {ctx.conditions}")
     return gen_unnest_node(
         ctx.concept,
@@ -147,7 +146,7 @@ def _generate_unnest_node(ctx: NodeGenerationContext) -> StrategyNode:
     )
 
 
-def _generate_recursive_node(ctx: NodeGenerationContext) -> StrategyNode:
+def _generate_recursive_node(ctx: NodeGenerationContext) -> StrategyNode | None:
     ctx.log_generation("recursive", f"condition {ctx.conditions}")
     return gen_recursive_node(
         ctx.concept,
@@ -161,7 +160,7 @@ def _generate_recursive_node(ctx: NodeGenerationContext) -> StrategyNode:
     )
 
 
-def _generate_union_node(ctx: NodeGenerationContext) -> StrategyNode:
+def _generate_union_node(ctx: NodeGenerationContext) -> StrategyNode | None:
     ctx.log_generation("union", f"condition {ctx.conditions}")
     return gen_union_node(
         ctx.concept,
@@ -175,7 +174,7 @@ def _generate_union_node(ctx: NodeGenerationContext) -> StrategyNode:
     )
 
 
-def _generate_aggregate_node(ctx: NodeGenerationContext) -> StrategyNode:
+def _generate_aggregate_node(ctx: NodeGenerationContext) -> StrategyNode | None:
     # Filter out constants to avoid multiplication issues
     agg_optional = [
         x for x in ctx.local_optional if x.granularity != Granularity.SINGLE_ROW
@@ -198,7 +197,7 @@ def _generate_aggregate_node(ctx: NodeGenerationContext) -> StrategyNode:
     )
 
 
-def _generate_rowset_node(ctx: NodeGenerationContext) -> StrategyNode:
+def _generate_rowset_node(ctx: NodeGenerationContext) -> StrategyNode | None:
     ctx.log_generation("rowset")
     return gen_rowset_node(
         ctx.concept,
@@ -212,7 +211,7 @@ def _generate_rowset_node(ctx: NodeGenerationContext) -> StrategyNode:
     )
 
 
-def _generate_multiselect_node(ctx: NodeGenerationContext) -> StrategyNode:
+def _generate_multiselect_node(ctx: NodeGenerationContext) -> StrategyNode | None:
     ctx.log_generation("multiselect")
     return gen_multiselect_node(
         ctx.concept,
@@ -226,27 +225,13 @@ def _generate_multiselect_node(ctx: NodeGenerationContext) -> StrategyNode:
     )
 
 
-def _create_constant_node(
-    ctx: NodeGenerationContext, constant_targets: List[BuildConcept]
-) -> ConstantNode:
-    ctx.log_generation("constant")
-    return ConstantNode(
-        input_concepts=[],
-        output_concepts=constant_targets,
-        environment=ctx.environment,
-        parents=[],
-        depth=ctx.next_depth,
-        preexisting_conditions=ctx.conditions.conditional if ctx.conditions else None,
-    )
-
-
 class BasicNodeHandler:
     """Handles basic node generation, including special GROUP function handling."""
 
     def __init__(self, context: NodeGenerationContext):
         self.ctx = context
 
-    def generate(self) -> StrategyNode:
+    def generate(self) -> StrategyNode | None:
         if self._is_group_function():
             return self._generate_group_to_node()
         return self._generate_basic_node()
@@ -257,7 +242,7 @@ class BasicNodeHandler:
             and self.ctx.concept.lineage.operator == FunctionType.GROUP
         )
 
-    def _generate_group_to_node(self) -> StrategyNode:
+    def _generate_group_to_node(self) -> StrategyNode | None:
         self.ctx.log_generation("group to grain")
         return gen_group_to_node(
             self.ctx.concept,
@@ -270,7 +255,7 @@ class BasicNodeHandler:
             conditions=self.ctx.conditions,
         )
 
-    def _generate_basic_node(self) -> StrategyNode:
+    def _generate_basic_node(self) -> StrategyNode | None:
         self.ctx.log_generation("basic")
         return gen_basic_node(
             self.ctx.concept,
@@ -511,7 +496,6 @@ def generate_node(
         Derivation.AGGREGATE: lambda: _generate_aggregate_node(context),
         Derivation.ROWSET: lambda: _generate_rowset_node(context),
         Derivation.MULTISELECT: lambda: _generate_multiselect_node(context),
-        Derivation.CONSTANT: lambda: _create_constant_node(context),
         Derivation.BASIC: lambda: BasicNodeHandler(context).generate(),
         Derivation.ROOT: lambda: RootNodeHandler(context).generate(),
     }
