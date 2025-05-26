@@ -47,7 +47,7 @@ SNOWFLAKE_SQL_TEMPLATE = Template(
 CREATE OR REPLACE TABLE {{ output.address.location }} AS
 {% endif %}{%- if ctes %}
 WITH {% if recursive%}RECURSIVE{% endif %}{% for cte in ctes %}
-{{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% endif %}{% else %}
+"{{cte.name}}" as ({{cte.statement}}){% if not loop.last %},{% endif %}{% else %}
 {% endfor %}{% endif %}
 {%- if full_select -%}
 {{full_select}}

@@ -74,6 +74,7 @@ from trilogy.core.models.author import (
     Parenthetical,
     RowsetItem,
     SubselectComparison,
+    UndefinedConceptFull,
     WhereClause,
     Window,
     WindowItem,
@@ -962,6 +963,11 @@ class ParseToObjects(Transformer):
             targets = {sources[0].address: self.environment.concepts[target]}
 
         if self.parse_pass == ParsePass.VALIDATION:
+            for source_c in sources:
+                if isinstance(source_c, UndefinedConceptFull):
+                    raise SyntaxError(
+                        f"Cannot merge non-existent source concept {source_c.address} on line: {meta.line}"
+                    )
             new = MergeStatementV2(
                 sources=sources,
                 targets=targets,
