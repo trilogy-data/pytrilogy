@@ -654,7 +654,6 @@ def agg_wrapper_to_concept(
     fmetadata = metadata or Metadata()
     aggfunction = parent.function
     modifiers = get_upstream_modifiers(parent.concept_arguments, environment)
-    # derivation = Concept.calculate_derivation(parent, Purpose.PROPERTY)
     grain = Grain.from_concepts(parent.by, environment) if parent.by else Grain()
     granularity = Concept.calculate_granularity(Derivation.AGGREGATE, grain, parent)
 
