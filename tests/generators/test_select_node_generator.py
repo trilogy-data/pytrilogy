@@ -33,8 +33,9 @@ select unnest;
     )
     env = env.materialize_for_select()
     gnode = gen_select_node(
-        concept=env.concepts["array_one"],
-        local_optional=[],
+        concepts=[
+            env.concepts["array_one"],
+        ],
         environment=env,
         g=generate_graph(env),
         depth=0,
@@ -42,7 +43,9 @@ select unnest;
     assert isinstance(gnode, ConstantNode), type(gnode)
 
     gnode = gen_select_node(
-        concept=env.concepts["unnest"],
+        concepts=[
+            env.concepts["unnest"],
+        ],
         local_optional=[],
         environment=env,
         g=generate_graph(env),
@@ -86,8 +89,8 @@ address blended;
     )
     env = env.materialize_for_select()
     gnode = gen_select_node(
-        concept=env.concepts["order_id"],
-        local_optional=[env.concepts[x] for x in ["customer_id", "customer_name"]],
+        concepts=[env.concepts["order_id"]]
+        + [env.concepts[x] for x in ["customer_id", "customer_name"]],
         environment=env,
         g=generate_graph(env),
         depth=0,
@@ -241,8 +244,8 @@ where order_id = 1;
     env = env.materialize_for_select()
     # assert env.datasources["blended"].non_partial_for == persist.select.where_clause
     gnode = gen_select_node(
-        concept=env.concepts["order_id"],
-        local_optional=[env.concepts[x] for x in ["customer_id", "customer_name"]],
+        concepts=[env.concepts["order_id"]]
+        + [env.concepts[x] for x in ["customer_id", "customer_name"]],
         environment=env,
         g=generate_graph(env),
         depth=0,
@@ -254,8 +257,8 @@ where order_id = 1;
 
     # if we search without conditions, we should need the join
     gnode = gen_select_node(
-        concept=env.concepts["order_id"],
-        local_optional=[env.concepts[x] for x in ["customer_id", "customer_name"]],
+        concepts=[env.concepts["order_id"]]
+        + [env.concepts[x] for x in ["customer_id", "customer_name"]],
         environment=env,
         g=generate_graph(env),
         depth=0,
