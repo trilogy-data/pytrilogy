@@ -1179,6 +1179,12 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         elif (
             lineage
             and isinstance(lineage, (BuildFunction, Function))
+            and lineage.operator == FunctionType.GROUP
+        ):
+            return Derivation.GROUP_TO
+        elif (
+            lineage
+            and isinstance(lineage, (BuildFunction, Function))
             and lineage.operator in FunctionClass.SINGLE_ROW.value
         ):
             return Derivation.CONSTANT
@@ -1194,10 +1200,6 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         elif purpose == Purpose.CONSTANT:
             return Derivation.CONSTANT
         return Derivation.ROOT
-
-    # @property
-    # def derivation(self) -> Derivation:
-    #     return self.calculate_derivation(self.lineage, self.purpose)
 
     @classmethod
     def calculate_granularity(cls, derivation: Derivation, grain: Grain, lineage):

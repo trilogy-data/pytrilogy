@@ -42,6 +42,7 @@ class Purpose(Enum):
 
 class Derivation(Enum):
     BASIC = "basic"
+    GROUP_TO = "group_to"
     WINDOW = "window"
     AGGREGATE = "aggregate"
     FILTER = "filter"
