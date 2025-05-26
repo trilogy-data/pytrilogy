@@ -312,7 +312,6 @@ class RootNodeHandler:
         if expanded_node:
             return expanded_node
 
-        # Try synonym resolution
         return self._try_synonym_resolution(root_targets)
 
     def _try_merge_expansion(
