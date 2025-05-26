@@ -31,7 +31,6 @@ type czk numeric;  # Czech Koruna
 type huf numeric;  # Hungarian Forint
 type ron numeric;  # Romanian Leu
 type bgn numeric;  # Bulgarian Lev
-type hrk numeric;  # Croatian Kuna
 type rub numeric;  # Russian Ruble
 
 # Middle Eastern currencies
@@ -39,7 +38,7 @@ type aed numeric;  # UAE Dirham
 type sar numeric;  # Saudi Riyal
 type qar numeric;  # Qatari Riyal
 type kwd numeric;  # Kuwaiti Dinar
-type bhr numeric;  # Bahraini Dinar
+type bhd numeric;  # Bahraini Dinar
 type omr numeric;  # Omani Rial
 type jod numeric;  # Jordanian Dinar
 type ils numeric;  # Israeli Shekel
