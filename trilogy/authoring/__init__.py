@@ -43,9 +43,10 @@ from trilogy.core.models.core import (
     MapType,
     StructType,
 )
-from trilogy.core.models.datasource import Datasource, DatasourceMetadata
+from trilogy.core.models.datasource import Datasource, DatasourceMetadata, Address
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
+    RowsetDerivationStatement,
     ConceptDeclarationStatement,
     ConceptTransform,
     MultiSelectStatement,
@@ -53,6 +54,10 @@ from trilogy.core.statements.author import (
     RawSQLStatement,
     SelectItem,
     SelectStatement,
+    CopyStatement,
+    ImportStatement,
+    HasUUID,
+    Grain
 )
 from trilogy.parsing.common import arbitrary_to_concept, arg_to_datatype
 
@@ -73,6 +78,8 @@ __all__ = [
     "DataType",
     "StructType",
     "ListType",
+    "Grain",
+    "RowsetDerivationStatement",
     "MapType",
     "ListWrapper",
     "FunctionType",
@@ -109,4 +116,9 @@ __all__ = [
     "MultiSelectLineage",
     "RowsetItem",
     "FunctionCallWrapper",
+    "CopyStatement",
+    "HasUUID",
+    "ImportStatement",
+    "Address",
+
 ]

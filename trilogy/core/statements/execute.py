@@ -8,13 +8,14 @@ from trilogy.core.models.build import (
     BuildDatasource,
     BuildOrderBy,
 )
+from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.environment import EnvironmentConceptDict, validate_concepts
 from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.statements.common import CopyQueryMixin, PersistQueryMixin
 
 
 class ProcessedQuery(BaseModel):
-    output_columns: List[BuildConcept]
+    output_columns: List[ConceptRef]
     ctes: List[CTE | UnionCTE]
     base: CTE | UnionCTE
     hidden_columns: set[str] = Field(default_factory=set)

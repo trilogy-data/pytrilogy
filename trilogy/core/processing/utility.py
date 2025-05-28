@@ -409,7 +409,7 @@ def get_node_joins(
 
 
 def get_disconnected_components(
-    concept_map: Dict[str, Set[BuildConcept]]
+    concept_map: Dict[str, Set[BuildConcept]],
 ) -> Tuple[int, List]:
     """Find if any of the datasources are not linked"""
     import networkx as nx
@@ -608,8 +608,24 @@ def sort_select_output_processed(
     mapping = {x.address: x for x in cte.output_columns}
 
     new_output: list[BuildConcept] = []
-    for x in output_addresses:
-        new_output.append(mapping[x])
+    for x in query.output_columns:
+        if x.address in mapping:
+            new_output.append(mapping[x.address])
+        for oc in cte.output_columns:
+            if x.address in oc.pseudonyms:
+                # create a wrapper BuildConcept to render the pseudonym under the original name
+                new_output.append(
+                    BuildConcept(
+                        name=x.name,
+                        namespace=x.namespace,
+                        pseudonyms={oc.address},
+                        datatype=oc.datatype,
+                        purpose=oc.purpose,
+                        grain=oc.grain,
+                        build_is_aggregate=oc.build_is_aggregate,
+                    )
+                )
+                break
 
     for oc in cte.output_columns:
         # add hidden back
@@ -637,17 +653,28 @@ def sort_select_output(
     if isinstance(query, ProcessedQuery):
         return sort_select_output_processed(cte, query)
 
-    output_addresses = [
-        c.address
-        for c in query.output_components
-        # if c.address not in query.hidden_components
-    ]
-
     mapping = {x.address: x for x in cte.output_columns}
 
     new_output: list[BuildConcept] = []
-    for x in output_addresses:
-        new_output.append(mapping[x])
+    for x in query.output_components:
+        if x.address in mapping:
+            new_output.append(mapping[x.address])
+        else:
+            for oc in cte.output_columns:
+                if x.address in oc.pseudonyms:
+                    # create a wrapper BuildConcept to render the pseudonym under the original name
+                    new_output.append(
+                        BuildConcept(
+                            name=x.name,
+                            namespace=x.namespace,
+                            pseudonyms={oc.address},
+                            datatype=oc.datatype,
+                            purpose=oc.purpose,
+                            grain=oc.grain,
+                            build_is_aggregate=oc.build_is_aggregate,
+                        )
+                    )
+                    break
     cte.output_columns = new_output
     cte.hidden_concepts = set(
         [
