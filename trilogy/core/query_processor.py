@@ -432,7 +432,7 @@ def get_query_node(
             )
         ds = SelectNode(
             output_concepts=build_statement.output_components,
-            input_concepts=ds.output_concepts,
+            input_concepts=[x for x in ds.output_concepts if x.address not in ds.hidden_concepts],
             parents=[ds],
             environment=ds.environment,
             partial_concepts=ds.partial_concepts,

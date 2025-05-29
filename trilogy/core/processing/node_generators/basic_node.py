@@ -92,12 +92,21 @@ def gen_basic_node(
     parent_node.add_output_concept(concept)
     for x in equivalent_optional:
         parent_node.add_output_concept(x)
-
-    parent_node.remove_output_concepts(
+    targets = [concept] + local_optional
+    logger.info(
+        f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept}: output {[x.address for x in parent_node.output_concepts]}"
+    )
+    should_hide = [
+            x
+            for x in parent_node.output_concepts
+            if (x.address not in targets and not any(x.address in y.pseudonyms for y in targets))
+        ]
+    logger.info('SHOULD HIDE: ' + str([x.address for x in should_hide]))
+    parent_node.hide_output_concepts(
         [
             x
             for x in parent_node.output_concepts
-            if x.address not in [concept] + local_optional
+            if (x.address not in targets and not any(x.address in y.pseudonyms for y in targets))
         ]
     )
 

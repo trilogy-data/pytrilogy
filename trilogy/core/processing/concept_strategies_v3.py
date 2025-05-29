@@ -504,7 +504,7 @@ def _search_concepts(
             conditions=context.conditions,
             accept_partial=accept_partial,
         )
-        # assig
+        # assign
         context.found = found_c
         early_exit = check_for_early_exit(complete, partial, context, priority_concept)
         if early_exit:
