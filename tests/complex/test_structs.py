@@ -79,7 +79,9 @@ order by
 ;
                           """
     )
-    assert results[-1].fetchall()[0].b == 2
+    rows = results[-1].fetchall()
+    assert len(rows) == 2, rows
+    assert rows[0].b == 2
 
 
 #     results = executor.execute_text("""

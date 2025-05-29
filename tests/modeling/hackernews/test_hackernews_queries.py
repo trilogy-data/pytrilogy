@@ -42,7 +42,7 @@ def test_adhoc03():
     statement = engine.parse_text(text)[-1]
     generated = BigqueryDialect().compile_statement(statement)
     # TODO: better test
-    assert "WITH RECURSIVE" in generated
+    assert "WITH RECURSIVE" in generated, generated
 
 
 def test_adhoc04():
@@ -52,6 +52,7 @@ def test_adhoc04():
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
     with raises(InvalidSyntaxException):
         engine.parse_text(text)[-1]
+
 
 def test_adhoc05():
     env = Environment(working_path=working_path)

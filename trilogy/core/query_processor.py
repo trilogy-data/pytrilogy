@@ -432,7 +432,7 @@ def get_query_node(
             )
         ds = SelectNode(
             output_concepts=build_statement.output_components,
-            input_concepts=[x for x in ds.output_concepts if x.address not in ds.hidden_concepts],
+            input_concepts=ds.usable_outputs,
             parents=[ds],
             environment=ds.environment,
             partial_concepts=ds.partial_concepts,
@@ -553,7 +553,7 @@ def process_query(
     root_cte.hidden_concepts = statement.hidden_components
 
     final_ctes = optimize_ctes(deduped_ctes, root_cte, statement)
-         
+
     return ProcessedQuery(
         order_by=root_cte.order_by,
         limit=statement.limit,

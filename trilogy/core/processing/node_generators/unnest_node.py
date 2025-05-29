@@ -20,16 +20,22 @@ def gen_unnest_node(
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     arguments = []
+    depth_prefix = "\t" * depth
     if isinstance(concept.lineage, BuildFunction):
         arguments = concept.lineage.concept_arguments
 
     equivalent_optional = [x for x in local_optional if x.lineage == concept.lineage]
+
     non_equivalent_optional = [
         x for x in local_optional if x not in equivalent_optional
     ]
+    all_parents = arguments + non_equivalent_optional
+    logger.info(
+        f"{depth_prefix}{LOGGER_PREFIX} unnest node for {concept} with lineage {concept.lineage} has parents {all_parents} and equivalent optional {equivalent_optional}"
+    )
     if arguments or local_optional:
         parent = source_concepts(
-            mandatory_list=arguments + non_equivalent_optional,
+            mandatory_list=all_parents,
             environment=environment,
             g=g,
             depth=depth + 1,

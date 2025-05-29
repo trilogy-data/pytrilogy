@@ -33,7 +33,6 @@ from trilogy.core.models.build import (
     BuildRowsetItem,
     BuildSubselectComparison,
     BuildWindowItem,
-    Factory,
 )
 from trilogy.core.models.core import (
     DataType,
@@ -904,7 +903,6 @@ class BaseDialect:
             | ProcessedRawSQLStatement
             | ProcessedCopyStatement
         ] = []
-        factory = Factory(environment=environment)
         for statement in statements:
             if isinstance(statement, PersistStatement):
                 if hooks:
@@ -939,11 +937,9 @@ class BaseDialect:
                     output.append(
                         ProcessedShowStatement(
                             output_columns=[
-                                factory.build(
-                                    environment.concepts[
-                                        DEFAULT_CONCEPTS["query_text"].address
-                                    ]
-                                )
+                                environment.concepts[
+                                    DEFAULT_CONCEPTS["query_text"].address
+                                ].reference
                             ],
                             output_values=[
                                 process_query(

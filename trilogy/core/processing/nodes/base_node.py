@@ -311,19 +311,6 @@ class StrategyNode:
             self.rebuild_cache()
         return self
 
-    def remove_output_concepts(
-        self, concepts: List[BuildConcept], rebuild: bool = True
-    ):
-        for x in concepts:
-            self.hidden_concepts.add(x.address)
-        addresses = [x.address for x in concepts]
-        self.output_concepts = [
-            x for x in self.output_concepts if x.address not in addresses
-        ]
-        if rebuild:
-            self.rebuild_cache()
-        return self
-
     @property
     def usable_outputs(self) -> list[BuildConcept]:
         return [

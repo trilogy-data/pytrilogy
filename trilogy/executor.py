@@ -8,8 +8,8 @@ from sqlalchemy.engine import CursorResult
 
 from trilogy.constants import Rendering, logger
 from trilogy.core.enums import FunctionType, Granularity, IOType
-from trilogy.core.models.author import Concept, Function
-from trilogy.core.models.build import BuildConcept, BuildFunction
+from trilogy.core.models.author import Concept, ConceptRef, Function
+from trilogy.core.models.build import BuildFunction
 from trilogy.core.models.core import ListWrapper, MapWrapper
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
@@ -61,7 +61,7 @@ class MockResult:
 
 
 def generate_result_set(
-    columns: List[BuildConcept], output_data: list[Any]
+    columns: List[ConceptRef], output_data: list[Any]
 ) -> MockResult:
     names = [x.address.replace(".", "_") for x in columns]
     return MockResult(
@@ -90,7 +90,16 @@ class Executor(object):
         if self.dialect == Dialects.DATAFRAME:
             self.engine.setup(self.environment, self.connection)
 
-    def execute_statement(self, statement) -> Optional[CursorResult]:
+    def execute_statement(
+        self,
+        statement: (
+            ProcessedQuery
+            | ProcessedCopyStatement
+            | ProcessedRawSQLStatement
+            | ProcessedQueryPersist
+            | ProcessedShowStatement
+        ),
+    ) -> Optional[CursorResult]:
         if not isinstance(
             statement,
             (

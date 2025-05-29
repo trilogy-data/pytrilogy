@@ -236,6 +236,8 @@ def optimize_ctes(
             complete = not actions_taken
             loops += 1
             input = reorder_ctes(filter_irrelevant_ctes(input, root_cte))
-        logger.info(f"[Optimization] Finished checking for {type(rule).__name__} after {loops} loop(s)")
+        logger.info(
+            f"[Optimization] Finished checking for {type(rule).__name__} after {loops} loop(s)"
+        )
 
     return reorder_ctes(filter_irrelevant_ctes(input, root_cte))

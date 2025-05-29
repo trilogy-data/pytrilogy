@@ -209,6 +209,7 @@ def test_user_function_import():
     env = Environment(working_path=Path(__file__).parent)
     x = Dialects.DUCK_DB.default_executor(environment=env)
     from trilogy.hooks import DebuggingHook
+
     DebuggingHook()
     results = x.execute_query(
         """

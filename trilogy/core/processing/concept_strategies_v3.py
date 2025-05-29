@@ -408,8 +408,9 @@ def generate_loop_completion(context: LoopContext, virtual) -> StrategyNode:
         logger.info(
             f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Conditions {context.conditions} were injected, checking if we need a group to restore grain"
         )
+
         result = GroupNode.check_if_required(
-            downstream_concepts=context.original_mandatory,
+            downstream_concepts=output.usable_outputs,
             parents=[output.resolve()],
             environment=context.environment,
             depth=context.depth,
@@ -420,7 +421,7 @@ def generate_loop_completion(context: LoopContext, virtual) -> StrategyNode:
             )
             return GroupNode(
                 output_concepts=context.original_mandatory,
-                input_concepts=context.original_mandatory,
+                input_concepts=output.usable_outputs,
                 environment=context.environment,
                 parents=[output],
                 partial_concepts=output.partial_concepts,
