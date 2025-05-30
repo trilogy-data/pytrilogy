@@ -33,7 +33,6 @@ from trilogy.core.models.build import (
     BuildRowsetItem,
     BuildSubselectComparison,
     BuildWindowItem,
-    Factory,
 )
 from trilogy.core.models.core import (
     DataType,
@@ -904,7 +903,6 @@ class BaseDialect:
             | ProcessedRawSQLStatement
             | ProcessedCopyStatement
         ] = []
-        factory = Factory(environment=environment)
         for statement in statements:
             if isinstance(statement, PersistStatement):
                 if hooks:
@@ -939,11 +937,9 @@ class BaseDialect:
                     output.append(
                         ProcessedShowStatement(
                             output_columns=[
-                                factory.build(
-                                    environment.concepts[
-                                        DEFAULT_CONCEPTS["query_text"].address
-                                    ]
-                                )
+                                environment.concepts[
+                                    DEFAULT_CONCEPTS["query_text"].address
+                                ].reference
                             ],
                             output_values=[
                                 process_query(
@@ -984,29 +980,6 @@ class BaseDialect:
             return ";\n".join([str(x) for x in query.output_values])
         elif isinstance(query, ProcessedRawSQLStatement):
             return query.text
-        select_columns: Dict[str, str] = {}
-        cte_output_map = {}
-        selected = set()
-        output_addresses = [
-            c.address
-            for c in query.output_columns
-            if c.address not in query.hidden_columns
-        ]
-
-        for c in query.base.output_columns:
-            if c.address not in selected:
-                select_columns[c.address] = (
-                    f"{query.base.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
-                )
-                cte_output_map[c.address] = query.base
-                if c.address not in query.hidden_columns:
-                    selected.add(c.address)
-        if not all([x in selected for x in output_addresses]):
-            missing = [x for x in output_addresses if x not in selected]
-            raise ValueError(
-                f"Did not get all output addresses in select - missing: {missing}, have"
-                f" {selected}"
-            )
 
         recursive = any(isinstance(x, RecursiveCTE) for x in query.ctes)
 

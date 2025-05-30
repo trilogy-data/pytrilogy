@@ -15,6 +15,9 @@ property id.descendants int;  #Number of story or poll descendants
 property id.ranking int;  #Comment ranking
 property id.deleted bool;  #deleted if true; can be false or null
 
+property id.domain <- REGEXP_EXTRACT((REGEXP_EXTRACT(url,'http(?:s)?://([^/]+)/')),'([^\\.]+\\.[^\\.]+(?:\\.[a-zA-Z].)?)$');
+property id.is_show_hn <- title like 'Show HN%';
+
 datasource full (
 	title:title,
 	url:url,

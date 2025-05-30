@@ -658,18 +658,21 @@ class QueryDatasource(BaseModel):
     @classmethod
     def validate_source_map(cls, v: dict, info: ValidationInfo):
         values = info.data
+        hidden_concepts = values.get("hidden_concepts", set())
         for key in ("input_concepts", "output_concepts"):
             if not values.get(key):
                 continue
             concept: BuildConcept
             for concept in values[key]:
+                if concept.address in hidden_concepts:
+                    continue
                 if (
                     concept.address not in v
                     and not any(x in v for x in concept.pseudonyms)
                     and CONFIG.validate_missing
                 ):
                     raise SyntaxError(
-                        f"On query datasource missing source map for {concept.address} on {key} with pseudonyms {concept.pseudonyms}, have {v}"
+                        f"On query datasource from {values} missing source map entry (map: {v}) for {concept.address} on {key} with pseudonyms {concept.pseudonyms}, have {v}"
                     )
         return v
 

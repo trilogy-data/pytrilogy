@@ -105,7 +105,7 @@ class GroupNode(StrategyNode):
         if comp_grain.issubset(target_grain):
 
             logger.info(
-                f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain}, {target_grain}, is subset, no grain required"
+                f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain}, {target_grain}, grain is subset of target, no group node required"
             )
             return GroupRequiredResponse(target_grain, comp_grain, False)
         # find out what extra is in the comp grain vs target grain

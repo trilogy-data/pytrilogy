@@ -5,7 +5,7 @@ from typing import Annotated, List, Optional, Union
 from pydantic import BaseModel, Field, computed_field, field_validator
 from pydantic.functional_validators import PlainValidator
 
-from trilogy.constants import CONFIG
+from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
 from trilogy.core.enums import (
     ConceptSource,
     FunctionClass,
@@ -281,7 +281,11 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             # if the concept is a locally derived concept, it cannot ever be partial
             # but if it's a concept pulled in from upstream and we have a where clause, it should be partial
             ColumnAssignment(
-                alias=c.address.replace(".", "_"),
+                alias=(
+                    c.address.replace(".", "_")
+                    if c.namespace != DEFAULT_NAMESPACE
+                    else c.name
+                ),
                 concept=environment.concepts[c.address].reference,
                 modifiers=modifiers if c.address not in self.locally_derived else [],
             )

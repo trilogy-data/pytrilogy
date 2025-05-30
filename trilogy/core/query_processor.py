@@ -432,7 +432,7 @@ def get_query_node(
             )
         ds = SelectNode(
             output_concepts=build_statement.output_components,
-            input_concepts=ds.output_concepts,
+            input_concepts=ds.usable_outputs,
             parents=[ds],
             environment=ds.environment,
             partial_concepts=ds.partial_concepts,
@@ -553,11 +553,11 @@ def process_query(
     root_cte.hidden_concepts = statement.hidden_components
 
     final_ctes = optimize_ctes(deduped_ctes, root_cte, statement)
-    mapping = {x.address: x for x in cte.output_columns}
+
     return ProcessedQuery(
         order_by=root_cte.order_by,
         limit=statement.limit,
-        output_columns=[mapping[x.address] for x in statement.output_components],
+        output_columns=statement.output_components,
         ctes=final_ctes,
         base=root_cte,
         hidden_columns=set([x for x in statement.hidden_components]),

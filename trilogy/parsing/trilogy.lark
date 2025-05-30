@@ -379,7 +379,7 @@
 
     int_lit:  /\-?[0-9]+/
     
-    float_lit: /[0-9]*\.[0-9]+/
+    float_lit: /\-?[0-9]*\.[0-9]+/
 
     array_lit: "[" (literal ",")* literal ","? "]"()
 

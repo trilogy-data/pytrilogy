@@ -29,7 +29,7 @@ def gen_synonym_node(
     conditions: BuildWhereClause | None = None,
     accept_partial: bool = False,
 ) -> StrategyNode | None:
-    local_prefix = f"[GEN_SYNONYM_NODE] {padding(depth)}"
+    local_prefix = f"{padding(depth)}[GEN_SYNONYM_NODE]"
     base_fingerprint = tuple([x.address for x in all_concepts])
     synonyms = defaultdict(list)
     synonym_count = 0
@@ -64,5 +64,6 @@ def gen_synonym_node(
         )
         if attempt:
             logger.info(f"{local_prefix} found inputs with {combo}")
+            print(attempt.output_concepts)
             return attempt
     return None

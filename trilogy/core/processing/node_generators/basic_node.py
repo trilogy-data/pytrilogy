@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.enums import FunctionClass, SourceType
+from trilogy.core.enums import FunctionClass, FunctionType, SourceType
 from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
@@ -47,13 +47,25 @@ def gen_basic_node(
     logger.info(
         f"{depth_prefix}{LOGGER_PREFIX} basic node for {concept} with lineage {concept.lineage} has parents {[x for x in parent_concepts]}"
     )
-
+    synonyms: list[BuildConcept] = []
+    ignored_optional: set[str] = set()
+    assert isinstance(concept.lineage, BuildFunction)
+    if concept.lineage.operator == FunctionType.ATTR_ACCESS:
+        logger.info(
+            f"{depth_prefix}{LOGGER_PREFIX} checking for synonyms for attribute access"
+        )
+        for x in local_optional:
+            for z in x.pseudonyms:
+                s_concept = environment.alias_origin_lookup[z]
+                if is_equivalent_basic_function_lineage(concept, s_concept):
+                    synonyms.append(s_concept)
+                    ignored_optional.add(x.address)
     equivalent_optional = [
         x
         for x in local_optional
         if is_equivalent_basic_function_lineage(concept, x)
         and x.address != concept.address
-    ]
+    ] + synonyms
 
     if equivalent_optional:
         logger.info(
@@ -66,6 +78,7 @@ def gen_basic_node(
         for x in local_optional
         if x not in equivalent_optional
         and not any(x.address in y.pseudonyms for y in equivalent_optional)
+        and x.address not in ignored_optional
     ]
     all_parents: list[BuildConcept] = unique(
         parent_concepts + non_equivalent_optional, "address"
@@ -73,7 +86,7 @@ def gen_basic_node(
     logger.info(
         f"{depth_prefix}{LOGGER_PREFIX} Fetching parents {[x.address for x in all_parents]}"
     )
-    parent_node: StrategyNode = source_concepts(
+    parent_node: StrategyNode | None = source_concepts(
         mandatory_list=all_parents,
         environment=environment,
         g=g,
@@ -92,14 +105,19 @@ def gen_basic_node(
     parent_node.add_output_concept(concept)
     for x in equivalent_optional:
         parent_node.add_output_concept(x)
-
-    parent_node.remove_output_concepts(
-        [
-            x
-            for x in parent_node.output_concepts
-            if x.address not in [concept] + local_optional
-        ]
+    targets = [concept] + local_optional
+    logger.info(
+        f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept}: output {[x.address for x in parent_node.output_concepts]}"
     )
+    should_hide = [
+        x
+        for x in parent_node.output_concepts
+        if (
+            x.address not in targets
+            and not any(x.address in y.pseudonyms for y in targets)
+        )
+    ]
+    parent_node.hide_output_concepts(should_hide)
 
     logger.info(
         f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept}: output {[x.address for x in parent_node.output_concepts]}"

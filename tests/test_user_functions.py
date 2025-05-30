@@ -208,7 +208,9 @@ auto test <-SUM(CASE WHEN 10 = weekday THEN x ELSE 0 END) +
 def test_user_function_import():
     env = Environment(working_path=Path(__file__).parent)
     x = Dialects.DUCK_DB.default_executor(environment=env)
+    from trilogy.hooks import DebuggingHook
 
+    DebuggingHook()
     results = x.execute_query(
         """
 import test_env_functions as test_env_functions;

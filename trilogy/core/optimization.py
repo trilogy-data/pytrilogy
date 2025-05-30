@@ -141,9 +141,7 @@ def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     if not output_addresses.issubset(parent_output_addresses):
         return None
     if not direct_parent.grain == cte.grain:
-        logger.info("grain mismatch, cannot early exit")
-        logger.info(direct_parent.grain)
-        logger.info(cte.grain)
+        logger.info("[Direct Return] grain mismatch, cannot early exit")
         return None
 
     assert isinstance(cte, CTE)
@@ -236,6 +234,8 @@ def optimize_ctes(
             complete = not actions_taken
             loops += 1
             input = reorder_ctes(filter_irrelevant_ctes(input, root_cte))
-        logger.info(f"finished checking for {type(rule).__name__} in {loops} loops")
+        logger.info(
+            f"[Optimization] Finished checking for {type(rule).__name__} after {loops} loop(s)"
+        )
 
     return reorder_ctes(filter_irrelevant_ctes(input, root_cte))

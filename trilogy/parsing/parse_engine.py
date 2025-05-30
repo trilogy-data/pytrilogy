@@ -667,8 +667,14 @@ class ParseToObjects(Transformer):
                 environment=self.environment,
                 metadata=metadata,
             )
-
-            if purpose and purpose != Purpose.AUTO and concept.purpose != purpose:
+            # let constant purposes exist to support round-tripping
+            # as a build concept may end up with a constant based on constant inlining happening recursively
+            if (
+                purpose
+                and purpose != Purpose.AUTO
+                and concept.purpose != purpose
+                and purpose != Purpose.CONSTANT
+            ):
                 raise SyntaxError(
                     f'Concept {name} purpose {concept.purpose} does not match declared purpose {purpose}. Suggest defaulting to "auto"'
                 )

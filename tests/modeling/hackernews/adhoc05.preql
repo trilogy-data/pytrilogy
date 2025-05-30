@@ -1,0 +1,12 @@
+import hackernews;
+
+where root_parent.create_time.year >= 2024
+  and root_parent.is_show_hn
+select 
+  root_parent.create_time.hour,
+  # root_parent.id.count as show_hn_posts_count,
+  avg(count(id) by root_parent.id) as response_count,
+  avg(root_parent.score) as avg_score
+order by 
+  root_parent.create_time.hour asc
+limit 24;

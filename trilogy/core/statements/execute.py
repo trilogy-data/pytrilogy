@@ -3,6 +3,7 @@ from typing import Annotated, List, Optional, Union
 from pydantic import BaseModel, Field
 from pydantic.functional_validators import PlainValidator
 
+from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
@@ -14,7 +15,7 @@ from trilogy.core.statements.common import CopyQueryMixin, PersistQueryMixin
 
 
 class ProcessedQuery(BaseModel):
-    output_columns: List[BuildConcept]
+    output_columns: List[ConceptRef]
     ctes: List[CTE | UnionCTE]
     base: CTE | UnionCTE
     hidden_columns: set[str] = Field(default_factory=set)
@@ -38,5 +39,5 @@ class ProcessedRawSQLStatement(BaseModel):
 
 
 class ProcessedShowStatement(BaseModel):
-    output_columns: List[BuildConcept]
+    output_columns: List[ConceptRef]
     output_values: List[Union[BuildConcept, BuildDatasource, ProcessedQuery]]
