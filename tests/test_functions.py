@@ -36,6 +36,23 @@ def test_typing():
     assert x in set([x])
 
 
+def test_negative_float_parsing(test_environment):
+    declarations = """
+
+    const x <- -1.23;
+
+select
+x
+where x >-1.24;
+
+    """
+    env, parsed = parse(declarations, environment=test_environment)
+    select: SelectStatement = parsed[-1]
+
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(process_query(test_environment, select, hooks=[]))
+
+
 def test_functions(test_environment):
     declarations = """
 

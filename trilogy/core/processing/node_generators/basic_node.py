@@ -23,16 +23,6 @@ def is_equivalent_basic_function_lineage(
         return False
     if x.lineage.operator == y.lineage.operator:
         return True
-    # if we are doing attrirbute access on the same object, fetch it once
-    if x.lineage.operator == FunctionType.ATTR_ACCESS:
-        logger.info(y)
-        logger.info(y.lineage)
-    if (
-        x.lineage.operator == FunctionType.ATTR_ACCESS
-        and y.lineage.operator == FunctionType.ATTR_ACCESS
-        and x.lineage.arguments[0] == y.lineage.arguments[0]
-    ):
-        return True
     if (
         y.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
         or y.lineage.operator in FunctionClass.ONE_TO_MANY.value

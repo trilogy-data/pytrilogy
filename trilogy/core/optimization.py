@@ -141,9 +141,7 @@ def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     if not output_addresses.issubset(parent_output_addresses):
         return None
     if not direct_parent.grain == cte.grain:
-        logger.info("grain mismatch, cannot early exit")
-        logger.info(direct_parent.grain)
-        logger.info(cte.grain)
+        logger.info("[Direct Return] grain mismatch, cannot early exit")
         return None
 
     assert isinstance(cte, CTE)
