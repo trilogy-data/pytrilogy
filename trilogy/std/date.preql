@@ -2,9 +2,12 @@
 
 type year int;
 type month int;
+type month_name string;
 type week int;
 type day int;
 type hour int;
 type minute int;
 type second int;
 type day_of_week int;
+type day_of_week_name string;
+

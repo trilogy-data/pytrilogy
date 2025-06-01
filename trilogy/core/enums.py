@@ -7,6 +7,7 @@ class UnnestMode(Enum):
     DIRECT = "direct"
     CROSS_APPLY = "cross_apply"
     CROSS_JOIN = "cross_join"
+    CROSS_JOIN_UNNEST = "cross_join_unnest"
     CROSS_JOIN_ALIAS = "cross_join_alias"
     SNOWFLAKE = "snowflake"
 

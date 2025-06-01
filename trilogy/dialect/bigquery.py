@@ -22,7 +22,7 @@ FUNCTION_MAP = {
     FunctionType.MINUTE: lambda x: f"EXTRACT(MINUTE from {x[0]})",
     FunctionType.SECOND: lambda x: f"EXTRACT(SECOND from {x[0]})",
     FunctionType.HOUR: lambda x: f"EXTRACT(HOUR from {x[0]})",
-    FunctionType.DAY_OF_WEEK: lambda x: f"EXTRACT(DAYOFWEEK from {x[0]})",
+    FunctionType.DAY_OF_WEEK: lambda x: f"EXTRACT(DAYOFWEEK from {x[0]})-1",  # BigQuery's DAYOFWEEK returns 1 for Sunday
     FunctionType.DAY: lambda x: f"EXTRACT(DAY from {x[0]})",
     FunctionType.YEAR: lambda x: f"EXTRACT(YEAR from {x[0]})",
     FunctionType.MONTH: lambda x: f"EXTRACT(MONTH from {x[0]})",
@@ -97,5 +97,5 @@ class BigqueryDialect(BaseDialect):
     }
     QUOTE_CHARACTER = "`"
     SQL_TEMPLATE = BQ_SQL_TEMPLATE
-    UNNEST_MODE = UnnestMode.CROSS_JOIN
+    UNNEST_MODE = UnnestMode.CROSS_JOIN_UNNEST
     DATATYPE_MAP = DATATYPE_MAP

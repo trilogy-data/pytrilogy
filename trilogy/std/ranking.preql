@@ -1,0 +1,6 @@
+
+type rank int;
+type score int;
+type position int;
+type index int;
+type grade int;

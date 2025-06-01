@@ -38,6 +38,7 @@ from trilogy.core.models.author import (
     Parenthetical,
     RowsetItem,
     RowsetLineage,
+    TraitDataType,
     UndefinedConcept,
     WhereClause,
     WindowItem,
@@ -608,6 +609,9 @@ def window_item_to_concept(
                 and set([x.address for x in item.expr.by]) == keys
             ):
                 continue
+            elif isinstance(item.expr, AggregateWrapper):
+
+                grain_components += item.expr.by
             else:
                 grain_components += item.concept_arguments
     else:
@@ -617,19 +621,20 @@ def window_item_to_concept(
     modifiers = get_upstream_modifiers(bcontent.concept_arguments, environment)
     datatype = parent.content.datatype
     if parent.type in (
-        WindowType.RANK,
+        # WindowType.RANK,
         WindowType.ROW_NUMBER,
         WindowType.COUNT,
         WindowType.COUNT_DISTINCT,
     ):
         datatype = DataType.INTEGER
+    if parent.type == WindowType.RANK:
+        datatype = TraitDataType(type=DataType.INTEGER, traits=["rank"])
     return Concept(
         name=name,
         datatype=datatype,
         purpose=local_purpose,
         lineage=parent,
         metadata=fmetadata,
-        # filters are implicitly at the grain of the base item
         grain=final_grain,
         namespace=namespace,
         keys=keys,

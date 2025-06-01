@@ -36,6 +36,7 @@ jobs:
           pip install wheel
           pip install -r requirements.txt
           pip install -r requirements-test.txt
+          pip install sqlalchemy-bigquery --ignore-requires-python
       - name: Lint with mypy
         run: |
           # stop the build if there are Python syntax errors or undefined names

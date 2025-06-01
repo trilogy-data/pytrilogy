@@ -1,0 +1,21 @@
+import github as github;
+import post;
+
+property id.github_base_url <- lower(REGEXP_EXTRACT(url, '(https://github\\.com/[^/]+/[^/]+)'));
+property id.text_github_url <- lower(REGEXP_EXTRACT(text, '(https://github\\.com/[^/]+/[^/]+)'));
+
+auto any_github_url <- coalesce(github_base_url, text_github_url);
+
+merge github.repo_url into any_github_url;
+
+where type = 'story' and is_show_hn and not deleted and not dead
+select
+    github.language, 
+    create_time.year,
+    sum(score) as avg_language_score, 
+    count(id) as sample_size,
+    rank github.language by count(id)  desc as popularity_rank
+#Skipping graph for ['
+;
+
+#INFO     trilogy:discovery_node_factory.py:374  [DISCOVERY LOOP] Could not resolve root concepts, checking for synonyms for [github.language@Grain<github.language>, local.score@Grain<local.id>, local.id@Grain<local.id>]

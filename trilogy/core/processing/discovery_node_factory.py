@@ -373,7 +373,7 @@ class RootNodeHandler:
     ) -> Optional[StrategyNode]:
         logger.info(
             f"{depth_to_prefix(self.ctx.depth)}{LOGGER_PREFIX} "
-            f"Could not resolve root concepts, checking for synonyms"
+            f"Could not resolve root concepts, checking for synonyms for {root_targets}"
         )
 
         if not self.ctx.history.check_started(

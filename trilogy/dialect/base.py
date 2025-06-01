@@ -10,6 +10,7 @@ from trilogy.constants import (
     Rendering,
     logger,
 )
+from trilogy.core.constants import UNNEST_NAME
 from trilogy.core.enums import (
     DatePart,
     FunctionType,
@@ -756,6 +757,16 @@ class BaseDialect:
                 f"{self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
                 for c in cte.join_derived_concepts
             ]
+        elif self.UNNEST_MODE == UnnestMode.CROSS_JOIN_UNNEST:
+            select_columns = [
+                self.render_concept_sql(c, cte)
+                for c in cte.output_columns
+                if c.address not in [y.address for y in cte.join_derived_concepts]
+                and c.address not in cte.hidden_concepts
+            ] + [
+                f"{UNNEST_NAME} as {self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
+                for c in cte.join_derived_concepts
+            ]
         else:
             # otherwse, assume we are unnesting directly in the select
             select_columns = [
@@ -770,11 +781,18 @@ class BaseDialect:
             if len(cte.joins) > 0:
                 if cte.join_derived_concepts and self.UNNEST_MODE in (
                     UnnestMode.CROSS_JOIN_ALIAS,
+                    # UnnestMode.CROSS_JOIN_UNNEST,
                     UnnestMode.CROSS_JOIN,
                     UnnestMode.CROSS_APPLY,
                 ):
 
                     source = f"{render_unnest(self.UNNEST_MODE, self.QUOTE_CHARACTER, cte.join_derived_concepts[0], self.render_expr, cte)}"
+                elif (
+                    cte.join_derived_concepts
+                    and self.UNNEST_MODE == UnnestMode.CROSS_JOIN_UNNEST
+                ):
+                    source = f"{self.render_expr(cte.join_derived_concepts[0], cte)} as {self.QUOTE_CHARACTER}{UNNEST_NAME}{self.QUOTE_CHARACTER}"
+
                 elif (
                     cte.join_derived_concepts
                     and self.UNNEST_MODE == UnnestMode.SNOWFLAKE
