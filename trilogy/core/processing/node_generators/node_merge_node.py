@@ -82,15 +82,15 @@ def determine_induced_minimal_nodes(
     accept_partial: bool = False,
 ) -> nx.DiGraph | None:
     H: nx.Graph = nx.to_undirected(G).copy()
-    nodes_to_remove = [
-# 'c~local._virt_agg_count_7657693770587142@Grain<Abstract>'
-    ]
+    nodes_to_remove = []
     concepts = nx.get_node_attributes(G, "concept")
 
     for node in G.nodes:
         if concepts.get(node):
             lookup: BuildConcept = concepts[node]
-            # aggregates can never be safely used for join discovery
+            # inclusion of aggregates can create ambiguous node relation chains
+            # there may be a better way to handle this
+            # can be revisited if we need to connect a derived synonym based on an aggregate
             if lookup.derivation in (Derivation.CONSTANT, Derivation.AGGREGATE):
                 nodes_to_remove.append(node)
             # purge a node if we're already looking for all it's parents
@@ -114,14 +114,8 @@ def determine_induced_minimal_nodes(
         logger.debug(f"Unable to find paths for {nodelist}- {str(e)}")
         return None
     H.remove_nodes_from(list(x for x in H.nodes if x not in paths))
-    # from trilogy.hooks import GraphHook
-    # GraphHook().query_graph_built(
-    #     H,
-    # )
     sG: nx.Graph = ax.steinertree.steiner_tree(H, nodelist).copy()
-    logger.debug('Steiner tree found for nodes %s', nodelist)
-    logger.debug('paths found %s', paths)
-    logger.debug(list(sG.nodes))
+    logger.debug("Steiner tree found for nodes %s", nodelist)
     final: nx.DiGraph = nx.subgraph(G, sG.nodes).copy()
 
     for edge in G.edges:
@@ -238,11 +232,13 @@ def resolve_weak_components(
     # to ensure there are not ambiguous discovery paths
     # (if we did not care about raising ambiguity errors, we could just use the first one)
     count = 0
-    node_list = sorted([
-        concept_to_node(c.with_default_grain())
-        for c in all_concepts
-        if "__preql_internal" not in c.address
-    ])
+    node_list = sorted(
+        [
+            concept_to_node(c.with_default_grain())
+            for c in all_concepts
+            if "__preql_internal" not in c.address
+        ]
+    )
     logger.debug(f"Resolving weak components for {node_list} in {search_graph.nodes}")
     synonyms: set[str] = set()
     for x in all_concepts:

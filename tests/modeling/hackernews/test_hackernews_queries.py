@@ -81,5 +81,8 @@ def test_adhoc07():
     statement = engine.parse_text(text)[-1]
     generated = BigqueryDialect().compile_statement(statement)
     # TODO: better test
-    assert """    `thoughtful`.`github_language` as `github_language`,
-    rank() over (order by `thoughtful`.`_virt_agg_count_7657693770587142` desc ) as `popularity_rank`""" in generated, generated
+    assert (
+        """    `questionable`.`github_language` as `github_language`,
+    rank() over (order by `questionable`.`_virt_agg_count_7657693770587142` desc ) as `popularity_rank`"""
+        in generated
+    ), generated

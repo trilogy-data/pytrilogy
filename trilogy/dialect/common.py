@@ -1,5 +1,6 @@
 from typing import Callable
 
+from trilogy.core.constants import UNNEST_NAME
 from trilogy.core.enums import Modifier, UnnestMode
 from trilogy.core.models.build import (
     BuildComparison,
@@ -16,7 +17,6 @@ from trilogy.core.models.execute import (
     Join,
     UnionCTE,
 )
-from trilogy.core.constants import UNNEST_NAME
 
 
 def null_wrapper(lval: str, rval: str, modifiers: list[Modifier]) -> str:
@@ -99,7 +99,11 @@ def render_join(
             return None
         if not cte:
             raise ValueError("must provide a cte to build an unnest joins")
-        if unnest_mode in (UnnestMode.CROSS_JOIN, UnnestMode.CROSS_JOIN_UNNEST, UnnestMode.CROSS_JOIN_ALIAS):
+        if unnest_mode in (
+            UnnestMode.CROSS_JOIN,
+            UnnestMode.CROSS_JOIN_UNNEST,
+            UnnestMode.CROSS_JOIN_ALIAS,
+        ):
             return f"CROSS JOIN {render_unnest(unnest_mode, quote_character, join.object_to_unnest, render_expr_func, cte)}"
         if unnest_mode == UnnestMode.SNOWFLAKE:
             return f"LEFT JOIN LATERAL {render_unnest(unnest_mode, quote_character, join.object_to_unnest, render_expr_func, cte)}"

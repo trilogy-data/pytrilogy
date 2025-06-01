@@ -8,7 +8,7 @@ auto any_github_url <- coalesce(github_base_url, text_github_url);
 
 merge github.repo_url into any_github_url;
 
-# where type = 'story' and is_show_hn and not deleted and not dead
+where type = 'story' and is_show_hn and not deleted and not dead
 select
     github.language, 
     create_time.year,
