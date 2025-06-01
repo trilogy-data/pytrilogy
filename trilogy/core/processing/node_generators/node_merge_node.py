@@ -82,13 +82,16 @@ def determine_induced_minimal_nodes(
     accept_partial: bool = False,
 ) -> nx.DiGraph | None:
     H: nx.Graph = nx.to_undirected(G).copy()
-    nodes_to_remove = []
+    nodes_to_remove = [
+# 'c~local._virt_agg_count_7657693770587142@Grain<Abstract>'
+    ]
     concepts = nx.get_node_attributes(G, "concept")
 
     for node in G.nodes:
         if concepts.get(node):
             lookup: BuildConcept = concepts[node]
-            if lookup.derivation in (Derivation.CONSTANT,):
+            # aggregates can never be safely used for join discovery
+            if lookup.derivation in (Derivation.CONSTANT, Derivation.AGGREGATE):
                 nodes_to_remove.append(node)
             # purge a node if we're already looking for all it's parents
             if filter_downstream and lookup.derivation not in (Derivation.ROOT,):
@@ -111,7 +114,14 @@ def determine_induced_minimal_nodes(
         logger.debug(f"Unable to find paths for {nodelist}- {str(e)}")
         return None
     H.remove_nodes_from(list(x for x in H.nodes if x not in paths))
+    # from trilogy.hooks import GraphHook
+    # GraphHook().query_graph_built(
+    #     H,
+    # )
     sG: nx.Graph = ax.steinertree.steiner_tree(H, nodelist).copy()
+    logger.debug('Steiner tree found for nodes %s', nodelist)
+    logger.debug('paths found %s', paths)
+    logger.debug(list(sG.nodes))
     final: nx.DiGraph = nx.subgraph(G, sG.nodes).copy()
 
     for edge in G.edges:
@@ -228,11 +238,12 @@ def resolve_weak_components(
     # to ensure there are not ambiguous discovery paths
     # (if we did not care about raising ambiguity errors, we could just use the first one)
     count = 0
-    node_list = [
+    node_list = sorted([
         concept_to_node(c.with_default_grain())
         for c in all_concepts
         if "__preql_internal" not in c.address
-    ]
+    ])
+    logger.debug(f"Resolving weak components for {node_list} in {search_graph.nodes}")
     synonyms: set[str] = set()
     for x in all_concepts:
         synonyms = synonyms.union(x.pseudonyms)
@@ -354,7 +365,7 @@ def subgraphs_to_merge_node(
         parents.append(parent)
     input_c = []
     for x in parents:
-        for y in x.output_concepts:
+        for y in x.usable_outputs:
             input_c.append(y)
     if len(parents) == 1 and enable_early_exit:
         logger.info(
@@ -392,6 +403,7 @@ def gen_merge_node(
         )
     else:
         all_search_concepts = all_concepts
+    all_search_concepts = sorted(all_search_concepts, key=lambda x: x.address)
     for filter_downstream in [True, False]:
         weak_resolve = resolve_weak_components(
             all_search_concepts,

@@ -608,6 +608,9 @@ def window_item_to_concept(
                 and set([x.address for x in item.expr.by]) == keys
             ):
                 continue
+            elif isinstance(item.expr, AggregateWrapper):
+
+                grain_components += item.expr.by
             else:
                 grain_components += item.concept_arguments
     else:
@@ -629,7 +632,6 @@ def window_item_to_concept(
         purpose=local_purpose,
         lineage=parent,
         metadata=fmetadata,
-        # filters are implicitly at the grain of the base item
         grain=final_grain,
         namespace=namespace,
         keys=keys,

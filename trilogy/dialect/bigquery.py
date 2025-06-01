@@ -97,5 +97,5 @@ class BigqueryDialect(BaseDialect):
     }
     QUOTE_CHARACTER = "`"
     SQL_TEMPLATE = BQ_SQL_TEMPLATE
-    UNNEST_MODE = UnnestMode.CROSS_JOIN
+    UNNEST_MODE = UnnestMode.CROSS_JOIN_UNNEST
     DATATYPE_MAP = DATATYPE_MAP

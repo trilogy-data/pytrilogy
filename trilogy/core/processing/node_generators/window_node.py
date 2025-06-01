@@ -37,9 +37,11 @@ def resolve_window_parent_concepts(
     if concept.lineage.order_by:
         for item in concept.lineage.order_by:
             base += item.concept_arguments
-    if concept.grain:
-        for gitem in concept.grain.components:
-            base.append(environment.concepts[gitem])
+    # logger.info(f"base: {base}")
+    # if concept.grain:
+    #     for gitem in concept.grain.components:
+    #         base.append(environment.concepts[gitem])
+    # logger.info(f"base: {base}")
     return concept.lineage.content, unique(base, "address")
 
 

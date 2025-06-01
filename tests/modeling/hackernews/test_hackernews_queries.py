@@ -61,3 +61,25 @@ def test_adhoc05():
         text = f.read()
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
     engine.parse_text(text)[-1]
+
+
+def test_adhoc06():
+    env = Environment(working_path=working_path)
+    DebuggingHook()
+    with open(working_path / "adhoc06.preql") as f:
+        text = f.read()
+    engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
+    engine.parse_text(text)[-1]
+
+
+def test_adhoc07():
+    env = Environment(working_path=working_path)
+    DebuggingHook()
+    with open(working_path / "adhoc07.preql") as f:
+        text = f.read()
+    engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
+    statement = engine.parse_text(text)[-1]
+    generated = BigqueryDialect().compile_statement(statement)
+    # TODO: better test
+    assert """    `thoughtful`.`github_language` as `github_language`,
+    rank() over (order by `thoughtful`.`_virt_agg_count_7657693770587142` desc ) as `popularity_rank`""" in generated, generated
