@@ -38,10 +38,10 @@ from trilogy.core.models.author import (
     Parenthetical,
     RowsetItem,
     RowsetLineage,
+    TraitDataType,
     UndefinedConcept,
     WhereClause,
     WindowItem,
-    TraitDataType,
     address_with_namespace,
 )
 from trilogy.core.models.core import DataType, arg_to_datatype
