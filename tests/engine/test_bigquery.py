@@ -11,6 +11,7 @@ UNSUPPORTED_TUPLE = (3, 10)
 
 # FORCE INSTALL sqlalchemy-bigquery (#--ignore-requires-python) to run this test if needed
 
+
 # bigquery is not supported on 13 yet
 @pytest.mark.skipif(
     sys.version_info >= UNSUPPORTED_TUPLE, reason="BigQuery not supported on 3.13"

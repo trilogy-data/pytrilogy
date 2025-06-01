@@ -41,6 +41,7 @@ from trilogy.core.models.author import (
     UndefinedConcept,
     WhereClause,
     WindowItem,
+    TraitDataType,
     address_with_namespace,
 )
 from trilogy.core.models.core import DataType, arg_to_datatype
@@ -620,12 +621,14 @@ def window_item_to_concept(
     modifiers = get_upstream_modifiers(bcontent.concept_arguments, environment)
     datatype = parent.content.datatype
     if parent.type in (
-        WindowType.RANK,
+        # WindowType.RANK,
         WindowType.ROW_NUMBER,
         WindowType.COUNT,
         WindowType.COUNT_DISTINCT,
     ):
         datatype = DataType.INTEGER
+    if parent.type == WindowType.RANK:
+        datatype = TraitDataType(type=DataType.INTEGER, traits=["rank"])
     return Concept(
         name=name,
         datatype=datatype,
