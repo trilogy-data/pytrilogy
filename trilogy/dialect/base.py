@@ -757,7 +757,7 @@ class BaseDialect:
                 f"{self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
                 for c in cte.join_derived_concepts
             ]
-        elif self.UNNEST_MODE == UnnestMode.CROSS_JOIN_UNNEST:
+        elif self.UNNEST_MODE in (UnnestMode.CROSS_JOIN_UNNEST, UnnestMode.PRESTO):
             select_columns = [
                 self.render_concept_sql(c, cte)
                 for c in cte.output_columns
@@ -787,12 +787,14 @@ class BaseDialect:
                 ):
 
                     source = f"{render_unnest(self.UNNEST_MODE, self.QUOTE_CHARACTER, cte.join_derived_concepts[0], self.render_expr, cte)}"
-                elif (
-                    cte.join_derived_concepts
-                    and self.UNNEST_MODE == UnnestMode.CROSS_JOIN_UNNEST
+                elif cte.join_derived_concepts and self.UNNEST_MODE in (
+                    UnnestMode.CROSS_JOIN_UNNEST,
                 ):
                     source = f"{self.render_expr(cte.join_derived_concepts[0], cte)} as {self.QUOTE_CHARACTER}{UNNEST_NAME}{self.QUOTE_CHARACTER}"
-
+                elif cte.join_derived_concepts and self.UNNEST_MODE in (
+                    UnnestMode.PRESTO,
+                ):
+                    source = f"{self.render_expr(cte.join_derived_concepts[0], cte)} as t({self.QUOTE_CHARACTER}{UNNEST_NAME}{self.QUOTE_CHARACTER})"
                 elif (
                     cte.join_derived_concepts
                     and self.UNNEST_MODE == UnnestMode.SNOWFLAKE

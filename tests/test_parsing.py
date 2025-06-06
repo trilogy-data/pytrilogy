@@ -426,6 +426,19 @@ property id.labels map<string, int>;
     assert env.concepts["labels"].datatype.value_type == DataType.INTEGER
 
 
+def test_map_concept_definition():
+    env, parsed = parse_text(
+        """
+key id int;
+property id.label string;
+key map_store map<id, string>;
+
+"""
+    )
+    assert env.concepts["map_store"].datatype.key_data_type == DataType.INTEGER
+    assert env.concepts["map_store"].datatype.value_data_type == DataType.STRING
+
+
 def test_map_string_access():
     env, parsed = parse_text(
         """

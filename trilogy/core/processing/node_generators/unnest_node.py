@@ -31,7 +31,7 @@ def gen_unnest_node(
     ]
     all_parents = arguments + non_equivalent_optional
     logger.info(
-        f"{depth_prefix}{LOGGER_PREFIX} unnest node for {concept} with lineage {concept.lineage} has parents {all_parents} and equivalent optional {equivalent_optional}"
+        f"{depth_prefix}{LOGGER_PREFIX} unnest node for {concept} with lineage {concept.lineage} has parents + optional {all_parents} and equivalent optional {equivalent_optional}"
     )
     if arguments or local_optional:
         parent = source_concepts(

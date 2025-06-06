@@ -131,7 +131,7 @@ def concept_is_relevant(
     if (
         concept.purpose == Purpose.KEY
         and concept.keys
-        and all([c in others for c in concept.keys])
+        and all([c in others and c != concept.address for c in concept.keys])
     ):
         return False
     if concept.purpose in (Purpose.METRIC,):

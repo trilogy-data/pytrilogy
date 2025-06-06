@@ -2,7 +2,7 @@ from copy import deepcopy
 
 from pytest import raises
 
-from trilogy import parse
+from trilogy import Dialects, parse
 from trilogy.core.enums import (
     BooleanOperator,
     ComparisonOperator,
@@ -360,3 +360,81 @@ def test_parenthetical(test_environment: Environment):
 
     merged = x + x
     assert isinstance(merged, Conditional)
+
+
+def test_datasource_grain_application():
+    env, statements = parse(
+        """
+key x string;
+property x.part_1 string;
+property x.part_2 string;
+auto _x <- concat(x.part_1, '.', x.part_2);
+
+merge _x into x;
+
+datasource xes (
+    x:x,
+    )
+grain (x)
+address x_table;
+
+datasource parts (
+    part_1: part_1,
+    part_2:part_2,
+    concat(x.part_1, '.', x.part_2): x
+    )
+grain (part_1, part_2)
+address parts;
+
+
+
+"""
+    )
+
+    test_grain = Grain.from_concepts(
+        concepts=["x", "part_1", "part_2"], environment=env
+    )
+    assert test_grain.components == {
+        "local.x",
+    }
+
+
+def test_datasource_merge_generation():
+    env, statements = parse(
+        """
+key x string;
+property x.part_1 string;
+property x.part_2 string;
+auto _x <- concat(part_1, '.', part_2);
+
+merge _x into x;
+
+datasource xes (
+    x:x,
+    )
+grain (x)
+address x_table;
+
+datasource parts (
+    part_1: part_1,
+    part_2:part_2,
+    concat(part_1, '.', part_2): x
+    )
+grain (part_1, part_2)
+address parts;
+
+
+select x,
+    part_1,
+    part_2
+;
+
+
+"""
+    )
+
+    q = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(statements[-1])[
+        0
+    ]
+
+    assert "JOIN" not in q, q

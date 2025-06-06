@@ -33,6 +33,8 @@ FUNCTION_MAP = {
     FunctionType.CURRENT_DATE: lambda x: "CURRENT_DATE",
     FunctionType.CURRENT_DATETIME: lambda x: "CURRENT_TIMESTAMP",
     FunctionType.ARRAY: lambda x: f"ARRAY[{', '.join(x)}]",
+    # regex
+    FunctionType.REGEXP_CONTAINS: lambda x: f"REGEXP_LIKE({x[0]}, {x[1]})",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
@@ -85,8 +87,12 @@ class PrestoDialect(BaseDialect):
     }
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = SQL_TEMPLATE
-    DATATYPE_MAP = {**BaseDialect.DATATYPE_MAP, DataType.NUMERIC: "DECIMAL"}
-    UNNEST_MODE = UnnestMode.CROSS_JOIN_ALIAS
+    DATATYPE_MAP = {
+        **BaseDialect.DATATYPE_MAP,
+        DataType.NUMERIC: "DECIMAL",
+        DataType.STRING: "VARCHAR",
+    }
+    UNNEST_MODE = UnnestMode.PRESTO
 
 
 class TrinoDialect(PrestoDialect):

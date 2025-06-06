@@ -402,11 +402,11 @@
 
     struct_type: "struct"i "<" ((data_type | IDENTIFIER) ",")* (data_type | IDENTIFIER) ","? ">" 
 
-    list_type: ("list"i "<" data_type ">" ) | ("array"i "<" data_type ">" )
+    list_type: ("list"i | "array"i) "<" (data_type | IDENTIFIER) ">" 
 
     numeric_type: "numeric"i "(" int_lit "," int_lit ")"
 
-    map_type: "map"i "<" data_type "," data_type ">"
+    map_type: "map"i "<" (data_type | IDENTIFIER) "," (data_type | IDENTIFIER) ">"
 
     !data_type:  ("string"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type) ("::" IDENTIFIER)?
     

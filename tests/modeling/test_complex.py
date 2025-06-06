@@ -1,6 +1,7 @@
 from trilogy import Dialects, Executor, parse
 from trilogy.core.enums import Derivation
 from trilogy.core.models.build import Factory
+from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
@@ -168,3 +169,18 @@ def test_anon_agg():
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 1
     assert results[0] == (5,)
+
+
+def test_map_access():
+    test_executor = Dialects.DUCK_DB.default_executor()
+    test_select = """
+    const num_map <- {1: 10, 2: 30};
+
+    SELECT
+        num_map[1] -> num_map_5
+    ;"""
+
+    results = test_executor.parse_text(test_select)[-1]
+    assert results.local_concepts["num_map_5"].datatype == DataType.INTEGER
+    assert test_executor.environment.concepts["num_map_5"].datatype == DataType.INTEGER
+    results = test_executor.execute_text(test_select)[0]

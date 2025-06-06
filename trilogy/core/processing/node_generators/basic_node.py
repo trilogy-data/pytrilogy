@@ -21,6 +21,8 @@ def is_equivalent_basic_function_lineage(
         y.lineage, BuildFunction
     ):
         return False
+    if x.lineage.operator == y.lineage.operator == FunctionType.ATTR_ACCESS:
+        return x.lineage.concept_arguments == y.lineage.concept_arguments
     if x.lineage.operator == y.lineage.operator:
         return True
     if (
@@ -72,7 +74,11 @@ def gen_basic_node(
             f"{depth_prefix}{LOGGER_PREFIX} basic node for {concept} has equivalent optional {[x.address for x in equivalent_optional]}"
         )
     for eo in equivalent_optional:
-        parent_concepts += resolve_function_parent_concepts(eo, environment=environment)
+        new_parents = resolve_function_parent_concepts(eo, environment=environment)
+        logger.info(
+            f"{depth_prefix}{LOGGER_PREFIX} equivalent optional {eo.address} has parents {[x.address for x in new_parents]}"
+        )
+        parent_concepts += new_parents
     non_equivalent_optional = [
         x
         for x in local_optional

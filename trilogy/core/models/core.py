@@ -175,11 +175,15 @@ class ListType(BaseModel):
 
 
 class MapType(BaseModel):
-    key_type: DataType
+    key_type: TYPEDEF_TYPES
     value_type: TYPEDEF_TYPES
 
     @field_validator("value_type", mode="plain")
     def validate_type(cls, v):
+        return v
+
+    @field_validator("key_type", mode="plain")
+    def validate_key_type(cls, v):
         return v
 
     @property

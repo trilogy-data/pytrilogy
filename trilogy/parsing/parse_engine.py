@@ -460,13 +460,22 @@ class ParseToObjects(Transformer):
         )
 
     def list_type(self, args) -> ListType:
-        return ListType(type=args[0])
+        content = args[0]
+        if isinstance(content, str):
+            content = self.environment.concepts[content]
+        return ListType(type=content)
 
     def numeric_type(self, args) -> NumericType:
         return NumericType(precision=args[0], scale=args[1])
 
     def map_type(self, args) -> MapType:
-        return MapType(key_type=args[0], value_type=args[1])
+        key = args[0]
+        value = args[1]
+        if isinstance(key, str):
+            key = self.environment.concepts[key]
+        elif isinstance(value, str):
+            value = self.environment.concepts[value]
+        return MapType(key_type=key, value_type=value)
 
     @v_args(meta=True)
     def data_type(
@@ -842,6 +851,17 @@ class ParseToObjects(Transformer):
                     continue
 
                 key_inputs = grain.components
+                eligible = True
+                for key in key_inputs:
+                    # never overwrite a key with a dependency on a property
+                    # for example - binding a datasource with a grain of <x>.fun should
+                    # never override the grain of x to <fun>
+                    if column.concept.address in (
+                        self.environment.concepts[key].keys or set()
+                    ):
+                        eligible = False
+                if not eligible:
+                    continue
                 keys = [self.environment.concepts[grain] for grain in key_inputs]
                 # target_c.purpose = Purpose.PROPERTY
                 target_c.keys = set([x.address for x in keys])
@@ -1030,6 +1050,9 @@ class ParseToObjects(Transformer):
 
     def import_statement(self, args: list[str]) -> ImportStatement:
         start = datetime.now()
+        is_file_resolver = isinstance(
+            self.environment.config.import_resolver, FileSystemImportResolver
+        )
         if len(args) == 2:
             alias = args[-1]
             cache_key = args[-1]
@@ -1043,9 +1066,7 @@ class ParseToObjects(Transformer):
             is_stdlib = True
             target = join(STDLIB_ROOT, *path) + ".preql"
             token_lookup: Path | str = Path(target)
-        elif isinstance(
-            self.environment.config.import_resolver, FileSystemImportResolver
-        ):
+        elif is_file_resolver:
             target = join(self.environment.working_path, *path) + ".preql"
             # tokens + text are cached by path
             token_lookup = Path(target)
@@ -1125,7 +1146,13 @@ class ParseToObjects(Transformer):
         imps = ImportStatement(alias=alias, input_path=input_path, path=parsed_path)
 
         self.environment.add_import(
-            alias, new_env, Import(alias=alias, path=parsed_path)
+            alias,
+            new_env,
+            Import(
+                alias=alias,
+                path=parsed_path,
+                input_path=Path(target) if is_file_resolver else None,
+            ),
         )
         end = datetime.now()
         perf_logger.debug(
@@ -1677,6 +1704,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def unnest(self, meta, args):
+
         return self.function_factory.create_function(args, FunctionType.UNNEST, meta)
 
     @v_args(meta=True)

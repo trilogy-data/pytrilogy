@@ -980,3 +980,19 @@ select
     for idx, cmd in enumerate(commands):
         rendered = Renderer().to_string(cmd)
         assert rendered == expected[idx], rendered
+
+
+def test_render_map():
+    basic = Environment()
+
+    env, commands = basic.parse(
+        """
+   const num_map <- {1: 10, 2: 20};
+   """
+    )
+    expected = [
+        """const num_map <- {1: 10, 2: 20};""",
+    ]
+    for idx, cmd in enumerate(commands):
+        rendered = Renderer().to_string(cmd)
+        assert rendered == expected[idx], rendered

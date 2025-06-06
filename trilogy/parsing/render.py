@@ -31,6 +31,7 @@ from trilogy.core.models.core import (
     DataType,
     ListType,
     ListWrapper,
+    MapWrapper,
     NumericType,
     TraitDataType,
     TupleWrapper,
@@ -249,6 +250,17 @@ class Renderer:
     @to_string.register
     def _(self, arg: TupleWrapper):
         return "(" + ", ".join([self.to_string(x) for x in arg]) + ")"
+
+    @to_string.register
+    def _(self, arg: MapWrapper):
+        def process_key_value(key, value):
+            return f"{self.to_string(key)}: {self.to_string(value)}"
+
+        return (
+            "{"
+            + ", ".join([process_key_value(key, value) for key, value in arg.items()])
+            + "}"
+        )
 
     @to_string.register
     def _(self, arg: DatePart):

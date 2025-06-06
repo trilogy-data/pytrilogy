@@ -58,7 +58,9 @@ if TYPE_CHECKING:
 class Import:
     alias: str
     path: Path
-    input_path: str | None = None
+    input_path: Path | None = (
+        None  # filepath where the text came from (path is the import path, but may be resolved from a dictionary for some resolvers)
+    )
 
 
 class BaseImportResolver(BaseModel):

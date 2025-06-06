@@ -52,3 +52,23 @@ def test_import_concept_resolution():
     materialized = basic.materialize_for_select()
     assert "one.two.import_key" in materialized.materialized_concepts
     assert "two.two.import_key" in materialized.materialized_concepts
+
+
+def test_import_basics():
+    basic = Environment(working_path=Path(__file__).parent)
+
+    basic.parse(
+        """
+import test_env;
+
+key id2 int;
+
+
+""",
+    )
+
+    assert len(basic.imports["local"]) == 1, basic.imports
+    importz = basic.imports["local"][0]
+    assert importz.path == Path("test_env")
+    expected = Path(__file__).parent / "test_env.preql"
+    assert importz.input_path == expected

@@ -35,7 +35,6 @@ def render_unnest(
     cte: CTE,
 ):
     if not isinstance(concept, (BuildConcept, BuildParamaterizedConceptReference)):
-        print(type(concept))
         address = UNNEST_NAME
     else:
         address = concept.safe_address
@@ -43,6 +42,8 @@ def render_unnest(
         return f"{render_func(concept, cte)} as {quote_character}{address}{quote_character}"
     elif unnest_mode == UnnestMode.CROSS_JOIN_UNNEST:
         return f"unnest({render_func(concept, cte)}) as {quote_character}{address}{quote_character}"
+    elif unnest_mode == UnnestMode.PRESTO:
+        return f"unnest({render_func(concept, cte)}) as t({quote_character}{UNNEST_NAME}{quote_character})"
     elif unnest_mode == UnnestMode.CROSS_JOIN_ALIAS:
         return f"{render_func(concept, cte)} as unnest_wrapper ({quote_character}{address}{quote_character})"
     elif unnest_mode == UnnestMode.SNOWFLAKE:
@@ -103,6 +104,7 @@ def render_join(
             UnnestMode.CROSS_JOIN,
             UnnestMode.CROSS_JOIN_UNNEST,
             UnnestMode.CROSS_JOIN_ALIAS,
+            UnnestMode.PRESTO,
         ):
             return f"CROSS JOIN {render_unnest(unnest_mode, quote_character, join.object_to_unnest, render_expr_func, cte)}"
         if unnest_mode == UnnestMode.SNOWFLAKE:
