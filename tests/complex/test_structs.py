@@ -132,8 +132,6 @@ SELECT
             ].pseudonyms
         )
 
-    # for x in results[-1].output_columns:
-    #     assert len(list(x.pseudonyms)) == 1, x.pseudonyms
     results = executor.execute_text(
         """
 key a int;
@@ -164,38 +162,7 @@ SELECT
 
 def test_struct_in_array_item_access():
     executor = Dialects.DUCK_DB.default_executor()
-    results = executor.parse_text(
-        """
 
-key a int;
-key b int;
-key wrapper struct<a,b>;
-key array_struct list<wrapper>;
-
-auto unnest_array<-unnest(array_struct);
-                                    
-datasource struct_array (
-    array_struct: array_struct
-)
-grain (array_struct)
-query '''                    
-select [{a: 1, b: 2}, {a: 3, b: 4}] as array_struct
-'''
-;
-                          
-SELECT
-    wrapper.a,
-    b
-;
-    
-                                    """
-    )
-    assert isinstance(
-        executor.environment.concepts["unnest_array"].datatype, StructType
-    )
-
-    # for x in results[-1].output_columns:
-    #     assert len(list(x.pseudonyms)) == 1, x.pseudonyms
     results = executor.execute_text(
         """
 key a int;

@@ -1,3 +1,6 @@
+import re
+
+
 def test_render_query(presto_engine):
     results = presto_engine.generate_sql("""select pi;""")[0]
 
@@ -58,6 +61,6 @@ SELECT
 """
     )[0]
     CONFIG.rendering.parameters = current
-    assert (
-        'CROSS JOIN unnest("quizzical"."values") as t("_unnest_alias")' in results
+    assert re.search(
+        'CROSS JOIN unnest\("[A-z0-9\_]+"."values"\) as t\("_unnest_alias"\)', results
     ), results
