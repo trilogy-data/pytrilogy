@@ -64,6 +64,5 @@ def gen_synonym_node(
         )
         if attempt:
             logger.info(f"{local_prefix} found inputs with {combo}")
-            print(attempt.output_concepts)
             return attempt
     return None
