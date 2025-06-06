@@ -52,6 +52,9 @@ def gen_basic_node(
     synonyms: list[BuildConcept] = []
     ignored_optional: set[str] = set()
     assert isinstance(concept.lineage, BuildFunction)
+    # when we are getting an attribute, if there is anything else 
+    # that is an attribute of the same struct in local optional
+    # select that value for discovery as well
     if concept.lineage.operator == FunctionType.ATTR_ACCESS:
         logger.info(
             f"{depth_prefix}{LOGGER_PREFIX} checking for synonyms for attribute access"
