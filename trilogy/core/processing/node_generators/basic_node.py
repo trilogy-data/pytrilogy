@@ -57,9 +57,14 @@ def gen_basic_node(
             f"{depth_prefix}{LOGGER_PREFIX} checking for synonyms for attribute access"
         )
         for x in local_optional:
+            found = False
             for z in x.pseudonyms:
+                # gate to ensure we don't match to multiple synonyms
+                if found:
+                    continue
                 s_concept = environment.alias_origin_lookup[z]
                 if is_equivalent_basic_function_lineage(concept, s_concept):
+                    found = True
                     synonyms.append(s_concept)
                     ignored_optional.add(x.address)
     equivalent_optional = [
