@@ -65,7 +65,10 @@ def gen_basic_node(
                 # gate to ensure we don't match to multiple synonyms
                 if found:
                     continue
-                s_concept = environment.alias_origin_lookup[z]
+                if z in environment.concepts:
+                    s_concept = environment.concepts[z]
+                else:
+                    s_concept = environment.alias_origin_lookup[z]
                 if is_equivalent_basic_function_lineage(concept, s_concept):
                     found = True
                     synonyms.append(s_concept)
