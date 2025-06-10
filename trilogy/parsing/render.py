@@ -506,7 +506,11 @@ class Renderer:
             return f"{args[0]} % {args[1]}"
         if arg.operator == FunctionType.PARENTHETICAL:
             return f"({args[0]})"
-
+        if arg.operator == FunctionType.GROUP:
+            arg_string = ', '.join(args[1:])
+            if len(args) == 1:
+                return f'group({args[0]})'
+            return f'group({args[0]}) by {arg_string}'
         inputs = ",".join(args)
 
         if arg.operator == FunctionType.CONSTANT:

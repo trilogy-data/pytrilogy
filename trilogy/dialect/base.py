@@ -66,6 +66,7 @@ from trilogy.core.statements.author import (
     RowsetDerivationStatement,
     SelectStatement,
     ShowStatement,
+    FunctionDeclaration,
 )
 from trilogy.core.statements.execute import (
     ProcessedCopyStatement,
@@ -980,6 +981,7 @@ class BaseDialect:
                     ImportStatement,
                     RowsetDerivationStatement,
                     Datasource,
+                    FunctionDeclaration,
                 ),
             ):
                 continue

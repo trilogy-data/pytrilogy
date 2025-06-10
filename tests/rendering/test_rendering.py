@@ -996,3 +996,45 @@ def test_render_map():
     for idx, cmd in enumerate(commands):
         rendered = Renderer().to_string(cmd)
         assert rendered == expected[idx], rendered
+
+
+def test_render_unnest_array():
+    basic = Environment()
+
+    env, commands = basic.parse(
+        """
+
+auto zips_pre <- unnest(['24128',
+                                     '35576'
+        ]);
+        """
+
+    )
+    expected = [
+        """const zips_pre <- unnest(['24128', '35576']);""",
+    ]
+    for idx, cmd in enumerate(commands):
+        rendered = Renderer(environment=env).to_string(cmd)
+        assert rendered == expected[idx], rendered
+
+
+def test_render_group_by():
+    basic = Environment()
+
+    env, commands = basic.parse(
+        """
+
+key x int;
+
+select group(1) by x as test;
+"""
+    )
+    expected = [
+        """key x int;""",
+        """SELECT
+    group(1) by x -> test,
+;""",
+    ]
+    for idx, cmd in enumerate(commands):
+        rendered = Renderer(environment=env).to_string(cmd)
+        assert rendered == expected[idx], rendered
