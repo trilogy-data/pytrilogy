@@ -79,26 +79,26 @@ exec_time = 0.057755
 comp_time = 0.049295
 
 [query_32]
-parse_time = 0.281019
-exec_time = 0.052165
-comp_time = 0.081135
+parse_time = 0.148624
+exec_time = 0.055084
+comp_time = 0.00665
 
 [query_95]
-parse_time = 0.210906
-exec_time = 0.061038
-comp_time = 0.512287
+parse_time = 0.278507
+exec_time = 0.072275
+comp_time = 0.532565
 
 [query_97]
-parse_time = 0.460141
-exec_time = 0.271342
-comp_time = 0.075428
+parse_time = 0.4798
+exec_time = 0.302713
+comp_time = 0.069293
 
 [query_98]
-parse_time = 0.485547
-exec_time = 0.032661
-comp_time = 0.180992
+parse_time = 0.505857
+exec_time = 0.048054
+comp_time = 0.188467
 
 [query_99]
-parse_time = 0.176878
-exec_time = 0.114023
-comp_time = 0.061457
+parse_time = 0.131126
+exec_time = 0.102862
+comp_time = 0.063983
