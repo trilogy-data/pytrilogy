@@ -69,14 +69,14 @@ exec_time = 0.132095
 comp_time = 0.037561
 
 [query_26]
-parse_time = 0.113559
-exec_time = 0.069595
-comp_time = 0.058401
+parse_time = 0.112824
+exec_time = 0.068996
+comp_time = 0.059826
 
 [query_30]
-parse_time = 0.641629
-exec_time = 0.061937
-comp_time = 0.048406
+parse_time = 0.616934
+exec_time = 0.057755
+comp_time = 0.049295
 
 [query_32]
 parse_time = 0.281019
