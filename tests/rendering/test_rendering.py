@@ -1008,7 +1008,6 @@ auto zips_pre <- unnest(['24128',
                                      '35576'
         ]);
         """
-
     )
     expected = [
         """const zips_pre <- unnest(['24128', '35576']);""",

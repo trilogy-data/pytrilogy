@@ -58,6 +58,7 @@ from trilogy.core.query_processor import process_copy, process_persist, process_
 from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     CopyStatement,
+    FunctionDeclaration,
     ImportStatement,
     MergeStatementV2,
     MultiSelectStatement,
@@ -66,7 +67,6 @@ from trilogy.core.statements.author import (
     RowsetDerivationStatement,
     SelectStatement,
     ShowStatement,
-    FunctionDeclaration,
 )
 from trilogy.core.statements.execute import (
     ProcessedCopyStatement,

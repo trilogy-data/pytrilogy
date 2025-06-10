@@ -1586,7 +1586,10 @@ class Factory:
 
                 return BuildFunction.model_construct(
                     operator=base.operator,
-                    arguments=[rval, *[self.build(c) for c in raw_args[1:]]],
+                    arguments=[
+                        rval,
+                        *[self.handle_constant(self.build(c)) for c in raw_args[1:]],
+                    ],
                     output_datatype=base.output_datatype,
                     output_purpose=base.output_purpose,
                     valid_inputs=base.valid_inputs,
@@ -2042,4 +2045,6 @@ class Factory:
             and base.lineage.operator == FunctionType.CONSTANT
         ):
             return BuildParamaterizedConceptReference(concept=base)
+        elif isinstance(base, ConceptRef):
+            return self.handle_constant(self.build(base))
         return base
