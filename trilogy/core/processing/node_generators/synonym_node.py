@@ -50,7 +50,7 @@ def gen_synonym_node(
 
     logger.info(f"{local_prefix} Generating Synonym Node with {len(synonyms)} synonyms")
     sorted_keys = sorted(synonyms.keys())
-    combinations_list = list(itertools.product(*(synonyms[obj] for obj in sorted_keys)))
+    combinations_list:list[tuple[BuildConcept, ...]] = list(itertools.product(*(synonyms[obj] for obj in sorted_keys)))
 
     def similarity_sort_key(combo):
         addresses = [x.address for x in combo]
@@ -83,7 +83,7 @@ def gen_synonym_node(
             f"{local_prefix} checking combination {fingerprint} with {len(combo)} concepts"
         )
         attempt: StrategyNode | None = source_concepts(
-            combo,
+            list(combo),
             history=history,
             environment=environment,
             depth=depth,
