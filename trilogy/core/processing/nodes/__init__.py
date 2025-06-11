@@ -142,7 +142,11 @@ class History(BaseModel):
             conditions=conditions,
         )
         if fingerprint in self.select_history:
-            return self.select_history[fingerprint]
+            rval = self.select_history[fingerprint]
+            if rval:
+                # all nodes must be copied before returning
+                return rval.copy()
+            return rval
         gen = gen_select_node(
             concepts,
             environment,
@@ -153,6 +157,8 @@ class History(BaseModel):
             conditions=conditions,
         )
         self.select_history[fingerprint] = gen
+        if gen:
+            return gen.copy()
         return gen
 
 

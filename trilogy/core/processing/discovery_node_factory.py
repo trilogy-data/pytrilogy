@@ -438,6 +438,7 @@ def generate_node(
     )
 
     # Try materialized concept first
+    # this is worth checking every loop iteration
     candidate = history.gen_select_node(
         [concept] + local_optional,
         environment,

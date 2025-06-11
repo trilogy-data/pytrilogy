@@ -54,11 +54,7 @@ def generate_candidates_restrictive(
     exhausted: set[str],
     depth: int,
     conditions: BuildWhereClause | None = None,
-) -> List[BuildConcept]:
-    # if it's single row, joins are irrelevant. Fetch without keys.
-    if priority_concept.granularity == Granularity.SINGLE_ROW:
-        return []
-
+) -> tuple[list[BuildConcept], BuildWhereClause | None]:
     local_candidates = [
         x
         for x in list(candidates)
@@ -71,8 +67,16 @@ def generate_candidates_restrictive(
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Injecting additional conditional row arguments as all remaining concepts are roots or constant"
         )
-        return unique(list(conditions.row_arguments) + local_candidates, "address")
-    return local_candidates
+        # otherwise, we can ignore the conditions now that we've injected inputs
+        return (
+            unique(list(conditions.row_arguments) + local_candidates, "address"),
+            None,
+        )
+    # if it's single row, joins are irrelevant. Fetch without keys.
+    if priority_concept.granularity == Granularity.SINGLE_ROW:
+        return [], conditions
+
+    return local_candidates, conditions
 
 
 def append_existence_check(
@@ -104,9 +108,7 @@ def append_existence_check(
             )
             assert parent, "Could not resolve existence clause"
             node.add_parents([parent])
-            logger.info(
-                f"{LOGGER_PREFIX} fetching existence clause inputs {[str(c) for c in subselect]}"
-            )
+            logger.info(f"{LOGGER_PREFIX} found {[str(c) for c in subselect]}")
             node.add_existence_concepts([*subselect])
 
 
@@ -440,7 +442,19 @@ def _search_concepts(
     accept_partial: bool = False,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
+    # check for direct materialization first
+    candidate = history.gen_select_node(
+        mandatory_list,
+        environment,
+        g,
+        depth + 1,
+        fail_if_not_found=False,
+        accept_partial=accept_partial,
+        conditions=conditions,
+    )
 
+    if candidate:
+        return candidate
     context = initialize_loop_context(
         mandatory_list=mandatory_list,
         environment=environment,
@@ -460,19 +474,21 @@ def _search_concepts(
         )
 
         local_conditions = evaluate_loop_conditions(context, priority_concept)
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {str(priority_concept)} derivation {priority_concept.derivation} granularity {priority_concept.granularity} with conditions {local_conditions}"
-        )
 
         candidates = [
             c for c in context.mandatory_list if c.address != priority_concept.address
         ]
-        candidate_list = generate_candidates_restrictive(
+        # the local conditions list may be override if we end up injecting conditions
+        candidate_list, local_conditions = generate_candidates_restrictive(
             priority_concept,
             candidates,
             context.skip,
             depth=depth,
-            conditions=context.conditions,
+            conditions=local_conditions,
+        )
+
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {str(priority_concept)} derivation {priority_concept.derivation} granularity {priority_concept.granularity} with conditions {local_conditions}"
         )
 
         logger.info(
