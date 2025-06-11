@@ -448,7 +448,7 @@ class TypeDeclaration(BaseModel):
     type: CustomType
 
 
-class FunctionDeclaration(BaseModel):
+class FunctionDeclaration(HasUUID, BaseModel):
     name: str
     args: list[ArgBinding]
     expr: Expr

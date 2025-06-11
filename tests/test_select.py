@@ -122,6 +122,7 @@ def test_double_aggregate():
 
 
 def test_modifiers():
+
     q1 = """
     const a <- 1;
     const b <- 2;

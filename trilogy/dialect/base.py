@@ -58,6 +58,7 @@ from trilogy.core.query_processor import process_copy, process_persist, process_
 from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     CopyStatement,
+    FunctionDeclaration,
     ImportStatement,
     MergeStatementV2,
     MultiSelectStatement,
@@ -980,6 +981,7 @@ class BaseDialect:
                     ImportStatement,
                     RowsetDerivationStatement,
                     Datasource,
+                    FunctionDeclaration,
                 ),
             ):
                 continue

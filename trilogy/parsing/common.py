@@ -86,7 +86,7 @@ def process_function_arg(
         if concept.metadata and meta:
             concept.metadata.line_number = meta.line
         environment.add_concept(concept, meta=meta)
-        return concept
+        return concept.reference
     elif isinstance(
         arg,
         (ListWrapper, MapWrapper),
@@ -103,7 +103,7 @@ def process_function_arg(
         if concept.metadata and meta:
             concept.metadata.line_number = meta.line
         environment.add_concept(concept, meta=meta)
-        return concept
+        return concept.reference
     elif isinstance(arg, Concept):
         return arg.reference
     elif isinstance(arg, ConceptRef):

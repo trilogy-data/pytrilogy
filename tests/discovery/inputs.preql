@@ -1,0 +1,78 @@
+
+key order_id int;
+key customer_id int;
+property order_id.price float;
+
+datasource orders (
+    order_id:order_id,
+    customer_id:customer_id,
+    price: price,
+)
+grain (order_id)
+query '''
+select
+    1 as order_id,
+    2 as customer_id,
+    3.14 as price
+union all
+select
+    2 as order_id,
+    3 as customer_id,
+    4.56 as price
+union all
+select
+    3 as order_id,
+    2 as customer_id,
+    7.89 as price
+''';
+
+
+datasource customers (
+    customer_id:customer_id,
+)
+grain (customer_id)
+query '''
+select
+    2 as customer_id
+union all
+select
+    3 as customer_id
+'''
+;
+
+
+select
+    customer_id,
+    sum(price) as total_customer_revenue
+;
+
+datasource customer_revenue (
+    customer_id:customer_id,
+    total_customer_revenue:total_customer_revenue,
+)
+grain (customer_id)
+query '''
+select
+    2 as customer_id,
+    11.03 as total_customer_revenue
+union all
+select
+    3 as customer_id,
+    4.56 as total_customer_revenue
+'''
+;
+
+
+datasource customer_revenue_for_two (
+    customer_id:~customer_id,
+    total_customer_revenue:~total_customer_revenue,
+)
+grain (customer_id)
+complete where customer_id = 2
+query '''
+select
+    2 as customer_id,
+    11.03 as total_customer_revenue
+'''
+
+;

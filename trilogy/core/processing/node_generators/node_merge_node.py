@@ -239,7 +239,6 @@ def resolve_weak_components(
             if "__preql_internal" not in c.address
         ]
     )
-    logger.debug(f"Resolving weak components for {node_list} in {search_graph.nodes}")
     synonyms: set[str] = set()
     for x in all_concepts:
         synonyms = synonyms.union(x.pseudonyms)
