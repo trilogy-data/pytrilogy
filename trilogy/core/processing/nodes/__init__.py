@@ -124,51 +124,27 @@ class History(BaseModel):
             in self.started
         )
 
-    def _select_concepts_to_lookup(
-        self,
-        main: BuildConcept,
-        search: list[BuildConcept],
-        accept_partial: bool,
-        fail_if_not_found: bool,
-        accept_partial_optional: bool,
-        conditions: BuildWhereClause | None = None,
-    ) -> str:
-        return (
-            str(main.address)
-            + "|"
-            + "-".join([c.address for c in search])
-            + str(accept_partial)
-            + str(fail_if_not_found)
-            + str(accept_partial_optional)
-            + str(conditions)
-        )
-
     def gen_select_node(
         self,
-        concept: BuildConcept,
-        local_optional: list[BuildConcept],
+        concepts: list[BuildConcept],
         environment: BuildEnvironment,
         g,
         depth: int,
         fail_if_not_found: bool = False,
         accept_partial: bool = False,
-        accept_partial_optional: bool = False,
         conditions: BuildWhereClause | None = None,
     ) -> StrategyNode | None:
         from trilogy.core.processing.node_generators.select_node import gen_select_node
 
-        fingerprint = self._select_concepts_to_lookup(
-            concept,
-            local_optional,
+        fingerprint = self._concepts_to_lookup(
+            concepts,
             accept_partial,
-            fail_if_not_found,
-            accept_partial_optional=accept_partial_optional,
             conditions=conditions,
         )
         if fingerprint in self.select_history:
             return self.select_history[fingerprint]
         gen = gen_select_node(
-            [concept] + local_optional,
+            concepts,
             environment,
             g,
             depth + 1,

@@ -95,6 +95,11 @@ def get_graph_grains(g: nx.DiGraph) -> dict[str, list[str]]:
     return grain_length
 
 
+def subgraph_is_complete(nodes: list[str], targets: set[str], mapping: dict[str, str])->bool:
+    mapped = set([mapping.get(n, n) for n in nodes])
+    return all([t in mapped for t in targets])
+
+
 def create_pruned_concept_graph(
     g: nx.DiGraph,
     all_concepts: List[BuildConcept],
@@ -183,6 +188,13 @@ def create_pruned_concept_graph(
     )
 
     subgraphs = list(nx.connected_components(g.to_undirected()))
+
+    subgraphs = [
+        s
+        for s in subgraphs
+        if subgraph_is_complete(s, target_addresses, relevant_concepts_pre)
+    ]
+
     if not subgraphs:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} cannot resolve root graph - no subgraphs after node prune"

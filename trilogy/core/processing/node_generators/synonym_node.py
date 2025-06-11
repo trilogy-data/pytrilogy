@@ -50,7 +50,9 @@ def gen_synonym_node(
 
     logger.info(f"{local_prefix} Generating Synonym Node with {len(synonyms)} synonyms")
     sorted_keys = sorted(synonyms.keys())
-    combinations_list:list[tuple[BuildConcept, ...]] = list(itertools.product(*(synonyms[obj] for obj in sorted_keys)))
+    combinations_list: list[tuple[BuildConcept, ...]] = list(
+        itertools.product(*(synonyms[obj] for obj in sorted_keys))
+    )
 
     def similarity_sort_key(combo):
         addresses = [x.address for x in combo]

@@ -439,14 +439,12 @@ def generate_node(
 
     # Try materialized concept first
     candidate = history.gen_select_node(
-        concept,
-        local_optional,
+        [concept] + local_optional,
         environment,
         g,
         depth + 1,
         fail_if_not_found=False,
         accept_partial=accept_partial,
-        accept_partial_optional=False,
         conditions=conditions,
     )
 
