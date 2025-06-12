@@ -199,7 +199,7 @@ class CTE(BaseModel):
             ]
         ):
             return False
-
+ 
         self.source.datasources = [
             ds_being_inlined,
             *[
@@ -240,7 +240,18 @@ class CTE(BaseModel):
                 ]
             elif v == parent.safe_identifier:
                 self.source_map[k] = [ds_being_inlined.safe_identifier]
-
+        for k, v in self.existence_source_map.items():
+            if isinstance(v, list):
+                self.existence_source_map[k] = [
+                    (
+                        ds_being_inlined.safe_identifier
+                        if x == parent.safe_identifier
+                        else x
+                    )
+                    for x in v
+                ]
+            elif v == parent.safe_identifier:
+                self.existence_source_map[k] = [ds_being_inlined.safe_identifier]
         # zip in any required values for lookups
         for k in ds_being_inlined.output_lcl.addresses:
             if k in self.source_map and self.source_map[k]:
@@ -449,6 +460,12 @@ class CTE(BaseModel):
     @property
     def sourced_concepts(self) -> List[BuildConcept]:
         return [c for c in self.output_columns if c.address in self.source_map]
+    
+    def get_ref(self, identifier:str) -> str:
+
+        if identifier in self.inlined_ctes:
+            return f"{safe_quote(self.right_cte.source.datasources[0].safe_location, self.quote)} as {self.quote}{self.right_cte.source.datasources[0].safe_identifier}{self.quote}"
+        return f"{self.quote}{self.right_cte.safe_identifier}{self.quote}"
 
 
 class ConceptPair(BaseModel):
@@ -672,7 +689,7 @@ class QueryDatasource(BaseModel):
                     and CONFIG.validate_missing
                 ):
                     raise SyntaxError(
-                        f"On query datasource from {values} missing source map entry (map: {v}) for {concept.address} on {key} with pseudonyms {concept.pseudonyms}, have {v}"
+                        f"Missing source map entry for {concept.address} on {key} with pseudonyms {concept.pseudonyms}, have map: {v}"
                     )
         return v
 

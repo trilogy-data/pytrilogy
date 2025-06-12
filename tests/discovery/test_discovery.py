@@ -6,6 +6,7 @@ from trilogy.core.models.build import BuildComparison, BuildWhereClause, Factory
 from trilogy.core.processing.concept_strategies_v3 import History
 from trilogy.core.query_processor import generate_graph
 from trilogy.hooks.query_debugger import DebuggingHook
+from decimal import Decimal
 
 working_dir = Path(__file__).parent
 
@@ -76,13 +77,11 @@ def test_history_e2e():
     env = Environment(working_path=working_dir).from_file(working_dir / "inputs.preql")
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     DebuggingHook()
-
-    cmd = exec.generate_sql(
-        """where customer_id = 2
+    query = """where customer_id = 2
         select local.customer_id, local.total_customer_revenue;
         
         """
-    )[-1]
+    cmd = exec.generate_sql(query)[-1]
     assert (
         cmd.strip()
         == """SELECT
@@ -95,3 +94,36 @@ select
     11.03 as total_customer_revenue
 ) as "customer_revenue_for_two" """.strip()
     )
+
+    results = exec.execute_text(query)[-1].fetchall()
+    assert results == [(2, Decimal('11.03'))], "Results should match expected output"
+
+def test_history_e2e_non_materialized_field():
+    env = Environment(working_path=working_dir).from_file(working_dir / "inputs.preql")
+    exec = Dialects.DUCK_DB.default_executor(environment=env)
+    DebuggingHook()
+    query2 = """
+    where name = 'Sarah'
+        select 
+            local.customer_id, 
+            local.total_customer_revenue, 
+            --local.name
+        having name = 'Sarah';
+        """
+
+    cmd = exec.generate_sql(query2)[-1]
+    assert (
+        cmd.strip()
+        == """SELECT
+    "customer_revenue_for_sarah"."customer_id" as "customer_id",
+    "customer_revenue_for_sarah"."total_customer_revenue" as "total_customer_revenue"
+FROM
+    (
+select
+    2 as customer_id,
+    11.03 as total_customer_revenue
+) as "customer_revenue_for_sarah" """.strip()
+    )
+
+    results = exec.execute_text(query2)[-1].fetchall()
+    assert results == [(2, Decimal('11.03'))], "Results should match expected output"

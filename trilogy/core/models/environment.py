@@ -603,7 +603,7 @@ class Environment(BaseModel):
             # too hacky for maintainability
             if current_derivation not in (Derivation.ROOT, Derivation.CONSTANT):
                 logger.info(
-                    f"A datasource has been added which will persist derived concept {new_persisted_concept.address}"
+                    f"A datasource has been added which will persist derived concept {new_persisted_concept.address} with derivation {current_derivation}"
                 )
                 persisted = f"{PERSISTED_CONCEPT_PREFIX}_" + new_persisted_concept.name
                 # override the current concept source to reflect that it's now coming from a datasource
@@ -622,9 +622,7 @@ class Environment(BaseModel):
                         meta=meta,
                         force=True,
                     )
-                    new_persisted_concept = new_persisted_concept.model_copy(
-                        deep=True,
-                        update={
+                    base = {
                             "lineage": None,
                             "metadata": new_persisted_concept.metadata.model_copy(
                                 update={
@@ -632,7 +630,13 @@ class Environment(BaseModel):
                                 }
                             ),
                             "derivation": Derivation.ROOT,
-                        },
+           
+                        }
+                    if new_persisted_concept.purpose == Purpose.CONSTANT:
+                        base["purpose"] = Purpose.KEY
+                    new_persisted_concept = new_persisted_concept.model_copy(
+                        deep=True,
+                        update= base
                     )
                     self.add_concept(
                         new_persisted_concept,

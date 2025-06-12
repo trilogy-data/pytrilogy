@@ -57,27 +57,6 @@ def get_graph_partial_nodes(
     return partial
 
 
-def get_graph_exact_match(
-    g: nx.DiGraph, conditions: BuildWhereClause | None
-) -> set[str]:
-    datasources: dict[str, BuildDatasource | list[BuildDatasource]] = (
-        nx.get_node_attributes(g, "datasource")
-    )
-    exact: set[str] = set()
-    for node in g.nodes:
-        if node in datasources:
-            ds = datasources[node]
-            if not isinstance(ds, list):
-                if not ds.non_partial_for:
-                    continue
-                if ds.non_partial_for and conditions == ds.non_partial_for:
-                    exact.add(node)
-                    continue
-            else:
-                continue
-
-    return exact
-
 
 def get_graph_grains(g: nx.DiGraph) -> dict[str, list[str]]:
     datasources: dict[str, BuildDatasource | list[BuildDatasource]] = (
@@ -97,11 +76,55 @@ def get_graph_grains(g: nx.DiGraph) -> dict[str, list[str]]:
     return grain_length
 
 
+
+
+
 def subgraph_is_complete(
-    nodes: list[str], targets: set[str], mapping: dict[str, str]
+    nodes: list[str], targets: set[str], mapping: dict[str, str], g: nx.DiGraph
 ) -> bool:
     mapped = set([mapping.get(n, n) for n in nodes])
-    return all([t in mapped for t in targets])
+    passed = all([t in mapped for t in targets])
+    if not passed:
+        return False
+    # check if all concepts have a datasource edge
+    has_ds_edge = {mapping.get(n, n): any(x.startswith('ds~') for x in nx.neighbors(g, n)) for n in nodes if n.startswith("c~")}
+    has_ds_edge = {k: False for k in targets}
+    # check at least one instance of concept has a datasource edge
+    for n in nodes:
+        if n.startswith("c~"):
+            neighbors = nx.neighbors(g, n)
+            for neighbor in neighbors:
+                if neighbor.startswith("ds~"):
+                    has_ds_edge[mapping.get(n, n)] = True
+                    break
+    return all(has_ds_edge.values()) and passed
+
+
+
+def get_graph_exact_match(
+    g: nx.DiGraph, conditions: BuildWhereClause | None
+) -> set[str]:
+    datasources: dict[str, BuildDatasource | list[BuildDatasource]] = (
+        nx.get_node_attributes(g, "datasource")
+    )
+    exact: set[str] = set()
+    for node in g.nodes:
+        if node in datasources:
+            ds = datasources[node]
+
+            if not conditions and not ds.non_partial_for:
+                exact.add(node)
+                continue
+            elif conditions:
+                if not ds.non_partial_for:
+                    continue
+                if ds.non_partial_for and conditions == ds.non_partial_for:
+                    exact.add(node)
+                    continue
+            else:
+                continue
+
+    return exact
 
 
 def prune_sources_for_conditions(
@@ -133,8 +156,7 @@ def create_pruned_concept_graph(
     orig_g = g
 
     g = g.copy()
-    if conditions:
-        prune_sources_for_conditions(g, depth, conditions)
+    prune_sources_for_conditions(g, depth, conditions)
     union_options = get_union_sources(datasources, all_concepts)
     for ds_list in union_options:
         node_address = "ds~" + "-".join([x.name for x in ds_list])
@@ -217,7 +239,7 @@ def create_pruned_concept_graph(
     subgraphs = [
         s
         for s in subgraphs
-        if subgraph_is_complete(s, target_addresses, relevant_concepts_pre)
+        if subgraph_is_complete(s, target_addresses, relevant_concepts_pre, g)
     ]
 
     if not subgraphs:
@@ -524,8 +546,12 @@ def gen_select_merge_node(
     constants = [c for c in all_concepts if c.derivation == Derivation.CONSTANT]
     if not non_constant and constants:
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} only constant inputs to discovery, returning constant node directly"
+            f"{padding(depth)}{LOGGER_PREFIX} only constant inputs to discovery ({constants}), returning constant node directly"
         )
+        for x in constants:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} {x} {x.lineage} {x.derivation}"
+            )
         if conditions:
             if not all(
                 [x.derivation == Derivation.CONSTANT for x in conditions.row_arguments]
