@@ -623,20 +623,16 @@ class Environment(BaseModel):
                         force=True,
                     )
                     base = {
-                            "lineage": None,
-                            "metadata": new_persisted_concept.metadata.model_copy(
-                                update={
-                                    "concept_source": ConceptSource.PERSIST_STATEMENT
-                                }
-                            ),
-                            "derivation": Derivation.ROOT,
-           
-                        }
+                        "lineage": None,
+                        "metadata": new_persisted_concept.metadata.model_copy(
+                            update={"concept_source": ConceptSource.PERSIST_STATEMENT}
+                        ),
+                        "derivation": Derivation.ROOT,
+                    }
                     if new_persisted_concept.purpose == Purpose.CONSTANT:
                         base["purpose"] = Purpose.KEY
                     new_persisted_concept = new_persisted_concept.model_copy(
-                        deep=True,
-                        update= base
+                        deep=True, update=base
                     )
                     self.add_concept(
                         new_persisted_concept,

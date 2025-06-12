@@ -1,6 +1,46 @@
 import networkx as nx
 
-from trilogy.core.models.build import BuildConcept, BuildDatasource
+from trilogy.core.models.build import BuildConcept, BuildDatasource, BuildWhereClause
+
+
+def get_graph_exact_match(
+    g: nx.DiGraph, conditions: BuildWhereClause | None
+) -> set[str]:
+    datasources: dict[str, BuildDatasource | list[BuildDatasource]] = (
+        nx.get_node_attributes(g, "datasource")
+    )
+    exact: set[str] = set()
+    for node in g.nodes:
+        if node in datasources:
+            ds = datasources[node]
+
+            if not conditions and not ds.non_partial_for:
+                exact.add(node)
+                continue
+            elif conditions:
+                if not ds.non_partial_for:
+                    continue
+                if ds.non_partial_for and conditions == ds.non_partial_for:
+                    exact.add(node)
+                    continue
+            else:
+                continue
+
+    return exact
+
+
+def prune_sources_for_conditions(
+    g: nx.DiGraph,
+    conditions: BuildWhereClause | None,
+):
+
+    complete = get_graph_exact_match(g, conditions)
+    to_remove = []
+    for node in g.nodes:
+        if node.startswith("ds~") and node not in complete:
+            to_remove.append(node)
+    for node in to_remove:
+        g.remove_node(node)
 
 
 def concept_to_node(input: BuildConcept) -> str:

@@ -199,7 +199,7 @@ class CTE(BaseModel):
             ]
         ):
             return False
- 
+
         self.source.datasources = [
             ds_being_inlined,
             *[
@@ -460,8 +460,8 @@ class CTE(BaseModel):
     @property
     def sourced_concepts(self) -> List[BuildConcept]:
         return [c for c in self.output_columns if c.address in self.source_map]
-    
-    def get_ref(self, identifier:str) -> str:
+
+    def get_ref(self, identifier: str) -> str:
 
         if identifier in self.inlined_ctes:
             return f"{safe_quote(self.right_cte.source.datasources[0].safe_location, self.quote)} as {self.quote}{self.right_cte.source.datasources[0].safe_identifier}{self.quote}"

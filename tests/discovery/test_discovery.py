@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pathlib import Path
 
 from trilogy import Dialects, Environment
@@ -6,7 +7,6 @@ from trilogy.core.models.build import BuildComparison, BuildWhereClause, Factory
 from trilogy.core.processing.concept_strategies_v3 import History
 from trilogy.core.query_processor import generate_graph
 from trilogy.hooks.query_debugger import DebuggingHook
-from decimal import Decimal
 
 working_dir = Path(__file__).parent
 
@@ -96,7 +96,8 @@ select
     )
 
     results = exec.execute_text(query)[-1].fetchall()
-    assert results == [(2, Decimal('11.03'))], "Results should match expected output"
+    assert results == [(2, Decimal("11.03"))], "Results should match expected output"
+
 
 def test_history_e2e_non_materialized_field():
     env = Environment(working_path=working_dir).from_file(working_dir / "inputs.preql")
@@ -126,4 +127,4 @@ select
     )
 
     results = exec.execute_text(query2)[-1].fetchall()
-    assert results == [(2, Decimal('11.03'))], "Results should match expected output"
+    assert results == [(2, Decimal("11.03"))], "Results should match expected output"
