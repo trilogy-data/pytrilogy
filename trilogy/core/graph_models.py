@@ -13,6 +13,9 @@ def get_graph_exact_match(
     for node in g.nodes:
         if node in datasources:
             ds = datasources[node]
+            if isinstance(ds, list):
+                exact.add(node)
+                continue
 
             if not conditions and not ds.non_partial_for:
                 exact.add(node)
@@ -39,6 +42,7 @@ def prune_sources_for_conditions(
     for node in g.nodes:
         if node.startswith("ds~") and node not in complete:
             to_remove.append(node)
+
     for node in to_remove:
         g.remove_node(node)
 

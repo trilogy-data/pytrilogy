@@ -56,6 +56,12 @@ LOGGER_PREFIX = "[MODELS_EXECUTE]"
 DATASOURCE_TYPES = (BuildDatasource, BuildDatasource)
 
 
+class InlinedCTE(BaseModel):
+    original_alias: str
+    new_alias: str
+    new_base: str
+
+
 class CTE(BaseModel):
     name: str
     source: "QueryDatasource"
@@ -78,6 +84,7 @@ class CTE(BaseModel):
     limit: Optional[int] = None
     base_name_override: Optional[str] = None
     base_alias_override: Optional[str] = None
+    inlined_ctes: dict[str, InlinedCTE] = Field(default_factory=dict)
 
     @field_validator("join_derived_concepts")
     def validate_join_derived_concepts(cls, v):
@@ -103,62 +110,6 @@ class CTE(BaseModel):
     @field_validator("output_columns")
     def validate_output_columns(cls, v):
         return unique(v, "address")
-
-    def inline_constant(self, concept: BuildConcept):
-        if not concept.derivation == Derivation.CONSTANT:
-            return False
-        if not isinstance(concept.lineage, BuildFunction):
-            return False
-        if not concept.lineage.operator == FunctionType.CONSTANT:
-            return False
-        # remove the constant
-        removed: set = set()
-        if concept.address in self.source_map:
-            removed = removed.union(self.source_map[concept.address])
-            del self.source_map[concept.address]
-
-        if self.condition:
-            self.condition = self.condition.inline_constant(concept)
-        # if we've entirely removed the need to join to someplace to get the concept
-        # drop the join as well.
-        for removed_cte in removed:
-            still_required = any(
-                [
-                    removed_cte in x
-                    for x in self.source_map.values()
-                    or self.existence_source_map.values()
-                ]
-            )
-            if not still_required:
-                self.joins = [
-                    join
-                    for join in self.joins
-                    if not isinstance(join, Join)
-                    or (
-                        isinstance(join, Join)
-                        and (
-                            join.right_cte.name != removed_cte
-                            and any(
-                                [
-                                    x.cte.name != removed_cte
-                                    for x in (join.joinkey_pairs or [])
-                                ]
-                            )
-                        )
-                    )
-                ]
-                for join in self.joins:
-                    if isinstance(join, UnnestJoin) and concept in join.concepts:
-                        join.rendering_required = False
-
-                self.parent_ctes = [
-                    x for x in self.parent_ctes if x.name != removed_cte
-                ]
-                if removed_cte == self.base_name_override:
-                    candidates = [x.name for x in self.parent_ctes]
-                    self.base_name_override = candidates[0] if candidates else None
-                    self.base_alias_override = candidates[0] if candidates else None
-        return True
 
     @property
     def comment(self) -> str:
@@ -262,6 +213,11 @@ class CTE(BaseModel):
         ]
         if force_group:
             self.group_to_grain = True
+        self.inlined_ctes[ds_being_inlined.safe_identifier] = InlinedCTE(
+            original_alias=parent.name,
+            new_alias=ds_being_inlined.safe_identifier,
+            new_base=ds_being_inlined.safe_location,
+        )
         return True
 
     def __add__(self, other: "CTE" | "UnionCTE"):
@@ -313,6 +269,10 @@ class CTE(BaseModel):
         self.existence_source_map = {
             **self.existence_source_map,
             **other.existence_source_map,
+        }
+        self.inlined_ctes = {
+            **self.inlined_ctes,
+            **other.inlined_ctes,
         }
 
         return self
@@ -460,12 +420,6 @@ class CTE(BaseModel):
     @property
     def sourced_concepts(self) -> List[BuildConcept]:
         return [c for c in self.output_columns if c.address in self.source_map]
-
-    def get_ref(self, identifier: str) -> str:
-
-        if identifier in self.inlined_ctes:
-            return f"{safe_quote(self.right_cte.source.datasources[0].safe_location, self.quote)} as {self.quote}{self.right_cte.source.datasources[0].safe_identifier}{self.quote}"
-        return f"{self.quote}{self.right_cte.safe_identifier}{self.quote}"
 
 
 class ConceptPair(BaseModel):
@@ -1074,6 +1028,7 @@ class UnionCTE(BaseModel):
     hidden_concepts: set[str] = Field(default_factory=set)
     partial_concepts: list[BuildConcept] = Field(default_factory=list)
     existence_source_map: Dict[str, list[str]] = Field(default_factory=dict)
+    inlined_ctes: Dict[str, InlinedCTE] = Field(default_factory=dict)
 
     @computed_field  # type: ignore
     @property

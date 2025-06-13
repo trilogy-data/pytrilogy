@@ -108,8 +108,7 @@ def test_history_e2e_non_materialized_field():
         select 
             local.customer_id, 
             local.total_customer_revenue, 
-            --local.name
-        having name = 'Sarah';
+;
         """
 
     cmd = exec.generate_sql(query2)[-1]

@@ -85,6 +85,9 @@ def subgraph_is_complete(
     mapped = set([mapping.get(n, n) for n in nodes])
     passed = all([t in mapped for t in targets])
     if not passed:
+        logger.info(
+            f"Subgraph {nodes} is not complete, missing targets {targets} - mapped {mapped}"
+        )
         return False
     # check if all concepts have a datasource edge
     has_ds_edge = {
@@ -115,7 +118,6 @@ def create_pruned_concept_graph(
     orig_g = g
 
     g = g.copy()
-    prune_sources_for_conditions(g, conditions)
     union_options = get_union_sources(datasources, all_concepts)
     for ds_list in union_options:
         node_address = "ds~" + "-".join([x.name for x in ds_list])
@@ -125,7 +127,8 @@ def create_pruned_concept_graph(
         g.add_node(node_address, datasource=ds_list)
         for c in common:
             g.add_edge(node_address, concept_to_node(c))
-
+            g.add_edge(concept_to_node(c), node_address)
+    prune_sources_for_conditions(g, conditions)
     target_addresses = set([c.address for c in all_concepts])
     concepts: dict[str, BuildConcept] = nx.get_node_attributes(orig_g, "concept")
     datasource_map: dict[str, BuildDatasource | list[BuildDatasource]] = (
@@ -137,8 +140,7 @@ def create_pruned_concept_graph(
         # filter out synonyms
         if (x := concepts.get(n, None)) and x.address in target_addresses
     }
-    # from trilogy.hooks.graph_hook import GraphHook
-    # GraphHook().query_graph_built(g)
+
     relevant_concepts: list[str] = list(relevant_concepts_pre.keys())
     relevent_datasets: list[str] = []
     if not accept_partial:
@@ -160,6 +162,7 @@ def create_pruned_concept_graph(
                 to_remove.append(edge)
         for edge in to_remove:
             g.remove_edge(*edge)
+
     for n in g.nodes():
         if not n.startswith("ds~"):
             continue
@@ -192,9 +195,9 @@ def create_pruned_concept_graph(
             if n not in relevent_datasets and n not in relevant_concepts
         ]
     )
-
+    # from trilogy.hooks.graph_hook import GraphHook
+    # GraphHook().query_graph_built(g)
     subgraphs = list(nx.connected_components(g.to_undirected()))
-
     subgraphs = [
         s
         for s in subgraphs

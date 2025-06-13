@@ -628,7 +628,11 @@ class Environment(BaseModel):
                             update={"concept_source": ConceptSource.PERSIST_STATEMENT}
                         ),
                         "derivation": Derivation.ROOT,
+                        "purpose": new_persisted_concept.purpose,
                     }
+                    # purpose is used in derivation calculation
+                    # which should be fixed, but we'll do in a followup
+                    # so override here
                     if new_persisted_concept.purpose == Purpose.CONSTANT:
                         base["purpose"] = Purpose.KEY
                     new_persisted_concept = new_persisted_concept.model_copy(
