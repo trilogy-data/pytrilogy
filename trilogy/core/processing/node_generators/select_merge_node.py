@@ -5,7 +5,11 @@ import networkx as nx
 
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
-from trilogy.core.graph_models import concept_to_node
+from trilogy.core.graph_models import (
+    concept_to_node,
+    get_graph_exact_match,
+    prune_sources_for_conditions,
+)
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
@@ -57,28 +61,6 @@ def get_graph_partial_nodes(
     return partial
 
 
-def get_graph_exact_match(
-    g: nx.DiGraph, conditions: BuildWhereClause | None
-) -> set[str]:
-    datasources: dict[str, BuildDatasource | list[BuildDatasource]] = (
-        nx.get_node_attributes(g, "datasource")
-    )
-    exact: set[str] = set()
-    for node in g.nodes:
-        if node in datasources:
-            ds = datasources[node]
-            if not isinstance(ds, list):
-                if not ds.non_partial_for:
-                    continue
-                if ds.non_partial_for and conditions == ds.non_partial_for:
-                    exact.add(node)
-                    continue
-            else:
-                continue
-
-    return exact
-
-
 def get_graph_grains(g: nx.DiGraph) -> dict[str, list[str]]:
     datasources: dict[str, BuildDatasource | list[BuildDatasource]] = (
         nx.get_node_attributes(g, "datasource")
@@ -98,28 +80,31 @@ def get_graph_grains(g: nx.DiGraph) -> dict[str, list[str]]:
 
 
 def subgraph_is_complete(
-    nodes: list[str], targets: set[str], mapping: dict[str, str]
+    nodes: list[str], targets: set[str], mapping: dict[str, str], g: nx.DiGraph
 ) -> bool:
     mapped = set([mapping.get(n, n) for n in nodes])
-    return all([t in mapped for t in targets])
-
-
-def prune_sources_for_conditions(
-    g: nx.DiGraph,
-    depth: int,
-    conditions: BuildWhereClause | None,
-):
-
-    complete = get_graph_exact_match(g, conditions)
-    to_remove = []
-    for node in g.nodes:
-        if node.startswith("ds~") and node not in complete:
-            to_remove.append(node)
-            logger.debug(
-                f"{padding(depth)}{LOGGER_PREFIX} removing datasource {node} as it is not a match for conditions {conditions}"
-            )
-    for node in to_remove:
-        g.remove_node(node)
+    passed = all([t in mapped for t in targets])
+    if not passed:
+        logger.info(
+            f"Subgraph {nodes} is not complete, missing targets {targets} - mapped {mapped}"
+        )
+        return False
+    # check if all concepts have a datasource edge
+    has_ds_edge = {
+        mapping.get(n, n): any(x.startswith("ds~") for x in nx.neighbors(g, n))
+        for n in nodes
+        if n.startswith("c~")
+    }
+    has_ds_edge = {k: False for k in targets}
+    # check at least one instance of concept has a datasource edge
+    for n in nodes:
+        if n.startswith("c~"):
+            neighbors = nx.neighbors(g, n)
+            for neighbor in neighbors:
+                if neighbor.startswith("ds~"):
+                    has_ds_edge[mapping.get(n, n)] = True
+                    break
+    return all(has_ds_edge.values()) and passed
 
 
 def create_pruned_concept_graph(
@@ -133,8 +118,6 @@ def create_pruned_concept_graph(
     orig_g = g
 
     g = g.copy()
-    if conditions:
-        prune_sources_for_conditions(g, depth, conditions)
     union_options = get_union_sources(datasources, all_concepts)
     for ds_list in union_options:
         node_address = "ds~" + "-".join([x.name for x in ds_list])
@@ -144,7 +127,8 @@ def create_pruned_concept_graph(
         g.add_node(node_address, datasource=ds_list)
         for c in common:
             g.add_edge(node_address, concept_to_node(c))
-
+            g.add_edge(concept_to_node(c), node_address)
+    prune_sources_for_conditions(g, conditions)
     target_addresses = set([c.address for c in all_concepts])
     concepts: dict[str, BuildConcept] = nx.get_node_attributes(orig_g, "concept")
     datasource_map: dict[str, BuildDatasource | list[BuildDatasource]] = (
@@ -156,8 +140,7 @@ def create_pruned_concept_graph(
         # filter out synonyms
         if (x := concepts.get(n, None)) and x.address in target_addresses
     }
-    # from trilogy.hooks.graph_hook import GraphHook
-    # GraphHook().query_graph_built(g)
+
     relevant_concepts: list[str] = list(relevant_concepts_pre.keys())
     relevent_datasets: list[str] = []
     if not accept_partial:
@@ -179,6 +162,7 @@ def create_pruned_concept_graph(
                 to_remove.append(edge)
         for edge in to_remove:
             g.remove_edge(*edge)
+
     for n in g.nodes():
         if not n.startswith("ds~"):
             continue
@@ -211,13 +195,13 @@ def create_pruned_concept_graph(
             if n not in relevent_datasets and n not in relevant_concepts
         ]
     )
-
+    # from trilogy.hooks.graph_hook import GraphHook
+    # GraphHook().query_graph_built(g)
     subgraphs = list(nx.connected_components(g.to_undirected()))
-
     subgraphs = [
         s
         for s in subgraphs
-        if subgraph_is_complete(s, target_addresses, relevant_concepts_pre)
+        if subgraph_is_complete(s, target_addresses, relevant_concepts_pre, g)
     ]
 
     if not subgraphs:
@@ -524,8 +508,12 @@ def gen_select_merge_node(
     constants = [c for c in all_concepts if c.derivation == Derivation.CONSTANT]
     if not non_constant and constants:
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} only constant inputs to discovery, returning constant node directly"
+            f"{padding(depth)}{LOGGER_PREFIX} only constant inputs to discovery ({constants}), returning constant node directly"
         )
+        for x in constants:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} {x} {x.lineage} {x.derivation}"
+            )
         if conditions:
             if not all(
                 [x.derivation == Derivation.CONSTANT for x in conditions.row_arguments]

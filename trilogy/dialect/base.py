@@ -580,7 +580,12 @@ class BaseDialect:
                     target = INVALID_REFERENCE_STRING(
                         f"Missing source CTE for {e.right.address}"
                     )
+                assert cte, "CTE must be provided for inlined CTEs"
+                if target in cte.inlined_ctes:
+                    info = cte.inlined_ctes[target]
+                    return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} from {info.new_base} as {target} where {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} is not null)"
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} from {target} where {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} is not null)"
+
             elif isinstance(
                 e.right,
                 (ListWrapper, TupleWrapper, BuildParenthetical, list),

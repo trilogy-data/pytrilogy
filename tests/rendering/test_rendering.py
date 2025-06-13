@@ -1004,7 +1004,7 @@ def test_render_unnest_array():
     env, commands = basic.parse(
         """
 
-auto zips_pre <- unnest(['24128',
+const zips_pre <- unnest(['24128',
                                      '35576'
         ]);
         """

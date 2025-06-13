@@ -169,7 +169,9 @@ def is_fully_covered(
     return current_end >= end
 
 
-def get_union_sources(datasources: list[BuildDatasource], concepts: list[BuildConcept]):
+def get_union_sources(
+    datasources: list[BuildDatasource], concepts: list[BuildConcept]
+) -> List[list[BuildDatasource]]:
     candidates: list[BuildDatasource] = []
     for x in datasources:
         if all([c.address in x.output_concepts for c in concepts]):

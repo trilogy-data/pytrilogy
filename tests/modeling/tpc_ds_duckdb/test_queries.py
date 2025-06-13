@@ -100,6 +100,20 @@ def run_query(engine: Executor, idx: int, sql_override: bool = False):
     return query
 
 
+def test_adhoc_one(engine: Executor):
+    engine.environment = Environment(working_path=working_path)
+    idx = 1
+    with open(working_path / f"adhoc{idx:02d}.preql") as f:
+        text = f.read()
+    # find better non-hacky way to do this
+    with open(working_path / f"adhoc{idx:02d}_imports.preql", "r") as f:
+        text2 = f.read()
+        engine.execute_text(text2, non_interactive=True)
+    query = engine.generate_sql(text)[-1]
+
+    engine.execute_raw_sql(query)
+
+
 def test_one(engine):
     query = run_query(engine, 1)
     assert len(query) < 2000, query

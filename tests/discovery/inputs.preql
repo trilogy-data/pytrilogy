@@ -1,7 +1,10 @@
 
 key order_id int;
-key customer_id int;
 property order_id.price float;
+
+key customer_id int;
+property customer_id.name string;
+
 
 datasource orders (
     order_id:order_id,
@@ -29,14 +32,15 @@ select
 
 datasource customers (
     customer_id:customer_id,
+    name:name,
 )
 grain (customer_id)
 query '''
 select
-    2 as customer_id
+    2 as customer_id, 'Sarah' as name
 union all
 select
-    3 as customer_id
+    3 as customer_id, 'Enrique' as name
 '''
 ;
 
@@ -69,6 +73,19 @@ datasource customer_revenue_for_two (
 )
 grain (customer_id)
 complete where customer_id = 2
+query '''
+select
+    2 as customer_id,
+    11.03 as total_customer_revenue
+'''
+;
+
+datasource customer_revenue_for_sarah (
+    customer_id:~customer_id,
+    total_customer_revenue:~total_customer_revenue,
+)
+grain (customer_id)
+complete where name = 'Sarah'
 query '''
 select
     2 as customer_id,

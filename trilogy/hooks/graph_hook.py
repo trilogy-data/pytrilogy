@@ -85,7 +85,6 @@ class GraphHook(BaseHook):
         plt.show()
 
     def _draw_labels_with_manual_spacing(self, graph, pos):
-        """Fallback method for manual label spacing when adjustText is not available"""
         import numpy as np
 
         pos_labels = {}

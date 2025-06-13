@@ -6,7 +6,7 @@ from networkx.algorithms import approximation as ax
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
-from trilogy.core.graph_models import concept_to_node
+from trilogy.core.graph_models import concept_to_node, prune_sources_for_conditions
 from trilogy.core.models.build import BuildConcept, BuildConditional, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
@@ -222,10 +222,12 @@ def resolve_weak_components(
     environment_graph: nx.DiGraph,
     filter_downstream: bool = True,
     accept_partial: bool = False,
+    search_conditions: BuildWhereClause | None = None,
 ) -> list[list[BuildConcept]] | None:
     break_flag = False
     found = []
     search_graph = environment_graph.copy()
+    prune_sources_for_conditions(search_graph, conditions=search_conditions)
     reduced_concept_sets: list[set[str]] = []
 
     # loop through, removing new nodes we find
@@ -406,6 +408,7 @@ def gen_merge_node(
             g,
             filter_downstream=filter_downstream,
             accept_partial=accept_partial,
+            search_conditions=search_conditions,
         )
         if not weak_resolve:
             logger.info(
