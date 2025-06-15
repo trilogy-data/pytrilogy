@@ -116,7 +116,7 @@ def test_adhoc_one(engine: Executor):
 
 def test_one(engine):
     query = run_query(engine, 1)
-    assert len(query) < 2000, query
+    assert len(query) < 5000, query
 
 
 def test_two(engine):

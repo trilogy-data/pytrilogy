@@ -23,4 +23,4 @@ datasource orders(
     o_shippriority:ship_priority 
 )
 grain (id)
-address `https://shell.duckdb.org/data/tpch/0_01/parquet/orders.parquet`;
+address `https://trilogy-data.github.io/trilogy-public-models/trilogy_public_models/duckdb/tpc_h/orders.parquet`;

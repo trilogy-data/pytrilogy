@@ -1631,7 +1631,10 @@ class Factory:
 
     @build.register
     def _(self, base: CaseElse) -> BuildCaseElse:
-        return BuildCaseElse.model_construct(expr=self.build(base.expr))
+        expr: Concept | FuncArgs = base.expr
+        if isinstance(expr, (AggregateWrapper, FilterItem, WindowItem)):
+            expr, _ = self.instantiate_concept(expr)
+        return BuildCaseElse.model_construct(expr=self.build(expr))
 
     @build.register
     def _(self, base: Concept) -> BuildConcept:
