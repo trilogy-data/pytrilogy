@@ -1,3 +1,6 @@
 
 
 type percent float; # Percentage value
+
+def calc_percent(a, b, digits=-1) -> case when digits =-1 then (a/b):: float::percent
+else round((a/b):: float::percent, digits) end;

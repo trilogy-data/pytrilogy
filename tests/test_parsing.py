@@ -2,7 +2,7 @@ from trilogy import Dialects
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
 from trilogy.core.functions import argument_to_purpose, function_args_to_output_purpose
-from trilogy.core.models.author import Comparison
+from trilogy.core.models.author import Comparison, Conditional, SubselectComparison
 from trilogy.core.models.core import (
     DataType,
     TupleWrapper,
@@ -16,6 +16,7 @@ from trilogy.core.models.environment import (
 from trilogy.core.statements.author import SelectStatement, ShowStatement
 from trilogy.core.statements.execute import ProcessedQuery
 from trilogy.dialect.base import BaseDialect
+from trilogy.parsing.common import atom_is_relevant
 from trilogy.parsing.parse_engine import (
     arg_to_datatype,
     parse_text,
@@ -684,4 +685,46 @@ select x % 10 -> x_mod_10;
                
             
 """
+    )
+
+
+def test_is_atom():
+    env = Environment()
+
+    env.parse(
+        """
+key x int;
+auto x_sum <- sum(x);
+"""
+    )
+
+    assert not atom_is_relevant(
+        Comparison(left=env.concepts["x_sum"], right=0, operator=ComparisonOperator.GT),
+        [env.concepts["x"]],
+        env,
+    )
+    assert atom_is_relevant(
+        Comparison(left=env.concepts["x"], right=0, operator=ComparisonOperator.GT),
+        [env.concepts["x_sum"]],
+        env,
+    )
+
+    assert not atom_is_relevant(
+        Conditional(left=env.concepts["x_sum"], right=0, operator=BooleanOperator.AND),
+        [env.concepts["x"]],
+        env,
+    )
+    assert atom_is_relevant(
+        Conditional(left=env.concepts["x"], right=0, operator=BooleanOperator.AND),
+        [env.concepts["x_sum"]],
+        env,
+    )
+    assert not atom_is_relevant(
+        SubselectComparison(
+            left=env.concepts["x_sum"],
+            right=env.concepts["x"],
+            operator=ComparisonOperator.IN,
+        ),
+        [env.concepts["x_sum"]],
+        env,
     )

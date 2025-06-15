@@ -271,6 +271,20 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, DataTyped, BaseModel):
     right: Expr
     operator: BooleanOperator
 
+    @field_validator("left", mode="before")
+    @classmethod
+    def left_validator(cls, v, info: ValidationInfo):
+        if isinstance(v, Concept):
+            return v.reference
+        return v
+
+    @field_validator("right", mode="before")
+    @classmethod
+    def right_validator(cls, v, info: ValidationInfo):
+        if isinstance(v, Concept):
+            return v.reference
+        return v
+
     def __add__(self, other) -> "Conditional":
         if other is None:
             return self
@@ -346,7 +360,6 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, DataTyped, BaseModel):
 
     @property
     def concept_arguments(self) -> Sequence[ConceptRef]:
-        """Return concepts directly referenced in where clause"""
         output = []
         output += get_concept_arguments(self.left)
         output += get_concept_arguments(self.right)
@@ -575,11 +588,11 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
         date,
         Function,
         ConceptRef,
-        "Conditional",
+        Conditional,
         DataType,
-        "Comparison",
+        Comparison,
         FunctionCallWrapper,
-        "Parenthetical",
+        Parenthetical,
         MagicConstants,
         WindowItem,
         AggregateWrapper,

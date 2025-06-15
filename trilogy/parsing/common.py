@@ -23,9 +23,13 @@ from trilogy.core.models.author import (
     AggregateWrapper,
     AlignClause,
     AlignItem,
+    CaseElse,
+    CaseWhen,
+    Comparison,
     Concept,
     ConceptArgs,
     ConceptRef,
+    Conditional,
     FilterItem,
     Function,
     FunctionCallWrapper,
@@ -38,6 +42,7 @@ from trilogy.core.models.author import (
     Parenthetical,
     RowsetItem,
     RowsetLineage,
+    SubselectComparison,
     TraitDataType,
     UndefinedConcept,
     WhereClause,
@@ -198,6 +203,7 @@ def atom_is_relevant(
     others: list[Concept | ConceptRef],
     environment: Environment | None = None,
 ):
+
     if isinstance(atom, (ConceptRef, Concept)):
         # when we are looking at atoms, if there is a concept that is in others
         # return directly
@@ -210,9 +216,10 @@ def atom_is_relevant(
     elif isinstance(atom, AggregateWrapper):
         return any(atom_is_relevant(x, others, environment) for x in atom.by)
 
-    if isinstance(atom, Function):
+    elif isinstance(atom, Function):
         relevant = False
         for arg in atom.arguments:
+
             relevant = relevant or atom_is_relevant(arg, others, environment)
         return relevant
     elif isinstance(atom, FunctionCallWrapper):
@@ -220,8 +227,27 @@ def atom_is_relevant(
             [atom_is_relevant(atom.content, others, environment)]
             + [atom_is_relevant(x, others, environment) for x in atom.args]
         )
+    elif isinstance(atom, CaseWhen):
+        rval = atom_is_relevant(atom.expr, others, environment) or atom_is_relevant(
+            atom.comparison, others, environment
+        )
+        return rval
+    elif isinstance(atom, CaseElse):
+
+        rval = atom_is_relevant(atom.expr, others, environment)
+        return rval
+    elif isinstance(atom, SubselectComparison):
+        return atom_is_relevant(atom.left, others, environment)
+    elif isinstance(atom, Comparison):
+        return atom_is_relevant(atom.left, others, environment) or atom_is_relevant(
+            atom.right, others, environment
+        )
+    elif isinstance(atom, Conditional):
+        return atom_is_relevant(atom.left, others, environment) or atom_is_relevant(
+            atom.right, others, environment
+        )
     elif isinstance(atom, ConceptArgs):
-        # use atom is relevant here to trigger the early exit behavior for concpets in set
+        # use atom is relevant here to trigger the early exit behavior for concepts in set
         return any(
             [atom_is_relevant(x, others, environment) for x in atom.concept_arguments]
         )
@@ -233,7 +259,6 @@ def concept_is_relevant(
     others: list[Concept | ConceptRef],
     environment: Environment | None = None,
 ) -> bool:
-
     if isinstance(concept, UndefinedConcept):
         return False
     if concept.datatype == DataType.UNKNOWN:

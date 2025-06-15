@@ -395,6 +395,9 @@ def get_query_node(
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
     history = history or History(base_environment=environment)
+    print(
+        f"{LOGGER_PREFIX} building query node for {statement.output_components} grain {statement.grain}"
+    )
     build_statement: BuildSelectLineage | BuildMultiSelectLineage = Factory(
         environment=environment,
     ).build(statement)
