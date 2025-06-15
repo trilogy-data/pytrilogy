@@ -17,4 +17,4 @@ datasource supplier (
     s_comment:comment
 )
 grain (id)
-address `https://shell.duckdb.org/data/tpch/0_01/parquet/supplier.parquet`;
+address `https://trilogy-data.github.io/trilogy-public-models/trilogy_public_models/duckdb/tpc_h/supplier.parquet`;
