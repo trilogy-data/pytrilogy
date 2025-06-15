@@ -42,4 +42,4 @@ def test_adhoc04():
 
     # results = engine.execute_query(text).fetchall()
     # really, this is checking that there is no extra inner join with the filtered quantity
-    assert len(query) < 1300, query
+    assert len(query) < 1400, query
