@@ -5,6 +5,6 @@ import holdings as holdings;
 import std.display;
 
 merge dividend.symbol.* into ~symbol.*;
-merge holdings.symbol.* into ~symbol.*;
-merge holdings.provider.* into ~provider.*;
+# merge holdings.symbol.* into ~symbol.*;
+# merge holdings.provider.* into ~provider.*;
 merge dividend.provider.* into ~provider.*;                

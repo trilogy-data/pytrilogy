@@ -157,13 +157,28 @@ def determine_induced_minimal_nodes(
     logger.debug(f"Found final graph {final.nodes}")
     return final
 
+def canonicalize_addresses(
+    reduced_concept_set: set[str], environment: BuildEnvironment
+) -> set[str]:
+    """
+    Convert a set of concept addresses to their canonical form.
+    This is necessary to ensure that we can compare concepts correctly,
+    especially when dealing with aliases or pseudonyms.
+    """
+    return set(
+        environment.concepts[x].address if x in environment.concepts else x
+        for x in reduced_concept_set
+    )
 
 def detect_ambiguity_and_raise(
-    all_concepts: list[BuildConcept], reduced_concept_sets: list[set[str]]
+    all_concepts: list[BuildConcept], reduced_concept_sets_raw: list[set[str]], environment: BuildEnvironment
 ) -> None:
     final_candidates: list[set[str]] = []
     common: set[str] = set()
     # find all values that show up in every join_additions
+    reduced_concept_sets = [
+        canonicalize_addresses(x, environment) for x in reduced_concept_sets_raw
+    ]
     for ja in reduced_concept_sets:
         if not common:
             common = ja
@@ -203,17 +218,21 @@ def filter_relevant_subgraphs(
 
 def filter_duplicate_subgraphs(
     subgraphs: list[list[BuildConcept]],
+    environment
 ) -> list[list[BuildConcept]]:
     seen: list[set[str]] = []
-
+    
     for graph in subgraphs:
-        seen.append(set([x.address for x in graph]))
+        seen.append(canonicalize_addresses([x.address for x in graph], environment))
     final = []
     # sometimes w can get two subcomponents that are the same
     # due to alias resolution
     # if so, drop any that are strict subsets.
     for graph in subgraphs:
-        set_x = set([x.address for x in graph])
+        logger.info(
+            f"Checking graph {graph} for duplicates in {seen}"
+        )
+        set_x = canonicalize_addresses([x.address for x in graph], environment)
         if any([set_x.issubset(y) and set_x != y for y in seen]):
             continue
         final.append(graph)
@@ -299,7 +318,7 @@ def resolve_weak_components(
     if not found:
         return None
 
-    detect_ambiguity_and_raise(all_concepts, reduced_concept_sets)
+    detect_ambiguity_and_raise(all_concepts, reduced_concept_sets, environment)
 
     # take our first one as the actual graph
     g = found[0]
@@ -320,7 +339,7 @@ def resolve_weak_components(
         if not sub_component:
             continue
         subgraphs.append(sub_component)
-    final = filter_duplicate_subgraphs(subgraphs)
+    final = filter_duplicate_subgraphs(subgraphs, environment)
     return final
     # return filter_relevant_subgraphs(subgraphs)
 
@@ -365,17 +384,25 @@ def subgraphs_to_merge_node(
         )
         parents.append(parent)
     input_c = []
+    output_c = []
     for x in parents:
         for y in x.usable_outputs:
             input_c.append(y)
+            if y in output_concepts:
+                output_c.append(y)
+            elif any(
+                y.address in c.pseudonyms for c in output_concepts
+            ) or any(c.address in y.pseudonyms for c in output_concepts):
+                output_c.append(y)
+            
     if len(parents) == 1 and enable_early_exit:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} only one parent node, exiting early w/ {[c.address for c in parents[0].output_concepts]}"
         )
         return parents[0]
-    return MergeNode(
+    rval = MergeNode(
         input_concepts=unique(input_c, "address"),
-        output_concepts=output_concepts,
+        output_concepts=output_c,
         environment=environment,
         parents=parents,
         depth=depth,
@@ -385,6 +412,7 @@ def subgraphs_to_merge_node(
         # preexisting_conditions=search_conditions.conditional,
         # node_joins=[]
     )
+    return rval
 
 
 def gen_merge_node(

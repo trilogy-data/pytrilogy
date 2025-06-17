@@ -68,7 +68,9 @@ def validate_concept(
             # orig_v = environment.alias_origin_lookup[v_address]
             # # found_map[str(node)].add(orig_v)
             # found_addresses.add(v_address)
-        v = environment.concepts[v_address]
+            v = environment.alias_origin_lookup[v_address]
+        else:
+            v = environment.concepts[v_address]
 
         if v.address in seen:
 

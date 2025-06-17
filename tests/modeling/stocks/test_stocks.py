@@ -132,6 +132,7 @@ def test_provider_name():
     #  (missing {'dividend.symbol.sector'}), attempted {'dividend.amount'}, virtual set()
     DebuggingHook()
     build_env: BuildEnvironment = Factory(environment=env).build(env)
+    assert 'dividend.symbol.sector' in build_env.materialized_concepts, build_env.materialized_concepts
     assert 'dividend.provider.__pre_persist_name' in build_env.concepts['provider.name'].pseudonyms, build_env.concepts['provider.name'].pseudonyms
     assert 'provider.id' in build_env.alias_origin_lookup['dividend.provider.id'].pseudonyms, build_env.alias_origin_lookup['dividend.provider.id'].pseudonyms
     test_concepts = [
@@ -192,7 +193,6 @@ def test_provider_name():
         """select
     symbol.sector,
     provider.name,
-
     sum(dividend.amount) as total_div;
   """
     )

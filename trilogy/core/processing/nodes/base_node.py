@@ -21,7 +21,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import ConceptPair, QueryDatasource, UnnestJoin
 from trilogy.utility import unique
-
+from trilogy.constants import logger
 
 def resolve_concept_map(
     inputs: List[QueryDatasource | BuildDatasource],
@@ -29,6 +29,9 @@ def resolve_concept_map(
     inherited_inputs: List[BuildConcept],
     full_joins: List[BuildConcept] | None = None,
 ) -> dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]]:
+
+    for z in inputs:
+        logger.info(f"Input: {z.name} with concepts {[c.address for c in z.output_concepts]}")
     targets = targets or []
     concept_map: dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]] = (
         defaultdict(set)
@@ -56,7 +59,7 @@ def resolve_concept_map(
     # second loop, include partials
     for input in inputs:
         for concept in input.output_concepts:
-            if concept.address not in [t for t in inherited_inputs]:
+            if concept.address not in inherited and not (concept.pseudonyms and any(s in inherited for s in concept.pseudonyms)):
                 continue
             if (
                 isinstance(input, QueryDatasource)
@@ -70,7 +73,6 @@ def resolve_concept_map(
         if target.address not in inherited:
             # an empty source means it is defined in this CTE
             concept_map[target.address] = set()
-
     return concept_map
 
 
