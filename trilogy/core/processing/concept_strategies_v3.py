@@ -217,6 +217,12 @@ def initialize_loop_context(
             )
             mandatory_list = completion_mandatory
             must_evaluate_condition_on_this_level_not_push_down = True
+        elif all([x.derivation == Derivation.CONSTANT for x in mandatory_list]):
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} All mandatory concepts are constants, injecting conditions into mandatory list {conditions.row_arguments}"
+            )
+            mandatory_list = completion_mandatory
+            must_evaluate_condition_on_this_level_not_push_down = True
         else:
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Do not need to evaluate conditions yet."
@@ -224,6 +230,9 @@ def initialize_loop_context(
     else:
 
         completion_mandatory = mandatory_list
+    logger.info(
+        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Initialized loop context with mandatory list {[c.address for c in mandatory_list]} and completion mandatory {[c.address for c in completion_mandatory]}"
+    )
     return LoopContext(
         mandatory_list=mandatory_list,
         environment=environment,

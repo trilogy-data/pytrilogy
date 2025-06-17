@@ -1464,6 +1464,20 @@ BuildExpr = (
 )
 
 BuildConcept.model_rebuild()
+from collections import defaultdict
+def get_canonical_pseudonyms(environment:Environment)->dict[str, set[str]]:
+    roots:dict[str, set[str]] = defaultdict(set)
+    for k, v in environment.concepts.items():
+        roots[v.address].add(k)
+        for x in v.pseudonyms:
+            roots[v.address].add(x)
+    for k, v in environment.alias_origin_lookup.items():
+        lookup = environment.concepts[k].address
+        roots[lookup].add(v.address)
+        for x2 in v.pseudonyms:
+            roots[lookup].add(x2)
+    return roots
+
 
 
 class Factory:
@@ -1479,6 +1493,8 @@ class Factory:
         self.local_concepts: dict[str, BuildConcept] = (
             {} if local_concepts is None else local_concepts
         )
+        self.pseudonym_map = get_canonical_pseudonyms(environment)
+
 
     def instantiate_concept(
         self,
@@ -1656,6 +1672,14 @@ class Factory:
         )
         is_aggregate = Concept.calculate_is_aggregate(build_lineage)
 
+        # if this is a pseudonym, we need to look up the base address
+        if base.address in self.environment.alias_origin_lookup:
+            lookup_address = self.environment.concepts[base.address].address
+            base_pseudonyms = {x for x in self.pseudonym_map.get(
+                lookup_address, set()) if x != base.address}
+        else:
+            base_pseudonyms = {x for x in self.pseudonym_map.get(
+                base.address, set()) if x != base.address}
         rval = BuildConcept.model_construct(
             name=base.name,
             datatype=base.datatype,
@@ -1666,7 +1690,7 @@ class Factory:
             namespace=base.namespace,
             keys=base.keys,
             modifiers=base.modifiers,
-            pseudonyms=base.pseudonyms,
+            pseudonyms=base_pseudonyms,
             ## instantiated values
             derivation=derivation,
             granularity=granularity,

@@ -85,9 +85,9 @@ def subgraph_is_complete(
     mapped = set([mapping.get(n, n) for n in nodes])
     passed = all([t in mapped for t in targets])
     if not passed:
-        logger.info(
-            f"Subgraph {nodes} is not complete, missing targets {targets} - mapped {mapped}"
-        )
+        # logger.info(
+        #     f"Subgraph {nodes} is not complete, missing targets {targets} - mapped {mapped}"
+        # )
         return False
     # check if all concepts have a datasource edge
     has_ds_edge = {

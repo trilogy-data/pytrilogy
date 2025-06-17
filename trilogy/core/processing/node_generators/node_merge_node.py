@@ -42,6 +42,9 @@ def extract_concept(node: str, env: BuildEnvironment):
 
 def filter_unique_graphs(graphs: list[list[str]]) -> list[list[str]]:
     unique_graphs: list[set[str]] = []
+    
+    # sort graphs from largest to smallest
+    graphs.sort(key=lambda x: len(x), reverse=True)
     for graph in graphs:
         if not any(set(graph).issubset(x) for x in unique_graphs):
             unique_graphs.append(set(graph))
@@ -110,12 +113,13 @@ def determine_induced_minimal_nodes(
 
     try:
         paths = nx.multi_source_dijkstra_path(H, nodelist)
+        logger.debug(f"Paths found for {nodelist}")
     except nx.exception.NodeNotFound as e:
         logger.debug(f"Unable to find paths for {nodelist}- {str(e)}")
         return None
     H.remove_nodes_from(list(x for x in H.nodes if x not in paths))
     sG: nx.Graph = ax.steinertree.steiner_tree(H, nodelist).copy()
-    logger.debug("Steiner tree found for nodes %s", nodelist)
+    logger.debug(f"Steiner tree found for nodes {nodelist} {sG.nodes}")
     final: nx.DiGraph = nx.subgraph(G, sG.nodes).copy()
 
     for edge in G.edges:
@@ -439,22 +443,26 @@ def gen_merge_node(
             )
 
     # one concept handling may need to be kicked to alias
-    if len(all_search_concepts) == 1:
-        concept = all_search_concepts[0]
-        for v in concept.pseudonyms:
-            test = subgraphs_to_merge_node(
-                [[concept, environment.alias_origin_lookup[v]]],
-                g=g,
-                all_concepts=[concept],
-                environment=environment,
-                depth=depth,
-                source_concepts=source_concepts,
-                history=history,
-                conditions=conditions,
-                enable_early_exit=False,
-                search_conditions=search_conditions,
-                output_concepts=[concept],
-            )
-            if test:
-                return test
+    # if len(all_search_concepts) == 1:
+    #     concept = all_search_concepts[0]
+    #     for v in concept.pseudonyms:
+    #         alt = environment.alias_origin_lookup.get(v, None)
+    #         if not alt:
+    #             raise SyntaxError
+    #             alt = environment.concepts[v]
+    #         test = subgraphs_to_merge_node(
+    #             [[concept, alt]],
+    #             g=g,
+    #             all_concepts=[concept],
+    #             environment=environment,
+    #             depth=depth,
+    #             source_concepts=source_concepts,
+    #             history=history,
+    #             conditions=conditions,
+    #             enable_early_exit=False,
+    #             search_conditions=search_conditions,
+    #             output_concepts=[concept],
+    #         )
+    #         if test:
+    #             return test
     return None
