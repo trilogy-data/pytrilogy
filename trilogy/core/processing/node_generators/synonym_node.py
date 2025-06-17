@@ -30,7 +30,7 @@ def gen_synonym_node(
     accept_partial: bool = False,
 ) -> StrategyNode | None:
     local_prefix = f"{padding(depth)}[GEN_SYNONYM_NODE]"
-    base_fingerprint = tuple([x.address for x in all_concepts])
+    base_fingerprint = tuple(sorted([x.address for x in all_concepts]))
     synonyms = defaultdict(list)
     has_synonyms = False
     for x in all_concepts:
@@ -82,7 +82,7 @@ def gen_synonym_node(
 
     combinations_list.sort(key=similarity_sort_key)
     for combo in combinations_list:
-        fingerprint = tuple([x.address for x in combo])
+        fingerprint = tuple(sorted([x.address for x in combo]))
         if fingerprint == base_fingerprint:
             continue
         logger.info(

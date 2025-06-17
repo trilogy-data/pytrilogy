@@ -5,7 +5,7 @@ import store_sales as store_sales;
 import item as item;
 
 
-merge store_sales.item.id into item.id; # merge models for this query to get avg price of all items, not just sold items
+merge store_sales.item.id into ~item.id; # merge models for this query to get avg price of all items, not just sold items
 
 
 WHERE
@@ -23,3 +23,5 @@ ORDER by
     customer_count asc nulls first,
     store_sales.customer.state asc nulls first
 ;
+# ('item.category', 'store_sales.item.id', 'store_sales.customer.state', 'store_sales.date.month_of_year', 'store_sales.date.year', 'store_sales.item.category', 'store_sales.item.current_price', 'store_sales.ticket_number')
+# ('item.category',  'store_sales.item.id',  'store_sales.customer.state', 'store_sales.date.month_of_year', 'store_sales.date.year', 'store_sales.item.category', 'store_sales.item.current_price','store_sales.ticket_number') with 8 concepts

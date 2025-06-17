@@ -1675,10 +1675,9 @@ class Factory:
         # if this is a pseudonym, we need to look up the base address
         if base.address in self.environment.alias_origin_lookup:
             lookup_address = self.environment.concepts[base.address].address
+            # map only to the canonical concept, not to other merged concepts
             base_pseudonyms = {
-                x
-                for x in self.pseudonym_map.get(lookup_address, set())
-                if x != base.address
+                lookup_address
             }
         else:
             base_pseudonyms = {
