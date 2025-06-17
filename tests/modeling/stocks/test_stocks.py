@@ -195,8 +195,8 @@ def test_provider_name():
     provider.name,
     sum(dividend.amount) as total_div;
   """
-    )
-    assert sql == '123', sql
+    )[0]
+    assert sql.count('JOIN') == 1, sql
 
 
 def test_filter():
