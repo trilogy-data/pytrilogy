@@ -322,8 +322,12 @@ def resolve_instantiated_concept(
     for k in concept.pseudonyms:
         if k in datasource.output_concepts:
             return [x for x in datasource.output_concepts if x.address == k].pop()
+        if any(k in x.pseudonyms for x in datasource.output_concepts):
+            return [
+                x for x in datasource.output_concepts if k in x.pseudonyms
+            ].pop()
     raise SyntaxError(
-        f"Could not find {concept.address} in {datasource.identifier} output {[c.address for c in datasource.output_concepts]}"
+        f"Could not find {concept.address} in {datasource.identifier} output {[c.address for c in datasource.output_concepts]}, acceptable synonyms {concept.pseudonyms}"
     )
 
 

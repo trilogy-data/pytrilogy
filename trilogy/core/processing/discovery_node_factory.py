@@ -307,16 +307,18 @@ class RootNodeHandler:
     def _resolve_root_concepts(
         self, root_targets: List[BuildConcept]
     ) -> Optional[StrategyNode]:
-        synonym_node = self._try_synonym_resolution(root_targets)
-        if synonym_node:
-            logger.info(
-                f"{depth_to_prefix(self.ctx.depth)}{LOGGER_PREFIX} "
-                f"resolved root concepts through synonyms"
-            )
-            return synonym_node
         expanded_node = self._try_merge_expansion(root_targets)
         if expanded_node:
             return expanded_node
+        if self.ctx.accept_partial:
+            synonym_node = self._try_synonym_resolution(root_targets)
+            if synonym_node:
+                logger.info(
+                    f"{depth_to_prefix(self.ctx.depth)}{LOGGER_PREFIX} "
+                    f"resolved root concepts through synonyms"
+                )
+                return synonym_node
+
 
         return None
 
