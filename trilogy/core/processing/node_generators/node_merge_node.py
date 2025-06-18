@@ -470,28 +470,4 @@ def gen_merge_node(
                 search_conditions=search_conditions,
                 output_concepts=all_concepts,
             )
-
-    # one concept handling may need to be kicked to alias
-    # if len(all_search_concepts) == 1:
-    #     concept = all_search_concepts[0]
-    #     for v in concept.pseudonyms:
-    #         alt = environment.alias_origin_lookup.get(v, None)
-    #         if not alt:
-    #             raise SyntaxError
-    #             alt = environment.concepts[v]
-    #         test = subgraphs_to_merge_node(
-    #             [[concept, alt]],
-    #             g=g,
-    #             all_concepts=[concept],
-    #             environment=environment,
-    #             depth=depth,
-    #             source_concepts=source_concepts,
-    #             history=history,
-    #             conditions=conditions,
-    #             enable_early_exit=False,
-    #             search_conditions=search_conditions,
-    #             output_concepts=[concept],
-    #         )
-    #         if test:
-    #             return test
     return None
