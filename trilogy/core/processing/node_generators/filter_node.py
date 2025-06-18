@@ -62,6 +62,7 @@ def build_parent_concepts(
     list[tuple[BuildConcept, ...]],
     list[BuildConcept],
     bool,
+    bool,
 ]:
     parent_row_concepts, parent_existence_concepts = resolve_filter_parent_concepts(
         concept, environment
@@ -71,7 +72,10 @@ def build_parent_concepts(
     filter_where = concept.lineage.where
 
     same_filter_optional: list[BuildConcept] = []
-    global_filter_is_local_filter = conditions and conditions == filter_where
+    # mypy struggled here? we shouldn't need explicit bools
+    global_filter_is_local_filter: bool = (
+        True if (conditions and conditions == filter_where) else False
+    )
 
     for x in local_optional:
         if isinstance(x.lineage, FILTER_TYPES):
@@ -240,7 +244,8 @@ def gen_filter_node(
         parents_for_grain = [
             x.lineage.content
             for x in filters
-            if isinstance(x.lineage.content, BuildConcept)
+            if isinstance(x.lineage, BuildFilterItem)
+            and isinstance(x.lineage.content, BuildConcept)
         ]
         filter_node = FilterNode(
             input_concepts=unique(

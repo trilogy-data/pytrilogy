@@ -333,7 +333,7 @@ def check_for_early_exit(
     return False
 
 
-def generate_loop_completion(context: LoopContext, virtual:set[str]) -> StrategyNode:
+def generate_loop_completion(context: LoopContext, virtual: set[str]) -> StrategyNode:
     condition_required = True
     non_virtual = [c for c in context.completion_mandatory if c.address not in virtual]
     non_virtual_output = [
@@ -373,7 +373,12 @@ def generate_loop_completion(context: LoopContext, virtual:set[str]) -> Strategy
                 f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Found different non-virtual output concepts ({non_virtual_difference_values}), removing condition injected values by setting outputs to {[x.address for x in output.output_concepts if x.address in non_virtual_output]}"
             )
             output.set_output_concepts(
-                [x for x in output.output_concepts if x.address in non_virtual_output or any(c in non_virtual_output for c in x.pseudonyms)],
+                [
+                    x
+                    for x in output.output_concepts
+                    if x.address in non_virtual_output
+                    or any(c in non_virtual_output for c in x.pseudonyms)
+                ],
                 rebuild=False,
             )
 

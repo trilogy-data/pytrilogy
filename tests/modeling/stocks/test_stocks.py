@@ -265,5 +265,6 @@ where symbol.sector in ('Energy', 'Materials', 'Utilities')
 
     
     sum(dividend.amount) as total_div;
-    """)[0]
+    """
+    )[0]
     assert "reference" not in sql.lower(), sql

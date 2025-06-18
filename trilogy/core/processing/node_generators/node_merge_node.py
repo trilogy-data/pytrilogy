@@ -226,14 +226,16 @@ def filter_duplicate_subgraphs(
     seen: list[set[str]] = []
 
     for graph in subgraphs:
-        seen.append(canonicalize_addresses([x.address for x in graph], environment))
+        seen.append(
+            canonicalize_addresses(set([x.address for x in graph]), environment)
+        )
     final = []
     # sometimes w can get two subcomponents that are the same
     # due to alias resolution
     # if so, drop any that are strict subsets.
     for graph in subgraphs:
         logger.info(f"Checking graph {graph} for duplicates in {seen}")
-        set_x = canonicalize_addresses([x.address for x in graph], environment)
+        set_x = canonicalize_addresses(set([x.address for x in graph]), environment)
         if any([set_x.issubset(y) and set_x != y for y in seen]):
             continue
         final.append(graph)
