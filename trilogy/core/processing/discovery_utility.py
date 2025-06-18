@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, Granularity
+from trilogy.core.enums import Derivation
 from trilogy.core.models.build import (
     BuildConcept,
     BuildRowsetItem,
@@ -53,13 +53,13 @@ def get_priority_concept(
     for remaining_concept in (pass_one,):
         priority = (
             # find anything that needs no joins first, so we can exit early
-            [
-                c
-                for c in remaining_concept
-                if c.derivation == Derivation.CONSTANT
-                and c.granularity == Granularity.SINGLE_ROW
-            ]
-            +
+            # [
+            #     c
+            #     for c in remaining_concept
+            #     if c.derivation == Derivation.CONSTANT
+            #     and c.granularity == Granularity.SINGLE_ROW
+            # ]
+            # +
             # then multiselects to remove them from scope
             [c for c in remaining_concept if c.derivation == Derivation.MULTISELECT]
             +

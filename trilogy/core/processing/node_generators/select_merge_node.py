@@ -378,23 +378,23 @@ def create_datasource_node(
 
     datasource_conditions = datasource.where.conditional if datasource.where else None
     rval = SelectNode(
-            input_concepts=[c.concept for c in datasource.columns],
-            output_concepts=all_concepts,
-            environment=environment,
-            parents=[],
-            depth=depth,
-            partial_concepts=(
-                [] if partial_is_full else [c for c in all_concepts if c in partial_lcl]
-            ),
-            nullable_concepts=[c for c in all_concepts if c in nullable_lcl],
-            accept_partial=accept_partial,
-            datasource=datasource,
-            grain=datasource.grain,
-            conditions=datasource_conditions,
-            preexisting_conditions=(
-                conditions.conditional if partial_is_full and conditions else None
-            ),
-        )
+        input_concepts=[c.concept for c in datasource.columns],
+        output_concepts=all_concepts,
+        environment=environment,
+        parents=[],
+        depth=depth,
+        partial_concepts=(
+            [] if partial_is_full else [c for c in all_concepts if c in partial_lcl]
+        ),
+        nullable_concepts=[c for c in all_concepts if c in nullable_lcl],
+        accept_partial=accept_partial,
+        datasource=datasource,
+        grain=datasource.grain,
+        conditions=datasource_conditions,
+        preexisting_conditions=(
+            conditions.conditional if partial_is_full and conditions else None
+        ),
+    )
     return (
         rval,
         force_group,
@@ -484,7 +484,7 @@ def create_select_node(
             input_concepts=all_concepts,
             environment=environment,
             parents=[bcandidate],
-            depth=depth+1,
+            depth=depth + 1,
             partial_concepts=bcandidate.partial_concepts,
             nullable_concepts=bcandidate.nullable_concepts,
             preexisting_conditions=bcandidate.preexisting_conditions,
@@ -605,6 +605,7 @@ def gen_select_merge_node(
         ]
     ):
         preexisting_conditions = conditions.conditional
+
     base = MergeNode(
         output_concepts=all_concepts,
         input_concepts=non_constant,
@@ -613,4 +614,5 @@ def gen_select_merge_node(
         parents=parents,
         preexisting_conditions=preexisting_conditions,
     )
+
     return base

@@ -1,8 +1,17 @@
 from pathlib import Path
 
+from pytest import raises
+
 from trilogy import Dialects
+from trilogy.core.exceptions import NoDatasourceException
+from trilogy.core.models.build import BuildColumnAssignment, BuildDatasource, Factory
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.environment import Environment
-from trilogy.core.env_processor import generate_graph
+from trilogy.core.processing.concept_strategies_v3 import (
+    StrategyNode,
+    validate_stack,
+)
+from trilogy.core.processing.nodes.select_node_v2 import SelectNode
 
 
 def test_query():
@@ -108,21 +117,6 @@ limit 10;
     )
 
 
-from trilogy.core.processing.concept_strategies_v3 import (
-    search_concepts,
-    History,
-    validate_stack,
-    StrategyNode,
-)
-from trilogy.core.processing.nodes.select_node_v2 import SelectNode
-from trilogy.core.models.build import Factory, BuildDatasource, BuildColumnAssignment
-from trilogy.core.models.build_environment import BuildEnvironment
-# SyntaxError: Missing source map entry for provider.name on input_concepts with pseudonyms {'holdings.provider.name', 'provider.name', 'provider.__pre_persist_name', 'dividend.provider.name'}, 
-# have map: {'dividend.amount': {dividend.dividend_data_at_dividend_id_join_symbol.symbol_data_at_symbol_id_join_provider.provider_data_at_provider_id_at_provider_id_dividend_id_symbol_id_join_symbol.symbol_data_at_symbol_id_grouped_by_symbol.sector_at_symbol_sector_at_provider_id_dividend_id_symbol_id@<Grain<dividend.id,provider.id,symbol.id>>}, 
-# 'dividend.id': {dividend.dividend_data_at_dividend_id_join_symbol.symbol_data_at_symbol_id_join_provider.provider_data_at_provider_id_at_provider_id_dividend_id_symbol_id_join_symbol.symbol_data_at_symbol_id_grouped_by_symbol.sector_at_symbol_sector_at_provider_id_dividend_id_symbol_id@<Grain<dividend.id,provider.id,symbol.id>>}, 'dividend.symbol.sector': {dividend.dividend_data_at_dividend_id_join_symbol.symbol_data_at_symbol_id_join_provider.provider_data_at_provider_id_at_provider_id_dividend_id_symbol_id_join_symbol.symbol_data_at_symbol_id_grouped_by_symbol.sector_at_symbol_sector_at_provider_id_dividend_id_symbol_id@<Grain<dividend.id,provider.id,symbol.id>>}, 
-# 'dividend.provider.__pre_persist_name': {dividend.dividend_data_at_dividend_id_join_symbol.symbol_data_at_symbol_id_join_provider.provider_data_at_provider_id_at_provider_id_dividend_id_symbol_id_join_symbol.symbol_data_at_symbol_id_grouped_by_symbol.sector_at_symbol_sector_at_provider_id_dividend_id_symbol_id@<Grain<dividend.id,provider.id,symbol.id>>}, 'local.total_div': set()}
-
-
 def test_provider_name():
     env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
     from trilogy.hooks import DebuggingHook
@@ -132,9 +126,17 @@ def test_provider_name():
     #  (missing {'dividend.symbol.sector'}), attempted {'dividend.amount'}, virtual set()
     DebuggingHook()
     build_env: BuildEnvironment = Factory(environment=env).build(env)
-    assert 'dividend.symbol.sector' in build_env.materialized_concepts, build_env.materialized_concepts
-    assert 'dividend.provider.__pre_persist_name' in build_env.concepts['provider.name'].pseudonyms, build_env.concepts['provider.name'].pseudonyms
-    assert 'provider.id' in build_env.alias_origin_lookup['dividend.provider.id'].pseudonyms, build_env.alias_origin_lookup['dividend.provider.id'].pseudonyms
+    assert (
+        "dividend.symbol.sector" in build_env.materialized_concepts
+    ), build_env.materialized_concepts
+    assert (
+        "dividend.provider.__pre_persist_name"
+        in build_env.concepts["provider.name"].pseudonyms
+    ), build_env.concepts["provider.name"].pseudonyms
+    assert (
+        "provider.id"
+        in build_env.alias_origin_lookup["dividend.provider.id"].pseudonyms
+    ), build_env.alias_origin_lookup["dividend.provider.id"].pseudonyms
     test_concepts = [
         build_env.concepts["dividend.amount"],
         build_env.concepts["dividend.id"],
@@ -178,7 +180,6 @@ def test_provider_name():
     assert not partial, partial
     assert not missing_c, missing_c
 
-
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
     duckdb.parse_text(
         """select
@@ -196,7 +197,8 @@ def test_provider_name():
     sum(dividend.amount) as total_div;
   """
     )[0]
-    assert sql.count('JOIN') == 1, sql
+    assert "reference" not in sql.lower(), sql
+    assert sql.count("JOIN") == 1, sql
 
 
 def test_filter():
@@ -206,13 +208,62 @@ def test_filter():
     DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
 
-    
-    sql = duckdb.generate_sql(
-        """import entrypoint;
-     where symbol.class = 'STOCK'
-  and (
-    symbol.industry like '%solar%'
-    or symbol.sector like '%solar%'
-  )
-    select 1 as test_filter;"""
+    with raises(NoDatasourceException):
+        duckdb.generate_sql(
+            """import entrypoint;
+        where symbol.class = 'STOCK'
+    and (
+        symbol.industry like '%solar%'
+        or symbol.sector like '%solar%'
     )
+        select 1 as test_filter;"""
+        )
+
+
+def test_filter_sector():
+    env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    duckdb = Dialects.DUCK_DB.default_executor(environment=env)
+
+    sql = duckdb.generate_sql(
+        """
+
+where symbol.sector in ('Energy', 'Materials', 'Utilities') 
+  or symbol.industry in ('Oil & Gas', 'Coal', 'Mining', 'Paper & Forest Products', 'Chemicals')
+  or symbol.name like '%Oil%' 
+  or symbol.name like '%Coal%' 
+select
+    symbol.sector,
+    sum(dividend.amount) as total_dividends,
+order by
+    total_dividends desc
+limit 100;
+
+                              """
+    )[0]
+    assert "reference" not in sql.lower(), sql
+
+
+def test_filter_sector_two():
+    env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    duckdb = Dialects.DUCK_DB.default_executor(environment=env)
+
+    sql = duckdb.generate_sql(
+        """
+where symbol.sector in ('Energy', 'Materials', 'Utilities') 
+  or symbol.industry in ('Oil & Gas', 'Coal', 'Mining', 'Paper & Forest Products', 'Chemicals')
+  or symbol.name like '%Oil%' 
+  or symbol.name like '%Coal%'
+  select
+    symbol.sector,
+    provider.name,
+
+    
+    sum(dividend.amount) as total_div;
+    """)[0]
+    assert "reference" not in sql.lower(), sql

@@ -133,7 +133,7 @@ def gen_group_node(
         )
         return group_node
     missing_optional = [
-        x.address for x in local_optional if x.address not in group_node.output_concepts
+        x.address for x in local_optional if x.address not in group_node.usable_outputs
     ]
     if not missing_optional:
         logger.info(

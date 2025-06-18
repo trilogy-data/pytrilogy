@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC
+from collections import defaultdict
 from datetime import date, datetime
 from functools import cached_property, singledispatchmethod
 from typing import (
@@ -1464,7 +1465,6 @@ BuildExpr = (
 )
 
 BuildConcept.model_rebuild()
-from collections import defaultdict
 
 
 def get_canonical_pseudonyms(environment: Environment) -> dict[str, set[str]]:
@@ -1676,9 +1676,7 @@ class Factory:
         if base.address in self.environment.alias_origin_lookup:
             lookup_address = self.environment.concepts[base.address].address
             # map only to the canonical concept, not to other merged concepts
-            base_pseudonyms = {
-                lookup_address
-            }
+            base_pseudonyms = {lookup_address}
         else:
             base_pseudonyms = {
                 x

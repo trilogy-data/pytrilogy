@@ -57,7 +57,7 @@ def build_parent_concepts(
     local_optional: List[BuildConcept],
     conditions: BuildWhereClause | None = None,
     depth: int = 0,
-)->tuple[
+) -> tuple[
     list[BuildConcept],
     list[tuple[BuildConcept, ...]],
     list[BuildConcept],
@@ -106,7 +106,7 @@ def build_parent_concepts(
         parent_existence_concepts,
         same_filter_optional,
         is_optimized_pushdown,
-        global_filter_is_local_filter
+        global_filter_is_local_filter,
     )
 
 
@@ -200,9 +200,7 @@ def gen_filter_node(
             f"{padding(depth)}{LOGGER_PREFIX} filter node conditions match global conditions adding row parent {row_parent.output_concepts} with condition {where.conditional}"
         )
         row_parent.add_parents(core_parent_nodes)
-        row_parent.set_output_concepts(
-            [concept] + local_optional
-        )
+        row_parent.set_output_concepts([concept] + local_optional)
         return row_parent
     if optimized_pushdown:
         logger.info(

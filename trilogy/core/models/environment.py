@@ -362,9 +362,6 @@ class Environment(BaseModel):
                         and x.concept.address != deriv_lookup
                     ]
                     assert len(datasource.columns) < clen
-                    for x in datasource.columns:
-                        logger.info(x)
-
             return None
 
         if existing and self.config.allow_duplicate_declaration:
@@ -615,12 +612,7 @@ class Environment(BaseModel):
                 ):
                     original_concept = new_persisted_concept.model_copy(
                         deep=True,
-                        update={
-                            "name": persisted,
-                            "pseudonyms":original_pseudonyms
-                        }, 
-                        
-
+                        update={"name": persisted, "pseudonyms": original_pseudonyms},
                     )
                     self.add_concept(
                         original_concept,
@@ -656,7 +648,7 @@ class Environment(BaseModel):
                         new_persisted_concept,
                         meta=meta,
                     )
-                
+
         return datasource
 
     def delete_datasource(

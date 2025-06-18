@@ -42,7 +42,7 @@ def extract_concept(node: str, env: BuildEnvironment):
 
 def filter_unique_graphs(graphs: list[list[str]]) -> list[list[str]]:
     unique_graphs: list[set[str]] = []
-    
+
     # sort graphs from largest to smallest
     graphs.sort(key=lambda x: len(x), reverse=True)
     for graph in graphs:
@@ -113,13 +113,13 @@ def determine_induced_minimal_nodes(
 
     try:
         paths = nx.multi_source_dijkstra_path(H, nodelist)
-        logger.debug(f"Paths found for {nodelist}")
-    except nx.exception.NodeNotFound as e:
-        logger.debug(f"Unable to find paths for {nodelist}- {str(e)}")
+        # logger.debug(f"Paths found for {nodelist}")
+    except nx.exception.NodeNotFound:
+        # logger.debug(f"Unable to find paths for {nodelist}- {str(e)}")
         return None
     H.remove_nodes_from(list(x for x in H.nodes if x not in paths))
     sG: nx.Graph = ax.steinertree.steiner_tree(H, nodelist).copy()
-    logger.debug(f"Steiner tree found for nodes {nodelist} {sG.nodes}")
+    # logger.debug(f"Steiner tree found for nodes {nodelist} {sG.nodes}")
     final: nx.DiGraph = nx.subgraph(G, sG.nodes).copy()
 
     for edge in G.edges:
@@ -157,6 +157,7 @@ def determine_induced_minimal_nodes(
     logger.debug(f"Found final graph {final.nodes}")
     return final
 
+
 def canonicalize_addresses(
     reduced_concept_set: set[str], environment: BuildEnvironment
 ) -> set[str]:
@@ -170,8 +171,11 @@ def canonicalize_addresses(
         for x in reduced_concept_set
     )
 
+
 def detect_ambiguity_and_raise(
-    all_concepts: list[BuildConcept], reduced_concept_sets_raw: list[set[str]], environment: BuildEnvironment
+    all_concepts: list[BuildConcept],
+    reduced_concept_sets_raw: list[set[str]],
+    environment: BuildEnvironment,
 ) -> None:
     final_candidates: list[set[str]] = []
     common: set[str] = set()
@@ -217,11 +221,10 @@ def filter_relevant_subgraphs(
 
 
 def filter_duplicate_subgraphs(
-    subgraphs: list[list[BuildConcept]],
-    environment
+    subgraphs: list[list[BuildConcept]], environment
 ) -> list[list[BuildConcept]]:
     seen: list[set[str]] = []
-    
+
     for graph in subgraphs:
         seen.append(canonicalize_addresses([x.address for x in graph], environment))
     final = []
@@ -229,9 +232,7 @@ def filter_duplicate_subgraphs(
     # due to alias resolution
     # if so, drop any that are strict subsets.
     for graph in subgraphs:
-        logger.info(
-            f"Checking graph {graph} for duplicates in {seen}"
-        )
+        logger.info(f"Checking graph {graph} for duplicates in {seen}")
         set_x = canonicalize_addresses([x.address for x in graph], environment)
         if any([set_x.issubset(y) and set_x != y for y in seen]):
             continue
@@ -390,11 +391,11 @@ def subgraphs_to_merge_node(
             input_c.append(y)
             if y in output_concepts:
                 output_c.append(y)
-            elif any(
-                y.address in c.pseudonyms for c in output_concepts
-            ) or any(c.address in y.pseudonyms for c in output_concepts):
+            elif any(y.address in c.pseudonyms for c in output_concepts) or any(
+                c.address in y.pseudonyms for c in output_concepts
+            ):
                 output_c.append(y)
-            
+
     if len(parents) == 1 and enable_early_exit:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} only one parent node, exiting early w/ {[c.address for c in parents[0].output_concepts]}"

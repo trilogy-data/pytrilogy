@@ -8,7 +8,7 @@ class UndefinedConceptException(Exception):
         self.suggestions = suggestions
 
 
-class UnresolvableQueryException(Exception):
+class FrozenEnvironmentException(Exception):
     pass
 
 
@@ -16,15 +16,15 @@ class InvalidSyntaxException(Exception):
     pass
 
 
-class NoDatasourceException(Exception):
+class UnresolvableQueryException(Exception):
     pass
 
 
-class FrozenEnvironmentException(Exception):
+class NoDatasourceException(UnresolvableQueryException):
     pass
 
 
-class AmbiguousRelationshipResolutionException(Exception):
+class AmbiguousRelationshipResolutionException(UnresolvableQueryException):
     def __init__(self, message, parents: List[set[str]]):
         super().__init__(self, message)
         self.message = message

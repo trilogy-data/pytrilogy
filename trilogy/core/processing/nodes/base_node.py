@@ -21,7 +21,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import ConceptPair, QueryDatasource, UnnestJoin
 from trilogy.utility import unique
-from trilogy.constants import logger
+
 
 def resolve_concept_map(
     inputs: List[QueryDatasource | BuildDatasource],
@@ -30,8 +30,6 @@ def resolve_concept_map(
     full_joins: List[BuildConcept] | None = None,
 ) -> dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]]:
 
-    for z in inputs:
-        logger.info(f"Input: {z.name} with concepts {[c.address for c in z.output_concepts]}")
     targets = targets or []
     concept_map: dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]] = (
         defaultdict(set)
@@ -59,7 +57,9 @@ def resolve_concept_map(
     # second loop, include partials
     for input in inputs:
         for concept in input.output_concepts:
-            if concept.address not in inherited and not (concept.pseudonyms and any(s in inherited for s in concept.pseudonyms)):
+            if concept.address not in inherited and not (
+                concept.pseudonyms and any(s in inherited for s in concept.pseudonyms)
+            ):
                 continue
             if (
                 isinstance(input, QueryDatasource)
@@ -286,6 +286,11 @@ class StrategyNode:
         if self.output_concepts == concepts:
             return self
         self.output_concepts = concepts
+        if self.hidden_concepts:
+            self.hidden_concepts = set(
+                x for x in self.hidden_concepts if x not in concepts
+            )
+
         self.output_lcl = LooseBuildConceptList(concepts=self.output_concepts)
 
         if rebuild:
