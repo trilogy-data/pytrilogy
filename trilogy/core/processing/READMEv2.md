@@ -30,6 +30,18 @@ Pseudonyms should always be handled by a node returning the pseudonymous type.
 Ex: if A* has been merged into B*, and B* cannot be found, but A* can, the node returning A* should return A* and let the merge loop reconcile. 
 
 
+To be more specific about desired behavior:
+
+Nodes must accurately track the *actual* concept being returned, because pseudonyms can have different rendering.
+
+Completion checks should always check for the matching concepts _or_ matching pseudonyms.
+
+The final query should map the output label to whatever the user actually specified.
+
+Things that might need work:
+- merging concepts with partial modifiers relies on datasources being updated with partial. If you merge a calculation, we should have additional tests that upstream discoveyr of the calculation
+verifies all partial constraints. 
+
 
 
 ## Always pass up local optional

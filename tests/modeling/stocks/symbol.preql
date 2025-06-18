@@ -11,6 +11,7 @@ datasource symbol_data (
     name:name,
     sector:sector,
     industry:industry,
+    # raw(''' 'STOCK' '''):class,
 )
 grain (id)
 address symbols;

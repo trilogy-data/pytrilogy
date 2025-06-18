@@ -85,9 +85,9 @@ def subgraph_is_complete(
     mapped = set([mapping.get(n, n) for n in nodes])
     passed = all([t in mapped for t in targets])
     if not passed:
-        logger.info(
-            f"Subgraph {nodes} is not complete, missing targets {targets} - mapped {mapped}"
-        )
+        # logger.info(
+        #     f"Subgraph {nodes} is not complete, missing targets {targets} - mapped {mapped}"
+        # )
         return False
     # check if all concepts have a datasource edge
     has_ds_edge = {
@@ -346,7 +346,7 @@ def create_datasource_node(
     depth: int,
     conditions: BuildWhereClause | None = None,
 ) -> tuple[StrategyNode, bool]:
-    logger.info(all_concepts)
+
     target_grain = BuildGrain.from_concepts(all_concepts, environment=environment)
     force_group = False
     if not datasource.grain.issubset(target_grain):
@@ -377,26 +377,26 @@ def create_datasource_node(
     partial_is_full = conditions and (conditions == datasource.non_partial_for)
 
     datasource_conditions = datasource.where.conditional if datasource.where else None
-
-    return (
-        SelectNode(
-            input_concepts=[c.concept for c in datasource.columns],
-            output_concepts=all_concepts,
-            environment=environment,
-            parents=[],
-            depth=depth,
-            partial_concepts=(
-                [] if partial_is_full else [c for c in all_concepts if c in partial_lcl]
-            ),
-            nullable_concepts=[c for c in all_concepts if c in nullable_lcl],
-            accept_partial=accept_partial,
-            datasource=datasource,
-            grain=datasource.grain,
-            conditions=datasource_conditions,
-            preexisting_conditions=(
-                conditions.conditional if partial_is_full and conditions else None
-            ),
+    rval = SelectNode(
+        input_concepts=[c.concept for c in datasource.columns],
+        output_concepts=all_concepts,
+        environment=environment,
+        parents=[],
+        depth=depth,
+        partial_concepts=(
+            [] if partial_is_full else [c for c in all_concepts if c in partial_lcl]
         ),
+        nullable_concepts=[c for c in all_concepts if c in nullable_lcl],
+        accept_partial=accept_partial,
+        datasource=datasource,
+        grain=datasource.grain,
+        conditions=datasource_conditions,
+        preexisting_conditions=(
+            conditions.conditional if partial_is_full and conditions else None
+        ),
+    )
+    return (
+        rval,
         force_group,
     )
 
@@ -484,7 +484,7 @@ def create_select_node(
             input_concepts=all_concepts,
             environment=environment,
             parents=[bcandidate],
-            depth=depth,
+            depth=depth + 1,
             partial_concepts=bcandidate.partial_concepts,
             nullable_concepts=bcandidate.nullable_concepts,
             preexisting_conditions=bcandidate.preexisting_conditions,
@@ -493,6 +493,7 @@ def create_select_node(
     else:
 
         candidate = bcandidate
+    assert candidate.resolve().output_concepts == all_concepts
     return candidate
 
 
@@ -604,6 +605,7 @@ def gen_select_merge_node(
         ]
     ):
         preexisting_conditions = conditions.conditional
+
     base = MergeNode(
         output_concepts=all_concepts,
         input_concepts=non_constant,

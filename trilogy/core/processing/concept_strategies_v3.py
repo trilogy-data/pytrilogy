@@ -224,6 +224,9 @@ def initialize_loop_context(
     else:
 
         completion_mandatory = mandatory_list
+    logger.info(
+        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Initialized loop context with mandatory list {[c.address for c in mandatory_list]} and completion mandatory {[c.address for c in completion_mandatory]}"
+    )
     return LoopContext(
         mandatory_list=mandatory_list,
         environment=environment,
@@ -330,7 +333,7 @@ def check_for_early_exit(
     return False
 
 
-def generate_loop_completion(context: LoopContext, virtual) -> StrategyNode:
+def generate_loop_completion(context: LoopContext, virtual: set[str]) -> StrategyNode:
     condition_required = True
     non_virtual = [c for c in context.completion_mandatory if c.address not in virtual]
     non_virtual_output = [
@@ -367,10 +370,15 @@ def generate_loop_completion(context: LoopContext, virtual) -> StrategyNode:
         output: StrategyNode = context.stack[0]
         if non_virtual_different:
             logger.info(
-                f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Found different non-virtual output concepts ({non_virtual_difference_values}), removing condition injected values"
+                f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Found different non-virtual output concepts ({non_virtual_difference_values}), removing condition injected values by setting outputs to {[x.address for x in output.output_concepts if x.address in non_virtual_output]}"
             )
             output.set_output_concepts(
-                [x for x in output.output_concepts if x.address in non_virtual_output],
+                [
+                    x
+                    for x in output.output_concepts
+                    if x.address in non_virtual_output
+                    or any(c in non_virtual_output for c in x.pseudonyms)
+                ],
                 rebuild=False,
             )
 
@@ -404,7 +412,7 @@ def generate_loop_completion(context: LoopContext, virtual) -> StrategyNode:
     elif context.conditions:
         output.preexisting_conditions = context.conditions.conditional
     logger.info(
-        f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Graph is connected, returning {type(output)} node partial {[c.address for c in output.partial_concepts]} with {context.conditions}"
+        f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Graph is connected, returning {type(output)} node output {[x.address for x in output.usable_outputs]} partial {[c.address for c in output.partial_concepts]} with {context.conditions}"
     )
     if condition_required and context.conditions and non_virtual_different:
         logger.info(
@@ -419,7 +427,7 @@ def generate_loop_completion(context: LoopContext, virtual) -> StrategyNode:
         )
         if result.required:
             logger.info(
-                f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Adding group node"
+                f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Adding group node with outputs {[x.address for x in context.original_mandatory]}"
             )
             return GroupNode(
                 output_concepts=context.original_mandatory,
@@ -466,6 +474,7 @@ def _search_concepts(
     )
 
     while context.incomplete:
+
         priority_concept = get_priority_concept(
             context.mandatory_list,
             context.attempted,
@@ -478,7 +487,7 @@ def _search_concepts(
         candidates = [
             c for c in context.mandatory_list if c.address != priority_concept.address
         ]
-        # the local conditions list may be override if we end up injecting conditions
+        # the local conditions list may be overriden if we end up injecting conditions
         candidate_list, local_conditions = generate_candidates_restrictive(
             priority_concept,
             candidates,

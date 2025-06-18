@@ -29,6 +29,7 @@ def resolve_concept_map(
     inherited_inputs: List[BuildConcept],
     full_joins: List[BuildConcept] | None = None,
 ) -> dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]]:
+
     targets = targets or []
     concept_map: dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]] = (
         defaultdict(set)
@@ -56,7 +57,9 @@ def resolve_concept_map(
     # second loop, include partials
     for input in inputs:
         for concept in input.output_concepts:
-            if concept.address not in [t for t in inherited_inputs]:
+            if concept.address not in inherited and not (
+                concept.pseudonyms and any(s in inherited for s in concept.pseudonyms)
+            ):
                 continue
             if (
                 isinstance(input, QueryDatasource)
@@ -70,7 +73,6 @@ def resolve_concept_map(
         if target.address not in inherited:
             # an empty source means it is defined in this CTE
             concept_map[target.address] = set()
-
     return concept_map
 
 
@@ -195,8 +197,10 @@ class StrategyNode:
             return
         non_hidden = set()
         hidden = set()
+        usable_outputs = set()
         for x in self.parents:
             for z in x.usable_outputs:
+                usable_outputs.add(z.address)
                 non_hidden.add(z.address)
                 for psd in z.pseudonyms:
                     non_hidden.add(psd)
@@ -205,7 +209,7 @@ class StrategyNode:
         if not all([x.address in non_hidden for x in self.input_concepts]):
             missing = [x for x in self.input_concepts if x.address not in non_hidden]
             raise ValueError(
-                f"Invalid input concepts; {missing} are missing non-hidden parent nodes; have {non_hidden} and hidden {hidden}"
+                f"Invalid input concepts; {missing} are missing non-hidden parent nodes; have {non_hidden} and hidden {hidden} from root {usable_outputs}"
             )
 
     def add_parents(self, parents: list["StrategyNode"]):
@@ -282,6 +286,11 @@ class StrategyNode:
         if self.output_concepts == concepts:
             return self
         self.output_concepts = concepts
+        if self.hidden_concepts:
+            self.hidden_concepts = set(
+                x for x in self.hidden_concepts if x not in concepts
+            )
+
         self.output_lcl = LooseBuildConceptList(concepts=self.output_concepts)
 
         if rebuild:

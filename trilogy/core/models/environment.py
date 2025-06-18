@@ -362,9 +362,6 @@ class Environment(BaseModel):
                         and x.concept.address != deriv_lookup
                     ]
                     assert len(datasource.columns) < clen
-                    for x in datasource.columns:
-                        logger.info(x)
-
             return None
 
         if existing and self.config.allow_duplicate_declaration:
@@ -607,15 +604,15 @@ class Environment(BaseModel):
                 )
                 persisted = f"{PERSISTED_CONCEPT_PREFIX}_" + new_persisted_concept.name
                 # override the current concept source to reflect that it's now coming from a datasource
+                base_pseudonyms = new_persisted_concept.pseudonyms or set()
+                original_pseudonyms = {*base_pseudonyms, new_persisted_concept.address}
                 if (
                     new_persisted_concept.metadata.concept_source
                     != ConceptSource.PERSIST_STATEMENT
                 ):
                     original_concept = new_persisted_concept.model_copy(
                         deep=True,
-                        update={
-                            "name": persisted,
-                        },
+                        update={"name": persisted, "pseudonyms": original_pseudonyms},
                     )
                     self.add_concept(
                         original_concept,
@@ -629,6 +626,7 @@ class Environment(BaseModel):
                         ),
                         "derivation": Derivation.ROOT,
                         "purpose": new_persisted_concept.purpose,
+                        "pseudonyms": {*original_pseudonyms, original_concept.address},
                     }
                     # purpose is used in derivation calculation
                     # which should be fixed, but we'll do in a followup
@@ -650,6 +648,7 @@ class Environment(BaseModel):
                         new_persisted_concept,
                         meta=meta,
                     )
+
         return datasource
 
     def delete_datasource(

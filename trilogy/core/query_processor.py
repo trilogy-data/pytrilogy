@@ -407,6 +407,7 @@ def get_query_node(
         build_statement.local_concepts
     )
     graph = generate_graph(build_environment)
+
     logger.info(
         f"{LOGGER_PREFIX} getting source datasource for outputs {build_statement.output_components} grain {build_statement.grain}"
     )

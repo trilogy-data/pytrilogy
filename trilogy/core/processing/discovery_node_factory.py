@@ -351,7 +351,10 @@ class RootNodeHandler:
         extra = restrict_node_outputs_targets(expanded, root_targets, self.ctx.depth)
 
         pseudonyms = [
-            x for x in extra if any(x.address in y.pseudonyms for y in root_targets)
+            x
+            for x in extra
+            if any(x.address in y.pseudonyms for y in root_targets)
+            and x.address not in root_targets
         ]
 
         if pseudonyms:

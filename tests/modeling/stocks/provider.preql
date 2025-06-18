@@ -1,7 +1,7 @@
 
 
 key id int;
-property id.name <-  CASE
+auto name <-  CASE
     WHEN id = 1 THEN 'robinhood'
     WHEN id = 2 THEN 'alpaca'
     WHEN id = 3 THEN 'webull'

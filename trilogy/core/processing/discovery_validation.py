@@ -34,6 +34,9 @@ def validate_concept(
     seen: set[str],
     environment: BuildEnvironment,
 ):
+    # logger.debug(
+    #     f"Validating concept {concept.address} with accept_partial={accept_partial}"
+    # )
     found_map[str(node)].add(concept)
     seen.add(concept.address)
     if concept not in node.partial_concepts:
@@ -53,12 +56,21 @@ def validate_concept(
             found_map[str(node)].add(concept)
     for v_address in concept.pseudonyms:
         if v_address in seen:
-            return
-        v = environment.concepts[v_address]
+            continue
+        if v_address in environment.alias_origin_lookup:
+            # logger.debug(
+            #     f"Found alias origin for {v_address}: {environment.alias_origin_lookup[v_address]} mapped to {environment.concepts[v_address]}")
+            v = environment.alias_origin_lookup[v_address]
+        else:
+            v = environment.concepts[v_address]
+
         if v.address in seen:
-            return
+
+            continue
+
         if v.address == concept.address:
-            return
+
+            continue
         validate_concept(
             v,
             node,
@@ -93,6 +105,7 @@ def validate_stack(
 
         for concept in resolved.output_concepts:
             if concept.address in resolved.hidden_concepts:
+
                 continue
 
             validate_concept(

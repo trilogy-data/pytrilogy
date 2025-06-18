@@ -165,7 +165,7 @@ class GroupNode(StrategyNode):
             p.resolve() for p in self.parents
         ]
         grains = self.check_if_required(
-            self.output_concepts, parent_sources, self.environment
+            self.output_concepts, parent_sources, self.environment, self.depth
         )
         target_grain = grains.target
         comp_grain = grains.upstream

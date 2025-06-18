@@ -30,22 +30,27 @@ def gen_synonym_node(
     accept_partial: bool = False,
 ) -> StrategyNode | None:
     local_prefix = f"{padding(depth)}[GEN_SYNONYM_NODE]"
-    base_fingerprint = tuple([x.address for x in all_concepts])
+    base_fingerprint = tuple(sorted([x.address for x in all_concepts]))
     synonyms = defaultdict(list)
-    synonym_count = 0
+    has_synonyms = False
     for x in all_concepts:
         synonyms[x.address] = [x]
+        if x.address in environment.alias_origin_lookup:
+            parent = environment.concepts[x.address]
+            if parent.address != x.address:
+                synonyms[x.address].append(parent)
+                has_synonyms = True
         for y in x.pseudonyms:
 
             if y in environment.alias_origin_lookup:
                 synonyms[x.address].append(environment.alias_origin_lookup[y])
-                synonym_count += 1
+                has_synonyms = True
             elif y in environment.concepts:
                 synonyms[x.address].append(environment.concepts[y])
-                synonym_count += 1
+                has_synonyms = True
     for address in synonyms:
         synonyms[address].sort(key=lambda obj: obj.address)
-    if synonym_count == 0:
+    if not has_synonyms:
         return None
 
     logger.info(f"{local_prefix} Generating Synonym Node with {len(synonyms)} synonyms")
@@ -76,9 +81,8 @@ def gen_synonym_node(
         return (-similarity_score, addresses)
 
     combinations_list.sort(key=similarity_sort_key)
-    logger.info(combinations_list)
     for combo in combinations_list:
-        fingerprint = tuple([x.address for x in combo])
+        fingerprint = tuple(sorted([x.address for x in combo]))
         if fingerprint == base_fingerprint:
             continue
         logger.info(

@@ -57,7 +57,13 @@ def build_parent_concepts(
     local_optional: List[BuildConcept],
     conditions: BuildWhereClause | None = None,
     depth: int = 0,
-):
+) -> tuple[
+    list[BuildConcept],
+    list[tuple[BuildConcept, ...]],
+    list[BuildConcept],
+    bool,
+    bool,
+]:
     parent_row_concepts, parent_existence_concepts = resolve_filter_parent_concepts(
         concept, environment
     )
@@ -66,6 +72,10 @@ def build_parent_concepts(
     filter_where = concept.lineage.where
 
     same_filter_optional: list[BuildConcept] = []
+    # mypy struggled here? we shouldn't need explicit bools
+    global_filter_is_local_filter: bool = (
+        True if (conditions and conditions == filter_where) else False
+    )
 
     for x in local_optional:
         if isinstance(x.lineage, FILTER_TYPES):
@@ -79,7 +89,7 @@ def build_parent_concepts(
                         parent_row_concepts.append(arg)
                 same_filter_optional.append(x)
                 continue
-        elif conditions and conditions == filter_where:
+        elif global_filter_is_local_filter:
             same_filter_optional.append(x)
 
     # sometimes, it's okay to include other local optional above the filter
@@ -100,6 +110,7 @@ def build_parent_concepts(
         parent_existence_concepts,
         same_filter_optional,
         is_optimized_pushdown,
+        global_filter_is_local_filter,
     )
 
 
@@ -152,6 +163,7 @@ def gen_filter_node(
         parent_existence_concepts,
         same_filter_optional,
         optimized_pushdown,
+        global_filter_is_local_filter,
     ) = build_parent_concepts(
         concept,
         environment=environment,
@@ -187,7 +199,13 @@ def gen_filter_node(
             f"{padding(depth)}{LOGGER_PREFIX} filter node row parents {[x.address for x in parent_row_concepts]} could not be found"
         )
         return None
-
+    if global_filter_is_local_filter:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} filter node conditions match global conditions adding row parent {row_parent.output_concepts} with condition {where.conditional}"
+        )
+        row_parent.add_parents(core_parent_nodes)
+        row_parent.set_output_concepts([concept] + local_optional)
+        return row_parent
     if optimized_pushdown:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} returning optimized filter node with pushdown to parent with condition {where.conditional} across {[concept] + same_filter_optional + row_parent.output_concepts} "
@@ -211,7 +229,8 @@ def gen_filter_node(
             parent = row_parent
             parent.add_output_concepts([concept] + same_filter_optional)
         parent.add_parents(core_parent_nodes)
-        parent.add_condition(where.conditional)
+        if not parent.preexisting_conditions == where.conditional:
+            parent.add_condition(where.conditional)
         parent.add_existence_concepts(flattened_existence, False)
         parent.grain = BuildGrain.from_concepts(
             parent.output_concepts,
@@ -225,7 +244,8 @@ def gen_filter_node(
         parents_for_grain = [
             x.lineage.content
             for x in filters
-            if isinstance(x.lineage.content, BuildConcept)
+            if isinstance(x.lineage, BuildFilterItem)
+            and isinstance(x.lineage.content, BuildConcept)
         ]
         filter_node = FilterNode(
             input_concepts=unique(
