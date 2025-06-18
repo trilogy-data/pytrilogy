@@ -52,6 +52,7 @@ from trilogy.core.models.execute import (
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.core.statements.execute import ProcessedQuery
 from trilogy.utility import unique
+from trilogy.constants import logger
 
 AGGREGATE_TYPES = (BuildAggregateWrapper,)
 SUBSELECT_TYPES = (BuildSubselectComparison,)
@@ -323,9 +324,7 @@ def resolve_instantiated_concept(
         if k in datasource.output_concepts:
             return [x for x in datasource.output_concepts if x.address == k].pop()
         if any(k in x.pseudonyms for x in datasource.output_concepts):
-            return [
-                x for x in datasource.output_concepts if k in x.pseudonyms
-            ].pop()
+            return [x for x in datasource.output_concepts if k in x.pseudonyms].pop()
     raise SyntaxError(
         f"Could not find {concept.address} in {datasource.identifier} output {[c.address for c in datasource.output_concepts]}, acceptable synonyms {concept.pseudonyms}"
     )
@@ -618,6 +617,8 @@ def sort_select_output_processed(
         for oc in cte.output_columns:
             if x.address in oc.pseudonyms:
                 # create a wrapper BuildConcept to render the pseudonym under the original name
+                if any(x.address == y for y in mapping.keys()):
+                    continue
                 new_output.append(
                     BuildConcept(
                         name=x.name,
@@ -658,7 +659,6 @@ def sort_select_output(
         return sort_select_output_processed(cte, query)
 
     mapping = {x.address: x for x in cte.output_columns}
-
     new_output: list[BuildConcept] = []
     for x in query.output_components:
         if x.address in mapping:
@@ -666,6 +666,10 @@ def sort_select_output(
         else:
             for oc in cte.output_columns:
                 if x.address in oc.pseudonyms:
+                    # if someone already has this added
+                    # don't add it again
+                    if any(x.address == y for y in mapping.keys()):
+                        continue
                     # create a wrapper BuildConcept to render the pseudonym under the original name
                     new_output.append(
                         BuildConcept(

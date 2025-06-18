@@ -761,7 +761,7 @@ class BaseDialect:
                 and c.address not in cte.hidden_concepts
             ] + [
                 f"{self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
-                for c in cte.join_derived_concepts
+                for c in cte.join_derived_concepts if c.address not in cte.hidden_concepts
             ]
         elif self.UNNEST_MODE in (UnnestMode.CROSS_JOIN_UNNEST, UnnestMode.PRESTO):
             select_columns = [
@@ -771,7 +771,7 @@ class BaseDialect:
                 and c.address not in cte.hidden_concepts
             ] + [
                 f"{UNNEST_NAME} as {self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
-                for c in cte.join_derived_concepts
+                for c in cte.join_derived_concepts if c.address not in cte.hidden_concepts
             ]
         else:
             # otherwse, assume we are unnesting directly in the select
@@ -780,6 +780,10 @@ class BaseDialect:
                 for c in cte.output_columns
                 if c.address not in cte.hidden_concepts
             ]
+        if len(set(select_columns)) < len(select_columns):
+            raise SyntaxError(
+                f"Duplicate columns in CTE {cte.name}: {[x.address for x in cte.output_columns]}. hidden {cte.hidden_concepts} Please ensure all columns are unique."
+            )
         if auto_sort:
             select_columns = sorted(select_columns, key=lambda x: x)
         source: str | None = cte.base_name
