@@ -782,10 +782,6 @@ class BaseDialect:
                 for c in cte.output_columns
                 if c.address not in cte.hidden_concepts
             ]
-        if len(set(select_columns)) < len(select_columns):
-            raise SyntaxError(
-                f"Duplicate columns in CTE {cte.name}: {[x.address for x in cte.output_columns]}. hidden {cte.hidden_concepts} Please ensure all columns are unique."
-            )
         if auto_sort:
             select_columns = sorted(select_columns, key=lambda x: x)
         source: str | None = cte.base_name

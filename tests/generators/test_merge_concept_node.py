@@ -27,7 +27,7 @@ def test_merge_concepts():
     _, queries = env1.parse(
         """
                select
-               one,
+               one+1 as one,
                env2.one;"""
     )
     queries = bd.generate_queries(environment=env1, statements=queries)
