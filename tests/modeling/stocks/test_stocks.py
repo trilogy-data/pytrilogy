@@ -288,7 +288,6 @@ SELECT
     assert "dividend" not in sql.lower(), sql
 
 
-
 def test_bind_filter_reassignment_two():
     env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
     from trilogy.hooks import DebuggingHook

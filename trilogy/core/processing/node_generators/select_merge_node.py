@@ -536,7 +536,9 @@ def gen_select_merge_node(
             force_group=False,
             conditions=conditions.conditional if conditions else None,
         )
-    attempts = [False,]
+    attempts = [
+        False,
+    ]
     if accept_partial:
         attempts.append(True)
     for attempt in attempts:

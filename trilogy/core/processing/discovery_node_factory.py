@@ -319,7 +319,6 @@ class RootNodeHandler:
                 )
                 return synonym_node
 
-
         return None
 
     def _try_merge_expansion(

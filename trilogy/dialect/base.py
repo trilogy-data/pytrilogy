@@ -761,7 +761,8 @@ class BaseDialect:
                 and c.address not in cte.hidden_concepts
             ] + [
                 f"{self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
-                for c in cte.join_derived_concepts if c.address not in cte.hidden_concepts
+                for c in cte.join_derived_concepts
+                if c.address not in cte.hidden_concepts
             ]
         elif self.UNNEST_MODE in (UnnestMode.CROSS_JOIN_UNNEST, UnnestMode.PRESTO):
             select_columns = [
@@ -771,7 +772,8 @@ class BaseDialect:
                 and c.address not in cte.hidden_concepts
             ] + [
                 f"{UNNEST_NAME} as {self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
-                for c in cte.join_derived_concepts if c.address not in cte.hidden_concepts
+                for c in cte.join_derived_concepts
+                if c.address not in cte.hidden_concepts
             ]
         else:
             # otherwse, assume we are unnesting directly in the select

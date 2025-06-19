@@ -3,7 +3,7 @@ from collections import defaultdict
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.enums import FunctionType, Derivation
+from trilogy.core.enums import Derivation, FunctionType
 from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, StrategyNode
@@ -59,12 +59,14 @@ def gen_synonym_node(
         itertools.product(*(synonyms[obj] for obj in sorted_keys))
     )
 
-    def similarity_sort_key(combo:list[BuildConcept]):
+    def similarity_sort_key(combo: list[BuildConcept]):
         addresses = [x.address for x in combo]
 
         # Calculate similarity score - count how many pairs share prefixes
         similarity_score = 0
-        roots = sum([1 for x in combo if x.derivation in (Derivation.ROOT, Derivation.CONSTANT)])
+        roots = sum(
+            [1 for x in combo if x.derivation in (Derivation.ROOT, Derivation.CONSTANT)]
+        )
         for i in range(len(addresses)):
             for j in range(i + 1, len(addresses)):
                 # Find common prefix length
@@ -77,7 +79,6 @@ def gen_synonym_node(
                     else:
                         break
                 similarity_score += common_prefix_len
-
 
         # Sort by roots, similarity (descending), then by addresses (ascending) for ties
         return (-roots, -similarity_score, addresses)
