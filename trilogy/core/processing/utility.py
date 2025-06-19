@@ -603,14 +603,21 @@ def find_nullable_concepts(
 
 
 def sort_select_output_processed(
-    cte: CTE | UnionCTE, query: ProcessedQuery
+    cte: CTE | UnionCTE, query: SelectStatement | MultiSelectStatement | ProcessedQuery
 ) -> CTE | UnionCTE:
-    output_addresses = [c.address for c in query.output_columns]
+    if isinstance(query, ProcessedQuery):
+        targets = query.output_columns
+        hidden = query.hidden_columns
+    else:
+        targets = query.output_components
+        hidden = query.hidden_components
+
+    output_addresses = [c.address for c in targets]
 
     mapping = {x.address: x for x in cte.output_columns}
 
     new_output: list[BuildConcept] = []
-    for x in query.output_columns:
+    for x in targets:
         if x.address in mapping:
             new_output.append(mapping[x.address])
         for oc in cte.output_columns:
@@ -640,10 +647,7 @@ def sort_select_output_processed(
         [
             c.address
             for c in cte.output_columns
-            if (
-                c.address not in query.output_columns
-                or c.address in query.hidden_columns
-            )
+            if (c.address not in targets or c.address in hidden)
         ]
     )
     cte.output_columns = new_output
@@ -654,41 +658,4 @@ def sort_select_output(
     cte: CTE | UnionCTE, query: SelectStatement | MultiSelectStatement | ProcessedQuery
 ) -> CTE | UnionCTE:
 
-    if isinstance(query, ProcessedQuery):
-        return sort_select_output_processed(cte, query)
-
-    mapping = {x.address: x for x in cte.output_columns}
-    new_output: list[BuildConcept] = []
-    for x in query.output_components:
-        if x.address in mapping:
-            new_output.append(mapping[x.address])
-        else:
-            for oc in cte.output_columns:
-                if x.address in oc.pseudonyms:
-                    # if someone already has this added
-                    # don't add it again
-                    if any(x.address == y for y in mapping.keys()):
-                        continue
-                    # create a wrapper BuildConcept to render the pseudonym under the original name
-                    new_output.append(
-                        BuildConcept(
-                            name=x.name,
-                            namespace=x.namespace,
-                            pseudonyms={oc.address},
-                            datatype=oc.datatype,
-                            purpose=oc.purpose,
-                            grain=oc.grain,
-                            build_is_aggregate=oc.build_is_aggregate,
-                        )
-                    )
-                    break
-    cte.output_columns = new_output
-    cte.hidden_concepts = set(
-        [
-            c.address
-            for c in query.output_components
-            if c.address in query.hidden_components
-        ]
-    )
-
-    return cte
+    return sort_select_output_processed(cte, query)

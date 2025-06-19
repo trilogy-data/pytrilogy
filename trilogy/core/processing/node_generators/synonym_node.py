@@ -3,20 +3,13 @@ from collections import defaultdict
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, FunctionType
-from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
+from trilogy.core.enums import Derivation
+from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, StrategyNode
 from trilogy.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_SYNONYM_NODE]"
-
-
-def is_union(c: BuildConcept):
-    return (
-        isinstance(c.lineage, BuildFunction)
-        and c.lineage.operator == FunctionType.UNION
-    )
 
 
 def gen_synonym_node(
@@ -41,7 +34,6 @@ def gen_synonym_node(
                 synonyms[x.address].append(parent)
                 has_synonyms = True
         for y in x.pseudonyms:
-
             if y in environment.alias_origin_lookup:
                 synonyms[x.address].append(environment.alias_origin_lookup[y])
                 has_synonyms = True
