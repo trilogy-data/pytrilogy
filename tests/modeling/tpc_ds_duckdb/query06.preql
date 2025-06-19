@@ -4,15 +4,14 @@
 import store_sales as store_sales;
 import item as item;
 
-
 merge store_sales.item.id into ~item.id; # merge models for this query to get avg price of all items, not just sold items
-
 
 WHERE
     store_sales.date.year=2001 
+    and store_sales.item.category is not null
     and store_sales.date.month_of_year=1 
     and store_sales.item.current_price > 1.2 * avg(item.current_price) by item.category
-    and store_sales.item.category is not null # this is implicit in the raw SQL because of a join on null
+    
 SELECT
     store_sales.customer.state,
     sum(group(1) by store_sales.ticket_number, store_sales.item.id) as customer_count

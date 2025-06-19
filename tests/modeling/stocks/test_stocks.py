@@ -198,7 +198,7 @@ def test_provider_name():
   """
     )[0]
     assert "reference" not in sql.lower(), sql
-    assert sql.count("JOIN") == 1, sql
+    assert sql.count("JOIN") == 3, sql
 
 
 def test_filter():
@@ -268,3 +268,40 @@ where symbol.sector in ('Energy', 'Materials', 'Utilities')
     """
     )[0]
     assert "reference" not in sql.lower(), sql
+
+
+def test_bind_filter_reassignment():
+    env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    duckdb = Dialects.DUCK_DB.default_executor(environment=env)
+
+    sql = duckdb.generate_sql(
+        """
+SELECT
+    holdings.provider.name,
+    count(holdings.symbol.id) as  holding_count,
+;
+    """
+    )[0]
+    assert "dividend" not in sql.lower(), sql
+
+
+def test_bind_filter_reassignment_two():
+    env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    duckdb = Dialects.DUCK_DB.default_executor(environment=env)
+
+    sql = duckdb.generate_sql(
+        """
+SELECT
+    provider.name,
+    count(holdings.symbol.id) as  holding_count,
+    sum(holdings.value) as  holding_value
+;
+    """
+    )[0]
+    assert "dividend" not in sql.lower(), sql

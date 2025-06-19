@@ -171,6 +171,7 @@ key wrapper struct<a,b>;
 key array_struct list<wrapper>;
 
 auto unnest_array<-unnest(array_struct);
+merge unnest_array into wrapper;
                                     
 datasource struct_array (
     array_struct: array_struct

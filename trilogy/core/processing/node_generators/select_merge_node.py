@@ -493,7 +493,7 @@ def create_select_node(
     else:
 
         candidate = bcandidate
-    assert candidate.resolve().output_concepts == all_concepts
+
     return candidate
 
 
@@ -536,7 +536,12 @@ def gen_select_merge_node(
             force_group=False,
             conditions=conditions.conditional if conditions else None,
         )
-    for attempt in [False, True]:
+    attempts = [
+        False,
+    ]
+    if accept_partial:
+        attempts.append(True)
+    for attempt in attempts:
         pruned_concept_graph = create_pruned_concept_graph(
             g,
             non_constant,

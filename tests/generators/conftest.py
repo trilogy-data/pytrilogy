@@ -33,6 +33,11 @@ def test_environment():
     env = Environment()
     order_id = Concept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
 
+    alt_order_id = Concept(
+        name="alt_order_id",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+    )
     order_timestamp = Concept(
         name="order_timestamp", datatype=DataType.TIMESTAMP, purpose=Purpose.PROPERTY
     )
@@ -245,6 +250,7 @@ def test_environment():
         revenue,
         product_id,
         order_id,
+        alt_order_id,
         order_count,
         order_timestamp,
         distinct_order_count,
@@ -262,6 +268,8 @@ def test_environment():
         # env.concepts[item.name] = item
     for item in [test_product, test_category, test_revenue]:
         env.add_datasource(item)
+
+    env.merge_concept(alt_order_id, order_id, [])
 
     yield env
 

@@ -59,7 +59,7 @@ def test_io_statement():
 
 auto x <- unnest(array);
 
-copy into csv '{target}' from select x -> test;
+copy into csv '{target}' from select x -> test order by test asc;
 """
     exec = Dialects.DUCK_DB.default_executor()
     results = exec.parse_text(text)
