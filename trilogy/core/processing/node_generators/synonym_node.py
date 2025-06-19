@@ -59,7 +59,7 @@ def gen_synonym_node(
         itertools.product(*(synonyms[obj] for obj in sorted_keys))
     )
 
-    def similarity_sort_key(combo: list[BuildConcept]):
+    def similarity_sort_key(combo: tuple[BuildConcept, ...]):
         addresses = [x.address for x in combo]
 
         # Calculate similarity score - count how many pairs share prefixes
