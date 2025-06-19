@@ -276,7 +276,7 @@ ORDER BY{% for order in order_by %}
 )
 
 
-def safe_get_cte_value(coalesce, cte: CTE | UnionCTE, c: BuildConcept, quote_char: str):
+def safe_get_cte_value(coalesce, cte: CTE | UnionCTE, c: BuildConcept, quote_char: str, render_expr: Callable = None) -> Optional[str]:
     address = c.address
     raw = cte.source_map.get(address, None)
 
@@ -287,6 +287,9 @@ def safe_get_cte_value(coalesce, cte: CTE | UnionCTE, c: BuildConcept, quote_cha
         return f"{quote_char}{raw}{quote_char}.{safe_quote(rendered, quote_char)}"
     if isinstance(raw, list) and len(raw) == 1:
         rendered = cte.get_alias(c, raw[0])
+        if isinstance(rendered, FUNCTION_ITEMS):
+            # if it's a function, we need to render it as a function
+            return f"{render_expr(rendered, cte=cte, raise_invalid=True)}"
         return f"{quote_char}{raw[0]}{quote_char}.{safe_quote(rendered, quote_char)}"
     return coalesce(
         sorted(
@@ -499,6 +502,7 @@ class BaseDialect:
                     cte,
                     c,
                     self.QUOTE_CHARACTER,
+                    self.render_expr
                 )
                 if not rval:
                     # unions won't have a specific source mapped; just use a generic column reference

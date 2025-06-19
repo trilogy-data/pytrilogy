@@ -305,3 +305,26 @@ SELECT
     """
     )[0]
     assert "dividend" not in sql.lower(), sql
+
+
+def test_calculated_field():
+    env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    duckdb = Dialects.DUCK_DB.default_executor(environment=env)
+
+    sql = duckdb.generate_sql(
+        """
+SELECT
+    provider.name,
+    symbol.country,
+	symbol.city,
+	symbol.latitude,
+	symbol.longitude,
+	symbol.state,
+    count(holdings.symbol.id) as  holding_count,
+    sum(holdings.value) as  holding_value
+;  """
+    )[0]
+    assert "dividend" in sql.lower(), sql
