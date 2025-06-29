@@ -15,7 +15,6 @@ SENTINAL_AUTO_CAPTURE_GROUP_VALUE = "-1"
 def generate_regex_extract(x: list[str]) -> str:
     if str(x[2]) == SENTINAL_AUTO_CAPTURE_GROUP_VALUE:
         regex = re.compile(x[1])
-        print(f"Regex: {regex}" f" Groups: {regex.groups} Match: {regex.match('test')}")
         if regex.groups == 0:
             search = 0
         else:
