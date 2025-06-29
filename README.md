@@ -6,6 +6,13 @@ The Trilogy language is an experiment in better SQL for analytics - a streamline
 
 [pytrilogy](https://github.com/trilogy-data/pytrilogy) is the reference implementation, written in Python.
 
+Trilogy concretely solves these common problems in karge, SQL based analytics teams:
+- decoupling consumption code from specific physical assets
+- better testability and change management
+- reduced boilerplate and opportunity for OLAP style optimization at scale
+
+Trilogy can be especially powerful as a frontend consumption language, since the decoupling from the physical layout makes dynamic and interactive dashboards backed by SQL tables much easier to create.
+
 > [!TIP]
 > You can try Trilogy in a [open-source studio](https://trilogydata.dev/trilogy-studio-core/). More details on the language can be found on the [documentation](https://trilogydata.dev/).
 
