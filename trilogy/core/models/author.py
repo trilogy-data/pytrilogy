@@ -2303,7 +2303,7 @@ class CustomFunctionFactory:
         ]
         return self
 
-    def __call__(self, *creation_args: list[Expr]):
+    def __call__(self, *creation_args: Expr):
         nout = (
             self.function.model_copy(deep=True)
             if isinstance(self.function, BaseModel)
@@ -2389,7 +2389,6 @@ Expr = (
     | int
     | str
     | float
-    | list
     | date
     | datetime
     | TupleWrapper
@@ -2430,7 +2429,6 @@ FuncArgs = (
     | ListType
     | MapType
     | NumericType
-    | list
     | ListWrapper[Any]
     | TupleWrapper[Any]
     | Comparison

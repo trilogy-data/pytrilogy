@@ -146,7 +146,7 @@ class ParsePass(Enum):
     VALIDATION = 2
 
 
-CONSTANT_TYPES = (int, float, str, bool, list, ListWrapper, MapWrapper)
+CONSTANT_TYPES = (int, float, str, bool, ListWrapper, TupleWrapper, MapWrapper)
 
 SELF_LABEL = "root"
 
@@ -742,6 +742,7 @@ class ParseToObjects(Transformer):
         lookup, namespace, name, parent = parse_concept_reference(
             name, self.environment
         )
+
         concept = Concept(
             name=name,
             datatype=arg_to_datatype(constant),

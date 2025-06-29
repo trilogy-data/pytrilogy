@@ -249,7 +249,7 @@ def get_concept_arguments(expr) -> List["BuildConcept"]:
     return output
 
 
-class BuildParamaterizedConceptReference(BaseModel):
+class BuildParamaterizedConceptReference(DataTyped, BaseModel):
     concept: BuildConcept
 
     def __str__(self):
@@ -258,6 +258,10 @@ class BuildParamaterizedConceptReference(BaseModel):
     @property
     def safe_address(self) -> str:
         return self.concept.safe_address
+
+    @property
+    def output_datatype(self) -> DataType:
+        return self.concept.output_datatype
 
 
 class BuildGrain(BaseModel):
@@ -1811,8 +1815,8 @@ class Factory:
             right_c, _ = self.instantiate_concept(base.right)
             right = right_c
         return BuildSubselectComparison.model_construct(
-            left=self.build(base.left),
-            right=self.build(right),
+            left=self.handle_constant(self.build(base.left)),
+            right=self.handle_constant(self.build(right)),
             operator=base.operator,
         )
 

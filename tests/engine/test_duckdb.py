@@ -1430,3 +1430,17 @@ select count(id) as a_children;
     )[0].fetchall()
     assert len(results) == 1
     assert results[0].a_children == 4
+
+
+def test_tuple_constant(default_duckdb_engine: Executor):
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+    test = """
+const list <- (1,2,3,4);
+
+select list;"""
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 1
+    assert results[0].list == [1, 2, 3, 4]

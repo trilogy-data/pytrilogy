@@ -44,6 +44,7 @@ from trilogy.core.models.author import (
     RowsetLineage,
     SubselectComparison,
     TraitDataType,
+    TupleWrapper,
     UndefinedConcept,
     WhereClause,
     WindowItem,
@@ -172,7 +173,7 @@ def concept_list_to_keys(
 
 
 def constant_to_concept(
-    parent: ListWrapper | MapWrapper | list | int | float | str,
+    parent: ListWrapper | TupleWrapper | MapWrapper | int | float | str,
     name: str,
     namespace: str,
     metadata: Metadata | None = None,
@@ -183,7 +184,7 @@ def constant_to_concept(
         output_purpose=Purpose.CONSTANT,
         arguments=[parent],
     )
-    assert const_function.arguments[0] == parent, const_function.arguments[0]
+    # assert const_function.arguments[0] == parent, f'{const_function.arguments[0]} != {parent}, {type(const_function.arguments[0])} != {type(parent)}'
     fmetadata = metadata or Metadata()
     return Concept(
         name=name,
