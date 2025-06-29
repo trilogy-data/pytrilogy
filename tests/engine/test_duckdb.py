@@ -1466,3 +1466,22 @@ select
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1
     assert results[0].two == 2
+
+
+def test_map(default_duckdb_engine: Executor):
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    test = """
+
+const map <- {1:2, 3:4};
+
+select 
+    map;
+    
+    """
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 1
+    assert results[0].map == {1: 2, 3: 4}
