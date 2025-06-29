@@ -1,3 +1,4 @@
+import re
 from typing import Any, Callable, Mapping
 
 from jinja2 import Template
@@ -7,6 +8,18 @@ from trilogy.core.models.core import DataType
 from trilogy.dialect.base import BaseDialect
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
+
+
+def generate_regex_extract(x: list[str | int]) -> tuple[str, str, int]:
+    if x[2] == "-1":
+        regex = re.compile(x[1])
+        print(f"Regex: {regex}" f" Groups: {regex.groups} Match: {regex.match('test')}")
+        if regex.groups == 0:
+            search = 0
+        else:
+            search = 1
+        return f"REGEXP_EXTRACT({x[0]},{x[1]},{search})"
+    return f"REGEXP_EXTRACT({x[0]},{x[1]},{x[2]})"
 
 
 FUNCTION_MAP = {
@@ -37,6 +50,9 @@ FUNCTION_MAP = {
     FunctionType.DATETIME_LITERAL: lambda x: f"datetime '{x}'",
     # string
     FunctionType.CONTAINS: lambda x: f"CONTAINS(LOWER({x[0]}), LOWER({x[1]}))",
+    # regexp
+    FunctionType.REGEXP_CONTAINS: lambda x: f"REGEXP_MATCHES({x[0]},{x[1]})",
+    FunctionType.REGEXP_EXTRACT: lambda x: generate_regex_extract(x),
 }
 
 # if an aggregate function is called on a source that is at the same grain as the aggregate

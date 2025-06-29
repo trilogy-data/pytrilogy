@@ -1802,6 +1802,9 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fregexp_extract(self, meta, args):
+        if len(args) == 2:
+            # this is a magic value to represent the default behavior
+            args.append(-1)
         return self.function_factory.create_function(
             args, FunctionType.REGEXP_EXTRACT, meta
         )

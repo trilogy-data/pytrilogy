@@ -1485,3 +1485,30 @@ select
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1
     assert results[0].map == {1: 2, 3: 4}
+
+
+def test_regexp(default_duckdb_engine: Executor):
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    test = """
+
+const values <- unnest(['apple', 'banana', 'cherry', 'date']);
+
+select 
+
+    regexp_contains(values, '^a.*') as starts_with_a,
+    regexp_extract(values, '^a(.*)') as after_a,
+    regexp_extract(values, '^a(.*)', 1) as after_a_explicit,
+    regexp_extract(values, '^a.*') as no_capture
+order by 
+    starts_with_a asc;
+    """
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 2
+    assert results[1].starts_with_a is True
+    assert results[1].after_a == "pple"
+    assert results[1].after_a_explicit == "pple"
+    assert results[1].no_capture == "apple"
