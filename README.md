@@ -2,45 +2,60 @@
 [![Website](https://img.shields.io/badge/INTRO-WEB-orange?)](https://trilogydata.dev/)
 [![Discord](https://img.shields.io/badge/DISCORD-CHAT-red?logo=discord)](https://discord.gg/Z4QSSuqGEd)
 
-pytrilogy is an experimental implementation of the Trilogy language, a higher-level SQL that replaces tables/joins with a lightweight semantic binding layer.
+The Trilogy language is an experiment in better SQL for analytics - a streamlined SQL that replaces tables/joins with a lightweight semantic binding layer and provides easy reuse and composability. It compiles to SQL - making it easy to debug or integrate into existing workflows - and can be run against any supported SQL backend.  
 
-Trilogy looks like SQL, but simpler. It's a modern SQL refresh targeted at SQL lovers who want more reusability and composability without losing the expressiveness and iterative value of SQL. It compiles to SQL - making it easy to debug or integrate into existing workflows - and can be run against any supported SQL backend.  
+[pytrilogy](https://github.com/trilogy-data/pytrilogy) is the reference implementation, written in Python.
+
+Trilogy concretely solves these common problems in karge, SQL based analytics teams:
+- decoupling consumption code from specific physical assets
+- better testability and change management
+- reduced boilerplate and opportunity for OLAP style optimization at scale
+
+Trilogy can be especially powerful as a frontend consumption language, since the decoupling from the physical layout makes dynamic and interactive dashboards backed by SQL tables much easier to create.
 
 > [!TIP]
-> Try it online in a hosted [open-source studio](https://trilogydata.dev/trilogy-studio-core/). To get an overview of the language and run interactive examples, head to the [documentation](https://trilogydata.dev/).
+> You can try Trilogy in a [open-source studio](https://trilogydata.dev/trilogy-studio-core/). More details on the language can be found on the [documentation](https://trilogydata.dev/).
+
+We recommend the studio as the fastest way to explore Trilogy. For deeper work and integration, `pytrilogy` can be run locally to parse and execute trilogy model [.preql] files using the `trilogy` CLI tool, or can be run in python by importing the `trilogy` package.
 
 Installation: `pip install pytrilogy`
 
-`pytrilogy` can be run locally to parse and execute trilogy model [.preql] files using the `trilogy` CLI tool, or can be run in python by importing the `trilogy` package.
+### Trilogy Looks Like SQL
 
-You can read more about the project [here](https://trilogydata.dev/) and try out an interactive demo [here](https://trilogydata.dev/demo/). 
-
-Trilogy looks like SQL:
 ```sql
+import names;
+
+const top_names <- ['Elvis', 'Elvira', 'Elrond', 'Sam'];
+
+def initcap(word) -> upper(substring(word, 1, 1)) || substring(word, 2, len(word));
+
 WHERE 
-    name like '%lvis%'
+    @initcap(name) in top_names
 SELECT
     name,
-    count(name) as name_count
+    sum(births) as name_count
 ORDER BY
     name_count desc
 LIMIT 10;
 ```
 ## Goals
-And aims to:
+Versus SQL, Trilogy aims to: 
 
-Preserve:
+Keep:
 - Correctness
 - Accessibility
 
-Enhance:
+Improve:
 - Simplicity
-- Understandability
 - Refactoring/mantainability
 - Reusability
 
 Maintain:
 - Acceptable performance
+
+Remove:
+- Lower-level procedural features
+- Transactional optimizations/non-analytics features
 
 ## Hello World
 
@@ -103,10 +118,7 @@ SELECT
     sentences.text
 ;
 
-
-
 ```
-
 Run the following from the directory the file is in.
 
 ```bash
@@ -119,10 +131,14 @@ trilogy run hello.trilogy duckdb
 
 The current Trilogy implementation supports these backends:
 
+### Core
 - Bigquery
-- SQL Server
 - DuckDB
 - Snowflake
+
+### Experimental
+- SQL Server
+- Presto
 
 ## Basic Example - Python
 
@@ -131,7 +147,6 @@ Trilogy can be run directly in python through the core SDK. Trilogy code can be 
 A bigquery example, similar to bigquery [the quickstart](https://cloud.google.com/bigquery/docs/quickstarts/query-public-dataset-console).
 
 ```python
-
 
 from trilogy import Dialects, Environment
 

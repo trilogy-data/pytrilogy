@@ -12,6 +12,7 @@ from trilogy.constants import (
 )
 from trilogy.core.constants import UNNEST_NAME
 from trilogy.core.enums import (
+    ComparisonOperator,
     DatePart,
     FunctionType,
     UnnestMode,
@@ -276,7 +277,13 @@ ORDER BY{% for order in order_by %}
 )
 
 
-def safe_get_cte_value(coalesce, cte: CTE | UnionCTE, c: BuildConcept, quote_char: str):
+def safe_get_cte_value(
+    coalesce,
+    cte: CTE | UnionCTE,
+    c: BuildConcept,
+    quote_char: str,
+    render_expr: Callable,
+) -> Optional[str]:
     address = c.address
     raw = cte.source_map.get(address, None)
 
@@ -287,6 +294,9 @@ def safe_get_cte_value(coalesce, cte: CTE | UnionCTE, c: BuildConcept, quote_cha
         return f"{quote_char}{raw}{quote_char}.{safe_quote(rendered, quote_char)}"
     if isinstance(raw, list) and len(raw) == 1:
         rendered = cte.get_alias(c, raw[0])
+        if isinstance(rendered, FUNCTION_ITEMS):
+            # if it's a function, we need to render it as a function
+            return f"{render_expr(rendered, cte=cte, raise_invalid=True)}"
         return f"{quote_char}{raw[0]}{quote_char}.{safe_quote(rendered, quote_char)}"
     return coalesce(
         sorted(
@@ -499,6 +509,7 @@ class BaseDialect:
                     cte,
                     c,
                     self.QUOTE_CHARACTER,
+                    self.render_expr,
                 )
                 if not rval:
                     # unions won't have a specific source mapped; just use a generic column reference
@@ -514,6 +525,17 @@ class BaseDialect:
                             f"Missing source reference to {c.address}"
                         )
         return rval
+
+    def render_array_unnest(
+        self,
+        left,
+        right,
+        operator: ComparisonOperator,
+        cte: CTE | UnionCTE | None = None,
+        cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
+        raise_invalid: bool = False,
+    ):
+        return f"{self.render_expr(left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
 
     def render_expr(
         self,
@@ -556,6 +578,7 @@ class BaseDialect:
         raise_invalid: bool = False,
     ) -> str:
         if isinstance(e, SUBSELECT_COMPARISON_ITEMS):
+
             if isinstance(e.right, BuildConcept):
                 # we won't always have an existnce map
                 # so fall back to the normal map
@@ -585,10 +608,22 @@ class BaseDialect:
                     info = cte.inlined_ctes[target]
                     return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} from {info.new_base} as {target} where {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} is not null)"
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} from {target} where {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} is not null)"
-
+            elif isinstance(e.right, BuildParamaterizedConceptReference):
+                if isinstance(e.right.concept.lineage, BuildFunction) and isinstance(
+                    e.right.concept.lineage.arguments[0], ListWrapper
+                ):
+                    return self.render_array_unnest(
+                        e.left,
+                        e.right,
+                        e.operator,
+                        cte=cte,
+                        cte_map=cte_map,
+                        raise_invalid=raise_invalid,
+                    )
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
             elif isinstance(
                 e.right,
-                (ListWrapper, TupleWrapper, BuildParenthetical, list),
+                (ListWrapper, TupleWrapper, BuildParenthetical),
             ):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
 
@@ -692,13 +727,11 @@ class BaseDialect:
             return f"'{e}'"
         elif isinstance(e, (int, float)):
             return str(e)
-        elif isinstance(e, ListWrapper):
-            return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) for x in e])}]"
         elif isinstance(e, TupleWrapper):
             return f"({','.join([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) for x in e])})"
         elif isinstance(e, MapWrapper):
             return f"MAP {{{','.join([f'{self.render_expr(k, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}:{self.render_expr(v, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}' for k, v in e.items()])}}}"
-        elif isinstance(e, list):
+        elif isinstance(e, ListWrapper):
             return f"{self.FUNCTION_MAP[FunctionType.ARRAY]([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) for x in e])}"
         elif isinstance(e, DataType):
             return self.DATATYPE_MAP.get(e, e.value)

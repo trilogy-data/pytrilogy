@@ -305,3 +305,37 @@ SELECT
     """
     )[0]
     assert "dividend" not in sql.lower(), sql
+
+
+def test_calculated_field():
+    env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    duckdb = Dialects.DUCK_DB.default_executor(environment=env)
+
+    sql = duckdb.generate_sql(
+        """
+SELECT
+    --provider.id,
+    provider.name,
+    symbol.country,
+	symbol.city,
+	symbol.latitude,
+	symbol.longitude,
+	symbol.state,
+        sum(holdings.value) as  holding_value,
+    count(holdings.symbol.id) as  holding_count,
+
+;  """
+    )[0]
+
+    # assert env.concepts['provider.name'].grain.components == {
+    #     "provider.id",
+    #     "symbol.id"
+    # }
+    assert (
+        """STRING_SPLIT( "holdings_symbol_cities"."state_iso_code" , '-' )[1]""" in sql
+    ), sql
+    # we should have 3 selects, because both aggregates can get merged
+    assert sql.count("SELECT") == 3, sql.count("SELECT")

@@ -22,6 +22,24 @@ from trilogy.utility import unique
 LOGGER_PREFIX = "[GEN_GROUP_NODE]"
 
 
+def get_aggregate_grain(
+    concept: BuildConcept, environment: BuildEnvironment
+) -> BuildGrain:
+    parent_concepts: List[BuildConcept] = unique(
+        resolve_function_parent_concepts(concept, environment=environment), "address"
+    )
+    if (
+        concept.grain
+        and len(concept.grain.components) > 0
+        and not concept.grain.abstract
+    ):
+        grain_components = [environment.concepts[c] for c in concept.grain.components]
+        parent_concepts += grain_components
+        return BuildGrain.from_concepts(parent_concepts)
+    else:
+        return BuildGrain.from_concepts(parent_concepts)
+
+
 def gen_group_node(
     concept: BuildConcept,
     local_optional: List[BuildConcept],
@@ -51,7 +69,7 @@ def gen_group_node(
     ):
         grain_components = [environment.concepts[c] for c in concept.grain.components]
         parent_concepts += grain_components
-        build_grain_parents = BuildGrain.from_concepts(parent_concepts)
+        build_grain_parents = get_aggregate_grain(concept, environment)
         output_concepts += grain_components
         for possible_agg in local_optional:
 
@@ -70,6 +88,7 @@ def gen_group_node(
                     possible_agg,
                     environment=environment,
                 )
+                comp_grain = get_aggregate_grain(possible_agg, environment)
                 if set([x.address for x in agg_parents]).issubset(
                     set([x.address for x in parent_concepts])
                 ):
@@ -77,7 +96,7 @@ def gen_group_node(
                     logger.info(
                         f"{padding(depth)}{LOGGER_PREFIX} found equivalent group by optional concept {possible_agg.address} for {concept.address}"
                     )
-                elif BuildGrain.from_concepts(agg_parents) == build_grain_parents:
+                elif comp_grain == build_grain_parents:
                     extra = [x for x in agg_parents if x.address not in parent_concepts]
                     parent_concepts += extra
                     output_concepts.append(possible_agg)
@@ -86,7 +105,7 @@ def gen_group_node(
                     )
                 else:
                     logger.info(
-                        f"{padding(depth)}{LOGGER_PREFIX} cannot include optional agg {possible_agg.address}; mismatched parent grain {BuildGrain.from_concepts(agg_parents)} vs local parent {BuildGrain.from_concepts(parent_concepts)}"
+                        f"{padding(depth)}{LOGGER_PREFIX} cannot include optional agg {possible_agg.address}; it has mismatched parent grain {comp_grain } vs local parent {build_grain_parents}"
                     )
     if parent_concepts:
         logger.info(

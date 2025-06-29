@@ -4,10 +4,11 @@ import pytest
 
 from trilogy import Dialects
 from trilogy.constants import Rendering
+from trilogy.core.models.core import DataType, ListType, ListWrapper
 from trilogy.core.models.environment import Environment
 from trilogy.hooks.query_debugger import DebuggingHook
 
-UNSUPPORTED_TUPLE = (3, 10)
+UNSUPPORTED_TUPLE = (3, 11)
 
 # FORCE INSTALL sqlalchemy-bigquery (#--ignore-requires-python) to run this test if needed
 
@@ -143,3 +144,37 @@ select
 FROM
     unnest([1, 2, 3, 4]) as `_unnest_alias`"""
     ), sql[0]
+
+
+@pytest.mark.skipif(
+    sys.version_info >= UNSUPPORTED_TUPLE, reason="BigQuery not supported on 3.13"
+)
+def test_in_with_array():
+    environment = Environment()
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    _, queries = environment.parse(
+        """
+
+
+const list <- [1,2,3,4];
+
+const two <- 2;
+
+where two in list
+select 
+    two;
+    
+    """
+    )
+    executor = Dialects.BIGQUERY.default_executor(
+        environment=environment, rendering=Rendering(parameters=False)
+    )
+    sql = executor.generate_sql(queries[-1])[0]
+    listc = environment.concepts["list"]
+    assert listc.datatype == ListType(type=DataType.INTEGER)
+    assert isinstance(listc.lineage.arguments[0], ListWrapper), type(
+        listc.lineage.arguments[0]
+    )
+    assert "unnest" in sql, sql

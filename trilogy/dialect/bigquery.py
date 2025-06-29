@@ -1,11 +1,17 @@
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Dict, Mapping, Optional
 
 from jinja2 import Template
 
-from trilogy.core.enums import FunctionType, UnnestMode, WindowType
+from trilogy.core.enums import (
+    ComparisonOperator,
+    FunctionType,
+    UnnestMode,
+    WindowType,
+)
 from trilogy.core.models.core import (
     DataType,
 )
+from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.dialect.base import BaseDialect
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
@@ -99,3 +105,14 @@ class BigqueryDialect(BaseDialect):
     SQL_TEMPLATE = BQ_SQL_TEMPLATE
     UNNEST_MODE = UnnestMode.CROSS_JOIN_UNNEST
     DATATYPE_MAP = DATATYPE_MAP
+
+    def render_array_unnest(
+        self,
+        left,
+        right,
+        operator: ComparisonOperator,
+        cte: CTE | UnionCTE | None = None,
+        cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
+        raise_invalid: bool = False,
+    ):
+        return f"{self.render_expr(left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {operator.value} unnest({self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"

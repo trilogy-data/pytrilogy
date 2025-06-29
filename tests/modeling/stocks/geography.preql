@@ -1,0 +1,25 @@
+import std.geography;
+
+
+key city string::city; # city of corporate headquarters
+key country string::country; # country of corporate headquarters
+key iso_code string::country;
+key state string::us_state;
+property <city, state, country>.latitude float::latitude; 
+property <city, state, country>.longitude float::longitude; 
+
+
+datasource cities (
+	city_name:city,
+	country_name:country,
+	# country_code_alpha2:country_code_alpha2,
+	# country_code_alpha3:country_code_alpha3,
+	state_iso_code: iso_code,
+	latitude:latitude,
+	longitude:longitude,
+	split(iso_code, '-')[1]:state,
+	# feature_type:feature_type,
+	# geometry_type:geometry_type,
+)
+grain(city, country, state)
+address cities;

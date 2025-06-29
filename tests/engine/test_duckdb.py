@@ -1430,3 +1430,58 @@ select count(id) as a_children;
     )[0].fetchall()
     assert len(results) == 1
     assert results[0].a_children == 4
+
+
+def test_tuple_constant(default_duckdb_engine: Executor):
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+    test = """
+const list <- (1,2,3,4);
+
+select list;"""
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 1
+    assert results[0].list == [1, 2, 3, 4]
+
+
+def test_in_with_array(default_duckdb_engine: Executor):
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    test = """
+
+const list <- [1,2,3,4];
+
+const two <- 2;
+
+where two in list
+select 
+    two;
+    
+    """
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 1
+    assert results[0].two == 2
+
+
+def test_map(default_duckdb_engine: Executor):
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    test = """
+
+const map <- {1:2, 3:4};
+
+select 
+    map;
+    
+    """
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 1
+    assert results[0].map == {1: 2, 3: 4}

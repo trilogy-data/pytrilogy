@@ -469,6 +469,7 @@ def generate_node(
         Derivation.GROUP_TO: lambda: _generate_group_to_node(context),
         Derivation.BASIC: lambda: _generate_basic_node(context),
         Derivation.ROOT: lambda: RootNodeHandler(context).generate(),
+        Derivation.CONSTANT: lambda: RootNodeHandler(context).generate(),
     }
 
     handler = derivation_handlers.get(concept.derivation)

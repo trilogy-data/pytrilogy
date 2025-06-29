@@ -155,6 +155,7 @@ def concepts_to_build_grain_concepts(
             pconcepts.append(c)
         elif environment:
             pconcepts.append(environment.concepts[c])
+
         else:
             raise ValueError(
                 f"Unable to resolve input {c} without environment provided to concepts_to_grain call"
@@ -248,7 +249,7 @@ def get_concept_arguments(expr) -> List["BuildConcept"]:
     return output
 
 
-class BuildParamaterizedConceptReference(BaseModel):
+class BuildParamaterizedConceptReference(DataTyped, BaseModel):
     concept: BuildConcept
 
     def __str__(self):
@@ -257,6 +258,10 @@ class BuildParamaterizedConceptReference(BaseModel):
     @property
     def safe_address(self) -> str:
         return self.concept.safe_address
+
+    @property
+    def output_datatype(self) -> DataType:
+        return self.concept.output_datatype
 
 
 class BuildGrain(BaseModel):
@@ -1810,8 +1815,8 @@ class Factory:
             right_c, _ = self.instantiate_concept(base.right)
             right = right_c
         return BuildSubselectComparison.model_construct(
-            left=self.build(base.left),
-            right=self.build(right),
+            left=self.handle_constant(self.build(base.left)),
+            right=self.handle_constant(self.build(right)),
             operator=base.operator,
         )
 
@@ -1916,7 +1921,17 @@ class Factory:
         where_factory = Factory(
             grain=Grain(), environment=self.environment, local_concepts={}
         )
-
+        where_clause = (
+            where_factory.build(base.where_clause) if base.where_clause else None
+        )
+        # if the where clause derives new concepts
+        # we need to ensure these are accessible from the general factory
+        # post resolution
+        for bk, bv in where_factory.local_concepts.items():
+            # but do not override any local cahced grains
+            if bk in materialized:
+                continue
+            materialized[bk] = bv
         final: List[BuildConcept] = []
         for original in base.selection:
             new = original
@@ -1943,9 +1958,7 @@ class Factory:
                 factory.build(base.having_clause) if base.having_clause else None
             ),
             # this uses a different grain factory
-            where_clause=(
-                where_factory.build(base.where_clause) if base.where_clause else None
-            ),
+            where_clause=where_clause,
         )
 
     @build.register

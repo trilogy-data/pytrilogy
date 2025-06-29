@@ -231,7 +231,10 @@ def create_pruned_concept_graph(
 
 
 def resolve_subgraphs(
-    g: nx.DiGraph, relevant: list[BuildConcept], conditions: BuildWhereClause | None
+    g: nx.DiGraph,
+    relevant: list[BuildConcept],
+    conditions: BuildWhereClause | None,
+    depth: int = 0,
 ) -> dict[str, list[str]]:
     """When we have multiple distinct subgraphs within our matched
     nodes that can satisfy a query, resolve which one of those we should
@@ -241,7 +244,7 @@ def resolve_subgraphs(
     discarding duplicates.
     Duplicate subgraphs will be resolved based on which
     ones are most 'optimal' to use, a hueristic
-    that can evolve in the future but is currently based on
+    that can evolve in the future but is currently based on datasource
     cardinality."""
     datasources = [n for n in g.nodes if n.startswith("ds~")]
     subgraphs: dict[str, list[str]] = {
@@ -261,7 +264,7 @@ def resolve_subgraphs(
     pruned_subgraphs = {}
 
     def score_node(input: str):
-        logger.debug(f"scoring node {input}")
+        logger.debug(f"{padding(depth)}{LOGGER_PREFIX} scoring node {input}")
         grain = grain_length[input]
         # first - go for lowest grain
         # but if the object we want is in the grain, treat that as "free"
@@ -275,7 +278,7 @@ def resolve_subgraphs(
             len(subgraphs[input]),
             input,
         )
-        logger.debug(score)
+        logger.debug(f"{padding(depth)}{LOGGER_PREFIX} node {input} has score {score}")
         return score
 
     for key, nodes in subgraphs.items():
@@ -296,7 +299,7 @@ def resolve_subgraphs(
                 if len(value) < len(other_value):
                     is_subset = True
                     logger.debug(
-                        f"Dropping subgraph {key} with {value} as it is a subset of {other_key} with {other_value}"
+                        f"{padding(depth)}{LOGGER_PREFIX} Dropping subgraph {key} with {value} as it is a subset of {other_key} with {other_value}"
                     )
                 elif len(value) == len(other_value) and len(all_concepts) == len(
                     other_all_concepts
@@ -305,7 +308,9 @@ def resolve_subgraphs(
                     matches.add(key)
         if matches and not is_subset:
             min_node = min(matches, key=score_node)
-            logger.debug(f"minimum source score is {min_node}")
+            logger.debug(
+                f"{padding(depth)}{LOGGER_PREFIX} minimum source score is {min_node}"
+            )
             is_subset = key is not min(matches, key=score_node)
         if not is_subset:
             pruned_subgraphs[key] = nodes
@@ -330,7 +335,9 @@ def resolve_subgraphs(
                 > 1
             )
         if not keep:
-            logger.debug(f"Pruning node {node} as irrelevant after subgraph resolution")
+            logger.debug(
+                f"{padding(depth)}{LOGGER_PREFIX} Pruning node {node} as irrelevant after subgraph resolution"
+            )
             pruned_subgraphs = {
                 k: [n for n in v if n != node] for k, v in pruned_subgraphs.items()
             }
@@ -561,7 +568,7 @@ def gen_select_merge_node(
         return None
 
     sub_nodes = resolve_subgraphs(
-        pruned_concept_graph, relevant=non_constant, conditions=conditions
+        pruned_concept_graph, relevant=non_constant, conditions=conditions, depth=depth
     )
 
     logger.info(f"{padding(depth)}{LOGGER_PREFIX} fetching subgraphs {sub_nodes}")
