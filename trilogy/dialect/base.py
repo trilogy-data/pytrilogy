@@ -276,7 +276,13 @@ ORDER BY{% for order in order_by %}
 )
 
 
-def safe_get_cte_value(coalesce, cte: CTE | UnionCTE, c: BuildConcept, quote_char: str, render_expr: Callable = None) -> Optional[str]:
+def safe_get_cte_value(
+    coalesce,
+    cte: CTE | UnionCTE,
+    c: BuildConcept,
+    quote_char: str,
+    render_expr: Callable,
+) -> Optional[str]:
     address = c.address
     raw = cte.source_map.get(address, None)
 
@@ -502,7 +508,7 @@ class BaseDialect:
                     cte,
                     c,
                     self.QUOTE_CHARACTER,
-                    self.render_expr
+                    self.render_expr,
                 )
                 if not rval:
                     # unions won't have a specific source mapped; just use a generic column reference

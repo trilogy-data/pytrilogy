@@ -292,3 +292,36 @@ order by
     DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     exec.generate_sql(query)[0]
+
+
+def test_filter_constant():
+    query = """
+import names;
+
+
+where abs(sum(births? gender = 'M') by name - sum(births? gender = 'F') by name) < (.1*sum(births) by name)
+SELECT [1,2,3,4] as value, 'example' as dim;
+"""
+    env = Environment(working_path=Path(__file__).parent)
+    DebuggingHook()
+    exec = Dialects.DUCK_DB.default_executor(environment=env)
+    query = exec.generate_sql(query)[0]
+
+    assert "< ( 0.1" in query
+
+
+def test_filter_constant_with_constant():
+    query = """
+import names;
+
+auto value <- unnest([1,2,3,4]);
+
+where abs(sum(births? gender = 'M') by name - sum(births? gender = 'F') by name) < (.1*sum(births) by name) and value = 2
+SELECT value, 'example' as dim;
+"""
+    env = Environment(working_path=Path(__file__).parent)
+    DebuggingHook()
+    exec = Dialects.DUCK_DB.default_executor(environment=env)
+    query = exec.generate_sql(query)[0]
+
+    assert '."value" = 2' in query, query
