@@ -23,8 +23,9 @@ def generate_regex_extract(x: list[str]) -> str:
     return f"REGEXP_EXTRACT({x[0]},{x[1]},{x[2]})"
 
 
-def generate_regex_extract(x: list[str | int]) -> tuple[str, str, int]:
-    if x[2] == "-1":
+
+def generate_regex_extract(x: list[str]) -> str:
+    if str(x[2]) == SENTINAL_AUTO_CAPTURE_GROUP_VALUE:
         regex = re.compile(x[1])
         print(f"Regex: {regex}" f" Groups: {regex.groups} Match: {regex.match('test')}")
         if regex.groups == 0:
