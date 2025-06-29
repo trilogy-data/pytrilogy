@@ -5,8 +5,8 @@ key city string::city; # city of corporate headquarters
 key country string::country; # country of corporate headquarters
 key iso_code string::country;
 key state string::us_state;
-property <city, country>.latitude float::latitude; 
-property <city, country>.longitude float::longitude; 
+property <city, state, country>.latitude float::latitude; 
+property <city, state, country>.longitude float::longitude; 
 
 
 datasource cities (

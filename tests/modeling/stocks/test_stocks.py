@@ -317,14 +317,25 @@ def test_calculated_field():
     sql = duckdb.generate_sql(
         """
 SELECT
+    --provider.id,
     provider.name,
     symbol.country,
 	symbol.city,
 	symbol.latitude,
 	symbol.longitude,
 	symbol.state,
+        sum(holdings.value) as  holding_value,
     count(holdings.symbol.id) as  holding_count,
-    sum(holdings.value) as  holding_value
+
 ;  """
     )[0]
-    assert "dividend" in sql.lower(), sql
+
+    # assert env.concepts['provider.name'].grain.components == {
+    #     "provider.id",
+    #     "symbol.id"
+    # }
+    assert (
+        """STRING_SPLIT( "holdings_symbol_cities"."state_iso_code" , '-' )[1]""" in sql
+    ), sql
+    # we should have 3 selects, because both aggregates can get merged
+    assert sql.count("SELECT") == 3, sql.count("SELECT")
