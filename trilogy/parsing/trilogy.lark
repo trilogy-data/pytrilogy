@@ -279,7 +279,7 @@
     _SUBSTRING.1: "substring("i
     fsubstring: _SUBSTRING expr "," expr "," expr ")"
     _REGEXP_EXTRACT.1: "regexp_extract("
-    fregexp_extract: _REGEXP_EXTRACT expr "," expr ")"
+    fregexp_extract: _REGEXP_EXTRACT expr "," expr ("," int_lit)? ")"
     _REGEXP_CONTAINS.1: "regexp_contains("
     fregexp_contains: _REGEXP_CONTAINS expr "," expr  ")"
     _REGEXP_REPLACE.1: "regexp_replace("

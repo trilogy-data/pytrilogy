@@ -370,10 +370,10 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         arg_count=2,
     ),
     FunctionType.REGEXP_EXTRACT: FunctionConfig(
-        valid_inputs={DataType.STRING},
+        valid_inputs=[{DataType.STRING}, {DataType.STRING}, {DataType.INTEGER}],
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.STRING,
-        arg_count=2,
+        arg_count=3,
     ),
     FunctionType.REGEXP_REPLACE: FunctionConfig(
         valid_inputs={DataType.STRING},
