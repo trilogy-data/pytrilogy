@@ -37,6 +37,9 @@ def reduce_expression(
     elif var.datatype == DataType.DATETIME:
         lower_check = datetime.min  # type: ignore
         upper_check = datetime.max  # type: ignore
+    elif var.datatype == DataType.BOOLEAN:
+        lower_check = False  # type: ignore
+        upper_check = True  # type: ignore
     else:
         raise ValueError(f"Invalid datatype: {var.datatype}")
 
@@ -49,6 +52,16 @@ def reduce_expression(
             increment = timedelta(seconds=1)
         elif isinstance(value, int):
             increment = 1
+        elif isinstance(value, bool):
+            if op != "=":
+                raise ValueError(f"Invalid operator for boolean: {op}")
+            ranges.append(
+                (
+                    value,
+                    value,
+                )
+            )
+            continue
         # elif isinstance(value, float):
         #     value = Decimal(value)
         #     increment = Decimal(0.0000000001)
@@ -93,6 +106,9 @@ def reduce_expression(
     return is_fully_covered(lower_check, upper_check, ranges, increment)
 
 
+REDUCABLE_TYPES = (int, date, bool, datetime, BuildFunction)
+
+
 def simplify_conditions(
     conditions: list[BuildComparison | BuildConditional | BuildParenthetical],
 ) -> bool:
@@ -103,9 +119,9 @@ def simplify_conditions(
     for condition in conditions:
         if not isinstance(condition, BuildComparison):
             return False
-        if not isinstance(
-            condition.left, (int, date, datetime, BuildFunction)
-        ) and not isinstance(condition.right, (int, date, datetime, BuildFunction)):
+        if not isinstance(condition.left, REDUCABLE_TYPES) and not isinstance(
+            condition.right, REDUCABLE_TYPES
+        ):
             return False
         if not isinstance(condition.left, BuildConcept) and not isinstance(
             condition.right, BuildConcept
@@ -118,10 +134,10 @@ def simplify_conditions(
             if not comparison.operator == FunctionType.CONSTANT:
                 return False
             first_arg = comparison.arguments[0]
-            if not isinstance(first_arg, (int, date, datetime)):
+            if not isinstance(first_arg, REDUCABLE_TYPES):
                 return False
             comparison = first_arg
-        if not isinstance(comparison, (int, date, datetime)):
+        if not isinstance(comparison, REDUCABLE_TYPES):
             return False
 
         var = concept
@@ -134,6 +150,24 @@ def simplify_conditions(
 
     # Final simplification
     return True if all(isinstance(s, bool) and s for s in simplified) else False
+
+
+def boolean_fully_covered(
+    start: bool,
+    end: bool,
+    ranges: List[Tuple[bool, bool]],
+):
+    all = []
+    for r_start, r_end in ranges:
+        if r_start is False and r_end is True:
+            all.append(True)
+        elif r_start is True and r_end is False:
+            all.append(False)
+        elif r_start is True and r_end is True:
+            all.append(True)
+        elif r_start is False and r_end is False:
+            all.append(False)
+    return set(all) == {False, True}
 
 
 def is_fully_covered(
@@ -153,6 +187,8 @@ def is_fully_covered(
     Returns:
     - bool: True if the ranges fully cover [start, end], False otherwise.
     """
+    if isinstance(start, bool):
+        return boolean_fully_covered(start, end, ranges)
     # Sort ranges by their start values (and by end values for ties)
     ranges.sort()
 
@@ -191,7 +227,7 @@ def get_union_sources(
         assocs[merge_key.address].append(x)
     final: list[list[BuildDatasource]] = []
     for _, dses in assocs.items():
-
+        print(dses)
         conditions = [c.non_partial_for.conditional for c in dses if c.non_partial_for]
         if simplify_conditions(conditions):
             final.append(dses)

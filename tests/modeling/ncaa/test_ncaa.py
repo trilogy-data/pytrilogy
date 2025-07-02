@@ -12,6 +12,7 @@ working_path = Path(__file__).parent
 
 def test_adhoc01():
     env = Environment(working_path=working_path)
+    DebuggingHook()
     with open(working_path / "adhoc01.preql") as f:
         text = f.read()
 
