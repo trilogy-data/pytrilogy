@@ -1,0 +1,17 @@
+import game_tall as game_tall;
+
+select
+  game_tall.team.name,
+  count(game_tall.id) as total_games,
+  sum(game_tall.win ? game_tall.is_home = true) as home_wins,
+  count(game_tall.id ? game_tall.is_home = true) as home_games,
+  sum(game_tall.win ? game_tall.is_home = false) as away_wins,
+  count(game_tall.id ? game_tall.is_home = false) as away_games,
+  home_wins / home_games as home_win_rate,
+  away_wins / away_games as away_win_rate,
+  abs(home_win_rate - away_win_rate) as win_rate_difference
+having
+  home_games >= 10 and away_games >= 10  # Ensure we have enough games for meaningful rates
+order by
+  win_rate_difference desc
+limit 25;
