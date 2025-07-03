@@ -37,7 +37,7 @@ def reduce_expression(
     elif var.datatype == DataType.DATETIME:
         lower_check = datetime.min  # type: ignore
         upper_check = datetime.max  # type: ignore
-    elif var.datatype == DataType.BOOLEAN:
+    elif var.datatype == DataType.BOOL:
         lower_check = False  # type: ignore
         upper_check = True  # type: ignore
     else:
@@ -227,7 +227,6 @@ def get_union_sources(
         assocs[merge_key.address].append(x)
     final: list[list[BuildDatasource]] = []
     for _, dses in assocs.items():
-        print(dses)
         conditions = [c.non_partial_for.conditional for c in dses if c.non_partial_for]
         if simplify_conditions(conditions):
             final.append(dses)

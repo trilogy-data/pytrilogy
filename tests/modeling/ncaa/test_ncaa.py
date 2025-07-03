@@ -6,9 +6,26 @@ from trilogy import Dialects, Executor
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.environment import Environment
 from trilogy.hooks import DebuggingHook
+from trilogy.core.processing.node_generators.select_helpers.datasource_injection import get_union_sources
+from trilogy.core.models.build import Factory
 
 working_path = Path(__file__).parent
 
+def test_union_node():
+    env = Environment(working_path=working_path)
+    DebuggingHook()
+    with open(working_path / "adhoc01.preql") as f:
+        text = f.read()
+
+    env.parse(text)
+
+    factory = Factory(environment=env)
+
+    datasources = [factory.build(x) for x in env.datasources.values()]
+    union = get_union_sources(datasources=datasources, concepts = [factory.build(env.concepts['team_name'])])
+    assert len(union) == 1, "Union sources should return a single source for team_name"
+    union_ds = union[0][0]
+    
 
 def test_adhoc01():
     env = Environment(working_path=working_path)

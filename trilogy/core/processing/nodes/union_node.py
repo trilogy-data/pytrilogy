@@ -32,6 +32,7 @@ class UnionNode(StrategyNode):
     def _resolve(self) -> QueryDatasource:
         """We need to ensure that any filtered values are removed from the output to avoid inappropriate references"""
         base = super()._resolve()
+        base.partial_concepts = []
         return base
 
     def copy(self) -> "UnionNode":

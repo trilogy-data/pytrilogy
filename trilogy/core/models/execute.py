@@ -487,7 +487,7 @@ class BaseJoin(BaseModel):
 
         # Validation logic
         final_concepts = []
-        assert self.left_datasource and self.right_datasource
+        
 
         for concept in self.concepts or []:
             include = True
