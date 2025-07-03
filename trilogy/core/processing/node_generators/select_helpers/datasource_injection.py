@@ -209,14 +209,14 @@ def get_union_sources(
     datasources: list[BuildDatasource], concepts: list[BuildConcept]
 ) -> List[list[BuildDatasource]]:
     candidates: list[BuildDatasource] = []
+    
     for x in datasources:
-        if all([c.address in x.output_concepts for c in concepts]):
+        if any([c.address in x.output_concepts for c in concepts]):
             if (
                 any([c.address in x.partial_concepts for c in concepts])
                 and x.non_partial_for
             ):
                 candidates.append(x)
-
     assocs: dict[str, list[BuildDatasource]] = defaultdict(list[BuildDatasource])
     for x in candidates:
         if not x.non_partial_for:
@@ -227,6 +227,7 @@ def get_union_sources(
         assocs[merge_key.address].append(x)
     final: list[list[BuildDatasource]] = []
     for _, dses in assocs.items():
+
         conditions = [c.non_partial_for.conditional for c in dses if c.non_partial_for]
         if simplify_conditions(conditions):
             final.append(dses)

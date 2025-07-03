@@ -523,7 +523,8 @@ def _search_concepts(
                 context.skip.add(priority_concept.address)
             logger.info(node.resolve().output_concepts)
             logger.info(node.resolve().partial_concepts )
-            raise SyntaxError('PICK UP HERE TO FIGURE OUT WHY THERE IS A PARTIAL CONCEPT')
+            # if node.resolve().partial_concepts:
+            #     raise SyntaxError('PICK UP HERE TO FIGURE OUT WHY THERE IS A PARTIAL CONCEPT')
         context.attempted.add(priority_concept.address)
         complete, found_c, missing_c, partial, virtual = validate_stack(
             environment,

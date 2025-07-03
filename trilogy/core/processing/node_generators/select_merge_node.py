@@ -1,5 +1,5 @@
 from functools import reduce
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 import networkx as nx
 
@@ -29,6 +29,9 @@ from trilogy.core.processing.nodes import (
     StrategyNode,
 )
 from trilogy.core.processing.utility import padding
+
+if TYPE_CHECKING:
+    from trilogy.core.processing.nodes.union_node import UnionNode
 
 LOGGER_PREFIX = "[GEN_ROOT_MERGE_NODE]"
 
@@ -119,8 +122,12 @@ def create_pruned_concept_graph(
 
     g = g.copy()
     union_options = get_union_sources(datasources, all_concepts)
+
     for ds_list in union_options:
         node_address = "ds~" + "-".join([x.name for x in ds_list])
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} injecting potentially relevant union datasource {node_address}"
+        )
         common: set[BuildConcept] = set.intersection(
             *[set(x.output_concepts) for x in ds_list]
         )
@@ -386,7 +393,7 @@ def create_datasource_node(
     datasource_conditions = datasource.where.conditional if datasource.where else None
     rval = SelectNode(
         input_concepts=[c.concept for c in datasource.columns],
-        output_concepts=all_concepts,
+        output_concepts=sorted(all_concepts, key=lambda x: x.address),
         environment=environment,
         parents=[],
         depth=depth,
@@ -404,6 +411,45 @@ def create_datasource_node(
     )
     return (
         rval,
+        force_group,
+    )
+
+
+def create_union_datasource(
+    datasource: list[BuildDatasource],
+    all_concepts: List[BuildConcept],
+    accept_partial: bool,
+    environment: BuildEnvironment,
+    depth: int,
+    conditions: BuildWhereClause | None = None,
+) -> tuple["UnionNode", bool]:
+    from trilogy.core.processing.nodes.union_node import UnionNode
+
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} generating union node parents with condition {conditions}"
+    )
+    force_group = False
+    parents = []
+    for x in datasource:
+        subnode, fg = create_datasource_node(
+            x,
+            all_concepts,
+            accept_partial,
+            environment,
+            depth + 1,
+            conditions=conditions,
+        )
+        parents.append(subnode)
+        force_group = force_group or fg
+    logger.info(f"{padding(depth)}{LOGGER_PREFIX} returning union node")
+    return (
+        UnionNode(
+            output_concepts=all_concepts,
+            input_concepts=all_concepts,
+            environment=environment,
+            parents=parents,
+            depth=depth,
+        ),
         force_group,
     )
 
@@ -452,31 +498,13 @@ def create_select_node(
         )
 
     elif isinstance(datasource, list):
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} generating union node parents with condition {conditions}"
-        )
-        from trilogy.core.processing.nodes.union_node import UnionNode
-
-        force_group = False
-        parents = []
-        for x in datasource:
-            subnode, fg = create_datasource_node(
-                x,
-                all_concepts,
-                accept_partial,
-                environment,
-                depth,
-                conditions=conditions,
-            )
-            parents.append(subnode)
-            force_group = force_group or fg
-        logger.info(f"{padding(depth)}{LOGGER_PREFIX} generating union node")
-        bcandidate = UnionNode(
-            output_concepts=all_concepts,
-            input_concepts=all_concepts,
-            environment=environment,
-            parents=parents,
-            depth=depth,
+        bcandidate, force_group = create_union_datasource(
+            datasource,
+            all_concepts,
+            accept_partial,
+            environment,
+            depth,
+            conditions=conditions,
         )
     else:
         raise ValueError(f"Unknown datasource type {datasource}")
@@ -548,6 +576,9 @@ def gen_select_merge_node(
     ]
     if accept_partial:
         attempts.append(True)
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} searching for root source graph for concepts {[c.address for c in all_concepts]} and conditions {conditions}"
+    )
     for attempt in attempts:
         pruned_concept_graph = create_pruned_concept_graph(
             g,

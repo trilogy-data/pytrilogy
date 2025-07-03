@@ -438,7 +438,7 @@ class ConceptPair(BaseModel):
 
 
 class CTEConceptPair(ConceptPair):
-    cte: CTE
+    cte: CTE | UnionCTE
 
 
 class InstantiatedUnnestJoin(BaseModel):

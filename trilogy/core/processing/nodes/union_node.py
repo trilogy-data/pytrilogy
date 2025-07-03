@@ -28,6 +28,7 @@ class UnionNode(StrategyNode):
             parents=parents,
             depth=depth,
         )
+        self.partial_concepts = []
 
     def _resolve(self) -> QueryDatasource:
         """We need to ensure that any filtered values are removed from the output to avoid inappropriate references"""
@@ -41,6 +42,6 @@ class UnionNode(StrategyNode):
             output_concepts=list(self.output_concepts),
             environment=self.environment,
             whole_grain=self.whole_grain,
-            parents=self.parents,
+            parents=[x.copy() for x in self.parents] if self.parents else None,
             depth=self.depth,
         )
