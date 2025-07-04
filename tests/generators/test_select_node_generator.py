@@ -140,6 +140,7 @@ address blended;
             env.concepts[x]
             for x in ["order_id", "customer_id", "customer_name", "revenue"]
         ],
+        accept_partial=False,
     )
     # we shoud resolve only the highest level source
     assert len(gnode) == 1
@@ -201,6 +202,7 @@ address blended;
             env.concepts[x]
             for x in ["order_id", "customer_id", "customer_name", "revenue"]
         ],
+        accept_partial=False,
     )
     # we shoud resolve only the highest level source
     assert len(gnode) == 1

@@ -249,6 +249,11 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             address=self.address,
             columns=[c.with_namespace(namespace) for c in self.columns],
             where=self.where.with_namespace(namespace) if self.where else None,
+            non_partial_for=(
+                self.non_partial_for.with_namespace(namespace)
+                if self.non_partial_for
+                else None
+            ),
         )
         return new
 

@@ -160,9 +160,7 @@ class StrategyNode:
         self.whole_grain = whole_grain
         self.parents = parents or []
         self.resolution_cache: Optional[QueryDatasource] = None
-        self.partial_concepts = partial_concepts or get_all_parent_partial(
-            self.output_concepts, self.parents
-        )
+
         self.nullable_concepts = nullable_concepts or get_all_parent_nullable(
             self.output_concepts, self.parents
         )
@@ -188,7 +186,9 @@ class StrategyNode:
                 right=self.preexisting_conditions,
                 operator=BooleanOperator.AND,
             )
-        self.validate_parents()
+        self.partial_concepts: list[BuildConcept] = self.derive_partials(
+            partial_concepts
+        )
         self.validate_inputs()
         self.log = True
 
@@ -214,7 +214,7 @@ class StrategyNode:
 
     def add_parents(self, parents: list["StrategyNode"]):
         self.parents += parents
-        self.validate_parents()
+        self.partial_concepts = self.derive_partials(None)
         return self
 
     def set_preexisting_conditions(
@@ -238,7 +238,9 @@ class StrategyNode:
         self.rebuild_cache()
         return self
 
-    def validate_parents(self):
+    def derive_partials(
+        self, partial_concepts: List[BuildConcept] | None = None
+    ) -> List[BuildConcept]:
         # validate parents exist
         # assign partial values where needed
         for parent in self.parents:
@@ -246,12 +248,14 @@ class StrategyNode:
                 raise SyntaxError("Unresolvable parent")
 
         # TODO: make this accurate
-        if self.parents:
-            self.partial_concepts = get_all_parent_partial(
-                self.output_concepts, self.parents
-            )
-
-        self.partial_lcl = LooseBuildConceptList(concepts=self.partial_concepts)
+        if self.parents and partial_concepts is None:
+            partials = get_all_parent_partial(self.output_concepts, self.parents)
+        elif partial_concepts is None:
+            partials = []
+        else:
+            partials = partial_concepts
+        self.partial_lcl = LooseBuildConceptList(concepts=partials)
+        return partials
 
     def add_output_concepts(self, concepts: List[BuildConcept], rebuild: bool = True):
         for concept in concepts:

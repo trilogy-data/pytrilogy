@@ -4,20 +4,77 @@ from pytest import raises
 
 from trilogy import Dialects, Executor
 from trilogy.core.exceptions import UnresolvableQueryException
+from trilogy.core.models.build import Factory
 from trilogy.core.models.environment import Environment
+from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
+    get_union_sources,
+)
+from trilogy.core.processing.node_generators.select_merge_node import (
+    create_union_datasource,
+)
 from trilogy.hooks import DebuggingHook
 
 working_path = Path(__file__).parent
 
 
+def test_union_node():
+    env = Environment(working_path=working_path)
+    DebuggingHook()
+    with open(working_path / "adhoc01.preql") as f:
+        text = f.read()
+
+    env.parse(text)
+
+    factory = Factory(environment=env)
+
+    datasources = [factory.build(x) for x in env.datasources.values()]
+    team_name = factory.build(env.concepts["team_name"])
+    union = get_union_sources(datasources=datasources, concepts=[team_name])
+    assert len(union) == 1, "Union sources should return a single source for team_name"
+    datasource = union[0]
+    build_env = factory.build(env)
+
+    bcandidate, group = create_union_datasource(
+        datasource=datasource,
+        all_concepts=[team_name],
+        accept_partial=False,
+        environment=build_env,
+        depth=0,
+        conditions=None,
+    )
+
+    assert bcandidate.partial_concepts == []
+
+
 def test_adhoc01():
     env = Environment(working_path=working_path)
+    DebuggingHook()
     with open(working_path / "adhoc01.preql") as f:
         text = f.read()
 
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
 
-    engine.generate_sql(text)[0]
+    sql = engine.generate_sql(text)[0]
+    assert (
+        """SELECT
+    "home_team_games_sr"."game_id" as "id",
+    "home_team_games_sr"."h_points_game" as "points_game",
+    "home_team_games_sr"."h_name" as "team_name",
+    "home_team_games_sr"."h_id" as "team_id"
+FROM
+    "bigquery-public-data"."ncaa_basketball"."mbb_games_sr" as "home_team_games_sr"""
+        in sql
+    )
+    assert (
+        """SELECT
+    "away_team_games_sr"."game_id" as "id",
+    "away_team_games_sr"."a_points_game" as "points_game",
+    "away_team_games_sr"."a_name" as "team_name",
+    "away_team_games_sr"."a_id" as "team_id"
+FROM
+    "bigquery-public-data"."ncaa_basketball"."mbb_games_sr" as "away_team_games_sr"""
+        in sql
+    )
 
 
 def test_adhoc02():
@@ -36,8 +93,9 @@ def test_adhoc03():
     with open(working_path / "adhoc03.preql") as f:
         text = f.read()
 
-    engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
+    engine: Executor = Dialects.BIGQUERY.default_executor(environment=env, hooks=[])
     env, queries = env.parse(text)
+
     select = queries[-1]
     for aggregate in [
         # 'home_wins',

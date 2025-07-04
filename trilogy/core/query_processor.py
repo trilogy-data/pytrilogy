@@ -53,7 +53,7 @@ LOGGER_PREFIX = "[QUERY BUILD]"
 
 
 def base_join_to_join(
-    base_join: BaseJoin | UnnestJoin, ctes: List[CTE]
+    base_join: BaseJoin | UnnestJoin, ctes: List[CTE | UnionCTE]
 ) -> Join | InstantiatedUnnestJoin:
     """This function converts joins at the datasource level
     to joins at the CTE level"""
@@ -69,7 +69,9 @@ def base_join_to_join(
             alias=base_join.alias,
         )
 
-    def get_datasource_cte(datasource: BuildDatasource | QueryDatasource) -> CTE:
+    def get_datasource_cte(
+        datasource: BuildDatasource | QueryDatasource,
+    ) -> CTE | UnionCTE:
         eligible = set()
         for cte in ctes:
             if cte.source.identifier == datasource.identifier:
@@ -334,7 +336,7 @@ def datasource_to_cte(
     human_id = generate_cte_name(query_datasource.identifier, name_map)
 
     final_joins = [
-        base_join_to_join(join, [x for x in parents if isinstance(x, CTE)])
+        base_join_to_join(join, [x for x in parents if isinstance(x, (CTE, UnionCTE))])
         for join in query_datasource.joins
     ]
 

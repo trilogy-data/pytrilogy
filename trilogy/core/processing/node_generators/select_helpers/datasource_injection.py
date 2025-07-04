@@ -1,3 +1,4 @@
+import sys
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import List, Tuple, TypeVar
@@ -14,7 +15,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.core import DataType
 
 # Define a generic type that ensures start and end are the same type
-T = TypeVar("T", int, date, datetime)
+T = TypeVar("T", int, float, date, datetime)
 
 
 def reduce_expression(
@@ -37,21 +38,26 @@ def reduce_expression(
     elif var.datatype == DataType.DATETIME:
         lower_check = datetime.min  # type: ignore
         upper_check = datetime.max  # type: ignore
+    elif var.datatype == DataType.BOOL:
+        lower_check = False  # type: ignore
+        upper_check = True  # type: ignore
+    elif var.datatype == DataType.FLOAT:
+        lower_check = float("-inf")  # type: ignore
+        upper_check = float("inf")  # type: ignore
     else:
-        raise ValueError(f"Invalid datatype: {var.datatype}")
+        return False
 
     ranges: list[Tuple[T, T]] = []
     for op, value in group_tuple:
-        increment: int | timedelta
+        increment: int | timedelta | float
         if isinstance(value, date):
             increment = timedelta(days=1)
         elif isinstance(value, datetime):
             increment = timedelta(seconds=1)
         elif isinstance(value, int):
             increment = 1
-        # elif isinstance(value, float):
-        #     value = Decimal(value)
-        #     increment = Decimal(0.0000000001)
+        elif isinstance(value, float):
+            increment = sys.float_info.epsilon
 
         if op == ">":
             ranges.append(
@@ -88,9 +94,28 @@ def reduce_expression(
                     value,
                 )
             )
+        elif op == ComparisonOperator.IS:
+            ranges.append(
+                (
+                    value,
+                    value,
+                )
+            )
+        elif op == ComparisonOperator.NE:
+            pass
         else:
-            raise ValueError(f"Invalid operator: {op}")
+            return False
     return is_fully_covered(lower_check, upper_check, ranges, increment)
+
+
+TARGET_TYPES = (
+    int,
+    date,
+    float,
+    datetime,
+    bool,
+)
+REDUCABLE_TYPES = (int, float, date, bool, datetime, BuildFunction)
 
 
 def simplify_conditions(
@@ -98,14 +123,14 @@ def simplify_conditions(
 ) -> bool:
     # Group conditions by variable
     grouped: dict[
-        BuildConcept, list[tuple[ComparisonOperator, datetime | int | date]]
+        BuildConcept, list[tuple[ComparisonOperator, datetime | int | date | float]]
     ] = defaultdict(list)
     for condition in conditions:
         if not isinstance(condition, BuildComparison):
             return False
-        if not isinstance(
-            condition.left, (int, date, datetime, BuildFunction)
-        ) and not isinstance(condition.right, (int, date, datetime, BuildFunction)):
+        if not isinstance(condition.left, REDUCABLE_TYPES) and not isinstance(
+            condition.right, REDUCABLE_TYPES
+        ):
             return False
         if not isinstance(condition.left, BuildConcept) and not isinstance(
             condition.right, BuildConcept
@@ -113,15 +138,20 @@ def simplify_conditions(
             return False
         vars = [condition.left, condition.right]
         concept = [x for x in vars if isinstance(x, BuildConcept)][0]
-        comparison = [x for x in vars if not isinstance(x, BuildConcept)][0]
-        if isinstance(comparison, BuildFunction):
-            if not comparison.operator == FunctionType.CONSTANT:
+        raw_comparison = [x for x in vars if not isinstance(x, BuildConcept)][0]
+        if isinstance(raw_comparison, BuildFunction):
+            if not raw_comparison.operator == FunctionType.CONSTANT:
                 return False
-            first_arg = comparison.arguments[0]
-            if not isinstance(first_arg, (int, date, datetime)):
+            first_arg = raw_comparison.arguments[0]
+            if not isinstance(first_arg, TARGET_TYPES):
                 return False
             comparison = first_arg
-        if not isinstance(comparison, (int, date, datetime)):
+        else:
+            if not isinstance(raw_comparison, TARGET_TYPES):
+                return False
+            comparison = raw_comparison
+
+        if not isinstance(comparison, REDUCABLE_TYPES):
             return False
 
         var = concept
@@ -136,11 +166,25 @@ def simplify_conditions(
     return True if all(isinstance(s, bool) and s for s in simplified) else False
 
 
+def boolean_fully_covered(
+    start: bool,
+    end: bool,
+    ranges: List[Tuple[bool, bool]],
+):
+    all = []
+    for r_start, r_end in ranges:
+        if r_start is True and r_end is True:
+            all.append(True)
+        elif r_start is False and r_end is False:
+            all.append(False)
+    return set(all) == {False, True}
+
+
 def is_fully_covered(
     start: T,
     end: T,
     ranges: List[Tuple[T, T]],
-    increment: int | timedelta,
+    increment: int | timedelta | float,
 ):
     """
     Check if the list of range pairs fully covers the set [start, end].
@@ -153,6 +197,11 @@ def is_fully_covered(
     Returns:
     - bool: True if the ranges fully cover [start, end], False otherwise.
     """
+    if isinstance(start, bool) and isinstance(end, bool):
+        # convert each element of each tuple to a boolean
+        bool_ranges = [(bool(r_start), bool(r_end)) for r_start, r_end in ranges]
+
+        return boolean_fully_covered(start, end, bool_ranges)
     # Sort ranges by their start values (and by end values for ties)
     ranges.sort()
 
@@ -173,14 +222,14 @@ def get_union_sources(
     datasources: list[BuildDatasource], concepts: list[BuildConcept]
 ) -> List[list[BuildDatasource]]:
     candidates: list[BuildDatasource] = []
+
     for x in datasources:
-        if all([c.address in x.output_concepts for c in concepts]):
+        if any([c.address in x.output_concepts for c in concepts]):
             if (
                 any([c.address in x.partial_concepts for c in concepts])
                 and x.non_partial_for
             ):
                 candidates.append(x)
-
     assocs: dict[str, list[BuildDatasource]] = defaultdict(list[BuildDatasource])
     for x in candidates:
         if not x.non_partial_for:

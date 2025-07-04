@@ -291,7 +291,7 @@ def evaluate_loop_conditions(
 
 
 def check_for_early_exit(
-    complete, partial, context: LoopContext, priority_concept: BuildConcept
+    complete, partial, missing, context: LoopContext, priority_concept: BuildConcept
 ) -> bool:
     if complete == ValidationResult.INCOMPLETE_CONDITION:
         cond_dict = {str(node): node.preexisting_conditions for node in context.stack}
@@ -321,7 +321,7 @@ def check_for_early_exit(
         )
     else:
         logger.info(
-            f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Not complete, continuing search"
+            f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Not complete (missing {missing}), continuing search"
         )
     # if we have attempted on root node, we've tried them all.
     # inject in another search with filter concepts
@@ -412,7 +412,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
     elif context.conditions:
         output.preexisting_conditions = context.conditions.conditional
     logger.info(
-        f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Graph is connected, returning {type(output)} node output {[x.address for x in output.usable_outputs]} partial {[c.address for c in output.partial_concepts]} with {context.conditions}"
+        f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Graph is connected, returning {type(output)} node output {[x.address for x in output.usable_outputs]} partial {[c.address for c in output.partial_concepts or []]} with {context.conditions}"
     )
     if condition_required and context.conditions and non_virtual_different:
         logger.info(
@@ -532,7 +532,9 @@ def _search_concepts(
         )
         # assign
         context.found = found_c
-        early_exit = check_for_early_exit(complete, partial, context, priority_concept)
+        early_exit = check_for_early_exit(
+            complete, partial, missing_c, context, priority_concept
+        )
         if early_exit:
             break
 

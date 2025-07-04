@@ -4,7 +4,7 @@ from trilogy.core.models.build import BuildConcept, BuildDatasource, BuildWhereC
 
 
 def get_graph_exact_match(
-    g: nx.DiGraph, conditions: BuildWhereClause | None
+    g: nx.DiGraph, accept_partial: bool, conditions: BuildWhereClause | None
 ) -> set[str]:
     datasources: dict[str, BuildDatasource | list[BuildDatasource]] = (
         nx.get_node_attributes(g, "datasource")
@@ -18,6 +18,9 @@ def get_graph_exact_match(
                 continue
 
             if not conditions and not ds.non_partial_for:
+                exact.add(node)
+                continue
+            elif not conditions and accept_partial and ds.non_partial_for:
                 exact.add(node)
                 continue
             elif conditions:
@@ -34,10 +37,11 @@ def get_graph_exact_match(
 
 def prune_sources_for_conditions(
     g: nx.DiGraph,
+    accept_partial: bool,
     conditions: BuildWhereClause | None,
 ):
 
-    complete = get_graph_exact_match(g, conditions)
+    complete = get_graph_exact_match(g, accept_partial, conditions)
     to_remove = []
     for node in g.nodes:
         if node.startswith("ds~") and node not in complete:
