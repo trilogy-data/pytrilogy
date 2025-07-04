@@ -49,7 +49,7 @@ def reduce_expression(
 
     ranges: list[Tuple[T, T]] = []
     for op, value in group_tuple:
-        increment: int | timedelta
+        increment: int | timedelta | float
         if isinstance(value, date):
             increment = timedelta(days=1)
         elif isinstance(value, datetime):
@@ -133,7 +133,7 @@ def simplify_conditions(
 ) -> bool:
     # Group conditions by variable
     grouped: dict[
-        BuildConcept, list[tuple[ComparisonOperator, datetime | int | date]]
+        BuildConcept, list[tuple[ComparisonOperator, datetime | int | date | float]]
     ] = defaultdict(list)
     for condition in conditions:
         if not isinstance(condition, BuildComparison):
@@ -198,7 +198,7 @@ def is_fully_covered(
     start: T,
     end: T,
     ranges: List[Tuple[T, T]],
-    increment: int | timedelta,
+    increment: int | timedelta | float,
 ):
     """
     Check if the list of range pairs fully covers the set [start, end].
