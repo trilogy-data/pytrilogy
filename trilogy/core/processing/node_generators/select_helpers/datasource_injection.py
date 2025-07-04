@@ -1,3 +1,4 @@
+import sys
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import List, Tuple, TypeVar
@@ -14,7 +15,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.core import DataType
 
 # Define a generic type that ensures start and end are the same type
-T = TypeVar("T", int, date, datetime)
+T = TypeVar("T", int, float, date, datetime)
 
 
 def reduce_expression(
@@ -40,8 +41,11 @@ def reduce_expression(
     elif var.datatype == DataType.BOOL:
         lower_check = False  # type: ignore
         upper_check = True  # type: ignore
+    elif var.datatype == DataType.FLOAT:
+        lower_check = float("-inf")  # type: ignore
+        upper_check = float("inf")  # type: ignore
     else:
-        raise ValueError(f"Invalid datatype: {var.datatype}")
+        return False
 
     ranges: list[Tuple[T, T]] = []
     for op, value in group_tuple:
@@ -52,6 +56,8 @@ def reduce_expression(
             increment = timedelta(seconds=1)
         elif isinstance(value, int):
             increment = 1
+        elif isinstance(value, float):
+            increment = sys.float_info.epsilon
         elif isinstance(value, bool):
             if op != "=":
                 raise ValueError(f"Invalid operator for boolean: {op}")
@@ -62,9 +68,6 @@ def reduce_expression(
                 )
             )
             continue
-        # elif isinstance(value, float):
-        #     value = Decimal(value)
-        #     increment = Decimal(0.0000000001)
 
         if op == ">":
             ranges.append(
@@ -101,25 +104,28 @@ def reduce_expression(
                     value,
                 )
             )
-        elif op == "is":
+        elif op == ComparisonOperator.IS:
             ranges.append(
                 (
                     value,
                     value,
                 )
             )
+        elif op == ComparisonOperator.NE:
+            pass
         else:
-            raise ValueError(f"Invalid operator: {op}")
+            return False
     return is_fully_covered(lower_check, upper_check, ranges, increment)
 
 
 TARGET_TYPES = (
     int,
     date,
+    float,
     datetime,
     bool,
 )
-REDUCABLE_TYPES = (int, date, bool, datetime, BuildFunction)
+REDUCABLE_TYPES = (int, float, date, bool, datetime, BuildFunction)
 
 
 def simplify_conditions(
