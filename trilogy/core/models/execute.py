@@ -487,7 +487,6 @@ class BaseJoin(BaseModel):
 
         # Validation logic
         final_concepts = []
-        
 
         for concept in self.concepts or []:
             include = True

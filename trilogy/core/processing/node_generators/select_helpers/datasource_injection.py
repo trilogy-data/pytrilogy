@@ -101,6 +101,13 @@ def reduce_expression(
                     value,
                 )
             )
+        elif op == "is":
+            ranges.append(
+                (
+                    value,
+                    value,
+                )
+            )
         else:
             raise ValueError(f"Invalid operator: {op}")
     return is_fully_covered(lower_check, upper_check, ranges, increment)
@@ -209,7 +216,7 @@ def get_union_sources(
     datasources: list[BuildDatasource], concepts: list[BuildConcept]
 ) -> List[list[BuildDatasource]]:
     candidates: list[BuildDatasource] = []
-    
+
     for x in datasources:
         if any([c.address in x.output_concepts for c in concepts]):
             if (

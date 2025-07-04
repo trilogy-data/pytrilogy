@@ -19,6 +19,7 @@ class UnionNode(StrategyNode):
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
+        partial_concepts: List[BuildConcept] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -27,13 +28,17 @@ class UnionNode(StrategyNode):
             whole_grain=whole_grain,
             parents=parents,
             depth=depth,
+            partial_concepts=partial_concepts,
         )
+        if self.partial_concepts != []:
+            raise ValueError(
+                f"UnionNode should not have partial concepts, has {self.partial_concepts}, was given {partial_concepts}"
+            )
         self.partial_concepts = []
 
     def _resolve(self) -> QueryDatasource:
         """We need to ensure that any filtered values are removed from the output to avoid inappropriate references"""
         base = super()._resolve()
-        base.partial_concepts = []
         return base
 
     def copy(self) -> "UnionNode":
@@ -44,4 +49,5 @@ class UnionNode(StrategyNode):
             whole_grain=self.whole_grain,
             parents=[x.copy() for x in self.parents] if self.parents else None,
             depth=self.depth,
+            partial_concepts=self.partial_concepts,
         )

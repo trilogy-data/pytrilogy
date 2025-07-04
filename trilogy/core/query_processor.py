@@ -82,7 +82,6 @@ def base_join_to_join(
         raise ValueError(
             f"Could not find CTE for datasource {datasource.identifier}; have {eligible}"
         )
-        
 
     if base_join.left_datasource is not None:
         left_cte = get_datasource_cte(base_join.left_datasource)

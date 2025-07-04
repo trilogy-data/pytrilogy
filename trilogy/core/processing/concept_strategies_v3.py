@@ -521,10 +521,6 @@ def _search_concepts(
             # as fetching them requires operating on a subset of concepts
             if priority_concept.derivation in SKIPPED_DERIVATIONS:
                 context.skip.add(priority_concept.address)
-            logger.info(node.resolve().output_concepts)
-            logger.info(node.resolve().partial_concepts )
-            # if node.resolve().partial_concepts:
-            #     raise SyntaxError('PICK UP HERE TO FIGURE OUT WHY THERE IS A PARTIAL CONCEPT')
         context.attempted.add(priority_concept.address)
         complete, found_c, missing_c, partial, virtual = validate_stack(
             environment,
@@ -536,7 +532,9 @@ def _search_concepts(
         )
         # assign
         context.found = found_c
-        early_exit = check_for_early_exit(complete, partial, missing_c, context, priority_concept)
+        early_exit = check_for_early_exit(
+            complete, partial, missing_c, context, priority_concept
+        )
         if early_exit:
             break
 

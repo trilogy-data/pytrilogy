@@ -253,7 +253,9 @@ def resolve_weak_components(
     break_flag = False
     found = []
     search_graph = environment_graph.copy()
-    prune_sources_for_conditions(search_graph, conditions=search_conditions)
+    prune_sources_for_conditions(
+        search_graph, accept_partial, conditions=search_conditions
+    )
     reduced_concept_sets: list[set[str]] = []
 
     # loop through, removing new nodes we find

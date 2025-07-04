@@ -23,19 +23,6 @@ def generate_regex_extract(x: list[str]) -> str:
     return f"REGEXP_EXTRACT({x[0]},{x[1]},{x[2]})"
 
 
-
-def generate_regex_extract(x: list[str]) -> str:
-    if str(x[2]) == SENTINAL_AUTO_CAPTURE_GROUP_VALUE:
-        regex = re.compile(x[1])
-        print(f"Regex: {regex}" f" Groups: {regex.groups} Match: {regex.match('test')}")
-        if regex.groups == 0:
-            search = 0
-        else:
-            search = 1
-        return f"REGEXP_EXTRACT({x[0]},{x[1]},{search})"
-    return f"REGEXP_EXTRACT({x[0]},{x[1]},{x[2]})"
-
-
 FUNCTION_MAP = {
     FunctionType.COUNT: lambda args: f"count({args[0]})",
     FunctionType.SUM: lambda args: f"sum({args[0]})",

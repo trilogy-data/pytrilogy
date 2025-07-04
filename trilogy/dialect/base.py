@@ -764,7 +764,10 @@ class BaseDialect:
     def render_cte(self, cte: CTE | UnionCTE, auto_sort: bool = True) -> CompiledCTE:
         if isinstance(cte, UnionCTE):
             base_statement = f"\n{cte.operator}\n".join(
-                [self.render_cte(child, auto_sort=False).statement for child in cte.internal_ctes]
+                [
+                    self.render_cte(child, auto_sort=False).statement
+                    for child in cte.internal_ctes
+                ]
             )
             if cte.order_by:
 

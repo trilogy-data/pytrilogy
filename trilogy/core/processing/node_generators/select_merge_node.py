@@ -1,5 +1,5 @@
 from functools import reduce
-from typing import List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional
 
 import networkx as nx
 
@@ -135,7 +135,7 @@ def create_pruned_concept_graph(
         for c in common:
             g.add_edge(node_address, concept_to_node(c))
             g.add_edge(concept_to_node(c), node_address)
-    prune_sources_for_conditions(g, conditions)
+    prune_sources_for_conditions(g, accept_partial, conditions)
     target_addresses = set([c.address for c in all_concepts])
     concepts: dict[str, BuildConcept] = nx.get_node_attributes(orig_g, "concept")
     datasource_map: dict[str, BuildDatasource | list[BuildDatasource]] = (
@@ -210,14 +210,14 @@ def create_pruned_concept_graph(
         for s in subgraphs
         if subgraph_is_complete(s, target_addresses, relevant_concepts_pre, g)
     ]
-
+    # from trilogy.hooks.graph_hook import GraphHook
+    # GraphHook().query_graph_built(g)
     if not subgraphs:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} cannot resolve root graph - no subgraphs after node prune"
         )
         return None
-    # from trilogy.hooks.graph_hook import GraphHook
-    # GraphHook().query_graph_built(g)
+
     if subgraphs and len(subgraphs) != 1:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} cannot resolve root graph - subgraphs are split - have {len(subgraphs)} from {subgraphs}"
@@ -240,6 +240,7 @@ def create_pruned_concept_graph(
 def resolve_subgraphs(
     g: nx.DiGraph,
     relevant: list[BuildConcept],
+    accept_partial: bool,
     conditions: BuildWhereClause | None,
     depth: int = 0,
 ) -> dict[str, list[str]]:
@@ -258,7 +259,7 @@ def resolve_subgraphs(
         ds: list(set(list(nx.all_neighbors(g, ds)))) for ds in datasources
     }
     partial_map = get_graph_partial_nodes(g, conditions)
-    exact_map = get_graph_exact_match(g, conditions)
+    exact_map = get_graph_exact_match(g, accept_partial, conditions)
     grain_length = get_graph_grains(g)
     concepts: dict[str, BuildConcept] = nx.get_node_attributes(g, "concept")
     non_partial_map = {
@@ -449,6 +450,7 @@ def create_union_datasource(
             environment=environment,
             parents=parents,
             depth=depth,
+            partial_concepts=[],
         ),
         force_group,
     )
@@ -599,7 +601,11 @@ def gen_select_merge_node(
         return None
 
     sub_nodes = resolve_subgraphs(
-        pruned_concept_graph, relevant=non_constant, conditions=conditions, depth=depth
+        pruned_concept_graph,
+        relevant=non_constant,
+        accept_partial=accept_partial,
+        conditions=conditions,
+        depth=depth,
     )
 
     logger.info(f"{padding(depth)}{LOGGER_PREFIX} fetching subgraphs {sub_nodes}")
