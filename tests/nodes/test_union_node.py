@@ -305,6 +305,18 @@ def test_reduce_expression_boolean():
         simplify_conditions(
             [
                 BuildComparison(
+                    left=boolean_concept, right=True, operator=ComparisonOperator.GTE
+                )
+            ]
+        )
+        is False
+    ), "Expected False for single boolean value comparison"
+
+    # Test single boolean value
+    assert (
+        simplify_conditions(
+            [
+                BuildComparison(
                     left=boolean_concept, right=True, operator=ComparisonOperator.EQ
                 )
             ]

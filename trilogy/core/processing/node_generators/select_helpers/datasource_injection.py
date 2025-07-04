@@ -58,16 +58,6 @@ def reduce_expression(
             increment = 1
         elif isinstance(value, float):
             increment = sys.float_info.epsilon
-        elif isinstance(value, bool):
-            if op != "=":
-                raise ValueError(f"Invalid operator for boolean: {op}")
-            ranges.append(
-                (
-                    value,
-                    value,
-                )
-            )
-            continue
 
         if op == ">":
             ranges.append(
@@ -183,11 +173,7 @@ def boolean_fully_covered(
 ):
     all = []
     for r_start, r_end in ranges:
-        if r_start is False and r_end is True:
-            all.append(True)
-        elif r_start is True and r_end is False:
-            all.append(False)
-        elif r_start is True and r_end is True:
+        if r_start is True and r_end is True:
             all.append(True)
         elif r_start is False and r_end is False:
             all.append(False)
