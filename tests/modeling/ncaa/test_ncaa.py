@@ -97,18 +97,18 @@ def test_adhoc03():
     env, queries = env.parse(text)
 
     select = queries[-1]
-    # for aggregate in [
-    #     # 'home_wins',
-    #     # 'away_wins',
-    #     "home_games",
-    #     "away_games",
-    # ]:
-    #     print(select.local_concepts[aggregate])
-    #     assert select.local_concepts[aggregate].grain.components == {
-    #         "game_tall.team.name"
-    #     }, env.concepts[aggregate]
+    for aggregate in [
+        # 'home_wins',
+        # 'away_wins',
+        "home_games",
+        "away_games",
+    ]:
+        print(select.local_concepts[aggregate])
+        assert select.local_concepts[aggregate].grain.components == {
+            "game_tall.team.name"
+        }, env.concepts[aggregate]
     generated = engine.generate_sql(text)[0]
-    assert "on 1=1" in generated, generated
+    assert "on 1=1" not in generated, generated
 
 
 def test_adhoc04():

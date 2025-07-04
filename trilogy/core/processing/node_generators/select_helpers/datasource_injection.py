@@ -136,14 +136,17 @@ def simplify_conditions(
             return False
         vars = [condition.left, condition.right]
         concept = [x for x in vars if isinstance(x, BuildConcept)][0]
-        comparison = [x for x in vars if not isinstance(x, BuildConcept)][0]
-        if isinstance(comparison, BuildFunction):
-            if not comparison.operator == FunctionType.CONSTANT:
+        raw_comparison = [x for x in vars if not isinstance(x, BuildConcept)][0]
+        if isinstance(raw_comparison, BuildFunction):
+            if not raw_comparison.operator == FunctionType.CONSTANT:
                 return False
-            first_arg = comparison.arguments[0]
+            first_arg = raw_comparison.arguments[0]
             if not isinstance(first_arg, REDUCABLE_TYPES):
                 return False
             comparison = first_arg
+        else:
+            comparison = raw_comparison
+
         if not isinstance(comparison, REDUCABLE_TYPES):
             return False
 
@@ -194,8 +197,11 @@ def is_fully_covered(
     Returns:
     - bool: True if the ranges fully cover [start, end], False otherwise.
     """
-    if isinstance(start, bool):
-        return boolean_fully_covered(start, end, ranges)
+    if isinstance(start, bool) and isinstance(end, bool):
+        # convert each element of each tuple to a boolean
+        bool_ranges = [(bool(r_start), bool(r_end)) for r_start, r_end in ranges]
+
+        return boolean_fully_covered(start, end, bool_ranges)
     # Sort ranges by their start values (and by end values for ties)
     ranges.sort()
 

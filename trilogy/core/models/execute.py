@@ -460,6 +460,28 @@ class UnnestJoin(BaseModel):
         return self.alias + "".join([str(s.address) for s in self.concepts])
 
 
+def raise_helpful_join_validation_error(
+    concepts: List[BuildConcept],
+    left_datasource: BuildDatasource | QueryDatasource | None,
+    right_datasource: BuildDatasource | QueryDatasource | None,
+):
+
+    if not left_datasource or not right_datasource:
+        raise SyntaxError("No mutual keys found, and not two valid datasources")
+    left_keys = [c.address for c in left_datasource.output_concepts]
+    right_keys = [c.address for c in right_datasource.output_concepts]
+    match_concepts = [c.address for c in concepts]
+    assert left_datasource
+    assert right_datasource
+    raise SyntaxError(
+        "No mutual join keys found between"
+        f" {left_datasource.identifier} and"
+        f" {right_datasource.identifier}, left_keys {left_keys},"
+        f" right_keys {right_keys},"
+        f" provided join concepts {match_concepts}"
+    )
+
+
 class BaseJoin(BaseModel):
     right_datasource: Union[BuildDatasource, "QueryDatasource"]
     join_type: JoinType
@@ -492,6 +514,8 @@ class BaseJoin(BaseModel):
             include = True
             for ds in [self.left_datasource, self.right_datasource]:
                 synonyms = []
+                if not ds:
+                    continue
                 for c in ds.output_concepts:
                     synonyms += list(c.pseudonyms)
                 if (
@@ -510,6 +534,8 @@ class BaseJoin(BaseModel):
             # we can join on 1=1
             for ds in [self.left_datasource, self.right_datasource]:
                 # single rows
+                if not ds:
+                    continue
                 if all(
                     [
                         c.granularity == Granularity.SINGLE_ROW
@@ -522,16 +548,10 @@ class BaseJoin(BaseModel):
                 if all([c.grain.abstract for c in ds.output_concepts]):
                     self.concepts = []
                     return self
-
-            left_keys = [c.address for c in self.left_datasource.output_concepts]
-            right_keys = [c.address for c in self.right_datasource.output_concepts]
-            match_concepts = [c.address for c in self.concepts]
-            raise SyntaxError(
-                "No mutual join keys found between"
-                f" {self.left_datasource.identifier} and"
-                f" {self.right_datasource.identifier}, left_keys {left_keys},"
-                f" right_keys {right_keys},"
-                f" provided join concepts {match_concepts}"
+            raise_helpful_join_validation_error(
+                self.concepts,
+                self.left_datasource,
+                self.right_datasource,
             )
 
         self.concepts = final_concepts
@@ -1086,7 +1106,7 @@ class UnionCTE(BaseModel):
 class Join(BaseModel):
     right_cte: CTE | UnionCTE
     jointype: JoinType
-    left_cte: CTE | None = None
+    left_cte: CTE | UnionCTE | None = None
     joinkey_pairs: List[CTEConceptPair] | None = None
     inlined_ctes: set[str] = Field(default_factory=set)
     quote: str | None = None
@@ -1095,7 +1115,7 @@ class Join(BaseModel):
     def inline_cte(self, cte: CTE):
         self.inlined_ctes.add(cte.name)
 
-    def get_name(self, cte: CTE):
+    def get_name(self, cte: CTE | UnionCTE) -> str:
         if cte.identifier in self.inlined_ctes:
             return cte.source.datasources[0].safe_identifier
         return cte.safe_identifier

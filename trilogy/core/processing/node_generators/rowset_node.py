@@ -181,6 +181,5 @@ def gen_rowset_node(
             node,
             enrich_node,
         ],
-        partial_concepts=node.partial_concepts + enrich_node.partial_concepts,
         preexisting_conditions=conditions.conditional if conditions else None,
     )

@@ -412,7 +412,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
     elif context.conditions:
         output.preexisting_conditions = context.conditions.conditional
     logger.info(
-        f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Graph is connected, returning {type(output)} node output {[x.address for x in output.usable_outputs]} partial {[c.address for c in output.partial_concepts]} with {context.conditions}"
+        f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Graph is connected, returning {type(output)} node output {[x.address for x in output.usable_outputs]} partial {[c.address for c in output.partial_concepts or []]} with {context.conditions}"
     )
     if condition_required and context.conditions and non_virtual_different:
         logger.info(
