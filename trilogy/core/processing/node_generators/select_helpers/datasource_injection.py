@@ -113,6 +113,12 @@ def reduce_expression(
     return is_fully_covered(lower_check, upper_check, ranges, increment)
 
 
+TARGET_TYPES = (
+    int,
+    date,
+    datetime,
+    bool,
+)
 REDUCABLE_TYPES = (int, date, bool, datetime, BuildFunction)
 
 
@@ -141,10 +147,12 @@ def simplify_conditions(
             if not raw_comparison.operator == FunctionType.CONSTANT:
                 return False
             first_arg = raw_comparison.arguments[0]
-            if not isinstance(first_arg, REDUCABLE_TYPES):
+            if not isinstance(first_arg, TARGET_TYPES):
                 return False
             comparison = first_arg
         else:
+            if not isinstance(raw_comparison, TARGET_TYPES):
+                return False
             comparison = raw_comparison
 
         if not isinstance(comparison, REDUCABLE_TYPES):
