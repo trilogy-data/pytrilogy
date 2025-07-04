@@ -24,12 +24,12 @@ from trilogy.core.enums import (
     ComparisonOperator,
     Derivation,
     FunctionType,
-    Granularity,
     JoinType,
     Modifier,
     Purpose,
     SourceType,
 )
+from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.build import (
     BuildCaseElse,
     BuildCaseWhen,
@@ -467,13 +467,15 @@ def raise_helpful_join_validation_error(
 ):
 
     if not left_datasource or not right_datasource:
-        raise SyntaxError("No mutual keys found, and not two valid datasources")
+        raise InvalidSyntaxException(
+            "No mutual keys found, and not two valid datasources"
+        )
     left_keys = [c.address for c in left_datasource.output_concepts]
     right_keys = [c.address for c in right_datasource.output_concepts]
     match_concepts = [c.address for c in concepts]
     assert left_datasource
     assert right_datasource
-    raise SyntaxError(
+    raise InvalidSyntaxException(
         "No mutual join keys found between"
         f" {left_datasource.identifier} and"
         f" {right_datasource.identifier}, left_keys {left_keys},"
@@ -501,15 +503,11 @@ class BaseJoin(BaseModel):
             )
 
         # Early returns maintained as in original code
-        if self.concept_pairs:
+        if self.concept_pairs or self.concepts == []:
             return self
 
-        if self.concepts == []:
-            return self
-
-        # Validation logic
+        # reduce concept list to just the mutual keys
         final_concepts = []
-
         for concept in self.concepts or []:
             include = True
             for ds in [self.left_datasource, self.right_datasource]:
@@ -519,10 +517,10 @@ class BaseJoin(BaseModel):
                 for c in ds.output_concepts:
                     synonyms += list(c.pseudonyms)
                 if (
-                    concept.address not in [c.address for c in ds.output_concepts]
+                    concept.address not in ds.output_concepts
                     and concept.address not in synonyms
                 ):
-                    raise SyntaxError(
+                    raise InvalidSyntaxException(
                         f"Invalid join, missing {concept} on {ds.name}, have"
                         f" {[c.address for c in ds.output_concepts]}"
                     )
@@ -530,24 +528,6 @@ class BaseJoin(BaseModel):
                 final_concepts.append(concept)
 
         if not final_concepts and self.concepts:
-            # if one datasource only has constants
-            # we can join on 1=1
-            for ds in [self.left_datasource, self.right_datasource]:
-                # single rows
-                if not ds:
-                    continue
-                if all(
-                    [
-                        c.granularity == Granularity.SINGLE_ROW
-                        for c in ds.output_concepts
-                    ]
-                ):
-                    self.concepts = []
-                    return self
-                # if everything is at abstract grain, we can skip joins
-                if all([c.grain.abstract for c in ds.output_concepts]):
-                    self.concepts = []
-                    return self
             raise_helpful_join_validation_error(
                 self.concepts,
                 self.left_datasource,
