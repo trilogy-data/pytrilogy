@@ -6,3 +6,4 @@ type ip_net_mask string;
 type ipv6_address string;
 type ipv4_address string;
 type suffix string;
+type url_image string;

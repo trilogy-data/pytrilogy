@@ -153,6 +153,20 @@ def test_constants(duckdb_engine: Executor, expected_results):
     assert results[0].converted_total_count == expected_results["converted_total_count"]
 
 
+def test_constant_typing(duckdb_engine: Executor, expected_results):
+    duckdb_engine.execute_text(
+        """import std.net;
+
+const image_url <- 'www.example.com'::string::url_image;
+
+    """
+    )
+
+    image_concept = duckdb_engine.environment.concepts["image_url"]
+
+    assert "url_image" in image_concept.datatype.traits, image_concept.lineage
+
+
 def test_unnest(duckdb_engine: Executor, expected_results):
     results = duckdb_engine.execute_text(
         """const array <- [1,2,3];

@@ -1,0 +1,7 @@
+import top_player_dashboard;
+
+
+select
+    player.full_name,
+    player_rank,
+limit 100;

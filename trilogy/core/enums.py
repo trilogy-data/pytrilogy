@@ -134,6 +134,7 @@ class FunctionType(Enum):
     CAST = "cast"
     CONCAT = "concat"
     CONSTANT = "constant"
+    TYPED_CONSTANT = "typed_constant"
     COALESCE = "coalesce"
     IS_NULL = "isnull"
     NULLIF = "nullif"

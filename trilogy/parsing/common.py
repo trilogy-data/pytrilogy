@@ -368,9 +368,9 @@ def _get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
     return get_concept_arguments(arg), False
 
 
-def get_relevant_parent_concepts(arg):
-    results = _get_relevant_parent_concepts(arg)
-    return results
+def get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
+    concepts, status = _get_relevant_parent_concepts(arg)
+    return unique(concepts, "address"), status
 
 
 def group_function_to_concept(
@@ -626,20 +626,11 @@ def window_item_to_concept(
 
     # when including the order by in discovery grain
     if parent.order_by:
+
         grain_components = parent.over + [bcontent.output]
         for item in parent.order_by:
-            # confirm that it's not just an aggregate at the grain of the stuff we're already keying of of
-            # in which case we can ignore contributions
-            if (
-                isinstance(item.expr, AggregateWrapper)
-                and set([x.address for x in item.expr.by]) == keys
-            ):
-                continue
-            elif isinstance(item.expr, AggregateWrapper):
-
-                grain_components += item.expr.by
-            else:
-                grain_components += item.concept_arguments
+            relevant, _ = get_relevant_parent_concepts(item.expr)
+            grain_components += relevant
     else:
         grain_components = parent.over + [bcontent.output]
 
