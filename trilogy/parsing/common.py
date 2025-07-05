@@ -173,7 +173,9 @@ def concept_list_to_keys(
 
 
 def constant_to_concept(
-    parent: ListWrapper | TupleWrapper | MapWrapper | int | float | str,
+    parent: (
+        ListWrapper | TupleWrapper | MapWrapper | int | float | str | date | datetime
+    ),
     name: str,
     namespace: str,
     metadata: Metadata | None = None,
@@ -833,6 +835,7 @@ def arbitrary_to_concept(
         | int
         | float
         | str
+        | date
     ),
     environment: Environment,
     namespace: str | None = None,

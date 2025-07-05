@@ -171,7 +171,6 @@ image_url,
         assert concept.purpose == Purpose.CONSTANT, concept.lineage
 
 
-
 def test_unnest(duckdb_engine: Executor, expected_results):
     results = duckdb_engine.execute_text(
         """const array <- [1,2,3];
