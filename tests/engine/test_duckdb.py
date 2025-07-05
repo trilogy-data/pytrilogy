@@ -159,12 +159,17 @@ def test_constant_typing(duckdb_engine: Executor, expected_results):
 
 const image_url <- 'www.example.com'::string::url_image;
 
+select
+image_url, 
+'www.example.com'::string::url_image as image_url2;
+
     """
     )
+    for concept_name in ["image_url", "image_url2"]:
+        concept = duckdb_engine.environment.concepts[concept_name]
+        assert "url_image" in concept.datatype.traits, concept.lineage
+        assert concept.purpose == Purpose.CONSTANT, concept.lineage
 
-    image_concept = duckdb_engine.environment.concepts["image_url"]
-
-    assert "url_image" in image_concept.datatype.traits, image_concept.lineage
 
 
 def test_unnest(duckdb_engine: Executor, expected_results):
