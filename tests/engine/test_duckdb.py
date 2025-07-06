@@ -1235,9 +1235,6 @@ order by local.ward asc
 
 
 def test_multiple_string_filters():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    DebuggingHook()
     query = """
     key case_number int;
 property case_number.primary_type string;
@@ -1530,3 +1527,22 @@ order by
     assert results[1].after_a == "pple"
     assert results[1].after_a_explicit == "pple"
     assert results[1].no_capture == "apple"
+
+
+def test_window_calc(default_duckdb_engine: Executor):
+    DebuggingHook()
+    test = """
+const list <- [1,2,3,4,5];
+const orid <- unnest(list);
+
+select 
+     orid,
+     rank sum(orid) order by orid asc as window_rank
+having
+    4 < sum(orid) 
+  ;
+    """
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+
+    assert len(results) == 1
