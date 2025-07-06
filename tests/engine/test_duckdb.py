@@ -1537,7 +1537,7 @@ const orid <- unnest(list);
 
 select 
      orid,
-     rank sum(orid) order by orid asc as window_rank
+     case when rank sum(orid) order by orid asc  = rank sum(orid) order by orid asc then rank sum(orid) order by orid asc else rank sum(orid) order by orid asc end as window_rank
 having
     4 < sum(orid) 
   ;
