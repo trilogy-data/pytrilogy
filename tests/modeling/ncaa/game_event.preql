@@ -1,4 +1,4 @@
-import game as game;
+import game_wide as game;
 import player as player;
 import team as event_team;
 

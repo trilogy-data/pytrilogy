@@ -163,6 +163,7 @@ FUNCTION_MAP = {
     FunctionType.ALIAS: lambda x: f"{x[0]}",
     FunctionType.GROUP: lambda x: f"{x[0]}",
     FunctionType.CONSTANT: lambda x: f"{x[0]}",
+    FunctionType.TYPED_CONSTANT: lambda x: f"{x[0]}",
     FunctionType.COALESCE: lambda x: f"coalesce({','.join(x)})",
     FunctionType.NULLIF: lambda x: f"nullif({x[0]},{x[1]})",
     FunctionType.CAST: lambda x: f"cast({x[0]} as {x[1]})",

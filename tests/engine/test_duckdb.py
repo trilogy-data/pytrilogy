@@ -153,6 +153,24 @@ def test_constants(duckdb_engine: Executor, expected_results):
     assert results[0].converted_total_count == expected_results["converted_total_count"]
 
 
+def test_constant_typing(duckdb_engine: Executor, expected_results):
+    duckdb_engine.execute_text(
+        """import std.net;
+
+const image_url <- 'www.example.com'::string::url_image;
+
+select
+image_url, 
+'www.example.com'::string::url_image as image_url2;
+
+    """
+    )
+    for concept_name in ["image_url", "image_url2"]:
+        concept = duckdb_engine.environment.concepts[concept_name]
+        assert "url_image" in concept.datatype.traits, concept.lineage
+        assert concept.purpose == Purpose.CONSTANT, concept.lineage
+
+
 def test_unnest(duckdb_engine: Executor, expected_results):
     results = duckdb_engine.execute_text(
         """const array <- [1,2,3];
@@ -1217,9 +1235,6 @@ order by local.ward asc
 
 
 def test_multiple_string_filters():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    DebuggingHook()
     query = """
     key case_number int;
 property case_number.primary_type string;
@@ -1512,3 +1527,22 @@ order by
     assert results[1].after_a == "pple"
     assert results[1].after_a_explicit == "pple"
     assert results[1].no_capture == "apple"
+
+
+def test_window_calc():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    test = """
+const list <- [1,2,3,4,5];
+const orid <- unnest(list);
+
+select 
+     orid,
+     case when rank sum(orid) order by orid asc  = rank sum(orid) order by orid asc then rank sum(orid) order by orid asc else rank sum(orid) order by orid asc end as window_rank
+having
+    4 < sum(orid) 
+  ;
+    """
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+
+    assert len(results) == 1

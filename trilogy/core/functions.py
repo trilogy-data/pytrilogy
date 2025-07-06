@@ -704,6 +704,11 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_purpose=Purpose.CONSTANT,
         arg_count=1,
     ),
+    FunctionType.TYPED_CONSTANT: FunctionConfig(
+        output_purpose=Purpose.CONSTANT,
+        output_type_function=get_cast_output_type,
+        arg_count=2,
+    ),
     FunctionType.IS_NULL: FunctionConfig(
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.BOOL,

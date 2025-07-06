@@ -640,6 +640,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def concept_derivation(self, meta: Meta, args) -> ConceptDerivationStatement:
+
         if len(args) > 3:
             metadata = args[3]
         else:
@@ -733,6 +734,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def constant_derivation(self, meta: Meta, args) -> Concept:
+
         if len(args) > 3:
             metadata = args[3]
         else:
@@ -1405,6 +1407,7 @@ class ParseToObjects(Transformer):
     def string_lit(self, args) -> str:
         if not args:
             return ""
+
         return args[0]
 
     @v_args(meta=True)
@@ -1890,7 +1893,9 @@ class ParseToObjects(Transformer):
 
     def internal_fcast(self, meta, args) -> Function:
         args = process_function_args(args, meta=meta, environment=self.environment)
+
         if isinstance(args[0], str):
+
             processed: date | datetime | int | float | bool | str
             if args[1] == DataType.DATE:
                 processed = date.fromisoformat(args[0])
@@ -1908,6 +1913,10 @@ class ParseToObjects(Transformer):
                 processed = args[0]
             else:
                 raise SyntaxError(f"Invalid cast type {args[1]}")
+            if isinstance(args[1], TraitDataType):
+                return self.function_factory.create_function(
+                    [processed, args[1]], FunctionType.TYPED_CONSTANT, meta
+                )
             return self.function_factory.create_function(
                 [processed], FunctionType.CONSTANT, meta
             )

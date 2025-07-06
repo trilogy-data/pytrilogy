@@ -39,6 +39,7 @@ def resolve_window_parent_concepts(
             base += item.concept_arguments
     if concept.grain:
         for gitem in concept.grain.components:
+            logger.info(f"{LOGGER_PREFIX} appending grain item {gitem} to base")
             base.append(environment.concepts[gitem])
     return concept.lineage.content, unique(base, "address")
 
@@ -55,7 +56,7 @@ def gen_window_node(
 ) -> StrategyNode | None:
     base, parent_concepts = resolve_window_parent_concepts(concept, environment)
     logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} generating window node for {concept} with parents {parent_concepts} and optional {local_optional}"
+        f"{padding(depth)}{LOGGER_PREFIX} generating window node for {concept} with parents {[x.address for x in parent_concepts]} and optional {local_optional}"
     )
     equivalent_optional = [
         x

@@ -1486,6 +1486,17 @@ def get_canonical_pseudonyms(environment: Environment) -> dict[str, set[str]]:
     return roots
 
 
+def requires_concept_nesting(
+    expr,
+) -> AggregateWrapper | WindowItem | FilterItem | Function | None:
+    if isinstance(expr, (AggregateWrapper, WindowItem, FilterItem)):
+        return expr
+    if isinstance(expr, Function) and expr.operator == FunctionType.GROUP:
+        # group by requires nesting
+        return expr
+    return None
+
+
 class Factory:
 
     def __init__(
@@ -1509,11 +1520,12 @@ class Factory:
             | WindowItem
             | FilterItem
             | Function
-            | ListWrapper[Any]
-            | MapWrapper[Any, Any]
+            | ListWrapper
+            | MapWrapper
             | int
             | float
             | str
+            | date
         ),
     ) -> tuple[Concept, BuildConcept]:
         from trilogy.parsing.common import arbitrary_to_concept
@@ -1572,7 +1584,8 @@ class Factory:
 
         raw_args: list[Concept | FuncArgs] = []
         for arg in base.arguments:
-            # to do proper discovery, we need to inject virtual intermediate ocncepts
+            # to do proper discovery, we need to inject virtual intermediate concepts
+            # we don't use requires_concept_nesting here by design
             if isinstance(arg, (AggregateWrapper, FilterItem, WindowItem)):
                 narg, _ = self.instantiate_concept(arg)
                 raw_args.append(narg)
@@ -1640,11 +1653,10 @@ class Factory:
     def _(self, base: CaseWhen) -> BuildCaseWhen:
 
         comparison = base.comparison
-        if isinstance(comparison, (AggregateWrapper, FilterItem, WindowItem)):
-            comparison, _ = self.instantiate_concept(comparison)
         expr: Concept | FuncArgs = base.expr
-        if isinstance(expr, (AggregateWrapper, FilterItem, WindowItem)):
-            expr, _ = self.instantiate_concept(expr)
+        validation = requires_concept_nesting(expr)
+        if validation:
+            expr, _ = self.instantiate_concept(validation)
         return BuildCaseWhen.model_construct(
             comparison=self.build(comparison),
             expr=self.build(expr),
@@ -1653,8 +1665,9 @@ class Factory:
     @build.register
     def _(self, base: CaseElse) -> BuildCaseElse:
         expr: Concept | FuncArgs = base.expr
-        if isinstance(expr, (AggregateWrapper, FilterItem, WindowItem)):
-            expr, _ = self.instantiate_concept(expr)
+        validation = requires_concept_nesting(expr)
+        if validation:
+            expr, _ = self.instantiate_concept(validation)
         return BuildCaseElse.model_construct(expr=self.build(expr))
 
     @build.register
@@ -1753,10 +1766,9 @@ class Factory:
     def _(self, base: OrderItem) -> BuildOrderItem:
 
         bexpr: Any
-        if isinstance(base.expr, (AggregateWrapper, WindowItem, FilterItem)) or (
-            isinstance(base.expr, Function) and base.expr.operator == FunctionType.GROUP
-        ):
-            bexpr, _ = self.instantiate_concept(base.expr)
+        validation = requires_concept_nesting(base.expr)
+        if validation:
+            bexpr, _ = self.instantiate_concept(validation)
         else:
             bexpr = base.expr
         return BuildOrderItem.model_construct(
@@ -1781,8 +1793,9 @@ class Factory:
     def _(self, base: WindowItem) -> BuildWindowItem:
 
         content: Concept | FuncArgs = base.content
-        if isinstance(content, (AggregateWrapper, FilterItem, WindowItem)):
-            content, _ = self.instantiate_concept(content)
+        validation = requires_concept_nesting(base.content)
+        if validation:
+            content, _ = self.instantiate_concept(validation)
         final_by = []
         for x in base.order_by:
             if (
@@ -1811,6 +1824,7 @@ class Factory:
     @build.register
     def _(self, base: SubselectComparison) -> BuildSubselectComparison:
         right: Any = base.right
+        # this has specialized logic - include all Functions
         if isinstance(base.right, (AggregateWrapper, WindowItem, FilterItem, Function)):
             right_c, _ = self.instantiate_concept(base.right)
             right = right_c
@@ -1824,12 +1838,14 @@ class Factory:
     def _(self, base: Comparison) -> BuildComparison:
 
         left = base.left
-        if isinstance(left, (AggregateWrapper, WindowItem, FilterItem)):
-            left_c, _ = self.instantiate_concept(left)
+        validation = requires_concept_nesting(base.left)
+        if validation:
+            left_c, _ = self.instantiate_concept(validation)
             left = left_c  # type: ignore
         right = base.right
-        if isinstance(right, (AggregateWrapper, WindowItem, FilterItem)):
-            right_c, _ = self.instantiate_concept(right)
+        validation = requires_concept_nesting(base.right)
+        if validation:
+            right_c, _ = self.instantiate_concept(validation)
             right = right_c  # type: ignore
         return BuildComparison.model_construct(
             left=self.handle_constant(self.build(left)),

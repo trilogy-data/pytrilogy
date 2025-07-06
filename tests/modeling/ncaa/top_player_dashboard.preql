@@ -1,0 +1,6 @@
+import game_event;
+
+auto eligible <- CASE WHEN count(game.id) by player.full_name >10 THEN 1 else 0 end;
+auto scoring_criteria <- sum(points_scored) by player.full_name / count(game.id) by player.full_name;
+auto player_rank2 <- rank  player.full_name by eligible desc, scoring_criteria desc;
+auto player_rank <- rank  player.full_name by eligible desc, sum(points_scored) by player.full_name / count(game.id) by player.full_name desc;

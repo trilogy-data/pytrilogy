@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from pytest import raises
@@ -143,7 +144,6 @@ def test_adhoc05():
 
 
 def test_adhoc06():
-    DebuggingHook()
     env = Environment(working_path=working_path)
     with open(working_path / "adhoc06.preql") as f:
         text = f.read()
@@ -152,3 +152,65 @@ def test_adhoc06():
     env, queries = env.parse(text)
     with raises(NotImplementedError):
         engine.generate_sql(text)[0]
+
+
+def test_adhoc07():
+    DebuggingHook()
+    env = Environment(working_path=working_path)
+    with open(working_path / "adhoc07.preql") as f:
+        text = f.read()
+    engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
+    env, queries = env.parse(text)
+    assert env.concepts["scoring_criteria"].grain.components == {
+        "player.id"
+    }, env.concepts["scoring_criteria"].grain.components
+    generated = engine.generate_sql(text)[0]
+
+    # Regex pattern to validate the SQL CTE structure
+    target = r"""(?i)\s*WITH\s+
+    (\w+)\s+as\s*\(\s*
+    SELECT\s+
+    "game_events"\."game_id"\s+as\s+"game_id",\s*
+    "game_events"\."player_full_name"\s+as\s+"player_full_name"\s+
+    FROM\s+
+    "bigquery-public-data"\."ncaa_basketball"\."mbb_pbp_sr"\s+as\s+"game_events"\s+
+    GROUP\s+BY\s+
+    "game_events"\."game_id",\s*
+    "game_events"\."player_full_name"\s*\),\s*
+    (\w+)\s+as\s*\(\s*
+    SELECT\s+
+    "game_events"\."player_full_name"\s+as\s+"player_full_name",\s*
+    sum\("game_events"\."points_scored"\)\s+as\s+"_virt_agg_sum_\d+"\s+
+    FROM\s+
+    "bigquery-public-data"\."ncaa_basketball"\."mbb_pbp_sr"\s+as\s+"game_events"\s+
+    GROUP\s+BY\s+
+    "game_events"\."player_full_name"\s*\),\s*
+    (\w+)\s+as\s*\(\s*
+    SELECT\s+
+    "\1"\."player_full_name"\s+as\s+"player_full_name",\s*
+    CASE\s+
+    WHEN\s+count\("\1"\."game_id"\)\s*>\s*10\s+THEN\s+1\s+
+    ELSE\s+0\s+
+    END\s+as\s+"eligible",\s*
+    count\("\1"\."game_id"\)\s+as\s+"_virt_agg_count_\d+"\s+
+    FROM\s+
+    "\1"\s+
+    GROUP\s+BY\s+
+    "\1"\."player_full_name"\s*\),\s*
+    (\w+)\s+as\s*\(\s*
+    SELECT\s+
+    "\2"\."_virt_agg_sum_\d+"\s+as\s+"_virt_agg_sum_\d+",\s*
+    "\3"\."_virt_agg_count_\d+"\s+as\s+"_virt_agg_count_\d+",\s*
+    "\3"\."eligible"\s+as\s+"eligible",\s*
+    "\3"\."player_full_name"\s+as\s+"player_full_name"\s+
+    FROM\s+
+    "\3"\s+
+    INNER\s+JOIN\s+"\2"\s+on\s+"\3"\."player_full_name"\s*=\s*"\2"\."player_full_name"\s*\)\s*
+    SELECT\s+
+    "\4"\."player_full_name"\s+as\s+"player_full_name",\s*
+    rank\(\)\s+over\s*\(\s*order\s+by\s+"\4"\."eligible"\s+desc,\s*"\4"\."_virt_agg_sum_\d+"\s*/\s*"\4"\."_virt_agg_count_\d+"\s+desc\s*\)\s+as\s+"player_rank"\s+
+    FROM\s+
+    "\4"\s+
+    LIMIT\s*\(\s*100\s*\)\s*"""
+
+    assert re.match(target, generated, re.VERBOSE)
