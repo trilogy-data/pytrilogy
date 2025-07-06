@@ -1529,8 +1529,8 @@ order by
     assert results[1].no_capture == "apple"
 
 
-def test_window_calc(default_duckdb_engine: Executor):
-    DebuggingHook()
+def test_window_calc():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
     test = """
 const list <- [1,2,3,4,5];
 const orid <- unnest(list);
