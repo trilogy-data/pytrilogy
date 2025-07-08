@@ -1,0 +1,26 @@
+import game_event;
+auto eligible <- CASE WHEN count(game.id) by player.full_name >10 THEN 1 else 0 end; # whether the player has more than 10 games, making them eligible for the dashboard
+
+auto player_rank <- rank  player.full_name by eligible desc, sum(points_scored) by player.full_name / count(game.id) by player.full_name desc;
+
+
+auto shot_display <-
+    case when type = 'threepointmade' then coalesce(shot_type,'unspecified') || '-three'
+    when type = 'twopointmade' then coalesce(shot_type,'unspecified') || '-two'
+    when type = 'threepointmiss' then coalesce(shot_type,'unspecified') || '-three'
+    when type = 'twopointmiss' then coalesce(shot_type,'unspecified') || '-two'
+    when type = 'freethrowmade' then 'free-throw'
+    when type = 'freethrowmiss' then 'free-throw'
+    end;
+
+select  
+    player_rank,
+    shot_display,
+    shot_subtype,  
+    count(id ? shot_display is not null) as shots_taken,  
+    count(id ? shot_display is not null and shot_made) as shots_made,  
+    shots_taken/shots_made as shooting_percentage, 
+having
+    player_rank = 1
+order by shots_taken desc  
+;  

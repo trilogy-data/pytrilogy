@@ -23,7 +23,7 @@ player_full_name:player.full_name,
 event_type:type,
 type: sub_type,
 shot_type: shot_type,
-shot_subtype: shot_subtype,
+shot_subtype: ?shot_subtype,
 points_scored: points_scored,
 event_description: description,
 shot_made: shot_made

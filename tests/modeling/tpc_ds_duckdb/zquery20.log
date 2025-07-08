@@ -1,5 +1,5 @@
 query_id = 20
-gen_length = 2879
+gen_length = 2953
 generated_sql = """
 
 WITH 
@@ -53,7 +53,7 @@ SELECT
     \"thoughtful\".\"revenue\" * 100.0 / (\"cooperative\".\"_virt_window_sum_69632973582362\") as \"revenue_ratio\"
 FROM
     \"cooperative\"
-    LEFT OUTER JOIN \"thoughtful\" on \"cooperative\".\"revenue\" = \"thoughtful\".\"revenue\" AND (\"cooperative\".\"cs_item_class\" = \"thoughtful\".\"cs_item_class\" or (\"cooperative\".\"cs_item_class\" is null and \"thoughtful\".\"cs_item_class\" is null))
+    LEFT OUTER JOIN \"thoughtful\" on (\"cooperative\".\"cs_item_class\" = \"thoughtful\".\"cs_item_class\" or (\"cooperative\".\"cs_item_class\" is null and \"thoughtful\".\"cs_item_class\" is null)) AND (\"cooperative\".\"revenue\" = \"thoughtful\".\"revenue\" or (\"cooperative\".\"revenue\" is null and \"thoughtful\".\"revenue\" is null))
 WHERE
     \"thoughtful\".\"cs_item_name\" is not null
 

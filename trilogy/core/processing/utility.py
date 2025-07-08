@@ -13,6 +13,7 @@ from trilogy.core.enums import (
     FunctionClass,
     Granularity,
     JoinType,
+    Modifier,
     Purpose,
 )
 from trilogy.core.models.build import (
@@ -355,6 +356,20 @@ def reduce_concept_pairs(input: list[ConceptPair]) -> list[ConceptPair]:
     return final
 
 
+def get_modifiers(
+    concept: str,
+    join: JoinOrderOutput,
+    ds_node_map: dict[str, QueryDatasource | BuildDatasource],
+):
+    base = []
+
+    if join.right and concept in ds_node_map[join.right].nullable_concepts:
+        base.append(Modifier.NULLABLE)
+    if join.left and concept in ds_node_map[join.left].nullable_concepts:
+        base.append(Modifier.NULLABLE)
+    return list(set(base))
+
+
 def get_node_joins(
     datasources: List[QueryDatasource | BuildDatasource],
     environment: BuildEnvironment,
@@ -400,6 +415,9 @@ def get_node_joins(
                             concept_map[concept], ds_node_map[j.right]
                         ),
                         existing_datasource=ds_node_map[k],
+                        modifiers=get_modifiers(
+                            concept_map[concept].address, j, ds_node_map
+                        ),
                     )
                     for k, v in j.keys.items()
                     for concept in v

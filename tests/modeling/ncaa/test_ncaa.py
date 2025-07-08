@@ -214,3 +214,17 @@ def test_adhoc07():
     LIMIT\s*\(\s*100\s*\)\s*"""
 
     assert re.match(target, generated, re.VERBOSE)
+
+
+def test_adhoc08():
+    DebuggingHook()
+    env = Environment(working_path=working_path)
+    with open(working_path / "adhoc08.preql") as f:
+        text = f.read()
+    engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
+    env, queries = env.parse(text)
+    generated = engine.generate_sql(text)[0]
+    assert (
+        '("abundant"."shot_subtype" = "juicy"."shot_subtype" or ("abundant"."shot_subtype" is null and "juicy"."shot_subtype" is null))'
+        in generated
+    ), generated
