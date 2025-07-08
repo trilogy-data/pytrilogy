@@ -20,6 +20,7 @@ from trilogy.core.models.execute import (
 
 
 def null_wrapper(lval: str, rval: str, modifiers: list[Modifier]) -> str:
+
     if Modifier.NULLABLE in modifiers:
         return f"({lval} = {rval} or ({lval} is null and {rval} is null))"
     return f"{lval} = {rval}"

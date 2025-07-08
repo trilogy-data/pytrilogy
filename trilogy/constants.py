@@ -37,7 +37,7 @@ class Comments:
     show: bool = False
     basic: bool = True
     joins: bool = True
-    nullable: bool = False
+    nullable: bool = True
     partial: bool = True
 
 

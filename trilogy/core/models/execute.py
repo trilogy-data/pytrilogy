@@ -501,7 +501,6 @@ class BaseJoin(BaseModel):
                 f"Cannot join a dataself to itself, joining {self.left_datasource} and"
                 f" {self.right_datasource}"
             )
-
         # Early returns maintained as in original code
         if self.concept_pairs or self.concepts == []:
             return self

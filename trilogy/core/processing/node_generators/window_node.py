@@ -69,6 +69,8 @@ def gen_window_node(
     # append in keys to get the right grain
     if concept.keys:
         for item in concept.keys:
+            if item in targets:
+                continue
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} appending search for key {item}"
             )
