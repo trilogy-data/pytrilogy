@@ -39,6 +39,14 @@ FUNCTION_MAP = {
     ),
     ## Duckdb indexes from 1, not 0
     FunctionType.INDEX_ACCESS: lambda args: (f"{args[0]}[{args[1]}]"),
+    ## Duckdb uses list for array
+    FunctionType.ARRAY_DISTINCT: lambda args: f"list_distinct({args[0]})",
+    FunctionType.ARRAY_SUM: lambda args: f"list_sum({args[0]})",
+    FunctionType.ARRAY_SORT: lambda args: f"list_sort({args[0]})",
+    FunctionType.ARRAY_TRANSFORM: lambda args: (
+        f"list_transform({args[0]}, {args[1]} -> {args[2]})"
+    ),
+    FunctionType.ARRAY_AGG: lambda args: f"array_agg({args[0]})",
     # datetime is aliased
     FunctionType.CURRENT_DATETIME: lambda x: "cast(get_current_timestamp() as datetime)",
     FunctionType.DATE: lambda x: f"cast({x[0]} as date)",

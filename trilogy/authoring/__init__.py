@@ -37,8 +37,8 @@ from trilogy.core.models.author import (
     WindowType,
 )
 from trilogy.core.models.core import (
+    ArrayType,
     DataType,
-    ListType,
     ListWrapper,
     MapType,
     StructType,
@@ -77,7 +77,7 @@ __all__ = [
     "WindowItemOver",
     "DataType",
     "StructType",
-    "ListType",
+    "ArrayType",
     "Grain",
     "RowsetDerivationStatement",
     "MapType",

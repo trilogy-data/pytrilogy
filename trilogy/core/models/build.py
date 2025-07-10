@@ -45,6 +45,7 @@ from trilogy.core.models.author import (
     AggregateWrapper,
     AlignClause,
     AlignItem,
+    ArgBinding,
     CaseElse,
     CaseWhen,
     Comparison,
@@ -72,9 +73,9 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.core import (
     Addressable,
+    ArrayType,
     DataType,
     DataTyped,
-    ListType,
     ListWrapper,
     MapType,
     MapWrapper,
@@ -791,7 +792,7 @@ class BuildSubselectComparison(BuildComparison):
 class BuildConcept(Addressable, BuildConceptArgs, DataTyped, BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str
-    datatype: DataType | ListType | StructType | MapType | NumericType
+    datatype: DataType | ArrayType | StructType | MapType | NumericType
     purpose: Purpose
     build_is_aggregate: bool
     derivation: Derivation = Derivation.ROOT
@@ -1083,7 +1084,7 @@ class BuildFunction(DataTyped, BuildConceptArgs, BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
     output_datatype: (
-        DataType | ListType | StructType | MapType | NumericType | TraitDataType
+        DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
     )
     output_purpose: Purpose
     valid_inputs: Optional[
@@ -1102,7 +1103,7 @@ class BuildFunction(DataTyped, BuildConceptArgs, BaseModel):
             MapWrapper[Any, Any],
             TraitDataType,
             DataType,
-            ListType,
+            ArrayType,
             MapType,
             NumericType,
             DatePart,
@@ -2075,7 +2076,7 @@ class Factory:
         return base
 
     @build.register
-    def _(self, base: ListType):
+    def _(self, base: ArrayType):
         return base
 
     @build.register
@@ -2084,6 +2085,10 @@ class Factory:
 
     @build.register
     def _(self, base: MapType):
+        return base
+
+    @build.register
+    def _(self, base: ArgBinding):
         return base
 
     @build.register

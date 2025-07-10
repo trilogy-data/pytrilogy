@@ -27,8 +27,8 @@ from trilogy.core.models.author import (
     WhereClause,
 )
 from trilogy.core.models.core import (
+    ArrayType,
     DataType,
-    ListType,
     ListWrapper,
     NumericType,
     TupleWrapper,
@@ -824,7 +824,7 @@ key id list<int>;
     )
     rendered = Renderer().to_string(commands[0])
 
-    assert env.concepts["id"].datatype == ListType(type=DataType.INTEGER)
+    assert env.concepts["id"].datatype == ArrayType(type=DataType.INTEGER)
     assert isinstance(commands[0], ConceptDeclarationStatement)
     assert rendered == """key id list<int>;""", rendered
 

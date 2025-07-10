@@ -33,8 +33,8 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import (
+    ArrayType,
     DataType,
-    ListType,
     ListWrapper,
     MapType,
     MapWrapper,
@@ -471,7 +471,7 @@ def is_scalar_condition(
         | TraitDataType
         | DataType
         | MapWrapper[Any, Any]
-        | ListType
+        | ArrayType
         | MapType
         | NumericType
         | DatePart

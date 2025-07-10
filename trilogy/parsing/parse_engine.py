@@ -82,9 +82,9 @@ from trilogy.core.models.author import (
     WindowItemOver,
 )
 from trilogy.core.models.core import (
+    ArrayType,
     DataType,
     DataTyped,
-    ListType,
     ListWrapper,
     MapType,
     MapWrapper,
@@ -446,7 +446,7 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def struct_type(self, meta: Meta, args) -> StructType:
         final: list[
-            DataType | MapType | ListType | NumericType | StructType | Concept
+            DataType | MapType | ArrayType | NumericType | StructType | Concept
         ] = []
         for arg in args:
             new = self.environment.concepts.__getitem__(  # type: ignore
@@ -459,11 +459,11 @@ class ParseToObjects(Transformer):
             fields_map={x.name: x for x in final if isinstance(x, Concept)},
         )
 
-    def list_type(self, args) -> ListType:
+    def list_type(self, args) -> ArrayType:
         content = args[0]
         if isinstance(content, str):
             content = self.environment.concepts[content]
-        return ListType(type=content)
+        return ArrayType(type=content)
 
     def numeric_type(self, args) -> NumericType:
         return NumericType(precision=args[0], scale=args[1])
@@ -480,13 +480,13 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def data_type(
         self, meta: Meta, args
-    ) -> DataType | TraitDataType | ListType | StructType | MapType | NumericType:
+    ) -> DataType | TraitDataType | ArrayType | StructType | MapType | NumericType:
         resolved = args[0]
         traits = args[2:]
-        base: DataType | TraitDataType | ListType | StructType | MapType | NumericType
+        base: DataType | TraitDataType | ArrayType | StructType | MapType | NumericType
         if isinstance(resolved, StructType):
             base = resolved
-        elif isinstance(resolved, ListType):
+        elif isinstance(resolved, ArrayType):
             base = resolved
         elif isinstance(resolved, NumericType):
             base = resolved
@@ -1738,6 +1738,10 @@ class ParseToObjects(Transformer):
         return self.function_factory.create_function(args, FunctionType.SUM, meta)
 
     @v_args(meta=True)
+    def array_agg(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.ARRAY_AGG, meta)
+
+    @v_args(meta=True)
     def avg(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.AVG, meta)
 
@@ -2001,6 +2005,48 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fbool(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.BOOL, meta)
+
+    @v_args(meta=True)
+    def farray_sum(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.ARRAY_SUM, meta)
+
+    @v_args(meta=True)
+    def farray_distinct(self, meta, args):
+        return self.function_factory.create_function(
+            args, FunctionType.ARRAY_DISTINCT, meta
+        )
+
+    @v_args(meta=True)
+    def farray_sort(self, meta, args):
+        return self.function_factory.create_function(
+            args, FunctionType.ARRAY_SORT, meta
+        )
+
+    @v_args(meta=True)
+    def transform_lambda(self, meta, args):
+        return self.environment.functions[args[0]]
+
+    @v_args(meta=True)
+    def farray_transform(self, meta, args):
+        factory: CustomFunctionFactory = args[1]
+        if not len(factory.function_arguments) == 1:
+            raise InvalidSyntaxException(
+                "Array transform function must have exactly one argument;"
+            )
+        return self.function_factory.create_function(
+            [
+                args[0],
+                factory.function_arguments[0],
+                factory(
+                    ArgBinding(
+                        name=factory.function_arguments[0].name,
+                        datatype=arg_to_datatype(args[0]).value_data_type,
+                    )
+                ),
+            ],
+            FunctionType.ARRAY_TRANSFORM,
+            meta,
+        )
 
 
 def unpack_visit_error(e: VisitError, text: str | None = None):

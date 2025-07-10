@@ -162,7 +162,7 @@
     
     between_comparison: "between"i expr "and"i expr
 
-    subselect_comparison: expr array_comparison (literal | _constant_functions | _string_functions | concept_lit | filter_item | window_item | unnest | fgroup |  expr_tuple | parenthetical )
+    subselect_comparison: expr array_comparison (literal | _constant_functions | _string_functions | _array_functions | concept_lit | filter_item | window_item | unnest | fgroup |  expr_tuple | parenthetical )
     
     expr_tuple: ("("  expr ("," expr)+ ","?  ")") | ("("  expr "," ")")
 
@@ -286,6 +286,19 @@
     fregexp_replace: _REGEXP_REPLACE expr "," expr "," expr   ")"
 
     _string_functions: like | ilike | upper | flower | fsplit | fstrpos | fsubstring | fcontains | fregexp_extract | fregexp_contains | fregexp_replace
+
+    //array_functions
+    _ARRAY_SUM.1: "array_sum("i
+    farray_sum: _ARRAY_SUM  expr  ")"
+    _ARRAY_DISTINCT.1: "array_distinct("i
+    farray_distinct: _ARRAY_DISTINCT expr ")"
+    _ARRAY_SORT.1: "array_sort("i
+    farray_sort: _ARRAY_SORT expr ")"
+    _ARRAY_TRANSFORM.1: "array_transform("i
+    transform_lambda: "@" IDENTIFIER
+    farray_transform: _ARRAY_TRANSFORM expr ","  transform_lambda   ")"
+
+    _array_functions: farray_sum | farray_distinct | farray_sort | farray_transform
     
     // special aggregate
     _GROUP.1: "group("i
@@ -309,11 +322,13 @@
     max: _MAX expr ")"
     _MIN.1: "min("i
     min: _MIN expr ")"
+    _ARRAY_AGG.1: "array_agg("i
+    array_agg: _ARRAY_AGG expr ")"
     
     //aggregates can force a grain
     aggregate_all: "*"
     aggregate_over: ("BY"i (aggregate_all | over_list))
-    aggregate_functions: (count | count_distinct | sum | avg | max | min) aggregate_over?
+    aggregate_functions: (count | count_distinct | sum | avg | max | min | array_agg) aggregate_over?
 
     // date functions
     _DATE.1: "date("i
@@ -355,7 +370,7 @@
     
     _date_functions: fdate | fdate_add | fdate_sub | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part | fdate_trunc
     
-    _static_functions:  _string_functions | _math_functions 
+    _static_functions:  _string_functions | _math_functions | _array_functions
 
     custom_function:  "@" IDENTIFIER  "(" (expr ",")* expr ")"
 

@@ -149,6 +149,12 @@ class FunctionType(Enum):
     DATE_LITERAL = "date_literal"
     DATETIME_LITERAL = "datetime_literal"
 
+    # ARRAY
+    ARRAY_DISTINCT = "array_distinct"
+    ARRAY_SUM = "array_sum"
+    ARRAY_SORT = "array_sort"
+    ARRAY_TRANSFORM = "array_transform"
+
     # TEXT AND MAYBE MORE
     SPLIT = "split"
     LENGTH = "len"
@@ -177,6 +183,7 @@ class FunctionType(Enum):
     MAX = "max"
     MIN = "min"
     AVG = "avg"
+    ARRAY_AGG = "array_agg"
 
     # String
     LIKE = "like"
@@ -228,6 +235,7 @@ class FunctionClass(Enum):
         FunctionType.MIN,
         FunctionType.SUM,
         FunctionType.AVG,
+        FunctionType.ARRAY_AGG,
         FunctionType.COUNT,
         FunctionType.COUNT_DISTINCT,
     ]
