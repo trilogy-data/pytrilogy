@@ -15,10 +15,12 @@ from trilogy.core.enums import (
     ComparisonOperator,
     DatePart,
     FunctionType,
+    Ordering,
     UnnestMode,
     WindowType,
 )
 from trilogy.core.internal import DEFAULT_CONCEPTS
+from trilogy.core.models.author import ArgBinding
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildCaseElse,
@@ -37,8 +39,8 @@ from trilogy.core.models.build import (
     BuildWindowItem,
 )
 from trilogy.core.models.core import (
+    ArrayType,
     DataType,
-    ListType,
     ListWrapper,
     MapType,
     MapWrapper,
@@ -142,11 +144,11 @@ DATATYPE_MAP: dict[DataType, str] = {
     DataType.MAP: "map",
     DataType.DATE: "date",
     DataType.DATETIME: "datetime",
-    DataType.LIST: "list",
+    DataType.ARRAY: "list",
 }
 
 COMPLEX_DATATYPE_MAP = {
-    DataType.LIST: lambda x: f"{x}[]",
+    DataType.ARRAY: lambda x: f"{x}[]",
 }
 
 
@@ -182,6 +184,13 @@ FUNCTION_MAP = {
     FunctionType.ARRAY: lambda x: f"[{', '.join(x)}]",
     FunctionType.DATE_LITERAL: lambda x: f"date '{x}'",
     FunctionType.DATETIME_LITERAL: lambda x: f"datetime '{x}'",
+    # ARRAY
+    FunctionType.ARRAY_SUM: lambda x: f"array_sum({x[0]})",
+    FunctionType.ARRAY_DISTINCT: lambda x: f"array_distinct({x[0]})",
+    FunctionType.ARRAY_SORT: lambda x: f"array_sort({x[0]})",
+    FunctionType.ARRAY_TRANSFORM: lambda args: (
+        f"array_transform({args[0]}, {args[1]} -> {args[2]})"
+    ),
     # math
     FunctionType.ADD: lambda x: " + ".join(x),
     FunctionType.ABS: lambda x: f"abs({x[0]})",
@@ -198,6 +207,7 @@ FUNCTION_MAP = {
     FunctionType.COUNT_DISTINCT: lambda x: f"count(distinct {x[0]})",
     FunctionType.COUNT: lambda x: f"count({x[0]})",
     FunctionType.SUM: lambda x: f"sum({x[0]})",
+    FunctionType.ARRAY_AGG: lambda x: f"array_agg({x[0]})",
     FunctionType.LENGTH: lambda x: f"length({x[0]})",
     FunctionType.AVG: lambda x: f"avg({x[0]})",
     FunctionType.MAX: lambda x: f"max({x[0]})",
@@ -569,7 +579,7 @@ class BaseDialect:
             MapType,
             NumericType,
             StructType,
-            ListType,
+            ArrayType,
             ListWrapper[Any],
             TupleWrapper[Any],
             DatePart,
@@ -749,8 +759,12 @@ class BaseDialect:
             return self.FUNCTION_MAP[FunctionType.DATETIME_LITERAL](e)
         elif isinstance(e, TraitDataType):
             return self.render_expr(e.type, cte=cte, cte_map=cte_map)
-        elif isinstance(e, ListType):
-            return f"{self.COMPLEX_DATATYPE_MAP[DataType.LIST](self.render_expr(e.value_data_type, cte=cte, cte_map=cte_map))}"
+        elif isinstance(e, ArgBinding):
+            return e.name
+        elif isinstance(e, Ordering):
+            return str(e.value)
+        elif isinstance(e, ArrayType):
+            return f"{self.COMPLEX_DATATYPE_MAP[DataType.ARRAY](self.render_expr(e.value_data_type, cte=cte, cte_map=cte_map))}"
         elif isinstance(e, BuildParamaterizedConceptReference):
             if self.rendering.parameters:
                 if e.concept.namespace == DEFAULT_NAMESPACE:

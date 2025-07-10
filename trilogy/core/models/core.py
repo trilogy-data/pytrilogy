@@ -27,6 +27,7 @@ from pydantic_core import core_schema
 from trilogy.constants import (
     MagicConstants,
 )
+from trilogy.core.enums import Ordering
 
 
 class DataTyped(ABC):
@@ -53,7 +54,7 @@ class Addressable(ABC):
 TYPEDEF_TYPES = Union[
     "DataType",
     "MapType",
-    "ListType",
+    "ArrayType",
     "NumericType",
     "StructType",
     "DataTyped",
@@ -63,7 +64,7 @@ TYPEDEF_TYPES = Union[
 CONCRETE_TYPES = Union[
     "DataType",
     "MapType",
-    "ListType",
+    "ArrayType",
     "NumericType",
     "StructType",
     "TraitDataType",
@@ -79,7 +80,6 @@ class DataType(Enum):
     STRING = "string"
     BOOL = "bool"
     MAP = "map"
-    LIST = "list"
     NUMBER = "number"
     FLOAT = "float"
     NUMERIC = "numeric"
@@ -105,7 +105,7 @@ class DataType(Enum):
 
 
 class TraitDataType(BaseModel):
-    type: DataType | NumericType | StructType | ListType | MapType
+    type: DataType | NumericType | StructType | ArrayType | MapType
     traits: list[str]
 
     def __hash__(self):
@@ -146,7 +146,7 @@ class NumericType(BaseModel):
         return self.data_type.value
 
 
-class ListType(BaseModel):
+class ArrayType(BaseModel):
     model_config = ConfigDict(frozen=True)
     type: TYPEDEF_TYPES
 
@@ -159,7 +159,7 @@ class ListType(BaseModel):
 
     @property
     def data_type(self):
-        return DataType.LIST
+        return DataType.ARRAY
 
     @property
     def value(self):
@@ -340,9 +340,9 @@ def dict_to_map_wrapper(arg):
 
 def merge_datatypes(
     inputs: list[
-        DataType | ListType | StructType | MapType | NumericType | TraitDataType
+        DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
     ],
-) -> DataType | ListType | StructType | MapType | NumericType | TraitDataType:
+) -> DataType | ArrayType | StructType | MapType | NumericType | TraitDataType:
     """This is a temporary hack for doing between
     allowable datatype transformation matrix"""
     if len(inputs) == 1:
@@ -393,6 +393,8 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
         raise ValueError(f"Cannot parse arg datatype for arg of type {arg}")
     elif isinstance(arg, bool):
         return DataType.BOOL
+    elif isinstance(arg, Ordering):
+        return DataType.STRING  # TODO: revisit
     elif isinstance(arg, int):
         return DataType.INTEGER
     elif isinstance(arg, str):
@@ -404,14 +406,14 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
     elif isinstance(arg, TraitDataType):
         return arg
     elif isinstance(arg, ListWrapper):
-        return ListType(type=arg.type)
+        return ArrayType(type=arg.type)
     elif isinstance(arg, DataTyped):
         return arg.output_datatype
     elif isinstance(arg, TupleWrapper):
-        return ListType(type=arg.type)
+        return ArrayType(type=arg.type)
     elif isinstance(arg, list):
         wrapper = list_to_wrapper(arg)
-        return ListType(type=wrapper.type)
+        return ArrayType(type=wrapper.type)
     elif isinstance(arg, MapWrapper):
         return MapType(key_type=arg.key_type, value_type=arg.value_type)
     elif isinstance(arg, datetime):

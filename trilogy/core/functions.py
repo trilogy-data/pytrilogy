@@ -25,8 +25,8 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.core import (
     CONCRETE_TYPES,
+    ArrayType,
     DataType,
-    ListType,
     MapType,
     NumericType,
     StructType,
@@ -45,14 +45,14 @@ class FunctionConfig:
     valid_inputs: set[DataType] | list[set[DataType]] | None = None
     output_purpose: Purpose | None = None
     output_type: (
-        DataType | ListType | MapType | StructType | NumericType | TraitDataType | None
+        DataType | ArrayType | MapType | StructType | NumericType | TraitDataType | None
     ) = None
     output_type_function: Optional[Callable] = None
 
 
 def get_unnest_output_type(args: list[Any]) -> CONCRETE_TYPES:
     output = arg_to_datatype(args[0])
-    if isinstance(output, (ListType, MapType)):
+    if isinstance(output, (ArrayType, MapType)):
         output = output.value_data_type
     else:
         output = DataType.STRING
@@ -69,12 +69,16 @@ def get_coalesce_output_type(args: list[Any]) -> CONCRETE_TYPES:
     return processed[0]
 
 
+def get_transform_output_type(args: list[Any]) -> CONCRETE_TYPES:
+    return arg_to_datatype(args[2])
+
+
 def get_index_output_type(
     args: list[Any],
 ) -> CONCRETE_TYPES:
     arg = args[0]
     datatype = arg_to_datatype(arg)
-    if isinstance(datatype, ListType):
+    if isinstance(datatype, ArrayType):
         return datatype.value_data_type
     elif isinstance(datatype, MapType):
         return datatype.value_data_type
@@ -184,7 +188,6 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.UNNEST: FunctionConfig(
         valid_inputs={
             DataType.ARRAY,
-            DataType.LIST,
         },
         output_purpose=Purpose.KEY,
         output_type_function=get_unnest_output_type,
@@ -235,13 +238,12 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.SPLIT: FunctionConfig(
         valid_inputs={DataType.STRING},
         output_purpose=Purpose.PROPERTY,
-        output_type=ListType(type=DataType.STRING),
+        output_type=ArrayType(type=DataType.STRING),
         arg_count=2,
     ),
     FunctionType.INDEX_ACCESS: FunctionConfig(
         valid_inputs=[
             {
-                DataType.LIST,
                 DataType.ARRAY,
             },
             {
@@ -251,6 +253,43 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_purpose=Purpose.PROPERTY,
         output_type_function=get_index_output_type,
         arg_count=2,
+    ),
+    FunctionType.ARRAY_DISTINCT: FunctionConfig(
+        valid_inputs={
+            DataType.ARRAY,
+        },
+        output_purpose=Purpose.PROPERTY,
+        output_type_function=lambda args: get_output_type_at_index(args, 0),
+        arg_count=1,
+    ),
+    FunctionType.ARRAY_SORT: FunctionConfig(
+        valid_inputs=[
+            {DataType.ARRAY},
+            {DataType.STRING},
+        ],
+        output_purpose=Purpose.PROPERTY,
+        output_type_function=lambda args: get_output_type_at_index(args, 0),
+        arg_count=2,
+    ),
+    FunctionType.ARRAY_TRANSFORM: FunctionConfig(
+        valid_inputs=[
+            {
+                DataType.ARRAY,
+            },
+            {*DataType},
+            {*DataType},
+        ],
+        output_purpose=Purpose.PROPERTY,
+        output_type_function=get_transform_output_type,
+        arg_count=3,
+    ),
+    FunctionType.ARRAY_SUM: FunctionConfig(
+        valid_inputs={
+            DataType.ARRAY,
+        },
+        output_purpose=Purpose.PROPERTY,
+        output_type_function=get_index_output_type,
+        arg_count=1,
     ),
     FunctionType.MAP_ACCESS: FunctionConfig(
         valid_inputs=[
@@ -722,7 +761,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.ARRAY: FunctionConfig(
         output_purpose=Purpose.PROPERTY,
         arg_count=InfiniteFunctionArgs,
-        output_type=ListType(type=DataType.STRING),
+        output_type=ArrayType(type=DataType.STRING),
     ),
     FunctionType.LENGTH: FunctionConfig(
         valid_inputs={DataType.STRING, DataType.ARRAY, DataType.MAP},
@@ -738,6 +777,14 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.NUMERIC,
         },
         output_purpose=Purpose.METRIC,
+        arg_count=1,
+    ),
+    FunctionType.ARRAY_AGG: FunctionConfig(
+        valid_inputs={*DataType},
+        output_purpose=Purpose.METRIC,
+        output_type_function=lambda args: ArrayType(
+            type=merge_datatypes([arg_to_datatype(x) for x in args])
+        ),
         arg_count=1,
     ),
     FunctionType.AVG: FunctionConfig(
@@ -837,7 +884,7 @@ def create_function_derived_concept(
     arguments: list[Concept],
     environment: Environment,
     output_type: Optional[
-        DataType | ListType | StructType | MapType | NumericType | TraitDataType
+        DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
     ] = None,
     output_purpose: Optional[Purpose] = None,
 ) -> Concept:

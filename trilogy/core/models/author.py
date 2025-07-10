@@ -48,9 +48,9 @@ from trilogy.core.enums import (
 )
 from trilogy.core.models.core import (
     Addressable,
+    ArrayType,
     DataType,
     DataTyped,
-    ListType,
     ListWrapper,
     MapType,
     MapWrapper,
@@ -104,7 +104,7 @@ class HasUUID(ABC):
 class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
     address: str
     datatype: (
-        DataType | TraitDataType | ListType | StructType | MapType | NumericType
+        DataType | TraitDataType | ArrayType | StructType | MapType | NumericType
     ) = DataType.UNKNOWN
     metadata: Optional["Metadata"] = None
 
@@ -646,7 +646,7 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
                 )
         elif self.operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
             right_type = arg_to_datatype(self.right)
-            if isinstance(right_type, ListType) and not is_compatible_datatype(
+            if isinstance(right_type, ArrayType) and not is_compatible_datatype(
                 arg_to_datatype(self.left), right_type.value_data_type
             ):
                 raise SyntaxError(
@@ -802,7 +802,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         extra="forbid",
     )
     name: str
-    datatype: DataType | TraitDataType | ListType | StructType | MapType | NumericType
+    datatype: DataType | TraitDataType | ArrayType | StructType | MapType | NumericType
     purpose: Purpose
     derivation: Derivation = Derivation.ROOT
     granularity: Granularity = Granularity.MULTI_ROW
@@ -1277,7 +1277,7 @@ class UndefinedConceptFull(Concept, Mergeable, Namespaced):
     name: str
     line_no: int | None = None
     datatype: (
-        DataType | TraitDataType | ListType | StructType | MapType | NumericType
+        DataType | TraitDataType | ArrayType | StructType | MapType | NumericType
     ) = DataType.UNKNOWN
     purpose: Purpose = Purpose.UNKNOWN
 
@@ -1437,10 +1437,10 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
 
 
 def get_basic_type(
-    type: DataType | ListType | StructType | MapType | NumericType | TraitDataType,
+    type: DataType | ArrayType | StructType | MapType | NumericType | TraitDataType,
 ) -> DataType:
-    if isinstance(type, ListType):
-        return DataType.LIST
+    if isinstance(type, ArrayType):
+        return DataType.ARRAY
     if isinstance(type, StructType):
         return DataType.STRUCT
     if isinstance(type, MapType):
@@ -1609,7 +1609,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
     output_datatype: (
-        DataType | ListType | StructType | MapType | NumericType | TraitDataType
+        DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
     )
     output_purpose: Purpose
     valid_inputs: Optional[
@@ -2358,9 +2358,10 @@ class Comment(BaseModel):
     text: str
 
 
-class ArgBinding(Namespaced, BaseModel):
+class ArgBinding(Namespaced, DataTyped, BaseModel):
     name: str
     default: Expr | None = None
+    datatype: DataType = DataType.UNKNOWN
 
     def with_namespace(self, namespace):
         return ArgBinding(
@@ -2371,6 +2372,12 @@ class ArgBinding(Namespaced, BaseModel):
                 else self.default
             ),
         )
+
+    @property
+    def output_datatype(self):
+        if self.default is not None:
+            return arg_to_datatype(self.default)
+        return self.datatype
 
 
 class CustomType(BaseModel):
@@ -2426,7 +2433,7 @@ FuncArgs = (
     | MapWrapper[Any, Any]
     | TraitDataType
     | DataType
-    | ListType
+    | ArrayType
     | MapType
     | NumericType
     | ListWrapper[Any]
@@ -2434,4 +2441,6 @@ FuncArgs = (
     | Comparison
     | Conditional
     | MagicConstants
+    | ArgBinding
+    | Ordering
 )

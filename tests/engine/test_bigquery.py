@@ -4,7 +4,7 @@ import pytest
 
 from trilogy import Dialects
 from trilogy.constants import Rendering
-from trilogy.core.models.core import DataType, ListType, ListWrapper
+from trilogy.core.models.core import ArrayType, DataType, ListWrapper
 from trilogy.core.models.environment import Environment
 from trilogy.hooks.query_debugger import DebuggingHook
 
@@ -173,7 +173,7 @@ select
     )
     sql = executor.generate_sql(queries[-1])[0]
     listc = environment.concepts["list"]
-    assert listc.datatype == ListType(type=DataType.INTEGER)
+    assert listc.datatype == ArrayType(type=DataType.INTEGER)
     assert isinstance(listc.lineage.arguments[0], ListWrapper), type(
         listc.lineage.arguments[0]
     )

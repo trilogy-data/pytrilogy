@@ -23,6 +23,16 @@ def generate_regex_extract(x: list[str]) -> str:
     return f"REGEXP_EXTRACT({x[0]},{x[1]},{x[2]})"
 
 
+def render_sort(args):
+    if len(args) == 1:
+        return f"list_sort({args[0]})"
+    order = args[1].split(" ", 1)
+    if len(order) == 1:
+        return f"list_sort({args[0]}, '{order[0]}')"
+    elif len(order) == 2:
+        return f"list_sort({args[0]}, '{order[0]}', '{order[1]}')"
+
+
 FUNCTION_MAP = {
     FunctionType.COUNT: lambda args: f"count({args[0]})",
     FunctionType.SUM: lambda args: f"sum({args[0]})",
@@ -39,6 +49,14 @@ FUNCTION_MAP = {
     ),
     ## Duckdb indexes from 1, not 0
     FunctionType.INDEX_ACCESS: lambda args: (f"{args[0]}[{args[1]}]"),
+    ## Duckdb uses list for array
+    FunctionType.ARRAY_DISTINCT: lambda args: f"list_distinct({args[0]})",
+    FunctionType.ARRAY_SUM: lambda args: f"list_sum({args[0]})",
+    FunctionType.ARRAY_SORT: render_sort,
+    FunctionType.ARRAY_TRANSFORM: lambda args: (
+        f"list_transform({args[0]}, {args[1]} -> {args[2]})"
+    ),
+    FunctionType.ARRAY_AGG: lambda args: f"array_agg({args[0]})",
     # datetime is aliased
     FunctionType.CURRENT_DATETIME: lambda x: "cast(get_current_timestamp() as datetime)",
     FunctionType.DATE: lambda x: f"cast({x[0]} as date)",

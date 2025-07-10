@@ -8,7 +8,7 @@ from trilogy import Dialects
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.exceptions import InvalidSyntaxException
-from trilogy.core.models.core import DataType, ListType
+from trilogy.core.models.core import ArrayType, DataType
 from trilogy.core.models.environment import Environment
 from trilogy.core.query_processor import process_query
 from trilogy.core.statements.author import SelectStatement
@@ -31,7 +31,7 @@ TEST_DIALECTS = [
 
 
 def test_typing():
-    x = ListType(type=DataType.INTEGER)
+    x = ArrayType(type=DataType.INTEGER)
 
     assert x in set([x])
 
@@ -393,7 +393,7 @@ def test_unnest(test_environment):
         x
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
-    assert env.concepts["int_list"].datatype == ListType(type=DataType.INTEGER)
+    assert env.concepts["int_list"].datatype == ArrayType(type=DataType.INTEGER)
     assert env.concepts["x"].datatype == DataType.INTEGER
 
 

@@ -28,8 +28,8 @@ from trilogy.core.models.author import (
     WindowItem,
 )
 from trilogy.core.models.core import (
+    ArrayType,
     DataType,
-    ListType,
     ListWrapper,
     MapWrapper,
     NumericType,
@@ -332,7 +332,7 @@ class Renderer:
         return output
 
     @to_string.register
-    def _(self, arg: ListType):
+    def _(self, arg: ArrayType):
         return f"list<{self.to_string(arg.value_data_type)}>"
 
     @to_string.register
