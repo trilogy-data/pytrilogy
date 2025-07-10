@@ -2092,6 +2092,10 @@ class Factory:
         return base
 
     @build.register
+    def _(self, base: Ordering):
+        return base
+
+    @build.register
     def _(self, base: Datasource):
         local_cache: dict[str, BuildConcept] = {}
         factory = Factory(

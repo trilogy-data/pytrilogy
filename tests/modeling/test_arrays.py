@@ -10,9 +10,8 @@ def test_array():
         len(num_list) AS length,
         array_sum(num_list) AS total,
         array_distinct(num_list) AS distinct_values,
-        array_sort(num_list) AS sorted_values,
+        array_sort(num_list, asc) AS sorted_values,
     ;"""
-
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 1
     assert results[0][0] == 6  # length

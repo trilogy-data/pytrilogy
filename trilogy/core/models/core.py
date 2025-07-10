@@ -27,6 +27,7 @@ from pydantic_core import core_schema
 from trilogy.constants import (
     MagicConstants,
 )
+from trilogy.core.enums import Ordering
 
 
 class DataTyped(ABC):
@@ -392,6 +393,8 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
         raise ValueError(f"Cannot parse arg datatype for arg of type {arg}")
     elif isinstance(arg, bool):
         return DataType.BOOL
+    elif isinstance(arg, Ordering):
+        return DataType.STRING  # TODO: revisit
     elif isinstance(arg, int):
         return DataType.INTEGER
     elif isinstance(arg, str):

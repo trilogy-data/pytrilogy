@@ -263,12 +263,13 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         arg_count=1,
     ),
     FunctionType.ARRAY_SORT: FunctionConfig(
-        valid_inputs={
-            DataType.ARRAY,
-        },
+        valid_inputs=[
+            {DataType.ARRAY},
+            {DataType.STRING},
+        ],
         output_purpose=Purpose.PROPERTY,
         output_type_function=lambda args: get_output_type_at_index(args, 0),
-        arg_count=1,
+        arg_count=2,
     ),
     FunctionType.ARRAY_TRANSFORM: FunctionConfig(
         valid_inputs=[

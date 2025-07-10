@@ -15,6 +15,7 @@ from trilogy.core.enums import (
     ComparisonOperator,
     DatePart,
     FunctionType,
+    Ordering,
     UnnestMode,
     WindowType,
 )
@@ -760,6 +761,8 @@ class BaseDialect:
             return self.render_expr(e.type, cte=cte, cte_map=cte_map)
         elif isinstance(e, ArgBinding):
             return e.name
+        elif isinstance(e, Ordering):
+            return str(e.value)
         elif isinstance(e, ArrayType):
             return f"{self.COMPLEX_DATATYPE_MAP[DataType.ARRAY](self.render_expr(e.value_data_type, cte=cte, cte_map=cte_map))}"
         elif isinstance(e, BuildParamaterizedConceptReference):

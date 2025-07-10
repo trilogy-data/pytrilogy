@@ -2442,4 +2442,5 @@ FuncArgs = (
     | Conditional
     | MagicConstants
     | ArgBinding
+    | Ordering
 )

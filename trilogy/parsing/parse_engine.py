@@ -2018,6 +2018,9 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def farray_sort(self, meta, args):
+        if len(args) == 1:
+            # this is a magic value to represent the default behavior
+            args = [args[0], Ordering.ASCENDING]
         return self.function_factory.create_function(
             args, FunctionType.ARRAY_SORT, meta
         )
