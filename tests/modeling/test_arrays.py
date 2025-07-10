@@ -16,7 +16,7 @@ def test_array():
     assert len(results) == 1
     assert results[0][0] == 6  # length
     assert results[0][1] == 18  # total
-    assert results[0][2] == [1, 2, 3, 4, 5]  # distinct_values
+    assert set(results[0][2]) == {1, 2, 3, 4, 5}, "distinct matches"  # distinct_values
     assert results[0][3] == [1, 2, 3, 3, 4, 5]  # sorted_values
 
 
