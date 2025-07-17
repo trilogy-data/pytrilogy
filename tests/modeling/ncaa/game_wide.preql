@@ -50,9 +50,9 @@ metric count <- count_distinct(id); # count of games
 # base games source
 datasource games_sr (
     game_id:id,
-    season:season,
-    scheduled_date:scheduled_date,
-    gametime:gametime,
+    season,
+    scheduled_date,
+    gametime,
     h_id: home_team.id,
     a_id:away_team.id,
     h_market: home_market,
@@ -63,17 +63,17 @@ datasource games_sr (
     a_three_points_att: _away_three_points_att,
     h_three_points_made: _home_three_points_made,
     a_three_points_made: _away_three_points_made,
-    conference_game:conference_game,
-    tournament:tournament,
-    tournament_type:tournament_type,
-    tournament_round:tournament_round,
-    tournament_game_no:tournament_game_no,
-    attendance:attendance,
-    lead_changes:lead_changes,
-    times_tied:times_tied,
-    periods:periods,
-    neutral_site:neutral_site,
-    possession_arrow: possession_arrow
+    conference_game,
+    tournament,
+    tournament_type,
+    tournament_round,
+    tournament_game_no,
+    attendance,
+    lead_changes,
+    times_tied,
+    periods,
+    neutral_site,
+    possession_arrow
 )
 grain (id)
 address `bigquery-public-data.ncaa_basketball.mbb_games_sr`
