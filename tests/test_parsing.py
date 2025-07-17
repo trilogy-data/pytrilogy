@@ -532,6 +532,26 @@ select x;
 
     assert '"abcdef" as "test"' in results, results
 
+    text = """
+key x int;
+key y int;
+
+datasource test (
+x,
+y)
+grain(x)
+address abcdef
+;
+
+
+select x;
+"""
+    env, parsed = parse_text(text)
+
+    results = Dialects.DUCK_DB.default_executor().generate_sql(text)[0]
+
+    assert '"abcdef" as "test"' in results, results
+
 
 def test_datasource_where_equivalent():
     text = """

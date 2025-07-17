@@ -524,8 +524,12 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def column_assignment(self, meta: Meta, args):
         modifiers = []
-        alias = args[0]
-        concept_list = args[1]
+        if len(args) == 2:
+            alias = args[0]
+            concept_list = args[1]
+        else:
+            alias = args[0][-1]
+            concept_list = args[0]
         # recursively collect modifiers
         if len(concept_list) > 1:
             modifiers += concept_list[:-1]
