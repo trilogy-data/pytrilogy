@@ -130,7 +130,9 @@
     
     over_list: concept_lit (","  concept_lit )* ","?
     
-    !ordering: /ASC|DESC/i  ("NULLS"i /FIRST|LAST|AUTO/i )?
+    ORDERING_DIRECTION: /ASC|DESC/i
+
+    !ordering: ORDERING_DIRECTION  ("NULLS"i /FIRST|LAST|AUTO/i )?
     
     order_by: "ORDER"i "BY"i order_list
     
