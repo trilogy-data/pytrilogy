@@ -77,7 +77,7 @@ class Mergeable(ABC):
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         raise NotImplementedError
 
-    def with_reference_replacement(self, source: str, target: Expr):
+    def with_reference_replacement(self, source: str, target: Expr | ArgBinding):
         raise NotImplementedError(type(self))
 
 
@@ -161,7 +161,7 @@ class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
             metadata=self.metadata,
         )
 
-    def with_reference_replacement(self, source: str, target: Expr):
+    def with_reference_replacement(self, source: str, target: Expr | ArgBinding):
         if self.address == source:
             return target
         return self
@@ -1708,7 +1708,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
                     )
         return v
 
-    def with_reference_replacement(self, source: str, target: Expr):
+    def with_reference_replacement(self, source: str, target: Expr | ArgBinding):
         from trilogy.core.functions import arg_to_datatype, merge_datatypes
 
         nargs = [
@@ -2303,13 +2303,13 @@ class CustomFunctionFactory:
         ]
         return self
 
-    def __call__(self, *creation_args: Expr):
+    def __call__(self, *creation_args: ArgBinding | Expr):
         nout = (
             self.function.model_copy(deep=True)
             if isinstance(self.function, BaseModel)
             else self.function
         )
-        creation_arg_list: list[Expr] = list(creation_args)
+        creation_arg_list: list[ArgBinding | Expr] = list(creation_args)
         if len(creation_args) < len(self.function_arguments):
             for binding in self.function_arguments[len(creation_arg_list) :]:
                 if binding.default is None:
@@ -2361,7 +2361,9 @@ class Comment(BaseModel):
 class ArgBinding(Namespaced, DataTyped, BaseModel):
     name: str
     default: Expr | None = None
-    datatype: DataType = DataType.UNKNOWN
+    datatype: (
+        DataType | MapType | ArrayType | NumericType | StructType | TraitDataType
+    ) = DataType.UNKNOWN
 
     def with_namespace(self, namespace):
         return ArgBinding(

@@ -735,7 +735,6 @@ class BuildSubselectComparison(BuildComparison):
         int,
         str,
         float,
-        list,
         bool,
         datetime,
         date,
@@ -748,12 +747,13 @@ class BuildSubselectComparison(BuildComparison):
         MagicConstants,
         BuildWindowItem,
         BuildAggregateWrapper,
+        ListWrapper,
+        TupleWrapper,
     ]
     right: Union[
         int,
         str,
         float,
-        list,
         bool,
         date,
         datetime,
@@ -767,6 +767,7 @@ class BuildSubselectComparison(BuildComparison):
         BuildWindowItem,
         BuildAggregateWrapper,
         TupleWrapper,
+        ListWrapper,
     ]
     operator: ComparisonOperator
 

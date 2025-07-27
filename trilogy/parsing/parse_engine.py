@@ -2034,11 +2034,16 @@ class ParseToObjects(Transformer):
         return self.environment.functions[args[0]]
 
     @v_args(meta=True)
-    def farray_transform(self, meta, args):
+    def farray_transform(self, meta, args) -> Function:
         factory: CustomFunctionFactory = args[1]
         if not len(factory.function_arguments) == 1:
             raise InvalidSyntaxException(
                 "Array transform function must have exactly one argument;"
+            )
+        array_type = arg_to_datatype(args[0])
+        if not isinstance(array_type, ArrayType):
+            raise InvalidSyntaxException(
+                f"Array transform function must be applied to an array, not {array_type}"
             )
         return self.function_factory.create_function(
             [
@@ -2047,7 +2052,7 @@ class ParseToObjects(Transformer):
                 factory(
                     ArgBinding(
                         name=factory.function_arguments[0].name,
-                        datatype=arg_to_datatype(args[0]).value_data_type,
+                        datatype=array_type.value_data_type,
                     )
                 ),
             ],
