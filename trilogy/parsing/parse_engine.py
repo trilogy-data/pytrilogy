@@ -7,7 +7,7 @@ from pathlib import Path
 from re import IGNORECASE
 from typing import Any, List, Optional, Tuple, Union
 
-from lark import Lark, ParseTree, Transformer, Tree, v_args
+from lark import Lark, ParseTree, Token, Transformer, Tree, v_args
 from lark.exceptions import (
     UnexpectedCharacters,
     UnexpectedEOF,
@@ -2091,6 +2091,15 @@ def parse_text_raw(text: str, environment: Optional[Environment] = None):
     PARSER.parse(text)
 
 
+ERROR_CODES: dict[int, str] = {
+    # 100 code are SQL compatability errors
+    101: "Trilogy does not have a FROM clause (Datasource resolution is automatic). Remove the FROM clause.",
+    # 200 codes relate to required explicit syntax (we could loosen these?)
+    201: 'Alias must be specified with "AS" - e.g. `SELECT x AS y`',
+    210: "Order by must be explicit about direction - specify `asc` or `desc`.",
+}
+
+
 def parse_text(
     text: str,
     environment: Optional[Environment] = None,
@@ -2140,9 +2149,43 @@ def parse_text(
         ValidationError,
         TypeError,
     ) as e:
-        if isinstance(
-            e, (UnexpectedCharacters, UnexpectedEOF, UnexpectedInput, UnexpectedToken)
-        ):
+        if isinstance(e, UnexpectedToken):
+            if e.expected == {"ORDERING_DIRECTION"}:
+                code = 210
+                raise InvalidSyntaxException(
+                    f"Syntax [{code}]:"
+                    + ERROR_CODES[code]
+                    + "\nContext:\n"
+                    + e.get_context(text.replace("\n", " "), 20)
+                )
+            parsed_tokens = (
+                [x.value for x in e.token_history] if e.token_history else []
+            )
+            if parsed_tokens == ["FROM"]:
+                code = 101
+                raise InvalidSyntaxException(
+                    f"Syntax [{code}]:"
+                    + ERROR_CODES[code]
+                    + "\nContext:\n"
+                    + e.get_context(text.replace("\n", " "), 20)
+                )
+            # recovery attempt for aliasing
+            try:
+                e.interactive_parser.feed_token(Token("AS", "AS"))
+                e.interactive_parser.feed_token(e.token)
+                raise InvalidSyntaxException(
+                    f"Syntax [{ERROR_CODES[201]}]:"
+                    + ERROR_CODES[201]
+                    + "\nContext:\n"
+                    + e.get_context(text.replace("\n", " "), 20)
+                )
+            except UnexpectedToken:
+                pass
+            raise InvalidSyntaxException(
+                str(e) + "\nContext:\n" + e.get_context(text.replace("\n", " "), 20)
+            )
+        elif isinstance(e, (UnexpectedCharacters, UnexpectedEOF, UnexpectedInput)):
+
             raise InvalidSyntaxException(
                 str(e) + "\nContext:\n" + e.get_context(text.replace("\n", " "), 20)
             )
