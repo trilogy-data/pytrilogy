@@ -2222,11 +2222,54 @@ def parse_text(
         unpack_visit_error(e, text)
         # this will never be reached
         raise e
-    except UnexpectedToken as e:
-        _handle_unexpected_token(e, text)
-    except (UnexpectedCharacters, UnexpectedEOF, UnexpectedInput) as e:
-        raise _create_generic_syntax_error(str(e), e.pos_in_stream or 0, text)
-    except (ValidationError, TypeError) as e:
+    except (
+        UnexpectedCharacters,
+        UnexpectedEOF,
+        UnexpectedInput,
+        UnexpectedToken,
+        ValidationError,
+        TypeError,
+    ) as e:
+        if isinstance(e, UnexpectedToken):
+            if e.expected == {"ORDERING_DIRECTION"}:
+                code = 210
+                raise InvalidSyntaxException(
+                    f"Syntax [{code}]:"
+                    + ERROR_CODES[code]
+                    + "\nContext:\n"
+                    + e.get_context(text.replace("\n", " "), 20)
+                )
+            parsed_tokens = (
+                [x.value for x in e.token_history] if e.token_history else []
+            )
+            if parsed_tokens == ["FROM"]:
+                code = 101
+                raise InvalidSyntaxException(
+                    f"Syntax [{code}]:"
+                    + ERROR_CODES[code]
+                    + "\nContext:\n"
+                    + e.get_context(text.replace("\n", " "), 20)
+                )
+            # recovery attempt for aliasing
+            try:
+                e.interactive_parser.feed_token(Token("AS", "AS"))
+                e.interactive_parser.feed_token(Token("IDENTIFIER", e.token.value))
+                raise InvalidSyntaxException(
+                    f"Syntax [{ERROR_CODES[201]}]:"
+                    + ERROR_CODES[201]
+                    + "\nContext:\n"
+                    + e.get_context(text.replace("\n", " "), 20)
+                )
+            except UnexpectedToken:
+                pass
+            raise InvalidSyntaxException(
+                str(e) + "\nContext:\n" + e.get_context(text.replace("\n", " "), 20)
+            )
+        elif isinstance(e, (UnexpectedCharacters, UnexpectedEOF, UnexpectedInput)):
+
+            raise InvalidSyntaxException(
+                str(e) + "\nContext:\n" + e.get_context(text.replace("\n", " "), 20)
+            )
         raise InvalidSyntaxException(str(e))
 
     return environment, output

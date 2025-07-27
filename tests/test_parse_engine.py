@@ -121,3 +121,18 @@ def test_alias_error():
     with raises(InvalidSyntaxException) as e:
         env.parse(TEXT2)
     assert ERROR_CODES[201] in str(e.value), e.value
+
+
+    env.parse_text(
+        
+    )
+
+    TEXT = """
+select
+    max(dep_time.year_start) as max_year,
+    min(dep_time.year_start) min_year;"""
+
+
+    with raises(InvalidSyntaxException) as e:
+        env.parse(TEXT2)
+    assert ERROR_CODES[201] in str(e.value), e.value
