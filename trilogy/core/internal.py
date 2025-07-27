@@ -19,8 +19,26 @@ DEFAULT_CONCEPTS = {
         granularity=Granularity.SINGLE_ROW,
         derivation=Derivation.CONSTANT,
     ),
-    "concept_name": Concept(
-        name="concept_name",
+    "concept_address": Concept(
+        name="concept_address",
+        namespace=INTERNAL_NAMESPACE,
+        datatype=DataType.STRING,
+        purpose=Purpose.KEY,
+        grain=Grain(),
+        granularity=Granularity.SINGLE_ROW,
+        derivation=Derivation.CONSTANT,
+    ),
+    "concept_datatype": Concept(
+        name="concept_datatype",
+        namespace=INTERNAL_NAMESPACE,
+        datatype=DataType.STRING,
+        purpose=Purpose.KEY,
+        grain=Grain(),
+        granularity=Granularity.SINGLE_ROW,
+        derivation=Derivation.CONSTANT,
+    ),
+    "concept_description": Concept(
+        name="concept_description",
         namespace=INTERNAL_NAMESPACE,
         datatype=DataType.STRING,
         purpose=Purpose.KEY,

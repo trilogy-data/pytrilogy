@@ -606,7 +606,6 @@ class BuildComparison(BuildConceptArgs, ConstantInlineable, BaseModel):
         int,
         str,
         float,
-        list,
         bool,
         datetime,
         date,
@@ -619,12 +618,13 @@ class BuildComparison(BuildConceptArgs, ConstantInlineable, BaseModel):
         MagicConstants,
         BuildWindowItem,
         BuildAggregateWrapper,
+        ListWrapper,
+        TupleWrapper,
     ]
     right: Union[
         int,
         str,
         float,
-        list,
         bool,
         date,
         datetime,
@@ -638,6 +638,7 @@ class BuildComparison(BuildConceptArgs, ConstantInlineable, BaseModel):
         BuildWindowItem,
         BuildAggregateWrapper,
         TupleWrapper,
+        ListWrapper,
     ]
     operator: ComparisonOperator
 
@@ -734,7 +735,6 @@ class BuildSubselectComparison(BuildComparison):
         int,
         str,
         float,
-        list,
         bool,
         datetime,
         date,
@@ -747,12 +747,13 @@ class BuildSubselectComparison(BuildComparison):
         MagicConstants,
         BuildWindowItem,
         BuildAggregateWrapper,
+        ListWrapper,
+        TupleWrapper,
     ]
     right: Union[
         int,
         str,
         float,
-        list,
         bool,
         date,
         datetime,
@@ -766,6 +767,7 @@ class BuildSubselectComparison(BuildComparison):
         BuildWindowItem,
         BuildAggregateWrapper,
         TupleWrapper,
+        ListWrapper,
     ]
     operator: ComparisonOperator
 

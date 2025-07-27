@@ -30,6 +30,7 @@ from trilogy.core.statements.execute import (
     ProcessedQueryPersist,
     ProcessedRawSQLStatement,
     ProcessedShowStatement,
+    ProcessedStaticValueOutput,
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects
@@ -470,16 +471,18 @@ class Executor(object):
         # connection = self.engine.connect()
         for statement in self.parse_text_generator(command):
             if isinstance(statement, ProcessedShowStatement):
-                output.append(
-                    generate_result_set(
-                        statement.output_columns,
-                        [
-                            self.generator.compile_statement(x)
-                            for x in statement.output_values
-                            if isinstance(x, ProcessedQuery)
-                        ],
-                    )
-                )
+                for x in statement.output_values:
+                    if isinstance(x, ProcessedStaticValueOutput):
+                        output.append(
+                            generate_result_set(statement.output_columns, x.values)
+                        )
+                    elif isinstance(x, ProcessedQuery):
+                        output.append(
+                            generate_result_set(
+                                statement.output_columns,
+                                [self.generator.compile_statement(x)],
+                            )
+                        )
                 continue
             if non_interactive:
                 if not isinstance(

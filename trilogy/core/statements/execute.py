@@ -38,6 +38,12 @@ class ProcessedRawSQLStatement(BaseModel):
     text: str
 
 
+class ProcessedStaticValueOutput(BaseModel):
+    values: List[dict]
+
+
 class ProcessedShowStatement(BaseModel):
     output_columns: List[ConceptRef]
-    output_values: List[Union[BuildConcept, BuildDatasource, ProcessedQuery]]
+    output_values: List[
+        Union[BuildConcept, BuildDatasource, ProcessedQuery, ProcessedStaticValueOutput]
+    ]

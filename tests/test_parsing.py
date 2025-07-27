@@ -2,7 +2,13 @@ from trilogy import Dialects
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
 from trilogy.core.functions import argument_to_purpose, function_args_to_output_purpose
-from trilogy.core.models.author import Comparison, Conditional, SubselectComparison
+from trilogy.core.models.author import (
+    Comparison,
+    Conditional,
+    ListWrapper,
+    SubselectComparison,
+)
+from trilogy.core.models.build import BuildComparison
 from trilogy.core.models.core import (
     DataType,
     TupleWrapper,
@@ -61,6 +67,35 @@ def test_not_in():
     assert right[0] == 1
     rendered = BaseDialect().render_expr(right)
     assert rendered.strip() == "(1,2,3)".strip()
+
+
+def test_datetime_lit_rendering():
+    env, parsed = parse_text("const order_id <- 4;")
+
+    from datetime import datetime
+
+    now = datetime.now()
+    wrapper = ListWrapper(
+        (now,),
+        type=DataType.DATETIME,
+    )
+    assert wrapper[0] == now, wrapper
+    rendered = BaseDialect().render_expr(
+        BuildComparison(
+            left=env.materialize_for_select().concepts["order_id"],
+            operator=ComparisonOperator.NOT_IN,
+            right=wrapper,
+        )
+    )
+    assert "not in (date '" in rendered, rendered
+    rendered = BaseDialect().render_expr(
+        BuildComparison(
+            left=env.materialize_for_select().concepts["order_id"],
+            operator=ComparisonOperator.IN,
+            right=wrapper,
+        )
+    )
+    assert "in (date '" in rendered, rendered
 
 
 def test_is_not_null():

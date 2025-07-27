@@ -353,7 +353,7 @@ class SourceType(Enum):
 
 
 class ShowCategory(Enum):
-    MODELS = "models"
+    DATASOURCES = "datasources"
     CONCEPTS = "concepts"
 
 

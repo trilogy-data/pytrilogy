@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import networkx as nx
+from pytest import raises
 
 from trilogy import Dialects
 from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
@@ -219,6 +220,25 @@ order by item desc;
     results = duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1
     assert '"fact_items"."item" as "item"' in results[0]["__preql_internal_query_text"]
+
+
+def test_show_concepts(duckdb_engine: Executor):
+    test = """show concepts;"""
+    parsed = duckdb_engine.parse_text(test)
+
+    assert len(parsed) == 1
+    results = duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == len(
+        [k for k, v in duckdb_engine.environment.concepts.items() if not v.is_internal]
+    )
+
+
+def test_show_datasources(duckdb_engine: Executor):
+    test = """show datasources;"""
+
+    with raises(NotImplementedError):
+        duckdb_engine.parse_text(test)
+        duckdb_engine.execute_text(test)
 
 
 def test_rollback(duckdb_engine: Executor, expected_results):

@@ -16,6 +16,7 @@ from trilogy.core.enums import (
     DatePart,
     FunctionType,
     Ordering,
+    ShowCategory,
     UnnestMode,
     WindowType,
 )
@@ -77,6 +78,7 @@ from trilogy.core.statements.execute import (
     ProcessedQueryPersist,
     ProcessedRawSQLStatement,
     ProcessedShowStatement,
+    ProcessedStaticValueOutput,
 )
 from trilogy.core.utility import safe_quote
 from trilogy.dialect.common import render_join, render_unnest
@@ -638,18 +640,7 @@ class BaseDialect:
             ):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
 
-            elif isinstance(
-                e.right,
-                (
-                    str,
-                    int,
-                    bool,
-                    float,
-                ),
-            ):
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} ({self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
-            else:
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+            return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} ({self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
         elif isinstance(e, COMPARISON_ITEMS):
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
         elif isinstance(e, CONDITIONAL_ITEMS):
@@ -953,6 +944,46 @@ class BaseDialect:
             self.render_cte(sort_select_output(query.ctes[-1], query), auto_sort=False)
         ]
 
+    def create_show_output(
+        self,
+        environment: Environment,
+        content: ShowCategory,
+    ):
+        if content == ShowCategory.CONCEPTS:
+            output_columns = [
+                environment.concepts[
+                    DEFAULT_CONCEPTS["concept_address"].address
+                ].reference,
+                environment.concepts[
+                    DEFAULT_CONCEPTS["concept_datatype"].address
+                ].reference,
+                environment.concepts[
+                    DEFAULT_CONCEPTS["concept_description"].address
+                ].reference,
+            ]
+            output_values = [
+                {
+                    DEFAULT_CONCEPTS["concept_address"].address: (
+                        concept.name
+                        if concept.namespace == DEFAULT_NAMESPACE
+                        else concept.address
+                    ),
+                    DEFAULT_CONCEPTS["concept_datatype"].address: str(concept.datatype),
+                    DEFAULT_CONCEPTS[
+                        "concept_description"
+                    ].address: concept.metadata.description
+                    or "",
+                }
+                for _, concept in environment.concepts.items()
+                if not concept.is_internal
+            ]
+        else:
+            raise NotImplementedError(f"Show category {content} not implemented")
+        return ProcessedShowStatement(
+            output_columns=output_columns,
+            output_values=[ProcessedStaticValueOutput(values=output_values)],
+        )
+
     def generate_queries(
         self,
         environment: Environment,
@@ -1027,8 +1058,12 @@ class BaseDialect:
                             ],
                         )
                     )
+                elif isinstance(statement.content, ShowCategory):
+                    output.append(
+                        self.create_show_output(environment, statement.content)
+                    )
                 else:
-                    raise NotImplementedError(type(statement))
+                    raise NotImplementedError(type(statement.content))
             elif isinstance(statement, RawSQLStatement):
                 output.append(ProcessedRawSQLStatement(text=statement.text))
             elif isinstance(
