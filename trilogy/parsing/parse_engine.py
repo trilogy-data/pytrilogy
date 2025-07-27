@@ -2093,11 +2093,49 @@ def parse_text_raw(text: str, environment: Optional[Environment] = None):
 
 ERROR_CODES: dict[int, str] = {
     # 100 code are SQL compatability errors
-    101: "Trilogy does not have a FROM clause (Datasource resolution is automatic). Remove the FROM clause.",
+    101: "Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic).",
     # 200 codes relate to required explicit syntax (we could loosen these?)
-    201: 'Alias must be specified with "AS" - e.g. `SELECT x AS y`',
-    210: "Order by must be explicit about direction - specify `asc` or `desc`.",
+    201: 'Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y`',
+    210: "Missing order direction? Order by must be explicit about direction - specify `asc` or `desc`.",
 }
+
+DEFAULT_ERROR_SPAN: int = 30
+
+
+def inject_context_maker(pos: int, text: str, span: int = 40) -> str:
+    """Returns a pretty string pinpointing the error in the text,
+    with span amount of context characters around it.
+
+    Note:
+        The parser doesn't hold a copy of the text it has to parse,
+        so you have to provide it again
+    """
+
+    start = max(pos - span, 0)
+    end = pos + span
+    if not isinstance(text, bytes):
+
+        before = text[start:pos].rsplit("\n", 1)[-1]
+        after = text[pos:end].split("\n", 1)[0]
+        if end > len(text):
+            rcap = ""
+        elif not after[-1].isspace():
+            rcap = "..."
+        if start > 0 and not before[0].isspace():
+            lcap = "..."
+        else:
+            lcap = ""
+        lpad = " "
+        rpad = " "
+        if before.endswith(" "):
+            lpad = ""
+        if after.startswith(" "):
+            rpad = ""
+        return f"{lcap}{before}{lpad}???{rpad}{after}{rcap}"
+    else:
+        before = text[start:pos].rsplit(b"\n", 1)[-1]
+        after = text[pos:end].split(b"\n", 1)[0]
+        return (before + b" ??? " + after).decode("ascii", "backslashreplace")
 
 
 def parse_text(
@@ -2117,6 +2155,48 @@ def parse_text(
         | None
     ],
 ]:
+    def _create_syntax_error(code: int, pos: int, text: str) -> InvalidSyntaxException:
+        """Helper to create standardized syntax error with context."""
+        return InvalidSyntaxException(
+            f"Syntax [{code}]: "
+            + ERROR_CODES[code]
+            + "\nLocation:\n"
+            + inject_context_maker(pos, text.replace("\n", " "), DEFAULT_ERROR_SPAN)
+        )
+
+    def _create_generic_syntax_error(
+        message: str, pos: int, text: str
+    ) -> InvalidSyntaxException:
+        """Helper to create generic syntax error with context."""
+        return InvalidSyntaxException(
+            message
+            + "\nLocation:\n"
+            + inject_context_maker(pos, text.replace("\n", " "), DEFAULT_ERROR_SPAN)
+        )
+
+    def _handle_unexpected_token(e: UnexpectedToken, text: str) -> None:
+        """Handle UnexpectedToken errors with specific logic."""
+        # Handle ordering direction error
+        pos = e.pos_in_stream or 0
+        if e.expected == {"ORDERING_DIRECTION"}:
+            raise _create_syntax_error(210, pos, text)
+
+        # Handle FROM token error
+        parsed_tokens = [x.value for x in e.token_history] if e.token_history else []
+        if parsed_tokens == ["FROM"]:
+            raise _create_syntax_error(101, pos, text)
+
+        # Attempt recovery for aliasing
+        try:
+            e.interactive_parser.feed_token(Token("AS", "AS"))
+            e.interactive_parser.feed_token(Token("IDENTIFIER", e.token.value))
+            raise _create_syntax_error(201, pos, text)
+        except UnexpectedToken:
+            pass
+
+        # Default UnexpectedToken handling
+        raise _create_generic_syntax_error(str(e), pos, text)
+
     environment = environment or (
         Environment(working_path=root) if root else Environment()
     )
@@ -2124,6 +2204,7 @@ def parse_text(
         environment=environment, import_keys=["root"], parse_config=parse_config
     )
     start = datetime.now()
+
     try:
         parser.set_text(text)
         # disable fail on missing to allow for circular dependencies
@@ -2141,54 +2222,11 @@ def parse_text(
         unpack_visit_error(e, text)
         # this will never be reached
         raise e
-    except (
-        UnexpectedCharacters,
-        UnexpectedEOF,
-        UnexpectedInput,
-        UnexpectedToken,
-        ValidationError,
-        TypeError,
-    ) as e:
-        if isinstance(e, UnexpectedToken):
-            if e.expected == {"ORDERING_DIRECTION"}:
-                code = 210
-                raise InvalidSyntaxException(
-                    f"Syntax [{code}]:"
-                    + ERROR_CODES[code]
-                    + "\nContext:\n"
-                    + e.get_context(text.replace("\n", " "), 20)
-                )
-            parsed_tokens = (
-                [x.value for x in e.token_history] if e.token_history else []
-            )
-            if parsed_tokens == ["FROM"]:
-                code = 101
-                raise InvalidSyntaxException(
-                    f"Syntax [{code}]:"
-                    + ERROR_CODES[code]
-                    + "\nContext:\n"
-                    + e.get_context(text.replace("\n", " "), 20)
-                )
-            # recovery attempt for aliasing
-            try:
-                e.interactive_parser.feed_token(Token("AS", "AS"))
-                e.interactive_parser.feed_token(Token("IDENTIFIER", e.token.value))
-                raise InvalidSyntaxException(
-                    f"Syntax [{ERROR_CODES[201]}]:"
-                    + ERROR_CODES[201]
-                    + "\nContext:\n"
-                    + e.get_context(text.replace("\n", " "), 20)
-                )
-            except UnexpectedToken:
-                pass
-            raise InvalidSyntaxException(
-                str(e) + "\nContext:\n" + e.get_context(text.replace("\n", " "), 20)
-            )
-        elif isinstance(e, (UnexpectedCharacters, UnexpectedEOF, UnexpectedInput)):
-
-            raise InvalidSyntaxException(
-                str(e) + "\nContext:\n" + e.get_context(text.replace("\n", " "), 20)
-            )
+    except UnexpectedToken as e:
+        _handle_unexpected_token(e, text)
+    except (UnexpectedCharacters, UnexpectedEOF, UnexpectedInput) as e:
+        raise _create_generic_syntax_error(str(e), e.pos_in_stream or 0, text)
+    except (ValidationError, TypeError) as e:
         raise InvalidSyntaxException(str(e))
 
     return environment, output

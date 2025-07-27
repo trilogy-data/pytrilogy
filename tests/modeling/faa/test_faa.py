@@ -1,9 +1,11 @@
 from pathlib import Path
 
-from build.lib.trilogy.core.exceptions import InvalidSyntaxException
-from trilogy import Dialects, Environment
-from trilogy.hooks import DebuggingHook
 from pytest import raises
+
+from trilogy import Dialects, Environment
+from trilogy.core.exceptions import InvalidSyntaxException
+from trilogy.hooks import DebuggingHook
+
 
 def test_query_gen():
     """Make sure we inject another group by when conditions forced an evaluation with an early grain"""
@@ -41,13 +43,13 @@ def test_helpful_error():
 
     x = Dialects.DUCK_DB.default_executor(environment=x)
     with raises(InvalidSyntaxException) as e:
-        sql = x.generate_sql(
-        """import flight;
+        x.generate_sql(
+            """import flight;
         
 select
     max(dep_time.year_start) as max_year,
     min(dep_time.year_start) min_year;
     """
-
-    )
-    assert 'AS ' in str(e.value)
+        )
+    assert "AS " in str(e.value)
+    assert "\\n" not in e.value.args[0]
