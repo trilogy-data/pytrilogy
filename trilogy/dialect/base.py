@@ -640,18 +640,7 @@ class BaseDialect:
             ):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
 
-            elif isinstance(
-                e.right,
-                (
-                    str,
-                    int,
-                    bool,
-                    float,
-                ),
-            ):
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} ({self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
-            else:
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+            return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} ({self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
         elif isinstance(e, COMPARISON_ITEMS):
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
         elif isinstance(e, CONDITIONAL_ITEMS):
