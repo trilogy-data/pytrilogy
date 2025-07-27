@@ -1,8 +1,9 @@
 from pathlib import Path
 
+from build.lib.trilogy.core.exceptions import InvalidSyntaxException
 from trilogy import Dialects, Environment
 from trilogy.hooks import DebuggingHook
-
+from pytest import raises
 
 def test_query_gen():
     """Make sure we inject another group by when conditions forced an evaluation with an early grain"""
@@ -31,3 +32,22 @@ GROUP BY
     "cheerful"."carrier_name"'''
         in sql
     )
+
+
+def test_helpful_error():
+    """Make sure we raise a helpful error when we have a join with no grain"""
+    DebuggingHook()
+    x = Environment(working_path=Path(__file__).parent)
+
+    x = Dialects.DUCK_DB.default_executor(environment=x)
+    with raises(InvalidSyntaxException) as e:
+        sql = x.generate_sql(
+        """import flight;
+        
+select
+    max(dep_time.year_start) as max_year,
+    min(dep_time.year_start) min_year;
+    """
+
+    )
+    assert 'AS ' in str(e.value)

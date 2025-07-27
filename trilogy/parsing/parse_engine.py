@@ -2172,7 +2172,7 @@ def parse_text(
             # recovery attempt for aliasing
             try:
                 e.interactive_parser.feed_token(Token("AS", "AS"))
-                e.interactive_parser.feed_token(e.token)
+                e.interactive_parser.feed_token(Token("IDENTIFIER", e.token.value))
                 raise InvalidSyntaxException(
                     f"Syntax [{ERROR_CODES[201]}]:"
                     + ERROR_CODES[201]

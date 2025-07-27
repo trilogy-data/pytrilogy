@@ -96,6 +96,18 @@ order by a
         env.parse(TEXT2)
     assert ERROR_CODES[210] in str(e.value)
 
+    env = Environment()
+    TEXT2 = """
+const a <- 1;
+
+select
+    a,
+order by a;
+    """
+    with raises(InvalidSyntaxException) as e:
+        env.parse(TEXT2)
+    assert ERROR_CODES[210] in str(e.value)
+
 
 def test_alias_error():
     env = Environment()
@@ -106,6 +118,21 @@ def test_alias_error():
         a+2 fun,
     ;
     """
+    with raises(InvalidSyntaxException) as e:
+        env.parse(TEXT2)
+    assert ERROR_CODES[201] in str(e.value), e.value
+
+
+    env.parse_text(
+        
+    )
+
+    TEXT = """
+select
+    max(dep_time.year_start) as max_year,
+    min(dep_time.year_start) min_year;"""
+
+
     with raises(InvalidSyntaxException) as e:
         env.parse(TEXT2)
     assert ERROR_CODES[201] in str(e.value), e.value
