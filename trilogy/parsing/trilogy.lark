@@ -330,7 +330,7 @@
     //aggregates can force a grain
     aggregate_all: "*"
     aggregate_over: ("BY"i (aggregate_all | over_list))
-    aggregate_functions: (count | count_distinct | sum | avg | max | min | array_agg) aggregate_over?
+    aggregate_functions: "GROUP"? (count | count_distinct | sum | avg | max | min | array_agg) aggregate_over?
 
     // date functions
     _DATE.1: "date("i
