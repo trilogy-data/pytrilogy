@@ -2135,6 +2135,44 @@ def inject_context_maker(pos: int, text: str, span: int = 40) -> str:
         after = text[pos:end].split(b"\n", 1)[0]
         return (before + b" ??? " + after).decode("ascii", "backslashreplace")
 
+DEFAULT_ERROR_SPAN: int = 30
+
+
+def inject_context_maker(pos: int, text: str, span: int = 40) -> str:
+    """Returns a pretty string pinpointing the error in the text,
+    with span amount of context characters around it.
+
+    Note:
+        The parser doesn't hold a copy of the text it has to parse,
+        so you have to provide it again
+    """
+
+    start = max(pos - span, 0)
+    end = pos + span
+    if not isinstance(text, bytes):
+
+        before = text[start:pos].rsplit("\n", 1)[-1]
+        after = text[pos:end].split("\n", 1)[0]
+        if end > len(text):
+            rcap = ""
+        elif not after[-1].isspace():
+            rcap = "..."
+        if start > 0 and not before[0].isspace():
+            lcap = "..."
+        else:
+            lcap = ""
+        lpad = " "
+        rpad = " "
+        if before.endswith(" "):
+            lpad = ""
+        if after.startswith(" "):
+            rpad = ""
+        return f"{lcap}{before}{lpad}???{rpad}{after}{rcap}"
+    else:
+        before = text[start:pos].rsplit(b"\n", 1)[-1]
+        after = text[pos:end].split(b"\n", 1)[0]
+        return (before + b" ??? " + after).decode("ascii", "backslashreplace")
+
 
 def parse_text(
     text: str,
