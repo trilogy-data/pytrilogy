@@ -1566,3 +1566,18 @@ having
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
 
     assert len(results) == 1
+
+
+def test_sum_bool():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    test = """
+const values <- unnest([true, false, true, false]);
+
+select sum(values) as true_count
+where values = true;
+"""
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+
+    assert len(results) == 1
+    assert results[0].true_count == 2

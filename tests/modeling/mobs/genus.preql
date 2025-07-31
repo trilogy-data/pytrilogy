@@ -1,0 +1,13 @@
+import std.net;
+
+key name string;  # init cap, eg Mobula
+property name.image string::url_image; # wikipedia image, if available
+property name.description string; # wikipedma description, if available
+
+datasource genus_info (
+	genus:name,
+	image_url:image,
+	summary:description
+)
+grain (name)
+address genus_info;

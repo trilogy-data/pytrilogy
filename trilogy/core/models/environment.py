@@ -227,7 +227,7 @@ class Environment(BaseModel):
     alias_origin_lookup: Dict[str, Concept] = Field(default_factory=dict)
     # TODO: support freezing environments to avoid mutation
     frozen: bool = False
-    env_file_path: Path | None = None
+    env_file_path: Path | str | None = None
 
     def freeze(self):
         self.frozen = True
@@ -281,8 +281,7 @@ class Environment(BaseModel):
         )
         self.add_concept(concept)
 
-    def __init__(self, **data):
-        super().__init__(**data)
+    def model_post_init(self, context: Any) -> None:
         self._add_path_concepts()
 
     @classmethod

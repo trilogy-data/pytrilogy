@@ -1,0 +1,51 @@
+import genus as genus;
+
+key column00 int; # unique identifier of samples in the row
+property <column00>.Order_Added string;
+property <column00>.valid_aphiaID string;
+key phylum string;
+key class string;
+key orders string;
+key family string;
+
+key scientificName string;
+property <column00>.scientificNameAuthorship string;
+property <column00>._length_cm string; # raw string length
+auto length_cm <- CASE WHEN _length_cm = 'NA' then null::float else _length_cm::float end; # float length
+property <column00>.diameter_width_cm string;
+property <column00>._height_cm string; # raw string height
+auto height_cm <-  CASE WHEN _height_cm = 'NA' then null::float else _height_cm::float end;
+property <column00>.notes string;
+property <column00>.size_ref string;
+property <column00>.date_added date;
+
+auto sample_count<-count(column00);
+auto log_length_bin <- case  
+    when length_cm < 1 then '0-1 (Plankton or baby shrimp)'  
+    when length_cm < 10 then '1-10 (Seahorse or small crab)'  
+    when length_cm < 100 then '10-100 (Octopus or medium fish)'  
+    when length_cm < 1000 then '100-1000 (Dolphin or tuna)'  
+    else '1000+ (Whale or giant squid)'  
+end;
+datasource data_all_112224 (
+	column00,
+	Order_Added,
+	valid_aphiaID,
+	phylum,
+	class,
+	order:orders,
+	family,
+	genus:genus.name,
+	scientificName,
+	scientificNameAuthorship,
+	length_cm:_length_cm,
+	diameter_width_cm,
+	height_cm:_height_cm,
+	notes,
+	size_ref,
+	date_added
+)
+grain (column00)
+address data_all_112224;
+
+

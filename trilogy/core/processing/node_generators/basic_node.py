@@ -122,10 +122,11 @@ def gen_basic_node(
     parent_node.add_output_concept(concept)
     for x in equivalent_optional:
         parent_node.add_output_concept(x)
-    targets = [concept] + local_optional
+
     logger.info(
         f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept}: output {[x.address for x in parent_node.output_concepts]}"
     )
+    targets = [concept] + local_optional + equivalent_optional
     should_hide = [
         x
         for x in parent_node.output_concepts
@@ -135,8 +136,14 @@ def gen_basic_node(
         )
     ]
     parent_node.hide_output_concepts(should_hide)
+    should_not_hide = [
+        x
+        for x in parent_node.output_concepts
+        if x.address in targets or any(x.address in y.pseudonyms for y in targets)
+    ]
+    parent_node.unhide_output_concepts(should_not_hide)
 
     logger.info(
-        f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept}: output {[x.address for x in parent_node.output_concepts]}"
+        f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept}: output {[x.address for x in parent_node.output_concepts]} hidden {[x for x in parent_node.hidden_concepts]}"
     )
     return parent_node
