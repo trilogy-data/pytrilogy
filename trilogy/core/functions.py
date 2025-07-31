@@ -775,6 +775,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.FLOAT,
             DataType.NUMBER,
             DataType.NUMERIC,
+            DataType.BOOL,
         },
         output_purpose=Purpose.METRIC,
         arg_count=1,

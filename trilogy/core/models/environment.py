@@ -281,8 +281,7 @@ class Environment(BaseModel):
         )
         self.add_concept(concept)
 
-    def __init__(self, **data):
-        super().__init__(**data)
+    def model_post_init(self, context: Any) -> None:
         self._add_path_concepts()
 
     @classmethod
