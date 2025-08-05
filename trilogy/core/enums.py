@@ -171,6 +171,7 @@ class FunctionType(Enum):
     RANDOM = "random"
     FLOOR = "floor"
     CEIL = "ceil"
+    LOG = "log"
 
     # Aggregates
     ## group is not a real aggregate - it just means group by this + some other set of fields
@@ -193,6 +194,7 @@ class FunctionType(Enum):
     SUBSTRING = "substring"
     STRPOS = "strpos"
     CONTAINS = "contains"
+    TRIM = "trim"
 
     # STRING REGEX
     REGEXP_CONTAINS = "regexp_contains"

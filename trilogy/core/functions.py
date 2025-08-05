@@ -367,6 +367,15 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type=DataType.BOOL,
         arg_count=2,
     ),
+    FunctionType.TRIM: FunctionConfig(
+        valid_inputs=[
+            {DataType.STRING},
+            {DataType.STRING},
+        ],
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.BOOL,
+        arg_count=2,
+    ),
     FunctionType.SUBSTRING: FunctionConfig(
         valid_inputs=[{DataType.STRING}, {DataType.INTEGER}, {DataType.INTEGER}],
         output_purpose=Purpose.PROPERTY,
@@ -687,6 +696,15 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=1,
+    ),
+    FunctionType.LOG: FunctionConfig(
+        valid_inputs=[
+            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER, DataType.NUMERIC},
+            {DataType.INTEGER},
+        ],
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.FLOAT,
+        arg_count=2,
     ),
     FunctionType.RANDOM: FunctionConfig(
         valid_inputs=[],
