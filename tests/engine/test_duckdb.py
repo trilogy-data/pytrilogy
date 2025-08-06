@@ -1587,7 +1587,6 @@ order by
     assert results[3].replaced_values == "opple"
 
 
-
 def test_sum_bool():
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
     test = """
