@@ -278,6 +278,8 @@
     fstrpos: _STRPOS expr "," expr ")"
     _CONTAINS.1: "contains("i
     fcontains: _CONTAINS expr "," expr ")"
+    _REPLACE.1: "replace("i
+    freplace: _REPLACE expr "," expr "," expr ")"
     _SUBSTRING.1: "substring("i
     fsubstring: _SUBSTRING expr "," expr "," expr ")"
     _REGEXP_EXTRACT.1: "regexp_extract("
@@ -287,7 +289,7 @@
     _REGEXP_REPLACE.1: "regexp_replace("
     fregexp_replace: _REGEXP_REPLACE expr "," expr "," expr   ")"
 
-    _string_functions: like | ilike | upper | flower | fsplit | fstrpos | fsubstring | fcontains | fregexp_extract | fregexp_contains | fregexp_replace
+    _string_functions: like | ilike | upper | flower | fsplit | fstrpos | fsubstring | fcontains | freplace | fregexp_extract | fregexp_contains | fregexp_replace
 
     //array_functions
     _ARRAY_SUM.1: "array_sum("i

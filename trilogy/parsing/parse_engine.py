@@ -1794,6 +1794,10 @@ class ParseToObjects(Transformer):
         return self.function_factory.create_function(args, FunctionType.STRPOS, meta)
 
     @v_args(meta=True)
+    def freplace(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.REPLACE, meta)
+
+    @v_args(meta=True)
     def fcontains(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.CONTAINS, meta)
 

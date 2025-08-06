@@ -358,6 +358,16 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type=DataType.INTEGER,
         arg_count=2,
     ),
+    FunctionType.REPLACE: FunctionConfig(
+        valid_inputs=[
+            {DataType.STRING},
+            {DataType.STRING},
+            {DataType.STRING},
+        ],
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.STRING,
+        arg_count=3,
+    ),
     FunctionType.CONTAINS: FunctionConfig(
         valid_inputs=[
             {DataType.STRING},
