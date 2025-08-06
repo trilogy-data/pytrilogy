@@ -205,6 +205,9 @@ FUNCTION_MAP = {
     FunctionType.MOD: lambda x: f"({x[0]} % {x[1]})",
     FunctionType.SQRT: lambda x: f"sqrt({x[0]})",
     FunctionType.RANDOM: lambda x: "random()",
+    FunctionType.LOG: lambda x: (
+        f"log({x[0]})" if x[1] == 10 else f"log({x[0]}, {x[1]})"
+    ),
     # aggregate types
     FunctionType.COUNT_DISTINCT: lambda x: f"count(distinct {x[0]})",
     FunctionType.COUNT: lambda x: f"count({x[0]})",
@@ -224,6 +227,7 @@ FUNCTION_MAP = {
     FunctionType.REGEXP_CONTAINS: lambda x: f"REGEXP_CONTAINS({x[0]},{x[1]})",
     FunctionType.REGEXP_EXTRACT: lambda x: f"REGEXP_EXTRACT({x[0]},{x[1]})",
     FunctionType.REGEXP_REPLACE: lambda x: f"REGEXP_REPLACE({x[0]},{x[1]}, {x[2]})",
+    FunctionType.TRIM: lambda x: f"TRIM({x[0]})",
     # FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
     # date types
     FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc({x[0]},{x[1]})",

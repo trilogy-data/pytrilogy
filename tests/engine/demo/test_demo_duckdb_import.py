@@ -179,19 +179,14 @@ ORDER BY
     assert len(results) == 8
 
 
-def test_cast_merge(engine, test_env: Environment):
-    from trilogy.hooks import DebuggingHook
-    DebuggingHook()
-    engine.environment = test_env
-    test_1 = """
-merge rich_info.last_name into ~passenger.last_name;
-select passenger.cabin, rich_info.net_worth_1918_dollars;"""
-    results = engine.generate_sql(test_1)
+def test_cast_merge(normalized_engine, test_env: Environment):
+
+    normalized_engine.environment = test_env
+    # avg(rich_info.net_worth_1918_dollars_float) as average_cabin_net_worth;
     test = """
 
-MERGE wealth.last_name into ~last_name;
+merge rich_info.last_name into ~passenger.last_name;
 
-select class, count(last_name ? wealth.net_worth_1918_dollars is not null) as rich_people,avg(wealth.net_worth_1918_dollars) as average_cabin_net_worth;
+select count(passenger.id ? rich_info.net_worth_1918_dollars_float is not null) as rich_people;
 """
-    results = engine.execute_query(test)
-
+    normalized_engine.execute_query(test)

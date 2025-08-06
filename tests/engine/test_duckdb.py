@@ -1584,12 +1584,18 @@ where values = true;
 
 
 def test_log():
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
     test = """
 const values <- unnest([1, 10, 100, 1000]);
 
-select log(values) as log_values,
-log(values,2) as log_base_2;
+select 
+    log(values) as log_values,
+    log(values,2) as log_base_2,
+    values
+order by values asc;
 """
 
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
@@ -1601,19 +1607,18 @@ log(values,2) as log_base_2;
     assert results[3].log_values == 3
 
 
-
-def test_log():
+def test_trim():
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
     test = """
 const values <- unnest([ ' abc ', ' def', 'jkl ', 'mon']);
 
-select trim(values) as trimmed_values,
+select trim(values) as trimmed_values order by trimmed_values asc;
 """
 
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
 
     assert len(results) == 4
-    assert results[0].trimmed_values == 'abc'
-    assert results[1].trimmed_values == 'def'
-    assert results[2].trimmed_values == 'jkl'
-    assert results[3].trimmed_values == 'mon'
+    assert results[0].trimmed_values == "abc"
+    assert results[1].trimmed_values == "def"
+    assert results[2].trimmed_values == "jkl"
+    assert results[3].trimmed_values == "mon"

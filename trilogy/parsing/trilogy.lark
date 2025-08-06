@@ -222,6 +222,8 @@
     fmul: ("multiply"i "(" expr "," expr ")" ) 
     fdiv: ( "divide"i "(" expr "," expr ")") 
     fmod: ( "mod"i "(" expr "," (int_lit | concept_lit ) ")")  
+    _LOG.1: "log"i "("
+    flog: _LOG expr ("," expr)? ")"
     _ROUND.1: "round"i "("
     fround: _ROUND expr ("," expr)? ")"
     _FLOOR.1: "floor"i "("
@@ -234,7 +236,7 @@
     _RANDOM.1: "random("i
     frandom: _RANDOM expr ")"
         
-    _math_functions: fmul | fdiv | fadd | fsub | fround | ffloor | fceil | fmod | fabs | fsqrt | frandom
+    _math_functions: fmul | fdiv | fadd | fsub | fround | ffloor | fceil | fmod | flog | fabs | fsqrt | frandom
     
     //generic
     _fcast_primary: "cast"i "(" expr "as"i data_type ")"
@@ -278,6 +280,8 @@
     fstrpos: _STRPOS expr "," expr ")"
     _CONTAINS.1: "contains("i
     fcontains: _CONTAINS expr "," expr ")"
+    _TRIM.1: "trim("i
+    ftrim: _TRIM expr ")"
     _REPLACE.1: "replace("i
     freplace: _REPLACE expr "," expr "," expr ")"
     _SUBSTRING.1: "substring("i
@@ -289,7 +293,7 @@
     _REGEXP_REPLACE.1: "regexp_replace("
     fregexp_replace: _REGEXP_REPLACE expr "," expr "," expr   ")"
 
-    _string_functions: like | ilike | upper | flower | fsplit | fstrpos | fsubstring | fcontains | freplace | fregexp_extract | fregexp_contains | fregexp_replace
+    _string_functions: like | ilike | upper | flower | fsplit | fstrpos | fsubstring | fcontains | ftrim | freplace | fregexp_extract | fregexp_contains | fregexp_replace
 
     //array_functions
     _ARRAY_SUM.1: "array_sum("i

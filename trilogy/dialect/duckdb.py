@@ -33,11 +33,25 @@ def render_sort(args):
         return f"list_sort({args[0]}, '{order[0]}', '{order[1]}')"
 
 
+def render_log(args):
+    if len(args) == 1:
+        return f"log({args[0]})"
+    elif len(args) == 2:
+        if int(args[1]) == 10:
+            return f"log({args[0]})"
+        else:
+            # change of base formula
+            return f"log({args[0]})/log({args[1]})"
+    else:
+        raise ValueError("log function requires 1 or 2 arguments")
+
+
 FUNCTION_MAP = {
     FunctionType.COUNT: lambda args: f"count({args[0]})",
     FunctionType.SUM: lambda args: f"sum({args[0]})",
     FunctionType.AVG: lambda args: f"avg({args[0]})",
     FunctionType.LENGTH: lambda args: f"length({args[0]})",
+    FunctionType.LOG: lambda args: render_log(args),
     FunctionType.LIKE: lambda args: (
         f" CASE WHEN {args[0]} like {args[1]} THEN True ELSE False END"
     ),

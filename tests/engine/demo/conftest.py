@@ -8,9 +8,17 @@ from pytest import fixture
 from sqlalchemy import create_engine
 
 from trilogy import Dialects, Executor
-from trilogy.core.enums import FunctionType, Modifier, Purpose
+from trilogy.core.enums import ComparisonOperator, FunctionType, Modifier, Purpose
 from trilogy.core.functions import arg_to_datatype, function_args_to_output_purpose
-from trilogy.core.models.author import Concept, Function, Grain, Metadata
+from trilogy.core.models.author import (
+    CaseElse,
+    CaseWhen,
+    Comparison,
+    Concept,
+    Function,
+    Grain,
+    Metadata,
+)
 from trilogy.core.models.core import (
     DataType,
 )
@@ -196,9 +204,66 @@ def setup_richest_environment(env: Environment):
             arg_count=2,
         ),
     )
-    for x in [name, money, last_name, split_name]:
+    for x in [money, last_name, split_name]:
         env.add_concept(x)
+    money_parsed = Concept(
+        name="net_worth_1918_dollars_float",
+        namespace=namespace,
+        datatype=DataType.FLOAT,
+        purpose=Purpose.PROPERTY,
+        keys=(name.address,),
+        lineage=Function(
+            operator=FunctionType.MULTIPLY,
+            arguments=[
+                Function(
+                    operator=FunctionType.CAST,
+                    arguments=[
+                        Function(
+                            operator=FunctionType.REGEXP_REPLACE,
+                            arguments=[money, "^\\$(.+) (BIL|MIL)$", "\\1"],
+                            output_datatype=DataType.STRING,
+                            output_purpose=Purpose.PROPERTY,
+                            arg_count=3,
+                        ),
+                        DataType.FLOAT,
+                    ],
+                    output_datatype=DataType.FLOAT,
+                    output_purpose=Purpose.PROPERTY,
+                    arg_count=2,
+                ),
+                Function(
+                    operator=FunctionType.CASE,
+                    arguments=[
+                        CaseWhen(
+                            comparison=Comparison(
+                                left=money,
+                                operator=ComparisonOperator.LIKE,
+                                right="%BIL%",
+                            ),
+                            expr=1000000000.0,
+                        ),
+                        CaseWhen(
+                            comparison=Comparison(
+                                left=money,
+                                operator=ComparisonOperator.LIKE,
+                                right="%MIL%",
+                            ),
+                            expr=1000000.0,
+                        ),
+                        CaseElse(expr=1.0),
+                    ],
+                    output_datatype=DataType.FLOAT,
+                    output_purpose=Purpose.PROPERTY,
+                    arg_count=3,
+                ),
+            ],
+            output_datatype=DataType.FLOAT,
+            output_purpose=Purpose.PROPERTY,
+            arg_count=2,
+        ),
+    )
 
+    env.add_concept(money_parsed)
     env.add_datasource(
         Datasource(
             name="rich_info",
