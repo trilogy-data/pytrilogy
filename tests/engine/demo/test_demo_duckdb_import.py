@@ -177,3 +177,16 @@ ORDER BY
     results = normalized_engine.execute_text(test)[-1].fetchall()
 
     assert len(results) == 8
+
+
+def test_cast_merge(normalized_engine, test_env: Environment):
+
+    normalized_engine.environment = test_env
+    # avg(rich_info.net_worth_1918_dollars_float) as average_cabin_net_worth;
+    test = """
+
+merge rich_info.last_name into ~passenger.last_name;
+
+select count(passenger.id ? rich_info.net_worth_1918_dollars_float is not null) as rich_people;
+"""
+    normalized_engine.execute_query(test)

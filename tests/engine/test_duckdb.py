@@ -1568,6 +1568,25 @@ having
     assert len(results) == 1
 
 
+def test_replace():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    test = """
+const values <- unnest(['apple', 'banana', 'cherry', 'date']);
+select
+    replace(values, 'a', 'o') as replaced_values
+order by    
+    replaced_values asc;
+    """
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+
+    assert len(results) == 4
+    assert results[0].replaced_values == "bonono"
+    assert results[1].replaced_values == "cherry"
+    assert results[2].replaced_values == "dote"
+    assert results[3].replaced_values == "opple"
+
+
 def test_sum_bool():
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
     test = """
@@ -1581,3 +1600,44 @@ where values = true;
 
     assert len(results) == 1
     assert results[0].true_count == 2
+
+
+def test_log():
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    test = """
+const values <- unnest([1, 10, 100, 1000]);
+
+select 
+    log(values) as log_values,
+    log(values,2) as log_base_2,
+    values
+order by values asc;
+"""
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+
+    assert len(results) == 4
+    assert results[0].log_values == 0
+    assert results[1].log_values == 1
+    assert results[2].log_values == 2
+    assert results[3].log_values == 3
+
+
+def test_trim():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    test = """
+const values <- unnest([ ' abc ', ' def', 'jkl ', 'mon']);
+
+select trim(values) as trimmed_values order by trimmed_values asc;
+"""
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+
+    assert len(results) == 4
+    assert results[0].trimmed_values == "abc"
+    assert results[1].trimmed_values == "def"
+    assert results[2].trimmed_values == "jkl"
+    assert results[3].trimmed_values == "mon"

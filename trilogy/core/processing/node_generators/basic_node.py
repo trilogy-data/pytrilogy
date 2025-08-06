@@ -97,6 +97,9 @@ def gen_basic_node(
         and not any(x.address in y.pseudonyms for y in equivalent_optional)
         and x.address not in ignored_optional
     ]
+    logger.info(
+        f"{depth_prefix}{LOGGER_PREFIX} basic node for {concept} has non-equivalent optional {[x.address for x in non_equivalent_optional]}"
+    )
     all_parents: list[BuildConcept] = unique(
         parent_concepts + non_equivalent_optional, "address"
     )

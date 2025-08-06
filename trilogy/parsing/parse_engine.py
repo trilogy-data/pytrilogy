@@ -1794,8 +1794,16 @@ class ParseToObjects(Transformer):
         return self.function_factory.create_function(args, FunctionType.STRPOS, meta)
 
     @v_args(meta=True)
+    def freplace(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.REPLACE, meta)
+
+    @v_args(meta=True)
     def fcontains(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.CONTAINS, meta)
+
+    @v_args(meta=True)
+    def ftrim(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.TRIM, meta)
 
     @v_args(meta=True)
     def fsubstring(self, meta, args):
@@ -1972,6 +1980,12 @@ class ParseToObjects(Transformer):
         return self.function_factory.create_function(args, FunctionType.ROUND, meta)
 
     @v_args(meta=True)
+    def flog(self, meta, args) -> Function:
+        if len(args) == 1:
+            args.append(10)
+        return self.function_factory.create_function(args, FunctionType.LOG, meta)
+
+    @v_args(meta=True)
     def ffloor(self, meta, args) -> Function:
         return self.function_factory.create_function(args, FunctionType.FLOOR, meta)
 
@@ -2074,9 +2088,9 @@ def unpack_visit_error(e: VisitError, text: str | None = None):
                 extract = text[e.obj.meta.start_pos - 5 : e.obj.meta.end_pos + 5]
                 raise InvalidSyntaxException(
                     str(e.orig_exc)
-                    + " in "
+                    + " Raised when parsing rule: "
                     + str(e.rule)
-                    + f" Line: {e.obj.meta.line} ({extract})"
+                    + f' Line: {e.obj.meta.line} "...{extract}..."'
                 )
             InvalidSyntaxException(
                 str(e.orig_exc) + " in " + str(e.rule) + f" Line: {e.obj.meta.line}"

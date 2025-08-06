@@ -1605,6 +1605,10 @@ def get_concept_arguments(expr) -> List["ConceptRef"]:
     return output
 
 
+def args_to_pretty(input: set[DataType]) -> str:
+    return ", ".join(sorted([f"'{x.value}'" for x in input if x != DataType.UNKNOWN]))
+
+
 class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
@@ -1669,9 +1673,10 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
                 and get_basic_type(arg.datatype.data_type) not in valid_inputs[idx]
             ):
                 if arg.datatype != DataType.UNKNOWN:
+
                     raise TypeError(
-                        f"Invalid input datatype {arg.datatype.data_type} passed into position {idx}"
-                        f" for {operator_name} from concept {arg.name}, valid is {valid_inputs[idx]}"
+                        f"Invalid argument type '{arg.datatype.data_type.value}' passed into {operator_name} function in position {idx+1}"
+                        f" from concept: {arg.name}. Valid: {args_to_pretty(valid_inputs[idx])}."
                     )
             if (
                 isinstance(arg, Function)
@@ -1679,8 +1684,8 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
             ):
                 if arg.output_datatype != DataType.UNKNOWN:
                     raise TypeError(
-                        f"Invalid input datatype {arg.output_datatype} passed into"
-                        f" {operator_name} from function {arg.operator.name}, need {valid_inputs[idx]}"
+                        f"Invalid argument type {arg.output_datatype}' passed into"
+                        f" {operator_name} function from function {arg.operator.name} in position {idx+1}. Valid: {args_to_pretty(valid_inputs[idx])}"
                     )
             # check constants
             comparisons: List[Tuple[Type, DataType]] = [

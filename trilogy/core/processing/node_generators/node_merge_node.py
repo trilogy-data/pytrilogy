@@ -94,31 +94,45 @@ def determine_induced_minimal_nodes(
             # inclusion of aggregates can create ambiguous node relation chains
             # there may be a better way to handle this
             # can be revisited if we need to connect a derived synonym based on an aggregate
-            if lookup.derivation in (Derivation.CONSTANT, Derivation.AGGREGATE):
+            if lookup.derivation in (
+                Derivation.CONSTANT,
+                Derivation.AGGREGATE,
+                Derivation.FILTER,
+            ):
                 nodes_to_remove.append(node)
             # purge a node if we're already looking for all it's parents
             if filter_downstream and lookup.derivation not in (Derivation.ROOT,):
                 nodes_to_remove.append(node)
-
-    H.remove_nodes_from(nodes_to_remove)
-
-    H.remove_nodes_from(list(nx.isolates(H)))
+    if nodes_to_remove:
+        logger.debug(f"Removing nodes {nodes_to_remove} from graph")
+        H.remove_nodes_from(nodes_to_remove)
+    isolates = list(nx.isolates(H))
+    if isolates:
+        logger.debug(f"Removing isolates {isolates} from graph")
+        H.remove_nodes_from(isolates)
 
     zero_out = list(x for x in H.nodes if G.out_degree(x) == 0 and x not in nodelist)
     while zero_out:
+        logger.debug(f"Removing zero out nodes {zero_out} from graph")
         H.remove_nodes_from(zero_out)
         zero_out = list(
             x for x in H.nodes if G.out_degree(x) == 0 and x not in nodelist
         )
-
     try:
         paths = nx.multi_source_dijkstra_path(H, nodelist)
         # logger.debug(f"Paths found for {nodelist}")
     except nx.exception.NodeNotFound:
         # logger.debug(f"Unable to find paths for {nodelist}- {str(e)}")
         return None
-    H.remove_nodes_from(list(x for x in H.nodes if x not in paths))
+    path_removals = list(x for x in H.nodes if x not in paths)
+    if path_removals:
+        logger.debug(f"Removing paths {path_removals} from graph")
+        H.remove_nodes_from(path_removals)
+    logger.debug(f"Graph after path removal {H.nodes}")
     sG: nx.Graph = ax.steinertree.steiner_tree(H, nodelist).copy()
+    if not sG.nodes:
+        logger.debug(f"No Steiner tree found for nodes {nodelist}")
+        return None
     # logger.debug(f"Steiner tree found for nodes {nodelist} {sG.nodes}")
     final: nx.DiGraph = nx.subgraph(G, sG.nodes).copy()
 
@@ -293,7 +307,8 @@ def resolve_weak_components(
             if not nx.is_weakly_connected(g):
                 break_flag = True
                 continue
-
+            # from trilogy.hooks.graph_hook import GraphHook
+            # GraphHook().query_graph_built(g, highlight_nodes=[concept_to_node(c.with_default_grain()) for c in all_concepts if "__preql_internal" not in c.address])
             all_graph_concepts = [
                 extract_concept(extract_address(node), environment)
                 for node in g.nodes
