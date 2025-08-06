@@ -1568,6 +1568,26 @@ having
     assert len(results) == 1
 
 
+def test_replace():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    test = """
+const values <- unnest(['apple', 'banana', 'cherry', 'date']);
+select
+    replace(values, 'a', 'o') as replaced_values
+order by    
+    replaced_values asc;
+    """
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+
+    assert len(results) == 4
+    assert results[0].replaced_values == "bonono"
+    assert results[1].replaced_values == "cherry"
+    assert results[2].replaced_values == "dote"
+    assert results[3].replaced_values == "opple"
+
+
+
 def test_sum_bool():
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
     test = """

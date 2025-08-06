@@ -228,6 +228,7 @@ FUNCTION_MAP = {
     FunctionType.REGEXP_EXTRACT: lambda x: f"REGEXP_EXTRACT({x[0]},{x[1]})",
     FunctionType.REGEXP_REPLACE: lambda x: f"REGEXP_REPLACE({x[0]},{x[1]}, {x[2]})",
     FunctionType.TRIM: lambda x: f"TRIM({x[0]})",
+    FunctionType.REPLACE: lambda x: f"REPLACE({x[0]},{x[1]},{x[2]})",
     # FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
     # date types
     FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc({x[0]},{x[1]})",
