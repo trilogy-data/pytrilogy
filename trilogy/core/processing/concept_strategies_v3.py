@@ -325,6 +325,12 @@ def check_for_early_exit(
         logger.info(
             f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Not complete (missing {missing}), continuing search"
         )
+    # if we have attempted on root node, we've tried them all.
+    if priority_concept.derivation == Derivation.ROOT:
+        logger.info(
+            f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Breaking as attempted root with no results"
+        )
+        return True
     return False
 
 
