@@ -1690,3 +1690,17 @@ having value = 2;
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
 
     assert len(results) == 1
+
+
+def test_array_to_string():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    test = """
+const values <- [ ' abc ', ' def', 'jkl ', 'mon'];
+
+select array_to_string(values, ', ') as values;
+"""
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+
+    assert len(results) == 1
+    assert results[0].values == " abc ,  def, jkl , mon"
