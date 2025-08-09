@@ -283,6 +283,15 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type_function=get_transform_output_type,
         arg_count=3,
     ),
+    FunctionType.ARRAY_TO_STRING: FunctionConfig(
+        valid_inputs={
+            DataType.ARRAY,
+            DataType.STRING,
+        },
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.STRING,
+        arg_count=2,
+    ),
     FunctionType.ARRAY_SUM: FunctionConfig(
         valid_inputs={
             DataType.ARRAY,

@@ -193,6 +193,9 @@ FUNCTION_MAP = {
     FunctionType.ARRAY_TRANSFORM: lambda args: (
         f"array_transform({args[0]}, {args[1]} -> {args[2]})"
     ),
+    FunctionType.ARRAY_TO_STRING: lambda args: (
+        f"array_to_string({args[0]}, {args[1]})"
+    ),
     # math
     FunctionType.ADD: lambda x: " + ".join(x),
     FunctionType.ABS: lambda x: f"abs({x[0]})",

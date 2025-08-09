@@ -154,6 +154,7 @@ class FunctionType(Enum):
     ARRAY_SUM = "array_sum"
     ARRAY_SORT = "array_sort"
     ARRAY_TRANSFORM = "array_transform"
+    ARRAY_TO_STRING = "array_to_string"
 
     # TEXT AND MAYBE MORE
     SPLIT = "split"

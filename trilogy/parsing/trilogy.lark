@@ -300,13 +300,15 @@
     farray_sum: _ARRAY_SUM  expr  ")"
     _ARRAY_DISTINCT.1: "array_distinct("i
     farray_distinct: _ARRAY_DISTINCT expr ")"
+    _ARRAY_TO_STRING.1: "array_to_string("i
+    farray_to_string: _ARRAY_TO_STRING expr "," expr ")"
     _ARRAY_SORT.1: "array_sort("i
     farray_sort: _ARRAY_SORT expr ("," ordering )? ")"
     _ARRAY_TRANSFORM.1: "array_transform("i
     transform_lambda: "@" IDENTIFIER
     farray_transform: _ARRAY_TRANSFORM expr ","  transform_lambda   ")"
 
-    _array_functions: farray_sum | farray_distinct | farray_sort | farray_transform
+    _array_functions: farray_sum | farray_distinct | farray_sort | farray_transform | farray_to_string
     
     // special aggregate
     _GROUP.1: "group("i
