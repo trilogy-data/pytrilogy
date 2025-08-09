@@ -63,6 +63,11 @@ def generate_candidates_restrictive(
         and x.address not in priority_concept.pseudonyms
         and priority_concept.address not in x.pseudonyms
     ]
+
+    # if it's single row, joins are irrelevant. Fetch without keys.
+    if priority_concept.granularity == Granularity.SINGLE_ROW:
+        return [], conditions
+
     if conditions and priority_concept.derivation in ROOT_DERIVATIONS:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Injecting additional conditional row arguments as all remaining concepts are roots or constant"
@@ -72,9 +77,6 @@ def generate_candidates_restrictive(
             unique(list(conditions.row_arguments) + local_candidates, "address"),
             None,
         )
-    # if it's single row, joins are irrelevant. Fetch without keys.
-    if priority_concept.granularity == Granularity.SINGLE_ROW:
-        return [], conditions
 
     return local_candidates, conditions
 
@@ -323,13 +325,6 @@ def check_for_early_exit(
         logger.info(
             f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Not complete (missing {missing}), continuing search"
         )
-    # if we have attempted on root node, we've tried them all.
-    # inject in another search with filter concepts
-    if priority_concept.derivation == Derivation.ROOT:
-        logger.info(
-            f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Breaking as attempted root with no results"
-        )
-        return True
     return False
 
 
@@ -364,7 +359,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
             for x in context.stack
         }
         logger.info(
-            f"Condition {context.conditions} not required, parents included filtering! {parent_map }"
+            f"Condition {context.conditions} not required, parents included filtering! {parent_map}"
         )
     if len(context.stack) == 1:
         output: StrategyNode = context.stack[0]

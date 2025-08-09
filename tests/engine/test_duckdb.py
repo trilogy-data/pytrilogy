@@ -1641,3 +1641,52 @@ select trim(values) as trimmed_values order by trimmed_values asc;
     assert results[1].trimmed_values == "def"
     assert results[2].trimmed_values == "jkl"
     assert results[3].trimmed_values == "mon"
+
+
+def test_filter_constant_unrelated():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    from trilogy.core.processing.utility import get_disconnected_components
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    test = """
+key x int;
+
+datasource example (
+x)
+grain (x)
+query '''
+select 1 as x''';
+
+SELECT unnest([1,2,3,4]) as value, 'example' as dim
+having value = 2;
+
+"""
+    default_duckdb_engine.parse_text(test)
+    env = default_duckdb_engine.environment
+    # assert env.concepts['dim'].grain ==
+    graph_count, graphs = get_disconnected_components(
+        concept_map={
+            "example": [env.concepts["value"]],
+            "other": [env.concepts["dim"], env.concepts["x"]],
+        }
+    )
+    test = """
+key x int;
+
+datasource example (
+x)
+grain (x)
+query '''
+select 1 as x''';
+
+where x = 1
+SELECT unnest([1,2,3,4]) as value, 'example' as dim
+having value = 2;
+"""
+
+    # assert graph_count == 1,graphs
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+
+    assert len(results) == 1

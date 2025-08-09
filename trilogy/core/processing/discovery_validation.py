@@ -105,7 +105,6 @@ def validate_stack(
 
         for concept in resolved.output_concepts:
             if concept.address in resolved.hidden_concepts:
-
                 continue
 
             validate_concept(
