@@ -10,6 +10,7 @@ from trilogy.constants import MagicConstants
 from trilogy.core.enums import (
     BooleanOperator,
     DatePart,
+    Derivation,
     FunctionClass,
     Granularity,
     JoinType,
@@ -262,15 +263,18 @@ def calculate_graph_relevance(
     """
     relevance = 0
     for node in g.nodes:
+
         if node not in subset_nodes:
             continue
         if not g.nodes[node]["type"] == NodeType.CONCEPT:
             continue
         concept = [x for x in concepts if x.address == node].pop()
-
+        # debug granularity and derivation
         # a single row concept can always be crossjoined
         # therefore a graph with only single row concepts is always relevant
         if concept.granularity == Granularity.SINGLE_ROW:
+            continue
+        if concept.derivation == Derivation.CONSTANT:
             continue
         # if it's an aggregate up to an arbitrary grain, it can be joined in later
         # and can be ignored in subgraph
@@ -284,7 +288,6 @@ def calculate_graph_relevance(
             continue
         # Added 2023-10-18 since we seemed to be strangely dropping things
         relevance += 1
-
     return relevance
 
 

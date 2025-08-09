@@ -73,11 +73,11 @@ def get_priority_concept(
             + [c for c in remaining_concept if c.derivation == Derivation.RECURSIVE]
             + [c for c in remaining_concept if c.derivation == Derivation.BASIC]
             + [c for c in remaining_concept if c.derivation == Derivation.GROUP_TO]
+            + [c for c in remaining_concept if c.derivation == Derivation.CONSTANT]
             # finally our plain selects
             + [
                 c for c in remaining_concept if c.derivation == Derivation.ROOT
             ]  # and any non-single row constants
-            + [c for c in remaining_concept if c.derivation == Derivation.CONSTANT]
         )
 
         priority += [

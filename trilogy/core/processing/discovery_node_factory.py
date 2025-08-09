@@ -12,6 +12,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.discovery_utility import LOGGER_PREFIX, depth_to_prefix
 from trilogy.core.processing.node_generators import (
     gen_basic_node,
+    gen_constant_node,
     gen_filter_node,
     gen_group_node,
     gen_group_to_node,
@@ -252,6 +253,21 @@ def _generate_basic_node(ctx: NodeGenerationContext) -> StrategyNode | None:
     )
 
 
+def _generate_constant_node(ctx: NodeGenerationContext) -> StrategyNode | None:
+    ctx.log_generation("constant")
+    return gen_constant_node(
+        ctx.concept,
+        ctx.local_optional,
+        history=ctx.history,
+        environment=ctx.environment,
+        g=ctx.g,
+        depth=ctx.next_depth,
+        source_concepts=ctx.source_concepts,
+        conditions=ctx.conditions,
+        accept_partial=ctx.accept_partial,
+    )
+
+
 class RootNodeHandler:
     """Handles complex root node generation logic."""
 
@@ -469,7 +485,7 @@ def generate_node(
         Derivation.GROUP_TO: lambda: _generate_group_to_node(context),
         Derivation.BASIC: lambda: _generate_basic_node(context),
         Derivation.ROOT: lambda: RootNodeHandler(context).generate(),
-        Derivation.CONSTANT: lambda: RootNodeHandler(context).generate(),
+        Derivation.CONSTANT: lambda: _generate_constant_node(context),
     }
 
     handler = derivation_handlers.get(concept.derivation)

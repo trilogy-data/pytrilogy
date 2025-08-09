@@ -1,4 +1,5 @@
 from .basic_node import gen_basic_node
+from .constant_node import gen_constant_node
 from .filter_node import gen_filter_node
 from .group_node import gen_group_node
 from .group_to_node import gen_group_to_node
@@ -26,4 +27,5 @@ __all__ = [
     "gen_multiselect_node",
     "gen_synonym_node",
     "gen_recursive_node",
+    "gen_constant_node",
 ]
