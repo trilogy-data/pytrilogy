@@ -2035,6 +2035,12 @@ class ParseToObjects(Transformer):
         )
 
     @v_args(meta=True)
+    def farray_to_string(self, meta, args):
+        return self.function_factory.create_function(
+            args, FunctionType.ARRAY_TO_STRING, meta
+        )
+
+    @v_args(meta=True)
     def farray_sort(self, meta, args):
         if len(args) == 1:
             # this is a magic value to represent the default behavior
