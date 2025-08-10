@@ -104,16 +104,16 @@ def determine_induced_minimal_nodes(
             if filter_downstream and lookup.derivation not in (Derivation.ROOT,):
                 nodes_to_remove.append(node)
     if nodes_to_remove:
-        logger.debug(f"Removing nodes {nodes_to_remove} from graph")
+        # logger.debug(f"Removing nodes {nodes_to_remove} from graph")
         H.remove_nodes_from(nodes_to_remove)
     isolates = list(nx.isolates(H))
     if isolates:
-        logger.debug(f"Removing isolates {isolates} from graph")
+        # logger.debug(f"Removing isolates {isolates} from graph")
         H.remove_nodes_from(isolates)
 
     zero_out = list(x for x in H.nodes if G.out_degree(x) == 0 and x not in nodelist)
     while zero_out:
-        logger.debug(f"Removing zero out nodes {zero_out} from graph")
+        # logger.debug(f"Removing zero out nodes {zero_out} from graph")
         H.remove_nodes_from(zero_out)
         zero_out = list(
             x for x in H.nodes if G.out_degree(x) == 0 and x not in nodelist
@@ -128,7 +128,7 @@ def determine_induced_minimal_nodes(
     if path_removals:
         logger.debug(f"Removing paths {path_removals} from graph")
         H.remove_nodes_from(path_removals)
-    logger.debug(f"Graph after path removal {H.nodes}")
+    # logger.debug(f"Graph after path removal {H.nodes}")
     sG: nx.Graph = ax.steinertree.steiner_tree(H, nodelist).copy()
     if not sG.nodes:
         logger.debug(f"No Steiner tree found for nodes {nodelist}")
