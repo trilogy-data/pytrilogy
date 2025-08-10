@@ -1,5 +1,5 @@
 query_id = 20
-gen_length = 3129
+gen_length = 2874
 generated_sql = """
 
 WITH 
@@ -47,20 +47,20 @@ SELECT
     \"thoughtful\".\"cs_item_name\" as \"cs_item_name\",
     \"thoughtful\".\"cs_item_desc\" as \"cs_item_desc\",
     \"thoughtful\".\"cs_item_category\" as \"cs_item_category\",
-    coalesce(\"cooperative\".\"cs_item_class\",\"thoughtful\".\"cs_item_class\") as \"cs_item_class\",
+    \"thoughtful\".\"cs_item_class\" as \"cs_item_class\",
     \"thoughtful\".\"cs_item_current_price\" as \"cs_item_current_price\",
-    coalesce(\"cooperative\".\"revenue\",\"thoughtful\".\"revenue\") as \"revenue\",
-    coalesce(\"cooperative\".\"revenue\",\"thoughtful\".\"revenue\") * 100.0 / (\"cooperative\".\"_virt_window_sum_69632973582362\") as \"revenue_ratio\"
+    \"thoughtful\".\"revenue\" as \"revenue\",
+    \"thoughtful\".\"revenue\" * 100.0 / (\"cooperative\".\"_virt_window_sum_69632973582362\") as \"revenue_ratio\"
 FROM
     \"cooperative\"
-    FULL JOIN \"thoughtful\" on (\"cooperative\".\"cs_item_class\" = \"thoughtful\".\"cs_item_class\" or (\"cooperative\".\"cs_item_class\" is null and \"thoughtful\".\"cs_item_class\" is null)) AND (\"cooperative\".\"revenue\" = \"thoughtful\".\"revenue\" or (\"cooperative\".\"revenue\" is null and \"thoughtful\".\"revenue\" is null))
+    INNER JOIN \"thoughtful\" on \"cooperative\".\"revenue\" = \"thoughtful\".\"revenue\" AND (\"cooperative\".\"cs_item_class\" = \"thoughtful\".\"cs_item_class\" or (\"cooperative\".\"cs_item_class\" is null and \"thoughtful\".\"cs_item_class\" is null))
 WHERE
     \"thoughtful\".\"cs_item_name\" is not null
 
 ORDER BY 
     \"thoughtful\".\"cs_item_category\" asc nulls first,
-    coalesce(\"cooperative\".\"cs_item_class\",\"thoughtful\".\"cs_item_class\") asc nulls first,
+    \"thoughtful\".\"cs_item_class\" asc nulls first,
     \"thoughtful\".\"cs_item_name\" asc nulls first,
     \"thoughtful\".\"cs_item_desc\" asc nulls first,
-    coalesce(\"cooperative\".\"revenue\",\"thoughtful\".\"revenue\") * 100.0 / (\"cooperative\".\"_virt_window_sum_69632973582362\") asc nulls first
+    \"thoughtful\".\"revenue\" * 100.0 / (\"cooperative\".\"_virt_window_sum_69632973582362\") asc nulls first
 LIMIT (100)"""

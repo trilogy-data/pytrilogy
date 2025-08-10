@@ -161,6 +161,9 @@ def resolve_join_order_v2(
                 left_is_partial = any(
                     key in partials.get(left_candidate, []) for key in common
                 )
+                left_is_nullable = any(
+                    key in nullables.get(left_candidate, []) for key in common
+                )
                 right_is_partial = any(key in partials.get(right, []) for key in common)
                 # we don't care if left is nullable for join type (just keys), but if we did
                 # left_is_nullable = any(
@@ -169,21 +172,29 @@ def resolve_join_order_v2(
                 right_is_nullable = any(
                     key in nullables.get(right, []) for key in common
                 )
-                if left_is_partial or right_is_nullable:
+                if left_is_nullable and right_is_nullable:
                     join_type = JoinType.FULL
-                elif right_is_partial:
+                elif left_is_partial and right_is_partial:
+                    join_type = JoinType.FULL
+                elif left_is_partial:
+                    join_type = JoinType.FULL
+                elif right_is_nullable:
+                    join_type = JoinType.RIGHT_OUTER
+                elif right_is_partial or left_is_nullable:
                     join_type = JoinType.LEFT_OUTER
                 # we can't inner join if the left was an outer join
                 else:
                     join_type = JoinType.INNER
+
                 join_types.add(join_type)
                 joinkeys[left_candidate] = common
-
             final_join_type = JoinType.INNER
-            if any([x == JoinType.LEFT_OUTER for x in join_types]):
-                final_join_type = JoinType.LEFT_OUTER
-            elif any([x == JoinType.FULL for x in join_types]):
+            if any([x == JoinType.FULL for x in join_types]):
                 final_join_type = JoinType.FULL
+            elif any([x == JoinType.LEFT_OUTER for x in join_types]):
+                final_join_type = JoinType.LEFT_OUTER
+            elif any([x == JoinType.RIGHT_OUTER for x in join_types]):
+                final_join_type = JoinType.RIGHT_OUTER
             output.append(
                 JoinOrderOutput(
                     # left=left_candidate,
@@ -608,13 +619,12 @@ def find_nullable_concepts(
         local_nullable = [
             x for x in datasources if k in [v.address for v in x.nullable_concepts]
         ]
-        if all(
-            [
-                k in [v.address for v in x.nullable_concepts]
-                for x in datasources
-                if k in [z.address for z in x.output_concepts]
-            ]
-        ):
+        nullable_matches = [
+            k in [v.address for v in x.nullable_concepts]
+            for x in datasources
+            if k in [z.address for z in x.output_concepts]
+        ]
+        if all(nullable_matches) and len(nullable_matches) > 0:
             final_nullable.add(k)
         all_ds = set([ds for ds in local_nullable]).union(nullable_datasources)
         if nullable_datasources:

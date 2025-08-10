@@ -1,9 +1,14 @@
 
+## network types
+type url string; # URL string
+type url_image string; # URL of an image
+type domain string; # Domain name
+type ip_net_mask string; # IP network mask
+type ipv6_address string; # IPv6 address
+type ipv4_address string; # IPv4 address
 
-type url string;
-type domain string;
-type ip_net_mask string;
-type ipv6_address string;
-type ipv4_address string;
-type suffix string;
-type url_image string;
+## communication types
+type email_address string; # Email address, including @
+
+## shared types
+type suffix string; # A file suffix or extension, like .txt, .jpg, etc.
