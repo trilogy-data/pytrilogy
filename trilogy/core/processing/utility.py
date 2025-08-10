@@ -169,9 +169,9 @@ def resolve_join_order_v2(
                 right_is_nullable = any(
                     key in nullables.get(right, []) for key in common
                 )
-                if left_is_partial:
+                if left_is_partial or right_is_nullable:
                     join_type = JoinType.FULL
-                elif right_is_partial or right_is_nullable:
+                elif right_is_partial:
                     join_type = JoinType.LEFT_OUTER
                 # we can't inner join if the left was an outer join
                 else:

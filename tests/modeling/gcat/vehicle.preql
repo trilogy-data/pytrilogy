@@ -1,0 +1,62 @@
+#auto-generated datasource from table/view lv_info
+
+key name string;
+property <name>.family string;
+property <name>.manufacturer string;
+property <name>.variant string;
+property <name>.alias string;
+property <name>.min_stage int;
+property <name>.max_stage int;
+property <name>.length string;
+property <name>.lflag string;
+property <name>.diameter string;
+property <name>.dflag string;
+property <name>.launch_mass string;
+property <name>.mflag string;
+property <name>.leo_capacity string;
+property <name>.gto_capacity string;
+property <name>.to_thrust string;
+property <name>.class string;
+property <name>.apogee string;
+property <name>.range string;
+
+auto class_name <-
+case
+    when class = 'D' then 'Deep Space launch'
+    when class = 'M' then 'Missile'
+    when class = 'O' then 'Orbital vehicle'
+    when class = 'R' then 'Research rocket'
+    when class = 'V' then 'Reentry test vehicle'
+    when class = 'X' then 'Exoatmospheric test'
+    when class = 'Y' then 'Exoatmospheric weather rocket'
+    when class = 'A' then 'Endoatmospheric missile'
+    when class = 'C' then 'Cruise missile'
+    when class = 'Q' then 'Endoatmospheric reentry test'
+    when class = 'T' then 'Endoatmospheric test/research'
+    when class = 'W' then 'Endoatmospheric weather rocket'
+    else 'Unknown'
+  end;
+
+datasource lv_info (
+	LV_Name:name,
+	LV_Family:family,
+	LV_Manufacturer:manufacturer,
+	LV_Variant:variant,
+	LV_Alias:alias,
+	LV_Min_Stage:min_stage,
+	LV_Max_Stage:max_stage,
+	Length:length,
+	LFlag:lflag,
+	Diameter:diameter,
+	DFlag:dflag,
+	Launch_Mass:launch_mass,
+	MFlag:mflag,
+	LEO_Capacity:leo_capacity,
+	GTO_Capacity:gto_capacity,
+	TO_Thrust:to_thrust,
+	Class:class,
+	Apogee:apogee,
+	Range:range,
+)
+grain (name)
+address lv_info;
