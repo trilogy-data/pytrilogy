@@ -9,10 +9,11 @@ type us_zip_code string; # US ZIP code
 ## generic types
 type latitude float; # Latitude in degrees
 type longitude float; # Longitude in degrees
-type lat_long string; # Latitude and longitude in degrees
+type lat_long string; # Latitude and longitude in degrees, as a coordinate pair
 
 type city string; # City name
-type country string; # Country name
+type country string; # Full Country Name
+type country_code string; # ISO-3166 Country code - ex US, CA, GB
 type timezone string; # Timezone name
 type region string; # Region name
 
