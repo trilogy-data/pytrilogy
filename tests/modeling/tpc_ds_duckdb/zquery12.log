@@ -1,5 +1,5 @@
 query_id = 12
-gen_length = 3241
+gen_length = 3443
 generated_sql = """
 
 WITH 
@@ -47,17 +47,17 @@ SELECT
     \"thoughtful\".\"web_sales_item_name\" as \"web_sales_item_name\",
     \"thoughtful\".\"web_sales_item_desc\" as \"web_sales_item_desc\",
     \"thoughtful\".\"web_sales_item_category\" as \"web_sales_item_category\",
-    \"thoughtful\".\"web_sales_item_class\" as \"web_sales_item_class\",
+    coalesce(\"cooperative\".\"web_sales_item_class\",\"thoughtful\".\"web_sales_item_class\") as \"web_sales_item_class\",
     \"thoughtful\".\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    \"thoughtful\".\"itemrevenue\" as \"itemrevenue\",
-    (\"thoughtful\".\"itemrevenue\" * 100.0) / \"cooperative\".\"itemclassrevenue\" as \"revenueratio\"
+    coalesce(\"cooperative\".\"itemrevenue\",\"thoughtful\".\"itemrevenue\") as \"itemrevenue\",
+    (coalesce(\"cooperative\".\"itemrevenue\",\"thoughtful\".\"itemrevenue\") * 100.0) / \"cooperative\".\"itemclassrevenue\" as \"revenueratio\"
 FROM
     \"cooperative\"
-    LEFT OUTER JOIN \"thoughtful\" on (\"cooperative\".\"itemrevenue\" = \"thoughtful\".\"itemrevenue\" or (\"cooperative\".\"itemrevenue\" is null and \"thoughtful\".\"itemrevenue\" is null)) AND (\"cooperative\".\"web_sales_item_class\" = \"thoughtful\".\"web_sales_item_class\" or (\"cooperative\".\"web_sales_item_class\" is null and \"thoughtful\".\"web_sales_item_class\" is null))
+    FULL JOIN \"thoughtful\" on (\"cooperative\".\"itemrevenue\" = \"thoughtful\".\"itemrevenue\" or (\"cooperative\".\"itemrevenue\" is null and \"thoughtful\".\"itemrevenue\" is null)) AND (\"cooperative\".\"web_sales_item_class\" = \"thoughtful\".\"web_sales_item_class\" or (\"cooperative\".\"web_sales_item_class\" is null and \"thoughtful\".\"web_sales_item_class\" is null))
 ORDER BY 
     \"thoughtful\".\"web_sales_item_category\" asc,
-    \"thoughtful\".\"web_sales_item_class\" asc,
+    coalesce(\"cooperative\".\"web_sales_item_class\",\"thoughtful\".\"web_sales_item_class\") asc,
     \"thoughtful\".\"web_sales_item_name\" asc,
     \"thoughtful\".\"web_sales_item_desc\" asc,
-    (\"thoughtful\".\"itemrevenue\" * 100.0) / \"cooperative\".\"itemclassrevenue\" asc
+    (coalesce(\"cooperative\".\"itemrevenue\",\"thoughtful\".\"itemrevenue\") * 100.0) / \"cooperative\".\"itemclassrevenue\" asc
 LIMIT (100)"""
