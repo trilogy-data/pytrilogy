@@ -251,12 +251,14 @@ def test_rollback(duckdb_engine: Executor, expected_results):
     assert results.fetchall()[0] == (1,)
 
 
-def test_basic(duckdb_engine: Executor):
+def test_basic_dates(duckdb_engine: Executor):
     test = """
   auto today <- current_datetime();
   auto tomorrow <- date_add(today, day, 1);
+  auto yesterday <- date_sub(today, day, 1);
   select 
     tomorrow,
+    yesterday,
     date_diff(today, today, day)->zero,
     date_trunc(today, year) -> current_year 
   ;
@@ -267,7 +269,7 @@ def test_basic(duckdb_engine: Executor):
         == Granularity.SINGLE_ROW
     )
     results = duckdb_engine.execute_text(test)[0].fetchall()
-    assert len(results[0]) == 3
+    assert len(results[0]) == 4
 
 
 def test_rowset(duckdb_engine: Executor):

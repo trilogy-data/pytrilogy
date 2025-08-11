@@ -367,7 +367,7 @@
     fyear: _YEAR expr ")"
     
     DATE_PART: "DAY"i | "WEEK"i | "MONTH"i | "QUARTER"i | "YEAR"i | "MINUTE"i | "HOUR"i | "SECOND"i | "DAY_OF_WEEK"i
-    _DATE_TRUNC.1: "date_trunc("i
+    _DATE_TRUNC.1: "date_trunc("i | "date_truncate("i
     fdate_trunc: _DATE_TRUNC expr "," DATE_PART ")"
     _DATE_PART.1: "date_part("i
     fdate_part: _DATE_PART expr "," DATE_PART ")"

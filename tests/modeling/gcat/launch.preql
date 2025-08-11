@@ -1,62 +1,66 @@
 import platform as platform;
 import vehicle as vehicle;
+import launch_sites as site;
 
-key Launch_Tag string;
-property <Launch_Tag>.Launch_JD string;
-property <Launch_Tag>.Launch_Date string;
-property <Launch_Tag>.Variant string;
-property <Launch_Tag>.Flight_ID string;
-property <Launch_Tag>.Flight string;
-property <Launch_Tag>.Mission string;
-property <Launch_Tag>.FlightCode string;
-property <Launch_Tag>.Launch_Site string;
-property <Launch_Tag>.Launch_Pad string;
-property <Launch_Tag>.Ascent_Site string;
-property <Launch_Tag>.Ascent_Pad string;
-property <Launch_Tag>.Apogee string;
-property <Launch_Tag>.Apoflag string;
-property <Launch_Tag>.Range string;
-property <Launch_Tag>.RangeFlag string;
-property <Launch_Tag>.Dest string;
-property <Launch_Tag>.OrbPay string;
-property <Launch_Tag>.Agency string;
-property <Launch_Tag>.LaunchCode string;
-property <Launch_Tag>.FailCode string;
-# property <Launch_Tag>.Group string;
-property <Launch_Tag>.Category string;
-property <Launch_Tag>.LTCite string;
-property <Launch_Tag>.Cite string;
-property <Launch_Tag>.Notes string;
+key launch_tag string;
+property <launch_tag>.launch_jd string;
+property <launch_tag>.julian_launch_date string;
+property <launch_tag>.variant string;
+property <launch_tag>.flight_id string;
+property <launch_tag>.flight string;
+property <launch_tag>.mission string;
+property <launch_tag>.flight_code string;
+# property <launch_tag>.launch_site string;
+property <launch_tag>.launch_pad string;
+property <launch_tag>.ascent_site string;
+property <launch_tag>.ascent_pad string;
+property <launch_tag>.apogee string;
+property <launch_tag>.apo_flag string;
+property <launch_tag>.range string;
+property <launch_tag>.range_flag string;
+property <launch_tag>.dest string;
+property <launch_tag>.orb_pay string;
+property <launch_tag>.agency string;
+property <launch_tag>.launch_code string;
+property <launch_tag>.fail_code string;
+# property <launch_tag>.group string;
+property <launch_tag>.category string;
+property <launch_tag>.lt_cite string;
+property <launch_tag>.cite string;
+property <launch_tag>.notes string;
+
+auto launch_date <- date_add('1900-01-01'::date, day, (julian_launch_date::float - 2415021)::int)::DATE;
+
 
 datasource launch_info (
-	Launch_Tag,
-	Launch_JD,
-	Launch_Date,
+	Launch_Tag:launch_tag,
+	Launch_JD:launch_jd,
+	Launch_Date:launch_date,
 	LV_Type:vehicle.name,
-	Variant,
-	Flight_ID,
-	Flight,
-	Mission,
-	FlightCode,
+	Variant:variant,
+	Flight_ID:flight_id,
+	Flight:flight,
+	Mission:mission,
+	FlightCode:flight_code,
 	Platform:?platform.code,
-	Launch_Site,
-	Launch_Pad,
-	Ascent_Site,
-	Ascent_Pad,
-	Apogee,
-	Apoflag,
-	Range,
-	RangeFlag,
-	Dest,
-	OrbPay,
-	Agency,
-	LaunchCode,
-	FailCode,
+	Launch_Site:?site.key,
+	Launch_Pad:launch_pad,
+	Ascent_Site:ascent_site,
+	Ascent_Pad:ascent_pad,
+	Apogee:apogee,
+	Apoflag:apo_flag,
+	Range:range,
+	RangeFlag:range_flag,
+	Dest:dest,
+	OrbPay:orb_pay,
+	Agency:agency,
+	LaunchCode:launch_code,
+	FailCode:fail_code,
 	# Group,
-	Category,
-	LTCite,
-	Cite,
-	Notes,
+	Category:category,
+	LTCite:lt_cite,
+	Cite:cite,
+	Notes:notes,
 )
-grain (Launch_Tag)
+grain (launch_tag)
 address launch_info;
