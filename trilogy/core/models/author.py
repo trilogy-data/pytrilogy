@@ -656,12 +656,12 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
                 left_type, right_type
             ):
                 raise SyntaxError(
-                    f"Cannot compare {left_type} and {right_type} with operator {self.operator} in {str(self)}"
+                    f"Cannot compare {left_type.name} and {right_type.name} with operator {self.operator} in {str(self)}"
                 )
         else:
-            if not is_compatible_datatype(left_type, right_type):
+            if not is_compatible_datatype(left_type.name, right_type.name):
                 raise SyntaxError(
-                    f"Cannot compare {left_type}({self.left}) and {right_type}({self.right}) of different types with operator {self.operator.value} in {str(self)}"
+                    f"Cannot compare {left_type.name} ({self.left}) and {right_type.name} ({self.right}) of different types with operator {self.operator.value} in {str(self)}"
                 )
 
         return self
