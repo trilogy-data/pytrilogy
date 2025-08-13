@@ -645,7 +645,7 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
                     f"Cannot use {self.operator.value} with non-null or boolean value {self.right}"
                 )
         elif self.operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
-            
+
             if isinstance(right_type, ArrayType) and not is_compatible_datatype(
                 left_type, right_type.value_data_type
             ):
@@ -659,9 +659,7 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
                     f"Cannot compare {left_type} and {right_type} with operator {self.operator} in {str(self)}"
                 )
         else:
-            if not is_compatible_datatype(
-                left_type, right_type
-            ):
+            if not is_compatible_datatype(left_type, right_type):
                 raise SyntaxError(
                     f"Cannot compare {left_type}({self.left}) and {right_type}({self.right}) of different types with operator {self.operator.value} in {str(self)}"
                 )
