@@ -76,6 +76,7 @@ FUNCTION_MAP = {
     FunctionType.DATE: lambda x: f"cast({x[0]} as date)",
     FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc('{x[1]}', {x[0]})",
     FunctionType.DATE_ADD: lambda x: f"date_add({x[0]}, {x[2]} * INTERVAL 1 {x[1]})",
+    FunctionType.DATE_SUB: lambda x: f"date_add({x[0]}, -{x[2]} * INTERVAL 1 {x[1]})",
     FunctionType.DATE_PART: lambda x: f"date_part('{x[1]}', {x[0]})",
     FunctionType.DATE_DIFF: lambda x: f"date_diff('{x[2]}', {x[0]}, {x[1]})",
     FunctionType.CONCAT: lambda x: f"({' || '.join(x)})",

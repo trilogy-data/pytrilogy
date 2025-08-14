@@ -20,8 +20,72 @@ select
 platform.class,
 # platform.name,
 vehicle.name,
-count(Launch_Tag) as launches;"""
+count(launch_tag) as launches;"""
     )
 
     sql = base.generate_sql(queries[-1])
     assert "RIGHT OUTER JOIN" in sql[0], sql[0]
+
+
+def test_date_filter():
+
+    DebuggingHook()
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+
+    queries = base.parse_text(
+        """import launch;
+
+where
+  launch_date between date_sub( current_date(), YEAR, 100) and current_date()
+select
+  date_trunc( launch_date, year) as year,
+  case
+    when date_diff(date_add(current_date(), YEAR, -100), current_date(), YEAR) <= 5
+    then date_trunc(launch_date, month )
+    else null
+  end as month,
+  count( launch_tag ) as launch_count,
+  sum(payload.mass::float) as total_payload_mass_kg,
+  # avg(count(launch.id)) over order by year rows between 4 preceding and current row as launch_count_5yr_ma,
+  # avg(sum(payload.mass_kg)) over order by year rows between 4 preceding and current row as mass_5yr_ma,
+  # sum(count(launch.id)) over order by year asc as launch_count_cumulative,
+  # sum(sum(payload.mass_kg)) over order by year asc as total_payload_mass_kg_cumulative
+order by
+  year asc
+limit 2000;
+"""
+    )
+
+    sql = base.generate_sql(queries[-1])
+    assert "date_add(current_date(), -100 * INTERVAL 1 year)" in sql[0]
+
+
+def test_case_key():
+    DebuggingHook()
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+
+    queries = base.parse_text(
+        """import launch;
+
+key launch_filter <- CASE WHEN launch_type_code = 'O' then "Orbital"
+WHEN launch_type_code = 'D' then 'Deep Space'
+ELSE 'Other' END;
+
+        SELECT vehicle.name, vehicle.class, vehicle.length, vehicle.leo_capacity,
+launch_count,
+vehicle.family,
+vehicle.launch_mass, vehicle.to_thrust,
+vehicle.diameter, round(sum(orb_pay),2) as total_mass,
+array_to_string(array_agg(launch_filter), ', ') as launch_targets
+order by total_mass desc limit 1;
+"""
+    )
+
+    sql = base.generate_sql(queries[-1])
+    assert "_launch_code" not in sql[0], sql[0]

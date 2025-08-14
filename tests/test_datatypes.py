@@ -30,7 +30,7 @@ def test_cast_error():
     """
         )
     except InvalidSyntaxException as e:
-        assert "Cannot compare DataType.INTEGER and DataType.STRING" in str(e)
+        assert "Cannot compare INTEGER (ref:local.x) and STRING (ref:local.y)" in str(e)
         found = True
     if not found:
         assert False, "Expected InvalidSyntaxException not raised"

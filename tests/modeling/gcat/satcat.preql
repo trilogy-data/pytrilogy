@@ -1,0 +1,92 @@
+
+#auto-generated datasource from table/view satcat
+
+key jcat string; # The General Catalog (GCAT) uses an alphanumeric identifier (JCAT, originally Jonathan's Catalog ID) to uniquely tag space objects. The identifier consists of a single prefix letter followed by a sequence number with either 5 or 9 digits (examples: A00022; S101234009). The 9 digit case is not yet in use, but is supported in anticipation of the introduction of 9-digit SATCAT numbers by the US DoD.
+property <jcat>.satcat string;
+property <jcat>.launch_tag string;
+property <jcat>.piece string;
+property <jcat>.type string;
+property <jcat>.name string;
+property <jcat>.pl_name string;
+property <jcat>.l_date string;
+property <jcat>.parent string;
+property <jcat>.s_date string;
+property <jcat>.primary string;
+property <jcat>.d_date string;
+property <jcat>.status string;
+property <jcat>.dest string;
+property <jcat>.owner string;
+property <jcat>.state string;
+property <jcat>.manufacturer string;
+property <jcat>.bus string;
+property <jcat>.motor string;
+property <jcat>.mass string;
+property <jcat>.mass_flag string;
+property <jcat>.dry_mass string;
+property <jcat>.dry_flag string;
+property <jcat>.tot_mass string;
+property <jcat>.tot_flag string;
+property <jcat>.length string;
+property <jcat>.l_flag string;
+property <jcat>.diameter string;
+property <jcat>.d_flag string;
+property <jcat>.span string;
+property <jcat>.span_flag string;
+property <jcat>.shape string;
+property <jcat>.o_date string;
+property <jcat>.perigee string;
+property <jcat>.pf string;
+property <jcat>.apogee string;
+property <jcat>.af string;
+property <jcat>.inc string;
+property <jcat>.if string;
+property <jcat>.op_orbit string;
+property <jcat>.oqual string;
+property <jcat>.alt_names string;
+
+datasource satcat (
+    JCAT:jcat,
+    Satcat:satcat,
+    Launch_Tag:launch_tag,
+    Piece:piece,
+    Type:type,
+    Name:name,
+    PLName:pl_name,
+    LDate:l_date,
+    Parent:parent,
+    SDate:s_date,
+    Primary:primary,
+    DDate:d_date,
+    Status:status,
+    Dest:dest,
+    Owner:owner,
+    State:state,
+    Manufacturer:manufacturer,
+    Bus:bus,
+    Motor:motor,
+    Mass:mass,
+    MassFlag:mass_flag,
+    DryMass:dry_mass,
+    DryFlag:dry_flag,
+    TotMass:tot_mass,
+    TotFlag:tot_flag,
+    Length:length,
+    LFlag:l_flag,
+    Diameter:diameter,
+    DFlag:d_flag,
+    Span:span,
+    SpanFlag:span_flag,
+    Shape:shape,
+    ODate:o_date,
+    Perigee:perigee,
+    PF:pf,
+    Apogee:apogee,
+    AF:af,
+    Inc:inc,
+    IF:if,
+    OpOrbit:op_orbit,
+    OQUAL:oqual,
+    AltNames:alt_names,
+)
+grain (jcat)
+address satcat;

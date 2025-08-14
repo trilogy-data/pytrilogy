@@ -683,7 +683,9 @@ class ParseToObjects(Transformer):
             )
             # let constant purposes exist to support round-tripping
             # as a build concept may end up with a constant based on constant inlining happening recursively
-            if (
+            if purpose == Purpose.KEY and concept.purpose != Purpose.KEY:
+                concept.purpose = Purpose.KEY
+            elif (
                 purpose
                 and purpose != Purpose.AUTO
                 and concept.purpose != purpose

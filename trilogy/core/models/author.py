@@ -637,33 +637,31 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
 
     @model_validator(mode="after")
     def validate_comparison(self):
+        left_type = arg_to_datatype(self.left)
+        right_type = arg_to_datatype(self.right)
         if self.operator in (ComparisonOperator.IS, ComparisonOperator.IS_NOT):
-            if self.right != MagicConstants.NULL and DataType.BOOL != arg_to_datatype(
-                self.right
-            ):
+            if self.right != MagicConstants.NULL and DataType.BOOL != right_type:
                 raise SyntaxError(
                     f"Cannot use {self.operator.value} with non-null or boolean value {self.right}"
                 )
         elif self.operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
-            right_type = arg_to_datatype(self.right)
+
             if isinstance(right_type, ArrayType) and not is_compatible_datatype(
-                arg_to_datatype(self.left), right_type.value_data_type
+                left_type, right_type.value_data_type
             ):
                 raise SyntaxError(
-                    f"Cannot compare {arg_to_datatype(self.left)} and {right_type} with operator {self.operator} in {str(self)}"
+                    f"Cannot compare {left_type} and {right_type} with operator {self.operator} in {str(self)}"
                 )
             elif isinstance(self.right, Concept) and not is_compatible_datatype(
-                arg_to_datatype(self.left), arg_to_datatype(self.right)
+                left_type, right_type
             ):
                 raise SyntaxError(
-                    f"Cannot compare {arg_to_datatype(self.left)} and {arg_to_datatype(self.right)} with operator {self.operator} in {str(self)}"
+                    f"Cannot compare {left_type.name} and {right_type.name} with operator {self.operator} in {str(self)}"
                 )
         else:
-            if not is_compatible_datatype(
-                arg_to_datatype(self.left), arg_to_datatype(self.right)
-            ):
+            if not is_compatible_datatype(left_type, right_type):
                 raise SyntaxError(
-                    f"Cannot compare {arg_to_datatype(self.left)} and {arg_to_datatype(self.right)} of different types with operator {self.operator} in {str(self)}"
+                    f"Cannot compare {left_type.name} ({self.left}) and {right_type.name} ({self.right}) of different types with operator {self.operator.value} in {str(self)}"
                 )
 
         return self

@@ -1,0 +1,46 @@
+
+
+#auto-generated datasource from table/view launch_keys
+import std.geography;
+
+key key string;
+property <key>.code string;
+property <key>.u_code string;
+property <key>.type string;
+property <key>.state_code string;
+property <key>.t_start string;
+property <key>.t_stop string;
+property <key>.short_name string;
+property <key>.name string;
+property <key>.location string;
+property <key>.longitude float::longitude;
+property <key>.latitude float::latitude;
+property <key>.error string;
+property <key>.parent string;
+property <key>.short_e_name string;
+property <key>.e_name string;
+# property <key>.group string;
+property <key>.u_name string;
+
+datasource launch_sites (
+	Site:key,
+	Code:code,
+	UCode:u_code,
+	Type:type,
+	StateCode:state_code,
+	TStart:t_start,
+	TStop:t_stop,
+	ShortName:short_name,
+	Name:name,
+	Location:location,
+	llong:longitude,
+	llat:latitude,
+	Error:error,
+	Parent:parent,
+	ShortName:short_name,
+	EName:e_name,
+	# Group,
+	UName:u_name,
+)
+grain (key)
+address launch_sites;
