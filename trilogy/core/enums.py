@@ -13,6 +13,11 @@ class UnnestMode(Enum):
     SNOWFLAKE = "snowflake"
 
 
+class GroupMode(Enum):
+    AUTO = "auto"
+    BY_INDEX = "by_index"
+
+
 class ConceptSource(Enum):
     MANUAL = "manual"
     CTE = "cte"
