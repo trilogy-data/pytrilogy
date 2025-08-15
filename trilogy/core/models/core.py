@@ -210,9 +210,16 @@ class MapType(BaseModel):
             return self.key_type.output_datatype
         return self.key_type
 
+class StructComponent(BaseModel):
+    name: str
+    type: TYPEDEF_TYPES
+    modifiers: list[str] = []
 
+    @field_validator("type", mode="plain")
+    def validate_Type(cls, v):
+        return v
 class StructType(BaseModel):
-    fields: Sequence[TYPEDEF_TYPES]
+    fields: Sequence[StructComponent | TYPEDEF_TYPES]
     fields_map: Dict[str, DataTyped | int | float | str]
 
     @field_validator("fields", mode="plain")
@@ -401,6 +408,8 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
         return DataType.STRING
     elif isinstance(arg, float):
         return DataType.FLOAT
+    elif isinstance(arg, DataType):
+        return arg
     elif isinstance(arg, NumericType):
         return arg
     elif isinstance(arg, TraitDataType):
@@ -420,6 +429,8 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
         return DataType.DATETIME
     elif isinstance(arg, date):
         return DataType.DATE
+    elif isinstance(arg, StructComponent):
+        return arg_to_datatype(arg.type)
     else:
         raise ValueError(
             f"Cannot parse arg datatype for arg of raw type {type(arg)} value {arg}"

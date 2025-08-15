@@ -2,6 +2,66 @@ from trilogy import Dialects
 from trilogy.core.models.core import StructType
 
 
+def test_anon_struct():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(
+        """
+
+key wrapper struct<a:int,b:int>;
+
+datasource struct_array (
+    wrapper
+)
+grain (wrapper)
+query '''                    
+select {a: 1, b: 2} as wrapper union all select {a: 3, b: 4}
+'''
+;
+"""
+    )
+    results = executor.execute_text(
+        '''
+select 
+    sum(wrapper.'a') as a;
+'''
+    )[0].fetchall()
+
+    assert len(results) == 1
+    assert results[0].a == 4, results[0].a
+
+
+
+
+def test_array_struct_lambda():
+    executor = Dialects.DUCK_DB.default_executor()
+    rows= executor.execute_text(
+        """
+
+
+key array_struct list<struct<a:int,b:int>>;
+
+auto unnest_array<-unnest(array_struct);
+                                    
+datasource struct_array (
+    array_struct: array_struct
+)
+grain (array_struct)
+query '''                    
+select [{a: 1, b: 2}, {a: 3, b: 4}] as array_struct
+'''
+;
+
+def get_a(x)-> x.'a';               
+SELECT
+   array_sum(array_transform(array_struct,@get_a)) as total_a
+;
+    
+  """
+    )[-1].fetchall()
+    assert len(rows) == 1
+    assert rows[0].total_a == 4, rows[0].total_a
+
+
 def test_struct_in_array_parsing():
     executor = Dialects.DUCK_DB.default_executor()
     results = executor.parse_text(

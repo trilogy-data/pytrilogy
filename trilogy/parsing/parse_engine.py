@@ -90,6 +90,7 @@ from trilogy.core.models.core import (
     MapWrapper,
     NumericType,
     StructType,
+    StructComponent,
     TraitDataType,
     TupleWrapper,
     arg_to_datatype,
@@ -442,21 +443,31 @@ class ParseToObjects(Transformer):
 
     def MINUS(self, args) -> str:
         return "-"
+    @v_args(meta=True)
+    def struct_component(self, meta: Meta, args) ->StructComponent:
+        modifiers = []
+        for arg in args:
+            if isinstance(arg, Modifier):
+                modifiers.append(arg)
+        return StructComponent(name=args[0],type=args[1], modifiers=modifiers)   
 
     @v_args(meta=True)
     def struct_type(self, meta: Meta, args) -> StructType:
         final: list[
-            DataType | MapType | ArrayType | NumericType | StructType | Concept
+            DataType | MapType | ArrayType | NumericType | StructType | StructComponent| Concept
         ] = []
         for arg in args:
-            new = self.environment.concepts.__getitem__(  # type: ignore
-                key=arg, line_no=meta.line
-            )
-            final.append(new)
+            if isinstance(arg, StructComponent):
+                final.append(arg)
+            else:    
+                new = self.environment.concepts.__getitem__(  # type: ignore
+                    key=arg, line_no=meta.line
+                )
+                final.append(new)
 
         return StructType(
             fields=final,
-            fields_map={x.name: x for x in final if isinstance(x, Concept)},
+            fields_map={x.name: x for x in final if isinstance(x, (Concept, StructComponent))},
         )
 
     def list_type(self, args) -> ArrayType:

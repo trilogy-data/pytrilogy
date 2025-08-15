@@ -424,8 +424,8 @@
     MODIFIER: /OPTIONAL|PARTIAL|NULLABLE/i
 
     SHORTHAND_MODIFIER: /~|\?/
-
-    struct_type: "struct"i "<" ((data_type | IDENTIFIER) ",")* (data_type | IDENTIFIER) ","? ">" 
+    struct_component: IDENTIFIER ":" data_type concept_nullable_modifier? metadata?
+    struct_type: "struct"i "<" ((struct_component | IDENTIFIER) ",")* (struct_component | IDENTIFIER) ","? ">" 
 
     list_type: ("list"i | "array"i) "<" (data_type | IDENTIFIER) ">" 
 
