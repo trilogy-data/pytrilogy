@@ -27,7 +27,7 @@ from pydantic_core import core_schema
 from trilogy.constants import (
     MagicConstants,
 )
-from trilogy.core.enums import Ordering, Modifier
+from trilogy.core.enums import Modifier, Ordering
 
 
 class DataTyped(ABC):
