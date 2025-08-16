@@ -172,11 +172,14 @@ class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
         for candidate in candidates:
             if not candidate.startswith(f"{source}."):
                 continue
+            attribute = self.address.rsplit(".", 1)[1]
             return Function(
                 arguments=[target, self.address.rsplit(".", 1)[1]],
                 operator=FunctionType.ATTR_ACCESS,
                 arg_count=2,
-                output_datatype=arg_to_datatype(target),
+                output_datatype=arg_to_datatype(target).field_types.get(
+                    attribute, DataType.UNKNOWN
+                ),
                 output_purpose=Purpose.PROPERTY,
             )
         return self
@@ -1637,6 +1640,9 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     ] = None
     arguments: Sequence[FuncArgs]
 
+    class Config:
+        frozen = True
+
     def __repr__(self):
         return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
 
@@ -1646,6 +1652,16 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     @property
     def datatype(self):
         return self.output_datatype
+
+    @field_validator("output_datatype")
+    @classmethod
+    def parse_output_datatype(cls, v, info: ValidationInfo):
+        values = info.data
+        if values.get("operator") == FunctionType.ATTR_ACCESS:
+            print(v)
+            if isinstance(v, StructType):
+                raise SyntaxError
+        return v
 
     @field_validator("arguments", mode="before")
     @classmethod
@@ -1745,8 +1761,14 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         ]
         if self.output_datatype == DataType.UNKNOWN:
             new_output = merge_datatypes([arg_to_datatype(x) for x in nargs])
+            if self.operator == FunctionType.ATTR_ACCESS:
+                new_output = new_output.field_types[nargs[1]]
         else:
             new_output = self.output_datatype
+        # this is not ideal - see hacky logic for datatypes above
+        # we need to figure out how to patch properly
+        # should use function factory, but does not have environment access
+        # probably move all datatype resolution to build?
         return Function.model_construct(
             operator=self.operator,
             arguments=nargs,

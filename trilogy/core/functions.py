@@ -92,7 +92,7 @@ def get_attr_datatype(
     lookup = args[1]
     datatype = arg_to_datatype(arg)
     if isinstance(datatype, StructType):
-        return arg_to_datatype(datatype.fields_map[lookup])
+        return datatype.field_types[lookup]
     return datatype
 
 
@@ -935,6 +935,7 @@ class FunctionFactory:
                 output_purpose = Purpose.METRIC
             else:
                 output_purpose = Purpose.PROPERTY
+
         return Function(
             operator=operator,
             arguments=full_args,  # type: ignore

@@ -701,6 +701,7 @@ class ParseToObjects(Transformer):
                 environment=self.environment,
                 metadata=metadata,
             )
+
             # let constant purposes exist to support round-tripping
             # as a build concept may end up with a constant based on constant inlining happening recursively
             if purpose == Purpose.KEY and concept.purpose != Purpose.KEY:
@@ -922,7 +923,6 @@ class ParseToObjects(Transformer):
             name=output,
             metadata=metadata,
         )
-
         return ConceptTransform(function=transformation, output=concept)
 
     @v_args(meta=True)

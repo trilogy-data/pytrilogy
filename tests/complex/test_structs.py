@@ -1,5 +1,5 @@
 from trilogy import Dialects
-from trilogy.core.models.core import StructType
+from trilogy.core.models.core import DataType, StructType
 
 
 def test_anon_struct():
@@ -78,14 +78,19 @@ select [{a: 1, b: 2}, {a: 3, b: 4}] as array_struct
 '''
 ;
 
-def get_a(x)-> getattr(x,'a');               
+def get_a(xz)-> getattr(xz,'a');          
+def get_a2(x2)-> x2.a;       
 SELECT
-   array_sum(array_transform(array_struct,@get_a)) as total_a
+  array_sum(array_transform(array_struct,@get_a)) as total_a,
+   @get_a(struct(a=1, b=2)) as a2,
+   @get_a2(struct(a=1, b=2)) as a22
 ;
     
   """
     )[-1].fetchall()
     assert len(rows) == 1
+    assert executor.environment.concepts["a2"].datatype == DataType.INTEGER
+    assert executor.environment.concepts["a22"].datatype == DataType.INTEGER
     assert rows[0].total_a == 4, rows[0].total_a
 
 

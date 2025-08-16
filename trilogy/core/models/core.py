@@ -244,6 +244,19 @@ class StructType(BaseModel):
     def value(self):
         return self.data_type.value
 
+    @property
+    def field_types(self) -> Dict[str, TYPEDEF_TYPES]:
+        out = {}
+        keys = list(self.fields_map.keys())
+        for idx, field in enumerate(self.fields):
+            if isinstance(field, StructComponent):
+                out[field.name] = field.type
+            elif isinstance(field, DataTyped):
+                out[keys[idx]] = field.output_datatype
+            else:
+                out[keys[idx]] = field
+        return out
+
     def __hash__(self):
         return hash(str(self))
 
