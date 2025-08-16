@@ -13,6 +13,11 @@ class UnnestMode(Enum):
     SNOWFLAKE = "snowflake"
 
 
+class GroupMode(Enum):
+    AUTO = "auto"
+    BY_INDEX = "by_index"
+
+
 class ConceptSource(Enum):
     MANUAL = "manual"
     CTE = "cte"
@@ -155,6 +160,10 @@ class FunctionType(Enum):
     ARRAY_SORT = "array_sort"
     ARRAY_TRANSFORM = "array_transform"
     ARRAY_TO_STRING = "array_to_string"
+
+    # MAP
+    MAP_KEYS = "map_keys"
+    MAP_VALUES = "map_values"
 
     # TEXT AND MAYBE MORE
     SPLIT = "split"

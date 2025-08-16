@@ -2,7 +2,7 @@ from typing import Any, Callable, Mapping
 
 from jinja2 import Template
 
-from trilogy.core.enums import FunctionType, UnnestMode, WindowType
+from trilogy.core.enums import FunctionType, GroupMode, UnnestMode, WindowType
 from trilogy.core.models.core import DataType
 from trilogy.dialect.base import BaseDialect
 
@@ -94,6 +94,7 @@ class PrestoDialect(BaseDialect):
         DataType.STRING: "VARCHAR",
     }
     UNNEST_MODE = UnnestMode.PRESTO
+    GROUP_MODE = GroupMode.BY_INDEX
 
 
 class TrinoDialect(PrestoDialect):

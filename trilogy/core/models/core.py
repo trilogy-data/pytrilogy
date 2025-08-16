@@ -27,7 +27,7 @@ from pydantic_core import core_schema
 from trilogy.constants import (
     MagicConstants,
 )
-from trilogy.core.enums import Ordering
+from trilogy.core.enums import Modifier, Ordering
 
 
 class DataTyped(ABC):
@@ -211,9 +211,19 @@ class MapType(BaseModel):
         return self.key_type
 
 
+class StructComponent(BaseModel):
+    name: str
+    type: TYPEDEF_TYPES
+    modifiers: list[Modifier] = []
+
+    @field_validator("type", mode="plain")
+    def validate_Type(cls, v):
+        return v
+
+
 class StructType(BaseModel):
-    fields: Sequence[TYPEDEF_TYPES]
-    fields_map: Dict[str, DataTyped | int | float | str]
+    fields: Sequence[StructComponent | TYPEDEF_TYPES]
+    fields_map: Dict[str, DataTyped | int | float | str | StructComponent]
 
     @field_validator("fields", mode="plain")
     def validate_type(cls, v):
@@ -233,6 +243,9 @@ class StructType(BaseModel):
     @property
     def value(self):
         return self.data_type.value
+
+    def __hash__(self):
+        return hash(str(self))
 
 
 class ListWrapper(Generic[VT], UserList):
@@ -401,6 +414,8 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
         return DataType.STRING
     elif isinstance(arg, float):
         return DataType.FLOAT
+    elif isinstance(arg, DataType):
+        return arg
     elif isinstance(arg, NumericType):
         return arg
     elif isinstance(arg, TraitDataType):
@@ -420,6 +435,8 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
         return DataType.DATETIME
     elif isinstance(arg, date):
         return DataType.DATE
+    elif isinstance(arg, StructComponent):
+        return arg_to_datatype(arg.type)
     else:
         raise ValueError(
             f"Cannot parse arg datatype for arg of raw type {type(arg)} value {arg}"

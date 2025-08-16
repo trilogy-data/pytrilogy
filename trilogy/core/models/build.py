@@ -1649,8 +1649,11 @@ class Factory:
             full = self.local_concepts[base.address]
             if isinstance(full, BuildConcept):
                 return full
-        raw = self.environment.concepts[base.address]
-        return self.build(raw)
+        if base.address in self.environment.concepts:
+            raw = self.environment.concepts[base.address]
+            return self.build(raw)
+        # this will error by design - TODO - more helpful message?
+        return self.build(self.environment.concepts[base.address])
 
     @build.register
     def _(self, base: CaseWhen) -> BuildCaseWhen:

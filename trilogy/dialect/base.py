@@ -15,6 +15,7 @@ from trilogy.core.enums import (
     ComparisonOperator,
     DatePart,
     FunctionType,
+    GroupMode,
     Ordering,
     ShowCategory,
     UnnestMode,
@@ -186,6 +187,9 @@ FUNCTION_MAP = {
     FunctionType.ARRAY: lambda x: f"[{', '.join(x)}]",
     FunctionType.DATE_LITERAL: lambda x: f"date '{x}'",
     FunctionType.DATETIME_LITERAL: lambda x: f"datetime '{x}'",
+    # MAP
+    FunctionType.MAP_KEYS: lambda x: f"map_keys({x[0]})",
+    FunctionType.MAP_VALUES: lambda x: f"map_values({x[0]})",
     # ARRAY
     FunctionType.ARRAY_SUM: lambda x: f"array_sum({x[0]})",
     FunctionType.ARRAY_DISTINCT: lambda x: f"array_distinct({x[0]})",
@@ -338,6 +342,7 @@ class BaseDialect:
     DATATYPE_MAP = DATATYPE_MAP
     COMPLEX_DATATYPE_MAP = COMPLEX_DATATYPE_MAP
     UNNEST_MODE = UnnestMode.CROSS_APPLY
+    GROUP_MODE = GroupMode.AUTO
 
     def __init__(self, rendering: Rendering | None = None):
         self.rendering = rendering or CONFIG.rendering
@@ -775,6 +780,33 @@ class BaseDialect:
         else:
             raise ValueError(f"Unable to render type {type(e)} {e}")
 
+    def render_cte_group_by(
+        self, cte: CTE | UnionCTE, select_columns
+    ) -> Optional[list[str]]:
+
+        if not cte.group_to_grain:
+            return None
+        base = set(
+            [self.render_concept_sql(c, cte, alias=False) for c in cte.group_concepts]
+        )
+        if self.GROUP_MODE == GroupMode.AUTO:
+            return sorted(list(base))
+
+        else:
+            # find the index of each column in the select columns
+            final = []
+            found = []
+            for idx, c in enumerate(select_columns):
+                pre_alias = c.split(" as ")[0]
+                if pre_alias in base:
+                    final.append(str(idx + 1))
+                    found.append(pre_alias)
+            if not all(c in found for c in base):
+                raise ValueError(
+                    f"Group by columns {base} not found in select columns {select_columns}"
+                )
+            return final
+
     def render_cte(self, cte: CTE | UnionCTE, auto_sort: bool = True) -> CompiledCTE:
         if isinstance(cte, UnionCTE):
             base_statement = f"\n{cte.operator}\n".join(
@@ -926,20 +958,7 @@ class BaseDialect:
                     if cte.order_by
                     else None
                 ),
-                group_by=(
-                    sorted(
-                        list(
-                            set(
-                                [
-                                    self.render_concept_sql(c, cte, alias=False)
-                                    for c in cte.group_concepts
-                                ]
-                            )
-                        )
-                    )
-                    if cte.group_to_grain
-                    else None
-                ),
+                group_by=self.render_cte_group_by(cte, select_columns),
             ),
         )
 

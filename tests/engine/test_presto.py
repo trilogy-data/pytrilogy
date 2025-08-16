@@ -64,3 +64,33 @@ SELECT
     assert re.search(
         'CROSS JOIN unnest\("[A-z0-9\_]+"."values"\) as t\("_unnest_alias"\)', results
     ), results
+
+
+def test_group_by_index(presto_engine):
+    from trilogy.constants import CONFIG
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    presto_engine.hooks = [DebuggingHook()]
+    current = CONFIG.rendering.parameters
+    CONFIG.rendering.parameters = False
+    results = presto_engine.generate_sql(
+        """
+key x int;
+key y int;
+property x.value int;
+
+datasource numbers
+(
+    x,
+    y,
+    value
+)
+grain (x)
+address tbl_fun;
+
+select y, sum(value) as tot_value
+;
+"""
+    )[0]
+    CONFIG.rendering.parameters = current
+    assert re.search("GROUP BY\s+1", results), results
