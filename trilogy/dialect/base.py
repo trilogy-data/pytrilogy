@@ -782,7 +782,7 @@ class BaseDialect:
 
     def render_cte_group_by(
         self, cte: CTE | UnionCTE, select_columns
-    ) -> Optional[List[str]]:
+    ) -> Optional[list[str]]:
 
         if not cte.group_to_grain:
             return None
@@ -799,7 +799,7 @@ class BaseDialect:
             for idx, c in enumerate(select_columns):
                 pre_alias = c.split(" as ")[0]
                 if pre_alias in base:
-                    final.append(idx + 1)
+                    final.append(str(idx + 1))
                     found.append(pre_alias)
             if not all(c in found for c in base):
                 raise ValueError(

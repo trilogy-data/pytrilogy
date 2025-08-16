@@ -164,6 +164,17 @@ class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
     def with_reference_replacement(self, source: str, target: Expr | ArgBinding):
         if self.address == source:
             return target
+        candidates = [f"local.{self.address}", self.address]
+        for candidate in candidates:
+            if not candidate.startswith(source):
+                continue
+            return Function(
+                arguments=[target, self.address.rsplit(".", 1)[1]],
+                operator=FunctionType.ATTR_ACCESS,
+                arg_count=2,
+                output_datatype=arg_to_datatype(target),
+                output_purpose=Purpose.PROPERTY,
+            )
         return self
 
 

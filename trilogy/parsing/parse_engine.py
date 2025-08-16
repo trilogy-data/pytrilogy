@@ -443,23 +443,30 @@ class ParseToObjects(Transformer):
 
     def MINUS(self, args) -> str:
         return "-"
+
     @v_args(meta=True)
-    def struct_component(self, meta: Meta, args) ->StructComponent:
+    def struct_component(self, meta: Meta, args) -> StructComponent:
         modifiers = []
         for arg in args:
             if isinstance(arg, Modifier):
                 modifiers.append(arg)
-        return StructComponent(name=args[0],type=args[1], modifiers=modifiers)   
+        return StructComponent(name=args[0], type=args[1], modifiers=modifiers)
 
     @v_args(meta=True)
     def struct_type(self, meta: Meta, args) -> StructType:
         final: list[
-            DataType | MapType | ArrayType | NumericType | StructType | StructComponent| Concept
+            DataType
+            | MapType
+            | ArrayType
+            | NumericType
+            | StructType
+            | StructComponent
+            | Concept
         ] = []
         for arg in args:
             if isinstance(arg, StructComponent):
                 final.append(arg)
-            else:    
+            else:
                 new = self.environment.concepts.__getitem__(  # type: ignore
                     key=arg, line_no=meta.line
                 )
@@ -467,7 +474,9 @@ class ParseToObjects(Transformer):
 
         return StructType(
             fields=final,
-            fields_map={x.name: x for x in final if isinstance(x, (Concept, StructComponent))},
+            fields_map={
+                x.name: x for x in final if isinstance(x, (Concept, StructComponent))
+            },
         )
 
     def list_type(self, args) -> ArrayType:
@@ -2036,13 +2045,16 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fbool(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.BOOL, meta)
+
     @v_args(meta=True)
     def fmap_keys(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.MAP_KEYS, meta)
 
     @v_args(meta=True)
     def fmap_values(self, meta, args):
-        return self.function_factory.create_function(args, FunctionType.MAP_VALUES, meta)
+        return self.function_factory.create_function(
+            args, FunctionType.MAP_VALUES, meta
+        )
 
     @v_args(meta=True)
     def farray_sum(self, meta, args):

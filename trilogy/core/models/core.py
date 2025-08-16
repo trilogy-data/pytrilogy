@@ -27,7 +27,7 @@ from pydantic_core import core_schema
 from trilogy.constants import (
     MagicConstants,
 )
-from trilogy.core.enums import Ordering
+from trilogy.core.enums import Ordering, Modifier
 
 
 class DataTyped(ABC):
@@ -210,18 +210,20 @@ class MapType(BaseModel):
             return self.key_type.output_datatype
         return self.key_type
 
+
 class StructComponent(BaseModel):
     name: str
     type: TYPEDEF_TYPES
-    modifiers: list[str] = []
+    modifiers: list[Modifier] = []
 
     @field_validator("type", mode="plain")
     def validate_Type(cls, v):
         return v
-    
+
+
 class StructType(BaseModel):
     fields: Sequence[StructComponent | TYPEDEF_TYPES]
-    fields_map: Dict[str, DataTyped | int | float | str]
+    fields_map: Dict[str, DataTyped | int | float | str | StructComponent]
 
     @field_validator("fields", mode="plain")
     def validate_type(cls, v):
@@ -241,7 +243,7 @@ class StructType(BaseModel):
     @property
     def value(self):
         return self.data_type.value
-    
+
     def __hash__(self):
         return hash(str(self))
 

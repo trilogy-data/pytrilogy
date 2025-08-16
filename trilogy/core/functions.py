@@ -177,17 +177,20 @@ def get_date_trunc_output(
     else:
         raise InvalidSyntaxException(f"Date truncation not supported for {target}")
 
+
 def get_map_key_type(arg):
     arg_datatype = arg_to_datatype(arg)
     if isinstance(arg_datatype, MapType):
         return ArrayType(type=arg_datatype.key_data_type)
     return ArrayType(type=DataType.STRING)
 
+
 def get_map_value_type(arg):
     arg_datatype = arg_to_datatype(arg)
     if isinstance(arg_datatype, MapType):
         return ArrayType(type=arg_datatype.value_data_type)
     return ArrayType(type=DataType.STRING)
+
 
 FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.ALIAS: FunctionConfig(
@@ -270,7 +273,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.MAP,
         },
         output_purpose=Purpose.PROPERTY,
-        output_type_function= lambda args: get_map_key_type(args[0]),
+        output_type_function=lambda args: get_map_key_type(args[0]),
         arg_count=1,
     ),
     FunctionType.MAP_VALUES: FunctionConfig(
@@ -278,7 +281,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.MAP,
         },
         output_purpose=Purpose.PROPERTY,
-        output_type_function= lambda args: get_map_value_type(args[0]),
+        output_type_function=lambda args: get_map_value_type(args[0]),
         arg_count=1,
     ),
     FunctionType.ARRAY_DISTINCT: FunctionConfig(

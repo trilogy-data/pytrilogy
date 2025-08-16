@@ -1076,6 +1076,11 @@ class UnionCTE(BaseModel):
     def group_to_grain(self) -> bool:
         return False
 
+    @property
+    def group_concepts(self) -> List[BuildConcept]:
+        # unions should always be on unique sets
+        return []
+
     def __add__(self, other):
         if not isinstance(other, UnionCTE) or not other.name == self.name:
             raise SyntaxError("Cannot merge union CTEs")

@@ -49,7 +49,7 @@ select {a: 1, b: 2} as wrapper union all select {a: 3, b: 4}
     )
     results = executor.execute_text(
         """
-def get_a(x)-> getattr(x,'a'); 
+def get_a(x)-> x.a; 
 select 
     sum(@get_a(wrapper)) as a;
 """
