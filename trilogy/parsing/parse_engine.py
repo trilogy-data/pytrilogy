@@ -2036,6 +2036,13 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fbool(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.BOOL, meta)
+    @v_args(meta=True)
+    def fmap_keys(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.MAP_KEYS, meta)
+
+    @v_args(meta=True)
+    def fmap_values(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.MAP_VALUES, meta)
 
     @v_args(meta=True)
     def farray_sum(self, meta, args):

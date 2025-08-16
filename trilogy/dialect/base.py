@@ -187,6 +187,9 @@ FUNCTION_MAP = {
     FunctionType.ARRAY: lambda x: f"[{', '.join(x)}]",
     FunctionType.DATE_LITERAL: lambda x: f"date '{x}'",
     FunctionType.DATETIME_LITERAL: lambda x: f"datetime '{x}'",
+    # MAP
+    FunctionType.MAP_KEYS: lambda x: f"map_keys({x[0]})",
+    FunctionType.MAP_VALUES: lambda x: f"map_values({x[0]})",
     # ARRAY
     FunctionType.ARRAY_SUM: lambda x: f"array_sum({x[0]})",
     FunctionType.ARRAY_DISTINCT: lambda x: f"array_distinct({x[0]})",

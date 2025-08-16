@@ -218,6 +218,7 @@ class StructComponent(BaseModel):
     @field_validator("type", mode="plain")
     def validate_Type(cls, v):
         return v
+    
 class StructType(BaseModel):
     fields: Sequence[StructComponent | TYPEDEF_TYPES]
     fields_map: Dict[str, DataTyped | int | float | str]
@@ -240,6 +241,9 @@ class StructType(BaseModel):
     @property
     def value(self):
         return self.data_type.value
+    
+    def __hash__(self):
+        return hash(str(self))
 
 
 class ListWrapper(Generic[VT], UserList):

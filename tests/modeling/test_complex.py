@@ -157,6 +157,21 @@ def test_maps():
     assert results[0] == (10,)
 
 
+def test_map_functions():
+    test_executor = Dialects.DUCK_DB.default_executor()
+    test_select = """
+    const num_map <- {1: 10, 2: 20};
+
+    SELECT
+        map_keys(num_map) -> map_keys,
+        map_values(num_map) -> map_values
+    ;"""
+
+    results = list(test_executor.execute_text(test_select)[0].fetchall())
+    assert len(results) == 1
+    assert results[0] == ([1, 2], [10, 20])
+
+
 def test_anon_agg():
     test_executor = Dialects.DUCK_DB.default_executor()
     test_select = """

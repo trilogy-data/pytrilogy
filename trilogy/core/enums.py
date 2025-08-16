@@ -161,6 +161,10 @@ class FunctionType(Enum):
     ARRAY_TRANSFORM = "array_transform"
     ARRAY_TO_STRING = "array_to_string"
 
+    # MAP
+    MAP_KEYS = "map_keys"
+    MAP_VALUES = "map_values"
+
     # TEXT AND MAYBE MORE
     SPLIT = "split"
     LENGTH = "len"

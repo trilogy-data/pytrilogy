@@ -20,21 +20,48 @@ select {a: 1, b: 2} as wrapper union all select {a: 3, b: 4}
 """
     )
     results = executor.execute_text(
-        '''
+        """
 select 
-    sum(wrapper.'a') as a;
-'''
+    sum(wrapper.a) as a;
+"""
     )[0].fetchall()
 
     assert len(results) == 1
     assert results[0].a == 4, results[0].a
 
 
+def test_lambda_access():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(
+        """
+
+key wrapper struct<a:int,b:int>;
+
+datasource struct_array (
+    wrapper
+)
+grain (wrapper)
+query '''                    
+select {a: 1, b: 2} as wrapper union all select {a: 3, b: 4}
+'''
+;
+"""
+    )
+    results = executor.execute_text(
+        """
+def get_a(x)-> getattr(x,'a'); 
+select 
+    sum(@get_a(wrapper)) as a;
+"""
+    )[0].fetchall()
+
+    assert len(results) == 1
+    assert results[0].a == 4, results[0].a
 
 
 def test_array_struct_lambda():
     executor = Dialects.DUCK_DB.default_executor()
-    rows= executor.execute_text(
+    rows = executor.execute_text(
         """
 
 
@@ -51,7 +78,7 @@ select [{a: 1, b: 2}, {a: 3, b: 4}] as array_struct
 '''
 ;
 
-def get_a(x)-> x.'a';               
+def get_a(x)-> getattr(x,'a');               
 SELECT
    array_sum(array_transform(array_struct,@get_a)) as total_a
 ;

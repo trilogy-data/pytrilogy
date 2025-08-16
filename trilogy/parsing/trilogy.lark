@@ -181,7 +181,8 @@
     //indexing into an expression is a function
     index_access: atom "[" int_lit "]"
     map_key_access: atom "[" string_lit "]"
-    attr_access: atom  "." string_lit 
+    _ATTR_ACCESS.1 : "getattr("i
+    attr_access: ( _ATTR_ACCESS atom "," string_lit ")") | (atom  "." string_lit)
 
     ?expr: comparison_root | between_root
 
@@ -309,6 +310,14 @@
     farray_transform: _ARRAY_TRANSFORM expr ","  transform_lambda   ")"
 
     _array_functions: farray_sum | farray_distinct | farray_sort | farray_transform | farray_to_string
+
+    //map_functions
+    _MAP_KEYS.1: "map_keys("i
+    fmap_keys: _MAP_KEYS expr ")"
+    _MAP_VALUES.1: "map_values("i
+    fmap_values: _MAP_VALUES expr ")"
+
+    _map_functions: fmap_keys | fmap_values
     
     // special aggregate
     _GROUP.1: "group("i
@@ -380,7 +389,7 @@
     
     _date_functions: fdate | fdate_add | fdate_sub | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part | fdate_trunc
     
-    _static_functions:  _string_functions | _math_functions | _array_functions
+    _static_functions:  _string_functions | _math_functions | _array_functions | _map_functions
 
     custom_function:  "@" IDENTIFIER  "(" (expr ",")* expr ")"
 
