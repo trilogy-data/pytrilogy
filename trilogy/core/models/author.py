@@ -173,13 +173,15 @@ class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
             if not candidate.startswith(f"{source}."):
                 continue
             attribute = self.address.rsplit(".", 1)[1]
+            dtype = arg_to_datatype(target)
+            if not isinstance(dtype, StructType):
+                continue
+            output_type = dtype.field_types.get(attribute, DataType.UNKNOWN)
             return Function(
                 arguments=[target, self.address.rsplit(".", 1)[1]],
                 operator=FunctionType.ATTR_ACCESS,
                 arg_count=2,
-                output_datatype=arg_to_datatype(target).field_types.get(
-                    attribute, DataType.UNKNOWN
-                ),
+                output_datatype=output_type,
                 output_purpose=Purpose.PROPERTY,
             )
         return self
@@ -1761,8 +1763,10 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         ]
         if self.output_datatype == DataType.UNKNOWN:
             new_output = merge_datatypes([arg_to_datatype(x) for x in nargs])
+
             if self.operator == FunctionType.ATTR_ACCESS:
-                new_output = new_output.field_types[nargs[1]]
+                if isinstance(new_output, StructType):
+                    new_output = new_output.field_types[str(nargs[1])]
         else:
             new_output = self.output_datatype
         # this is not ideal - see hacky logic for datatypes above
