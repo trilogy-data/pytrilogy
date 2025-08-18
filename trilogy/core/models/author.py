@@ -1666,7 +1666,6 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     def parse_output_datatype(cls, v, info: ValidationInfo):
         values = info.data
         if values.get("operator") == FunctionType.ATTR_ACCESS:
-            print(v)
             if isinstance(v, StructType):
                 raise SyntaxError
         return v
