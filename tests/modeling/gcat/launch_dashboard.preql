@@ -1,0 +1,14 @@
+import std.net;
+import launch;
+
+auto launch_year <- year(launch_date);
+
+property launch_filter <- CASE WHEN launch_type_code = 'O' then "Earth Orbit"
+WHEN launch_type_code = 'D' then 'Deep Space'
+ELSE 'Other' END;
+
+auto launch_state_flag <- case when org.state_code in ('SU', 'RU') then 'https://upload.wikimedia.org/wikipedia/commons/5/53/Flag_of_the_Soviet_Union_%283-2%29.svg'
+when org.state_code = 'US' then 'https://upload.wikimedia.org/wikipedia/commons/5/55/Flag_of_the_United_States_%283-2_aspect_ratio%29.svg'
+when org.state_code = 'CN' then 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Flag_of_the_People%27s_Republic_of_China.svg/2880px-Flag_of_the_People%27s_Republic_of_China.svg.png'
+else 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Flag_of_the_United_Nations.svg/2880px-Flag_of_the_United_Nations.svg.png'
+end::string::url_image;

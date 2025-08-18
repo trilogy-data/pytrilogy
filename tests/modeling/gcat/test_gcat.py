@@ -89,3 +89,30 @@ order by total_mass desc limit 1;
 
     sql = base.generate_sql(queries[-1])
     assert "_launch_code" not in sql[0], sql[0]
+
+
+def test_nested_calc_failure():
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+
+    queries = base.parse_text(
+        """import launch_dashboard;
+
+auto filtered_launch <- launch_tag ? success_flag = 'E';
+
+SELECT vehicle.name,
+launch_count,
+count(launch_tag ? was_complete_success) as successful_launches,
+count(filtered_launch) as pad_aborts,
+
+
+
+ limit 1;
+
+"""
+    )
+
+    sql = base.generate_sql(queries[-1])
+    assert "INVALID_REFERENCE_BUG" not in sql[0], sql[0]

@@ -77,11 +77,17 @@ def build_parent_concepts(
         True if (conditions and conditions == filter_where) else False
     )
 
+    exact_partial_matches = True
     for x in local_optional:
         if isinstance(x.lineage, FILTER_TYPES):
-            if concept.lineage.where == filter_where:
+            if set([x.address for x in x.lineage.where.concept_arguments]) == set(
+                [x.address for x in filter_where.concept_arguments]
+            ):
+                exact_partial_matches = (
+                    exact_partial_matches and x.lineage.where == filter_where
+                )
                 logger.info(
-                    f"{padding(depth)}{LOGGER_PREFIX} fetching parents for peer {x} with same filter conditions"
+                    f"{padding(depth)}{LOGGER_PREFIX} fetching parents for peer {x.address} (of {concept.address})"
                 )
 
                 for arg in x.lineage.content_concept_arguments:
@@ -100,7 +106,7 @@ def build_parent_concepts(
         if x.address in same_filter_optional:
             continue
         extra_row_level_optional.append(x)
-    is_optimized_pushdown = pushdown_filter_to_parent(
+    is_optimized_pushdown = exact_partial_matches and pushdown_filter_to_parent(
         local_optional, conditions, filter_where, same_filter_optional, depth
     )
     if not is_optimized_pushdown:

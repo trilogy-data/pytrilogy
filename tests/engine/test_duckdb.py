@@ -12,6 +12,7 @@ from trilogy.core.models.author import (
     Grain,
 )
 from trilogy.core.models.build import BuildFilterItem, BuildSubselectComparison, Factory
+from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.discovery_utility import get_upstream_concepts
 from trilogy.core.processing.node_generators.common import (
@@ -1706,3 +1707,18 @@ select array_to_string(values, ', ') as values;
 
     assert len(results) == 1
     assert results[0].values == " abc ,  def, jkl , mon"
+
+
+def test_not_value():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    test = """
+const value <- unnest([ true, null, false]);
+
+select value where not value;
+"""
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert default_duckdb_engine.environment.concepts["value"].datatype == DataType.BOOL
+    assert len(results) == 2, str(
+        default_duckdb_engine.environment.concepts["value"].lineage
+    )

@@ -225,6 +225,6 @@ def test_adhoc08():
     env, queries = env.parse(text)
     generated = engine.generate_sql(text)[0]
     assert (
-        '("abundant"."shot_subtype" = "juicy"."shot_subtype" or ("abundant"."shot_subtype" is null and "juicy"."shot_subtype" is null))'
+        '("abundant"."shot_subtype" = "vacuous"."shot_subtype" or ("abundant"."shot_subtype" is null and "vacuous"."shot_subtype" is null'
         in generated
     ), generated

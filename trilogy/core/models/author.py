@@ -659,6 +659,12 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
     def validate_comparison(self):
         left_type = arg_to_datatype(self.left)
         right_type = arg_to_datatype(self.right)
+        left_name = (
+            left_type.name if isinstance(left_type, DataType) else str(left_type)
+        )
+        right_name = (
+            right_type.name if isinstance(right_type, DataType) else str(right_type)
+        )
         if self.operator in (ComparisonOperator.IS, ComparisonOperator.IS_NOT):
             if self.right != MagicConstants.NULL and DataType.BOOL != right_type:
                 raise SyntaxError(
@@ -676,12 +682,12 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
                 left_type, right_type
             ):
                 raise SyntaxError(
-                    f"Cannot compare {left_type.name} and {right_type.name} with operator {self.operator} in {str(self)}"
+                    f"Cannot compare {left_name} and {right_name} with operator {self.operator} in {str(self)}"
                 )
         else:
             if not is_compatible_datatype(left_type, right_type):
                 raise SyntaxError(
-                    f"Cannot compare {left_type.name} ({self.left}) and {right_type.name} ({self.right}) of different types with operator {self.operator.value} in {str(self)}"
+                    f"Cannot compare {left_name} ({self.left}) and {right_name} ({self.right}) of different types with operator {self.operator.value} in {str(self)}"
                 )
 
         return self
@@ -2470,6 +2476,7 @@ FuncArgs = (
     | CaseElse
     | WindowItem
     | FilterItem
+    | bool
     | int
     | float
     | DatePart
