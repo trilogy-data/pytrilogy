@@ -14,12 +14,12 @@ The Trilogy language is an experiment in better SQL for analytics - a streamline
 - Testability
 - Easy to use for humans and LLMs
 
-Trilogy is epsecially targeted at data consumption, providing a rich metadata layer that makes visualizing Trilogy easy and expressive. 
+Trilogy is especially powerful for data consumption, providing a rich metadata layer that makes creating, interperting, and visualizing queries easy and expressive. 
 
 > [!TIP]
 > You can try Trilogy in a [open-source studio](https://trilogydata.dev/trilogy-studio-core/). More details on the language can be found on the [documentation](https://trilogydata.dev/).
 
-Start in the studio to explore Trilogy. For deeper work and integration, `pytrilogy` can be run locally to parse and execute trilogy model [.preql] files using the `trilogy` CLI tool, or can be run in python by importing the `trilogy` package.
+We recommend starting with the studio to explore Trilogy. For integration, `pytrilogy` can be run locally to parse and execute trilogy model [.preql] files using the `trilogy` CLI tool, or can be run in python by importing the `trilogy` package.
 
 Installation: `pip install pytrilogy`
 
@@ -66,10 +66,13 @@ Save the following code in a file named `hello.preql`
 
 ```python
 # semantic model is abstract from data
+
+type word string; # types can be used to provide expressive metadata tags that propagate through dataflow
+
 key sentence_id int;
-property sentence_id.word_one string; # comments after a definition 
-property sentence_id.word_two string; # are syntactic sugar for adding
-property sentence_id.word_three string; # a description to it
+property sentence_id.word_one string::word; # comments after a definition 
+property sentence_id.word_two string::word; # are syntactic sugar for adding
+property sentence_id.word_three string::word; # a description to it
 
 # comments in other places are just comments
 
