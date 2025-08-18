@@ -1710,9 +1710,6 @@ select array_to_string(values, ', ') as values;
 
 
 def test_not_value():
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook()
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
     test = """
 const value <- unnest([ true, null, false]);
