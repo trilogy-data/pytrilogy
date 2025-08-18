@@ -174,7 +174,7 @@ FUNCTION_MAP = {
     FunctionType.CAST: lambda x: f"cast({x[0]} as {x[1]})",
     FunctionType.CASE: lambda x: render_case(x),
     FunctionType.SPLIT: lambda x: f"split({x[0]}, {x[1]})",
-    FunctionType.IS_NULL: lambda x: f"isnull({x[0]})",
+    FunctionType.IS_NULL: lambda x: f"{x[0]} is null",
     FunctionType.BOOL: lambda x: f"CASE WHEN {x[0]} THEN TRUE ELSE FALSE END",
     FunctionType.PARENTHETICAL: lambda x: f"({x[0]})",
     # Complex

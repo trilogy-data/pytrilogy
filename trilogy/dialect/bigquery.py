@@ -24,7 +24,7 @@ FUNCTION_MAP = {
     FunctionType.LIKE: lambda x: (
         f" CASE WHEN {x[0]} like {x[1]} THEN True ELSE False END"
     ),
-    FunctionType.IS_NULL: lambda x: f"CASE WHEN {x[0]} IS NULL THEN True ELSE False END",
+    FunctionType.IS_NULL: lambda x: f"{x[0]} IS NULL",
     FunctionType.MINUTE: lambda x: f"EXTRACT(MINUTE from {x[0]})",
     FunctionType.SECOND: lambda x: f"EXTRACT(SECOND from {x[0]})",
     FunctionType.HOUR: lambda x: f"EXTRACT(HOUR from {x[0]})",

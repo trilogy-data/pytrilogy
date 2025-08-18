@@ -2040,6 +2040,15 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fnot(self, meta, args):
+        if arg_to_datatype(args[0]) == DataType.BOOL:
+            return Comparison(
+                left=self.function_factory.create_function(
+                    [args[0], False], FunctionType.COALESCE, meta
+                ),
+                operator=ComparisonOperator.EQ,
+                right=False,
+                meta=meta,
+            )
         return self.function_factory.create_function(args, FunctionType.IS_NULL, meta)
 
     @v_args(meta=True)

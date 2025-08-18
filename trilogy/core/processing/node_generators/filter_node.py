@@ -79,9 +79,9 @@ def build_parent_concepts(
 
     for x in local_optional:
         if isinstance(x.lineage, FILTER_TYPES):
-            if concept.lineage.where == filter_where:
+            if x.lineage.where == filter_where:
                 logger.info(
-                    f"{padding(depth)}{LOGGER_PREFIX} fetching parents for peer {x} with same filter conditions"
+                    f"{padding(depth)}{LOGGER_PREFIX} fetching parents for peer {x.address} (of {concept.address})"
                 )
 
                 for arg in x.lineage.content_concept_arguments:

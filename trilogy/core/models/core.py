@@ -264,9 +264,10 @@ class StructType(BaseModel):
 class ListWrapper(Generic[VT], UserList):
     """Used to distinguish parsed list objects from other lists"""
 
-    def __init__(self, *args, type: DataType, **kwargs):
+    def __init__(self, *args, type: DataType, nullable: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         self.type = type
+        self.nullable = nullable
 
     @classmethod
     def __get_pydantic_core_schema__(
@@ -315,10 +316,11 @@ class MapWrapper(Generic[KT, VT], UserDict):
 class TupleWrapper(Generic[VT], tuple):
     """Used to distinguish parsed tuple objects from other tuples"""
 
-    def __init__(self, val, type: DataType, **kwargs):
+    def __init__(self, val, type: DataType, nullable: bool = False, **kwargs):
         super().__init__()
         self.type = type
         self.val = val
+        self.nullable = nullable
 
     def __getnewargs__(self):
         return (self.val, self.type)
@@ -344,15 +346,19 @@ class TupleWrapper(Generic[VT], tuple):
 
 
 def list_to_wrapper(args):
-    types = [arg_to_datatype(arg) for arg in args]
-    assert len(set(types)) == 1
-    return ListWrapper(args, type=types[0])
+    rtypes = [arg_to_datatype(arg) for arg in args]
+    types = [arg for arg in rtypes if arg != DataType.NULL]
+    if not len(set(types)) == 1:
+        raise SyntaxError(f"Cannot create a list with this set of types: {set(types)}")
+    return ListWrapper(args, type=types[0], nullable=DataType.NULL in rtypes)
 
 
 def tuple_to_wrapper(args):
-    types = [arg_to_datatype(arg) for arg in args]
-    assert len(set(types)) == 1
-    return TupleWrapper(args, type=types[0])
+    rtypes = [arg_to_datatype(arg) for arg in args]
+    types = [arg for arg in rtypes if arg != DataType.NULL]
+    if not len(set(types)) == 1:
+        raise SyntaxError(f"Cannot create a tuple with this set of types: {set(types)}")
+    return TupleWrapper(args, type=types[0], nullable=DataType.NULL in rtypes)
 
 
 def dict_to_map_wrapper(arg):

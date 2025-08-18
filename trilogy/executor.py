@@ -6,7 +6,7 @@ from typing import Any, Generator, List, Optional, Protocol
 from sqlalchemy import text
 from sqlalchemy.engine import CursorResult
 
-from trilogy.constants import Rendering, logger
+from trilogy.constants import MagicConstants, Rendering, logger
 from trilogy.core.enums import FunctionType, Granularity, IOType
 from trilogy.core.models.author import Concept, ConceptRef, Function
 from trilogy.core.models.build import BuildFunction
@@ -388,6 +388,11 @@ class Executor(object):
             if persist and isinstance(x, ProcessedQueryPersist):
                 self.environment.add_datasource(x.datasource)
 
+    def _atom_to_value(self, val: Any) -> Any:
+        if val == MagicConstants.NULL:
+            return None
+        return val
+
     def _concept_to_value(
         self,
         concept: Concept,
@@ -402,12 +407,15 @@ class Executor(object):
         ):
             rval = concept.lineage.arguments[0]
             if isinstance(rval, ListWrapper):
-                return [x for x in rval]
+                return [self._atom_to_value(x) for x in rval]
             if isinstance(rval, MapWrapper):
                 # duckdb expects maps in this format as variables
                 if self.dialect == Dialects.DUCK_DB:
-                    return {"key": [x for x in rval], "value": [rval[x] for x in rval]}
-                return {k: v for k, v in rval.items()}
+                    return {
+                        "key": [self._atom_to_value(x) for x in rval],
+                        "value": [self._atom_to_value(rval[x]) for x in rval],
+                    }
+                return {k: self._atom_to_value(v) for k, v in rval.items()}
             # if isinstance(rval, ConceptRef):
             #     return self._concept_to_value(self.environment.concepts[rval.address], local_concepts=local_concepts)
             return rval

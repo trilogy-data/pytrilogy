@@ -40,10 +40,13 @@ merge payload.launch_tag into ~launch_tag;
 auto launch_date <- date_add('1900-01-01'::date, day, (launch_jd::float - 2415021)::int);
 
 auto success_flag <- case
-  when _launch_code is null or _launch_code = '' then null
+  when _launch_code = '' then null
   when len(_launch_code) > 1 then substring(_launch_code, 2, len(_launch_code) - 1)
-  else null
-end;
+  else null 
+end; # F|E|O for most cases; F is failure. E is pad issue.
+
+auto was_complete_success <- case when success_flag = 'S' THEN True else False END; #whether the mission was a complete sucess
+
 
 auto launch_type_code <- case
   when _launch_code is null or _launch_code = '' then null
