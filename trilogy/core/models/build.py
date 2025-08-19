@@ -93,7 +93,6 @@ from trilogy.core.models.datasource import (
     RawColumnExpr,
 )
 from trilogy.core.models.environment import Environment
-from trilogy.utility import unique
 
 # TODO: refactor to avoid these
 if TYPE_CHECKING:
@@ -149,8 +148,8 @@ def concept_is_relevant(
 
 def concepts_to_build_grain_concepts(
     concepts: Iterable[BuildConcept | str], environment: "BuildEnvironment" | None
-) -> list[BuildConcept]:
-    pconcepts = []
+) -> set[str]:
+    pconcepts: list[BuildConcept] = []
     for c in concepts:
         if isinstance(c, BuildConcept):
             pconcepts.append(c)
@@ -162,14 +161,13 @@ def concepts_to_build_grain_concepts(
                 f"Unable to resolve input {c} without environment provided to concepts_to_grain call"
             )
 
-    final: List[BuildConcept] = []
+    final: set[str] = set()
     for sub in pconcepts:
         if not concept_is_relevant(sub, pconcepts):
             continue
-        final.append(sub)
-    final = unique(final, "address")
-    v2 = sorted(final, key=lambda x: x.name)
-    return v2
+        final.add(sub.address)
+
+    return final
 
 
 class LooseBuildConceptList(BaseModel):
@@ -268,8 +266,12 @@ class BuildParamaterizedConceptReference(DataTyped, BaseModel):
 class BuildGrain(BaseModel):
     components: set[str] = Field(default_factory=set)
     where_clause: Optional[BuildWhereClause] = None
+    _str: str | None = None
+    _str_no_condition: str | None = None
 
     def without_condition(self):
+        if not self.where_clause:
+            return self
         return BuildGrain.model_construct(components=self.components)
 
     @classmethod
@@ -280,13 +282,10 @@ class BuildGrain(BaseModel):
         where_clause: BuildWhereClause | None = None,
     ) -> "BuildGrain":
 
-        return BuildGrain(
-            components={
-                c.address
-                for c in concepts_to_build_grain_concepts(
-                    concepts, environment=environment
-                )
-            },
+        return BuildGrain.model_construct(
+            components=concepts_to_build_grain_concepts(
+                concepts, environment=environment
+            ),
             where_clause=where_clause,
         )
 
@@ -366,14 +365,34 @@ class BuildGrain(BaseModel):
         intersection = self.components.intersection(other.components)
         return BuildGrain(components=intersection)
 
-    def __str__(self):
+    def _calculate_string(self):
         if self.abstract:
             base = "Grain<Abstract>"
         else:
-            base = "Grain<" + ",".join([c for c in sorted(list(self.components))]) + ">"
+            base = "Grain<" + ",".join(sorted(self.components)) + ">"
         if self.where_clause:
             base += f"|{str(self.where_clause)}"
         return base
+
+    def _calculate_string_no_condition(self):
+        if self.abstract:
+            base = "Grain<Abstract>"
+        else:
+            base = "Grain<" + ",".join(sorted(self.components)) + ">"
+        return base
+
+    @property
+    def str_no_condition(self):
+        if self._str_no_condition:
+            return self._str_no_condition
+        self._str_no_condition = self._calculate_string_no_condition()
+        return self._str_no_condition
+
+    def __str__(self):
+        if self._str:
+            return self._str
+        self._str = self._calculate_string()
+        return self._str
 
     def __radd__(self, other) -> "BuildGrain":
         if other == 0:
@@ -1141,13 +1160,13 @@ class BuildFunction(DataTyped, BuildConceptArgs, BaseModel):
     @property
     def output_grain(self):
         # aggregates have an abstract grain
-        base_grain = BuildGrain(components=[])
         if self.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
-            return base_grain
+            return BuildGrain.model_construct(components=[])
         # scalars have implicit grain of all arguments
+        args = set()
         for input in self.concept_arguments:
-            base_grain += input.grain
-        return base_grain
+            args += input.grain.components
+        return BuildGrain.model_construct(components=args)
 
 
 class BuildAggregateWrapper(BuildConceptArgs, DataTyped, BaseModel):
@@ -1499,6 +1518,7 @@ def requires_concept_nesting(
         return expr
     return None
 
+
 class Factory:
 
     def __init__(
@@ -1513,6 +1533,7 @@ class Factory:
         self.local_concepts: dict[str, BuildConcept] = (
             {} if local_concepts is None else local_concepts
         )
+        self.local_non_build_concepts: dict[str, Concept] = {}
         self.pseudonym_map = pseudonym_map or get_canonical_pseudonyms(environment)
 
     def instantiate_concept(
@@ -1531,14 +1552,19 @@ class Factory:
             | date
         ),
     ) -> tuple[Concept, BuildConcept]:
-        from trilogy.parsing.common import arbitrary_to_concept
+        from trilogy.parsing.common import arbitrary_to_concept, generate_concept_name
 
+        name = generate_concept_name(arg)
+        if name in self.local_concepts and name in self.local_non_build_concepts:
+            # if we already have this concept, return it
+            return self.local_non_build_concepts[name], self.local_concepts[name]
         new = arbitrary_to_concept(
             arg,
             environment=self.environment,
         )
-        built = self.build(new)
-        self.local_concepts[new.address] = built
+        built = self._build_concept(new)
+        self.local_concepts[name] = built
+        self.local_non_build_concepts[name] = new
         return new, built
 
     @singledispatchmethod
@@ -1662,9 +1688,9 @@ class Factory:
                 return full
         if base.address in self.environment.concepts:
             raw = self.environment.concepts[base.address]
-            return self.build(raw)
+            return self._build_concept(raw)
         # this will error by design - TODO - more helpful message?
-        return self.build(self.environment.concepts[base.address])
+        return self._build_concept(self.environment.concepts[base.address])
 
     @build.register
     def _(self, base: CaseWhen) -> BuildCaseWhen:
@@ -1770,7 +1796,9 @@ class Factory:
                 self.environment.alias_origin_lookup[address].with_grain(self.grain)
             )
             if address in self.environment.alias_origin_lookup
-            else self._build_concept(self.environment.concepts[address].with_grain(self.grain))
+            else self._build_concept(
+                self.environment.concepts[address].with_grain(self.grain)
+            )
         )
 
         return BuildColumnAssignment.model_construct(
@@ -1874,7 +1902,9 @@ class Factory:
     def _(self, base: SubselectComparison) -> BuildSubselectComparison:
         return self._build_subselect_comparison(base)
 
-    def _build_subselect_comparison(self, base: SubselectComparison) -> BuildSubselectComparison:
+    def _build_subselect_comparison(
+        self, base: SubselectComparison
+    ) -> BuildSubselectComparison:
         right: Any = base.right
         # this has specialized logic - include all Functions
         if isinstance(base.right, (AggregateWrapper, WindowItem, FilterItem, Function)):
@@ -1939,7 +1969,8 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
         )
         return BuildRowsetItem(
-            content=factory._build_concept_ref(base.content), rowset=factory._build_rowset_lineage(base.rowset)
+            content=factory._build_concept_ref(base.content),
+            rowset=factory._build_rowset_lineage(base.rowset),
         )
 
     @build.register
@@ -2069,7 +2100,9 @@ class Factory:
     def _(self, base: MultiSelectLineage) -> BuildMultiSelectLineage:
         return self._build_multi_select_lineage(base)
 
-    def _build_multi_select_lineage(self, base: MultiSelectLineage) -> BuildMultiSelectLineage:
+    def _build_multi_select_lineage(
+        self, base: MultiSelectLineage
+    ) -> BuildMultiSelectLineage:
         local_build_cache: dict[str, BuildConcept] = {}
 
         parents: list[BuildSelectLineage] = [self.build(x) for x in base.selects]

@@ -51,11 +51,10 @@ def prune_sources_for_conditions(
         g.remove_node(node)
 
 
-
 def concept_to_node(input: BuildConcept) -> str:
     # if input.purpose == Purpose.METRIC:
     #     return f"c~{input.namespace}.{input.name}@{input.grain}"
-    return f"c~{input.address}@{input.grain.without_condition()}"
+    return f"c~{input.address}@{input.grain.str_no_condition}"
 
 
 def datasource_to_node(input: BuildDatasource) -> str:
@@ -77,7 +76,9 @@ class ReferenceGraph(nx.DiGraph):
             if node_for_adding.address in self.concept_node_cache:
                 node_name = self.concept_node_cache[node_for_adding.address]
             else:
-                node_name = concept_to_node(node_for_adding,)
+                node_name = concept_to_node(
+                    node_for_adding,
+                )
                 # self.concept_node_cache[node_for_adding.address] = node_name
             attr["type"] = "concept"
             attr["concept"] = node_for_adding
@@ -125,6 +126,6 @@ class ReferenceGraph(nx.DiGraph):
             if v_of_edge.identifier in self.datasource_node_cache:
                 v_of_edge = self.datasource_node_cache[v_of_edge.identifier]
             else:
-                ds= datasource_to_node(v_of_edge)
+                ds = datasource_to_node(v_of_edge)
                 self.datasource_node_cache[ds] = v_of_edge
         super().add_edge(u_of_edge, v_of_edge, **attr)

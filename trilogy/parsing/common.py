@@ -309,7 +309,7 @@ def concepts_to_grain_concepts(
     concepts: Iterable[Concept | ConceptRef | str],
     environment: Environment | None,
     local_concepts: dict[str, Concept] | None = None,
-) -> list[Concept]:
+) -> set[str]:
     preconcepts: list[Concept] = []
     for c in concepts:
         if isinstance(c, Concept):
@@ -329,7 +329,7 @@ def concepts_to_grain_concepts(
             raise ValueError(
                 f"Unable to resolve input {c} without environment provided to concepts_to_grain call"
             )
-    pconcepts = []
+    pconcepts: list[Concept] = []
     for x in preconcepts:
         if (
             x.lineage
@@ -340,14 +340,16 @@ def concepts_to_grain_concepts(
             pconcepts.append(environment.concepts[x.lineage.arguments[0].address])  # type: ignore
         else:
             pconcepts.append(x)
-    final: List[Concept] = []
+
+    seen = set()
     for sub in pconcepts:
+        if sub.address in seen:
+            continue
         if not concept_is_relevant(sub, pconcepts, environment):  # type: ignore
             continue
-        final.append(sub)
-    final = unique(final, "address")
-    v2 = sorted(final, key=lambda x: x.name)
-    return v2
+        seen.add(sub.address)
+
+    return seen
 
 
 def _get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
@@ -823,6 +825,40 @@ def rowset_to_concepts(rowset: RowsetDerivationStatement, environment: Environme
     return pre_output
 
 
+def generate_concept_name(
+    parent: (
+        AggregateWrapper
+        | FunctionCallWrapper
+        | WindowItem
+        | FilterItem
+        | Function
+        | ListWrapper
+        | MapWrapper
+        | int
+        | float
+        | str
+        | date
+    ),
+) -> str:
+    """Generate a name for a concept based on its parent type and content."""
+    if isinstance(parent, AggregateWrapper):
+        return f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
+    elif isinstance(parent, WindowItem):
+        return f"{VIRTUAL_CONCEPT_PREFIX}_window_{parent.type.value}_{string_to_hash(str(parent))}"
+    elif isinstance(parent, FilterItem):
+        if isinstance(parent.content, ConceptRef):
+            return f"{VIRTUAL_CONCEPT_PREFIX}_filter_{parent.content.name}_{string_to_hash(str(parent))}"
+        else:
+            return f"{VIRTUAL_CONCEPT_PREFIX}_filter_{string_to_hash(str(parent))}"
+    elif isinstance(parent, Function):
+        if parent.operator == FunctionType.GROUP:
+            return f"{VIRTUAL_CONCEPT_PREFIX}_group_to_{string_to_hash(str(parent))}"
+        else:
+            return f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(str(parent))}"
+    else:  # ListWrapper, MapWrapper, or primitive types
+        return f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
+
+
 def arbitrary_to_concept(
     parent: (
         AggregateWrapper
@@ -843,20 +879,22 @@ def arbitrary_to_concept(
     metadata: Metadata | None = None,
 ) -> Concept:
     namespace = namespace or environment.namespace
+
     # this is purely for the parse tree, discard from derivation
     if isinstance(parent, FunctionCallWrapper):
         return arbitrary_to_concept(
             parent.content, environment, namespace, name, metadata  # type: ignore
         )
-    elif isinstance(parent, AggregateWrapper):
-        if not name:
-            name = f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
+
+    # Generate name if not provided
+    if not name:
+        name = generate_concept_name(parent)
+
+    if isinstance(parent, AggregateWrapper):
         return agg_wrapper_to_concept(
             parent, namespace, name, metadata=metadata, environment=environment
         )
     elif isinstance(parent, WindowItem):
-        if not name:
-            name = f"{VIRTUAL_CONCEPT_PREFIX}_window_{parent.type.value}_{string_to_hash(str(parent))}"
         return window_item_to_concept(
             parent,
             name,
@@ -865,11 +903,6 @@ def arbitrary_to_concept(
             metadata=metadata,
         )
     elif isinstance(parent, FilterItem):
-        if not name:
-            if isinstance(parent.content, ConceptRef):
-                name = f"{VIRTUAL_CONCEPT_PREFIX}_filter_{parent.content.name}_{string_to_hash(str(parent))}"
-            else:
-                name = f"{VIRTUAL_CONCEPT_PREFIX}_filter_{string_to_hash(str(parent))}"
         return filter_item_to_concept(
             parent,
             name,
@@ -878,14 +911,6 @@ def arbitrary_to_concept(
             metadata=metadata,
         )
     elif isinstance(parent, Function):
-        if not name:
-            if parent.operator == FunctionType.GROUP:
-                name = (
-                    f"{VIRTUAL_CONCEPT_PREFIX}_group_to_{string_to_hash(str(parent))}"
-                )
-            else:
-                name = f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(str(parent))}"
-
         if parent.operator == FunctionType.GROUP:
             return group_function_to_concept(
                 parent,
@@ -902,10 +927,6 @@ def arbitrary_to_concept(
             namespace=namespace,
         )
     elif isinstance(parent, ListWrapper):
-        if not name:
-            name = f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
         return constant_to_concept(parent, name, namespace, metadata)
     else:
-        if not name:
-            name = f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
         return constant_to_concept(parent, name, namespace, metadata)

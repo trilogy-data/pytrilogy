@@ -160,9 +160,11 @@ STDLIB_ROOT = Path(__file__).parent.parent
 class WholeGrainWrapper:
     where: WhereClause
 
+
 @dataclass
 class FunctionBindingType:
     type: DataType | TraitDataType | None = None
+
 
 with open(join(dirname(__file__), "trilogy.lark"), "r") as f:
     PARSER = Lark(
@@ -1375,12 +1377,11 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def function_binding_list(self, meta: Meta, args) -> list[ArgBinding]:
         return args
-    
+
     @v_args(meta=True)
-    def function_binding_type(self, meta: Meta, args) -> ArgBinding:
-        return FunctionBindingType(
-            type =args[0])
-    
+    def function_binding_type(self, meta: Meta, args) -> FunctionBindingType:
+        return FunctionBindingType(type=args[0])
+
     @v_args(meta=True)
     def function_binding_item(self, meta: Meta, args) -> ArgBinding:
         default = None
@@ -1402,7 +1403,7 @@ class ParseToObjects(Transformer):
             function=output,
             namespace=self.environment.namespace,
             function_arguments=function_arguments,
-            name=identity
+            name=identity,
         )
         return FunctionDeclaration(name=identity, args=function_arguments, expr=output)
 

@@ -460,7 +460,7 @@ class HavingClause(WhereClause):
 class Grain(Namespaced, BaseModel):
     components: set[str] = Field(default_factory=set)
     where_clause: Optional["WhereClause"] = None
-    _str:str = None
+    _str: str | None = None
     _abstract: bool = False
 
     def without_condition(self):
@@ -486,12 +486,9 @@ class Grain(Namespaced, BaseModel):
         from trilogy.parsing.common import concepts_to_grain_concepts
 
         x = Grain.model_construct(
-            components={
-                c.address
-                for c in concepts_to_grain_concepts(
-                    concepts, environment=environment, local_concepts=local_concepts
-                )
-            },
+            components=concepts_to_grain_concepts(
+                concepts, environment=environment, local_concepts=local_concepts
+            ),
             where_clause=where_clause,
         )
 
@@ -556,7 +553,7 @@ class Grain(Namespaced, BaseModel):
         return not self.components or all(
             [c.endswith(ALL_ROWS_CONCEPT) for c in self.components]
         )
-    
+
     @property
     def abstract(self):
         if not self._abstract:
@@ -587,7 +584,6 @@ class Grain(Namespaced, BaseModel):
     def intersection(self, other: "Grain") -> "Grain":
         intersection = self.components.intersection(other.components)
         return Grain(components=intersection)
-        
 
     def _gen_str(self) -> str:
         if self.abstract:
@@ -2347,7 +2343,11 @@ class AlignItem(Namespaced, BaseModel):
 
 class CustomFunctionFactory:
     def __init__(
-        self, function: Expr, namespace: str, function_arguments: list[ArgBinding], name:str
+        self,
+        function: Expr,
+        namespace: str,
+        function_arguments: list[ArgBinding],
+        name: str,
     ):
         self.namespace = namespace
         self.function = function
@@ -2390,11 +2390,14 @@ class CustomFunctionFactory:
                     f"Invalid type passed into custom function @{self.name} in position {arg_idx+1} for argument {arg.name}, expected {arg.datatype}, got {comparison}"
                 )
             if isinstance(arg.datatype, TraitDataType):
-                if not (isinstance(comparison, TraitDataType) and all(x in comparison.traits for x in arg.datatype.traits)):  
+                if not (
+                    isinstance(comparison, TraitDataType)
+                    and all(x in comparison.traits for x in arg.datatype.traits)
+                ):
                     raise TypeError(
                         f"Invalid argument type passed into custom function @{self.name} in position {arg_idx+1} for argument {arg.name}, expected traits {arg.datatype.traits}, got {comparison}"
                     )
-        
+
         if isinstance(nout, Mergeable):
             for idx, x in enumerate(creation_arg_list):
                 if self.namespace == DEFAULT_NAMESPACE:

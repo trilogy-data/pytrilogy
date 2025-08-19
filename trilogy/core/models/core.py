@@ -226,12 +226,14 @@ class StructType(BaseModel):
     fields_map: Dict[str, DataTyped | int | float | str | StructComponent]
 
     def __repr__(self):
-        return 'struct<{}>'.format(
+        return "struct<{}>".format(
             ", ".join(
-                f"{field.name}:{field.type.name}" for field in self.fields if isinstance(field, StructComponent)
+                f"{field.name}:{field.type.name}"
+                for field in self.fields
+                if isinstance(field, StructComponent)
             )
         )
-    
+
     def __str__(self) -> str:
         return self.__repr__()
 

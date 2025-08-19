@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from trilogy.core.models.environment import Environment
 from trilogy import Dialects
+from trilogy.core.models.environment import Environment
 
 working_path = Path(__file__).parent
 

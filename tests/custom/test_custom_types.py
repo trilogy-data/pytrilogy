@@ -1,9 +1,7 @@
-import pytest
 from pytest import raises
 
-from trilogy.parsing.parse_engine import parse_text, InvalidSyntaxException
 from trilogy import Dialects
-import re
+from trilogy.parsing.parse_engine import InvalidSyntaxException, parse_text
 
 
 def test_custom_type():
