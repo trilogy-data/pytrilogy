@@ -1723,6 +1723,7 @@ class Factory:
             granularity=granularity,
             build_is_aggregate=is_aggregate,
         )
+        self.local_concepts[base.address] = rval
         return rval
 
     @build.register

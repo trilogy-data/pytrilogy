@@ -1,7 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from trilogy.core.models.environment import Environment
+from trilogy import Dialects
 
 working_path = Path(__file__).parent
 
@@ -58,6 +59,52 @@ import web_sales as web_sales;
     duration = end - start
     dumped = env.model_dump_json()
     assert duration.total_seconds() < 2, f"{len(dumped)}, {duration}"
+
+
+def test_generate_queries_perf():
+
+    env, imports = Environment(working_path=working_path).parse(
+        """
+import call_center as call_center;
+import catalog_returns as catalog_returns;
+import catalog_sales as catalog_sales;
+import customer_demographic as customer_demographic;
+import customer as customer;
+import inventory as inventory;
+import item as item;
+import promotion as promotion;
+import store_returns as store_returns;
+import store_sales as store_sales;
+import store as store;
+import time as time;
+import date as date;
+import warehouse as warehouse;
+import web_sales as web_sales;
+"""
+    )
+
+    start = datetime.now()
+    dialect = Dialects.DUCK_DB.default_executor(environment=env)
+    test_queries = """
+select
+    store_sales.date.year,
+    count(store_sales.ticket_number) as store_order_count;
+
+select
+    store_sales.date.year,
+    count(store_sales.ticket_number) as store_order_count;
+
+    select
+    store_sales.date.year,
+    count(store_sales.ticket_number) as store_order_count;
+
+
+"""
+    start = datetime.now()
+    dialect.parse_text(test_queries)
+    end = datetime.now()
+
+    assert end - start < timedelta(seconds=4), f"Duration: {end - start}"
 
 
 def test_merge_comparison(engine):

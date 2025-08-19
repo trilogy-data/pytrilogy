@@ -460,6 +460,8 @@ class HavingClause(WhereClause):
 class Grain(Namespaced, BaseModel):
     components: set[str] = Field(default_factory=set)
     where_clause: Optional["WhereClause"] = None
+    _str:str = None
+    _abstract: bool = False
 
     def without_condition(self):
         return Grain(components=self.components)
@@ -550,17 +552,22 @@ class Grain(Namespaced, BaseModel):
             where_clause=self.where_clause,
         )
 
-    @property
-    def abstract(self):
+    def _gen_abstract(self) -> bool:
         return not self.components or all(
             [c.endswith(ALL_ROWS_CONCEPT) for c in self.components]
         )
+    
+    @property
+    def abstract(self):
+        if not self._abstract:
+            self._abstract = self._gen_abstract()
+        return self._abstract
 
     def __eq__(self, other: object):
         if isinstance(other, list):
-            if not all([isinstance(c, Concept) for c in other]):
-                return False
-            return self.components == set([c.address for c in other])
+            if all([isinstance(c, Concept) for c in other]):
+                return self.components == set([c.address for c in other])
+            return False
         if not isinstance(other, Grain):
             return False
         if self.components == other.components:
@@ -580,15 +587,21 @@ class Grain(Namespaced, BaseModel):
     def intersection(self, other: "Grain") -> "Grain":
         intersection = self.components.intersection(other.components)
         return Grain(components=intersection)
+        
 
-    def __str__(self):
+    def _gen_str(self) -> str:
         if self.abstract:
             base = "Grain<Abstract>"
         else:
-            base = "Grain<" + ",".join([c for c in sorted(list(self.components))]) + ">"
+            base = "Grain<" + ",".join(sorted(self.components)) + ">"
         if self.where_clause:
             base += f"|{str(self.where_clause)}"
         return base
+
+    def __str__(self):
+        if not self._str:
+            self._str = self._gen_str()
+        return self._str
 
     def __radd__(self, other) -> "Grain":
         if other == 0:
@@ -2334,11 +2347,12 @@ class AlignItem(Namespaced, BaseModel):
 
 class CustomFunctionFactory:
     def __init__(
-        self, function: Expr, namespace: str, function_arguments: list[ArgBinding]
+        self, function: Expr, namespace: str, function_arguments: list[ArgBinding], name:str
     ):
         self.namespace = namespace
         self.function = function
         self.function_arguments = function_arguments
+        self.name = name
 
     def with_namespace(self, namespace: str):
         self.namespace = namespace
@@ -2363,7 +2377,24 @@ class CustomFunctionFactory:
             for binding in self.function_arguments[len(creation_arg_list) :]:
                 if binding.default is None:
                     raise ValueError(f"Missing argument {binding.name}")
+
                 creation_arg_list.append(binding.default)
+        for arg_idx, arg in enumerate(self.function_arguments):
+            if not arg.datatype or arg.datatype == DataType.UNKNOWN:
+                continue
+            if arg_idx > len(creation_arg_list):
+                continue
+            comparison = arg_to_datatype(creation_arg_list[arg_idx])
+            if comparison != arg.datatype:
+                raise TypeError(
+                    f"Invalid type passed into custom function @{self.name} in position {arg_idx+1} for argument {arg.name}, expected {arg.datatype}, got {comparison}"
+                )
+            if isinstance(arg.datatype, TraitDataType):
+                if not (isinstance(comparison, TraitDataType) and all(x in comparison.traits for x in arg.datatype.traits)):  
+                    raise TypeError(
+                        f"Invalid argument type passed into custom function @{self.name} in position {arg_idx+1} for argument {arg.name}, expected traits {arg.datatype.traits}, got {comparison}"
+                    )
+        
         if isinstance(nout, Mergeable):
             for idx, x in enumerate(creation_arg_list):
                 if self.namespace == DEFAULT_NAMESPACE:

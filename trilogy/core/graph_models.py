@@ -51,6 +51,7 @@ def prune_sources_for_conditions(
         g.remove_node(node)
 
 
+
 def concept_to_node(input: BuildConcept) -> str:
     # if input.purpose == Purpose.METRIC:
     #     return f"c~{input.namespace}.{input.name}@{input.grain}"
@@ -68,15 +69,25 @@ def datasource_to_node(input: BuildDatasource) -> str:
 class ReferenceGraph(nx.DiGraph):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.concept_node_cache = {}
+        self.datasource_node_cache = {}
 
     def add_node(self, node_for_adding, **attr):
         if isinstance(node_for_adding, BuildConcept):
-            node_name = concept_to_node(node_for_adding)
+            if node_for_adding.address in self.concept_node_cache:
+                node_name = self.concept_node_cache[node_for_adding.address]
+            else:
+                node_name = concept_to_node(node_for_adding,)
+                # self.concept_node_cache[node_for_adding.address] = node_name
             attr["type"] = "concept"
             attr["concept"] = node_for_adding
             attr["grain"] = node_for_adding.grain
         elif isinstance(node_for_adding, BuildDatasource):
-            node_name = datasource_to_node(node_for_adding)
+            if node_for_adding.identifier in self.datasource_node_cache:
+                node_name = self.datasource_node_cache[node_for_adding.identifier]
+            else:
+                node_name = datasource_to_node(node_for_adding)
+                self.datasource_node_cache[node_for_adding.identifier] = node_name
             attr["type"] = "datasource"
             attr["ds"] = node_for_adding
             attr["grain"] = node_for_adding.grain
@@ -87,17 +98,33 @@ class ReferenceGraph(nx.DiGraph):
     def add_edge(self, u_of_edge, v_of_edge, **attr):
         if isinstance(u_of_edge, BuildConcept):
             orig = u_of_edge
-            u_of_edge = concept_to_node(u_of_edge)
+            if orig.address in self.concept_node_cache:
+                u_of_edge = self.concept_node_cache[orig.address]
+            else:
+                u_of_edge = concept_to_node(u_of_edge)
+                # self.concept_node_cache[orig.address] = u_of_edge
             if u_of_edge not in self.nodes:
                 self.add_node(orig)
         elif isinstance(u_of_edge, BuildDatasource):
-            u_of_edge = datasource_to_node(u_of_edge)
+            if u_of_edge.identifier in self.datasource_node_cache:
+                u_of_edge = self.datasource_node_cache[u_of_edge.identifier]
+            else:
+                ds = datasource_to_node(u_of_edge)
+                self.datasource_node_cache[u_of_edge.identifier] = ds
 
         if isinstance(v_of_edge, BuildConcept):
             orig = v_of_edge
-            v_of_edge = concept_to_node(v_of_edge)
+            if orig.address in self.concept_node_cache:
+                v_of_edge = self.concept_node_cache[orig.address]
+            else:
+                v_of_edge = concept_to_node(v_of_edge)
+                # self.concept_node_cache[orig.address] = v_of_edge
             if v_of_edge not in self.nodes:
                 self.add_node(orig)
         elif isinstance(v_of_edge, BuildDatasource):
-            v_of_edge = datasource_to_node(v_of_edge)
+            if v_of_edge.identifier in self.datasource_node_cache:
+                v_of_edge = self.datasource_node_cache[v_of_edge.identifier]
+            else:
+                ds= datasource_to_node(v_of_edge)
+                self.datasource_node_cache[ds] = v_of_edge
         super().add_edge(u_of_edge, v_of_edge, **attr)
