@@ -1,8 +1,16 @@
-#!/usr/bin/env python3
 """
 Profiling script for test_generate_queries_perf function.
 Focuses on profiling the dialect.parse_text() call specifically.
 """
+
+import sys
+from pathlib import Path
+
+# Add local pytrilogy path (3 directories up) to Python path
+local_pytrilogy_path = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(local_pytrilogy_path))
+
+
 
 import cProfile
 import pstats
@@ -13,7 +21,6 @@ from pathlib import Path
 
 from trilogy.core.models.environment import Environment
 from trilogy import Dialects
-
 
 def setup_environment():
     """Setup the environment exactly as in the original test."""
@@ -181,7 +188,7 @@ def main():
     print("\n" + "="*60)
     print("Running stress test (100 iterations)...")
     stress_profiler, stress_wall_time, stress_datetime_delta = profile_parse_text(
-        dialect, test_queries, iterations=100
+        dialect, test_queries, iterations=25
     )
     print_profile_results(stress_profiler, stress_wall_time, stress_datetime_delta, iterations=100)
     save_profile_data(stress_profiler, "stress_test_profile.prof")
