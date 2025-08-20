@@ -262,9 +262,11 @@ class BuildParamaterizedConceptReference(DataTyped, BaseModel):
     def output_datatype(self) -> DataType:
         return self.concept.output_datatype
 
+from dataclasses import dataclass, field
 
-class BuildGrain(BaseModel):
-    components: set[str] = Field(default_factory=set)
+@dataclass
+class BuildGrain:
+    components: set[str] = field(default_factory=set)
     where_clause: Optional[BuildWhereClause] = None
     _str: str | None = None
     _str_no_condition: str | None = None
@@ -272,7 +274,7 @@ class BuildGrain(BaseModel):
     def without_condition(self):
         if not self.where_clause:
             return self
-        return BuildGrain.model_construct(components=self.components)
+        return BuildGrain(components=self.components)
 
     @classmethod
     def from_concepts(
@@ -282,29 +284,13 @@ class BuildGrain(BaseModel):
         where_clause: BuildWhereClause | None = None,
     ) -> "BuildGrain":
 
-        return BuildGrain.model_construct(
+        return BuildGrain(
             components=concepts_to_build_grain_concepts(
                 concepts, environment=environment
             ),
             where_clause=where_clause,
         )
 
-    @field_validator("components", mode="before")
-    def component_validator(cls, v, info: ValidationInfo):
-        output = set()
-        if isinstance(v, list):
-            for vc in v:
-                if isinstance(vc, BuildConcept):
-                    output.add(vc.address)
-                else:
-                    output.add(vc)
-        else:
-            output = v
-        if not isinstance(output, set):
-            raise ValueError(f"Invalid grain component {output}, is not set")
-        if not all(isinstance(x, str) for x in output):
-            raise ValueError(f"Invalid component {output}")
-        return output
 
     def __add__(self, other: "BuildGrain") -> "BuildGrain":
         if not other:
@@ -324,12 +310,12 @@ class BuildGrain(BaseModel):
                 # raise NotImplementedError(
                 #     f"Cannot merge grains with where clauses, self {self.where_clause} other {other.where_clause}"
                 # )
-        return BuildGrain.model_construct(
+        return BuildGrain(
             components=self.components.union(other.components), where_clause=where
         )
 
     def __sub__(self, other: "BuildGrain") -> "BuildGrain":
-        return BuildGrain.model_construct(
+        return BuildGrain(
             components=self.components.difference(other.components),
             where_clause=self.where_clause,
         )
@@ -1161,12 +1147,12 @@ class BuildFunction(DataTyped, BuildConceptArgs, BaseModel):
     def output_grain(self):
         # aggregates have an abstract grain
         if self.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
-            return BuildGrain.model_construct(components=[])
+            return BuildGrain(components=[])
         # scalars have implicit grain of all arguments
         args = set()
         for input in self.concept_arguments:
             args += input.grain.components
-        return BuildGrain.model_construct(components=args)
+        return BuildGrain(components=args)
 
 
 class BuildAggregateWrapper(BuildConceptArgs, DataTyped, BaseModel):
@@ -1997,7 +1983,7 @@ class Factory:
             where = factory.build(base.where_clause)
         else:
             where = None
-        return BuildGrain.model_construct(
+        return BuildGrain(
             components=base.components, where_clause=where
         )
 

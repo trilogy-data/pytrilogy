@@ -1,9 +1,9 @@
 query_id = 1
-gen_length = 4181
+gen_length = 4178
 generated_sql = """
 
 WITH 
-thoughtful as (
+highfalutin as (
 SELECT
     \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
     \"returns_store_returns\".\"SR_RETURNED_DATE_SK\" as \"returns_return_date_id\",
@@ -19,8 +19,8 @@ SELECT
     \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
     \"returns_store_returns\".\"SR_ITEM_SK\" as \"returns_item_id\",
     \"returns_store_returns\".\"SR_RETURN_AMT\" as \"returns_return_amount\",
-    \"returns_store_returns\".\"SR_TICKET_NUMBER\" as \"returns_store_sales_ticket_number\",
-    \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_id\"
+    \"returns_store_returns\".\"SR_STORE_SK\" as \"returns_store_id\",
+    \"returns_store_returns\".\"SR_TICKET_NUMBER\" as \"returns_store_sales_ticket_number\"
 FROM
     \"memory\".\"store_returns\" as \"returns_store_returns\"
     INNER JOIN \"memory\".\"store\" as \"returns_store_store\" on \"returns_store_returns\".\"SR_STORE_SK\" = \"returns_store_store\".\"S_STORE_SK\"
@@ -30,14 +30,14 @@ WHERE
 ),
 cooperative as (
 SELECT
-    \"returns_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
-    \"returns_customer_customers\".\"C_CUSTOMER_SK\" as \"returns_customer_id\",
-    \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_id\"
+    \"highfalutin\".\"returns_customer_id\" as \"returns_customer_id\",
+    \"highfalutin\".\"returns_store_id\" as \"returns_store_id\",
+    \"returns_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_customer_text_id\"
 FROM
-    \"thoughtful\"
-    INNER JOIN \"memory\".\"store\" as \"returns_store_store\" on \"thoughtful\".\"returns_store_id\" = \"returns_store_store\".\"S_STORE_SK\"
-    INNER JOIN \"memory\".\"customer\" as \"returns_customer_customers\" on \"thoughtful\".\"returns_customer_id\" = \"returns_customer_customers\".\"C_CUSTOMER_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"returns_return_date_date\" on \"thoughtful\".\"returns_return_date_id\" = \"returns_return_date_date\".\"D_DATE_SK\"
+    \"highfalutin\"
+    INNER JOIN \"memory\".\"store\" as \"returns_store_store\" on \"highfalutin\".\"returns_store_id\" = \"returns_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"returns_customer_customers\" on \"highfalutin\".\"returns_customer_id\" = \"returns_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"returns_return_date_date\" on \"highfalutin\".\"returns_return_date_id\" = \"returns_return_date_date\".\"D_DATE_SK\"
 WHERE
     \"returns_store_store\".\"S_STATE\" = 'TN' and cast(\"returns_return_date_date\".\"D_YEAR\" as int) = 2000
 ),

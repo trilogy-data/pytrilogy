@@ -1,5 +1,5 @@
 query_id = 24
-gen_length = 7445
+gen_length = 7447
 generated_sql = """
 
 WITH 
@@ -25,7 +25,7 @@ WHERE
 juicy as (
 SELECT
     \"store_sales_item_items\".\"I_COLOR\" as \"store_sales_item_color\",
-    \"store_sales_item_items\".\"I_ITEM_SK\" as \"store_sales_item_id\"
+    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"

@@ -1,9 +1,9 @@
 query_id = 25
-gen_length = 9425
+gen_length = 9442
 generated_sql = """
 
 WITH 
-uneven as (
+cheerful as (
 SELECT
     \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" as \"store_sales_customer_id\",
     \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" as \"store_sales_item_id\",
@@ -16,11 +16,11 @@ GROUP BY
     \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\"),
 concerned as (
 SELECT
+    \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" as \"store_sales_item_id\",
     \"catalog_sales_catalog_sales\".\"CS_NET_PROFIT\" as \"catalog_sales_net_profit\",
     \"catalog_sales_catalog_sales\".\"CS_ORDER_NUMBER\" as \"catalog_sales_order_number\",
     \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
     \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_name\",
-    \"store_sales_item_items\".\"I_ITEM_SK\" as \"store_sales_item_id\",
     \"store_sales_store_store\".\"S_STORE_ID\" as \"store_sales_store_text_id\",
     \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\"
 FROM
@@ -33,13 +33,13 @@ FROM
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 2001 and \"store_sales_date_date\".\"D_MOY\" = 4 and cast(\"store_sales_return_date_date\".\"D_YEAR\" as int) = 2001 and \"store_sales_return_date_date\".\"D_MOY\" >= 4 and \"store_sales_return_date_date\".\"D_MOY\" <= 10 and cast(\"catalog_sales_date_date\".\"D_YEAR\" as int) = 2001 and \"catalog_sales_date_date\".\"D_MOY\" >= 4 and \"catalog_sales_date_date\".\"D_MOY\" <= 10 and \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" = \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
+    cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 2001 and \"store_sales_date_date\".\"D_MOY\" = 4 and cast(\"store_sales_return_date_date\".\"D_YEAR\" as int) = 2001 and \"store_sales_return_date_date\".\"D_MOY\" >= 4 and \"store_sales_return_date_date\".\"D_MOY\" <= 10 and cast(\"catalog_sales_date_date\".\"D_YEAR\" as int) = 2001 and \"catalog_sales_date_date\".\"D_MOY\" >= 4 and \"catalog_sales_date_date\".\"D_MOY\" <= 10 and \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" = \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
 ),
 yummy as (
 SELECT
+    \"cheerful\".\"store_sales_item_id\" as \"store_sales_item_id\",
     \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
     \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_name\",
-    \"store_sales_item_items\".\"I_ITEM_SK\" as \"store_sales_item_id\",
     \"store_sales_store_returns\".\"SR_NET_LOSS\" as \"store_sales_return_net_loss\",
     \"store_sales_store_sales\".\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
     \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
@@ -49,13 +49,13 @@ FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
-    INNER JOIN \"uneven\" on \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"uneven\".\"store_sales_customer_id\" AND \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"uneven\".\"store_sales_item_id\"
-    INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"uneven\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"cheerful\" on \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"cheerful\".\"store_sales_customer_id\" AND \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"cheerful\".\"store_sales_item_id\"
+    INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"cheerful\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"store_sales_return_date_date\" on \"store_sales_store_returns\".\"SR_RETURNED_DATE_SK\" = \"store_sales_return_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"uneven\".\"store_sales_item_id\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"cheerful\".\"store_sales_item_id\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
-    cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 2001 and \"store_sales_date_date\".\"D_MOY\" = 4 and cast(\"store_sales_return_date_date\".\"D_YEAR\" as int) = 2001 and \"store_sales_return_date_date\".\"D_MOY\" >= 4 and \"store_sales_return_date_date\".\"D_MOY\" <= 10 and cast(\"catalog_sales_date_date\".\"D_YEAR\" as int) = 2001 and \"catalog_sales_date_date\".\"D_MOY\" >= 4 and \"catalog_sales_date_date\".\"D_MOY\" <= 10 and \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" = \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
+    cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 2001 and \"store_sales_date_date\".\"D_MOY\" = 4 and cast(\"store_sales_return_date_date\".\"D_YEAR\" as int) = 2001 and \"store_sales_return_date_date\".\"D_MOY\" >= 4 and \"store_sales_return_date_date\".\"D_MOY\" <= 10 and cast(\"catalog_sales_date_date\".\"D_YEAR\" as int) = 2001 and \"catalog_sales_date_date\".\"D_MOY\" >= 4 and \"catalog_sales_date_date\".\"D_MOY\" <= 10 and \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" = \"cheerful\".\"store_sales_customer_id\" and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
 ),
 young as (
 SELECT

@@ -61,13 +61,13 @@ def gen_group_node(
 
     # if the aggregation has a grain, we need to ensure these are the ONLY optional in the output of the select
     output_concepts = [concept]
-
+    grain_components = [environment.concepts[c] for c in concept.grain.components]
     if (
         concept.grain
         and len(concept.grain.components) > 0
         and not concept.grain.abstract
     ):
-        grain_components = [environment.concepts[c] for c in concept.grain.components]
+        
         parent_concepts += grain_components
         build_grain_parents = get_aggregate_grain(concept, environment)
         output_concepts += grain_components
@@ -131,10 +131,6 @@ def gen_group_node(
     else:
         parents = []
 
-    # the keys we group by
-    # are what we can use for enrichment
-    group_key_parents = [environment.concepts[c] for c in concept.grain.components]
-
     group_node = GroupNode(
         output_concepts=output_concepts,
         input_concepts=parent_concepts,
@@ -164,7 +160,7 @@ def gen_group_node(
     )
     return gen_enrichment_node(
         group_node,
-        join_keys=group_key_parents,
+        join_keys=grain_components,
         local_optional=local_optional,
         environment=environment,
         g=g,
