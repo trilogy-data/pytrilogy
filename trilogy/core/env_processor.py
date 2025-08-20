@@ -68,7 +68,7 @@ def generate_adhoc_graph(
 ) -> ReferenceGraph:
     g = ReferenceGraph()
     concept_mapping = {x.address: x for x in concepts}
-    seen = set()
+    seen: set[str] = set()
     for concept in concepts:
         if not isinstance(concept, BuildConcept):
             raise ValueError(f"Invalid non-build concept {concept}")
@@ -100,7 +100,7 @@ def generate_adhoc_graph(
 def generate_graph(
     environment: BuildEnvironment,
 ) -> ReferenceGraph:
-    default_concept_graph = {}
+    default_concept_graph: dict[str, BuildConcept] = {}
     return generate_adhoc_graph(
         list(environment.concepts.values())
         + list(environment.alias_origin_lookup.values()),
