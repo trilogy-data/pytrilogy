@@ -453,6 +453,7 @@ def gen_merge_node(
     else:
         all_search_concepts = all_concepts
     all_search_concepts = sorted(all_search_concepts, key=lambda x: x.address)
+    break_set = set([x.address for x in all_search_concepts])
     for filter_downstream in [True, False]:
         weak_resolve = resolve_weak_components(
             all_search_concepts,
@@ -466,27 +467,28 @@ def gen_merge_node(
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} wasn't able to resolve graph through intermediate concept injection with accept_partial {accept_partial}, filter_downstream {filter_downstream}"
             )
-        else:
-            log_graph = [[y.address for y in x] for x in weak_resolve]
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} Was able to resolve graph through weak component resolution - final graph {log_graph}"
-            )
-            for flat in log_graph:
-                if set(flat) == set([x.address for x in all_search_concepts]):
-                    logger.info(
-                        f"{padding(depth)}{LOGGER_PREFIX} expanded concept resolution was identical to search resolution; breaking to avoid recursion error."
-                    )
-                    return None
-            return subgraphs_to_merge_node(
-                weak_resolve,
-                depth=depth,
-                all_concepts=all_search_concepts,
-                environment=environment,
-                g=g,
-                source_concepts=source_concepts,
-                history=history,
-                conditions=conditions,
-                search_conditions=search_conditions,
-                output_concepts=all_concepts,
-            )
+            continue
+
+        log_graph = [[y.address for y in x] for x in weak_resolve]
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} Was able to resolve graph through weak component resolution - final graph {log_graph}"
+        )
+        for flat in log_graph:
+            if set(flat) == break_set:
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} expanded concept resolution was identical to search resolution; breaking to avoid recursion error."
+                )
+                return None
+        return subgraphs_to_merge_node(
+            weak_resolve,
+            depth=depth,
+            all_concepts=all_search_concepts,
+            environment=environment,
+            g=g,
+            source_concepts=source_concepts,
+            history=history,
+            conditions=conditions,
+            search_conditions=search_conditions,
+            output_concepts=all_concepts,
+        )
     return None

@@ -225,6 +225,18 @@ class StructType(BaseModel):
     fields: Sequence[StructComponent | TYPEDEF_TYPES]
     fields_map: Dict[str, DataTyped | int | float | str | StructComponent]
 
+    def __repr__(self):
+        return "struct<{}>".format(
+            ", ".join(
+                f"{field.name}:{field.type.name}"
+                for field in self.fields
+                if isinstance(field, StructComponent)
+            )
+        )
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
     @field_validator("fields", mode="plain")
     def validate_type(cls, v):
         final = []

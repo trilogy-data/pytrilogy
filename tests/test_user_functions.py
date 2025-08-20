@@ -2,6 +2,7 @@ from pathlib import Path
 
 from trilogy import Dialects, Environment
 from trilogy.core.enums import Derivation, Purpose
+from trilogy.hooks import DebuggingHook
 
 
 def test_user_function_def():
@@ -18,6 +19,24 @@ select @percent_ratio(10, 100) as ratio;
     )
 
     assert results.fetchall()[0].ratio == 10.0
+
+
+def test_user_function_def_with_default():
+    x = Dialects.DUCK_DB.default_executor()
+    DebuggingHook()
+    results = x.execute_query(
+        """
+def percent_ratio(a, b, digits=3) -> round(a / b * 100, digits);
+
+select @percent_ratio(21, 1000) as ratio,
+         @percent_ratio(21, 1000, 0) as ratio_two;
+                  
+                  """
+    )
+
+    results = results.fetchall()
+    assert results[0].ratio == 2.1
+    assert results[0].ratio_two == 2
 
 
 def test_user_function_aggregate():

@@ -91,7 +91,9 @@
 
     // FUNCTION blocks
     function: raw_function
-    function_binding_item: IDENTIFIER ("=" literal)?
+    function_binding_type: ":" data_type  
+    function_binding_default: /=/ expr
+    function_binding_item: IDENTIFIER function_binding_type? function_binding_default?
     function_binding_list: (function_binding_item ",")* function_binding_item ","?
     raw_function: "def"  IDENTIFIER  "("  function_binding_list ")" "->" expr
 

@@ -161,6 +161,11 @@ class WholeGrainWrapper:
     where: WhereClause
 
 
+@dataclass
+class FunctionBindingType:
+    type: DataType | TraitDataType | None = None
+
+
 with open(join(dirname(__file__), "trilogy.lark"), "r") as f:
     PARSER = Lark(
         f.read(),
@@ -1374,10 +1379,23 @@ class ParseToObjects(Transformer):
         return args
 
     @v_args(meta=True)
+    def function_binding_type(self, meta: Meta, args) -> FunctionBindingType:
+        return FunctionBindingType(type=args[0])
+
+    @v_args(meta=True)
+    def function_binding_default(self, meta: Meta, args):
+        return args[1]
+
+    @v_args(meta=True)
     def function_binding_item(self, meta: Meta, args) -> ArgBinding:
-        if len(args) == 2:
-            return ArgBinding.model_construct(name=args[0], default=args[1])
-        return ArgBinding.model_construct(name=args[0], default=None)
+        default = None
+        type = None
+        for arg in args[1:]:
+            if isinstance(arg, FunctionBindingType):
+                type = arg.type
+            else:
+                default = arg
+        return ArgBinding.model_construct(name=args[0], datatype=type, default=default)
 
     @v_args(meta=True)
     def raw_function(self, meta: Meta, args) -> FunctionDeclaration:
@@ -1389,6 +1407,7 @@ class ParseToObjects(Transformer):
             function=output,
             namespace=self.environment.namespace,
             function_arguments=function_arguments,
+            name=identity,
         )
         return FunctionDeclaration(name=identity, args=function_arguments, expr=output)
 

@@ -116,3 +116,28 @@ count(filtered_launch) as pad_aborts,
 
     sql = base.generate_sql(queries[-1])
     assert "INVALID_REFERENCE_BUG" not in sql[0], sql[0]
+
+
+def test_equals_comparison():
+
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+
+    queries = base.parse_text(
+        """import launch_dashboard;
+        where orb_pay is not null
+select
+  site.state_code,
+
+  log(CASE WHEN sum(orb_pay)::int = 0 then 1 else sum(orb_pay)::int END, 10) as log_scale_orbital_tons,
+  launch_count
+order by
+  log_scale_orbital_tons desc
+limit 15;
+"""
+    )
+
+    sql = base.generate_sql(queries[-1])
+    assert """WHEN cast(sum("wakeful"."orb_pay") as int) = 0 THEN 1""" in sql[0], sql[0]
