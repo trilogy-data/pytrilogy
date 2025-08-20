@@ -90,9 +90,7 @@ def validate_concepts(v) -> BuildEnvironmentConceptDict:
     if isinstance(v, BuildEnvironmentConceptDict):
         return v
     elif isinstance(v, dict):
-        return BuildEnvironmentConceptDict(
-            **{x: BuildConcept.model_validate(y) for x, y in v.items()}
-        )
+        return BuildEnvironmentConceptDict(**{x: y for x, y in v.items()})
     raise ValueError
 
 
@@ -100,9 +98,7 @@ def validate_datasources(v) -> BuildEnvironmentDatasourceDict:
     if isinstance(v, BuildEnvironmentDatasourceDict):
         return v
     elif isinstance(v, dict):
-        return BuildEnvironmentDatasourceDict(
-            **{x: BuildDatasource.model_validate(y) for x, y in v.items()}
-        )
+        return BuildEnvironmentDatasourceDict(**{x: y for x, y in v.items()})
     raise ValueError
 
 

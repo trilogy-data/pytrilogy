@@ -56,21 +56,21 @@ class GraphAttributeCache:
 
     def __init__(self, graph: nx.DiGraph):
         self.graph = graph
-        self._datasources = None
-        self._concepts = None
-        self._ds_nodes = None
-        self._concept_nodes = None
+        self._datasources: dict | None = None
+        self._concepts: dict | None = None
+        self._ds_nodes: set[str] | None = None
+        self._concept_nodes: set[str] | None = None
 
     @property
     def datasources(self) -> Dict:
         if self._datasources is None:
-            self._datasources = nx.get_node_attributes(self.graph, "datasource")
+            self._datasources = nx.get_node_attributes(self.graph, "datasource") or {}
         return self._datasources
 
     @property
     def concepts(self) -> Dict:
         if self._concepts is None:
-            self._concepts = nx.get_node_attributes(self.graph, "concept")
+            self._concepts = nx.get_node_attributes(self.graph, "concept") or {}
         return self._concepts
 
     @property
@@ -82,14 +82,16 @@ class GraphAttributeCache:
     @property
     def concept_nodes(self) -> Set[str]:
         if self._concept_nodes is None:
-            self._concept_nodes = {n for n in self.graph.nodes if n.startswith("c~")}
+            self._concept_nodes = {
+                n for n in self.graph.nodes if n.startswith("c~")
+            } or set()
         return self._concept_nodes
 
 
 def get_graph_partial_nodes(
     g: nx.DiGraph,
     conditions: BuildWhereClause | None,
-    cache: GraphAttributeCache = None,
+    cache: GraphAttributeCache | None = None,
 ) -> dict[str, list[str]]:
     """Optimized version with caching and early returns."""
     if cache is None:
@@ -117,14 +119,14 @@ def get_graph_partial_nodes(
 
 
 def get_graph_grains(
-    g: nx.DiGraph, cache: GraphAttributeCache = None
-) -> dict[str, list[str]]:
+    g: nx.DiGraph, cache: GraphAttributeCache | None = None
+) -> dict[str, set[str]]:
     """Optimized version using set.update() instead of reduce with union."""
     if cache is None:
         cache = GraphAttributeCache(g)
 
     datasources = cache.datasources
-    grain_length: dict[str, list[str]] = {}
+    grain_length: dict[str, set[str]] = {}
 
     for node in cache.ds_nodes:  # Only iterate over datasource nodes
         if node not in datasources:
@@ -135,7 +137,7 @@ def get_graph_grains(
             lookup = [lookup]
 
         # Optimized set building - avoid reduce and intermediate sets
-        components = set()
+        components: set[str] = set()
         for item in lookup:
             components.update(item.grain.components)
         grain_length[node] = components

@@ -797,7 +797,7 @@ class BuildSubselectComparison(BuildComparison):
 class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
     model_config = ConfigDict(extra="forbid")
     name: str
-    datatype: DataType | ArrayType | StructType | MapType | NumericType
+    datatype: DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
     purpose: Purpose
     build_is_aggregate: bool
     derivation: Derivation = Derivation.ROOT
@@ -1356,7 +1356,7 @@ class BuildAlignItem:
 
 @dataclass
 class BuildColumnAssignment:
-    alias: str | RawColumnExpr | BuildFunction
+    alias: str | RawColumnExpr | BuildFunction | BuildAggregateWrapper
     concept: BuildConcept
     modifiers: List[Modifier] = field(default_factory=list)
 
@@ -1447,7 +1447,7 @@ class BuildDatasource:
         concept: BuildConcept,
         use_raw_name: bool = True,
         force_alias: bool = False,
-    ) -> Optional[str | RawColumnExpr] | BuildFunction:
+    ) -> Optional[str | RawColumnExpr] | BuildFunction | BuildAggregateWrapper:
         # 2022-01-22
         # this logic needs to be refined.
         # if concept.lineage:
@@ -1781,7 +1781,7 @@ class Factory:
         else:
             by = [self.build(x) for x in base.by]
 
-        parent = self._build_function(base.function)
+        parent: BuildFunction = self._build_function(base.function)  # type: ignore
         return BuildAggregateWrapper(function=parent, by=by)
 
     @build.register
