@@ -72,15 +72,15 @@ class ReferenceGraph(nx.DiGraph):
     def add_node(self, node_for_adding, **attr):
         if isinstance(node_for_adding, BuildConcept):
             node_name = concept_to_node(node_for_adding)
-            if node_name in self.nodes:
-                return
+            # if node_name in self.nodes:
+            #     return
             attr["type"] = "concept"
             attr["concept"] = node_for_adding
             attr["grain"] = node_for_adding.grain
         elif isinstance(node_for_adding, BuildDatasource):
             node_name = datasource_to_node(node_for_adding)
-            if node_name in self.nodes:
-                return
+            # if node_name in self.nodes:
+            #     return
             attr["type"] = "datasource"
             attr["ds"] = node_for_adding
             attr["grain"] = node_for_adding.grain
@@ -95,7 +95,10 @@ class ReferenceGraph(nx.DiGraph):
             if u_of_edge not in self.nodes:
                 self.add_node(orig)
         elif isinstance(u_of_edge, BuildDatasource):
+            orig = u_of_edge
             u_of_edge = datasource_to_node(u_of_edge)
+            if u_of_edge not in self.nodes:
+                self.add_node(orig)
 
         if isinstance(v_of_edge, BuildConcept):
             orig = v_of_edge
@@ -103,5 +106,8 @@ class ReferenceGraph(nx.DiGraph):
             if v_of_edge not in self.nodes:
                 self.add_node(orig)
         elif isinstance(v_of_edge, BuildDatasource):
+            orig = v_of_edge
             v_of_edge = datasource_to_node(v_of_edge)
+            if v_of_edge not in self.nodes:
+                self.add_node(orig)
         super().add_edge(u_of_edge, v_of_edge, **attr)

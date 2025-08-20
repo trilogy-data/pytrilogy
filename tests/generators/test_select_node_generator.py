@@ -32,12 +32,13 @@ select unnest;
         persist=True,
     )
     env = env.materialize_for_select()
+    graph = generate_graph(env)
     gnode = gen_select_node(
         concepts=[
             env.concepts["array_one"],
         ],
         environment=env,
-        g=generate_graph(env),
+        g=graph,
         depth=0,
     )
     assert isinstance(gnode, ConstantNode), type(gnode)
@@ -47,7 +48,7 @@ select unnest;
             env.concepts["unnest"],
         ],
         environment=env,
-        g=generate_graph(env),
+        g=graph,
         depth=0,
     )
 
