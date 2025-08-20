@@ -120,7 +120,6 @@ count(filtered_launch) as pad_aborts,
 
 def test_equals_comparison():
 
-
     env = Environment(
         working_path=Path(__file__).parent,
     )
@@ -141,4 +140,4 @@ limit 15;
     )
 
     sql = base.generate_sql(queries[-1])
-    assert '''WHEN cast(sum("wakeful"."orb_pay") as int) = 0 THEN 1''' in sql[0], sql[0]
+    assert """WHEN cast(sum("wakeful"."orb_pay") as int) = 0 THEN 1""" in sql[0], sql[0]
