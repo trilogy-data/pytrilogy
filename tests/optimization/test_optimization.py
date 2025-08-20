@@ -102,7 +102,7 @@ key year int;
             right=BuildFunction(
                 operator=FunctionType.MULTIPLY,
                 output_purpose=Purpose.PROPERTY,
-                output_datatype=DataType.FLOAT,
+                output_data_type=DataType.FLOAT,
                 arguments=[1.2, env.concepts["avg_price"]],
                 arg_count=2,
             ),
@@ -281,7 +281,7 @@ def test_invalid_aggregate_pushdown(
             left=BuildFunction(
                 operator=FunctionType.COUNT,
                 arguments=[outputs[0]],
-                output_datatype=DataType.INTEGER,
+                output_data_type=DataType.INTEGER,
                 output_purpose=Purpose.METRIC,
             ),
             right=12,

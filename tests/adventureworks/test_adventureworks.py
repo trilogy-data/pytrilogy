@@ -238,15 +238,15 @@ def test_grain(environment: Environment):
     assert len(test.parents) == 0
     assert (
         test.grain.components
-        == Grain(components=[environment.concepts["dates.order_key"]]).components
+        == Grain(components={"dates.order_key"}).components
     )
     assert (
         environment.datasources["dates.order_dates"].grain.components
-        == Grain(components=[environment.concepts["dates.order_key"]]).components
+        == Grain(components={"dates.order_key"}).components
     )
     resolved = test.resolve()
     assert resolved.grain == BuildGrain(
-        components=[environment.concepts["dates.order_key"]]
+        components={"dates.order_key"}
     )
     assert test.grain == resolved.grain
     assert resolved.group_required is False
@@ -287,11 +287,11 @@ def test_group_to_grain(environment: Environment):
     assert len(test.parents) == 2
     resolved = test.resolve()
     expected_grain = BuildGrain(
-        components=[
-            # environment.concepts["internet_sales.dates.order_key"],
-            environment.concepts["internet_sales.order_line_number"],
-            environment.concepts["internet_sales.order_number"],
-        ]
+        components={
+            "internet_sales.order_line_number",
+            "internet_sales.order_number"
+        }
+     
     )
     assert resolved.grain == expected_grain, [
         resolved.grain.components,

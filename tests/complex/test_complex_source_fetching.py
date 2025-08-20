@@ -82,7 +82,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert user_post_count.purpose == Purpose.METRIC
 
     posts = env.datasources["posts"]
-    post_grain = BuildGrain(components=[env.concepts["post_id"]])
+    post_grain = BuildGrain(components={env.concepts["post_id"].address})
 
     assert posts.grain == post_grain
 

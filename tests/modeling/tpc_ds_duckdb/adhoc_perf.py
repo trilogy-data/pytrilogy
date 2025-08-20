@@ -478,7 +478,7 @@ import web_sales as web_sales;
     ;
 
 """
-        * 1
+        * 3
     )
 
     return dialect, test_queries

@@ -1,5 +1,5 @@
 query_id = 2
-gen_length = 7768
+gen_length = 7774
 generated_sql = """
 
 WITH 
@@ -11,7 +11,7 @@ FROM
 WHERE
     cast(\"date_date\".\"D_YEAR\" as int) in (2001,2002)
 ),
-cheerful as (
+thoughtful as (
 SELECT
     \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\" as \"date_id\"
 FROM
@@ -51,7 +51,7 @@ SELECT
 FROM
     \"memory\".\"date_dim\" as \"date_date\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"date_date\".\"D_DATE_SK\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
-    LEFT OUTER JOIN \"cheerful\" on \"date_date\".\"D_DATE_SK\" = \"cheerful\".\"date_id\"
+    LEFT OUTER JOIN \"thoughtful\" on \"date_date\".\"D_DATE_SK\" = \"thoughtful\".\"date_id\"
     LEFT OUTER JOIN \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\" on \"date_date\".\"D_DATE_SK\" = \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\"
 WHERE
     \"date_date\".\"D_WEEK_SEQ\" in (select questionable.\"relevent_week_seq\" from questionable where questionable.\"relevent_week_seq\" is not null)

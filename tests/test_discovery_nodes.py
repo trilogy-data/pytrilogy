@@ -67,7 +67,7 @@ def test_group_node_property_all(test_environment: Environment, test_environment
     sum_name_length = test_environment.concepts["category_name_length_sum"]
     all_rows = test_environment.concepts[f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"]
     sum_name_length_all_rows = sum_name_length.with_grain(
-        BuildGrain(components=[all_rows])
+        BuildGrain(components={all_rows.address})
     )
     group_node = gen_group_node(
         sum_name_length_all_rows,
