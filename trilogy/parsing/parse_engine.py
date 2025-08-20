@@ -1381,6 +1381,10 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def function_binding_type(self, meta: Meta, args) -> FunctionBindingType:
         return FunctionBindingType(type=args[0])
+    
+    @v_args(meta=True)
+    def function_binding_default(self, meta: Meta, args):
+        return args[1]
 
     @v_args(meta=True)
     def function_binding_item(self, meta: Meta, args) -> ArgBinding:
