@@ -5,7 +5,6 @@ from trilogy.core.functions import argument_to_purpose, function_args_to_output_
 from trilogy.core.models.author import (
     Comparison,
     Conditional,
-    ListWrapper,
     SubselectComparison,
 )
 from trilogy.core.models.build import BuildComparison
@@ -61,7 +60,7 @@ def test_not_in():
     _, parsed = parse_text(
         "const order_id <- 4; SELECT order_id  WHERE order_id NOT IN (1,2,3);"
     )
-    query: ProcessedQuery = parsed[-1]
+    query: SelectStatement = parsed[-1]
     right = query.where_clause.conditional.right
     assert isinstance(right, TupleWrapper), type(right)
     assert right[0] == 1
@@ -75,7 +74,7 @@ def test_datetime_lit_rendering():
     from datetime import datetime
 
     now = datetime.now()
-    wrapper = ListWrapper(
+    wrapper = TupleWrapper(
         (now,),
         type=DataType.DATETIME,
     )

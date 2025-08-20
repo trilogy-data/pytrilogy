@@ -859,7 +859,7 @@ class RecursiveCTE(CTE):
                     ),
                     BuildCaseElse(expr=False),
                 ],
-                output_datatype=DataType.BOOL,
+                output_data_type=DataType.BOOL,
                 output_purpose=Purpose.KEY,
             ),
         )
@@ -884,7 +884,7 @@ class RecursiveCTE(CTE):
                     ),
                     BuildCaseElse(expr=False),
                 ],
-                output_datatype=DataType.BOOL,
+                output_data_type=DataType.BOOL,
                 output_purpose=Purpose.KEY,
             ),
         )
@@ -909,7 +909,7 @@ class RecursiveCTE(CTE):
                     ),
                     BuildCaseElse(expr=right_recurse_concept),
                 ],
-                output_datatype=recursive_derived.datatype,
+                output_data_type=recursive_derived.datatype,
                 output_purpose=recursive_derived.purpose,
             ),
         )

@@ -1133,7 +1133,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             granularity=self.granularity,
             derivation=self.derivation,
             lineage=self.lineage,
-            grain=grain if grain else Grain(components=set()),
+            grain=grain if grain else Grain.model_construct(components=set()),
             namespace=self.namespace,
             keys=self.keys,
             modifiers=self.modifiers,

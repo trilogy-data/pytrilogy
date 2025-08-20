@@ -165,7 +165,7 @@ def test_provider_name():
                             name="dummy",
                             address="dummy",
                             columns=[
-                                BuildColumnAssignment(alias=c.name, concept=c)
+                                BuildColumnAssignment(alias=c.address, concept=c)
                                 for c in test_concepts
                             ],
                         ),

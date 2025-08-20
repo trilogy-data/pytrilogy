@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC
 from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from functools import cached_property, singledispatchmethod
 from typing import (
@@ -18,12 +19,7 @@ from typing import (
 )
 
 from pydantic import (
-    BaseModel,
     ConfigDict,
-    Field,
-    ValidationInfo,
-    computed_field,
-    field_validator,
 )
 
 from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
@@ -170,16 +166,13 @@ def concepts_to_build_grain_concepts(
     return final
 
 
-class LooseBuildConceptList(BaseModel):
+@dataclass
+class LooseBuildConceptList:
     concepts: Sequence[BuildConcept]
 
     @cached_property
     def addresses(self) -> set[str]:
         return {s.address for s in self.concepts}
-
-    @classmethod
-    def validate(cls, v):
-        return cls(v)
 
     @cached_property
     def sorted_addresses(self) -> List[str]:
@@ -248,7 +241,8 @@ def get_concept_arguments(expr) -> List["BuildConcept"]:
     return output
 
 
-class BuildParamaterizedConceptReference(DataTyped, BaseModel):
+@dataclass
+class BuildParamaterizedConceptReference(DataTyped):
     concept: BuildConcept
 
     def __str__(self):
@@ -263,8 +257,9 @@ class BuildParamaterizedConceptReference(DataTyped, BaseModel):
         return self.concept.output_datatype
 
 
-class BuildGrain(BaseModel):
-    components: set[str] = Field(default_factory=set)
+@dataclass
+class BuildGrain:
+    components: set[str] = field(default_factory=set)
     where_clause: Optional[BuildWhereClause] = None
     _str: str | None = None
     _str_no_condition: str | None = None
@@ -272,7 +267,7 @@ class BuildGrain(BaseModel):
     def without_condition(self):
         if not self.where_clause:
             return self
-        return BuildGrain.model_construct(components=self.components)
+        return BuildGrain(components=self.components)
 
     @classmethod
     def from_concepts(
@@ -282,29 +277,12 @@ class BuildGrain(BaseModel):
         where_clause: BuildWhereClause | None = None,
     ) -> "BuildGrain":
 
-        return BuildGrain.model_construct(
+        return BuildGrain(
             components=concepts_to_build_grain_concepts(
                 concepts, environment=environment
             ),
             where_clause=where_clause,
         )
-
-    @field_validator("components", mode="before")
-    def component_validator(cls, v, info: ValidationInfo):
-        output = set()
-        if isinstance(v, list):
-            for vc in v:
-                if isinstance(vc, BuildConcept):
-                    output.add(vc.address)
-                else:
-                    output.add(vc)
-        else:
-            output = v
-        if not isinstance(output, set):
-            raise ValueError(f"Invalid grain component {output}, is not set")
-        if not all(isinstance(x, str) for x in output):
-            raise ValueError(f"Invalid component {output}")
-        return output
 
     def __add__(self, other: "BuildGrain") -> "BuildGrain":
         if not other:
@@ -324,12 +302,12 @@ class BuildGrain(BaseModel):
                 # raise NotImplementedError(
                 #     f"Cannot merge grains with where clauses, self {self.where_clause} other {other.where_clause}"
                 # )
-        return BuildGrain.model_construct(
+        return BuildGrain(
             components=self.components.union(other.components), where_clause=where
         )
 
     def __sub__(self, other: "BuildGrain") -> "BuildGrain":
-        return BuildGrain.model_construct(
+        return BuildGrain(
             components=self.components.difference(other.components),
             where_clause=self.where_clause,
         )
@@ -401,7 +379,8 @@ class BuildGrain(BaseModel):
             return self.__add__(other)
 
 
-class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs, BaseModel):
+@dataclass
+class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs):
     content: "BuildExpr"
 
     def __add__(self, other) -> Union["BuildParenthetical", "BuildConditional"]:
@@ -455,7 +434,8 @@ class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs, BaseMo
         return arg_to_datatype(self.content)
 
 
-class BuildConditional(BuildConceptArgs, ConstantInlineable, BaseModel):
+@dataclass
+class BuildConditional(BuildConceptArgs, ConstantInlineable):
     left: Union[
         int,
         str,
@@ -583,7 +563,8 @@ class BuildConditional(BuildConceptArgs, ConstantInlineable, BaseModel):
         return chunks
 
 
-class BuildWhereClause(BuildConceptArgs, BaseModel):
+@dataclass
+class BuildWhereClause(BuildConceptArgs):
     conditional: Union[
         BuildSubselectComparison,
         BuildComparison,
@@ -619,7 +600,8 @@ class BuildHavingClause(BuildWhereClause):
     pass
 
 
-class BuildComparison(BuildConceptArgs, ConstantInlineable, BaseModel):
+@dataclass
+class BuildComparison(BuildConceptArgs, ConstantInlineable):
 
     left: Union[
         int,
@@ -749,6 +731,7 @@ class BuildComparison(BuildConceptArgs, ConstantInlineable, BaseModel):
         return output
 
 
+@dataclass
 class BuildSubselectComparison(BuildComparison):
     left: Union[
         int,
@@ -810,18 +793,18 @@ class BuildSubselectComparison(BuildComparison):
         return [tuple(get_concept_arguments(self.right))]
 
 
-class BuildConcept(Addressable, BuildConceptArgs, DataTyped, BaseModel):
+@dataclass
+class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
     model_config = ConfigDict(extra="forbid")
     name: str
-    datatype: DataType | ArrayType | StructType | MapType | NumericType
+    datatype: DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
     purpose: Purpose
     build_is_aggregate: bool
     derivation: Derivation = Derivation.ROOT
     granularity: Granularity = Granularity.MULTI_ROW
-    namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
-    metadata: Metadata = Field(
+    namespace: Optional[str] = field(default=DEFAULT_NAMESPACE)
+    metadata: Metadata = field(
         default_factory=lambda: Metadata(description=None, line_number=None),
-        validate_default=True,
     )
     lineage: Optional[
         Union[
@@ -835,21 +818,22 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped, BaseModel):
     ] = None
 
     keys: Optional[set[str]] = None
-    grain: BuildGrain = Field(default=None, validate_default=True)  # type: ignore
-    modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
-    pseudonyms: set[str] = Field(default_factory=set)
+    grain: BuildGrain = field(default=None)  # type: ignore
+    modifiers: List[Modifier] = field(default_factory=list)  # type: ignore
+    pseudonyms: set[str] = field(default_factory=set)
 
     @property
     def is_aggregate(self) -> bool:
         return self.build_is_aggregate
 
-    def duplicate(self) -> BuildConcept:
-        return self.model_copy(deep=True)
-
-    def __hash__(self):
+    @cached_property
+    def hash(self) -> int:
         return hash(
             f"{self.name}+{self.datatype}+ {self.purpose} + {str(self.lineage)} + {self.namespace} + {str(self.grain)} + {str(self.keys)}"
         )
+
+    def __hash__(self):
+        return self.hash
 
     def __repr__(self):
         base = f"{self.address}@{self.grain}"
@@ -903,7 +887,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped, BaseModel):
                     ]
                 )
             )
-        return self.__class__.model_construct(
+        return self.__class__(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
@@ -945,7 +929,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped, BaseModel):
                 grain = self.grain
         else:
             grain = self.grain  # type: ignore
-        return self.__class__.model_construct(
+        return self.__class__(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
@@ -1001,7 +985,8 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped, BaseModel):
         return self.lineage.concept_arguments if self.lineage else []
 
 
-class BuildOrderItem(DataTyped, BuildConceptArgs, BaseModel):
+@dataclass
+class BuildOrderItem(DataTyped, BuildConceptArgs):
     expr: BuildExpr
     order: Ordering
 
@@ -1032,11 +1017,12 @@ class BuildOrderItem(DataTyped, BuildConceptArgs, BaseModel):
         return arg_to_datatype(self.expr)
 
 
-class BuildWindowItem(DataTyped, BuildConceptArgs, BaseModel):
+@dataclass
+class BuildWindowItem(DataTyped, BuildConceptArgs):
     type: WindowType
     content: BuildConcept
     order_by: List[BuildOrderItem]
-    over: List["BuildConcept"] = Field(default_factory=list)
+    over: List["BuildConcept"] = field(default_factory=list)
     index: Optional[int] = None
 
     def __repr__(self) -> str:
@@ -1069,7 +1055,8 @@ class BuildWindowItem(DataTyped, BuildConceptArgs, BaseModel):
         return Purpose.PROPERTY
 
 
-class BuildCaseWhen(BuildConceptArgs, BaseModel):
+@dataclass
+class BuildCaseWhen(BuildConceptArgs):
     comparison: BuildConditional | BuildSubselectComparison | BuildComparison
     expr: "BuildExpr"
 
@@ -1090,30 +1077,18 @@ class BuildCaseWhen(BuildConceptArgs, BaseModel):
         )
 
 
-class BuildCaseElse(BuildConceptArgs, BaseModel):
+@dataclass
+class BuildCaseElse(BuildConceptArgs):
     expr: "BuildExpr"
-    # this ensures that it's easily differentiable from CaseWhen
-    discriminant: ComparisonOperator = ComparisonOperator.ELSE
 
     @property
     def concept_arguments(self):
         return get_concept_arguments(self.expr)
 
 
-class BuildFunction(DataTyped, BuildConceptArgs, BaseModel):
-    # class BuildFunction(Function):
+@dataclass
+class BuildFunction(DataTyped, BuildConceptArgs):
     operator: FunctionType
-    arg_count: int = Field(default=1)
-    output_datatype: (
-        DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
-    )
-    output_purpose: Purpose
-    valid_inputs: Optional[
-        Union[
-            Set[DataType],
-            List[Set[DataType]],
-        ]
-    ] = None
     arguments: Sequence[
         Union[
             int,
@@ -1139,6 +1114,17 @@ class BuildFunction(DataTyped, BuildConceptArgs, BaseModel):
             ListWrapper[Any],
         ]
     ]
+    output_data_type: (
+        DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
+    )
+    output_purpose: Purpose = field(default=Purpose.KEY)
+    arg_count: int = field(default=1)
+    valid_inputs: Optional[
+        Union[
+            Set[DataType],
+            List[Set[DataType]],
+        ]
+    ] = None
 
     def __repr__(self):
         return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
@@ -1148,7 +1134,11 @@ class BuildFunction(DataTyped, BuildConceptArgs, BaseModel):
 
     @property
     def datatype(self):
-        return self.output_datatype
+        return self.output_data_type
+
+    @property
+    def output_datatype(self):
+        return self.output_data_type
 
     @property
     def concept_arguments(self) -> List[BuildConcept]:
@@ -1161,17 +1151,18 @@ class BuildFunction(DataTyped, BuildConceptArgs, BaseModel):
     def output_grain(self):
         # aggregates have an abstract grain
         if self.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
-            return BuildGrain.model_construct(components=[])
+            return BuildGrain(components=[])
         # scalars have implicit grain of all arguments
         args = set()
         for input in self.concept_arguments:
             args += input.grain.components
-        return BuildGrain.model_construct(components=args)
+        return BuildGrain(components=args)
 
 
-class BuildAggregateWrapper(BuildConceptArgs, DataTyped, BaseModel):
+@dataclass
+class BuildAggregateWrapper(BuildConceptArgs, DataTyped):
     function: BuildFunction
-    by: List[BuildConcept] = Field(default_factory=list)
+    by: List[BuildConcept] = field(default_factory=list)
 
     def __str__(self):
         grain_str = [str(c) for c in self.by] if self.by else "abstract"
@@ -1194,7 +1185,8 @@ class BuildAggregateWrapper(BuildConceptArgs, DataTyped, BaseModel):
         return self.function.output_purpose
 
 
-class BuildFilterItem(BuildConceptArgs, BaseModel):
+@dataclass
+class BuildFilterItem(BuildConceptArgs):
     content: "BuildExpr"
     where: BuildWhereClause
 
@@ -1226,13 +1218,15 @@ class BuildFilterItem(BuildConceptArgs, BaseModel):
         return self.where.concept_arguments
 
 
-class BuildRowsetLineage(BuildConceptArgs, BaseModel):
+@dataclass
+class BuildRowsetLineage(BuildConceptArgs):
     name: str
     derived_concepts: List[str]
     select: SelectLineage | MultiSelectLineage
 
 
-class BuildRowsetItem(DataTyped, BuildConceptArgs, BaseModel):
+@dataclass
+class BuildRowsetItem(DataTyped, BuildConceptArgs):
     content: BuildConcept
     rowset: BuildRowsetLineage
 
@@ -1259,7 +1253,8 @@ class BuildRowsetItem(DataTyped, BuildConceptArgs, BaseModel):
         return [self.content]
 
 
-class BuildOrderBy(BaseModel):
+@dataclass
+class BuildOrderBy:
     items: List[BuildOrderItem]
 
     @property
@@ -1267,39 +1262,42 @@ class BuildOrderBy(BaseModel):
         return [x.expr for x in self.items]
 
 
-class BuildAlignClause(BaseModel):
+@dataclass
+class BuildAlignClause:
     items: List[BuildAlignItem]
 
 
-class BuildSelectLineage(BaseModel):
+@dataclass
+class BuildSelectLineage:
     selection: List[BuildConcept]
     hidden_components: set[str]
     local_concepts: dict[str, BuildConcept]
     order_by: Optional[BuildOrderBy] = None
     limit: Optional[int] = None
-    meta: Metadata = Field(default_factory=lambda: Metadata())
-    grain: BuildGrain = Field(default_factory=BuildGrain)
-    where_clause: BuildWhereClause | None = Field(default=None)
-    having_clause: BuildHavingClause | None = Field(default=None)
+    meta: Metadata = field(default_factory=lambda: Metadata())
+    grain: BuildGrain = field(default_factory=BuildGrain)
+    where_clause: BuildWhereClause | None = field(default=None)
+    having_clause: BuildHavingClause | None = field(default=None)
 
     @property
     def output_components(self) -> List[BuildConcept]:
         return self.selection
 
 
-class BuildMultiSelectLineage(BuildConceptArgs, BaseModel):
+@dataclass
+class BuildMultiSelectLineage(BuildConceptArgs):
     selects: List[SelectLineage]
     grain: BuildGrain
     align: BuildAlignClause
     namespace: str
-    order_by: Optional[BuildOrderBy] = None
-    limit: Optional[int] = None
-    where_clause: Union["BuildWhereClause", None] = Field(default=None)
-    having_clause: Union["BuildHavingClause", None] = Field(default=None)
     local_concepts: dict[str, BuildConcept]
     build_concept_arguments: list[BuildConcept]
     build_output_components: list[BuildConcept]
     hidden_components: set[str]
+    order_by: Optional[BuildOrderBy] = None
+    limit: Optional[int] = None
+    where_clause: Union["BuildWhereClause", None] = field(default=None)
+    having_clause: Union["BuildHavingClause", None] = field(default=None)
 
     @property
     def derived_concepts(self) -> set[str]:
@@ -1341,12 +1339,12 @@ class BuildMultiSelectLineage(BuildConceptArgs, BaseModel):
         )
 
 
-class BuildAlignItem(BaseModel):
+@dataclass
+class BuildAlignItem:
     alias: str
     concepts: List[BuildConcept]
-    namespace: str = Field(default=DEFAULT_NAMESPACE, validate_default=True)
+    namespace: str = field(default=DEFAULT_NAMESPACE)
 
-    @computed_field  # type: ignore
     @cached_property
     def concepts_lcl(self) -> LooseBuildConceptList:
         return LooseBuildConceptList(concepts=self.concepts)
@@ -1356,10 +1354,11 @@ class BuildAlignItem(BaseModel):
         return f"{self.namespace}.{self.alias}"
 
 
-class BuildColumnAssignment(BaseModel):
-    alias: str | RawColumnExpr | BuildFunction
+@dataclass
+class BuildColumnAssignment:
+    alias: str | RawColumnExpr | BuildFunction | BuildAggregateWrapper
     concept: BuildConcept
-    modifiers: List[Modifier] = Field(default_factory=list)
+    modifiers: List[Modifier] = field(default_factory=list)
 
     @property
     def is_complete(self) -> bool:
@@ -1370,15 +1369,16 @@ class BuildColumnAssignment(BaseModel):
         return Modifier.NULLABLE in self.modifiers
 
 
-class BuildDatasource(BaseModel):
+@dataclass
+class BuildDatasource:
     name: str
     columns: List[BuildColumnAssignment]
     address: Union[Address, str]
-    grain: BuildGrain = Field(
-        default_factory=lambda: BuildGrain(components=set()), validate_default=True
+    grain: BuildGrain = field(
+        default_factory=lambda: BuildGrain(components=set()),
     )
-    namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
-    metadata: DatasourceMetadata = Field(
+    namespace: Optional[str] = field(default=DEFAULT_NAMESPACE)
+    metadata: DatasourceMetadata = field(
         default_factory=lambda: DatasourceMetadata(freshness_concept=None)
     )
     where: Optional[BuildWhereClause] = None
@@ -1447,7 +1447,7 @@ class BuildDatasource(BaseModel):
         concept: BuildConcept,
         use_raw_name: bool = True,
         force_alias: bool = False,
-    ) -> Optional[str | RawColumnExpr] | BuildFunction:
+    ) -> Optional[str | RawColumnExpr] | BuildFunction | BuildAggregateWrapper:
         # 2022-01-22
         # this logic needs to be refined.
         # if concept.lineage:
@@ -1490,8 +1490,6 @@ BuildExpr = (
     | float
     | list
 )
-
-BuildConcept.model_rebuild()
 
 
 def get_canonical_pseudonyms(environment: Environment) -> dict[str, set[str]]:
@@ -1655,22 +1653,22 @@ class Factory:
                     )
                 )
 
-                return BuildFunction.model_construct(
+                return BuildFunction(
                     operator=base.operator,
                     arguments=[
                         rval,
                         *[self.handle_constant(self.build(c)) for c in raw_args[1:]],
                     ],
-                    output_datatype=base.output_datatype,
+                    output_data_type=base.output_datatype,
                     output_purpose=base.output_purpose,
                     valid_inputs=base.valid_inputs,
                     arg_count=base.arg_count,
                 )
 
-        new = BuildFunction.model_construct(
+        new = BuildFunction(
             operator=base.operator,
             arguments=[self.handle_constant(self.build(c)) for c in raw_args],
-            output_datatype=base.output_datatype,
+            output_data_type=base.output_datatype,
             output_purpose=base.output_purpose,
             valid_inputs=base.valid_inputs,
             arg_count=base.arg_count,
@@ -1702,7 +1700,7 @@ class Factory:
         validation = requires_concept_nesting(expr)
         if validation:
             expr, _ = self.instantiate_concept(validation)
-        return BuildCaseWhen.model_construct(
+        return BuildCaseWhen(
             comparison=self.build(comparison),
             expr=self.build(expr),
         )
@@ -1716,7 +1714,7 @@ class Factory:
         validation = requires_concept_nesting(expr)
         if validation:
             expr, _ = self.instantiate_concept(validation)
-        return BuildCaseElse.model_construct(expr=self.build(expr))
+        return BuildCaseElse(expr=self.build(expr))
 
     @build.register
     def _(self, base: Concept) -> BuildConcept:
@@ -1751,7 +1749,7 @@ class Factory:
                 for x in self.pseudonym_map.get(base.address, set())
                 if x != base.address
             }
-        rval = BuildConcept.model_construct(
+        rval = BuildConcept(
             name=base.name,
             datatype=base.datatype,
             purpose=base.purpose,
@@ -1777,13 +1775,14 @@ class Factory:
     def _build_aggregate_wrapper(self, base: AggregateWrapper) -> BuildAggregateWrapper:
         if not base.by:
             by = [
-                self.build(self.environment.concepts[c]) for c in self.grain.components
+                self._build_concept(self.environment.concepts[c])
+                for c in self.grain.components
             ]
         else:
             by = [self.build(x) for x in base.by]
 
-        parent = self.build(base.function)
-        return BuildAggregateWrapper.model_construct(function=parent, by=by)
+        parent: BuildFunction = self._build_function(base.function)  # type: ignore
+        return BuildAggregateWrapper(function=parent, by=by)
 
     @build.register
     def _(self, base: ColumnAssignment) -> BuildColumnAssignment:
@@ -1801,7 +1800,7 @@ class Factory:
             )
         )
 
-        return BuildColumnAssignment.model_construct(
+        return BuildColumnAssignment(
             alias=(
                 self._build_function(base.alias)
                 if isinstance(base.alias, Function)
@@ -1816,7 +1815,7 @@ class Factory:
         return self._build_order_by(base)
 
     def _build_order_by(self, base: OrderBy) -> BuildOrderBy:
-        return BuildOrderBy.model_construct(items=[self.build(x) for x in base.items])
+        return BuildOrderBy(items=[self._build_order_item(x) for x in base.items])
 
     @build.register
     def _(self, base: FunctionCallWrapper) -> BuildExpr:
@@ -1838,7 +1837,7 @@ class Factory:
             bexpr, _ = self.instantiate_concept(validation)
         else:
             bexpr = base.expr
-        return BuildOrderItem.model_construct(
+        return BuildOrderItem(
             expr=(self.build(bexpr)),
             order=base.order,
         )
@@ -1848,18 +1847,14 @@ class Factory:
         return self._build_where_clause(base)
 
     def _build_where_clause(self, base: WhereClause) -> BuildWhereClause:
-        return BuildWhereClause.model_construct(
-            conditional=self.build(base.conditional)
-        )
+        return BuildWhereClause(conditional=self.build(base.conditional))
 
     @build.register
     def _(self, base: HavingClause) -> BuildHavingClause:
         return self._build_having_clause(base)
 
     def _build_having_clause(self, base: HavingClause) -> BuildHavingClause:
-        return BuildHavingClause.model_construct(
-            conditional=self.build(base.conditional)
-        )
+        return BuildHavingClause(conditional=self.build(base.conditional))
 
     @build.register
     def _(self, base: WindowItem) -> BuildWindowItem:
@@ -1879,11 +1874,11 @@ class Factory:
             ):
                 x.expr.by = [content]
             final_by.append(x)
-        return BuildWindowItem.model_construct(
+        return BuildWindowItem(
             type=base.type,
             content=self.build(content),
             order_by=[self.build(x) for x in final_by],
-            over=[self.build(x) for x in base.over],
+            over=[self._build_concept_ref(x) for x in base.over],
             index=base.index,
         )
 
@@ -1892,7 +1887,7 @@ class Factory:
         return self._build_conditional(base)
 
     def _build_conditional(self, base: Conditional) -> BuildConditional:
-        return BuildConditional.model_construct(
+        return BuildConditional(
             left=self.handle_constant(self.build(base.left)),
             right=self.handle_constant(self.build(base.right)),
             operator=base.operator,
@@ -1910,7 +1905,7 @@ class Factory:
         if isinstance(base.right, (AggregateWrapper, WindowItem, FilterItem, Function)):
             right_c, _ = self.instantiate_concept(base.right)
             right = right_c
-        return BuildSubselectComparison.model_construct(
+        return BuildSubselectComparison(
             left=self.handle_constant(self.build(base.left)),
             right=self.handle_constant(self.build(right)),
             operator=base.operator,
@@ -1931,7 +1926,7 @@ class Factory:
         if validation:
             right_c, _ = self.instantiate_concept(validation)
             right = right_c  # type: ignore
-        return BuildComparison.model_construct(
+        return BuildComparison(
             left=self.handle_constant(self.build(left)),
             right=self.handle_constant(self.build(right)),
             operator=base.operator,
@@ -1942,9 +1937,9 @@ class Factory:
         return self._build_align_item(base)
 
     def _build_align_item(self, base: AlignItem) -> BuildAlignItem:
-        return BuildAlignItem.model_construct(
+        return BuildAlignItem(
             alias=base.alias,
-            concepts=[self.build(x) for x in base.concepts],
+            concepts=[self._build_concept_ref(x) for x in base.concepts],
             namespace=base.namespace,
         )
 
@@ -1953,9 +1948,7 @@ class Factory:
         return self._build_align_clause(base)
 
     def _build_align_clause(self, base: AlignClause) -> BuildAlignClause:
-        return BuildAlignClause.model_construct(
-            items=[self.build(x) for x in base.items]
-        )
+        return BuildAlignClause(items=[self._build_align_item(x) for x in base.items])
 
     @build.register
     def _(self, base: RowsetItem) -> BuildRowsetItem:
@@ -1994,12 +1987,10 @@ class Factory:
             factory = Factory(
                 environment=self.environment, pseudonym_map=self.pseudonym_map
             )
-            where = factory.build(base.where_clause)
+            where = factory._build_where_clause(base.where_clause)
         else:
             where = None
-        return BuildGrain.model_construct(
-            components=base.components, where_clause=where
-        )
+        return BuildGrain(components=base.components, where_clause=where)
 
     @build.register
     def _(self, base: TupleWrapper) -> TupleWrapper:
@@ -2017,10 +2008,8 @@ class Factory:
             base.content, (Function, AggregateWrapper, WindowItem, FilterItem)
         ):
             _, built = self.instantiate_concept(base.content)
-            return BuildFilterItem.model_construct(
-                content=built, where=self.build(base.where)
-            )
-        return BuildFilterItem.model_construct(
+            return BuildFilterItem(content=built, where=self.build(base.where))
+        return BuildFilterItem(
             content=self.build(base.content), where=self.build(base.where)
         )
 
@@ -2029,7 +2018,7 @@ class Factory:
         return self._build_parenthetical(base)
 
     def _build_parenthetical(self, base: Parenthetical) -> BuildParenthetical:
-        return BuildParenthetical.model_construct(content=(self.build(base.content)))
+        return BuildParenthetical(content=(self.build(base.content)))
 
     @build.register
     def _(self, base: SelectLineage) -> BuildSelectLineage:
@@ -2117,7 +2106,7 @@ class Factory:
         derived_base = []
         for k in base.derived_concepts:
             base_concept = self.environment.concepts[k]
-            x = BuildConcept.model_construct(
+            x = BuildConcept(
                 name=base_concept.name,
                 datatype=base_concept.datatype,
                 purpose=base_concept.purpose,
@@ -2145,7 +2134,7 @@ class Factory:
         where_factory = Factory(
             environment=self.environment, pseudonym_map=self.pseudonym_map
         )
-        lineage = BuildMultiSelectLineage.model_construct(
+        lineage = BuildMultiSelectLineage(
             # we don't build selects here; they'll be built automatically in query discovery
             selects=base.selects,
             grain=final_grain,
@@ -2253,7 +2242,7 @@ class Factory:
             local_concepts=local_cache,
             pseudonym_map=self.pseudonym_map,
         )
-        return BuildDatasource.model_construct(
+        return BuildDatasource(
             name=base.name,
             columns=[factory._build_column_assignment(c) for c in base.columns],
             address=base.address,
