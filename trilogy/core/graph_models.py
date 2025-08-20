@@ -10,27 +10,26 @@ def get_graph_exact_match(
         nx.get_node_attributes(g, "datasource")
     )
     exact: set[str] = set()
-    for node in g.nodes:
-        if node in datasources:
-            ds = datasources[node]
-            if isinstance(ds, list):
-                exact.add(node)
-                continue
+    for node, ds in datasources.items():
+        ds = datasources[node]
+        if isinstance(ds, list):
+            exact.add(node)
+            continue
 
-            if not conditions and not ds.non_partial_for:
+        if not conditions and not ds.non_partial_for:
+            exact.add(node)
+            continue
+        elif not conditions and accept_partial and ds.non_partial_for:
+            exact.add(node)
+            continue
+        elif conditions:
+            if not ds.non_partial_for:
+                continue
+            if ds.non_partial_for and conditions == ds.non_partial_for:
                 exact.add(node)
                 continue
-            elif not conditions and accept_partial and ds.non_partial_for:
-                exact.add(node)
-                continue
-            elif conditions:
-                if not ds.non_partial_for:
-                    continue
-                if ds.non_partial_for and conditions == ds.non_partial_for:
-                    exact.add(node)
-                    continue
-            else:
-                continue
+        else:
+            continue
 
     return exact
 

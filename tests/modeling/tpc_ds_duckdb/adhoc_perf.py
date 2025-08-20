@@ -620,12 +620,27 @@ def main():
 if __name__ == "__main__":
     main()
 
+#  Ordered by: internal time
+#    List reduced from 1444 to 20 due to restriction <20>
 
-## SCRATCHPAD
 #    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-#   1067100    8.911    0.000   15.924    0.000 C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pydantic\main.py:306(model_construct)
-#      2325    4.669    0.002    5.915    0.003 C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\classes\digraph.py:489(add_nodes_from)
-# 18117675/18116475    3.371    0.000    7.135    0.000 {built-in method builtins.isinstance}
-#      2325    3.161    0.001    5.765    0.002 C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\classes\digraph.py:737(add_edges_from)
-#       525    2.425    0.005   28.664    0.055 c:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\node_generators\select_merge_node.py:181(create_pruned_concept_graph)
-#    409975    2.325    0.000    3.780    0.000 C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pydantic\_internal\_model_construction.py:336(init_private_attributes)
+# 823352/823301    0.561    0.000    1.154    0.000 {built-in method builtins.isinstance}
+#        93    0.524    0.006    0.740    0.008 C:\Users\ethan\coding_projects\pypreql\.venv\Lib\site-packages\networkx\classes\digraph.py:471(add_nodes_from)
+#        93    0.478    0.005    0.883    0.009 C:\Users\ethan\coding_projects\pypreql\.venv\Lib\site-packages\networkx\classes\digraph.py:719(add_edges_from)
+#        21    0.332    0.016    4.051    0.193 c:\Users\ethan\coding_projects\pypreql\trilogy\core\processing\node_generators\select_merge_node.py:113(create_pruned_concept_graph)
+#     14524    0.319    0.000    0.584    0.000 C:\Users\ethan\coding_projects\pypreql\.venv\Lib\site-packages\pydantic\main.py:279(model_construct)
+#    547202    0.299    0.000    0.299    0.000 {method 'get' of 'dict' objects}
+# 8982/8517    0.289    0.000    1.393    0.000 c:\Users\ethan\coding_projects\pypreql\trilogy\core\models\build.py:1723(_build_concept)
+#    437005    0.287    0.000    0.287    0.000 {method 'update' of 'dict' objects}
+#      8173    0.273    0.000    0.386    0.000 C:\Users\ethan\coding_projects\pypreql\.venv\Lib\site-packages\lark\parse_tree_builder.py:33(__call__)
+#    127821    0.263    0.000    0.822    0.000 C:\Users\ethan\coding_projects\pypreql\.venv\Lib\site-packages\networkx\classes\graph.py:1648(<genexpr>)
+#    283284    0.259    0.000    0.840    0.000 <frozen _collections_abc>:892(__iter__)
+#        57    0.226    0.004    0.916    0.016 C:\Users\ethan\coding_projects\pypreql\.venv\Lib\site-packages\networkx\classes\graph.py:968(add_edges_from)
+# 48555/601    0.213    0.000    0.551    0.001 C:\Program Files\Python312\Lib\copy.py:118(deepcopy)
+#     22599    0.212    0.000    0.245    0.000 C:\Users\ethan\coding_projects\pypreql\.venv\Lib\site-packages\networkx\classes\coreviews.py:139(__iter__)
+#        69    0.207    0.003    0.826    0.012 C:\Users\ethan\coding_projects\pypreql\.venv\Lib\site-packages\networkx\classes\graph.py:566(add_nodes_from)
+#    187272    0.200    0.000    0.350    0.000 C:\Users\ethan\coding_projects\pypreql\.venv\Lib\site-packages\pydantic\_internal\_model_construction.py:326(__instancecheck__)
+# 245914/224698    0.183    0.000    0.270    0.000 {built-in method builtins.getattr}
+#    122127    0.181    0.000    0.687    0.000 c:\Users\ethan\coding_projects\pypreql\trilogy\core\models\build.py:846(__eq__)
+#    290598    0.172    0.000    0.172    0.000 {method 'copy' of 'dict' objects}
+#    192528    0.169    0.000    0.242    0.000 C:\Users\ethan\coding_projects\pypreql\.venv\Lib\site-packages\networkx\classes\reportviews.py:188(__getitem__)

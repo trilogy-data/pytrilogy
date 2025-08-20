@@ -85,29 +85,26 @@ def get_graph_grains(g: nx.DiGraph) -> dict[str, list[str]]:
 def subgraph_is_complete(
     nodes: list[str], targets: set[str], mapping: dict[str, str], g: nx.DiGraph
 ) -> bool:
-    mapped = set([mapping.get(n, n) for n in nodes])
-    passed = all([t in mapped for t in targets])
-    if not passed:
+    # Check if all targets are present in mapped nodes
+    mapped = {mapping.get(n, n) for n in nodes}
+    if not targets.issubset(mapped):
         # logger.info(
         #     f"Subgraph {nodes} is not complete, missing targets {targets} - mapped {mapped}"
         # )
         return False
-    # check if all concepts have a datasource edge
-    has_ds_edge = {
-        mapping.get(n, n): any(x.startswith("ds~") for x in nx.neighbors(g, n))
-        for n in nodes
-        if n.startswith("c~")
-    }
-    has_ds_edge = {k: False for k in targets}
-    # check at least one instance of concept has a datasource edge
-    for n in nodes:
-        if n.startswith("c~"):
-            neighbors = nx.neighbors(g, n)
-            for neighbor in neighbors:
-                if neighbor.startswith("ds~"):
-                    has_ds_edge[mapping.get(n, n)] = True
-                    break
-    return all(has_ds_edge.values()) and passed
+    
+    # Check if at least one concept node has a datasource edge
+    has_ds_edge = {target: False for target in targets}
+    
+    for node in nodes:
+        if node.startswith("c~"):
+            mapped_node = mapping.get(node, node)
+            if mapped_node in targets and not has_ds_edge[mapped_node]:
+                # Only check neighbors if we haven't found a ds edge for this mapped node yet
+                if any(neighbor.startswith("ds~") for neighbor in nx.neighbors(g, node)):
+                    has_ds_edge[mapped_node] = True
+    
+    return all(has_ds_edge.values())
 
 
 def create_pruned_concept_graph(
@@ -133,8 +130,9 @@ def create_pruned_concept_graph(
         )
         g.add_node(node_address, datasource=ds_list)
         for c in common:
-            g.add_edge(node_address, concept_to_node(c))
-            g.add_edge(concept_to_node(c), node_address)
+            cnode = concept_to_node(c)
+            g.add_edge(node_address, cnode)
+            g.add_edge(cnode, node_address)
     prune_sources_for_conditions(g, accept_partial, conditions)
     target_addresses = set([c.address for c in all_concepts])
     concepts: dict[str, BuildConcept] = nx.get_node_attributes(orig_g, "concept")
@@ -173,8 +171,9 @@ def create_pruned_concept_graph(
     for n in g.nodes():
         if not n.startswith("ds~"):
             continue
+        local_neighbors = list(nx.all_neighbors(g, n))
         actual_neighbors = [
-            x for x in relevant_concepts if x in (nx.all_neighbors(g, n))
+            x for x in relevant_concepts if x in local_neighbors
         ]
         if actual_neighbors:
             relevent_datasets.append(n)
@@ -182,18 +181,13 @@ def create_pruned_concept_graph(
     # for injecting extra join concepts that are shared between datasets
     # use the original graph, pre-partial pruning
     for n in orig_g.nodes:
-        # readd ignoring grain
+        # readd concepts related to our relevant datasets,  ignoring grain
         # we want to join inclusive of all concepts
-        roots: dict[str, set[str]] = {}
         if n.startswith("c~") and n not in relevant_concepts:
-            root = n.split("@")[0]
-            neighbors = roots.get(root, set())
             for neighbor in nx.all_neighbors(orig_g, n):
                 if neighbor in relevent_datasets:
-                    neighbors.add(neighbor)
-            if len(neighbors) > 1:
-                relevant_concepts.append(n)
-            roots[root] = set()
+                    relevant_concepts.append(n)
+                    break
 
     g.remove_nodes_from(
         [
@@ -581,6 +575,7 @@ def gen_select_merge_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} searching for root source graph for concepts {[c.address for c in all_concepts]} and conditions {conditions}"
     )
+    pruned_concept_graph = None
     for attempt in attempts:
         pruned_concept_graph = create_pruned_concept_graph(
             g,

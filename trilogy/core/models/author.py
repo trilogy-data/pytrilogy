@@ -1670,14 +1670,6 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     def datatype(self):
         return self.output_datatype
 
-    @field_validator("output_datatype")
-    @classmethod
-    def parse_output_datatype(cls, v, info: ValidationInfo):
-        values = info.data
-        if values.get("operator") == FunctionType.ATTR_ACCESS:
-            if isinstance(v, StructType):
-                raise SyntaxError
-        return v
 
     @field_validator("arguments", mode="before")
     @classmethod
@@ -1844,17 +1836,6 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         for arg in self.arguments:
             base += get_concept_arguments(arg)
         return base
-
-    @property
-    def output_grain(self):
-        # aggregates have an abstract grain
-        base_grain = Grain(components=[])
-        if self.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
-            return base_grain
-        # scalars have implicit grain of all arguments
-        for input in self.concept_arguments:
-            base_grain += input.grain
-        return base_grain
 
 
 class FunctionCallWrapper(
