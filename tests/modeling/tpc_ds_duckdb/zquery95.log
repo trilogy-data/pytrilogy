@@ -1,5 +1,5 @@
 query_id = 95
-gen_length = 5761
+gen_length = 5777
 generated_sql = """
 
 WITH 
@@ -50,7 +50,7 @@ FROM
     \"abundant\"
 GROUP BY 
     \"abundant\".\"multi_warehouse_order\"),
-cheerful as (
+thoughtful as (
 SELECT
     \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" as \"web_sales_order_number\",
     \"web_sales_web_sales\".\"WS_SHIP_ADDR_SK\" as \"web_sales_ship_address_id\",
@@ -82,14 +82,14 @@ WHERE
 ),
 concerned as (
 SELECT
-    \"cheerful\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
 FROM
-    \"cheerful\"
-    INNER JOIN \"memory\".\"web_site\" as \"web_sales_web_site_web_site\" on \"cheerful\".\"web_sales_web_site_id\" = \"web_sales_web_site_web_site\".\"web_site_sk\"
-    INNER JOIN \"memory\".\"date_dim\" as \"web_sales_ship_date_date\" on \"cheerful\".\"web_sales_ship_date_id\" = \"web_sales_ship_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"web_sales_ship_address_customer_address\" on \"cheerful\".\"web_sales_ship_address_id\" = \"web_sales_ship_address_customer_address\".\"CA_ADDRESS_SK\"
+    \"thoughtful\"
+    INNER JOIN \"memory\".\"web_site\" as \"web_sales_web_site_web_site\" on \"thoughtful\".\"web_sales_web_site_id\" = \"web_sales_web_site_web_site\".\"web_site_sk\"
+    INNER JOIN \"memory\".\"date_dim\" as \"web_sales_ship_date_date\" on \"thoughtful\".\"web_sales_ship_date_id\" = \"web_sales_ship_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"web_sales_ship_address_customer_address\" on \"thoughtful\".\"web_sales_ship_address_id\" = \"web_sales_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) >= date '1999-02-01' and cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) <= date '1999-04-02' and \"web_sales_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"web_sales_web_site_web_site\".\"web_company_name\" = 'pri' and \"cheerful\".\"web_sales_order_number\" in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null) and \"cheerful\".\"web_sales_order_number\" in (select vacuous.\"returned_orders\" from vacuous where vacuous.\"returned_orders\" is not null)
+    cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) >= date '1999-02-01' and cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) <= date '1999-04-02' and \"web_sales_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"web_sales_web_site_web_site\".\"web_company_name\" = 'pri' and \"thoughtful\".\"web_sales_order_number\" in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null) and \"thoughtful\".\"web_sales_order_number\" in (select vacuous.\"returned_orders\" from vacuous where vacuous.\"returned_orders\" is not null)
 ),
 sweltering as (
 SELECT

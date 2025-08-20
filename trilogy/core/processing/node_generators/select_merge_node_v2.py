@@ -1,5 +1,5 @@
-from functools import reduce, lru_cache
-from typing import TYPE_CHECKING, List, Optional, Dict, Set, Tuple
+from functools import lru_cache
+from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
 import networkx as nx
 

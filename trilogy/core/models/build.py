@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC
 from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from functools import cached_property, singledispatchmethod
 from typing import (
@@ -19,7 +20,6 @@ from typing import (
 
 from pydantic import (
     ConfigDict,
-    Field,
 )
 
 from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
@@ -89,7 +89,6 @@ from trilogy.core.models.datasource import (
     RawColumnExpr,
 )
 from trilogy.core.models.environment import Environment
-from dataclasses import dataclass, field
 
 # TODO: refactor to avoid these
 if TYPE_CHECKING:

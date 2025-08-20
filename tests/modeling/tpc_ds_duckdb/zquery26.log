@@ -1,17 +1,17 @@
 query_id = 26
-gen_length = 1872
+gen_length = 1868
 generated_sql = """
 
 WITH 
 cooperative as (
 SELECT
     \"cs_catalog_sales\".\"CS_COUPON_AMT\" as \"cs_coupon_amt\",
-    \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_item_id\",
     \"cs_catalog_sales\".\"CS_LIST_PRICE\" as \"cs_list_price\",
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     \"cs_catalog_sales\".\"CS_QUANTITY\" as \"cs_quantity\",
     \"cs_catalog_sales\".\"CS_SALES_PRICE\" as \"cs_sales_price\",
-    \"cs_item_items\".\"I_ITEM_ID\" as \"cs_item_name\"
+    \"cs_item_items\".\"I_ITEM_ID\" as \"cs_item_name\",
+    \"cs_item_items\".\"I_ITEM_SK\" as \"cs_item_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_date_date\".\"D_DATE_SK\"

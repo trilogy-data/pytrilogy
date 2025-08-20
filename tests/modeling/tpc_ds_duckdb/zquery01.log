@@ -1,9 +1,9 @@
 query_id = 1
-gen_length = 4160
+gen_length = 4181
 generated_sql = """
 
 WITH 
-wakeful as (
+thoughtful as (
 SELECT
     \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
     \"returns_store_returns\".\"SR_RETURNED_DATE_SK\" as \"returns_return_date_id\",
@@ -32,12 +32,12 @@ cooperative as (
 SELECT
     \"returns_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
     \"returns_customer_customers\".\"C_CUSTOMER_SK\" as \"returns_customer_id\",
-    \"wakeful\".\"returns_store_id\" as \"returns_store_id\"
+    \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_id\"
 FROM
-    \"wakeful\"
-    INNER JOIN \"memory\".\"store\" as \"returns_store_store\" on \"wakeful\".\"returns_store_id\" = \"returns_store_store\".\"S_STORE_SK\"
-    INNER JOIN \"memory\".\"customer\" as \"returns_customer_customers\" on \"wakeful\".\"returns_customer_id\" = \"returns_customer_customers\".\"C_CUSTOMER_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"returns_return_date_date\" on \"wakeful\".\"returns_return_date_id\" = \"returns_return_date_date\".\"D_DATE_SK\"
+    \"thoughtful\"
+    INNER JOIN \"memory\".\"store\" as \"returns_store_store\" on \"thoughtful\".\"returns_store_id\" = \"returns_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"returns_customer_customers\" on \"thoughtful\".\"returns_customer_id\" = \"returns_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"returns_return_date_date\" on \"thoughtful\".\"returns_return_date_id\" = \"returns_return_date_date\".\"D_DATE_SK\"
 WHERE
     \"returns_store_store\".\"S_STATE\" = 'TN' and cast(\"returns_return_date_date\".\"D_YEAR\" as int) = 2000
 ),
