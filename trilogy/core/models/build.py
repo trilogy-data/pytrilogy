@@ -826,7 +826,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
     @property
     def is_aggregate(self) -> bool:
         return self.build_is_aggregate
-    
+
     @cached_property
     def hash(self) -> int:
         return hash(
@@ -1776,7 +1776,8 @@ class Factory:
     def _build_aggregate_wrapper(self, base: AggregateWrapper) -> BuildAggregateWrapper:
         if not base.by:
             by = [
-                self._build_concept(self.environment.concepts[c]) for c in self.grain.components
+                self._build_concept(self.environment.concepts[c])
+                for c in self.grain.components
             ]
         else:
             by = [self.build(x) for x in base.by]

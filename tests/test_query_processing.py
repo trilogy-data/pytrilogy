@@ -135,7 +135,7 @@ def test_basic_aggregate(test_environment: Environment, test_environment_graph):
     )
     datasource = datasource.resolve()
     assert isinstance(datasource, QueryDatasource)
-    assert datasource.grain == BuildGrain(components=[product])
+    assert datasource.grain == BuildGrain(components={product.address})
 
 
 def test_join_aggregate(test_environment: Environment, test_environment_graph):

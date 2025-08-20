@@ -67,7 +67,7 @@ def gen_group_node(
         and len(concept.grain.components) > 0
         and not concept.grain.abstract
     ):
-        
+
         parent_concepts += grain_components
         build_grain_parents = get_aggregate_grain(concept, environment)
         output_concepts += grain_components
