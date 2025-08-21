@@ -619,13 +619,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-## SCRATCHPAD
-#    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-#   1067100    8.911    0.000   15.924    0.000 C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pydantic\main.py:306(model_construct)
-#      2325    4.669    0.002    5.915    0.003 C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\classes\digraph.py:489(add_nodes_from)
-# 18117675/18116475    3.371    0.000    7.135    0.000 {built-in method builtins.isinstance}
-#      2325    3.161    0.001    5.765    0.002 C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\networkx\classes\digraph.py:737(add_edges_from)
-#       525    2.425    0.005   28.664    0.055 c:\Users\ethan\coding_projects\pytrilogy\trilogy\core\processing\node_generators\select_merge_node.py:181(create_pruned_concept_graph)
-#    409975    2.325    0.000    3.780    0.000 C:\Users\ethan\coding_projects\pytrilogy\.venv\Lib\site-packages\pydantic\_internal\_model_construction.py:336(init_private_attributes)

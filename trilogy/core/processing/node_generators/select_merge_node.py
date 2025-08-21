@@ -6,6 +6,7 @@ import networkx as nx
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.graph_models import (
+    ReferenceGraph,
     concept_to_node,
     get_graph_exact_match,
     prune_sources_for_conditions,
@@ -41,77 +42,68 @@ def extract_address(node: str):
 
 
 def get_graph_partial_nodes(
-    g: nx.DiGraph, conditions: BuildWhereClause | None
+    g: ReferenceGraph, conditions: BuildWhereClause | None
 ) -> dict[str, list[str]]:
-    datasources: dict[str, BuildDatasource | list[BuildDatasource]] = (
-        nx.get_node_attributes(g, "datasource")
-    )
     partial: dict[str, list[str]] = {}
-    for node in g.nodes:
-        if node in datasources:
-            ds = datasources[node]
-            if not isinstance(ds, list):
+    for node, ds in g.datasources.items():
 
-                if ds.non_partial_for and conditions == ds.non_partial_for:
-                    partial[node] = []
-                    continue
-                partial[node] = [concept_to_node(c) for c in ds.partial_concepts]
-                ds = [ds]
-            # assume union sources have no partial
-            else:
+        if not isinstance(ds, list):
+
+            if ds.non_partial_for and conditions == ds.non_partial_for:
                 partial[node] = []
-
+                continue
+            partial[node] = [concept_to_node(c) for c in ds.partial_concepts]
+        # assume union sources have no partial
+        else:
+            partial[node] = []
     return partial
 
 
-def get_graph_grains(g: nx.DiGraph) -> dict[str, list[str]]:
-    datasources: dict[str, BuildDatasource | list[BuildDatasource]] = (
-        nx.get_node_attributes(g, "datasource")
-    )
+def get_graph_grains(g: ReferenceGraph) -> dict[str, list[str]]:
     grain_length: dict[str, list[str]] = {}
-    for node in g.nodes:
-        if node in datasources:
-            base: set[str] = set()
-            lookup = datasources[node]
-            if not isinstance(lookup, list):
-                lookup = [lookup]
-            assert isinstance(lookup, list)
-            grain_length[node] = reduce(
-                lambda x, y: x.union(y.grain.components), lookup, base  # type: ignore
-            )
+    for node, lookup in g.datasources.items():
+
+        base: set[str] = set()
+        if not isinstance(lookup, list):
+            flookup = [lookup]
+        else:
+            flookup = lookup
+        assert isinstance(flookup, list)
+        grain_length[node] = reduce(
+            lambda x, y: x.union(y.grain.components), flookup, base  # type: ignore
+        )
     return grain_length
 
 
 def subgraph_is_complete(
     nodes: list[str], targets: set[str], mapping: dict[str, str], g: nx.DiGraph
 ) -> bool:
-    mapped = set([mapping.get(n, n) for n in nodes])
-    passed = all([t in mapped for t in targets])
-    if not passed:
+    # Check if all targets are present in mapped nodes
+    mapped = {mapping.get(n, n) for n in nodes}
+    if not targets.issubset(mapped):
         # logger.info(
         #     f"Subgraph {nodes} is not complete, missing targets {targets} - mapped {mapped}"
         # )
         return False
-    # check if all concepts have a datasource edge
-    has_ds_edge = {
-        mapping.get(n, n): any(x.startswith("ds~") for x in nx.neighbors(g, n))
-        for n in nodes
-        if n.startswith("c~")
-    }
-    has_ds_edge = {k: False for k in targets}
-    # check at least one instance of concept has a datasource edge
-    for n in nodes:
-        if n.startswith("c~"):
-            neighbors = nx.neighbors(g, n)
-            for neighbor in neighbors:
-                if neighbor.startswith("ds~"):
-                    has_ds_edge[mapping.get(n, n)] = True
-                    break
-    return all(has_ds_edge.values()) and passed
+
+    # Check if at least one concept node has a datasource edge
+    has_ds_edge = {target: False for target in targets}
+
+    for node in nodes:
+        if node.startswith("c~"):
+            mapped_node = mapping.get(node, node)
+            if mapped_node in targets and not has_ds_edge[mapped_node]:
+                # Only check neighbors if we haven't found a ds edge for this mapped node yet
+                if any(
+                    neighbor.startswith("ds~") for neighbor in nx.neighbors(g, node)
+                ):
+                    has_ds_edge[mapped_node] = True
+
+    return all(has_ds_edge.values())
 
 
 def create_pruned_concept_graph(
-    g: nx.DiGraph,
+    g: ReferenceGraph,
     all_concepts: List[BuildConcept],
     datasources: list[BuildDatasource],
     accept_partial: bool = False,
@@ -133,14 +125,13 @@ def create_pruned_concept_graph(
         )
         g.add_node(node_address, datasource=ds_list)
         for c in common:
-            g.add_edge(node_address, concept_to_node(c))
-            g.add_edge(concept_to_node(c), node_address)
+            cnode = concept_to_node(c)
+            g.add_edge(node_address, cnode)
+            g.add_edge(cnode, node_address)
     prune_sources_for_conditions(g, accept_partial, conditions)
     target_addresses = set([c.address for c in all_concepts])
-    concepts: dict[str, BuildConcept] = nx.get_node_attributes(orig_g, "concept")
-    datasource_map: dict[str, BuildDatasource | list[BuildDatasource]] = (
-        nx.get_node_attributes(orig_g, "datasource")
-    )
+    concepts: dict[str, BuildConcept] = orig_g.concepts
+    datasource_map: dict[str, BuildDatasource] = orig_g.datasources
     relevant_concepts_pre = {
         n: x.address
         for n in g.nodes()
@@ -170,31 +161,27 @@ def create_pruned_concept_graph(
         for edge in to_remove:
             g.remove_edge(*edge)
 
-    for n in g.nodes():
-        if not n.startswith("ds~"):
-            continue
-        actual_neighbors = [
-            x for x in relevant_concepts if x in (nx.all_neighbors(g, n))
-        ]
-        if actual_neighbors:
+    for n in g.datasources:
+        if any([[n, x] in g.edges for x in relevant_concepts]):
             relevent_datasets.append(n)
+            continue
 
     # for injecting extra join concepts that are shared between datasets
     # use the original graph, pre-partial pruning
-    for n in orig_g.nodes:
+    for n in orig_g.concepts:
         # readd ignoring grain
         # we want to join inclusive of all concepts
-        roots: dict[str, set[str]] = {}
-        if n.startswith("c~") and n not in relevant_concepts:
-            root = n.split("@")[0]
-            neighbors = roots.get(root, set())
-            for neighbor in nx.all_neighbors(orig_g, n):
+        if n not in relevant_concepts:
+            n_neighbors = nx.all_neighbors(orig_g, n)
+            # check if the irrelevant concept is a join between
+            # two relevant datasets
+            neighbors = set()
+            for neighbor in n_neighbors:
                 if neighbor in relevent_datasets:
                     neighbors.add(neighbor)
-            if len(neighbors) > 1:
-                relevant_concepts.append(n)
-            roots[root] = set()
-
+                    if len(neighbors) > 1:
+                        relevant_concepts.append(n)
+                        continue
     g.remove_nodes_from(
         [
             n
@@ -238,7 +225,7 @@ def create_pruned_concept_graph(
 
 
 def resolve_subgraphs(
-    g: nx.DiGraph,
+    g: ReferenceGraph,
     relevant: list[BuildConcept],
     accept_partial: bool,
     conditions: BuildWhereClause | None,
@@ -261,7 +248,7 @@ def resolve_subgraphs(
     partial_map = get_graph_partial_nodes(g, conditions)
     exact_map = get_graph_exact_match(g, accept_partial, conditions)
     grain_length = get_graph_grains(g)
-    concepts: dict[str, BuildConcept] = nx.get_node_attributes(g, "concept")
+    concepts: dict[str, BuildConcept] = g.concepts
     non_partial_map = {
         ds: [concepts[c].address for c in subgraphs[ds] if c not in partial_map[ds]]
         for ds in datasources
@@ -460,7 +447,7 @@ def create_select_node(
     ds_name: str,
     subgraph: list[str],
     accept_partial: bool,
-    g,
+    g: ReferenceGraph,
     environment: BuildEnvironment,
     depth: int,
     conditions: BuildWhereClause | None = None,
@@ -486,9 +473,7 @@ def create_select_node(
             preexisting_conditions=conditions.conditional if conditions else None,
         )
 
-    datasource: dict[str, BuildDatasource | list[BuildDatasource]] = (
-        nx.get_node_attributes(g, "datasource")[ds_name]
-    )
+    datasource: BuildDatasource = g.datasources[ds_name]
     if isinstance(datasource, BuildDatasource):
         bcandidate, force_group = create_datasource_node(
             datasource,
@@ -581,6 +566,7 @@ def gen_select_merge_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} searching for root source graph for concepts {[c.address for c in all_concepts]} and conditions {conditions}"
     )
+    pruned_concept_graph = None
     for attempt in attempts:
         pruned_concept_graph = create_pruned_concept_graph(
             g,

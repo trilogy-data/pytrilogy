@@ -1533,6 +1533,7 @@ class Factory:
         )
         self.local_non_build_concepts: dict[str, Concept] = {}
         self.pseudonym_map = pseudonym_map or get_canonical_pseudonyms(environment)
+        self.build_grain = self.build(self.grain) if self.grain else None
 
     def instantiate_concept(
         self,
@@ -1792,11 +1793,11 @@ class Factory:
         address = base.concept.address
         fetched = (
             self._build_concept(
-                self.environment.alias_origin_lookup[address].with_grain(self.grain)
-            )
+                self.environment.alias_origin_lookup[address]
+            ).with_grain(self.build_grain)
             if address in self.environment.alias_origin_lookup
-            else self._build_concept(
-                self.environment.concepts[address].with_grain(self.grain)
+            else self._build_concept(self.environment.concepts[address]).with_grain(
+                self.build_grain
             )
         )
 

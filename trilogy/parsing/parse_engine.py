@@ -244,7 +244,7 @@ def unwrap_transformation(
     elif isinstance(input, Parenthetical):
         return unwrap_transformation(input.content, environment)
     else:
-        return Function(
+        return Function.model_construct(
             operator=FunctionType.CONSTANT,
             output_datatype=arg_to_datatype(input),
             output_purpose=Purpose.CONSTANT,

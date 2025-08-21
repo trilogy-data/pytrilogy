@@ -902,7 +902,11 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
 
     @property
     def is_aggregate(self):
-        return self.calculate_is_aggregate(self.lineage)
+        base = getattr(self, "_is_aggregate", None)
+        if base:
+            return base
+        setattr(self, "_is_aggregate", self.calculate_is_aggregate(self.lineage))
+        return self._is_aggregate
 
     def with_merge(self, source: Self, target: Self, modifiers: List[Modifier]) -> Self:
         if self.address == source.address:
@@ -1069,18 +1073,25 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         final_grain = grain if not self.grain.components else self.grain
         keys = self.keys
 
-        if self.is_aggregate and isinstance(new_lineage, Function) and grain.components:
+        if self.is_aggregate and grain.components and isinstance(new_lineage, Function):
             grain_components: list[ConceptRef | Concept] = [
                 environment.concepts[c].reference for c in grain.components
             ]
-            new_lineage = AggregateWrapper(function=new_lineage, by=grain_components)
+            new_lineage = AggregateWrapper.model_construct(
+                function=new_lineage, by=grain_components
+            )
             final_grain = grain
             keys = set(grain.components)
-        elif isinstance(new_lineage, AggregateWrapper) and not new_lineage.by and grain:
+        elif (
+            grain
+            and new_lineage
+            and isinstance(new_lineage, AggregateWrapper)
+            and not new_lineage.by
+        ):
             grain_components = [
                 environment.concepts[c].reference for c in grain.components
             ]
-            new_lineage = AggregateWrapper(
+            new_lineage = AggregateWrapper.model_construct(
                 function=new_lineage.function, by=grain_components
             )
             final_grain = grain
@@ -1670,15 +1681,6 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     def datatype(self):
         return self.output_datatype
 
-    @field_validator("output_datatype")
-    @classmethod
-    def parse_output_datatype(cls, v, info: ValidationInfo):
-        values = info.data
-        if values.get("operator") == FunctionType.ATTR_ACCESS:
-            if isinstance(v, StructType):
-                raise SyntaxError
-        return v
-
     @field_validator("arguments", mode="before")
     @classmethod
     def parse_arguments(cls, v, info: ValidationInfo):
@@ -1844,17 +1846,6 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         for arg in self.arguments:
             base += get_concept_arguments(arg)
         return base
-
-    @property
-    def output_grain(self):
-        # aggregates have an abstract grain
-        base_grain = Grain(components=[])
-        if self.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
-            return base_grain
-        # scalars have implicit grain of all arguments
-        for input in self.concept_arguments:
-            base_grain += input.grain
-        return base_grain
 
 
 class FunctionCallWrapper(

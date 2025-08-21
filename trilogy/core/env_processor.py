@@ -44,8 +44,10 @@ def add_concept(
             continue
         if pseudonym_node.split("@")[0] == node_name.split("@")[0]:
             continue
-        g.add_edge(pseudonym_node, node_name, pseudonym=True)
-        g.add_edge(node_name, pseudonym_node, pseudonym=True)
+        g.add_edge(pseudonym_node, node_name)
+        g.add_edge(node_name, pseudonym_node)
+        g.pseudonyms.add((pseudonym_node, node_name))
+        g.pseudonyms.add((node_name, pseudonym_node))
         add_concept(pseudonym, g, concept_mapping, default_concept_graph, seen)
 
 
