@@ -128,17 +128,32 @@ def simplify_conditions(
     for condition in conditions:
         if not isinstance(condition, BuildComparison):
             return False
-        if not isinstance(condition.left, REDUCABLE_TYPES) and not isinstance(
-            condition.right, REDUCABLE_TYPES
+        left_is_concept = False
+        left_is_reducable = False
+        right_is_concept = False
+        right_is_reducable = False
+        if isinstance(condition.left, BuildConcept):
+            left_is_concept = True
+        elif isinstance(condition.left, REDUCABLE_TYPES):
+            left_is_reducable = True
+
+        if isinstance(condition.right, BuildConcept):
+            right_is_concept = True
+        elif isinstance(condition.right, REDUCABLE_TYPES):
+            right_is_reducable = True
+
+        if not (
+            (left_is_concept and right_is_reducable)
+            or (right_is_concept and left_is_reducable)
         ):
             return False
-        if not isinstance(condition.left, BuildConcept) and not isinstance(
-            condition.right, BuildConcept
-        ):
-            return False
-        vars = [condition.left, condition.right]
-        concept = [x for x in vars if isinstance(x, BuildConcept)][0]
-        raw_comparison = [x for x in vars if not isinstance(x, BuildConcept)][0]
+        if left_is_concept:
+            concept = condition.left
+            raw_comparison = condition.right
+        else:
+            concept = condition.right
+            raw_comparison = condition.left
+
         if isinstance(raw_comparison, BuildFunction):
             if not raw_comparison.operator == FunctionType.CONSTANT:
                 return False
@@ -154,7 +169,7 @@ def simplify_conditions(
         if not isinstance(comparison, REDUCABLE_TYPES):
             return False
 
-        var = concept
+        var: BuildConcept = concept  # type: ignore
         op = condition.operator
         grouped[var].append((op, comparison))
 
@@ -240,7 +255,6 @@ def get_union_sources(
         assocs[merge_key.address].append(x)
     final: list[list[BuildDatasource]] = []
     for _, dses in assocs.items():
-
         conditions = [c.non_partial_for.conditional for c in dses if c.non_partial_for]
         if simplify_conditions(conditions):
             final.append(dses)

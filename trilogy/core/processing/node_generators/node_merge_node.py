@@ -6,7 +6,11 @@ from networkx.algorithms import approximation as ax
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
-from trilogy.core.graph_models import concept_to_node, prune_sources_for_conditions
+from trilogy.core.graph_models import (
+    ReferenceGraph,
+    concept_to_node,
+    prune_sources_for_conditions,
+)
 from trilogy.core.models.build import BuildConcept, BuildConditional, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
@@ -17,11 +21,12 @@ LOGGER_PREFIX = "[GEN_MERGE_NODE]"
 AMBIGUITY_CHECK_LIMIT = 20
 
 
-def filter_pseudonyms_for_source(ds_graph: nx.DiGraph, node: str):
+def filter_pseudonyms_for_source(
+    ds_graph: nx.DiGraph, node: str, pseudonyms: set[tuple[str, str]]
+):
     to_remove = set()
-
     for edge in ds_graph.edges:
-        if ds_graph.edges[edge].get("pseudonym", False):
+        if edge in pseudonyms:
             lengths = {}
             for n in edge:
                 lengths[n] = nx.shortest_path_length(ds_graph, node, n)
@@ -52,12 +57,14 @@ def filter_unique_graphs(graphs: list[list[str]]) -> list[list[str]]:
     return [list(x) for x in unique_graphs]
 
 
-def extract_ds_components(g: nx.DiGraph, nodelist: list[str]) -> list[list[str]]:
+def extract_ds_components(
+    g: nx.DiGraph, nodelist: list[str], pseudonyms: set[tuple[str, str]]
+) -> list[list[str]]:
     graphs = []
     for node in g.nodes:
         if node.startswith("ds~"):
             local = g.copy()
-            filter_pseudonyms_for_source(local, node)
+            filter_pseudonyms_for_source(local, node, pseudonyms)
             ds_graph: nx.DiGraph = nx.ego_graph(local, node, radius=10).copy()
             graphs.append(
                 [
@@ -78,7 +85,7 @@ def extract_ds_components(g: nx.DiGraph, nodelist: list[str]) -> list[list[str]]
 
 
 def determine_induced_minimal_nodes(
-    G: nx.DiGraph,
+    G: ReferenceGraph,
     nodelist: list[str],
     environment: BuildEnvironment,
     filter_downstream: bool,
@@ -86,23 +93,19 @@ def determine_induced_minimal_nodes(
 ) -> nx.DiGraph | None:
     H: nx.Graph = nx.to_undirected(G).copy()
     nodes_to_remove = []
-    concepts = nx.get_node_attributes(G, "concept")
-
-    for node in G.nodes:
-        if concepts.get(node):
-            lookup: BuildConcept = concepts[node]
-            # inclusion of aggregates can create ambiguous node relation chains
-            # there may be a better way to handle this
-            # can be revisited if we need to connect a derived synonym based on an aggregate
-            if lookup.derivation in (
-                Derivation.CONSTANT,
-                Derivation.AGGREGATE,
-                Derivation.FILTER,
-            ):
-                nodes_to_remove.append(node)
-            # purge a node if we're already looking for all it's parents
-            if filter_downstream and lookup.derivation not in (Derivation.ROOT,):
-                nodes_to_remove.append(node)
+    for node, lookup in G.concepts.items():
+        # inclusion of aggregates can create ambiguous node relation chains
+        # there may be a better way to handle this
+        # can be revisited if we need to connect a derived synonym based on an aggregate
+        if lookup.derivation in (
+            Derivation.CONSTANT,
+            Derivation.AGGREGATE,
+            Derivation.FILTER,
+        ):
+            nodes_to_remove.append(node)
+        # purge a node if we're already looking for all it's parents
+        if filter_downstream and lookup.derivation not in (Derivation.ROOT,):
+            nodes_to_remove.append(node)
     if nodes_to_remove:
         # logger.debug(f"Removing nodes {nodes_to_remove} from graph")
         H.remove_nodes_from(nodes_to_remove)
@@ -259,7 +262,7 @@ def filter_duplicate_subgraphs(
 def resolve_weak_components(
     all_concepts: List[BuildConcept],
     environment: BuildEnvironment,
-    environment_graph: nx.DiGraph,
+    environment_graph: ReferenceGraph,
     filter_downstream: bool = True,
     accept_partial: bool = False,
     search_conditions: BuildWhereClause | None = None,
@@ -316,8 +319,6 @@ def resolve_weak_components(
             ]
             new = [x for x in all_graph_concepts if x.address not in all_concepts]
 
-            new_addresses = set([x.address for x in new if x.address not in synonyms])
-
             if not new:
                 break_flag = True
             # remove our new nodes for the next search path
@@ -329,6 +330,7 @@ def resolve_weak_components(
             # from trilogy.hooks.graph_hook import GraphHook
             # GraphHook().query_graph_built(g, highlight_nodes=[concept_to_node(c.with_default_grain()) for c in all_concepts if "__preql_internal" not in c.address])
             found.append(g)
+            new_addresses = set([x.address for x in new if x.address not in synonyms])
             reduced_concept_sets.append(new_addresses)
 
         except nx.exception.NetworkXNoPath:
@@ -346,7 +348,7 @@ def resolve_weak_components(
     subgraphs: list[list[BuildConcept]] = []
     # components = nx.strongly_connected_components(g)
     node_list = [x for x in g.nodes if x.startswith("c~")]
-    components = extract_ds_components(g, node_list)
+    components = extract_ds_components(g, node_list, environment_graph.pseudonyms)
     logger.debug(f"Extracted components {components} from {node_list}")
     for component in components:
         # we need to take unique again as different addresses may map to the same concept
