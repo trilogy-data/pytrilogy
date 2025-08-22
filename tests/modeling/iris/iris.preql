@@ -1,0 +1,26 @@
+import std.geography;
+
+key sample_id int;
+
+key species string;
+key country string::country;
+key region string;
+key climate_zone string;
+property <sample_id>.mean_annual_temp_C float;
+property <sample_id>.mean_annual_precip_mm int;
+property <sample_id>.latitude float::latitude;
+property <sample_id>.longitude float::longitude;
+
+datasource genus_info (
+	species,
+	country,
+	region,
+	climate_zone,
+	mean_annual_temp_C,
+	mean_annual_precip_mm,
+	latitude,
+	longitude,
+	sample_id,
+)
+grain (sample_id)
+address genus_info;

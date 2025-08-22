@@ -567,4 +567,5 @@ def process_query(
         base=root_cte,
         hidden_columns=set([x for x in statement.hidden_components]),
         local_concepts=statement.local_concepts,
+        locally_derived=statement.locally_derived,
     )

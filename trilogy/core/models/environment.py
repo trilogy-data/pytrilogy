@@ -571,6 +571,30 @@ class Environment(BaseModel):
 
         return concept
 
+    def remove_concept(
+        self,
+        concept: Concept | str,
+    ) -> bool:
+        if self.frozen:
+            raise FrozenEnvironmentException(
+                "Environment is frozen, cannot remove concepts"
+            )
+        if isinstance(concept, Concept):
+            address = concept.address
+            c_instance = concept
+        else:
+            address = concept
+            c_instance = self.concepts.get(address)
+        from trilogy.core.environment_helpers import remove_related_concepts
+
+        remove_related_concepts(c_instance, self)
+        if address in self.concepts:
+            del self.concepts[address]
+            # self.gen_concept_list_caches()
+            return True
+
+        return False
+
     def add_datasource(
         self,
         datasource: Datasource,

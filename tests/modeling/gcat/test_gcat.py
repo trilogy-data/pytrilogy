@@ -141,3 +141,46 @@ limit 15;
 
     sql = base.generate_sql(queries[-1])
     assert """WHEN cast(sum("wakeful"."orb_pay") as int) = 0 THEN 1""" in sql[0], sql[0]
+
+
+def test_environment_cleanup():
+    """
+    Test to ensure that the environment cleanup works correctly.
+    """
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+    base.parse_text(
+        """import launch_dashboard;
+
+        """
+    )
+    pre_concepts = set(base.environment.concepts.keys())
+    queries = base.parse_text(
+        """
+        
+        SELECT launch_count, 
+        count(site.state_code) as countries, 
+        date_diff(min(launch_date), current_date(), year) as launch_days, 
+        min(launch_date) as min_date;
+        """
+    )
+
+    query = queries[-1]
+    for c in query.locally_derived:
+        base.environment.remove_concept(c)
+    post_concepts = set(base.environment.concepts.keys())
+    assert (
+        pre_concepts == post_concepts
+    ), f"Environment cleanup did not remove locally derived concepts: {post_concepts - pre_concepts}"
+
+    queries = base.parse_text(
+        """
+
+select
+launch_filter,
+#launch_count
+order by launch_filter asc
+;"""
+    )
