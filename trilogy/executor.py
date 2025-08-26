@@ -447,13 +447,16 @@ class Executor(object):
 
     def execute_raw_sql(
         self,
-        command: str,
+        command: str | Path,
         variables: dict | None = None,
         local_concepts: dict[str, Concept] | None = None,
     ) -> CursorResult:
         """Run a command against the raw underlying
         execution engine."""
         final_params = None
+        if isinstance(command, Path):
+            with open(command, "r") as f:
+                command = f.read()
         q = text(command)
         if variables:
             final_params = variables
@@ -507,3 +510,8 @@ class Executor(object):
         with open(file, "r") as f:
             command = f.read()
         return self.execute_text(command, non_interactive=non_interactive)
+
+    def validate_environment(self):
+        from trilogy.core.validation.environment import validate_environment
+
+        validate_environment(self.environment, self)

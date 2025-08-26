@@ -3,6 +3,19 @@ from pathlib import Path
 from trilogy import Dialects, Environment
 from trilogy.hooks import DebuggingHook
 
+ROOT = Path(__file__).parent
+def test_environment():
+    DebuggingHook()
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+    base.execute_raw_sql(ROOT / "setup.sql")
+    queries = base.parse_text(
+        """import launch;
+"""
+    )
+    base.validate_environment()
 
 def test_join():
     DebuggingHook()

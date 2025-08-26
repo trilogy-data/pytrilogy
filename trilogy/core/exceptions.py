@@ -23,6 +23,10 @@ class UnresolvableQueryException(Exception):
 class NoDatasourceException(UnresolvableQueryException):
     pass
 
+class ModelValidationError(Exception):
+    pass
+class DatasourceModelValidationError(ModelValidationError):
+    pass
 
 class AmbiguousRelationshipResolutionException(UnresolvableQueryException):
     def __init__(self, message, parents: List[set[str]]):
