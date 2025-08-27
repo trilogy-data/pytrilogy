@@ -1,0 +1,1507 @@
+Name	Manufacturer	Family	Alt_Name	Oxidizer	Fuel	Mass	MFlag	Impulse	ImpFlag	Thrust	TFlag	Isp	IspFlag	Duration	DurFlag	Chambers	Date	Usage	Group
+#
+# Solid propellant engines
+#
+RSRMV	NGISP	RSRM	-	-	 PBAN	  726000.0 	 	 1320000 	 	    9996.00 	 	-	 	 132.8 	 	  1	2022	SLS SRB	Solid
+SRM	THKU	SRM	-	-	 PBAN	  590000.0 	 	-	 	   11790.00 	 	267.3 	 	 123.0 	 	  1	1981	STS SRB	Solid
+SRMU	ATKP	SRMU	-	-	 HTPB	  350000.0 	 	-	 	    7500.00 	 	285.6 	 	 137.8 	 	  1	1994	Titan 4B	Solid
+UA1207	UTC	T3SRM	-	-	 Solid	  319300.0 	 	-	 	    7116.90 	 	272.0 	 	 120.0 	 	  1	1989	Titan 4 SRM	Solid
+EAP MPS P238	EUROPK	Ariane	P230	-	 HTPB	  268000.0 	 	-	 	    5000.00 	 	275.4 	 	 129.0 	 	  1	1996	Ariane 5 EAP	Solid
+EAP MPS P240	EUROPK	Ariane	P230	-	 HTPB	  277500.0 	 	-	 	    5000.00 	 	275.4 	 	 129.0 	 	  1	1996	Ariane 5 EAP	Solid
+UA1206	UTC	T3SRM	-	-	 Solid	  251400.0 	 	-	 	    6227.00 	 	265.0 	 	 114.0 	 	  1	1989	Titan 34D SRM	Solid
+UA1205	UTC	T3SRM	-	-	 Solid	  226200.0 	 	-	 	    5293.30 	 	263.0 	 	 115.0 	 	  1	1965	Titan 3 SRM	Solid
+S200	VSSC	GSOM-200	-	-	 HTPB	  207000.0 	 	-	 	    6000.00 	 	274.0 	 	 105.0 	 	  1	2009	GSLV3 GSOM	Solid
+S139	VSSC	PS1	-	-	 HTPB	  168000.0 	 	-	 	    4430.00 	 	269.0 	 	 105.0 	 	  1	1993	PSLV PS1	Solid
+S125	VSSC	PS1	-	-	 HTPB	  157300.0 	 	  486000 	 	    4801.00 	 	266.0 	 	  93.0 	 	  1	-	GSLV S125	Solid
+P120C	AVIO	-	-	-	 HTPB-2013	  153000.0 	 	  368900 	 	    4500.00 	 	278.5 	 	 132.8 	 	  1	2017	Vega-C	Solid
+P80FW	AVIO	-	-	-	 HTPB	   97131.0 	 	  242721 	 	    2100.00 	 	280.0 	 	 106.8 	 	  1	2012	Vega [1]	Solid
+S85	ISRO	-	-	-	 HTPB	   87000.0 	 	-	 	    2600.00 	 	-	 	 117.0 	 	  1	2021	SSLV [1]	Solid
+M-14	NISST	Mu	-	-	 HTPB BP-204J	   84000.0 	 	-	 	    3786.00 	 	276.0 	 	  49.0 	 	  1	1995	Mu V [1]	Solid
+H-II SRB-A3	NISST	NASDA	-	-	 HTPB	   76500.0 	 	-	 	    2305.00 	 	283.6 	 	 120.0 	 	  1	-	H2A SRB-A	Solid
+H3 SRB-3	NISST	-	-	-	 HTPB	   76200.0 	 	-	 	    2158.00 	 	283.6 	 	 110.0 	 	  1	2023	H3 SRB-3	Solid
+H-II SRB-A	NISST	NASDA	-	-	 HTPB	   75000.0 	 	-	 	    2250.00 	 	280.0 	 	 100.0 	 	  1	-	H2A SRB-A	Solid
+H-II SRB	NISST	NASDA	-	-	 HTPB	   70400.0 	 	-	 	    1550.00 	s	273.0 	 	  94.0 	 	  1	1994	H2 SRB	Solid
+15D305	YUZH	-	-	-	 Solid	   53700.0 	 	-	 	    2060.00 	 	-	 	-	 	  1	-	RT-23 [1]	Solid
+3D65	YUZH	-	-	-	 Solid	   53700.0 	 	-	 	    2060.00 	 	-	 	-	 	  1	-	R-39 [1]	Solid
+15D206	YUZH	-	-	-	 Solid	   53700.0 	 	-	 	    2060.00 	 	-	 	-	 	  1	-	RT-23 [1]	Solid
+GEM-63XL	NGISH	-	-	-	 HTPB	   53400.0 	 	-	 	    2026.00 	 	275.0 	?	  84.0 	 	  1	2020	GEM-63XL	Solid
+GEM-63	OATKH	-	-	-	 HTPB	   49300.0 	 	-	 	    1663.00 	 	275.0 	?	  94.0 	 	  1	2015	GEM-63	Solid
+Castor 120	THKU	MX	-	-	 HTPB	   53100.0 	 	-	 	    1604.00 	 	280.0 	 	  83.4 	 	  1	1995	Athena [1]	Solid
+SR118	THKU	MX	TU-904	-	 HTPB	   48625.0 	 	-	 	    1711.00 	 	281.4 	 	  78.8 	 	  1	1983 Jun 17	Peacekeeper [1]	Solid
+GEM-60	OATKH	-	-	-	 Solid	   46200.0 	 	-	 	    1361.00 	 	275.0 	 	  90.0 	 	  1	2015	Atlas V SRM	Solid
+GEM-60 (D)	ATKH	GEM	-	-	 HTPB	   33200.0 	 	-	 	     758.00 	 	275.0 	 	  90.0 	 	  1	2002 Nov 20	Delta IV SRB	Solid
+AJ-60A	AJSP	-	-	-	 Solid	   46200.0 	 	-	 	    1361.00 	 	275.0 	 	  90.0 	 	  1	2003	Atlas V SRM	Solid
+CZ-11-1	SLREC	-	-	-	 Solid	   40000.0 	 	-	 	-	 	248.0 	 	-	 	  1	2016	CZ-11 [1]	Solid
+D-5-1	THKU/HERC	-	-	-	 Solid	   39100.0 	 	-	 	-	 	-	 	  64.0 	 	  1	-	Trident II [1]	Solid
+M-25	NISST	Mu	-	-	 HTPB BP-204J	   38000.0 	 	-	 	    1240.00 	 	288.0 	?	  71.0 	 	  1	1995	Mu V [2]	Solid
+Zefiro-40C	AVIO	-	-	-	 HTPB-2013	   39270.0 	 	  103600 	 	    1120.00 	 	293.5 	 	  92.9 	 	  1	2017	Vega-C [2]	Solid
+CZ-6A Booster	ARMT?	-	-	-	 Solid	   35000.0 	?	-	 	    1200.00 	?	-	 	-	 	  1	2020	Chang Zheng 6A	Solid
+DF-31-1	ARMT	-	-	-	 Solid	   35000.0 	?	-	 	-	 	-	 	-	 	  1	-	DF-31 [1]	Solid
+DF-41-1	ARMT	-	-	-	 Solid	   35000.0 	?	-	 	-	 	-	 	-	 	  1	-	DF-31 [1]	Solid
+15D23P	ARSL	RT-2	-	-	 Solid	   34550.0 	 	-	 	     981.00 	 	-	 	  75.4 	 	  1	-	RT-2P [1]	Solid
+15D23	ARSL	RT-2	-	-	 Solid	   34550.0 	 	-	 	     893.00 	 	-	 	  75.4 	 	  1	-	RT-2 [1]	Solid
+M-24	NISST	Mu	-	-	 HTPB BP-204J	   34000.0 	 	-	 	    1246.00 	 	288.0 	 	  71.0 	 	  1	1995	Mu V [2]	Solid
+M-13	NISST	Mu	-	-	 CTPB	   33407.0 	 	-	 	     954.00 	 	239.0 	 	  70.0 	 	  1	1977	Mu 3H [1]	Solid
+Agni III	DRDO	Agni3	-	-	 HTPB/AP/Al	   33000.0 	 	-	 	    1040.00 	 	237.0 	s	  75.0 	 	  1	2006	Agni 3 [1]	Solid
+MSBS 501	G2P/SNECPS	-	-	-	 Solid	   30000.0 	?	-	 	     900.00 	 	-	 	  60.0 	 	  1	-	MSBS M51 [1]	Solid
+SR119	AJSP	MX Stage 2	-	-	 HTPB	   27669.0 	 	-	 	    1365.00 	 	304.0 	 	  54.0 	 	  1	1983 Jun 17	Peacekeeper [2]	Solid
+Castor 30XL	THKU	-	-	-	 Solid	   27400.0 	?	   58000 	?	     350.00 	 	-	 	 166.0 	 	  1	-	Taurus 2 [2]	Solid
+M-10	NISST	Mu	-	-	 Solid	   26555.0 	 	-	 	     737.00 	 	219.0 	 	  61.0 	 	  1	1970	Mu 4S [1]	Solid
+RD RT-21 (1)	MITT	-	-	-	 Solid	   26000.0 	 	-	 	-	 	-	 	  63.0 	 	  1	-	Temp-2S [1]	Solid
+15Zh58A	MITT	Topol	-	-	 Solid	   26000.0 	 	-	 	     980.00 	 	263.0 	 	  60.0 	 	  1	-	Start-1 [1]	Solid
+Zefiro 23	AVIO	-	-	-	 HTPB	   26563.0 	 	   67776 	 	     935.00 	 	289.0 	 	  71.7 	 	  1	2012	Vega [2]	Solid
+15D339	YUZH	-	-	-	 Solid	   25000.0 	?	-	 	    1050.00 	 	-	 	-	 	  1	-	RT-23 [2]	Solid
+15D207	YUZH	-	-	-	 Solid	   25000.0 	?	-	 	    1050.00 	 	-	 	-	 	  1	-	RT-23 [2]	Solid
+15D290	YUZH	-	-	-	 Solid	   25000.0 	?	-	 	    1050.00 	 	-	 	-	 	  1	-	RT-23 [2]	Solid
+R-39 St 2	YUZH	-	-	-	 Solid	   25000.0 	?	-	 	    1050.00 	 	-	 	-	 	  1	-	RT-23 [2]	Solid
+HS-18-S1	KPA	-	-	-	 Solid	   25000.0 	?	-	 	-	 	-	 	-	 	  1	-	HS-18 [1]	Solid
+M55A1	THKU	Minuteman	M55A1	-	 PBAN	   22930.0 	 	   54730 	 	     792.00 	 	266.1 	 	  59.3 	 	  4	1961 Feb  1	Minuteman 1A XM-55	Solid
+TU-122	THKU	Minuteman	M55E1	-	 PBAN	   23240.0 	 	-	 	     891.00 	 	-	 	  60.0 	 	  4	1962 Dec  7	Minuteman 1B	Solid
+TU-122-ATK	ATKP	Minuteman	M55E1	-	 PBAN	   23240.0 	 	-	 	     891.00 	 	-	 	  60.0 	 	  4	1962 Dec  7	Minuteman 3 PRP	Solid
+SEP 401	SEP	401	-	-	 Butalane	   22500.0 	 	-	 	     900.00 	 	-	 	  60.0 	 	  1	1980 Nov 18	MSBS M4 [1]	Solid
+LEO-46	AJSP	-	-	-	 HTPB	   22102.0 	 	   56360 	 	    1265.40 	 	-	 	  76.0 	 	  1	2015	Super Strypi [1]	Solid
+Rafe	IRGC	-	-	-	 Solid	   20000.0 	?	-	 	-	 	-	 	-	 	  1	-	Qaem-100 [1]	Solid
+GEM-46	ATKH	GEM	-	-	 HTPB	   19040.0 	 	   45730 	?	     608.10 	 	274.0 	 	  75.2 	 	  1	-	Delta III SRB	Solid
+DF-26-1	ARMT	-	-	-	 Solid	   19000.0 	?	-	 	-	 	239.7 	 	  65.0 	 	  1	-	DF-26 [1]	Solid
+DF-27-1	ARMT	-	-	-	 Solid	   19000.0 	?	-	 	-	 	239.7 	 	  65.0 	 	  1	-	DF-26 [1]	Solid
+RT-1-1	OKB1	-	-	-	 Solid	   19000.0 	?	-	 	     900.00 	 	-	 	  30.0 	 	  1	-	RT-1 [1]	Solid
+Hyperbola-1 M1	ARMT	-	-	-	 Solid	   18000.0 	 	-	 	     770.00 	 	245.0 	 	  65.0 	 	  1	-	Hyperbola-1 [1]	Solid
+Zefiro	FIATA	Zefiro	-	-	 HTPB 1814	   17260.0 	 	   41830 	 	     590.00 	 	271.0 	 	  71.0 	 	  1	1999	Vega [2]	Solid
+M-35	NISST	Mu	-	-	 HTPB	   17200.0 	 	-	 	     445.00 	 	295.0 	 	 129.0 	 	  1	2016	Epsilon	Solid
+Ceres-1 M1	XIDO	-	-	-	 HTPB	   17000.0 	?	-	 	     590.00 	 	-	 	  74.0 	 	  1	2020	GS-1 [1]	Solid
+15D15	NII125/YUZH	-	15D151	-	 Solid	   16700.0 	 	-	 	     600.00 	 	260.0 	 	  65.0 	 	  4	1967	RT-20P [1]	Solid
+DF-21-1	ARMT	-	-	-	 Solid	   16621.0 	 	-	 	-	 	239.7 	 	  65.0 	 	  1	-	DF-21 [1]	Solid
+Orion 50SXL	ATKH	Orion	-	-	 HTPB	   16400.0 	 	   43586 	 	     594.00 	 	295.0 	 	  73.4 	 	  1	1994	Pegasus XL [1]	Solid
+Orion 50SXLG	ATKH	Orion	-	-	 HTPB	   16400.0 	 	   43586 	 	     594.00 	 	295.0 	 	  73.4 	 	  1	2003	Taurus Lite [1]	Solid
+Orion 50SXLT	ATKH	Orion	-	-	 HTPB	   16400.0 	 	   43586 	 	     594.00 	 	295.0 	 	  73.4 	 	  1	2003	IRBM-T1 [1]	Solid
+SICBM	THKU?	SICBM Stage 1	-	-	 HTPB/NG/BTTN	   16100.0 	 	-	 	     979.00 	 	-	 	  40.0 	?	  1	1989 May 11	SICBM [1]	Solid
+SEP 902	SEP	P-16	P-10	-	 Isolane	   16000.0 	 	-	 	     540.00 	 	-	 	-	 	  4	1968 Dec 21	SSBS S2 [1]	Solid
+3D17	PERM	-	-	-	 Solid	   16000.0 	?	-	 	     579.00 	 	-	 	  84.0 	 	  1	1973	R-31 [1]	Solid
+H-II SSB (A)	NISST	NASDA	-	-	 HTPB	   15500.0 	 	-	 	     745.00 	 	282.0 	 	  60.0 	 	  1	-	H2A SSB	Solid
+RT-23-3	YUZH	-	-	-	 Solid	   15000.0 	?	-	 	     206.00 	 	-	 	-	 	  1	-	RT-23 [3]	Solid
+CZ-11-2	CALT	-	-	-	 Solid	   15000.0 	?	-	 	-	 	-	 	-	 	  1	-	CZ-11 [2]	Solid
+5S47	KAZSOY	-	-	-	 Solid	   15000.0 	?	-	 	-	 	-	 	   5.0 	 	  1	1968	A-350Zh booster	Solid
+Agni P S1	DRDO	-	-	-	 Solid	   15000.0 	?	-	 	-	 	-	 	-	 	  1	2021	Agni P[1]	Solid
+A-350 Booster	KAZSOY	-	-	-	 Solid	   15000.0 	?	-	 	-	 	-	 	   5.0 	 	  1	1968	A-350 booster	Solid
+51T6 Motor	KAZSOY	-	-	-	 Solid	   15000.0 	?	-	 	-	 	-	 	   5.0 	 	  1	1968	A-350 booster	Solid
+Nudol' St 1	ALMAN	-	-	-	 Solid	   15000.0 	?	-	 	-	 	-	 	   5.0 	 	  1	2015	A-235	Solid
+TX-780XL	THKX	Castor	Castor IVAXL	-	 HTPB	   14851.0 	 	-	 	     599.80 	 	269.0 	 	  60.0 	 	  1	1980s	Atlas	Solid
+Kairos Stage 1	SPONE	-	-	-	 Solid	   14700.0 	 	-	 	-	 	-	 	-	 	  1	2024	Kairos [1]	Solid
+Algol 3A	UTC	Algol III	-	-	 Solid	   14136.0 	 	   32040 	 	     477.00 	 	258.2 	 	  78.0 	 	  1	-	Scout [1]	Solid
+Castor 30	THKU	-	-	-	 Solid	   14035.0 	 	   35200 	 	     259.00 	 	301.0 	 	 136.0 	 	  1	-	Taurus 2 [2]	Solid
+Agni III S2	DRDO	Agni3	-	-	 HTBP/AP/Al	   14000.0 	 	-	 	     315.00 	 	294.0 	 	 110.0 	 	  1	2006	Agni 3 [2]	Solid
+5S24	KAZSOY	-	-	-	 Solid	   14000.0 	?	-	 	-	 	-	 	-	 	  1	-	V-825 [1]	Solid
+Castor 30B	THKU	-	-	-	 Solid	   13970.0 	 	   37300 	 	     293.40 	 	304.0 	 	 127.0 	 	  1	-	Taurus 2 [2]	Solid
+Orion 50S	ATKH	Orion	-	-	 HTPB	   13420.0 	 	   35108 	 	     485.00 	 	294.4 	 	  72.4 	 	  1	1990	Pegasus  [1]	Solid
+M-23	NISST	Mu	-	-	 HTPB	   13100.0 	 	-	 	     524.00 	 	282.0 	 	  73.0 	 	  1	1980	Mu 3S [2]	Solid
+GEM-40	ATKH	GEM	-	-	 HTPB	   13080.0 	 	   31600 	?	     499.20 	 	274.0 	 	  63.3 	 	  1	-	Delta II SRB	Solid
+15Zh58B	MITT	Topol	-	-	 Solid	   13000.0 	 	-	 	     490.00 	 	280.0 	 	  64.0 	 	  1	-	Start-1 [2]	Solid
+ATSM-13	IAI	Shaviyt	-	-	 HTPB	   13000.0 	 	-	 	     775.00 	 	250.0 	s	  55.0 	 	  1	1994	Shaviyt 1 [1]	Solid
+Hyperbola-1 M2	HEXI	-	-	-	 Solid	   13000.0 	 	-	 	     597.00 	 	282.0 	 	-	 	  1	-	Hyperbola-1 [2]	Solid
+Sejjil	IR	-	-	-	 Solid	   13000.0 	?	-	 	     560.00 	 	230.0 	 	  45.0 	 	  1	-	Sejjil	Solid
+PAP	FIATA	Ariane	P9.5	-	 CTPB	   12600.0 	 	-	 	     650.00 	s	241.0 	s	  42.0 	 	  1	1988	Ariane 4 PAP	Solid
+PSOM-XL	VSSC	PSOM	-	-	 HTPB	   12400.0 	 	   20700 	 	     677.00 	 	262.0 	 	  58.0 	 	  1	2006	PSLV PSOM	Solid
+C4-1	THKU/HERC	-	-	-	 Solid	   12100.0 	 	-	 	-	 	-	 	-	 	  1	-	Trident C-4 [1]	Solid
+HS-18-S2	KPA	-	-	-	 Solid	   12000.0 	?	-	 	-	 	-	 	-	 	  1	-	HS-18 [2]	Solid
+9M76	VOTK	-	-	-	 Solid	   11900.0 	 	-	 	-	 	-	 	-	 	  1	-	Temp	Solid
+9M76B	VOTK	-	-	-	 Solid	   11900.0 	 	-	 	-	 	-	 	-	 	  1	-	Temp-S	Solid
+D-5-2	HERC	-	-	-	 Solid	   11800.0 	 	-	 	-	 	-	 	  65.0 	 	  1	-	Trident II [2]	Solid
+ASLV AS-1	VSSC	-	-	-	 Solid	   11800.0 	 	-	 	     702.00 	 	259.0 	 	  45.0 	 	  1	-	ASLV [1]	Solid
+S9	VSSC	-	-	-	 Solid	   11800.0 	 	-	 	     702.00 	 	259.0 	 	  45.0 	 	  1	-	S9	Solid
+ASLV SRM	VSSC	-	-	-	 Solid	   11600.0 	 	-	 	     422.00 	 	253.0 	 	  49.0 	 	  1	-	ASLV [0]	Solid
+M-34c	NISST	Mu	-	-	 HTPB BP-205J	   11600.0 	 	-	 	     294.00 	 	301.0 	 	 102.0 	 	  1	1995	Epsilon	Solid
+M-34	NISST	Mu	-	-	 HTPB BP-205J	   11600.0 	 	   30000 	 	     294.00 	 	301.0 	 	 102.0 	 	  1	1995	Mu V [3]	Solid
+TX-780	THKX	Castor	Castor IVA	-	 HTPB	   11600.0 	 	   26460 	 	     433.70 	 	237.8 	s	  56.2 	 	  1	1980s	Atlas IIAS [-1]	Solid
+Agni	DRDO	-	-	-	 Solid	   11500.0 	?	-	 	     700.00 	?	-	 	  45.0 	?	  1	-	Agni [1]	Solid
+TX-859	THKX	Castor	Castor IVB	-	 HTPB	   11476.0 	 	   26150 	 	     429.00 	 	-	 	  60.9 	 	  1	1991	Castor 4B	Solid
+15D24P2	ARSL	RT-2	-	-	 Solid	   11280.0 	 	-	 	     440.00 	 	-	 	  60.6 	 	  4	-	RT-2P [2]	Solid
+A3P-1	AJSP	-	-	-	 Polyurethane/AP	   11100.0 	 	-	 	-	 	-	 	-	 	  1	1960	Polaris A3 [1]	Solid
+15D27	TSKB7	RT-2	-	-	 Solid T9-BK-6	   11000.0 	?	-	 	     412.00 	 	-	 	  60.0 	 	  4	1965	RT-15 [1]	Solid
+PSOM	VSSC	PSOM	-	-	 HTPB	   11000.0 	 	   20700 	 	     677.00 	 	262.0 	 	  44.2 	 	  1	1993	PSLV PSOM	Solid
+RSA-3-2	HOUW	RSA	-	-	 Solid	   10971.0 	 	-	 	     477.00 	 	277.0 	 	  52.0 	 	  1	1988	RSA-3	Solid
+SLV-3-1	VSSC	-	-	-	 Solid	   10800.0 	 	-	 	     422.00 	 	253.0 	 	  49.0 	 	  1	1979	SLV-3 [1]	Solid
+SLV-3-1/D4	VSSC	-	-	-	 Solid	   10800.0 	 	-	 	     590.00 	 	253.0 	 	  55.0 	 	  1	1979	SLV-3 [1] prop 8490	Solid
+Algol IIC	AJSP	Algol	-	-	 Solid	   10795.0 	 	   24390 	 	     436.70 	 	258.9 	 	  76.1 	 	  1	1965	Scout [1]	Solid
+Algol IIB	AJSP	Algol	-	-	 Solid	   10759.0 	 	   24352 	 	     449.20 	 	258.9 	 	  80.0 	 	  1	1965	Scout B [1]	Solid
+Algol I	AJSP	Algol	AJ Senior	-	 Solid	   10710.0 	 	   18240 	 	     458.60 	 	214.0 	 	  40.0 	 	  1	1960	Scout [1]	Solid
+Algol IA	AJSP	Algol	AJ Senior	-	 Solid	   10710.0 	 	   18240 	 	     458.60 	 	214.0 	 	  40.0 	 	  1	1960	Scout [1]	Solid
+Algol IB	AJSP	Algol	AJ Senior	-	 Solid	   10710.0 	 	   18240 	 	     458.60 	 	214.0 	 	  40.0 	 	  1	1960	Scout [1] ?	Solid
+Algol IC	AJSP	Algol	AJ Senior	-	 Solid	   10710.0 	 	   18240 	 	     458.60 	 	214.0 	 	  40.0 	 	  1	1960	Scout [1] ?	Solid
+Algol IIA	AJSP	Algol	-	-	 Solid	   10709.0 	 	   24337 	 	     465.10 	 	258.3 	 	  68.2 	 	  1	1965	Scout [1]	Solid
+Algol ID	AJSP	Algol	-	-	 Solid	   10700.0 	 	   18100 	 	     413.00 	 	-	 	  44.0 	 	  1	1960	Scout [1]	Solid
+Orbus 21D	UTC	Orbus	-	-	 HTPB	   10619.0 	 	   28140 	 	     187.00 	 	293.0 	 	 150.0 	 	  1	1982 Oct 30	IUS [1]	Solid
+TX-526	THKX	Castor 4	-	-	 PBAA	   10534.0 	 	   23760 	 	     428.00 	 	-	 	  53.9 	 	  1	1971	Athena H [1]	Solid
+H-II SSB	NISST	NASDA	-	-	 HTPB	   10500.0 	 	-	 	     338.00 	 	267.0 	 	  66.0 	 	  1	1995	H2 SSB	Solid
+RSA-3-1	HOUW	RSA	-	-	 Solid	   10215.0 	 	-	 	     451.00 	 	265.0 	 	  52.0 	 	  1	1988	RSA-3	Solid
+A2P-1	AJSP	-	-	-	 Polyurethane/AP	   10100.0 	 	-	 	-	 	-	 	-	 	  1	1960	Polaris A2 [1]	Solid
+SEP 903	SEP	P-10	P-10	-	 Isolane	   10000.0 	 	-	 	     440.00 	 	-	 	-	 	  4	1965 Oct 23	SSBS S2 [2]	Solid
+SEP 904	SEP	P-10	P-10	-	 Isolane	   10000.0 	 	-	 	     450.00 	 	-	 	  50.0 	 	  4	1966 May	MSBS M1 [1]	Solid
+SEP 901	SEP	P-10	P-10	-	 Isolane	   10000.0 	 	-	 	     440.00 	 	-	 	  50.0 	 	  4	1966 May	SSBS S01 [1]	Solid
+Zoljanah-1	IRGC	-	-	-	 Solid	   10000.0 	?	-	 	-	 	-	 	-	 	  1	-	Zoljanah [1]	Solid
+KPN-Solid1	KP	-	-	-	 Solid	   10000.0 	?	-	 	-	 	-	 	-	 	  1	-	KN-11-1	Solid
+Agni V S3	DRDO	Agni3	-	-	 HTBP/AP/Al	   10000.0 	?	-	 	     315.00 	 	294.0 	 	 110.0 	 	  1	2006	Agni 3 [2]	Solid
+MSBS 502	G2P/SNECPS	-	-	-	 Solid	   10000.0 	?	-	 	     300.00 	 	-	 	  70.0 	 	  1	-	MSBS M51 [2]	Solid
+C3-1	THKU/HERC	-	-	-	 Solid	   10000.0 	?	-	 	-	 	-	 	-	 	  1	1968	Poseidon C-3 [1]	Solid
+DF-31-2	ARMT	-	-	-	 Solid	   10000.0 	?	-	 	-	 	-	 	-	 	  1	-	DF-31 [2]	Solid
+DF-41-2	ARMT	-	-	-	 Solid	   10000.0 	?	-	 	-	 	-	 	-	 	  1	-	DF-31 [2]	Solid
+R-39 St 3	MAK	-	-	-	 Solid	   10000.0 	?	-	 	-	 	-	 	-	 	  1	-	R-39	Solid
+53T6	PERM/KAZSOY	-	-	-	 Solid	   10000.0 	?	-	 	-	 	-	 	-	 	  1	-	53T6	Solid
+5Ya26	PERM/KAZSOY	-	-	-	 Solid	   10000.0 	?	-	 	-	 	-	 	-	 	  1	-	5Ya26	Solid
+RD RT-15-2	OKB1	-	-	-	 Solid	   10000.0 	?	-	 	     500.00 	 	-	 	  30.0 	 	  1	-	RT-15	Solid
+M-20	NISST	Mu	-	-	 Solid	    9850.0 	 	-	 	     285.00 	 	261.0 	 	  66.0 	 	  1	1970	Mu 4S [2]	Solid
+M-22	NISST	Mu	-	-	 Solid	    9833.0 	 	-	 	     285.00 	 	273.0 	 	  70.0 	?	  1	1972	Mu 3C [2]	Solid
+Zefiro 9A	AVIO	-	-	-	 HTPB	    9730.0 	 	-	 	     221.00 	 	294.0 	 	 110.0 	 	  1	2012	Vega [3]	Solid
+15D24	ARSL	RT-2	-	-	 Solid	    9600.0 	 	-	 	     432.00 	 	-	 	  59.0 	 	  1	-	RT-2 [2]	Solid
+ATSM-9	IAI	Shaviyt	-	-	 HTPB	    9100.0 	 	-	 	-	 	-	 	-	 	  1	1988	Shaviyt [2]	Solid
+TX-500	THKXM	-	-	-	 CTPB	    9000.0 	?	-	 	    2000.00 	 	-	 	-	 	  1	1968	Spartan[1]	Solid
+S-43	IAE	Sonda	-	-	 Solid	    8820.0 	 	   19500 	 	     308.00 	 	279.1 	 	  62.0 	 	  1	-	VLS	Solid
+SEP 402	SEP	402	-	-	 Butalane	    8800.0 	 	-	 	     300.00 	 	-	 	  70.0 	 	  1	1980 Nov 18	MSBS M4 [2]	Solid
+RD RT-21 St2	MITT	-	-	-	 Solid	    8700.0 	 	-	 	-	 	-	 	-	 	  1	-	Pioner [2]	Solid
+RD RT-21-3	MITT	-	-	-	 Solid	    8700.0 	 	-	 	    1000.00 	?	-	 	 245.0 	?	  1	-	RT-21 [3]	Solid
+DF-21-2	ARMT	-	-	-	 Solid	    8686.0 	 	-	 	-	 	286.4 	 	  62.0 	 	  1	-	DF-21 [2]	Solid
+TR-1	NASDA	-	-	-	 HTPB BP-201J	    8558.0 	 	   32000 	?	     608.00 	 	271.6 	 	  52.0 	 	  1	1989	TR-1	Solid
+TR-1A	NASDA	-	-	-	 HTPB BP-201J	    8558.0 	 	   32000 	?	     716.00 	 	271.6 	 	  49.0 	 	  1	1989	TR-1A	Solid
+PS3	VSSC	PS3	-	-	 HTPB	    8400.0 	 	   28000 	 	     324.00 	 	294.0 	 	  83.0 	 	  1	1993	PSLV PS3	Solid
+A1P-1	AJSP	-	-	-	 Polyurethane/AP	    8330.0 	 	-	 	-	 	-	 	-	 	  1	1960	Polaris A1 [1]	Solid
+C4-2	HERC	-	-	-	 Solid	    8000.0 	 	-	 	-	 	-	 	-	 	  1	-	Trident C-4 [1]	Solid
+Ceres-1 M2	XIDO	-	-	-	 HTPB	    8000.0 	?	-	 	     274.00 	 	285.8 	 	  70.0 	 	  1	2020	GS-1 [2]	Solid
+SR120	HERC	MX Stage 3	-	-	 NEPE Polyethane	    7983.0 	 	-	 	     329.00 	 	306.0 	 	  62.0 	 	  1	1983 Jun 17	Peacekeeper [3]	Solid
+S7	ISRO	-	-	-	 HTPB	    7700.0 	 	-	 	     250.00 	 	-	 	 121.0 	 	  1	2021	SSLV [2]	Solid
+ST-735-1	ISAS	-	-	-	 Solid	    7400.0 	 	-	 	     250.00 	 	-	 	  49.0 	 	  1	-	ST-735 [1]	Solid
+eSR19	AJSP	-	-	-	 CTPB	    7280.0 	 	-	 	     270.00 	 	287.5 	 	  65.5 	 	  1	1964 Sep 24	Minuteman 2/3 [2]	Solid
+SR19	AJSP	Minuteman-SR	-	-	 CTPB	    7280.0 	 	-	 	     270.00 	 	287.5 	 	  65.5 	 	  1	1964 Sep 24	Minuteman 2/3 [2]	Solid
+SR19-ATK	ATKP	Minuteman-SR	-	-	 CTPB	    7033.0 	 	-	 	     268.00 	 	287.5 	 	  65.5 	 	  1	2004	Minuteman 2/3 [2]	Solid
+JL1-1	CALT	-	-	-	 Solid	    7000.0 	?	-	 	-	 	-	 	-	 	  1	2019	JL-1 (1)	Solid
+JL1-2	CALT	-	-	-	 Solid	    7000.0 	?	-	 	-	 	-	 	-	 	  1	2019	JL-1 (2)	Solid
+C3-2	HERC	-	-	-	 Solid	    7000.0 	?	-	 	-	 	-	 	-	 	  1	1968	Poseidon C-3 [2]	Solid
+CHGB FSRM	NGISP	-	-	-	 Solid	    6800.0 	 	-	 	-	 	-	 	  32.0 	 	  1	2022	CHGB [1]	Solid
+Alfa	BPD	-	-	-	 Solid	    6500.0 	?	-	 	     250.00 	?	-	 	  57.0 	 	  1	1973	Alfa [1]	Solid
+R-31 St 2	PERM	-	-	-	 Solid	    6500.0 	?	-	 	     233.00 	 	-	 	  73.6 	 	  1	1973	R-31 [2]	Solid
+TX-454	THKX/THKXM	-	-	-	 CTPB	    6454.0 	 	-	 	-	 	-	 	-	 	  1	1967	Spartan [2]	Solid
+DF-15	ARMT	-	-	-	 Solid	    6200.0 	 	-	 	-	 	-	 	-	 	  1	-	DF-15	Solid
+LPC-A92	LPC	-	-	-	 Solid	    6000.0 	 	-	 	     121.00 	 	-	 	  89.0 	 	  1	-	D-21 booster	Solid
+Rita II	SEP	P-6	P6	-	 Isolane	    6000.0 	 	-	 	     320.00 	 	-	 	  52.0 	 	  1	1973	MSBS M2 [2]	Solid
+LRAShM S1	DRDO	-	-	-	 Solid	    6000.0 	 	-	 	-	 	-	 	   0.0 	 	  1	-	LRAShM [1]	Solid
+15Zh58V	MITT	Topol	-	-	 Solid	    6000.0 	 	-	 	     245.00 	 	280.0 	 	  56.0 	 	  1	-	Start-1 [3]	Solid
+FG-46	HEXI	-	-	-	 Solid	    5985.0 	 	-	 	     292.00 	 	177.0 	 	  87.0 	 	  1	1990	EPKM	Solid
+L735	NISST	L735	-	-	 Polyurethane	    5982.0 	 	-	 	     363.00 	 	215.0 	 	  28.8 	 	  1	1966	Lambda [1]	Solid
+M56A1 PRP	AJSP	Aries	M56A1	-	 Polyurethane	    5480.0 	 	   12400 	 	     202.00 	 	267.3 	 	  61.0 	 	  4	1961 Feb  1	Minuteman 1A	Solid
+DF-11	SANJ	-	-	-	 Solid	    5400.0 	 	-	 	      93.20 	 	-	 	-	 	  1	-	DF-11	Solid
+SQ/DF-11	SANJ	-	-	-	 Solid	    5400.0 	 	-	 	      93.20 	 	-	 	-	 	  1	-	DF-11	Solid
+S-40	IAE	Sonda	-	-	 PBHL/AP/Al	    5340.0 	 	   11600 	 	     191.00 	 	270.8 	 	  58.2 	 	  1	1991	VS-40 [1]	Solid
+TX-135	THKX	-	-	-	 CTPB	    5295.0 	 	-	 	    2000.00 	 	-	 	   4.5 	 	  1	1968	Spartan [1]	Solid
+M56A1	AJSP	Aries	M56A1	-	 Polyurethane	    5240.0 	 	   12400 	 	     207.00 	 	267.3 	 	  61.0 	 	  4	1961 Feb  1	Minuteman 1A	Solid
+Kairos Stage 2	SPONE	-	-	-	 Solid	    5200.0 	 	-	 	-	 	-	 	-	 	  1	2024	Kairos [2]	Solid
+SB-735	NISST	L735	-	-	 CTPB	    5124.0 	 	-	 	     328.00 	 	266.0 	 	  38.0 	 	  1	1985	Mu 3SII [0]	Solid
+Stonechat II	RPEW	-	-	-	 Solid	    5090.0 	 	    9610 	 	     242.00 	 	293.0 	?	  32.8 	 	  1	1971	Stonechat	Solid
+MSBS 503	G2P/SNECPS	-	-	-	 Solid	    5000.0 	?	-	 	     100.00 	 	-	 	  40.0 	 	  1	-	MSBS M51 [3]	Solid
+KPN-Solid6	KP	-	-	-	 Solid	    5000.0 	?	-	 	-	 	-	 	-	 	  1	-	KN-11-1	Solid
+Shourya	DRDO	-	-	-	 Solid	    5000.0 	?	-	 	-	 	-	 	-	 	  1	-	Shourya [2]	Solid
+Agni P S2	DRDO	-	-	-	 Solid	    5000.0 	?	-	 	-	 	-	 	-	 	  1	2021	Agni P[2]	Solid
+Sejjil St 2	IR	-	-	-	 Solid	    5000.0 	?	-	 	     560.00 	 	230.0 	 	  20.0 	?	  1	-	Sejjil	Solid
+15Zh59A	VOTK	-	-	-	 Solid	    5000.0 	?	-	 	-	 	-	 	-	 	  1	-	Kuryer [1]	Solid
+15Zh59B	VOTK	-	-	-	 Solid	    5000.0 	?	-	 	-	 	-	 	-	 	  1	-	Kuryer [2]	Solid
+KPN-Solid2	KP	-	-	-	 Solid	    5000.0 	?	-	 	-	 	-	 	-	 	  1	-	KN-11-2	Solid
+K-4 Booster	DRDO	-	-	-	 Solid	    5000.0 	?	-	 	-	 	-	 	-	 	  1	2016	K-4	Solid
+K-4 Stage 2	DRDO	-	-	-	 Solid	    5000.0 	?	-	 	-	 	-	 	-	 	  1	2016	K-4	Solid
+Qaem-100 S2	IRGC	-	-	-	 Solid	    5000.0 	?	-	 	-	 	-	 	-	 	  1	-	Qaem-100 [2]	Solid
+X-260	ABL	-	-	-	 Solid DB/AP	    4900.0 	 	-	 	-	 	-	 	-	 	  1	1960	Polaris A3 [2]	Solid
+CHGB SSRM	NGISP	-	-	-	 Solid	    5000.0 	?	-	 	-	 	-	 	  50.0 	 	  1	2022	CHGB [2]	Solid
+SLV-3-2	VSSC	-	-	-	 Solid	    4900.0 	 	-	 	     267.00 	 	266.9 	 	  45.0 	 	  1	1979	SLV-3 [2]	Solid
+SLV-3-2/D4	VSSC	-	-	-	 Solid	    4900.0 	 	-	 	     267.00 	 	266.9 	 	  40.0 	 	  1	1979	SLV-3 [2]	Solid
+Stonechat I	RPEW	-	-	-	 Solid	    4780.0 	?	    8340 	 	     232.00 	 	258.2 	?	  32.3 	 	  1	1969	Stonechat	Solid
+15D94	ARSL	RT-2	-	-	 Solid	    4640.0 	 	-	 	     176.00 	 	271.0 	 	  49.0 	 	  1	-	RT-2P [3]	Solid
+CPKM	ARMT	-	-	-	 Solid	    4635.0 	 	   11360 	 	     222.80 	 	280.0 	 	  65.2 	 	  1	1995	CZ-2E/Asiasat	Solid
+Star 63F	THKE	-	TE-M-936-2	-	 HTPB	    4591.0 	 	   12535 	 	     104.70 	 	297.1 	 	 120.0 	 	  1	1993	Star 63F	Solid
+S4	ISRO	-	-	-	 HTPB	    4500.0 	 	-	 	     160.00 	 	-	 	 112.0 	 	  1	2021	SSLV [3]	Solid
+15D92	TSKB7	RT-2	-	-	 Solid	    4500.0 	?	-	 	-	 	-	 	-	 	  1	-	RT-2	Solid
+DF-16	PLA	-	-	-	 Solid	    4500.0 	?	-	 	-	 	-	 	-	 	  1	2015	DF-16	Solid
+ASLV AS-2	VSSC	-	-	-	 Solid	    4400.0 	 	-	 	     304.00 	 	275.9 	 	  36.0 	 	  1	-	ASLV [2]	Solid
+TX-354-3	THKX	Castor	Castor 2A	-	 CTPB	    4427.0 	 	   10301 	 	     275.10 	 	281.9 	 	  39.0 	 	  1	-	Scout [2]	Solid
+XM-33-20-4	THKX	Castor	Castor	-	 PBAA	    4360.0 	 	    7268 	 	     276.00 	 	224.0 	 	  27.0 	 	  1	-	Scout X-1 [2]	Solid
+Orion 50XL	ATKH	Pegasus	-	-	 HTPB	    4331.0 	 	   11218 	 	     196.00 	 	289.0 	 	  72.5 	 	  1	1994	Pegasus XL [2]	Solid
+Orion 50XLT	ATKH	Pegasus	-	-	 HTPB	    4331.0 	 	   11218 	 	     196.00 	 	289.0 	 	  72.5 	 	  1	1994	IRBM-T1[2]	Solid
+TX-354-4	THKX	Castor	Castor 2	-	 CTPB	    4320.0 	 	    9732 	 	     259.00 	 	-	 	  37.0 	 	  1	1965	Castor II	Solid
+A1P-2	AJSP	-	-	-	 Polyurethane/AP	    4300.0 	 	-	 	-	 	-	 	-	 	  1	1960	Polaris A1 [2]	Solid
+X-250	ABL	-	DDT-70	-	 Solid DB/AP	    4200.0 	 	-	 	-	 	-	 	-	 	  1	1960	Polaris A2 [2]	Solid
+Agni St2	DRDO	-	-	-	 Solid	    4200.0 	?	-	 	-	 	-	 	  60.0 	?	  1	-	Agni II [2]	Solid
+Pershing 2 St1	HERC	-	-	-	 HTPB	    4110.0 	 	-	 	     172.00 	 	276.0 	 	  58.0 	 	  1	1982	Pershing 2 [1]	Solid
+LRAShM S2	DRDO	-	-	-	 Solid	    4000.0 	 	-	 	-	 	-	 	   0.0 	 	  1	-	LRAShM [2]	Solid
+Zolfaghar	IRGC	Zulfiqa	-	-	 Solid	    4000.0 	 	-	 	-	 	-	 	-	 	  1	2021	Zolfaghar	Solid
+P4	SEP	Rita I	P-4	-	 Isolane	    4000.0 	 	   12000 	 	     176.00 	 	-	 	  65.0 	 	  1	1966 May	MSBS M1 [2]	Solid
+Ceres-1 M3	XIDO	-	-	-	 Solid	    4000.0 	?	-	 	      86.00 	 	287.0 	 	  69.0 	 	  1	2020	GS-1 [3]	Solid
+Hyunmoo 1	ADD	-	-	-	 Solid	    4000.0 	?	-	 	-	 	-	 	-	 	  1	-	-	Solid
+Hyunmoo-2B	ADD	-	-	-	 Solid	    4000.0 	?	-	 	-	 	-	 	-	 	  1	-	-	Solid
+ADD-SLV-1	ADD	-	-	-	 Solid	    4000.0 	?	-	 	-	 	-	 	-	 	  1	-	-	Solid
+Oka	KBM	-	9M714	-	 Solid	    4000.0 	?	-	 	-	 	-	 	-	 	  1	-	-	Solid
+Shaheen-2	PKNDC	-	-	-	 Solid	    4000.0 	?	-	 	-	 	-	 	-	 	  1	-	Shaheen 2 [2]	Solid
+ZQ-1-3	ARMT	-	-	-	 Solid	    4000.0 	?	-	 	-	 	-	 	-	 	  1	-	ZQ-1[3]	Solid
+ST-735-2	ISAS	-	-	-	 Solid	    4000.0 	?	-	 	     250.00 	?	-	 	-	 	  1	-	ST-735 [2]	Solid
+TX-33	THKX	Castor	Castor	-	 PBAA	    4000.0 	 	    7311 	 	     240.00 	 	254.3 	 	  27.4 	 	  1	-	Castor I	Solid
+XM-33E2	THKX	Castor	TX-33-28	-	 PBAA	    4000.0 	 	    7311 	 	     240.00 	 	254.3 	 	  27.4 	 	  1	-	Castor I	Solid
+XM-33E3	THKX	Castor	TX-33-20	-	 PBAA	    4000.0 	 	    7311 	 	     240.00 	 	254.3 	 	  27.4 	 	  1	-	Castor	Solid
+XM-33E5	THKX	Castor	TX-33-33	-	 PBAA	    4000.0 	 	    7311 	 	     240.00 	 	254.3 	 	  27.4 	 	  1	-	Castor	Solid
+XM-33E6	THKX	Castor	Shotput	-	 PBAA	    4000.0 	 	    7311 	 	     240.00 	 	254.3 	 	  27.4 	 	  1	-	Castor	Solid
+XM-33E8	THKX	Castor	Castor	-	 PBAA	    3970.0 	 	    8272 	 	     236.70 	 	254.3 	 	  35.3 	 	  1	-	Castor I (mod)	Solid
+Orbus 6E	UTC	Orbus	-	-	 HTPB	    3865.0 	 	-	 	      76.50 	 	303.8 	 	 104.0 	 	  1	1982 Oct 30	IUS [2]	Solid
+Hyperbola-1 M3	HEXI	-	-	-	 Solid	    3850.0 	 	-	 	     195.00 	 	290.0 	 	-	 	  1	-	Hyperbola-1 [3]	Solid
+Hyperbola-1B M3	HEXI	-	-	-	 Solid	    3850.0 	 	-	 	     195.00 	 	290.0 	 	-	 	  1	-	Hyperbola-1 [3]	Solid
+Pollux	THKX	Castor	XM-33E4	-	 Polysulfide	    3742.0 	 	-	 	     222.00 	 	-	 	  27.0 	 	  1	1959	Pollux	Solid
+SR73	AJSP	Minuteman-SR	-	-	 CTPB	    3655.0 	 	-	 	     152.00 	 	285.0 	 	  61.0 	 	  1	1968 Aug 16	Minuteman 3 [3]	Solid
+SR73-ATK	ATKP	Minuteman-SR	-	-	 CTPB	    3655.0 	 	-	 	     152.00 	 	285.0 	 	  61.0 	 	  1	1968 Aug 16	Minuteman 3 PRP [3]	Solid
+M-3B	NISST	Mu	-	-	 HTPB	    3603.0 	 	-	 	     132.00 	 	293.1 	 	  87.0 	 	  1	1985	Mu 3S2 [3]	Solid
+NAL-735	NISST	-	-	-	 Solid	    3500.0 	 	-	 	     250.00 	 	-	 	  49.0 	 	  1	2002	NAL-735	Solid
+Star 63D	THKU	-	TU-936	-	 HTPB	    3500.0 	 	    9046 	 	      84.80 	 	283.0 	 	 118.0 	 	  1	1985	PAM-D2	Solid
+15D25	ARSL	RT-2	-	-	 Solid	    3500.0 	 	-	 	     215.00 	 	-	 	  45.0 	 	  1	-	RT-2 [3]	Solid
+LEO-7	AJSP	-	Orbus 7	-	 Solid	    3587.0 	 	    9266 	 	     105.10 	 	-	 	  57.4 	 	  1	-	Super Strypi [2]	Solid
+TX-238	THKXM	-	-	-	 PBAA	    3492.0 	 	-	 	-	 	-	 	-	 	  1	-	TX-238	Solid
+Orion LAS-AM	ATKP	-	-	-	 Solid	    3464.0 	 	-	 	    1780.00 	 	-	 	   2.5 	 	  1	-	Orion LAS	Solid
+Orion 50	ATKH	Pegasus	-	-	 HTPB	    3370.0 	 	    8666 	 	     138.00 	 	292.3 	 	  73.3 	 	  1	1990 Apr  5	Pegasus [2]	Solid
+KM-V2b	NISST	KM	-	-	 HTPB	    3300.0 	 	-	 	      99.80 	 	301.0 	 	  90.0 	 	  1	2013	Epsilon	Solid
+9M723	VOTK	-	-	-	 Solid	    3300.0 	 	-	 	-	 	-	 	-	 	  1	-	Iskander	Solid
+SICBM2	AJSP	SICBM Stage 2	-	-	 PEG/NG/BTTN	    3260.0 	 	   12000 	?	     267.00 	 	-	 	  44.0 	 	  1	1989 May 11	SICBM [2]	Solid
+TX-20	THKX	-	XM-20?	-	 Solid PS	    3200.0 	 	-	 	     220.00 	 	-	 	  23.8 	 	  1	-	Sergeant	Solid
+XM-20	THKX	-	XM-20	-	 Solid PS	    3200.0 	 	    6350 	?	     198.00 	 	-	 	  32.0 	 	  1	-	Draco, X-17	Solid
+TX-12	THKX	-	XM-100	-	 Polysulphide	    3134.0 	 	-	 	-	 	-	 	-	 	  1	1950s	Sergeant	Solid
+TKS VA SAS	OKB52	TKSVA	-	-	 Solid	    3000.0 	?	-	 	-	 	-	 	-	 	  1	-	TKS VA SAS	Solid
+27D6	KAZOKB	-	-	-	 Solid	    3000.0 	?	-	 	-	 	-	 	-	 	  1	-	Kontakt [1]	Solid
+15Zh59V	VOTK	-	-	-	 Solid	    3000.0 	?	-	 	-	 	-	 	-	 	  1	-	Kuryer [3]	Solid
+IRCPS FSM	NGISP	IRCPS	-	-	 Solid	    3000.0 	?	-	 	-	 	-	 	-	 	  1	-	IRCPS 1	Solid
+JL1-3	CALT	-	-	-	 Solid	    3000.0 	?	-	 	-	 	-	 	-	 	  1	2019	JL-1 (3)	Solid
+Aerojet Jr	AJSP	Aerojet Jr	-	-	 Solid	    3000.0 	?	    7100 	 	     254.00 	 	-	 	  28.0 	 	  1	1961	Aerojet Jr	Solid
+X-265	HERC?	-	-	-	 Solid	    3000.0 	?	-	 	-	 	-	 	-	 	  1	-	X-265	Solid
+RD RT-1-3	OKB1	-	-	-	 Solid	    3000.0 	?	-	 	     240.00 	 	-	 	  42.0 	 	  1	-	RT-1 [3]	Solid
+HS-18-S3	KPA	-	-	-	 Solid	    3000.0 	?	-	 	-	 	-	 	-	 	  1	-	HS-18 [3]	Solid
+Shourya Booster	DRDO	-	-	-	 Solid	    3000.0 	?	-	 	-	 	-	 	-	 	  1	-	Shourya [1]	Solid
+XM-51	THKX/THKU	Bomarc Booster	TX-131	-	 Solid	    2990.0 	 	-	 	     222.00 	 	-	 	  30.0 	 	  1	1958	Bomarc B [0]	Solid
+KM-V2c	NISST	KM	-	-	 HTPB	    2900.0 	 	-	 	      99.60 	 	299.0 	 	  88.0 	 	  1	2016	Epsilon	Solid
+KZ1-3	ARMT	-	-	-	 Solid	    2850.0 	 	-	 	-	 	290.4 	 	  55.0 	 	  1	-	KZ-1 [3]	Solid
+KZ2-3	ARMT	-	-	-	 Solid	    2850.0 	 	-	 	-	 	290.4 	 	  55.0 	 	  1	-	KZ-1 [3]	Solid
+KZ1AE-3	ARMT	-	-	-	 Solid	    2850.0 	 	-	 	-	 	290.4 	 	  55.0 	 	  1	-	KZ-1 [3]	Solid
+DF-31-3	ARMT	-	-	-	 Solid	    2800.0 	?	-	 	-	 	-	 	-	 	  1	-	DF-31 [3]	Solid
+DF-41-3	ARMT	-	-	-	 Solid	    2800.0 	?	-	 	-	 	-	 	-	 	  1	-	DF-31 [3]	Solid
+M-30	NISST	Mu	-	-	 Solid	    2781.0 	 	-	 	     128.00 	 	265.0 	 	  42.0 	 	  1	1970	Mu 4S [3]	Solid
+RV-A-10	THKX	Sergeant	Hermes A-2	-	 Solid T14E1	    2700.0 	 	    3600 	 	     157.50 	 	-	 	  24.0 	 	  1	1953	RV-A-10	Solid
+PRD-33	ISKRM	-	-	-	 Solid	    2700.0 	 	-	 	    1962.00 	 	-	 	   4.5 	 	  1	1959	V-1000 booster	Solid
+Kairos Stage 3	SPONE	-	-	-	 Solid	    2700.0 	 	-	 	-	 	-	 	-	 	  1	2024	Kairos [3]	Solid
+Pershing 2 St2	HERC	-	-	-	 HTPB	    2600.0 	 	-	 	     134.00 	 	279.0 	 	  46.0 	 	  1	1983	Pershing 2 [2]	Solid
+N-69C Snark JATO	ABL	Snark	-	-	 Solid	    2500.0 	?	    2300 	?	     580.00 	 	-	 	   4.0 	 	  1	1955	Snark	Solid
+N-69A Snark JATO	ABL	Snark	-	-	 Solid	    2500.0 	?	    1900 	?	     470.00 	 	-	 	   4.0 	 	  1	1955	Snark	Solid
+Skybolt	AJSP	-	-	-	 Solid	    2500.0 	 	-	 	     164.00 	 	245.0 	 	  40.7 	 	  1	-	Skybolt	Solid
+ADD-SLV-2	ADD	-	-	-	 Solid	    2500.0 	?	-	 	-	 	-	 	-	 	  1	-	-	Solid
+L735(1/3)	NISST	L735	-	-	 Polyurethane	    2474.0 	 	-	 	     115.00 	 	242.9 	 	  38.4 	 	  1	1966	Lambda [2]	Solid
+XM-42	HERCR	Nike M-42	-	-	 Solid	    2400.0 	 	-	 	-	 	-	 	-	 	  1	1956	4-Nike cluster	Solid
+9M21	VOTK	-	-	-	 Solid	    2300.0 	 	-	 	-	 	-	 	-	 	  1	-	Luna-M	Solid
+TX-174	THKXM	-	Pershing	-	 PBAA	    2269.0 	 	-	 	     117.00 	 	-	 	  39.0 	 	  1	1960	Pershing [1]	Solid
+NA 803 Soleil	SNPE	Soleil	-	-	 Isolane	    2250.0 	 	    6460 	 	     147.00 	 	-	 	  44.0 	 	  4	1963 Dec 21	Topaze	Solid
+NA 804	SNPE	Soleil	-	-	 Isolane	    2250.0 	 	    6460 	 	     147.00 	 	-	 	  44.0 	?	  4	1963 Dec 21	Topaze	Solid
+NA 805	SNPE	Soleil	-	-	 Isolane	    2250.0 	 	    6460 	 	     147.00 	 	-	 	  44.0 	?	  4	1963 Dec 21	Topaze	Solid
+UM-129A	NISST	-	-	-	 Solid	    2200.0 	 	-	 	      77.50 	 	291.0 	 	  68.0 	 	  1	-	H-I [3]	Solid
+LPC-A1	LPC	-	-	-	 Solid	    2200.0 	 	-	 	     690.00 	 	-	 	   3.0 	 	  1	1966	Apollo LES	Solid
+Star 48BV	THKE	-	-	-	 HTPB	    2168.0 	 	    5801 	 	     152.00 	?	292.0 	 	  84.1 	 	  1	-	Conestoga	Solid
+Star 48V	THKE	-	TE-M-940-1	-	 HTPB	    2160.0 	 	    5801 	 	      68.80 	 	292.1 	 	  84.1 	 	  1	-	Conestoga	Solid
+Star 48B	THKE	-	TE-M-711-18	-	 HTPB	    2140.0 	 	    5801 	 	      68.70 	 	292.1 	 	  84.1 	 	  1	1980	Delta PAM-D	Solid
+Star 48B (17)	THKE	-	TE-M-711-17	-	 HTPB	    2134.0 	 	    5673 	 	      67.20 	 	286.0 	 	  84.1 	 	  1	1980	STS PAM-D	Solid
+LPC A-1	LPC	-	-	-	 Solid	    2130.0 	 	    2292 	 	     690.00 	 	-	 	-	 	  1	1965	Apollo LES	Solid
+Star 48	THKE	-	TE-M-711-3	-	 HTPB	    2113.0 	 	-	 	      67.20 	 	286.0 	 	  88.0 	 	  1	1980	Star 48	Solid
+RSA-3-3	HOUW	-	-	-	 Solid	    2048.0 	 	-	 	      59.00 	 	298.0 	 	  94.0 	 	  1	1988	RSA-3	Solid
+GF-02	BWYIC	-	-	-	 Solid	    2050.0 	 	    4500 	 	      29.00 	 	253.9 	 	  38.0 	 	  1	1970	CZ-1 [3]	Solid
+M57A1	HERC	M57	M57A1	-	 CMDB	    2030.0 	 	    4485 	 	      76.00 	 	276.0 	 	  59.0 	 	  4	1961 Feb  1	Minuteman 1A [3]	Solid
+ADD-SLV-3	ADD	-	-	-	 Solid	    2000.0 	?	-	 	-	 	-	 	-	 	  1	-	-	Solid
+Salman	IRGC	-	-	-	 Solid	    2000.0 	?	-	 	-	 	-	 	-	 	  1	-	Qased [2]	Solid
+ARRW Booster	AJSP	-	-	-	 Solid	    2000.0 	?	       0 	 	-	 	-	 	-	 	  1	-	ARRW	Solid
+OS-M St 3	LYK	-	-	-	 Solid	    2000.0 	?	-	 	-	 	-	 	-	 	  1	-	OS-M1 [3]	Solid
+DPRK-MLRS	KP	-	-	-	 Solid	    2000.0 	?	-	 	-	 	-	 	-	 	  1	-	DPRK-MLRS	Solid
+ISRO-CES	ISRO	-	-	-	 Solid	    2000.0 	?	-	 	-	 	-	 	-	 	  1	-	ISRO-CES	Solid
+CZ-11-3	CALT	-	-	-	 Solid	    2000.0 	?	-	 	-	 	-	 	-	 	  1	-	CZ-11 [3]	Solid
+CZ-11-4	CALT	-	-	-	 Solid	    2000.0 	?	-	 	-	 	-	 	-	 	  1	-	CZ-11 [4]	Solid
+GF-01A	BWYIC	-	-	-	 Solid	    2000.0 	 	-	 	      29.00 	 	230.0 	 	 140.0 	 	  1	-	-	Solid
+Nudol' St 2	ALMAN	-	-	-	 Solid	    2000.0 	?	-	 	-	 	-	 	   5.0 	 	  1	2015	A-235	Solid
+K-15 Stage 2	DRDO	-	-	-	 Solid	    2000.0 	?	-	 	-	 	-	 	-	 	  1	2007	K-15	Solid
+NP-110	IR	-	-	-	 Solid	    2000.0 	?	-	 	-	 	-	 	-	 	  1	-	Fateh-110	Solid
+Fateh-360	IR	-	-	-	 Solid	    2000.0 	?	-	 	-	 	-	 	-	 	  1	-	Fateh-360	Solid
+AUS-51	RAFL	-	-	-	 HTPB	    2000.0 	 	-	 	      58.00 	 	295.0 	 	  92.0 	 	  1	1988	Shaviyt [3]	Solid
+JL1-4	CALT	-	-	-	 Solid	    2000.0 	?	-	 	-	 	-	 	-	 	  1	2019	JL-1 (4)	Solid
+Zeus A	GCR	-	-	-	 Solid	    2000.0 	?	-	 	-	 	-	 	-	 	  1	-	Zeus A	Solid
+KT1-3	ARMT	-	-	-	 Solid	    2000.0 	?	-	 	-	 	-	 	-	 	  1	-	KT-1 [3]	Solid
+SEPR 739	SEPR	Berenice	BER	-	 Plastolane	    1930.0 	 	-	 	     170.00 	 	260.0 	s	  20.0 	 	  1	1960s	Berenice	Solid
+X-251	ABL	Talos	Talos	-	 Solid	    1922.0 	 	    2700 	 	     516.00 	 	-	 	   5.3 	 	  1	-	Talos	Solid
+Trident St 3	UTC	-	-	-	 Solid	    1900.0 	 	-	 	-	 	-	 	-	 	  1	1977	Trident [3]	Solid
+NA 801	SNPE	Mamouth	-	-	 Solid	    1800.0 	 	-	 	     190.00 	 	-	 	  18.0 	 	  1	-	Agate	Solid
+S-520	NISST?	-	-	-	 HTPB	    1796.0 	 	    3984 	 	     143.20 	 	264.8 	 	  28.7 	 	  1	1980	S-520	Solid
+IRIS	FIATA	IRIS	-	-	 HTPB 1813	    1720.0 	 	    4580 	 	      58.00 	 	291.0 	 	  79.0 	 	  1	1992	Lageos PKM	Solid
+M-6	ABL	M6	Honest John	-	 Solid	    1713.0 	 	    1800 	 	     373.00 	s	-	 	   5.2 	 	  1	1963	HJ [X-202]	Solid
+M-6 4DS105000	HERCR	JATO M6	X-202E1	-	 Solid	     800.0 	?	    1870 	 	     470.00 	 	-	 	   4.4 	 	  1	1950?	HJ 4DS105000	Solid
+ASLV AS-3	VSSC	-	-	-	 Solid	    1710.0 	 	-	 	      90.70 	 	277.0 	 	  45.0 	 	  1	-	ASLV [3]	Solid
+SEPR 739-2	ONERA/SEPR	-	Tacite	-	 Solid	    1702.0 	 	-	 	     170.00 	?	234.0 	 	  20.0 	 	  1	1965	Tacite	Solid
+SICBM3	HERC	SICBM Stage 3	-	-	 PEG/NG/BTTN	    1550.0 	 	-	 	      88.00 	 	-	 	-	 	  1	1989 May 11	SICBM [3]	Solid
+NA 802 Soleil C	SNPE	Soleil	-	-	 Isolane	    1530.0 	 	    4680 	 	     120.00 	 	245.0 	 	  39.0 	 	  4	1962 Dec 19	Topaze Court	Solid
+KN-02 Motor	CMIK	-	Tochka	-	 Solid	    1530.0 	?	-	 	-	 	-	 	-	 	  1	-	KN-02	Solid
+KN-23 Motor	CMIK	-	Tochka	-	 Solid	    1530.0 	?	-	 	-	 	-	 	-	 	  1	-	KN-23	Solid
+KN-23X Motor	CMIK	-	Tochka	-	 Solid	    1530.0 	?	-	 	-	 	-	 	-	 	  1	-	KN-23	Solid
+9M79	VOTK	-	Tochka	-	 Solid	    1530.0 	?	-	 	-	 	-	 	-	 	  1	1970	Tochka	Solid
+9M79-1	VOTK	-	Tochka	-	 Solid	    1530.0 	?	-	 	-	 	-	 	-	 	  1	1970	Tochka-U	Solid
+IRCPS SSM	NGISP	IRCPS	-	-	 Solid	    1500.0 	?	-	 	-	 	-	 	-	 	  1	-	IRCPS 2	Solid
+SLV-3-3	VSSC	-	-	-	 Solid	    1500.0 	 	-	 	      90.70 	 	276.9 	 	  45.0 	 	  1	1979	SLV-3 [2]	Solid
+SLV-3-3/D4	VSSC	-	-	-	 Solid	    1500.0 	 	-	 	      90.70 	 	276.9 	 	  50.0 	 	  1	1979	SLV-3 [2]	Solid
+Talos Mk 11 Mod 2	ABL	Talos	Talos	-	 Solid	    1500.0 	?	    2700 	 	     516.00 	 	-	 	   5.3 	 	  1	-	Talos [X-251C1]	Solid
+IAI-Arrow-1	IAI	-	-	-	 Solid	    1500.0 	?	-	 	-	 	-	 	-	 	  1	-	Arrow 2	Solid
+IAI-Arrow-2	IAI	-	-	-	 Solid	    1500.0 	?	-	 	-	 	-	 	-	 	  1	-	Arrow 2	Solid
+IAI-Arrow-3	IAI	-	-	-	 Solid	    1500.0 	?	-	 	-	 	-	 	-	 	  1	-	Arrow 3	Solid
+48N6	FAKEL	-	-	-	 Solid	    1500.0 	?	-	 	-	 	-	 	-	 	  1	-	48N6	Solid
+SEP 403	SEP	403	-	-	 Butalane	    1500.0 	 	-	 	     100.00 	 	-	 	  40.0 	 	  1	1980 Nov 18	MSBS M4 [3]	Solid
+TX-175	THKXM	Pershing	-	-	 PBAA	    1473.0 	 	-	 	      85.00 	 	-	 	  39.0 	 	  1	1960	Pershing [2]	Solid
+KM-V1	NISST	KM	-	-	 HTPB	    1430.0 	 	-	 	      52.00 	 	298.0 	 	  73.0 	 	  1	1995	Mu V [4]	Solid
+Star 37XE	THKE	TE-364	TE-M-714-8	-	 HTPB	    1401.0 	 	-	 	      56.00 	?	289.6 	 	  66.0 	?	  1	-	Star 37XE	Solid
+Star 31	THKE	Antares	TE-M-762	-	 HTPB/AP/Al TP-H-334	    1392.0 	 	    3738 	 	      82.30 	 	293.5 	 	  45.0 	 	  1	-	Scout G [3]	Solid
+Taurus	UNK	M6	M31A1	-	 Solid	    1343.0 	 	    1592 	 	-	 	-	 	   3.5 	 	  1	1977 Jul 19	Taurus Orion [1]	Solid
+TX-261-3	THKX	Pedro	Pedro	-	 PBAA	    1307.0 	 	    2761 	 	     244.00 	 	-	 	  11.3 	 	  1	-	Pedro	Solid
+TX-261-2	THKX	Pedro	Pedro	-	 PBAA	    1307.0 	 	    2761 	 	     244.00 	 	-	 	  11.3 	 	  1	-	Pedro	Solid
+TX-261	THKX	-	-	-	 PBAA	    1307.0 	 	    2761 	 	     244.00 	 	-	 	  11.3 	 	  1	-	TX-261	Solid
+X-254 (1)	ABL	Antares	Antares 1A	-	 Solid	    1300.0 	 	    2376 	 	      59.40 	 	-	 	  40.0 	 	  1	1960	Antares	Solid
+Qaem-100 S3	IRGC	-	-	-	 Solid	    1300.0 	?	-	 	-	 	-	 	-	 	  1	-	Qaem-100 [3]	Solid
+Astrobee F	AJSP	Astrobee	-	-	 HTPB	    1300.0 	?	    2440 	 	      36.40 	 	-	 	  51.1 	 	  1	1972	Astrobee F	Solid
+TT-500	NASDA	-	-	-	 Solid	    1300.0 	?	-	 	     116.00 	 	-	 	-	 	  1	-	TT-500	Solid
+JCR	NASDA	-	-	-	 Solid	    1300.0 	?	-	 	     133.00 	 	-	 	-	 	  1	-	JCR	Solid
+RH-560S	VSSC	-	-	-	 Solid	    1300.0 	 	-	 	     119.00 	 	-	 	  19.0 	 	  1	-	RH-560S	Solid
+Raven 11	RPEW	Raven	-	-	 Solid	    1280.0 	 	    2502 	 	     105.00 	 	-	 	  39.0 	 	  1	-	Skylark 5	Solid
+M-3A	NISST	Mu	-	-	 Solid	    1245.0 	 	-	 	      61.00 	 	283.0 	 	  54.0 	?	  1	1972	Mu 3C [3]	Solid
+Skybolt St2	AJSP	-	Skybolt.St2	-	 Solid	    1230.0 	 	-	 	      81.80 	 	245.0 	 	  41.3 	 	  1	1950s	Skybolt [2]	Solid
+S-30	IAE	Sonda	-	-	 Solid	    1205.0 	 	    2256 	 	     102.00 	 	266.3 	 	  22.0 	 	  1	1976	Sonda 3	Solid
+KN-ATACMS	KP	-	-	-	 Solid	    1200.0 	?	-	 	     180.00 	 	-	 	-	 	  1	-	KN-ATACMS	Solid
+M124	AJCA	ATACMS	-	-	 Solid	    1200.0 	?	-	 	     180.00 	 	-	 	-	 	  1	-	ATACMS	Solid
+K-BATS	HANWHA	-	-	-	 Solid?	    1200.0 	?	-	 	-	 	-	 	-	 	  1	2014?	K-BATS	Solid
+X-259	ABL	Antares	Antares 2	-	 Solid	    1275.0 	 	-	 	      96.50 	 	-	 	-	 	  1	1962	Antares 2	Solid
+X-259-B3	ABL	Antares	Antares 2	-	 Solid	    1275.0 	 	    3225 	 	      93.10 	 	281.4 	 	  35.9 	 	  1	-	Scout B [3]	Solid
+X-254	ABL	Antares	Antares 1A	-	 Solid	    1230.0 	 	    2330 	 	      60.50 	 	255.0 	 	  39.0 	 	  1	1960	Scout X-1[3]	Solid
+TX-30	THKXM	-	-	-	 Polysulfide	    1206.0 	 	-	 	      44.50 	 	-	 	  29.0 	 	  1	1960	Nike Hercules [2]	Solid
+XM-30	THKXM	-	-	-	 Solid	    1200.0 	?	-	 	      54.30 	 	-	 	  37.0 	 	  1	1959	X-17, Draco	Solid
+KSR	KARI	-	-	-	 Solid	    1200.0 	 	    1700 	?	      86.30 	 	235.0 	 	  20.0 	 	  1	1993	KSR-I	Solid
+KSR Booster	KARI	-	-	-	 Solid	    1200.0 	?	    1250 	?	     211.00 	 	-	 	   5.9 	 	  1	1993	KSR-II	Solid
+Paekkom	ADD	-	-	-	 Solid	    1000.0 	?	-	 	-	 	-	 	-	 	  1	-	Paekkom bst (1/4)	Solid
+Acheron	UNK	-	-	-	 Solid	    1200.0 	?	-	 	-	 	-	 	-	 	  1	1988	Hades	Solid
+Black Sparrow	IAI	-	-	-	 Solid	    1200.0 	?	-	 	-	 	-	 	-	 	  1	-	Black Sparrow	Solid
+Peregrine	MSFC	MSFC	-	-	 Solid	    1200.0 	?	-	 	-	 	-	 	-	 	  1	2013	Peregrine	Solid
+Al Fatah	FATAH	-	-	-	 Solid	    1200.0 	?	    1950 	 	     130.00 	 	238.0 	 	  15.0 	 	  1	-	Black Sparrow	Solid
+Red Kite	BAYCH	-	-	-	 Solid	    1180.0 	 	       0 	 	     226.00 	 	-	 	  13.0 	 	  1	2023	Red Kite	Solid
+Rook II	RPEW	Raven	-	-	 Solid	    1170.0 	 	    1735 	 	-	 	-	 	   7.0 	 	  1	1960	Rook	Solid
+26KS20000	BAL	BB5	BB5	-	 AP/Al/Polyurethane	    1167.0 	 	    2251 	 	      89.00 	 	230.2 	 	  26.0 	 	  1	-	BB5	Solid
+BB Mk1	BAL	BB5	BB5	-	 HTPB	    1167.0 	 	    2251 	 	      89.00 	 	230.2 	 	  26.0 	 	  1	2007	BB Mk1	Solid
+BB Mk3	BAL	BB5	BB5	-	 HTPB	    1167.0 	 	    2251 	 	      89.00 	 	230.2 	 	  26.0 	 	  1	2007	BB Mk3	Solid
+Raven 1	RPEW	Raven	-	-	 Solid	    1160.0 	 	-	 	      80.00 	 	214.5 	 	  35.0 	 	  1	-	Skylark [?]	Solid
+Raven 2	RPEW	Raven	-	-	 Solid	    1160.0 	 	-	 	      80.00 	 	214.5 	 	  35.0 	 	  1	-	Skylark [?]	Solid
+Raven 5	RPEW	Raven	-	-	 Solid	    1160.0 	 	-	 	      80.00 	 	214.5 	 	  35.0 	 	  1	-	Skylark [?]	Solid
+Raven 6	RPEW	Raven	-	-	 Solid	    1160.0 	 	-	 	      80.00 	 	214.5 	 	  35.0 	 	  1	-	Skylark	Solid
+Raven 7	RPEW	Raven	-	-	 Solid	    1160.0 	 	-	 	      80.00 	 	214.5 	 	  35.0 	 	  1	-	Skylark [?]	Solid
+Star 37FM	THKE	TE-364	TE-M-783	-	 HTPB	    1147.0 	 	    3052 	 	      45.80 	 	291.8 	 	  66.4 	 	  1	-	Delta 7326 st 3	Solid
+Star 37E	THKE	TE-364	TE-M-364-4	-	 Solid	    1123.0 	 	    2911 	 	-	 	283.6 	 	-	 	  1	-	Star 37C	Solid
+23KS20000	BAL	BB	-	-	 Polyurethane	    1113.0 	 	    2050 	?	      89.00 	 	217.0 	?	  23.0 	 	  1	1957	Black Brant IIB	Solid
+SEPR 740	SEPR	-	-	-	 Plastolane	    1110.0 	 	-	 	-	 	238.0 	 	  20.0 	 	  1	1962	Berenice St 2	Solid
+SEPR 740-3	SEPR	-	-	-	 Plastolane	    1110.0 	 	-	 	-	 	238.0 	 	  20.0 	 	  1	1962	-	Solid
+K420	ISAS	-	-	-	 SP Polysulphide	    1100.0 	 	-	 	-	 	-	 	  17.0 	 	  1	1958	Kappa 8	Solid
+K420H	ISAS	-	-	-	 UP Polyurethane	    1100.0 	 	-	 	-	 	-	 	  17.0 	 	  1	1962	Kappa 9	Solid
+Star 37GV	THKE	TE-364	-	-	 HTPB	    1084.0 	 	    2825 	 	      87.00 	 	290.0 	 	  49.0 	 	  1	-	Delta 7326 st 3	Solid
+Rook	RPEW	Raven	-	-	 Solid	    1057.0 	 	    1720 	 	-	 	-	 	   5.5 	 	  1	1960	Rook	Solid
+X-254 [1]	ABL	Antares	Antares 1A	-	 Solid	    1050.0 	 	    4200 	 	      62.00 	 	255.0 	 	  39.0 	 	  1	1960	Antares	Solid
+Hyperbola-1 M4	HEXI	-	-	-	 BHT	    1050.0 	 	-	 	      60.00 	 	290.0 	 	-	 	  1	2019	Hyperbola-1 [4]	Solid
+Hyperbola-1B M4	HEXI	-	-	-	 BHT	    1050.0 	 	-	 	      60.00 	 	290.0 	 	-	 	  1	2019	Hyperbola-1 [4]	Solid
+Star 37C	THKE	TE-364	TE-M-364-18	-	 Solid	    1047.0 	 	    2708 	 	-	 	285.5 	 	-	 	  1	-	Star 37C	Solid
+Raven 8	RPEW	Raven	-	-	 AP	    1018.0 	 	-	 	      50.00 	 	209.5 	 	  35.0 	 	  1	-	Skylark	Solid
+LPC-415	LPC	-	SRAM	-	 Solid	    1000.0 	?	-	 	-	 	-	 	-	 	  1	1969	SRAM	Solid
+Start	MITT	Topol	-	-	 Solid	    1000.0 	 	-	 	     100.00 	 	295.0 	 	 207.0 	 	  1	-	Start-1 [4]	Solid
+Hyunmoo SLV4	ADD	-	-	-	 Solid	    1000.0 	?	-	 	-	 	-	 	   0.0 	 	  1	2022	Hyunmoo SLV [4]	Solid
+K-15 Booster	DRDO	-	-	-	 Solid	    1000.0 	?	-	 	-	 	-	 	-	 	  1	2007	K-15 booster	Solid
+2S-SL	DRDO	-	-	-	 Solid	    1000.0 	?	-	 	-	 	-	 	-	 	  1	2017	PDV Target [2]	Solid
+KSLV SRM	KARI	-	-	-	 Solid	    1000.0 	?	-	 	      80.00 	 	-	 	  44.0 	 	  1	2009	KSLV	Solid
+NSPO Booster	NSPO	-	-	-	 Solid	    1000.0 	?	-	 	-	 	-	 	   6.0 	 	  1	-	NSPO	Solid
+NSPO Sustainer	NSPO	-	-	-	 Solid	    1000.0 	?	-	 	-	 	-	 	  30.0 	 	  1	-	NSPO	Solid
+Badr-1	ANSAL	-	-	-	 Solid	    1000.0 	?	-	 	-	 	-	 	-	 	  1	-	Badr-1	Solid
+28D6	KAZOKB	-	-	-	 Solid	    1000.0 	?	-	 	-	 	-	 	-	 	  1	-	Kontakt [2]	Solid
+Seliger 1	DRG	-	-	-	 Solid	    1000.0 	?	-	 	      50.00 	 	-	 	-	 	  1	1962	Seliger	Solid
+Safir	IR	-	-	-	 Solid	    1000.0 	?	-	 	-	 	-	 	-	 	  1	2008	Safir [3]	Solid
+Ababeel	PKNDC	-	-	-	 Solid	    1000.0 	?	-	 	-	 	-	 	-	 	  1	2016	Ababeel [3]	Solid
+X-271	HERC	-	-	-	 Solid	    1000.0 	?	-	 	-	 	-	 	-	 	  1	-	X-271	Solid
+PrSM	LM	-	-	-	 Solid	    1000.0 	?	-	 	-	 	-	 	-	 	  1	-	PrSM	Solid
+M5E1  (XM42)	THKXM	Nike	M30? X216	-	 Solid	     984.0 	 	-	 	-	 	-	 	-	 	  1	1956	NHer booster(1/4)	Solid
+GEM 22	ATKABL	GEM 22 Oriole	-	-	 HTPB	     980.0 	 	-	 	      92.10 	 	-	 	-	 	  1	2000	Oriole	Solid
+Cygnus 40	LARC/THKE	TE-M-186	40" SM	-	 Solid	     972.0 	 	-	 	      83.00 	 	-	 	  26.0 	 	  1	-	40" SM	Solid
+15KS25000	BAL	BB	-	-	 Polyurethane	     970.0 	 	    1670 	 	     111.00 	 	217.0 	 	  15.0 	 	  1	1957	Black Brant I	Solid
+TX-664-4	THKXM?	Terrier	Mk 70	-	 HTPB	     969.0 	 	-	 	-	 	-	 	   6.2 	 	  1	-	SM-2 [1]	Solid
+S-31	IAE	Sonda	-	-	 Solid	     961.0 	 	    1730 	 	     136.00 	 	261.0 	 	  12.0 	 	  1	2004	Sonda VSB-30	Solid
+Star 37XFP	THKE	TE-364	TE-M-714-16	-	 HTPB	     955.0 	 	    2538 	 	      38.00 	 	290.0 	 	  66.0 	 	  1	1985	Star 37XFP	Solid
+Star 37XF	THKE	TE-364	TE-M-714-8	-	 HTPB	     953.0 	 	    2340 	 	      56.00 	?	290.0 	 	  66.0 	?	  1	-	Star 37XF	Solid
+Stromboli	SDP	-	-	-	 Plastolite	     942.0 	 	    1550 	 	      97.00 	 	230.0 	 	  16.0 	 	  1	1968	Eridan [1]	Solid
+Star 37F	THKE	TE-364	TE-M-364-19	-	 Solid	     934.0 	 	    2445 	 	-	 	286.0 	 	-	 	  1	-	Star 37F	Solid
+Lance	GCR	6.65-KS-38800	-	-	 Solid	     761.0 	 	    1148 	 	     173.00 	 	215.0 	 	   6.7 	 	  1	1958	X-7A3 Booster	Solid
+XM-45	THKX	TX-77	Skat	-	 Solid	     922.0 	 	-	 	     200.00 	?	-	 	   6.0 	 	  1	1964	TB2 [2]	Solid
+5KS50000	THKX	TX-77?	-	-	 Solid	     900.0 	?	-	 	     222.00 	 	-	 	   5.0 	 	  1	1958	X-7A3 Booster	Solid
+TX-77	THKX	-	-	-	 Solid	     824.0 	 	-	 	     227.00 	 	-	 	   8.7 	 	  1	-	X-7A3 Booster	Solid
+S-44	IAE	Sonda	-	-	 Solid	     917.0 	 	    2250 	 	      30.80 	 	281.9 	 	  73.0 	 	  1	1991	VLS [4]	Solid
+RX-420	LAPAN	-	-	-	 Solid	     900.0 	?	-	 	-	 	-	 	-	 	  1	2009	RX-420	Solid
+NOTS 500	NOTS	-	-	-	 Polyurethane-AP	     900.0 	?	-	 	-	 	-	 	  45.0 	 	  1	1960	Caleb [1]	Solid
+RH-560	VSSC	-	-	-	 Solid	     900.0 	 	-	 	      76.00 	 	-	 	  19.0 	 	  1	-	RH-560	Solid
+SEPR 737	ONERA	-	-	-	 Solid	     900.0 	 	-	 	      75.00 	 	-	 	  16.0 	 	  1	-	Aigle	Solid
+Orion 38	ATKH	Pegasus	-	-	 HTPB	     896.0 	 	    2185 	 	      36.00 	 	289.6 	 	  69.6 	 	  1	1990 Apr  5	Pegasus [3]	Solid
+Terrier Mk12 Mod 0	UNK	Terrier	-	-	 Solid	     845.0 	 	    1157 	 	     257.50 	 	195.4 	 	   4.4 	 	  1	-	Terrier	Solid
+L500	NISST	L735	-	-	 PB	     832.0 	 	-	 	      65.00 	 	249.3 	 	  27.0 	 	  1	1966	Lambda [3]	Solid
+X-256	ABL	Terrier	-	-	 Solid	     820.0 	 	    1134 	 	     257.50 	 	195.4 	 	   4.4 	 	  1	-	Terrier  [X-256]	Solid
+Terrier Mk12 Mod 1	ABL	Terrier	Adv Terr BT3	-	 Solid	     817.0 	 	    1134 	 	     257.50 	 	195.4 	 	   4.4 	 	  1	-	Terrier  [X-256A1]	Solid
+T48	MARTB/HERCR?	-	-	-	 Solid	     900.0 	 	     658 	 	     193.00 	?	-	 	   3.4 	 	  1	1954	Nike T48 Ajax	Solid
+SEPR 734-1	SEPR	-	Vesuve	-	 Solid	     800.0 	?	    1025 	 	     200.00 	?	-	 	   5.0 	 	  1	1959	Antares [1]	Solid
+B-611	SANJ	-	-	-	 Solid?	     800.0 	?	-	 	-	 	-	 	-	 	  1	2000?	B-611	Solid
+B-611-TR	ROKSN	-	-	-	 Solid?	     800.0 	?	-	 	-	 	-	 	-	 	  1	2000?	B-611-TR	Solid
+N-25 Snark JATO	ABL	Snark	X-226	-	 Solid	     800.0 	?	     800 	?	     209.00 	 	-	 	   4.0 	?	  1	1955	Snark	Solid
+HIBEX-U	HERC	-	-	-	 Solid	     800.0 	?	-	 	    2180.00 	 	-	 	   1.1 	 	  1	1965	HIBEX	Solid
+HIBEX	HERC	-	-	-	 Solid	     800.0 	?	-	 	    2180.00 	 	-	 	   1.1 	 	  1	1965	HIBEX	Solid
+4KS115000	AJ	-	Regulus JATO	-	 Solid	     800.0 	?	    2000 	?	     512.00 	 	-	 	   4.0 	 	  1	1950s	Regulus 2	Solid
+4DS105000 C1	ABL	JATO	X-202C1	-	 Solid	     800.0 	?	    1900 	?	     470.00 	 	-	 	   4.0 	 	  1	1950?	JATO/Talos	Solid
+4DS105000 C6	ABL	JATO	X-202C6	-	 Solid	     800.0 	?	    1870 	 	     470.00 	 	-	 	   4.4 	 	  1	1950?	HJ prototype	Solid
+X-202C3	ABL	-	4DW105000	-	 Solid	     800.0 	?	    1900 	?	     470.00 	 	-	 	   4.0 	 	  1	1950?	X-7A1 Booster	Solid
+P068	SEP	Rubis	-	-	 Solid	     775.0 	 	    2300 	 	      52.50 	 	280.0 	 	  46.5 	 	  1	1970	Diamant B [3]	Solid
+Star 37D	THKE	TE-364	TE-M-364-3	-	 Solid	     719.0 	 	    1860 	 	      45.00 	 	266.0 	 	-	 	  1	-	Star 37C	Solid
+Star 37B	THKE	TE-364	TE-M-364-2	-	 Solid	     718.0 	 	    1860 	 	-	 	291.0 	 	-	 	  1	1966	Star 37B	Solid
+P064	SEP	Rubis	-	-	 Solid	     712.0 	 	    2300 	 	      52.00 	 	-	 	  45.0 	 	  1	1965	Diamant A [3]	Solid
+Star 37S	THKE	TE-364	TE-M-364-15	-	 Solid	     711.0 	 	    1870 	 	-	 	287.3 	 	-	 	  1	-	Star 37C	Solid
+LEO-1	AJSP	-	-	-	 Solid	     710.0 	 	    1845 	 	      50.00 	 	-	 	  51.5 	 	  1	2015	Super Strypi	Solid
+Mk 72 UTC	UTC	Terrier	-	-	 HTPB	     710.0 	 	-	 	-	 	-	 	-	 	  1	-	SM-3 [1]	Solid
+Mk 72	AJCA	Terrier	-	-	 HTPB	     710.0 	 	-	 	-	 	-	 	-	 	  1	-	SM-3 [1]	Solid
+TU-223	THKU	-	M16E3	-	 Solid	     700.0 	?	-	 	     449.00 	 	-	 	   2.4 	?	  1	1955	Mace Booster [0]	Solid
+SM-3-II-2	MHI	-	-	-	 Solid	     700.0 	?	-	 	-	 	-	 	-	 	  1	-	SM-3-II-2	Solid
+2.5-DS-59000	ABL	-	-	-	 Solid	     700.0 	?	-	 	     265.00 	 	-	 	   2.5 	 	  1	-	Nike Deacon mod	Solid
+3-DS-47000	ABL	Nike	X-201A3 T-39	-	 Solid	     700.0 	?	-	 	     209.00 	 	-	 	   3.0 	 	  1	1950	Nike X201 Ajax	Solid
+TT-500-S2	NASDA	-	-	-	 Solid	     700.0 	?	-	 	      61.00 	 	-	 	-	 	  1	-	TT-500-S2	Solid
+JCR-S2	NASDA	-	-	-	 Solid	     700.0 	?	-	 	      54.00 	 	-	 	-	 	  1	-	JCR	Solid
+S-310	ISAS	-	-	-	 PB	     671.0 	 	-	 	      80.00 	 	-	 	  31.6 	 	  1	1975	S-310	Solid
+Trident Motor	NORTHC	-	-	-	 Solid	     670.0 	 	-	 	      35.00 	 	268.0 	 	-	 	  2	1967	RMP-B	Solid
+Star 30E	THKE	-	TE-M-700-19	-	 HTPB/AP/Al	     666.0 	 	    1788 	 	      35.30 	 	290.5 	 	  49.0 	 	  1	1980s	Star 30E	Solid
+M5E1	ABL	Nike	X-216	-	 Solid	     630.0 	 	     640 	 	     195.60 	 	-	 	   3.3 	 	  1	-	Nike (Operational)	Solid
+X-216A2	ABL	Nike	2.5-DS-59000	-	 Solid	     630.0 	 	     640 	 	     262.00 	 	-	 	   2.5 	 	  1	-	Nike 1249	Solid
+XM5	ABL	Nike	2.5-DS-59000	-	 Solid	     630.0 	?	-	 	     262.00 	 	-	 	   2.5 	 	  1	1950s	Nike (3-fin)	Solid
+M112 (1)	AJSP	-	Hawk	-	 Solid	     630.0 	?	-	 	-	 	-	 	-	 	  1	1958	Hawk	Solid
+Star 30C	THKE	-	TE-M-700-18	-	 HTPB/AP/Al	     629.0 	 	    1500 	 	      32.70 	 	286.8 	 	  51.0 	 	  1	1980s	Star 30C	Solid
+Star 37N	THKE	TE-364	TE-M-364-14	-	 Solid	     622.0 	 	    1591 	 	-	 	290.0 	 	-	 	  1	-	Star 37N	Solid
+Star 37	THKE	TE-364	TE-M-364-1	-	 Solid	     621.0 	 	    1585 	 	-	 	260.0 	 	-	 	  1	1966	Star 37	Solid
+Imp Malemute	THKU	SAM-D	Malemute	-	 Solid	     619.0 	 	    1395 	 	      55.10 	 	281.2 	 	  22.0 	 	  1	1974	Malemute (TX-486-1?)	Solid
+TX-486-1	THKX?	SAM-D	Malemute	-	 Solid	     619.0 	 	    1395 	 	      55.10 	 	281.2 	 	  22.0 	 	  1	1974	Patriot TX-486-1	Solid
+TU-758	THKU	SAM-D	Malemute	-	 Solid	     619.0 	 	    1395 	 	      55.10 	 	281.2 	 	  22.0 	 	  1	1974	Malemute (TX-516?)	Solid
+TX-16-1	THKX?	-	M16F1	-	 Solid	     618.0 	 	-	 	     254.00 	 	-	 	   2.4 	 	  1	1955	Matador [0]	Solid
+TE-473	THKE	Sandhawk	Sandhawk	-	 Solid	     600.0 	?	    1400 	 	      80.00 	 	238.0 	 	  15.0 	 	  1	-	Sandhawk	Solid
+Mk 56 ALTR	ATLR	-	-	-	 Solid	     600.0 	?	-	 	-	 	-	 	-	 	  1	-	SM-1	Solid
+Mk 56	AJSP	-	-	-	 Solid	     600.0 	?	-	 	-	 	-	 	-	 	  1	-	SM-1	Solid
+JTSPACE M1	JTSPACE	-	-	-	 Solid	     600.0 	?	-	 	-	 	-	 	-	 	  1	-	JTSPACE SR	Solid
+JTSPACE M2	JTSPACE	-	-	-	 Solid	     600.0 	?	-	 	-	 	-	 	-	 	  1	-	JTSPACE SR	Solid
+Zenith	CONTR	-	-	-	 Solid	     600.0 	 	     900 	 	      45.00 	 	-	 	  21.0 	 	  1	1967	Zenith	Solid
+KM-M	NISST	KM	-	-	 HTPB	     550.0 	 	    1375 	 	      32.00 	 	293.0 	 	  63.0 	 	  1	1985	Mu 3S2 [4]	Solid
+Star 30BP	THKE	-	TE-M-700-20	-	 HTPB/AP/Al	     542.0 	 	    1460 	 	      27.00 	 	292.0 	 	  54.0 	 	  1	1980	Star 30BP	Solid
+Star 30B	THKE	-	TE-M-700-5	-	 HTPB/AP/Al	     537.0 	 	    1460 	 	      27.00 	?	293.0 	 	  54.0 	?	  1	1980	Star 30	Solid
+Kaman-80	SKYRT	-	-	-	 Solid	     500.0 	?	-	 	      70.00 	 	-	 	  23.0 	 	  1	2022	Vikram-S	Solid
+Mage 2	SEPB	-	-	-	 CTPB 16.12	     520.0 	 	-	 	      46.20 	 	294.0 	 	  43.0 	 	  1	1980	Mage 2	Solid
+AS-4	VSSC	-	-	-	 HEF-20	     512.0 	 	-	 	      35.00 	 	281.0 	 	  33.4 	 	  1	1987	ASLV [4]	Solid
+MARC 13A1	ATLR	-	52KS3850	-	 Solid	     506.0 	 	-	 	      17.00 	 	-	 	  52.0 	 	  1	1960	Iris	Solid
+SB-310	NISST	-	-	-	 Polyurethane?	     502.0 	 	-	 	      95.00 	 	220.0 	 	   7.4 	 	  1	1966	Lambda [0]	Solid
+RH-300-II	VSSC	-	-	-	 Solid	     500.0 	?	-	 	      39.10 	 	-	 	  20.2 	 	  1	-	RH-300-II	Solid
+29D6	KAZOKB	-	-	-	 Solid	     500.0 	?	-	 	-	 	-	 	-	 	  1	-	Kontakt [3]	Solid
+T-7 booster	SIMED	-	-	-	 Solid	     500.0 	?	-	 	       2.00 	 	-	 	-	 	  1	-	T-7	Solid
+Neptune	SEPR?	-	-	-	 Solid	     500.0 	?	     630 	 	      20.00 	?	-	 	  32.0 	 	  1	1959	Antares [2]	Solid
+SEPR-732	SEPR	-	-	-	 Solid	     500.0 	?	     940 	 	-	 	-	 	   4.7 	 	  1	-	SE4400 booster	Solid
+IAI-Arrow-2-2	IAI	-	-	-	 Solid	     500.0 	?	-	 	-	 	-	 	-	 	  1	-	Arrow 2	Solid
+Saman-1	IR	-	-	-	 Solid	     500.0 	?	-	 	-	 	-	 	-	 	  1	-	Simorgh [3]	Solid
+Alcor IB	AJ	Alcor	Alcor IB	-	 PB	     500.0 	 	    1148 	 	      42.80 	 	-	 	  26.5 	 	  1	-	Alcor IB	Solid
+RX-320	LAPAN	-	-	-	 Solid	     500.0 	?	     510 	 	-	 	-	 	-	 	  1	2008	RX-320	Solid
+Vero P2	LRBA	-	-	-	 Solid	     500.0 	?	-	 	      10.00 	?	-	 	-	 	  1	1952	Veronique P2	Solid
+Vero P6	LRBA	-	-	-	 Solid	     500.0 	?	-	 	      20.00 	 	-	 	-	 	  1	1952	Veronique P6	Solid
+23KS11000	AJ	Alcor	Alcor IA	-	 PB	     500.0 	?	-	 	      49.00 	 	-	 	  23.0 	 	  1	-	Alcor IA	Solid
+THAAD Proto	UTC	-	-	-	 Solid	     500.0 	?	-	 	-	 	-	 	-	 	  1	1995	THAAD	Solid
+THAAD	AJSP	-	-	-	 Solid	     500.0 	?	-	 	-	 	-	 	-	 	  1	2004	THAAD	Solid
+NOTS 401A	NOTS	NOTS 400	-	-	 Solid	     500.0 	?	-	 	-	 	-	 	   7.2 	 	  1	1970	NOTS 401A	Solid
+Sky Bow III	NSPO	NSPO	-	-	 Solid	     500.0 	?	-	 	-	 	-	 	-	 	  1	-	Sky Bow	Solid
+Abid St3	IQ	-	-	-	 Solid	     500.0 	?	-	 	-	 	-	 	-	 	  1	-	Abid St 3	Solid
+MR-12	TAIFUN	-	-	-	 Solid	     500.0 	?	-	 	-	 	-	 	-	 	  1	-	MR-12	Solid
+MR-20	TAIFUN	-	-	-	 Solid	     500.0 	?	-	 	-	 	-	 	-	 	  1	-	MR-20	Solid
+MR-25	TAIFUN	-	-	-	 Solid	     500.0 	?	-	 	-	 	-	 	-	 	  1	-	MR-25	Solid
+MR-30	TAIFUN	-	-	-	 Solid	     500.0 	?	-	 	-	 	-	 	-	 	  1	-	MR-30	Solid
+15D171	YUZH	-	-	-	 Solid	     500.0 	?	-	 	-	 	-	 	-	 	  1	-	MR-UR-100 BR	Solid
+Seliger 3	DRG	-	-	-	 Solid	     500.0 	?	-	 	      50.00 	 	-	 	-	 	  1	1962	Seliger	Solid
+Mk 104	AJCA	-	TU-876?	-	 Solid TP-H 1205C	     486.0 	 	-	 	-	 	-	 	-	 	  1	-	SM-2 [2], Lynx	Solid
+Star 30A	THKE	-	TE-M-700-4	-	 HTPB/AP/Al	     492.0 	 	    1345 	 	      27.00 	?	294.7 	 	  54.0 	?	  1	1980	Star 30	Solid
+E-8-5 VA	NPOL	-	-	-	 Solid	     481.0 	 	-	 	-	 	-	 	-	 	  1	-	E-8-5 VA	Solid
+Mk 12 ASROC	UNK	-	-	-	 Solid	     480.0 	?	-	 	      49.00 	 	-	 	-	 	  1	-	ASROC	Solid
+30KS8000	AJ	Alcor	Alcor I	-	 Polyurethane	     478.0 	 	    1070 	 	      36.00 	 	-	 	  30.0 	 	  1	-	Alcor I	Solid
+Orbus 1	UTC	-	-	-	 Solid	     476.0 	 	-	 	      31.00 	 	-	 	-	 	  1	1988	Orbus 1	Solid
+Orbus 1A	ATKE	-	-	-	 Solid	     476.0 	 	-	 	      31.00 	 	-	 	-	 	  1	2005	Orbus 1	Solid
+LS-A Booster	NASDA	-	-	-	 Solid	     475.0 	 	     600 	 	      60.00 	 	-	 	  10.0 	 	  1	1964	LS-A [1]	Solid
+KM-P	NISST	KM	-	-	 HTPB	     461.0 	 	-	 	      31.30 	 	286.0 	 	  44.0 	 	  1	1985	Mu 3S2 [4]	Solid
+Mage 1S	SEPB	-	-	-	 CTPB 16.12	     450.0 	 	-	 	      33.50 	 	291.0 	 	  48.5 	 	  1	1980	Mage 1S	Solid
+M-40	NISST	Mu	-	-	 Solid	     445.0 	 	-	 	      26.50 	 	270.0 	 	  40.0 	 	  1	1970	Mu 4S [4]	Solid
+Saluki S	IMIS	-	-	-	 Solid	     442.0 	 	-	 	      35.60 	 	-	 	  27.0 	 	  1	1960	Blue Water [2]	Solid
+Goldfinch II	RPEW	-	-	-	 Solid	     410.0 	 	     700 	 	     175.00 	 	225.0 	 	   3.5 	 	  1	1964	Jabiru	Solid
+Goldfinch IIA	RPEW	-	-	-	 Solid	     410.0 	 	     700 	 	     175.00 	 	225.0 	 	   3.5 	 	  1	-	Skylark	Solid
+PTDU	SOYUZ?	-	11D82M	-	 Solid	     405.0 	 	     736 	 	      29.00 	 	277.4 	 	  23.3 	 	  1	1960s	Zenit/Resurs	Solid
+17KS12000	BAL	BB5	Nihka	-	 Solid	     402.0 	 	     915 	 	      53.00 	 	284.9 	 	  17.8 	 	  1	1981 Aug 14	BB10 [3]	Solid
+Tianying 3F	SZRTC?	-	-	-	 Solid	     400.0 	?	-	 	-	 	-	 	-	 	  1	2016	Tianying 3F	Solid
+Evol 1	EVOL	-	-	-	 Solid	     400.0 	?	-	 	-	 	-	 	-	 	  1	2023	Gold Chain Cowboy	Solid
+Gradicom 1	CITED	-	-	-	 Solid	     400.0 	?	-	 	-	 	-	 	-	 	  1	-	Gradicom 1	Solid
+SS-520	ISAS	-	-	-	 Solid	     400.0 	?	-	 	-	 	-	 	-	 	  1	-	SS-520 St 2	Solid
+S-300	ISAS	-	-	-	 Solid	     400.0 	?	-	 	-	 	-	 	-	 	  1	-	S-300	Solid
+Mk 30	ATLR	-	-	-	 Solid	     400.0 	?	-	 	-	 	-	 	-	 	  1	-	SM-1	Solid
+3KS33000	AJ	-	Regulus JATO	-	 Solid	     400.0 	?	     440 	?	     147.00 	 	-	 	   3.0 	 	  1	1950s	Regulus 1	Solid
+SPRAN-50	ONERA	-	-	-	 Solid	     400.0 	?	-	 	-	 	-	 	   5.6 	 	  1	1959 Jan	Daniel	Solid
+Kavoshgar	IR	-	-	-	 Solid?	     400.0 	?	-	 	-	 	-	 	  12.0 	 	  1	2007	Kavoshgar	Solid
+M112	AJSP	Mk 56 type	-	-	 Solid	     395.0 	 	-	 	-	 	-	 	-	 	  1	-	Hawk/Ta Orion [2]	Solid
+M22E8	AJ	Orion	-	-	 Solid	     389.0 	 	-	 	-	 	-	 	-	 	  1	1977 Jul 19	Taurus Orion [2]	Solid
+NOTS Mod 551-B	NOTS	-	-	-	 E107M polyurethane	     371.0 	 	     831 	 	-	 	270.0 	 	  28.0 	 	  1	1965	Terrier/551	Solid
+TX-239	THKX	-	-	-	 Solid PBAA	     368.0 	 	-	 	-	 	-	 	-	 	  1	1959	Nike Zeus [3]	Solid
+Meteor-2	PIHM	-	-	-	 Solid	     368.0 	 	     423 	 	      24.00 	 	-	 	  18.0 	 	  1	1968	Meteor-2	Solid
+Mage 1	SEPB	-	-	-	 CTPB 16.12	     368.0 	 	-	 	      28.20 	 	284.7 	 	  34.0 	 	  1	1977	Mage 1	Solid
+SpaB-65	ARMT	-	-	-	 Solid	     367.0 	 	-	 	-	 	-	 	-	 	  1	-	KT-1 [4]	Solid
+SLV-3-4	VSSC	-	-	-	 HEF-20	     360.0 	 	-	 	      26.80 	 	282.9 	 	  33.0 	 	  1	1979	SLV-3 [4]	Solid
+Saluki B	IMIS	-	-	-	 Solid	     360.0 	 	-	 	     195.50 	 	-	 	   6.0 	 	  1	1960	Blue Water [1]	Solid
+Star 27	THKE	-	TE-M-616	-	 CTPB/AP/Al	     360.5 	 	     951 	 	      26.70 	 	288.0 	 	  34.3 	 	  1	1976	Star 27      ]	Solid
+Waxwing	RPEW	Waxwing	-	-	 Solid RD2435	     351.0 	 	     845 	 	      28.80 	 	276.0 	 	  40.0 	 	  1	1969	Waxwing]	Solid
+K420(1/3)	ISAS	-	-	-	 UP Polyurethane	     350.0 	?	-	 	-	 	-	 	-	 	  1	1966	Kappa 10	Solid
+ABL JATO	ABL	JATO	3-DS-50000	-	 Solid	     350.0 	?	-	 	     222.00 	 	-	 	   3.0 	 	  1	1947 Aug	JATO	Solid
+Tiny Tim	USN	-	-	-	 Solid	     345.0 	 	     130 	 	     220.00 	 	-	 	   0.6 	 	  1	1945	WAC	Solid
+X-248 [1]	ABL	Altair	Altair I	-	 Solid	     330.0 	 	     518 	 	      13.40 	 	-	 	  38.6 	 	  1	1957	Altair  (Scout X-1)	Solid
+Belier II	SDP	Belier	-	-	 Polyvinyl	     320.0 	?	-	 	      20.00 	 	-	 	  23.8 	 	  1	-	Belier II	Solid
+Vega	SDP	Belier	-	-	 Polyurethane	     320.0 	?	-	 	      20.00 	 	-	 	  23.8 	 	  1	-	Belier III	Solid
+Jericho II	ONERA	-	-	-	 Solid DB	     320.0 	?	-	 	      20.00 	 	-	 	  23.8 	 	  1	1959 Jan	Daniel [2]	Solid
+Jericho IV	SDP	Belier	-	-	 Solid DB	     317.0 	 	     460 	 	      20.00 	 	235.0 	 	  23.4 	 	  1	1961	Centaure [2]	Solid
+S-20	IAE	-	-	-	 Solid	     316.0 	 	     612 	 	      36.00 	 	257.0 	 	  20.0 	 	  1	1966	Sonda 2	Solid
+TU-716	THKU	Genie	Paiute	-	 CTPB	     308.0 	 	     520 	 	     186.00 	 	-	 	   3.7 	 	  1	1972	Paiute	Solid
+Goose II	RPEW	-	-	-	 Solid	     306.0 	 	     370 	 	      22.00 	 	-	 	  17.0 	 	  1	1969	INTA 255	Solid
+KM-D	NISST	KM	-	-	 HTPB	     304.0 	 	     629 	 	      17.40 	 	294.0 	 	  38.0 	 	  1	1985	Mu 3S2 [4]	Solid
+FW4S	UTC	-	-	-	 Solid	     301.0 	 	     766 	 	      26.00 	 	284.1 	 	  31.5 	 	  1	1965	FW-4S	Solid
+K250H	ISAS	-	-	-	 UP Polyurethane	     300.0 	 	-	 	-	 	-	 	   7.2 	 	  1	1958	Kappa 9M [2]	Solid
+Star 20	THKE	Altair	TE-M-640-1	-	 CTPB/AP/AlTP-H-3062	     300.0 	 	     772 	 	      27.10 	 	286.5 	 	  27.5 	 	  1	1970?	Scout G [4]	Solid
+RX-250-LPN	LAPAN	-	-	-	 HTPB	     300.0 	 	     310 	 	      52.00 	 	-	 	   6.0 	 	  1	1987	RX-250-LPN	Solid
+SM-3-II-3	MHI	-	-	-	 Solid	     300.0 	?	-	 	-	 	-	 	-	 	  1	-	SM-3-II-2	Solid
+TU-289	THKU	Genie	Genie	-	 CTPB	     300.0 	?	-	 	     162.00 	 	-	 	-	 	  1	1967	Genie	Solid
+Tianying 3C	SZRTC?	-	-	-	 Solid	     300.0 	?	-	 	-	 	-	 	-	 	  1	2011	Tianying 3C	Solid
+LAPAN	LAPAN	-	-	-	 HTPB	     300.0 	 	     310 	 	      52.00 	 	-	 	   6.0 	 	  1	1987	LAPAN  (?)	Solid
+LS-C Booster	STA	-	-	-	 Solid	     300.0 	?	-	 	-	 	-	 	-	 	  1	1969	LS-C	Solid
+PRD-18	ISKRM	-	-	-	 Solid	     300.0 	?	-	 	     490.00 	 	-	 	   4.5 	 	  1	1957	V-750 booster	Solid
+RH-300	VSSC	-	-	-	 Solid	     300.0 	?	-	 	      33.30 	 	-	 	  16.0 	 	  1	-	RH-300	Solid
+FFK	ERNO	-	-	-	 Solid	     300.0 	?	-	 	-	 	-	 	-	 	  1	-	FFK	Solid
+Aerojet Mk 8	AJ	-	-	-	 Solid	     300.0 	?	-	 	     111.00 	 	-	 	-	 	  1	-	Bullpup	Solid
+R-31BS	ARSL	-	-	-	 Solid	     300.0 	?	-	 	       1.00 	 	-	 	 101.0 	 	  1	1976	R-31 BS	Solid
+X-258	ABL	Altair	Altair II	-	 Solid	     300.0 	 	     623 	 	      24.20 	 	279.1 	 	  31.0 	 	  1	-	Altair II	Solid
+FW4	UTC	-	-	-	 Solid	     299.0 	 	-	 	      26.70 	 	-	 	  32.4 	 	  1	-	FW-4D	Solid
+X-248	ABL	Altair	Altair I	-	 Solid	     296.0 	 	     561 	 	      14.00 	 	-	 	  40.0 	 	  1	1959	Altair	Solid
+X-248A10	ABL	Altair	Altair I	-	 Solid	     296.0 	 	     516 	 	      13.00 	 	-	 	  39.0 	 	  1	1957	Altair (TB2 st3)	Solid
+Gosling IIN	RORD	Gosling	-	-	 Solid	     292.0 	 	     400 	 	     130.00 	 	-	 	   3.5 	 	  1	1960	Jaguar 1 [1]	Solid
+12KS10000	BAL	BB3	BB3B	-	 Solid ANP2872JM-IV	     292.0 	 	     552 	 	      43.70 	 	236.2 	 	  12.0 	 	  1	1967	BB3B	Solid
+SEPR-200	SEP	Tramontane	Tramontane	-	 Solid	     280.0 	 	     333 	 	      50.00 	?	-	 	   6.7 	 	  1	1962	Berenice	Solid
+MB-1	AJ	Genie	2KS-36250	-	 Solid	     273.0 	 	     100 	 	     161.00 	 	-	 	   2.0 	 	  1	1956	Genie	Solid
+S-50000	CSXT	-	-	-	 Solid	     272.0 	 	     430 	 	      71.00 	 	-	 	  13.4 	 	  1	2004	CSXT	Solid
+Star 26	THKE	Star 26	TE-M-442	-	 CTPB/AP/Al	     269.0 	 	     616 	 	      33.30 	 	271.0 	 	  17.8 	 	  1	-	Strypi IV	Solid
+9KS11000	BAL	BB3	-	-	 Polyurethane DREV	     265.0 	 	     440 	 	      49.00 	 	220.0 	 	   9.0 	 	  1	-	BB3	Solid
+Gosling 4	RORD	Gosling	-	-	 Solid	     263.0 	 	     426 	 	     137.00 	 	-	 	   4.5 	 	  1	1974	INTA 300 [1]	Solid
+Star 26C	THKE	Star 26	TE-M-442-2	-	 CTPB/AP/Al	     262.0 	 	     622 	 	      35.00 	 	272.1 	 	  16.8 	 	  1	1980?	DOT	Solid
+Star 26B	THKE	Star 26	TE-M-442-1	-	 CTPB/AP/Al	     261.0 	 	     635 	 	      34.60 	 	271.7 	 	  17.8 	 	  1	1974	Burner 2A [2]	Solid
+X-258-B1	ABL	Altair	Altair II	-	 Solid	     260.0 	 	     620 	 	      27.50 	 	278.1 	 	  24.0 	 	  1	-	Scout B [4]	Solid
+2.5KS18000	AJ	Aerobee Booster	Aerobee JATO	-	 Solid	     260.0 	 	     200 	 	      80.00 	 	-	 	   2.5 	 	  1	1947 Sep 25	Aerobee [0]	Solid
+AJ60-80	AJ	Aerobee Booster	Aerobee JATO	-	 Solid	     260.0 	 	     200 	 	      80.00 	 	-	 	   2.5 	 	  1	1947 Sep 25	Aerobee [0]	Solid
+Hydac	LPC	-	LPC H-26	-	 PBAA	     256.0 	 	     412 	 	      41.60 	 	253.0 	?	-	 	  1	-	Hydac	Solid
+Hydac H-28	LPC	-	H-28	-	 PBAA	     253.0 	 	-	 	      58.70 	 	253.0 	 	-	 	  1	-	Hydac	Solid
+TD1	KPA	-	-	-	 Solid	     252.0 	 	-	 	      18.30 	 	250.0 	?	  27.0 	 	  1	1997	TD1 [3]	Solid
+DACRoc	DAC	-	-	-	 Solid	     250.0 	?	-	 	      50.00 	?	220.0 	?	   8.0 	?	  1	1963	DACRoc	Solid
+33KS2800	GRC	-	-	-	 Solid	     250.0 	?	     347 	 	      12.50 	 	-	 	  33.0 	 	  1	1957	Vanguard [3]	Solid
+Qased-S3	IRGC	-	-	-	 Solid	     250.0 	?	-	 	-	 	-	 	-	 	  1	-	Qased [3]	Solid
+M-100	UNK	-	-	-	 Solid	     250.0 	?	-	 	-	 	-	 	   3.0 	 	  1	-	M-100	Solid
+MG-18	LPC	-	-	-	 Solid	     248.0 	 	     591 	 	-	 	-	 	-	 	  1	1962	Scout X-2M [4]	Solid
+Cuckoo 4	RPEW	-	-	-	 Solid	     243.0 	 	     452 	 	      44.00 	 	204.0 	?	  15.0 	 	  1	-	Skylark 12 [3]	Solid
+Cuckoo IA	RPEW	-	-	-	 Solid	     243.0 	 	     320 	 	      90.00 	 	204.0 	 	   4.3 	 	  1	-	Skylark	Solid
+TE-M-380	THKE	LES Jettison	-	-	 Solid	     242.0 	 	     165 	 	     147.00 	 	-	 	-	 	  1	1965	Apollo LES Jettison	Solid
+K250	ISAS	-	-	-	 EP polyesther	     240.0 	 	-	 	      34.00 	 	-	 	   9.3 	 	  1	1958	Kappa 6	Solid
+K250-8	ISAS	-	-	-	 EP polyesther	     240.0 	 	-	 	      34.00 	 	-	 	   9.7 	 	  1	1958	Kappa 8	Solid
+X-248A5	ABL	Altair	Altair I	-	 Solid	     240.0 	 	     516 	 	      12.50 	 	255.0 	 	  38.0 	 	  1	1957	Altair/Scout X-1[4]	Solid
+Cygnus 25	THKE	-	25" SM	-	 Solid	     239.0 	 	-	 	      33.30 	 	-	 	  16.5 	 	  1	-	25" SM	Solid
+Star 24C	THKE	-	TE-M-604-4	-	 CTPB/AP/Al	     239.0 	 	     614 	 	      21.50 	 	282.3 	 	  28.0 	 	  1	1978	Star 24 IUE	Solid
+Cuckoo IB	RPEW	-	-	-	 Solid RD2409	     237.0 	 	     360 	 	      80.90 	 	204.0 	 	   4.1 	 	  1	-	BK	Solid
+X-248A3	ABL	Altair	Altair I	-	 Solid	     232.0 	 	     518 	 	      14.00 	 	250.5 	 	  39.0 	?	  1	1958	Thor Able [3]	Solid
+Mayfly	WRE	-	-	-	 Solid	     230.0 	?	     224 	 	      62.00 	 	-	 	   3.6 	 	  1	1957	Long Tom	Solid
+Gosling	RORD	Gosling	-	-	 Solid	     230.0 	?	     278 	 	     130.00 	 	-	 	   2.5 	 	  1	1960	Jaguar 1 [1]	Solid
+Cuckoo II	RPEW	-	-	-	 Solid RD2410	     226.0 	 	     396 	 	      36.50 	 	204.0 	 	  10.0 	 	  1	-	BK	Solid
+Centenario	IIAE	-	-	-	 Solid	     224.0 	 	-	 	      39.00 	 	-	 	  11.2 	 	  1	2013	Centenario	Solid
+XM-10	THKX	-	Lacrosse	-	 Polysulfide	     221.0 	 	-	 	-	 	-	 	-	 	  1	1958	Lacrosse	Solid
+TX-52	THKX	-	Lacrosse	-	 Polysulfide	     221.0 	 	-	 	-	 	-	 	-	 	  1	1958	Doorknob	Solid
+TE-416	THKE	Tomahawk	Tomahawk	-	 PBAA	     220.0 	 	     417 	 	      53.00 	 	-	 	   9.0 	 	  1	1965	Tomahawk	Solid
+TE-406	THKE	Tomahawk	Tomahawk	-	 PBAA	     220.0 	 	     417 	 	      53.00 	 	-	 	   9.0 	 	  1	1965	Tomahawk	Solid
+Star 24	THKE	-	TE-M-604	-	 CTPB/AP/Al	     218.0 	 	     561 	 	      18.50 	 	282.9 	 	  29.6 	 	  1	1969	Star 24	Solid
+S-210	ISAS	-	-	-	 PB	     210.0 	?	-	 	-	 	-	 	  17.0 	 	  1	1969	S-210	Solid
+XM-17	THKX	-	-	-	 Solid	     200.0 	?	-	 	-	 	-	 	-	 	  1	1959	M5TV [2]	Solid
+SpaceLoft	UPAE	-	-	-	 Solid	     200.0 	?	-	 	      36.60 	 	-	 	  12.0 	 	  1	2006	SpaceLoft XL	Solid
+Spyder-M1	UPAE	-	-	-	 Solid	     200.0 	?	-	 	      36.60 	 	-	 	  12.0 	 	  1	2006	Spyder	Solid
+Spyder-M2	UPAE	-	-	-	 Solid	      50.0 	?	-	 	      36.60 	 	-	 	  12.0 	 	  1	2006	Spyder	Solid
+Canopus	IIAE	-	-	-	 Solid	     200.0 	?	-	 	-	 	-	 	  18.0 	 	  1	1972	Rigel	Solid
+SS-50 Antares	IIAE	-	-	-	 Solid	     200.0 	?	-	 	-	 	-	 	  18.0 	 	  1	1972	Tauro	Solid
+RH-300 Booster	VSSC	-	-	-	 Solid	     200.0 	?	-	 	      37.50 	 	-	 	   6.0 	 	  1	-	RH-300 booster	Solid
+K220	ISAS	-	-	-	 Solid	     200.0 	?	-	 	-	 	-	 	-	 	  1	1956	Kappa 2	Solid
+S250	ISAS	-	-	-	 Solid	     200.0 	?	-	 	-	 	-	 	-	 	  1	1969	SO-250	Solid
+X-241	ABL	-	-	 -	 Solid	     196.0 	 	      44 	 	      12.10 	 	260.1 	 	  36.0 	 	  1	1958	Pilot [3]	Solid
+Snipe	RORD?	-	-	-	 Solid	     190.0 	 	     261 	 	      16.30 	 	-	 	  16.0 	 	  1	1974	INTA 300 [2]	Solid
+TU-715	THKU	Genie	Ute	-	 CTPB	     190.0 	 	     277 	 	      85.00 	 	-	 	   4.6 	 	  1	1971	Ute	Solid
+S-23	IAE	-	-	-	 Solid	     182.0 	 	-	 	      18.00 	 	-	 	-	 	  1	1966	Sonda 2M	Solid
+30AS1000	AJ	-	-	-	 Solid GALCIT	     174.0 	 	     133 	 	       4.40 	 	184.0 	 	  30.0 	 	  1	1944	Private A	Solid
+TE-29-1A	THKE	Recruit	Recruit 1A	-	 Solid	     170.0 	 	     269 	 	     173.00 	 	225.0 	 	   2.2 	 	  1	-	Recruit	Solid
+Recruit	THKE	Recruit	Recruit 1A	-	 Solid	     170.0 	 	     269 	 	     173.00 	 	225.0 	 	   2.2 	 	  1	-	Squirt	Solid
+Javelin 3	LPC	-	LPC J-33	-	 PBAA/AP	     165.0 	 	-	 	      93.00 	 	239.0 	 	-	 	  1	1965	Javelin 3	Solid
+Javelin 3 (old)	LPC	-	LPC J-3	-	 PBAA/AP	     165.0 	 	     273 	 	      47.60 	 	239.0 	 	-	 	  1	1965	Javelin 3  [AWST]	Solid
+HOTROC	NOTS	-	-	 -	 Solid	     163.0 	 	     306 	 	      63.20 	 	230.0 	 	   4.9 	 	  1	1958	HOTROC	Solid
+Venus	SUD	Venus	-	-	 Solid	     160.0 	 	     190 	 	      44.00 	 	205.0 	 	   4.3 	 	  1	1961	Centaure [1]	Solid
+FG-47	HEXI	-	-	-	 Solid	     160.0 	 	-	 	-	 	-	 	  36.0 	 	  1	1997	Smart Dispenser	Solid
+SVM-2	AJSP	-	-	-	 Solid	     159.0 	 	     400 	 	      14.00 	 	285.0 	?	  28.0 	?	  1	1968	Intelsat 3	Solid
+Javelin 2	LPC	-	LPC J-2	-	 PBAA/AP	     155.0 	 	     257 	 	     140.40 	 	-	 	-	 	  1	1965	Javelin 2 [AWST]	Solid
+Javelin	LPC	-	LPC J-22	-	 PBAA/AP	     155.0 	 	-	 	     178.00 	 	243.0 	 	-	 	  1	-	Javelin 2	Solid
+1.5KS35000	THKE	Recruit	Recruit XM19	-	 Solid	     153.0 	 	     262 	 	     156.00 	 	-	 	   1.7 	 	  1	1956	Recruit	Solid
+Yardbird	THKE	Recruit	TE-289	-	 Solid	     151.0 	 	-	 	      75.00 	 	-	 	   3.4 	 	  1	1959	Yardbird	Solid
+SEPR 685-4	SEPR	-	Mimosa	-	 Solid	     150.0 	?	     167 	 	      33.00 	?	-	 	   5.0 	 	  1	1959	Antares [3]	Solid
+MLRS	VOUA	-	-	-	 Solid	     150.0 	?	     170 	?	      53.00 	 	-	 	   3.2 	 	  1	-	MLRS	Solid
+SO-250	ISAS	-	-	-	 Solid	     150.0 	?	-	 	-	 	-	 	-	 	  1	-	SO-250	Solid
+Kappa 4 Booster	ISAS	-	-	-	 Solid	     150.0 	?	-	 	     105.00 	 	-	 	   3.0 	 	  1	-	Kappa 4 Booster	Solid
+TT-200	NASDA	-	-	-	 Solid	     150.0 	?	-	 	-	 	-	 	-	 	  1	-	TT-200	Solid
+TT-210	NASDA	-	-	-	 Solid	     150.0 	?	-	 	-	 	-	 	-	 	  1	-	TT-210	Solid
+Upstage	MDAC	-	-	-	 Solid	     140.0 	?	-	 	-	 	-	 	   1.0 	?	  1	-	Upstage	Solid
+Orion-2	IIAE	-	-	-	 Solid	     140.0 	 	-	 	-	 	-	 	  12.0 	 	  1	1966	Orion-2	Solid
+Orion-1	IIAE	-	-	-	 Solid	     140.0 	 	-	 	-	 	-	 	  12.0 	 	  1	1966	Orion-1	Solid
+RH-200SV	VSSC	-	-	-	 Solid	     140.0 	 	-	 	      16.90 	?	-	 	  10.0 	 	  1	1970s	RH-200SV	Solid
+Dorado	WRE	-	-	-	 Solid	     139.3 	 	     173 	 	      42.00 	 	-	 	   4.3 	 	  1	1973	Lorikeet	Solid
+BE-3B1	HERC	BE-3	Alcyone	-	 Solid	     138.0 	 	     269 	 	      34.20 	 	-	 	   7.8 	 	  1	-	Alcyone	Solid
+TE-307	THKE	Apache	-	-	 Solid	     135.0 	 	     167 	 	      21.10 	 	-	 	   6.0 	 	  1	1961	Apache	Solid
+Star 17A	THKE	-	TE-M-521-5	-	 CTPB/AP/Al	     125.5 	 	     320 	 	      16.00 	 	286.7 	 	  19.4 	 	  1	-	Star 17A	Solid
+Vela	WRE	-	-	-	 Solid	     118.0 	 	     133 	 	      26.70 	 	-	 	   5.0 	 	  1	1964	Aero High [2]	Solid
+Cygnus 20	THKE	-	20" SM	-	 Solid	     118.0 	 	-	 	      30.00 	 	-	 	   8.5 	 	  1	1959	20" SM	Solid
+Kiva 5.5KS6100	RPI	-	-	-	 Solid	     107.0 	 	     149 	 	      27.00 	 	-	 	   5.5 	 	  1	-	Kiva	Solid
+L480S	NISST	-	-	-	 PB	     102.0 	 	-	 	       7.80 	 	254.0 	 	  31.5 	 	  1	1966	Lambda [4]	Solid
+Arcon	ATLR	Arcon	-	-	 Solid	     100.0 	 	     140 	 	       4.50 	 	-	 	  33.0 	 	  1	1958	Arcon	Solid
+TE-388	THKE	Iroquois	-	-	 PBAA TPH-3117	     100.0 	?	-	 	-	 	-	 	-	 	  1	-	Iroquois	Solid
+Traveler	USCLA	-	-	-	 Solid?	     100.0 	?	-	 	-	 	-	 	-	 	  1	-	Traveler	Solid
+Gradicom 2	CITED	-	-	-	 Solid	     100.0 	?	-	 	-	 	-	 	-	 	  1	-	Gradicom 2	Solid
+M-100 St2	UNK	-	-	-	 Solid	     100.0 	?	-	 	-	 	-	 	   4.5 	 	  1	-	M-100 [2]	Solid
+Kingfisher	TMINUS	-	-	-	 Solid	     100.0 	?	-	 	       0.00 	 	-	 	-	 	  1	-	Kingfisher	Solid
+2-AS-22000	AJ	Nike-46	-	-	 Solid	     100.0 	?	     200 	 	      98.00 	 	-	 	   2.0 	 	  1	1946	Nike-46	Solid
+2.5-AS-18000	AJ	Nike-47	-	-	 Solid	     100.0 	?	     200 	 	      80.00 	 	-	 	   2.5 	 	  1	1946	Nike-47	Solid
+K10S	ISAS	-	-	-	 Solid	     100.0 	?	-	 	-	 	-	 	-	 	  1	-	K10S	Solid
+Mk 136	THKE	-	-	-	 Solid	     100.0 	?	-	 	       7.00 	 	-	 	  15.0 	 	  1	-	ASAS XL	Solid
+NAL-25	STA	-	-	-	 Solid	     100.0 	?	-	 	-	 	-	 	-	 	  1	1965	S-A	Solid
+Demon	WRE	-	-	-	 Solid	     100.0 	?	     104 	 	      45.20 	 	-	 	   2.3 	 	  1	1962?	HAT	Solid
+BE-3	HERC	BE-3	Alcyone	-	 Solid	     100.0 	?	-	 	      34.00 	 	-	 	   8.0 	 	  1	-	Alcyone	Solid
+BE-3A4	HERC	BE-3	-	-	 Solid	     100.0 	?	-	 	      34.00 	 	-	 	   8.0 	 	  1	-	Athena motor	Solid
+BE-3A5	HERC	BE-3	-	-	 Solid	     100.0 	?	-	 	      34.00 	 	-	 	   8.0 	 	  1	-	SPARTA motor	Solid
+BE-3A9	HERC	BE-3	Alcyone	-	 Solid	      98.0 	 	     235 	 	      27.70 	 	275.2 	 	   8.5 	 	  1	1969	Scout E [5]	Solid
+Lapwing	BAJUK	-	-	-	 Solid	      97.5 	 	-	 	-	 	237.0 	 	  30.0 	 	  1	1967	Petrel	Solid
+K160	ISAS	-	-	-	 EP polyesther	      94.0 	 	-	 	-	 	-	 	   5.3 	 	  1	1958	Kappa 8L [2]	Solid
+5.6KS5400	GCR	-	Viper IC	-	 Solid	      91.0 	 	     134 	 	      24.00 	 	209.0 	 	   5.6 	 	  1	1950s	Viper I	Solid
+3.8KS8040	GCR	-	Viper II	-	 Solid	      90.0 	 	     135 	 	      35.80 	 	207.0 	 	   3.8 	 	  1	1959	Viper II	Solid
+S-160	ISAS	-	-	-	 UP Polyurethane	      90.0 	?	-	 	-	 	-	 	-	 	  1	1964	S-160	Solid
+Shockwave	USCLA	-	GEM8-R4000	-	 Solid APCP	      90.0 	 	     229 	 	      19.00 	 	258.0 	 	  16.3 	 	  1	-	Aftershock	Solid
+RM-1400	COOP	Asp	-	-	 Solid AP/Al E-107M	      90.0 	 	     158 	 	      12.70 	 	235.0 	 	  12.0 	 	  1	1960	Asp IV	Solid
+K150	ISAS	-	-	-	 EP polyesther	      86.0 	 	-	 	-	 	-	 	  15.8 	 	  1	1958	Kappa 6	Solid
+3.52KS8500 SDCO	SDCO	-	Viper IIB	-	 Solid	      89.0 	 	     144 	 	      35.80 	 	-	 	   3.2 	 	  1	1968	Viper	Solid
+3.52KS8500	GCR	Viper	-	-	 Solid	      87.0 	 	     142 	 	      37.80 	 	-	 	   3.5 	 	  1	1960s	Viper	Solid
+Asp II	COOP	Asp	-	-	 Solid JPL-131	      87.0 	 	     141 	 	      38.60 	 	212.0 	s	   3.6 	 	  1	1959	Asp II	Solid
+RM-1100	COOP/GCR	Asp	-	-	 Solid JPL-132A	      85.0 	 	     141 	 	      26.60 	 	215.0 	s	   5.3 	 	  1	1959	Asp	Solid
+Astrobee D	AJSP	Astrobee	-	-	 HTPB	      85.0 	 	     156 	 	       8.90 	 	-	 	  17.0 	 	  1	1970	Astrobee D	Solid
+Agnes	CFTHB	-	Elan	-	 Polyvinyl	      82.0 	 	     100 	 	      40.00 	?	242.0 	 	   2.5 	 	  1	1967	Belenos [1]	Solid
+Emilie	CFTHB	-	Elan	-	 Polyvinyl	      82.0 	 	     100 	 	      40.00 	?	242.0 	 	   2.5 	 	  1	1967	Grannos [1]	Solid
+Asp III	COOP	Asp	-	-	 Solid JPL-131	      81.0 	 	     139 	 	      42.70 	 	226.0 	s	   3.3 	 	  1	1959	Asp III	Solid
+Melanie	ONERA	-	OPd 220	-	 Solid	      80.0 	?	      49 	 	      38.00 	?	-	 	   4.4 	 	  1	1959 Jan	Daniel [3]	Solid
+MMR-06	GMS?	-	-	-	 Solid	      80.0 	?	-	 	-	 	-	 	   9.0 	 	  1	-	MMR-06	Solid
+10KS2500	THKE	-	-	-	 Solid	      80.0 	?	     111 	 	      11.00 	 	-	 	  10.0 	 	  1	1957	Polaris FTV	Solid
+Star 17	THKE	-	TE-M-479	-	 CTPB/AP/Al	      79.0 	 	     198 	 	      11.00 	 	286.0 	 	  17.6 	 	  1	-	Star 17	Solid
+SS-520 S3	ISAS	-	-	-	 Solid	      78.0 	 	-	 	-	 	-	 	-	 	  1	-	SS-520 St 3	Solid
+Cajun	THKE	Deacon	-	-	 Solid	      75.0 	 	     108 	 	      43.00 	 	-	 	   3.0 	 	  1	1957	Cajun	Solid
+X-209	ABL	JATO	-	-	 Solid	      71.8 	 	-	 	       4.40 	 	-	 	  14.0 	 	  1	?	M8 JATO (1980s)	Solid
+Mk 39	RDYNE	-	-	-	 Solid	      70.0 	?	-	 	      35.00 	?	-	 	   2.0 	?	  1	1965	Shrike	Solid
+1.8KS7800	AJ	Sparrow	-	-	 Solid	      70.0 	?	      63 	?	      35.00 	 	-	 	   1.8 	 	  1	-	Sparrow	Solid
+NAL-16	NAL	-	-	-	 Solid	      70.0 	 	-	 	      10.70 	 	-	 	  14.0 	 	  1	1965	NAL-16	Solid
+S-B	STA	-	-	-	 Solid	      70.0 	 	-	 	-	 	-	 	-	 	  1	1965	S-B	Solid
+S-C	STA	-	-	-	 Solid	      70.0 	?	-	 	-	 	-	 	-	 	  1	1965	S-C	Solid
+SA-II	STA	-	-	-	 Solid	      70.0 	?	-	 	-	 	-	 	-	 	  1	1965	SA-II	Solid
+SS-30	AVIB	-	-	-	 Solid	      60.0 	?	-	 	-	 	-	 	-	 	  1	-	FTB	Solid
+FTI	AVIB	-	-	-	 Solid	      60.0 	?	-	 	-	 	-	 	-	 	  1	-	FTB	Solid
+Proson 1	CITEF	-	-	-	 Solid	      60.0 	?	-	 	-	 	-	 	-	 	  1	-	Proson	Solid
+Kisha I 4.4KS4800	RPI	-	-	-	 Solid	      66.0 	 	      95 	 	      21.00 	 	-	 	   4.4 	 	  1	-	Kisha	Solid
+Cygnus 15	LARC	-	TX-456-2?	-	 Solid	      60.0 	 	-	 	      22.30 	 	-	 	   4.8 	 	  1	-	TB2 [4]	Solid
+RH-200	VSSC	-	-	-	 Solid	      60.0 	?	      96 	 	      16.90 	 	-	 	   5.7 	 	  1	1970s	RH-200	Solid
+MT-135	ISAS	-	-	-	 Solid	      68.0 	 	-	 	       8.10 	 	230.0 	 	  10.5 	 	  1	1964	MT-135	Solid
+X-220	ABL	Deacon	-	-	 Solid	      68.0 	 	      79 	 	      26.00 	 	-	 	   3.0 	 	  1	1953	Deacon	Solid
+Sirocco	GCR	LPC S-10	-	-	 PBAA	      65.0 	 	     111 	 	      14.80 	 	-	 	-	 	  1	1960s	Sirocco	Solid
+Mk 128 JATO	UNK	JATO	-	-	 Solid	      64.4 	 	-	 	       4.40 	?	-	 	  15.0 	?	  1	?	JATO C-130	Solid
+15-KS-1000	AJP	JATO	-	-	 Solid	      63.0 	 	-	 	       4.40 	 	-	 	  15.0 	 	  1	1945?	JATO Mk 6	Solid
+HVAR	NOTS/CIT	-	-	-	 Solid	      63.0 	 	-	 	      25.00 	 	-	 	   0.9 	 	  1	1944	HVAR	Solid
+T-40	THKE	-	-	-	 Polysulfide	      62.0 	 	      89 	 	      13.30 	 	-	 	   6.0 	 	  1	1949	TB1 [4]	Solid
+DM-16	ABL	Deacon	-	-	 Solid	      60.0 	?	      33 	 	      30.00 	 	210.0 	s	   2.1 	 	  1	1956	Rockaire	Solid
+22.6KS1245	NMC	Sparrow	-	-	 E107M	      60.0 	 	     124 	?	       5.50 	 	-	 	  22.6 	 	  1	1965	Sparoair III [2]	Solid
+Viper V	OSCC	Viper	-	-	 Solid	      60.0 	?	     142 	 	      27.00 	?	-	 	   5.3 	 	  1	1972	Viper	Solid
+KM-H	NISST	KM	-	-	 Solid	      59.0 	 	-	 	-	 	281.0 	 	-	 	  1	1977	Mu 3H [4]	Solid
+Aurore	SNECMA	-	-	-	 Solid	      54.0 	 	      58 	 	-	 	250.0 	 	   5.3 	 	  1	-	Belenos [2]	Solid
+Mk 22 Mod 2	UNK	-	-	-	 Solid DB N-4	      52.0 	 	      30 	 	-	 	-	 	   2.1 	 	  1	-	M58A1 munition	Solid
+LAPSTAR	WRE	-	-	-	 Solid	      52.0 	 	      37 	 	      13.70 	 	-	 	   2.7 	 	  1	1957	Aeolus [0]	Solid
+ZN-1	NUDTC	-	-	-	 Solid	      50.0 	?	-	 	-	 	-	 	-	 	  1	1970?	ZN-1	Solid
+ILR-33 Booster	PAI	-	-	-	 Solid	      50.0 	?	-	 	       6.00 	 	-	 	   2.5 	 	  1	2015	ILR-33	Solid
+SEPR P163	SEPR	-	-	-	 Solid	      50.0 	 	-	 	-	 	-	 	  35.0 	 	  1	1963	Emma [1]	Solid
+12-AS-1000	AJP	F-80 JATO	-	-	 Solid	      50.0 	?	-	 	       4.40 	 	-	 	  12.0 	 	  1	1945?	JATO	Solid
+14-NS-1000	AJP	JATO	-	-	 Solid	      50.0 	?	-	 	       4.40 	 	-	 	  14.0 	 	  1	1945?	JATO	Solid
+14-AS-1000	AJP	JATO	-	-	 Solid	      50.0 	?	-	 	       4.40 	 	-	 	  14.0 	 	  1	1945?	JATO Mk 2?	Solid
+NOTS 100A	NOTS	-	-	-	 Solid	      50.0 	?	-	 	      40.00 	 	-	 	  20.0 	 	  1	1960	BSJr [4]	Solid
+Cirrus I	DRG	-	-	-	 Solid	      50.0 	?	      50 	?	       5.00 	 	-	 	  10.0 	?	  1	-	Cirrus	Solid
+Cirrus II	DRG	-	-	-	 Solid	      50.0 	?	      90 	?	      18.00 	 	-	 	   5.0 	?	  1	-	Cirrus	Solid
+Star 13B	THKE	-	TE-M-763	-	 CTPB/AP/Al	      47.0 	 	     116 	 	       7.60 	 	285.7 	 	  14.8 	 	  1	-	Star 13B	Solid
+Kappa 4	ISAS	-	-	-	 Solid	      45.0 	?	-	 	      10.00 	 	-	 	   3.0 	 	  1	1956	Kappa 4	Solid
+Kappa 1	ISAS	-	-	-	 Solid	      45.0 	 	-	 	      10.00 	 	-	 	   3.0 	 	  1	1956	Kappa 1	Solid
+Mk 36	HERC/THK/ATLR	AIM-9D Sidewinder	-	-	 HTPB	      45.0 	 	-	 	-	 	-	 	-	 	  1	-	Sidewinder	Solid
+Mk 17	THKE?	AIM-9B Sidewinder	-	-	 Solid	      45.0 	 	-	 	      17.70 	 	-	 	   2.1 	 	  1	-	Sidewinder	Solid
+Mk 15	THKE/NOTS	Sidewinder	-	-	 Solid	      45.0 	 	-	 	      17.70 	 	-	 	   2.1 	 	  1	-	Sidewinder	Solid
+Mk 50 Mod 0	THKE?	Sidewinder 1D	-	-	 Solid	      43.8 	 	      63 	 	      12.20 	 	230.0 	 	   4.7 	 	  1	1965	Sidew.(Chaparral)	Solid
+SR.116	ABL/AJSP	AIM-9P Sidewinder	-	-	 Solid	      45.0 	 	-	 	      17.70 	 	-	 	   2.1 	 	  1	-	Sidewinder	Solid
+9KS1660	BAL	BB	-	-	 PB	      43.0 	 	      66 	 	       7.40 	 	240.0 	 	   9.0 	 	  1	1969	BB6	Solid
+Lupus 3	WRE	-	-	-	 Solid	      41.0 	 	      61 	 	      11.50 	 	-	 	   5.3 	 	  1	1974	Kookaburra [1]	Solid
+Sword 3KS5000	LPC	-	-	-	 Solid	      42.0 	 	      60 	 	      16.00 	 	-	 	   3.8 	 	  1	-	Cleansweep III	Solid
+Star 13F	THKE	-	TE-M-444	-	 Solid	      40.1 	 	      94 	 	       6.30 	?	240.0 	 	  15.0 	?	  1	-	Star 13F	Solid
+Hopi 9.0KS1800	RPI	-	-	-	 Solid	      40.0 	 	      72 	 	       7.70 	 	-	 	   9.0 	 	  1	-	Hopi IV	Solid
+Excalibur	BAL	-	-	-	 Solid	      39.2 	 	      61 	 	      20.00 	 	-	 	   2.5 	 	  1	2000	Excalibur	Solid
+MARC 60A	ATLR	Arcas	-	-	 Solid	      38.0 	 	      60 	 	       1.60 	 	-	 	  32.6 	 	  1	1960	Super Arcas	Solid
+RTV	JPL	RTV Motor	-	-	 JPL 136	      37.0 	 	      51 	 	       8.50 	 	230.0 	 	   5.4 	 	  1	1956 Sep 20	Juno I [4]	Solid
+Star 13A	THKE	-	TE-M-516	-	 CTPB/AP/Al	      38.0 	 	      94 	 	       5.90 	 	286.5 	 	  15.3 	 	  1	-	Star 13A	Solid
+Star 13C	THKE	-	TE-M-345	-	 Solid	      38.0 	 	      81 	 	       5.00 	?	218.0 	 	  15.0 	?	  1	-	Star 13C	Solid
+Bantam	BAJUK	-	-	-	 Solid	      37.0 	 	-	 	       1.80 	 	237.0 	 	  30.0 	 	  1	1962	Skua	Solid
+Bantam 2	BAJUK	-	-	-	 Solid	      37.0 	 	-	 	       1.80 	 	237.0 	 	  30.0 	 	  1	-	Skua 2	Solid
+Bantam 3	BAJUK	-	-	-	 Solid	      33.0 	 	-	 	       1.70 	 	237.0 	 	  34.0 	 	  1	-	Skua 3	Solid
+Star 13	THKE	-	TE-M-458	-	 Solid	      36.0 	 	      84 	 	       4.10 	 	273.0 	 	  21.0 	 	  1	-	Star 13	Solid
+S-A	STA	-	-	-	 Solid	      36.0 	 	      29 	 	       2.50 	 	164.0 	 	  12.0 	 	  1	1965	S-A	Solid
+Lupus 2D	WRE	-	-	-	 Solid	      35.7 	?	      48 	 	      11.50 	 	-	 	   4.0 	 	  1	1972	Kookaburra	Solid
+Lupus 2	WRE	-	-	-	 Solid	      35.7 	 	      46 	 	      11.50 	 	-	 	   4.0 	 	  1	1972	Kookaburra [1]	Solid
+Star 13D	THKE	-	TE-M-375	-	 Solid	      35.3 	 	      76 	 	       5.00 	?	223.0 	 	  15.0 	?	  1	-	Star 13D	Solid
+P-Vrbec	VRBEC	-	-	-	 Solid	      35.0 	?	       0 	 	-	 	-	 	-	 	  1	2022	VB booster	Solid
+Icarus	ERAU	-	-	-	 AP/Al	      35.0 	 	-	 	      15.80 	 	239.9 	 	   6.4 	 	  1	2007	Icarus [1]	Solid
+MARC 2B1	ATLR	Arcas	-	-	 Solid	      34.4 	 	      43 	 	       1.50 	 	-	 	  29.0 	 	  1	1960	Arcas	Solid
+Hopi 3.0KS4000	RPI	-	-	-	 Solid	      33.0 	 	      53 	 	      18.00 	 	-	 	   3.0 	 	  1	-	Hopi	Solid
+Hopi 2.4KS5600	RPI	-	-	-	 Solid	      34.0 	 	      58 	 	      24.90 	 	227.0 	 	   2.4 	 	  1	-	Hopi III	Solid
+Lupus 1A	WRE	-	-	-	 Solid	      33.6 	 	      38 	 	       9.50 	 	-	 	   5.2 	 	  1	1969	Kookaburra [1]	Solid
+Star 12A	THKE	-	TE-M-236-3	-	 Polyurethane/AP/Al	      33.5 	 	      61 	 	       7.30 	 	270.0 	 	   7.5 	 	  1	1971	Super SARV Retro	Solid
+Urbion	INTA	-	-	-	 Solid	      33.0 	 	-	 	       1.50 	 	-	 	  34.0 	 	  1	1984	INTA-100 [2]	Solid
+Meteor-1	PIHM	-	-	-	 Solid	      32.5 	 	      31 	 	      14.00 	 	-	 	   2.3 	 	  1	1963	Meteor-1 [2]	Solid
+MARC 42A1	ATLR	-	Arcas Boost	-	 Solid	      30.8 	 	-	 	      12.20 	 	-	 	   3.0 	 	  1	1960s	Boosted Arcas 2 [0]	Solid
+Star 13E	THKE	-	TE-M-385	-	 Solid	      30.5 	 	      63 	 	       4.20 	?	211.0 	 	  15.0 	?	  1	-	Star 13E	Solid
+Cherokee	THKE	-	TE-146	-	 Solid	      30.0 	?	-	 	-	 	-	 	   1.5 	 	  1	1963	Squirt [2]	Solid
+RH-125	VSSC	-	-	-	 Solid	      30.0 	?	      30 	 	      10.50 	 	-	 	   2.9 	 	  1	1970s	RH-125	Solid
+RH-125S	VSSC	-	-	-	 Solid	      30.0 	?	      30 	 	      10.50 	 	-	 	   2.9 	 	  1	1970s	RH-125S	Solid
+NOTS 124-C	NOTS	-	-	-	 Solid	      30.0 	?	-	 	-	 	-	 	-	 	  1	1955	X-17 HTV [3]	Solid
+HPAG	NOTS	-	-	-	 Solid	      30.0 	 	-	 	      12.60 	 	-	 	   2.7 	 	  1	1950	-	Solid
+Proson 2	CITEF	-	-	-	 Solid	      30.0 	?	-	 	-	 	-	 	-	 	  1	-	Proson	Solid
+TME DART	TMINUS	-	-	-	 Solid	      30.0 	 	      59 	 	      24.70 	 	-	 	   2.2 	 	  1	2020	DART	Solid
+Viper IIIA	SDCO	Viper	-	-	 Solid	      30.0 	 	      59 	 	      24.70 	 	-	 	   2.2 	 	  1	1972	Viper	Solid
+DIM	IIAE	-	-	-	 Solid	      30.0 	?	-	 	-	 	-	 	-	 	  1	-	DIM	Solid
+T-55	THKE	-	-	-	 Solid	      28.0 	 	-	 	      21.40 	 	-	 	   1.3 	 	  1	1956	Terrapin	Solid
+INTA S-12	INTA	-	-	-	 Solid	      28.0 	 	-	 	      16.70 	 	-	 	   1.2 	 	  1	1984	INTA-100 [1]	Solid
+Star 12	THKE	-	TE-M-236	-	 Polyurethane/AP/Al	      27.8 	 	      46 	 	       5.60 	 	252.0 	 	   7.5 	 	  1	1960	SRV Mk IV Retro	Solid
+Sonda 1 Booster	IAE	-	-	-	 Solid	      27.5 	 	-	 	      27.00 	 	-	 	-	 	  1	1965	Sonda 1	Solid
+Sonda 1	IAE	-	-	-	 Solid	      27.3 	 	-	 	       4.20 	 	-	 	-	 	  1	1965	Sonda 1	Solid
+Stable Super Loki	SDC	-	-	-	 PS/AP	      27.0 	 	      44 	 	      21.20 	 	228.7 	 	   2.1 	 	  1	1973	Stable Super Loki	Solid
+Belisama	CFTHB	-	-	-	 Solid	      26.0 	 	      24 	 	      24.00 	?	-	 	   0.9 	 	  1	1968	Belisama [2]	Solid
+MARC 2C2	ATLR	Arcas	-	-	 Solid	      26.0 	 	-	 	       1.40 	 	-	 	  29.0 	 	  1	-	HV Arcas	Solid
+Lobster	RORD	-	-	-	 Solid	      26.0 	 	      58 	 	      29.00 	 	-	 	   2.0 	 	  1	-	Jaguar 1 [2]	Solid
+RM-3141	COOP/JPL	Scale Sergeant	-	-	 Solid	      25.0 	 	      48 	 	       7.60 	 	222.0 	 	   6.3 	 	  1	1959	Ascamp [2]	Solid
+Super Loki	SDC	-	-	-	 PS/AP	      23.0 	 	      38 	 	      17.80 	 	232.0 	 	   2.1 	 	  1	1968	Super Loki	Solid
+SEPR P167	SEP	-	-	-	 Solid	      23.0 	?	-	 	      34.00 	 	-	 	-	 	  1	-	Berenice strapon	Solid
+MCR-3	VSSC	-	-	-	 Solid	      20.0 	?	-	 	-	 	-	 	-	 	  1	1970s	MCR-3/RH-125	Solid
+Mk 117 JATO	UNK	JATO	-	-	 Solid	      22.7 	 	-	 	      11.20 	 	-	 	   1.5 	 	  1	?	JATO BQM74 5"	Solid
+NAL-7	STA	-	-	-	 Solid	      20.0 	?	-	 	-	 	-	 	-	 	  1	1965	NAL-7	Solid
+Falcon	THKX	-	M-58	-	 PS/AP	      20.0 	 	-	 	      20.00 	 	150.0 	 	   1.4 	 	  1	1950	Falcon	Solid
+Melusine	ATEF	-	-	-	 Plastolite	      20.0 	?	-	 	-	 	-	 	-	 	  1	-	Grannos	Solid
+MARC 42A2	ATLR	-	Arcas Boost	-	 Solid	      20.0 	?	-	 	-	 	-	 	-	 	  1	1960s	Boosted Arcas [0]	Solid
+SEPR P191	SEPR	-	-	-	 Solid	      20.0 	 	      15 	 	      14.80 	 	-	 	   1.0 	 	  1	-	Emma [0]	Solid
+SkyMicro1	SKYR	-	-	-	 Solid	      20.0 	?	-	 	       1.60 	 	172.0 	 	-	 	  1	2020	Skylark Micro	Solid
+MERA	KBPT	-	-	-	 Solid	      20.0 	 	      40 	?	      20.00 	?	-	 	   2.0 	?	  1	1992	MERA	Solid
+Star 10	THKE	-	TE-M-195	-	 PB/AP/Al TP-G-3012	      17.0 	 	      30 	 	      33.50 	 	251.0 	 	   9.0 	 	  1	1959	SRV Retro Mk I	Solid
+BB7	BAL	-	-	-	 Solid	      16.0 	 	-	 	-	 	-	 	-	 	  1	1969	BB 7	Solid
+MARC 14A1	ATLR	-	-	-	 Solid	      16.0 	 	-	 	      12.00 	 	-	 	   0.8 	 	  1	-	Arcas booster	Solid
+O5280X-PS DMS	AEROTC	-	-	-	 Solid	      15.0 	 	      23 	 	       6.50 	 	-	 	   4.3 	 	  1	2018	SPEAR-HRT	Solid
+O4500	MESOS	-	-	-	 Solid	      15.0 	?	       0 	 	       4.50 	 	-	 	-	 	  1	2022	MESOS booster	Solid
+Meraki O7800	NZRA	-	-	-	 Solid	      15.0 	?	-	 	       7.80 	 	-	 	-	 	  1	2024	Meraki booster	Solid
+M830	MESOS	-	-	-	 Solid	      15.0 	?	       0 	 	       0.83 	 	-	 	-	 	  1	2022	MESOS sustainer	Solid
+O-Vrbec	VRBEC	-	-	-	 Solid	      15.0 	?	       0 	 	-	 	-	 	-	 	  1	2022	VB sustainer	Solid
+Cygnus 10	PARD	-	10" SM	-	 Solid	      15.0 	 	-	 	      10.00 	 	-	 	   3.2 	 	  1	-	10" SM	Solid
+TX8-6	THKX	-	-	-	 Solid	      15.0 	 	      25 	 	       3.60 	 	233.0 	 	   7.0 	?	  1	1958	Able I motor	Solid
+NOTS 8	NOTS	-	-	 -	 Solid	      14.9 	 	      29 	 	       5.10 	 	245.0 	 	   5.7 	 	  1	1958	Pilot [4]	Solid
+DMU 3000	THKE	-	CORONA DMU	-	 Solid	      13.4 	 	-	 	-	 	-	 	-	 	  1	-	CORONA	Solid
+MARC 14B1	ATLR	-	.8KS18800	-	 Solid	      13.4 	 	      10 	 	      12.00 	 	-	 	   0.8 	 	  1	1960	Iris booster x 7	Solid
+Mk7	UNK	-	3.25"	-	 Solid	      13.1 	 	       9 	 	       9.80 	 	-	 	   0.9 	 	  1	1948	-	Solid
+Icarus St2	ERAU	-	-	-	 AP/Al	      13.0 	 	-	 	       4.10 	 	241.5 	 	   7.0 	 	  1	2007	Icarus [2]	Solid
+Arcon booster	ARC?	-	-	-	 Solid	      12.4 	 	       5 	 	      14.00 	 	-	 	   0.4 	 	  1	1958	Arcon	Solid
+M3A2 JATO	UNK	JATO	-	-	 Solid DB T6	      12.3 	 	-	 	-	 	-	 	-	 	  1	1980?	M3A2 5" JATO (HVAR?)	Solid
+T-41	THKX	Falcon	M-46	-	 Polysulfide	      12.0 	 	-	 	-	 	-	 	-	 	  1	1949	Falcon	Solid
+Arrow II	GCR	-	-	-	 Solid	      12.0 	 	      17 	 	       9.00 	 	-	 	   1.9 	 	  1	1950s	Arrow	Solid
+Judi-III 1.9KS2100	RPI	-	1.9-KS-2100	-	 Solid	      12.0 	 	-	 	       9.30 	 	-	 	   1.9 	 	  1	1961	Judi III	Solid
+SR71-AD-1	SDCO	-	-	-	 Solid	      11.0 	 	      18 	 	       9.00 	 	231.0 	 	   2.0 	 	  1	1968	Loki Dart PWN-8B	Solid
+Loki II	GCR	Loki	-	-	 Solid	      11.0 	 	      17 	 	       9.00 	 	223.0 	 	   2.0 	 	  1	1965?	Loki II Dart	Solid
+Judi-I 1.9KS2150	RPI	-	1.9-KS-2150	-	 Solid	      10.0 	 	      18 	 	       9.60 	 	224.0 	 	   1.9 	 	  1	1961	Judi III	Solid
+Musca	WRE	-	-	-	 Solid	      10.0 	?	      19 	 	       5.10 	?	-	 	   3.7 	 	  1	1965	Musca	Solid
+HAEC FFAR	UNK	FFAR	-	-	 Solid	      10.0 	?	      11 	 	       4.00 	?	-	 	   2.8 	 	  1	1961	HAEC [2]	Solid
+SkyMicro2	SKYR	-	-	-	 Solid	      10.0 	?	-	 	       0.80 	 	181.0 	 	-	 	  1	2020	Skylark Micro	Solid
+RH-75	VSSC	-	-	-	 Solid	      10.0 	?	-	 	-	 	-	 	-	 	  1	1967	-	Solid
+Theodore	ATEF	-	-	-	 Epictete	      10.0 	 	      18 	 	       1.80 	 	-	 	  10.0 	 	  1	-	Monica	Solid
+Mk 125 JATO	UNK	JATO	-	-	 Solid	       9.2 	 	-	 	-	 	-	 	-	 	  1	?	JATO Pioneer UAV	Solid
+DMU 2000	THKE	-	CORONA DMU	-	 Solid	       8.9 	 	-	 	-	 	-	 	-	 	  1	-	CORONA	Solid
+FFAR	USN/CIT	FFAR	-	-	 Solid	       9.0 	 	       5 	?	       3.60 	 	-	 	   1.5 	 	  1	1955	Rockair	Solid
+Pro75-6GXL	CESARO	-	-	-	 Solid	       8.0 	?	      10 	 	       2.30 	 	-	 	   4.3 	 	  1	-	SPEAR-HRT	Solid
+Loki	JPL/GCR	Loki	-	-	 Solid	       8.0 	 	      10 	 	      15.00 	 	213.0 	s	   0.8 	 	  1	1956	Loki Dart	Solid
+Seagull	UNK	-	-	-	 Solid?	       8.0 	?	-	 	      10.00 	?	-	 	   2.0 	?	  1	1963	Seagull	Solid
+Chick	RPEW	-	-	-	 Solid	       8.0 	 	       4 	 	      20.00 	 	-	 	   0.2 	 	  1	-	Chick	Solid
+Luzou	SEP	-	-	-	 Solid	       7.0 	 	-	 	       3.00 	 	-	 	   1.7 	 	  1	1975	Eridan-ARAKS	Solid
+Mk 66 FFAR	UNK	-	-	-	 Solid	       6.5 	 	       7 	 	       5.80 	 	-	 	   1.0 	 	  1	-	2.75-inch WrapAround	Solid
+MARC 21A1	ATLR	-	17.5-KS-130	-	 Solid Arcite	       6.3 	 	       8 	 	       0.60 	 	-	 	  17.5 	 	  1	-	Metroc	Solid
+Meraki N3100	NZRA	-	-	-	 Solid	       5.0 	?	-	 	       3.10 	 	-	 	-	 	  1	2024	Meraki sustainer	Solid
+T-22	JPL	-	-	-	 Solid	       5.0 	?	-	 	      24.00 	 	206.0 	 	   0.2 	 	  1	1944	Private A Booster	Solid
+Oreste	ATEF	-	-	-	 Epictete	       5.0 	?	       7 	 	       0.90 	 	-	 	   8.0 	 	  1	-	Monica	Solid
+Mk 40 LSFFAR	UNK	-	-	-	 Solid	       5.0 	 	       5 	 	       3.20 	 	-	 	   1.6 	 	  1	1980?	2.75-inch FFAR	Solid
+KM-L	NISST	KM-L	-	-	 HTPB	       4.0 	 	-	 	-	 	-	 	-	 	  1	1990	Hagoromo	Solid
+LaRC Plastic	LARC	-	-	-	 Solid T13E1	       2.5 	 	       2 	 	       0.40 	 	100.0 	 	   3.0 	 	  1	1958	Hi Ball	Solid
+Cygnus 5	LARC	-	-	-	 Solid	       2.5 	 	-	 	       2.30 	 	236.0 	 	   1.6 	 	  1	-	TB2 [6]	Solid
+PSSC	AERO	-	-	-	 Solid	       2.0 	?	      40 	 	-	 	-	 	-	 	  4	2011	PSSC	Solid
+1KS420	ATLR	-	-	-	 Solid	       2.0 	?	       2 	 	      22.00 	 	-	 	   1.0 	 	  1	1959	Explorer 6	Solid
+JPL 2 lb Kick Motor	JPL	-	-	-	 JPL 136	       1.5 	 	-	 	-	 	246.0 	 	-	 	  1	1958 Oct 23	Deal III	Solid
+D-SAT-EES	DORBIT	-	-	-	 Solid	       0.9 	 	-	 	       0.45 	 	266.4 	 	   3.2 	 	  1	-	D-SAT	Solid
+NOTS 3SM	NOTS	-	-	-	 Solid	       0.6 	 	       1 	 	       0.70 	 	245.0 	 	   1.0 	 	  1	1958	Pilot [5]	Solid
+CRAPEL	ONERA	-	-	-	 Solid	-	 	      52 	 	-	 	-	 	  10.5 	 	  1	1969	CRAPEL/Belier	Solid
+RS-B-535	RDYNE	-	-	-	 Solid	-	 	-	 	-	 	-	 	-	 	  1	1972	BLDT	Solid
+Buran TDEO	UNK	-	-	-	 Solid	-	 	      35 	 	      28.00 	 	-	 	-	 	  1	1988 Nov 15	Buran (x4)	Solid
+M15A1 JATO	PHILR	T60 JATO	16-NS-1000	-	 Solid	-	 	-	 	       4.40 	 	-	 	  16.0 	 	  1	1953	M16A1 JATO	Solid
+M34 ZEL JATO	RDYNM	JATO	4-XX-130000	-	 Solid	-	 	-	 	     578.00 	 	-	 	   4.0 	 	  1	1955?	Aircraft JATO	Solid
+8-AS-1000	AJP	JATO	8-AS-1000	-	 Solid	-	 	-	 	       4.40 	 	-	 	   8.0 	 	  1	1945?	KAN-1 Litte Joe	Solid
+Cedre St1	LRS	-	-	-	 Solid	-	 	-	 	     138.00 	 	-	 	-	 	  1	1962	Cedre 3	Solid
+Cedre St2	LRS	-	-	-	 Solid	-	 	-	 	      78.00 	 	-	 	-	 	  1	1962	Cedre 3	Solid
+Cedre St3	LRS	-	-	-	 Solid	-	 	-	 	      20.00 	 	-	 	-	 	  1	1962	Cedre 3	Solid
+Cedre-4 St1	LRS	-	-	-	 Solid	-	 	-	 	     138.00 	 	-	 	-	 	  1	1962	Cedre 4	Solid
+#
+# Hybrid propellant engines
+#
+SORS	DVST	-	-	LOX?	 Solid	-	 	-	 	-	 	-	 	-	 	  1	2021	SORS	Hybrid
+HALO	HAL5	-	-	N2O	 HTPB	      20.0 	 	-	 	       1.90 	 	240.0 	 	-	 	  1	1997	HALO	Hybrid
+Rhumi	SZI	-	-	N2O	 Solid	-	 	     180 	 	       2.50 	 	-	 	   0.0 	 	  1	2024	Rhumi	Hybrid
+ILR-33	PAI	-	-	H2O2	 Solid	-	 	-	 	       4.00 	 	-	 	  40.0 	 	  1	2015	Bursztyn	Hybrid
+Hyperion	EAC	-	-	N2O	 HTPB	      47.0 	 	      93 	 	       6.00 	 	-	 	  15.0 	 	  1	1996	eAc	Hybrid
+Atea-1	RLABN	-	-	N2O	 Solid	-	 	     100 	 	       6.90 	 	-	 	  14.5 	 	  1	2009	Atea-1	Hybrid
+DHX-200 Aurora	DARE	-	-	N2O	 Sorbitol/Paraf/Al	      85.0 	 	     190 	 	       8.00 	 	-	 	  23.0 	 	  1	2015	Stratos II+	Hybrid
+Lelien 1A	TISPACE	-	-	N2O	 SBR	-	 	    1339 	 	       9.80 	 	-	 	-	 	  1	2019	Hapith V [3]	Hybrid
+MT 27	SNECMA	-	-	NA/N2O4	 Solid	      75.0 	 	     200 	?	      10.00 	 	200.0 	 	  20.0 	 	  1	1964	Lex	Hybrid
+HyLIGHT	HYEND	-	-	N2O	 HTPB	     120.0 	?	     267 	 	      10.00 	 	224.0 	 	-	 	  1	2023	N2ORTH	Hybrid
+Lelien 1B	TISPACE	-	-	N2O	 SBR	-	 	    1028 	 	      19.60 	 	-	 	-	 	  1	2019	Hapith V [2]	Hybrid
+HTR	NAMMO	-	-	LOX	 Solid	-	 	     520 	?	      26.00 	 	202.0 	 	  20.0 	 	  1	2007	HTR	Hybrid
+FWUM	NAMMO	-	-	H2O2	 HTPB	-	 	-	 	      30.00 	 	-	 	  35.0 	 	  1	2018	Nucleus	Hybrid
+HyPLOX75	HYIMP	-	-	LOX	 Paraffin	-	 	-	 	      75.00 	 	321.0 	 	  72.0 	 	  1	2023	SR75	Hybrid
+RM-1	SCAL/SPDEV	-	-	N2O	 HTPB	-	 	    7200 	?	      90.00 	?	-	 	  80.0 	 	  1	2003	SS1	Hybrid
+Sirius	GILM	-	-	H2O2	 Polyethylene	-	 	-	 	     110.00 	 	-	 	 100.0 	 	  1	2024	Eris[1]	Hybrid
+Lelien 1C	TISPACE	-	-	N2O?	 HTPB	-	 	-	 	     127.00 	 	-	 	-	 	  1	2019	Hapith V	Hybrid
+HyPER-15	INNOSP	-	-	LOX	 Paraffin	-	 	       0 	 	       0.00 	 	-	 	-	 	  1	2022	Hanbit-TLV	Hybrid
+Dolphin	STST	-	-	LOX	 PB	    7500.0 	 	-	 	     155.00 	 	-	 	-	 	  1	1984	Dolphin	Hybrid
+HYSR	LMMI	-	-	LOX	 HTPB	-	 	    8000 	?	     270.00 	 	290.0 	 	  33.4 	 	  1	2003	HYSR	Hybrid
+RM-2 (1)	SIENV	-	-	N2O	 HTPB	-	 	   16000 	?	     270.00 	 	-	 	  60.0 	?	  1	2007	SS2	Hybrid
+RM-2	SCAL/SPDEV	-	-	N2O	 Polyamide	-	 	   16000 	?	     310.00 	 	250.0 	 	  60.0 	?	  1	2007	SS2	Hybrid
+H500	AMROC	-	-	LOX	 PB	       0.0 	 	   23000 	?	     333.00 	 	295.2 	 	  70.0 	 	  1	1989 Oct  5	AMROC	Hybrid
+#
+# N2 cold gas
+#
+DS	MITT	Start DS	-	-	 N2	-	 	-	 	       0.00 	 	-	 	 210.0 	 	  1	-	Start DS	N2
+#
+# Liquid propellant engines: Nitric acid/Aniline or alcohol
+#
+P4-1 Sustainer	NAA	-	-	IRFNA	 Hydyne	-	 	-	 	       0.50 	 	262.0 	 	-	 	  1	-	-	NA/AA
+T-7 LRE	SIMED	-	-	NA	 Aniline	    1000.0 	 	-	 	       2.00 	 	-	 	-	 	  1	1960	T-7	NA/AA
+P4-1 Booster	NAA	-	-	IRFNA	 Hydyne	-	 	-	 	       2.40 	 	232.0 	 	-	 	  1	-	-	NA/AA
+LR2-RM-6	RMI	-	-	RFNA	 Aniline	-	 	-	 	       2.80 	 	195.0 	 	 260.0 	 	  1	1945	Lark	NA/AA
+LPR-006	ISRO	-	-	RFNA	 Aniline	-	 	-	 	       6.00 	 	-	 	-	 	  1	-	LPR-006	NA/AA
+WAC	AJGC	WAC	-	RFNA	 Aniline/Alcohol	     313.0 	 	     300 	 	       6.70 	 	-	 	  47.0 	 	  1	1945	WAC	NA/AA
+X21AL-2600	AJGC	Nike	-	RFNA	 Aniline/Alcohol	-	 	-	 	      11.40 	 	-	 	  21.0 	 	  1	1947	Nike 46 Ajax [2]	NA/AA
+21AL-2600	AJGC	Nike	-	RFNA	 Aniline/Alcohol	-	 	-	 	      11.40 	 	-	 	  21.0 	 	  1	1947	Nike 47 Ajax [2]	NA/AA
+Ajax-490	AJGC	Nike	-	RFNA	 Aniline/Alcohol	-	 	-	 	      11.40 	?	-	 	  21.0 	 	  1	1949	Nike Ajax	NA/AA
+NATIV	NAA	-	-	NA	 Aniline	-	 	-	 	      11.60 	 	-	 	-	 	  1	1947	NATIV	NA/AA
+XASR-1	AJGC	Aerobee	-	RFNA	 Aniline/Alcohol	     467.0 	 	     520 	 	      11.60 	 	188.5 	 	  32.1 	 	  1	1948 Dec  9	Aerobee	NA/AA
+AJ11-6	AJGC	Aerobee	AGVL-0113F	RFNA	 Aniline/Alcohol	     670.0 	 	     928 	 	      17.80 	 	199.0 	 	  52.0 	 	  1	1959 Sep 11	Aerobee	NA/AA
+AJ11-21	AJGC	Aerobee	-	RFNA	 Aniline/Alcohol	     670.0 	 	     928 	 	      17.80 	 	199.0 	 	  52.0 	 	  1	1959 Sep 11	Aerobee	NA/AA
+AJ10-24	AJGC	Aerobee	-	RFNA	 Aniline/Alcohol	     467.0 	 	     586 	 	      17.80 	 	193.0 	 	  32.1 	 	  1	1950?	Aerobee	NA/AA
+AJ10-25	AJGC	Aerobee	-	RFNA	 Aniline/Alcohol	     467.0 	 	     586 	 	      17.80 	 	193.0 	 	  32.1 	 	  1	1950?	Aerobee	NA/AA
+AJ10-27	AJGC	Aerobee	-	RFNA	 Aniline/Alcohol	     467.0 	 	     586 	 	      17.80 	 	193.0 	 	  32.1 	 	  1	1950?	Aerobee	NA/AA
+AJ10-34	AJGC	Aerobee	-	RFNA	 Aniline/Alcohol	     467.0 	 	     586 	 	      17.80 	 	193.0 	 	  32.1 	 	  1	1950?	Aerobee	NA/AA
+AJ60-92	AJGC	Aerobee 200	-	IRFMA	 Aniline (ANFA)	     576.0 	 	    1346 	 	      22.60 	 	-	 	  58.5 	 	  1	-	Aerobee 200	NA/AA
+LPR-3T	ISRO	-	-	RFNA	 Aniline	-	 	-	 	      29.00 	 	-	 	-	 	  1	-	LPR-3T	NA/AA
+TD-187	RMD	Bullpup A	-	IRFNA	 MAF-1	      92.0 	 	-	 	      53.00 	 	-	 	-	 	  1	1950?	Bullpup	NA/AA
+TD-232	RMD	Bullpup B	-	IRFNA	 MAF-1	     255.0 	 	-	 	      53.00 	?	-	 	-	 	  1	1950?	Bullpup	NA/AA
+Wasserfall	HVP	-	-	NA	 Vinyl Isobutyl ethe	-	 	-	 	      78.00 	 	-	 	  40.0 	 	  1	1944	Wasserfall	NA/AA
+Corporal E	JPL	-	-	RFNA	 Aniline	-	 	-	 	      89.00 	 	-	 	-	 	  1	1947	Corporal E	NA/AA
+Corporal	AJGC	-	-	IRFNA	 Aniline	-	 	-	 	      89.00 	 	-	 	  63.0 	 	  1	-	Corporal	NA/AA
+#
+# Liquid propellant engines: Nitric acid/Amine
+#
+S2.721V	ISAEV	S2.721	-	NA	 Amine	-	 	-	 	      11.80 	 	-	 	-	 	  1	1956?	-	NA/Amine
+P-15	ISAEV	S2.721	-	NA	 Amine	-	 	-	 	      11.90 	 	-	 	-	 	  1	-	-	NA/Amine
+S5.4	ISAEV	S5.4	-	NA	 Amine	-	 	-	 	      15.80 	 	266.0 	 	-	 	  1	-	-	NA/Amine
+V-750V	ISAEV	V-750	-	NA	 Amine	-	 	-	 	      30.40 	 	-	 	-	 	  1	-	-	NA/Amine
+S2.720	ISAEV	S2.720	-	NA	 Amine	-	 	-	 	      34.30 	 	233.0 	s	-	 	  1	-	-	NA/Amine
+S5.5	ISAEV	KTDU-5	-	NA AK-27I	 Amine TG-02	-	 	-	 	      44.00 	 	287.0 	 	-	 	  1	-	Luna E-6	NA/Amine
+KTDU-5A	ISAEV	KTDU-5	-	NA	 Amine	-	 	-	 	      45.50 	 	287.0 	 	-	 	  1	-	Luna E-6	NA/Amine
+S2.253	ISAEV	S2.253	-	NA	 Amine TG-02	-	 	-	 	      80.00 	 	251.0 	 	  78.0 	 	  1	1953 Apr 18	R-11	NA/Amine
+S09.29	ISAEV	S09.29	-	NA	 Amine	-	 	-	 	      88.00 	 	-	 	-	 	  1	-	-	NA/Amine
+Prithvi	DRDO	-	-	RFNA	 Xylidiene/Trieth.	-	 	-	 	     100.00 	?	-	 	-	 	  1	1988	Prithvi	NA/Amine
+S2.726	ISAEV	S2.726	-	NA AK-20I	 Amine TG-02	-	 	-	 	     103.00 	 	-	 	  55.0 	 	  1	1958	V-1000	NA/Amine
+S5.1	ISAEV	S5.1	-	NA	 Amine	-	 	-	 	     167.00 	 	-	 	-	 	  1	-	-	NA/Amine
+S5.44	ISAEV	S5.44	-	NA	 Amine	-	 	-	 	     177.00 	 	251.0 	s	-	 	  1	-	-	NA/Amine
+S2.713	ISAEV	S2.713	-	NA AK-27I	 Amine TG-02	-	 	-	 	     252.00 	 	-	 	-	 	  1	-	R-13	NA/Amine
+S5.3	ISAEV	S5.3	-	NA	 Amine	-	 	-	 	     392.00 	 	-	 	-	 	  1	-	R-21	NA/Amine
+S5.38	ISAEV	S5.3	-	NA	 Amine	-	 	-	 	     392.00 	 	-	 	-	 	  1	-	R-21	NA/Amine
+S5.3M	ISAEV	S5.3	-	NA	 Amine	-	 	-	 	     396.70 	 	241.0 	s	-	 	  1	-	-	NA/Amine
+S2.1150	ISAEV	S2.1150	-	NA AK-27I	 Amine TG-02	-	 	-	 	     671.20 	 	250.0 	 	-	 	  1	1959	Burya	NA/Amine
+#
+# Liquid propellant engines: Nitric acid/Kerosene
+#
+AlKahir	EGAO	-	-	NA?	 Kerosene?	-	 	-	 	       0.00 	 	-	 	-	 	  1	1962	Al Kahir	NA/Kero
+LE-1	STA	LS-A	-	WFNA	 Kerosene	-	 	     350 	 	      10.00 	 	195.0 	 	  35.0 	 	  1	1963	LS-A	NA/Kero
+Aerobee Jr	AJGC	-	-	RFNA	 Kerosene JP-4	-	 	-	 	      11.60 	 	200.0 	 	  40.0 	 	  1	1958	Aerobee 100	NA/Kero
+Ajax 1810	AJ	-	-	IRFNA	 JPX (JP-4/UDMH)	-	 	-	 	      11.60 	 	-	 	  30.0 	 	  1	-	Nike Hercules 1810	NA/Kero
+Ajax	AJ	-	-	IRFNA	 Kerosene JP-4	-	 	-	 	      11.60 	 	-	 	  30.0 	 	  1	-	Nike Ajax [2]	NA/Kero
+S2.711	ISAEV	-	-	RFNA	 Kerosene	-	 	-	 	      13.80 	 	-	 	  22.0 	 	  1	1957	V-750	NA/Kero
+S2.711V	ISAEV	-	-	RFNA AK-20	 Kerosene TG-02	-	 	-	 	      30.40 	 	-	 	  25.0 	 	  1	1957	V-750	NA/Kero
+Veronique N	LRBA	LRBA	-	NA	 Kerosene	-	 	-	 	      40.00 	 	-	 	-	 	  1	1952 May 20	Veronique N	NA/Kero
+OTRAG	OTR	OTRAG	-	NA	 Kerosene	-	 	-	 	      58.70 	 	250.0 	 	 126.0 	 	  1	1977	OTRAG	NA/Kero
+S2.253A	ISAEV	S2.253	-	NA	 Kerosene	-	 	-	 	      93.00 	 	251.0 	 	  78.0 	 	  1	1953 Apr 18	R-11FM	NA/Kero
+S5.2	ISAEV	9D21	-	NA	 Kerosene	-	 	-	 	     131.20 	 	258.0 	 	-	 	-	-	R-17	NA/Kero
+Abid	IQ	-	-	NA?	 Kerosene	-	 	       0 	 	     130.00 	?	-	 	-	 	  1	-	Abid St 1	NA/Kero
+LR59-AJ-13	AJGC	-	LR59-AG-13	IRFNA	 Gasoline/UDMH	-	 	-	 	     133.00 	 	-	 	   4.0 	 	  1	1957	Bomarc A	NA/Kero
+TD-2	KPA	-	-	RFNA	 Kerosene	-	 	-	 	     250.00 	?	-	 	 120.0 	 	  1	2006	TD-2	NA/Kero
+RD-214 Early	EMASH	RD-214	-	NA	 Kerosene	-	 	-	 	     625.00 	 	210.0 	 	-	 	  4	1957 Jun 22	R-12	NA/Kero
+S2.1100	ISAEV	S2.253	-	NA AK-27I	 Kerosene T-1	-	 	-	 	     673.00 	?	-	 	-	 	  4	1957 Aug  1	Burya	NA/Kero
+RD-214	EMASH/PERM	RD-214	8D59	NA	 Kerosene	-	 	-	 	     730.00 	 	264.0 	 	-	 	  4	1957 Jun 22	R-12	NA/Kero
+#
+# Liquid propellant engines: Nitric acid/Turpentine
+#
+Veronique	LRBA	LRBA	-	WFNA	 Diesel oil	-	 	-	 	      40.00 	 	-	 	-	 	  1	1952 May	Veronique	NA/Turps
+Veronique AGI	LRBA	LRBA	-	WFNA	 Turpentine	-	 	    1900 	 	      40.00 	 	-	 	  49.0 	 	  1	1959 Mar  7	Veronique AGI	NA/Turps
+Veronique 61	LRBA	LRBA	-	NA	 Turpentine	-	 	-	 	      60.00 	 	-	 	-	 	  1	1964 Jun  8	Veronique 61	NA/Turps
+Vesta	LRBA	LRBA	-	NA	 Turpentine	-	 	    7900 	 	     140.00 	 	-	 	  56.4 	 	  1	1965 Oct 15	Vesta	NA/Turps
+Vexin	LRBA	LRBA	-	NA	 Turpentine	-	 	   25500 	 	     274.00 	 	-	 	  93.0 	 	  1	1964 Jun 15	Emeraude	NA/Turps
+#
+# Liquid propellant engines: Nitric acid/UDMH
+#
+Unha St3	KPA	Nodong	-	NA	 UDMH	-	 	-	 	-	 	-	 	-	 	  1	-	-	NA/UDMH
+KDU-414	ISAEV	11D414	-	NA AK-20	 UDMH	-	 	      80 	 	       2.00 	 	290.0 	 	-	 	  1	1964	Molniya-1	NA/UDMH
+11D429	ISAEV	-	-	NA AK-20	 UDMH	-	 	      80 	 	       2.00 	 	290.0 	 	-	 	  1	1974	Molniya-1 mod	NA/UDMH
+KTDU-53	ISAEV	KTDU-35	-	NA	 UDMH	-	 	-	 	       4.10 	 	280.0 	 	-	 	  1	-	-	NA/UDMH
+KTDU-35	ISAEV	KTDU-35	-	NA	 UDMH	-	 	-	 	       4.10 	 	280.0 	 	-	 	  1	-	-	NA/UDMH
+KTDU-66	ISAEV	KTDU-35	-	NA	 UDMH	-	 	-	 	       4.10 	 	280.0 	 	-	 	  1	-	-	NA/UDMH
+LE-2	STA	-	-	WFNA	 UDMH	-	 	-	 	       9.80 	 	195.0 	 	  25.0 	 	  1	-	LS-C	NA/UDMH
+LRE-4	IR	-	-	NA?	 UDMH?	-	 	-	 	      17.70 	 	-	 	-	 	  1	2015	Simorgh [2]	NA/UDMH
+KTDU-417 (NA)	ISAEV	KTDU-417	-	NA	 UDMH	-	 	-	 	      18.90 	 	314.0 	 	-	 	  1	-	-	NA/UDMH
+P8E-9	RDYNE	Lance Sustainer	Dual Thrust	IRFNA	 UDMH	-	 	-	 	      20.00 	 	227.0 	 	 114.0 	 	  1	1964	Lance Sustainer	NA/UDMH
+RD-851	YUZH	RD-851	-	NA	 UDMH	-	 	-	 	      32.50 	 	279.0 	 	-	 	  1	-	-	NA/UDMH
+AJ10	AJGC	AJ10	-	WFNA	 UDMH	-	 	-	 	      33.00 	 	-	 	 122.0 	 	  1	-	Vanguard [2]	NA/UDMH
+AJ10-11B	AJGC	AJ10	-	WFNA	 UDMH	-	 	-	 	      33.00 	 	-	 	 122.0 	 	  1	-	-	NA/UDMH
+AJ10-118	AJGC	AJ10	-	NA	 UDMH	-	 	-	 	      33.70 	 	271.0 	 	-	 	  1	-	-	NA/UDMH
+AJ10-118A	AJGC	AJ10	-	NA	 UDMH	-	 	    5730 	 	      33.70 	 	-	 	 170.0 	 	  1	-	Delta B Stage 2	NA/UDMH
+AJ10-118D	AJGC	AJ10	-	NA	 UDMH	-	 	-	 	      33.70 	 	278.0 	 	-	 	  1	-	-	NA/UDMH
+AJ10-101	AJGC	AJ10	-	NA	 UDMH	-	 	-	 	      34.30 	 	270.0 	 	-	 	  1	-	-	NA/UDMH
+AJ10-40	AJGC	AJ10	-	NA	 UDMH	-	 	-	 	      34.50 	 	-	 	 110.0 	 	  1	-	Able	NA/UDMH
+AJ10-41	AJGC	AJ10	-	NA	 UDMH	-	 	-	 	      34.50 	 	-	 	 110.0 	 	  1	-	Able	NA/UDMH
+AJ10-42	AJGC	AJ10	-	NA	 UDMH	-	 	-	 	      34.50 	 	-	 	 110.0 	 	  1	-	Able	NA/UDMH
+AJ10-101A	AJGC	Able	-	WIFNA	 UDMH	-	 	-	 	      34.70 	 	-	 	-	 	  1	1958 Apr 23	Able	NA/UDMH
+AJ10-118E	AJGC	AJ10	-	NA	 UDMH	-	 	-	 	      35.10 	 	278.0 	 	 400.0 	 	  1	-	-	NA/UDMH
+AJ10-104	AJGC	AJ10	-	NA	 UDMH	-	 	-	 	      35.10 	 	278.0 	 	-	 	  1	-	-	NA/UDMH
+RD-852	YUZH	RD-851	-	NA	 UDMH	-	 	-	 	      48.30 	 	255.0 	 	-	 	  1	-	-	NA/UDMH
+Bell 8048	BELL	Agena	-	IRFNA	 UDMH	-	 	-	 	      69.00 	 	276.0 	 	 120.0 	 	  1	1959	Agena A	NA/UDMH
+Bell 8096	BELL	Agena	-	IRFNA	 UDMH	-	 	-	 	      71.20 	 	289.8 	 	-	 	  1	1960	Agena B	NA/UDMH
+Bell 8096-37	BELL	Agena	-	IRFNA	 UDMH	-	 	-	 	      71.20 	 	289.8 	 	-	 	  1	1960	Agena D	NA/UDMH
+Bell 8096-39	BELL	Agena	-	HDA	 UDMH USO	-	 	-	 	      71.20 	 	299.7 	 	-	 	  1	1960	Agena D	NA/UDMH
+Bell 8081	BELL	Agena	-	NA	 UDMH	-	 	-	 	      71.20 	 	285.0 	 	-	 	  1	-	-	NA/UDMH
+Bell 8247	BELL	Agena	-	NA	 UDMH	-	 	-	 	      71.70 	 	293.0 	 	-	 	  1	1965	GATV	NA/UDMH
+Nodong	KPA	Nodong	-	NA	 UDMH	-	 	-	 	     144.00 	 	255.0 	 	 170.0 	 	  1	-	TD1[1] x 4	NA/UDMH
+11D49 [Old]	KBKHA	S5.23	-	NA AK-27	 UDMH	-	 	-	 	     157.50 	 	303.0 	 	 335.0 	 	  1	-	S3M [See N2O4]	NA/UDMH
+P8E-9 Boost	RDYNE	Lance Boost	Dual Thrust	IRFNA	 UDMH	-	 	-	 	     190.00 	 	227.0 	 	   6.1 	 	  1	1964	Lance Booster	NA/UDMH
+YF-1	CALT	-	-	NA27S	 UDMH	-	 	-	 	     255.00 	 	240.0 	 	 130.0 	 	  1	-	CZ-1 [1]	NA/UDMH
+YF-3	CALT	-	-	NA27S	 UDMH	-	 	-	 	     294.00 	 	287.0 	 	 120.0 	 	  1	-	CZ-1 [2]	NA/UDMH
+YF-2A	CALT	YF-2	-	NA	 UDMH	-	 	-	 	     306.10 	 	268.0 	 	-	 	  1	-	-	NA/UDMH
+RD-215	EMASH	RD-215 8D513	-	NA	 UDMH	-	 	-	 	     864.00 	 	291.0 	 	-	 	  1	1960 Jun  6	R-14	NA/UDMH
+RD-217	EMASH	RD-215 8D713	-	NA	 UDMH	-	 	-	 	     865.00 	 	289.0 	 	 106.0 	 	  1	1960 Oct 24	R-16	NA/UDMH
+RD-219	EMASH	RD-215 8D713	-	NA	 UDMH	-	 	-	 	     882.00 	 	293.0 	 	  80.0 	 	  1	1960 Oct 24	R-16	NA/UDMH
+RD-225	EMASH	RD-215	-	NA	 UDMH	-	 	-	 	     889.00 	 	294.0 	 	-	 	  1	-	-	NA/UDMH
+RD-216	EMASH/KRAS	RD-215	11D614	NA AK-27	 UDMH	-	 	-	 	    1728.00 	 	291.0 	 	 130.0 	 	  4	-	Kosmos-3M St1	NA/UDMH
+RD-224	EMASH	RD-215	-	NA	 UDMH	-	 	-	 	    1778.00 	 	294.0 	 	-	 	  1	-	-	NA/UDMH
+S5.45	ISAEV	S5.45	-	NA	 UDMH	-	 	-	 	    1961.00 	 	267.0 	 	-	 	  1	-	-	NA/UDMH
+#
+# Monopropellant hydrazine engines
+#
+MR-111	RRC	MR-111	-	-	 Hydrazine	-	 	-	 	       0.00 	 	229.0 	 	-	 	  1	1980 Dec	AOCS 4N	MonoHyd
+MR-103	RRC	MR-103	-	-	 Hydrazine	-	 	-	 	       0.00 	 	227.0 	 	-	 	  1	1974 May 30	AOCS 1N	MonoHyd
+MR-50	RRC	MR-50	-	-	 Hydrazine	-	 	-	 	       0.02 	 	228.0 	 	-	 	  1	1974 May 22	AOCS 22N	MonoHyd
+MR-106	RRC	MR-106	-	-	 Hydrazine	-	 	-	 	       0.03 	 	232.0 	 	-	 	  1	1974	AOCS 30N	MonoHyd
+MR-125	RRC	MR-125	-	-	 Hydrazine?	-	 	-	 	       0.11 	 	-	 	  30.0 	 	  1	1994	Astrid	MonoHyd
+MR-107	RRC	MR-107	-	-	 Hydrazine	-	 	-	 	       0.26 	 	236.0 	 	 550.0 	 	  1	1990	Pegasus AOCS,HAPS	MonoHyd
+MR-104	RRC	MR-104	-	-	 Hydrazine	-	 	-	 	       0.44 	 	239.0 	 	-	 	  1	1977 Aug 30	AOCS 445N	MonoHyd
+MR-104H	RRC	MR-104	-	-	 Hydrazine	-	 	-	 	       0.89 	 	-	 	-	 	  1	2012	AOCS 890N?	MonoHyd
+REA 20-4	HASTD	REA20-4	-	-	 Hydrazine	-	 	-	 	       0.56 	 	-	 	-	 	  1	-	-	MonoHyd
+EPBS	JAXA	-	-	-	 Hydrazine	-	 	-	 	       0.40 	 	215.0 	 	-	 	  1	-	-	MonoHyd
+Kairos PBS	JAXA	-	-	-	 Hydrazine	-	 	-	 	       0.40 	?	215.0 	/	-	 	  1	-	-	MonoHyd
+#
+# Liquid propellant engines: Nitrogen tetroxide/hydrazine
+#
+GYUB4	ADD	-	-	N2O4?	 MMH?	-	 	-	 	-	 	-	 	-	 	  1	-	GYUB [4]	NTO/Hyd
+KZ1-4	ARMT	-	-	N2O4	 MMH	-	 	-	 	-	 	-	 	-	 	  1	-	KZ-1 [4]	NTO/Hyd
+KZ1AE-4	ARMT	-	-	N2O4	 MMH	-	 	-	 	-	 	-	 	-	 	  1	-	KZ-1 [4]	NTO/Hyd
+R-6C	MARQ	-	-	N2O4	 MMH	-	 	-	 	       0.02 	 	-	 	-	 	  1	-	ATS-1 AOCS?	NTO/Hyd
+VTM	VSSC	-	-	MON-3	 MMH	-	 	-	 	       0.05 	 	-	 	-	 	  1	2021	SSLV [4]	NTO/Hyd
+TR-500	TRW	SCAT	-	N2O4	 N2H4	-	 	-	 	       0.04 	 	-	 	-	 	  1	2001	Geolite	NTO/Hyd
+SE5-2	RDYNE?	SE5-2	-	N2O4	 N2H4/MMH	-	 	-	 	       0.21 	 	272.0 	 	-	 	  2	1962	Agena APS	NTO/Hyd
+Draco	SPXTX	-	-	N2O4	 MMH	-	 	-	 	       0.40 	 	-	 	 600.0 	 	  1	2009	DragonLab x 18	NTO/Hyd
+NRL-US	NRL	-	-	N2O4	 MMH	-	 	-	 	       0.40 	 	-	 	-	 	  1	2006 Jun	MITEX Stage	NTO/Hyd
+S-400-12	ASTL	-	-	N2O4/MON	 MMH	-	 	-	 	       0.44 	 	318.0 	 	-	 	  1	-	European LAE	NTO/Hyd
+S-400-15	ASTL	-	-	N2O4/MON	 MMH	-	 	-	 	       0.44 	 	321.0 	 	-	 	  1	-	European LAE	NTO/Hyd
+ISRO-LAM	VSSC	ISRO-LAM	-	N2O4	 MMH	-	 	-	 	       0.44 	 	-	 	-	 	  1	1992 Jul  9	Insat 2	NTO/Hyd
+ISPS	TRW	-	-	HDA	 USO	-	 	-	 	       0.45 	 	272.0 	 	-	 	  1	1970s?	NRO Agena(28 flown)	NTO/Hyd
+TR-306	TRW	DM-LAE	-	MON	 N2H4	-	 	-	 	       0.45 	 	315.0 	 	-	 	  1	1991 Apr	LM5000	NTO/Hyd
+TD-339	RMD	-	-	MON?	 MMH-H2O	       3.0 	 	-	 	       0.46 	 	287.0 	 	-	 	  1	1966	Surveyor Vernier	NTO/Hyd
+TR-308	TRW	DM-LAE	-	N2O4	 N2H4	-	 	-	 	       0.47 	 	322.0 	 	   0.0 	 	  1	1999	CXO	NTO/Hyd
+R-4D-11	PRIMX	R-4D	-	MON-3	 MMH	-	 	   20000 	 	       0.49 	 	315.5 	 	-	 	  1	-	HS-601 LAE	NTO/Hyd
+FY-25	SLREC	FY-25	-	N2O4	 MMH	-	 	-	 	       0.49 	 	308.9 	 	-	 	  1	1994 Nov 29	DFH-3 LAE	NTO/Hyd
+TQS492-2	SISP	-	-	MON-I	 MMH	-	 	   15000 	 	       0.49 	 	315.1 	 	-	 	  1	2011	DFH-4 LAE	NTO/Hyd
+EAM	ASTL	-	-	N2O4/MON	 MMH	-	 	-	 	       0.50 	 	325.0 	 	-	 	  1	-	Alphabus	NTO/Hyd
+HBT-5	IHI	-	-	MON-3	 MMH	-	 	-	 	       0.50 	 	322.0 	 	-	 	  1	2012	HTV-3	NTO/Hyd
+BT-4	IHI/OSCD	DMT	-	N2O4	 N2H4	-	 	-	 	       0.50 	 	329.6 	 	-	 	  1	2002	NStar c LAE(STAR-2)	NTO/Hyd
+Leros 1	RPEW	-	-	MON	 N2H4	-	 	-	 	       0.50 	 	314.0 	 	-	 	  1	1991 Mar	Leros 1	NTO/Hyd
+500N AKE	IHI	-	-	N2O4	 MON-3	-	 	-	 	       0.55 	 	319.5 	 	-	 	  1	2002	DRTS	NTO/Hyd
+Leros 1b	RPEW	-	-	MON	 N2H4	-	 	-	 	       0.67 	 	318.0 	 	-	 	  1	1996	Messenger, MGS	NTO/Hyd
+BUS-1 OAT	TRW?	-	-	N2O4	 MMH	-	 	-	 	       1.10 	 	-	 	-	 	  1	1973?	KH-11	NTO/Hyd
+RS-2101A	RDYNE	-	-	N2O4	 MMH	-	 	-	 	       1.33 	 	283.0 	 	-	 	  1	1971	Mariner 9	NTO/Hyd
+RS-2101C	RDYNE	-	-	N2O4	 MMH	-	 	-	 	       1.33 	 	294.0 	 	-	 	  1	1975	Viking	NTO/Hyd
+RS-14	RDYNE	-	-	N2O4	 MMH	-	 	-	 	       1.40 	 	287.8 	 	-	 	  1	1968	Min 3 PBS	NTO/Hyd
+UPS	IHI/NASDA	-	-	N2O4	 N2H4	-	 	-	 	       1.70 	 	321.4 	 	-	 	  1	1998	COMETS LAE	NTO/Hyd
+Edge	XIDO	-	-	N2O4?	 Hydrazine?	-	 	-	 	       2.00 	 	-	 	 655.0 	 	  1	2020	GS-1 [4]	NTO/Hyd
+SICBM4	RDYNE?	-	-	N2O4	 MMH	-	 	-	 	       2.00 	?	-	 	-	 	  1	1989	SICBM PBS	NTO/Hyd
+SSQ Engine	ARMT	-	-	N2O4	 UDMH	-	 	-	 	       3.00 	 	308.0 	 	 360.0 	 	  1	-	CE-5 SSQ	NTO/Hyd
+LVS	VSSC	LVS	-	MON-3	 MMH	-	 	    3200 	 	       7.40 	 	308.0 	 	-	 	  1	1993	PSLV PS4 x 2	NTO/Hyd
+LR101-NA-7	RDYNE	-	-	N2O4	 MMH	-	 	-	 	       5.20 	 	251.0 	 	-	 	  1	1980?	Upper stage vernier	NTO/Hyd
+RS-34	RDYNE	-	-	N2O4	 MMH	-	 	-	 	      11.80 	 	308.0 	 	 168.0 	 	  1	1983	Peacekeeper [4]	NTO/Hyd
+AJ10-190	AJGC	Orbiter OME	-	N2O4	 MMH	-	 	-	 	      27.00 	 	316.0 	 	 150.0 	 	  1	1981	STS OMS	NTO/Hyd
+Aestus	ASTO	Aestus	-	N2O4	 MMH	-	 	-	 	      29.00 	 	324.0 	 	-	 	  1	1996	Ariane 5 EPS	NTO/Hyd
+MMBPS	TRW	-	-	N2O4	 MMH	-	 	-	 	      40.00 	 	-	 	-	 	  1	1967	Rhyolite LAE??	NTO/Hyd
+RS-36	RDYNE	-	-	N2O4	 MMH	-	 	-	 	      55.60 	 	281.0 	 	-	 	  1	1982	HOE Axial Engine	NTO/Hyd
+Super Draco	SPXTX	-	-	N2O4	 MMH	-	 	-	 	      71.00 	 	235.0 	 	  25.0 	 	  1	2014	Dragon2	NTO/Hyd
+#
+# Liquid propellant engines: Nitrogen tetroxide/UDMH
+#
+ESM OMS	AJGC	-	-	N2O4	 UDMH	-	 	-	 	      26.60 	 	-	 	-	 	  1	-	Orion ESM	NTO/UDMH
+CL1-2	NADA	-	-	N2O4?	 UDMH?	-	 	-	 	-	 	-	 	-	 	  1	2023	CL-1	NTO/UDMH
+CL1-3	NADA	-	-	N2O4?	 UDMH?	-	 	-	 	-	 	-	 	-	 	  1	2023	CL-1	NTO/UDMH
+JL3-4	ARMT	-	-	N2O4?	 UDMH?	-	 	-	 	-	 	-	 	-	 	  1	-	-	NTO/UDMH
+DST-100	KHMM?	DST-100	-	N2O4	 UDMH	-	 	-	 	       0.10 	 	276.0 	 	-	 	  1	-	-	NTO/UDMH
+DST-100A	KHMM?	DST-100	-	N2O4	 UDMH	-	 	-	 	       0.10 	 	304.0 	 	-	 	  1	-	-	NTO/UDMH
+RDMT-100	NIIM	RDMT-100	-	N2O4	 UDMH	-	 	-	 	       0.10 	 	260.0 	 	-	 	  1	-	-	NTO/UDMH
+11D428	KHMM?	11D428	-	N2O4	 UDMH	-	 	-	 	       0.11 	 	-	 	-	 	  1	-	Yantar URD-II	NTO/UDMH
+11D428A	KHMM?	11D428	-	N2O4	 UDMH	-	 	-	 	       0.13 	 	291.0 	 	-	 	  1	-	Prog/Soy/Zvezda	NTO/UDMH
+RDMT-135	NIIM	RDMT-100	-	N2O4	 UDMH	-	 	-	 	       0.14 	 	260.0 	 	-	 	  1	-	-	NTO/UDMH
+DST-200	KHMM	DST-200	-	N2O4	 UDMH	-	 	-	 	       0.20 	 	280.0 	 	-	 	  1	-	-	NTO/UDMH
+DST-200A	KHMM	DST-200	-	N2O4	 UDMH	-	 	-	 	       0.20 	 	300.0 	 	-	 	  1	-	-	NTO/UDMH
+RDMT-200	NIIM	RDMT-100	-	N2O4	 UDMH	-	 	-	 	       0.20 	 	255.0 	 	-	 	  1	-	-	NTO/UDMH
+LK/LOK-40	UNK	LK/LOK-40	-	N2O4	 UDMH	-	 	-	 	       0.39 	 	-	 	-	 	  1	-	LK/LOK	NTO/UDMH
+11D458	KHMM	11D458	-	N2O4	 UDMH	-	 	-	 	       0.39 	 	252.0 	 	-	 	  1	1977 Jul 17	FGB DPS	NTO/UDMH
+RDMT-400	NIIM	RDMT-100	-	N2O4	 UDMH	-	 	-	 	       0.40 	 	255.0 	 	-	 	  1	-	-	NTO/UDMH
+DMT-600	KHMM?	RDMT-100	-	N2O4	 UDMH	-	 	-	 	       0.60 	 	301.0 	 	-	 	  1	-	-	NTO/UDMH
+PDV-ASAT	DRDO	-	-	N2O4	 UDMH	-	 	-	 	-	 	-	 	-	 	  1	2019	PDV Mk II St 3	NTO/UDMH
+S5.120	ISAEV	-	-	N2O4	 UDMH	-	 	-	 	-	 	304.0 	 	-	 	  1	-	Argon (Zenit-6U)	NTO/UDMH
+OS-M St 4	LYK	-	-	N2O4	 UDMH	-	 	-	 	-	 	-	 	-	 	  1	2019	OS-M1	NTO/UDMH
+RD-869	YUZH	-	-	N2O4	 UDMH	-	 	-	 	       2.45 	 	315.5 	 	-	 	  1	2012	Pre Vega	NTO/UDMH
+RD-843	YUZH	-	-	N2O4	 UDMH	-	 	-	 	       2.45 	 	315.5 	 	-	 	  1	2012	Vega [4] mdot=0.792	NTO/UDMH
+RD-868P	YUZH	-	-	N2O4	 UDMH	-	 	-	 	       2.45 	 	315.5 	 	-	 	  1	2015	Vega [4] mdot=0.792	NTO/UDMH
+Volga	PROG	-	-	N2O4	 UDMH	-	 	-	 	       2.90 	 	307.0 	 	-	 	  1	2103	Volga	NTO/UDMH
+TH-31	TIANB	-	-	N2O4	 MMH	-	 	-	 	       3.00 	 	306.0 	 	-	 	  1	2023	Tianlong	NTO/UDMH
+KRD-79	ISAEV	S5.79	-	N2O4	 UDMH	-	 	-	 	       3.09 	 	-	 	-	 	  1	-	Salyut-6 engine	NTO/UDMH
+KDU-426	ISAEV	11D426	-	N2O4	 UDMH	-	 	-	 	       3.09 	 	292.0 	 	-	 	  1	-	-	NTO/UDMH
+KTDU-417 verniers	ISAEV	-	-	N2O4	 UDMH	-	 	-	 	       3.40 	 	253.8 	 	  30.0 	 	  2	1969 Feb 19	E-8 KT	NTO/UDMH
+RD-0225	KBKHA	RD-0225	-	N2O4	 UDMH	-	 	-	 	       3.90 	 	287.0 	 	-	 	  1	-	-	NTO/UDMH
+Polyot	ISAEV	-	-	N2O4	 UDMH	-	 	-	 	       3.90 	 	-	 	-	 	  1	-	IS	NTO/UDMH
+KRD-442	ISAEV	11D442	-	N2O4	 UDMH	-	 	-	 	       4.10 	 	-	 	-	 	  1	1977 Jul 17	FGB DKS	NTO/UDMH
+RD-0237	KBKHA/YKVZ	-	-	N2O4	 UDMH	-	 	-	 	       4.90 	 	200.0 	 	-	 	  1	1972	UR-100N BR	NTO/UDMH
+RD-866	YUZH?	-	-	N2O4	 UDMH	-	 	-	 	       5.20 	 	306.0 	 	-	 	  1	-	RT-23 PBS	NTO/UDMH
+NII-612	UNK	-	-	N2O4	 UDMH	-	 	-	 	       6.00 	 	286.0 	 	-	 	  1	-	-	NTO/UDMH
+KTDU-80	ISAEV	S5.80	-	N2O4	 UDMH	-	 	-	 	       6.20 	 	302.0 	 	-	 	  1	-	SoyTM  Progress M	NTO/UDMH
+YF-50D	CALT	YZ-1	-	N2O4	 UDMH	-	 	-	 	       6.50 	 	315.3 	 	-	 	  1	-	CZ-3C/YZ-1	NTO/UDMH
+LE-3 (T)	STA	-	-	WFNA	 UDMH	-	 	-	 	      10.00 	?	-	 	-	 	  1	-	LS-C 7	NTO/UDMH
+YF-23	SLREC	-	-	N2O4	 UDMH	-	 	-	 	      11.80 	 	296.0 	 	 347.0 	 	  1	1970	CZ-2 St2 vernier x4	NTO/UDMH
+RS-18	RDYNE	RS-18	-	N2O4	 AZ-50	-	 	-	 	      15.60 	 	309.9 	 	-	 	  1	1968	LMAS	NTO/UDMH
+RD-0236	KBKHA/KOKT	RD-0236	-	N2O4	 UDMH	-	 	-	 	      15.80 	 	293.0 	 	-	 	  4	1972	UR-100N [2] vernier	NTO/UDMH
+11D416	ISAEV	-	-	N2O4	 UDMH	-	 	-	 	      16.40 	 	-	 	-	 	  1	-	-	NTO/UDMH
+RD 15A18-BR	UNK	-	-	N2O4	 UDMH	-	 	-	 	      18.60 	 	-	 	 600.0 	 	  1	-	R-36M2 BR	NTO/UDMH
+KRD-61	ISAEV	-	-	N204	 UDMH	-	 	-	 	      18.80 	 	313.0 	 	  53.0 	 	  1	1969 Jun 14	E-8 VA	NTO/UDMH
+KTDU-417	ISAEV	KTDU-425	-	N204	 UDMH	-	 	-	 	      18.90 	 	314.0 	 	 650.0 	 	  1	1969 Feb 19	E-8 KT	NTO/UDMH
+KTDU-425	ISAEV	KTDU-417	-	N2O4	 UDMH	-	 	-	 	      18.90 	 	312.0 	 	-	 	  1	-	-	NTO/UDMH
+KTDU-425A	ISAEV	KTDU-417	-	N2O4	 UDMH	-	 	-	 	      18.90 	 	315.0 	 	-	 	  1	-	-	NTO/UDMH
+S5.98M	ISAEV	-	-	N2O4	 UDMH	-	 	-	 	      19.60 	 	326.0 	 	   0.0 	 	  1	-	Briz	NTO/UDMH
+S5.92	KHMM	S5	-	N2O4	 UDMH	-	 	   20000 	 	      19.60 	 	330.0 	 	   0.0 	 	  1	1988	Fobos, Briz, Fregat	NTO/UDMH
+S5.92 (A)	KHMM	S5	-	N2O4	 UDMH	-	 	   20000 	 	      19.91 	 	333.4 	 	 350.0 	 	  1	1988	Fregat [Umanskiy]	NTO/UDMH
+S5.98	KHMM	14D30	-	N2O4	 UDMH	-	 	-	 	      19.62 	 	331.9 	 	 200.0 	 	  1	1998	Briz-M	NTO/UDMH
+RD-858	YUZH	-	-	N2O4	 UDMH	-	 	-	 	      20.10 	 	315.0 	 	-	 	  1	-	-	NTO/UDMH
+RD-864	YUZH	-	-	N2O4	 UDMH	-	 	-	 	      20.20 	 	309.0 	 	-	 	  1	-	-	NTO/UDMH
+RD-859	YUZH	-	-	N2O4	 UDMH	-	 	-	 	      20.10 	 	312.0 	 	-	 	  1	-	-	NTO/UDMH
+Astris	MBB	-	-	N2O4	 AZ-50	-	 	-	 	      22.50 	 	297.0 	 	 361.0 	 	  1	1968	Astris	NTO/UDMH
+ESM OME	AJGC	-	-	N2O4	 UDMH	-	 	-	 	      26.60 	 	-	 	-	 	  1	-	Orion ESM	NTO/UDMH
+RD-0231	KBKHA	-	-	N2O4	 UDMH	-	 	-	 	      29.00 	 	275.0 	 	-	 	  1	-	-	NTO/UDMH
+17D61	KHMM	KRD 17D61	-	N2O4	 UDMH	-	 	-	 	      29.40 	 	307.9 	 	 600.0 	 	  1	1979	Ikar; Yantar 1KFT	NTO/UDMH
+11D430	KHMM	KRD 17D52	-	N2O4	 UDMH	-	 	-	 	      29.40 	 	307.0 	 	-	 	  1	-	Yantar 2K	NTO/UDMH
+RD-0207	KBKHA	RD-0207	-	N2O4	 UDMH	-	 	-	 	      30.90 	 	297.0 	 	-	 	  1	1963 Nov  5	UR-200 [2] vernier	NTO/UDMH
+RD-0214	KBKHA	RD-0207	-	N2O4	 UDMH	-	 	-	 	      31.00 	 	293.0 	 	-	 	  1	1967 Mar 10	UR-500 [3] vernier	NTO/UDMH
+S5.51	ISAEV	-	-	N2O4	 UDMH	-	 	-	 	      33.20 	 	314.0 	 	-	 	  1	-	LOK PAO	NTO/UDMH
+AJ10-138	AJGC	AJ10	-	N2O4	 AZ-50	-	 	-	 	      35.60 	 	311.0 	 	 440.0 	 	  1	1964	Transtage x2	NTO/UDMH
+AJ10-138A	AJGC	AJ10	ITIP	N2O4	 AZ-50	-	 	-	 	      35.60 	 	309.3 	 	-	 	  1	1964	Transtage x2 (late)	NTO/UDMH
+AJ10-138 (early)	AJGC	AJ10	-	N2O4	 AZ-50	-	 	-	 	      35.60 	 	302.0 	 	 430.0 	 	  1	1964	Transtage x2	NTO/UDMH
+AJ10-118F	AJGC	AJ10	-	N2O4	 AZ-50	-	 	-	 	      41.40 	 	280.0 	 	-	 	  1	-	-	NTO/UDMH
+TR-201	TRW	-	-	N2O4	 AZ-50	-	 	-	 	      41.90 	 	301.3 	 	-	 	  1	-	Delta 2910	NTO/UDMH
+AJ10-118K	AJGC	AJ10	-	N2O4	 AZ-50	-	 	-	 	      43.70 	 	319.2 	 	 431.0 	 	  1	-	Delta 2 Stage 2	NTO/UDMH
+11D79	SOYUZ	-	-	N2O4	 UDMH	-	 	-	 	      44.00 	 	295.0 	 	-	 	  1	-	-	NTO/UDMH
+AJ10-118FJ	AJGC	AJ10	-	N2O4	 AZ-50	-	 	-	 	      44.10 	 	319.2 	 	 430.0 	 	  1	-	N-2 Stage 2	NTO/UDMH
+YF-40A	CALT?	-	-	N2O4	 UDMH	-	 	-	 	      49.00 	 	295.0 	 	-	 	  1	-	CZ-4C (3)	NTO/UDMH
+LE-3	MHIME	LE-3	-	N2O4	 AZ-50	-	 	-	 	      54.00 	 	285.0 	 	 250.0 	 	  1	1975	N-1 Stage 2	NTO/UDMH
+RD-856	YUZH	-	-	N2O4	 UDMH	-	 	-	 	      54.20 	 	281.0 	 	-	 	  1	-	-	NTO/UDMH
+Coralie	LRBA	-	-	N2O4	 UDMH	-	 	-	 	      67.00 	 	281.0 	 	 105.0 	 	  1	1966	Coralie	NTO/UDMH
+Vexin A	LRBA	-	-	N2O4	 UDMH	-	 	-	 	      68.60 	 	277.0 	 	-	 	  1	-	-	NTO/UDMH
+Super Draco (1)	SPXTX	-	-	N2O4	 MMH	-	 	-	 	      73.00 	 	235.0 	 	  25.0 	 	  1	2009	Dragon	NTO/UDMH
+RD-854	YUZH	-	-	N2O4	 UDMH	-	 	-	 	      75.00 	 	312.0 	 	-	 	  1	1965 Dec 16	OGCh	NTO/UDMH
+Vexin B	LRBA	-	-	N2O4	 UDMH	-	 	-	 	      75.40 	 	251.0 	 	-	 	  1	-	-	NTO/UDMH
+RD-0221	KBKHA	-	-	N2O4	 UDMH	-	 	-	 	      78.00 	 	330.0 	 	-	 	  1	-	N-1/L-3 RB	NTO/UDMH
+RD-861	YUZH/YUZHM	S5M	D-25	N2O4	 UDMH	-	 	-	 	      78.70 	 	314.4 	 	 130.0 	 	  1	1977	S5M	NTO/UDMH
+RD-861K	YUZH/YUZHM	-	-	N2O4	 UDMH	-	 	-	 	      77.60 	 	330.0 	 	 470.0 	 	  1	2008	Tsiklon-4 [3]	NTO/UDMH
+AJ10-137	AJGC	Apollo SPS	-	N2O4	 AZ-50	-	 	-	 	      97.00 	 	314.0 	 	 585.0 	 	  1	1966	Apollo SPS	NTO/UDMH
+YF-40	SLREC	YF	-	N2O4	 UDMH	-	 	-	 	      98.10 	 	303.0 	 	 303.0 	 	  1	1990	CZ-4 Stage 3	NTO/UDMH
+Vexin C	LRBA	-	-	N2O4	 UDMH	-	 	-	 	      99.10 	 	251.0 	 	-	 	  1	-	-	NTO/UDMH
+RD R-29RM St 2	UNK	-	-	N2O4	 UDMH	-	 	-	 	     100.00 	?	-	 	  94.0 	 	  1	-	R-29RM St 2	NTO/UDMH
+RD R-29 St 2	UNK	-	-	N2O4	 UDMH	-	 	-	 	     100.00 	?	-	 	  94.0 	?	  1	-	R-29R St 2	NTO/UDMH
+RD R-29RM St 3	UNK	-	-	N2O4	 UDMH	-	 	-	 	     100.00 	?	-	 	  87.0 	 	  1	-	R-29RM St 3	NTO/UDMH
+8D725	EMASH	-	-	N2O4	 UDMH	-	 	-	 	     117.00 	 	325.0 	 	-	 	  1	-	-	NTO/UDMH
+RD-0242	KBKHA	-	-	N2O4	 UDMH	-	 	-	 	     123.60 	 	303.0 	 	-	 	  1	-	-	NTO/UDMH
+V-825	KLIMOV	-	-	N2O4	 UDMH	-	 	-	 	     131.00 	?	-	 	  40.0 	?	  1	-	V-825 St 2	NTO/UDMH
+15D13	KLIMOV	8D423, 5D13 type	-	N2O4	 UDMH	-	 	-	 	     131.00 	?	325.0 	 	-	 	  1	-	UR-100 St 2	NTO/UDMH
+5D22	KLIMOV	5D13 type	-	N2O4	 UDMH	-	 	-	 	     131.00 	 	-	 	  40.0 	 	  1	-	A-350Zh St2	NTO/UDMH
+51T6B ZhRD	KLIMOV	5D22?	-	N2O4	 UDMH	-	 	-	 	     131.00 	?	-	 	  40.0 	?	  1	-	51T6 [2]	NTO/UDMH
+A-350 Sustainer	KLIMOV	5D22?	-	N2O4	 UDMH	-	 	-	 	     131.00 	?	-	 	  40.0 	 	  1	-	A-350 St2	NTO/UDMH
+RD-862	YUZH	-	-	N2O4	 UDMH	-	 	-	 	     142.60 	 	331.0 	 	-	 	  1	-	-	NTO/UDMH
+RD-857	YUZH	15D12	-	N2O4	 UDMH	-	 	-	 	     147.00 	 	330.0 	 	 215.0 	 	  1	1967	RT-20P [2]	NTO/UDMH
+15D169	YUZH	15D12 type	-	N2O4	 UDMH	-	 	-	 	     147.00 	?	330.0 	?	-	 	-	-	MR-UR-100 [2]	NTO/UDMH
+Topaze	SEP	-	-	N2O4	 UDMH	-	 	-	 	     150.00 	 	260.0 	 	  40.0 	 	  1	-	Topaze	NTO/UDMH
+11D49	KHMM	S5.23	-	N2O4	 UDMH	-	 	-	 	     157.50 	 	303.0 	 	 335.0 	 	  1	-	S3M	NTO/UDMH
+RD-0245	KBKHA	-	-	N2O4	 UDMH	-	 	-	 	     211.00 	 	300.0 	 	-	 	  1	-	R29RM St 1 vernier	NTO/UDMH
+RD-0216	KBKHA/PERM	RD-0216	15D1	N2O4	 UDMH	-	 	-	 	     219.00 	 	313.0 	 	-	 	  1	-	UR-100 St 1	NTO/UDMH
+RD-0217	KBKHA/PERM	RD-0216	15D2	N2O4	 UDMH	-	 	-	 	     219.00 	 	313.0 	 	-	 	  1	-	UR-100 St 1 center	NTO/UDMH
+RD-0235	KBKHA/KOKT	RD-0235	-	N2O4	 UDMH	-	 	-	 	     240.00 	 	320.0 	 	-	 	  1	1972	UR-100N [2]	NTO/UDMH
+4D10	ISAEV	-	-	N2O4	 UDMH	-	 	-	 	     255.00 	 	-	 	 128.0 	?	  1	-	R-27	NTO/UDMH
+KPN-4D10	ISAEV	-	-	N2O4	 UDMH	-	 	-	 	     255.00 	 	-	 	 128.0 	?	  1	-	Musudan	NTO/UDMH
+Dezful	IR	-	-	N2O4	 UDMH	-	 	-	 	     255.00 	 	-	 	 128.0 	?	  1	-	Dezful	NTO/UDMH
+RD-863	YUZH	-	-	N2O4	 UDMH	-	 	-	 	     276.80 	 	301.0 	 	-	 	  1	-	-	NTO/UDMH
+RD-855	YUZH	-	-	N2O4	 UDMH	-	 	-	 	     285.40 	 	292.0 	 	-	 	  1	-	-	NTO/UDMH
+HS-15-2	KPA	-	-	N2O4	 UDMH	-	 	-	 	     350.00 	?	-	 	-	 	  1	-	Hwasong-15	NTO/UDMH
+Valois	LRBA	LRBA	-	N2O4	 UDMH	-	 	   39000 	 	     415.00 	 	265.0 	 	 119.0 	 	  1	1970	Diamant B [1]	NTO/UDMH
+LR91	AJGC	LR91	-	N2O4	 AZ-50	-	 	-	 	     440.00 	 	316.0 	 	 182.0 	 	  1	1962	Titan 2 Stage 2	NTO/UDMH
+LR91AJ5	AJGC	LR91	-	N2O4	 AZ-50	-	 	-	 	     440.00 	 	316.0 	 	 182.0 	 	  1	1962	Titan 2 Stage 2	NTO/UDMH
+LR91AJ9	AJGC	LR91	-	N2O4	 AZ-50	-	 	-	 	     440.00 	 	316.0 	 	 182.0 	 	  1	1962	Titan 2 Stage 2  ?	NTO/UDMH
+Hwasong-12	KPA	-	-	N2O4	 UDMH	-	 	-	 	     470.00 	 	-	 	 128.0 	?	  1	-	Hwasong 12	NTO/UDMH
+LR91AJ11	AJGC	LR91	-	N2O4	 AZ-50	-	 	-	 	     472.20 	 	316.0 	 	 223.0 	 	  1	1990s	Titan  ??	NTO/UDMH
+LR91AJ11A	AJGC	LR91	-	N2O4	 AZ-50	-	 	-	 	     472.20 	 	316.0 	 	 223.0 	 	  1	1990s	Titan 4 Stage 2	NTO/UDMH
+RD-0233	KBKHA	RD-0233	-	N2O4	 UDMH	-	 	-	 	     520.00 	 	310.0 	 	-	 	  1	1972	UR-100N [1]	NTO/UDMH
+15D14	KLIMOV	8D419, 5D13 type	-	N2O4	 UDMH	-	 	-	 	-	 	-	 	-	 	  1	-	UR-100 vernier	NTO/UDMH
+RD-0203	KBKHA	RD-0203	-	N2O4	 UDMH	-	 	-	 	     560.00 	 	-	 	-	 	  1	1963 Nov  5	UR-200 [1] x 1?	NTO/UDMH
+RD-0204	KBKHA	RD-0203	-	N2O4	 UDMH	-	 	-	 	     560.00 	 	-	 	-	 	  1	1963 Nov  5	UR-200 [1] x 3?	NTO/UDMH
+RD-0206	KBKHA	RD-0203	-	N2O4	 UDMH	-	 	-	 	     590.00 	 	-	 	-	 	  1	1963 Nov  5	UR-200 [2]	NTO/UDMH
+RD-0210	KBKHA	RD-0203	8D411K	N2O4	 UDMH	-	 	-	 	     582.50 	 	326.5 	 	 210.0 	 	  1	1965 Jul 16	UR-500 [2] x 1?	NTO/UDMH
+RD-0211	KBKHA	RD-0203	8D412K	N2O4	 UDMH	-	 	-	 	     582.50 	 	326.5 	 	 210.0 	 	  1	1965 Jul 16	UR-500 [2] x 3?	NTO/UDMH
+RD-0213	KBKHA	RD-0203	8D48	N2O4	 UDMH	-	 	-	 	     583.00 	 	326.5 	 	 230.0 	 	  1	1967 Mar 10	UR-500 [3]	NTO/UDMH
+Viking V	SEP	Viking	-	N2O4	 UDMH	-	 	-	 	     693.00 	 	280.6 	 	 142.0 	 	  1	1979	Ariane 1 St1	NTO/UDMH
+YF-20	SLREC	YF	-	N2O4	 UDMH	-	 	-	 	     696.00 	 	289.0 	 	 128.0 	 	  4	1973	CZ-2C	NTO/UDMH
+YF-25	SLREC	YF	-	N2O4	 UDMH	-	 	-	 	     696.00 	 	289.0 	 	 128.0 	 	  4	1973	CZ-3B	NTO/UDMH
+Viking IV	SEP	Viking	-	N2O4	 UDMH	-	 	-	 	     713.00 	 	295.6 	 	 136.0 	 	  1	1979	Ariane 1 St2	NTO/UDMH
+YF-22 (FB)	SLREC	YF	-	N2O4	 UDMH	-	 	-	 	     716.00 	 	286.9 	 	 117.4 	 	  1	1990	FB-1 stage 2	NTO/UDMH
+Vikas	VSSC	Viking	-	N2O4	 UDMH	-	 	  109000 	 	     724.00 	 	293.0 	 	 158.0 	 	  1	1993	PSLV PS2	NTO/UDMH
+YF-20B	SLREC	YF	-	N2O4	 UDMH	-	 	-	 	     740.00 	 	289.0 	 	 166.0 	 	  4	1973	CZ-3A St 1	NTO/UDMH
+YF-21	SLREC	YF	-	N2O4	 UDMH	-	 	-	 	     740.40 	 	260.7 	s	 122.0 	 	  1	1970	CZ-2 Stage 1 x4	NTO/UDMH
+YF-22	SLREC	YF	-	N2O4	 UDMH	-	 	-	 	     742.00 	 	298.0 	 	 109.0 	 	  1	1970	CZ-2 Stage 2	NTO/UDMH
+YF-22B	SLREC	YF	-	N2O4	 UDMH	-	 	-	 	     742.00 	 	287.6 	 	 126.8 	 	  1	1990	CZ-4 Stage 2	NTO/UDMH
+YF-22B'	SLREC	YF	-	N2O4	 UDMH	-	 	-	 	     742.00 	 	298.0 	 	 126.8 	 	  1	1990	CZ-4B Stage 2	NTO/UDMH
+RD-0228	KBKHA?	-	-	N2O4	 UMDH	-	 	-	 	     755.00 	 	-	 	 153.0 	?	  1	-	R-36M [2]	NTO/UDMH
+Viking VC	SEP	Viking	-	N2O4	 UDMH UH25	-	 	-	 	     758.50 	 	278.4 	 	 205.0 	 	  1	-	Ariane St1	NTO/UDMH
+Viking VI	SEP	Viking	-	N2O4	 UDMH UH25	-	 	-	 	     758.50 	 	278.0 	 	 140.0 	 	  1	-	Ariane PAL	NTO/UDMH
+Sarmat St2 Eng	KBKHA	RD-0203	-	N2O4	 UDMH	-	 	-	 	     760.00 	 	-	 	 153.0 	 	  1	-	Sarmat [2]	NTO/UDMH
+RD-0255	KBKHA	RD-0203	-	N2O4	 UDMH	-	 	-	 	     760.00 	 	-	 	 153.0 	 	  1	-	R-36M2 [2]	NTO/UDMH
+RD-0256	KBKHA	RD-0203	-	N2O4	 UDMH	-	 	-	 	     760.00 	 	-	 	 153.0 	 	  1	-	R-36M2 [2] ?	NTO/UDMH
+Viking IVB	SEP	Viking	-	N2O4	 UDMH UH25	-	 	-	 	     785.00 	 	293.5 	 	 126.0 	 	  1	-	Ariane St2	NTO/UDMH
+Vikas 4B	VSSC	Viking	-	N2O4	 UDMH	-	 	-	 	     799.00 	 	281.0 	 	 200.0 	 	  1	1993	GSLV [1]	NTO/UDMH
+CL1-1	NADA	-	-	N2O4	 UDMH	-	 	-	 	     800.00 	?	-	 	-	 	  1	2023	CL-1	NTO/UDMH
+HS-15	KPA	RD-250	-	N2O4	 UDMH	-	 	-	 	     800.00 	?	-	 	-	 	  1	-	Hwasong-15	NTO/UDMH
+HS-17	KPA	RD-250	-	N2O4	 UDMH	-	 	-	 	     800.00 	?	-	 	-	 	  1	-	Hwasong-17	NTO/UDMH
+RD-0244	KBKHA/KRAS	RD-0244	-	N2O4	 UDMH	-	 	-	 	     825.80 	 	300.0 	 	  79.0 	 	  1	-	Shtil' St	NTO/UDMH
+HTVE	VSSC	Viking	-	N2O4	 UDMH	-	 	-	 	     846.80 	 	281.0 	 	 200.0 	 	  1	2018	GSLV [2]	NTO/UDMH
+RD-250	EMASH	RD-250	-	N2O4	 UDMH	-	 	-	 	     882.00 	 	269.6 	s	 120.0 	 	  2	1963	R-36 [1]	NTO/UDMH
+RD-252	EMASH	RD-250	-	N2O4	 UDMH	-	 	-	 	     902.00 	 	317.6 	 	 160.0 	 	  2	1963	R-36 [2]	NTO/UDMH
+RD-262	EMASH	RD-250	-	N2O4	 UDMH	-	 	-	 	     941.00 	 	318.0 	 	 160.0 	 	  2	1963	R-36 [2]	NTO/UDMH
+LR87AJ5	AJGC	LR87	-	N2O4	 AZ-50	-	 	-	 	    1045.00 	 	296.0 	 	 147.0 	 	  1	-	Titan 2 Stage 1 x2	NTO/UDMH
+RD-263	EMASH/YUZHM	RD-250	-	N2O4	 UDMH	-	 	-	 	    1131.00 	 	-	 	  98.0 	 	  1	-	R-36M(x 4 = RD-264)	NTO/UDMH
+LR87	AJGC	LR87	-	N2O4	 AZ-50	-	 	-	 	    1226.00 	 	304.0 	 	 164.0 	 	  1	-	Titan Stage 1 ?	NTO/UDMH
+LR87AJ9	AJGC	LR87	-	N2O4	 AZ-50	-	 	-	 	    1226.00 	 	304.0 	 	 164.0 	 	  1	-	Titan Stage 1  ?	NTO/UDMH
+LR87AJ11	AJGC	LR87	-	N2O4	 AZ-50	-	 	-	 	    1226.00 	 	304.0 	 	 164.0 	 	  1	-	Titan Stage 1	NTO/UDMH
+LR87AJ11A	AJGC	LR87	-	N2O4	 AZ-50	-	 	-	 	    1226.00 	 	302.0 	 	 164.0 	 	  1	-	Titan 4B Stage 1 x2	NTO/UDMH
+RD-268	EMASH	RD-250	-	N2O4	 UDMH	-	 	-	 	    1236.00 	 	319.0 	 	-	 	  1	1970	MR-UR-100 [1]	NTO/UDMH
+RD-273	EMASH	RD-250	-	N2O4	 UDMH	-	 	-	 	    1239.00 	 	-	 	  98.0 	 	  1	-	R-36MU [1] x 3	NTO/UDMH
+RD-253	EMASH/PERM	RD-253	11D48	N2O4	 UDMH	-	 	-	 	    1635.00 	 	316.0 	 	 120.0 	 	  1	1965 Jul 16	UR-500 [1] x 6	NTO/UDMH
+RD-253 14D14	EMASH/PERM	RD-253	14D14	N2O4	 UDMH	-	 	-	 	    1750.00 	 	316.0 	 	 120.0 	 	  1	1986	Proton-M [1] x 6	NTO/UDMH
+RD-275	EMASH/PERM	RD-253	-	N2O4	 UDMH	-	 	-	 	    1745.00 	 	317.0 	 	 130.0 	 	  1	1986	Proton-M [1] x 6	NTO/UDMH
+RD-251	EMASH/YUZHM	RD-251	-	N2O4	 UDMH	-	 	-	 	    2643.00 	 	301.0 	 	 120.0 	 	  1	1965	R-36  = RD-250 x 3	NTO/UDMH
+RD-261	EMASH/YUZHM	RD-251	-	N2O4	 UDMH	-	 	-	 	    3032.00 	 	270.0 	s	 120.0 	 	  2	1965	R-36 [1] = ? x 3	NTO/UDMH
+#
+# Liquid propellant engines: Hydrogen peroxide/kerosene
+#
+Sprite	DEHAVE	-	-	H2O2	 Kerosene	-	 	-	 	      22.20 	 	-	 	-	 	  1	-	RATO	H2O2/Kero
+AR2-3	RDYNE	-	-	H2O2	 Kerosene JP-4	-	 	-	 	      31.00 	 	245.0 	 	-	 	  1	-	F-104, X-37B	H2O2/Kero
+Skylark L	SKYR	-	-	H2O2	 Kerosene	-	 	-	 	      35.00 	 	272.0 	 	-	 	  1	-	Skylark L	H2O2/Kero
+BS.605	BSELC?	-	-	H2O2	 Kerosene	-	 	-	 	      35.60 	 	-	 	-	 	-	-	Buccaneer RATO	H2O2/Kero
+Spectre	DEHAVE	-	-	H2O2	 Kerosene	-	 	-	 	      35.60 	 	-	 	-	 	  1	-	Blue Steel	H2O2/Kero
+Gamma 2	BSELC?	Gamma	-	H2O2	 Kerosene	-	 	-	 	      68.20 	 	251.0 	 	 113.0 	 	  2	1969 Jun 27	Black Arrow [2]	H2O2/Kero
+Gamma 201	BSELC?	Gamma	-	H2O2	 Kerosene	-	 	-	 	      71.20 	 	226.9 	 	-	 	  4	1958	Black Knight	H2O2/Kero
+Gamma 301	BSELC?	Gamma	-	H2O2	 Kerosene	-	 	-	 	      96.10 	 	249.7 	 	-	 	  4	1962	Black Knight	H2O2/Kero
+Stentor 101	ASID	-	-	H2O2	 Kerosene	-	 	-	 	     112.00 	 	-	 	-	 	  1	1950s	Blue Steel	H2O2/Kero
+Mockingbird	OSCC	-	-	H2O2	 Kerosene	-	 	-	 	     165.00 	 	-	 	  72.0 	 	  1	2001?	Mockingbird	H2O2/Kero
+Gamma 8	BSELC?	Gamma	-	H2O2	 Kerosene	-	 	-	 	     234.80 	 	265.0 	 	 142.0 	 	  8	1969 Jun 27	Black Arrow	H2O2/Kero
+YF-85	TIANJ	-	-	H2O2	 Kerosene	-	 	-	 	    4000.00 	 	-	 	-	 	  1	2015	CZ-6	H2O2/Kero
+#
+# Liquid propellant engines: LOX/Alcohol
+#
+MX-774	RMI	MX-774	-	LOX	 Alcohol	-	 	-	 	       9.00 	 	-	 	  75.0 	 	  1	1948	Hiroc	LOX/Alcohol
+Momo 6	IST	-	-	LOX	 Ethanol	-	 	-	 	      14.00 	 	-	 	 100.0 	 	  1	2021	Momo	LOX/Alcohol
+Momo	IST	-	-	LOX	 Ethanol	-	 	-	 	      12.00 	 	-	 	 100.0 	 	  1	2017	Momo	LOX/Alcohol
+Xaero	MASTEN	-	-	LOX	 Alcohol	-	 	-	 	      13.20 	 	-	 	-	 	  1	-	Xaero	LOX/Alcohol
+STIG-B	ARMAD	-	-	LOX	 Ethanol	-	 	-	 	      22.50 	?	200.0 	?	  50.0 	 	  1	2011	STIG-B	LOX/Alcohol
+STIG-A	ARMAD	-	-	LOX	 Ethanol	-	 	-	 	      22.50 	?	200.0 	 	  50.0 	 	  1	2011	STIG-A	LOX/Alcohol
+SARGE	EXOSA	LE23000FC	-	LOX	 Ethanol	-	 	-	 	      24.10 	 	200.0 	?	  60.0 	 	  1	2018	SARGE	LOX/Alcohol
+Hermes A-1	GEMTS	Hermes	-	LOX	 Alcohol	-	 	-	 	      71.00 	 	-	 	-	 	  1	1950	Hermes A-1	LOX/Alcohol
+Hermes A-3A	GEMTS	Hermes	-	LOX	 Alcohol	-	 	-	 	      80.00 	 	242.0 	 	-	 	  1	1953	Hermes A-3A	LOX/Alcohol
+NRL Viking	RMI	NRL Viking	-	LOX	 Alcohol	-	 	-	 	      93.50 	 	195.0 	s	  70.0 	 	  1	1949 May	Viking	LOX/Alcohol
+Hermes A-3B	GEMTS	Hermes	-	LOX	 Alcohol	-	 	-	 	     100.00 	 	242.0 	 	-	 	  1	1954	Hermes A-3B	LOX/Alcohol
+RD-100	EMASH	A-4	8D51	LOX	 Alcohol	-	 	-	 	     307.00 	 	206.0 	 	  63.0 	 	  1	1948 Sep 17	R-1	LOX/Alcohol
+A-4	HVP	A-4	-	LOX	 Alcohol	-	 	-	 	     312.00 	 	203.0 	 	  68.0 	 	  1	1942 Jun 13	A-4	LOX/Alcohol
+XLR-43-NA-1	NAADR	XLR-43	-	LOX	 Alcohol	-	 	-	 	     333.00 	 	-	 	-	 	  1	-	-	LOX/Alcohol
+DF-1	CALT?	R-2	-	LOX	 Alcohol	-	 	-	 	     363.00 	s	210.0 	 	-	 	  1	-	DF-1	LOX/Alcohol
+RD-101	EMASH/YUZHM	A-4	8D52	LOX	 Alcohol	-	 	-	 	     363.00 	s	210.0 	 	-	 	  1	1949 Sep 25	R-2	LOX/Alcohol
+RD-103	EMASH/YUZHM	A-4	8D54	LOX	 Alcohol	-	 	-	 	     500.00 	 	220.0 	 	-	 	  1	1953 Mar 15	R-5	LOX/Alcohol
+RD-103M	EMASH/YUZHM	A-4	8D71	LOX	 Alcohol	-	 	-	 	     500.00 	 	220.0 	 	-	 	  1	1953 Mar 15	R-5M	LOX/Alcohol
+XLR-83-NA-1	NAADR	XLR-83	-	LOX	 Alcohol	-	 	-	 	     602.00 	 	273.0 	 	-	 	  1	-	-	LOX/Alcohol
+#
+# Liquid propellant engines: LOX/UDMH
+#
+RD-119	EMASH/KRAS	RD-109	8D710	LOX	 UDMH	-	 	-	 	     105.00 	 	352.0 	 	-	 	  1	1961	63S1	LOX/UDMH
+Redstone A-7	ABMA	Redstone	-	LOX	 Hydyne	-	 	   58000 	 	     416.20 	 	265.0 	 	 155.0 	 	  1	1953 Aug 20	Juno I [1]	LOX/UDMH
+RD-112	EMASH	RD-112	-	LOX	 UDMH	-	 	-	 	    1089.00 	 	344.0 	 	-	 	  1	1960?	-	LOX/UDMH
+RD-113	EMASH	RD-112	-	LOX	 UDMH	-	 	-	 	    1138.00 	 	360.0 	 	-	 	  1	1960?	-	LOX/UDMH
+RD-114	EMASH	RD-112	-	LOX	 UDMH	-	 	-	 	    1653.00 	 	341.0 	 	-	 	  1	1961?	-	LOX/UDMH
+RD-115	EMASH	RD-112	-	LOX	 UDMH	-	 	-	 	    1726.00 	 	357.0 	 	-	 	  1	1961?	-	LOX/UDMH
+#
+# Liquid propellant engines: LOX/Ammonia
+#
+XLR-11	RMI	XLR-11	-	LOX	 Ammonia	-	 	-	 	      36.00 	 	-	 	 100.0 	 	  4	1959	X-15	LOX/NH3
+XLR-99	RMD	XLR-99	-	LOX	 Ammonia	-	 	-	 	     257.00 	 	276.0 	 	 100.0 	 	  1	1960	X-15	LOX/NH3
+#
+# Liquid propellant engines: LOX/Kerosene
+#
+Phoenix	GILM	-	-	LOX	 Kero	-	 	-	 	-	 	-	 	-	 	  1	2024	Eris St 3	LOX/Kero
+NK Kero	KP	-	-	LOX	 Kero	-	 	-	 	-	 	-	 	-	 	  1	2024	NK Kerolox	LOX/Kero
+Aether	ASTRV	-	-	LOX	 Kero	-	 	-	 	       3.30 	 	-	 	 315.0 	 	  1	2020	Astra St 1	LOX/Kero
+Buran UD	OKB1	-	17D15	GOX	 Kero Sintin	-	 	-	 	       4.00 	 	280.0 	 	-	 	  1	1988 Nov 15	Buran (x38)	LOX/Kero
+SALVO Ventions	VENT	-	-	LOX	 Kero	-	 	-	 	       4.40 	 	-	 	-	 	  1	2014	SALVO	LOX/Kero
+XR-5K18	XCOR	-	-	LOX	 Kero	-	 	-	 	      12.90 	 	-	 	-	 	  1	2011	XCOR Lynx	LOX/Kero
+Astra E1	ASTRV	-	-	LOX	 Kero	-	 	-	 	      18.00 	?	-	 	-	 	  1	2017	Astra St 1	LOX/Kero
+Rutherford	RLABU	-	-	LOX	 Kero	-	 	-	 	      20.30 	 	311.0 	 	-	 	  1	2017	Electron St 1	LOX/Kero
+Rutherford Vac	RLABU	-	-	LOX	 Kero	-	 	-	 	      22.00 	 	343.0 	 	-	 	  1	2017	Electron St 2	LOX/Kero
+NewtonFour	VORB	-	-	LOX	 Kerosene RP-1	-	 	-	 	      22.00 	 	  0.0 	 	-	 	  1	2019	LauncherOne [2]	LOX/Kero
+Hadley	UMAJ	-	-	LOX	 Kero	-	 	-	 	      22.00 	 	-	 	-	 	  1	2019	Talon [1]	LOX/Kero
+Delphin	ASTRV	-	-	LOX	 Kero	-	 	-	 	      28.00 	 	-	 	 170.0 	 	  1	2020	Astra St 1	LOX/Kero
+TEPREL-B	PLDS	-	-	LOX	 Kero	-	 	-	 	      30.20 	 	-	 	 240.0 	 	  1	2023	Miura 1	LOX/Kero
+Kestrel	SPXTX	-	-	LOX	 Kero	-	 	-	 	      33.00 	 	317.0 	 	 378.0 	 	  1	-	Falcon 1 [2]	LOX/Kero
+RO-5	KBKHA	-	8D714	LOX	 Kero	-	 	-	 	      49.90 	 	316.0 	 	 450.0 	 	  1	1958	Blok E	LOX/Kero
+RO-7	KBKHA	-	8D719	LOX	 Kero	-	 	-	 	      54.50 	 	323.0 	 	 430.0 	 	  1	1959	Blok E	LOX/Kero
+ABL E2	ABLSS	-	-	LOX	 Kero RP-1	-	 	-	 	      58.00 	 	-	 	 420.0 	 	  1	2022	RS1	LOX/Kero
+S1.5400	OKB1	S1.5400	11D33	LOX	 Kero	-	 	-	 	      66.70 	 	340.0 	 	 250.0 	 	  1	1965	Blok L	LOX/Kero
+KRE-007 V	KARI	-	-	LOX	 Kero Jet A	-	 	-	 	      68.70 	 	325.1 	 	 498.0 	 	  1	2021	KSLV2 [3]	LOX/Kero
+Lightning 1	FFLY	-	-	LOX	 Kero RP-1	-	 	-	 	      70.10 	 	322.0 	 	-	 	  1	2021	Firefly [2]	LOX/Kero
+RD-8	YUZH	-	-	LOX	 Kero	-	 	-	 	      78.40 	 	342.0 	 	-	 	  1	1985	Zenit [2]	LOX/Kero
+11D58	EMASH	RD-58	-	LOX	 Kero	-	 	-	 	      85.00 	 	349.0 	 	 600.0 	 	  1	1967	Blok D	LOX/Kero
+11D58M	VORO	RD-58	-	LOX	 Kero	-	 	-	 	      85.00 	 	352.0 	 	 680.0 	 	  1	1976	Blok DM	LOX/Kero
+11D58M (s)	VORO	RD-58M	-	LOX	 Kero Sintin	-	 	-	 	      83.50 	 	362.0 	 	 680.0 	 	  1	1976	Blok D-1	LOX/Kero
+17D12	VORO	RD-58 (Buran ODU)	-	LOX	 Kero Sintin	-	 	-	 	      86.30 	 	362.0 	 	 680.0 	 	  1	1988	Buran	LOX/Kero
+X-405	GEMTS	X-405	-	LOX	 Kero	-	 	-	 	     120.00 	 	-	 	 144.0 	 	  1	1957	Vanguard St1	LOX/Kero
+KSR-III	KARI	-	-	LOX	 Kero	-	 	-	 	     126.00 	 	-	 	  59.0 	 	  1	2002	KSR-3	LOX/Kero
+YF-115	TIANJ	-	-	LOX	 Kero	-	 	-	 	     176.50 	 	342.0 	 	-	 	  1	-	CZ-6 St 2	LOX/Kero
+Reaver 1	FFLY	-	-	LOX	 Kero RP-1	-	 	-	 	     184.00 	 	295.6 	 	-	 	  1	2021	Firefly [1]	LOX/Kero
+MA-2/S	RDYNE	MA-1	-	LOX	 Kerosene RP-1	-	 	-	 	     254.00 	s	213.0 	 	 281.0 	 	  1	1959	Atlas D	LOX/Kero
+MA-3/S	RDYNE	MA-1	-	LOX	 Kerosene RP-1	-	 	-	 	     254.00 	s	214.0 	 	-	 	  1	-	Atlas E	LOX/Kero
+Fastrac	MSFC	Fastrac	-	LOX	 Kerosene RP-1	-	 	-	 	     265.00 	 	-	 	-	 	  1	-	X-34	LOX/Kero
+MA-1/S	RDYNE	MA-1	-	LOX	 Kerosene RP-1	-	 	-	 	     267.00 	 	210.0 	 	 253.6 	 	  1	1957	Atlas B	LOX/Kero
+MA-5/S	RDYNE	MA-1	-	LOX	 Kerosene RP-1	-	 	-	 	     269.20 	s	220.0 	 	-	 	  1	-	Atlas SLV	LOX/Kero
+RD-0124	KBKHA	RD-0106	14D23	LOX	 Kero	-	 	-	 	     294.30 	 	359.0 	 	-	 	  1	2006	Soyuz-2-1B St3	LOX/Kero
+RD-0124A	KBKHA	-	-	LOX	 Kero	-	 	-	 	     294.30 	 	359.0 	 	 424.0 	 	  1	2014	Angara URM-2	LOX/Kero
+RD-0124N	KBKHA	-	-	LOX	 Kero Naphthyl	-	 	-	 	     294.30 	 	359.0 	 	-	 	  1	2017	Soyuz-2-1B St3	LOX/Kero
+11D55	KBKHA	RD-0106	RD-0110?	LOX	 Kero RG-1	-	 	-	 	     298.00 	 	326.0 	 	 250.0 	 	  4	1965	Blok I	LOX/Kero
+TH-11	TIANB	-	-	LOX	 Kero	-	 	-	 	     300.00 	 	346.0 	 	-	 	  1	2023	Tianlong-2	LOX/Kero
+RD-0110	KBKHA	RD-0106	-	LOX	 Kero	-	 	-	 	     297.90 	 	325.0 	 	 240.0 	 	  4	1960	Blok I	LOX/Kero
+RD-0107	KBKHA	RD-0106	8D715K	LOX	 Kero	-	 	-	 	     297.90 	 	326.0 	 	 250.0 	 	  4	1962	Blok I	LOX/Kero
+RD-0106	KBKHA	RD-0106	8D715	LOX	 Kero	-	 	-	 	     300.00 	 	325.0 	 	 140.0 	 	  4	1961 Apr  9	R-9 St2	LOX/Kero
+NewtonThree	VORB	-	-	LOX	 Kerosene RP-1	-	 	-	 	     330.00 	 	  0.0 	 	-	 	  1	2019	LauncherOne [1]	LOX/Kero
+Merlin 1A	SPXTX	-	-	LOX	 Kero	-	 	-	 	     378.00 	 	304.0 	 	 169.0 	 	  1	-	Falcon 1 [1]	LOX/Kero
+MA-5A/S	RDYNE	MA-1/H-1	-	LOX	 Kerosene RP-1	-	 	-	 	     380.60 	 	311.0 	 	 274.0 	 	  1	-	Atlas 2	LOX/Kero
+Merlin 1C	SPXTX	-	-	LOX	 Kero	-	 	-	 	     400.00 	 	304.0 	 	 169.0 	 	  1	-	Falcon 1 [1]	LOX/Kero
+NK-21	NKE	NK	-	LOX	 Kero	-	 	-	 	     402.00 	 	353.0 	 	 370.0 	 	  1	1969 Feb	N-1 St3	LOX/Kero
+NK-31	NKE	NK	-	LOX	 Kero	-	 	-	 	     402.00 	 	-	 	 400.0 	 	  1	-	N-1 St3 rev	LOX/Kero
+Merlin 1C-Vac	SPXTX	-	-	LOX	 Kero	-	 	-	 	     427.00 	 	342.0 	 	 169.0 	 	  1	-	Falcon 9 [1]	LOX/Kero
+NK-19	NKE	NK	-	LOX	 Kero	-	 	-	 	     445.00 	 	353.0 	 	 443.0 	 	  1	1969 Feb	Blok G	LOX/Kero
+G-38	RDYNE	-	LR83-NA1	LOX	 Kero	-	 	-	 	     534.00 	 	282.0 	 	-	 	  1	1956	Navaho	LOX/Kero
+Merlin 1C+	SPXTX	-	-	LOX	 Kero	-	 	-	 	     572.00 	 	304.0 	 	 169.0 	 	  1	-	Falcon 1e [1]	LOX/Kero
+Merlin 1D	SPXTX	-	-	LOX	 Kero	-	 	-	 	     616.00 	 	304.8 	 	 169.0 	 	  1	-	Falcon 9 [1]	LOX/Kero
+YF-102	TIANJ	-	-	LOX	 Kero	-	 	-	 	     620.00 	 	275.0 	 	 130.0 	 	  1	2023	Tianlong-2	LOX/Kero
+S-3D	RDYNE	S-3D	-	LOX	 Kero RP-1	-	 	  120100 	 	     667.00 	 	247.0 	 	 180.0 	 	  1	1957	Jupiter [1]	LOX/Kero
+MB-3	RDYNE	MB-3	LR79-NA9	LOX	 Kero RJ-1	-	 	  116000 	 	     710.00 	 	-	 	 160.0 	 	  1	1957	Thor DM-18 [1]	LOX/Kero
+Merlin 1D-FT	SPXTX	-	-	LOX	 Kero	-	 	-	 	     720.00 	 	304.8 	 	 169.0 	 	  1	-	Falcon 9 [1]	LOX/Kero
+H-1	RDYNE	H-1	-	LOX	 Kero	-	 	-	 	     721.00 	 	263.0 	 	 115.0 	 	  1	1961	Saturn I	LOX/Kero
+KRE-075 SL	KARI	-	-	LOX	 Kero Jet A	-	 	-	 	     788.00 	 	315.4 	 	 498.0 	 	  1	2021	KSLV2 [2]	LOX/Kero
+KRE-075 V	KARI	-	-	LOX	 Kero Jet A	-	 	-	 	     735.50 	 	298.6 	 	 127.0 	 	  1	2021	KSLV2 [1]	LOX/Kero
+RZ.2	RROY	-	-	LOX	 Kero	-	 	-	 	     756.00 	 	248.0 	s	 146.0 	 	  1	1964	Blue Streak (x2)	LOX/Kero
+MB-3-2	RDYNE	MB-3	LR79-NA9	LOX	 Kero RJ-1	-	 	-	 	     760.00 	 	-	 	 170.0 	 	  1	-	Thor DM-21 [1]	LOX/Kero
+MB-3-3	RDYNE	MB-3	LR79-NA9	LOX	 Kero RJ-1	-	 	-	 	     779.00 	 	-	 	 170.0 	 	  1	-	Thor LTTAT [1]	LOX/Kero
+MB-3 DM-21	RDYNE	MB-3	LR79-NA9	LOX	 Kero RJ-1	-	 	-	 	     779.00 	 	-	 	 170.0 	 	  1	-	Thor DM-21 [1]	LOX/Kero
+Merlin 1D-4	SPXTX	-	-	LOX	 Kero	-	 	-	 	     780.00 	 	304.8 	 	 169.0 	 	  1	-	Falcon 9 [1] ]	LOX/Kero
+Merlin 1D-Vac	SPXTX	-	-	LOX	 Kero	-	 	-	 	     801.00 	 	345.0 	 	 372.0 	 	  1	-	Falcon 9-1.1 [2]	LOX/Kero
+RD-120	EMASH/YUZHM	11D123	-	LOX	 Kero	-	 	-	 	     834.00 	 	350.0 	 	-	 	  1	1985 Apr 13	Zenit St 2	LOX/Kero
+Merlin 1D-5	SPXTX	-	-	LOX	 Kero	-	 	-	 	     845.00 	 	304.8 	 	 169.0 	 	  1	-	Falcon 9 [1]	LOX/Kero
+8D75PS	EMASH	RD-108	RD-108	LOX	 Kero T-1	-	 	-	 	     941.00 	 	308.0 	 	 340.0 	 	  4	-	Sputnik	LOX/Kero
+8D75	EMASH	RD-108	RD-108	LOX	 Kero T-1	-	 	-	 	     941.00 	 	308.0 	 	 340.0 	 	  4	-	Sputnik	LOX/Kero
+8D727	EMASH	RD-108	RD-108MM	LOX	 Kero T-1	-	 	-	 	     833.00 	 	308.0 	 	 340.0 	 	  4	-	Sputnik	LOX/Kero
+8D74PS	EMASH	RD-108	RD-107	LOX	 Kero T-1	-	 	-	 	    1000.00 	 	306.0 	 	 146.0 	 	  4	-	Sputnik	LOX/Kero
+8D74	EMASH	RD-108	RD-107	LOX	 Kero T-1	-	 	-	 	    1000.00 	 	256.0 	 	 140.0 	 	  4	-	Sputnik	LOX/Kero
+8D728	EMASH	RD-108	RD-107MM	LOX	 Kero T-1	-	 	-	 	     921.00 	 	257.0 	 	 140.0 	 	  4	-	Molniya	LOX/Kero
+11D511	EMASH	RD-108	-	LOX	 Kero T-1	-	 	-	 	     978.00 	 	316.0 	 	 290.0 	 	  4	-	Soyuz A	LOX/Kero
+RD-107	EMASH/MOTOS	RD-108	-	LOX	 Kero T-1	-	 	-	 	     991.70 	 	310.0 	 	 120.0 	 	  4	-	Soyuz BVGD	LOX/Kero
+RD-108	EMASH/MOTOS	RD-108	-	LOX	 Kero T-1	-	 	-	 	     997.10 	 	311.0 	 	 286.0 	 	  4	-	Soyuz A	LOX/Kero
+11D512	EMASH	RD-108	-	LOX	 Kero T-1	-	 	-	 	    1000.00 	 	314.5 	 	 120.0 	 	  4	-	Soyuz BVGD	LOX/Kero
+RD-108PF	EMASH	RD-108	11D512PF	LOX	 Kero Sintin	-	 	-	 	    1009.40 	 	311.0 	 	 286.0 	 	  4	-	Soyuz U2 A	LOX/Kero
+RD-107A	EMASH	RD-108	14D22	LOX	 Kero T-1	-	 	-	 	    1000.00 	?	310.0 	 	 120.0 	 	  4	-	Soyuz FG BVGD	LOX/Kero
+RD-108A	EMASH	RD-108	14D21	LOX	 Kero T-1	-	 	-	 	    1000.00 	?	311.0 	 	 286.0 	 	  4	-	Soyuz FG A	LOX/Kero
+RS-27	RDYNE	RS-27	-	LOX	 Kerosene RP-1	-	 	-	 	    1023.00 	 	295.0 	 	 274.0 	 	  1	1974 Jan 19	Thor	LOX/Kero
+RS-27A	RDYNE	RS-27	-	LOX	 Kerosene RP-1	-	 	-	 	    1086.00 	 	302.0 	 	 261.0 	 	  1	1990	Thor	LOX/Kero
+TH-12	TIANB	Tianhuo-12	-	LOX	 Kerosene RP-1	-	 	-	 	    1090.00 	 	285.0 	 	 100.0 	 	  1	2024	TL-3	LOX/Kero
+YGCS	TIANJ	-	-	LOX	 Kero	-	 	-	 	    1200.00 	?	305.0 	 	 155.0 	 	  1	-	YGCS	LOX/Kero
+YF-100	TIANJ	-	-	LOX	 Kero	-	 	-	 	    1200.00 	?	305.0 	 	 155.0 	 	  1	-	CZ-5	LOX/Kero
+YF-100K	TIANJ	-	-	LOX	 Kero	-	 	-	 	    1250.00 	 	335.0 	 	 155.0 	 	  1	-	CZ-12	LOX/Kero
+MA-1/B-A	RDYNE	MA-1	-	LOX	 Kerosene RP-1	-	 	-	 	    1210.00 	 	245.0 	 	 125.0 	 	  2	1957	Atlas A	LOX/Kero
+MA-1/B	RDYNE	MA-1	-	LOX	 Kerosene RP-1	-	 	-	 	    1335.00 	s	245.0 	 	 128.0 	 	  2	1957	Atlas B	LOX/Kero
+TH-12V	TIANB	-	-	LOX	 Kerosene RP-1	-	 	-	 	    1350.00 	 	335.0 	 	-	 	  1	2024	TL-3	LOX/Kero
+RD-111 (1)	EMASH	RD-111	8D717	LOX	 Kero	-	 	-	 	    1373.00 	 	327.0 	 	-	 	  4	1961?	R-9 St 1	LOX/Kero
+MA-2/B	RDYNE	MA-1	-	LOX	 Kerosene RP-1	-	 	-	 	    1375.00 	s	248.0 	 	 135.0 	 	  2	1959	Atlas D	LOX/Kero
+RD-111	EMASH	RD-111	8D716	LOX	 Kero	-	 	-	 	    1381.00 	 	312.0 	 	 108.0 	 	  4	1961 Apr  9	R-9 St 1	LOX/Kero
+MA-3/B	RDYNE	MA-1	-	LOX	 Kerosene RP-1	-	 	-	 	    1468.00 	s	250.0 	 	-	 	  2	1959	Atlas E	LOX/Kero
+NK-33	NKE	-	-	LOX	 Kero	-	 	-	 	    1510.00 	 	-	 	 110.0 	 	  1	-	N-1 St1 rev	LOX/Kero
+AJ26-62	AJ/NKE	-	-	LOX	 Kero	-	 	-	 	    1510.00 	 	-	 	-	 	  2	-	Taurus 2 [1]	LOX/Kero
+RD-151	EMASH	RD-170	-	LOX	 Kero	-	 	-	 	    1670.00 	 	337.0 	 	 229.0 	 	  1	2009	Naro-1	LOX/Kero
+MA-5/B	RDYNE	MA-1	-	LOX	 Kerosene RP-1	-	 	-	 	    1677.00 	s	259.0 	 	-	 	  2	1962	Atlas SLV	LOX/Kero
+NK-15	NKE	NK	-	LOX	 Kero	-	 	-	 	    1677.00 	 	284.0 	 	 125.0 	 	  1	1969 Feb	N-1 St1	LOX/Kero
+NK-43	NKE	NK	-	LOX	 Kero	-	 	-	 	    1750.00 	 	-	 	 130.0 	 	  1	-	N-1 St2 rev	LOX/Kero
+NK-15V	NKE	NK	-	LOX	 Kero	-	 	-	 	    1755.00 	 	346.0 	 	 120.0 	 	  1	1969 Feb	N-1 St2	LOX/Kero
+RD-181	EMASH	RD-170	-	LOX	 Kerosene RP-1	-	 	-	 	    1922.00 	 	311.9 	s	-	 	  1	2015	Antares [1]	LOX/Kero
+NK-33A	NKE	14D15	-	LOX	 Kero	-	 	-	 	    1962.00 	 	331.2 	 	-	 	  1	 -	Soyuz-2-1V	LOX/Kero
+MA-5A/B	RDYNE	MA-5	-	LOX	 Kerosene RP-1	-	 	-	 	    2065.00 	 	293.4 	 	 165.0 	 	  2	1991	Atlas 2	LOX/Kero
+RD-191	EMASH	RD-170	-	LOX	 Kero	-	 	-	 	    2079.00 	 	337.0 	 	 150.0 	 	  1	2009	Angara URM	LOX/Kero
+RD-180	EMASH	RD-170	-	LOX	 Kerosene RP-1	-	 	-	 	    4152.00 	 	337.8 	 	 190.0 	 	  2	2000 May 24	Atlas 3 [1]	LOX/Kero
+F-1	RDYNE	F-1	-	LOX	 Kerosene RP-1	-	 	-	 	    6680.00 	 	260.0 	 	-	 	  1	1967	Saturn V [1]	LOX/Kero
+RD-170	EMASH	RD-170	11D521	LOX	 Kero	-	 	-	 	    7908.00 	 	337.0 	 	-	 	  4	1985 Apr 13	Energiya	LOX/Kero
+RD-171	EMASH	RD-170	11D520	LOX	 Kero	-	 	-	 	    7908.00 	 	337.0 	 	-	 	  4	1985 Apr 13	Zenit St 1	LOX/Kero
+ROKETSAN-SR-0.1	ROKSN	-	-	LOX?	 Kero?	-	 	-	 	-	 	-	 	-	 	-	2020	SR 0.1 [2]	LOX/Kero
+#
+# Liquid propellant engines: LOX/Methane
+#
+BW1-2	PERI	-	-	LOX	 Methane LNG	-	 	-	 	-	 	348.0 	?	-	 	  1	2020	Blue Whale 1 [2]	LOX/Methane
+BW1-1	PERI	-	-	LOX	 Methane LNG	-	 	-	 	-	 	348.0 	 	 150.0 	 	  1	2020	Blue Whale 1 [1]	LOX/Methane
+PWR35M	PWRD	-	-	LOX	 Methane	-	 	-	 	-	 	-	 	-	 	  1	2009	Taurus 2 Alt-2	LOX/Methane
+Aeon 1	RELSP	-	-	LOX	 Methane	-	 	-	 	     102.00 	 	-	 	-	 	  1	2023	Terran-1 [1]	LOX/Methane
+AeonVac	RELSP	-	-	LOX	 Methane	-	 	-	 	     126.00 	 	-	 	-	 	  1	2023	Terran-1 [2]	LOX/Methane
+JD-1	XJRY	-	-	LOX	 Methane LNG	-	 	-	 	     150.00 	 	355.0 	 	-	 	  1	2020	SQ2	LOX/Methane
+TQ-11	LANDSP	-	-	LOX	 Methane	-	 	-	 	     658.00 	 	331.0 	 	-	 	  4	2019	ZQ-2	LOX/Methane
+Archimedes	RLABU	-	-	LOX	 Methane LNG	-	 	-	 	     730.00 	 	329.0 	 	-	 	  1	2025	Neutron	LOX/Methane
+Longyun	JZYJ	-	 -	LOX	 Methane	-	 	-	 	     770.00 	 	350.0 	0	-	 	  1	2025	YXZ-1	LOX/Methane
+TQ-12	LANDSP	-	-	LOX	 Methane	-	 	-	 	     800.00 	 	350.0 	 	-	 	  1	2019	ZQ-2	LOX/Methane
+TQ-12A	LANDSP	-	-	LOX	 Methane	-	 	-	 	     810.00 	 	354.0 	 	-	 	  1	2024	ZQ-2	LOX/Methane
+TQ-15A	LANDSP	-	-	LOX	 Methane	-	 	-	 	     836.00 	 	350.0 	 	-	 	  1	2024	ZQ-2	LOX/Methane
+Archimedes Vac	RLABU	-	-	LOX	 Methane LNG	-	 	-	 	     890.00 	 	367.0 	 	-	 	  1	2025	Neutron	LOX/Methane
+JD-2	XJRY	-	-	LOX	 Methane LNG	-	 	-	 	    1000.00 	 	300.0 	 	-	 	  1	2020	SQ2	LOX/Methane
+Raptor SL	SPX	-	-	LOX	 Methane	-	 	-	 	    1950.00 	 	-	 	-	 	  1	2019	Starship	LOX/Methane
+Raptor 2 Vac	SPX	-	-	LOX	 Methane	-	 	-	 	    2500.00 	 	-	 	-	 	  1	2020	Starship	LOX/Methane
+Raptor 3 SL	SPX	-	-	LOX	 Methane	-	 	-	 	    2800.00 	 	-	 	-	 	  1	2019	Starship	LOX/Methane
+Raptor 3 Vac	SPX	-	-	LOX	 Methane	-	 	-	 	    2800.00 	 	-	 	-	 	  1	2020	Starship	LOX/Methane
+BE-4	BLORTX	-	-	LOX	 Methane LNG	-	 	-	 	    2447.00 	 	-	 	-	 	  1	2023	Vulcan	LOX/Methane
+#
+# Liquid propellant engines: LOX/Propane
+#
+Aquila SL	ISAR	-	-	LOX	 Propane	-	 	-	 	      75.00 	 	-	 	-	 	  1	2025	Spectrum	LOX/Propane
+Aquila Vac	ISAR	-	-	LOX	 Propane	-	 	-	 	      94.00 	 	-	 	-	 	  1	2025	Spectrum	LOX/Propane
+Weka	NASCOM	-	-	LOX	 Propane	-	 	-	 	-	 	-	 	-	 	-	2024	Weka	LOX/Propane
+#
+# Liquid propellant engines: LOX/Hydrogen
+#
+YF-73	SLREC	YF-73	-	LOX	 LH2	-	 	-	 	      44.10 	 	425.0 	 	 800.0 	 	  4	1984	CZ-3 Stage 3	LOX/LH2
+HM-7	SEP	-	-	LOX	 LH2	-	 	-	 	      61.70 	 	442.6 	 	 510.1 	 	  1	1979	Ariane H8	LOX/LH2
+HM-7B	SEP	-	-	LOX	 LH2	-	 	-	 	      64.80 	 	445.1 	 	 745.0 	 	  1	-	Ariane H10-3	LOX/LH2
+RL10	PWFL	RL10	-	LOX	 LH2	-	 	-	 	      66.70 	 	433.0 	 	 470.0 	 	  1	-	Centaur I	LOX/LH2
+RL10A-1	PWFL	RL10	-	LOX	 LH2	-	 	-	 	      66.70 	 	425.0 	 	 430.0 	 	  1	-	Centaur	LOX/LH2
+RL10A-3	PWFL	RL10	-	LOX	 LH2	-	 	-	 	      65.60 	 	444.0 	 	 470.0 	 	  1	-	Centaur	LOX/LH2
+ICE	ISRO	-	-	LOX	 LH2	-	 	-	 	      69.50 	 	452.0 	 	 720.0 	 	  1	-	GSLV 3	LOX/LH2
+RL10A-3A	PWFL	RL10	-	LOX	 LH2	-	 	-	 	      73.40 	 	444.0 	 	 550.0 	 	  1	-	Centaur	LOX/LH2
+RL10A-3-3A	PWFL	RL10	-	LOX	 LH2	-	 	-	 	      73.40 	 	444.0 	 	 550.0 	 	  1	-	Centaur T	LOX/LH2
+KVD-1M	KHMM	-	RD-56M	LOX	 LH2	-	 	-	 	      75.00 	 	460.0 	 	 675.0 	 	  1	-	GSLV GS3	LOX/LH2
+YF-75	SLREC	YF-75	-	LOX	 LH2	-	 	-	 	      78.50 	 	440.0 	 	 470.0 	 	  1	-	CZ-3A Stage 3	LOX/LH2
+YF-75D	SLREC	YF-75	-	LOX	 LH2	-	 	-	 	      88.30 	 	442.0 	 	 700.0 	 	  1	-	CZ-5 Stage 2	LOX/LH2
+YF-75H	SLREC	YF-75	-	LOX	 LH2	-	 	-	 	     100.00 	 	442.6 	 	 700.0 	 	  1	-	CZ-8A Stage 2	LOX/LH2
+RL10A-4	PWFL	RL10	-	LOX	 LH2	-	 	-	 	      92.60 	 	449.0 	 	 370.0 	 	  1	-	Centaur IIA	LOX/LH2
+RL10A-4-1	PWFL	RL10	-	LOX	 LH2	-	 	-	 	      99.20 	 	450.5 	 	 370.0 	 	  1	-	Centaur IIA/IIIA	LOX/LH2
+RL10A-4-1B	PWFL	RL10	-	LOX	 LH2	-	 	-	 	      99.20 	 	450.5 	 	 370.0 	 	  1	-	Centaur IIIA	LOX/LH2
+RL10A-4-2	PWFL	RL10	-	LOX	 LH2	-	 	-	 	      99.20 	 	451.0 	 	 370.0 	 	  1	-	Centaur	LOX/LH2
+LE-5	MHIME	LE-5	-	LOX	 LH2	-	 	-	 	     107.00 	 	448.0 	 	 370.0 	 	  1	-	H1 St2	LOX/LH2
+RL10B-2	PWFL	RL10	-	LOX	 LH2	-	 	-	 	     110.10 	 	465.5 	 	 700.0 	 	  1	1998	Delta III	LOX/LH2
+RL10C-1	PWFL	RL10	-	LOX	 LH2	-	 	-	 	     101.80 	 	449.7 	 	 700.0 	 	  1	2014	Delta IV	LOX/LH2
+RL10C-1-1	PWFL	RL10	-	LOX	 LH2	-	 	-	 	     101.80 	 	449.7 	 	 700.0 	 	  1	2021	Atlas V	LOX/LH2
+RL10C-1-1A	PWFL	RL10	-	LOX	 LH2	-	 	-	 	     106.00 	 	449.7 	 	 700.0 	 	  1	2023	VC	LOX/LH2
+RL10C-2	PWFL	RL10	-	LOX	 LH2	-	 	-	 	     110.00 	 	462.5 	 	 700.0 	 	  1	2014	SLS?	LOX/LH2
+RL10C-2-1	PWFL	RL10	-	LOX	 LH2	-	 	-	 	     110.10 	 	462.5 	 	 700.0 	 	  1	2014	Delta IV	LOX/LH2
+RL10CX	PWFL	RL10	-	LOX	 LH2	-	 	-	 	     120.00 	?	462.5 	?	 700.0 	?	  1	2019	Vulcan Centaur	LOX/LH2
+LE-5A	MHIME	LE-5	-	LOX	 LH2	-	 	-	 	     122.00 	 	452.0 	 	 600.0 	 	  1	1994	H2 St2	LOX/LH2
+LE-5B	MHIME	LE-5	-	LOX	 LH2	-	 	-	 	     137.00 	 	447.0 	 	 530.0 	 	  1	-	H2A St2	LOX/LH2
+LE-5B-3	MHIME	LE-5	-	LOX	 LH2	-	 	-	 	     137.00 	 	448.0 	 	 686.0 	 	  1	2023	H3 St2	LOX/LH2
+Vinci	SNECMA	-	-	LOX	 LH2	-	 	-	 	     180.00 	 	457.0 	 	 300.0 	 	  1	2024	Ariane 6	LOX/LH2
+CE-20	VSSC	-	-	LOX	 LH2	-	 	-	 	     186.00 	 	443.0 	 	 550.0 	 	  1	2009	C-25	LOX/LH2
+BE-3 (BLOR)	BLORH	-	-	LOX	 LH2	-	 	-	 	     490.00 	 	-	 	 145.0 	 	  1	-	New Shepard	LOX/LH2
+BE-3U	BLORH	-	-	LOX	 LH2	-	 	-	 	     770.00 	 	445.0 	 	-	 	  1	-	New Glenn St 2	LOX/LH2
+YF-77	CALT	-	-	LOX	 LH2	-	 	-	 	     673.00 	?	438.0 	 	 500.0 	?	  1	-	CZ-5	LOX/LH2
+J-2	RDYNE	J-2	-	LOX	 LH2	-	 	-	 	    1023.00 	 	427.0 	 	-	 	  1	1966	Saturn IVB	LOX/LH2
+LE-7	MHIME	LE-5	-	LOX	 LH2	-	 	-	 	    1080.00 	 	445.6 	 	 346.0 	 	  1	1994	H2 St1	LOX/LH2
+LE-7A	MHIME	LE-5	-	LOX	 LH2	-	 	-	 	    1100.00 	 	440.0 	 	 390.0 	 	  1	-	H2A St1	LOX/LH2
+Vulcain	SEP	-	-	LOX	 LH2	-	 	-	 	    1114.00 	 	430.0 	 	 589.0 	 	  1	1996	Ariane EPC H158	LOX/LH2
+Vulcain 2	SEP	-	-	LOX	 LH2	-	 	-	 	    1300.00 	 	434.0 	 	 589.0 	 	  1	2002	Ariane EPC H175	LOX/LH2
+J-2X	PWRD	J-2	-	LOX	 LH2	-	 	-	 	    1308.00 	 	448.0 	 	 465.0 	 	  1	2010	Ares I	LOX/LH2
+Vulcain 2.1	SEP	-	-	LOX	 LH2	-	 	-	 	    1324.00 	 	434.0 	 	 589.0 	 	  1	2024	Ariane 6 LLPM	LOX/LH2
+LE-9	MHIME	LE-5	-	LOX	 LH2	-	 	-	 	    1471.00 	 	426.9 	 	 298.0 	 	  1	2023	H3 St1	LOX/LH2
+RD-0120	KBKHA	11D122	-	LOX	 LH2	-	 	-	 	    1961.00 	 	455.0 	 	 480.0 	 	  1	1987 May 15	Energiya St2	LOX/LH2
+SSME	RDYNE	RS-25	-	LOX	 LH2	-	 	-	 	    2100.00 	 	452.5 	 	 516.0 	 	  1	1981	STS ET	LOX/LH2
+RS-25	RDYNE	RS-25	-	LOX	 LH2	-	 	-	 	    2100.00 	 	452.5 	 	 516.0 	 	  1	2022	SLS	LOX/LH2
+RS-68	RDYNE	RS-68	-	LOX	 LH2	-	 	-	 	    2950.00 	s	409.0 	s	-	 	  1	-	Delta 4	LOX/LH2
+RS-68A	RDYNE	RS-68	-	LOX	 LH2	-	 	-	 	    3124.00 	s	414.0 	s	-	 	  1	2012	Delta 4	LOX/LH2
+#
+# Liquid propellant engines: Green
+#
+Curie	RLABU	-	-	LOX?	 RL Green Prop	-	 	-	 	       0.12 	 	303.0 	 	-	 	  1	2017	Electron St 3	Green
+HyperCurie	RLABU	-	-	LOX?	 RL Green Prop	-	 	-	 	       0.50 	 	320.0 	 	-	 	  1	2017	Electron St 3	Green
+GR-1	RDYNE	-	-	-	 NH3OHNO3 AF-M315E	       0.0 	 	-	 	-	 	-	 	-	 	-	2017	GPM	Green
+#
+# Electric propulsion engines: Xenon, Krypton
+#
+PPS-1350	SEPVR	-	-	Elec SPT	 Xe	-	 	-	 	       0.00 	 	1800.0 	 	-	 	  1	-	SMART-1/Stentor	EP
+PPS-5000	SNECMS	-	-	Elec SPT	 Xe	-	 	-	 	       0.00 	 	2000.0 	 	-	 	  1	-	Spacebus-NEO XPS	EP
+XIPS-25	L3HED	-	-	IPS	 Xe	-	 	       0 	 	       0.00 	 	3550.0 	 	-	 	  1	-	XIPS-25	EP
+NSTAR-30	L3HED	-	-	IPS	 Xe	-	 	       0 	 	       0.00 	 	3550.0 	 	-	 	  1	-	XIPS-30	EP
+Starlink Kr EPS	SPXS	-	-	IPS	 Kr	-	 	       0 	 	-	 	-	 	-	 	  1	2019	Starlink	EP

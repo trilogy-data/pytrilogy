@@ -224,17 +224,19 @@ import launch_dashboard;
 where vehicle.name like '%Falcon%'
 
 SELECT 
-vehicle.name, vehicle.class, vehicle.variant,  vehicle.length, vehicle.leo_capacity,
-CASE WHEN vehicle.variant != '-' then concat(vehicle.name, '-', vehicle.variant) else vehicle.name end as vehicle_label,
+vehicle.name, 
+vehicle_label,
 launch_count,
 count(launch_tag ? was_complete_success) as successful_launches,
-count(launch_tag ? success_flag = 'E') as pad_aborts,
-count(vehicle.family) by * as all_vehicles,
-vehicle.family,
-vehicle.launch_mass, vehicle.to_thrust,
-vehicle.diameter, round(sum(orb_pay),2) as total_mass,
-array_to_string(array_distinct(array_agg(launch_filter)), ', ') as launch_targets
-order by total_mass desc limit 6;
+# count(launch_tag ? success_flag = 'E') as pad_aborts,
+# count(vehicle.family) by * as all_vehicles,
+# round(sum(orb_pay),2) as total_mass,
+# array_to_string(array_distinct(array_agg(launch_filter)), ', ') as launch_targets
+order by launch_count desc
+limit 6;
+
+
+
         """
     )
 

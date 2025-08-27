@@ -1,0 +1,1567 @@
+Stage_Name	Stage_Family	Stage_Manufacturer	Stage_Alt_Name	Length	Diameter	Launch_Mass	Dry_Mass	Thrust	Duration	Engine	NEng
+-	Unknown             	-	Dummy	-	-	-	       0 	       0.0 	   0.0 	-	 0
+?	Unknown             	-	-	-	-	-	-	-	-	-	-
+N-1 Blok-A	N-1                 	OKB1	N-1 Blok A	 30.0 	14.00 	1870.0 	  130000 	   45300.0 	 110.0 	NK-15	30
+N-1 Blok-B	11A52B              	OKB1	Blok B	 20.5 	10.30 	 540.0 	   56000 	   14000.0 	 130.0 	NK-15V	 8
+Saturn S-IC	SaturnV             	BOMI	-	 42.1 	10.06 	2286.0 	  135200 	   33500.0 	 170.0 	F-1	 5
+Saturn S-II	SaturnII            	NAASB	S-II	 24.8 	10.06 	 490.8 	   39000 	    4500.0 	 270.0 	J-2	 5
+Starship V1.0	Starship            	SPX	-	 50.0 	 9.00 	1300.0 	  120000 	   12500.0 	 330.0 	Raptor 2 Vac	 6
+Starship V2 (R2)	Starship            	SPX	-	 50.3 	 9.00 	1700.0 	  120000 	   12500.0 	 330.0 	Raptor 2 Vac	 6
+Starship V2	Starship            	SPX	-	 52.1 	 9.00 	1700.0 	  120000 	   15600.0 	 330.0 	Raptor 3 Vac	 6
+Starship V3	Starship            	SPX	-	 61.0 	 9.00 	2700.0 	  150000 	   28700.0 	 330.0 	Raptor 3 Vac	 9
+Super Heavy	Starship            	SPX	-	 71.0 	 9.00 	3520.0 	  220000 	   72500.0 	 330.0 	Raptor SL	33
+Super Heavy V2	Starship            	SPX	-	 72.3 	 9.00 	3650.0 	  220000 	   80800.0 	 330.0 	Raptor 3 SL	33
+Super Heavy V3	Starship            	SPX	-	 81.0 	 9.00 	4100.0 	  250000 	  103000.0 	 330.0 	Raptor 3 SL	35
+ET	STS                 	MMMI	-	 47.0 	 8.40 	 748.0 	   27000 	    6300.0 	 516.0 	SSME	 3
+SLS CS	STS                 	BOMIS	-	 64.6 	 8.40 	1102.0 	   85300 	    9116.0 	 483.0 	RS-25	 4
+Energiya	Energiya            	RKKE	-	 58.1 	 7.75 	 780.0 	   80000 	    7850.0 	 480.0 	RD-0120	 4
+8S810	Proton              	OKB52	Proton 8S810	 21.2 	 7.40 	 450.0 	   31000 	    9500.0 	 120.0 	RD-253	 6
+8S810M	Proton              	OKB52	Proton 8S810	 21.2 	 7.40 	 450.0 	   30600 	   10500.0 	 120.0 	RD-253 14D14	 6
+Neutron St1	Neutron	RLABU	-	 42.8 	 7.00 	 420.0 	-	    6570.0 	-	Archimedes Vac	 9
+New Glenn GS1	NewGlenn	BLORCC	-	 57.5 	 7.00 	 900.0 	  110000 	   17150.0 	-	BE-4	 7
+New Glenn GS2	NewGlenn	BLORCC	-	 23.4 	 7.00 	 150.0 	-	    1440.0 	-	BE-3U	 2
+Saturn S-IVB	SaturnIVB           	DACHB	S-IVB	 18.7 	 6.60 	 120.0 	   13300 	     890.0 	 500.0 	J-2	 1
+Saturn S-IB	Saturn              	CHRMI	-	 24.4 	 6.53 	 448.7 	   41594 	    8240.0 	 155.0 	H-1	 8
+Saturn S-I	Saturn              	MSFC	-	 22.5 	 6.53 	 432.7 	   45250 	    5768.0 	 115.0 	H-1	 8
+N-1 Blok-V	11A52V              	OKB1	Blok V	 12.5 	 6.40 	 185.0 	   13700 	    1610.0 	 400.0 	NK-21	 4
+Saturn S-IV	SaturnIV            	MSFC	S-IV	  9.8 	 5.59 	  50.6 	    5217 	     400.2 	 482.0 	RL10	 6
+Saturn S-IVD	SaturnIV            	MSFC	Dummy S-IV	  9.8 	 5.59 	  50.6 	    5217 	     400.2 	 482.0 	RL10	 6
+ATB	MX                  	RSLP	-	  8.4 	 5.50 	 119.7 	-	-	  78.8 	SR118	 0
+OV	STS.OV              	RWI	-	 37.2 	 5.49 	 110.0 	   80000 	      54.0 	  90.0 	AJ10-190	 2
+Ariane 6 ULPM	Ariane5             	ARIB	-	 12.1 	 5.46 	  31.0 	    3000 	     180.0 	 900.0 	Vinci	 1
+Ariane 6 LLPM	Ariane5             	ARIG	-	 32.0 	 5.46 	 189.0 	   14700 	    1370.0 	 465.0 	Vulcain 2.1	 1
+Ariane 5 EPC H158	Ariane5             	NORLM	-	 30.5 	 5.46 	 170.0 	   12700 	    1114.0 	 589.0 	Vulcain	 1
+Ariane 5 EPC H175	Ariane5             	NORLM	-	 30.5 	 5.46 	 189.0 	   14200 	    1320.0 	 540.0 	Vulcain 2	 1
+Ariane 5 EPS	EPS                 	DORN	-	  4.9 	 5.46 	  12.5 	    2700 	      29.0 	1100.0 	Aestus	 1
+Ariane 5 EPS P2000	EPS                 	DORN	EPS L10	  5.2 	 5.46 	  13.0 	    2850 	      29.0 	1100.0 	Aestus	 1
+ESC-A	EPS                 	ASTD	-	  7.0 	 5.43 	  18.4 	    2000 	      64.0 	 945.0 	HM-7B	 1
+ESC-D	EPS                 	ASTD	-	  7.0 	 5.43 	  19.0 	    2000 	      64.0 	 945.0 	HM-7B	 1
+Vulcan	Vulcan	ULAD	Vulcan	 33.3 	 5.40 	 540.0 	   50000 	    4800.0 	 299.0 	BE-4	 2
+Centaur V	CentaurV            	ULAD	Centaur	 11.7 	 5.40 	  60.0 	    5500 	     212.0 	 740.0 	RL10C-1-1A	 2
+H-IIB Stage 1	H2B                 	MHITO	H-II	 38.0 	 5.20 	 202.0 	   24000 	    2196.0 	 352.0 	LE-7A	 2
+H3 Stage 1 2E	H2B                 	MHITO	H-3	 37.0 	 5.20 	 114.0 	   13000 	    2441.0 	 300.0 	LE-9	 2
+H3 Stage 1 3E	H2B                 	MHITO	H-3	 37.0 	 5.20 	 240.0 	   15000 	    3663.0 	 300.0 	LE-9	 3
+H3 Stage 2	H2B                 	MHITO	-	 12.0 	 5.20 	  27.0 	    2500 	     137.0 	 686.0 	LE-5B-3	 1
+CZ-5 Stage 1	CZ5                 	CALT	CZ-H5-1	 31.7 	 5.00 	 186.9 	   21600 	    1400.0 	 480.0 	YF-77	 2
+CZ-5 Stage 2	CZ5                 	CALT	CZ-H5-2	 10.6 	 5.00 	  36.0 	    6700 	     176.5 	 700.0 	YF-75D	 2
+Delta CBC	Delta4              	BOHB	-	 40.8 	 5.00 	 226.4 	   26760 	    2891.0 	 249.0 	RS-68	 1
+Delta CBC RS-68A	Delta4              	BOHB	-	 40.8 	 5.00 	 226.4 	   26760 	    3124.0 	 249.0 	RS-68A	 1
+Delta D4SS-5	D4SS                	BOHB	Delta-5m	 12.0 	 5.00 	  30.7 	    3490 	     110.0 	1125.0 	RL10B-2	 1
+DCSS5-1	D4SS                	BOHB	Delta-5m	 12.0 	 5.00 	  30.7 	    3490 	     110.0 	1125.0 	RL10C-2-1	 1
+ICPS	D4SS                	BOHB	Delta-5m	 13.7 	 5.10 	  31.0 	    3500 	     110.0 	1125.0 	RL10B-2	 1
+Neutron St2	Neutron2	RLABU	-	 11.5 	 5.00 	  30.0 	-	     890.0 	-	Archimedes Vac	 1
+DC-X	DC-X                	MDAC	-	 12.6 	 4.95 	  18.8 	   10000 	     242.0 	 263.0 	RL10	 4
+DC-XA	DC-X                	MDAC	Clipper Graham	 12.6 	 4.95 	  18.8 	   10000 	     242.0 	 263.0 	RL10	 4
+L-3 Blok G	BlokG               	OKB1	-	  9.1 	 4.40 	  61.8 	    6000 	     445.0 	 443.0 	NK-19	 1
+Centaur T	Centaur             	GDA	Centaur	  9.0 	 4.30 	  23.8 	    2775 	     146.0 	 600.0 	RL10A-3-3A	 2
+8S811	UR-200              	OKB52	Proton St2	 17.1 	 4.10 	 167.8 	   11700 	    2330.0 	 210.0 	RD-0211	 4
+8S812	Proton.St3          	OKB52	Proton St3	  6.9 	 4.10 	  50.6 	    4185 	     583.0 	 230.0 	RD-0210	 1
+8S812M	Proton.St3          	OKB52	Proton St3	  4.1 	 4.10 	  50.3 	    3700 	     583.0 	 230.0 	RD-0210	 1
+Briz-M	Briz                	KHRU	-	  2.8 	 4.10 	  22.1 	    2370 	      19.6 	3000.0 	S5.98M	 1
+H-II Stage 1	H2                  	MHITO	H-II	 34.4 	 4.00 	  98.0 	   11700 	    1080.0 	 346.0 	LE-7	 1
+H-IIA Stage 1	H2                  	MHITO	H-II	 37.2 	 4.00 	 114.0 	   13000 	    1100.0 	 390.0 	LE-7A	 1
+Delta III Stage 2	D3SS                	BOHB	Delta/0030	  8.8 	 4.00 	  19.3 	    2475 	     110.0 	 700.0 	RL10B-2	 1
+Delta D4SS-4	D3SS                	BOHB	Delta/0030	 12.0 	 4.00 	  24.2 	    2850 	     110.0 	 850.0 	RL10B-2	 1
+H-II Stage 2	H2.St2              	MHITO	H-II St2	 11.0 	 4.00 	  16.7 	    2700 	     122.0 	 600.0 	LE-5A	 1
+H-IIA Stage 2	H2.St2              	MHITO	H-II St2	  9.2 	 4.00 	  20.0 	    4000 	     137.0 	 600.0 	LE-5B	 1
+H-IIA Stage 2 U	H2.St2              	MHITO	H-II St2	  9.2 	 4.00 	  20.0 	    4000 	     137.0 	 600.0 	LE-5B	 1
+GS1-L110 a	GSLV3               	LPSCM	-	 21.3 	 4.00 	 125.8 	    9800 	    1598.0 	 200.0 	Vikas 4B	 2
+GS1-L110	GSLV3               	LPSCM	-	 21.3 	 4.00 	 125.8 	    9800 	    1692.0 	 205.0 	HTVE	 2
+GS2-C25	GSLV3.St2           	LPSCM	-	 13.5 	 4.00 	  32.4 	    4400 	     200.0 	 667.0 	CE-20	 1
+GS2-C25 a	GSLV3.St2           	LPSCM	-	 13.5 	 4.00 	  33.0 	    4400 	     200.0 	 635.0 	CE-20	 1
+Antares Stage 1	Zenit               	OSCW/YUZH	-	 27.6 	 3.90 	 260.7 	   18715 	    3260.0 	 235.0 	AJ26-62	 2
+Antares 2 Stage 1	Zenit               	OSCW/YUZH	-	 27.6 	 3.90 	 260.7 	   18715 	    3844.0 	 235.0 	RD-181	 2
+Antares 2+ Stage 1	Zenit               	OSCW/YUZH	-	 27.6 	 3.90 	 260.7 	   18715 	    3844.0 	 235.0 	RD-181	 2
+Energiya Blok A	Zenit               	YUZH	-	 38.3 	 3.90 	 360.0 	   60000 	    7908.0 	 145.0 	RD-170	 1
+11S771	Zenit               	YUZH	-	 32.9 	 3.90 	 352.0 	   33900 	    7908.0 	 140.0 	RD-170	 1
+11S772	Zenit.St2           	YUZH	-	 11.1 	 3.90 	  90.0 	    9300 	     912.0 	 300.0 	RD-120	 1
+Atlas CCB	Atlas5              	LMA	-	 32.5 	 3.80 	 304.0 	   20890 	    3800.0 	 240.0 	RD-180	 1
+Ariane L144	Ariane              	AELM	-	 18.4 	 3.80 	 160.0 	   13750 	    2462.0 	 146.0 	Viking V	 4
+Ariane L220	Ariane              	EADSL	-	 25.4 	 3.80 	 246.0 	   17900 	    3034.0 	 205.0 	Viking VC	 4
+Tianlong-3 Stage 1	TL3	TIANB	-	 43.0 	 3.80 	-	-	    7600.0 	-	TH-12	 9
+Tianlong-3 Stage 2	TL3	TIANB	-	 14.3 	 3.80 	-	-	    1350.0 	-	TH-12V	 1
+Longxing-2 St 1	CZ12	SAST	-	 30.0 	 3.80 	-	-	-	-	YF-100K	 4
+CZ-12 Stage 1	CZ12	SAST	-	 39.0 	 3.80 	-	-	    5000.0 	-	YF-100K	 4
+CZ-12 Stage 2	CZ12	SAST	-	 10.0 	 3.80 	-	-	     360.0 	-	YF-115	 2
+LM AS	LMAS                	GRUM	-	  2.5 	 3.76 	   4.9 	    2000 	      15.6 	 480.0 	RS-18	 1
+11S824	Blok-D              	NPOE	Blok D	  5.5 	 3.70 	  13.4 	    1800 	      85.0 	 600.0 	11D58	 1
+11S824M	Blok-D              	NPOE	Blok D-1	  5.5 	 3.70 	  17.3 	    2400 	      85.0 	 600.0 	11D58	 1
+11S824F	Blok-D              	NPOE	Blok D-2	  5.5 	 3.70 	  17.3 	    2400 	      85.0 	 600.0 	11D58	 1
+11S86	Blok-D              	NPOE	Blok DM	  6.3 	 3.70 	  17.5 	    2440 	      83.4 	 680.0 	11D58M	 1
+11S861	Blok-D              	NPOE	Blok DM-2	  6.3 	 3.70 	  17.5 	    2440 	      83.4 	 680.0 	11D58M	 1
+11S861-01	Blok-D              	NPOE	Blok DM-2M	  6.3 	 3.70 	  17.5 	    2440 	      83.4 	 680.0 	11D58M	 1
+11S861-03	Blok-D              	NPOE	Blok DM-3	  6.3 	 3.70 	  17.5 	    2440 	      83.4 	 680.0 	11D58M	 1
+17S40	Blok-D              	NPOE	-	  6.3 	 3.70 	  17.5 	    2440 	      83.4 	 680.0 	11D58M	 1
+14S48	Blok-D              	NPOE	Persei	  6.3 	 3.70 	  17.5 	    2440 	      83.4 	 680.0 	11D58M	 1
+14S48 Orion	Blok-D              	NPOE	Orion	  6.3 	 3.70 	  17.5 	    2440 	      83.4 	 680.0 	11D58M	 1
+Blok DM1	Blok-D              	NPOE	-	  6.3 	 3.70 	  17.5 	    2440 	      83.4 	 680.0 	11D58M	 1
+Blok DM3	Blok-D              	NPOE	-	  6.3 	 3.70 	  17.5 	    2440 	      83.4 	 680.0 	11D58M	 1
+Blok DM4	Blok-D              	NPOE	-	  6.3 	 3.70 	  17.5 	    2440 	      83.4 	 680.0 	11D58M	 1
+Blok DM-SL	Blok-D              	NPOE	-	  5.6 	 3.70 	  17.3 	    2720 	      85.0 	 650.0 	11D58M	 1
+Blok DM-SLB	Blok-D              	NPOE	-	  5.6 	 3.70 	  17.3 	    2720 	      85.0 	 650.0 	11D58M	 1
+Dragon V2	Dragon              	SPX	-	  6.1 	 3.70 	   4.2 	    4200 	     584.0 	   5.0 	Super Draco	 8
+SRM	SRB                 	THKU	-	 45.5 	 3.77 	 590.0 	   88000 	   11790.0 	 123.0 	SRM	 1
+RSRM	SRB                 	THKU	-	 45.5 	 3.77 	 590.0 	   88000 	   11790.0 	 123.0 	SRM	 1
+RSRMV	SRB                 	NGISP	-	 47.4 	 3.77 	 733.0 	   72000 	    9999.0 	 132.8 	RSRMV	 1
+Ares I-X	SRB                 	THKU	-	 50.9 	 3.77 	 590.0 	  110000 	   11790.0 	 123.0 	SRM	 1
+Falcon 9 St 1	Falcon9             	SPX	-	 29.0 	 3.65 	 302.0 	   17726 	    3680.0 	 174.0 	Merlin 1C	 9
+Falcon 9 St 1/1D	Falcon9             	SPX	-	 42.0 	 3.65 	 390.0 	   18000 	    5886.0 	 180.0 	Merlin 1D	 9
+Falcon 9 St 1/1D-FT	Falcon9             	SPX	-	 43.5 	 3.65 	 390.0 	   18000 	    6770.0 	 180.0 	Merlin 1D-FT	 9
+Falcon 9 St 1/1D-5	Falcon9             	SPX	-	 43.5 	 3.65 	 390.0 	   18000 	    6770.0 	 180.0 	Merlin 1D-5	 9
+Falcon 9 St 1/1D-4	Falcon9             	SPX	-	 43.5 	 3.65 	 390.0 	   18000 	    6770.0 	 180.0 	Merlin 1D-4	 9
+Falcon 9-1D	Falcon9             	SPX	-	 33.0 	 3.65 	 302.0 	   18000 	     547.0 	 174.0 	Merlin 1D	 1
+Falcon 9 St 2	Falcon9.St2         	SPX	-	 10.0 	 3.65 	  52.0 	    2957 	     427.0 	 345.0 	Merlin 1C-Vac	 1
+Falcon 9 St 2/1D	Falcon9.St2         	SPX	-	 12.6 	 3.65 	  75.7 	    4900 	     801.0 	 372.0 	Merlin 1D-Vac	 1
+Falcon 9 St 2/1D-4	Falcon9.St2         	SPX	-	 12.6 	 3.65 	  75.7 	    4900 	     801.0 	 372.0 	Merlin 1D-Vac	 1
+Falcon 9 St 2/1D-5	Falcon9.St2         	SPX	-	 12.6 	 3.65 	  75.7 	    4900 	     801.0 	 372.0 	Merlin 1D-Vac	 1
+Angara URM-2	URM-2               	KHRU	-	  5.5 	 3.60 	  39.8 	    4000 	     294.3 	 359.0 	RD-0124A	 1
+KSLV-II Stage 1	KSLV2               	KARI	-	 21.6 	 3.50 	-	-	    2942.0 	 127.0 	KRE-075 SL	 4
+X-15	X-15                	NAA	-	 15.3 	 3.55 	  14.2 	    5150 	     257.0 	 100.0 	XLR-99	 1
+X-15 XLR-11	X-15                	NAA	-	 15.3 	 3.55 	  14.2 	    5150 	      71.0 	 100.0 	XLR-11	 2
+Vega P120C	VegaC               	AVIO	-	 11.7 	 3.40 	 154.6 	   11000 	    4500.0 	 132.8 	P120C	 1
+Ariane 6 ESR	VegaC               	AVIO	-	 11.7 	 3.40 	 154.6 	   11000 	    4500.0 	 132.8 	P120C	 1
+ZQ-2 Stage 1	ZQ-2	LSPHZ	-	 34.0 	 3.35 	 150.0 	   15000 	    2630.0 	-	TQ-12	 4
+ZQ-2 Stage 2	ZQ-2	LSPHZ	-	 12.0 	 3.35 	  50.0 	    5000 	     800.0 	-	TQ-12	 1
+ZQ-2E Stage 1	ZQ-2	LSPHZ	-	 34.0 	 3.35 	 150.0 	   15000 	    2880.0 	-	TQ-12A	 4
+ZQ-2E-1 Stage 1	ZQ-2	LSPHZ	-	 34.0 	 3.35 	 150.0 	   15000 	    2880.0 	-	TQ-12	 4
+ZQ-2E Stage 2	ZQ-2	LSPHZ	-	 12.0 	 3.35 	  50.0 	    5000 	     800.0 	-	TQ-15A	 1
+L180-YF21B	DF5                 	CALT?	L180-YF21B	 23.1 	 3.35 	 180.0 	   10000 	    2961.0 	 130.0 	YF-20B	 4
+L140-YF21	DF5                 	CALT	-	 20.2 	 3.35 	 151.0 	    9000 	    2785.0 	 132.0 	YF-21	 4
+FB-1 Stage 1	DF5                 	SAST	LF140-YF21	 20.2 	 3.35 	 151.0 	    9000 	    2785.0 	 132.0 	YF-21	 4
+DF-5 Stage 1	DF5                 	CALT?	LF140-YF21	 20.2 	 3.35 	 151.0 	    9000 	    2785.0 	 132.0 	YF-21	 4
+CZ-2 Stage 1	DF5                 	CALT	L140-YF21	 20.5 	 3.35 	 153.0 	   10000 	    2961.0 	 122.0 	YF-21	 4
+CZ-2C Stage 1	DF5                 	CALT	L140-YF21	 25.7 	 3.35 	 153.0 	   10000 	    2961.0 	 122.0 	YF-21	 4
+CZ-2Ca Stage 1	DF5                 	CALT	L140-YF21	 27.3 	 3.35 	 182.0 	   10000 	    2961.0 	 122.0 	YF-21	 4
+CZ-3 Stage 1	DF5                 	SAST	L140-YF21	 20.2 	 3.35 	 151.0 	    9000 	    2785.0 	 132.0 	YF-21	 4
+CZ-2E Stage 1	DF5                 	CALT	L180-YF21B	 23.7 	 3.35 	 196.5 	    9500 	    2961.0 	 166.0 	YF-21	 4
+CZ-3A Stage 1	DF5                 	SAST	L180-YF21B	 23.3 	 3.35 	 180.0 	    9500 	    2961.0 	 145.0 	YF-21	 4
+CZ-3BE Stage 1	DF5                 	SAST	L180-YF21B	 24.8 	 3.35 	 186.2 	    9500 	    2961.0 	 145.0 	YF-21	 4
+CZ-4 Stage 1	DF5                 	SAST	L180-YF21B	 24.7 	 3.35 	 192.7 	    9500 	    2961.0 	 170.0 	YF-21	 4
+CZ6-C	DF5                 	SAST	-	 15.0 	 3.35 	  84.0 	    4100 	    1224.0 	-	YF-100	 1
+CZ6A-C	DF5                 	SAST	-	 20.0 	 3.35 	 120.0 	    6000 	    2448.0 	-	YF-100	 2
+CZ-7 Stage 1	DF5                 	CALT	K3-1	 26.0 	 3.35 	 186.0 	   12000 	    2400.0 	 215.0 	YF-100	 2
+CZ-8 Stage 1	DF5                 	CALT	K3-1	 26.0 	 3.35 	 186.0 	   12000 	    2400.0 	 215.0 	YF-100	 2
+CZ-5 Booster	DF5                 	CALT	K3-1	 27.6 	 3.35 	 156.6 	   13800 	    2400.0 	 180.0 	YF-100	 2
+DF-5 Stage 2	CZ.St2              	CALT?	LF35-YF24	  7.5 	 3.35 	  39.0 	    4000 	     742.0 	 110.0 	YF-22	 1
+FB-1 Stage 2	CZ.St2              	SAST	LF35-YF24	  7.5 	 3.35 	  39.0 	    4000 	     742.0 	 110.0 	YF-22 (FB)	 1
+L35-YF24	CZ.St2              	CALT?	L35-YF24	  9.7 	 3.35 	  39.0 	    4000 	     765.8 	 110.0 	YF-22	 1
+CZ-2 Stage 2	CZ.St2              	CALT	LF35-YF24	  7.5 	 3.35 	  39.0 	    4000 	     742.0 	 109.0 	YF-22	 1
+CZ-2C Stage 2	CZ.St2              	CALT	LF35-YF24	  7.5 	 3.35 	  39.0 	    4000 	     742.0 	 109.0 	YF-22	 1
+CZ-2Ca Stage 2	CZ.St2              	CALT	LF55-YF24	 11.3 	 3.35 	  59.0 	    4000 	     742.0 	 109.0 	YF-22	 1
+CZ-3 Stage 2	CZ.St2              	SAST	LF35-YF24	  9.7 	 3.35 	  39.0 	    4000 	     720.0 	 180.0 	YF-22	 1
+L35-YF24B	CZ.St2              	CALT?	L35-YF24B	 11.5 	 3.35 	  34.0 	    4000 	     788.4 	 110.0 	YF-22B	 1
+CZ-3A Stage 2	CZ.St2              	SAST	L35-YF24B	  9.9 	 3.35 	  33.6 	    4000 	     742.0 	 180.0 	YF-22	 1
+CZ-3B Stage 2	CZ.St2              	SAST	L35-YF24B	  9.9 	 3.35 	  44.0 	    4000 	     742.0 	 180.0 	YF-22	 1
+CZ-4 Stage 2	CZ.St2              	SAST	L35-YF24B	 10.4 	 3.35 	  39.6 	    4000 	     742.0 	 127.0 	YF-22B	 1
+CZ-4 Stage 2j	CZ.St2              	SAST	L35-YF24B	 10.4 	 3.35 	  39.6 	    4000 	     742.0 	 127.0 	YF-22B	 1
+CZ-4B Stage 2	CZ.St2              	SAST	L35-YF24B	 10.4 	 3.35 	  39.6 	    4000 	     742.0 	 127.0 	YF-22B'	 1
+CZ-2E Stage 2	CZ.St2              	CALT	L90-YF24B	 15.5 	 3.35 	  91.5 	    5500 	     742.0 	 295.0 	YF-22	 1
+CZ-6A Stage 2	CZ.St2              	SAST	-	 11.5 	 3.35 	  71.0 	    6000 	     176.0 	-	YF-115	 1
+CZ-7 Stage 2	CZ.St2              	CALT	K3-2	 11.5 	 3.35 	  71.0 	    6000 	     720.0 	-	YF-115	 4
+CZ-8A Stage 2	CZ.St2              	CALT	H18-YF75	 12.4 	 3.35 	  21.0 	    2800 	     200.0 	 470.0 	YF-75H	 2
+TL2 Stage 1	TL2	TIANB	-	 25.0 	 3.35 	 100.0 	-	    1860.0 	-	YF-102	 3
+TL2 Stage 2	TL2	TIANB	-	  5.0 	 3.35 	  35.0 	-	     300.0 	-	TH-11	 3
+KSLV-II-1	KSLV2               	KARI	-	 20.0 	 3.30 	 300.0 	   10000 	    2900.0 	-	KRE-075	 4
+Smart Dispenser	SD                  	CALT	-	  1.0 	 3.35 	   0.2 	      20 	      10.8 	  36.0 	FG-47	 1
+Fregat	Fregat              	NPOL	-	  1.5 	 3.35 	   6.5 	    1100 	      19.6 	 877.0 	S5.92	 1
+Fregat-SB	Fregat              	NPOL	-	  2.4 	 3.35 	   8.5 	    1050 	      19.6 	1200.0 	S5.92	 1
+SRMU	SRMU                	ATKP	-	 34.3 	 3.20 	 350.0 	   37000 	    7500.0 	 137.8 	SRMU	 1
+GSOM-S200	GSOM                	SDSC	-	 26.2 	 3.20 	 236.0 	   31000 	    4800.0 	 130.0 	S200	 1
+UA1205	Titan.SRM           	UTC	SRM	 25.9 	 3.11 	 226.2 	   33800 	    6227.2 	 115.0 	UA1205	 1
+UA1206	Titan.SRM           	UTC	SRM	 27.6 	 3.11 	 251.2 	   40800 	    6227.2 	 114.0 	UA1206	 1
+UA1207	Titan.SRM           	UTC	SRM1207	 34.1 	 3.11 	 319.3 	   51200 	    7120.0 	 120.0 	UA1207	 1
+LR87	Titan               	MARTD	-	 16.0 	 3.05 	  76.2 	    4000 	    1470.0 	 138.0 	LR87	 2
+LR87AJ5	Titan               	MARTB	-	 21.5 	 3.05 	 122.0 	    4000 	    2090.0 	 147.0 	LR87AJ5	 2
+LR87AJ9	Titan               	MARTD	-	 23.8 	 3.05 	 116.6 	    5500 	    2353.0 	 147.0 	LR87AJ11	 2
+LR87AJ11	Titan               	MARTD	-	 23.8 	 3.05 	 116.6 	    5500 	    2353.0 	 147.0 	LR87AJ11	 2
+LR87AJ11A	Titan               	MARTD	-	 26.4 	 3.05 	 163.0 	    8000 	    2452.0 	 164.0 	LR87AJ11A	 2
+LR91	Titan.St2           	MARTD	-	  8.0 	 3.05 	  28.9 	    1725 	     356.1 	 225.0 	LR91	 1
+LR91AJ5	Titan.St2           	MARTB	-	  7.3 	 3.05 	  28.9 	    2400 	     440.0 	 182.0 	LR91AJ5	 1
+LR91AJ9	Titan.St2           	MARTD	-	  9.6 	 3.05 	  29.2 	    2650 	     449.2 	 205.0 	LR91AJ9	 1
+LR91AJ11	Titan.St2           	MARTD	-	  9.6 	 3.05 	  29.2 	    2650 	     449.2 	 205.0 	LR91AJ11	 1
+LR91AJ11A	Titan.St2           	MARTD	-	 10.0 	 3.05 	  39.5 	    4500 	     472.2 	 223.0 	LR91AJ11A	 1
+Transtage	Transtage           	MARTD	-	  4.6 	 3.05 	  12.5 	    2000 	      71.1 	 440.0 	AJ10-138	 2
+Atlas A	Atlas               	GDA	-	 21.8 	 3.05 	  82.0 	    7000 	       0.0 	 125.0 	-	 1
+Atlas B	Atlas               	GDA	-	 21.9 	 3.05 	 108.0 	    3850 	     267.0 	 253.6 	MA-1/S	 1
+Atlas C	Atlas               	GDA	-	 21.9 	 3.05 	 108.0 	    3850 	     267.0 	 253.6 	MA-1/S	 1
+Atlas D	Atlas               	GDA	-	 22.0 	 3.05 	 115.0 	    3400 	     253.0 	 281.0 	MA-2/S	 1
+Atlas E	Atlas               	GDA	-	 20.0 	 3.05 	 116.0 	    3500 	     253.0 	 288.0 	MA-2/S	 1
+Atlas F	Atlas               	GDA	-	 20.0 	 3.05 	 116.0 	    3500 	     253.0 	 312.0 	MA-2/S	 1
+Atlas SLV-3	Atlas               	GDA	SLV-3	 21.0 	 3.05 	 118.0 	    3000 	     250.0 	 312.0 	MA-5/S	 1
+Atlas SLV-3A	Atlas               	GDA	-	 24.0 	 3.05 	 142.0 	    3700 	     386.0 	 175.0 	MA-5/S	 1
+Atlas SLV-3C	Atlas               	GDA	-	 21.9 	 3.05 	 128.5 	    4000 	     267.0 	 260.0 	MA-5/S	 1
+Atlas SLV-3D	Atlas               	GDA	-	 21.2 	 3.05 	 128.5 	    4000 	     386.5 	 260.0 	MA-5/S	 1
+Atlas G	Atlas               	GDA	-	 22.2 	 3.05 	 142.5 	    4240 	     386.5 	 266.0 	MA-5/S	 1
+Atlas H	Atlas               	GDA	-	 21.2 	 3.05 	 142.5 	    4240 	     380.6 	 266.0 	MA-5/S	 1
+Atlas I	Atlas               	GDA	-	 22.2 	 3.05 	 142.5 	    4240 	     380.6 	 266.0 	MA-5/S	 1
+Atlas II	Atlas               	GDA	-	 24.9 	 3.05 	 163.5 	   10350 	     380.6 	 274.0 	MA-5/S	 1
+Atlas III	Atlas               	LMA	-	 29.0 	 3.05 	 195.0 	   13725 	    4152.0 	 190.0 	RD-180	 1
+Atlas A Booster	Atlas.Booster       	GDA	-	  4.5 	 3.05 	   3.5 	    3500 	    1335.0 	 128.0 	MA-1/B-A	 1
+Atlas B Booster	Atlas.Booster       	GDA	-	  4.5 	 3.05 	   3.5 	    3500 	    1335.0 	 128.0 	MA-1/B	 1
+Atlas C Booster	Atlas.Booster       	GDA	-	  4.5 	 3.05 	   3.5 	    3500 	    1335.0 	 128.0 	MA-1/B	 1
+Atlas D Booster	Atlas.Booster       	GDA	-	  4.5 	 3.05 	   3.4 	    3400 	    1375.0 	 135.0 	MA-2/B	 1
+Atlas E/F Booster	Atlas.Booster       	GDA	-	  4.5 	 3.05 	   3.2 	    3200 	    1468.0 	 131.0 	MA-3/B	 1
+SLV-3 Booster	Atlas.Booster       	GDA	-	  4.5 	 3.05 	   3.2 	    3200 	    1495.0 	 140.0 	MA-5/B	 1
+SLV-3D Booster	Atlas.Booster       	GDA	-	  4.5 	 3.05 	   3.2 	    3200 	    1557.0 	 140.0 	MA-5/B	 1
+SLV-3C Booster	Atlas.Booster       	GDA	-	  4.5 	 3.05 	   3.2 	    3200 	    1646.0 	 140.0 	MA-5/B	 1
+Atlas G Booster	Atlas.Booster       	LMA	-	  4.5 	 3.05 	   3.2 	    3200 	    1682.0 	 140.0 	MA-5/B	 1
+Atlas MA-5 Booster	Atlas.Booster       	GDA	-	  4.5 	 3.05 	   3.2 	    3200 	    1870.0 	 140.0 	MA-5/B	 1
+Atlas II Booster	Atlas.Booster       	LMA	-	  4.5 	 3.05 	   3.2 	    3200 	    1909.0 	 140.0 	MA-5A/B	 1
+Atlas Booster	Atlas.Booster       	GDA	-	  4.5 	 3.05 	   3.2 	    3200 	    2065.0 	 165.0 	MA-5A/B	 1
+Blue Streak	BlueStreak          	DEHAVS	-	 17.7 	 3.05 	  95.0 	    6800 	    1512.0 	 161.0 	RZ.2	 2
+Saturn S-V	Centaur             	GDA	S-V	  6.0 	 3.05 	  15.6 	    2000 	       0.0 	   0.0 	RL10	 2
+Centaur	Centaur             	GDA	Centaur	  9.1 	 3.05 	  15.6 	    2000 	     134.0 	 430.0 	RL10A-1	 2
+Centaur D	Centaur             	GDA	Centaur	  9.1 	 3.05 	  15.6 	    2000 	     134.0 	 430.0 	RL10A-1	 2
+Centaur D-1A	Centaur             	GDA	Centaur D1AR	  9.6 	 3.05 	  16.3 	    2630 	     134.0 	 430.0 	RL10A-3	 2
+Centaur D-1T	Centaur             	GDA	-	  9.6 	 3.05 	  16.3 	    2630 	     134.0 	 470.0 	RL10A-3	 2
+Centaur I	Centaur             	GDA	Centaur	  9.2 	 3.05 	  15.0 	    1700 	     147.0 	 402.0 	RL10A-3A	 2
+Centaur II	Centaur             	GDA	Centaur	 10.1 	 3.05 	  18.8 	    2053 	     147.0 	 488.0 	RL10A-3A	 2
+Centaur IIA	Centaur             	GDA	Centaur	 10.1 	 3.05 	  19.0 	    2200 	     198.4 	 370.0 	RL10A-4-1	 2
+Centaur IIIA	Centaur             	LMA	Centaur	 10.1 	 3.05 	  18.6 	    1720 	      99.2 	 740.0 	RL10A-4-2	 1
+Centaur IIIB/SEC	Centaur             	LMA	Centaur	 11.7 	 3.05 	  22.9 	    2130 	      99.2 	 740.0 	RL10A-4-2	 1
+Centaur IIIB/C-1	Centaur             	LMA	Centaur	 11.7 	 3.05 	  22.9 	    2130 	     101.8 	 740.0 	RL10C-1	 1
+Centaur IIIB/C-1-1	Centaur             	LMA	Centaur	 11.7 	 3.05 	  22.9 	    2130 	     101.8 	 740.0 	RL10C-1-1	 1
+Centaur IIIB/DEC	Centaur             	LMA	Centaur	 11.7 	 3.05 	  22.9 	    2130 	     198.4 	 740.0 	RL10A-4-1B	 2
+Centaur IIIB/DEC2	Centaur             	LMA	Centaur	 11.7 	 3.05 	  22.9 	    2130 	     198.4 	 740.0 	RL10A-4-2	 2
+Ariane EAP P238	Vega                	EADSL	-	 31.6 	 3.01 	 277.6 	   39800 	    6719.0 	 129.0 	EAP MPS P238	 1
+Ariane EAP P240	Vega                	EADSL	-	 31.6 	 3.01 	 280.0 	   40000 	    6719.0 	 130.0 	EAP MPS P240	 1
+Vega P80FW	Vega                	AVIO	-	 11.2 	 3.01 	  97.1 	    8790 	    2100.0 	 106.8 	P80FW	 1
+YGCS	YGCS	CALT	-	 10.0 	 3.00 	  50.0 	-	-	-	YF-115	 1
+New Shepard PM	NewShepard          	BLOR	-	 12.0 	 3.00 	  75.0 	   10000 	    1020.0 	 145.0 	BE-3 (BLOR)	 4
+Sarmat St1	Sarmat	MAK	-	 22.0 	 3.00 	 180.0 	-	-	-	RD-273	 3
+Sarmat St2	Sarmat	MAK	-	  6.0 	 3.00 	  25.0 	-	-	-	Sarmat St2 Eng	 1
+8S671	R-36                	YUZH	R-36 St1	 18.8 	 3.00 	 122.0 	    6400 	    2648.0 	 120.0 	RD-250	 3
+8S691	R-36                	YUZH	R-36O St1	 18.8 	 3.00 	 122.0 	    6400 	    2648.0 	 120.0 	RD-250	 3
+11S691	R-36                	YUZH	-	 18.8 	 3.00 	 127.0 	    8300 	    3032.0 	 120.0 	RD-250	 3
+15A14A	R-36                	YUZH	R-36M St 1	 22.3 	 3.00 	 210.0 	   15000 	    4522.0 	 130.0 	RD-263	 4
+15A18A	R-36                	YUZH	R-36M St 1	 22.3 	 3.00 	 210.8 	   15000 	    4525.0 	  98.0 	RD-273	 3
+8S672	R-36.St2            	OKB586	R-36 St2	  9.4 	 3.00 	  49.0 	    3700 	     902.0 	 160.0 	RD-252	 1
+8S692	R-36.St2            	OKB586	R-36O St2	  9.4 	 3.00 	  49.0 	    3700 	     902.0 	 160.0 	RD-252	 1
+11S692	R-36.St2            	OKB586	-	 10.1 	 3.00 	  53.3 	    4800 	    1010.0 	 160.0 	RD-252	 1
+15A14B	R-36.St2            	YUZH	R-36M St 2	  6.0 	 3.00 	  49.0 	    3000 	     760.0 	 153.0 	RD-0228	 1
+15A18B	R-36.St2            	YUZH	R-36M St 2	  5.7 	 3.00 	  49.3 	    3000 	     760.0 	 153.0 	RD-0255	 1
+15A18-BR	BR                  	YUZH	R-36M St 3	  1.0 	 3.00 	   8.2 	     900 	      18.6 	 600.0 	RD 15A18-BR	 1
+8S641	R-16                	OKB586	R-16A	 16.0 	 3.00 	 110.0 	   10000 	    2610.0 	  90.0 	RD-217	 3
+CZ-7A Stage 3	CZ3.St3             	CALT	-	 12.4 	 3.00 	  21.0 	    2800 	     160.0 	 615.0 	YF-75	 2
+CZ-3A Stage 3	CZ3.St3             	CALT	H18-YF75	 12.4 	 3.00 	  21.0 	    2800 	     157.0 	 470.0 	YF-75	 2
+CZ-8 Stage 2	CZ3.St3             	CALT	H18-YF75	 12.4 	 3.00 	  21.0 	    2800 	     157.0 	 470.0 	YF-75	 2
+YZ-1	YZ-1                	CALT	YZ-1	  5.0 	 3.00 	   0.0 	       0 	       0.0 	   0.0 	YF-50D	 2
+YZ-1A	YZ-1                	CALT	YZ-1	  5.0 	 3.00 	   0.0 	       0 	       0.0 	   0.0 	YF-50D	 2
+YZ-1S	YZ-1                	CALT	YZ-1	  5.0 	 3.00 	   0.0 	       0 	       0.0 	   0.0 	YF-50D	 2
+YZ-2	YZ-1                	CALT	YZ-2	  5.0 	 3.00 	   0.0 	       0 	       0.0 	   0.0 	YF-50D	 2
+YZ-3	YZ-1                	SAST	YZ-3	  5.0 	 3.00 	   0.0 	       0 	       0.0 	   0.0 	YF-50D	 2
+8K71A	Blok-A              	OKB1	-	 28.0 	 2.95 	  93.5 	    7495 	     941.0 	 330.0 	8D75PS	 1
+8K74A	Blok-A              	OKB1	-	 28.0 	 2.95 	 100.0 	    7000 	     950.0 	 330.0 	8D75	 1
+11S59A	Blok-A              	OKB1	Blok A	 28.0 	 2.95 	 105.4 	    6875 	     997.1 	 286.0 	RD-108	 1
+14S53A	Blok-A              	OKB1	Blok A	 28.0 	 2.95 	 105.4 	    6875 	    1009.4 	 286.0 	RD-108A	 1
+11S59A-S	Blok-A              	OKB1	Blok A	 28.0 	 2.95 	 105.4 	    6875 	    1009.4 	 286.0 	RD-108PF	 1
+374BL01A-A	Blok-A              	OKB1	Blok A	 28.0 	 2.95 	 105.4 	    6875 	    1009.4 	 286.0 	RD-108A	 1
+374BL01B-A	Blok-A              	OKB1	Blok A	 28.0 	 2.95 	 105.4 	    6875 	    1009.4 	 286.0 	RD-108A	 1
+Soyuz-2-1V 132KS	Blok-A              	PROG	-	 26.9 	 2.95 	 129.0 	    9300 	    1754.0 	 292.1 	NK-33A	 1
+IUS SRM-2	Orbus6              	UTC	Orbus 6E	  2.1 	 2.90 	   3.9 	    1005 	      76.5 	 104.0 	Orbus 6E	 1
+CZ-4 Stage 3	L14                 	SAST	L14-YF40	  1.9 	 2.90 	  15.2 	    1000 	      98.1 	 303.0 	YF-40	 1
+CZ-4B Stage 3	L14                 	SAST	L14-YF40	  1.9 	 2.90 	  15.2 	    1000 	      98.1 	 303.0 	YF-40	 1
+CZ-4C Stage 3	L14                 	SAST	L14-YF40	  1.9 	 2.90 	  15.2 	    1000 	      98.1 	 303.0 	YF-40A	 1
+Angara URM	Angara              	KHRU	-	 25.7 	 2.90 	 142.4 	    9800 	    2086.0 	 337.5 	RD-191	 1
+Angara URM-1	Angara              	KHRU	-	 27.7 	 2.90 	 142.4 	    9800 	    2086.0 	 337.5 	RD-191	 1
+Angara-1.2 Stage 2	Angara              	KHRU	-	  1.0 	 2.90 	  30.0 	    4000 	     294.3 	 359.0 	RD-0124A	 1
+Angara AM	Angara.AM            	KHRU	-	  1.0 	 2.90 	-	       0 	       1.6 	-	11D458	 4
+Naro Stage 1	Angara              	KHRU	-	 25.7 	 2.90 	 142.4 	    9800 	    1670.0 	 337.5 	RD-151	 1
+GS1-S125	PSLV                	VSSC	-	 20.3 	 2.80 	 156.0 	   27000 	    4700.0 	 100.0 	S125	 1
+GS1-S139	PSLV                	VSSC	PS-1	 20.0 	 2.80 	 177.0 	   30000 	    4910.0 	 105.0 	S139	 1
+S139	PSLV                	VSSC	PS-1	 20.0 	 2.80 	 177.0 	   30000 	    4910.0 	 105.0 	S139	 1
+S125	PSLV                	VSSC	PS-1	 20.0 	 2.80 	 168.0 	   30000 	    4430.0 	 105.0 	S125	 1
+GS2-HTVE	ISRO-L40	VSSC	-	 11.6 	 2.80 	  44.3 	    4800 	     846.8 	 136.0 	HTVE	 1
+GS2	ISRO-L40	VSSC	-	 11.6 	 2.80 	  42.8 	    4800 	     799.0 	 136.0 	Vikas	 1
+PS2	ISRO-L40	VSSC	PS-2	 12.5 	 2.80 	  45.8 	    5300 	     724.0 	 158.0 	Vikas	 1
+GSOM	ISRO-L40	VSSC	L40	 19.7 	 2.10 	  46.0 	    6000 	     680.0 	 160.0 	Vikas	 1
+ISRO TV	ISRO-L40	VSSC	L40	 19.7 	 2.10 	  46.0 	    6000 	     680.0 	 160.0 	Vikas	 1
+CUS12	GS3                 	VSSC	-	  8.7 	 2.80 	  15.0 	    2200 	      73.6 	 720.0 	ICE	 1
+CUS15	GS3                 	VSSC	-	  8.7 	 2.80 	  14.6 	    2200 	      73.6 	 720.0 	ICE	 1
+15KRB	GS3                 	VSSC	-	  8.7 	 2.80 	  14.6 	    2200 	      73.6 	 720.0 	KVD-1M	 1
+12KRB	GS3                 	KHRU	C12	  8.7 	 2.80 	  15.0 	    2500 	      73.5 	 720.0 	KVD-1M	 1
+Ikar	Ikar                	PROG	-	  2.6 	 2.72 	   3.1 	    2344 	      29.4 	 600.0 	17D61	 1
+Volga	Ikar                	PROG	-	  1.0 	 2.70 	   1.8 	     900 	       2.9 	 882.0 	Volga	 1
+8K75A	R-9                 	OKB1	-	 14.6 	 2.70 	  61.6 	    4000 	    1600.0 	 108.0 	RD-111	 1
+8K75B	8K75B               	OKB1	-	  7.0 	 2.70 	  15.9 	    2500 	     300.0 	 140.0 	RD-0106	 1
+8K71	R-7                 	OKB1	-	 19.0 	 2.70 	  10.8 	     850 	     250.0 	 120.0 	8D74PS	 1
+8K74	R-7                 	OKB1	-	 19.0 	 2.70 	  10.8 	     850 	     250.0 	 120.0 	8D74	 1
+11S59	R-7                 	OKB1	Blok BVGD	 19.8 	 2.68 	  44.5 	    3915 	     992.0 	 120.0 	RD-107	 1
+14S53	R-7                 	OKB1	Blok BVGD	 19.8 	 2.68 	  44.5 	    3915 	     992.0 	 120.0 	RD-107A	 1
+374BL01A	R-7                 	OKB1	Blok BVGD	 19.8 	 2.68 	  44.5 	    3915 	     992.0 	 120.0 	RD-107A	 1
+374BL01B	R-7                 	OKB1	Blok BVGD	 19.8 	 2.68 	  44.5 	    3915 	     992.0 	 120.0 	RD-107A	 1
+Jupiter	Jupiter             	CHRY/ABMA	-	 14.6 	 2.67 	  54.4 	    5400 	     660.0 	 180.0 	S-3D	 1
+8K78I	Blok-I              	OKB1	-	  9.4 	 2.66 	  25.5 	    2350 	     298.0 	 240.0 	RD-0107	 1
+11A57I	Blok-I              	OKB1	Blok I	  6.7 	 2.66 	  23.7 	    2350 	     298.0 	 240.0 	RD-0110	 1
+14S54/RD-0110	Blok-I              	OKB1	-	  6.7 	 2.66 	  25.2 	    2410 	     298.0 	 240.0 	RD-0110	 1
+14S54	Blok-I              	OKB1	-	  6.7 	 2.66 	  26.0 	    2800 	     294.0 	 359.0 	RD-0124	 1
+14S54 (N)	Blok-I              	OKB1	-	  6.7 	 2.66 	  26.0 	    2800 	     294.0 	 359.0 	RD-0124N	 1
+374BL02A	Blok-I              	OKB1	-	  6.7 	 2.66 	  25.2 	    2410 	     298.0 	 240.0 	RD-0110	 1
+374BL02B	Blok-I              	OKB1	-	  6.7 	 2.66 	  26.0 	    2800 	     294.0 	 359.0 	RD-0124	 1
+11S510	Blok-I              	OKB1	-	  6.7 	 2.66 	  25.2 	    2410 	     298.0 	 240.0 	RD-0110	 1
+11S510 (F)	Blok-I              	OKB1	-	  7.6 	 2.66 	  25.2 	    2410 	     298.0 	 240.0 	RD-0110	 1
+ZK-1A Stage 1	ZK-1	ARMT	-	 16.0 	 2.65 	  35.0 	-	    2067.0 	-	ZK-1A-1	 1
+ZK-1A Stage 2	ZK-1	ARMT	-	 12.0 	 2.65 	  35.0 	-	    1081.0 	-	ZK-1A-2	 1
+YL-1 Stage 0	ZK-1	ARMT	-	 12.0 	 2.65 	  50.0 	-	    1500.0 	-	YL-1-0	 1
+YL-1 Stage 1	ZK-1	ARMT	-	 12.0 	 2.65 	  50.0 	-	    2550.0 	-	YL-1-1	 1
+YL-1 Stage 2	ZK-1	ARMT	-	 10.0 	 2.65 	  50.0 	-	    1000.0 	-	YL-1-2	 1
+Abid St1	Abid                	IQ	-	  8.0 	 2.64 	  25.0 	    3000 	    1500.0 	  90.0 	Abid	 5
+Hwasong-17 Stage 1	Hwasong-15          	KPA	-	 18.0 	 2.60 	  80.0 	-	       0.0 	3200.0 	HS-17	 4
+Hwasong-17 Stage 2	Hwasong-15          	KPA	-	  5.0 	 2.60 	   3.0 	-	-	 800.0 	HS-17	 1
+Ariane L33	Ariane.St2          	DASA/ERNO	L33	 11.6 	 2.60 	  38.9 	    3500 	     785.0 	 126.0 	Viking IVB	 1
+Ariane H8	Ariane.St3          	AELM	H8	 10.2 	 2.60 	   9.7 	    1450 	      61.6 	 563.0 	HM-7	 1
+Ariane H10	Ariane.St3          	AELM	H10	 11.8 	 2.60 	  12.5 	    1740 	      62.7 	 720.0 	HM-7B	 1
+Ariane H10+	Ariane.St3          	AELM	H10+	 11.8 	 2.60 	  12.8 	    1740 	      62.7 	 750.0 	HM-7B	 1
+Ariane H10-3	Ariane.St3          	AELM	H10-3	 12.1 	 2.60 	  13.5 	    1780 	      62.7 	 780.0 	HM-7B	 1
+KSLV-II Stage 2	KSLV2-2             	KARI	-	 15.0 	 2.60 	  50.0 	    1000 	     788.0 	 148.0 	KRE-075 V	 1
+KSLV-II Stage 3	KSLV2-2             	KARI	-	  3.5 	 2.60 	-	     100 	      68.7 	 498.0 	KRE-007 V	 1
+M-35	M-35                	NISST	-	  4.0 	 2.60 	  17.2 	    2200 	     445.0 	 129.0 	M-35	 1
+8K72EL	Blok-E              	OKB1	-	  2.5 	 2.58 	   8.1 	    1110 	      49.4 	 450.0 	RO-5	 1
+8K72E	Blok-E              	OKB1	-	  3.6 	 2.58 	   8.0 	    1440 	      49.4 	 450.0 	RO-5	 1
+8K72KE	Blok-E              	OKB1	-	  3.6 	 2.58 	   8.0 	    1440 	      54.5 	 430.0 	RO-7	 1
+8A92E	Blok-E              	OKB1	-	  3.6 	 2.58 	   8.0 	    1440 	      54.5 	 430.0 	RO-7	 1
+8A92ME	Blok-E              	OKB1	-	  3.6 	 2.58 	   8.0 	    1440 	      54.5 	 430.0 	RO-7	 1
+A-350 Booster	A-350               	SKB30	-	  8.0 	 2.57 	  15.0 	    1000 	-	   5.0 	A-350 Booster	 1
+A-350	A-350               	SKB30	-	 10.0 	 2.57 	  15.0 	    1000 	-	  40.0 	A-350 Sustainer	 1
+A-350Zh Booster	A-350               	SKB30	-	  7.9 	 2.57 	  15.0 	    1000 	-	   5.0 	5S47	 1
+A-350Zh	A-350               	SKB30	-	 15.0 	 2.57 	  15.0 	    1000 	-	  40.0 	5D22	 1
+A-925	A-350               	FAKEL	-	  7.0 	 2.57 	  15.0 	    1000 	-	  40.0 	51T6B ZhRD	 1
+A-925 Booster	A-350               	FAKEL	-	  8.0 	 2.57 	  15.0 	    1000 	-	   5.0 	51T6 Motor	 1
+Nudol'	A-350               	ALMAN	-	  7.0 	 2.60 	  15.0 	-	-	-	Nudol' St 2	 1
+Nudol' Booster	A-350               	ALMAN	-	  8.0 	 2.60 	  15.0 	-	-	-	Nudol' St 1	 1
+M-14	MV                  	NISST	-	 14.1 	 2.51 	  87.0 	   12070 	    3780.0 	  49.0 	M-14	 1
+M-24	M-24                	NISST	-	  6.6 	 2.51 	  38.0 	    3410 	    1240.0 	  71.0 	M-24	 1
+M-25	M-24                	NISST	-	  6.6 	 2.51 	  38.0 	    3410 	    1240.0 	  71.0 	M-25	 1
+Briz-KM	Briz                	KHRU	-	  2.5 	 2.50 	   6.7 	    1700 	      19.6 	1000.0 	S5.98M	 1
+UR-100NA	UR-100N             	KHRU	-	 17.2 	 2.50 	  88.0 	    5000 	    2070.0 	 121.0 	RD-0233	 4
+UR-100NB	UR-100N.St2         	KHRU	-	  3.9 	 2.50 	  15.0 	    2000 	     240.0 	 183.0 	RD-0235	 1
+ASR SRB-A	H2.SRB              	NISST	-	 11.7 	 2.60 	  76.5 	    8700 	    2271.0 	 116.0 	H-II SRB-A3	 1
+H-II SRB-A	H2.SRB              	NISST	-	 15.2 	 2.50 	  75.0 	   10000 	    2250.0 	 100.0 	H-II SRB-A	 1
+H-II SRB-A3	H2.SRB              	NISST	-	 15.1 	 2.50 	  76.5 	   10500 	    2305.0 	 120.0 	H-II SRB-A3	 1
+H3 SRB-3	H2.SRB              	NISST	-	 14.6 	 2.50 	  76.2 	    9000 	    2158.0 	 110.0 	H3 SRB-3	 1
+TL2 Stage 3	TL2-3	TIANB	-	  2.0 	 2.50 	   0.9 	-	       3.0 	-	TH-31	 3
+Thor DM-18	Thor                	DAC	-	 18.2 	 2.44 	  48.8 	    3125 	     667.0 	 160.0 	MB-3	 1
+Thor DM-18A	Thor                	DAC	-	 18.6 	 2.44 	  48.8 	    3125 	     667.0 	 160.0 	MB-3	 1
+Thor DM-18C	Thor                	DAC	-	 18.6 	 2.44 	  48.8 	    3125 	     734.0 	 170.0 	MB-3-2	 1
+Thor DM-21	Thor                	DAC	-	 17.1 	 2.44 	  47.8 	    3125 	     779.0 	 170.0 	MB-3-2	 1
+Thor DSV-2A	Thor                	DACHB	-	 17.1 	 2.44 	  47.8 	    3125 	     779.0 	 170.0 	MB-3-2	 1
+Thor DSV-2C	Thor                	DACHB	TA Thor DSV-2C	 17.1 	 2.44 	  48.0 	    3175 	     760.0 	 170.0 	MB-3-2	 1
+LT Thor DSV-2L-1A	Thor                	DACHB	LT Thor DSV-2L	 21.0 	 2.44 	  70.3 	    3715 	     860.0 	 215.0 	MB-3-3	 1
+LT Thor DSV-2L-1B	Thor                	DACHB	LT Thor DSV-2L	 20.3 	 2.44 	  70.3 	    3715 	     860.0 	 215.0 	MB-3-3	 1
+LT Thor DSV-2L-1C	Thor                	DACHB	LT Thor DSV-2L	 20.3 	 2.44 	  70.3 	    3715 	     860.0 	 215.0 	MB-3-3	 1
+LT Thor N	Thor                	DACHB	-	 20.3 	 2.44 	  70.3 	    3715 	     860.0 	 215.0 	MB-3-3	 1
+ELT Thor N	Thor                	DACHB	-	 22.4 	 2.44 	  85.8 	    4400 	     860.0 	 270.0 	MB-3-3	 1
+ELT Thor DSV-2L	Thor                	DACHB	-	 22.4 	 2.44 	  84.1 	    4059 	     860.0 	 222.0 	MB-3-3	 1
+ELT Thor DSV-2L-1D	Thor                	DACHB	-	 22.4 	 2.44 	  84.1 	    4059 	     860.0 	 222.0 	MB-3-3	 1
+ELT Thor DSV-2L-1E	Thor                	DACHB	-	 22.4 	 2.44 	  84.1 	    4059 	     860.0 	 222.0 	MB-3-3	 1
+ELT Thor DSV-2W-1	Thor                	DACHB	-	 22.8 	 2.44 	  84.4 	    4360 	     912.0 	 223.0 	RS-27	 1
+ELT Thor DSV-2W	Thor                	DACHB	ELT Thor 3900	 22.4 	 2.44 	  84.4 	    4360 	    1030.0 	 223.0 	RS-27	 1
+EELT Thor	Thor                	DACHB	-	 26.1 	 2.44 	 101.8 	    5680 	    1085.8 	 261.0 	RS-27A	 1
+Delta III Stage 1	Thor                	BOHB	-	 20.0 	 2.44 	 102.4 	    6820 	    1085.8 	 261.0 	RS-27A	 1
+LE-5	LE-5                	MHITO	-	  9.3 	 2.44 	  10.6 	    1800 	     103.0 	 370.0 	LE-5	 1
+UR-100NU APB	UR-100NU.St3        	KHRU	-	  0.5 	 2.40 	-	-	       4.9 	 150.0 	RD-0237	 1
+Strela APB	UR-100NU.St3        	KHRU	-	  1.3 	 2.40 	-	-	       4.9 	 150.0 	RD-0237	 1
+R-39 St 1	R-39                	YUZH/PAVKH	-	  9.7 	 2.40 	  53.7 	-	    2060.0 	-	3D65	 1
+R-39 St 2	R-39.St2            	MAK	-	  5.0 	 2.40 	  25.0 	-	-	-	R-39 St 2	 1
+R-39 St 3	R-39.St3            	MAK	-	  4.0 	 2.40 	  10.0 	-	-	-	R-39 St 3	 1
+3M91 St 1	R-39                	YUZH/PAVKH	-	  9.7 	 2.40 	  30.0 	-	    2060.0 	-	3D65	 1
+3M91 St 2	R-39.St2            	MAK	-	  5.0 	 2.40 	  15.0 	-	-	-	R-39 St 2	 1
+3M91 St 3	R-39.St3            	MAK	-	  4.0 	 2.40 	   5.0 	-	-	-	R-39 St 3	 1
+15Zh44 St 1	R-39                	PAVKH	-	  9.7 	 2.40 	  53.7 	-	    2060.0 	-	15D206	 1
+15Zh44 St 2	RT-23.St2           	PAVKH	-	  4.8 	 2.40 	  25.0 	-	    1050.0 	-	15D207	 1
+15Zh52 St 1	R-39                	PAVKH	-	  9.7 	 2.40 	  53.7 	-	    2060.0 	-	15D206	 1
+15Zh52 St 2	RT-23.St2           	PAVKH	-	  4.8 	 2.40 	  25.0 	-	    1050.0 	-	15D207	 1
+15Zh60 St 1	R-39                	PAVKH	-	  9.7 	 2.40 	  53.7 	-	    2060.0 	-	15D305	 1
+15Zh60 St 2	RT-23.St2           	PAVKH	-	  4.8 	 2.40 	  25.0 	-	    1050.0 	-	15D339	 1
+15Zh61 St 1	R-39                	PAVKH	-	  9.7 	 2.40 	  53.7 	-	    2060.0 	-	15D206	 1
+15Zh61 St 2	RT-23.St2           	PAVKH	-	  4.8 	 2.40 	  25.0 	-	    1050.0 	-	15D290	 1
+RT-23 St 3	RT-23.St3           	ISKRP	-	  3.6 	 2.40 	  15.0 	-	     206.0 	-	RT-23-3	 1
+Hwasong-15 Stage 1	Hwasong-15          	KPA	-	 15.0 	 2.40 	  50.0 	-	-	 800.0 	HS-15	 1
+Hwasong-15 Stage 2	Hwasong-15          	KPA	-	  2.1 	 2.40 	   3.0 	-	-	 224.0 	HS-15-2	 1
+Cheonlima-1 Stage 1	Hwasong-15          	NADA	-	  7.0 	 2.40 	  50.0 	-	-	-	CL1-1	 1
+NK Kerolox Stage 1	Hwasong-15          	NADA	-	  7.0 	 2.40 	  50.0 	-	-	-	NK Kero	 1
+HS-18 St1	Hwasong-18         	KPA	-	 11.3 	 2.40 	  25.0 	-	-	-	HS-18-S1	 1
+HS-19 St1	Hwasong-18         	KPA	-	 11.3 	 2.40 	  25.0 	-	-	-	HS-18-S1	 1
+Taepo Dong 2	Unha                	KPA	-	 14.0 	 2.40 	  60.0 	    5000 	    1200.0 	 120.0 	TD-2	 4
+Simorgh Stage 1	Unha                	IR	-	 17.8 	 2.40 	  60.0 	-	    1400.0 	-	-	 1
+S3	Kosmos-3.St2        	YUZH	-	  6.0 	 2.40 	  20.1 	    1500 	     157.0 	 335.0 	11D49	 1
+S3M	Kosmos-3.St2        	POL	-	  6.0 	 2.40 	  20.1 	    1435 	     157.0 	 335.0 	11D49	 1
+R-14	R-14                	YUZH	-	 22.4 	 2.40 	  87.2 	    5300 	    1745.0 	 130.0 	RD-216	 1
+R-14 65S3A	R-14                	YUZH	-	 22.4 	 2.40 	  87.2 	    5300 	    1745.0 	 130.0 	RD-216	 1
+R-14 11K65A	R-14                	YUZH	-	 22.4 	 2.40 	  87.2 	    5300 	    1745.0 	 130.0 	RD-216	 1
+R-14 11K65MA	R-14                	POL	-	 22.4 	 2.40 	  87.2 	    5300 	    1745.0 	 130.0 	RD-216	 1
+8S642	R-16.St2            	OKB586	R-16B	 13.0 	 2.40 	  27.0 	    3000 	     882.0 	 125.0 	RD-219	 1
+Blok-L	Blok-L              	OKB1	-	  3.2 	 2.40 	   7.3 	    1160 	      66.7 	 250.0 	S1.5400	 1
+Blok-ML	Blok-L              	NPOL	-	  3.2 	 2.40 	   6.2 	     999 	      66.7 	 250.0 	S1.5400	 1
+Blok SO-L	Blok-L              	NPOL	-	  3.2 	 2.40 	   6.2 	     999 	      66.7 	 250.0 	S1.5400	 1
+Blok-2BL	Blok-L              	NPOL	-	  3.2 	 2.40 	   5.8 	     902 	      66.7 	 250.0 	S1.5400	 1
+Blok-VL	Blok-L              	NPOL	-	  3.2 	 2.40 	   5.8 	     902 	      66.7 	 250.0 	S1.5400	 1
+Blok-MVL	Blok-L              	NPOL	-	  3.2 	 2.40 	   5.8 	     902 	      66.7 	 250.0 	S1.5400	 1
+SR119	MX.St2              	AJSP	SR119	  5.3 	 2.35 	  27.7 	    3175 	    1223.0 	  54.0 	SR119	 1
+SR120	MX.St3              	HERC	SR120	  2.3 	 2.35 	   7.8 	     635 	     289.0 	  60.7 	SR120	 1
+GCA/Orion 38	Pegasus.St3         	ATKH	-	  2.1 	 2.35 	   1.2 	     500 	      36.0 	  69.6 	Orion 38	 1
+Castor 30	MX                  	ATK	-	  3.5 	 2.35 	  14.0 	    1220 	     260.0 	 136.0 	Castor 30	 1
+Castor 30B	MX                  	ATK	-	  4.2 	 2.35 	  14.0 	    1083 	     293.4 	 128.0 	Castor 30B	 1
+Castor 30XL	MX                  	ATK	-	  6.0 	 2.35 	  26.3 	    1220 	     260.0 	 166.0 	Castor 30XL	 1
+Peacekeeper PBPS	MX.St4              	RDYNE	-	  1.1 	 2.35 	   1.3 	     550 	      11.8 	 168.0 	RS-34	 1
+TU-903	MX                  	THKU	-	  8.4 	 2.35 	  49.0 	    4300 	    2204.0 	  56.0 	TU-903	 1
+SR118	MX                  	THKU	TU904	  8.4 	 2.35 	  53.4 	    4400 	    2225.0 	  78.8 	SR118	 1
+Terran 1 St 1	Terran1	RELSP	-	 24.3 	 2.30 	  55.0 	    6000 	     920.0 	 180.0 	Aeon 1	 9
+Terran 1 St 2	Terran1	RELSP	-	  8.1 	 2.30 	  20.0 	    2000 	     126.0 	 239.0 	AeonVac	 1
+Castor 120	MX                  	THKU	-	 10.7 	 2.30 	  53.1 	    4450 	    1604.0 	  83.4 	Castor 120	 1
+IUS SRM-1	Orbus21             	UTC	Orbus 21	  3.5 	 2.30 	  10.9 	    1115 	     186.0 	 153.0 	Orbus 21D	 1
+Orbus 21D	Orbus21             	UTC	ESBM	  3.0 	 2.30 	  10.8 	    1030 	     187.0 	 150.0 	Orbus 21D	 1
+OAM	OAM                 	PRIMX	-	  1.0 	 2.30 	   0.7 	     360 	       0.9 	 550.0 	MR-107	 4
+MSBS 501	M51                 	AELM	-	  6.5 	 2.30 	  30.0 	    2500 	     900.0 	  60.0 	MSBS 501	 1
+MSBS 502	M51                 	AELM	-	  2.3 	 2.30 	  10.0 	     800 	     300.0 	  70.0 	MSBS 502	 1
+MSBS 503	M51                 	AELM	-	  1.3 	 2.30 	   5.0 	     100 	     100.0 	  40.0 	MSBS 503	 1
+MR-UR-100 St 1	MR-UR-100           	YUZH	-	 14.3 	 2.25 	  59.0 	    5000 	    1236.0 	-	RD-268	 1
+Perimetr Stage 1	MR-UR-100           	YUZH	-	 14.9 	 2.25 	  59.0 	    5000 	    1236.0 	-	RD-268	 1
+CZ-3 Stage 3	CZ3.St3             	CALT	H8-YF73	  7.5 	 2.25 	  10.5 	    2000 	      44.1 	 800.0 	YF-73	 1
+CZ Booster	CZ.LB               	CALT?	LB40-YF25	 15.3 	 2.25 	  37.7 	    3200 	     740.4 	 128.0 	YF-25	 1
+CZ-3BE Booster	CZ.LB               	CALT?	LB41-YF25	 16.1 	 2.25 	  41.0 	    3200 	     740.4 	 128.0 	YF-25	 1
+CZ-K2-1	CZ.LB               	CALT	-	 26.5 	 2.25 	  81.5 	    6000 	    1200.0 	 185.0 	YF-100	 1
+DF3-YF2A	DF3                 	CALT	-	 18.0 	 2.25 	  64.1 	    4100 	    1224.0 	 130.0 	YF-2A	 4
+DF4-YF3	CZ1.St2             	CALT	-	  5.4 	 2.25 	  15.0 	    2700 	     306.0 	 110.0 	YF-3	 1
+CZ-K2-2	CZ1.St2             	CALT	-	  8.0 	 2.25 	  15.0 	    3000 	-	-	YF-115	 1
+CZ-K2-3	CZ1.St2             	CALT	-	  4.0 	 2.25 	-	    1000 	-	-	YF-85	 4
+Burya	Burya               	NPOL	La-350	 18.0 	 2.20 	  40.8 	   13000 	-	   0.0 	-	 1
+S5M	S5M                 	YUZH	-	  2.8 	 2.20 	   4.6 	    1600 	      79.0 	 125.0 	RD-861	 1
+M-34	M-34                	NISST	-	  3.4 	 2.20 	  11.6 	    1000 	     290.0 	 102.0 	M-34	 1
+M-34c	M-34                	NISST	-	  4.3 	 2.20 	  12.3 	    1500 	     327.0 	 105.0 	M-34c	 1
+PAL	PAL                 	DASA	-	 18.6 	 2.17 	  44.0 	    4500 	     758.5 	 140.0 	Viking VI	 1
+MR-UR-100 St 2	MR-UR-100.St2       	YUZH	-	  3.2 	 2.15 	  10.0 	    1000 	     142.0 	 195.0 	15D169	 1
+Perimetr Stage 2	MR-UR-100.St2       	YUZH	-	  3.2 	 2.15 	  10.0 	    1000 	     142.0 	 195.0 	15D169	 1
+MR-UR-100 BR	BR                  	YUZH	-	  1.0 	 2.15 	   1.0 	     500 	-	-	15D171	 1
+Trident	Trident.St3         	UTC?	-	  2.0 	 2.13 	   1.1 	     700 	      35.0 	-	Trident Motor	 1
+Trident D-5 Stage 1	Trident             	LMSC	-	  7.2 	 2.11 	  39.1 	    2242 	-	  64.0 	D-5-1	 1
+Trident D-5 Stage 2	Trident.St2         	LMSC	-	  2.9 	 2.11 	  11.8 	     790 	-	  65.0 	D-5-2	 2
+Coralie	Coralie             	SEREB	-	  6.5 	 2.01 	  12.0 	    2400 	     268.0 	 105.0 	Coralie	 4
+Astris	Astris              	ERNO	-	  3.8 	 2.03 	   3.6 	     800 	      22.5 	 361.0 	Astris	 1
+Spectrum Stage 1	Spectrum	ISAR	-	 17.0 	 2.00 	  80.0 	-	     675.0 	 150.0 	Aquila SL	 9
+Spectrum Stage 2	Spectrum	ISAR	-	  5.0 	 2.00 	  30.0 	-	      94.0 	 300.0 	Aquila Vac	 1
+PS3	SSLV	VSSC	PS-3	  3.6 	 2.00 	   8.4 	    1100 	     324.0 	  83.0 	PS3	 1
+HPS3	SSLV	VSSC	PS-3	  3.6 	 2.00 	   8.4 	    1100 	     324.0 	  83.0 	PS3	 1
+PS4	PSLV.St4            	VSSC	PS-4	  2.6 	 2.00 	   2.9 	     920 	      14.8 	 425.0 	LVS	 2
+HPS4	PSLV.St4            	VSSC	PS-4	  2.6 	 2.00 	   2.9 	     920 	      14.8 	 425.0 	LVS	 2
+Agni III	Agni3               	DRDO	-	  7.7 	 2.00 	  33.0 	    2970 	    1040.0 	  75.0 	Agni III	 1
+Agni V	Agni3               	DRDO	-	  7.7 	 2.00 	  33.0 	    2970 	    1040.0 	  75.0 	Agni III	 1
+Agni III Stage 2	Agni3               	DRDO	-	  3.1 	 2.00 	  14.0 	    1820 	     314.0 	 110.0 	Agni III S2	 1
+Agni V Stage 2	Agni3               	DRDO	-	  3.1 	 2.00 	  14.0 	    1820 	     314.0 	 110.0 	Agni III S2	 1
+Agni V Stage 3	Agni3               	DRDO	-	  3.0 	 2.00 	  10.0 	     500 	-	-	Agni V S3	 1
+SSLV SS1	SSLV	ISRO	-	 22.5 	 2.00 	  89.0 	    8000 	    2600.0 	-	S85	 1
+SSLV SS2	SSLV	ISRO	-	  3.2 	 2.00 	   8.5 	     500 	     250.0 	-	S7	 1
+8S816	UR-100              	KHRU	-	 17.2 	 2.00 	  88.0 	    5000 	    2070.0 	 121.0 	RD-0216	 4
+8S817	UR-100.St2          	KHRU	-	  3.9 	 2.00 	  15.0 	    2000 	     240.0 	 183.0 	15D13	 1
+Briz-K	Briz                	KHRU	14S12	  2.5 	 2.00 	   6.7 	    1700 	      19.6 	1000.0 	S5.98M	 1
+Black Arrow	BlackArrow          	SROE/RAE	-	  5.8 	 2.00 	  14.1 	    1070 	     251.0 	 125.0 	Gamma 8	 1
+Eris Stage 1	Eris	GILM	-	 13.0 	 2.00 	  15.0 	-	-	 400.0 	Sirius	 4
+YL-1 Stage 3	DF-31               	ARMT	-	  2.0 	 2.00 	  10.0 	-	-	-	YL-1-3	 1
+ZK-1A Stage 3	DF-31               	ARMT	-	  8.0 	 2.00 	  35.0 	-	     439.3 	-	ZK-1A-3	 1
+CZ-6A Booster	DF-31               	ARMT	-	 10.0 	 2.00 	  35.0 	    1200 	-	-	CZ-6A Booster	 1
+CZ-11-1	DF-31               	SLREC	-	  6.0 	 2.00 	  40.0 	    5000 	-	-	CZ-11-1	 1
+CZ-11-2	DF-31               	ARMT	-	  6.0 	 2.00 	  15.0 	-	-	-	CZ-11-2	 1
+DF-31 St1	DF-31               	ARMT	-	  8.0 	 2.00 	  35.0 	-	-	-	DF-31-1	 1
+DF-31 St2	DF-31               	ARMT	-	  4.0 	 2.00 	  10.0 	-	-	-	DF-31-2	 1
+DF-31 St3	DF-31               	ARMT	-	  2.0 	 2.00 	   2.0 	-	-	-	DF-31-3	 1
+DF-41 St1	DF-31               	ARMT	-	  8.0 	 2.00 	  35.0 	-	-	-	DF-41-1	 1
+DF-41 St2	DF-31               	ARMT	-	  4.0 	 2.00 	  10.0 	-	-	-	DF-41-2	 1
+DF-41 St3	DF-31               	ARMT	-	  2.0 	 2.00 	   2.0 	-	-	-	DF-41-3	 1
+KZ-11 St1	DF-31               	ARMT	-	  8.0 	 2.00 	  35.0 	-	-	-	DF-41-1	 1
+KZ-11 St2	DF-31               	ARMT	-	  4.0 	 2.00 	  10.0 	-	-	-	DF-41-2	 1
+KZ-11 St3	DF-31               	ARMT	-	  2.0 	 2.00 	   2.0 	-	-	-	DF-41-3	 1
+8K95A	RT-2                	OKB1	-	  4.8 	 1.95 	  19.0 	-	     900.0 	  30.0 	RT-1-1	 1
+MSBS 401	MSBS                	AELM	-	  5.4 	 1.93 	  22.5 	    2500 	     900.0 	  60.0 	SEP 401	 1
+MSBS 402	MSBS.St2            	AELM	-	  2.0 	 1.93 	   8.8 	     800 	     300.0 	  70.0 	SEP 402	 1
+MSBS 403	MSBS.St3            	AELM	-	  1.1 	 1.93 	   1.5 	     100 	     100.0 	  40.0 	SEP 403	 1
+Zefiro 40	Zefiro              	AVIO	-	  7.6 	 2.30 	  39.2 	    3006 	    1304.0 	  92.9 	Zefiro-40C	 1
+Zefiro 23	Zefiro              	AVIO	-	  8.5 	 1.91 	  26.5 	    2653 	     871.0 	  77.0 	Zefiro 23	 1
+Zefiro 9A	Zefiro              	AVIO	-	  4.4 	 1.91 	  11.5 	    1386 	     260.0 	 120.0 	Zefiro 9A	 1
+Zefiro 9	Zefiro              	AVIO	-	  4.4 	 1.91 	  11.5 	    1386 	     260.0 	 120.0 	Zefiro 9A	 1
+R-29 St 1	R-29                	MAK	-	  7.7 	 1.90 	  20.0 	-	     682.0 	  74.0 	RD-0244	 1
+R-29R St 1	R-29                	MAK	-	  7.7 	 1.90 	  20.0 	-	     682.0 	  74.0 	RD-0244	 1
+R-29RM St1	R-29                	MAK	-	  7.7 	 1.90 	  20.0 	-	     682.0 	  74.0 	RD-0244	 1
+R-29RM St2	R-29.St2            	MAK	-	  4.9 	 1.90 	  10.0 	-	-	  94.0 	RD R-29RM St 2	 1
+R-29RM St3	R-29.St3            	MAK	-	  2.8 	 1.90 	  10.0 	-	-	  87.0 	RD R-29RM St 3	 1
+HS-18 St2	Hwasong-18.S2	KPA	-	 10.0 	 1.90 	  12.0 	-	-	-	HS-18-S2	 1
+HS-18 St3	Hwasong-18.S2	KPA	-	  2.0 	 1.90 	   3.0 	-	-	-	HS-18-S3	 1
+Trident C-4 Stage 1	Trident             	LMSC	-	  4.4 	 1.88 	  12.1 	-	-	-	C4-1	 1
+Trident C-4 Stage 2	Trident.St2         	LMSC/HERC	-	  2.5 	 1.88 	   8.0 	-	-	-	C4-2	 1
+C-3 Stage 1	Poseidon            	LMSC	-	  4.8 	 1.88 	  10.0 	-	-	-	C3-1	 1
+C-3 Stage 2	Poseidon.St2        	LMSC	-	  2.5 	 1.88 	   7.0 	-	-	-	C3-2	 1
+8K98A	RT-2                	OKB1/PERM	-	  8.7 	 1.84 	  34.6 	    4000 	     893.0 	  75.4 	15D23	 1
+8K98PA	RT-2                	ARSL	-	  9.2 	 1.84 	  34.6 	    4000 	     981.0 	  75.4 	15D23P	 1
+LauncherOne Stage 1	LauncherOne         	VORB	-	 14.7 	 1.83 	  21.1 	    1900 	     308.0 	 184.0 	NewtonThree	 1
+RS1 S1	RS1	ABLSS	-	 16.0 	 1.83 	  30.0 	-	     503.0 	 160.0 	ABL E2	 9
+RS1 S2	RS1	ABLSS	-	  5.0 	 1.83 	  15.0 	-	      58.0 	 420.0 	ABL E2	 1
+Firefly Alpha St1	Alpha	FFLY	-	 18.8 	 1.82 	  45.0 	    2895 	     736.1 	 163.0 	Reaver 1	 4
+Firefly Alpha St2	Alpha	FFLY	-	  5.8 	 1.82 	  18.0 	     908 	      70.1 	 314.0 	Lightning 1	 1
+H-II SRB	H2.SRB              	NISST	-	 23.4 	 1.80 	  70.4 	   11200 	    1550.0 	  94.0 	H-II SRB	 1
+15Zh58A	Topol               	MITT	Topol'-1	  8.5 	 1.80 	  26.0 	    3000 	     980.0 	  60.0 	15Zh58A	 1
+15Zh58MA	Topol               	MITT	Topol'-M1	  8.5 	 1.80 	  26.0 	    3000 	     980.0 	  60.0 	15Zh58A	 1
+R-29 St 2	R-29.St2            	MAK	-	  3.1 	 1.80 	  10.0 	-	-	-	RD R-29 St 2	 1
+R-29R St 2	R-29.St2            	MAK	-	  3.1 	 1.80 	  10.0 	-	-	-	RD R-29 St 2	 1
+8K99A	RT-20P              	YUZH	-	  6.1 	 1.80 	  19.0 	    2450 	     600.0 	  65.0 	15D15	 1
+8K94	RT-20P.St2          	YUZH	-	  8.4 	 1.80 	   9.8 	     900 	     147.0 	 215.0 	RD-857	 1
+CZ-11-3	CZ11-3              	ARMT	-	  2.0 	 1.80 	   4.0 	-	-	-	CZ-11-3	 1
+RT-21 St1	Temp-2S             	MITT	-	  8.6 	 1.79 	  26.6 	-	-	  63.0 	RD RT-21 (1)	 1
+Redstone	Redstone            	CHRY	-	 13.4 	 1.78 	  33.0 	    3000 	     370.0 	 155.0 	Redstone A-7	 1
+Redstone MRLV	Redstone            	CHRY	-	 15.5 	 1.78 	  33.0 	    3000 	     370.0 	 175.0 	Redstone A-7	 1
+Cheonlima-1 Stage 2	Hwasong-12          	NADA	-	  6.6 	 1.80 	  12.0 	-	-	-	CL1-2	 1
+Cheonlima-1 Stage 3	Hwasong-12          	NADA	-	  5.2 	 1.80 	  10.0 	-	-	-	CL1-3	 1
+Hwasong-12 Stage 1	Hwasong-12          	KPA	-	 11.8 	 1.75 	  10.0 	-	-	 151.0 	Hwasong-12	 1
+Hwasong-12A Stage 1	Hwasong-12          	KPA	-	 11.8 	 1.75 	  10.0 	-	-	 151.0 	Hwasong-12	 1
+Hwasong-8 Stage 1	Hwasong-12          	KPA	-	 10.0 	 1.75 	  10.0 	-	-	 151.0 	Hwasong-12	 1
+AJ10-118FJ	Delta2              	MDAC/AJGC	Delta AJ10-118FJ	  6.3 	 1.75 	   6.0 	     780 	      44.1 	 430.0 	AJ10-118FJ	 1
+Delta/0020	Delta2              	MDAC	Delta AJ10-118K	  6.0 	 1.75 	   6.9 	     950 	      43.7 	 431.0 	AJ10-118K	 1
+EPKM	SD                  	CALT	-	  2.8 	 1.70 	   6.0 	     541 	     177.0 	  87.0 	FG-46	 1
+Falcon 1	Falcon1             	SPX	-	 13.0 	 1.70 	  22.9 	    1360 	     378.0 	 169.0 	Merlin 1C	 1
+Falcon 1 St 2	Falcon1             	SPX	-	  4.5 	 1.70 	   4.5 	     544 	      33.0 	 418.0 	Kestrel	 1
+SSLV SS3	SSLV-SS3	ISRO	-	  2.8 	 1.70 	   5.0 	     400 	     160.0 	-	S4	 1
+SSLV VTM	SSLV-VTM	ISRO	-	  1.0 	 1.70 	   1.0 	     200 	-	-	VTM	12
+M55E1	Minuteman           	THKU	-	  7.5 	 1.68 	  22.9 	    2320 	     892.0 	  60.0 	TU-122	 1
+M55E1-ATK	Minuteman           	THKU	-	  7.5 	 1.68 	  22.9 	    2522 	     892.0 	  60.0 	TU-122-ATK	 1
+M55A1	Minuteman           	THKU	-	  7.5 	 1.68 	  22.9 	    2500 	     792.0 	  59.3 	M55A1	 1
+R-5	R-5                 	OKB1	-	 20.7 	 1.65 	  28.6 	    4400 	     500.0 	 115.0 	RD-103	 1
+V-2	V-2                 	WEHR	-	 12.0 	 1.65 	  12.8 	    4000 	     312.0 	  70.0 	A-4	 1
+V-2-Ram	V-2                 	ABMA	-	 12.0 	 1.65 	  12.8 	    4000 	     312.0 	  70.0 	A-4	 1
+R-1	V-2                 	NII88	-	 14.1 	 1.65 	  13.4 	    4000 	     267.0 	  65.0 	RD-100	 1
+R-2	V-2                 	OKB1	-	 17.0 	 1.65 	  20.3 	    4380 	     363.0 	  85.0 	RD-101	 1
+DF-1	V-2                 	CALT	-	 14.1 	 1.65 	  14.0 	    4000 	     270.0 	  65.0 	DF-1	 1
+DF-2	V-2                 	CALT	-	 20.0 	 1.65 	  30.0 	    4000 	     300.0 	-	YF-1	 1
+DF-2A	V-2                 	CALT	-	 20.0 	 1.65 	  30.0 	    4000 	     300.0 	-	YF-1	 1
+A-1	V-2                 	OKB1	GR	 17.0 	 1.65 	  20.0 	    4000 	     363.0 	  85.0 	RD-101	 1
+R-12	R-12                	OKB586	-	 18.0 	 1.65 	  34.6 	    4810 	     625.6 	 125.0 	RD-214	 1
+R-12 63S1A	R-12                	OKB586	-	 18.0 	 1.65 	  39.5 	    4810 	     625.6 	 125.0 	RD-214	 1
+R-12 63S1MA	R-12                	OKB586	-	 18.0 	 1.65 	  39.5 	    4810 	     625.6 	 125.0 	RD-214	 1
+R-12 11K63A	R-12                	OKB586	-	 18.0 	 1.65 	  39.5 	    4810 	     625.6 	 125.0 	RD-214	 1
+S1	Kosmos-2.St2        	YUZH	-	  7.8 	 1.65 	   8.6 	     840 	     105.0 	 250.0 	RD-119	 1
+S1M	Kosmos-2.St2        	YUZH	-	  7.8 	 1.65 	   8.6 	     840 	     105.0 	 250.0 	RD-119	 1
+LE-3	LE-3                	MHI	-	  5.4 	 1.62 	   5.8 	     500 	      54.0 	 250.0 	LE-3	 1
+PAM-D2	PAM-D2              	THKU	-	  2.7 	 1.60 	   3.5 	     230 	      85.0 	 118.0 	Star 63D	 1
+GEM-63	GEM63               	OATKH	-	 20.1 	 1.60 	  49.3 	    5100 	    1361.0 	  91.0 	GEM-63	 1
+GEM-63XL	GEM63               	OATKH	-	 22.0 	 1.60 	  53.4 	    5400 	    2044.0 	  80.0 	GEM-63XL	 1
+Atlas V SRM	AtlasVSRM           	AJSP	-	 19.5 	 1.55 	  46.2 	    3600 	    1361.0 	  91.0 	AJ-60A	 1
+15Zh58B	Topol.St2           	MITT	Topol'-2	  6.0 	 1.55 	  13.0 	    1500 	     490.0 	  64.0 	15Zh58B	 1
+15Zh58MB	Topol.St2           	MITT	Topol'-M2	  6.0 	 1.55 	  13.0 	    1500 	     490.0 	  64.0 	15Zh58B	 1
+R-31 St 1	R-31                	ARSL	-	  6.3 	 1.54 	  17.5 	    2000 	     579.0 	  84.0 	3D17	 1
+R-31 St 2	R-31.St2            	ARSL	-	  3.1 	 1.54 	   6.9 	     800 	     233.0 	  74.0 	R-31 St 2	 1
+R-31 BS	BR                  	ARSL	-	  2.5 	 1.54 	   1.3 	     200 	       4.0 	 101.0 	R-31BS	 4
+GEM-60	GEM60               	ATKH	-	 16.2 	 1.52 	  33.2 	    3850 	     851.5 	  90.0 	GEM-60	 1
+Agena A	Agena               	LMSC	-	  3.0 	 1.52 	   3.8 	     400 	      69.0 	 120.0 	Bell 8048	 1
+Agena B	Agena               	LMSC	-	  6.2 	 1.52 	   7.0 	     750 	      71.0 	 480.0 	Bell 8096	 1
+Agena D	Agena               	LMSC	-	  6.2 	 1.52 	   7.0 	     750 	      71.0 	 480.0 	Bell 8096	 1
+SEP 901	P-10                	SUD/SEP	P-10	  4.5 	 1.51 	  10.0 	-	     440.0 	-	SEP 901	 1
+SEP 904	P-10                	SUD/SEP	P-10	  4.5 	 1.51 	  10.0 	-	     450.0 	  50.0 	SEP 904	 1
+SEP 903	P-10                	SEP	P-10	  4.7 	 1.51 	  10.0 	-	     440.0 	-	SEP 903	 1
+SEP 902	P-16                	SUD/SEP	P-16	  6.9 	 1.51 	  16.0 	-	     540.0 	-	SEP 902	 1
+Rita I	Rita                	SUD/SEP	Rita 1	  2.3 	 1.51 	   4.8 	     350 	     180.0 	  62.0 	P4	 1
+Rita II	Rita                	SUD/SEP	Rita 2	  3.0 	 1.51 	   6.0 	-	     320.0 	  52.0 	Rita II	 1
+Eris Stage 2	Eris.St2	GILM	-	  7.0 	 1.50 	   8.0 	-	-	 100.0 	Sirius	 1
+Eris Stage 3	Eris.St3	GILM	-	  1.5 	 1.50 	   1.0 	-	-	-	Phoenix	 1
+AVUM+	AVUM                	AVIO	-	  1.7 	 1.50 	   1.3 	     606 	       2.4 	 940.0 	RD-843	 1
+AVUM	AVUM                	AVIO	-	  1.7 	 1.50 	   1.0 	     494 	       2.5 	 667.0 	RD-843	 1
+AVUM-RD868P	AVUM                	AVIO	-	  1.7 	 1.50 	   1.0 	     494 	       2.5 	 667.0 	RD-868P	 1
+ZK-1A Stage 4	ZK-1A-4	ARMT	-	  3.0 	 1.50 	  10.0 	-	      78.0 	-	ZK-1A-4	 1
+JL-3 Stage 4	ZK-1A-4	ARMT	-	  3.0 	 1.50 	  10.0 	-	-	-	JL3-4	 1
+CE-5 SSQ	CESSQ	CAST	-	  1.5 	 1.50 	   0.5 	     215 	-	-	SSQ Engine	 1
+Unha-1 Stage 2	Unha.St2            	KPA	-	  8.0 	 1.50 	  25.6 	    3700 	     570.0 	  95.0 	Nodong	 1
+Unha-2 Stage 2	Unha.St2            	KPA	-	  8.0 	 1.50 	   7.5 	    1500 	     140.0 	 176.0 	Nodong	 1
+Simorgh Stage 2	Unha.St2            	IR	-	  8.2 	 1.50 	   8.0 	-	      71.0 	-	LRE-4	 1
+KN-11	Bukguekseong        	KPA	-	  4.0 	 1.50 	  10.0 	-	     255.0 	 128.0 	KPN-Solid1	 1
+KN-11-2	Bukguekseong        	KPA	-	  2.8 	 1.50 	   7.0 	-	     255.0 	 128.0 	KPN-Solid2	 1
+Zoljanah	Zoljanah	IR	-	  8.0 	 1.50 	  10.0 	-	-	-	Zoljanah-1	 1
+Khorramshahr	R-27                	IR	-	  8.0 	 1.50 	  10.0 	-	     255.0 	 128.0 	KPN-4D10	 1
+Khorramshahr 4	R-27                	IR	-	 10.0 	 1.50 	  15.0 	-	     255.0 	 128.0 	KPN-4D10	 1
+Hwasong 10	R-27                	KPA	-	  8.0 	 1.50 	  10.0 	-	     255.0 	 128.0 	KPN-4D10	 1
+R-27	R-27                	MAK	-	  8.0 	 1.50 	  10.0 	-	     255.0 	 128.0 	4D10	 1
+M-3B	M-40                	NISST	-	  2.7 	 1.50 	   3.6 	     310 	     132.0 	  87.0 	M-3B	 1
+LauncherOne Stage 2	LOSt2               	VORB	-	  3.4 	 1.50 	   2.6 	     200 	      22.0 	 346.0 	NewtonFour	 1
+Spaceship One	SS1                 	SCAL	-	  5.0 	 1.50 	   4.0 	    3000 	-	-	RM-1	 1
+Spaceship Two	SS2                 	SCAL	-	 18.3 	 2.30 	   9.7 	-	-	-	RM-2	 1
+Burya booster	Burya               	NPOL	-	 18.9 	 1.50 	  27.0 	    4000 	     765.0 	-	S2.1150	 1
+Epsilon PBS	EPBS                	JAXA	-	  1.2 	 1.50 	   0.3 	     200 	       0.4 	1100.0 	EPBS	 1
+CZ-11-4	CZ11-4              	ARMT	-	  1.5 	 1.50 	   2.0 	-	-	-	CZ-11-4	 1
+8K95B	RT-15               	OKB1	-	  4.0 	 1.49 	  10.0 	    1500 	     500.0 	  30.0 	RD RT-15-2	 1
+8K98B	RT-15               	OKB1/PERM	-	  4.7 	 1.49 	   9.6 	    1500 	     432.0 	  59.0 	15D24	 1
+8K96A	RT-15               	ARSL	-	  4.7 	 1.49 	  11.3 	    1500 	     432.0 	  60.6 	15D27	 1
+8K96A (RT-2P)	RT-15               	ARSL	-	  5.1 	 1.49 	  11.3 	    1500 	     432.0 	  60.6 	15D24P2	 1
+RT-21 St2	RT-21.St2           	MITT	-	  4.4 	 1.47 	   8.7 	-	-	-	RD RT-21 St2	 1
+Kestrel I Stage 1	Kestrel1	TISPACE	-	  5.0 	 1.46 	   1.5 	-	-	  77.0 	Lelien 1B	 4
+M-10	Mu                  	NISST	-	 13.0 	 1.41 	  26.6 	    5907 	     737.0 	  61.0 	M-10	 1
+M-13	Mu                  	NISST	-	 14.8 	 1.41 	  33.4 	    6290 	     954.0 	  66.0 	M-13	 1
+M-13TVC	Mu                  	NISST	-	 14.8 	 1.41 	  34.2 	    6987 	    1020.0 	  66.0 	M-13	 1
+M-20	M-20                	NISST	-	  4.7 	 1.41 	   9.9 	    2779 	     285.0 	  66.0 	M-20	 1
+M-22TVC	M-20                	NISST	-	  5.0 	 1.41 	   9.8 	    2607 	     285.0 	  66.0 	M-22	 1
+M-23	M-20                	NISST	-	  6.2 	 1.41 	  13.0 	    2742 	     523.0 	  73.0 	M-23	 1
+CPKM	SD                  	ARMT	-	  2.9 	 1.40 	   4.6 	     496 	     222.8 	  65.2 	CPKM	 1
+LRAShM St1	LRAShM	DRDO	-	 10.0 	 1.40 	   6.0 	-	-	-	LRAShM S1	 1
+KM-V2b	KM-V2               	NISST	-	  2.3 	 1.40 	   2.9 	     800 	      99.8 	  90.0 	KM-V2b	 1
+KM-V2c	KM-V2               	NISST	-	  2.2 	 1.40 	   2.9 	     400 	      99.6 	  88.0 	KM-V2c	 1
+Emeraude	Emeraude            	LRBA	-	  9.0 	 1.40 	  14.7 	    1500 	     274.0 	  93.0 	Vexin	 1
+Amethyste	Emeraude            	LRBA	-	 14.0 	 1.40 	  20.3 	    2500 	     415.0 	 119.0 	Valois	 1
+8K95V	RT-1.St3            	OKB1	-	  2.8 	 1.40 	   3.0 	-	     240.0 	  42.0 	RD RT-1-3	 1
+AJ10-104	Ablestar            	AJGC	Ablestar	  4.5 	 1.39 	   4.5 	     599 	      36.0 	-	AJ10-104	 1
+AJ10-104D	Ablestar            	AJGC	Ablestar	  4.5 	 1.39 	   4.5 	     599 	      36.0 	-	AJ10-104	 1
+DSV-3E-3	Ablestar            	AJGC	Delta AJ10-118E	  5.2 	 1.39 	   6.0 	     785 	      33.7 	 400.0 	AJ10-118E	 1
+DSV-3N-4	Ablestar            	AJGC	Delta AJ10-118F	  6.3 	 1.39 	   5.6 	     784 	      41.4 	 335.0 	AJ10-118F	 1
+DSV-3P-4	Ablestar            	MDAC	Delta AJ10-118F	  6.0 	 1.39 	   5.6 	     784 	      41.4 	 335.0 	AJ10-118F	 1
+DSV-3P-4B	Ablestar            	MDAC	Delta TR-201	  6.0 	 1.39 	   5.4 	     845 	      42.0 	 322.0 	TR-201	 1
+A1P	Polaris             	LMSC/AJSP	Polaris A1P St1	  3.8 	 1.37 	   8.3 	    1450 	-	-	A1P-1	 1
+A2P	Polaris             	LMSC/AJSP	Polaris A2P St1	  4.3 	 1.37 	  10.1 	    1450 	-	-	A2P-1	 1
+A2E	Polaris             	LMSC/AJSP	Polaris A2E St1	  4.3 	 1.37 	  10.1 	    1450 	-	-	A2P-1	 1
+A3P	Polaris             	LMSC/AJSP	Polaris A3P St1	  4.4 	 1.37 	  11.1 	    1270 	-	-	A3P-1	 1
+A1P Stage 2	Polaris.St2         	LMSC/AJSP	Polaris A1P St2	  2.0 	 1.37 	   4.3 	     951 	-	-	A1P-2	 1
+A2P Stage 2	Polaris.St2         	LMSC/ABL	Polaris A2P St2	  2.1 	 1.37 	   4.2 	     860 	-	-	X-250	 1
+A2E Stage 2	Polaris.St2         	LMSC/HERC	Polaris A2E St2	  2.1 	 1.37 	   4.2 	     860 	-	-	X-250	 1
+X-260	PolarisA3.St2       	LMSC/ABL	-	  2.3 	 1.37 	   4.9 	     815 	-	-	X-260	 1
+Alfa	Alfa                	AERIT	-	  3.8 	 1.37 	   6.5 	    1000 	     250.0 	  57.0 	Alfa	 1
+Black Arrow St2	BlackArrow.St2      	SROE	St 2	  3.2 	 1.37 	   3.5 	     535 	      69.0 	 113.0 	Gamma 2	 1
+X-265	Sprint              	MARTO	Sprint X265	  3.0 	 1.37 	   4.0 	-	-	   1.2 	X-265	 1
+Squirt St 1	Squirt              	MARTO	-	  2.0 	 1.37 	   1.0 	-	-	   1.2 	Recruit	 7
+Squirt St 2	Squirt              	MARTO	-	  1.0 	 1.37 	   1.0 	-	-	   1.5 	Cherokee	 7
+15Zh59A	Kuryer              	MITT	-	  3.1 	 1.36 	   6.0 	-	-	-	15Zh59A	 1
+15Zh59B	Kuryer              	MITT	-	  3.1 	 1.36 	   5.0 	-	-	-	15Zh59B	 1
+Hyperbola-1 Stage 1	DF-21               	XJRY	-	  8.7 	 1.40 	  18.0 	-	     770.0 	-	Hyperbola-1 M1	 1
+Hyperbola-1B Stage 1	DF-21               	XJRY	-	  8.7 	 1.40 	  18.0 	-	     770.0 	-	Hyperbola-1 M1	 1
+Hyperbola-1 Stage 2	HP1                 	XJRY	-	  6.7 	 1.40 	  13.0 	-	     597.0 	-	Hyperbola-1 M2	 1
+Hyperbola-1 Stage 3	HP1                 	XJRY	-	  2.6 	 1.40 	   3.9 	-	     195.0 	-	Hyperbola-1 M3	 1
+Hyperbola-1 Stage 4	HP1-4               	XJRY	-	  1.9 	 1.40 	   1.0 	-	      60.0 	-	Hyperbola-1 M4	 1
+Hyperbola-1B Stage 3	HP1                 	XJRY	-	  2.6 	 1.40 	   3.9 	-	     195.0 	-	Hyperbola-1B M3	 1
+Hyperbola-1B Stage 4	HP1-4               	XJRY	-	  1.9 	 1.40 	   1.0 	-	      60.0 	-	Hyperbola-1B M4	 1
+GS-1	DF-21               	XIDO	-	  7.8 	 1.40 	  17.0 	-	     590.0 	-	Ceres-1 M1	 1
+GS-1A	DF-21               	XIDO	-	  7.8 	 1.40 	  18.0 	-	     590.0 	-	Ceres-1 M1	 1
+GS-2	DF-21               	XIDO	-	  4.4 	 1.40 	   8.0 	-	     274.0 	-	Ceres-1 M2	 1
+GS-3A	GS-3A	XIDO	-	  3.4 	 1.40 	   5.0 	-	      86.0 	-	Ceres-1 M3	 1
+SQ-1S	DF-21               	SANJ	-	  7.4 	 1.40 	   5.4 	    1645 	      93.2 	-	DF-11	 1
+KZ-1A St1	DF-21               	ARMT	-	  6.0 	 1.35 	  16.6 	-	-	  65.0 	DF-21-1	 1
+DF-21	DF-21               	ARMT	CSSNX3	  6.0 	 1.35 	  16.6 	-	-	  65.0 	DF-21-1	 1
+DF-26	DF-21               	ARMT	-	  6.0 	 1.35 	  10.0 	-	-	  65.0 	DF-26-1	 1
+DF-27	DF-21               	ARMT	-	  6.0 	 1.35 	  10.0 	-	-	  65.0 	DF-27-1	 1
+ZQ-1 Stage 3	ZQ-1                	ARMT	-	  2.0 	 1.35 	   2.0 	-	-	-	ZQ-1-3	 1
+Shaheen 2 St 1	DF-21               	ARMT	CSSNX3	  9.5 	 1.35 	  20.0 	-	-	  65.0 	DF-21-1	 1
+DF-21 St2	DF-21               	ARMT	CSSNX3	  4.0 	 1.35 	   8.7 	-	-	  62.0 	DF-21-2	 1
+KZ-2 St3	KZ2-3               	HEXI	-	  2.0 	 1.35 	   3.2 	-	-	  55.0 	KZ2-3	 1
+KZ-1AE St3	KZ2-3               	HEXI	-	  2.0 	 1.35 	   3.2 	-	-	  55.0 	KZ1AE-3	 1
+Shaheen St 2	DF-21               	PKNDC	-	  4.4 	 1.35 	   4.0 	-	-	-	Shaheen-2	 1
+Shaheen 3 St 2	DF-21               	PKNDC	-	  4.4 	 1.35 	   4.0 	-	-	-	Shaheen-2	 1
+Ababeel St 3	DF-21               	PKNDC	-	  3.3 	 1.35 	   4.0 	-	-	-	Ababeel	 1
+Shavit 1	Jericho             	IAI	-	  7.5 	 1.35 	  13.0 	    1200 	     775.0 	  55.0 	ATSM-13	 1
+ATSM-9	Jericho             	IAI	-	  5.3 	 1.35 	   9.1 	    1000 	     610.0 	  55.0 	ATSM-9	 1
+Jericho IIIA1	Jericho             	IAI	-	  7.5 	 1.35 	  10.0 	-	-	-	-	 1
+Jericho IIIA2	Jericho             	IAI	-	  7.5 	 1.35 	  10.0 	-	-	-	-	 1
+RSA-3-1	Jericho             	IAI	-	  6.3 	 1.35 	  10.2 	    1100 	     456.0 	  52.0 	RSA-3-1	 1
+RSA-3-2	Jericho             	IAI	-	  6.4 	 1.35 	  11.0 	    1771 	     477.0 	  52.0 	RSA-3-2	 1
+IAI Arrow-1	Jericho             	IAI	Arrow	  5.0 	 1.35 	   1.5 	-	-	-	IAI-Arrow-1	 1
+AUS-51	AUS-51              	IAI	-	  2.6 	 1.35 	   2.0 	     170 	      58.0 	  92.0 	AUS-51	 1
+RSA-3-3	AUS-51              	HOUW	-	  2.1 	 1.35 	   2.0 	     170 	      59.0 	  94.0 	RSA-3-3	 1
+Kairos Stage 1	Kairos	SPONE	-	  8.1 	 1.35 	  14.7 	    1769 	-	-	Kairos Stage 1	 1
+Kairos Stage 2	Kairos	SPONE	-	  3.6 	 1.35 	   5.2 	     522 	-	-	Kairos Stage 2	 1
+Kairos Stage 3	Kairos	SPONE	-	  2.0 	 1.35 	   2.7 	     245 	-	-	Kairos Stage 3	 1
+15Zh58V	Topol.St3           	MITT	Topol'-3	  3.1 	 1.34 	   6.0 	    1000 	     245.0 	  56.0 	15Zh58V	 1
+15Zh58MV	Topol.St3           	MITT	Topol'-M3	  3.1 	 1.34 	   6.0 	    1000 	     245.0 	  56.0 	15Zh58V	 1
+RT-21 St3	Topol.St3           	MITT	-	  3.9 	 1.34 	   8.7 	    1000 	     245.0 	-	RD RT-21-3	 1
+Astra Stage 1	Astra               	ASTRV	-	  9.0 	 1.32 	   8.0 	-	     140.0 	-	Delphin	 5
+Astra 3.3 Stage 1	Astra               	ASTRV	-	  9.2 	 1.32 	   8.0 	-	     144.0 	-	Delphin	 5
+SR19	SR19                	AJSP	-	  4.1 	 1.32 	   7.3 	    1070 	     267.0 	  65.5 	SR19	 1
+eSR19	SR19                	AJSP	-	  4.1 	 1.32 	   7.3 	    1070 	     267.0 	  65.5 	eSR19	 1
+SR19AJ1-ATK	SR19                	ATKH	-	  4.1 	 1.32 	   7.3 	    1070 	     267.0 	  65.5 	SR19-ATK	 1
+SR19AJ1	SR19                	AJSP	SR19	  4.1 	 1.32 	   7.3 	     800 	     267.0 	  65.5 	SR19	 1
+SR73AJ1	SR73                	AJSP	SR73	  2.3 	 1.32 	   3.7 	     410 	     152.0 	  61.0 	SR73	 1
+SR73AJ1-ATK	SR73                	ATKH	SR73	  2.3 	 1.32 	   3.7 	     410 	     152.0 	  61.0 	SR73-ATK	 1
+PBS	PBS                 	BELT/RDYNE	-	  1.0 	 1.32 	   1.0 	-	       1.4 	-	RS-14	 1
+UM129A	UM129A              	NISST	-	  2.3 	 1.32 	   2.2 	     360 	      77.5 	  68.0 	UM-129A	 1
+IRIS Stage	IRIS.Fiat           	FIATA	IRIS	  1.7 	 1.31 	   1.7 	     146 	      58.0 	  79.0 	IRIS	 1
+R-21	R-21                	SKB385	-	 12.0 	 1.30 	  16.6 	-	-	-	S5.38	 1
+R-13	R-13                	SKB385	-	 10.0 	 1.30 	  13.7 	-	-	-	S2.713	 1
+V-825	V-825               	FAKEL	5Ya27	  9.0 	 1.30 	   3.9 	-	-	-	V-825	 1
+V-825 Booster	V-825               	FAKEL	5Ya27	 10.0 	 1.30 	  14.0 	-	-	-	5S24	 1
+Kairos PBS	EPBS                	SPONE	-	  1.0 	 1.30 	   0.1 	-	-	-	Kairos PBS	 1
+PDV-II Stage 1	K-4                 	DRDO	-	  5.0 	 1.30 	   8.0 	-	-	-	K-4 Booster	 1
+PDV-II Stage 2	K-4                 	DRDO	-	  5.0 	 1.30 	   8.0 	-	-	-	K-4 Booster	 1
+K-4 Booster	K-4                 	DRDO	-	  5.0 	 1.30 	   8.0 	-	-	-	K-4 Booster	 1
+K-4 Stage 2	K-4                 	DRDO	-	  5.0 	 1.30 	   8.0 	-	-	-	K-4 Stage 2	 1
+AMROC IRR	AMROC               	AMROC	IRR	 17.7 	 1.29 	  12.2 	-	     315.0 	  70.0 	H500	 1
+Orion 50S	Pegasus             	OSCC	Pegasus 1	  8.9 	 1.27 	  13.4 	    1900 	     485.0 	  72.4 	Orion 50S	 1
+Pegasus XL Stage 1	Pegasus             	OSCC	Pegasus XL1	 10.3 	 1.27 	  17.0 	    2000 	     594.0 	  73.4 	Orion 50SXL	 1
+Orion 50	Pegasus.St2         	OSCC	Pegasus 2	  2.7 	 1.27 	   3.4 	     345 	     118.0 	  73.3 	Orion 50	 1
+Orion 50XL	Pegasus.St2         	OSCC	Pegasus XL Stage 2	  3.7 	 1.27 	   4.0 	     420 	     196.0 	  72.5 	Orion 50XL	 1
+Orion 50XLT	Pegasus.St2         	OSCC	-	  3.7 	 1.27 	   4.0 	     420 	     196.0 	  72.5 	Orion 50XLT	 1
+Orion 50SXLG	Pegasus             	OSCC	Taurus-Lite	 10.0 	 1.27 	  15.0 	-	     704.0 	-	Orion 50SXLG	 1
+Orion 50SXLT	Pegasus             	OSCC	-	 10.0 	 1.27 	  15.0 	-	     704.0 	-	Orion 50SXLT	 1
+Orion 50SG	Pegasus             	OSCC	Taurus-Lite	 10.0 	 1.27 	  15.0 	-	-	-	Orion 50SXLG	 1
+Qaem-100 St 1	Qaem	IRGC	-	  7.0 	 1.25 	  25.0 	-	-	-	Rafe	 1
+Sejjil	Sejjil              	IR	-	  8.0 	 1.25 	  13.5 	    2000 	     560.0 	  90.0 	Sejjil	 1
+Sejjil Stage 2	Sejjil              	IR	-	  8.0 	 1.25 	   5.5 	    2000 	     560.0 	  90.0 	Sejjil St 2	 1
+Hwasong-14 Stage 2	Nodong              	KPA	-	  2.1 	 1.25 	   3.0 	-	-	 224.0 	KPN-4D10	 1
+Taepo Dong 1	Nodong              	KPA	-	 12.0 	 1.25 	  25.6 	    3700 	     570.0 	  95.0 	Nodong	 1
+Scud D	Nodong              	KPA?	-	 16.0 	 1.25 	  15.1 	    2000 	     255.0 	 110.0 	Nodong	 1
+Hwasong-7	Nodong              	KPA	-	 16.0 	 1.25 	  15.1 	    2000 	     255.0 	 110.0 	Nodong	 1
+Ghauri	Nodong              	KRLP	Ghauri	 16.0 	 1.25 	  16.0 	    3000 	     255.0 	 110.0 	Nodong	 1
+Emad	Nodong              	IR	-	 16.0 	 1.25 	  15.1 	    2000 	     255.0 	  90.0 	Nodong	 1
+Shahab 3	Nodong              	IR	-	 16.0 	 1.25 	  15.1 	    2000 	     255.0 	  90.0 	Nodong	 1
+Unha-2 Stage 3	Unha.St3            	KPA	-	  3.0 	 1.25 	   3.0 	     300 	      18.0 	  27.0 	Unha St3	 1
+Unha-3 Stage 3	Unha.St3            	KPA	-	  3.8 	 1.25 	   4.0 	     500 	      18.0 	  27.0 	Unha St3	 1
+Safir Stage 2	Nodong              	IR	-	  3.0 	 1.25 	   9.0 	-	      18.0 	  60.0 	LRE-4	 1
+Star 48	Star48              	THKE	Star 48	  2.0 	 1.22 	   2.2 	     208 	      66.4 	  84.1 	Star 48	 1
+Star 48B	Star48              	THKE	Star 48	  2.0 	 1.22 	   2.2 	     208 	      66.4 	  84.1 	Star 48B	 1
+Star 48B AKM	Star48              	THKE	Star 48	  2.0 	 1.22 	   2.2 	     116 	      66.4 	  84.1 	Star 48B	 1
+Star 48V	Star48              	THKE	-	  2.0 	 1.22 	   2.2 	     140 	      68.7 	  84.1 	Star 48V	 1
+Star 48BV	Star48              	THKE	-	  2.0 	 1.22 	   2.2 	     140 	      68.7 	  84.1 	Star 48V	 1
+Delta 4H Stage 3	Star48              	THKE	-	  2.1 	 1.40 	   2.2 	     140 	      68.7 	  84.1 	Star 48V	 1
+AlKahir	AlKahir             	EGAO	-	 10.0 	 1.22 	  10.0 	-	-	-	AlKahir	 1
+KM-V1	KM-V                	NISST	-	  1.5 	 1.20 	   1.4 	     118 	      52.0 	  73.0 	KM-V1	 1
+KT-1 St3	KT1-3               	HEXI	-	  2.0 	 1.20 	   2.0 	-	-	-	KT1-3	 1
+KZ-1 St3	KT1-3               	HEXI	-	  2.0 	 1.20 	   3.2 	-	-	  55.0 	KZ1-3	 1
+GS-3	Gushenxing-3	XIDO	-	  3.4 	 1.20 	   4.0 	-	      86.0 	-	Ceres-1 M3	 1
+Edge	Edge	XIDO	-	  2.0 	 1.20 	   1.0 	-	       2.0 	-	Edge	 1
+Hyunmoo Booster	Hyunmoo             	DAC/HERCR	-	  4.2 	 1.20 	   2.4 	-	     800.0 	-	Hyunmoo 1	 1
+Hyunmoo-2A	Hyunmoo             	ADD	-	  7.0 	 1.20 	   4.0 	-	-	-	Hyunmoo-2B	 1
+Hyunmoo-2B	Hyunmoo             	ADD	-	  7.0 	 1.20 	   4.0 	-	-	-	Hyunmoo-2B	 1
+Hyunmoo-2C	Hyunmoo             	ADD	-	  7.0 	 1.20 	   4.0 	-	-	-	Hyunmoo-2B	 1
+Hyunmoo-4	Hyunmoo             	ADD	-	  7.0 	 1.20 	   4.0 	-	-	-	Hyunmoo-2B	 1
+ADD SLV St1	ADD-SLV	ADD	-	 11.8 	 2.20 	   4.0 	-	-	-	ADD-SLV-1	 1
+ADD SLV St2	ADD-SLV	ADD	-	  4.8 	 2.20 	   2.0 	-	-	-	ADD-SLV-2	 1
+ADD SLV St3	ADD-SLV	ADD	-	  2.8 	 2.20 	   1.5 	-	-	-	ADD-SLV-3	 1
+JL-1 Stage 1	JL1                 	CALT	-	  7.0 	 1.20 	   7.0 	-	-	-	JL1-1	 1
+JL-1 Stage 2	JL1                 	CALT	-	  7.0 	 1.20 	   7.0 	-	-	-	JL1-2	 1
+JL-1 Stage 3	JL1-3               	CALT	-	  2.0 	 1.20 	   3.0 	-	-	-	JL1-3	 1
+JL-1 Stage 4	JL1-4               	CALT	-	  2.0 	 1.20 	   3.0 	-	-	-	JL1-4	 1
+DF-16	DF-16               	CASIC	-	  7.5 	 1.20 	  12.0 	-	-	-	DF-16	 1
+Electron Stage 1	Electron            	RLABN	-	 12.1 	 1.20 	  10.2 	     950 	     162.0 	-	Rutherford	 9
+Electron Stage 2	Electron            	RLABN	-	  2.4 	 1.20 	   2.3 	     250 	      22.0 	-	Rutherford Vac	 1
+Hermes A-3B	HermesA3            	GEMTS	-	 10.1 	 1.19 	   5.3 	    2000 	     100.0 	-	Hermes A-3B	 1
+GEM-46	GEM                 	ATKH	-	 14.7 	 1.17 	  19.3 	    2035 	     608.1 	  75.2 	GEM-46	 1
+LEO-46	LEO-46              	AJSP	-	 11.2 	 1.17 	  22.1 	    1700 	    1265.0 	  76.0 	LEO-46	 1
+LEO-7	LEO-7               	AJSP	-	  2.7 	 1.17 	   3.6 	     350 	     195.1 	  62.0 	LEO-7	 1
+SICBM	SICBM               	THKU	-	  7.5 	 1.17 	  11.6 	-	     979.0 	  40.0 	SICBM	 1
+SICBM St 2	SICBM2              	AJSP	-	  3.2 	 1.17 	   3.3 	-	     267.0 	  44.0 	SICBM2	 1
+SICBM St 3	SICBM3              	HERC	-	  2.0 	 1.17 	   1.5 	-	      88.0 	-	SICBM3	 1
+SICBM PBS	SICBM4              	MMD?	-	  0.8 	 1.17 	   0.5 	-	-	-	SICBM4	 1
+M-3A	M-40                	NISST	-	  2.3 	 1.14 	   1.1 	     130 	      61.0 	  54.0 	M-3A	 1
+Vanguard	Viking              	MARTB	-	 11.4 	 1.14 	   7.7 	     811 	     120.0 	 144.0 	X-405	 1
+Viking Type 9	Viking              	MARTB	Viking	 12.8 	 1.14 	   6.8 	    1000 	      93.0 	 105.0 	NRL Viking	 1
+Algol 3A	ScoutD              	LTV	-	  9.4 	 1.14 	  14.3 	    1600 	     471.0 	  56.0 	Algol 3A	 1
+Zefiro	Zefiro              	FIATA	-	  4.9 	 1.14 	  17.3 	    1500 	     590.0 	  71.0 	Zefiro	 1
+15Zh59V	Kuryer.St3          	MITT	-	  2.1 	 1.13 	   3.0 	-	-	-	15Zh59V	 1
+M56A1	Aries               	SVC	Aries	  3.8 	 1.12 	   5.2 	     750 	     200.0 	  60.0 	M56A1	 1
+KZ-1 St4	KT1-3               	HEXI	-	  1.5 	 1.10 	   2.0 	-	-	-	KZ1-4	 1
+KZ-1AE St4	KT1-3               	HEXI	-	  1.5 	 1.10 	   2.0 	-	-	-	KZ1AE-4	 1
+H-II SSB	H2.SSB              	NISST	-	  9.0 	 1.10 	  10.5 	    2100 	     338.0 	  66.0 	H-II SSB	 1
+H-II SSB (A)	H2.SSB              	NISST	-	  9.0 	 1.10 	  10.5 	    2100 	     338.0 	  66.0 	H-II SSB (A)	 1
+TR-1	TR-1                	NASDA	-	  7.1 	 1.13 	  10.8 	    3900 	     608.0 	  51.3 	TR-1	 1
+TR-1A	TR-1                	NASDA	TR-1A	  7.5 	 1.13 	   8.8 	    1784 	     608.0 	  52.0 	TR-1A	 1
+Prithvi	Prithvi             	HAL	-	  8.5 	 1.10 	   4.5 	-	-	-	Prithvi	 1
+PDV Target St2	Prithvi             	HAL	-	  2.0 	 1.10 	   2.0 	-	-	-	2S-SL	 1
+PDV-II KV	PDV-II              	DRDO	-	  4.0 	 1.10 	   2.0 	-	-	-	PDV-ASAT	 1
+TX-500	Spartan             	THKXM	Spartan TX-500	  4.9 	 1.09 	   5.5 	    1030 	    2000.0 	-	TX-500	 1
+TX-454	Spartan             	THKXM	-	  5.0 	 1.09 	   6.5 	     753 	-	-	TX-454	 1
+TX-135	Spartan             	THKXM	-	  5.2 	 1.09 	   5.3 	     932 	    2000.0 	   4.5 	TX-135	 1
+PAP	PAP                 	BPD	-	 11.5 	 1.07 	  12.6 	    3100 	     650.0 	  42.0 	PAP	 1
+Dolphin	Dolphin             	STST	-	 15.5 	 1.07 	   7.5 	-	     155.0 	-	Dolphin	 1
+Hercules Booster	Hercules            	DAC/HERCR	-	  4.3 	 1.06 	   2.4 	-	     772.0 	   3.4 	XM-42	 4
+Paekkom Booster	Hercules            	ADD	-	  4.3 	 1.06 	   2.4 	-	-	-	Paekkom	 4
+Algol 1	Scout               	LTV	-	  9.4 	 1.02 	  10.7 	    1380 	     413.0 	  44.0 	Algol I	 1
+Algol 1A	Scout               	LTV	-	  9.4 	 1.02 	  10.7 	    1200 	     420.0 	  44.0 	Algol IA	 1
+Algol 1B	Scout               	LTV	-	  9.4 	 1.02 	  10.7 	    1200 	     420.0 	  44.0 	Algol IB	 1
+Algol 1C	Scout               	LTV	-	  9.4 	 1.02 	  10.7 	    1200 	     440.0 	  44.0 	Algol IC	 1
+Algol 1D	Scout               	LTV	-	  9.4 	 1.02 	  10.7 	    1200 	     440.0 	  44.0 	Algol ID	 1
+Algol 2A	Scout               	LTV	-	  9.1 	 1.02 	  10.7 	    1200 	     380.0 	  60.0 	Algol IIA	 1
+Algol 2B	Scout               	LTV	-	  9.1 	 1.02 	  10.7 	    1170 	     400.0 	  80.0 	Algol IIB	 1
+Algol 2C	Scout               	LTV	-	  9.1 	 1.02 	  10.8 	    1200 	     436.0 	  76.0 	Algol IIC	 1
+Castor 4	Castor4             	THKX	-	  9.7 	 1.02 	  10.5 	    1200 	     428.0 	  53.9 	TX-526	 1
+Castor 4A	Castor4             	THKX	-	 13.6 	 1.02 	  11.6 	    1400 	     433.7 	  56.2 	TX-780	 1
+Castor 4B	Castor4             	THKX	-	  8.8 	 1.02 	  11.5 	    1420 	     429.0 	  60.9 	TX-859	 1
+Castor 4AXL	Castor4             	THKX	-	 15.0 	 1.02 	  15.4 	    2500 	     745.0 	  60.0 	TX-780XL	 1
+GEM-40	GEM                 	ATKH	-	 13.0 	 1.02 	  13.1 	    1315 	     499.2 	  63.3 	GEM-40	 1
+TX-174	Pershing            	MARTO	-	  2.8 	 1.02 	   2.3 	     251 	     117.0 	  39.0 	TX-174	 1
+TX-175	Pershing            	MARTO	-	  2.7 	 1.02 	   1.5 	     210 	      85.0 	  39.0 	TX-175	 1
+Pershing 2 St1	Pershing            	MARTO	-	  4.0 	 1.02 	   4.1 	     530 	     172.0 	  58.0 	Pershing 2 St1	 1
+Pershing 2 St2	Pershing            	MARTO	-	  2.8 	 1.02 	   5.8 	     350 	     134.0 	  46.0 	Pershing 2 St2	 1
+Hermes A-3A	HermesA3            	GEMTS	-	  8.7 	 1.02 	   3.8 	-	      80.0 	-	Hermes A-3A	 1
+S-43	S-40                	IAE	S-43	  8.1 	 1.01 	   8.4 	    1250 	     327.0 	  40.0 	S-43	 1
+S-43TM	S-40                	IAE	S-43	  8.1 	 1.01 	   8.4 	    1250 	     327.0 	  40.0 	S-43	 1
+S-43 VLR-R2	S-40                	IAE	S-43	  8.1 	 1.01 	   8.4 	    1250 	     327.0 	  40.0 	S-43	 1
+S-40	S-40                	IAE	S-40	  5.3 	 1.01 	   5.6 	    1300 	     252.0 	  40.0 	S-40	 1
+S-40TM	S-40                	IAE	-	  5.1 	 1.01 	   5.4 	    1190 	     202.0 	  58.0 	S-40	 1
+S-44	S-44                	IAE	-	  1.7 	 1.01 	   1.0 	     127 	      33.0 	  66.0 	S-44	 1
+S-44M	S-44                	IAE	-	  1.7 	 1.01 	   1.0 	     127 	      33.0 	  66.0 	S-44	 1
+Cygnus 40	40SM                	LARC/THKE	-	  1.1 	 1.01 	   1.0 	      74 	      83.0 	  26.0 	Cygnus 40	 1
+Temp	Temp                	MIT	-	 12.4 	 1.01 	  11.9 	     120 	-	-	9M76	 1
+Temp-S	Temp                	MIT	-	 12.4 	 1.01 	  11.9 	     120 	-	-	9M76B	 1
+Electron Stage 3	Electron            	RLABN	-	  0.5 	 1.40 	   1.0 	-	-	-	Curie	 1
+Photon Lunar	Electron            	RLABN	-	  1.0 	 1.40 	   2.0 	-	-	-	HyperCurie	 1
+Start	Start               	MITT	-	  2.6 	 1.00 	   1.0 	     300 	     100.0 	  53.0 	Start	 1
+DS	DS                  	MITT	-	  0.5 	 1.00 	   0.5 	      50 	-	 250.0 	DS	 1
+Orion LAS	Orion.LAS           	OSCC	-	 10.0 	 1.00 	   6.0 	-	-	-	Orion LAS-AM	 1
+HAPS Stage	HAPS                	PRIMX	-	  0.8 	 1.00 	   0.1 	      50 	       0.7 	 180.0 	MR-107	 3
+HAPS	HAPS                	PRIMX	-	  0.8 	 1.00 	   0.1 	      50 	       0.7 	 180.0 	MR-107	 3
+Dezful	Dezful	IR	-	 10.6 	 1.00 	  15.0 	-	     255.0 	 128.0 	Dezful	 1
+DF-15	DF-15               	ARMT	M-9	  9.1 	 1.00 	   6.2 	-	-	-	DF-15	 1
+Shaheen	DF-15               	ARMT	M-9	  9.1 	 1.00 	   6.2 	-	-	-	DF-15	 1
+HANBIT-TLV	HANBIT	INNOSP	-	 15.0 	 1.00 	   8.0 	-	-	-	HyPER-15	 1
+KSLV-1 Stage 2	KSLV.St2            	KARI?	-	  1.6 	 1.00 	   1.4 	     200 	      80.0 	  44.0 	KSLV SRM	 1
+SLV-3-1	ASLV                	VSSC	-	  9.8 	 1.00 	  10.8 	    2140 	     420.0 	  53.0 	SLV-3-1	 1
+SLV-3-1/D4	ASLV                	VSSC	-	  9.8 	 1.00 	  10.8 	    2140 	     590.0 	  55.0 	SLV-3-1/D4	 1
+AS-0	ASLV                	VSSC	-	 10.7 	 1.00 	  11.6 	    2963 	     502.0 	  49.0 	ASLV SRM	 1
+AS-1	ASLV                	VSSC	ASLV	 10.2 	 1.00 	  11.8 	    2900 	     702.0 	  45.0 	ASLV AS-1	 1
+Agni P	ASLV                	DRDO	-	  7.7 	 1.00 	  15.0 	-	-	-	Agni P S1	 1
+Agni P Stage 2	ASLV                	DRDO	-	  3.1 	 1.00 	   5.0 	-	-	-	Agni P S2	 1
+PSOM	ASLV                	VSSC	-	 11.3 	 1.00 	  11.0 	    2000 	     677.0 	  44.2 	PSOM	 1
+PSOM-XL	ASLV                	VSSC	-	 13.5 	 1.00 	  13.5 	    2000 	     720.0 	  49.0 	PSOM	 1
+S9	ASLV                	VSSC	-	 10.7 	 1.00 	  11.0 	    2900 	     500.0 	  49.0 	S9	 1
+Talon-A	Talon	STRATO	-	  8.5 	 1.00 	   6.0 	-	      22.0 	-	Hadley	 0
+ADD SLV St4	GYUB4	HANWHA	-	  1.8 	 1.00 	   1.0 	-	-	-	GYUB4	 1
+Astra 1 Stage 1	Astra               	ASTRV	-	  8.0 	 1.00 	   4.0 	-	-	-	Astra E1	 4
+Astra 1 Stage 2	Astra               	ASTRV	-	  2.0 	 1.00 	   2.0 	-	-	-	Astra E1	 1
+Agni	ASLV                	DRDO	-	 11.0 	 1.00 	  11.5 	    2900 	     700.0 	  50.0 	Agni	 1
+Agni II Stage 2	AgniII.St2          	DRDO	-	  6.0 	 1.00 	   4.2 	-	-	  60.0 	Agni St2	 1
+Agni 4 Stage 2	AgniII.St2          	DRDO	-	  6.0 	 1.00 	   4.2 	-	-	  60.0 	Agni St2	 1
+KSR-III	KSR-3               	KARI	-	 10.0 	 1.00 	   5.6 	-	     126.0 	  59.0 	KSR-III	 1
+V-1000 Booster	V-1000.Booster      	SKB30	-	  3.1 	 1.00 	   3.0 	-	    1962.0 	   4.5 	PRD-33	 1
+53T6	PRS-1               	NOVTR	-	 10.0 	 1.00 	  12.0 	-	     103.0 	   4.0 	53T6	 1
+5Ya26	PRS-1               	NOVTR	-	 10.0 	 1.00 	  12.0 	-	     103.0 	   4.0 	5Ya26	 1
+Vesta	Vesta               	LRBA	-	  7.2 	 1.00 	   5.0 	     780 	     140.0 	  56.4 	Vesta	 1
+8K96B (RT-2P)	RT-2.St3            	ARSL/PERM	RT-2P St3	  5.5 	 1.00 	   4.6 	    1000 	     176.0 	  45.0 	15D94	 1
+8K96B (RT-15)	RT-2.St3            	ARSL/PERM	RT-15 St2	  4.6 	 1.00 	   4.6 	    1000 	     216.0 	  45.0 	15D92	 1
+8K98V	RT-2.St3            	ARSL/PERM	-	  3.8 	 0.98 	   3.5 	    1000 	     215.0 	  45.0 	15D25	 1
+8K96B	RT-2.St3            	ARSL/PERM	-	  4.6 	 0.98 	   4.6 	    1000 	     176.0 	  49.0 	15D94	 1
+Orion 38	Pegasus.St3         	ATKH	Pegasus 3	  1.3 	 0.97 	   0.9 	     126 	      36.0 	  69.6 	Orion 38	 1
+M57A1	Minuteman.St3       	HERC	-	  2.1 	 0.97 	   1.9 	     300 	      76.0 	  59.0 	M57A1	 1
+Salman	Salman              	IRGC	-	  2.0 	 0.95 	   1.7 	     150 	-	  65.0 	Salman	 1
+Star 37FM	Star37              	THKE	-	  1.7 	 0.94 	   1.1 	      74 	      45.8 	  66.4 	Star 37FM	 1
+Star 37FMV	Star37              	THKE	-	  1.7 	 0.94 	   1.1 	      74 	      45.8 	  66.4 	Star 37FM	 1
+Star 37B	Star37              	THKE	Star 37	  1.5 	 0.94 	   0.7 	      65 	      45.0 	-	Star 37B	 1
+Star 37C	Star37              	THKE	-	  1.5 	 0.94 	   1.0 	      83 	      45.0 	-	Star 37C	 1
+Star 37D	Star37              	THKE	-	  1.5 	 0.94 	   0.7 	      65 	      45.0 	-	Star 37D	 1
+Star 37E	Star37              	THKE	-	  1.7 	 0.94 	   1.1 	      83 	      68.0 	  42.0 	Star 37E	 1
+Star 37F	Star37              	THKE	-	  1.7 	 0.94 	   0.9 	      67 	      55.5 	  42.0 	Star 37F	 1
+Star 37XF	Star37              	THKE	-	  1.7 	 0.94 	   0.9 	      67 	      45.0 	-	Star 37XF	 1
+Star 37XE	Star37              	THKE	-	  1.7 	 0.94 	   0.9 	      67 	      45.0 	  66.0 	Star 37XE	 1
+Star 37XFP	Star37              	THKE	-	  1.7 	 0.94 	   1.0 	      72 	      38.0 	  66.0 	Star 37XFP	 1
+Star 37S	Star37              	THKE	-	  1.7 	 0.94 	   0.7 	      53 	      45.0 	-	Star 37S	 1
+Star 37N	Star37              	THKE	Star 37E	  1.7 	 0.94 	   0.6 	      64 	      45.0 	-	Star 37N	 1
+KM-H	KM-H                	NISST	-	  1.4 	 0.93 	   0.1 	      13 	-	-	KM-H	 1
+Oka	Oka                 	KBM	-	  7.5 	 0.92 	   4.6 	-	-	-	Oka	 1
+BGS-6	Oka                 	KPA	-	  4.0 	 0.92 	   6.0 	-	-	-	KPN-Solid6	 1
+KN-23	Oka                 	KBM	-	  7.5 	 0.92 	   4.0 	-	-	-	KN-23 Motor	 1
+KN-23X	Oka                 	KBM	-	  7.5 	 0.92 	   4.0 	-	-	-	KN-23X Motor	 1
+Iskander	Oka                 	KBM	-	  7.3 	 0.92 	   3.8 	-	-	-	9M723	 1
+Iskander-M	Oka                 	KBM	-	  7.3 	 0.92 	   3.8 	-	-	-	9M723	 1
+Iskander-E	Oka                 	KBM	-	  7.3 	 0.92 	   3.8 	-	-	-	9M723	 1
+Stonechat I	Stonechat           	RORD	-	  4.5 	 0.92 	   4.8 	     750 	     232.0 	  32.3 	Stonechat I	 1
+Stonechat II	Stonechat           	RORD	-	  4.5 	 0.92 	   5.1 	     750 	     242.0 	  32.8 	Stonechat II	 1
+Black Knight	BlackKnight         	SROE	-	  9.0 	 0.91 	   5.4 	     540 	      75.0 	 140.0 	Gamma 201	 1
+Black Knight 301	BlackKnight         	SROE	-	  9.0 	 0.91 	   5.4 	     540 	      75.0 	 140.0 	Gamma 301	 1
+TX-238	TX-238              	THKXM	-	  4.7 	 0.91 	   3.5 	     417 	-	-	TX-238	 1
+Skybolt St1	Skybolt             	DAC	Skybolt	  3.8 	 0.91 	   2.5 	-	     164.0 	  40.7 	Skybolt	 1
+Skybolt St2	Skybolt.St2         	DAC	-	  2.4 	 0.91 	   1.2 	-	      81.8 	  41.3 	Skybolt St2	 1
+Astra Stage 2	Astra2              	ASTRV	-	  2.2 	 0.91 	   1.0 	-	       3.3 	-	Aether	 1
+Astra 3.3 Stage 2	Astra2              	ASTRV	-	  2.2 	 0.91 	   1.0 	-	       3.3 	-	Aether	 1
+Cluster Stage 2	Cluster             	JPL	11xBaby Sergeant	  1.2 	 0.89 	   0.5 	     223 	      80.0 	   6.0 	RTV	11
+IRCPS FSM	IRCPS	LM	-	  3.9 	 0.88 	   3.0 	-	-	-	IRCPS FSM	 1
+IRCPS SSM	IRCPS	LM	-	  1.5 	 0.88 	   1.5 	-	-	-	IRCPS SSM	 1
+OS-X0	DF-11               	LYK/SANJ	-	  7.4 	 0.88 	   5.4 	    1645 	      93.2 	-	DF-11	 1
+OS-M1 Stage 2	DF-11               	LYK/SANJ	-	  7.4 	 0.88 	   5.4 	    1645 	      93.2 	-	DF-11	 1
+OS-X6B	DF-11               	LYK	-	  8.0 	 0.75 	-	-	-	-	DF-11	 1
+DF-11	DF-11               	SANJ	-	  7.4 	 0.88 	   5.4 	    1645 	      93.2 	-	DF-11	 1
+DF-11M	DF-11               	SANJ	-	  9.4 	 0.88 	   5.4 	    1645 	      93.2 	-	DF-11	 1
+Ghaznavi	DF-11               	PKPMO	-	  9.4 	 0.88 	   5.4 	    1645 	      93.2 	-	DF-11	 1
+R-17	R-11                	MAK	Scud B	  7.4 	 0.88 	   5.4 	    1645 	      93.2 	-	S5.2	 1
+Scud	R-11                	MAK	-	  8.0 	 0.88 	   6.3 	    1600 	-	-	S5.2	 1
+Scud B	R-11                	MAK	-	  8.6 	 0.88 	   5.6 	    1600 	-	-	S5.2	 1
+Al Hussein	R-11                	MAK	-	  9.5 	 0.88 	   5.9 	    1600 	-	-	S5.2	 1
+Short Al Hussein	R-11                	MAK	-	  9.0 	 0.88 	   5.9 	    1600 	-	-	S5.2	 1
+Al Abbas	R-11                	MAK	-	 10.9 	 0.88 	   7.6 	    1600 	-	-	S5.2	 1
+Abid St2	R-11                	IQ	-	  8.0 	 0.88 	   6.0 	    1600 	-	-	S5.2	 1
+Taepo Dong 1 Stage 2	R-11                	KPA	-	 12.0 	 0.88 	   7.5 	    1500 	     140.0 	 176.0 	Nodong	 1
+R-11	R-11                	OKB1	-	  7.4 	 0.88 	   4.6 	     955 	      93.0 	-	S2.253	 1
+R-11FM	R-11                	OKB1	-	  7.4 	 0.88 	   4.5 	    1080 	      93.0 	  63.0 	S2.253A	 1
+Hwasong 5	R-11                	KPA	-	 10.0 	 0.88 	   5.0 	-	      93.0 	-	S2.253	 1
+Hwasong 6	R-11                	KPA	-	 10.0 	 0.88 	   5.0 	-	      93.0 	-	S2.253	 1
+Hwasong 7	R-11                	KPA	-	 10.0 	 0.88 	   5.0 	-	      93.0 	-	S2.253	 1
+Hwasong ER	R-11                	KPA	-	 12.0 	 0.88 	   5.0 	-	      93.0 	-	S2.253	 1
+Wasserfall	Hermes              	WEHR	-	  7.8 	 0.88 	   3.5 	    1700 	      80.0 	  40.0 	Wasserfall	 1
+CHGB LV St 1	CHGB	NGISP	-	  5.0 	 0.88 	   3.0 	-	-	-	CHGB FSRM	 1
+CHGB LV St 2	CHGB	NGISP	-	  5.0 	 0.88 	   3.0 	-	-	-	CHGB SSRM	 1
+Hermes A-1	Hermes              	GEMTS	-	  7.8 	 0.86 	   5.0 	-	      71.0 	-	Hermes A-1	 1
+M-30	M-30                	NISST	-	  4.0 	 0.86 	   2.8 	     773 	     128.0 	  42.0 	M-30	 1
+Trident C-4 Stage 3	Trident.St3         	UTC	-	  3.3 	 0.86 	   1.9 	     150 	-	  40.0 	Trident St 3	 1
+Trident D-5 Stage 3	Trident.St3         	UTC	-	  3.3 	 0.86 	   2.2 	     159 	-	  40.0 	Trident St 3	 1
+X-271	X-271               	ABL?	Sprint X271	  5.0 	 0.82 	-	-	-	-	X-271	 1
+Viking	Viking              	MARTB	-	 14.9 	 0.81 	   4.5 	     800 	      93.0 	  70.0 	NRL Viking	 1
+AJ10	Able                	AJGC	Able	  5.0 	 0.81 	   1.9 	     429 	      33.0 	 122.0 	AJ10	 1
+AJ10-11B	Able                	AJGC	AJ10	  5.7 	 0.81 	   1.9 	     429 	      34.7 	 122.0 	AJ10-11B	 1
+AJ10-40	Able                	AJGC	Able	  5.8 	 0.81 	   1.9 	     429 	      34.5 	 110.0 	AJ10-40	 1
+AJ10-41	Able                	AJGC	Able	  5.8 	 0.81 	   1.9 	     429 	      34.5 	 110.0 	AJ10-41	 1
+AJ10-42	Able                	AJGC	Able II	  5.8 	 0.81 	   1.9 	     429 	      34.5 	 110.0 	AJ10-42	 1
+AJ10-101A	Able                	AJGC	Able I	  5.8 	 0.81 	   1.9 	     385 	      34.7 	 110.0 	AJ10-101A	 1
+AJ10-118	Able                	AJGC	Delta	  6.0 	 0.81 	   2.2 	     694 	      33.7 	 115.0 	AJ10-118	 1
+AJ10-118A	Able                	AJGC	Delta	  6.0 	 0.81 	   2.7 	     600 	      33.7 	 170.0 	AJ10-118A	 1
+AJ10-118D	Able                	AJGC	Delta	  5.8 	 0.81 	   2.7 	     545 	      33.7 	 170.0 	AJ10-118D	 1
+P068	P068                	SEP	P0.68	  1.7 	 0.80 	   0.8 	      62 	      52.5 	  46.5 	P068	 1
+Agate	Agate               	SEREB	VE110   Agate	  4.5 	 0.80 	   2.0 	     100 	     190.0 	  18.0 	NA 801	 1
+MD-620	Agate               	DASST	-	  4.1 	 0.80 	   2.0 	-	-	-	NA 804	 1
+Topaze VE111C	Agate               	SEREB	-	  2.9 	 0.80 	   1.5 	-	     120.0 	  39.0 	NA 802 Soleil C	 1
+Topaze VE111L	Agate               	SEREB	-	  3.0 	 0.80 	   2.2 	-	     156.0 	  44.0 	NA 803 Soleil	 1
+Topaze	Agate               	SEREB	-	  4.6 	 0.80 	   2.2 	-	     156.0 	  44.0 	NA 803 Soleil	 1
+NA-805	Agate               	DASST	-	  5.0 	 0.80 	   4.1 	-	-	-	NA 805	 1
+Jericho-1	Arrow2              	IAI	-	  4.5 	 0.80 	   2.0 	-	-	-	NA 804	 1
+IAI Arrow	Arrow2              	IAI	Arrow	  5.0 	 0.80 	   1.5 	-	-	-	IAI-Arrow-2	 1
+Arrow 3	Arrow3              	IAI	-	  6.5 	 0.70 	   1.0 	-	-	-	IAI-Arrow-3	 1
+Arrow 3 Stage 2	Arrow3              	IAI	-	  3.5 	 0.70 	   0.5 	-	-	-	IAI-Arrow-3	 1
+SLV-3-2	ASLV.St2            	VSSC	-	  6.4 	 0.80 	   4.9 	    1750 	     200.0 	  42.0 	SLV-3-2	 1
+SLV-3-2/D4	ASLV.St2            	VSSC	-	  6.4 	 0.80 	   4.9 	    1750 	     200.0 	  42.0 	SLV-3-2/D4	 1
+SLV-3-3	ASLV.St3            	VSSC	-	  2.4 	 0.80 	   1.5 	     440 	      60.0 	  46.0 	SLV-3-3	 1
+SLV-3-3/D4	ASLV.St3            	VSSC	-	  2.4 	 0.80 	   1.5 	     440 	      60.0 	  46.0 	SLV-3-3/D4	 1
+AS-2	ASLV.St2            	VSSC	St 2	  6.4 	 0.80 	   4.4 	     800 	     304.0 	  36.0 	ASLV AS-2	 1
+AS-3	ASLV.St3            	VSSC	St 3	  2.4 	 0.80 	   1.7 	     650 	      90.7 	  45.0 	ASLV AS-3	 1
+KM-M	M-40                	NISST	-	  1.3 	 0.80 	   0.6 	      45 	      32.0 	  63.0 	KM-M	 1
+M-40	M-40                	NISST	-	  1.8 	 0.79 	   0.4 	      73 	      26.5 	  40.0 	M-40	 1
+KM-P	M-40                	NISST	-	  1.2 	 0.79 	   0.5 	      42 	      31.3 	  44.0 	KM-P	 1
+HIBEX	HIBEX               	BOKT?	-	  3.1 	 0.79 	   6.0 	-	-	-	HIBEX	 1
+HIBEX-U	HIBEX               	BOKT?	-	  3.1 	 0.79 	   6.0 	-	-	-	HIBEX-U	 1
+Polaris TV	Polaris             	LMSC	-  [0.78m?]	  6.0 	 0.79 	   8.3 	    1450 	     285.0 	  23.0 	TX-33	 1
+TX-30	Sergeant            	THKX	-	  5.4 	 0.79 	   2.0 	-	      44.5 	  29.0 	TX-30	 1
+Sergeant	Sergeant            	THKX	-	  4.4 	 0.79 	   3.2 	-	     220.0 	  23.8 	TX-30	 1
+Aerojet Jr	Sergeant            	AJ	-	  5.7 	 0.79 	   4.0 	-	     254.0 	  28.0 	Aerojet Jr	 1
+TX-20 Sergeant	Sergeant            	THKX	-	  6.1 	 0.79 	   4.0 	-	     213.0 	  24.0 	TX-20	 1
+RV-A-10	Sergeant            	GEMTS	-	  4.0 	 0.79 	   3.5 	     800 	     140.0 	  30.0 	RV-A-10	 1
+Pollux	Sergeant            	THKX	-	  5.7 	 0.79 	   4.2 	-	-	  38.0 	Pollux	 1
+Castor	Sergeant            	THKX	-	  6.0 	 0.79 	   4.2 	     783 	     235.0 	  38.0 	TX-33	 1
+Castor 1	Sergeant            	THKX	-	  6.0 	 0.79 	   4.2 	     783 	     235.0 	  38.0 	TX-33	 1
+Castor 2	Sergeant            	THKX	-	  6.0 	 0.79 	   4.0 	     565 	     259.0 	  37.0 	TX-354-4	 1
+Castor 2A	Sergeant            	THKX	-	  6.0 	 0.79 	   4.0 	     565 	     259.0 	  37.0 	TX-354-3	 1
+Xaero	Xaero               	MASTEN	-	  4.6 	 0.77 	   1.0 	-	      13.2 	-	Xaero	 1
+Avanti	Avanti              	LPC	-	 13.5 	 0.77 	   6.0 	-	     121.0 	  89.0 	LPC-A92	 1
+GF-01A	GF-02               	ARMT	-	  2.0 	 0.77 	   2.0 	     200 	      29.0 	 140.0 	GF-02	 1
+GF-02	GF-02               	ARMT	-	  3.9 	 0.77 	   2.0 	     250 	     118.0 	  38.0 	GF-01A	 1
+MX-774	MX-774              	CONV	-	  5.7 	 0.76 	   1.1 	     500 	      35.0 	  75.0 	MX-774	 4
+OTRAG	OTRAG               	OTR	-	  7.0 	 0.76 	-	-	     120.0 	-	OTRAG	 4
+Corporal E	Corporal            	DAC/JPL	Corporal	 13.7 	 0.76 	   4.5 	-	      89.0 	  63.0 	Corporal E	 1
+Corporal Type 1	Corporal            	FIRES	Corporal	 13.7 	 0.76 	   5.2 	-	      89.0 	  63.0 	Corporal	 1
+Ajax Cluster 1810	Ajax                	AJ	-	  6.0 	 0.76 	   1.2 	-	      50.0 	  71.0 	Ajax 1810	 4
+Ajax Cluster	Ajax                	AJ	-	  6.0 	 0.76 	   1.2 	-	      50.0 	  71.0 	Ajax	 4
+Talos	Talos               	ABL	-	  3.4 	 0.76 	   1.5 	-	     516.0 	   5.2 	Talos Mk 11 Mod 2	 1
+Antares	Antares             	ABL	-	  3.3 	 0.76 	   1.2 	     240 	      60.0 	  38.0 	X-254	 1
+Antares 2	Antares             	ABL	Antares II X-259	  2.9 	 0.76 	   1.3 	     107 	      93.0 	  36.0 	X-259	 1
+Antares 2B	Antares             	ABL	-	  2.9 	 0.76 	   1.3 	-	      93.0 	  36.0 	X-259	 1
+Antares 3	Antares             	THKE	-	  2.9 	 0.76 	   1.4 	      95 	      82.3 	  45.0 	Star 31	 1
+Al Samoud 2	Samoud              	IQMIC	-	  5.0 	 0.76 	   2.0 	     505 	      13.8 	  52.0 	S2.711	 1
+Shaurya	K-15                	DRDO	-	  5.6 	 0.75 	   5.0 	-	-	-	Shourya	 1
+Shaurya Booster	K-15                	DRDO	-	  2.2 	 0.75 	   3.0 	-	-	-	Shourya Booster	 1
+Qaem-100 St 2	Qaem-S2	IRGC	-	  3.0 	 0.75 	   4.0 	-	-	-	Qaem-100 S2	 1
+TX-239	TX-239              	THKXM	-	  1.1 	 0.74 	   0.4 	-	-	-	TX-239	 1
+27D6	Kontakt             	FAKEL	-	  6.0 	 0.74 	   3.0 	-	-	-	27D6	 1
+28D6	Kontakt             	FAKEL	-	  2.0 	 0.74 	   1.0 	-	-	-	28D6	 1
+29D6	Kontakt             	FAKEL	-	  1.0 	 0.74 	   0.5 	-	-	-	29D6	 1
+TKS VA SAS	TKSVA	OKB52	-	  5.3 	 0.74 	   3.0 	-	-	-	TKS VA SAS	 1
+SB-735	SB-735              	ISAS	M-3S SRB	  9.1 	 0.74 	   5.1 	    1100 	     328.0 	  38.0 	SB-735	 1
+ST-735	SB-735              	ISAS	-	  4.6 	 0.74 	   7.4 	-	     250.0 	  49.0 	ST-735-1	 1
+ST-735 Stage 2	SB-735              	ISAS	-	  2.0 	 0.74 	   4.0 	-	-	-	ST-735-2	 1
+NAL-735	SB-735              	NASDA	-	  9.0 	 0.74 	   4.7 	-	     250.0 	  49.0 	NAL-735	 1
+L735	Lambda              	ISAS	-	  8.4 	 0.74 	   5.0 	    2945 	     410.0 	  28.8 	L735	 1
+L735(1/3)	Lambda.St2          	ISAS	L735(1-3)	  3.9 	 0.74 	   2.5 	-	     118.0 	  38.4 	L735(1/3)	 1
+Waxwing	Waxwing             	RORD	-	  1.5 	 0.71 	   0.3 	      39 	      28.8 	  37.2 	Waxwing	 1
+Pedro	Pedro               	THKX	-	  3.1 	 0.71 	   1.5 	     250 	     244.0 	  11.3 	TX-261-3	 1
+TX-261	Pedro               	THKX	-	  3.1 	 0.71 	   1.5 	     250 	     244.0 	  11.3 	TX-261-3	 1
+TX-261-2	Pedro               	THKX	-	  3.1 	 0.71 	   1.5 	     250 	     244.0 	  11.3 	TX-261-2	 1
+LRAShM St2	LRAShM.St2	DRDO	-	  8.0 	 0.70 	   4.0 	-	-	-	LRAShM S2	 1
+LEO-1	Orbus1              	AJSP	-	  1.2 	 0.70 	   0.7 	      45 	      50.0 	  51.5 	LEO-1	 1
+Orbus 1	Orbus1              	UTC	-	  1.2 	 0.70 	   0.5 	      50 	      88.0 	-	Orbus 1	 1
+Orbus 1A	Orbus1              	ATKE	-	  1.2 	 0.70 	   0.5 	      50 	      88.0 	-	Orbus 1A	 1
+Miura 1	Miura	PLDS	-	 12.7 	 0.70 	   2.5 	-	      30.2 	 122.0 	TEPREL-B	 1
+Skylark L	SkylarkL	SKYR	-	 10.0 	 0.70 	   2.5 	      50 	      35.0 	-	Skylark L	 1
+KM Rockoon	KM-D                	NISST	-	  1.3 	 0.70 	   0.3 	      50 	-	-	KM-D	 1
+Kestrel I Stage 2	Kestrel1.St2	TISPACE	-	  2.0 	 0.70 	   0.5 	-	-	-	Lelien 1A	 1
+MX-775	Snark               	ABL	-	  5.1 	 0.69 	   1.2 	       0 	     580.0 	   4.0 	N-25 Snark JATO	 2
+Star 27	Star27              	ATKE	-	  1.2 	 0.69 	   0.4 	      24 	      26.7 	  34.3 	Star 27	 1
+Zolfaghar	Zulfiqar	IRGC	-	  9.0 	 0.68 	   4.1 	-	-	-	Zolfaghar	 1
+OIS	Star27              	FAIR	-	  1.2 	 0.69 	   0.4 	      24 	      26.7 	  34.3 	Star 27	 1
+Star 26	Star26              	ATKE	-	  0.8 	 0.66 	   0.3 	      38 	      33.0 	  17.8 	Star 26	 1
+Star 26B	Star26              	ATKE	-	  0.8 	 0.66 	   0.3 	      23 	      35.0 	  17.8 	Star 26B	 1
+Star 26C	Star26              	ATKE	-	  0.8 	 0.66 	   0.3 	      29 	      35.0 	  16.8 	Star 26C	 1
+ARRW	ARRW	LMPLM	-	  4.0 	 0.66 	   2.0 	-	-	-	ARRW Booster	 1
+AS-4	ASLV.St4            	VSSC	St 4	  1.4 	 0.66 	   0.5 	     195 	      35.0 	  33.0 	AS-4	 1
+SLV-3-4	ASLV.St4            	VSSC	-	  1.5 	 0.66 	   0.4 	      98 	      27.0 	  33.0 	SLV-3-4	 1
+Apollo LES	Apollo.LES          	NAAD	LES	 10.2 	 0.66 	   2.5 	-	     690.0 	   3.0 	LPC A-1	 1
+P064	Rubis               	SUD	Rubis	  1.5 	 0.65 	   0.7 	      89 	      52.0 	  45.0 	P064	 1
+KT-1 St4	KT1-4              	HEXI	-	  1.2 	 0.65 	   2.0 	-	-	-	SpaB-65	 1
+KN-02	Tochka              	KBM	-	  6.4 	 0.65 	   2.0 	-	-	-	KN-02 Motor	 1
+Tochka	Tochka              	KBM	-	  6.4 	 0.65 	   2.0 	-	-	-	9M79	 1
+Tochka-U	Tochka              	KBM	-	  6.4 	 0.65 	   2.0 	-	-	-	9M79-1	 1
+V-750 Booster	V-750               	ISKRM	-	  2.4 	 0.65 	   0.3 	-	-	   4.5 	PRD-18	 1
+KM-D	KM-D                	NISST	-	  1.0 	 0.63 	   0.3 	      24 	      17.4 	  38.0 	KM-D	 1
+Cygnus 25	25SM                	PARD	-	  1.1 	 0.64 	   0.2 	      19 	      33.3 	  16.5 	Cygnus 25	 1
+SR75	SR75                	HYIMP	-	 10.0 	 0.64 	   1.0 	-	      75.0 	  72.0 	HyPLOX75	 1
+NOTS 500	NOTS500             	NOTS	-	  2.5 	 0.61 	   0.9 	-	-	  45.0 	NOTS 500	 1
+Zelzal	Zelzal              	IR	Iran	  6.0 	 0.61 	   0.5 	       0 	       0.0 	-	NP-110	 1
+Zulfiqar	Zelzal              	IR	Iran	  6.0 	 0.61 	   0.5 	       0 	       0.0 	-	NP-110	 1
+Fateh-110	Zelzal              	IR	-	  9.0 	 0.61 	   1.0 	-	-	-	NP-110	 1
+Fateh-360	Zelzal              	IR	-	  9.0 	 0.61 	   1.0 	-	-	-	Fateh-360	 1
+ATACMS	ATACMS              	AJCA	-	  4.0 	 0.61 	   1.2 	-	     180.0 	-	M124	 1
+Pathfinder Zombie	ATACMS              	AJCA	-	  4.0 	 0.61 	   1.2 	-	     180.0 	-	M124	 1
+Sabre Zombie	ATACMS              	AJCA	-	  4.0 	 0.61 	   1.2 	-	     180.0 	-	M124	 1
+K-BATS	ATACMS              	HANWHA	-	  4.0 	 0.61 	   1.2 	-	-	-	K-BATS	 1
+HYSR	HYSR                	LMMI	-	 15.0 	 0.61 	-	-	     270.0 	-	HYSR	 1
+SORS	SORS	DVST	-	  8.0 	 0.60 	-	-	-	-	SORS	 1
+B-611	B-611	SANJ	-	  5.0 	 0.60 	   1.5 	-	-	-	B-611	 1
+B-611-TR	B-611	ROKSN	-	  5.0 	 0.60 	   1.5 	-	-	-	B-611-TR	 1
+SR 0.1	SR0.1	ROKSN	-	  5.0 	 0.60 	   0.0 	-	-	-	ROKETSAN-SR-0.1	 1
+OS-M1 Stage 3	OS-M1-3             	LYK	-	  5.0 	 0.60 	   2.0 	-	-	-	OS-M St 3	 1
+LS-C	LS-C                	MHITO?	-	  4.0 	 0.60 	   1.0 	-	-	-	LE-2	 1
+LS-C-7	LS-C                	MHITO?	-	  4.0 	 0.60 	   1.0 	-	-	-	LE-3 (T)	 1
+LS-C Booster	LS-C                	MHITO?	-	  2.5 	 0.60 	   0.3 	-	-	-	LS-C Booster	 1
+KN-24	KN-24               	KP	-	  4.0 	 0.60 	   1.2 	-	-	-	KN-ATACMS	 1
+Seliger 1	Seliger             	DRG	-	  3.0 	 0.60 	   0.5 	-	      49.0 	-	Seliger 1	 1
+Seliger 3	Seliger             	DRG	-	  6.0 	 0.60 	   1.0 	-	      50.0 	-	Seliger 3	 1
+Alcyone	BE3                 	HERC	-	  0.6 	 0.60 	   0.1 	      39 	      34.0 	   8.0 	BE-3B1	 1
+Badr-1	Grad                	ANSAL	-	  5.0 	 0.60 	   1.0 	-	-	-	Badr-1	 1
+Grad	Grad                	ANSAL	-	  5.0 	 0.60 	   1.0 	-	-	-	Badr-1	 1
+BE-3	BE3                 	HERC	-	  0.6 	 0.60 	   0.1 	      28 	      34.0 	   9.0 	BE-3	 1
+BE-3A4	BE3                 	HERC	-	  0.6 	 0.60 	   0.1 	      28 	      34.0 	   9.0 	BE-3A4	 1
+BE-3A5	BE3                 	HERC	-	  0.6 	 0.60 	   0.1 	      28 	      34.0 	   9.0 	BE-3A5	 1
+BE-3A9	BE3                 	HERC	-	  0.6 	 0.60 	   0.1 	      28 	      34.0 	   9.0 	BE-3A9	 1
+JTSPACE S1	JTSPACE	JTSPACE	-	  5.0 	 0.60 	   0.6 	-	-	-	JTSPACE M1	 1
+JTSPACE S2	JTSPACE	JTSPACE	-	  5.0 	 0.60 	   0.6 	-	-	-	JTSPACE M2	 1
+M-6	HJ                  	ABL	M6 Honest John	  4.9 	 0.58 	   1.9 	     954 	     365.0 	   5.0 	M-6	 1
+Taurus	HJ                  	ABL/WFF	-	  4.3 	 0.58 	   1.4 	-	     457.0 	   3.5 	Taurus	 1
+X-7A-1 Booster	HJ                  	LVN/ABL	-	  6.0 	 0.58 	   1.9 	    1474 	     467.0 	   4.0 	X-202C3	 1
+Taurion	HJ                  	WFF	-	  4.3 	 0.58 	   1.4 	-	      13.0 	  32.0 	M112	 1
+Red Kite	RedKite	BAYCH	-	  3.3 	 0.56 	   1.4 	     265 	     226.0 	  13.0 	Red Kite	 1
+Oriole	Oriole              	DTI	-	  3.9 	 0.56 	   1.0 	     198 	      92.1 	-	GEM 22	 1
+AJ60-91	AJ60                	AJGC	Aerobee 350 St2	  9.1 	 0.56 	   3.0 	    1050 	      72.0 	  52.7 	AJ11-6	 4
+Sonda 3-1	Sonda3              	IAE	-	  3.3 	 0.56 	   1.2 	     341 	     102.0 	  20.0 	S-30	 1
+S31	Sonda3              	IAE	-	  3.2 	 0.56 	   0.9 	     284 	     136.0 	  11.0 	S-31	 1
+Lance Missile	Lance               	LTVM	-	  6.2 	 0.56 	-	-	      20.0 	 114.0 	P8E-9	 1
+SEPR-732	Stromboli           	SUD	-	  2.5 	 0.56 	   1.5 	-	     200.0 	-	SEPR-732	 1
+RH-560S	Stromboli           	VSSC	-	  4.1 	 0.56 	   1.3 	     262 	     119.0 	  19.0 	RH-560S	 1
+RH-560	Stromboli           	VSSC	-	  3.9 	 0.56 	   0.9 	     277 	      76.0 	  19.0 	RH-560	 1
+RH-560 Mk III	Stromboli           	VSSC	-	  3.7 	 0.56 	   0.9 	     277 	      76.0 	  19.0 	RH-560	 1
+RH-ATV	Stromboli           	VSSC	-	  3.7 	 0.56 	   0.9 	     277 	      76.0 	  19.0 	RH-560	 1
+Stromboli	Stromboli           	ONERA	-	  3.0 	 0.56 	   0.9 	     246 	      75.0 	  16.0 	Stromboli	 1
+Hatf I	Stromboli           	SUPA	-	  3.0 	 0.56 	   0.9 	     246 	      75.0 	  16.0 	Stromboli	 1
+Aigle	Stromboli           	ONERA	-	  3.0 	 0.56 	   0.9 	     246 	      75.0 	  16.0 	SEPR 737	 1
+Vesuve	Stromboli           	ONERA	-	  3.5 	 0.56 	   0.8 	     250 	     200.0 	   5.0 	SEPR 734-1	 1
+Tacite	Stromboli           	ONERA	-	  4.7 	 0.56 	   1.7 	     455 	     170.0 	  20.0 	SEPR 739-2	 1
+BER	Stromboli           	ONERA	-	  4.7 	 0.56 	   1.9 	     700 	     170.0 	  20.0 	SEPR 739	 1
+Berenice St2	Stromboli           	ONERA	-	  3.8 	 0.56 	   1.1 	     372 	     170.0 	  20.0 	SEPR 740	 1
+NSPO Booster	NSPOB               	NSPO	-	  2.4 	 0.55 	   1.0 	-	-	   6.0 	NSPO Booster	 1
+Veronique	Veronique           	LRBA	-	  7.3 	 0.55 	   1.3 	     278 	      40.0 	  45.0 	Veronique	 1
+Veronique AGI	Veronique           	LRBA	Veronique	  7.3 	 0.55 	   1.3 	     278 	      40.0 	  49.0 	Veronique AGI	 1
+Veronique 61	Veronique           	LRBA	Veronique	  9.5 	 0.55 	   1.9 	-	      60.0 	  54.0 	Veronique 61	 1
+Veronique 61M	Veronique           	LRBA	Veronique	 11.7 	 0.55 	   2.0 	-	      60.0 	  56.0 	Veronique 61	 1
+Veronique R	Veronique           	LRBA	-	  5.8 	 0.55 	   0.5 	     385 	      40.0 	   6.5 	Veronique	 1
+Veronique P2	Veronique           	LRBA	-	  6.0 	 0.55 	   0.5 	-	      10.0 	-	Vero P2	 1
+Veronique P6	Veronique           	LRBA	-	  6.0 	 0.55 	   0.5 	-	      20.0 	-	Vero P6	 1
+V-1000	V-1000              	SKB30	-	  8.0 	 0.55 	-	-	     103.0 	-	S2.726	 1
+Luna-M	Luna                	MIT	-	  9.4 	 0.54 	   2.3 	-	-	-	9M21	 1
+ASAS XL	SM3.TSRM            	THKE	-	  0.9 	 0.53 	   0.1 	-	       7.0 	  15.0 	Mk 136	 1
+Mk 72	Mk72                	UTC	-	  1.7 	 0.53 	   0.7 	     243 	-	-	Mk 72	 1
+SM-3-II-2	SM-3-II             	MHI	-	  2.5 	 0.53 	-	-	-	-	SM-3-II-2	 1
+SM-3-II-3	SM-3-II             	MHI	-	  1.0 	 0.53 	-	-	-	-	SM-3-II-3	 1
+Black Sparrow	BlackSparrow        	IAI	-	  4.8 	 0.53 	   1.2 	-	-	-	Black Sparrow	 1
+Blue Sparrow	BlackSparrow        	IAI	-	  4.8 	 0.53 	   1.2 	-	-	-	Black Sparrow	 1
+Silver Sparrow	BlackSparrow        	IAI	-	  7.0 	 0.53 	   2.5 	-	-	-	Black Sparrow	 1
+Hades	Hades               	AELM	-	  5.0 	 0.53 	   1.8 	-	-	-	Acheron	 1
+GLCM	GLCM                	UNK	-	  6.4 	 0.53 	   1.8 	-	-	-	-	 0
+S-520	S-520               	ISAS	S520	  5.9 	 0.52 	   2.3 	     400 	     143.1 	  28.7 	S-520	 1
+SS-520 St 2	S-520               	ISAS	-	  1.7 	 0.52 	   0.4 	     111 	-	-	SS-520	 1
+Cedre St1	Cedre               	LRS	-	  2.3 	 0.52 	   1.0 	-	     138.0 	-	Cedre St1	 1
+Alcor	Alcor               	AJSP	-	  1.9 	 0.52 	   0.5 	     200 	      36.0 	  30.0 	30KS8000	 1
+Alcor IA	Alcor               	AJSP	-	  1.9 	 0.52 	   0.5 	     200 	      49.0 	  23.0 	23KS11000	 1
+Alcor IB	Alcor               	AJSP	-	  1.9 	 0.52 	   0.5 	      88 	      42.0 	  26.0 	Alcor IB	 1
+Cygnus 20	20SM                	THKE/PARD	-	  0.7 	 0.51 	   0.1 	      10 	      30.0 	   8.5 	Cygnus 20	 1
+SARGE	STIG-B              	EXOSA	-	 11.0 	 0.51 	   1.0 	     363 	      24.1 	  60.0 	SARGE	 1
+STIG-B	STIG-B              	ARMAD	-	 10.0 	 0.51 	   0.7 	-	      22.5 	  50.0 	STIG-B	 1
+OS-M1 Stage 4	OS-M1-4             	LYK	-	  1.0 	 0.50 	   1.0 	-	-	-	OS-M St 4	 1
+Star 20	Star20              	THKE	-	  1.5 	 0.50 	   0.3 	      26 	      26.5 	  27.5 	Star 20	 1
+MSD	Star20              	NRL	-	  1.5 	 0.50 	   0.3 	      26 	      26.5 	  27.5 	Star 20	 1
+FW4D	FW4                 	UTC	-	  1.5 	 0.50 	   0.3 	      25 	      25.0 	  30.5 	FW4	 1
+FW4S	FW4                 	UTC	-	  1.5 	 0.50 	   0.3 	      32 	      25.0 	  30.5 	FW4	 1
+Saman-1	Saman-1             	IR	-	  1.0 	 0.50 	   0.5 	     300 	      21.0 	  28.0 	Saman-1	 1
+V-750	V-750               	FAKEL	-	  8.1 	 0.50 	   2.0 	-	      13.8 	  25.0 	S2.711	 1
+ZUR-215	V-750               	NPOL	-	  8.1 	 0.50 	   2.0 	-	      13.8 	  25.0 	S2.711	 1
+Al Samoud	V-750               	IQMIC	-	  6.0 	 0.50 	   2.0 	     360 	      13.8 	  52.0 	S2.711	 1
+48N6	48N6                	FAKEL	-	  7.5 	 0.50 	   1.8 	-	-	-	48N6	 1
+Al Fatah	Fatah               	FATAH	-	  4.6 	 0.50 	   1.0 	     454 	     130.0 	  15.0 	Al Fatah	 1
+L500	L500                	ISAS	-	  2.5 	 0.50 	   0.8 	-	      69.0 	  27.0 	L500	 1
+TT-500	JCR                 	NASDA	-	  7.0 	 0.50 	   1.3 	     300 	     116.0 	-	TT-500	 1
+TT-500-S2	JCR                 	NASDA	-	  3.0 	 0.50 	   0.7 	     200 	      61.0 	-	TT-500-S2	 1
+JCR Booster	JCR                 	NISST	-	  5.0 	 0.51 	   0.7 	-	     133.0 	-	JCR	 1
+JCR	JCR                 	NISST	-	  5.0 	 0.51 	   0.7 	-	      54.0 	-	JCR-S2	 1
+Upstage	HIBEX               	BOC	-	  1.0 	 0.50 	   0.2 	-	-	-	Upstage	 1
+Momo	Momo                	IST	-	  6.2 	 0.50 	   1.0 	-	      12.0 	-	Momo	 1
+Momo 6	Momo                	IST	-	  7.2 	 0.50 	   1.1 	-	      14.0 	-	Momo 6	 1
+IAI Arrow St2	IAI.Arrow.St2       	IAI	Arrow St2	  2.5 	 0.50 	   0.5 	-	-	-	IAI-Arrow-2-2	 1
+Abid St3	Abid.St3            	IQ	-	  1.0 	 0.50 	-	-	-	-	Abid St3	 1
+NOTS 401A	NOTS400             	NOTS	-	  0.8 	 0.50 	-	-	-	   7.2 	NOTS 401A	 1
+Zeus A	Zeus-A              	GCR	-	  7.0 	 0.50 	   2.0 	-	-	-	Zeus A	 1
+E-8-5 VA	E8                  	NPOL	-	  2.3 	 0.50 	   0.4 	-	-	-	E-8-5 VA	 1
+K-15 Booster	K-15                	DRDO	-	  2.0 	 0.50 	   1.0 	-	-	-	K-15 Booster	 1
+K-15 Stage 2	K-15                	DRDO	-	  5.0 	 0.50 	   2.0 	-	-	-	K-15 Stage 2	 1
+NOTS 505	NOTS505             	NOTS	-	  0.5 	 0.50 	-	-	      18.0 	  33.5 	NOTS 500	 1
+L480S	L480S               	ISAS	-	  0.5 	 0.48 	   0.1 	      15 	       7.8 	  31.5 	L480S	 1
+Long Tom	LongTom             	WRE	-	  3.1 	 0.47 	   0.6 	-	     190.0 	   3.6 	Mayfly	 4
+Private A Booster	PrivateBooster      	JPL	-	  1.0 	 0.47 	   0.1 	-	      98.0 	   0.2 	T-22	 4
+Lark	Lark                	FAIRA	-	  4.2 	 0.46 	   0.5 	-	       2.8 	 260.0 	LR2-RM-6	 1
+X-241	X-241               	ABL	ABL X241	  1.5 	 0.46 	   0.2 	      25 	      12.1 	  36.0 	X-241	 1
+RTV-A-3	RTV                 	NAA	-	  2.5 	 0.46 	   0.6 	     280 	      12.0 	-	NATIV	 1
+Terrier 12-0	Terrier             	CONVPO	-	  3.9 	 0.46 	   0.8 	     322 	     257.5 	   4.4 	Terrier Mk12 Mod 0	 1
+Terrier	Terrier             	HERCR?	ABL X256	  3.9 	 0.46 	   0.9 	     322 	     257.5 	   4.4 	X-256	 1
+Terrier Mk 12	Terrier             	HERCR?	-	  3.9 	 0.46 	   0.9 	     322 	     257.5 	   4.4 	Terrier Mk12 Mod 1	 1
+Terrier Mk 70	Terrier             	THKX	-	  3.9 	 0.46 	   1.0 	     290 	-	   6.2 	TX-664-4	 1
+T48	T48                 	MARTB	-	  4.0 	 0.46 	   1.0 	-	     193.0 	   3.4 	T48	 1
+X-248	Altair              	ABL	-	  1.8 	 0.46 	   0.3 	      24 	      13.4 	  38.6 	X-248	 1
+Altair	Altair              	ABL	-	  1.8 	 0.46 	   0.3 	      24 	      13.0 	  39.0 	X-248A10	 1
+Altair 2	Altair              	ABL	-	  1.5 	 0.46 	   0.3 	      33 	      27.2 	  28.0 	X-258	 1
+MG-18	Altair              	LPC	M-2	  1.5 	 0.46 	   0.3 	-	-	-	MG-18	 1
+GCR 33KS2800	GCR                 	GCR	-	  1.4 	 0.46 	   0.2 	      30 	      12.5 	  33.0 	33KS2800	 1
+SRAM	SRAM                	BOUT	-	  4.3 	 0.46 	   1.0 	-	-	-	LPC-415	 1
+ASAT	SRAM                	BOUT	-	  4.3 	 0.46 	   1.0 	-	-	-	LPC-415	 1
+MR-12	MR-12               	TAIFUN	-	  8.8 	 0.45 	   1.0 	-	-	-	MR-12	 1
+MR-20	MR-12               	TAIFUN	-	  8.8 	 0.45 	   1.0 	-	-	-	MR-20	 1
+M-250	MR-12               	TAIFUN	-	  8.8 	 0.45 	   1.0 	-	-	-	MR-25	 1
+MR-30	MR-12               	TAIFUN	-	  8.8 	 0.45 	   1.0 	-	-	-	MR-30	 1
+SS-520 St 3	SS-520-4            	ISAS	-	  0.6 	 0.45 	   0.1 	       8 	-	-	SS-520 S3	 1
+T-7	T-7                 	SIMED	-	  6.0 	 0.45 	   1.0 	-	       2.0 	-	T-7 LRE	 1
+T-7 booster	T-7B                	SIMED	-	  1.0 	 0.45 	   0.5 	-	       2.0 	-	T-7 booster	 1
+Tianying-3C	Tianying            	CSSAR	-	  5.0 	 0.45 	   1.1 	       0 	       0.0 	-	Tianying 3C	 1
+Tianying-3F Booster	Tianying            	CSSAR	-	  2.7 	 0.45 	   0.5 	       0 	       0.0 	-	Tianying 3F	 1
+Peregrine	Peregrine           	MSFC	-	  6.2 	 0.44 	   1.2 	-	-	-	Peregrine	 1
+Black Brant VA	BB5                 	BAL	Black Brant 2A	  5.2 	 0.44 	   1.0 	     150 	     111.0 	  15.0 	15KS25000	 1
+Black Brant IIB	BB5                 	BAL	Black Brant 2B	  5.2 	 0.44 	   1.0 	     150 	      89.0 	  23.0 	23KS20000	 1
+Black Brant VB	BB5                 	BAL	Black Brant 5B	  5.3 	 0.44 	   1.2 	     151 	      89.0 	  32.4 	26KS20000	 1
+Black Brant VC	BB5                 	BAL	Black Brant 5C	  5.3 	 0.44 	   1.2 	     240 	      68.2 	  33.0 	26KS20000	 1
+Black Brant I	BB5                 	BAL	Black Brant 1	  5.3 	 0.44 	   1.1 	-	     110.0 	  15.0 	15KS25000	 1
+Black Brant Mk1	BB5                 	BAL	Black Brant 5C	  5.3 	 0.44 	   1.2 	     240 	      68.2 	  33.0 	BB Mk1	 1
+Black Brant Mk3	BB5                 	BAL	Black Brant 5C	  5.3 	 0.44 	   1.2 	     240 	      68.2 	  33.0 	BB Mk3	 1
+Black Brant Mk4	BB5                 	BAL	Black Brant 5C	  5.3 	 0.44 	   1.2 	     240 	      68.2 	  33.0 	BB Mk3	 1
+Nihka	BB5                 	BAL	-	  2.0 	 0.44 	   0.4 	      79 	      49.9 	  17.8 	17KS12000	 1
+Raven 1/1A/2A	Raven               	RORD	-	  5.1 	 0.44 	   1.0 	     240 	      44.5 	  30.0 	Raven 1	 1
+Raven 2	Raven               	RORD	-	  5.1 	 0.44 	   1.0 	     240 	      44.5 	  30.0 	Raven 2	 1
+Raven 5	Raven               	RORD	-	  5.1 	 0.44 	   1.0 	     240 	      44.5 	  30.0 	Raven 5	 1
+Raven 7	Raven               	RORD	-	  5.1 	 0.44 	   1.0 	     240 	      44.5 	  30.0 	Raven 7	 1
+Raven 6	Raven               	RORD	Raven	  5.4 	 0.44 	   1.2 	     242 	      52.5 	  36.0 	Raven 6	 1
+Raven 8	Raven               	RORD	Raven	  5.4 	 0.44 	   1.1 	     230 	      50.1 	  30.0 	Raven 8	 1
+Raven 11	Raven               	RORD	Raven	  5.5 	 0.44 	   1.3 	     290 	     105.0 	  39.0 	Raven 11	 1
+Rook	Raven               	RORD	Rook	  5.4 	 0.44 	   1.1 	     186 	     300.0 	   5.5 	Rook	 1
+Rook II	Raven               	RORD	Rook	  5.4 	 0.44 	   1.2 	     304 	     300.0 	   7.0 	Rook	 1
+Rook IIIA	Raven               	RORD	Rook	  5.4 	 0.44 	   1.1 	     186 	     300.0 	   5.5 	Rook	 1
+Rook IIIB	Raven               	RORD	Rook	  5.4 	 0.44 	   1.1 	     186 	     300.0 	   5.5 	Rook	 1
+Goldfinch	Raven               	BAJ	-	  2.5 	 0.44 	   0.4 	      94 	     175.0 	   3.5 	Goldfinch IIA	 1
+Goldfinch II	Raven               	BAJ	Goldfinch	  3.0 	 0.44 	   0.4 	      89 	-	   3.5 	Goldfinch II	 1
+Cuckoo IA	Raven               	RORD	-	  1.0 	 0.44 	   0.2 	-	      80.0 	   4.0 	Cuckoo IA	 1
+Cuckoo IB	Raven               	RORD	-	  1.2 	 0.44 	   0.2 	      57 	      80.9 	   4.1 	Cuckoo IB	 1
+Cuckoo II	Raven               	RORD	-	  1.2 	 0.44 	   0.2 	      37 	      36.5 	  10.0 	Cuckoo II	 1
+Cuckoo 4	Raven               	RORD	-	  1.2 	 0.44 	   0.2 	-	-	   4.3 	Cuckoo 4	 1
+Saluki B	Raven               	IMIS	-	  1.0 	 0.44 	   0.6 	-	     195.5 	   6.0 	Saluki B	 1
+Saluki S	Raven               	IMIS	-	  1.0 	 0.44 	   0.4 	-	      35.6 	  27.0 	Saluki S	 1
+PrSM	PrSM	LM	-	  4.0 	 0.43 	   1.0 	-	-	-	PrSM	 1
+NSPO Stage 2	NSPO                	NSPO	-	  3.9 	 0.42 	   1.0 	-	-	  30.0 	NSPO Sustainer	 1
+KSR	KSR                 	KARI	-	  4.0 	 0.42 	   1.2 	-	      86.0 	  20.0 	KSR	 1
+KSR Booster	KSR                 	KARI	-	  3.6 	 0.42 	   0.8 	-	     211.0 	   5.9 	KSR Booster	 1
+Nike	Nike                	ABL	-	  3.6 	 0.42 	   0.7 	     256 	     195.6 	   3.4 	M5E1	 1
+2.5-DS-59000	Nike                	ABL	-	  3.0 	 0.42 	   0.7 	-	     265.0 	   2.5 	2.5-DS-59000	 1
+X-201	Nike                	ABL	-	  3.0 	 0.42 	   0.7 	-	     209.0 	   3.0 	3-DS-47000	 1
+XM-17	XM-17               	THKX	-	  1.0 	 0.42 	   0.2 	-	-	-	XM-17	 1
+RX-420	RX-420              	LAPAN	-	  6.0 	 0.42 	   0.5 	-	     100.0 	-	RX-420	 1
+K420	K420                	ISAS	-	  5.8 	 0.42 	   1.2 	     200 	     110.0 	  17.0 	K420	 1
+K420H	K420                	ISAS	-	  5.8 	 0.42 	   1.2 	     200 	     110.0 	  17.0 	K420H	 1
+K420(1/3)	K420                	ISAS	-	  2.0 	 0.42 	-	-	      45.0 	-	K420(1/3)	 1
+Lambda2-2	K420                	ISAS	-	  8.7 	 0.42 	   1.4 	     300 	     110.0 	  17.0 	K420	 1
+Lambda3-2	K420                	ISAS	-	 11.0 	 0.42 	   1.8 	     300 	     110.0 	  17.0 	K420	 1
+Lambda3-3	K420                	ISAS	-	  4.8 	 0.42 	   0.5 	     100 	     110.0 	-	K420	 1
+AAD	AAD                 	HAL	-	  6.0 	 0.42 	   1.0 	-	-	-	-	 1
+Zenit	Zenith              	CONTR	-	  5.6 	 0.42 	   0.6 	     150 	      45.0 	  21.0 	Zenith	 1
+Malemute	Malemute            	THKU	-	  3.3 	 0.41 	   0.6 	     100 	      55.1 	  22.0 	TU-758	 1
+Imp Malemute	Malemute            	THKU	-	  3.3 	 0.41 	   0.6 	     100 	      55.1 	  22.0 	Imp Malemute	 1
+Patriot	Malemute            	THKU	-	  3.3 	 0.41 	   0.6 	     100 	      55.1 	  22.0 	TX-486-1	 1
+Aeolus Booster	LongTom             	WRE	-	  1.8 	 0.41 	   0.3 	-	      80.0 	   2.7 	LAPSTAR	 7
+HAT	LongTom             	WRE	-	  1.8 	 0.41 	   0.3 	-	      90.4 	   2.3 	Demon	 2
+Gun Projectile 16	Gun16               	BRL	-	  1.0 	 0.41 	   0.1 	-	-	-	-	 0
+MR-1	Sparrow             	NMC	-	  1.6 	 0.41 	   0.2 	     124 	     102.0 	   1.9 	1.8KS7800	 3
+SPRAN-50	Daniel              	ONERA	-	  2.5 	 0.40 	   0.4 	-	-	   5.6 	SPRAN-50	 1
+KN-25	KN-25               	KP	-	  3.0 	 0.40 	   2.0 	-	-	-	DPRK-MLRS	 1
+Nike-46	Nike-46             	AJ	-	  1.0 	 0.40 	   1.0 	-	     392.0 	   2.0 	2-AS-22000	 4
+Nike-47	Nike-46             	AJ	-	  1.0 	 0.40 	   1.1 	-	     392.0 	   2.0 	2.5-AS-18000	 4
+Lacrosse	Lacrosse            	MARTO	-	  2.1 	 0.40 	   0.3 	-	     168.0 	   2.6 	TX-52	 1
+Qaem-100 St 3	Qaem-S3	IRGC	-	  0.5 	 0.40 	  10.0 	-	-	-	Qaem-100 S3	 1
+Tien Kung 3	NSPO                	NCSIST	-	  5.0 	 0.40 	   0.5 	-	-	-	Sky Bow III	 1
+ISRO-CES	ISRO-CES	ISRO	-	  6.0 	 0.40 	-	-	-	-	ISRO-CES	 1
+Weka	Duqm	NASCOM	-	  6.5 	 0.40 	   0.1 	      80 	-	-	Weka	 1
+STIG-A	STIG                	ARMAD	-	  9.7 	 0.39 	   0.7 	-	      22.5 	  50.0 	STIG-A	 1
+Neptune	Neptune             	ONERA	-	  3.2 	 0.39 	   0.5 	     150 	      20.0 	  32.0 	Neptune	 1
+Aerobee AJ10-24	Aerobee             	AJ	-	  5.8 	 0.38 	   0.5 	     184 	      17.8 	  32.1 	AJ10-24	 1
+Aerobee AJ10-25	Aerobee             	AJ	-	  5.8 	 0.38 	   0.5 	     184 	      17.8 	  32.1 	AJ10-25	 1
+Aerobee AJ10-27	Aerobee             	AJ	-	  5.8 	 0.38 	   0.5 	     184 	      17.8 	  32.1 	AJ10-27	 1
+Aerobee AJ10-34	Aerobee             	AJ	-	  5.8 	 0.38 	   0.5 	     184 	      17.8 	  32.1 	AJ10-34	 1
+Aerobee XASR-1	Aerobee             	AJ	-	  5.8 	 0.38 	   0.7 	     184 	      11.6 	  32.1 	XASR-1	 1
+Aerobee 150	Aerobee             	AJGC	Aerobee	  5.1 	 0.38 	   0.7 	     133 	      17.8 	  51.4 	AJ11-6	 1
+Aerobee 150A	Aerobee             	AJGC	Aerobee	  5.1 	 0.38 	   0.6 	     133 	      17.8 	  51.4 	AJ11-6	 1
+AJ60-92	Aerobee             	AJGC	Aerobee 200 St2	  5.5 	 0.38 	   0.7 	     131 	      22.6 	  61.1 	AJ60-92	 1
+Aerobee 100	Aerobee             	AJ	Aerobee Jr	  3.6 	 0.38 	   0.5 	     119 	      11.5 	  40.0 	Aerobee Jr	 1
+Lance	LanceMotor          	GCR	-	  4.6 	 0.38 	   0.8 	     217 	     174.0 	   6.7 	Lance	 1
+Skat	LanceMotor          	THKX?	-	  4.5 	 0.38 	   0.9 	     377 	     200.0 	   6.0 	XM-45	 1
+Lance XM-45	LanceMotor          	THKX	-	  4.9 	 0.38 	   0.8 	-	     222.0 	   5.0 	TX-77	 1
+Genie-Alarr	Genie               	THKU	-	  3.1 	 0.38 	   0.3 	-	-	-	MB-1	 1
+Genie	Genie               	THKU	MB-1	  1.8 	 0.38 	   0.3 	-	     156.0 	   1.5 	MB-1	 1
+Ute	Genie               	THKU	-	  1.3 	 0.38 	   0.2 	      62 	      85.0 	   4.6 	TU-715	 1
+Paiute	Genie               	THKU	-	  1.9 	 0.38 	   0.3 	      81 	     186.0 	   3.7 	TU-716	 1
+Astrobee F	AstrobeeF           	AJSP	-	  7.3 	 0.38 	   1.3 	     250 	      36.4 	  51.1 	Astrobee F	 1
+Cygnus 15	Cygnus              	LARC/THKE	-	  0.4 	 0.38 	   0.1 	       5 	      22.0 	   4.8 	Cygnus 15	 1
+Cetus	Cetus               	LARC/THKE	-	  0.5 	 0.38 	   0.1 	      10 	      40.0 	  20.0 	NOTS 100A	 1
+ST-735-SB	SB-310              	NISST?	-	  4.7 	 0.38 	   0.3 	     356 	       0.0 	   0.0 	-	 1
+Vikram-S	Vikram-S	SKYRT	-	  6.0 	 0.38 	   0.5 	      50 	      70.0 	  23.0 	Kaman-80	 1
+Nucleus	Nucleus             	NAMMO	-	  9.0 	 0.36 	   0.5 	     100 	-	-	FWUM	 1
+Nazeat	Kavoshgar           	IR	Iran	  4.0 	 0.36 	   0.3 	       0 	       0.0 	-	Kavoshgar	 1
+Kavoshgar	Kavoshgar           	IRSA	Iran	  4.0 	 0.36 	   0.3 	       0 	       0.0 	-	Kavoshgar	 1
+Aerobee 75	Orion               	AJSP	-	  4.0 	 0.35 	   0.5 	     142 	      13.0 	  32.0 	M22E8	 1
+Hawk	Orion               	AJSP	-	  5.0 	 0.35 	   0.6 	-	      13.0 	  32.0 	M22E8	 1
+Orion	Orion               	AJSP	-	  2.7 	 0.35 	   0.4 	     111 	      13.0 	  32.0 	M22E8	 1
+Improved Orion	Orion               	AJSP	Orion	  1.8 	 0.35 	   0.4 	-	      13.0 	  32.0 	M112	 1
+Meteor-2	Meteor2             	PAI	-	  4.2 	 0.35 	   0.4 	     126 	      24.0 	  18.0 	Meteor-2	 1
+10KS2500	10KS2500            	THKE	-	  2.9 	 0.35 	   0.1 	-	      11.0 	  10.0 	10KS2500	 1
+LS-A Booster	STA                 	MHITO?	-	  3.0 	 0.35 	   0.4 	-	      60.0 	  10.0 	LS-A Booster	 1
+Qased-S3	Qased-S3            	IRGC	-	  0.5 	 0.35 	   0.3 	-	-	-	Qased-S3	 1
+Mk 104	Standard            	THKE?	-	  2.9 	 0.35 	   0.5 	     128 	-	-	Mk 104	 1
+Mk 104 (ARC)	Standard            	ATLCA	-	  2.9 	 0.35 	   0.5 	     128 	-	-	Mk 104	 1
+Lynx	Standard            	NAWC	-	  3.0 	 0.35 	   0.5 	-	-	-	Mk 104	 1
+Mk 56	Standard            	ATLR?	-	  4.5 	 0.35 	   0.6 	-	-	-	Mk 56	 1
+Mk 30	Standard            	HUMS	-	  3.5 	 0.35 	   0.4 	-	-	-	Mk 30	 1
+Iraqi Gun Projectile	IraqGun350          	SRCI	-	  1.5 	 0.35 	   0.1 	      67 	-	-	-	 0
+NOTS 551	NOTS551             	NOTS	-	  3.0 	 0.34 	   0.4 	      85 	-	  28.0 	NOTS Mod 551-B	 1
+THAAD Proto	THAAD               	LMCO	-	  3.8 	 0.34 	   0.6 	-	-	-	THAAD	 1
+THAAD	THAAD               	LMPCO	-	  3.8 	 0.34 	   0.6 	-	-	-	THAAD	 1
+ASROC	HOTROC              	UNK	-	  4.5 	 0.34 	   0.4 	      40 	      49.0 	-	Mk 12 ASROC	 1
+Kappa 4 Booster	Kappa4              	ISAS	-	  3.3 	 0.33 	   0.1 	       0 	     105.0 	   3.0 	Kappa 4 Booster	 1
+Sandhawk	Sandhawk            	SAND	-	  5.1 	 0.33 	   0.7 	     200 	      90.0 	  14.0 	TE-473	 1
+Aerobee Booster	AerobeeB            	AJ	-	  1.8 	 0.33 	   0.3 	     140 	      80.0 	   2.5 	AJ60-80	 1
+VAM Booster	AerobeeB            	AJ	-	  1.8 	 0.33 	   0.3 	     140 	      80.0 	   2.5 	2.5KS18000	 1
+VAM-17	AerobeeB            	AJ	-	  1.8 	 0.33 	   0.3 	     140 	      80.0 	   2.5 	2.5KS18000	 1
+VAM-20	AerobeeB            	AJ	-	  1.8 	 0.33 	   0.3 	     140 	      80.0 	   2.5 	2.5KS18000	 1
+Tramontane	Berenice            	ONERA	-	  2.4 	 0.33 	   0.3 	     124 	      50.0 	   6.7 	SEPR-200	 1
+ASAS	SM3.TSRM            	THKE	SM-3 TSRM	  0.9 	 0.33 	   0.1 	-	       7.0 	  15.0 	Mk 136	 1
+Gradicom 1	Gradicom            	CITED	-	  2.5 	 0.32 	   0.4 	-	-	-	Gradicom 1	 1
+Gradicom 2	Gradicom            	CITED	-	  2.5 	 0.32 	   0.2 	-	-	-	Gradicom 2	 1
+RX-320	RX-320              	LAPAN	-	  4.7 	 0.32 	   0.5 	-	      52.0 	-	RX-320	 1
+Jericho II	Belier              	SUD	-	  2.7 	 0.31 	   0.3 	-	      20.0 	  23.8 	Jericho II	 1
+Belier	Belier              	SUD	-	  2.9 	 0.31 	   0.3 	     100 	      20.0 	  23.4 	Jericho IV	 1
+Belier II	Belier              	SUD	-	  2.9 	 0.31 	   0.3 	      80 	      20.0 	  23.4 	Belier II	 1
+Belier III	Belier              	SUD	-	  2.9 	 0.31 	   0.3 	     100 	      20.0 	  23.4 	Vega	 1
+RH-300	Belier              	VSSC	-	  2.8 	 0.31 	   0.3 	      79 	      33.3 	  16.0 	RH-300	 1
+RH-300 Mk II	Belier              	VSSC	-	  3.4 	 0.31 	   0.5 	-	      39.1 	  20.2 	RH-300-II	 1
+SB-310	SB-310              	ISAS	-	  5.8 	 0.31 	   0.5 	     190 	      95.0 	   7.4 	SB-310	 1
+S-310	S-310               	ISAS	S310	  5.0 	 0.31 	   0.6 	     230 	      80.0 	  31.6 	S-310	 1
+BT-310	S-310               	ISAS	S310	  6.0 	 0.31 	   0.6 	     230 	      80.0 	  31.6 	S-310	 1
+S-300	S-300               	ISAS	S300	  6.0 	 0.30 	   0.5 	-	-	-	S-300	 1
+LS-A	LS-C                	MHITO?	-	  4.5 	 0.30 	   0.3 	-	      10.0 	  35.0 	LE-1	 1
+K10S	K10S                	ISAS	-	  0.5 	 0.30 	   0.1 	-	-	-	K10S	 1
+Nike-46 Sustainer	Ajax                	AJ	-	  6.0 	 0.30 	   0.4 	-	      11.4 	  21.0 	X21AL-2600	 1
+Nike-47 Sustainer	Ajax                	AJ	-	  6.0 	 0.30 	   0.4 	-	      11.4 	  21.0 	21AL-2600	 1
+Nike-484 Sustainer	Ajax                	AJ	-	  6.0 	 0.30 	   0.4 	-	      11.4 	  21.0 	21AL-2600	 1
+Nike-490 Sustainer	Ajax                	AJ	-	  6.0 	 0.30 	   0.4 	-	      13.8 	  71.0 	Ajax-490	 1
+Ajax	Ajax                	BELL	-	  4.5 	 0.30 	   0.5 	     372 	      11.6 	  30.0 	Ajax	 1
+Cluster Stage 3	BabySergeant        	JPL	3xBaby Sergeant	  1.2 	 0.30 	   0.1 	      63 	      22.0 	   6.0 	RTV	 3
+Bullpup	Bullpup             	THKE	-	  3.0 	 0.30 	   0.3 	-	     111.0 	-	Aerojet Mk 8	 1
+AAD St 2	AAD                 	HAL	-	  4.0 	 0.30 	   1.0 	-	-	-	-	 1
+Taepo Dong 1 Stage 3	TD3                 	KPA	-	  1.8 	 0.30 	   0.2 	      50 	      18.0 	  27.0 	TD1	 1
+Tiny Tim	TTB                 	USN	-	  2.4 	 0.30 	   0.3 	     278 	     222.0 	   0.6 	Tiny Tim	 1
+MARC 14B1	TTB                 	USN	-	  0.8 	 0.30 	   0.1 	      59 	      84.0 	   0.8 	MARC 14B1	 7
+Sonda 2A	Sonda               	AVIB	-	  4.2 	 0.30 	   0.3 	      77 	      36.0 	  20.0 	S-20	 1
+Sonda 2M	Sonda               	AVIB	-	  2.2 	 0.30 	   0.2 	      69 	      18.0 	  20.0 	S-23	 1
+VLS-R1	Sonda               	AVIB	-	  2.5 	 0.30 	   0.5 	       0 	      18.0 	  20.0 	S-20	 1
+VLS-R2	Sonda               	AVIB	-	  3.0 	 0.30 	   0.5 	       0 	      18.0 	  20.0 	S-20	 1
+VLS-R2 Strapon	Sonda               	AVIB	-	  2.0 	 0.30 	   0.5 	       0 	      18.0 	  20.0 	S-20	 1
+VLS-R1 Strapon	Sonda               	AVIB	-	  2.0 	 0.30 	   0.5 	       0 	      18.0 	  20.0 	S-20	 1
+WAC Corporal	WAC                 	JPL/DAC	-	  4.9 	 0.30 	   0.3 	     125 	       6.7 	  45.0 	WAC	 1
+HOTROC	HOTROC              	NOTS	-	  1.8 	 0.30 	   0.1 	      27 	      63.2 	   4.9 	HOTROC	 1
+Iris	Iris                	ATLR	-	  4.0 	 0.30 	   0.5 	     112 	      17.0 	  52.0 	MARC 13A1	 1
+FTI	FTI                 	AVIB	-	  5.0 	 0.30 	   0.1 	       1 	-	-	FTI	 1
+RH-300 Booster	Venus               	ISRO	-	  2.0 	 0.28 	   0.2 	      65 	      37.5 	   6.0 	RH-300 Booster	 1
+Venus	Venus               	SUD	-	  2.0 	 0.28 	   0.2 	      66 	      44.0 	   4.3 	Venus	 1
+Centenario	Rigel               	IIAE	-	  2.4 	 0.28 	   0.2 	-	      39.0 	  11.2 	Centenario	 1
+SS-50	Rigel               	IIAE	-	  2.0 	 0.28 	   0.2 	-	-	  18.0 	SS-50 Antares	 1
+Canopus	Rigel               	IIAE	-	  2.0 	 0.28 	   0.2 	-	-	  18.0 	Canopus	 1
+SpaceLoft XL	SpaceLoft           	UPAE	-	  4.0 	 0.27 	   0.2 	-	      45.0 	  13.5 	SpaceLoft	 1
+Spyder St 1	SpaceLoft           	UPAE	-	  4.0 	 0.27 	   0.2 	-	      45.0 	  13.5 	Spyder-M1	 1
+Spyder St 2	SpaceLoft           	UPAE	-	  1.0 	 0.27 	   0.2 	-	-	-	Spyder-M2	 1
+Gosling	Gosling             	RORD	-	  3.3 	 0.26 	   0.2 	-	     152.0 	   2.5 	Gosling	 1
+Gosling IIN	Gosling             	RORD	-	  3.5 	 0.26 	   0.2 	-	     140.0 	   3.0 	Gosling	 1
+Gosling IV	Gosling             	RORD	-	  3.5 	 0.26 	   0.3 	-	     140.0 	   3.0 	Gosling 4	 1
+Gosling 4T	Gosling             	RORD	-	  3.6 	 0.26 	   0.3 	      89 	     137.0 	   3.1 	Gosling 4	 1
+Heron	Gosling             	RORD	-	  3.6 	 0.26 	   0.3 	      72 	     137.0 	   3.1 	Gosling 4	 1
+Goose	Gosling             	RORD	-	  3.4 	 0.26 	   0.3 	      95 	      22.0 	  17.0 	Goose II	 1
+Snipe	Gosling             	RORD	-	  2.1 	 0.26 	   0.2 	      58 	      16.0 	  16.0 	Snipe	 1
+Black Brant IIIA	BB3                 	BAL	BB3	  3.7 	 0.26 	   0.3 	      50 	      49.0 	   9.0 	9KS11000	 1
+Black Brant IIIB	BB3                 	BAL	BB3B	  3.9 	 0.26 	   0.3 	      50 	      45.0 	  12.0 	12KS10000	 1
+N2ORTH	Amateur	HYEND	-	  7.0 	 0.26 	   0.2 	-	      10.0 	-	HyLIGHT	 1
+DAC Roc	DACRoc              	DAC	-	  3.0 	 0.25 	   0.3 	-	      50.0 	  10.0 	DACRoc	 1
+M-100	M-100               	TAIFUN?	-	  3.5 	 0.25 	   0.3 	     110 	-	   5.0 	M-100	 1
+M-100 St2	M-100               	TAIFUN?	-	  1.6 	 0.25 	   0.1 	      55 	-	   4.5 	M-100 St2	 1
+FFK	FFK                 	ERNO	-	  4.0 	 0.25 	   0.3 	-	-	-	FFK	 1
+HTR	HTR                 	NAMMO	-	 10.0 	 0.25 	   0.5 	-	      30.0 	  20.0 	HTR	 1
+CSXT	CSXT                	CSXT	-	  6.4 	 0.25 	   0.3 	      96 	      71.0 	  13.4 	S-50000	 1
+RX-250-LPN	RX-250              	LAPAN	-	  5.3 	 0.25 	   0.3 	-	      52.0 	   6.0 	RX-250-LPN	 1
+K245	K250                	ISAS	-	  1.0 	 0.25 	   0.1 	      40 	      34.0 	   9.3 	K250	 1
+Kappa 6	K250                	ISAS	-	  2.3 	 0.25 	   0.2 	      40 	      34.0 	   9.3 	K250	 1
+Kappa 6H	K250                	ISAS	-	  3.6 	 0.25 	   0.3 	      50 	-	   7.2 	K250H	 1
+Kappa 8	K250                	ISAS	-	  3.1 	 0.25 	   0.3 	      50 	      34.0 	   9.7 	K250-8	 1
+K250	K250                	ISAS	-	  4.6 	 0.25 	   0.3 	      50 	      43.0 	   7.6 	K250	 1
+S-250	K250                	ISAS	-	  2.0 	 0.25 	   0.2 	-	-	-	SO-250	 1
+NAL-25	STA                 	MHITO?	-	  4.0 	 0.25 	   0.0 	-	-	-	NAL-25	 1
+LPR-3T	ISRO-TV             	VSSC	-	  2.0 	 0.25 	   0.3 	-	-	-	LPR-3T	 1
+FTV	ISRO-TV             	VSSC	-	  2.0 	 0.25 	   0.3 	-	-	-	-	 1
+SEGPRO	ISRO-TV             	VSSC	-	  2.0 	 0.25 	   0.3 	-	-	-	-	 1
+CB-250	CB-250              	VSSC	-	  1.0 	 0.25 	   0.3 	-	-	-	RH-75	 7
+Evol GCC	EvoSpace	EVOL	-	  6.0 	 0.25 	   0.4 	-	-	-	Evol 1	 1
+Private A	PrivateA            	JPL	-	  2.3 	 0.25 	   0.3 	     130 	       4.4 	  30.0 	30AS1000	 1
+Private F	PrivateA            	JPL	-	  2.3 	 0.25 	   0.3 	     130 	       4.4 	  30.0 	30AS1000	 1
+Rhumi	Rhumi	SZI	-	  3.5 	 0.25 	   0.2 	-	       2.5 	  20.0 	Rhumi	 1
+Cygnus 10	10SM                	PARD	-	  0.4 	 0.25 	   0.0 	       1 	      10.0 	   3.2 	Cygnus 10	 1
+Javelin 3	Javelin             	SDCO	-	  2.6 	 0.23 	   0.2 	-	      93.0 	-	Javelin 3	 1
+Hydac	Javelin             	SDCO	-	  3.7 	 0.23 	   0.3 	-	      58.7 	-	Hydac	 1
+ILR-33	Bursztyn            	PAI	-	  4.5 	 0.23 	   0.2 	-	       4.0 	  40.0 	ILR-33	 1
+MLRS	MLRS                	LMCAM	-	  2.0 	 0.23 	   0.3 	-	      53.0 	   3.2 	MLRS	 1
+Mesquito	MLRS                	LMCAM	-	  2.0 	 0.23 	   0.3 	-	      53.0 	   3.2 	MLRS	 1
+Mayfly	LongTom             	WRE	-	  3.1 	 0.23 	   0.2 	-	      62.0 	   3.6 	Mayfly	 1
+AeroHTV	AeroHTV             	AEROPH	-	  1.7 	 0.23 	   0.1 	-	-	-	Loki	 7
+Recruit	Recruit             	THKE	XM-19	  2.6 	 0.23 	   0.2 	-	     156.0 	   1.5 	1.5KS35000	 1
+Recruit 1A	Recruit             	THKE	TE29-1A	  3.1 	 0.23 	   0.2 	      67 	     132.0 	   2.2 	TE-29-1A	 1
+Yardbird	Recruit             	THKE	-	  2.5 	 0.23 	   0.2 	      29 	      75.0 	   3.4 	Yardbird	 1
+Tomahawk 1	Tomahawk            	THKE	-	  3.5 	 0.22 	   0.2 	      60 	      53.0 	   9.0 	TE-406	 1
+Tomahawk	Tomahawk            	THKE	-	  3.5 	 0.22 	   0.2 	      60 	      53.0 	   9.5 	TE-416	 1
+Kappa 3 Booster	K250                	ISAS	-	  2.5 	 0.22 	   0.2 	-	-	-	K220	 1
+Melanie	Berenice            	ONERA	-	  3.0 	 0.22 	   0.1 	      40 	      38.0 	   4.4 	Melanie	 1
+Orion-2	IIAE.Orion          	IIAE	-	  3.0 	 0.21 	   0.1 	      55 	-	  12.0 	Orion-2	 1
+Orion-1	IIAE.Orion          	IIAE	-	  3.0 	 0.21 	   0.1 	      55 	-	  12.0 	Orion-1	 1
+Cedre-4 St1	Cedre               	LRS	-	  3.0 	 0.21 	   1.0 	-	     138.0 	-	Cedre-4 St1	 1
+Cedre St2	Cedre.St2           	LRS	-	  2.1 	 0.21 	   0.4 	-	      78.0 	-	Cedre St2	 1
+Elan	Belenos             	CFTHB	-	  1.6 	 0.21 	   0.1 	      32 	-	   2.5 	Agnes	 1
+Emilie	Belenos             	CFTHB	-	  1.6 	 0.21 	   0.1 	      32 	-	   2.5 	Emilie	 1
+Vela	Vela                	WRE	-	  3.1 	 0.21 	   0.1 	      59 	      26.7 	   5.0 	Vela	 1
+S-210	S-210               	ISAS	S210	  5.1 	 0.21 	   0.3 	-	-	  17.0 	S-210	 1
+TT-210	TT-210              	NASDA	-	  5.3 	 0.21 	   0.2 	-	-	-	TT-210	 1
+Proson St1	Proson              	CITEF	-	  1.5 	 0.20 	   0.1 	-	-	-	Proson 1	 1
+Traveler	Traveler            	USCLA	-	  4.0 	 0.20 	   0.1 	-	-	-	Traveler	 1
+Aftershock	Traveler            	USCLA	-	  4.0 	 0.20 	   0.1 	-	-	-	Shockwave	 1
+Stratos II+	Stratos2            	DARE	-	  7.0 	 0.20 	   0.2 	     100 	       8.0 	  23.0 	DHX-200 Aurora	 1
+Mimosa	Mimosa              	ONERA	-	  2.6 	 0.20 	   0.2 	      40 	      33.0 	   5.0 	SEPR 685-4	 1
+RH-200	RH-200              	VSSC	-	  1.4 	 0.20 	   0.1 	-	      16.9 	   5.7 	RH-200	 1
+RH-200SV	RH-200              	VSSC	-	  1.4 	 0.21 	   0.1 	      48 	      16.9 	  10.0 	RH-200SV	 1
+MMR-06	MMR-06              	GMS	-	  2.5 	 0.20 	   0.1 	      20 	-	   9.0 	MMR-06	 1
+TT-200	TT-210              	NASDA	-	  5.0 	 0.20 	   0.2 	-	-	-	TT-200	 1
+T-40	T-40                	THKE	T40	  1.4 	 0.20 	   0.1 	      15 	      13.3 	   6.0 	T-40	 1
+Cirrus I	Cirrus              	DRG	-	  2.0 	 0.20 	   0.1 	-	       5.0 	-	Cirrus I	 1
+Cirrus II	Cirrus              	DRG	-	  2.0 	 0.20 	   0.1 	-	      18.0 	-	Cirrus II	 1
+Kingfisher	Kingfisher	TMINUS	-	  3.0 	 0.20 	   0.1 	-	      25.0 	-	Kingfisher	 1
+Iroquois	Iroquois            	THKE	TE-M-388	  2.7 	 0.20 	   0.1 	      43 	      24.4 	   7.7 	TE-388	 1
+Meteor 3B Booster	Meteor              	PIHM	-	  1.0 	 0.20 	   0.1 	-	-	   2.3 	Meteor-1	 3
+Shrike	Sparrow             	NWC	-	  2.0 	 0.20 	-	-	-	-	Mk 39	 1
+Sparrow	Sparrow             	HUMS	Mk 6 Mod 3	  1.3 	 0.20 	   0.1 	-	      35.0 	   1.8 	1.8KS7800	 1
+22.6KS1245	Sparrow             	HUMS	-	  1.3 	 0.20 	   0.1 	       5 	       5.5 	  22.6 	22.6KS1245	 1
+NOTS 8in	NOTS.8in            	NOTS	-	  0.5 	 0.20 	   0.0 	       3 	       5.1 	   5.7 	NOTS 8	 1
+Petrel	Petrel              	BAJUK	-	  1.8 	 0.19 	   0.1 	      26 	       4.5 	  30.0 	Lapwing	 1
+Petrel 2	Petrel              	BAJUK	Petrel	  1.8 	 0.19 	   0.1 	      26 	       4.5 	  30.0 	Lapwing	 1
+Viper V	Viper5              	OSCC	Viper	  2.2 	 0.18 	   0.1 	-	      27.0 	   5.2 	Viper V	 1
+Lobster I	Lobster             	RORD	-	  1.9 	 0.18 	   0.0 	       0 	      29.0 	   2.0 	Lobster	 1
+Demon	Demon               	RORD?	-	  2.8 	 0.18 	   0.0 	-	-	   2.3 	Demon	 1
+Dorado	Demon               	WRE	-	  3.1 	 0.18 	   0.1 	      66 	      42.0 	   4.1 	Dorado	 1
+Gun Projectile 7	Gun07               	BRL	-	  1.0 	 0.18 	   0.1 	-	-	-	-	 0
+Astrid	Astrid              	LLNL	-	  1.9 	 0.17 	   0.0 	       8 	       0.4 	  30.0 	MR-125	 4
+Asp	Asp                 	COOP	-	  2.7 	 0.17 	   0.1 	      18 	      26.0 	   5.3 	RM-1100	 1
+Asp II	Asp                 	COOP	-	  2.7 	 0.17 	   0.1 	      18 	      26.0 	   3.6 	Asp II	 1
+Asp III	Asp                 	COOP	-	  2.7 	 0.17 	   0.1 	      18 	      26.0 	   3.3 	Asp III	 1
+Asp IV	Asp                 	COOP	Asp	  2.8 	 0.17 	   0.1 	       4 	      12.7 	  12.0 	RM-1400	 1
+Sword	Asp                 	LPC	-	  1.2 	 0.17 	   0.1 	      12 	      16.0 	   3.8 	Sword 3KS5000	 1
+Kiva	Kiva                	RPI	-	  2.6 	 0.17 	   0.1 	      24 	      27.0 	   5.5 	Kiva 5.5KS6100	 1
+Kisha	Deacon              	RPI	-	  2.0 	 0.17 	   0.1 	-	      21.0 	   4.4 	Kisha I 4.4KS4800	 1
+Cajun	Deacon              	THKE	-	  2.6 	 0.17 	   0.1 	      22 	      36.0 	   3.0 	Cajun	 1
+Viper I	Viper               	LPC	Viper	  2.7 	 0.17 	   0.1 	      25 	      24.0 	   5.6 	5.6KS5400	 1
+Viper IC	Viper               	LPC	Viper	  2.7 	 0.17 	   0.1 	      25 	      24.0 	   5.6 	5.6KS5400	 1
+Viper II	Viper               	LPC	Viper	  2.7 	 0.17 	   0.1 	      25 	      35.8 	   3.8 	3.8KS8040	 1
+SDC Viper	Viper               	SDCO	Viper IIB	  2.7 	 0.17 	   0.1 	      20 	      35.8 	   3.2 	3.52KS8500	 1
+Apache	Deacon              	THKE	-	  2.6 	 0.17 	   0.1 	      39 	      21.0 	   6.0 	TE-307	 1
+Deacon	Deacon              	ABL	-	  2.8 	 0.15 	   0.1 	      24 	      26.0 	   3.0 	X-220	 1
+Melusine	Monica              	CFTHB	-	  1.9 	 0.16 	   0.0 	      29 	-	   8.0 	Melusine	 1
+Melanie 1	Monica              	ATEF	-	  1.1 	 0.16 	   0.0 	-	-	-	Melanie	 1
+Prosper	Monica              	ATEF	-	  1.2 	 0.16 	   0.0 	-	-	-	Melanie	 1
+Lex	Lex                 	SNECMA	-	  2.6 	 0.16 	   0.1 	      20 	      10.0 	  20.0 	MT 27	 1
+NAL-16	STA                 	MHITO?	-	  3.9 	 0.17 	   0.1 	      40 	      10.0 	  14.0 	NAL-16	 1
+Kappa 8L	Kappa               	ISAS	-	  2.4 	 0.16 	   0.1 	      20 	-	   5.3 	K160	 1
+S-160	S-160               	ISAS	S160	  3.9 	 0.16 	   0.1 	-	-	-	S-160	 1
+S-A	STA                 	MHITO?	-	  2.8 	 0.16 	   0.0 	       7 	       2.5 	-	S-A	 1
+S-B	STA                 	MHITO?	-	  2.8 	 0.16 	   0.1 	-	-	-	S-B	 1
+S-C	STA                 	MHITO?	-	  2.8 	 0.16 	   0.1 	-	-	-	S-C	 1
+Falcon	Falcon              	THKX	-	  1.0 	 0.16 	   0.0 	       0 	       0.0 	   0.0 	Falcon	 1
+Hyperion	AMROC               	EAC	-	  5.8 	 0.15 	   0.1 	      46 	       6.0 	  15.0 	Hyperion	 1
+Atea-1	Atea                	RLABN	-	  3.0 	 0.15 	   0.1 	-	       6.9 	  14.5 	Atea-1	 1
+Icarus	Icarus              	ERAU	-	  2.3 	 0.15 	   0.0 	       4 	      15.8 	   6.4 	Icarus	 1
+Arcon	Arcon               	ATLR	-	  2.5 	 0.15 	   0.1 	      30 	       4.5 	  33.0 	Arcon	 1
+T-55	T-55                	THKE?	T55	  1.5 	 0.15 	   0.0 	      12 	      21.0 	   1.3 	T-55	 1
+ZN-1	ZN                  	NUDTC	-	  2.7 	 0.15 	   0.1 	-	-	-	ZN-1	 1
+K150	K150                	ISAS	-	  3.5 	 0.15 	   0.1 	      10 	      19.0 	  15.8 	K150	 1
+MERA	Mera                	KBPT	-	  1.0 	 0.15 	   0.0 	       0 	-	-	MERA	 1
+AeroHTV Stage 2	AeroHTV2            	AEROPH	-	  1.7 	 0.15 	   0.1 	-	-	-	Loki	 4
+RTV Motor	BabySergeant        	JPL	Baby Sergeant	  1.2 	 0.15 	   0.0 	       5 	       8.6 	   7.6 	RTV	 1
+Baby Sergeant	BabySergeant        	JPL/GCR	-	  1.2 	 0.15 	   0.0 	       5 	       8.6 	   7.6 	RM-3141	 1
+Astrobee D	AstrobeeD           	AJSP	-	  2.8 	 0.15 	   0.1 	      20 	       8.9 	  17.0 	Astrobee D	 1
+Luzou	Luzou               	SEP	-	  0.3 	 0.15 	   0.0 	       3 	       3.0 	   1.7 	Luzou	 1
+P-Vrbec	Amateur	VRBEC	-	  1.5 	 0.15 	   0.0 	       5 	-	-	P-Vrbec	 1
+Sirocco	Sirocco             	SDCO	-	  2.8 	 0.14 	   0.1 	      20 	-	-	Sirocco	 1
+Meteo	Meteo               	SUD	-	  3.4 	 0.15 	   0.0 	       0 	-	-	-	 1
+MT-135P	MT-135              	NISST	-	  3.3 	 0.14 	   0.0 	-	      12.0 	  10.5 	MT-135	 1
+Ivanov	Ivanov              	FIAN	-	  1.0 	 0.14 	   0.1 	-	-	-	-	 1
+Ivanov Booster	Ivanov              	FIAN	-	  0.4 	 0.14 	   0.1 	-	-	-	-	 1
+GammaCen Booster	GammaCen            	IIAE	-	  0.8 	 0.13 	   0.0 	-	-	-	-	 1
+Emma Booster	Emma                	MATRA	-	  0.8 	 0.13 	   0.0 	      13 	      14.8 	   1.0 	SEPR P191	 1
+Theodore	Monica              	ATEF	-	  0.8 	 0.13 	   0.0 	-	       1.8 	  10.0 	Theodore	 1
+Oreste	Monica              	ATEF	-	  0.5 	 0.13 	   0.0 	-	       0.9 	   8.0 	Oreste	 1
+Emma	Emma                	MATRA	-	  1.7 	 0.13 	   0.1 	      11 	       1.4 	  37.0 	SEPR P163	 1
+HALO	HALO                	HAL5	-	  1.6 	 0.13 	   0.0 	      10 	       0.2 	-	HALO	 1
+Martlet 1	Gun16               	SRCI	-	  1.5 	 0.13 	   0.2 	     170 	       0.0 	   0.0 	-	 0
+Martlet 2	Gun16               	SRCI	-	  1.5 	 0.13 	   0.2 	     170 	       0.0 	   0.0 	-	 0
+Martlet 3A	Gun16               	SRCI	-	  1.5 	 0.13 	   0.2 	     170 	       0.0 	   0.0 	-	 0
+Martlet 3B	Gun16               	SRCI	-	  1.5 	 0.13 	   0.2 	     170 	       0.0 	   0.0 	-	 0
+Gun Projectile 5	Gun05               	BRL	-	  1.0 	 0.13 	   0.1 	-	-	-	-	 0
+Kappa 1	Kappa               	ISAS	-	  2.7 	 0.13 	   0.0 	      20 	      10.0 	   3.0 	Kappa 1	 1
+Kappa 4	Kappa               	ISAS	-	  2.7 	 0.13 	   0.0 	      20 	      10.0 	   3.0 	Kappa 4	 1
+Cygnus 5	5inSM               	LARC	5"SM	  0.2 	 0.13 	   0.0 	       1 	       2.3 	   1.6 	Cygnus 5	 1
+FTB	FTB                 	AVIB	-	  3.0 	 0.13 	   0.1 	       1 	-	-	SS-30	 1
+Skua	Skua                	BAJUK	-	  2.2 	 0.13 	   0.0 	      10 	       1.8 	  30.0 	Bantam	 1
+Skua 2	Skua                	BAJUK	Skua	  2.4 	 0.13 	   0.0 	      10 	       1.8 	  30.0 	Bantam 2	 1
+Skua 3	Skua                	BAJUK	Skua	  2.4 	 0.13 	   0.1 	      12 	       1.7 	  34.0 	Bantam 3	 1
+Aurore	Aurore              	SNECMA	-	  2.1 	 0.13 	   0.1 	      20 	      10.5 	   5.3 	Aurore	 1
+HVAR	HVAR                	CIT/NOTS	-	  1.7 	 0.13 	   0.0 	      17 	      25.0 	   0.9 	HVAR	 1
+HPAG	Sidewinder          	NOTS	-	  1.8 	 0.13 	   0.0 	      12 	      12.5 	   2.7 	HPAG	 1
+NOTS 124-C	Sidewinder          	NOTS	-	  1.0 	 0.13 	   0.0 	       0 	-	-	NOTS 124-C	 1
+Sidewinder	Sidewinder          	THKX	-	  1.8 	 0.13 	   0.0 	       0 	-	-	Mk 36	 1
+Sidewinder 1C	Sidewinder          	THKX	-	  1.8 	 0.13 	   0.0 	       0 	-	-	Mk 36 Mod 5	 1
+Sidewinder 1D	Sidewinder          	THKX	-	  1.8 	 0.13 	   0.0 	       4 	      12.2 	   4.7 	Mk 50 Mod 0	 1
+Sidewinder 1A	Sidewinder          	THKX/NOTS	-	  1.9 	 0.13 	   0.0 	      18 	      17.7 	   2.1 	Mk 17	 1
+Sidewinder 1A-15	Sidewinder          	THKX/NOTS	-	  1.9 	 0.13 	   0.0 	      18 	      17.7 	   2.1 	Mk 15	 1
+LAPSTAR	Lupus               	WRE	-	  1.5 	 0.13 	   0.1 	      15 	      13.7 	   2.7 	LAPSTAR	 1
+Lupus	Lupus               	WRE	-	  1.7 	 0.13 	   0.0 	      16 	       9.5 	   5.2 	Lupus 1A	 1
+Lupus 2	Lupus               	WRE	-	  1.7 	 0.13 	   0.0 	      16 	       9.5 	   4.0 	Lupus 2	 1
+Lupus 3	Lupus               	WRE	-	  2.0 	 0.13 	   0.0 	      16 	       9.5 	   4.0 	Lupus 3	 1
+Sonda 1-1	Sonda               	IAE	-	  1.5 	 0.13 	   0.0 	      15 	      27.0 	-	Sonda 1 Booster	 1
+MCR-3	RH-125              	VSSC	-	  1.0 	 0.12 	   0.0 	       0 	-	-	MCR-3	 1
+RH-125	RH-125              	VSSC	-	  1.4 	 0.12 	   0.0 	      11 	       8.4 	   2.9 	RH-125	 1
+RH-125S	RH-125              	VSSC	-	  1.6 	 0.12 	   0.0 	      14 	       1.3 	  32.0 	RH-125S	 1
+LPR-006	LPR-006             	VSSC	-	  3.0 	 0.13 	   0.2 	-	       6.0 	-	LPR-006	 1
+Black Brant VI	BB6                 	BAL	Black Brant 6	  2.0 	 0.12 	   0.1 	      20 	       7.4 	   9.0 	9KS1660	 1
+INTA-100	INTA-100            	INTA	-	  2.5 	 0.12 	   0.0 	-	       1.5 	  32.0 	Urbion	 1
+DIM	DIM                 	IIAE	-	  1.9 	 0.12 	   0.0 	       0 	-	-	DIM	 1
+Meteor 1	Meteor              	PIHM	-	  1.8 	 0.11 	   0.0 	      10 	      14.0 	   2.3 	Meteor-1	 1
+Meteor 3 Booster	Meteor              	PIHM	-	  1.8 	 0.11 	   0.0 	      10 	      14.0 	   2.3 	Meteor-1	 1
+Meteor SRB	Meteor              	PIHM	-	  1.7 	 0.11 	   0.0 	      15 	      14.0 	   2.3 	Meteor-1	 1
+Sonda 1-2	Sonda               	IAE	-	  2.1 	 0.11 	   0.0 	      14 	       4.2 	  32.0 	Sonda 1	 1
+O4500	Amateur	MESOS	-	  1.5 	 0.11 	   0.0 	      15 	-	-	O4500	 1
+Rocketsonde	Rocketsonde         	UNK	-	  2.0 	 0.11 	   0.0 	      15 	-	-	-	 1
+Rocketsonde2	Rocketsonde2        	UNK	-	  2.0 	 0.11 	   0.0 	      15 	-	-	-	 1
+Arcas	Arcas               	ATLR	-	  1.8 	 0.11 	   0.0 	      15 	       1.5 	  29.0 	MARC 2B1	 1
+Frangible Arcas	Arcas               	ATLR	-	  1.8 	 0.11 	   0.0 	      15 	       1.5 	  29.0 	MARC 2B1	 1
+HV Arcas	Arcas               	ATLR	-	  1.6 	 0.11 	   0.0 	      15 	       1.5 	  29.0 	MARC 2C2	 1
+Super Arcas	Arcas               	ATLR	-	  2.0 	 0.11 	   0.0 	      15 	       1.5 	  40.0 	MARC 60A	 1
+MARC 14A1	ArcasB              	ATLR	-	  0.7 	 0.11 	   0.0 	       6 	      12.0 	   0.8 	MARC 14A1	 1
+MARC 42A1	ArcasB              	ATLR	-	  1.6 	 0.11 	   0.0 	      15 	      12.2 	   3.0 	MARC 42A1	 1
+MARC 42A2	ArcasB              	ATLR	-	  0.9 	 0.11 	   0.0 	-	-	-	MARC 42A2	 1
+Hopi	Hopi                	RPI	-	  2.1 	 0.11 	   0.0 	       7 	      18.0 	   3.0 	Hopi 3.0KS4000	 1
+Hopi III	Hopi                	RPI	-	  2.0 	 0.11 	   0.0 	       8 	      28.0 	   2.1 	Hopi 2.4KS5600	 1
+Hopi IV	Hopi                	RPI	-	  2.4 	 0.11 	   0.0 	       9 	       7.7 	   9.0 	Hopi 9.0KS1800	 1
+Viper IIIA	Viper3              	SDCO	-	  2.4 	 0.11 	   0.0 	       9 	      24.7 	   2.2 	Viper IIIA	 1
+TME DART	Viper3              	TMINUS	-	  2.3 	 0.11 	   0.0 	       7 	       8.0 	   6.5 	TME DART	 1
+Super Loki	SuperLoki           	SDCO	-	  2.0 	 0.10 	   0.0 	       6 	      18.0 	   2.1 	Super Loki	 1
+Stable Super Loki	SuperLoki           	SDCO	-	  2.3 	 0.10 	   0.0 	       7 	      21.0 	   2.1 	Stable Super Loki	 1
+FalconLaunch	SuperLoki           	USAFA	-	  2.0 	 0.10 	   0.0 	       6 	      18.0 	   2.1 	Super Loki	 1
+Icarus Stage 2	Icarus2             	ERAU	-	  1.4 	 0.11 	   0.0 	       4 	       4.1 	   7.0 	Icarus St2	 1
+Excalibur	Excalibur           	BAL	-	  2.4 	 0.11 	   0.0 	      13 	      25.0 	   2.5 	Excalibur	 1
+Proson St2	Proson2             	CITEF	-	  1.6 	 0.11 	   0.0 	       0 	-	-	Proson 2	 1
+INTA S-12	INTA-100            	INTA	-	  1.6 	 0.10 	   0.0 	-	      16.7 	   1.2 	INTA S-12	 1
+O-Vrbec	Amateur	VRBEC	-	  1.5 	 0.10 	   0.0 	       3 	-	-	O-Vrbec	 1
+Arcon booster	ArcasB              	ATLR	-	  0.7 	 0.10 	   0.0 	       8 	      14.0 	   0.4 	Arcon booster	 1
+ILR-33 Booster	BursztynBooster     	PAI	-	  1.4 	 0.10 	   0.1 	-	       6.0 	   2.5 	ILR-33 Booster	 1
+SkylarkMicro Booster	SkylarkMicro	SKYR	-	  1.5 	 0.10 	   0.0 	-	       1.6 	-	SkyMicro1	 1
+Chick	Chick               	RORD	-	  0.6 	 0.10 	   0.1 	       6 	      20.0 	   0.2 	Chick	 1
+Chick x3	Chick               	RORD	-	  0.6 	 0.10 	   0.0 	       6 	      60.0 	   0.2 	Chick	 1
+Chick x4	Chick               	RORD	-	  0.6 	 0.10 	   0.0 	       6 	      80.0 	   0.2 	Chick	 1
+SPEAR-HRT St 1	Amateur	USMA	-	  1.4 	 0.10 	   0.0 	       5 	       6.5 	   4.3 	O5280X-PS DMS	 1
+Belisama	Belisama            	CFTHB	-	  1.6 	 0.10 	   0.0 	      14 	      24.0 	   0.9 	Belisama	 1
+SEPR P167	SEPR167             	SEP	-	  1.0 	 0.10 	   0.0 	-	-	-	SEPR P167	 1
+KM-L	KM-L                	NISST?	-	  0.1 	 0.10 	   0.0 	       4 	-	-	KM-L	 1
+Meraki St 1	Amateur	NZRA	-	  2.0 	 0.10 	   0.0 	-	-	-	Meraki O7800	 1
+ST	STA                 	MHITO?	-	  1.0 	 0.10 	   0.0 	-	-	-	S-B	 1
+SA-II	STA                 	MHITO?	-	  1.0 	 0.10 	   0.0 	-	-	-	SA-II	 1
+GammaCen Sustainer	GammaCenS           	IAE	-	  1.6 	 0.09 	-	-	-	-	-	 1
+LaRC Plastic	Plastic             	LARC	LaRC Plastic rocket	  0.5 	 0.09 	   0.0 	       1 	       0.3 	   3.0 	LaRC Plastic	 1
+Musca	Musca               	WRE	-	  1.7 	 0.09 	   0.0 	-	       5.1 	   3.7 	Musca	 1
+Arrow II	Loki                	GCR	-	  1.5 	 0.08 	   0.0 	       2 	      10.0 	   2.0 	Arrow II	 1
+Loki-Dart	Loki                	GCR?	Loki II Dart	  1.7 	 0.08 	   0.0 	       3 	      15.0 	   0.8 	Loki	 1
+Loki SR71-AD-1	Loki                	SDCO	-	  1.7 	 0.08 	   0.0 	       1 	       9.0 	   2.0 	SR71-AD-1	 1
+Loki II	Loki                	GCR	Loki	  1.7 	 0.08 	   0.0 	       1 	       9.0 	   2.0 	Loki II	 1
+Loki	Loki                	GCR?	Loki	  1.7 	 0.08 	   0.0 	       3 	      15.0 	   0.8 	Loki	 1
+Judi I	Loki                	RPI	-	  1.7 	 0.08 	   0.0 	       2 	       9.0 	   1.9 	Judi-I 1.9KS2150	 1
+Judi III	Loki                	RPI	-	  2.3 	 0.08 	   0.0 	       2 	       9.0 	   1.9 	Judi-III 1.9KS2100	 1
+Seagull	Unknown             	USN?	-	  1.5 	 0.08 	   0.0 	       0 	      10.0 	   2.0 	Seagull	 1
+Metroc	Loki                	ATLR	-	  1.4 	 0.08 	   0.0 	       0 	       0.6 	  17.5 	MARC 21A1	 1
+Cedre St3	Cedre.St3           	LRS	-	  2.1 	 0.08 	   0.2 	-	      20.0 	-	Cedre St3	 1
+RH-75	RH-75               	VSSC	-	  1.2 	 0.08 	   0.0 	-	-	-	RH-75	 1
+NOTS 3in Sph.	NOTS.3inSM          	NOTS	-	  0.1 	 0.08 	   0.0 	       1 	       0.7 	   1.0 	NOTS 3SM	 1
+Black Brant VII	BB7                 	BAL	-	  1.7 	 0.09 	   0.0 	      10 	       1.0 	   4.0 	BB7	 1
+M830	Amateur	MESOS	-	  1.5 	 0.08 	   0.0 	      15 	-	-	M830	 0
+HAEC FFAR	FFAR                	UNK	-	  1.4 	 0.08 	   0.0 	-	-	   2.8 	HAEC FFAR	 1
+SkylarkMicro	SkylarkMSt2	SKYR	-	  1.8 	 0.08 	   0.0 	-	       0.8 	-	SkyMicro2	 1
+SPEAR-HRT St 2	Amateur	USMA	-	  1.0 	 0.07 	   0.0 	       2 	       2.3 	   4.3 	Pro75-6GXL	 1
+FFAR	FFAR                	PARD	-	  1.2 	 0.07 	   0.0 	       5 	       3.6 	   1.5 	FFAR	 1
+Meraki St 2	Amateur	NZRA	-	  2.0 	 0.07 	   0.0 	-	-	-	Meraki N3100	 1
+Mk7	FFAR                	PARD	-	  1.2 	 0.07 	   0.0 	       9 	       9.8 	   0.9 	Mk7	 1
+NAL-7	STA                 	MHITO?	-	  2.0 	 0.07 	   0.0 	-	       5.0 	   1.0 	NAL-7	 1
+Balloon	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+F-104A Starfighter	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+F2H2 Banshee	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+F3H Cougar	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+F4B Phantom	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+F4D Phantom	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+F4D-1 Skyray	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+F4H Phantom	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+F-15D	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+F86D Sabrejet	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+F89J Scorpion	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+B-47 Stratojet	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+RB-57B	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+B-57A Canberra	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+B-58 Hustler	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+NB-52	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+B-52H	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+C-17	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+C-130	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+White Knight	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+White Knight 2	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+MiG31D 072	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+MiG-31	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+L-1011	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+B747-CG	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+Roc	Air                 	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+Navaho Booster	Navaho              	NAAD	-	 23.2 	-	-	-	       0.0 	   0.0 	G-38	 2
+Navaho Missile	X-10                	NAAD	-	 21.3 	-	-	-	       0.0 	   0.0 	-	 0
+X-10	X-10                	NAAD	-	 21.3 	-	-	-	       0.0 	   0.0 	-	 0
+Regulus	Regulus             	VOUA	-	 10.1 	 1.40 	   6.6 	-	       0.0 	   0.0 	-	 0
+Regulus II	Regulus             	VOUA	-	 20.5 	 1.30 	  10.2 	-	       0.0 	   0.0 	-	 0
+Matador	Matador             	MARTB	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	TX-16-1	 0
+Mace	Matador             	MARTB	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	TU-223	 0
+Snark Booster	Snark               	NORTH	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	N-69C Snark JATO	 2
+BLDT	BLDT                	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	RS-B-535	 4
+Bomarc A	Bomarc              	BOC	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	LR59-AJ-13	 0
+Bomarc B	Bomarc              	BOC	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	XM-51	 0
+Bull Goose	BullGoose           	FAIRA	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+Hound Dog	HoundDog            	NAA	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+X-7	X-7                 	LVN	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+X-51A	X-51                	BNAP	-	  4.5 	 0.61 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+D-21B	D-21B               	LAC	-	 13.1 	 2.10 	   5.1 	       0 	       0.0 	   0.0 	-	 0
+BOZ	BOZ                 	PROG	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+SOZ	SOZ                 	PROG	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+Perekhodnik	Perekhodnik         	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+Sep Motor Cover	Perekhodnik         	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+S-II Interstage	Interstage          	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+Dummy stage	Generic             	-	-	  0.0 	 0.00 	   0.0 	       0 	       0.0 	   0.0 	-	 0
+R-UNK	UNK                 	UNK	-	  0.0 	 0.00 	-	-	-	-	-	 1
