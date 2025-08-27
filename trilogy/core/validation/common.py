@@ -21,6 +21,7 @@ from trilogy.parsing.common import function_to_concept
 
 from enum import Enum
 
+
 class ValidationType(Enum):
     DATASOURCES = "datasources"
     CONCEPTS = "concepts"
@@ -34,11 +35,12 @@ def easy_query(
     limit: int = 100,
 ):
     """
-    A simple function to create a ProcessedQuery with a CTE.
+    Build basic datasource specific queries.
     """
     datasource_outputs = {c.address: c for c in datasource.concepts}
+    first_qds_concepts = datasource.concepts + concepts
     root_qds = QueryDatasource(
-        input_concepts=concepts,
+        input_concepts=first_qds_concepts,
         output_concepts=concepts,
         datasources=[datasource],
         joins=[],
@@ -46,7 +48,8 @@ def easy_query(
             concept.address: (
                 set([datasource]) if concept.address in datasource_outputs else set()
             )
-            for concept in concepts
+            # include all base datasource conepts for convenience
+            for concept in first_qds_concepts
         },
         grain=datasource.grain,
     )
@@ -56,9 +59,11 @@ def easy_query(
         output_columns=concepts,
         source_map={
             concept.address: (
-                [datasource.safe_identifier] if concept.address in datasource_outputs else []
+                [datasource.safe_identifier]
+                if concept.address in datasource_outputs
+                else []
             )
-            for concept in concepts
+            for concept in first_qds_concepts
         },
         environment=env,
         grain=datasource.grain,
@@ -78,7 +83,9 @@ def easy_query(
         ),
         parent_ctes=[cte],
         output_columns=cte.output_columns,
-        source_map={concept.address: [cte.identifier] for concept in cte.output_columns},
+        source_map={
+            concept.address: [cte.identifier] for concept in cte.output_columns
+        },
         environment=env,
         grain=cte.grain,
         condition=condition,

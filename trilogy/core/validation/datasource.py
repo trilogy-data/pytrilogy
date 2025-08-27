@@ -2,7 +2,14 @@ from pathlib import Path
 
 from trilogy import Dialects, Environment, Executor
 from trilogy.core.enums import ComparisonOperator
-from trilogy.authoring import Concept, Datasource, ConceptRef, Function, DataType
+from trilogy.authoring import (
+    Concept,
+    Datasource,
+    ConceptRef,
+    Function,
+    DataType,
+    TraitDataType,
+)
 from trilogy.core.enums import Purpose, FunctionType
 from trilogy.core.models.build import (
     BuildConcept,
@@ -22,65 +29,95 @@ from typing import Any
 
 from trilogy.core.validation.common import easy_query
 from trilogy.core.exceptions import DatasourceModelValidationError
+from trilogy.utility import unique
 
-def type_check(input: Any, expected_type: DataType, nullable: bool = True) -> bool:
+
+def type_check(
+    input: Any, expected_type: DataType | TraitDataType, nullable: bool = True
+) -> bool:
     if input is None and nullable:
         return True
-    if expected_type == DataType.STRING:
+    target_type = expected_type
+    while isinstance(target_type, TraitDataType):
+        target_type = target_type.data_type
+    if target_type == DataType.STRING:
         return isinstance(input, str)
-    if expected_type == DataType.INTEGER:
+    if target_type == DataType.INTEGER:
         return isinstance(input, int)
-    if expected_type == DataType.FLOAT:
+    if target_type == DataType.FLOAT:
         return isinstance(input, float) or isinstance(input, int)
-    if expected_type == DataType.BOOL:
+    if target_type == DataType.BOOL:
         return isinstance(input, bool)
-    if expected_type == DataType.DATE:
+    if target_type == DataType.DATE:
         return isinstance(input, str)  # TODO: improve date handling
-    if expected_type == DataType.DATETIME:
+    if target_type == DataType.DATETIME:
         return isinstance(input, str)  # TODO: improve datetime handling
-    if expected_type == DataType.ARRAY:
+    if target_type == DataType.ARRAY:
         return isinstance(input, list)
-    if expected_type == DataType.MAP:
+    if target_type == DataType.MAP:
         return isinstance(input, dict)
     return False
 
 
 def validate_datasource(
     datasource: BuildDatasource, build_env: BuildEnvironment, exec: Executor
-):
+) -> list[DatasourceModelValidationError]:
+    exceptions = []
+    # we might have merged concepts, where both wil lmap out to the same
+    unique_outputs = unique(
+        [build_env.concepts[col.concept.address] for col in datasource.columns],
+        "address",
+    )
     type_query = easy_query(
-        concepts=[build_env.concepts[col.concept.address] for col in datasource.columns],
+        concepts=unique_outputs,
         datasource=datasource,
         env=exec.environment,
         limit=100,
     )
     type_sql = exec.generate_sql(type_query)[-1]
+    try:
+        rows = exec.execute_raw_sql(type_sql).fetchall()
+    except Exception as e:
+        exceptions.append(
+            DatasourceModelValidationError(
+                f"Datasource {datasource.name} failed validation. Error executing type query: {e}"
+            )
+        )
+        return exceptions
 
-    rows = exec.execute_raw_sql(type_sql).fetchall()
-    failures: list[tuple[Any, DataType, bool]] = []
+    failures: list[tuple[str, Any, DataType | TraitDataType, bool]] = []
+    cols_with_error = set()
     for row in rows:
         for col in datasource.columns:
 
+            actual_address = build_env.concepts[col.concept.address].safe_address
+            if actual_address in cols_with_error:
+                continue
+            rval = row[actual_address]
             passed = type_check(
-                row[col.concept.safe_address], col.concept.datatype, col.is_nullable
+                rval, col.concept.datatype, col.is_nullable
             )
             if not passed:
                 failures.append(
                     (
-                        row[col.concept.safe_address],
+                        col.concept.address,
+                        rval,
                         col.concept.datatype,
                         col.is_nullable,
                     )
                 )
+                cols_with_error.add(actual_address)
 
     def format_failure(failure):
-        return f"Table value '{failure[0]}' does not conform to expected type {failure[1].name} (nullable={failure[2]})"
+        return f"Concept {failure[0]} value '{failure[1]}' does not conform to expected type {str(failure[2])} (nullable={failure[3]})"
 
     if failures:
-        raise DatasourceModelValidationError(
-            f"Datasource {datasource.name} failed validation. Found rows that do not conform to types: {[format_failure(failure) for failure in failures]}"
+        exceptions.append(
+            DatasourceModelValidationError(
+                f"Datasource {datasource.name} failed validation. Found rows that do not conform to types: {[format_failure(failure) for failure in failures]}"
+            )
         )
-
+    
     query = easy_query(
         concepts=[build_env.concepts[name] for name in datasource.grain.components]
         + [build_env.concepts["grain_check"]],
@@ -96,6 +133,10 @@ def validate_datasource(
 
     rows = exec.execute_raw_sql(sql).fetchmany(10)
     if rows:
-        raise ValueError(
-            f"Datasource {datasource.name} failed validation. Found rows that do not conform to grain: {rows}"
+        exceptions.append(
+            DatasourceModelValidationError(
+                f"Datasource {datasource.name} failed validation. Found rows that do not conform to grain: {rows}"
+            )
         )
+
+    return exceptions

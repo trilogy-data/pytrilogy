@@ -20,10 +20,14 @@ from trilogy.hooks import DebuggingHook
 from trilogy.parsing.common import function_to_concept
 from trilogy.core.validation.datasource import validate_datasource
 from trilogy.core.validation.concept import validate_concept
+from trilogy.core.exceptions import (
+    DatasourceModelValidationError,
+    ConceptModelValidationError,
+    ModelValidationError,
+)
 
 
 def validate_environment(env: Environment, exec: Executor):
-
 
     grain_check = function_to_concept(
         parent=Function(
@@ -41,7 +45,7 @@ def validate_environment(env: Environment, exec: Executor):
         concept_grain_check = function_to_concept(
             parent=Function(
                 operator=FunctionType.COUNT_DISTINCT,
-                arguments=[1],
+                arguments=[concept.reference],
                 output_datatype=DataType.INTEGER,
                 output_purpose=Purpose.METRIC,
             ),
@@ -52,7 +56,15 @@ def validate_environment(env: Environment, exec: Executor):
     for concept in new_concepts:
         env.add_concept(concept)
     build_env = env.materialize_for_select()
+    exceptions: list[DatasourceModelValidationError | ConceptModelValidationError] = []
     for datasource in build_env.datasources.values():
-        validate_datasource(datasource, build_env, exec)
+        exceptions += validate_datasource(datasource, build_env, exec)
     for concept in build_env.concepts.values():
-        validate_concept(concept, build_env, exec)
+        exceptions += validate_concept(concept, build_env, exec)
+
+    # raise a nicely formatted union of all exceptions
+    if exceptions:
+        messages = "\n".join([str(e) for e in exceptions])
+        raise ModelValidationError(
+            f"Environment validation failed with the following errors:\n{messages}"
+        )

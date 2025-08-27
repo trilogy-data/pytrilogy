@@ -18,24 +18,31 @@ from trilogy.core.models.execute import (
 from trilogy.core.statements.execute import CTE, ProcessedQuery
 from trilogy.hooks import DebuggingHook
 from trilogy.parsing.common import function_to_concept
-from trilogy.core.exceptions import DatasourceModelValidationError
+from trilogy.core.exceptions import (
+    DatasourceModelValidationError,
+    ConceptModelValidationError,
+)
 
 
 from trilogy.core.validation.common import easy_query
 
 
 def validate_property_concept(concept: Concept):
-    pass
+    return []
 
 
 def validate_key_concept(
     concept: BuildConcept, build_env: BuildEnvironment, exec: Executor
 ):
+    exceptions = []
     seen = {}
     for datasource in build_env.datasources.values():
         if concept.address in [c.address for c in datasource.concepts]:
             type_query = easy_query(
-                concepts=[build_env.concepts[f"grain_check_{concept.safe_address}"]],
+                concepts=[
+                    # build_env.concepts[concept.address],
+                    build_env.concepts[f"grain_check_{concept.safe_address}"],
+                ],
                 datasource=datasource,
                 env=exec.environment,
                 limit=1,
@@ -51,14 +58,21 @@ def validate_key_concept(
             assignment = [
                 x for x in datasource.columns if x.concept.address == concept.address
             ][0]
-            if seen[datasource.name] <= max_seen and assignment.is_complete:
-                raise DatasourceModelValidationError(
-                    f"Key concept {concept.address} is missing values in datasource {datasource.name} (max cardinality in data {max_seen}, datasource has {seen[datasource.name]} values) but is not marked as partial."
+            if seen[datasource.name] < max_seen and assignment.is_complete:
+                exceptions.append(
+                    DatasourceModelValidationError(
+                        f"Key concept {concept.address} is missing values in datasource {datasource.name} (max cardinality in data {max_seen}, datasource has {seen[datasource.name]} values) but is not marked as partial."
+                    )
                 )
 
+    return exceptions
 
-def validate_concept(concept: Concept, build_env: BuildEnvironment, exec: Executor):
+
+def validate_concept(
+    concept: Concept, build_env: BuildEnvironment, exec: Executor
+) -> list[ConceptModelValidationError | DatasourceModelValidationError]:
     if concept.purpose == Purpose.PROPERTY:
-        validate_property_concept(concept)
+        return validate_property_concept(concept)
     elif concept.purpose == Purpose.KEY:
-        validate_key_concept(concept, build_env, exec)
+        return validate_key_concept(concept, build_env, exec)
+    return []

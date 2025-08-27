@@ -28,6 +28,11 @@ class ModelValidationError(Exception):
 class DatasourceModelValidationError(ModelValidationError):
     pass
 
+class ConceptModelValidationError(ModelValidationError):
+    pass
+
+
+
 class AmbiguousRelationshipResolutionException(UnresolvableQueryException):
     def __init__(self, message, parents: List[set[str]]):
         super().__init__(self, message)

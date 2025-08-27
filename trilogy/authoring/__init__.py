@@ -42,6 +42,7 @@ from trilogy.core.models.core import (
     ListWrapper,
     MapType,
     StructType,
+    TraitDataType,
 )
 from trilogy.core.models.datasource import Address, Datasource, DatasourceMetadata
 from trilogy.core.models.environment import Environment
@@ -120,4 +121,5 @@ __all__ = [
     "HasUUID",
     "ImportStatement",
     "Address",
+    "TraitDataType",
 ]

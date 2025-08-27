@@ -41,7 +41,10 @@ from read_csv_auto('https://trilogy-data.github.io/trilogy-public-models/trilogy
 sample_size=-1);
 
 CREATE OR REPLACE TABLE lv_info as
-SELECT *
+SELECT * EXCLUDE (LEO_Capacity, GTO_Capacity, LV_FAMILY),
+
+trim(lv_family) as LV_Family,
+cast(case when LEO_Capacity = '-' then null else LEO_Capacity END as float) LEO_Capacity, cast(case when GTO_Capacity='-' then null else GTO_CAPACITY END as float) GTO_Capacity
 from read_csv_auto('https://trilogy-data.github.io/trilogy-public-models/trilogy_public_models/duckdb/gcat_space/tsv/tables/lv.cleaned.tsv',
 sample_size=-1);
 
