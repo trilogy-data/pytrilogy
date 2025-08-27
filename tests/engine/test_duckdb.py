@@ -1722,3 +1722,11 @@ select value where not value;
     assert len(results) == 2, str(
         default_duckdb_engine.environment.concepts["value"].lineage
     )
+
+
+
+def test_validate(duckdb_engine: Executor):
+    test = """validate all;"""
+
+    results = duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 1

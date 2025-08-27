@@ -40,6 +40,7 @@ from trilogy.core.enums import (
     ShowCategory,
     WindowOrder,
     WindowType,
+    ValidationScope,
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.functions import (
@@ -129,6 +130,7 @@ from trilogy.core.statements.author import (
     SelectStatement,
     ShowStatement,
     TypeDeclaration,
+    ValidateStatement,
 )
 from trilogy.parsing.common import (
     align_item_to_concept,
@@ -989,6 +991,25 @@ class ParseToObjects(Transformer):
 
     def over_list(self, args):
         return [x for x in args]
+    
+    def VALIDATION_SCOPE(self, args) -> str:
+        return ValidationScope(args.lower())
+    
+    @v_args(meta=True)
+    def validate_statement(self, meta: Meta, args) -> ValidateStatement:
+        if len(args) == 2:
+            scope = args[0]
+            targets = args[1]
+        elif len(args) == 0:
+            scope = ValidationScope.ALL
+            targets = None
+        else:
+            scope = args[0]
+            targets = None
+        return ValidateStatement(
+            scope = scope,
+            targets = targets,
+        )
 
     @v_args(meta=True)
     def merge_statement(self, meta: Meta, args) -> MergeStatementV2 | None:
@@ -2232,6 +2253,7 @@ def parse_text(
         | PersistStatement
         | ShowStatement
         | RawSQLStatement
+        | ValidateStatement
         | None
     ],
 ]:

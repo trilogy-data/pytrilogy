@@ -12,6 +12,7 @@
     | copy_statement
     | merge_statement
     | rawsql_statement
+    | validate_statement
     
     _TERMINATOR:  ";"i /\s*/
     
@@ -81,8 +82,11 @@
     // raw sql statement
     rawsql_statement: "raw_sql"i "(" MULTILINE_STRING ")"
 
+    // validate_statement
 
+    VALIDATE_SCOPE: "concepts"i | "datasources"i 
 
+    validate_statement: ("validate"i "all"i) | ( "validate"i VALIDATE_SCOPE (IDENTIFIER ("," IDENTIFIER)* ","? )? )
     // copy statement
 
     COPY_TYPE: "csv"i

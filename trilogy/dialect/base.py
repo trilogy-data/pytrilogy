@@ -72,6 +72,7 @@ from trilogy.core.statements.author import (
     RowsetDerivationStatement,
     SelectStatement,
     ShowStatement,
+    ValidateStatement,
 )
 from trilogy.core.statements.execute import (
     ProcessedCopyStatement,
@@ -80,6 +81,7 @@ from trilogy.core.statements.execute import (
     ProcessedRawSQLStatement,
     ProcessedShowStatement,
     ProcessedStaticValueOutput,
+    ProcessedValidateStatement,
 )
 from trilogy.core.utility import safe_quote
 from trilogy.dialect.common import render_join, render_unnest
@@ -1025,6 +1027,7 @@ class BaseDialect:
             | RawSQLStatement
             | MergeStatementV2
             | CopyStatement
+            | ValidateStatement
         ],
         hooks: Optional[List[BaseHook]] = None,
     ) -> List[
@@ -1032,6 +1035,8 @@ class BaseDialect:
         | ProcessedQueryPersist
         | ProcessedShowStatement
         | ProcessedRawSQLStatement
+        | ProcessedValidateStatement
+        
     ]:
         output: List[
             ProcessedQuery
@@ -1039,6 +1044,7 @@ class BaseDialect:
             | ProcessedShowStatement
             | ProcessedRawSQLStatement
             | ProcessedCopyStatement
+            | ProcessedValidateStatement
         ] = []
         for statement in statements:
             if isinstance(statement, PersistStatement):
@@ -1093,6 +1099,13 @@ class BaseDialect:
                     raise NotImplementedError(type(statement.content))
             elif isinstance(statement, RawSQLStatement):
                 output.append(ProcessedRawSQLStatement(text=statement.text))
+            elif isinstance(statement, ValidateStatement):
+                output.append(
+                    ProcessedValidateStatement(
+                        scope=statement.scope,
+                        targets=statement.targets,
+                    )
+                )
             elif isinstance(
                 statement,
                 (

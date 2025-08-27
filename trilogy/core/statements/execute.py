@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List, Optional, Union
 
-from trilogy.core.enums import IOType
+from trilogy.core.enums import IOType, ValidationScope
 from trilogy.core.models.author import ConceptRef, HavingClause, WhereClause
 from trilogy.core.models.build import (
     BuildConcept,
@@ -68,6 +68,10 @@ class ProcessedCopyStatement(ProcessedQuery, CopyQueryMixin):
 class ProcessedRawSQLStatement:
     text: str
 
+@dataclass
+class ProcessedValidateStatement:
+    scope: ValidationScope
+    targets: Optional[List[str]]
 
 @dataclass
 class ProcessedStaticValueOutput:

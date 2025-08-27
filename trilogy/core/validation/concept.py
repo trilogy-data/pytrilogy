@@ -27,7 +27,7 @@ from trilogy.core.exceptions import (
 from trilogy.core.validation.common import easy_query
 
 
-def validate_property_concept(concept: Concept):
+def validate_property_concept(concept: BuildConcept):
     return []
 
 
@@ -69,7 +69,7 @@ def validate_key_concept(
 
 
 def validate_concept(
-    concept: Concept, build_env: BuildEnvironment, exec: Executor
+    concept: BuildConcept, build_env: BuildEnvironment, exec: Executor
 ) -> list[ConceptModelValidationError | DatasourceModelValidationError]:
     if concept.purpose == Purpose.PROPERTY:
         return validate_property_concept(concept)

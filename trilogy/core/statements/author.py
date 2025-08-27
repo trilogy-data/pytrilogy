@@ -12,6 +12,7 @@ from trilogy.core.enums import (
     IOType,
     Modifier,
     ShowCategory,
+    ValidationScope,
 )
 from trilogy.core.models.author import (
     AggregateWrapper,
@@ -436,6 +437,9 @@ class PersistStatement(HasUUID, BaseModel):
 class ShowStatement(BaseModel):
     content: SelectStatement | PersistStatement | ShowCategory
 
+class ValidateStatement(BaseModel):
+    scope: ValidationScope
+    targets: Optional[List[str]] = None  # list of identifiers
 
 class Limit(BaseModel):
     count: int

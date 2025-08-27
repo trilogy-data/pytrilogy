@@ -30,7 +30,7 @@ from typing import Any
 from trilogy.core.validation.common import easy_query
 from trilogy.core.exceptions import DatasourceModelValidationError
 from trilogy.utility import unique
-
+from decimal import Decimal
 
 def type_check(
     input: Any, expected_type: DataType | TraitDataType, nullable: bool = True
@@ -45,7 +45,7 @@ def type_check(
     if target_type == DataType.INTEGER:
         return isinstance(input, int)
     if target_type == DataType.FLOAT:
-        return isinstance(input, float) or isinstance(input, int)
+        return isinstance(input, float) or isinstance(input, int) or isinstance(input, Decimal)
     if target_type == DataType.BOOL:
         return isinstance(input, bool)
     if target_type == DataType.DATE:

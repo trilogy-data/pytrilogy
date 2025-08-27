@@ -3,7 +3,7 @@ from pathlib import Path
 from trilogy import Dialects, Environment, Executor
 from trilogy.core.enums import ComparisonOperator
 from trilogy.authoring import Concept, Datasource, ConceptRef, Function, DataType
-from trilogy.core.enums import Purpose, FunctionType
+from trilogy.core.enums import Purpose, FunctionType, ValidationScope
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
@@ -27,7 +27,7 @@ from trilogy.core.exceptions import (
 )
 
 
-def validate_environment(env: Environment, exec: Executor):
+def validate_environment(env: Environment, exec: Executor, scope:ValidationScope, targets:list[str] | None=None):
 
     grain_check = function_to_concept(
         parent=Function(
@@ -57,10 +57,17 @@ def validate_environment(env: Environment, exec: Executor):
         env.add_concept(concept)
     build_env = env.materialize_for_select()
     exceptions: list[DatasourceModelValidationError | ConceptModelValidationError] = []
-    for datasource in build_env.datasources.values():
-        exceptions += validate_datasource(datasource, build_env, exec)
-    for concept in build_env.concepts.values():
-        exceptions += validate_concept(concept, build_env, exec)
+    if scope == ValidationScope.ALL or scope == ValidationScope.DATASOURCES:
+        for datasource in build_env.datasources.values():
+            if targets and datasource.name not in targets:
+                continue
+            exceptions += validate_datasource(datasource, build_env, exec)
+    if scope == ValidationScope.ALL or scope == ValidationScope.CONCEPTS:
+        
+        for concept in build_env.concepts.values():
+            if targets and concept.address not in targets:
+                continue
+            exceptions += validate_concept(concept, build_env, exec)
 
     # raise a nicely formatted union of all exceptions
     if exceptions:
