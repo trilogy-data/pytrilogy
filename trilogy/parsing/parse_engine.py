@@ -38,9 +38,9 @@ from trilogy.core.enums import (
     Ordering,
     Purpose,
     ShowCategory,
+    ValidationScope,
     WindowOrder,
     WindowType,
-    ValidationScope,
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.functions import (
@@ -991,10 +991,10 @@ class ParseToObjects(Transformer):
 
     def over_list(self, args):
         return [x for x in args]
-    
-    def VALIDATION_SCOPE(self, args) -> str:
+
+    def VALIDATION_SCOPE(self, args) -> ValidationScope:
         return ValidationScope(args.lower())
-    
+
     @v_args(meta=True)
     def validate_statement(self, meta: Meta, args) -> ValidateStatement:
         if len(args) == 2:
@@ -1007,8 +1007,8 @@ class ParseToObjects(Transformer):
             scope = args[0]
             targets = None
         return ValidateStatement(
-            scope = scope,
-            targets = targets,
+            scope=scope,
+            targets=targets,
         )
 
     @v_args(meta=True)

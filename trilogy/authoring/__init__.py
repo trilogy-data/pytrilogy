@@ -41,6 +41,7 @@ from trilogy.core.models.core import (
     DataType,
     ListWrapper,
     MapType,
+    NumericType,
     StructType,
     TraitDataType,
 )
@@ -79,6 +80,7 @@ __all__ = [
     "DataType",
     "StructType",
     "ArrayType",
+    "NumericType",
     "Grain",
     "RowsetDerivationStatement",
     "MapType",

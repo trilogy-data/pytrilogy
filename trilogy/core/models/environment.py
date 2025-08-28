@@ -584,7 +584,10 @@ class Environment(BaseModel):
             c_instance = concept
         else:
             address = concept
-            c_instance = self.concepts.get(address)
+            c_instance_check = self.concepts.get(address)
+            if not c_instance_check:
+                return False
+            c_instance = c_instance_check
         from trilogy.core.environment_helpers import remove_related_concepts
 
         remove_related_concepts(c_instance, self)

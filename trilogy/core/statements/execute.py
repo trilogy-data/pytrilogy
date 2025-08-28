@@ -68,10 +68,12 @@ class ProcessedCopyStatement(ProcessedQuery, CopyQueryMixin):
 class ProcessedRawSQLStatement:
     text: str
 
+
 @dataclass
 class ProcessedValidateStatement:
     scope: ValidationScope
     targets: Optional[List[str]]
+
 
 @dataclass
 class ProcessedStaticValueOutput:
@@ -84,3 +86,13 @@ class ProcessedShowStatement:
     output_values: List[
         Union[BuildConcept, BuildDatasource, ProcessedQuery, ProcessedStaticValueOutput]
     ]
+
+
+PROCESSED_STATEMENT_TYPES = (
+    ProcessedCopyStatement
+    | ProcessedQuery
+    | ProcessedRawSQLStatement
+    | ProcessedQueryPersist
+    | ProcessedShowStatement
+    | ProcessedValidateStatement
+)

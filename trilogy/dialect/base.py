@@ -75,7 +75,7 @@ from trilogy.core.statements.author import (
     ValidateStatement,
 )
 from trilogy.core.statements.execute import (
-    ProcessedCopyStatement,
+    PROCESSED_STATEMENT_TYPES,
     ProcessedQuery,
     ProcessedQueryPersist,
     ProcessedRawSQLStatement,
@@ -1030,22 +1030,8 @@ class BaseDialect:
             | ValidateStatement
         ],
         hooks: Optional[List[BaseHook]] = None,
-    ) -> List[
-        ProcessedQuery
-        | ProcessedQueryPersist
-        | ProcessedShowStatement
-        | ProcessedRawSQLStatement
-        | ProcessedValidateStatement
-        
-    ]:
-        output: List[
-            ProcessedQuery
-            | ProcessedQueryPersist
-            | ProcessedShowStatement
-            | ProcessedRawSQLStatement
-            | ProcessedCopyStatement
-            | ProcessedValidateStatement
-        ] = []
+    ) -> List[PROCESSED_STATEMENT_TYPES]:
+        output: List[PROCESSED_STATEMENT_TYPES] = []
         for statement in statements:
             if isinstance(statement, PersistStatement):
                 if hooks:
@@ -1124,17 +1110,15 @@ class BaseDialect:
 
     def compile_statement(
         self,
-        query: (
-            ProcessedQuery
-            | ProcessedQueryPersist
-            | ProcessedShowStatement
-            | ProcessedRawSQLStatement
-        ),
+        query: PROCESSED_STATEMENT_TYPES,
     ) -> str:
         if isinstance(query, ProcessedShowStatement):
             return ";\n".join([str(x) for x in query.output_values])
         elif isinstance(query, ProcessedRawSQLStatement):
             return query.text
+
+        elif isinstance(query, ProcessedValidateStatement):
+            return "select 1;"
 
         recursive = any(isinstance(x, RecursiveCTE) for x in query.ctes)
 

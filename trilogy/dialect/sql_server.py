@@ -3,11 +3,13 @@ from typing import Any, Callable, Mapping
 from jinja2 import Template
 
 from trilogy.core.enums import FunctionType, WindowType
+from trilogy.core.statements.author import PersistStatement, SelectStatement
 from trilogy.core.statements.execute import (
     ProcessedQuery,
     ProcessedQueryPersist,
     ProcessedRawSQLStatement,
     ProcessedShowStatement,
+    ProcessedValidateStatement,
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.utility import string_to_hash
@@ -90,10 +92,11 @@ class SqlServerDialect(BaseDialect):
             | ProcessedQueryPersist
             | ProcessedShowStatement
             | ProcessedRawSQLStatement
+            | ProcessedValidateStatement
         ),
     ) -> str:
         base = super().compile_statement(query)
-        if isinstance(base, (ProcessedQuery, ProcessedQueryPersist)):
+        if isinstance(query, (SelectStatement, PersistStatement)):
             for cte in query.ctes:
                 if len(cte.name) > MAX_IDENTIFIER_LENGTH:
                     new_name = f"rhash_{string_to_hash(cte.name)}"

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from functools import singledispatchmethod
 from pathlib import Path
-from typing import Any, Generator, List, Optional, Protocol
+from typing import Any, Generator, List, Optional
 
 from sqlalchemy import text
 from sqlalchemy.engine import CursorResult
@@ -26,6 +26,7 @@ from trilogy.core.statements.author import (
     ValidateStatement,
 )
 from trilogy.core.statements.execute import (
+    PROCESSED_STATEMENT_TYPES,
     ProcessedCopyStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
@@ -36,41 +37,33 @@ from trilogy.core.statements.execute import (
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects
-from trilogy.engine import ExecutionEngine
+from trilogy.engine import ExecutionEngine, ResultProtocol
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.parser import parse_text
 from trilogy.render import get_dialect_generator
 
 
-class ResultProtocol(Protocol):
-    values: List[Any]
-    columns: List[str]
-
-    def fetchall(self) -> List[Any]: ...
-
-    def keys(self) -> List[str]: ...
-
-    def fetchone(self) -> Optional[Any]: ...
-
-    def fetchmany(self, size: int) -> List[Any]: ...
-
-
 @dataclass
-class MockResult:
+class MockResult(ResultProtocol):
     values: list[Any]
     columns: list[str]
 
+    def __iter__(self):
+        while self.values:
+            yield self.values.pop(0)
+
     def fetchall(self):
         return self.values
-    
+
     def fetchone(self):
         if self.values:
-            return self.values[0]
+            return self.values.pop(0)
         return None
-    
+
     def fetchmany(self, size: int):
-        return self.values[:size]
-    
+        rval = self.values[:size]
+        self.values = self.values[size:]
+        return rval
 
     def keys(self):
         return self.columns
@@ -108,35 +101,18 @@ class Executor(object):
 
     def execute_statement(
         self,
-        statement: (
-            ProcessedQuery
-            | ProcessedCopyStatement
-            | ProcessedRawSQLStatement
-            | ProcessedQueryPersist
-            | ProcessedShowStatement
-            | ProcessedValidateStatement
-        ),
+        statement: PROCESSED_STATEMENT_TYPES,
     ) -> Optional[ResultProtocol]:
-        if not isinstance(
-            statement,
-            (
-                ProcessedQuery,
-                ProcessedShowStatement,
-                ProcessedQueryPersist,
-                ProcessedCopyStatement,
-                ProcessedRawSQLStatement,
-                ProcessedValidateStatement,
-            ),
-        ):
+        if not isinstance(statement, PROCESSED_STATEMENT_TYPES):
             return None
         return self.execute_query(statement)
 
     @singledispatchmethod
-    def execute_query(self, query) -> ResultProtocol:
+    def execute_query(self, query) -> ResultProtocol | None:
         raise NotImplementedError("Cannot execute type {}".format(type(query)))
 
     @execute_query.register
-    def _(self, query: ConceptDeclarationStatement) -> ResultProtocol:
+    def _(self, query: ConceptDeclarationStatement) -> ResultProtocol | None:
         concept = query.concept
         return MockResult(
             [
@@ -151,7 +127,7 @@ class Executor(object):
         )
 
     @execute_query.register
-    def _(self, query: Datasource) -> ResultProtocol:
+    def _(self, query: Datasource) -> ResultProtocol | None:
         return MockResult(
             [
                 {
@@ -169,32 +145,32 @@ class Executor(object):
         return None
 
     @execute_query.register
-    def _(self, query: SelectStatement) -> ResultProtocol:
+    def _(self, query: SelectStatement) -> ResultProtocol | None:
         sql = self.generator.generate_queries(
             self.environment, [query], hooks=self.hooks
         )
         return self.execute_query(sql[0])
 
     @execute_query.register
-    def _(self, query: PersistStatement) -> ResultProtocol:
+    def _(self, query: PersistStatement) -> ResultProtocol | None:
         sql = self.generator.generate_queries(
             self.environment, [query], hooks=self.hooks
         )
         return self.execute_query(sql[0])
 
     @execute_query.register
-    def _(self, query: RawSQLStatement) -> ResultProtocol:
+    def _(self, query: RawSQLStatement) -> ResultProtocol | None:
         return self.execute_raw_sql(query.text)
 
     @execute_query.register
-    def _(self, query: ShowStatement) -> ResultProtocol:
+    def _(self, query: ShowStatement) -> ResultProtocol | None:
         sql = self.generator.generate_queries(
             self.environment, [query], hooks=self.hooks
         )
         return self.execute_query(sql[0])
 
     @execute_query.register
-    def _(self, query: ProcessedShowStatement) ->ResultProtocol:
+    def _(self, query: ProcessedShowStatement) -> ResultProtocol | None:
         return generate_result_set(
             query.output_columns,
             [
@@ -203,21 +179,14 @@ class Executor(object):
                 if isinstance(x, ProcessedQuery)
             ],
         )
-    
+
     @execute_query.register
-    def _(self, query:ProcessedValidateStatement) -> ResultProtocol:
-        self.validate_environment( query.scope, query.targets)
-        return MockResult(
-            [
-                {
-                    "status": "Validation completed"
-                }
-            ],
-            ["status"]
-        )   
-    
+    def _(self, query: ProcessedValidateStatement) -> ResultProtocol | None:
+        self.validate_environment(query.scope, query.targets)
+        return MockResult([{"status": "Validation completed"}], ["status"])
+
     @execute_query.register
-    def _(self, query: ImportStatement) -> ResultProtocol:
+    def _(self, query: ImportStatement) -> ResultProtocol | None:
         return MockResult(
             [
                 {
@@ -229,7 +198,7 @@ class Executor(object):
         )
 
     @execute_query.register
-    def _(self, query: MergeStatementV2) -> ResultProtocol:
+    def _(self, query: MergeStatementV2) -> ResultProtocol | None:
         for concept in query.sources:
             self.environment.merge_concept(
                 concept, query.targets[concept.address], modifiers=query.modifiers
@@ -246,17 +215,17 @@ class Executor(object):
         )
 
     @execute_query.register
-    def _(self, query: ProcessedRawSQLStatement) -> ResultProtocol:
+    def _(self, query: ProcessedRawSQLStatement) -> ResultProtocol | None:
         return self.execute_raw_sql(query.text)
 
     @execute_query.register
-    def _(self, query: ProcessedQuery) -> ResultProtocol:
+    def _(self, query: ProcessedQuery) -> ResultProtocol | None:
         sql = self.generator.compile_statement(query)
         output = self.execute_raw_sql(sql, local_concepts=query.local_concepts)
         return output
 
     @execute_query.register
-    def _(self, query: ProcessedQueryPersist) -> ResultProtocol:
+    def _(self, query: ProcessedQueryPersist) -> ResultProtocol | None:
         sql = self.generator.compile_statement(query)
 
         output = self.execute_raw_sql(sql, local_concepts=query.local_concepts)
@@ -264,7 +233,7 @@ class Executor(object):
         return output
 
     @execute_query.register
-    def _(self, query: ProcessedCopyStatement) -> ResultProtocol:
+    def _(self, query: ProcessedCopyStatement) -> ResultProtocol | None:
         sql = self.generator.compile_statement(query)
         output: CursorResult = self.execute_raw_sql(
             sql, local_concepts=query.local_concepts
@@ -342,23 +311,13 @@ class Executor(object):
 
     def parse_file(
         self, file: str | Path, persist: bool = False
-    ) -> list[
-        ProcessedQuery
-        | ProcessedQueryPersist
-        | ProcessedShowStatement
-        | ProcessedRawSQLStatement
-        | ProcessedCopyStatement,
-    ]:
+    ) -> list[PROCESSED_STATEMENT_TYPES]:
         return list(self.parse_file_generator(file, persist=persist))
 
     def parse_file_generator(
         self, file: str | Path, persist: bool = False
     ) -> Generator[
-        ProcessedQuery
-        | ProcessedQueryPersist
-        | ProcessedShowStatement
-        | ProcessedRawSQLStatement
-        | ProcessedCopyStatement,
+        PROCESSED_STATEMENT_TYPES,
         None,
         None,
     ]:
@@ -369,23 +328,13 @@ class Executor(object):
 
     def parse_text(
         self, command: str, persist: bool = False, root: Path | None = None
-    ) -> List[
-        ProcessedQuery
-        | ProcessedQueryPersist
-        | ProcessedShowStatement
-        | ProcessedRawSQLStatement
-        | ProcessedCopyStatement
-    ]:
+    ) -> List[PROCESSED_STATEMENT_TYPES]:
         return list(self.parse_text_generator(command, persist=persist, root=root))
 
     def parse_text_generator(
         self, command: str, persist: bool = False, root: Path | None = None
     ) -> Generator[
-        ProcessedQuery
-        | ProcessedQueryPersist
-        | ProcessedShowStatement
-        | ProcessedRawSQLStatement
-        | ProcessedCopyStatement,
+        PROCESSED_STATEMENT_TYPES,
         None,
         None,
     ]:
@@ -450,10 +399,12 @@ class Executor(object):
             #     return self._concept_to_value(self.environment.concepts[rval.address], local_concepts=local_concepts)
             return rval
         else:
-            results = self.execute_query(f"select {concept.name} limit 1;").fetchone()
-        if not results:
+            results = self.execute_query(f"select {concept.name} limit 1;")
+            if results:
+                fetcher = results.fetchone()
+                if fetcher:
+                    return fetcher[0]
             return None
-        return results[0]
 
     def _hydrate_param(
         self, param: str, local_concepts: dict[str, Concept] | None = None
@@ -508,7 +459,7 @@ class Executor(object):
         self, command: str, non_interactive: bool = False
     ) -> List[ResultProtocol]:
         """Run a trilogy query expressed as text."""
-        output = []
+        output: list[ResultProtocol] = []
         # connection = self.engine.connect()
         for statement in self.parse_text_generator(command):
             if isinstance(statement, ProcessedShowStatement):
@@ -530,7 +481,9 @@ class Executor(object):
                     statement, (ProcessedCopyStatement, ProcessedQueryPersist)
                 ):
                     continue
-            output.append(self.execute_query(statement))
+            result = self.execute_statement(statement)
+            if result:
+                output.append(result)
         return output
 
     def execute_file(
@@ -541,7 +494,11 @@ class Executor(object):
             command = f.read()
         return self.execute_text(command, non_interactive=non_interactive)
 
-    def validate_environment(self, scope: ValidationScope, targets: Optional[List[str]]):
+    def validate_environment(
+        self,
+        scope: ValidationScope = ValidationScope.ALL,
+        targets: Optional[List[str]] = None,
+    ):
         from trilogy.core.validation.environment import validate_environment
 
         validate_environment(self.environment, self, scope, targets)

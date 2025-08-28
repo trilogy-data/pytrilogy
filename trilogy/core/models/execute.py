@@ -23,12 +23,12 @@ from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import (
     ComparisonOperator,
     Derivation,
+    FunctionClass,
     FunctionType,
     JoinType,
     Modifier,
     Purpose,
     SourceType,
-    FunctionClass,
 )
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.build import (

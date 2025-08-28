@@ -13,7 +13,7 @@ def test_environment():
     )
     base = Dialects.DUCK_DB.default_executor(environment=env)
     base.execute_raw_sql(ROOT / "setup.sql")
-    queries = base.parse_text(
+    base.parse_text(
         """import launch;
 """
     )
@@ -40,7 +40,7 @@ count(launch_tag) as launches;"""
     )
 
     sql = base.generate_sql(queries[-1])
-    assert "RIGHT OUTER JOIN" in sql[0], sql[0]
+    assert "FULL JOIN" in sql[0], sql[0]
 
 
 def test_date_filter():

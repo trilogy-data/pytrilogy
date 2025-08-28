@@ -1,60 +1,59 @@
-from pathlib import Path
-
-from trilogy import Dialects, Environment, Executor
-from trilogy.core.enums import ComparisonOperator
-from trilogy.authoring import (
-    Concept,
-    Datasource,
-    ConceptRef,
-    Function,
-    DataType,
-    TraitDataType,
-)
-from trilogy.core.enums import Purpose, FunctionType
-from trilogy.core.models.build import (
-    BuildConcept,
-    BuildDatasource,
-    BuildConditional,
-    BuildComparison,
-)
-from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.models.execute import (
-    CTE,
-    QueryDatasource,
-)
-from trilogy.core.statements.execute import CTE, ProcessedQuery
-from trilogy.hooks import DebuggingHook
-from trilogy.parsing.common import function_to_concept
+from decimal import Decimal
 from typing import Any
 
-from trilogy.core.validation.common import easy_query
+from trilogy import Executor
+from trilogy.authoring import (
+    ArrayType,
+    DataType,
+    MapType,
+    NumericType,
+    StructType,
+    TraitDataType,
+)
+from trilogy.core.enums import ComparisonOperator
 from trilogy.core.exceptions import DatasourceModelValidationError
+from trilogy.core.models.build import (
+    BuildComparison,
+    BuildDatasource,
+)
+from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.validation.common import easy_query
 from trilogy.utility import unique
-from decimal import Decimal
+
 
 def type_check(
-    input: Any, expected_type: DataType | TraitDataType, nullable: bool = True
+    input: Any,
+    expected_type: (
+        DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
+    ),
+    nullable: bool = True,
 ) -> bool:
     if input is None and nullable:
         return True
     target_type = expected_type
     while isinstance(target_type, TraitDataType):
-        target_type = target_type.data_type
+        return type_check(input, target_type.data_type, nullable)
     if target_type == DataType.STRING:
         return isinstance(input, str)
     if target_type == DataType.INTEGER:
         return isinstance(input, int)
-    if target_type == DataType.FLOAT:
-        return isinstance(input, float) or isinstance(input, int) or isinstance(input, Decimal)
+    if target_type == DataType.FLOAT or isinstance(target_type, NumericType):
+        return (
+            isinstance(input, float)
+            or isinstance(input, int)
+            or isinstance(input, Decimal)
+        )
     if target_type == DataType.BOOL:
         return isinstance(input, bool)
     if target_type == DataType.DATE:
         return isinstance(input, str)  # TODO: improve date handling
     if target_type == DataType.DATETIME:
         return isinstance(input, str)  # TODO: improve datetime handling
-    if target_type == DataType.ARRAY:
+    if target_type == DataType.ARRAY or isinstance(target_type, ArrayType):
         return isinstance(input, list)
-    if target_type == DataType.MAP:
+    if target_type == DataType.MAP or isinstance(target_type, MapType):
+        return isinstance(input, dict)
+    if target_type == DataType.STRUCT or isinstance(target_type, StructType):
         return isinstance(input, dict)
     return False
 
@@ -85,7 +84,14 @@ def validate_datasource(
         )
         return exceptions
 
-    failures: list[tuple[str, Any, DataType | TraitDataType, bool]] = []
+    failures: list[
+        tuple[
+            str,
+            Any,
+            DataType | ArrayType | StructType | MapType | NumericType | TraitDataType,
+            bool,
+        ]
+    ] = []
     cols_with_error = set()
     for row in rows:
         for col in datasource.columns:

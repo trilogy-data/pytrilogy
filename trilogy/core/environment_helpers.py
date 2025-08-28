@@ -245,7 +245,8 @@ def remove_struct_concepts(concept: Concept, environment: Environment):
             derived_concept.namespace == target_namespace
             and derived_concept.metadata
             and derived_concept.metadata.concept_source == ConceptSource.AUTO_DERIVED
-            and isinstance(derived_concept.lineage, AttrAccess)
+            and isinstance(derived_concept.lineage, Function)
+            and derived_concept.lineage.operator == FunctionType.ATTR_ACCESS
             and len(derived_concept.lineage.arguments) >= 1
             and derived_concept.lineage.arguments[0] == concept.reference
         ):

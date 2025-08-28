@@ -1,33 +1,22 @@
-from pathlib import Path
-
-from trilogy import Dialects, Environment, Executor
-from trilogy.core.enums import ComparisonOperator
-from trilogy.authoring import Concept, Datasource, ConceptRef, Function, DataType
-from trilogy.core.enums import Purpose, FunctionType, ValidationScope
-from trilogy.core.models.build import (
-    BuildConcept,
-    BuildDatasource,
-    BuildConditional,
-    BuildComparison,
-)
-from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.models.execute import (
-    CTE,
-    QueryDatasource,
-)
-from trilogy.core.statements.execute import CTE, ProcessedQuery
-from trilogy.hooks import DebuggingHook
-from trilogy.parsing.common import function_to_concept
-from trilogy.core.validation.datasource import validate_datasource
-from trilogy.core.validation.concept import validate_concept
+from trilogy import Environment, Executor
+from trilogy.authoring import DataType, Function
+from trilogy.core.enums import FunctionType, Purpose, ValidationScope
 from trilogy.core.exceptions import (
-    DatasourceModelValidationError,
     ConceptModelValidationError,
+    DatasourceModelValidationError,
     ModelValidationError,
 )
+from trilogy.core.validation.concept import validate_concept
+from trilogy.core.validation.datasource import validate_datasource
+from trilogy.parsing.common import function_to_concept
 
 
-def validate_environment(env: Environment, exec: Executor, scope:ValidationScope, targets:list[str] | None=None):
+def validate_environment(
+    env: Environment,
+    exec: Executor,
+    scope: ValidationScope = ValidationScope.ALL,
+    targets: list[str] | None = None,
+):
 
     grain_check = function_to_concept(
         parent=Function(
@@ -63,15 +52,16 @@ def validate_environment(env: Environment, exec: Executor, scope:ValidationScope
                 continue
             exceptions += validate_datasource(datasource, build_env, exec)
     if scope == ValidationScope.ALL or scope == ValidationScope.CONCEPTS:
-        
-        for concept in build_env.concepts.values():
-            if targets and concept.address not in targets:
+
+        for bconcept in build_env.concepts.values():
+            if targets and bconcept.address not in targets:
                 continue
-            exceptions += validate_concept(concept, build_env, exec)
+            exceptions += validate_concept(bconcept, build_env, exec)
 
     # raise a nicely formatted union of all exceptions
     if exceptions:
         messages = "\n".join([str(e) for e in exceptions])
         raise ModelValidationError(
-            f"Environment validation failed with the following errors:\n{messages}"
+            f"Environment validation failed with the following errors:\n{messages}",
+            children=exceptions,
         )

@@ -40,8 +40,8 @@ from trilogy.core.statements.author import (
     PersistStatement,
     SelectStatement,
 )
-from trilogy.core.statements.common import MaterializedDataset
 from trilogy.core.statements.execute import (
+    MaterializedDataset,
     ProcessedCopyStatement,
     ProcessedQuery,
     ProcessedQueryPersist,

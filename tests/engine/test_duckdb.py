@@ -1724,7 +1724,6 @@ select value where not value;
     )
 
 
-
 def test_validate(duckdb_engine: Executor):
     test = """validate all;"""
 

@@ -1,25 +1,19 @@
-from pathlib import Path
+from enum import Enum
 
-from trilogy import Dialects, Environment, Executor
-from trilogy.core.enums import ComparisonOperator
-from trilogy.authoring import Concept, Datasource, ConceptRef, Function, DataType
-from trilogy.core.enums import Purpose, FunctionType
+from trilogy import Environment
+from trilogy.authoring import ConceptRef
 from trilogy.core.models.build import (
-    BuildConcept,
-    BuildDatasource,
-    BuildConditional,
     BuildComparison,
+    BuildConcept,
+    BuildConditional,
+    BuildDatasource,
 )
-from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.environment import EnvironmentConceptDict
 from trilogy.core.models.execute import (
     CTE,
     QueryDatasource,
 )
-from trilogy.core.statements.execute import CTE, ProcessedQuery
-from trilogy.hooks import DebuggingHook
-from trilogy.parsing.common import function_to_concept
-
-from enum import Enum
+from trilogy.core.statements.execute import ProcessedQuery
 
 
 class ValidationType(Enum):
@@ -31,7 +25,7 @@ def easy_query(
     concepts: list[BuildConcept],
     datasource: BuildDatasource,
     env: Environment,
-    condition: BuildConditional = None,
+    condition: BuildConditional | BuildComparison | None = None,
     limit: int = 100,
 ):
     """
@@ -65,7 +59,6 @@ def easy_query(
             )
             for concept in first_qds_concepts
         },
-        environment=env,
         grain=datasource.grain,
         group_to_grain=True,
         base_alias_override=datasource.safe_identifier,
@@ -86,7 +79,6 @@ def easy_query(
         source_map={
             concept.address: [cte.identifier] for concept in cte.output_columns
         },
-        environment=env,
         grain=cte.grain,
         condition=condition,
         limit=limit,
@@ -96,5 +88,5 @@ def easy_query(
         output_columns=[ConceptRef(address=concept.address) for concept in concepts],
         ctes=[cte, filter_cte],
         base=cte,
-        local_concepts={},
+        local_concepts=EnvironmentConceptDict(**{}),
     )
