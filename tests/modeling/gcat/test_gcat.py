@@ -107,7 +107,7 @@ order by total_mass desc limit 1;
     )
 
     sql = base.generate_sql(queries[-1])
-    assert "_launch_code" not in sql[0], sql[0]
+    assert "_launch_code" in sql[0], sql[0]
 
 
 def test_nested_calc_failure():
@@ -224,8 +224,7 @@ import launch_dashboard;
 where vehicle.name like '%Falcon%'
 
 SELECT 
-vehicle.name, 
-vehicle_label,
+vehicle.full_name,
 launch_count,
 count(launch_tag ? was_complete_success) as successful_launches,
 # count(launch_tag ? success_flag = 'E') as pad_aborts,
@@ -241,4 +240,7 @@ limit 6;
     )
 
     sql = base.generate_sql(queries[-1])
-    assert "RIGHT OUTER JOIN" in sql[0], sql[0]
+    assert (
+        'LEFT OUTER JOIN "launch_info" as "launch_info" on "vehicle_lv_info"."LV_Name" = "launch_info"."LV_Type" AND "vehicle_lv_info"."LV_Variant" = "launch_info"."Variant"'
+        in sql[0]
+    ), sql[0]

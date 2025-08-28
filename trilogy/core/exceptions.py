@@ -23,14 +23,17 @@ class UnresolvableQueryException(Exception):
 class NoDatasourceException(UnresolvableQueryException):
     pass
 
+
 class ModelValidationError(Exception):
     pass
+
+
 class DatasourceModelValidationError(ModelValidationError):
     pass
 
+
 class ConceptModelValidationError(ModelValidationError):
     pass
-
 
 
 class AmbiguousRelationshipResolutionException(UnresolvableQueryException):

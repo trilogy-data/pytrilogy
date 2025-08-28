@@ -106,6 +106,7 @@ class DataType(Enum):
     def __str__(self) -> str:
         return self.name
 
+
 class TraitDataType(BaseModel):
     type: DataType | NumericType | StructType | ArrayType | MapType
     traits: list[str]

@@ -94,9 +94,7 @@ def validate_datasource(
             if actual_address in cols_with_error:
                 continue
             rval = row[actual_address]
-            passed = type_check(
-                rval, col.concept.datatype, col.is_nullable
-            )
+            passed = type_check(rval, col.concept.datatype, col.is_nullable)
             if not passed:
                 failures.append(
                     (
@@ -117,7 +115,7 @@ def validate_datasource(
                 f"Datasource {datasource.name} failed validation. Found rows that do not conform to types: {[format_failure(failure) for failure in failures]}"
             )
         )
-    
+
     query = easy_query(
         concepts=[build_env.concepts[name] for name in datasource.grain.components]
         + [build_env.concepts["grain_check"]],

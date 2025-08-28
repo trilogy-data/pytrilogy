@@ -46,7 +46,7 @@ def add_concept(
         if pseudonym_node.split("@")[0] == node_name.split("@")[0]:
             continue
         g.add_edge(pseudonym_node, node_name, fast=True)
-        g.add_edge(node_name, pseudonym_node, fast=True )
+        g.add_edge(node_name, pseudonym_node, fast=True)
         g.pseudonyms.add((pseudonym_node, node_name))
         g.pseudonyms.add((node_name, pseudonym_node))
         add_concept(pseudonym, g, concept_mapping, default_concept_graph, seen)
@@ -96,7 +96,7 @@ def generate_adhoc_graph(
             # add an FK edge to the canonical source, if it exists
             # for example, order ID on order product table
             default = get_default_grain_concept(concept, default_concept_graph)
- 
+
             if concept != default:
                 dcnode = concept_to_node(default)
                 g.add_node(default)

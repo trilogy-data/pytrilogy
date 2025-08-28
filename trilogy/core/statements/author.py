@@ -152,7 +152,9 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                     elif x.concept.address in environment.concepts:
                         version = environment.concepts[x.concept.address]
                         if version.metadata.concept_source == ConceptSource.SELECT:
-                            environment.add_concept(x.content.output, force=True, add_derived=False)
+                            environment.add_concept(
+                                x.content.output, force=True, add_derived=False
+                            )
                 x.content.output = x.content.output.set_select_grain(
                     output.grain, environment
                 )
@@ -385,6 +387,8 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         for select in self.selects:
             locally_derived = locally_derived.union(select.locally_derived)
         return locally_derived
+
+
 class RowsetDerivationStatement(HasUUID, BaseModel):
     name: str
     select: SelectStatement | MultiSelectStatement

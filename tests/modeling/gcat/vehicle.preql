@@ -38,6 +38,11 @@ case
     else 'Unknown'
   end;
 
+auto  full_name <-  CASE WHEN variant != '-' THEN concat(name,' ',variant)
+ELSE name
+END;
+
+
 datasource lv_info (
 	LV_Name:name,
 	LV_Family:family,

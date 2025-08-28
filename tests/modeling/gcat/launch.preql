@@ -9,8 +9,6 @@ import satcat as payload;
 
 key launch_tag string; # Each rocket launch in the database is labelled with a unique designation. For successful orbital launches, we use the International Designation (also called the COSPAR designation, after the Committee on Space Research which adopted the system.) For other launches, I use a variation on that scheme of my own design. I introduce the generalized concept of `launch designation' to include the International/COSPAR designation and other similar schemes. The term `piece designation' is also introduced to generalize the per-piece (per-cataloged-object) international designation. 
 property <launch_tag>.launch_jd string; # float of launch date on julian calendar
-# property <launch_tag>.launch_date string; 
-property <launch_tag>.variant string;
 property <launch_tag>.flight_id string; #  an identifier for the particular launch, for example the serial number of the launch vehicle or the mission number or name assigned by the launch agency. 
 property <launch_tag>.flight string; #  additional identifers for the launch. For orbital flights, at least one flight/mission/flightode is usually the name of the payload. Some launches have a lot of different designations. I haven't been fully consistent about which name goes in which of the Flight, Mission, FlightCode fields, although usually names in a specific series are in the same column. 
 property <launch_tag>.mission string; #  additional identifers for the launch. For orbital flights, at least one flight/mission/flightode is usually the name of the payload. Some launches have a lot of different designations. I haven't been fully consistent about which name goes in which of the Flight, Mission, FlightCode fields, although usually names in a specific series are in the same column. 
@@ -78,7 +76,7 @@ datasource launch_info (
 	Launch_JD:launch_jd,
 	# Launch_Date:julian_launch_date,
 	LV_Type:~vehicle.name,
-	Variant:variant,
+	Variant:~vehicle.variant,
 	Flight_ID:flight_id,
 	Flight:flight,
 	Mission:mission,

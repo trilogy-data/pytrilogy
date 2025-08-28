@@ -28,7 +28,7 @@ from trilogy.core.enums import (
     Modifier,
     Purpose,
     SourceType,
-    FunctionClass
+    FunctionClass,
 )
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.build import (
@@ -376,7 +376,11 @@ class CTE(BaseModel):
                 return check_is_not_in_group(c.lineage.content)
             if c.derivation == Derivation.CONSTANT:
                 return True
-            if c.purpose == Purpose.CONSTANT and isinstance(c.lineage, BuildFunction) and c.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+            if (
+                c.purpose == Purpose.CONSTANT
+                and isinstance(c.lineage, BuildFunction)
+                and c.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
+            ):
                 return True
             if c.purpose == Purpose.METRIC:
                 return True
