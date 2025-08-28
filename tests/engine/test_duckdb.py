@@ -1724,8 +1724,24 @@ select value where not value;
     )
 
 
-def test_validate(duckdb_engine: Executor):
+def test_validate():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    test = """
+key x int;
+
+datasource example (
+x)
+grain (x)
+query '''
+select 1 as x''';
+
+where x = 1
+SELECT unnest([1,2,3,4]) as value, 'example' as dim
+having value = 2;
+"""
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+
     test = """validate all;"""
 
-    results = duckdb_engine.execute_text(test)[0].fetchall()
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1
