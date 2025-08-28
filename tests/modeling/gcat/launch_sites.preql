@@ -19,7 +19,7 @@ property <key>.error string;
 property <key>.parent string;
 property <key>.short_e_name string;
 property <key>.e_name string;
-# property <key>.group string;
+property <key>.group string;
 property <key>.u_name string;
 
 datasource launch_sites (
@@ -39,7 +39,8 @@ datasource launch_sites (
 	Parent:parent,
 	ShortName:short_name,
 	EName:e_name,
-	# Group,
+	ShortEName:short_e_name,
+	Group:group,
 	UName:u_name,
 )
 grain (key)

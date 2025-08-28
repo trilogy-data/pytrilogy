@@ -821,7 +821,9 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def aggregate_by(self, meta: Meta, args):
-        args = [self.environment.concepts[a] for a in args]
+        base = args[0]
+        b_concept = base.value.split(" ")[-1]
+        args = [self.environment.concepts[a] for a in [b_concept] + args[1:]]
         return self.function_factory.create_function(args, FunctionType.GROUP, meta)
 
     def whole_grain_clause(self, args) -> WholeGrainWrapper:

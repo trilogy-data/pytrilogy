@@ -329,8 +329,8 @@
     _GROUP.1: "group("i
     fgroup: _GROUP expr ")" aggregate_over?
 
-    //by:
-    aggregate_by: "group" IDENTIFIER "BY"i (IDENTIFIER ",")* IDENTIFIER
+    //by:  
+    aggregate_by: /(group)\s+([a-zA-Z\_][a-zA-Z0-9\_\.]*)/i "BY"i (IDENTIFIER ",")* IDENTIFIER
 
     //aggregates
     _COUNT.1: "count("i

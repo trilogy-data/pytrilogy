@@ -23,7 +23,6 @@ property <launch_tag>.range string; # the range in km measured along the curved 
 property <launch_tag>.range_flag string;
 property <launch_tag>.dest string;
 property <launch_tag>.orb_pay float; # payload in tonnes delivered to orbit
-property <launch_tag>.agency string;
 key _launch_code string; 
 property <launch_tag>.fail_code string;
 # property <launch_tag>.group string;

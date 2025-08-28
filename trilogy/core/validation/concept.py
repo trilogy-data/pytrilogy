@@ -1,5 +1,5 @@
 from trilogy import Executor
-from trilogy.core.enums import Purpose
+from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.exceptions import (
     ConceptModelValidationError,
     DatasourceModelValidationError,
@@ -53,11 +53,32 @@ def validate_key_concept(
     return exceptions
 
 
+def validate_datasources(concept: BuildConcept, build_env: BuildEnvironment):
+    if concept.lineage:
+        return []
+    for datasource in build_env.datasources.values():
+        if concept.address in [c.address for c in datasource.concepts]:
+            return []
+    if not concept.derivation == Derivation.ROOT:
+        return []
+    if concept.name.startswith("__") or (
+        concept.namespace and concept.namespace.startswith("__")
+    ):
+        return []
+    return [
+        ConceptModelValidationError(
+            f"Concept {concept.address} is a root concept but has no datasources bound"
+        )
+    ]
+
+
 def validate_concept(
     concept: BuildConcept, build_env: BuildEnvironment, exec: Executor
 ) -> list[ConceptModelValidationError | DatasourceModelValidationError]:
+    base = []
+    base += validate_datasources(concept, build_env)
     if concept.purpose == Purpose.PROPERTY:
-        return validate_property_concept(concept)
+        base += validate_property_concept(concept)
     elif concept.purpose == Purpose.KEY:
-        return validate_key_concept(concept, build_env, exec)
-    return []
+        base += validate_key_concept(concept, build_env, exec)
+    return base
