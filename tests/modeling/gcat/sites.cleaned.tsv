@@ -1,0 +1,704 @@
+Site	Code	UCode	Type	StateCode	TStart	TStop	ShortName	Name	Location	Longitude	Latitude	Error	Parent	ShortEName	EName	Group	UName
+OCEAN	-	OCEAN	LS	EARTH	-	-	Ocean	Ocean launch sites	-	-	-	0.0000 	-	Ocean	-	-	Ocean launch sites
+A51	-	A51	LS	US	1968	1972	Area 51	Groom Lake Air Force Base, Area 51, Nevada	Groom Lake, Nevada	   -115.8000 	   37.2300 	0.1000 	NRO	-	-	-	Groom Lake Air Force Base, Area 51, Nevada
+AAAF	-	HADC	LS	US	1941 Apr 13	1949 Dec  2	AAAF	Alamagordo Army Air Field	-	   -106.1030 	   32.8496 	0.0001 	USAF	-	-	WS	Alamagordo Army Air Field
+ABER	-	ABER	LS	UK	1959 Jun 29	1972 Jul 20	ABER  -	Aberporth Range	Aberporth, Cardigan, Wales	     -4.5548 	   52.1379 	0.0001 	RAE	-	-	-	Aberporth Range
+AFMDC	-	HADC	LS	US	1957 Sep  1	1970 Aug  1	AFMDC	Air Force Missile Development Center, Holloman Air Force Base	Alamagordo, New Mexico	   -106.1030 	   32.8496 	0.0001 	USAF	-	-	WS	Air Force Missile Development Center, Holloman Air Force Base
+AFMTC	-	CC	LS	US	1951 Jun 30	1955 Dec 16	AFMTC	Air Force Missile Test Center	Cape Canaveral, Florida	    -80.5400 	   28.4600 	0.0500 	USAF	-	-	CC	Air Force Missile Test Center
+AGINSK	-	AGINSK	LS	SU	1962	1964	Aginsk	Aginskiy Test Range (247 MP Tsugol)	Step'/Tsugol, Zabaykalsky Krai	    115.4238 	   51.0157 	0.0100 	RVSN	-	-	-	Aginskiy Test Range (247 MP Tsugol)
+AKHT	-	AKHT	LS	BG	1984	-	Akhtopol	Akhtopol Meteorological Rocket Station	Akhtopol, Bulgaria	     27.9522 	   42.0841 	0.0002 	NIMHB	-	-	-	Akhtopol Meteorological Rocket Station
+AKT	-	AKT	LS	J	1956 Sep 24	1962 May 24	AKT   -	Akita Rocket Range (ATC)	Michikawa, Akita City, Honshu, Nippon	    140.0569 	   39.5709 	0.0010 	ISAS	-	-	-	Akita Rocket Range (ATC)
+ALAYQ	-	ALAYQ	LS	CN	2021	-	Alashan Youqi	Alashan Youqi airport	Alxa Yougi	    101.5478 	   39.2264 	0.0001 	CASC	-	-	-	Alashan Youqi Airport
+ALCA	-	ALCA	LS	BR	1994 Aug 19	*	ALCA  -	CLA, Alcantara Space Center	Alcantara, Maranhao, Brasil	    -44.3671 	   -2.3170 	0.0010 	AEB	-	-	-	CLA, Alcantara Space Center
+ALEYSK	-	ALEYSK	LS	SU	1960s	1990s	ALEYSK	Aleysk missile site, Russia	-	     82.6990 	   52.4787 	0.5000 	RVSN	-	-	-	Aleysk missile site, Russia
+ALIBEY	-	ALIBEY	LS	UA	2020	-	Alibey Range	Alibey Test Range, Odessa, Ukraine	Alibey Lagoon, Odessa	     30.0837 	   45.8151 	0.0001 	ZSU	-	-	-	Alibey Test Range, Odessa, Ukraine
+ALJAWF	-	ALJAWF	LS	YE	2022	-	Al Jawf	Zolfhaghar launch sites in Al Jawf	-	     45.5000 	   16.8000 	0.5000 	ANSAL	-	-	-	Al Jawf
+ALNASR	-	ALNASR	LS	SY	1992 Jul	*	SYRIA ALNASR	Al Nasriyah missile base, Syria	-	     36.8770 	   33.9285 	0.0010 	SYMC	-	-	-	Al Nasriyah missile base, Syria
+ALSAFIR	-	ALSAFIR	LS	SY	1992 Jul	*	MINAK -	Syrian missile base, Al Safir, Aleppo, Syria (Base at Al Safir)	-	     37.3508 	   36.0339 	0.0010 	SYMC	-	-	-	Syrian missile base, Al Safir, Aleppo, Syria (Base at Al Safir)
+ALSULAY	-	ALSULAY	LS	SA	-	-	Al Sulayil	Al Sulayil missile base, Saudi Arabia	al-Sulayil, Sauid Arabia	     45.5836 	   20.7186 	0.0010 	SA	-	-	-	Al Sulayil missile base, Saudi Arabia
+ALT	-	ALT	LS	US	-	-	ALT   -	Altus AFB	Atlus, Oklahoma	    -99.2743 	   34.6630 	0.1000 	SAC	-	-	-	Altus AFB
+AMAR	-	AMAR	LS	IQ	1985	1990	AMAR  -	Al 'Amarah missile launch site	Al 'Amarah, Iraq	     47.1500 	   31.8300 	0.1000 	IQ	-	-	-	Al 'Amarah missile launch site
+AMX	-	AMX	LS	AM	2020	-	AMX	Unknown Iskander launch site, Armenia	Armenia	     44.5100 	   40.1800 	0.0200 	AMAD	-	-	-	Unknown Iskander launch site, Armenia
+ANBAR	-	ANBAR	LS	IQ	1989 Dec  1	1990 Jan	ANBAR -	Al-Anbar base, Al-Anbar province, Iraq	Al-Anbar, Iraq	     42.3000 	   32.1000 	0.2000 	IQ	-	-	-	Al-Anbar base, Al-Anbar province, Iraq
+AND	-	AND	LS	N	1962 Aug 18	*	AND   -	Andoya Rocket Range, Andoy, Nordland, Norge	Andoya, Nordland	     16.0207 	   69.2943 	0.0020 	ARR	-	-	-	Andoya Rocket Range, Andoy, Nordland, Norge
+ANHU	-	ANHU	LS	KR	1993 Jun	*	ANHU  -	Anhueng, Taean missile site, Ch'ungch'ong Namdo, Korea	Anhueng, Ch'ungch'ong Namdo	    126.1000 	   36.4100 	0.0200 	ADD	-	-	-	Anhueng, Taean missile site, Ch'ungch'ong Namdo, Korea
+ANNA	-	ANNA	LS	AU	1997 Sep  2	1997 Sep 11	ANNA  -	Anna Plains, Western Australia	Anna Plains	    121.5700 	  -19.2800 	0.0500 	NASA?	-	-	-	Anna Plains, Western Australia
+ANT	-	ANT	LS	AG	1972 May 16	1974 Jan 31	ANT   -	Antigua Air Force Station	Antigua	    -61.7752 	   17.1371 	0.0005 	USAF	-	-	-	Antigua Air Force Station
+APBS	-	APBS	LS	LUNA	2024 Jun	2024 Jun	Apollo Basin S	Chang'e-6 Zhuolu Qi, Apollo Basin South	Luna	   -153.9855 	  -41.6384 	0.0001 	CAST	-	-	LUNA	Chang'e-6 Zhuolu Qi, Apollo Basin South
+APC	-	APC	LS	LUNA	1972 Feb 22	1972 Feb 22	APC   KT-408	KT No. 408, Luna-20 Site, Apollonius C, Mare Undarum B3	Luna	     56.5500 	    3.5300 	0.0100 	NPOL	-	-	-	KT No. 408, Luna-20 Site, Apollonius C, Mare Undarum B3
+ARNHEM	-	ARNHEM	LS	AU	2022	-	Arnhem	Arnhem Space Centre, Nhulunbuy, Northern Territory	Northern Territory, Australia	    136.8000 	  -12.3900 	0.0200 	ELA	-	-	-	Arnhem Space Centre
+ASC	-	ASC	LS	SH	1964 Jan 29	1968?	ASC   -	Ascension Island, Atlantic Ocean	Ascension Island, Atlantic Ocean	    -14.4142 	   -7.9762 	0.0001 	USAF	-	-	-	Ascension Island, Atlantic Ocean
+ASHU	-	ASHU	LS	SU	-	-	Ashuluk	Ashuluk, Rossiya	-	     48.0343 	   47.4224 	0.0001 	PVO	-	-	-	Ashuluk, Rossiya
+ASKTH	-	ASKTH	LS	NL	1878	*	ASK t'Harde	Artillerie Schietkamp, t'Harde	t'Harde, Nederland	      5.9232 	   52.3947 	0.0001 	TMINUS	-	-	-	Ashuluk, Rossiya
+AUR	-	AUR	LS	MH	1997 Feb	?	AUR   -	Aur Atoll launch site	Bigen Island, Aur Atoll, Marshall Is.	    171.0400 	    8.3600 	0.0100 	SMDC	-	-	-	Aur Atoll launch site
+BALKH	-	BALKH	LS	SU	1960	*	GNIIP-10 SSATC	Sary Shagan Antimissile Test Center (NIIP-A, GNIIP-10), Balkash	Priozyorsk (Sary Shagan-2), Kazakhstan	     72.8700 	   46.3800 	0.0200 	MO	-	-	-	Sary Shagan Antimissile Test Center (NIIP-A, GNIIP-10), Balkash
+BARB	-	BARB	LS	BB	1963 May 18	1968	BARB  -	Barbados, Windward Islands	-	    -59.4830 	   13.0670 	0.0400 	USAF	-	-	-	Barbados, Windward Islands
+BARK	-	BARK	LS	US	-	-	BARK  -	Barksdale AFB	Louisiana	    -93.7300 	   32.5200 	0.0200 	USAF	-	-	-	Barksdale AFB
+BART	-	BART	LS	US	1970 Mar  2	1970 Mar  5	BART  -	Barter Island, Alaska	-	   -143.6300 	   70.1100 	0.0200 	NASA/USAF?	-	-	-	Barter Island, Alaska
+BCB	-	BCB	LS	US	2016	2022	Boca Chica	Texas Launch Site, Boca Chica Beach, Texas	-	    -97.1536 	   25.9964 	0.0010 	SPX	-	-	-	Texas Launch Site, Boca Chica Beach, Texas
+BEALE	-	BEALE	LS	US	1969	1971	Beale AFB	Beale AFB, California	Marysville, California	   -121.4400 	   39.1400 	0.0100 	NRO	-	-	-	Beale AFB, California
+BEJ	-	BEJ	LS	IR	2018	-	Bandar	Bandar-e-Jask, Hormozgan	-	     57.7740 	   25.6440 	0.0200 	IR	-	-	-	Bandar-e-Jask, Hormozgan
+BERM	-	BERM	LS	BM	1962	1971	BERM  -	NASA Bermuda, Kindley AFB, Coopers Island, Bermuda	-	    -64.6566 	   32.3483 	0.0010 	NASA	-	-	-	NASA Bermuda, Kindley AFB, Coopers Island, Bermuda
+BERSH	-	BERSH	LS	SU	1960s	1990s	BERSH	Bershet missile base, Russia	-	     56.3060 	   57.6920 	0.0010 	SU	-	-	-	Bershet missile base, Russia
+BFL	-	BFL	LS	NZ	1963	1963	BFL   -	Birdling's Flat, Canterbury Plains, New Zealand	-	    172.6800 	  -43.8167 	0.0100 	UCAN	-	-	-	Birdling's Flat, Canterbury Plains, New Zealand
+BHOT	-	BHOT	LS	CN	1990?	-	BHOT	Bayan Hot test range	Alxa, Nei Monggol	    105.6078 	   38.7577 	0.0001 	PLA	-	-	-	Bayan Hot test site
+BIK	-	BIK	LS	MH	1956	1956	BIK   -	Pacific Proving Grounds, Bikini Island, Pacific Ocean	-	    165.3300 	   11.5800 	0.0400 	USN	-	-	-	Pacific Proving Grounds, Bikini Island, Pacific Ocean
+BLAN	-	BLAN	LS	US	1967	1980	BLAN  -	Black Mesa, Blanding, Utah	-	   -109.2900 	   37.3700 	0.0200 	USA	-	-	-	Black Mesa, Blanding, Utah
+BLRUS	-	BLRUS	LS	RU	2022	-	Belarus	Belarus missile launch sites in Russian invasion of Ukraine	-	     29.0000 	   52.0000 	1.0000 	RVA	-	-	-	Belarus missile launch sites in Russian invasion of Ukraine
+BOWEN	-	BOWEN	LS	AU	2025	-	Bowen	Bowen Orbital Spaceport, Queensland	Abbot Point, Queensland	    148.1136 	  -19.9582 	0.0001 	GILM	-	-	-	Bowen Orbital Spaceport
+BRET	-	BRET	LS	F	1983	*	BRET  -	Zone de lancement SNLE, Golfe de Gascogne, Bretagne	-	     -4.5000 	   47.5000 	0.7000 	DGA	-	-	-	Zone de lancement SNLE, Golfe de Gascogne, Bretagne
+BRETA	-	BRETA	LS	F	2009	*	BRETA	Zone de lancement SNLE, Baie d'Audierne	Baie D'Audierne, Bretagne	     -4.0500 	   47.6300 	0.0500 	DGA	-	-	-	Zone de lancement SNLE, Baie d'Audierne
+BROCK	-	BROCK	LS	US	2004	*	BROCK -	Black Rock Desert, Nevada	-	   -119.1400 	   40.8300 	0.0500 	USDI	-	-	-	Black Rock Desert, Nevada
+CANSO	-	CANSO	LS	CA	2025	-	Canso	Maritime Launch Services Spaceport, Canso, Nova Scotia	-	    -60.9829 	   45.3036 	0.0001 	MLS	-	-	-	Canso, Nova Scotia
+CARD	-	CARD	LS	F	1952 Jan	1952 Jan	CARD  -	Le Cardonnet, Montpelier, France	-	      3.6400 	   43.5800 	0.0500 	DGA	-	-	-	Le Cardonnet, Montpelier, France
+CARN	-	CARN	LS	AU	1964 Jul 16	1964 Oct	CARN  -	Carnarvon, Western Australia	-	    113.4000 	  -24.5000 	0.0200 	WRE	-	-	-	Carnarvon, Western Australia
+CARN2	-	CARN2	LS	AU	1965 May	1965 May 11	CARN2 -	Carnarvon north site, Western Australia	-	    113.2500 	  -24.1000 	0.2000 	WRE	-	-	-	Carnarvon north site, Western Australia
+CASS	-	CASS	LS	BR	1966 Nov  5	1966 Nov 12	CASS  -	Cassino, Rio Grande Do Sul, Brasil	-	    -52.1689 	  -32.1927 	0.0001 	INPE/NASA?	-	-	-	Cassino, Rio Grande Do Sul, Brasil
+CAZ	-	CAZ	LS	F	-	-	Cazaux	Base aerienne 120, Cazaux, Nouvelle-Aquitaine	Cazaux, Nouvelle-Aquitaine	     -1.1130 	   44.5397 	0.0001 	DGA	-	-	-	Base aerienne 120, Cazaux, Nouvelle-Aquitaine
+CC	-	CC	LS	US	1992	2000 Feb  4	CC    -	Cape Canaveral Air Station, Florida	-	    -80.5400 	   28.4600 	0.0500 	USAF	Canaveral	-	CC	Cape Canaveral Air Station, Florida
+CCA	-	CCA	LS	US	1984	1998 Jan  1	CC (A)	Cape Canaveral Air Force Station, Eastern Test Range	Cape Canaveral, Florida	    -80.5400 	   28.4600 	0.0500 	USAF	-	-	CC	Cape Canaveral Air Force Station, Eastern Test Range
+CCAFS	-	CC	LS	US	1974 Mar	1992	CCAFS	Cape Canaveral Air Force Station, Eastern Test Range	Cape Canaveral, Florida	    -80.5400 	   28.4600 	0.0500 	USAF	-	-	CC	Cape Canaveral Air Force Station, Eastern Test Range
+CCAFS1	-	CC	LS	US	2000 Feb  4	2020 Dec  9	CCAFS	Cape Canaveral Air Force Station, Eastern Test Range	Cape Canaveral, Florida	    -80.5400 	   28.4600 	0.0500 	USAF	-	-	CC	Cape Canaveral Air Force Station, Eastern Test Range
+CCMTA	-	CC	LS	US	1955 Dec 16	1964 Jan 22	CCMTA	Cape Canaveral Missile Test Annex, Air Force Missile Test Center	Cape Canaveral, Florida	    -80.5400 	   28.4600 	0.0500 	USAF	-	-	CC	Cape Canaveral Missile Test Annex, Air Force Missile Test Center
+CCSFS	-	CC	LS	US	2020 Dec  9	*	CCSFS	Cape Canaveral Space Force Station, Eastern Test Range	Cape Canaveral, Florida	    -80.5400 	   28.4600 	0.0500 	USSF	-	-	CC	Cape Canaveral Air Force Station, Eastern Test Range
+CCSP	-	CCSP	LS	US	2020?	-	CCSP	Cape Canaveral Spaceport	Cape Canaveral, Florida	    -80.6944 	   28.6149 	0.0002 	SPFL	-	-	CC	Cape Canaveral Spaceport
+CEL	-	CEL	LS	F	1964 Mar 11	2009 Dec 31	CEL   -	Centre d'Essais de Landes, Biscarosse, Landes, France	-	     -1.2500 	   44.4500 	0.0200 	F	-	-	-	Centre d'Essais de Landes, Biscarosse, Landes, France
+CELAT	-	CELAT	LS	AR	1968	1970	CELAT -	CELPA Atlantica, Mar Chiquita, Buenos Aires, Argentina	-	    -57.4200 	  -37.7500 	0.0200 	AR	-	-	-	CELPA Atlantica, Mar Chiquita, Buenos Aires, Argentina
+CELM	-	CEL	LS	F	1966 Feb	*	CELM  -	Centre d'Essais de Lancement de Missiles  (former CEL)	-	     -1.2500 	   44.3620 	0.0020 	F	-	-	-	Centre d'Essais de Lancement de Missiles  (former CEL)
+CELPA	-	CELPA	LS	AR	1962	1973	CELPA -	Centro de Ensayo y Lanzamiento de Proyectiles Autopropulsados	Chamical, La Rioja, Argentina	    -66.3170 	  -30.1300 	0.0200 	AR	-	-	-	Centro de Ensayo y Lanzamiento de Proyectiles Autopropulsados
+CELS	-	CELS	LS	UK	2022	*	Celtic Sea	Celtic Sea Spaceport Cornwall Drop Zones	-	    -11.0000 	   51.0000 	0.5000 	VORB	-	-	-	Spaceport Cornwall Drop Zone, Celtic Sea
+CEM	-	CERES	LS	F	1968 Sep  1	*	CEM   -	Centre d'Essais de la Mediterranee, Ile du Levant, Var, France	-	      6.4700 	   43.0500 	0.0200 	F	-	-	-	Centre d'Essais de la Mediterranee, Ile du Levant, Var, France
+CERES	-	CERES	LS	F	1948	1968 Sep  1	CERES -	Centre d'Essais et de Recherches d'Engins Speciaux, Ile du Levant, Var	-	      6.4700 	   43.0500 	0.0200 	F	-	-	-	Centre d'Essais et de Recherches d'Engins Speciaux, Ile du Levant, Var
+CHAB	-	CHAB	LS	IR	2024	*	Chabahar	Chabahar Space Center	-	     61.2719 	   25.1408 	0.0001 	IRSA	-	-	-	Chabahar Space Center
+CHAC	-	CHAC	LS	AR	1966 Nov 12	1966 Nov 12	CHAC  -	Las Palmas, Chaco, Argentina	-	    -58.7500 	  -27.1300 	0.0300 	CNES	-	-	-	Las Palmas, Chaco, Argentina
+CHAN	-	CHAN	LS	IN	1989	*	CHAN  -	Integrated Test Range, Balasore Range, Chandipur-On-Sea, Orissa, India	-	     86.6000 	   21.3000 	0.0500 	DRDO	-	-	-	Integrated Test Range, Balasore Range, Chandipur-On-Sea, Orissa, India
+CHDONG	-	CHDONG	LS	KP	2023	*	Chong dong	Chong dong (Samsok) missile launch point	-	    125.9976 	   39.1118 	0.0001 	KPA	-	-	-	Chong dong missile launch point
+CHEL	-	CHEL	LS	SU	1957	1960s	CHEL  -	SP-5 Tactical missile site, Chelkar, Aktyubinsk	-	     59.6100 	   47.8500 	0.0200 	RVSN	-	-	-	SP-5 Tactical missile site, Chelkar, Aktyubinsk
+CHI	-	CHI	LS	PE	1974 Mar 29	1983 Mar 23	CHI   -	Chilca Launch Range, Lima, Peru	-	    -76.8000 	  -12.5000 	0.0200 	PE	-	-	-	Chilca Launch Range, Lima, Peru
+CHIHA	-	CHIHA	LS	KP	1991 Jul	*	CHIHA -	Chiha-ri, Ich'on, Kangwon do, Choson	-	    126.6850 	   38.6230 	0.1000 	KPA	-	-	-	Chiha-ri, Ich'on, Kangwon do, Choson
+CHIOHE	-	CHIOHE	LS	TW	1999	*	CHIOH -	Chio He air base, Pingtung, Formosa (Taiwan)   [== JP?]	-	    120.5000 	   22.6000 	0.1000 	NSPO	-	-	-	Chio He air base, Pingtung, Formosa (Taiwan)   [== JP?]
+CHUX	-	CHUX	LS	CN	-	-	Chuxiong	808/402 Brigade Missile Base, Chuxiong, Yunnan province	-	    101.5318 	   25.0619 	0.1000 	PLA	-	-	-	402 Brigade Missile Base, Chuxiong, Yunnan province
+CHWA	-	CHWA	LS	KP	2022 Dec	-	Chunghwa	Chunghwa (Junghwa) county	-	    125.8000 	   38.9000 	0.1000 	KPA	-	-	-	Chunghwa County missile launch points
+CKAFS	-	CC	LS	US	1964 Jan 22	1974 Mar	CKAFS	Cape Kennedy Air Force Station, Eastern Test Range	Cape Kennedy, Florida	    -80.5400 	   28.4600 	0.0500 	USAF	-	-	CC	Cape Kennedy Air Force Station, Eastern Test Range
+CLBI	-	CLBI	LS	BR	1965 Dec 15	*	CLBI  -	Centro de Lancamento da Barreira do Inferno, Natal, Rio Grande N, Brasil	-	    -35.3830 	   -5.8660 	0.0200 	IAE	-	-	-	Centro de Lancamento da Barreira do Inferno, Natal, Rio Grande N, Brasil
+COLDLK	-	COLDLK	LS	CA	1954	1990	COLDL -	Cold Lake Air Weapons Range, Alberta (meteorological rockets)	-	   -110.0000 	   54.0000 	0.5000 	RCAR	-	-	-	Cold Lake Air Weapons Range, Alberta (meteorological rockets)
+CORO	-	CORO	LS	SR	1965 Sep 18	1965 Sep 27	CORO  -	Coronie, Surinam	-	    -56.3000 	    5.8500 	0.0200 	ZWO	-	-	-	Coronie, Surinam
+CP	-	CP	LS	CA	1969 Mar  7	1982 Jan 21	CP    -	Cape Parry, PIN Main DEW, Inuvik Region, Northwest Territory, Canada	-	   -124.7170 	   70.1700 	0.0200 	CA	-	-	-	Cape Parry, PIN Main DEW, Inuvik Region, Northwest Territory, Canada
+CRI23	-	CRI23	LS	LUNA	1974 Nov  6	1974 Nov  6	CRI23 KT-410	KT No. 410, Luna-23 Site, Mare Crisium, Mare Undarum A3	Luna	     56.5000 	   13.5000 	0.0100 	NPOL	-	-	LUNA	KT No. 410, Luna-23 Site, Mare Crisium, Mare Undarum A3
+CRI24	-	CRI24	LS	LUNA	1974 Aug 19	1974 Aug 19	CRI24 KT-413	KT No. 413, Luna-24 Site, Mare Crisium, Mare Undarum B1	Luna	     62.2000 	   12.7500 	0.0100 	NPOL	-	-	LUNA	KT No. 413, Luna-24 Site, Mare Crisium, Mare Undarum B1
+CSB	-	CSB	LS	US	1960	*	CSB   -	Site D3, Cape San Blas, Eglin AFB, Florida	-	    -85.3700 	   29.6700 	0.0200 	USAF	-	-	-	Site D3, Cape San Blas, Eglin AFB, Florida
+CSG	-	CSG	LS	GUF	1968	*	CSG   -	Centre Spatial Guyanais, Kourou, Guyane Francaise	-	    -52.7517 	    5.2333 	0.0200 	CNES	-	-	-	Centre Spatial Guyanais, Kourou, Guyane Francaise
+CUX	-	CUX	LS	D	1945	1963	CUX   -	Cuxhaven, Niedersachsen, Deutschland	-	      8.7000 	   53.8700 	0.0200 	UK	-	-	-	Cuxhaven, Niedersachsen, Deutschland
+CYCL	-	CYCL	LS	GR	2008	-	Pachia?	NAMFI target launch site: either Ftena, Pachia or Makra	Cyclades Islands	     36.3000 	   25.8000 	0.1500 	NATO	-	- -	-	NAMFI target launch site: either Ftena, Pachia or Makra
+DAQA	-	DAQA	LS	CN	1970	-	Da Qaidam	412 Brigade Missile Base, Da Qaidam, Qinghai province	-	     95.3551 	   37.8519 	0.0001 	PLA	-	- -	-	412 Brigade Missile Base, Da Qaidam, Qinghai province
+DAT	-	DAT	LS	US	1963	1963	DAT   -	Datil, New Mexico	-	   -107.7414 	   34.1219 	0.0200 	USA	-	-	WSX	Datil, New Mexico
+DBAY	-	DBAY	LS	LB	1960	1966	Dbayeh	Dbayeh launch site, LRS	Dbayeh, Liban	     35.6000 	   33.9300 	0.1000 	LRS	-	-	-	Dbayeh launch site, LRS
+DDU	-	DDU	LS	TF	1967 Jan 26	1967 Jan 29	DDU   -	Dumont d'Urville, Terre Adelie	Dumont d'Urville, Terre Adelie	    140.0086 	  -66.6650 	0.0001 	CNES	-	-	-	Dumont d'Urville, Terre Adelie
+DEK	-	DEK	LS	IR	1990s	1990s	DEK   -	Dasht-E-Kabir, Iran (Khatami Air Base?)	-	     51.8500 	   32.7500 	0.0500 	IR	-	-	-	Dasht-E-Kabir, Iran (Khatami Air Base?)
+DELING	-	DELING	LS	CN	2020	-	Delingha	414 Brigade Missile Base, Delingha, Qinghai province	-	     97.0280 	   37.4076 	0.0010 	CN	-	-	-	Brigade 414, Delingha, Qinghai
+DENGSH	-	DENGSH	LS	CN	-	-	Dengshahe	410 Brigate Missile Base, Dengshahe, Liaoning province	-	    122.0540 	   39.2288 	0.1000 	CN	-	-	-	410 Brigate Missile Base, Dengshahe, Liaoning province
+DEREC	-	DEREC	LS	TR	2021	-	Derecik	Derecik missile base	-	     44.3043 	   37.0736 	0.1000 	TR	-	-	-	Derecik missile base
+DERZH	-	DERZH	LS	SU	1960s	1990s	DERZH	Derzhavinsk missile site, Russia	-	     66.1000 	   51.3000 	0.1000 	RVSN	-	-	-	Derzhavinsk missile site, Russia
+DES	-	DES	LS	LUNA	1972 Apr 24	1972 Apr 24	DES   LM11-DS	LM 11 Descent Stage, Descartes Base, Descartes Plain, Theophilus D2	Luna	     15.5100 	   -8.9000 	0.0100 	NASA	-	-	LUNA	LM 11 Descent Stage, Descartes Base, Descartes Plain, Theophilus D2
+DEVER	-	DEVER	LS	EG	1973	1973	Deversoir	Deversoir Air Base	Egypt	     32.3353 	   30.4227 	0.0100 	EG	-	-	-	Deversoir Air Base
+DGAEML	-	CEL	LS	F	2010 Jan  1	*	DGA EM	DGA Essais de missiles, Site Landes, Biscarosse, Landes, France	-	     -1.2500 	   44.4500 	0.0200 	DGA	-	-	-	DGA Essais de missiles, Site Landes, Biscarosse, Landes, France
+DONGR	-	DONGR	LS	KP	2022	-	Dongrim	Dongrim (Tongrim), N Pyongan Prov.	-	    124.7000 	   39.9000 	0.2000 	KPA	-	-	-	Dongrim, N Pyongan Province
+DRAWP	-	DRAWP	LS	PL	2015	-	Drawsko Pol	Centrum Szkolenia Wojsk Ladowych Drawsko	Drawsko Pomorskie, Poland	     15.7640 	   53.4330 	0.0100 	PAI	-	-	-	Centrum Szkolenia Wojsk Ladowych Drawsko
+DROV	-	DROV	LS	RU	1988	1989	DROV	Drovyanaya, Chitinsk oblast'	-	    113.0000 	   51.5000 	0.1000 	RVSN	-	-	-	Drovyanaya, Chitinsk oblast'
+DYESS	-	DYESS	LS	US	-	-	DYESS	Dyess AFB, Texas	-	    -99.8547 	   32.4208 	0.0001 	USAF	-	                                 -	-	Dyess AFB, Texas
+EAFB	-	EAFB	LS	US	1957	*	EAFB  -	Edwards AFB, California	-	   -117.8000 	   34.9000 	0.1000 	USAF	-	-	-	Edwards AFB, California
+EAO	-	EAO	LS	RU	2016	*	EAO	Iskander mobile launch site, Everyskaya avtonomnaya oblast	-	    133.0000 	   48.7500 	2.0000 	RVSN	-	-	-	Iskander mobile launch site, Everyskaya avtonomnaya oblast
+EGL	-	EGL	LS	US	1959 Sep 18	1980 Dec 12	EGL   -	Santa Rosa Island, Eglin AFB, Florida	-	    -86.7400 	   30.3800 	0.0200 	USAF	-	-	-	Santa Rosa Island, Eglin AFB, Florida
+ELAR	-	ELAR	LS	E	1966 Oct 15	*	ELAR  -	Estacion de sondeos atmosfericos de El Arenosillo, Huelva, Espana	-	     -6.7417 	   37.0958 	0.0002 	E	-	-	-	Estacion de sondeos atmosfericos de El Arenosillo, Huelva, Espana
+ELLS	-	ELLS	LS	US	-	-	ELLS  -	Ellsworth AFB	-	   -103.1040 	   44.1450 	0.0010 	SAC	-	-	-	Ellsworth AFB
+ELM	-	ELM	LS	US	1959	1979	Elmendorf AFB	Elmendorf AFB	Anchorage, Alaska	   -149.8000 	   61.2500 	0.0010 	SAC	-	-	-	Elmendorf AFB
+EMBA	-	EMBA	LS	KZ	-	1999	EMBA  -	Emba test range, Kazakshtan	-	     55.4200 	   47.1000 	0.1000 	MO	-	-	-	Emba test range, Kazakshtan
+EMED	-	EMED	LS	US	2024	-	Eastern Med.	Eastern Mediterranean Sea	-	     34.0000 	   32.0000 	1.0000 	USN	-	-	-	Eastern Mediterranean Sea
+ENW	-	ENW	LS	TTPI	1957 Oct  3	1957 Oct 22	ENW   -	EPG (Eniwetok Proving Grounds), Eniwetok (Enewetak) Atoll, Marshall Is.	-	    162.2500 	   11.5000 	0.0200 	USAF	-	-	-	EPG (Eniwetok Proving Grounds), Eniwetok (Enewetak) Atoll, Marshall Is.
+EQUOD	-	EQUOD	LS	CA	1970 Mar  7	1972 Jul 10	EQUOD -	East Quoddy, Nova Scotia	-	    -63.3350 	   44.9080 	0.0030 	NRCC	-	-	-	East Quoddy, Nova Scotia
+ESR	-	ESR	LS	S	1965 Feb  1	*	ESR   -	ESRANGE, Kiruna	-	     21.1070 	   67.8940 	0.0020 	ESRO	-	-	-	ESRANGE, Kiruna
+ETLAQ	-	ETLAQ	LS	OM	2024	*	Etlaq	Etlaq Spaceport	-	     57.6780 	   19.6396 	0.0002 	NASCOM	-	-	-	Etlaq Spaceport
+EUNYUL	-	EUNYUL	LS	KP	2016	-	Hwangju	Scud launch site near Eunyul, N Hwanghae Prov.	-	    125.1830 	   38.5190 	1.0000 	CMIK	-	-	-	Scud launch site near Eunyul, N Hwanghae Prov.
+FAR	-	FAR	LS	US	2023	*	FAR	Friends of Amateur Rocketry, Randsburg, California	-	   -117.8090 	   35.3477 	0.0002 	EVOL	-	-	-	Friends of Amateur Rocketry, Randsburg, California
+FC	-	FC	LS	CA	1956	1998	FC    -	Churchill Research Range, Fort Churchill, Manitoba, Canada	-	    -93.8203 	   58.7343 	0.0010 	NRCC	-	-	-	Churchill Research Range, Fort Churchill, Manitoba, Canada
+FEC	-	FEC	LS	LUNA	1970 Sep 21	1970 Sep 21	FEC   KT-406	KT No. 406, Luna-16 Site, Mare Fecunditatis, Langrenus A2	Luna	     56.3000 	   -0.6800 	0.0100 	NPOL	-	-	LUNA	KT No. 406, Luna-16 Site, Mare Fecunditatis, Langrenus A2
+FENGR	-	FENGR	LS	CN	-	-	Fengrun	51St Base, Fengrun, Tangshan, Hebei province	-	    118.0932 	   39.8559 	0.1000 	PLA	-	-	-	51St Base, Fengrun, Tangshan, Hebei province
+FMR	-	FMR	LS	LUNA	1971 Feb  6	1971 Feb  6	FMR   LM8-DS	LM 8 Descent Stage, Fra Mauro Base, Fra Mauro, Montes Riphaeus B1	Luna	    -19.2700 	   -3.6700 	0.0100 	NASA	-	-	LUNA	LM 8 Descent Stage, Fra Mauro Base, Fra Mauro, Montes Riphaeus B1
+FTB	-	FTB	LS	US	1945	1970?	FTB   -	Hueco Range, Fort Bliss, Texas	-	   -106.6500 	   31.8000 	0.1000 	USA	-	-	WS	Hueco Range, Fort Bliss, Texas
+FW	-	FW	LS	US	1958	*	FW    -	Fort Wingate Depot Activity, New Mexico	-	   -108.6000 	   35.4500 	0.0050 	SMDC	-	-	WSX	Fort Wingate Depot Activity, New Mexico
+FWAK	-	FWAK	LS	US	1959	1971	Ft Wainwright	Ft Wainwright, Alaska	-	   -147.6330 	   64.8300 	0.0200 	USAF	-	-	-	Ft Wainwright, Alaska
+FXM	-	FXM	LS	CA	1971 Mar 15	1971 Mar 22	FXM   -	FOX-MAIN DEW site, Hall Beach, Nunavut, Canada	-	    -81.2240 	   68.7570 	0.0020 	NASA	-	-	-	FOX-MAIN DEW site, Hall Beach, Nunavut, Canada
+GAN	-	GAN	LS	MV	-	-	GANI  -	Gan Island, Addu Atoll, Maldives, Indian Ocean	-	     73.1500 	   -0.6833 	0.0100 	UKMO	-	-	-	Gan Island, Addu Atoll, Maldives, Indian Ocean
+GANC	-	GANC	LS	ESCN	1997 Apr	1997 Apr	GAN   -	Base Aerea de Gando, Gran Canaria	-	    -15.3200 	   27.9200 	0.0200 	OSC	-	-	-	Base Aerea de Gando, Gran Canaria
+GANGN	-	GANGN	LS	KR	2017 Jul	*	Gangenung	Gangneung Airbase, South Korea	-	    128.9660 	   37.7540 	0.0002 	ADD	-	-	-	Gangneung Air Base, South Korea
+GARM	-	GARM	LS	IR	2021	-	Garmsar	Garmsar Missile Test Range	-	     52.4733 	   35.0260 	0.0001 	IRGC	-	-	-	Garmsar Missile Test Range
+GF	-	GF	LS	US	-	-	GF    -	Grand Forks AFB	-	    -97.4000 	   47.9600 	0.0500 	USAF	-	                                 -	-	Grand Forks AFB
+GFX	-	GFX	LS	US	-	-	GFX   -	Grand Forks AFB or other B-52/SRAM base	-	    -97.4000 	   47.9600 	0.0500 	USAF	-	                                 -	-	Grand Forks AFB or other B-52/SRAM base
+GIK-1	-	GIK-1	LS	RU	1994 Nov  1	*	GIK-1 -	1-y Gosudarstvenniy Ispitatelniy Kosmodrom MO RF	Plesetsk, Rossiya	     40.5000 	   62.9000 	0.0200 	RVSN	Plesetsk	-	PL	1-y Gosudarstvenniy Ispitatelniy Kosmodrom MO RF
+GIK-2	-	SVOB	LS	RU	1990	2016	GIK-2 -	GIK-2, Svobodniy, Amurskaya Oblast', Rossiya	-	    128.1900 	   51.7900 	0.0200 	RVSN	Svobodniy	-	-	GIK-2, Svobodniy, Amurskaya Oblast', Rossiya
+GIK-5	-	GIK-5	LS	RU	1989	*	GIK-5	GIK-5, Baykonur, Kazakstan	-	     63.0000 	   46.0000 	0.0200 	RVSN	Baykonur	-	KB	GIK-5, Baykonur, Kazakstan
+GILB	-	GILB	LS	US	1964	1970?	GILB  -	Gilson Butte, Utah	-	   -110.5800 	   38.5900 	0.0500 	USA	-	-	-	Gilson Butte, Utah
+GILLAM	-	GILLAM	LS	CA	1972 Jan 15	1973 Feb  2	GILLA -	Gillam, Manitoba	-	    -96.0000 	   56.1000 	1.0000 	NRCC	-	-	-	Gillam, Manitoba
+GIOIA	-	GIOIA	LS	I	-	-	GIOIA -	Jupiter sites, Gioia del Colle, Italy	-	     16.9300 	   40.7600 	0.0100 	I	-	-	-	Jupiter sites, Gioia del Colle, Italy
+GIP-53	-	GNIIP	LS	RU	1994 Jun  1	1995 Jan  1	GIP-53	GIP-53, Plesetsk, Rossiya	-	     41.1000 	   63.0000 	0.5000 	RVSN	-	-	PL	GIP-53, Plesetsk, Rossiya
+GMI	-	GMI	LS	NZ	2009	-	GMI	Great Mercury Island	Great Mercury I., New Zealand	    175.9200 	  -36.5800 	0.0200 	RLABN	-	-	-	Great Mercury Island
+GNIIP	-	GNIIP	LS	RU	1995 Jan  1	*	GNIIP -	GNIIP, Plesetsk, Rossiya	-	     41.1000 	   63.0000 	0.5000 	RVSN	-	-	PL	GNIIP, Plesetsk, Rossiya
+GNIIP1	-	GNIIP	LS	RU	1993 Jan  1	1994 Jun  1	GNIIP -	GNIIP, Plesetsk, Rossiya	-	     41.1000 	   63.0000 	0.5000 	RVSN	-	-	PL	GNIIP, Plesetsk, Rossiya
+GNIIPV	-	GIK-1	LS	RU	1993	1994 Nov  1	GNIIP	GNIIP, VKS section, Plesetsk, Rossiya	-	     40.5000 	   62.9000 	0.0200 	RVSN	Plesetsk	-	PL	GNIIP, VKS section, Plesetsk, Rossiya
+GONGYI	-	GONGYI	LS	CN	2024	-	Gongyi	Space Pioneer Gongyi Static Test Site	-	    113.0511 	   34.7090 	0.0001 	TIANB	-	-	-	Tiangbing Keji static test site, Gongyi
+GOSEONG	-	GOSEONG	LS	KR	2017 Jul	*	Goseong	Goseong, South Korea	-	    128.4183 	   38.5226 	0.0001 	ADD	-	-	-	Goseong, South Korea
+GRLC	-	GRLC	LS	US	1964 Feb 10	1973 Aug 24	GRU   -	Green River, Utah	-	   -110.1300 	   38.9700 	0.0500 	USAF	-	-	WSX	Green River, Utah
+GRLY	-	GRLY	LS	US	1971 Aug  7	1971 Aug 14	GRLY  -	Fort Greely, Alaska	-	   -146.0000 	   64.0000 	0.2500 	USA	-	-	-	Fort Greely, Alaska
+GTI	-	GTI	LS	TC	-	-	GTI	Grand Turk Auxiliary AFB, Grand Turk Island	-	    -71.1420 	   21.4440 	0.0050 	USAF	-	-	-	Grand Turk Auxiliary AFB, Grand Turk Island
+GTsMP-4	-	GTsP-4	LS	SU	1999	*	GTsMP-4	GTsMP-4 MO RF, Znamensk (Kapustin Yar), Rossiya	-	     45.8000 	   48.5000 	0.1000 	RVSN	-	-	KY	GTsMP-4 MO RF, Znamensk (Kapustin Yar), Rossiya
+GTsP-4	-	GTsP-4	LS	SU	1946	1999	GTsP-4	GTsP-4, Kapustin Yar, Volgograd, Rossiya	-	     45.8000 	   48.5000 	0.1000 	RVSN	KY	-	KY	GTsP-4, Kapustin Yar, Volgograd, Rossiya
+GUAM	-	GUAM	LS	GU	1957 Feb 12	1958 Nov 24	GUAM  -	Northwest Field, Guam, Marianas Islands	Guam	    144.8516 	   13.6129 	0.0001 	USA	-	-	-	Northwest Field, Guam, Marianas Islands
+GUAMA	-	GUAMA	LS	GU	1969	1971	Andersen AFB	Andersen Air Force Base, Guam, Marianas Islands	Guam	    144.9311 	   13.5871 	0.0001 	USAF	-	-	-	Andersen Air Force Base, Guam, Marianas Islands
+HAD	-	HAD	LS	LUNA	1971 Aug  2	1971 Aug  2	HAD   LM10-DS	LM 10 Descent Stage, Hadley Base, Montes Apenninus, Montes Apenninus B4	Luna	      3.6600 	   26.0800 	0.0100 	NASA	-	-	LUNA	LM 10 Descent Stage, Hadley Base, Montes Apenninus, Montes Apenninus B4
+HADC	-	HADC	LS	US	1949 Dec  2	1957 Sep  1	HADC  -	Holloman Air Development Center, New Mexico	-	   -106.1030 	   32.8496 	0.0001 	USAF	-	-	WS	Holloman Air Development Center, New Mexico
+HAI	-	HAI	LS	CN	1988	*	HAI   -	Haikou Space Center, Hainan	-	    109.1193 	   19.5290 	0.0002 	CN	-	-	-	海口
+HAIY	-	HAIY	LS	CN	2025	-	Haiyang	Haiyang test site, Shandong	-	    121.2000 	   36.8000 	0.5000 	CALT	-	-	-	Haiyang Test Site
+HAMA	-	HAMA	LS	SY	1992 Jul	*	SYRIA HAMA	Hama missile base, Syria	-	     36.7107 	   35.1211 	0.0010 	SYMC	-	-	-	Hama missile base, Syria
+HAMH	-	HAMH	LS	KP	2019	-	Hamhung	Hamhung, S Hamyong Prov, North Korea	-	    127.5000 	   39.9000 	0.5000 	KP	-	-	-	Hamhung, S Hamyong Prov, North Korea
+HAMI	-	HAMI	LS	CN	2021	-	Hami	Hami missile base, Xinjiang	-	     92.4920 	   42.3275 	0.1000 	CN	-	-	-	Hami missile base, Xinjiang
+HAMJ	-	HAMJ	LS	KP	2021	-	Hamju	Hamju, S Hamyong Prov, North Korea	-	    127.4372 	   39.8469 	0.0001 	KP	-	-	-	Hamhung, S Hamyong Prov, North Korea
+HAMNC	-	HAMNC	LS	US	1997	1997	HAM	Hampstead, North Carolina, 1 mi W of Topsail Beach	-	    -77.6400 	   34.3600 	0.0500 	HAL5	-	-	-	Hampstead, North Carolina, 1 mi W of Topsail Beach
+HARBIN	-	HARBIN	LS	CN	1967	*	Harbin	Harbin missile test site, Heilongjiang, Manchuria, China	-	    126.6800 	   45.7500 	0.0200 	CN	-	-	-	Harbin, Heilongjiang, Manchuria, China
+HCSLS	-	HCSLS	LS	CN	2024	*	WEN Commercial	Hainan Shangye Hangtian Fashe Chang (Hainan Commercial Space Launch Site)	Wenchang, Hainan	    110.9308 	   19.5968 	0.0001 	CN	-	-	-	海南商业航天发射场
+HHAI	-	HHAI	LS	CN	2019	-	Huang Hai	Huang Hai CZ-11 launch zone	-	    121.1900 	   34.9000 	0.0100 	CALT	-	-	-	Huang Hai CZ-11 launch zone
+HICK	-	HICK	LS	US	-	-	Hickam AFB	Joint Base Pearl Harbor-Hickam, Honolulu	Pearl Harbor, Hawaii	   -157.9483 	   21.3353 	0.0100 	USAF	-	-	-	Joint Base Pearl Harbor-Hickam, Honolulu
+HKR	-	HKR	LS	DR	1944	1945	HKR   -	Heidekraut, Tucheler Heide, Deutschland (now Polska)	-	     18.0000 	   53.6000 	0.3000 	WEHR	-	-	-	Heidekraut, Tucheler Heide, Deutschland (now Polska)
+HLG	-	HLG	LS	PL	1943 Nov	1944 Aug	HLG   -	Truppenubungsplatz Heidelager, Blizna, Krakow, Polska	-	     21.8000 	   50.2000 	0.2000 	WEHR	-	-	-	Truppenubungsplatz Heidelager, Blizna, Krakow, Polska
+HMG	-	HMG	LS	DZ	1949	1967	HMG   -	Centre Interarmees d'Essais d'Engins Speciaux (CIEES), Algerie	-	     -3.0830 	   30.8870 	0.0200 	F	-	-	-	Centre Interarmees d'Essais d'Engins Speciaux (CIEES), Algerie
+HUANGL	-	HUANGL	LS	CN	-	-	Huanglong	806th Brigade missile base, Huanglong, Shaanxi province	-	    110.4472 	   35.4738 	0.1000 	PLA	-	-	-	806th Brigade missile base, Huanglong, Shaanxi province
+HULU	-	HULU	LS	CN	1990?	-	Huludao	Huludao Shipyard test site	Huludao, Liaonning	    120.8000 	   40.7000 	0.5000 	PLANS	-	-	-	Huludao Shipyard test site
+HVP	-	HVP	LS	DR	1942	1945	HVP   -	Heersversuchsstelle Peenemunde, Usedom, Rostock, Mecklenburg-Vorpommern	-	     13.8010 	   54.1730 	0.0100 	WEHR	-	-	-	Heersversuchsstelle Peenemunde, Usedom, Rostock, Mecklenburg-Vorpommern
+HWJU	-	HWJU	LS	KP	2016	-	Hwangju	Scud launch site near Hwangju, N Hwanghae Prov.	-	    125.7020 	   38.6868 	0.0001 	CMIK	-	-	-	Scud launch site near Hwangju, N Hwanghae Prov.
+INSP	-	INSP	LS	US	1957	-	Indian Springs	Indian Springs Air Force Base, Nevada	Indian Springs, Nevada	   -115.6717 	   36.5893 	0.0001 	USAF	-	-	-	Indian Springs Air Force Base, Nevada
+IQ160	-	IQ160	LS	IQ	1991	1991	Km 160	Kilometer 160, Ar Ramadi, Al Ambar, Iraq	Ar Ramadi, Al Anbar, Iraq	     43.1000 	   33.4000 	0.5000 	IQ	-	-	-	Kilometer 160, Ar Ramadi, Al Ambar, Iraq
+IQAN	-	IQAN	LS	IQ	1991	1991	Al Nikheb	Al Nikheb (Al Nuqaub)	Al Nikheb, Al Anbar, Iraq	     42.2600 	   32.0300 	0.0100 	IQ	-	-	-	Al Nikheb (Al Nuqaub)
+IQBA	-	IQBA	LS	IQ	2003	2003	Basra	Mobile launchers in Basra region	Basra, Iraq	     47.8000 	   30.5000 	0.2000 	IQ	-	-	-	Mobile launchers in Basra region
+IQH3	-	IQH3	LS	IQ	2003	2003	H3 Airbase	H3 Airbase, Al Anbar	Al Anbar, Iraq	     39.7400 	   32.9300 	0.0100 	IQ	-	-	-	H3 Airbase, Al Anbar
+IQKK	-	IQKK	LS	IQ	2003	2003	Kirkuk	Kirkuk region, Iraq	Kirkuk, Iraq	     44.4000 	   35.4700 	0.2000 	IQ	-	-	-	Kirkuk region, Iraq
+IQNJ	-	IQNJ	LS	IQ	2003	2003	IQNJ	Mobile launcher, S of An Najaf	An Najaf, Iraq	     44.1000 	   31.0000 	0.2000 	IQ	-	-	-	Mobile launcher, S of An Najaf
+IQSA	-	IQSA	LS	IQ	2003	2003	IQTA	Saddam Air Base	Al Qayyarah, Iraq	     43.1200 	   35.7600 	0.0100 	IQ	-	-	-	Saddam Air Base
+IQTA	-	IQTA	LS	IQ	2003	2003	IQTA	Tall' Afar Air Base	Tall' Afar, Mosul, Iraq	     42.4100 	   36.2800 	0.0100 	IQ	-	-	-	Tall' Afar Air Base
+IQUQ	-	IQUQ	LS	IQ	2003	2003	IQUQ	Umm Qasr (Um Qassir)	Umm Qasr (Um Qassir), Shatt Al Arab, Iraq	     47.9500 	   30.0500 	0.0500 	IQ	-	-	-	Umm Qasr (Um Qassir)
+IRAN	-	IRAN	LS	IR	-	1985	IRAN  -	Mobile launchers in Iran?	-	     49.0000 	   34.0000 	4.0000 	IR	-	-	-	Mobile launchers in Iran?
+IRAQ	-	IRAQ	LS	IQ	-	1991	IRAQ  -	Mobile launchers in Iraq	-	     44.0000 	   33.0000 	4.0000 	IQ	-	-	-	Mobile launchers in Iraq
+IRAQ-A	-	IRAQ-A	LS	IQ	-	1991	IRAQ- -	Mobile launchers in Iraq, near Al Amarah	-	     47.1000 	   31.8000 	0.2000 	IQ	-	-	-	Mobile launchers in Iraq, near Al Amarah
+IRAQ-W	-	IRAQ-W	LS	IQ	1991	1991	IRAQ- -	Mobile launchers in Iraq, western launch area	-	     41.0000 	   34.0000 	1.0000 	IQ	-	-	-	Mobile launchers in Iraq, western launch area
+IRKURD	-	IRKURD	LS	IR	2017	*	Kurdistan	Missile base, Kurdistan province, Iran	-	     46.0000 	   36.0000 	1.5000 	IR	-	-	-	Missile base, Kurdistan province, Iran                                          --
+IRW	-	IRW	LS	US	1944	1945	IRW   -	Leach Spring, Camp Irwin, California	-	   -116.7000 	   35.3000 	0.5000 	JPL	-	-	-	Leach Spring, Camp Irwin, California
+IXC	-	IXC	LS	MX	1991 Jul 11	1991 Jul 11	IXC   -	Santiago Ixcuintla, Nayarit, Mexico	-	   -105.3700 	   21.8300 	0.0200 	SPFL	-	-	-	Santiago Ixcuintla, Nayarit, Mexico
+JANGY	-	JANGY	LS	KP	2023	-	Jangyon	Jangyon (Changyon), S Hwanghae prov.	-	    125.1000 	   38.2500 	0.1000 	KPA	-	-	-	Jangyon (Changyon), S Hwanghae prov.
+JEJU	-	JEJU	LS	KR	2023	-	Jungmun, Jeju	Barge launch site, Jungmun, Jeju I.	Jeju I.	    126.4000 	   33.2000 	0.1000 	ADD	-	-	-	Barge launch site, Jungmun, Jeju I.
+JHAM	-	JHAM	LS	EG	1962	1973	Jabal Hamzah	Jabal Hamzah	Egypt	     30.6070 	   30.1274 	0.0002 	EGAO	-	-	-	Jabal Hamzah
+JHIM	-	JHIM	LS	IQ	1990	1990	Jebel Himreen	Jebel Himreen, Iraq	Iraq	     45.3000 	   34.0000 	0.5000 	IQ	-	-	-	Jebel Himreen, Iraq
+JI	-	JI	LS	UM67	1958	1975	JI    -	Johnston Island	-	   -169.5238 	   16.7374 	0.0001 	USAF	-	-	-	Johnston Island
+JIAN	-	JIAN	LS	CN	1970	1972?	Jianshui	802 Brigade missile base, Jianshui (Ching-yu), Yunnan province	-	    102.8200 	   23.6200 	0.0100 	PLA	-	-	-	Jianshui (Ching-yu)
+JIANGG	-	JIANGG	LS	CN	1990?	-	Jianggezhuang	Jianggezhuang Submarine Base	Jianggezhuang	    120.5789 	   36.1041 	0.0001 	PLANS	-	-	-	Jianggezhuang Submarine Base
+JILAN	-	JILAN	LS	CN	2019	-	Jilantai	Jilantai Missile Test Ground, Nei Monggol province	-	    105.5800 	   39.8500 	0.1000 	PLA	-	-	-	Jilantai Missile Test Ground
+JINGYU	-	JINGYU	LS	CN	-	-	Jingyu	Jingyu missile base 28, Jingyu, Jilin province	-	    126.8767 	   42.2979 	0.0001 	PLA	-	-	-	Jingyu missile base
+JINZH	-	JINZH	LS	CN	1990?	-	Jinzhou	Jinzhou missile base, Liaoning province	-	    121.1700 	   41.1900 	0.0200 	PLA	-	-	-	Jinzhou missile base
+JLRPG	-	CC	LS	US	1949 Oct  1	1950 May 16	JLRPG	Joint Long Range Proving Ground	Cape Canaveral, Florida	    -80.5400 	   28.4600 	0.0500 	USAF	-	-	CC	Joint Long Range Proving Ground
+JP	-	JP	LS	TW	1999	*	JP    -	Jiu Peng air base 7, Pingtung, Formosa	-	    120.9200 	   22.1300 	0.1000 	NSPO	-	-	-	Jiu Peng air base 7, Pingtung, Formosa
+JQ	-	JQ	LS	CN	1968	*	JQ    -	Jiuquan Space Center, Nei Monggol Zizhiqu, China	-	    100.3100 	   41.3100 	0.0400 	CN	-	-	-	Jiuquan Space Center, Nei Monggol Zizhiqu, China
+JUA	-	JUA	LS	US	1959	1959	JUA   -	Sierra de Juarez, Baja California	-	   -115.8300 	   32.2500 	0.0200 	USA	-	-	-	Sierra de Juarez, Baja California
+KAECH	-	KAECH	LS	KP	2019	-	Kaechon	Kaechon, Pyongan Namdo	-	    125.9000 	   39.7000 	0.1000 	CMIK	-	-	-	Kaechon, Pyongan Namdo
+KAES	-	KAES	LS	KP	2014	*	Kaesong	Kaesong, North Hwanghae Prov.	-	    126.5878 	   37.9382 	0.0010 	KP	-	-	-	Kaesong, North Hwanghae Prov.
+KANSK	-	KANSK	LS	RU	1988	1989	KANSK	Kansk, Krasnoyarsk region	-	     95.7000 	   56.2000 	0.1000 	RVSN	-	-	-	Kansk, Krasnoyarsk region
+KARK	-	KARK	LS	NZ	1965 May 25	1965 May 30	KARK  -	Cape Karikari, North Island, New Zealand	-	    173.4053 	  -34.8250 	0.0001 	NASA	-	-	-	Cape Karikari, North Island, New Zealand
+KART	-	KART	LS	SU	1981	1988	Kartaly-6	Kartaly missile base	Kartaly-6, Chelyabinsk	     60.6000 	   52.9000 	0.5000 	RVSN	-	-	-	Kartaly missile base
+KARY	-	KARY	LS	GR	1966 May 15	1966 May 20	KARY  -	Nissaki-Karystos, Evvoia, Hellas	-	     24.4200 	   38.0100 	0.0200 	ESRO	-	-	-	Nissaki-Karystos, Evvoia, Hellas
+KASC	-	KASC	LS	J	1960	2003 Oct	KASC  -	Kagoshima Space Center, Kagoshima, Kyushu, Nippon	-	    131.0790 	   31.2500 	0.0010 	ISAS	-	-	-	Kagoshima Space Center, Kagoshima, Kyushu, Nippon
+KATTAK	-	KATTAK	LS	SU	1963	1971	Kattakurgan	Kattakurgan missile base, Samarkand region	-	     66.3000 	   39.9000 	0.2000 	RVSN	-	-	-	Kattakurgan missile base, Samarkand region
+KAU	-	KAU	LS	US	1962 Jun	*	KAU   -	Kauai Test Facility (KTF), Barking Sands, Kauai	-	   -159.7770 	   22.0580 	0.0040 	USN	-	-	-	Kauai Test Facility (KTF), Barking Sands, Kauai
+KER	-	KER	LS	TF	1968 Mar	1975	KER   -	Kerguelen Range, Port-Aux-Francais, Kerguelen Island	-	     70.2300 	  -49.3700 	0.0200 	CNES	-	-	-	Kerguelen Range, Port-Aux-Francais, Kerguelen Island
+KERM	-	KERM	LS	IR	1985	1985	KERM  -	Bakhtaran/Kermanshah Air Base, Iran	-	     47.2358 	   34.3575 	0.0010 	IR	-	-	-	Bakhtaran/Kermanshah Air Base, Iran
+KEW	-	KEW	LS	US	1964 Aug  6	1971 Jan 31	KEW   -	Keweenaw Rocket Launch Site (KRLS), Michigan	-	    -87.7200 	   47.4300 	0.0200 	UMI	-	-	-	Keweenaw Rocket Launch Site (KRLS), Michigan
+KII	-	KII	LS	J	2024	*	Kii	Spaceport Kii, Kanagawa	-	    135.8895 	   33.5443 	0.0001 	SPONE	-	-	-	Spaceport Kii, Kanagawa
+KITT	-	KITT	LS	KP	2006	-	KITT  -	Kittaeryong (Gitdaeryung), Anbyun, Gangwon Province (Kangwon-do)	-	    127.6236 	   38.9908 	0.0010 	CMIK	-	-	-	Kittaeryong (Gitdaeryung), Anbyun, Gangwon Province (Kangwon-do)
+KLA	-	KLA	LS	KI	1998	*	KLA   -	Sea Launch Kiritimati Launch Area, Pacific Ocean	-	   -154.0000 	    0.0000 	0.0500 	BOSL	-	-	-	Sea Launch Kiritimati Launch Area, Pacific Ocean
+KLC	-	KLC	LS	US	1998	2016 Aug	KLC   -	Kodiak Launch Complex, Kodiak Island, Alaska	-	   -152.3378 	   57.4359 	0.0002 	AADC	-	-	-	Kodiak Launch Complex, Kodiak Island, Alaska
+KMR	-	KMR	LS	TTPI	1962	*	KMR   -	US Army Kwajalein Atoll (USAKA), Marshall Islands	-	    167.7200 	    8.9917 	0.0200 	SMDC	-	-	-	US Army Kwajalein Atoll (USAKA), Marshall Islands
+KOKSAN	-	KOKSAN	LS	KP	2022	*	Koksan	Koksan, North Hwanghae	-	    127.7000 	   38.8000 	0.5000 	KPA	-	-	-	Koksan, North Hwanghae
+KOON	-	KOON	LS	AU	2020	*	Koonibba	Southern Launch Koonibba launch site	-	    133.4476 	  -31.8860 	0.0002 	SLAUNCH	-	-	-	Southern Launch Koonibba launch site, S Australia
+KOR	-	KOR	LS	GR	1966 May 15	1966 May 21	KOR   -	Koroni, Peloponnisos, Hellas (beach launch area)	-	     21.9500 	   36.7700 	0.0200 	ESRO/NASA	-	-	-	Koroni, Peloponnisos, Hellas (beach launch area)
+KOSTR	-	KOSTR	LS	SU	1960s	1980s	KOSTR	Kostroma missile base, Russia	-	     41.3800 	   57.6700 	0.0100 	RVSN	-	-	-	Kostroma missile base, Russia
+KRAS	-	KRAS	LS	SU	1960s	1990s	KRAS	Krasnoyarsk missile site, Russia	-	     92.2900 	   56.2300 	0.0200 	RVSN	-	-	-	Krasnoyarsk missile site, Russia
+KRASK	-	KRASK	LS	RU	2022	-	Krasnodar region	Krasnodar Krai region missile launch sites in Russian invasion of Ukraine	-	     38.3000 	   46.7000 	1.0000 	RVA	-	-	-	Krasnodar Krai region missile launch sites in Russian invasion of Ukraine
+KRON	-	KRON	LS	S	1961	1964	KRON  -	Kronogard (Jokkmokk/Vidsel), Norrbottens Lan, Sverige	-	     19.7800 	   66.2200 	0.0200 	SSC	-	-	-	Kronogard (Jokkmokk/Vidsel), Norrbottens Lan, Sverige
+KSC	-	KSC	LS	US	1966 Dec	*	KSC   -	NASA John F. Kennedy Space Center, Florida	-	    -80.6041 	   28.6083 	0.0001 	NASA	-	-	CC	NASA John F. Kennedy Space Center, Florida
+KUSONG	-	KUSONG	LS	KP	2016	*	Kusong	Musudan launch site, Banghyon Airport, Kusong City, N Pyongan Prov.	-	    125.2000 	   39.9000 	0.1000 	KP	-	-	-	Musudan launch site, Banghyon Airport, Kusong City, N Pyongan Prov.
+LAIWU	-	LAIWU	LS	CN	-	-	Laiwu	822 Brigade missile base, Laiwu, Shangdong province	-	    117.7156 	   36.2349 	0.1000 	PLA	-	-	-	822 Brigade missile base, Laiwu, Shangdong province
+LANC	-	LANC	LS	AU	1974 Jun	1974 Jun	LANC  -	Lancelin, Perth, W. Australia	-	    115.1900 	  -31.0100 	0.0200 	SAND	-	-	-	Lancelin, Perth, W. Australia
+LANG	-	LANG	LS	IS	2020 Aug	2020 Aug	Langanes	Skyrora Micro launch site, Langanes Peninsula, Iceland	-	    -15.2820 	   66.2522 	0.0010 	SKYR	-	-	-	Skyrora Micro launch site, Langanes Peninsula, Iceland
+LAOG	-	LAOG	LS	CN	1960 Feb 19	1960?	LAOG  -	Laogang sounding rocket site, Shanghai Shi, Zhongguo	-	    121.8200 	   31.0200 	0.0200 	SIMED	-	-	-	Laogang, Shanghai Shi, Zhongguo
+LAP	-	LAP	LS	ID	1965 Aug 11	*	LAP   -	STASPRO, Pameungpeuk site, Cilauteurum, Lembe I, Garut, Jawa Barat	-	    107.6917 	   -7.6689 	0.0010 	LAPAN	-	-	-	STASPRO, Pameungpeuk site, Cilauteurum, Lembe I, Garut, Jawa Barat
+LEBA	-	LEBA	LS	PL	1969 Oct  3	1973 Jun 15	LEBA  -	Leba (Ustka), Slupsk, Pomerania, Polska	-	     17.5500 	   54.7800 	0.0200 	PL	-	-	-	Leba (Ustka), Slupsk, Pomerania, Polska
+LEPI	-	LEPI	LS	CN	1995	1996	PRCT  -	Leping missile base, Jianxi, China	-	    117.1200 	   28.9700 	0.0200 	CN	-	-	-	Leping missile base, Jianxi, China
+LIT	-	LIT	LS	LUNA	1972 Dec 14	1972 Dec 14	LIT   LM12-DS	LM 12 Descent Stage, Taurus-Littrow Base, Littrow Valley, Macrobius B1	Luna	     30.7500 	   20.1600 	0.0100 	NASA	-	-	LUNA	LM 12 Descent Stage, Taurus-Littrow Base, Littrow Valley, Macrobius B1
+LOMN	-	LOMN	LS	LUNA	2020 Dec  3	2020 Dec  3	Louville Omega	Chang'e-5 Zhuolu Qi, Louville Omega North region, Oceanus Procellarum	Luna	    -51.9330 	   43.0810 	0.0100 	CAST	-	-	LUNA	Chang'e-5 Zhuolu Qi, Louville Omega North region, Oceanus Procellarum
+LOPNOR	-	LOPNOR	LS	CN	2020	*	Lop Nor	Lop Nor Airbase, Xinjiang	-	     89.2820 	   40.7730 	0.0001 	PLA	-	-	-	Lop Nor Airbase, Xinjiang
+LROCK	-	LROCK	LS	US	1960	1990	Little Rock	Little Rock Air Force Base, Arkansas	-	    -92.1500 	   34.9000 	0.0200 	SAC	-	-	-	Little Rock Air Force Base, Arkansas
+LRPG	-	CC	LS	US	1950 May 16	1951 Jun 30	LRPG	Long Range Proving Ground	Cape Canaveral, Florida	    -80.5400 	   28.4600 	0.0500 	USAF	-	-	CC	Long Range Proving Ground
+MAHIA	-	MAHIA	LS	NZ	2017 May	-	RLLC1	Rocket Lab Launch Complex 1, Onenui Station, Mahia Peninsula	Mahia Peninsula, N Island	    177.8655 	  -39.2609 	0.0001 	RLABN	-	-	-	Rocket Lab Launch Complex 1, Onenui Station, Mahia Peninsula
+MAKAT	-	MAKAT	LS	KZ	1957	1960s	MAKAT -	Makat tactical missile base, Atyrau, Kazakstan	-	     53.3200 	   47.6500 	0.0200 	RVSN	-	-	-	Makat tactical missile base, Atyrau, Kazakstan
+MAKHCH	-	MAKHCH	LS	SU	1960	1970	Makhch	Makhachkala missile base, Makhachkala, Dagestan	-	     47.5000 	   42.7000 	0.2000 	RVSN	-	-	-	Makhachkala missile base, Makhachkala, Dagestan
+MARS	-	MARS	LS	US	2006	*	MARS	Mid-Atlantic Regional Spaceport, Wallops Island, Virginia	-	    -75.4800 	   37.8300 	0.0200 	NASA	-	-	-	Mid-Atlantic Regional Spaceport, Wallops Island, Virginia
+MASHH	-	MASHH	LS	IR	2000	-	Mashhad	14th Tactical Air Base, Mashhad	Mashhad, Iran	     59.6403 	   36.2342 	0.0005 	IR	-	- -	-	14th Tactical Air Base, Mashhad
+MATI	-	MATI	LS	US	1981 Aug  5	1982 Sep  9	MATI  -	Matagorda Island, Texas	-	    -96.5000 	   28.2500 	0.0200 	SSI	-	-	-	Matagorda Island, Texas
+MATZ	-	MATZ	LS	ARV	1965	1965	MATZ  -	Base Aerea Teniente Benjamin Matienzo, Nunatak Larsen, Antarctica	Antartida Argentina	    -60.0700 	  -64.9600 	0.0500 	AR	-	-	-	Base Aerea Teniente Benjamin Matienzo, Nunatak Larsen, Antarctica
+MCM	-	MCM	LS	NZRD	1962?	1963?	MCM   -	McMurdo Station, Ross Ice Shelf, New Zealand Antarctic Territory	-	    166.6600 	  -77.8500 	0.0200 	USAF?	-	-	-	McMurdo Station, Ross Ice Shelf, New Zealand Antarctic Territory
+MER	-	MER	LS	AR	1973	1973	MER   -	Villa Reynolds Air Base, Mercedes, San Luis province, Argentina	-	    -65.3800 	  -33.7300 	0.0200 	AR	-	-	-	Villa Reynolds Air Base, Mercedes, San Luis province, Argentina
+MHV	-	MHV	LS	US	2004	*	MHV	Mojave Spaceport, California	-	   -118.1357 	   35.0487 	0.0010 	SCAL	-	-	-	Mojave Spaceport, California
+MINAKH	-	MINAKH	LS	SY	1992 Jul	*	MINAK -	Syrian missile base, Minakh, N of Halab/Alleppo, Syria (Base at Al Safir)	-	     37.0391 	   36.5190 	0.0010 	SYMC	-	-	-	Syrian missile base, Minakh, N of Halab/Alleppo, Syria (Base at Al Safir)
+MLD	-	MLD	LS	AAT	1970?	1984	MLD   -	Molodezhnaya, Enderby Land, Australian Antarctic Territory	-	     45.8500 	  -67.6600 	0.0200 	SU	-	-	-	Molodezhnaya, Enderby Land, Australian Antarctic Territory
+MRL	-	MRL	LS	N	1983 Nov 30	1984 Jan 15	MRL   -	Marka Range, Lista, Norway	-	      7.3000 	   58.2000 	0.1000 	N	-	-	-	Marka Range, Lista, Norway
+MRNV	-	MRNV	LS	US	1957	1957	MRNV  -	Mercury, Nevada	-	   -115.9800 	   36.6700 	0.0400 	USN/AEC	-	-	-	Mercury, Nevada
+MTWHITE	-	MTWHITE	LS	NZ	2024	-	Mt White Station	Mt White Station, Canterbury, New Zealand	-	    171.9400 	  -43.0500 	0.0200 	NZRA	-	-	-	Mt White Station
+MUPYONG	-	MUPYONG	LS	KP	2017	-	Mupyong-ni	Mupyong-ni, Chagang province	-	    126.4257 	   40.6112 	0.0001 	KP	-	-	-	Mupyong-ni, Chagang province
+NAMFI	-	NAMFI	LS	GR	1994	-	NAMFI	NATO Missile Firing Installation (NAMFI)	Chania, Crete	     24.2000 	   35.6000 	0.1500 	NATO	-	- -	-	NATO Missile Firing Installation (NAMFI)
+NAMPO	-	NAMPO	LS	KP	2015	-	Nampo	Scud launch site near Nampo, South Pyongan Prov. (Pyong'annam-do)	-	    125.5000 	   38.7500 	0.3000 	CMIK	-	-	-	Scud launch site near Nampo, South Pyongan Prov. (Pyong'annam-do)
+NAOTS	-	NAOTS	LS	US	1955	1959	NAOTS -	Naval Air Ordnance Test Station, Chincoteague, Virginia	-	    -75.4633 	   37.9383 	0.0001 	NASA	-	-	-	Naval Air Ordnance Test Station, Chincoteague, Virginia
+NARO	-	NARO	LS	KR	2007	*	NARO  -	Naro Space Center (Naro Uju Senteo),Oenaro I,GoHeung, Jeollanam-do,Korea	-	    127.5363 	   34.4318 	0.0005 	KARI	-	-	-	Naro Space Center (Naro Uju Senteo),Oenaro I,GoHeung, Jeollanam-do,Korea
+NATC	-	NATC	LS	US	1975	1975	NATC	Naval Air Test Center, Patuxent River, Maryland	Patuxent River, Maryland	    -76.4084 	   38.2857 	0.0001 	USN	-	-	-	Naval Air Test Center, Patuxent River, Maryland
+NEGEV	-	NEGEV	LS	IL	1980?	1995?	NEGEV -	Negev Desert test site, Hadarom Hanegev, Israel	-	     35.0000 	   31.0000 	1.0000 	IL	-	-	-	Negev Desert test site, Hadarom Hanegev, Israel
+NEHAI	-	NEHAI	LS	CN	2024	-	NE Hainan	NE Hainan missile launch point	-	    110.9615 	   19.8755 	0.0050 	PLA	-	-	-	Northeast Hainan missile launch point
+NEN	-	NEN	LS	SU	1960s	*	NEN   -	GTsMP?, Nenoksa Test Range, Rossiya	-	     39.2000 	   64.6300 	0.1000 	VMF	-	-	-	GTsMP?, Nenoksa Test Range, Rossiya
+NEWQ	-	NEWQ	LS	UK	2022	*	Newquay	Cornwall Airport Newquay	Newquay, Cornwall	     -5.0076 	   50.4408 	0.0100 	VORB	-	-	-	Cornwall Airport Newquay
+NIIJ	-	NIIJ	LS	J	1963	1966	NIIJ  -	Niijima, Nippon	-	    139.2700 	   34.3300 	0.0200 	STA	-	-	-	Niijima, Nippon
+NIIP-5	-	GIK-5	LS	SU	1956	1989	NIIP-5	NIIP-5, Baykonur, Kazakstan	-	     63.0000 	   46.0000 	0.0200 	RVSN	Baykonur	-	KB	NIIP-5, Baykonur, Kazakstan
+NIIP-53	-	GIK-1	LS	SU	1960	1993	NIIP-53	53-y Nauchno-Issledovatelskiy Ispitatelniy Poligon,	Plesetsk	     40.5000 	   62.9000 	0.0200 	RVSN	Plesetsk	-	PL	53-y Nauchno-Issledovatelskiy Ispitatelniy Poligon,
+NINGBO	-	NINGBO	LS	CN	-	-	Ningbo	Ninbgo missile base, Zhejiang province	-	    121.7168 	   29.8802 	0.0002 	PLA	-	-	-	Ninbgo missile base, Zhejiang province
+NOSSET	-	NOSSET	LS	RU	2008	2008	N Ossetia	North Ossetia? Possible Iskander launch point	-	     44.0000 	   43.0000 	1.0000 	RVSN	-	-	-	North Ossetia? Possible Iskander launch point
+NOTS	-	NOTS	LS	US	1958	1958	NOTS  -	Naval Ordnance Test Station, China Lake, California	-	   -117.1700 	   35.5800 	0.0200 	USN	-	-	-	Naval Ordnance Test Station, China Lake, California
+NOUA	-	NOUA	LS	MR	1973 Jun 30	1973 Jun 30	NOUA  -	Nouadhibou, Dakhlet Nouadhibou, Mauritanie	-	    -17.0314 	   20.9208 	0.0002 	KPNO	-	-	-	Nouadhibou, Dakhlet Nouadhibou, Mauritanie
+NOVOSY	-	NOVOSY	LS	SU	1969	1969	NOVOSY	Novosysoyevka missile base	-	    133.3600 	   44.2400 	0.2000 	RVSN	-	-	-	Novosysoyevka missile base
+NTAG	-	NTAG	LS	SU	1960s	1990s	NTAG	Nizhniy Tagil missile base, Russia  (Verhknaya Salda)	-	     60.3640 	   58.0960 	0.0100 	RVSN	-	-	-	Nizhniy Tagil missile base, Russia  (Verhknaya Salda)
+NTRURO	-	NTRURO	LS	US	1969 Nov	1970 Feb	NTRURO	North Truro Air Force Station	-	    -70.0500 	   42.0300 	0.0100 	USAF	-	-	-	North Truro Air Force Station
+NTS	-	NTS	LS	US	1958	*	NTS	Nevada Test Site	-	   -116.1100 	   36.7500 	0.0400 	DOE	-	-	-	Nevada Test Site
+NZEM	-	NZEM	LS	SU	1961	1961?	NZ    -	Novaya Zemlya test site	-	     54.6000 	   70.7000 	0.1000 	RVSN	-	-	-	Novaya Zemlya test site
+OBA	-	OBA	LS	J	1961 Jun	1961?	OBA   -	Obuchi (Obachi?), Aomori, Honshu, Nippon	-	    141.7300 	   40.7000 	0.0200 	ISAS	-	-	-	Obuchi (Obachi?), Aomori, Honshu, Nippon
+OK	-	OK	LS	SU	1956	1980?	OK    -	Ostrov Kheysa, Zemlya Frantsa-Iosifa	-	     58.0500 	   80.4500 	0.0200 	SU	-	-	-	Ostrov Kheysa, Zemlya Frantsa-Iosifa
+OMSK	-	OMSK	LS	SU	1960s?	1990s?	OMSK	Omsk missile base, Russia	-	     73.6350 	   55.1600 	0.0100 	SU	-	-	-	Omsk missile base, Russia
+ORDZH	-	ORDZH	LS	SU	1961	1969	ORDZH	Ordzhonikidze missile base, Ordzhonikidze (Vladikavkaz), S Ossetia	-	     44.6500 	   43.0200 	0.2000 	SU	-	-	-	Ordzhonikidze missile base, Ordzhonikidze (Vladikavkaz), S Ossetia
+OTB	-	OTB	LS	ZA	1980s	1990s?	OTB   -	Overberg Toersbaan, Arniston, Waenhuiskrans, Western Cape, South Africa	-	     20.3200 	  -34.5800 	0.0200 	ZA	-	-	-	Overberg Toersbaan, Arniston, Waenhuiskrans, Western Cape, South Africa
+PA	-	PA	LS	US	1958	1965	PA    -	Naval Missile Facility, Point Arguello, California	-	   -120.6000 	   34.6200 	0.0200 	USN	-	-	WTR	Naval Missile Facility, Point Arguello, California
+PALB	-	PALB	LS	IL	1988	*	PALB  -	Israeli Air Force Test Range, Palmachim Beach, Israel	-	     34.7000 	   31.9000 	0.0200 	IL	-	-	-	Israeli Air Force Test Range, Palmachim Beach, Israel
+PAVL	-	PAVL	LS	SU	1971	1972	PAVL	PMZ Pavlograd test site, Ukraine	-	     38.5000 	   48.9000 	0.2000 	SU	-	-	-	PMZ Pavlograd test site, Ukraine
+PBA	-	PBA	LS	US	1965	1972	PBA   -	Point Barrow, Alaska	-	   -156.7800 	   71.0300 	0.0200 	NASA	-	-	-	Point Barrow, Alaska
+PDI	-	PDI	LS	AR	-	-	PDI   -	Puente del Inca, Mendoza, Argentina	-	    -69.9100 	  -32.8200 	0.0500 	AR	-	                                 -	-	Puente del Inca, Mendoza, Argentina
+PF	-	PF	LS	US	1969	*	PF    -	Poker Flat Research Range, Ft Wainwright, Alaska	-	   -147.4670 	   65.1170 	0.0050 	USAF	-	-	-	Poker Flat Research Range, Ft Wainwright, Alaska
+PISQ	-	SDQ	LS	I	2000?	-	PISQ	Poligono Sperimentale e di Addestramento Interforze del Salto di Quirra	-	      9.4300 	   39.6000 	0.0200 	I	-	-	-	Poligono Sperimentale e di Addestramento Interforze del Salto di Quirra
+PLATT	-	PLATT	LS	US	-	1995	PLATT -	Plattsburgh AFB, NY	-	    -73.4693 	   44.6526 	0.0001 	USAF	-	                                 -	-	Plattsburgh AFB, NY
+PLATX	-	PLATX	LS	US	-	-	PLATT -	Plattsburgh AFB or other FB-111 base	-	    -73.4600 	   44.6600 	0.0100 	USAF	-	                                 -	-	Plattsburgh AFB or other FB-111 base
+PM	-	PM	LS	US	1957	*	PM    -	Naval Missile and Astronautics Center, Point Mugu, California	-	   -119.1200 	   34.1200 	0.0200 	USN	-	-	-	Naval Missile and Astronautics Center, Point Mugu, California
+PMFA	-	PMFA	LS	US	1960 Mar	-	PMFA  -	POMFLANT, Polaris Missile Facility, Atlantic	Charleston, S Carolina	    -79.9500 	   32.8500 	0.0100 	USN	-	-	-	POMFLANT, Polaris Missile Facility, Atlantic
+PMFP	-	PMFP	LS	US	1966	-	PMFP  -	POMFPAC,  Polaris Missile Facility, Pacific	Bangor, Washington	   -122.7278 	   47.7458 	0.0100 	USN	-	-	-	POMFPAC,  Polaris Missile Facility, Pacific
+PRC-T1	-	PRC-T1	LS	CN	2022	-	PRC-T1	Ganzhou missile base, Brigade 616	-	    115.0000 	   25.8000 	0.2000 	PLA	-	-	-	Ganzhou missile base, Brigade 616
+PRC-T2	-	PRC-T2	LS	CN	2022	-	PRC-T2	Wenzhou missile base, Zhejiang	-	    120.4000 	   28.3000 	0.2000 	PLA	-	-	-	Wenzhou missile base, Zhejiang
+PRC-T3	-	PRC-T3	LS	CN	2022	-	PRC-T3	Fuan? missile base	-	    119.6000 	   27.0000 	0.2000 	PLA	-	-	-	Fuan? missile base, Fujian
+PRIM	-	PRIM	LS	CA	1970	1980	PRIM  -	Primrose Lake, Alberta	-	   -110.0500 	   54.7500 	0.0200 	NRCC	-	-	-	Primrose Lake, Alberta
+PSCA	-	KLC	LS	US	2016 Aug	*	PSCA	Pacific Spaceport Complex Alaska, Kodiak Island, Alaska	-	   -152.3378 	   57.4359 	0.0002 	AADC	-	-	-	Pacific Spaceport Complex Alaska, Kodiak Island, Alaska
+PTRO	-	PTRO	LS	PW	2024	-	Palau Airport	Palau International Airport (PTRO)	-	    134.5442 	    7.3672 	0.0005 	USA	-	-	-	Palau International Airporta
+PUKCH	-	PUKCH	LS	KP	2017	-	Pukchang	Pukchang airfield, Sunchon, Pyongan-namdo	-	    125.9643 	   39.0544 	0.0100 	KP	-	-	-	Pukchang airfield, Sunchon, Pyongan-namdo
+PYONGS	-	PYONGS	LS	KP	2017	-	Pyongsong	Pyongsong region	-	    125.9000 	   39.2500 	0.1000 	KP	-	-	-	Pyongsong region
+QOM	-	QOM	LS	IR	1991 Mar	?	QOM   -	Qom test site, Markazi, Iran	-	     50.9000 	   34.6500 	0.2000 	IR	-	-	-	Qom test site, Markazi, Iran
+RAMEY	-	RAMEY	LS	PR	1958 Aug	1958 Sep	RAMEY -	Ramey AFB, Aguadilla, Puerto Rico	-	    -67.1300 	   18.4500 	0.0500 	USAF	-	-	-	Ramey AFB, Aguadilla, Puerto Rico
+RARO	-	RARO	LS	CK	1965	1965	RARO  -	Rutaki, Rarotonga, Cook Islands, Pacific Ocean	-	   -159.8000 	  -21.2600 	0.0500 	SAND	-	-	-	Rutaki, Rarotonga, Cook Islands, Pacific Ocean
+REG	-	REG	LS	DZ	1961	1965	REG   -	Reggane, Algerie	-	      0.2800 	   26.7200 	0.0100 	F	-	-	-	Reggane, Algerie
+RES	-	RES	LS	CA	1966	1971	RES   -	Resolute Bay, Magnetic N Pole Station, Cornwallis I., Nunavut, Canada	-	    -94.9000 	   74.6800 	0.0200 	NRCC	-	-	-	Resolute Bay, Magnetic N Pole Station, Cornwallis I., Nunavut, Canada
+RI	-	RI	LS	US	1999	1999	RI    -	Ninigret State Park (Charlestown NAS), Charlestown, Rhode Island	-	    -71.6700 	   41.3600 	0.0200 	SPFL	-	-	-	Ninigret State Park (Charlestown NAS), Charlestown, Rhode Island
+RIZE	-	RIZE	LS	TR	2022	-	Rize-Artvin	Rize-Artvin Havalimani	-	     40.8289 	   41.1692 	0.0010 	ROKSN	-	-	-	Rize-Artvin Airport
+RLAKE	-	RLAKE	LS	CA	1979 Feb 26	1979 Feb 27	RLAKE CHK	Red Lake, Chukuni Range, Ontario, Canada	-	    -93.4700 	   50.8800 	0.2000 	NRCC	-	-	-	Red Lake, Chukuni Range, Ontario, Canada
+ROBI	-	ROBI	LS	US	-	-	ROB   -	Robins AFB, Georgia	-	    -83.5920 	   32.6400 	0.0100 	USAF	-	                                -	-	Robins AFB, Georgia
+ROTH	-	ROTH	LS	BAT	1998	1998	ROTH  -	Rothera, British Antarctic Territory	-	    -68.1170 	  -67.5670 	0.0100 	BAS	-	-	-	Rothera, British Antarctic Territory
+RYO	-	RYO	LS	J	1970 Apr	*	RYO   -	Ryori, Sanrikucho, Japan	-	    141.8300 	   39.0300 	0.0200 	JMA	-	-	-	Ryori, Sanrikucho, Japan
+RYONPO	-	RYONPO	LS	KP	2019	-	Ryonpo	Ryonpo, Hamju County	-	    127.5330 	   39.7900 	0.0050 	CMIK	-	-	-	Ryonpo, Hamju County
+SADAH	-	SADAH	LS	YE	2015	2015	Sa'dah	Sa'dah (Saa'da), Yemen and Dammaj Valley area	-	     43.8500 	   16.6680 	0.2000 	ANSAL	-	-	-	Sa'dah (Saa'da), Yemen and Dammaj Valley area
+SAIN	-	SAIN	LS	MN	1989	1989	SAIN  -	Sainshand meteorological rocket station	Sainshand, Dornogovi, Mongolia	    110.1400 	   44.8900 	0.1000 	GMS	-	-	-	Sainshand meteorological rocket station
+SALKH	-	SALKH	LS	SU	1961	1962	Salekhard	Salekhard R-12 missile base, Polyarniy	Salekhard, Yamalo-Nenets	     66.5900 	   66.5900 	0.0200 	RVSN	-	-	-	Salekhard R-12 missile base, Polyarniy
+SANAA	-	SANAA	LS	YE	2016	*	Sanaa	Sana'a, Yemen	-	     44.2150 	   15.3014 	0.2000 	ANSAL	-	-	-	Sana'a, Yemen
+SCL	-	SCL	LS	US	1957	1960s	SCL   -	San Clemente Island, Pacific Missile Range, California	-	   -118.5000 	   32.9200 	0.0200 	USN	-	-	-	San Clemente Island, Pacific Missile Range, California
+SDOTM	-	SDOTM	LS	IL	2005	*	Sdot Micha	Sdot HaElah (Sdot Micha) Airbase	Sdot Micha, Israel	     34.9099 	   31.7551 	0.0001 	IDF	-	-	-	Sdot HaElah (Sdot Micha) Airbase
+SDQ	-	SDQ	LS	I	1959	2000?	SDQ   -	Salto di Quirra (San Lorenzo), Perdas de Fogu, Sardegna	-	      9.4300 	   39.6000 	0.0200 	I	-	-	-	Salto di Quirra (San Lorenzo), Perdas de Fogu, Sardegna
+SDSC	-	SHAR	LS	IN	2002	*	SHAR  -	Satish Dhawan Space Ctr, Sriharikota, Andhra Pradesh, India	-	     80.3030 	   13.6210 	0.0200 	ISRO	-	-	-	Satish Dhawan Space Ctr, Sriharikota, Andhra Pradesh, India
+SEBA	-	SEBA	LS	LY	1981 Mar  1	1981 Mar  1	SEBA  -	Seba Oasis, Sabha?, Camp Tawiwa, Jarmash, Libya	-	     14.4585 	   26.9879 	0.0500 	OTR	-	-	-	Seba Oasis, Sabha?, Camp Tawiwa, Jarmash, Libya
+SEM	-	SEM	LS	IR	2000	-	SEM   -	Semnan missile launch site, Iran	-	     53.9210 	   35.2347 	0.0002 	IR	-	-	-	Semnan missile launch site, Iran
+SEMX	-	SEMX	LS	IR	1980s	*	SHAHX -	Unknown mobile launch sites in Semnan province, poss. near Shahrud	-	     55.3300 	   36.2300 	0.2000 	IR	-	-	-	Unknown mobile launch sites in Semnan province, poss. near Shahrud
+SEND	-	SEND	LS	CA	1980 Feb 15	1980 Feb 23	SEND  -	Southend, Saskatchewan, Canada	-	   -103.3600 	   56.2600 	0.0300 	NRCC	-	-	-	Southend, Saskatchewan, Canada
+SENDAI	-	SENDAI	LS	J	-	-	SENDA -	Sendai, Japan	-	    140.9000 	   38.2700 	0.0100 	J	-	-	-	Sendai, Japan
+SERRE	-	SERRE	LS	AR	2009	2009	Serrezuela	Poligono de Salinas Grandes, Serrezuela, Cordoba	-	    -65.5000 	  -30.6500 	0.1000 	CITED	-	-	-	Poligono de Salinas Grandes, Serrezuela, Cordoba
+SFO	-	SFO	LS	US	2011	2011	SFO	San Francisco International Airport (SFO)	-	   -122.3700 	   37.6200 	0.0100 	SCAL	-	-	-	San Francisco International Airport (SFO)
+SGAV	-	SGAV	LS	RU	1963	1965	SGAV  -	Sovetskaya Gavan, Rossiya	-	    140.3000 	   48.9700 	0.0100 	SU	-	-	-	Sovetskaya Gavan, Rossiya
+SHABA	-	SHABA	LS	ZR	1977	1978	SHABA -	Shaba North, Kapani Tonneo, Shaba, Zaire	-	     28.5328 	   -7.9236 	0.0010 	OTR	-	-	-	Shaba North, Kapani Tonneo, Shaba, Zaire
+SHAHR	-	SHAHR	LS	IR	1980s	*	SHAHR -	Imam Reza Space Ctr, Damghan (Shahroud), Iran (Dasht-E-Kabir?)	-	     55.3300 	   36.2300 	0.0100 	IR	-	-	-	Damghan (Shahroud), Iran (Dasht-E-Kabir?)
+SHAR	-	SHAR	LS	IN	1971 Oct  9	2002	SHAR  -	Satish Dhawan Space Ctr, Sriharikota, Andhra Pradesh, India	-	     80.3030 	   13.6210 	0.0200 	ISRO	-	-	-	Satish Dhawan Space Ctr, Sriharikota, Andhra Pradesh, India
+SHEM	-	SHEM	LS	US	1988	1988	SHEM  -	Eareckson Air Station, Shemya Island, Alaska	-	    174.0800 	   52.7200 	0.0100 	USAF	-	-	-	Eareckson Air Station, Shemya Island, Alaska
+SHER	-	SHER	LS	PCZ	1969 Jan 20	1970 Nov 13	SHER  -	Fort Sherman, Panama Canal Zone	-	    -79.9800 	    9.3300 	0.0200 	NASA?	-	-	-	Fort Sherman, Panama Canal Zone
+SHIJ	-	SHIJ	LS	CN	1960 Sep	1960?	SHIJ  -	Shijiedu sounding rocket site, Anhui Province	-	    119.2200 	   30.9500 	0.0200 	CN	-	-	-	Shijiedu, Anhui, Zhongguo
+SHIRS	-	SHIRS	LS	IR	2024	-	Shiraz S	South Shiraz Missile Base	-	     52.4882 	   29.4642 	0.0002 	IR	-	-	-	South Shiraz Missile Base
+SHWH	-	SHWH	LS	KP	2016	-	S Hwanghae Prov	Kwail? Launch site in S Hwanghae Province	-	    125.0192 	   38.4256 	0.1000 	CMIK	-	-	-	Kwail? Launch site in S Hwanghae Province
+SIMSH	-	SIMSH	LS	RU	-	-	Simushir	Simushir Island submarine launch area	-	    152.0000 	   47.0000 	1.0000 	VMF	-	-	-	Simushir Island submarine launch area
+SINOP	-	SINOP	LS	TR	2018	-	Sinop	Sinop missile test site, Turkey	-	     35.1901 	   42.0314 	0.0001 	ROKSN	-	-	-	Sinop missile test site, Turkey
+SINPO	-	SINPO	LS	KP	2014	-	Shinpo	Shinpo Shipyard, S Hamgyong Prov (Hamgyong-namdo), North Korea	-	    128.1580 	   40.0190 	0.0010 	KP	-	-	-	Shinpo Shipyard, S Hamgyong Prov (Hamgyong-namdo), North Korea
+SIP	-	SIP	LS	AQ	1980 Dec 12	1981 Jan 11	SIP   -	Siple Station, Ellsworth Land, Antarctica	-	    -84.2481 	  -75.9400 	0.0005 	NASA	-	-	-	Siple Station, Ellsworth Land, Antarctica
+SMLC	-	SMLC	LS	KE	1964	*	SMLC  -	San Marco Launch Complex, Formosa Bay, Kenya	-	     40.2134 	   -2.9408 	0.0002 	I	-	-	-	San Marco Launch Complex, Formosa Bay, Kenya
+SNI	-	SNI	LS	US	1960	1973	SNI   -	San Nicolas Island, Pacific Missile Range, California	-	   -119.5000 	   33.2500 	0.0200 	USN	-	-	-	San Nicolas Island, Pacific Missile Range, California
+SOHAE	-	SOHAE	LS	KP	2008	*	TONG  -	Sohae Launch Site, Tongch'ang-dong, Pyongang-bukdo (N Pyongan Prov), N Korea	-	    124.7060 	   39.6600 	0.1000 	CMIK	-	-	-	Sohae Launch Site, Tongch'ang-dong, Pyongang-bukdo (N Pyongan Prov), N Korea
+SOM	-	SOM	LS	PK	1962	*	SOM   -	Sonmiani Range, Sonmiani Beach, Baluchistan, Pakistan	-	     66.7500 	   25.2000 	0.0200 	SUPA	-	-	-	Sonmiani Range, Sonmiani Beach, Baluchistan, Pakistan
+SONCH	-	SONCH	LS	KP	2020	-	Sonchon	Sonchon, N Pyongan Prov.	-	    124.9000 	   39.8000 	0.1000 	KP	-	-	-	Sonchon, N Pyongan Prov.
+SONDOK	-	SONDOK	LS	KP	2019	-	Sondok	Sondok, S Hamyong Prov	-	    127.4732 	   39.7437 	0.0001 	KP	-	-	-	Sondok, S Hamyong Prov
+SOZEK	-	SOZEK	LS	SU	1968	1969	SOZEK	Sary Ozek missile base, Kazakhstan	-	     67.6500 	   43.3000 	0.2000 	RVSN	-	-	-	Sary Ozek missile base, Kazakhstan
+SPAM	-	SWRS	LS	US	2006?	*	SPAM  -	Spaceport America, New Mexico (9MN9)	Upham, New Mexico	   -106.9700 	   32.9900 	0.0100 	NMSPA	-	-	WSX	Spaceport America, New Mexico (9MN9)
+SPFL	-	CCA	LS	US	1998 Jan  1	2006 May	SPFL  -	Spaceport Florida, Cape Canaveral	-	    -80.5272 	   28.4583 	0.0002 	SPFL	-	-	CC	Spaceport Florida, Cape Canaveral
+SPFLA	-	CCA	LS	US	2006 May	*	SPFLA	Space Florida, Cape Canaveral	-	    -80.5272 	   28.4583 	0.0002 	SPFL	-	-	CC	Space Florida, Cape Canaveral
+SPXMCG	-	SPXMCG	LS	US	2012	-	SpaceX McGregor	SpaceX McGregor Test Site	McGregor, Texas	    -97.4600 	   31.4000 	0.0100 	SPX	-	-	-	SpaceX McGregor Test Site
+SRMSC	-	SRMSC	LS	US	1971	1975	SRMSC	Stanley R. Mickelson Safeguard Complex (SRMSC)	Nekoma, North Dakota	    -98.3562 	   48.5931 	0.0001 	SMDC	-	-	-	Stanley R. Mickelson Safeguard Complex (SRMSC)
+SSG	-	SSG	LS	GL	1971	1992	SSG   -	Sonde Stromfjord, Kangerlussuaq, Kalaallit Nunaat (Gronland)	-	    -50.5970 	   67.0230 	0.0020 	USAF	-	-	-	Sonde Stromfjord, Kangerlussuaq, Kalaallit Nunaat (Gronland)
+STB	-	BCB	LS	US	2022	-	Starbase	Starbase, Boca Chica Beach, Texas	-	    -97.1536 	   25.9964 	0.0010 	SPX	-	-	-	Texas Launch Site, Boca Chica Beach, Texas
+SUIP	-	SUIP	LS	F	1950 Aug  2	1951 Oct  6	SUIP  -	Camp de Suippes, Marne, France	-	      4.5300 	   49.1500 	0.0300 	ARMF	-	-	-	Camp de Suippes, Marne, France
+SUIST	-	SUIST	LS	UK	1962	*	SUIST -	Royal Artillery Guided Weapons Range, South Uist, Hebrides	-	     -7.3300 	   57.3300 	0.0200 	MOD	-	-	-	Royal Artillery Guided Weapons Range, South Uist, Hebrides
+SUKCH	-	SUKCH	LS	KP	2014	-	SUKCHON	Sukchon County launch site, South Pyongan Prov. (Pyong'annam-do), CMIK	-	    125.6000 	   39.4000 	0.1000 	CMIK	-	-	-	Sukchon County launch site, South Pyongan Prov. (Pyong'annam-do), CMIK
+SUNAN	-	SUNAN	LS	KP	2017	-	SUNAN	Sunan Airport, Pyonyang	-	    125.6752 	   39.2674 	0.0005 	CMIK	-	-	-	Sunan Airport, Pyonyang
+SV3	-	SV3	LS	LUNA	1969 Nov 20	1969 Nov 20	SV3   LM6-DS	LM6 Descent Stage, Surveyor 3 Site, Mare Insularum, Montes Riphaeus A2	Luna	     23.3800 	   -3.2000 	0.0100 	NASA	-	-	LUNA	LM6 Descent Stage, Surveyor 3 Site, Mare Insularum, Montes Riphaeus A2
+SVAL	-	SVAL	LS	N	1997 Nov	*	SVAL  -	SvalRak, Ny Alesund, Svalbard, Spitsbergen	-	     11.8504 	   78.9315 	0.0001 	N	-	-	-	SvalRak, Ny Alesund, Svalbard, Spitsbergen
+SVER	-	SVER	LS	SU	1960	-	SVER  -	Sverdlovsk air defence base	-	     39.6500 	   48.9000 	0.0100 	SU	-	-	-	Sverdlovsk air defence base
+SVOB	-	SVOB	LS	RU	1990	*	GIK-2 -	Svobodniy, Amurskaya Oblast', Rossiya	-	    128.0000 	   51.7000 	0.5000 	RVSN	Svobodniy	-	-	Svobodniy, Amurskaya Oblast', Rossiya
+SWRS	-	SWRS	LS	US	2006	2006?	SWRS  -	SouthWest Regional Spaceport (Spaceport America) New Mexico	-	   -106.9700 	   32.9900 	0.0100 	NMSPA	-	-	WSX	SouthWest Regional Spaceport (Spaceport America) New Mexico
+SYRIA	-	SYRIA	LS	SY	1992 Jul	*	SYRIA -	Syrian missile base, unknown, N of Halab/Alleppo?, Syria	-	     38.0000 	   35.0000 	3.0000 	SYMC	-	-	-	Syrian missile base, unknown, N of Halab/Alleppo?, Syria
+SYW	-	SYW	LS	DML	1970 Feb	*	SYW   -	Syowa (Showa) Base, East Ongul I., Queen Maud Land, Antarctica	-	     39.5800 	  -69.0000 	0.0300 	J	-	-	-	Syowa (Showa) Base, East Ongul I., Queen Maud Land, Antarctica
+TABRIZ	-	TABRIZ	LS	IR	2004	*	Tabriz	Tabriz Missile Base S	-	     46.1760 	   37.9780 	0.0020 	IR	-	-	-	Tabriz Missile Base S
+TAES	-	TAES	LS	KP	2023	-	T'aesong-ho	T'aesong-ho missile launch site	-	    125.4400 	   38.9073 	0.0001 	KP	-	-	-	T'aesong-ho missile launch site
+TAIKI	-	TAIKI	LS	J	2017 Jul	*	Taiki IST	Interstellar Technologies Test Site, Taiki, Hokkaido	-	    143.4572 	   42.5059 	0.0001 	IST	-	-	-	Interstellar Technologies Test Site, Taiki, Hokkaido
+TART	-	TART	LS	AR	1966 Nov 18	1966 Nov 18	TART  -	Tartagal, Salta, Argentina	-	    -63.8200 	  -22.7700 	0.0200 	CONAE	-	-	-	Tartagal, Salta, Argentina
+TATS	-	TATS	LS	SU	1980s	1980s	TATS  -	Tatishchevo ICBM base, Russia	-	     45.5700 	   51.6700 	0.0200 	RVSN	-	-	-	Tatishchevo ICBM base, Russia
+TERLS	-	TERLS	LS	IN	1963	*	TERLS -	Thumba Equatorial Rocket Launch Station, Trivandrum, Kerala, India	-	     76.8700 	    8.5300 	0.0200 	ISRO	-	-	-	Thumba Equatorial Rocket Launch Station, Trivandrum, Kerala, India
+TEYK	-	TEYK	LS	SU	1960s	1990	TEYK	Teykovo Missile Base, Russia	-	     40.4400 	   56.7000 	0.0100 	RVSN	-	-	-	Teykovo Missile Base, Russia
+THIR	-	THIR	LS	IN	2024	-	Thiruvidanthai	Thiruvidanthai, Chennai	-	     80.2500 	   12.7600 	0.0200 	SZI	-	-	-	SZI Launch Site, Thiruvidanthai
+THU	-	THU	LS	GL	1970	1976?	THU   -	Thule AFB, Halvo, Kalaallit Nunaat	-	    -68.7500 	   76.5300 	0.0200 	USAF?	-	-	-	Thule AFB, Halvo, Kalaallit Nunaat
+THUTH	-	THUTH	LS	YE	2015	2015	TussenHuhen	Tussen Huthen, Yemen	-	     44.1000 	   16.4200 	0.2000 	ANSAL	-	-	-	Tussen Huthen, Yemen
+TIKSI	-	TIKSI	LS	RU	2015	*	TIKSI	Tiksi Hydrometeorological Observatory	-	    128.9250 	   71.5860 	0.0030 	GMS	-	-	-	Tiksi Hydrometeorological Observatory
+TILLA	-	TILLA	LS	PK	1998 Apr  8	*	TILLA -	Tilla Firing Range, Malute, Jhelum region, Punjab, Pakistan	-	     73.3000 	   33.4000 	0.5000 	PK	-	-	-	Tilla Firing Range, Malute, Jhelum region, Punjab, Pakistan
+TNSC	-	TNSC	LS	J	1975	*	TNSC  -	Tanegashima Space Center, Tanegashima, Nippon	-	    130.9700 	   30.4000 	0.0200 	NASDA	-	-	-	Tanegashima Space Center, Tanegashima, Nippon
+TONGC	-	TONGC	LS	KP	2019	-	Tongchon	Tongchon, Gangwon Province (Kangwon-do)	-	    127.8800 	   38.9300 	0.0500 	CMIK	-	-	-	Tongchon, Gangwon Province (Kangwon-do)
+TONGH	-	TONGH	LS	KP	1984 Apr	*	TONGH -	Tonghae SLG, Musudan-ri, Hwadae-gun, Hamgyong Pukdo, Choson	-	    129.6666 	   40.8500 	0.0020 	KPA	-	-	-	Tonghae SLG, Musudan-ri, Hwadae-gun, Hamgyong Pukdo, Choson
+TONGHUA	-	TONGHUA	LS	CN	-	-	TONGHUA	406 Brigade Missile Base, Tonghua, Jilin Province	-	    125.9546 	   41.6695 	0.0020 	PLA	-	-	-	406 Brigade Missile Base, Tonghua, Jilin Province
+TORT	-	TORT	LS	PR	1992 May 25	*	TORT  -	Camp Tortuguero, Vega Baja, Arecibo, Puerto Rico	-	    -66.4395 	   18.4829 	0.0200 	NASA	-	-	-	Camp Tortuguero, Vega Baja, Arecibo, Puerto Rico
+TRAN	-	TRAN	LS	LUNA	1969 Jul 21	1969 Jul 21	TRAN  LM5-DS	LM 5 DS, Tranquility Base, Mare Tranquillitatis, Julius Caesar C4	Luna	     23.4300 	    0.6900 	0.0100 	NASA	-	-	LUNA	LM 5 DS, Tranquility Base, Mare Tranquillitatis, Julius Caesar C4
+TRIP	-	TRIP	LS	LY	-	-	TRIP  -	Tripoli missile base, Tripoli, Libya	-	     13.0000 	   32.5000 	2.0000 	LY	-	                                -	-	Tripoli missile base, Tripoli, Libya
+TTR	-	TTR	LS	US	1957	*	TTR   -	Tonopah Test Range, Nevada	-	   -116.7500 	   37.7500 	0.0300 	SAND	-	-	-	Tonopah Test Range, Nevada
+TYSC	-	TYSC	LS	CN	1988	*	TYSC  -	Taiyuan weixing fashe zhongxin	Wuzhai, Shanxi, China	    112.6000 	   37.5000 	0.1000 	CN	-	Taiyuan Space Center	-	Taiyuan weixing fashe zhongxin
+TYUM	-	TYUM	LS	SU	1960s	1980s	TYUM	Tyumen' missile base, Russia	-	     65.5700 	   56.8500 	0.0300 	RVSN	-	-	-	Tyumen' missile base, Russia
+UIJU	-	UIJU	LS	KP	2022	-	Uiju	Uiju launch location, N Pyongan province, N Korea	-	    124.5780 	   40.0258 	0.0020 	KPA	-	-	-	Uiju launch location, N Pyongan province, N Korea
+UKR1	-	UKR1	LS	UA	2024	-	UKR1	ATACMS launch location, Ukraine	-	     30.5200 	   50.4500 	2.0000 	UFA	-	-	-	ATACMS launch location, Ukraine
+UNKV2	-	UNKV2	LS	DR	-	-	UNKV2 -	Unknown V2 WWII launch site, Europe	-	      6.0000 	   50.0000 	2.5000 	WEHR	V2 Sites	-	-	Unknown V2 WWII launch site, Europe
+URDA	-	URDA	LS	SU	1957	1957	Urda	Tactical launch site, Urda, Kazakhstan	-	     47.4800 	   48.7600 	0.0500 	RVSN	-	-	-	Tactical launch site, Urda, Kazakhstan
+URUM	-	URUM	LS	CN	-	-	Urumqi	Korla Missile Test Center, Launch site near Urumqi, China	-	     86.3530 	   41.5372 	0.0001 	PLA	-	-	-	Korla Missile Test Center, Launch site near Urumqi, China
+USC	-	KASC	LS	J	2003 Oct	*	USC   -	Uchinoura Space Center, Kagoshima (formerly Kagoshima)	-	    131.0790 	   31.2500 	0.0010 	ISAS	-	-	-	Uchinoura Space Center, Kagoshima (formerly Kagoshima)
+USTKA	-	USTKA	LS	PL	2015	-	Ustka	Centralny Poligon Sil Powietrzynch	Ustka/Lake Wicko	     16.6100 	   54.5500 	0.0100 	PAI	-	-	-	Centralny Poligon Sil Powietrzynch
+UZHUR	-	UZHUR	LS	SU	1960s	1990s	UZHUR	Uzhur missile site, Russia	-	     90.2530 	   55.2075 	0.0100 	RVSN	-	-	-	Uzhur missile site, Russia
+V	-	V	LS	US	1958	2021 May 14	V     -	Vandenberg AFB, California	-	   -120.6200 	   34.7500 	0.0200 	USAF	Vandenberg	-	WTR	Vandenberg AFB, California
+VSFB	-	V	LS	US	2021 May 14	*	V     -	Vandenberg Space Force Base, California	-	   -120.6200 	   34.7500 	0.0200 	USSF	Vandenberg	-	WTR	Vandenberg Space Force Base, California
+V2BURG	-	V2BURG	LS	DR	-	-	V2BUR -	V-2 launch area, Burgsteinfurt	-	      7.3000 	   52.1000 	0.1000 	WEHR	-	-	UNKV2	V-2 launch area, Burgsteinfurt
+V2ENS	-	V2ENS	LS	DR	1944	1944	V2 Enschede	V-2 launch area, Enschede, Nederlanden	-	      6.8900 	   52.2200 	0.0500 	WEHR	-	-	UNKV2	V-2 launch area, Enschede, Nederlanden
+V2EUS	-	V2EUS	LS	DR	-	-	V2EUS -	V-2 launch area, Euskirchen, Deutschland	-	      6.8000 	   50.6500 	0.1000 	WEHR	-	-	UNKV2	V-2 launch area, Euskirchen, Deutschland
+V2HAAG	-	V2HAAG	LS	DR	-	-	V2HAA -	V-2 launch area near Den Haag-Wassenaar	-	      4.3799 	   52.1302 	0.0100 	WEHR	-	-	UNKV2	V-2 launch area near Den Haag-Wassenaar
+V2HACH	-	V2HACH	LS	DR	-	-	V2HAC -	V-2 launch area near Hachenburg/Montaburg	-	      7.8000 	   50.5000 	0.2000 	WEHR	-	-	UNKV2	V-2 launch area near Hachenburg/Montaburg
+V2HELL	-	V2HELL	LS	DR	-	-	V2 Hell.	V-2 launch area at Hellendoorn/Eelerberg	-	      6.4300 	   52.4100 	0.1000 	WEHR	-	-	UNKV2	V-2 launch area at Hellendoorn/Eelerberg
+V2HERM	-	V2HERM	LS	DR	-	-	V2HER -	V-2 launch area at Hermeskeil	-	      6.9000 	   49.6500 	0.1000 	WEHR	-	-	UNKV2	V-2 launch area at Hermeskeil
+V2HOUF	-	V2HOUF	LS	DR	-	-	V2VIE -	V-2 launch areas, Houffalize, Belgium	-	      5.7900 	   50.0400 	0.0200 	WEHR	-	-	UNKV2	V-2 launch areas, Houffalize, Belgium
+V2MERZ	-	V2MERZ	LS	DR	-	-	V2MER -	V-2 launch area, Merzig, N of Saar	-	      6.6000 	   49.4500 	0.1000 	WEHR	-	-	UNKV2	V-2 launch area, Merzig, N of Saar
+V2REM	-	V2REM	LS	DR	-	-	V2 Remscheid	V-2 launch area, Remscheid	-	      7.2000 	   51.1800 	0.1000 	WEHR	-	-	UNKV2	V-2 launch area, Remscheid
+V2STAV	-	V2STAV	LS	DR	-	-	V2STA -	V-2 launch area, Stavorem, Friesland	-	      5.4000 	   52.9000 	0.1000 	WEHR	-	-	UNKV2	V-2 launch area, Stavorem, Friesland
+V2VIEL	-	V2VIEL	LS	DR	-	-	V2VIE -	V-2 launch areas, Fraiture, Vielsalm, Ardennes	-	      5.7520 	   50.2580 	0.0200 	WEHR	-	-	UNKV2	V-2 launch areas, Fraiture, Vielsalm, Ardennes
+V2VUGHT	-	V2VUGHT	LS	DR	1944	1944	V2 Vught	V-2 launch area, Beukenhorst mansion, Vught, Nederlanden	-	      5.2885 	   51.6241 	0.0002 	WEHR	-	-	UNKV2	V-2 launch area, Beukenhorst mansion, Vught, Nederlanden
+V2WAL	-	V2WAL	LS	DR	-	-	V2WAL -	V-2 launch area, Serooskerke, Walcheren, Holland	-	      3.5899 	   51.5515 	0.0002 	WEHR	-	-	UNKV2	V-2 launch area, Serooskerke, Walcheren, Holland
+V2ZWOL	-	V2ZWOL	LS	DR	-	-	V2ZWO -	V-2 launch area, Zwolle-Hellendoorn-Enschede	-	      6.4500 	   52.4000 	0.2000 	WEHR	-	-	UNKV2	V-2 launch area, Zwolle-Hellendoorn-Enschede
+VCM	-	VCM	LS	ARV	1969	1984?	VCM   -	Vicecomodoro Marambio Station, Seymour I, Graham Land, Antarctica	-	    -56.7200 	  -64.2300 	0.0200 	AR	-	-	-	Vicecomodoro Marambio Station, Seymour I, Graham Land, Antarctica
+VERNON	-	VERNON	LS	F	1951 Apr	1951 Apr	VERNO -	Vernon, Eure, France	-	      1.4800 	   49.0800 	0.0200 	ARMF	-	-	-	Vernon, Eure, France
+VIK	-	VIK	LS	IS	1964 Aug  1	1965 Sep  3	VIK   -	Vik, Myrdalsandir, Island	-	    -19.0000 	   63.4200 	0.0200 	CNES	-	-	-	Vik, Myrdalsandir, Island
+VISKH	-	VISKH	LS	IN	-	-	VISKH -	DRDO-ENESTIEL Naval Sci/Tech Lab, Visakhapatnam, Andhra Pradesh	-	     83.2500 	   17.7000 	0.1000 	DRDO	-	-	-	DRDO-ENESTIEL Naval Sci/Tech Lab, Visakhapatnam, Andhra Pradesh
+VLAD	-	VLAD	LS	SU	1950	*	VLAD  -	Vladimirovka Poligon	-	     46.2000 	   48.3000 	0.1000 	VVS	-	-	KY	Vladimirovka Poligon
+VNC	-	VNC	LS	US	1962	1963	Venice	Venice Municipal Airport, Florida	Venice, Florida	    -82.4403 	   27.0717 	0.0003 	USAF	-	-	-	Venice Municipal Airport, Florida
+VOLR	-	VOLR	LS	RU	2022	-	Volga region	Volga region missile launch sites in Russian invasion of Ukraine	-	     36.5000 	   50.5000 	1.0000 	RVA	-	-	-	Volga region missile launch sites in Russian invasion of Ukraine
+VORK	-	VORK	LS	SU	1960	1990	Vorkuta	Vorkuta Sovetskiy, R-12 missile deployment	Vorkuta, Komi Republic	     64.3000 	   67.4600 	0.0100 	RVSN	-	-	-	Vorkuta Sovetskiy, R-12 missile deployment
+VOST	-	SVOB	LS	RU	2016	*	Vostochniy	Vostochniy, Svobodniy, Amurskaya Oblast', Rossiya	-	    128.0000 	   51.7000 	0.5000 	RVSN	Svobodniy	-	-	Vostochniy, Svobodniy, Amurskaya Oblast', Rossiya
+VS	-	PA	LS	US	1964 Dec 31	2021 May 14	V     -	South Vandenberg AFB, California	-	   -120.6100 	   34.6300 	0.0200 	USAF	-	-	WTR	South Vandenberg AFB, California
+VSFBS	-	PA	LS	US	2021 May 14	*	V     -	South Base, Vandenberg Space Force Base, California	-	   -120.6100 	   34.6300 	0.0200 	USSF	-	-	WTR	South Base, Vandenberg Space Force Base, California
+WAKE	-	WAKE	LS	UM79	1974 Feb 13	*	WAKE  -	Wake Island	-	    166.6180 	   19.2900 	0.0050 	USAF	-	-	-	Wake Island
+WC	-	WC	LS	BS	1964 Apr  1	1964 Dec 11	WC    -	Walker Cay, Bahama Islands	-	    -78.4200 	   27.2800 	0.0200 	USAF?	-	-	-	Walker Cay, Bahama Islands
+WEN	-	WEN	LS	CN	2016	*	WEN	Wenchang Space Center, Hainan	-	    110.9511 	   19.6142 	0.0001 	CN	-	-	-	文昌
+WI	-	WI	LS	US	1946	*	WI    -	Wallops Flight Facility, Wallops Island, Virginia	-	    -75.4800 	   37.8300 	0.0200 	NASA	-	-	-	Wallops Flight Facility, Wallops Island, Virginia
+WIMB	-	NAOTS	LS	US	1959	*	WI Main Base	Wallops Island Main Base, NASA Wallops Flight Facility, Chincoteague, Virginia	Chincoteague, Virginia	    -75.4633 	   37.9383 	0.0001 	NASA	-	-	-	Wallops Island Main Base, NASA Wallops Flight Facility, Chincoteague, Virginia
+WLK	-	WLK	LS	US	-	-	WLK   -	Walker AFB, Roswell, New Mexico	Roswell, New Mexico	   -104.5305 	   33.3017 	0.0010 	USAF	-	-	-	Walker AFB, Roswell, New Mexico
+WONSAN	-	WONSAN	LS	KP	2006	-	KITT  -	Kalma Airport, Wonsan/Kittaeryong (Gitdaeryung), Kangwon-do	-	    127.4950 	   39.1570 	0.0010 	CMIK	-	-	-	Kalma Airport, Wonsan/Kittaeryong (Gitdaeryung), Kangwon-do
+WOO	-	WOO	LS	AU	1948	*	WOO   -	Woomera Instrumented Range, Woomera, South Australia	-	    136.5000 	  -30.9250 	0.0020 	WRE	-	-	-	Woomera Instrumented Range, Woomera, South Australia
+WS	-	WS	LS	US	1946	*	WS    -	White Sands Missile Range, New Mexico	-	   -106.5300 	   32.4000 	0.1000 	SMDC	-	-	WS	White Sands Missile Range, New Mexico
+WTEX	-	WTEX	LS	US	2015	-	WTEX	Blue Origin, West Texas Launch Site, Corn Ranch	Van Horn, Texas	   -104.7572 	   31.4228 	0.0002 	BLOR	-	-	-	Blue Origin, West Texas Launch Site
+WURT	-	WURT	LS	US	-	1993	WURT  -	Wurtsmith AFB	Oscoda, Michigan	    -83.3803 	   44.4525 	0.0020 	USAF	-	                                  -	-	Wurtsmith AFB
+WWAY	-	WWAY	LS	AU	2022	-	Whalers Way	Whalers Way Orbital Launch Complex, South Australia	Eyre Peninsula, S Australia	    135.6300 	   34.9400 	0.0200 	SLAUNCH	-	                                  -	-	Whalers Way Orbital Launch Complex
+XSC	-	XSC	LS	CN	1984	*	XSC   -	Xichang Space Center (Songlin), Sichuan, China	-	    102.0291 	   28.2472 	0.0001 	CN	-	-	-	Xichang Space Center (Songlin), Sichuan, China
+YAS	-	YAS	LS	RU	2004	2004	YAS   -	Yasniy site, Dombarovskiy Air Base, Orensburgskaya Oblast', Rossiya	-	     59.5000 	   50.7500 	0.2500 	RVSN	-	-	-	Yasniy site, Dombarovskiy Air Base, Orensburgskaya Oblast', Rossiya
+YDK	-	YDK	LS	KP	2021	-	Yangdok	Yangdok, Pyongan Namdo	-	    126.8047 	   39.2753 	0.0005 	CMIK	-	-	-	Yandok, Pyongan Namdo
+YEMEN	-	YEMEN	LS	YE	2015	*	Yemen	Various locations in Yemen	-	     43.7307 	   16.9691 	4.0000 	ANSAL	-	-	-	Various locations in Yemen
+YONGH	-	YONGH	LS	KP	2019	-	Yonghung	Yonghung, S Hamyong Prov, North Korea	-	    127.2400 	   39.5400 	0.1000 	KP	-	-	-	Yonghung, S Hamyong Prov, North Korea
+YSNYA	-	YSNYA	LS	RU	-	-	YASNAYA	Yasnaya missile base, Chita Oblast	-	    115.9000 	   50.8000 	0.2000 	RVSN	-	-	-	Yasnaya missile base, Chita Oblast
+YUK	-	YUK	LS	US	1984 Feb  7	1984 Feb  7	YUK   -	Fort Yukon, Alaska	-	   -145.1972 	   66.5623 	0.0001 	NASA	-	-	-	Fort Yukon, Alaska
+YUMA	-	YUMA	LS	US	1966 Nov 17	1966 Nov 20	YUMA  -	Yuma Proving Ground, Arizona	-	   -114.3200 	   32.8700 	0.0200 	USA	-	-	-	Yuma Proving Ground, Arizona
+YUMEN	-	YUMEN	LS	CN	-	-	Yumen	Yumen Missile Base, China	-	     96.5000 	   40.0000 	0.1000 	PLA	-	-	-	Yumen Missile Base, China
+YURYA	-	YURYA	LS	SU	1960s	1990s	YURYA	Yurya missile site, Russia	-	     49.4400 	   59.1700 	0.1000 	RVSN	-	-	-	Yurya missile site, Russia
+ZINGST	-	ZINGST	LS	DD	1988 Oct 21	1992 Apr	ZINGS -	Zingst Range, MMR-06 pad, DDR	-	     12.7000 	   54.2000 	0.1000 	DD	-	-	-	Zingst Range, MMR-06 pad, DDR
+AMR	-	AMR	LZ	US	1958	1964	AMR   -	Atlantic Missile Range Drop Zone, N Atlantic Ocean	Atlantic Ocean	    -80.0000 	   28.5000 	1.0000 	USAF	-	-	CC	Atlantic Missile Range Drop Zone, N Atlantic Ocean
+ANTIM	-	ANTIM	LZ	US	1965	1974	Anitmeridian	Meteo Rocket Ship Launch Area, 180E 0N (AntiMeridian), Pacific Ocean	Pacific Ocean	    180.0000 	    0.0000 	1.0000 	DVNG	-	-	OCEAN	Meteo Rocket Ship Launch Area, 180E 0N (AntiMeridian), Pacific Ocean
+AONC	-	AONC	LZ	US	1992	1995	AOR15 -	USS Turner, Aegis NTW test launch area, 150 km off N Carolina	Atlantic Ocean	    -73.6890 	   33.7540 	0.0010 	USN	-	-	OCEAN	USS Turner, Aegis NTW test launch area, 150 km off N Carolina
+BELA	-	BELA	LZ	SU	1960	*	BELA  -	White Sea Launch Area, Beloye More, Archangel'sk Oblast'	White Sea	     38.0000 	   65.5000 	1.0000 	VMF	-	-	OCEAN	White Sea Launch Area, Beloye More, Archangel'sk Oblast'
+BFJL	-	BFJL	LZ	SU	2009	*	BFJL	Franz Josef Land Launch Area, Barentsovo More	Barents Sea	     58.0000 	   79.5000 	1.0000 	VMF	-	-	OCEAN	Franz Josef Land Launch Area, Barentsovo More
+BLA	-	BLA	LZ	SU	1960	*	BLA   -	Barents Launch Area, Barentsovo More, Murmansk Oblast'  (Os. Kildin)	Barents Sea	     34.0000 	   70.0000 	0.5000 	VMF	-	-	OCEAN	Barents Launch Area, Barentsovo More, Murmansk Oblast'  (Os. Kildin)
+BOHAI	-	BOHAI	LZ	CN	-	-	Bohai -	Bohai launch area  (Some Yellow Sea launches may also be here)	Yellow Sea	    120.9000 	   38.5000 	0.5000 	CN	-	-	OCEAN	Bohai launch area  (Some Yellow Sea launches may also be here)
+CCOD	-	CCOD	LZ	US	1958	1958	AOR41 -	Terrier intercept test area off US Atlantic coast (RI/Mass?)	Atlantic Ocean	    -69.5000 	   40.5000 	5.0000 	USN	-	-	OCEAN	Terrier intercept test area off US Atlantic coast (RI/Mass?)
+CHM	-	CHM	LZ	SU	-	-	CHM   -	Chernoye More (Black Sea) submarine test launch area	Black Sea	     34.0000 	   44.0000 	0.5000 	VMF	-	-	OCEAN	Chernoye More (Black Sea) submarine test launch area
+CUD	-	CUD	LZ	US	1959	1967	CUD   -	Cuddeback Dry Lake drop zone, California	-	   -117.2700 	   35.1800 	0.1000 	NASA/USAF	-	-	-	Cuddeback Dry Lake drop zone, California
+DDL	-	DDL	LZ	US	1959	1967	DDL   RW00/18	RW00/18, Delamar Dry Lake, Nevada	-	   -114.9300 	   37.3600 	0.0200 	NASA/USAF	-	-	-	RW00/18, Delamar Dry Lake, Nevada
+DOMFB	-	DOMFB	LZ	US	1962 Apr 19	1962 May	DOMFB -	DOMINIC/FRIGATE BIRD launch point, Pacific Ocean	Pacific Ocean	   -134.0300 	   12.5300 	0.0100 	USN	-	-	OCEAN	DOMINIC/FRIGATE BIRD launch point, Pacific Ocean
+ETR	-	AMR	LZ	US	1964	*	ETR   -	Eastern Test Range, Atlantic Ocean	Atlantic Oceran	    -79.0000 	   28.5000 	2.0000 	USN	-	-	CC	Eastern Test Range, Atlantic Ocean
+GRSEA	-	GRSEA	LZ	SU	-	-	Greenland Sea	Greenland Sea Launch Area for Soviet submarines	Greenland Sea	     -5.0000 	   75.0000 	5.0000 	VMF	-	-	OCEAN	Greenland Sea Launch Area for Soviet submarines
+HH	-	HH	LZ	US	1959	1967	Hidden Hills	RW14/32, Hidden Hills Dry Lake, California	-	   -115.9500 	   36.0000 	0.0200 	NASA/USAF	-	-	-	RW14/32, Hidden Hills Dry Lake, California
+HYD	-	HYD	LZ	US	1961	1971	Hydra-Iris	Hydra-Iris Launch Zone, Pacific Ocean	Pacific Ocean	   -120.0000 	   30.0000 	0.5000 	USN	-	-	OCEAN	Hydra-Iris Launch Zone, Pacific Ocean
+HYDS	-	HYDS	LZ	US	1961	-	Hydra South	USN HYDRA launch zones	Pacific Ocean	   -120.0000 	    0.0000 	1.0000 	USN	-	-	OCEAN	USN HYDRA launch zones
+IOLZ	-	IOLZ	LZ	SU	1960	1995	IO65	Meteo Rocket Ship Launch Area, Indian Ocean	Indian Ocean	     65.0000 	    0.0000 	2.0000 	DVNG	-	-	OCEAN	Meteo Rocket Ship Launch Area, Indian Ocean
+JARV	-	JARV	LZ	US	1950	1950	Jarvis Island	Viking/Project Reach, NW of Jarvis Island, Pacific Ocean	Pacific Ocean	   -161.4167 	    0.1866 	0.0200 	USN	-	-	OCEAN	Viking/Project Reach, NW of Jarvis Island, Pacific Ocean
+KARA	-	KARA	LZ	SU	-	-	KARA  -	Kara (Karsk) Sea launch area for VMF submarines	Kara Sea	     75.0000 	   75.0000 	9.0000 	VMF	-	-	OCEAN	Kara (Karsk) Sea launch area for VMF submarines
+MID	-	MID	LZ	US	2004	-	MID   -	Air drop zone in mid Pacific	Pacific Ocean	   -177.5000 	   24.8000 	0.2000 	USA	-	-	-	Air drop zone in mid Pacific
+MINIA	-	MINIA	LZ	SU	1980	1995	Minia Seamount	Meteo Rocket Ship Launch Area, Minia Seamount region, N Atlantic Ocean	Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Meteo Rocket Ship Launch Area, Minia Seamount region, N Atlantic Ocean
+MUD	-	MUD	LZ	US	1959	1967	MUD	Mud Lake, Nevada	-	   -117.3000 	   38.1000 	0.1000 	NASA/USAF	-	-	AIR	Mud Lake, Nevada
+NAOLA	-	NAOLA	LZ	SU	1985	1985	AOR42	VMF launch area in North Atlantic, location unknown (coords a guess)	Atlantic Ocean	    -30.0000 	   57.0000 	9.0000 	VMF	-	-	OCEAN	VMF launch area in North Atlantic, location unknown (coords a guess)
+NER	-	NER	LZ	SU	1980	1995	Ninety E Ridge	Meteo Rocket Ship Launch Area, Ninety East Ridge region, Indian Ocean	Indian Ocean	     90.0000 	    0.0000 	2.0000 	GOIG	-	-	OCEAN	Meteo Rocket Ship Launch Area, Ninety East Ridge region, Indian Ocean
+NPOLE	-	NPOLE	LZ	RU	1995	1995	NPOLE -	North polar submarine launch area	-	      0.0000 	   90.0000 	9.0000 	VMF	-	-	OCEAN	North polar submarine launch area
+NPOR1	-	NPOR1	LZ	US	2017	-	POR29 -	Pacific Ocean Launch Site for Alaska intercept tests	Pacific Ocean	   -155.0000 	   35.0000 	5.0000 	MDA	-	-	OCEAN	Pacific Ocean Launch Site for Alaska intercept tests
+NWSLA	-	NWSLA	LZ	SU	1988	1988	Norw.Sea	Norwegian Sea Launch Area	-	      5.0000 	   70.0000 	5.0000 	VMF	-	-	OCEAN	Norwegian Sea Launch Area
+OJP	-	OJP	LZ	SU	1978	-	Ontong Java Pl.	Meteo Rocket Ship Launch Area, Ontong Java Plateau region, SW Pacific Ocean	-	    160.0000 	    0.0000 	1.0000 	DVNG	-	-	OCEAN	Meteo Rocket Ship Launch Area, Ontong Java Plateau region, SW Pacific Ocean
+OMLA	-	OMLA	LZ	SU	1960	*	OMLA  -	Okhotsk Launch Area, Okhotskoye More	-	    148.0000 	   57.0000 	2.0000 	VMF	-	-	OCEAN	Okhotsk Launch Area, Okhotskoye More
+PBLA	-	PBLA	LZ	US	2024	-	Port Bienville	Port Bienville Launch Area, Gulf of Mexico	-	    -88.9770 	   29.9980 	0.0010 	EVOL	-	-	OCEAN	Port Bienville Launch Area
+PHLDZ	-	PHLDZ	LZ	US	1968	1974	Philippines DZ	SENIOR BOWL, Philippines drop zone	-	    118.0000 	   12.0000 	2.0000 	NRO	-	-	AIR	SENIOR BOWL, Philippines drop zone
+POLA	-	POLA	LZ	SU	-	-	POLA  -	Pacific Ocean Launch Area for Soviet/Russian submarines (unknown, guess)	Pacific Ocean	    170.0000 	   30.0000 	9.0000 	VMF	-	-	OCEAN	Pacific Ocean Launch Area for Soviet/Russian submarines (unknown, guess)
+POLA58	-	POLA58	LZ	SU	-	-	POLA  -	R-11 launch point in 1958 (Pacific, but location unknown)	Pacific Ocean	    150.0000 	   40.0000 	9.0000 	VMF	-	-	OCEAN	R-11 launch point in 1958 (Pacific, but location unknown)
+PORC1	-	PORC1	LZ	US	-	-	POR C1	Central Pacific Ocean air launch site	Pacific Ocean	    177.4210 	   12.9245 	0.0010 	MDA	-	-	OCEAN	Central Pacific Ocean air launch site
+PORNE1	-	PORNE1	LZ	US	-	-	POR NE1	NE Pacific Ocean ship launch site	Pacific Ocean	   -136.5000 	   41.0000 	2.0000 	MDA	-	-	OCEAN	Central Pacific Ocean air launch site
+RRV	-	RRV	LZ	US	1959	1967	RRV   -	Railroad Valley Lake drop zone, Nevada	-	   -116.1800 	   38.2200 	0.1000 	NASA/USAF	-	-	AIR	Railroad Valley Lake drop zone, Nevada
+SANDY	-	SANDY	LZ	US	1947 Sep  6	1947 Sep  6	AOR10 -	USS Midway, Operation Sandy 1947 "250 NM mi SE Bermuda"	Atlantic Ocean	    -61.5000 	   29.1000 	1.0000 	USN	-	-	OCEAN	USS Midway, Operation Sandy 1947 "250 NM mi SE Bermuda"
+SIL	-	SIL	LZ	US	1960	-	SIL   -	Silver Lake 1 drop zone, California	-	   -115.8000 	   35.5300 	0.1000 	USAF	-	-	AIR	Silver Lake 1 drop zone, California
+SIMLA	-	SIMLA	LZ	SU	-	-	SIMLA -	Simushir Island launch area, Pacific Ocean	-	    152.0000 	   47.0000 	1.0000 	VMF	-	-	OCEAN	Simushir Island launch area, Pacific Ocean
+SOMAP	-	SOMAP	LZ	SU	1980	1995	Somali Plain	Meteo Rocket Ship Launch Area, Somali Abyssal Plain, Indian Ocean	-	     53.0000 	    1.0000 	1.0000 	DVNG	-	-	OCEAN	Meteo Rocket Ship Launch Area, Somali Abyssal Plain, Indian Ocean
+SRL	-	SRL	LZ	US	1959	1967	SRL   -	Smith Ranch Lake drop zone, Nevada	-	   -117.1700 	   39.5000 	0.0200 	NASA/USAF	-	-	OCEAN	Smith Ranch Lake drop zone, Nevada
+STANNA	-	STANNA	LZ	SU	1984	1984	St Anna Trench	St Anna Trench, Arctic Ocean	Arctic Ocean	     69.0000 	   80.0000 	1.0000 	VMF	-	-	OCEAN	St Anna Trench, Arctic Ocean
+UNKPL	-	UNKPL	LZ	SU	-	-	UNKPL -	Unknown Soviet/Russian submarine launch area	-	-	-	0.0000 	VMF	-	-	OCEAN	Unknown Soviet/Russian submarine launch area
+WTR	-	WTR	LZ	US	1974	*	WTR   -	SLBM and Air Launch Area, Western Test Range, Pacific Ocean	-	   -119.0000 	   33.0000 	3.0000 	USN	-	-	OCEAN	SLBM and Air Launch Area, Western Test Range, Pacific Ocean
+YJ	-	YJ	LZ	CN	2023	*	Yangjiang	Yangjiang launch area	South China Sea	    112.0000 	   21.2800 	0.0100 	CZHJ	-	-	OCEAN	JL-3 launch area, South China Sea
+YEL	-	YEL	LZ	CN	-	-	YEL   -	Yellow Sea launch area	-	    123.0000 	   35.0000 	3.0000 	CN	-	-	OCEAN	Yellow Sea launch area
+GMS60A	-	GMS60A	LC	SU	1960 Jan 20	1960 Apr  1	VOKV	Voeykov Expedition 1, 1960 (SU015559)	Pacific Ocean	    175.7000 	   36.7000 	5.0000 	DVNG	-	-	OCEAN	Voeykov Expedition 1, 1960 (SU015559)
+GMS60B	-	GMS60B	LC	SU	1960 Aug  1	1960 Aug 16	VOKV	Voeykov Expedition 2, 1960 (SU000044)	Pacific Ocean	    175.7000 	   36.7000 	5.0000 	DVNG	-	-	OCEAN	Voeykov Expedition 2, 1960 (SU000044)
+GMS60C	-	GMS60C	LC	SU	1960 Nov  1	1960 Dec 15	SHOK	Sholalskiy Expedition 1, 1960 (SU016716)	Pacific Ocean	    180.0000 	   30.0000 	5.0000 	DVNG	-	-	OCEAN	Sholalskiy Expedition 1, 1960 (SU016716)
+GMS65A	-	GMS65A	LC	SU	1965 Apr 15	1965 Jun 30	SHOK	Shokalskiy Expedition 2, 1965	Pacific Ocean	    160.0000 	   30.0000 	5.0000 	DVNG	-	-	OCEAN	Shokalskiy Expedition 2, 1965
+GMS65B	-	GMS65B	LC	SU	1965 Apr 28	1965 Jun 20	VOKV	Voeykov Expedition 3, 1965	Pacific Ocean	   -150.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Voeykov Expedition 3, 1965
+GMS66A	-	GMS66A	LC	SU	1966 Dec 15	1967 Feb 28	SHOK	Shokalskiy? Expedition 3, 1966-67	Indian or Pacific Oceans?	-	-	0.0000 	DVNG	-	-	OCEAN	Shokalskiy? Expedition 3, 1966-67
+GMS66B	-	GMS66B	LC	SU	1966 Dec 15	1967 Feb  5	VOKV	Voeykov? Expedition 4, 1966-67	Indian or Pacific Oceans?	-	-	0.0000 	DVNG	-	-	OCEAN	Voeykov? Expedition 4, 1966-67
+GMS67A	-	GMS67A	LC	SU	1967 May  1	1967 Aug 15	VOKV	Voeykov Expedition 5, 1967 (SU008398)	Indian Ocean	     90.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Voeykov Expedition 5, 1967 (SU008398)
+GMS68A	-	GMS68A	LC	SU	1968 May  1	1968 May 31	VIZE	Vise Expedition 1, 1968 (SU008482)	Atlantic Ocean	    -20.0000 	   10.0000 	5.0000 	AANII	-	-	OCEAN	Vise Expedition 1, 1968 (SU008482)
+GMS68B	-	GMS68B	LC	SU	1968 Jul  1	1968 Sep 30	SHIR	Shirshov? Expedition 1, 1968	Indian Ocean	     65.0000 	  -20.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov? Expedition 1, 1968
+GMS69A	-	GMS69A	LC	SU	1968 Dec 15	1969 Feb 15	VOKV	Voeykov Expedition 6, 1968-69 (SU000260)	Indian Ocean	     65.0000 	  -20.0000 	5.0000 	DVNG	-	-	OCEAN	Voeykov Expedition 6, 1968-69 (SU000260)
+GMS69B	-	GMS69B	LC	SU	1969 Jan  1	1969 Feb 15	SHOK	Shokalskiy Expedition 4, 1968-69 (SU000266)	Indian Ocean	     65.0000 	  -20.0000 	5.0000 	DVNG	-	-	OCEAN	Shokalskiy Expedition 4, 1968-69 (SU000266)
+GMS69C	-	GMS69C	LC	SU	1969 May 15	1969 Jun 15	SHOK	Shokalskiy Expedition 5, 1969 (SU10335)	Indian Ocean	     65.0000 	  -20.0000 	5.0000 	DVNG	-	-	OCEAN	Shokalskiy Expedition 5, 1969 (SU10335)
+GMS69D	-	GMS69D	LC	SU	1969 Jul 15	1969 Aug 15	ZUB	Zubov Expedition 1, 1969	Atlantic Ocean	    -46.0000 	   45.0000 	5.0000 	AANII	-	-	OCEAN	Zubov Expedition 1, 1969
+GMS69E	-	GMS69E	LC	SU	1969 Oct  1	1969 Dec 31	ZUB	Zubov Expedition 2, 1969	Atlantic Ocean	    -46.0000 	   45.0000 	5.0000 	AANII	-	-	OCEAN	Zubov Expedition 2, 1969
+GMS69F	-	GMS69F	LC	SU	1969 Sep 15	1969 Oct 31	VOKV	Voeykov Expedition 7, 1969 (SU000215)	Indian Ocean	     65.0000 	  -20.0000 	5.0000 	DVNG	-	-	OCEAN	Voeykov Expedition 7, 1969 (SU000215)
+GMS70A	-	GMS70A	LC	SU	1970 Jun 15	1970 Jul 31	SHOK	Shokalskiy Expedition 7, 1970 (SU000275)	Indian Ocean	     65.0000 	  -30.0000 	5.0000 	DVNG	-	-	OCEAN	Shokalskiy Expedition 7, 1970 (SU000275)
+GMS70B	-	GMS70B	LC	SU	1970 Jul  1	1970 Aug 15	VIZE	Vize Expedition 2, 1970 (SU023005)	Atlantic Ocean	    -30.0000 	    5.0000 	5.0000 	AANII	-	-	OCEAN	Vize Expedition 2, 1970 (SU023005)
+GMS70C	-	GMS70C	LC	SU	1970 Nov  1	1971 Jan 15	SHIR	Shirshov Expedition 2, 1970-71 (SU000315)	Indian Ocean	     70.0000 	  -30.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 2, 1970-71 (SU000315)
+GMS70D	-	GMS70D	LC	SU	1970 Nov  1	1971 Jan 20	VOKV	Voeykov Expedition 9, 1970 (SU000292)	Indian and Pacific Oceans	    180.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Voeykov Expedition 9, 1970 (SU000292)
+GMS70E	-	GMS70E	LC	SU	1970 Dec  1	1971 Feb 28	KORO	Korolev Expedition 1, 1970-71 (SU000303)	Pacific Ocean	   -132.0000 	   40.0000 	5.0000 	GOIG	-	-	OCEAN	Korolev Expedition 1, 1970-71 (SU000303)
+GMS70F	-	GMS70F	LC	SU	1970 Mar  1	1970 Apr 20	VOKV	Voeykov Expedition 8, 1970 (SU000345)	Indian Ocean	     65.0000 	  -20.0000 	5.0000 	DVNG	-	-	OCEAN	Voeykov Expedition 8, 1970 (SU000345)
+GMS70G	-	GMS70G	LC	SU	1970 Jan  1	1970 Feb 28	SHOK	Shokalskiy Expedition 6, 1970 (SU000324)	Indian Ocean	     65.0000 	  -20.0000 	5.0000 	DVNG	-	-	OCEAN	Shokalskiy Expedition 6, 1970 (SU000324)
+GMS71A	-	GMS71A	LC	SU	1971 May 15	1971 Jul 15	SHIR	Shirshov Expedition 3, 1971 (SU000302)	Indian Ocean	     65.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 3, 1971 (SU000302)
+GMS71B	-	GMS71B	LC	SU	1971 Nov 15	1972 Jan 15	ZUB	Zubov Expedition 3, 1971-2 (SU007384)	Atlantic Ocean	    -26.0000 	    0.0000 	5.0000 	AANII	-	-	OCEAN	Zubov Expedition 3, 1971-2 (SU007384)
+GMS72A	-	GMS72A	LC	SU	1972 Jan  1	1972 Mar 15	SHIR	Shirshov Expedition 4, 1972 (SU000396)	Pacific Ocean	   -150.0000 	   30.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 4, 1972 (SU000396)
+GMS72B	-	GMS72B	LC	SU	1972 Jan  1	1972 Mar 31	KORO	Korolev Expedition 2, 1972 (SU016724)	Pacific Ocean	    160.0000 	    0.0000 	5.0000 	GOIG	-	-	OCEAN	Korolev Expedition 2, 1972 (SU016724)
+GMS72C	-	GMS72C	LC	SU	1972 Jul  1	1972 Aug 15	SHIR	Shirshov Expedition 5, 1972 (SU000407)	Indian Ocean	     65.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 5, 1972 (SU000407)
+GMS72D	-	GMS72D	LC	SU	1972 Dec 15	1973 Mar 31	SHIR	Shirshov Expedition 6, 1972-73 (SU000483)	Pacific Ocean	    165.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 6, 1972-73 (SU000483)
+GMS73A	-	GMS73A	LC	SU	1973 Feb  1	1973 Mar 31	KORO	Korolev Expedition 3, 1973 (SU000419, SU010379, SU014957)	Indian Ocean	     65.0000 	    0.0000 	5.0000 	GOIG	-	-	OCEAN	Korolev Expedition 3, 1973 (SU000419, SU010379, SU014957)
+GMS73B	-	GMS73B	LC	SU	1973 May 15	1973 Jul 31	VOKV	Voeykov Expedition 10, 1973 (SU000433)	Indian Ocean	     50.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Voeykov Expedition 10, 1973 (SU000433)
+GMS73C	-	GMS73C	LC	SU	1973 Jun 12	1973 Sep  1	VIZE	Vize Expedition 3, 1973 (SU008487)	Atlantic Ocean	    -30.0000 	   50.0000 	5.0000 	AANII	-	-	OCEAN	Vize Expedition 3, 1973 (SU008487)
+GMS73D	-	GMS73D	LC	SU	1973 Jul  1	1973 Nov 15	KORO	Korolev Expedition 4, 1973	Pacific and Atlantic Oceans	    -30.0000 	  -20.0000 	5.0000 	GOIG	-	-	OCEAN	Korolev Expedition 4, 1973
+GMS73E	-	GMS73E	LC	SU	1973 Oct  1	1973 Dec 15	VOKV	Voeykov Expedition 11, 1973 (SU000434)	Pacific Ocean	    180.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Voeykov Expedition 11, 1973 (SU000434)
+GMS73F	-	GMS73F	LC	SU	1973 Dec  1	1974 Mar 15	SHIR	Shirshov Expedition 7, 1973-74	Pacific Ocean	    180.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 7, 1973-74
+GMS74A	-	GMS74A	LC	SU	1974 Jan 15	1974 May 10	SHOK	Shokalskiy Expedition 8, 1974 (SU014166)	Pacific Ocean	    180.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shokalskiy Expedition 8, 1974 (SU014166)
+GMS74B	-	GMS74B	LC	SU	1974 Feb 15	1974 May 31	KORO	Korolev Expedition 5, 1974 (SU000456)	Pacific Ocean	    160.0000 	    0.0000 	5.0000 	GOIG	-	-	OCEAN	Korolev Expedition 5, 1974 (SU000456)
+GMS74C	-	GMS74C	LC	SU	1974 Aug  1	1974 Sep 30	SHOK	Shokalskiy Expedition 9, 1974	Indian Ocean	     65.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shokalskiy Expedition 9, 1974
+GMS74D	-	GMS74D	LC	SU	1974 Oct 15	1974 Nov 30	KORO	Korolev Expedition 6, 1974	Pacific Ocean	   -140.0000 	    0.0000 	5.0000 	GOIG	-	-	OCEAN	Korolev Expedition 6, 1974
+GMS74E	-	GMS74E	LC	SU	1974 Dec 15	1975 Jan 31	SHIR	Shirshov Expedition 8, 1974-75 (SU000512)	Indian Ocean	     65.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 8, 1974-75 (SU000512)
+GMS75A	-	GMS75A	LC	SU	1975 Mar  1	1975 Mar 31	SHIR	Shirshov Expedition 9, 1975	Indian Ocean	     70.0000 	  -30.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 9, 1975
+GMS75B	-	GMS75B	LC	SU	1975 Mar  1	1975 Mar 31	KORO	Korolev Expedition 7, 1975	Indian Ocean	     78.0000 	  -48.0000 	5.0000 	GOIG	-	-	OCEAN	Korolev Expedition 7, 1975
+GMS75C	-	GMS75C	LC	SU	1975 Apr 15	1975 Jun 30	SHOK	Shokalskiy Expedition 10, 1975 (SU016727)	Pacific Ocean	    160.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shokalskiy Expedition 10, 1975 (SU016727)
+GMS75D	-	GMS75D	LC	SU	1975 May  1	1975 Jul 31	ZUB	Zubov Expedition 4, 1975 (SU017861)	Atlantic Ocean	    -26.0000 	    3.0000 	5.0000 	AANII	-	-	OCEAN	Zubov Expedition 4, 1975 (SU017861)
+GMS75E	-	GMS75E	LC	SU	1975 May  1	1975 Jun 30	SHIR	Shirshov Expedition 10, 1975	Indian Ocean	     65.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 10, 1975
+GMS75F	-	GMS75F	LC	SU	1975 Nov  1	1976 Feb 29	ZUB	Zubov Expedition 5, 1975-76 (SU015701)	Atlantic Ocean	    -30.0000 	   54.0000 	5.0000 	AANII	-	-	OCEAN	Zubov Expedition 5, 1975-76 (SU015701)
+GMS76A	-	GMS76A	LC	SU	1976 Jan  1	1976 Feb 29	SHIR	Shirshov Expedition 11, 1976	Indian Ocean	     65.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 11, 1976
+GMS76B	-	GMS76B	LC	SU	1976 Feb  1	1976 Mar 31	VOLNA	Volna Expedition 1, 1976 (SU016684)	Pacific Ocean	    180.0000 	   40.0000 	5.0000 	DVNG	-	-	OCEAN	Volna Expedition 1, 1976 (SU016684)
+GMS76C	-	GMS76C	LC	SU	1976 Feb 15	1976 Apr 15	SHOK	Shokalskiy Expedition 11, 1976 (SU008417)	Indian Ocean	     90.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shokalskiy Expedition 11, 1976 (SU008417)
+GMS76D	-	GMS76D	LC	SU	1976 Apr 15	1976 Jun 30	USHAKOV	Ushakov Expedition 1, 1976 (SU000526/097314)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Ushakov Expedition 1, 1976 (SU000526/097314)
+GMS76E	-	GMS76E	LC	SU	1976 Jun 15	1976 Aug 31	SHOK	Shokalskiy Expedition 12, 1976 (SU012456)	Indian Ocean	     65.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shokalskiy Expedition 12, 1976 (SU012456)
+GMS76F	-	GMS76F	LC	SU	1976 Aug  1	1976 Nov 30	VIZE	Vize Expedition 4, 1976 (SU008672)	Atlantic Ocean	    -35.0000 	   60.0000 	5.0000 	AANII	-	-	OCEAN	Vize Expedition 4, 1976 (SU008672)
+GMS76G	-	GMS76G	LC	SU	1976 Aug  1	1976 Oct 15	USHAKOV	Ushakov Expedition 2, 1976 (SU00628)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Ushakov Expedition 2, 1976 (SU00628)
+GMS76H	-	GMS76H	LC	SU	1976 Oct 15	1977 Jan 15	PRILIV	Priliv Expedition 1, 1976-77 (SU017379)	Pacific Ocean	   -160.0000 	   40.0000 	5.0000 	DVNG	-	-	OCEAN	Priliv Expedition 1, 1976-77 (SU017379)
+GMS76J	-	GMS76J	LC	SU	1976 Oct 20	1977 Feb 15	SHIR	Shirshov Expedition 12, 1976-77 (SU097117)	Pacific Ocean	   -160.0000 	   30.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 12, 1976-77 (SU097117)
+GMS76K	-	GMS76K	LC	SU	1976 Dec  1	1977 Jan 15	SHOK	Shokalskiy Expedition 13, 1976 (SU014141)	Indian Ocean	     65.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shokalskiy Expedition 13, 1976 (SU014141)
+GMS77A	-	GMS77A	LC	SU	1977 Jan  1	1977 Jan 31	KORO	Korolev Expedition 8, 1977	Pacific Ocean	   -160.0000 	   30.0000 	5.0000 	GOIG	-	-	OCEAN	Korolev Expedition 8, 1977
+GMS77B	-	GMS77B	LC	SU	1977 Feb  1	1977 Apr 15	KREN	Krenkel Expedition 1, 1977 (SU010079)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	 -
+GMS77C	-	GMS77C	LC	SU	1977 Mar  1	1977 Mar 31	KORO	Korolev Expedition 9, 1977 (SU010400)	Indian Ocean	     65.0000 	    0.0000 	5.0000 	GOIG	-	-	OCEAN	Korolev Expedition 9, 1977 (SU010400)
+GMS77D	-	GMS77D	LC	SU	1977 Mar 15	1977 May 15	VOLNA	Volna Expedition 2, 1977 (SU016686)	Pacific Ocean	    160.0000 	   40.0000 	5.0000 	DVNG	-	-	OCEAN	Volna Expedition 2, 1977 (SU016686)
+GMS77E	-	GMS77E	LC	SU	1977 Apr  1	1977 Jun 15	USHAKOV	Ushakov Expedition 3, 1977 (SU015113)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Ushakov Expedition 3, 1977 (SU015113)
+GMS77F	-	GMS77F	LC	SU	1977 May  1	1977 Jul 31	VIZE	Vize Expedition 5, 1977	Atlantic Ocean	    -60.0000 	   20.0000 	5.0000 	AANII	-	-	OCEAN	Vize Expedition 5, 1977
+GMS77G	-	GMS77G	LC	SU	1977 May  1	1977 Jul 31	SHOK	Shokalskiy Expedition 14, 1977 (SU097317)	Indian Ocean	     65.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shokalskiy Expedition 14, 1977 (SU097317)
+GMS77H	-	GMS77H	LC	SU	1977 Jun  1	1977 Aug 31	KORO	Korolev Expedition 10, 1977	Pacific and Atlantic Oceans	   -126.0000 	   14.5000 	5.0000 	GOIG	-	-	OCEAN	Korolev Expedition 10, 1977
+GMS77J	-	GMS77J	LC	SU	1977 Jun  1	1977 Jul 31	KREN	Krenkel Expedition 2, 1977 (SU000617)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	 -
+GMS77K	-	GMS77K	LC	SU	1977 Jul 15	1977 Sep 15	USHAKOV	Ushakov Expedition 4, 1977 (SU000614)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Ushakov Expedition 4, 1977 (SU000614)
+GMS77L	-	GMS77L	LC	SU	1977 Nov  1	1978 Mar 15	KORO	Korolev Expedition 11, 1977-78	Indian and Pacific Oceans	    165.0000 	   40.0000 	5.0000 	GOIG	-	-	OCEAN	Korolev Expedition 11, 1977-78
+GMS77M	-	GMS77M	LC	SU	1977 Nov 15	1978 Jan 31	SHOK	Shokalskiy Expedition 15, 1977-78 (SU017909)	Pacific Ocean	    160.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shokalskiy Expedition 15, 1977-78 (SU017909)
+GMS77N	-	GMS77N	LC	SU	1977 Oct  1	1977 Oct 31	KREN	Krenkel Expedition 3, 1977 (SU000618)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	 -
+GMS77P	-	GMS77P	LC	SU	1977 Dec  1	1977 Dec 31	MUSSON	Musson Expedition 1, 1977 (SU000630)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	 -
+GMS78A	-	GMS78A	LC	SU	1978 Mar  1	1978 Jul 31	VIZE	Vize Expedition 6, 1978 (SU017921)	Atlantic Ocean	    -75.0000 	   38.0000 	5.0000 	AANII	-	-	OCEAN	Vize Expedition 6, 1978 (SU017921)
+GMS78B	-	GMS78B	LC	SU	1978 Mar 15	1978 Mar 31	VOLNA	Volna Expedition 3, 1978 (SU016932)	Pacific Ocean	   -150.0000 	   34.0000 	5.0000 	DVNG	-	-	OCEAN	Volna Expedition 3, 1978 (SU016932)
+GMS78C	-	GMS78C	LC	SU	1978 Mar 15	1978 Mar 31	SHIR	Shirshov Expedition 13, 1978 (SU008422)	Pacific Ocean	    160.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 13, 1978 (SU008422)
+GMS78D	-	GMS78D	LC	SU	1978 Apr  1	1978 Apr  2	USHAKOV	Ushakov Expedition 6, 1978	Black Sea	     31.0000 	   43.0000 	2.0000 	GOIG	-	-	OCEAN	Ushakov Expedition 6, 1978
+GMS78E	-	GMS78E	LC	SU	1978 Apr  1	1978 Apr 30	KORO	Korolev Expedition 12, 1978	Pacific Ocean	    160.0000 	    0.0000 	5.0000 	GOIG	-	-	OCEAN	Korolev Expedition 12, 1978
+GMS78F	-	GMS78F	LC	SU	1978 Mar 15	1978 Apr 30	MUSSON	Musson Expedition 2, 1978 (SU007211)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Musson Expedition 2, 1978 (SU007211)
+GMS78G	-	GMS78G	LC	SU	1978 Jul 15	1978 Sep 30	KREN	Krenkel Expedition 4, 1978 (SU000618)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Krenkel Expedition 4, 1978 (SU000618)
+GMS78H	-	GMS78H	LC	SU	1978 Feb  1	1978 Mar  1	USHAKOV	Ushakov Expedition 5, 1978 (SU000657)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Ushakov Expedition 5, 1978 (SU000657)
+GMS78J	-	GMS78J	LC	SU	1978 Nov  1	1978 Nov 30	MUSSON	Musson Expedition 3, 1978 (SU007213)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Musson Expedition 3, 1978 (SU007213)
+GMS79A	-	GMS79A	LC	SU	1979 Feb  1	1979 Apr  1	SHOK	Shokalskiy Expedition 16, 1979 (SU000529)	Indian Ocean	     65.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shokalskiy Expedition 16, 1979 (SU000529)
+GMS79B	-	GMS79B	LC	SU	1979 Apr 15	1979 May 31	SHIR	Shirshov Expedition 14, 1979 (SU000732)	Indian Ocean	     54.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 14, 1979 (SU000732)
+GMS79C	-	GMS79C	LC	SU	1979 Apr 15	1979 Aug 20	KORO	Korolev Expedition 14, 1979 (SU000709)	Indian Ocean	     54.0000 	    6.0000 	5.0000 	GOIG	-	-	OCEAN	Korolev Expedition 14, 1979 (SU000709)
+GMS79D	-	GMS79D	LC	SU	1979 Apr 15	1979 Jul 15	PRILIV	Priliv Expedition 2, 1979	Indian Ocean	     57.0000 	    4.0000 	5.0000 	GOIG	-	-	OCEAN	Priliv Expedition 2, 1979
+GMS79E	-	GMS79E	LC	SU	1979 May 15	1979 Jun 30	MUSSON	Musson Expedition 5, 1979	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Musson Expedition 5, 1979
+GMS79F	-	GMS79F	LC	SU	1979 Jun  1	1979 Aug 31	SHOK	Shokalskiy Expedition 17, 1979 (SU017938/40)	Pacific Ocean	    180.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shokalskiy Expedition 17, 1979 (SU017938/40)
+GMS79G	-	GMS79G	LC	SU	1979 Nov  1	1979 Dec 31	USHAKOV	Ushakov Expedition 7, 1979	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Ushakov Expedition 7, 1979
+GMS79H	-	GMS79H	LC	SU	1979 Nov  1	1980 Jan 15	SHOK	Shokalskiy Expedition 18, 1979-80 (SU097146)	Indian and Pacific Ocean	     90.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shokalskiy Expedition 18, 1979-80 (SU097146)
+GMS79J	-	GMS79J	LC	SU	1979 Nov 15	1980 Mar  1	KORO	Korolev Expedition 15, 1979-80 (SU000710)	Pacific Ocean	    160.0000 	    0.0000 	1.0000 	GOIG	-	-	OCEAN	Korolev Expedition 15, 1979-80 (SU000710)
+GMS79K	-	GMS79K	LC	SU	1979 Dec 15	1980 Mar  1	VOLNA	Volna Expedition 4, 1980 (SU097147)	Ontong Java Plateau, Pacific Ocean	    160.0000 	    0.0000 	1.0000 	DVNG	-	-	OCEAN	Volna Expedition 4, 1980 (SU097147)
+GMS79L	-	GMS79L	LC	SU	1979 Jan  1	1979 Feb 15	KORO	Korolev Expedition 13, 1979	Ninety East Ridge, Indian Ocean	     90.0000 	    0.0000 	5.0000 	GOIG	-	-	OCEAN	Korolev Expedition 13, 1979
+GMS79M	-	GMS79M	LC	SU	1979 Jan  1	1979 Feb  1	KREN	Krenkel Expedition 5, 1979 (SU000699)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Krenkel Expedition 5, 1979 (SU000699)
+GMS79N	-	GMS79N	LC	SU	1979 Apr 15	1979 Apr 30	KREN	Krenkel Expedition 6, 1979 (SU000674)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Krenkel Expedition 6, 1979 (SU000674)
+GMS79P	-	GMS79P	LC	SU	1979 Jul  1	1979 Jul 31	KREN	Krenkel Expedition 7, 1979 (SU007218)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Krenkel Expedition 7, 1979 (SU007218)
+GMS79Q	-	GMS79Q	LC	SU	1979 Nov  1	1979 Dec  1	KREN	Krenkel Expedition 8, 1979 (SU007219)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Krenkel Expedition 8, 1979 (SU007219)
+GMS79R	-	GMS79R	LC	SU	1979 Feb  1	1979 Mar  1	MUSSON	Musson Expedition 4, 1979	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Musson Expedition 4, 1979
+GMS80A	-	GMS80A	LC	SU	1980 Feb  1	1980 Mar 15	PASSAT	Passat Expedition 1, 1980 (SU000722)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Passat Expedition 1, 1980 (SU000722)
+GMS80B	-	GMS80B	LC	SU	1980 Feb 15	1980 Mar 31	SHIR	Shirshov Expedition 15, 1980 (SU097155)	Ontong Java Plateau, Pacific Ocean	    160.0000 	    0.0000 	1.0000 	GOIG	-	-	OCEAN	Shirshov Expedition 15, 1980 (SU097155)
+GMS80C	-	GMS80C	LC	SU	1980 Apr  1	1980 Jul 31	ZUB	Zubov Expedition 6, 1980 Apr-Jul (SU008499)	Atlantic Ocean	      0.0000 	   68.0000 	5.0000 	AANII	-	-	OCEAN	Zubov Expedition 6, 1980 Apr-Jul (SU008499)
+GMS80D	-	GMS80D	LC	SU	1980 Apr 15	1980 Jun 15	PRILIV	Priliv Expedition 3, 1980 (SU000728)	Pacific Ocean	   -160.0000 	   30.0000 	5.0000 	DVNG	-	-	OCEAN	Priliv Expedition 3, 1980 (SU000728)
+GMS80E	-	GMS80E	LC	SU	1980 May  1	1980 Jun 15	KORO	Korolev Expedition 16, 1980	Ontong Java Plateau, Pacific Ocean	    160.0000 	    0.0000 	1.0000 	GOIG	-	-	OCEAN	Korolev Expedition 16, 1980
+GMS80F	-	GMS80F	LC	SU	1980 Apr 15	1980 Jun 15	SHIR	Shirshov Expedition 16, 1980 (SU007155)	Indian Ocean	     67.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 16, 1980 (SU007155)
+GMS80G	-	GMS80G	LC	SU	1980 Mar  1	1980 Mar 31	USHAKOV	Ushakov Expedition 8, 1980 (SU000734)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Ushakov Expedition 8, 1980 (SU000734)
+GMS80H	-	GMS80H	LC	SU	1980 Sep  1	1980 Oct 15	KREN	Krenkel Expedition 9, 1980	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Krenkel Expedition 9, 1980
+GMS80J	-	GMS80J	LC	SU	1980 Oct  1	1980 Oct 31	BUGAEV	Bugaev Expedition 1, 1980 (SU010225)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Bugaev Expedition 1, 1980 (SU010225)
+GMS81A	-	GMS81A	LC	SU	1981 Jan  1	1981 Mar 31	VOLNA	Volna Expedition 5, 1981 (SU009598)	Southern Ocean	    155.0000 	  -62.0000 	5.0000 	DVNG	-	-	OCEAN	Volna Expedition 5, 1981 (SU009598)
+GMS81B	-	GMS81B	LC	SU	1981 Jan  1	1981 Apr 15	PRILIV	Priliv Expedition 4, 1981 (SU010430/31)	Southern and Indian Oceans	    150.0000 	  -55.0000 	5.0000 	DVNG	-	-	OCEAN	Priliv Expedition 4, 1981 (SU010430/31)
+GMS81C	-	GMS81C	LC	SU	1981 Jan 15	1981 Mar 31	SHIR	Shirshov Expedition 17, 1981 (SU001350)	Pacific Ocean	    180.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 17, 1981 (SU001350)
+GMS81D	-	GMS81D	LC	SU	1981 May  1	1981 Aug 31	ZUB	Zubov Expedition 7, 1981 May-Aug (SU022747)	Atlantic Ocean	     -5.0000 	   70.0000 	5.0000 	AANII	-	-	OCEAN	Zubov Expedition 7, 1981 May-Aug (SU022747)
+GMS81E	-	GMS81E	LC	SU	1981 May  1	1981 Jun 30	KORO	Korolev Expedition 17, 1981 (SU010433)	Indian Ocean	     65.0000 	    0.0000 	5.0000 	GOIG	-	-	OCEAN	Korolev Expedition 17, 1981 (SU010433)
+GMS81F	-	GMS81F	LC	SU	1981 Feb  1	1981 Feb 28	KREN	Krenkel Expedition 10, 1981 (SU010128)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Krenkel Expedition 10, 1981 (SU010128)
+GMS81G	-	GMS81G	LC	SU	1981 May  1	1981 May 31	KREN	Krenkel Expedition 11, 1981 (SU010230)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Krenkel Expedition 11, 1981 (SU010230)
+GMS81H	-	GMS81H	LC	SU	1981 Sep  1	1981 Oct 15	MUSSON	Musson Expedition 6, 1981 (SU012109)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Musson Expedition 6, 1981 (SU012109)
+GMS81J	-	GMS81J	LC	SU	1981 Jun  1	1981 Jun 30	BUGAEV	Bugaev Expedition 2, 1981 (SU010136)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Bugaev Expedition 2, 1981 (SU010136)
+GMS81K	-	GMS81K	LC	SU	1981 Oct 15	1981 Nov 30	BUGAEV	Bugaev Expedition 3, 1981 (SU010233)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Bugaev Expedition 3, 1981 (SU010233)
+GMS82A	-	GMS82A	LC	SU	1982 Feb  1	1982 May 31	VIZE	Vize Expedition 7, 1982 (SU008509)	Atlantic Ocean	      0.0000 	   68.0000 	9.0000 	AANII	-	-	OCEAN	Vize Expedition 7, 1982 (SU008509)
+GMS82B	-	GMS82B	LC	SU	1982 Feb  1	1982 Mar 31	KORO	Korolev Expedition 18, 1982	Indian and Pacific Oceans	     70.0000 	  -25.0000 	5.0000 	GOIG	-	-	OCEAN	Korolev Expedition 18, 1982
+GMS82C	-	GMS82C	LC	SU	1982 Apr  1	1982 May 15	MUSSON	Musson Expedition 8, 1982 (SU007540)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Musson Expedition 8, 1982 (SU007540)
+GMS82D	-	GMS82D	LC	SU	1982 May 15	1982 Jul 15	SHIR	Shirshov Expedition 18, 1982 (SU007064/65)	Indian Ocean	     65.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 18, 1982 (SU007064/65)
+GMS82E	-	GMS82E	LC	SU	1982 Nov 15	1983 Jan  1	VOKV	Voeykov Expedition 12, 1982	Indian Ocean	     80.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Voeykov Expedition 12, 1982
+GMS82F	-	GMS82F	LC	SU	1982 Nov  1	1982 Nov 30	KREN	Krenkel Expedition 12, 1982 (SU010154)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Krenkel Expedition 12, 1982 (SU010154)
+GMS82G	-	GMS82G	LC	SU	1982 Jan  1	1982 Jan 31	MUSSON	Musson Expedition 7, 1982 (SU000602)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Musson Expedition 7, 1982 (SU000602)
+GMS82H	-	GMS82H	LC	SU	1982 Feb  1	1982 Mar  1	PASSAT	Passat Expedition 2, 1982 (SU001365)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Passat Expedition 2, 1982 (SU001365)
+GMS82J	-	GMS82J	LC	SU	1982 May  1	1982 May 31	PASSAT	Passat Expedition 3, 1982	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Passat Expedition 3, 1982
+GMS82K	-	GMS82K	LC	SU	1982 Dec  1	1982 Dec 31	BUGAEV	Bugaev Expedition 4, 1982 (SU010239)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Bugaev Expedition 4, 1982 (SU010239)
+GMS83A	-	GMS83A	LC	SU	1983 Jun 15	1983 Aug 15	KORO	Korolev Expedition 19, 1983 (SU097181)	Indian and Pacific Oceans	     90.0000 	  -10.0000 	5.0000 	GOIG	-	-	OCEAN	Korolev Expedition 19, 1983 (SU097181)
+GMS83B	-	GMS83B	LC	SU	1983 Aug  1	1983 Oct 31	VIZE	Vize Expedition 8, 1983	Atlantic Ocean	    -11.0000 	   30.0000 	9.0000 	AANII	-	-	OCEAN	Vize Expedition 8, 1983
+GMS83C	-	GMS83C	LC	SU	1983 Aug 15	1983 Sep 15	VOKV	Voeykov Expedition 13, 1983	Indian Ocean	     64.0000 	    3.0000 	5.0000 	DVNG	-	-	OCEAN	Voeykov Expedition 13, 1983
+GMS83D	-	GMS83D	LC	SU	1983 Feb 15	1983 Mar 31	SHIR	Shirshov Expedition 19, 1983	Indian Ocean, Ninety East Ridge	     90.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 19, 1983
+GMS83E	-	GMS83E	LC	SU	1983 Feb  1	1983 Feb 28	KREN	Krenkel Expedition 13, 1983 (SU007026)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Krenkel Expedition 13, 1983 (SU007026)
+GMS83F	-	GMS83F	LC	SU	1983 May  1	1983 May 31	MUSSON	Musson Expedition 9, 1983 (SU007042)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Musson Expedition 9, 1983 (SU007042)
+GMS83G	-	GMS83G	LC	SU	1983 Aug  1	1983 Aug 31	MUSSON	Musson Expedition 10, 1983 (SU007042)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Musson Expedition 10, 1983 (SU007042)
+GMS83H	-	GMS83H	LC	SU	1983 Mar  1	1983 Mar 31	BUGAEV	Bugaev Expedition 5, 1983 (SU007027)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Bugaev Expedition 5, 1983 (SU007027)
+GMS85A	-	GMS85A	LC	SU	1985 Feb  1	1985 Apr 30	ZUB	Zubov Expedition 8, 1985	Atlantic Ocean	-	-	0.0000 	AANII	-	-	OCEAN	Zubov Expedition 8, 1985
+GMS85B	-	GMS85B	LC	SU	1985 Aug  1	1985 Nov 30	ZUB	Zubov Expedition 9,1985	Atlantic Ocean	-	-	0.0000 	AANII	-	-	OCEAN	Zubov Expedition 9,1985
+GMS85C	-	GMS85C	LC	SU	1985 Oct 15	1986 Jan 15	SHIR	Shirshov Expedition 20, 1985-86	Pacific or Indian Ocean?	-	-	0.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 20, 1985-86
+GMS85D	-	GMS85D	LC	SU	1985 Aug  1	1985 Sep 30	KREN	Krenkel Expedition 14, 1985 (SU010253)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Krenkel Expedition 14, 1985 (SU010253)
+GMS85E	-	GMS85E	LC	SU	1985 Oct 15	1985 Nov 30	MUSSON	Musson Expedition 11, 1985 (SU007410)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Musson Expedition 11, 1985 (SU007410)
+GMS86A	-	GMS86A	LC	SU	1986 Apr 15	1986 May 31	SHIR	Shirshov Expedition 21, 1986	Pacific or Indian Ocean?	-	-	0.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 21, 1986
+GMS86B	-	GMS86B	LC	SU	1986 Jun  1	1986 Aug 31	VIZE	Vize Expedition 9, 1986	Atlantic Ocean	-	-	0.0000 	AANII	-	-	OCEAN	Vize Expedition 9, 1986
+GMS86C	-	GMS86C	LC	SU	1986 Aug  1	1986 Aug 31	VOKV	Voeykov Expedition 14, 1986	Pacific or Indian Ocean?	-	-	0.0000 	DVNG	-	-	OCEAN	Voeykov Expedition 14, 1986
+GMS86D	-	GMS86D	LC	SU	1986 Sep  1	1986 Nov 30	ZUB	Zubov Expedition 10, 1986	Atlantic Ocean	-	-	0.0000 	AANII	-	-	OCEAN	Zubov Expedition 10, 1986
+GMS86E	-	GMS86E	LC	SU	1986 Sep  1	1986 Sep 30	USHAKOV	Ushakov Expedition 9, 1986	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Ushakov Expedition 9, 1986
+GMS86F	-	GMS86F	LC	SU	1986 Mar  1	1986 Apr 30	KREN	Krenkel Expedition 15, 1986	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Krenkel Expedition 15, 1986
+GMS86G	-	GMS86G	LC	SU	1986 Feb  1	1986 Mar 15	PASSAT	Passat Expedition 4, 1986 (SU153122)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Passat Expedition 4, 1986 (SU153122)
+GMS87A	-	GMS87A	LC	SU	1987 Jan  1	1987 Jan 15	PRILIV	Priliv Expedition 5, 1987	Pacific Ocean?	-	-	0.0000 	DVNG	-	-	OCEAN	Priliv Expedition 5, 1987
+GMS87B	-	GMS87B	LC	SU	1987 Jan  1	1987 Feb 15	SHIR	Shirshov Expedition 22, 1987	Indian Ocean	     90.0000 	    0.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 22, 1987
+GMS87C	-	GMS87C	LC	SU	1987 Jan 15	1987 Mar 31	KORO	Korolev Expedition 20, 1987	Pacific or Indian Ocean?	-	-	0.0000 	GOIG	-	-	OCEAN	Korolev Expedition 20, 1987
+GMS87D	-	GMS87D	LC	SU	1987 May 15	1987 Jun 30	VOKV	Voeykov Expedition 15, 1987	Pacific Ocean	    150.0000 	   30.0000 	5.0000 	DVNG	-	-	OCEAN	Voeykov Expedition 15, 1987
+GMS87E	-	GMS87E	LC	SU	1987 Jun  1	1987 Sep 30	ZUB	Zubov Expedition 11, 1987	Atlantic Ocean	-	-	0.0000 	AANII	-	-	OCEAN	Zubov Expedition 11, 1987
+GMS87F	-	GMS87F	LC	SU	1987 Oct 15	1987 Dec 15	SHIR	Shirshov Expedition 23, 1987 (SU097224)	Pacific or Indian Ocean?	-	-	0.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 23, 1987 (SU097224)
+GMS87G	-	GMS87G	LC	SU	1987 Nov 15	1988 Feb 28	PRILIV	Priliv Expedition 6, 1987-88 (SU016756)	Pacific Ocean	   -170.0000 	   36.0000 	5.0000 	DVNG	-	-	OCEAN	Priliv Expedition 6, 1987-88 (SU016756)
+GMS87H	-	GMS87H	LC	SU	1987 Nov  1	1987 Dec 15	USHAKOV	Ushakov Expedition 10, 1987 (SU010268)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Ushakov Expedition 10, 1987 (SU010268)
+GMS87J	-	GMS87J	LC	SU	1987 Mar  1	1987 Mar 31	KREN	Krenkel Expedition 16, 1987 (SU010265)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Krenkel Expedition 16, 1987 (SU010265)
+GMS87K	-	GMS87K	LC	SU	1987 Jun  1	1987 Jul 15	KREN	Krenkel Expedition 17, 1987	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Krenkel Expedition 17, 1987
+GMS87L	-	GMS87L	LC	SU	1987 Sep  1	1987 Oct 15	KREN	Krenkel Expedition 18, 1987 (SU010267)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Krenkel Expedition 18, 1987 (SU010267)
+GMS87M	-	GMS87M	LC	SU	1987 Jul  1	1987 Jul 31	MUSSON	Musson Expedition 12, 1987 (SU007554)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Musson Expedition 12, 1987 (SU007554)
+GMS87N	-	GMS87N	LC	SU	1987 Jan  1	1987 Jan 31	BUGAEV	Bugaev Expedition 6, 1987 (SU010263)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Bugaev Expedition 6, 1987 (SU010263)
+GMS87P	-	GMS87P	LC	SU	1987 Apr  1	1987 Apr 30	BUGAEV	Bugaev Expedition 7, 1987 (SU007364)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Bugaev Expedition 7, 1987 (SU007364)
+GMS88A	-	GMS88A	LC	SU	1988 Mar 15	1988 May 15	SHIR	Shirshiv Expedition 24, 1988	Pacific or Indian Ocean?	-	-	0.0000 	DVNG	-	-	OCEAN	Shirshiv Expedition 24, 1988
+GMS88B	-	GMS88B	LC	SU	1988 Apr  1	1988 Apr 30	PRILIV	Priliv Expedition 7, 1988 (SU015533)	Pacific Ocean	    161.0000 	   18.0000 	5.0000 	DVNG	-	-	OCEAN	Priliv Expedition 7, 1988 (SU015533)
+GMS88C	-	GMS88C	LC	SU	1988 Jul  1	1988 Dec 31	VIZE	Vize Expedition 10, 1988	Japan Sea/Chukotsk Sea	-	-	0.0000 	DVNG	-	-	OCEAN	Vize Expedition 10, 1988
+GMS88D	-	GMS88D	LC	SU	1988 Dec 15	1989 Mar 31	PRILIV	Priliv Expedition 8, 1988-89 (SU015539)	Pacific Ocean	    163.0000 	   27.0000 	5.0000 	DVNG	-	-	OCEAN	Priliv Expedition 8, 1988-89 (SU015539)
+GMS88E	-	GMS88E	LC	SU	1988 Feb  1	1988 Mar 15	USHAKOV	Ushakov Expedition 11, 1988	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Ushakov Expedition 11, 1988
+GMS88F	-	GMS88F	LC	SU	1988 May 15	1988 Jun 30	USHAKOV	Ushakov Expedition 12, 1988 (SU008535)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Ushakov Expedition 12, 1988 (SU008535)
+GMS88G	-	GMS88G	LC	SU	1988 Aug 15	1988 Sep 30	USHAKOV	Ushakov Expedition 13, 1988	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Ushakov Expedition 13, 1988
+GMS88H	-	GMS88H	LC	SU	1988 Mar 15	1988 Apr 15	PASSAT	Passat Expedition 5, 1988 (SU008536)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Passat Expedition 5, 1988 (SU008536)
+GMS88J	-	GMS88J	LC	SU	1988 Nov  1	1988 Nov 30	PASSAT	Passat Expedition 6, 1988 (SU011600)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Passat Expedition 6, 1988 (SU011600)
+GMS89A	-	GMS89A	LC	SU	1988 Dec 15	1989 Mar 31	KORO	Korolev Expedition 21, 1988-89	Pacific or Indian Ocean?	-	-	0.0000 	GOIG	-	-	OCEAN	Korolev Expedition 21, 1988-89
+GMS89B	-	GMS89B	LC	SU	1989 Jul  1	1989 Nov 30	ZUB	Zubov Expedition 12, 1989 (SU023022)	Atlantic Ocean	     -5.0000 	    0.0000 	5.0000 	AANII	-	-	OCEAN	Zubov Expedition 12, 1989 (SU023022)
+GMS89C	-	GMS89C	LC	SU	1989 Aug 15	1989 Oct 31	SHIR	Shirshov Expedition 25, 1989	Pacific or Indian Ocean?	-	-	0.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 25, 1989
+GMS89D	-	GMS89D	LC	SU	1989 Oct 15	1989 Oct 31	USHAKOV	Ushakov Expedition 14, 1989	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Ushakov Expedition 14, 1989
+GMS89E	-	GMS89E	LC	SU	1989 Nov  1	1989 Nov 30	KREN	Krenkel Expedition 19, 1989	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Krenkel Expedition 19, 1989
+GMS89F	-	GMS89F	LC	SU	1989 Jun  1	1989 Jun 30	MUSSON	Musson Expedition 13, 1989	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Musson Expedition 13, 1989
+GMS89G	-	GMS89G	LC	SU	1989 Feb  1	1989 Feb 28	PASSAT	Passat Expedition 7, 1989	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Passat Expedition 7, 1989
+GMS89H	-	GMS89H	LC	SU	1989 May  1	1989 May 31	PASSAT	Passat Expedition 8, 1989	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Passat Expedition 8, 1989
+GMS89J	-	GMS89J	LC	SU	1989 Jan  1	1989 Jan 31	BUGAEV	Bugaev Expedition 8, 1989	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Bugaev Expedition 8, 1989
+GMS90A	-	GMS90A	LC	SU	1990 Jan  1	1990 Mar 15	PRILIV	Priliv Expedition 9, 1990 (SU015548/110331)	Pacific Ocean	    160.0000 	   29.0000 	5.0000 	DVNG	-	-	OCEAN	Priliv Expedition 9, 1990 (SU015548/110331)
+GMS90B	-	GMS90B	LC	SU	1990 Jan  1	1990 Feb  1	PASSAT	Passat Expedition 9, 1990 (99141925)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	1.0000 	GOIG	-	-	OCEAN	Passat Expedition 9, 1990 (99141925)
+GMS90C	-	GMS90C	LC	SU	1990 Jan 15	1990 Mar 15	SHIR	Shirshov Expedition 26, 1990 (SU016766)	Indian Ocean	     65.0000 	    6.0000 	5.0000 	DVNG	-	-	OCEAN	Shirshov Expedition 26, 1990 (SU016766)
+GMS90D	-	GMS90D	LC	SU	1990 Aug  1	1990 Dec 31	ZUB	Zubov Expedition 13, 1990	Atlantic Ocean	-	-	0.0000 	AANII	-	-	OCEAN	Zubov Expedition 13, 1990
+GMS90E	-	GMS90E	LC	SU	1990 Nov  1	1990 Nov 15	PASSAT	Passat Expedition 10, 1990	Atlantic Ocean	    -47.0000 	   43.0000 	5.0000 	GOIG	-	-	OCEAN	Passat Expedition 10, 1990
+GMS90F	-	GMS90F	LC	SU	1990 Dec 15	1991 Jan  1	BUGAEV	Bugaev Expedition 9, 1990 (SU012248)	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	5.0000 	GOIG	-	-	OCEAN	Bugaev Expedition 9, 1990 (SU012248)
+GMS90G	-	GMS90G	LC	SU	1990 Jan  1	1990 Feb  1	USHAKOV	Ushakov Expedition 15, 1989	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Ushakov Expedition 15, 1989
+GMS90H	-	GMS90H	LC	SU	1990 Feb  1	1990 Mar 15	KREN	Krenkel Expedition 20, 1990	Minia, Atlantic Ocean	    -35.0000 	   53.0000 	2.0000 	GOIG	-	-	OCEAN	Krenkel Expedition 20, 1990
+GMS91A	-	GMS91A	LC	SU	1991 Jul  1	1991 Oct 31	ZUB	Zubov Expedition 14, 1991	Caribbean and Equatorial Atlantic	-	-	0.0000 	AANII	-	-	OCEAN	Zubov Expedition 14, 1991
+NASA64	-	NASA64	LC	US	1964 Nov  1	1964 Nov 30	CVE-25	1964 Croatan MRF Expedition	Atlantic Ocean	    -75.0000 	   38.0000 	2.0000 	USN/NASA	-	-	OCEAN	1964 Croatan MRF Expedition
+NASA65	-	NASA65	LC	US	1965 Feb 15	1965 Apr 30	CVE-25	1965 Croatan MRF Expedition	Atlantic Ocean	    -75.0000 	   38.0000 	5.0000 	USN/NASA	-	-	OCEAN	1965 Croatan MRF Expedition
+USN49A	-	USN49A	LC	US	1949 Mar 15	1949 Mar 31	AVM1	APL Aerobee cruise	Pacific Ocean	    -88.4300 	  -11.1000 	0.0200 	USN	-	-	OCEAN	APL Aerobee cruise
+USN50A	-	USN50A	LC	US	1950 Jan 15	1950 Jan 31	AVM1	USS Norton Sound, 1950 Bering Sea expedition	Bering Sea	   -170.0000 	   58.0000 	9.0000 	APL	-	-	OCEAN	USS Norton Sound, 1950 Bering Sea expedition
+USN52A	-	USN52A	LC	US	1952 Aug 15	1952 Sep 15	WYG-279	Eastwind 1952 Arctic expedition	Arctic Ocean	    -68.4700 	   80.1000 	0.1000 	SUI	-	-	OCEAN	Eastwind 1952 Arctic expedition
+USN53A	-	USN53A	LC	US	1953 Jul 15	1953 Aug 15	AGB05	USS Staten Island, 1953 Arctic expedition (Operation MUSHRAT)	Atlantic Ocean	    -70.3700 	   42.4300 	0.0100 	SUI	-	-	OCEAN	USS Staten Island, 1953 Arctic expedition (Operation MUSHRAT)
+USN53B	-	USN53B	LC	US	1953 Aug 15	1953 Sep 15	WYG-279	USS Eastwind, 1953 Arctic expedition	Atlantic Ocean	    -55.0800 	   53.1000 	0.0100 	SUI	-	-	OCEAN	USS Eastwind, 1953 Arctic expedition
+USN54A	-	USN54A	LC	US	1954 Jul 15	1954 Jul 31	AGB-3	USS Eastwind, 1954 Arctic expedition	Atlantic Ocean	    -66.7000 	   42.1000 	0.0100 	SUI	-	-	OCEAN	USS Eastwind, 1954 Arctic expedition
+USN55A	-	USN55A	LC	US	1955 Sep 15	1955 Oct 15	LSD-1	USS Staten Island, 1955 Arctic expedition	Atlantic Ocean	    -66.1800 	   42.6700 	0.0100 	SUI	-	-	OCEAN	USS Staten Island, 1955 Arctic expedition
+USN56A	-	USN56A	LC	US	1956 Jul 15	1956 Jul 31	LSD-18	1956 NRL Cruise (Operation San Diego High)	Pacific Ocean	   -121.5700 	   29.6800 	0.0200 	NRL	-	-	OCEAN	1956 NRL Cruise (Operation San Diego High)
+USN56B	-	USN56B	LC	US	1956 Oct 15	1956 Nov 15	LSD-14	USS Rushmore U. Michigan Cruise 1956	Atlantic Ocean	    -71.0000 	   40.0000 	0.5000 	USN/UMI	-	-	OCEAN	USS Rushmore U. Michigan Cruise 1956
+USN57A	-	USN57A	LC	US	1957 Aug  1	1957 Aug 20	LSD-29	1957 NRL USS Plymouth Rock Cruise, Atlantic Ocean	Atlantic Ocean	    -54.0000 	   55.0000 	0.0200 	USN	-	-	OCEAN	1957 NRL USS Plymouth Rock Cruise, Atlantic Ocean
+USN57B	-	USN57B	LC	US	1957 Sep 23	1957 Nov 10	AGB-4	1957 NRL USS Glacier cruise, Atlantic and Pacific Oceans	Atlantic and Pacific Oceans	     -0.9900 	    0.8300 	0.0200 	USN	-	-	OCEAN	1957 NRL USS Glacier cruise, Atlantic and Pacific Oceans
+USN58A	-	USN58A	LC	US	1958 Aug  1	1958 Sep 15	DD-843	USS Warrington, TF88 Argus cruise from Virginia to S Atlantic	Atlantic Ocean	-	-	0.0000 	USN	-	-	OCEAN	USS Warrington, TF88 Argus cruise from Virginia to S Atlantic
+USN58B	-	USN58B	LC	US	1958 Aug 15	1958 Sep 15	AVM1	USS Norton Sound, 1958 Argus expedition	Tristan de Cunha, Atlantic Ocean	    -11.5000 	  -38.5000 	0.1000 	USN	-	-	OCEAN	USS Norton Sound, 1958 Argus expedition
+USN58C	-	USN58C	LC	US	1958 Sep 15	1958 Oct 15	LSD-31	1958 Point Defiance Expedition, Danger Is., Pacific Ocean	Pacific Ocean	   -165.4800 	  -10.3300 	0.0100 	USN	-	-	OCEAN	1958 Point Defiance Expedition, Danger Is., Pacific Ocean
+USN65A	-	USN65A	LC	US	1965 Jan  1	1965 Jan 31	T-AGM-8	USNS Wheeling, 1965 Hydra-Iris SAA expedition	Atlantic Ocean	    -27.4200 	  -56.5300 	0.0200 	USN	-	-	OCEAN	USNS Wheeling, 1965 Hydra-Iris SAA expedition
+USN66A	-	USN66A	LC	US	1966 Feb  1	1966 Feb 15	RREC	Ship Sierra point, Feb 1966 [Unknown USN vessel maybe Range Rec.]	Atlantic Ocean	    -63.5000 	   26.6000 	0.1000 	USA	-	-	OCEAN	Ship Sierra point, Feb 1966 [Unknown USN vessel maybe Range Rec.]
+UNK	-	UNK	LS	EARTH	-	-	Unknown	Unknown Site	-	-	-	0.0000 	-	-	-	-       -	Unknown Site

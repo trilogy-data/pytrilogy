@@ -4,21 +4,11 @@ from pydantic import BaseModel, Field
 
 from trilogy.core.enums import IOType
 from trilogy.core.models.author import ConceptRef, HavingClause, WhereClause
-from trilogy.core.models.datasource import Address, Datasource
 
 
 class CopyQueryMixin(BaseModel):
     target: str
     target_type: IOType
-
-
-class MaterializedDataset(BaseModel):
-    address: Address
-
-
-class PersistQueryMixin(BaseModel):
-    output_to: MaterializedDataset
-    datasource: Datasource
 
 
 class SelectTypeMixin(BaseModel):

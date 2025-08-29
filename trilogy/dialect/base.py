@@ -72,14 +72,16 @@ from trilogy.core.statements.author import (
     RowsetDerivationStatement,
     SelectStatement,
     ShowStatement,
+    ValidateStatement,
 )
 from trilogy.core.statements.execute import (
-    ProcessedCopyStatement,
+    PROCESSED_STATEMENT_TYPES,
     ProcessedQuery,
     ProcessedQueryPersist,
     ProcessedRawSQLStatement,
     ProcessedShowStatement,
     ProcessedStaticValueOutput,
+    ProcessedValidateStatement,
 )
 from trilogy.core.utility import safe_quote
 from trilogy.dialect.common import render_join, render_unnest
@@ -1025,21 +1027,11 @@ class BaseDialect:
             | RawSQLStatement
             | MergeStatementV2
             | CopyStatement
+            | ValidateStatement
         ],
         hooks: Optional[List[BaseHook]] = None,
-    ) -> List[
-        ProcessedQuery
-        | ProcessedQueryPersist
-        | ProcessedShowStatement
-        | ProcessedRawSQLStatement
-    ]:
-        output: List[
-            ProcessedQuery
-            | ProcessedQueryPersist
-            | ProcessedShowStatement
-            | ProcessedRawSQLStatement
-            | ProcessedCopyStatement
-        ] = []
+    ) -> List[PROCESSED_STATEMENT_TYPES]:
+        output: List[PROCESSED_STATEMENT_TYPES] = []
         for statement in statements:
             if isinstance(statement, PersistStatement):
                 if hooks:
@@ -1089,10 +1081,39 @@ class BaseDialect:
                     output.append(
                         self.create_show_output(environment, statement.content)
                     )
+                elif isinstance(statement.content, ValidateStatement):
+                    output.append(
+                        ProcessedShowStatement(
+                            output_columns=[
+                                environment.concepts[
+                                    DEFAULT_CONCEPTS["label"].address
+                                ].reference,
+                                environment.concepts[
+                                    DEFAULT_CONCEPTS["query_text"].address
+                                ].reference,
+                                environment.concepts[
+                                    DEFAULT_CONCEPTS["expected"].address
+                                ].reference,
+                            ],
+                            output_values=[
+                                ProcessedValidateStatement(
+                                    scope=statement.content.scope,
+                                    targets=statement.content.targets,
+                                )
+                            ],
+                        )
+                    )
                 else:
                     raise NotImplementedError(type(statement.content))
             elif isinstance(statement, RawSQLStatement):
                 output.append(ProcessedRawSQLStatement(text=statement.text))
+            elif isinstance(statement, ValidateStatement):
+                output.append(
+                    ProcessedValidateStatement(
+                        scope=statement.scope,
+                        targets=statement.targets,
+                    )
+                )
             elif isinstance(
                 statement,
                 (
@@ -1111,17 +1132,15 @@ class BaseDialect:
 
     def compile_statement(
         self,
-        query: (
-            ProcessedQuery
-            | ProcessedQueryPersist
-            | ProcessedShowStatement
-            | ProcessedRawSQLStatement
-        ),
+        query: PROCESSED_STATEMENT_TYPES,
     ) -> str:
         if isinstance(query, ProcessedShowStatement):
             return ";\n".join([str(x) for x in query.output_values])
         elif isinstance(query, ProcessedRawSQLStatement):
             return query.text
+
+        elif isinstance(query, ProcessedValidateStatement):
+            return "select 1;"
 
         recursive = any(isinstance(x, RecursiveCTE) for x in query.ctes)
 
@@ -1139,7 +1158,7 @@ class BaseDialect:
         if CONFIG.strict_mode and INVALID_REFERENCE_STRING(1) in final:
             raise ValueError(
                 f"Invalid reference string found in query: {final}, this should never"
-                " occur. Please create a GitHub issue to report this."
+                " occur. Please create an issue to report this."
             )
         logger.info(f"{LOGGER_PREFIX} Compiled query: {final}")
         return final

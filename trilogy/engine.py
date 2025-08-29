@@ -1,21 +1,27 @@
-from typing import Any, Protocol
+from typing import Any, Generator, List, Optional, Protocol
 
 from sqlalchemy.engine import Connection, CursorResult, Engine
 
 from trilogy.core.models.environment import Environment
 
 
-class EngineResult(Protocol):
-    pass
+class ResultProtocol(Protocol):
 
-    def fetchall(self) -> list[tuple]:
-        pass
+    def fetchall(self) -> List[Any]: ...
+
+    def keys(self) -> List[str]: ...
+
+    def fetchone(self) -> Optional[Any]: ...
+
+    def fetchmany(self, size: int) -> List[Any]: ...
+
+    def __iter__(self) -> Generator[Any, None, None]: ...
 
 
 class EngineConnection(Protocol):
     pass
 
-    def execute(self, statement: str, parameters: Any | None = None) -> EngineResult:
+    def execute(self, statement: str, parameters: Any | None = None) -> ResultProtocol:
         pass
 
     def commit(self):
@@ -39,12 +45,24 @@ class ExecutionEngine(Protocol):
 
 
 ### Begin default SQLAlchemy implementation
-class SqlAlchemyResult(EngineResult):
+class SqlAlchemyResult:
     def __init__(self, result: CursorResult):
         self.result = result
 
     def fetchall(self):
         return self.result.fetchall()
+
+    def keys(self):
+        return self.result.keys()
+
+    def fetchone(self):
+        return self.result.fetchone()
+
+    def fetchmany(self, size: int):
+        return self.result.fetchmany(size)
+
+    def __iter__(self):
+        return iter(self.result)
 
 
 class SqlAlchemyConnection(EngineConnection):

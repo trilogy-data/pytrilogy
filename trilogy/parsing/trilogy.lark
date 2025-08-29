@@ -12,6 +12,7 @@
     | copy_statement
     | merge_statement
     | rawsql_statement
+    | validate_statement
     
     _TERMINATOR:  ";"i /\s*/
     
@@ -81,8 +82,11 @@
     // raw sql statement
     rawsql_statement: "raw_sql"i "(" MULTILINE_STRING ")"
 
+    // validate_statement
 
+    VALIDATE_SCOPE: "concepts"i | "datasources"i 
 
+    validate_statement: ("validate"i "all"i) | ( "validate"i VALIDATE_SCOPE (IDENTIFIER ("," IDENTIFIER)* ","? )? )
     // copy statement
 
     COPY_TYPE: "csv"i
@@ -325,8 +329,8 @@
     _GROUP.1: "group("i
     fgroup: _GROUP expr ")" aggregate_over?
 
-    //by:
-    aggregate_by: "group" IDENTIFIER "BY"i (IDENTIFIER ",")* IDENTIFIER
+    //by:  
+    aggregate_by: /(group)\s+([a-zA-Z\_][a-zA-Z0-9\_\.]*)/i "BY"i (IDENTIFIER ",")* IDENTIFIER
 
     //aggregates
     _COUNT.1: "count("i
@@ -455,7 +459,7 @@
     DATASOURCES: "DATASOURCES"i
     show_category: CONCEPTS | DATASOURCES
 
-    show_statement: "show"i ( show_category | select_statement | persist_statement) _TERMINATOR
+    show_statement: "show"i ( show_category | validate_statement | select_statement | persist_statement) _TERMINATOR
     COMMENT: /#.*(\n|$)/ |  /\/\/.*\n/  
     %import common.WS
     %ignore WS

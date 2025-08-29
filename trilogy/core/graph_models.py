@@ -105,6 +105,10 @@ class ReferenceGraph(nx.DiGraph):
                 self.datasources[node_name] = attr["datasource"]
         super().add_node(node_name, **attr)
 
+    def add_datasource_node(self, node_name, datasource):
+        self.datasources[node_name] = datasource
+        super().add_node(node_name, datasource=datasource)
+
     def add_edge(self, u_of_edge, v_of_edge, fast: bool = False, **attr):
         if fast:
             return super().add_edge(u_of_edge, v_of_edge, **attr)

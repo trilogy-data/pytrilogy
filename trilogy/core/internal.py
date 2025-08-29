@@ -64,4 +64,22 @@ DEFAULT_CONCEPTS = {
         granularity=Granularity.SINGLE_ROW,
         derivation=Derivation.CONSTANT,
     ),
+    "label": Concept(
+        name="label",
+        namespace=INTERNAL_NAMESPACE,
+        datatype=DataType.STRING,
+        purpose=Purpose.KEY,
+        grain=Grain(),
+        granularity=Granularity.SINGLE_ROW,
+        derivation=Derivation.CONSTANT,
+    ),
+    "expected": Concept(
+        name="expected_value",
+        namespace=INTERNAL_NAMESPACE,
+        datatype=DataType.STRING,
+        purpose=Purpose.KEY,
+        grain=Grain(),
+        granularity=Granularity.SINGLE_ROW,
+        derivation=Derivation.CONSTANT,
+    ),
 }

@@ -38,6 +38,7 @@ from trilogy.core.enums import (
     Ordering,
     Purpose,
     ShowCategory,
+    ValidationScope,
     WindowOrder,
     WindowType,
 )
@@ -129,6 +130,7 @@ from trilogy.core.statements.author import (
     SelectStatement,
     ShowStatement,
     TypeDeclaration,
+    ValidateStatement,
 )
 from trilogy.parsing.common import (
     align_item_to_concept,
@@ -819,7 +821,9 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def aggregate_by(self, meta: Meta, args):
-        args = [self.environment.concepts[a] for a in args]
+        base = args[0]
+        b_concept = base.value.split(" ")[-1]
+        args = [self.environment.concepts[a] for a in [b_concept] + args[1:]]
         return self.function_factory.create_function(args, FunctionType.GROUP, meta)
 
     def whole_grain_clause(self, args) -> WholeGrainWrapper:
@@ -989,6 +993,25 @@ class ParseToObjects(Transformer):
 
     def over_list(self, args):
         return [x for x in args]
+
+    def VALIDATION_SCOPE(self, args) -> ValidationScope:
+        return ValidationScope(args.lower())
+
+    @v_args(meta=True)
+    def validate_statement(self, meta: Meta, args) -> ValidateStatement:
+        if len(args) == 2:
+            scope = args[0]
+            targets = args[1]
+        elif len(args) == 0:
+            scope = ValidationScope.ALL
+            targets = None
+        else:
+            scope = args[0]
+            targets = None
+        return ValidateStatement(
+            scope=scope,
+            targets=targets,
+        )
 
     @v_args(meta=True)
     def merge_statement(self, meta: Meta, args) -> MergeStatementV2 | None:
@@ -2232,6 +2255,7 @@ def parse_text(
         | PersistStatement
         | ShowStatement
         | RawSQLStatement
+        | ValidateStatement
         | None
     ],
 ]:

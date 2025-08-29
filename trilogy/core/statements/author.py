@@ -12,6 +12,7 @@ from trilogy.core.enums import (
     IOType,
     Modifier,
     ShowCategory,
+    ValidationScope,
 )
 from trilogy.core.models.author import (
     AggregateWrapper,
@@ -147,11 +148,13 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                     continue
                 if CONFIG.parsing.select_as_definition and not environment.frozen:
                     if x.concept.address not in environment.concepts:
-                        environment.add_concept(x.content.output)
+                        environment.add_concept(x.content.output, add_derived=False)
                     elif x.concept.address in environment.concepts:
                         version = environment.concepts[x.concept.address]
                         if version.metadata.concept_source == ConceptSource.SELECT:
-                            environment.add_concept(x.content.output, force=True)
+                            environment.add_concept(
+                                x.content.output, force=True, add_derived=False
+                            )
                 x.content.output = x.content.output.set_select_grain(
                     output.grain, environment
                 )
@@ -378,6 +381,13 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             output = output.union(select.hidden_components)
         return output
 
+    @property
+    def locally_derived(self) -> set[str]:
+        locally_derived: set[str] = set([x.address for x in self.derived_concepts])
+        for select in self.selects:
+            locally_derived = locally_derived.union(select.locally_derived)
+        return locally_derived
+
 
 class RowsetDerivationStatement(HasUUID, BaseModel):
     name: str
@@ -428,8 +438,13 @@ class PersistStatement(HasUUID, BaseModel):
         return self.datasource.address
 
 
+class ValidateStatement(BaseModel):
+    scope: ValidationScope
+    targets: Optional[List[str]] = None  # list of identifiers
+
+
 class ShowStatement(BaseModel):
-    content: SelectStatement | PersistStatement | ShowCategory
+    content: SelectStatement | PersistStatement | ValidateStatement | ShowCategory
 
 
 class Limit(BaseModel):
