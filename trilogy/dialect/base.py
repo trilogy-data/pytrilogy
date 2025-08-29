@@ -1081,6 +1081,28 @@ class BaseDialect:
                     output.append(
                         self.create_show_output(environment, statement.content)
                     )
+                elif isinstance(statement.content, ValidateStatement):
+                    output.append(
+                        ProcessedShowStatement(
+                            output_columns=[
+                                environment.concepts[
+                                    DEFAULT_CONCEPTS["label"].address
+                                ].reference,
+                                environment.concepts[
+                                    DEFAULT_CONCEPTS["query_text"].address
+                                ].reference,
+                                environment.concepts[
+                                    DEFAULT_CONCEPTS["expected"].address
+                                ].reference,
+                            ],
+                            output_values=[
+                                ProcessedValidateStatement(
+                                    scope=statement.content.scope,
+                                    targets=statement.content.targets,
+                                )
+                            ],
+                        )
+                    )
                 else:
                     raise NotImplementedError(type(statement.content))
             elif isinstance(statement, RawSQLStatement):
@@ -1136,7 +1158,7 @@ class BaseDialect:
         if CONFIG.strict_mode and INVALID_REFERENCE_STRING(1) in final:
             raise ValueError(
                 f"Invalid reference string found in query: {final}, this should never"
-                " occur. Please create a GitHub issue to report this."
+                " occur. Please create an issue to report this."
             )
         logger.info(f"{LOGGER_PREFIX} Compiled query: {final}")
         return final

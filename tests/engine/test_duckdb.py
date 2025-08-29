@@ -1745,3 +1745,37 @@ having value = 2;
 
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1
+
+
+def test_show_validate():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    test = """
+key x int;
+
+datasource example (
+x)
+grain (x)
+query '''
+select 1 as x''';
+
+where x = 1
+SELECT unnest([1,2,3,4]) as value, 'example' as dim
+having value = 2;
+"""
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+
+    test = """validate all;"""
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 1
+    for row in results:
+        assert row.ran is True, str(row)
+
+    test = """show validate all;"""
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    # this has to include a DS query
+    # that inline validation doesn't need to run
+    assert len(results) == 2
+    for row in results:
+        assert row.ran is False or row.check_type == "logical"

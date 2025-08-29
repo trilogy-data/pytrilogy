@@ -438,13 +438,13 @@ class PersistStatement(HasUUID, BaseModel):
         return self.datasource.address
 
 
-class ShowStatement(BaseModel):
-    content: SelectStatement | PersistStatement | ShowCategory
-
-
 class ValidateStatement(BaseModel):
     scope: ValidationScope
     targets: Optional[List[str]] = None  # list of identifiers
+
+
+class ShowStatement(BaseModel):
+    content: SelectStatement | PersistStatement | ValidateStatement | ShowCategory
 
 
 class Limit(BaseModel):

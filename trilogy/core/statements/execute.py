@@ -84,7 +84,13 @@ class ProcessedStaticValueOutput:
 class ProcessedShowStatement:
     output_columns: List[ConceptRef]
     output_values: List[
-        Union[BuildConcept, BuildDatasource, ProcessedQuery, ProcessedStaticValueOutput]
+        Union[
+            BuildConcept,
+            BuildDatasource,
+            ProcessedQuery,
+            ProcessedValidateStatement,
+            ProcessedStaticValueOutput,
+        ]
     ]
 
 

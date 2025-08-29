@@ -1,7 +1,9 @@
+from dataclasses import dataclass
 from enum import Enum
 
 from trilogy import Environment
 from trilogy.authoring import ConceptRef
+from trilogy.core.exceptions import ModelValidationError
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
@@ -14,6 +16,21 @@ from trilogy.core.models.execute import (
     QueryDatasource,
 )
 from trilogy.core.statements.execute import ProcessedQuery
+
+
+class ExpectationType(Enum):
+    LOGICAL = "logical"
+    ROWCOUNT = "rowcount"
+    DATA_TYPE_LIST = "data_type_list"
+
+
+@dataclass
+class ValidationTest:
+    check_type: ExpectationType
+    query: str | None = None
+    expected: str | None = None
+    result: ModelValidationError | None = None
+    ran: bool = True
 
 
 class ValidationType(Enum):

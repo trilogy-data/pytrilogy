@@ -459,7 +459,7 @@
     DATASOURCES: "DATASOURCES"i
     show_category: CONCEPTS | DATASOURCES
 
-    show_statement: "show"i ( show_category | select_statement | persist_statement) _TERMINATOR
+    show_statement: "show"i ( show_category | validate_statement | select_statement | persist_statement) _TERMINATOR
     COMMENT: /#.*(\n|$)/ |  /\/\/.*\n/  
     %import common.WS
     %ignore WS

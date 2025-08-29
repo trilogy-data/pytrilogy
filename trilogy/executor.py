@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any, Generator, List, Optional
 
 from sqlalchemy import text
-from sqlalchemy.engine import CursorResult
 
 from trilogy.constants import MagicConstants, Rendering, logger
 from trilogy.core.enums import FunctionType, Granularity, IOType, ValidationScope
@@ -35,6 +34,9 @@ from trilogy.core.statements.execute import (
     ProcessedStaticValueOutput,
     ProcessedValidateStatement,
 )
+from trilogy.core.validation.common import (
+    ValidationTest,
+)
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects
 from trilogy.engine import ExecutionEngine, ResultProtocol
@@ -47,6 +49,16 @@ from trilogy.render import get_dialect_generator
 class MockResult(ResultProtocol):
     values: list[Any]
     columns: list[str]
+
+    def __init__(self, values: list[Any], columns: list[str]):
+        processed = []
+        for x in values:
+            if isinstance(x, dict):
+                processed.append(MockResultRow(x))
+            else:
+                processed.append(x)
+        self.columns = columns
+        self.values = processed
 
     def __iter__(self):
         while self.values:
@@ -67,6 +79,25 @@ class MockResult(ResultProtocol):
 
     def keys(self):
         return self.columns
+
+
+@dataclass
+class MockResultRow:
+    values: dict[str, Any]
+
+    def __str__(self) -> str:
+        return str(self.values)
+
+    def __repr__(self) -> str:
+        return repr(self.values)
+
+    def __getattr__(self, name: str) -> Any:
+        if name in self.values:
+            return self.values[name]
+        return super().__getattribute__(name)
+
+    def __getitem__(self, key: str) -> Any:
+        return self.values[key]
 
 
 def generate_result_set(
@@ -180,10 +211,28 @@ class Executor(object):
             ],
         )
 
+    def _raw_validation_to_result(
+        self, raw: list[ValidationTest]
+    ) -> Optional[ResultProtocol]:
+        if not raw:
+            return None
+        output = []
+        for row in raw:
+            output.append(
+                {
+                    "check_type": row.check_type.value,
+                    "expected": row.expected,
+                    "result": str(row.result) if row.result else None,
+                    "ran": row.ran,
+                    "query": row.query if row.query else "",
+                }
+            )
+        return MockResult(output, ["check_type", "expected", "result", "ran", "query"])
+
     @execute_query.register
     def _(self, query: ProcessedValidateStatement) -> ResultProtocol | None:
-        self.validate_environment(query.scope, query.targets)
-        return MockResult([{"status": "Validation completed"}], ["status"])
+        results = self.validate_environment(query.scope, query.targets)
+        return self._raw_validation_to_result(results)
 
     @execute_query.register
     def _(self, query: ImportStatement) -> ResultProtocol | None:
@@ -235,7 +284,7 @@ class Executor(object):
     @execute_query.register
     def _(self, query: ProcessedCopyStatement) -> ResultProtocol | None:
         sql = self.generator.compile_statement(query)
-        output: CursorResult = self.execute_raw_sql(
+        output: ResultProtocol = self.execute_raw_sql(
             sql, local_concepts=query.local_concepts
         )
         if query.target_type == IOType.CSV:
@@ -276,8 +325,6 @@ class Executor(object):
         for statement in sql:
             compiled_sql = self.generator.compile_statement(statement)
             output.append(compiled_sql)
-
-        output.append(compiled_sql)
         return output
 
     @generate_sql.register  # type: ignore
@@ -475,6 +522,17 @@ class Executor(object):
                                 [self.generator.compile_statement(x)],
                             )
                         )
+                    elif isinstance(x, ProcessedValidateStatement):
+                        raw = self.validate_environment(
+                            x.scope, x.targets, generate_only=True
+                        )
+                        results = self._raw_validation_to_result(raw)
+                        if results:
+                            output.append(results)
+                    else:
+                        raise NotImplementedError(
+                            f"Cannot show type {type(x)} in show statement"
+                        )
                 continue
             if non_interactive:
                 if not isinstance(
@@ -498,7 +556,10 @@ class Executor(object):
         self,
         scope: ValidationScope = ValidationScope.ALL,
         targets: Optional[List[str]] = None,
-    ):
+        generate_only: bool = False,
+    ) -> list[ValidationTest]:
         from trilogy.core.validation.environment import validate_environment
 
-        validate_environment(self.environment, self, scope, targets)
+        return validate_environment(
+            self.environment, self, scope, targets, generate_only
+        )

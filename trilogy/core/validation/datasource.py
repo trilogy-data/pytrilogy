@@ -17,7 +17,7 @@ from trilogy.core.models.build import (
     BuildDatasource,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.validation.common import easy_query
+from trilogy.core.validation.common import ExpectationType, ValidationTest, easy_query
 from trilogy.utility import unique
 
 
@@ -59,9 +59,12 @@ def type_check(
 
 
 def validate_datasource(
-    datasource: BuildDatasource, build_env: BuildEnvironment, exec: Executor
-) -> list[DatasourceModelValidationError]:
-    exceptions = []
+    datasource: BuildDatasource,
+    build_env: BuildEnvironment,
+    exec: Executor,
+    generate_only: bool = False,
+) -> list[ValidationTest]:
+    results: list[ValidationTest] = []
     # we might have merged concepts, where both wil lmap out to the same
     unique_outputs = unique(
         [build_env.concepts[col.concept.address] for col in datasource.columns],
@@ -74,16 +77,34 @@ def validate_datasource(
         limit=100,
     )
     type_sql = exec.generate_sql(type_query)[-1]
-    try:
-        rows = exec.execute_raw_sql(type_sql).fetchall()
-    except Exception as e:
-        exceptions.append(
-            DatasourceModelValidationError(
-                f"Datasource {datasource.name} failed validation. Error executing type query: {e}"
+    rows = []
+    if not generate_only:
+        try:
+            rows = exec.execute_raw_sql(type_sql).fetchall()
+        except Exception as e:
+            results.append(
+                ValidationTest(
+                    query=type_sql,
+                    check_type=ExpectationType.LOGICAL,
+                    expected="valid_sql",
+                    result=DatasourceModelValidationError(
+                        f"Datasource {datasource.name} failed validation. Error executing type query: {e}"
+                    ),
+                    ran=True,
+                )
+            )
+            return results
+    else:
+        results.append(
+            ValidationTest(
+                query=type_sql,
+                check_type=ExpectationType.LOGICAL,
+                expected="datatype_match",
+                result=None,
+                ran=False,
             )
         )
-        return exceptions
-
+        return results
     failures: list[
         tuple[
             str,
@@ -116,9 +137,15 @@ def validate_datasource(
         return f"Concept {failure[0]} value '{failure[1]}' does not conform to expected type {str(failure[2])} (nullable={failure[3]})"
 
     if failures:
-        exceptions.append(
-            DatasourceModelValidationError(
-                f"Datasource {datasource.name} failed validation. Found rows that do not conform to types: {[format_failure(failure) for failure in failures]}"
+        results.append(
+            ValidationTest(
+                query=None,
+                check_type=ExpectationType.LOGICAL,
+                expected="datatype_match",
+                ran=True,
+                result=DatasourceModelValidationError(
+                    f"Datasource {datasource.name} failed validation. Found rows that do not conform to types: {[format_failure(failure) for failure in failures]}",
+                ),
             )
         )
 
@@ -133,14 +160,32 @@ def validate_datasource(
             operator=ComparisonOperator.GT,
         ),
     )
-    sql = exec.generate_sql(query)[-1]
-
-    rows = exec.execute_raw_sql(sql).fetchmany(10)
-    if rows:
-        exceptions.append(
-            DatasourceModelValidationError(
-                f"Datasource {datasource.name} failed validation. Found rows that do not conform to grain: {rows}"
+    if generate_only:
+        results.append(
+            ValidationTest(
+                query=exec.generate_sql(query)[-1],
+                check_type=ExpectationType.ROWCOUNT,
+                expected="0",
+                result=None,
+                ran=False,
             )
         )
 
-    return exceptions
+    else:
+        sql = exec.generate_sql(query)[-1]
+
+        rows = exec.execute_raw_sql(sql).fetchmany(10)
+        if rows:
+            results.append(
+                ValidationTest(
+                    query=sql,
+                    check_type=ExpectationType.ROWCOUNT,
+                    expected="0",
+                    result=DatasourceModelValidationError(
+                        f"Datasource {datasource.name} failed validation. Found rows that do not conform to grain: {rows}"
+                    ),
+                    ran=True,
+                )
+            )
+
+    return results
