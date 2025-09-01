@@ -240,6 +240,7 @@ class FunctionType(Enum):
     # CONSTANTS
     CURRENT_DATE = "current_date"
     CURRENT_DATETIME = "current_datetime"
+    CURRENT_TIMESTAMP = "current_timestamp"
 
 
 class FunctionClass(Enum):

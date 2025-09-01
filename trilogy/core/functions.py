@@ -380,7 +380,12 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     ),
     FunctionType.CURRENT_DATETIME: FunctionConfig(
         output_purpose=Purpose.CONSTANT,
-        output_type=DataType.DATE,
+        output_type=DataType.DATETIME,
+        arg_count=0,
+    ),
+    FunctionType.CURRENT_TIMESTAMP: FunctionConfig(
+        output_purpose=Purpose.CONSTANT,
+        output_type=DataType.TIMESTAMP,
         arg_count=0,
     ),
     FunctionType.BOOL: FunctionConfig(

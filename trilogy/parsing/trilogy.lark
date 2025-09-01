@@ -266,10 +266,12 @@
     //constant
     CURRENT_DATE.1: /current_date\(\)/
     CURRENT_DATETIME.1: /current_datetime\(\)/
+    CURRENT_TIMESTAMP.1: /current_timestamp\(\)/
     fcurrent_date: CURRENT_DATE
     fcurrent_datetime: CURRENT_DATETIME
+    fcurrent_timestamp: CURRENT_TIMESTAMP
 
-    _constant_functions: fcurrent_date | fcurrent_datetime
+    _constant_functions: fcurrent_date | fcurrent_datetime | fcurrent_timestamp
     
     //string
     _LIKE.1: "like("i

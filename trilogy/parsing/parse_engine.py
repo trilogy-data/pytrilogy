@@ -45,7 +45,6 @@ from trilogy.core.enums import (
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.functions import (
     CurrentDate,
-    CurrentDatetime,
     FunctionFactory,
 )
 from trilogy.core.internal import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
@@ -2078,7 +2077,15 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fcurrent_datetime(self, meta, args):
-        return CurrentDatetime([])
+        return self.function_factory.create_function(
+            args=[], operator=FunctionType.CURRENT_DATETIME, meta=meta
+        )
+
+    @v_args(meta=True)
+    def fcurrent_timestamp(self, meta, args):
+        return self.function_factory.create_function(
+            args=[], operator=FunctionType.CURRENT_TIMESTAMP, meta=meta
+        )
 
     @v_args(meta=True)
     def fnot(self, meta, args):

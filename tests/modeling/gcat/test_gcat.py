@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from trilogy import Dialects, Environment
+from trilogy.core.models.core import DataType
 from trilogy.hooks import DebuggingHook
 
 ROOT = Path(__file__).parent
@@ -182,6 +183,7 @@ def test_environment_cleanup():
         SELECT launch_count, 
         count(site.state_code) as countries, 
         current_datetime() as datetime_function,
+        current_timestamp() as timestamp_function,
         date_diff(min(launch_date), current_date(), year) as launch_days, 
         struct( first_launch -> min(launch_date), last_launch -> max(launch_date)) as launch_date_range,
         min(launch_date) as min_date;
@@ -189,6 +191,11 @@ def test_environment_cleanup():
     )
 
     query = queries[-1]
+    assert "local.datetime_function" in query.locally_derived
+    assert (
+        base.environment.concepts["local.datetime_function"].datatype
+        == DataType.DATETIME
+    )
     for c in query.locally_derived:
         base.environment.remove_concept(c)
     post_concepts = set(base.environment.concepts.keys())
