@@ -428,7 +428,7 @@
     map_lit: "{" (literal ":" literal ",")* literal ":" literal ","? "}"
 
     _STRUCT.1: "struct("i
-    struct_lit: _STRUCT (IDENTIFIER "=" literal ",")* IDENTIFIER "=" literal ","? ")"
+    struct_lit: _STRUCT (IDENTIFIER "->" expr ",")* IDENTIFIER "->" expr ","? ")"
     
     !bool_lit: "True"i | "False"i
 

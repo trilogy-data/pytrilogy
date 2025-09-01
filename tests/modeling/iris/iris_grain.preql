@@ -2,7 +2,7 @@ import std.geography;
 
 key sample_id int;
 
-key species string;
+key species int;
 key country string::country;
 key region string;
 key climate_zone string;
@@ -10,13 +10,8 @@ property <sample_id>.mean_annual_temp_C float;
 property <sample_id>.mean_annual_precip_mm int;
 property <sample_id>.latitude float::latitude;
 property <sample_id>.longitude float::longitude;
-property <sample_id>.refresh_time datetime;
 
 property <sample_id>.refresh_time datetime;
-property <sample_id>.refresh_date date;	
-
-property <sample_id>.map_string_int map<string, int>;
-property <sample_id>.array_int array<int>;
 
 datasource genus_info (
 	species,
@@ -29,9 +24,7 @@ datasource genus_info (
 	longitude,
 	sample_id,
     current_datetime():refresh_time,
-    current_date():refresh_date,
-	raw('''[1,2,3]'''):array_int,
-	raw('''MAP(['key1', 'key2', 'key3'], [10, 20, 30])'''):map_string_int,
+
 )
-grain (sample_id)
+grain (species)
 address genus_info;

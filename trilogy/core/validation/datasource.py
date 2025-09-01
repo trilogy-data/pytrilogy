@@ -1,3 +1,4 @@
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -46,9 +47,9 @@ def type_check(
     if target_type == DataType.BOOL:
         return isinstance(input, bool)
     if target_type == DataType.DATE:
-        return isinstance(input, str)  # TODO: improve date handling
+        return isinstance(input, date)
     if target_type == DataType.DATETIME:
-        return isinstance(input, str)  # TODO: improve datetime handling
+        return isinstance(input, datetime)
     if target_type == DataType.ARRAY or isinstance(target_type, ArrayType):
         return isinstance(input, list)
     if target_type == DataType.MAP or isinstance(target_type, MapType):
@@ -88,7 +89,7 @@ def validate_datasource(
                     check_type=ExpectationType.LOGICAL,
                     expected="valid_sql",
                     result=DatasourceModelValidationError(
-                        f"Datasource {datasource.name} failed validation. Error executing type query: {e}"
+                        f"Datasource {datasource.name} failed validation. Error executing type query {type_sql}: {e}"
                     ),
                     ran=True,
                 )

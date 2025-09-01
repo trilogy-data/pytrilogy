@@ -312,6 +312,10 @@ def generate_related_concepts(
                 ),
                 lineage=AttrAccess([concept.reference, key], environment=environment),
                 grain=concept.grain,
+                metadata=Metadata(
+                    concept_source=ConceptSource.AUTO_DERIVED,
+                ),
+                keys=concept.keys,
             )
             environment.add_concept(auto, meta=meta)
             if isinstance(value, Concept):

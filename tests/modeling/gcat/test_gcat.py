@@ -181,7 +181,9 @@ def test_environment_cleanup():
         
         SELECT launch_count, 
         count(site.state_code) as countries, 
+        current_datetime() as datetime_function,
         date_diff(min(launch_date), current_date(), year) as launch_days, 
+        struct( first_launch -> min(launch_date), last_launch -> max(launch_date)) as launch_date_range,
         min(launch_date) as min_date;
         """
     )

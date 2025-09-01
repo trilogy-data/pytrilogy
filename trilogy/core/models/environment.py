@@ -593,8 +593,9 @@ class Environment(BaseModel):
         remove_related_concepts(c_instance, self)
         if address in self.concepts:
             del self.concepts[address]
-            # self.gen_concept_list_caches()
             return True
+        if address in self.alias_origin_lookup:
+            del self.alias_origin_lookup[address]
 
         return False
 
