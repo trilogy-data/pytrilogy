@@ -83,21 +83,27 @@ class MockResult(ResultProtocol):
 
 @dataclass
 class MockResultRow:
-    values: dict[str, Any]
+    _values: dict[str, Any]
 
     def __str__(self) -> str:
-        return str(self.values)
+        return str(self._values)
 
     def __repr__(self) -> str:
-        return repr(self.values)
+        return repr(self._values)
 
     def __getattr__(self, name: str) -> Any:
-        if name in self.values:
-            return self.values[name]
+        if name in self._values:
+            return self._values[name]
         return super().__getattribute__(name)
 
     def __getitem__(self, key: str) -> Any:
-        return self.values[key]
+        return self._values[key]
+
+    def values(self):
+        return self._values.values()
+
+    def keys(self):
+        return self._values.keys()
 
 
 def generate_result_set(

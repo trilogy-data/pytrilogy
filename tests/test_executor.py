@@ -2,6 +2,7 @@ from pathlib import Path
 
 from trilogy import Dialects, parse
 from trilogy.core.models.environment import Environment
+from trilogy.executor import MockResult, MockResultRow
 
 
 def test_file_parsing():
@@ -30,3 +31,19 @@ RAW_SQL('''select 1 ''');
     execs = Dialects.DUCK_DB.default_executor(environment=env)
     for q in queries:
         execs.execute_query(q)
+
+
+def test_mock_result():
+    result = MockResult(
+        columns=["a", "b", "c"],
+        values=[
+            MockResultRow({"a": 1, "b": 2, "c": 3}),
+            MockResultRow({"a": 4, "b": 5, "c": 6}),
+        ],
+    )
+    assert result.columns == ["a", "b", "c"]
+
+    for row in result:
+        assert isinstance(row, MockResultRow)
+        assert set(result.keys()) == {"a", "b", "c"}
+        assert all(isinstance(v, int) for v in row.values())
