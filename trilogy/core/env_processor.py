@@ -20,7 +20,8 @@ def add_concept(
     if node_name in seen:
         return
     seen.add(node_name)
-    g.add_node(concept)
+    g.concepts[node_name] = concept
+    g.add_node(node_name)
     if concept.concept_arguments:
         for source in concept.concept_arguments:
             if not isinstance(source, BuildConcept):
@@ -86,7 +87,8 @@ def generate_adhoc_graph(
         g.add_datasource_node(node, dataset)
         for concept in dataset.concepts:
             cnode = concept_to_node(concept)
-            g.add_node(concept)
+            g.concepts[cnode] = concept
+            g.add_node(cnode)
             if restrict_to_listed:
                 if cnode not in g.nodes:
                     continue
@@ -99,7 +101,8 @@ def generate_adhoc_graph(
 
             if concept != default:
                 dcnode = concept_to_node(default)
-                g.add_node(default)
+                g.concepts[dcnode] = default
+                g.add_node(dcnode)
                 g.add_edge(cnode, dcnode, fast=True)
                 g.add_edge(dcnode, cnode, fast=True)
     return g

@@ -93,16 +93,9 @@ class ReferenceGraph(nx.DiGraph):
     def add_node(self, node_for_adding, fast: bool = False, **attr):
         if fast:
             return super().add_node(node_for_adding, **attr)
-        if isinstance(node_for_adding, BuildConcept):
-            node_name = concept_to_node(node_for_adding)
-            self.concepts[node_name] = node_for_adding
-        elif isinstance(node_for_adding, BuildDatasource):
-            node_name = datasource_to_node(node_for_adding)
-            self.datasources[node_name] = node_for_adding
-        else:
-            node_name = node_for_adding
-            if attr.get("datasource"):
-                self.datasources[node_name] = attr["datasource"]
+        node_name = node_for_adding
+        if attr.get("datasource"):
+            self.datasources[node_name] = attr["datasource"]
         super().add_node(node_name, **attr)
 
     def add_datasource_node(self, node_name, datasource):
@@ -110,27 +103,4 @@ class ReferenceGraph(nx.DiGraph):
         super().add_node(node_name, datasource=datasource)
 
     def add_edge(self, u_of_edge, v_of_edge, fast: bool = False, **attr):
-        if fast:
-            return super().add_edge(u_of_edge, v_of_edge, **attr)
-        if isinstance(u_of_edge, BuildConcept):
-            orig = u_of_edge
-            u_of_edge = concept_to_node(u_of_edge)
-            if u_of_edge not in self.nodes:
-                self.add_node(orig)
-        elif isinstance(u_of_edge, BuildDatasource):
-            origd = u_of_edge
-            u_of_edge = datasource_to_node(u_of_edge)
-            if u_of_edge not in self.nodes:
-                self.add_node(origd)
-
-        if isinstance(v_of_edge, BuildConcept):
-            orig = v_of_edge
-            v_of_edge = concept_to_node(v_of_edge)
-            if v_of_edge not in self.nodes:
-                self.add_node(orig)
-        elif isinstance(v_of_edge, BuildDatasource):
-            origd = v_of_edge
-            v_of_edge = datasource_to_node(v_of_edge)
-            if v_of_edge not in self.nodes:
-                self.add_node(origd)
-        super().add_edge(u_of_edge, v_of_edge)
+        return super().add_edge(u_of_edge, v_of_edge, **attr)
