@@ -2,7 +2,7 @@ from pathlib import Path
 
 from trilogy import Dialects, parse
 from trilogy.core.models.environment import Environment
-from trilogy.executor import MockResult, MockResultRow
+from trilogy.dialect.metadata import MockResult, MockResultRow
 
 
 def test_file_parsing():
