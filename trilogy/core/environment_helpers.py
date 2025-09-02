@@ -292,6 +292,7 @@ def generate_related_concepts(
     if concept.datatype == DataType.DATE and add_derived:
         generate_date_concepts(concept, environment)
     elif concept.datatype == DataType.DATETIME and add_derived:
+
         generate_date_concepts(concept, environment)
         generate_datetime_concepts(concept, environment)
     elif concept.datatype == DataType.TIMESTAMP and add_derived:

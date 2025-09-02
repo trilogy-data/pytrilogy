@@ -150,7 +150,7 @@ def test_equals_comparison():
         where orb_pay is not null
 select
   site.state_code,
-
+  
   log(CASE WHEN sum(orb_pay)::int = 0 then 1 else sum(orb_pay)::int END, 10) as log_scale_orbital_tons,
   launch_count
 order by
@@ -180,10 +180,15 @@ def test_environment_cleanup():
     queries = base.parse_text(
         """
         
+auto datetime_function <- current_datetime();
+auto timestamp_function <- current_timestamp();
+auto date_function <- current_date();
+
         SELECT launch_count, 
         count(site.state_code) as countries, 
         current_datetime() as datetime_function,
         current_timestamp() as timestamp_function,
+        current_date() as date_function,
         date_diff(min(launch_date), current_date(), year) as launch_days, 
         struct( first_launch -> min(launch_date), last_launch -> max(launch_date)) as launch_date_range,
         min(launch_date) as min_date;
@@ -196,6 +201,7 @@ def test_environment_cleanup():
         base.environment.concepts["local.datetime_function"].datatype
         == DataType.DATETIME
     )
+    assert "local.datetime_function" in query.locally_derived
     for c in query.locally_derived:
         base.environment.remove_concept(c)
     post_concepts = set(base.environment.concepts.keys())
