@@ -216,7 +216,6 @@ def remove_key_concepts(concept: Concept, environment: Environment):
         address = concept.address + f".{suffix}"
         if address in environment.concepts:
             derived_concept = environment.concepts[address]
-            # Only remove if it was auto-derived from this concept
             if (
                 derived_concept.metadata
                 and derived_concept.metadata.concept_source
