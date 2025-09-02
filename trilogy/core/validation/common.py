@@ -27,7 +27,8 @@ class ExpectationType(Enum):
 @dataclass
 class ValidationTest:
     check_type: ExpectationType
-    query: str | None = None
+    raw_query: ProcessedQuery | None = None
+    generated_query: str | None = None
     expected: str | None = None
     result: ModelValidationError | None = None
     ran: bool = True

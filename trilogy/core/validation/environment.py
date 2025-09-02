@@ -12,12 +12,12 @@ from trilogy.parsing.common import function_to_concept
 
 def validate_environment(
     env: Environment,
-    exec: Executor,
     scope: ValidationScope = ValidationScope.ALL,
     targets: list[str] | None = None,
-    generate_only: bool = False,
+    exec: Executor | None = None,
 ) -> list[ValidationTest]:
     # avoid mutating the environment for validation
+    generate_only = exec is None
     env = env.duplicate()
     grain_check = function_to_concept(
         parent=Function(
@@ -51,13 +51,13 @@ def validate_environment(
         for datasource in build_env.datasources.values():
             if targets and datasource.name not in targets:
                 continue
-            results += validate_datasource(datasource, build_env, exec, generate_only)
+            results += validate_datasource(datasource, env, build_env, exec)
     if scope == ValidationScope.ALL or scope == ValidationScope.CONCEPTS:
 
         for bconcept in build_env.concepts.values():
             if targets and bconcept.address not in targets:
                 continue
-            results += validate_concept(bconcept, build_env, exec, generate_only)
+            results += validate_concept(bconcept, env, build_env, exec)
 
     # raise a nicely formatted union of all exceptions
     exceptions: list[ModelValidationError] = [e.result for e in results if e.result]

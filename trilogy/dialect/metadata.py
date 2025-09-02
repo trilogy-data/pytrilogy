@@ -15,6 +15,7 @@ from trilogy.core.statements.execute import (
     ProcessedValidateStatement,
 )
 from trilogy.core.validation.common import ValidationTest
+from trilogy.dialect.base import BaseDialect
 from trilogy.engine import ResultProtocol
 
 
@@ -158,36 +159,44 @@ def handle_processed_show_statement(
     return generate_result_set(query.output_columns, compiled_statements)
 
 
-def raw_validation_to_result(raw: list[ValidationTest]) -> Optional[MockResult]:
+def raw_validation_to_result(
+    raw: list[ValidationTest], generator: Optional[BaseDialect] = None
+) -> Optional[MockResult]:
     """Convert raw validation tests to mock result."""
     if not raw:
         return None
     output = []
     for row in raw:
+        if row.raw_query and generator and not row.generated_query:
+            try:
+                row.generated_query = generator.compile_statement(row.raw_query)
+            except Exception as e:
+                row.generated_query = f"Error generating query: {e}"
         output.append(
             {
                 "check_type": row.check_type.value,
                 "expected": row.expected,
                 "result": str(row.result) if row.result else None,
                 "ran": row.ran,
-                "query": row.query if row.query else "",
+                "query": row.generated_query if row.generated_query else "",
             }
         )
     return MockResult(output, ["check_type", "expected", "result", "ran", "query"])
 
 
 def handle_processed_validate_statement(
-    query: ProcessedValidateStatement, validate_environment_func
+    query: ProcessedValidateStatement, dialect: BaseDialect, validate_environment_func
 ) -> Optional[MockResult]:
     """Handle processed validate statements."""
     results = validate_environment_func(query.scope, query.targets)
-    return raw_validation_to_result(results)
+    return raw_validation_to_result(results, dialect)
 
 
 def handle_show_statement_outputs(
     statement: ProcessedShowStatement,
     compiled_statements: list[str],
-    validate_environment_func,
+    environment: Environment,
+    dialect: BaseDialect,
 ) -> list[MockResult]:
     """Handle show statement outputs without execution."""
     output = []
@@ -203,8 +212,10 @@ def handle_show_statement_outputs(
                 )
             )
         elif isinstance(x, ProcessedValidateStatement):
-            raw = validate_environment_func(x.scope, x.targets, generate_only=True)
-            results = raw_validation_to_result(raw)
+            from trilogy.core.validation.environment import validate_environment
+
+            raw = validate_environment(environment, x.scope, x.targets)
+            results = raw_validation_to_result(raw, dialect)
             if results:
                 output.append(results)
         else:

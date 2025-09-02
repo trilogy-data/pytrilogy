@@ -139,7 +139,9 @@ class Executor(object):
 
     @execute_query.register
     def _(self, query: ProcessedValidateStatement) -> ResultProtocol | None:
-        return handle_processed_validate_statement(query, self.validate_environment)
+        return handle_processed_validate_statement(
+            query, self.generator, self.validate_environment
+        )
 
     @execute_query.register
     def _(self, query: ImportStatement) -> ResultProtocol | None:
@@ -403,7 +405,8 @@ class Executor(object):
                         for x in statement.output_values
                         if isinstance(x, (ProcessedQuery, ProcessedQueryPersist))
                     ],
-                    self.validate_environment,
+                    self.environment,
+                    self.generator,
                 )
                 output.extend(results)
                 continue
@@ -434,5 +437,5 @@ class Executor(object):
         from trilogy.core.validation.environment import validate_environment
 
         return validate_environment(
-            self.environment, self, scope, targets, generate_only
+            self.environment, scope, targets, exec=None if generate_only else self
         )
