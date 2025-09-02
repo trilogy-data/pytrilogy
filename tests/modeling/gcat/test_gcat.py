@@ -179,6 +179,8 @@ def test_environment_cleanup():
     pre_concepts = set(base.environment.concepts.keys())
     queries = base.parse_text(
         """
+
+    key x int;
         
 auto datetime_function <- current_datetime();
 auto timestamp_function <- current_timestamp();
@@ -204,6 +206,7 @@ auto date_function <- current_date();
     assert "local.datetime_function" in query.locally_derived
     for c in query.locally_derived:
         base.environment.remove_concept(c)
+    base.environment.remove_concept("local.x")
     post_concepts = set(base.environment.concepts.keys())
     assert (
         pre_concepts == post_concepts

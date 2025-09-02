@@ -221,8 +221,6 @@ def remove_key_concepts(concept: Concept, environment: Environment):
                 derived_concept.metadata
                 and derived_concept.metadata.concept_source
                 == ConceptSource.AUTO_DERIVED
-                and derived_concept.keys
-                and concept.address in derived_concept.keys
             ):
                 environment.remove_concept(address)
 
