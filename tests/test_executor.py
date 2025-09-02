@@ -47,3 +47,18 @@ def test_mock_result():
         assert isinstance(row, MockResultRow)
         assert set(result.keys()) == {"a", "b", "c"}
         assert all(isinstance(v, int) for v in row.values())
+
+    result = MockResult(
+        columns=["a", "b", "c"],
+        values=[
+            MockResultRow({"a": 1, "b": 2, "c": 3}),
+            MockResultRow({"a": 4, "b": 5, "c": 6}),
+        ],
+    )
+    assert result.columns == ["a", "b", "c"]
+
+    x = result.fetchone()
+    assert isinstance(x, MockResultRow)
+    assert x["a"] == 1
+    r2 = result.fetchmany(10)
+    assert len(r2) == 1
