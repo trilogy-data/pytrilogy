@@ -41,7 +41,9 @@ from trilogy.core.models.core import (
     DataType,
     ListWrapper,
     MapType,
+    NumericType,
     StructType,
+    TraitDataType,
 )
 from trilogy.core.models.datasource import Address, Datasource, DatasourceMetadata
 from trilogy.core.models.environment import Environment
@@ -78,6 +80,7 @@ __all__ = [
     "DataType",
     "StructType",
     "ArrayType",
+    "NumericType",
     "Grain",
     "RowsetDerivationStatement",
     "MapType",
@@ -120,4 +123,5 @@ __all__ = [
     "HasUUID",
     "ImportStatement",
     "Address",
+    "TraitDataType",
 ]

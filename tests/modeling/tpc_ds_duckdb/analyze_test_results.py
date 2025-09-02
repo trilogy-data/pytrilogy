@@ -41,7 +41,8 @@ def analyze(show: bool = False):
                     print(f"Error loading {filename}")
                     continue
                 results.append(loaded)
-    with open(root / "zquery_timing.log", "r") as f:
+    timing_path = Path(root / f"zquery_timing_{fingerprint}.log")
+    with open(timing_path, "r") as f:
         timing = tomllib.loads(f.read())
     final_results = []
     for x in results:
@@ -94,4 +95,4 @@ def analyze(show: bool = False):
 
 
 if __name__ == "__main__":
-    analyze(show=True)
+    analyze()

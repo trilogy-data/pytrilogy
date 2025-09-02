@@ -1,0 +1,25 @@
+species,country,region,climate_zone,mean_annual_temp_C,mean_annual_precip_mm,latitude,longitude
+setosa,United Kingdom,England,Temperate Oceanic,10.0,1150,52.3555,-1.1743
+setosa,Canada,British Columbia,Marine West Coast,9.5,1200,53.7267,-127.6476
+setosa,Japan,Hokkaido,Humid Continental,8.0,1100,43.2203,142.8635
+setosa,New Zealand,South Island,Temperate Oceanic,11.0,1300,-45.8788,170.5028
+setosa,France,Brittany,Temperate Oceanic,11.5,1000,48.202,-2.9326
+setosa,Chile,Valdivia,Oceanic,12.0,1500,-39.8142,-73.2459
+setosa,Australia,Tasmania,Temperate Oceanic,13.0,1400,-42.0409,146.8087
+setosa,Norway,Bergen,Subpolar Oceanic,7.0,2250,60.3913,5.3221
+versicolor,United States,New York,Humid Continental,9.0,1050,43.0,-75.0
+versicolor,Germany,Bavaria,Temperate Oceanic,8.5,790,48.7904,11.4979
+versicolor,South Korea,Gangwon,Humid Continental,11.0,1300,37.8228,128.1555
+versicolor,China,Sichuan,Temperate Subtropical,16.0,1000,30.6517,104.0759
+versicolor,Poland,Lower Silesia,Humid Continental,8.0,600,51.1079,17.0385
+versicolor,Czech Republic,Bohemia,Humid Continental,7.5,650,49.8175,15.473
+versicolor,Romania,Transylvania,Humid Continental,9.0,700,46.7712,23.6236
+versicolor,New Zealand,North Island,Oceanic,14.0,1200,-38.6857,176.0702
+virginica,United States,Louisiana,Humid Subtropical,20.2,1400,30.9843,-91.9623
+virginica,India,Assam,Tropical Monsoon,24.0,2200,26.2006,92.9376
+virginica,Argentina,Buenos Aires,Humid Subtropical,17.5,1100,-34.6037,-58.3816
+virginica,Brazil,São Paulo,Subtropical Highland,19.5,1350,-23.5505,-46.6333
+virginica,China,Yunnan,Subtropical Highland,17.0,1100,25.0458,102.71
+virginica,Italy,Tuscany,Mediterranean,15.0,850,43.7711,11.2486
+virginica,South Africa,Cape Town,Mediterranean,17.0,515,-33.9249,18.4241
+virginica,Australia,New South Wales,Humid Subtropical,18.0,1100,-33.8688,151.2093

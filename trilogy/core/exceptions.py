@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Sequence
 
 
 class UndefinedConceptException(Exception):
@@ -21,6 +21,26 @@ class UnresolvableQueryException(Exception):
 
 
 class NoDatasourceException(UnresolvableQueryException):
+    pass
+
+
+class ModelValidationError(Exception):
+    def __init__(
+        self,
+        message,
+        children: Sequence["ModelValidationError"] | None = None,
+        **kwargs
+    ):
+        super().__init__(self, message, **kwargs)
+        self.message = message
+        self.children = children
+
+
+class DatasourceModelValidationError(ModelValidationError):
+    pass
+
+
+class ConceptModelValidationError(ModelValidationError):
     pass
 
 

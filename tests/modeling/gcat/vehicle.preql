@@ -1,24 +1,25 @@
 #auto-generated datasource from table/view lv_info
 
 key name string;
-property <name>.family string;
-property <name>.manufacturer string;
-property <name>.variant string;
-property <name>.alias string;
-property <name>.min_stage int;
-property <name>.max_stage int;
-property <name>.length string;
-property <name>.lflag string;
-property <name>.diameter string;
-property <name>.dflag string;
-property <name>.launch_mass string;
-property <name>.mflag string;
-property <name>.leo_capacity string;
-property <name>.gto_capacity string;
-property <name>.to_thrust string;
-property <name>.class string;
-property <name>.apogee string;
-property <name>.range string;
+key variant string;
+property <name, variant>.family string;
+property <name, variant>.manufacturer string;
+
+property <name, variant>.alias string;
+property <name, variant>.min_stage int;
+property <name, variant>.max_stage int;
+property <name, variant>.length string;
+property <name, variant>.lflag string;
+property <name, variant>.diameter string;
+property <name, variant>.dflag string;
+property <name, variant>.launch_mass string;
+property <name, variant>.mflag string;
+property <name, variant>.leo_capacity float;
+property <name, variant>.gto_capacity float;
+property <name, variant>.to_thrust string;
+property <name, variant>.class string;
+property <name, variant>.apogee string;
+property <name, variant>.range string;
 
 auto class_name <-
 case
@@ -37,6 +38,11 @@ case
     else 'Unknown'
   end;
 
+auto  full_name <-  CASE WHEN variant != '-' THEN concat(name,' ',variant)
+ELSE name
+END;
+
+
 datasource lv_info (
 	LV_Name:name,
 	LV_Family:family,
@@ -51,12 +57,12 @@ datasource lv_info (
 	DFlag:dflag,
 	Launch_Mass:launch_mass,
 	MFlag:mflag,
-	LEO_Capacity:leo_capacity,
-	GTO_Capacity:gto_capacity,
+	LEO_Capacity:?leo_capacity,
+	GTO_Capacity:?gto_capacity,
 	TO_Thrust:to_thrust,
 	Class:class,
 	Apogee:apogee,
 	Range:range,
 )
-grain (name)
+grain (name, variant)
 address lv_info;

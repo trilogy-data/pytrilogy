@@ -12,6 +12,7 @@
     | copy_statement
     | merge_statement
     | rawsql_statement
+    | validate_statement
     
     _TERMINATOR:  ";"i /\s*/
     
@@ -81,8 +82,11 @@
     // raw sql statement
     rawsql_statement: "raw_sql"i "(" MULTILINE_STRING ")"
 
+    // validate_statement
 
+    VALIDATE_SCOPE: "concepts"i | "datasources"i 
 
+    validate_statement: ("validate"i "all"i) | ( "validate"i VALIDATE_SCOPE (IDENTIFIER ("," IDENTIFIER)* ","? )? )
     // copy statement
 
     COPY_TYPE: "csv"i
@@ -262,10 +266,12 @@
     //constant
     CURRENT_DATE.1: /current_date\(\)/
     CURRENT_DATETIME.1: /current_datetime\(\)/
+    CURRENT_TIMESTAMP.1: /current_timestamp\(\)/
     fcurrent_date: CURRENT_DATE
     fcurrent_datetime: CURRENT_DATETIME
+    fcurrent_timestamp: CURRENT_TIMESTAMP
 
-    _constant_functions: fcurrent_date | fcurrent_datetime
+    _constant_functions: fcurrent_date | fcurrent_datetime | fcurrent_timestamp
     
     //string
     _LIKE.1: "like("i
@@ -325,8 +331,8 @@
     _GROUP.1: "group("i
     fgroup: _GROUP expr ")" aggregate_over?
 
-    //by:
-    aggregate_by: "group" IDENTIFIER "BY"i (IDENTIFIER ",")* IDENTIFIER
+    //by:  
+    aggregate_by: /(group)\s+([a-zA-Z\_][a-zA-Z0-9\_\.]*)/i "BY"i (IDENTIFIER ",")* IDENTIFIER
 
     //aggregates
     _COUNT.1: "count("i
@@ -424,7 +430,7 @@
     map_lit: "{" (literal ":" literal ",")* literal ":" literal ","? "}"
 
     _STRUCT.1: "struct("i
-    struct_lit: _STRUCT (IDENTIFIER "=" literal ",")* IDENTIFIER "=" literal ","? ")"
+    struct_lit: _STRUCT (IDENTIFIER "->" expr ",")* IDENTIFIER "->" expr ","? ")"
     
     !bool_lit: "True"i | "False"i
 
@@ -455,7 +461,7 @@
     DATASOURCES: "DATASOURCES"i
     show_category: CONCEPTS | DATASOURCES
 
-    show_statement: "show"i ( show_category | select_statement | persist_statement) _TERMINATOR
+    show_statement: "show"i ( show_category | validate_statement | select_statement | persist_statement) _TERMINATOR
     COMMENT: /#.*(\n|$)/ |  /\/\/.*\n/  
     %import common.WS
     %ignore WS

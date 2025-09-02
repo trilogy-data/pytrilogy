@@ -10,7 +10,7 @@ from trilogy.constants import Rendering
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.config import PrestoConfig, SnowflakeConfig, TrinoConfig
 from trilogy.dialect.enums import DialectConfig
-from trilogy.engine import EngineConnection, EngineResult, ExecutionEngine
+from trilogy.engine import EngineConnection, ExecutionEngine, ResultProtocol
 from trilogy.hooks.query_debugger import DebuggingHook
 
 ENV_PATH = abspath(__file__)
@@ -133,7 +133,7 @@ const pi <-3.14;
     yield environment
 
 
-class PrestoEngineResult(EngineResult):
+class PrestoEngineResult:
     def __init__(self):
         pass
 
@@ -146,7 +146,7 @@ class PrestoEngineConnection(EngineConnection):
     def __init__(self):
         pass
 
-    def execute(self, statement: str) -> EngineResult:
+    def execute(self, statement: str) -> ResultProtocol:
         return PrestoEngineResult()
 
 

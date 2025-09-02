@@ -240,6 +240,7 @@ class FunctionType(Enum):
     # CONSTANTS
     CURRENT_DATE = "current_date"
     CURRENT_DATETIME = "current_datetime"
+    CURRENT_TIMESTAMP = "current_timestamp"
 
 
 class FunctionClass(Enum):
@@ -377,4 +378,16 @@ class IOType(Enum):
     def _missing_(cls, value):
         if isinstance(value, str) and value.lower() != value:
             return IOType(value.lower())
+        return super()._missing_(value)
+
+
+class ValidationScope(Enum):
+    ALL = "all"
+    CONCEPTS = "concepts"
+    DATASOURCES = "datasources"
+
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str) and value.lower() != value:
+            return ValidationScope(value.lower())
         return super()._missing_(value)

@@ -123,7 +123,7 @@ def create_pruned_concept_graph(
         common: set[BuildConcept] = set.intersection(
             *[set(x.output_concepts) for x in ds_list]
         )
-        g.add_node(node_address, datasource=ds_list)
+        g.add_datasource_node(node_address, ds_list)
         for c in common:
             cnode = concept_to_node(c)
             g.add_edge(node_address, cnode)
@@ -214,7 +214,7 @@ def create_pruned_concept_graph(
     relevant = set(relevant_concepts + relevent_datasets)
     for edge in orig_g.edges():
         if edge[0] in relevant and edge[1] in relevant:
-            g.add_edge(edge[0], edge[1])
+            g.add_edge(edge[0], edge[1], fast=True)
     # if we have no ds nodes at all, for non constant, we can't find it
     if not any([n.startswith("ds~") for n in g.nodes]):
         logger.info(

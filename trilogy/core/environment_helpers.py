@@ -169,6 +169,112 @@ def generate_key_concepts(concept: Concept, environment: Environment):
         environment.add_concept(new_concept, add_derived=False)
 
 
+def remove_date_concepts(concept: Concept, environment: Environment):
+    """Remove auto-generated date-related concepts for the given concept"""
+    date_suffixes = ["month", "year", "quarter", "day", "day_of_week"]
+    grain_suffixes = ["month_start", "year_start"]
+
+    for suffix in date_suffixes + grain_suffixes:
+        address = concept.address + f".{suffix}"
+        if address in environment.concepts:
+            derived_concept = environment.concepts[address]
+            # Only remove if it was auto-derived from this concept
+            if (
+                derived_concept.metadata
+                and derived_concept.metadata.concept_source
+                == ConceptSource.AUTO_DERIVED
+                and derived_concept.keys
+                and concept.address in derived_concept.keys
+            ):
+                environment.remove_concept(address)
+
+
+def remove_datetime_concepts(concept: Concept, environment: Environment):
+    """Remove auto-generated datetime-related concepts for the given concept"""
+    datetime_suffixes = ["date", "hour", "minute", "second"]
+
+    for suffix in datetime_suffixes:
+        address = concept.address + f".{suffix}"
+        if address in environment.concepts:
+            derived_concept = environment.concepts[address]
+            # Only remove if it was auto-derived from this concept
+            if (
+                derived_concept.metadata
+                and derived_concept.metadata.concept_source
+                == ConceptSource.AUTO_DERIVED
+                and derived_concept.keys
+                and concept.address in derived_concept.keys
+            ):
+                environment.remove_concept(address)
+
+
+def remove_key_concepts(concept: Concept, environment: Environment):
+    """Remove auto-generated key-related concepts for the given concept"""
+    key_suffixes = ["count"]
+
+    for suffix in key_suffixes:
+        address = concept.address + f".{suffix}"
+        if address in environment.concepts:
+            derived_concept = environment.concepts[address]
+            if (
+                derived_concept.metadata
+                and derived_concept.metadata.concept_source
+                == ConceptSource.AUTO_DERIVED
+            ):
+                environment.remove_concept(address)
+
+
+def remove_struct_concepts(concept: Concept, environment: Environment):
+    """Remove auto-generated struct field concepts for the given concept"""
+    if not isinstance(concept.datatype, StructType):
+        return
+
+    target_namespace = (
+        environment.namespace + "." + concept.name
+        if environment.namespace and environment.namespace != DEFAULT_NAMESPACE
+        else concept.name
+    )
+
+    # Get all concepts in the target namespace that were auto-derived
+    concepts_to_remove = []
+    for address, derived_concept in environment.concepts.items():
+        if (
+            derived_concept.namespace == target_namespace
+            and derived_concept.metadata
+            and derived_concept.metadata.concept_source == ConceptSource.AUTO_DERIVED
+            and isinstance(derived_concept.lineage, Function)
+            and derived_concept.lineage.operator == FunctionType.ATTR_ACCESS
+            and len(derived_concept.lineage.arguments) >= 1
+            and derived_concept.lineage.arguments[0] == concept.reference
+        ):
+            concepts_to_remove.append(address)
+
+    for address in concepts_to_remove:
+        environment.remove_concept(address)
+
+
+def remove_related_concepts(concept: Concept, environment: Environment):
+    """Remove all auto-generated concepts that were derived from the given concept"""
+
+    # Remove key-related concepts
+    if concept.purpose == Purpose.KEY:
+        remove_key_concepts(concept, environment)
+
+    # Remove datatype-specific concepts
+    if concept.datatype == DataType.DATE:
+        remove_date_concepts(concept, environment)
+    elif concept.datatype == DataType.DATETIME:
+        remove_date_concepts(concept, environment)
+        remove_datetime_concepts(concept, environment)
+    elif concept.datatype == DataType.TIMESTAMP:
+        remove_date_concepts(concept, environment)
+        remove_datetime_concepts(concept, environment)
+
+    # Remove struct field concepts
+    if isinstance(concept.datatype, StructType):
+        remove_struct_concepts(concept, environment)
+
+
 def generate_related_concepts(
     concept: Concept,
     environment: Environment,
@@ -183,6 +289,7 @@ def generate_related_concepts(
     if concept.datatype == DataType.DATE and add_derived:
         generate_date_concepts(concept, environment)
     elif concept.datatype == DataType.DATETIME and add_derived:
+
         generate_date_concepts(concept, environment)
         generate_datetime_concepts(concept, environment)
     elif concept.datatype == DataType.TIMESTAMP and add_derived:
@@ -203,6 +310,10 @@ def generate_related_concepts(
                 ),
                 lineage=AttrAccess([concept.reference, key], environment=environment),
                 grain=concept.grain,
+                metadata=Metadata(
+                    concept_source=ConceptSource.AUTO_DERIVED,
+                ),
+                keys=concept.keys,
             )
             environment.add_concept(auto, meta=meta)
             if isinstance(value, Concept):

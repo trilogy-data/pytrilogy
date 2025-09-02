@@ -1,29 +1,61 @@
-## Trilogy
+# Trilogy
+**SQL with superpowers for analytics**
+
 [![Website](https://img.shields.io/badge/INTRO-WEB-orange?)](https://trilogydata.dev/)
 [![Discord](https://img.shields.io/badge/DISCORD-CHAT-red?logo=discord)](https://discord.gg/Z4QSSuqGEd)
+[![PyPI version](https://badge.fury.io/py/pytrilogy.svg)](https://badge.fury.io/py/pytrilogy)
 
-The Trilogy language is an experiment in better SQL for analytics - a streamlined SQL that replaces tables/joins with a lightweight semantic binding layer and provides easy reuse and composability. It compiles to SQL - making it easy to debug or integrate into existing workflows - and can be run against any supported SQL backend.  
+The Trilogy language is an experiment in better SQL for analytics - a streamlined SQL that replaces tables/joins with a lightweight semantic binding layer and provides easy reuse and composability. It compiles to SQL - making it easy to debug or integrate into existing workflows - and can be run against any supported SQL backend.
 
 [pytrilogy](https://github.com/trilogy-data/pytrilogy) is the reference implementation, written in Python.
 
-### What Trilogy Gives You
+## What Trilogy Gives You
 
-- Speed - write faster, with concise, powerful syntax
-- Efficiency - write less SQL, and reuse what you do
-- Fearless refactoring
-- Testability
-- Easy to use for humans and LLMs
+- **Speed** - write faster, with concise, powerful syntax
+- **Efficiency** - write less SQL, and reuse what you do
+- **Fearless refactoring** - change models without breaking queries
+- **Testability** - built-in testing patterns with query fixtures
+- **Easy to use** - for humans and LLMs alike
 
-Trilogy is especially powerful for data consumption, providing a rich metadata layer that makes creating, interperting, and visualizing queries easy and expressive. 
+Trilogy is especially powerful for data consumption, providing a rich metadata layer that makes creating, interpreting, and visualizing queries easy and expressive.
+
+## Quick Start
 
 > [!TIP]
-> You can try Trilogy in a [open-source studio](https://trilogydata.dev/trilogy-studio-core/). More details on the language can be found on the [documentation](https://trilogydata.dev/).
+> **Try it now:** [Open-source studio](https://trilogydata.dev/trilogy-studio-core/) | [Interactive demo](https://trilogydata.dev/demo/) | [Documentation](https://trilogydata.dev/)
+
+**Install locally:**
+```bash
+pip install pytrilogy
+```
+
+**Your first query:**
+```sql
+# Save as hello.preql
+import names;
+
+const top_names <- ['Elvis', 'Elvira', 'Elrond', 'Sam'];
+
+def initcap(word) -> upper(substring(word, 1, 1)) || substring(word, 2, len(word));
+
+WHERE 
+    @initcap(name) in top_names
+SELECT
+    name,
+    sum(births) as name_count
+ORDER BY
+    name_count desc
+LIMIT 10;
+```
+
+**Run it:**
+```bash
+trilogy run hello.preql duckdb
+```
 
 We recommend starting with the studio to explore Trilogy. For integration, `pytrilogy` can be run locally to parse and execute trilogy model [.preql] files using the `trilogy` CLI tool, or can be run in python by importing the `trilogy` package.
 
-Installation: `pip install pytrilogy`
-
-### Trilogy Looks Like SQL
+## Trilogy Looks Like SQL
 
 ```sql
 import names;
@@ -41,26 +73,40 @@ ORDER BY
     name_count desc
 LIMIT 10;
 ```
+
 ## Goals
+
 Versus SQL, Trilogy aims to: 
 
-Keep:
+**Keep:**
 - Correctness
 - Accessibility
 
-Improve:
+**Improve:**
 - Simplicity
-- Refactoring/mantainability
+- Refactoring/maintainability
 - Reusability
 
-Maintain:
+**Maintain:**
 - Acceptable performance
 
-Remove:
+**Remove:**
 - Lower-level procedural features
 - Transactional optimizations/non-analytics features
 
-## Hello World
+## Backend Support
+
+| Backend | Status | Notes |
+|---------|--------|-------|
+| **BigQuery** | ✅ Core | Full support |
+| **DuckDB** | ✅ Core | Full support |
+| **Snowflake** | ✅ Core | Full support |
+| **SQL Server** | ⚠️ Experimental | Limited testing |
+| **Presto** | ⚠️ Experimental | Limited testing |
+
+## Examples
+
+### Hello World
 
 Save the following code in a file named `hello.preql`
 
@@ -123,49 +169,32 @@ WHERE
 SELECT
     sentences.text
 ;
-
 ```
-Run the following from the directory the file is in.
 
+**Run it:**
 ```bash
-trilogy run hello.trilogy duckdb
+trilogy run hello.preql duckdb
 ```
 
 ![UI Preview](hello-world.png)
 
-## Backends
-
-The current Trilogy implementation supports these backends:
-
-### Core
-- Bigquery
-- DuckDB
-- Snowflake
-
-### Experimental
-- SQL Server
-- Presto
-
-## Basic Example - Python
+### Python SDK Usage
 
 Trilogy can be run directly in python through the core SDK. Trilogy code can be defined and parsed inline or parsed out of files.
 
-A bigquery example, similar to bigquery [the quickstart](https://cloud.google.com/bigquery/docs/quickstarts/query-public-dataset-console).
+A BigQuery example, similar to the [BigQuery quickstart](https://cloud.google.com/bigquery/docs/quickstarts/query-public-dataset-console):
 
 ```python
-
 from trilogy import Dialects, Environment
 
 environment = Environment()
 
 environment.parse('''
-
 key name string;
 key gender string;
 key state string;
 key year int;
 key yearly_name_count int; int;
-
 
 datasource usa_names(
     name:name,
@@ -175,13 +204,11 @@ datasource usa_names(
     state:state
 )
 address `bigquery-public-data.usa_names.usa_1910_2013`;
+''')
 
-'''
-)
 executor = Dialects.BIGQUERY.default_executor(environment=environment)
 
-results = executor.execute_text(
-'''
+results = executor.execute_text('''
 WHERE
     name = 'Elvis'
 SELECT
@@ -190,9 +217,8 @@ SELECT
 ORDER BY
     name_count desc
 LIMIT 10;
-'''
+''')
 
-)
 # multiple queries can result from one text batch
 for row in results:
     # get results for first query
@@ -201,105 +227,90 @@ for row in results:
         print(x)
 ```
 
-
-## Basic Example - CLI
+### CLI Usage
 
 Trilogy can be run through a CLI tool, also named 'trilogy'.
 
-After installing trilogy, you can run the trilogy CLI with two required positional arguments; the first the path to a file or a direct command,
-and second the dialect to run.
+**Basic syntax:**
+```bash
+trilogy run <cmd or path to trilogy file> <dialect>
+```
 
-`trilogy run <cmd or path to trilogy file> <dialect>`
+**With backend options:**
+```bash
+trilogy run "key x int; datasource test_source(i:x) grain(x) address test; select x;" duckdb --path <path/to/database>
+```
 
-To pass arguments to a backend, append additional --<option> flags after specifying the dialect.
+**Format code:**
+```bash
+trilogy fmt <path to trilogy file>
+```
 
-Example:
-`trilogy run "key x int; datasource test_source ( i:x) grain(in) address test; select x;" duckdb --path <path/to/database>`
+#### Backend Configuration
 
-### Bigquery Args
-N/A, only supports default auth. In python you can pass in a custom client.
-<TODO> support arbitrary cred paths. 
+**BigQuery:**
+- Uses applicationdefault authentication (TODO: support arbitrary credential paths)
+- In Python, you can pass a custom client
 
-### DuckDB Args
-- path <optional>
+**DuckDB:**
+- `--path` - Optional database file path
 
-### Postgres Args
-- host
-- port
-- username
-- password
-- database
+**Postgres:**
+- `--host` - Database host
+- `--port` - Database port  
+- `--username` - Username
+- `--password` - Password
+- `--database` - Database name
 
-### Snowflake Args
-- account
-- username
-- password
+**Snowflake:**
+- `--account` - Snowflake account
+- `--username` - Username
+- `--password` - Password
 
+## More Resources
 
-> [!TIP]
-> The CLI can also be used for formatting. Trilogy has a default formatting style that should always be adhered to. `trilogy fmt <path to trilogy file>`
+- [Interactive demo](https://trilogydata.dev/demo/)
+- [Public model repository](https://github.com/trilogydata/trilogy-public-models) - Great place for modeling examples
+- [Full documentation](https://trilogydata.dev/)
 
+## Syntax Reference
 
-## More Examples
+### Import
+```sql
+import [path] as [alias];
+```
 
-[Interactive demo](https://trilogydata.dev/demo/). 
+### Concepts
 
-Additional examples can be found in the [public model repository](https://github.com/trilogydata/trilogy-public-models).
+**Types:**
+`string | int | float | bool | date | datetime | time | numeric(scale, precision) | timestamp | interval | array<[type]> | map<[type], [type]> | struct<name:[type], name:[type]>`
 
-This is a good place to look for modeling examples.
+**Key:**
+```sql
+key [name] [type];
+```
 
-## Developing
+**Property:**
+```sql
+property [key].[name] [type];
+property x.y int;
 
-Clone repository and install requirements.txt and requirements-test.txt.
+# or multi-key
+property <[key],[key]>.[name] [type];
+property <x,y>.z int;
+```
 
-## Contributing
+**Transformation:**
+```sql
+auto [name] <- [expression];
+auto x <- y + 1;
+```
 
-Please open an issue first to discuss what you would like to change, and then create a PR against that issue.
-
-## Similar in space
-Trilogy combines two aspects; a semantic layer and a query language. Examples of both are linked below:
-
-"semantic layers" are tools for defining an metadata layer above a SQL/warehouse base to enable higher level abstractions.
-
-- [metricsflow](https://github.com/dbt-labs/metricflow)
-- [cube](https://github.com/cube-js/cube)
-- [zillion](https://github.com/totalhack/zillion)
-
-"Better SQL" has been a popular space. We believe Trilogy takes a different approach then the following,
-but all are worth checking out. Please open PRs/comment for anything missed!
-
-- [malloy](https://github.com/malloydata/malloy)
-- [preql](https://github.com/erezsh/Preql)
-- [PREQL](https://github.com/PRQL/prql)
-
-## Minimal Syntax Reference
-
-#### IMPORT
-
-`import [path] as [alias];`
-
-#### CONCEPT
-
-Types: `string | int | float | bool | date | datetime | time | numeric(scale, precision) | timestamp | interval | list<[type]> | map<[type], [type]> | struct<name:[type], name:[type]>`;
-
-Key:
-`key [name] [type];`
-
-Property:
-`property [key>].[name] [type];`
-`property x.y int;`
-or 
-`property <[key](,[key])?>.<name> [type];`
-`property <x,y>.z int;`
-
-
-Transformation:
-`auto [name] <- [expression];`
-`auto x <- y + 1;`
-
-#### DATASOURCE
+### Datasource
 ```sql
 datasource <name>(
+    <column_and_concept_with_same_name>,
+    # or a mapping from column to concept
     <column>:<concept>,
     <column>:<concept>,
 )
@@ -307,14 +318,13 @@ grain(<concept>, <concept>)
 address <table>;
 ```
 
-#### SELECT
+### Queries
 
-Primary acces
-
+**Basic SELECT:**
 ```sql
 WHERE
     <concept> = <value>
-select
+SELECT
     <concept>,
     <concept>+1 -> <alias>,
     ...
@@ -325,10 +335,7 @@ ORDER BY
 ;
 ```
 
-#### CTE/ROWSET
-
-Reusable virtual set of rows. Useful for windows, filtering. 
-
+**CTEs/Rowsets:**
 ```sql
 with <alias> as
 WHERE
@@ -338,25 +345,18 @@ select
     <concept>+1 -> <alias>,
     ...
 
-
 select <alias>.<concept>;
-
 ```
 
+### Data Operations
 
-#### PERSIST
-
-Store output of a query in a warehouse table
-
+**Persist to table:**
 ```sql
 persist <alias> as <table_name> from
 <select>;
 ```
 
-#### COPY
-
-Currently supported target types are <CSV>, though backend support may vary.
-
+**Export to file:**
 ```sql
 COPY INTO <TARGET_TYPE> '<target_path>' FROM SELECT
     <concept>, ...
@@ -365,10 +365,35 @@ ORDER BY
 ;
 ```
 
-#### SHOW
-
-Return generated SQL without executing.
-
+**Show generated SQL:**
 ```sql
 show <select>;
 ```
+
+**Validate Model**
+```sql
+validate all
+validate concepts abc,def...
+validate datasources abc,def...
+```
+
+
+## Contributing
+
+Clone repository and install requirements.txt and requirements-test.txt.
+
+Please open an issue first to discuss what you would like to change, and then create a PR against that issue.
+
+## Similar Projects
+
+Trilogy combines two aspects: a semantic layer and a query language. Examples of both are linked below:
+
+**Semantic layers** - tools for defining a metadata layer above SQL/warehouse to enable higher level abstractions:
+- [MetricFlow](https://github.com/dbt-labs/metricflow)
+- [Cube](https://github.com/cube-js/cube)  
+- [Zillion](https://github.com/totalhack/zillion)
+
+**Better SQL** has been a popular space. We believe Trilogy takes a different approach than the following, but all are worth checking out. Please open PRs/comment for anything missed!
+- [Malloy](https://github.com/malloydata/malloy)
+- [Preql](https://github.com/erezsh/Preql)
+- [PRQL](https://github.com/PRQL/prql)

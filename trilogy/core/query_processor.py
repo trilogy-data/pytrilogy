@@ -40,8 +40,8 @@ from trilogy.core.statements.author import (
     PersistStatement,
     SelectStatement,
 )
-from trilogy.core.statements.common import MaterializedDataset
 from trilogy.core.statements.execute import (
+    MaterializedDataset,
     ProcessedCopyStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
@@ -567,4 +567,5 @@ def process_query(
         base=root_cte,
         hidden_columns=set([x for x in statement.hidden_components]),
         local_concepts=statement.local_concepts,
+        locally_derived=statement.locally_derived,
     )
