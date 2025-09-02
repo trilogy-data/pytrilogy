@@ -98,11 +98,11 @@ Versus SQL, Trilogy aims to:
 
 | Backend | Status | Notes |
 |---------|--------|-------|
-| **BigQuery** | ✅ Core | Full support |
-| **DuckDB** | ✅ Core | Full support |
-| **Snowflake** | ✅ Core | Full support |
-| **SQL Server** | ⚠️ Experimental | Limited testing |
-| **Presto** | ⚠️ Experimental | Limited testing |
+| **BigQuery** | Core | Full support |
+| **DuckDB** | Core | Full support |
+| **Snowflake** | Core | Full support |
+| **SQL Server** | Experimental | Limited testing |
+| **Presto** | Experimental | Limited testing |
 
 ## Examples
 
