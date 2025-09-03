@@ -21,16 +21,20 @@ from trilogy.engine import ResultProtocol
 
 @dataclass
 class MockResult(ResultProtocol):
-    values: list[Any]
+    values: list["MockResultRow"]
     columns: list[str]
 
     def __init__(self, values: list[Any], columns: list[str]):
-        processed = []
+        processed: list[MockResultRow] = []
         for x in values:
             if isinstance(x, dict):
                 processed.append(MockResultRow(x))
-            else:
+            elif isinstance(x, MockResultRow):
                 processed.append(x)
+            else:
+                raise ValueError(
+                    f"Cannot process value of type {type(x)} in MockResult"
+                )
         self.columns = columns
         self.values = processed
 
@@ -54,10 +58,16 @@ class MockResult(ResultProtocol):
     def keys(self):
         return self.columns
 
+    def as_dict(self):
+        return [x.as_dict() if isinstance(x, MockResultRow) else x for x in self.values]
+
 
 @dataclass
 class MockResultRow:
     _values: dict[str, Any]
+
+    def as_dict(self):
+        return self._values
 
     def __str__(self) -> str:
         return str(self._values)

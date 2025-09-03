@@ -24,7 +24,7 @@ def validate_key_concept(
     exec: Executor | None = None,
 ):
     results: list[ValidationTest] = []
-    seen = {}
+    seen: dict[str, int] = {}
     for datasource in build_env.datasources.values():
         if concept.address in [c.address for c in datasource.concepts]:
             assignment = [
@@ -46,7 +46,7 @@ def validate_key_concept(
                 type_sql = exec.generate_sql(type_query)[-1]
 
                 rows = exec.execute_raw_sql(type_sql).fetchall()
-                seen[datasource.name] = rows[0][0] if rows else None
+                seen[datasource.name] = rows[0][0] if rows else 0
             else:
                 results.append(
                     ValidationTest(
@@ -60,14 +60,15 @@ def validate_key_concept(
 
     if not exec:
         return results
-    max_seen = max([v for v in seen.values() if v is not None], default=0)
+    max_seen: int = max([v for v in seen.values() if v is not None], default=0)
     for datasource in build_env.datasources.values():
         if concept.address in [c.address for c in datasource.concepts]:
             assignment = [
                 x for x in datasource.columns if x.concept.address == concept.address
             ][0]
             err = None
-            if seen.get(datasource.name, 0) < max_seen and assignment.is_complete:
+            datasource_count: int = seen.get(datasource.name, 0)
+            if datasource_count < max_seen and assignment.is_complete:
                 err = DatasourceModelValidationError(
                     f"Key concept {concept.address} is missing values in datasource {datasource.name} (max cardinality in data {max_seen}, datasource has {seen[datasource.name]} values) but is not marked as partial."
                 )

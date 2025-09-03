@@ -64,13 +64,13 @@ def datasource_to_node(input: BuildDatasource) -> str:
 
 
 class ReferenceGraph(nx.DiGraph):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.concepts: dict[str, BuildConcept] = {}
         self.datasources: dict[str, BuildDatasource] = {}
         self.pseudonyms: set[tuple[str, str]] = set()
 
-    def copy(self):
+    def copy(self) -> "ReferenceGraph":
         g = ReferenceGraph()
         g.concepts = self.concepts.copy()
         g.datasources = self.datasources.copy()
@@ -83,7 +83,7 @@ class ReferenceGraph(nx.DiGraph):
         # g.add_edges_from(self.edges(data=True))
         return g
 
-    def remove_node(self, n):
+    def remove_node(self, n) -> None:
         if n in self.concepts:
             del self.concepts[n]
         if n in self.datasources:
@@ -98,7 +98,7 @@ class ReferenceGraph(nx.DiGraph):
             self.datasources[node_name] = attr["datasource"]
         super().add_node(node_name, **attr)
 
-    def add_datasource_node(self, node_name, datasource):
+    def add_datasource_node(self, node_name, datasource) -> None:
         self.datasources[node_name] = datasource
         super().add_node(node_name, datasource=datasource)
 
