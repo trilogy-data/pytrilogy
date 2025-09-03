@@ -19,8 +19,10 @@ def test_dataset_validation_iris():
 
     exec.parse_text("""import iris;""")
 
-    validate_environment(env, exec)
+    validate_environment(env, exec=exec)
 
+
+def test_bad_column_validation_iris():
     env = Environment(
         working_path=Path(__file__).parent,
     )
@@ -31,7 +33,7 @@ def test_dataset_validation_iris():
     exec.parse_text("""import iris_bad;""")
 
     with raises(ModelValidationError) as e:
-        validate_environment(env, exec)
+        validate_environment(env, exec=exec)
         assert any(
             isinstance(c, DatasourceModelValidationError) for c in e.value.children
         )
@@ -50,7 +52,7 @@ def test_join_validation_iris():
     exec.parse_text("""import iris_joins;""")
 
     with raises(ModelValidationError):
-        validate_environment(env, exec)
+        validate_environment(env, exec=exec)
 
 
 def test_grain_iris():
@@ -66,4 +68,4 @@ def test_grain_iris():
     exec.parse_text("""import iris_grain;""")
 
     with raises(ModelValidationError):
-        validate_environment(env, exec)
+        validate_environment(env, exec=exec)

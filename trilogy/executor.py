@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from functools import singledispatchmethod
 from pathlib import Path
 from typing import Any, Generator, List, Optional
@@ -7,7 +6,7 @@ from sqlalchemy import text
 
 from trilogy.constants import MagicConstants, Rendering, logger
 from trilogy.core.enums import FunctionType, Granularity, IOType, ValidationScope
-from trilogy.core.models.author import Concept, ConceptRef, Function
+from trilogy.core.models.author import Concept, Function
 from trilogy.core.models.build import BuildFunction
 from trilogy.core.models.core import ListWrapper, MapWrapper
 from trilogy.core.models.datasource import Datasource
@@ -31,7 +30,6 @@ from trilogy.core.statements.execute import (
     ProcessedQueryPersist,
     ProcessedRawSQLStatement,
     ProcessedShowStatement,
-    ProcessedStaticValueOutput,
     ProcessedValidateStatement,
 )
 from trilogy.core.validation.common import (
@@ -39,80 +37,20 @@ from trilogy.core.validation.common import (
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects
+from trilogy.dialect.metadata import (
+    generate_result_set,
+    handle_concept_declaration,
+    handle_datasource,
+    handle_import_statement,
+    handle_merge_statement,
+    handle_processed_show_statement,
+    handle_processed_validate_statement,
+    handle_show_statement_outputs,
+)
 from trilogy.engine import ExecutionEngine, ResultProtocol
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.parser import parse_text
 from trilogy.render import get_dialect_generator
-
-
-@dataclass
-class MockResult(ResultProtocol):
-    values: list[Any]
-    columns: list[str]
-
-    def __init__(self, values: list[Any], columns: list[str]):
-        processed = []
-        for x in values:
-            if isinstance(x, dict):
-                processed.append(MockResultRow(x))
-            else:
-                processed.append(x)
-        self.columns = columns
-        self.values = processed
-
-    def __iter__(self):
-        while self.values:
-            yield self.values.pop(0)
-
-    def fetchall(self):
-        return self.values
-
-    def fetchone(self):
-        if self.values:
-            return self.values.pop(0)
-        return None
-
-    def fetchmany(self, size: int):
-        rval = self.values[:size]
-        self.values = self.values[size:]
-        return rval
-
-    def keys(self):
-        return self.columns
-
-
-@dataclass
-class MockResultRow:
-    _values: dict[str, Any]
-
-    def __str__(self) -> str:
-        return str(self._values)
-
-    def __repr__(self) -> str:
-        return repr(self._values)
-
-    def __getattr__(self, name: str) -> Any:
-        if name in self._values:
-            return self._values[name]
-        return super().__getattribute__(name)
-
-    def __getitem__(self, key: str) -> Any:
-        return self._values[key]
-
-    def values(self):
-        return self._values.values()
-
-    def keys(self):
-        return self._values.keys()
-
-
-def generate_result_set(
-    columns: List[ConceptRef], output_data: list[Any]
-) -> MockResult:
-    names = [x.address.replace(".", "_") for x in columns]
-    return MockResult(
-        values=[dict(zip(names, [row])) for row in output_data], columns=names
-    )
 
 
 class Executor(object):
@@ -150,29 +88,11 @@ class Executor(object):
 
     @execute_query.register
     def _(self, query: ConceptDeclarationStatement) -> ResultProtocol | None:
-        concept = query.concept
-        return MockResult(
-            [
-                {
-                    "address": concept.address,
-                    "type": concept.datatype.value,
-                    "purpose": concept.purpose.value,
-                    "derivation": concept.derivation.value,
-                }
-            ],
-            ["address", "type", "purpose", "derivation"],
-        )
+        return handle_concept_declaration(query)
 
     @execute_query.register
     def _(self, query: Datasource) -> ResultProtocol | None:
-        return MockResult(
-            [
-                {
-                    "name": query.name,
-                }
-            ],
-            ["name"],
-        )
+        return handle_datasource(query)
 
     @execute_query.register
     def _(self, query: str) -> ResultProtocol | None:
@@ -208,66 +128,28 @@ class Executor(object):
 
     @execute_query.register
     def _(self, query: ProcessedShowStatement) -> ResultProtocol | None:
-        return generate_result_set(
-            query.output_columns,
+        return handle_processed_show_statement(
+            query,
             [
                 self.generator.compile_statement(x)
                 for x in query.output_values
-                if isinstance(x, ProcessedQuery)
+                if isinstance(x, (ProcessedQuery, ProcessedQueryPersist))
             ],
         )
-
-    def _raw_validation_to_result(
-        self, raw: list[ValidationTest]
-    ) -> Optional[ResultProtocol]:
-        if not raw:
-            return None
-        output = []
-        for row in raw:
-            output.append(
-                {
-                    "check_type": row.check_type.value,
-                    "expected": row.expected,
-                    "result": str(row.result) if row.result else None,
-                    "ran": row.ran,
-                    "query": row.query if row.query else "",
-                }
-            )
-        return MockResult(output, ["check_type", "expected", "result", "ran", "query"])
 
     @execute_query.register
     def _(self, query: ProcessedValidateStatement) -> ResultProtocol | None:
-        results = self.validate_environment(query.scope, query.targets)
-        return self._raw_validation_to_result(results)
+        return handle_processed_validate_statement(
+            query, self.generator, self.validate_environment
+        )
 
     @execute_query.register
     def _(self, query: ImportStatement) -> ResultProtocol | None:
-        return MockResult(
-            [
-                {
-                    "path": query.path,
-                    "alias": query.alias,
-                }
-            ],
-            ["path", "alias"],
-        )
+        return handle_import_statement(query)
 
     @execute_query.register
     def _(self, query: MergeStatementV2) -> ResultProtocol | None:
-        for concept in query.sources:
-            self.environment.merge_concept(
-                concept, query.targets[concept.address], modifiers=query.modifiers
-            )
-
-        return MockResult(
-            [
-                {
-                    "sources": ",".join([x.address for x in query.sources]),
-                    "targets": ",".join([x.address for _, x in query.targets.items()]),
-                }
-            ],
-            ["source", "target"],
-        )
+        return handle_merge_statement(query, self.environment)
 
     @execute_query.register
     def _(self, query: ProcessedRawSQLStatement) -> ResultProtocol | None:
@@ -516,29 +398,17 @@ class Executor(object):
         # connection = self.engine.connect()
         for statement in self.parse_text_generator(command):
             if isinstance(statement, ProcessedShowStatement):
-                for x in statement.output_values:
-                    if isinstance(x, ProcessedStaticValueOutput):
-                        output.append(
-                            generate_result_set(statement.output_columns, x.values)
-                        )
-                    elif isinstance(x, ProcessedQuery):
-                        output.append(
-                            generate_result_set(
-                                statement.output_columns,
-                                [self.generator.compile_statement(x)],
-                            )
-                        )
-                    elif isinstance(x, ProcessedValidateStatement):
-                        raw = self.validate_environment(
-                            x.scope, x.targets, generate_only=True
-                        )
-                        results = self._raw_validation_to_result(raw)
-                        if results:
-                            output.append(results)
-                    else:
-                        raise NotImplementedError(
-                            f"Cannot show type {type(x)} in show statement"
-                        )
+                results = handle_show_statement_outputs(
+                    statement,
+                    [
+                        self.generator.compile_statement(x)
+                        for x in statement.output_values
+                        if isinstance(x, (ProcessedQuery, ProcessedQueryPersist))
+                    ],
+                    self.environment,
+                    self.generator,
+                )
+                output.extend(results)
                 continue
             if non_interactive:
                 if not isinstance(
@@ -567,5 +437,5 @@ class Executor(object):
         from trilogy.core.validation.environment import validate_environment
 
         return validate_environment(
-            self.environment, self, scope, targets, generate_only
+            self.environment, scope, targets, exec=None if generate_only else self
         )

@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from trilogy import Executor
+from trilogy import Environment, Executor
 from trilogy.authoring import (
     ArrayType,
     DataType,
@@ -61,12 +61,12 @@ def type_check(
 
 def validate_datasource(
     datasource: BuildDatasource,
+    env: Environment,
     build_env: BuildEnvironment,
-    exec: Executor,
-    generate_only: bool = False,
+    exec: Executor | None = None,
 ) -> list[ValidationTest]:
     results: list[ValidationTest] = []
-    # we might have merged concepts, where both wil lmap out to the same
+    # we might have merged concepts, where both will map out to the same
     unique_outputs = unique(
         [build_env.concepts[col.concept.address] for col in datasource.columns],
         "address",
@@ -74,18 +74,20 @@ def validate_datasource(
     type_query = easy_query(
         concepts=unique_outputs,
         datasource=datasource,
-        env=exec.environment,
+        env=env,
         limit=100,
     )
-    type_sql = exec.generate_sql(type_query)[-1]
+
     rows = []
-    if not generate_only:
+    if exec:
+        type_sql = exec.generate_sql(type_query)[-1]
         try:
             rows = exec.execute_raw_sql(type_sql).fetchall()
         except Exception as e:
             results.append(
                 ValidationTest(
-                    query=type_sql,
+                    raw_query=type_query,
+                    generated_query=type_sql,
                     check_type=ExpectationType.LOGICAL,
                     expected="valid_sql",
                     result=DatasourceModelValidationError(
@@ -96,9 +98,10 @@ def validate_datasource(
             )
             return results
     else:
+
         results.append(
             ValidationTest(
-                query=type_sql,
+                raw_query=type_query,
                 check_type=ExpectationType.LOGICAL,
                 expected="datatype_match",
                 result=None,
@@ -117,7 +120,6 @@ def validate_datasource(
     cols_with_error = set()
     for row in rows:
         for col in datasource.columns:
-
             actual_address = build_env.concepts[col.concept.address].safe_address
             if actual_address in cols_with_error:
                 continue
@@ -140,7 +142,6 @@ def validate_datasource(
     if failures:
         results.append(
             ValidationTest(
-                query=None,
                 check_type=ExpectationType.LOGICAL,
                 expected="datatype_match",
                 ran=True,
@@ -161,10 +162,10 @@ def validate_datasource(
             operator=ComparisonOperator.GT,
         ),
     )
-    if generate_only:
+    if not exec:
         results.append(
             ValidationTest(
-                query=exec.generate_sql(query)[-1],
+                raw_query=query,
                 check_type=ExpectationType.ROWCOUNT,
                 expected="0",
                 result=None,
@@ -179,7 +180,8 @@ def validate_datasource(
         if rows:
             results.append(
                 ValidationTest(
-                    query=sql,
+                    raw_query=query,
+                    generated_query=sql,
                     check_type=ExpectationType.ROWCOUNT,
                     expected="0",
                     result=DatasourceModelValidationError(

@@ -76,6 +76,7 @@ from trilogy.core.statements.author import (
 )
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
+    ProcessedCopyStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
     ProcessedRawSQLStatement,
@@ -345,6 +346,7 @@ class BaseDialect:
     COMPLEX_DATATYPE_MAP = COMPLEX_DATATYPE_MAP
     UNNEST_MODE = UnnestMode.CROSS_APPLY
     GROUP_MODE = GroupMode.AUTO
+    EXPLAIN_KEYWORD = "EXPLAIN"
 
     def __init__(self, rendering: Rendering | None = None):
         self.rendering = rendering or CONFIG.rendering
@@ -1135,7 +1137,13 @@ class BaseDialect:
         query: PROCESSED_STATEMENT_TYPES,
     ) -> str:
         if isinstance(query, ProcessedShowStatement):
-            return ";\n".join([str(x) for x in query.output_values])
+            return ";\n".join(
+                [
+                    f'{self.EXPLAIN_KEYWORD} {self.compile_statement(x)}'
+                    for x in query.output_values
+                    if isinstance(x, (ProcessedQuery, ProcessedCopyStatement))
+                ]
+            )
         elif isinstance(query, ProcessedRawSQLStatement):
             return query.text
 

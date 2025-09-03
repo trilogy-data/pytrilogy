@@ -1,4 +1,4 @@
-from trilogy import Executor
+from trilogy import Environment, Executor
 from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.exceptions import (
     ConceptModelValidationError,
@@ -12,64 +12,68 @@ from trilogy.core.validation.common import ExpectationType, ValidationTest, easy
 
 
 def validate_property_concept(
-    concept: BuildConcept, generate_only: bool = False
+    concept: BuildConcept, exec: Executor | None = None
 ) -> list[ValidationTest]:
     return []
 
 
 def validate_key_concept(
     concept: BuildConcept,
+    env: Environment,
     build_env: BuildEnvironment,
-    exec: Executor,
-    generate_only: bool = False,
+    exec: Executor | None = None,
 ):
     results: list[ValidationTest] = []
-    seen = {}
+    seen: dict[str, int] = {}
     for datasource in build_env.datasources.values():
         if concept.address in [c.address for c in datasource.concepts]:
             assignment = [
                 x for x in datasource.columns if x.concept.address == concept.address
             ][0]
+            # if it's not a partial, skip it
+            if not assignment.is_complete:
+                continue
             type_query = easy_query(
                 concepts=[
                     # build_env.concepts[concept.address],
                     build_env.concepts[f"grain_check_{concept.safe_address}"],
                 ],
                 datasource=datasource,
-                env=exec.environment,
+                env=env,
                 limit=1,
             )
-            type_sql = exec.generate_sql(type_query)[-1]
+            if exec:
+                type_sql = exec.generate_sql(type_query)[-1]
 
-            rows = exec.execute_raw_sql(type_sql).fetchall()
-            if generate_only and assignment.is_complete:
+                rows = exec.execute_raw_sql(type_sql).fetchall()
+                seen[datasource.name] = rows[0][0] if rows else 0
+            else:
                 results.append(
                     ValidationTest(
-                        query=type_sql,
+                        raw_query=type_query,
                         check_type=ExpectationType.ROWCOUNT,
                         expected=f"equal_max_{concept.safe_address}",
                         result=None,
                         ran=False,
                     )
                 )
-                continue
-            seen[datasource.name] = rows[0][0] if rows else None
-    if generate_only:
+
+    if not exec:
         return results
-    max_seen = max([v for v in seen.values() if v is not None], default=0)
+    max_seen: int = max([v for v in seen.values() if v is not None], default=0)
     for datasource in build_env.datasources.values():
         if concept.address in [c.address for c in datasource.concepts]:
             assignment = [
                 x for x in datasource.columns if x.concept.address == concept.address
             ][0]
             err = None
-            if (seen[datasource.name] or 0) < max_seen and assignment.is_complete:
+            datasource_count: int = seen.get(datasource.name, 0)
+            if datasource_count < max_seen and assignment.is_complete:
                 err = DatasourceModelValidationError(
                     f"Key concept {concept.address} is missing values in datasource {datasource.name} (max cardinality in data {max_seen}, datasource has {seen[datasource.name]} values) but is not marked as partial."
                 )
             results.append(
                 ValidationTest(
-                    query=None,
                     check_type=ExpectationType.ROWCOUNT,
                     expected=str(max_seen),
                     result=err,
@@ -96,7 +100,6 @@ def validate_datasources(
         return []
     return [
         ValidationTest(
-            query=None,
             check_type=ExpectationType.LOGICAL,
             expected=None,
             result=ConceptModelValidationError(
@@ -109,14 +112,14 @@ def validate_datasources(
 
 def validate_concept(
     concept: BuildConcept,
+    env: Environment,
     build_env: BuildEnvironment,
-    exec: Executor,
-    generate_only: bool = False,
+    exec: Executor | None = None,
 ) -> list[ValidationTest]:
     base: list[ValidationTest] = []
     base += validate_datasources(concept, build_env)
     if concept.purpose == Purpose.PROPERTY:
-        base += validate_property_concept(concept, generate_only)
+        base += validate_property_concept(concept)
     elif concept.purpose == Purpose.KEY:
-        base += validate_key_concept(concept, build_env, exec, generate_only)
+        base += validate_key_concept(concept, env, build_env, exec)
     return base

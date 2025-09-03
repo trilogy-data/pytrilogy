@@ -88,6 +88,8 @@ class ProcessedShowStatement:
             BuildConcept,
             BuildDatasource,
             ProcessedQuery,
+            ProcessedQueryPersist,
+            ProcessedCopyStatement,
             ProcessedValidateStatement,
             ProcessedStaticValueOutput,
         ]
