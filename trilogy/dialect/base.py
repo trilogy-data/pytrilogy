@@ -76,6 +76,7 @@ from trilogy.core.statements.author import (
 )
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
+    ProcessedCopyStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
     ProcessedRawSQLStatement,
@@ -1135,7 +1136,13 @@ class BaseDialect:
         query: PROCESSED_STATEMENT_TYPES,
     ) -> str:
         if isinstance(query, ProcessedShowStatement):
-            return ";\n".join([str(x) for x in query.output_values])
+            return ";\n".join(
+                [
+                    self.compile_statement(x)
+                    for x in query.output_values
+                    if isinstance(x, ProcessedQuery, ProcessedCopyStatement)
+                ]
+            )
         elif isinstance(query, ProcessedRawSQLStatement):
             return query.text
 
