@@ -346,6 +346,7 @@ class BaseDialect:
     COMPLEX_DATATYPE_MAP = COMPLEX_DATATYPE_MAP
     UNNEST_MODE = UnnestMode.CROSS_APPLY
     GROUP_MODE = GroupMode.AUTO
+    EXPLAIN_KEYWORD = "EXPLAIN"
 
     def __init__(self, rendering: Rendering | None = None):
         self.rendering = rendering or CONFIG.rendering
@@ -1138,9 +1139,9 @@ class BaseDialect:
         if isinstance(query, ProcessedShowStatement):
             return ";\n".join(
                 [
-                    self.compile_statement(x)
+                    f'{self.EXPLAIN_KEYWORD} {self.compile_statement(x)}'
                     for x in query.output_values
-                    if isinstance(x, ProcessedQuery, ProcessedCopyStatement)
+                    if isinstance(x, (ProcessedQuery, ProcessedCopyStatement))
                 ]
             )
         elif isinstance(query, ProcessedRawSQLStatement):
