@@ -1,0 +1,29 @@
+import orders as orders;
+import inventory_items as inventory_items;
+import users as users;
+import products as products;
+
+key id int;
+property id.status string;
+property id.created_at timestamp;
+property id.shipped_at timestamp;
+property id.delivered_at timestamp;
+property id.returned_at timestamp;
+property id.sale_price float;
+
+
+datasource order_items (
+    id:id,
+	order_id:orders.id,
+	user_id:users.id,
+	product_id:products.id,
+	inventory_item_id:inventory_items.id,
+	status:status,
+	created_at:created_at,
+	shipped_at:shipped_at,
+	delivered_at:delivered_at,
+	returned_at:returned_at,
+	sale_price:sale_price
+    ) 
+grain (id) 
+address `bigquery-public-data.thelook_ecommerce.order_items`;

@@ -296,7 +296,21 @@ from pytrilogy.authoring import Concept, Function, ...
 
 Are likely to be unstable. Open an issue if you need to take dependencies on other modules outside those two paths. 
 
-## Trilogy Syntax Reference
+## MCP/Server
+
+Trilogy is straightforward to run as a server/MCP server; the former to generate SQL on demand and integrate into other tools, and MCP
+for full interactive query loops.
+
+This makes it easy to integrate Trilogy into existing tools or workflows.
+
+You can see examples of both use cases in the trilogy-studio codebase [here](https://github.com/trilogy-data/trilogy-studio-core)
+and install and run an MCP server directly with that codebase.
+
+If you're interested in a more fleshed out standalone server or MCP server, please open an issue and we'll prioritize it!
+
+## Trilogy Syntax Reference 
+
+Not exhaustive - see [documentation](https://trilogydata.dev/) for more details.
 
 ### Import
 ```sql

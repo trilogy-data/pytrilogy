@@ -321,6 +321,56 @@ def test_the_comments():
     assert rendered == "null"
 
 
+def test_the_comment_multiline():
+    env, parsed = parse_text(
+        """const
+         # comment here?
+           order_id <- 4;  # this is the order id
+        # order ids are important
+           
+           SELECT 
+        # TOOD - add in more columns?
+        order_id  
+        WHERE 
+        # order_id should not be null
+        order_id
+        # in this comp
+          is not 
+        null; # nulls are the worst
+        
+        """
+    )
+    query = parsed[-1]
+    assert env.concepts["order_id"].metadata.description is not None
+    assert "this is the order id" in env.concepts["order_id"].metadata.description
+    assert "order ids are important" in env.concepts["order_id"].metadata.description
+
+
+def test_the_comment_multiline_enter():
+    # we should not associate it as a description if there is a newline
+    env, parsed = parse_text(
+        """const
+         # comment here?
+           order_id <- 4;  
+        # this is the order id
+        # order ids are important
+           
+           SELECT 
+        # TOOD - add in more columns?
+        order_id  
+        WHERE 
+        # order_id should not be null
+        order_id
+        # in this comp
+          is not 
+        null; # nulls are the worst
+        
+        """
+    )
+    assert env.concepts["order_id"].metadata.description is None
+
+
+
 def test_purpose_nesting():
     env, parsed = parse_text(
         """key year int;

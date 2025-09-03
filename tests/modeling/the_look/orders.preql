@@ -1,0 +1,24 @@
+import users as users;
+
+key id int;
+property id.status string; # The order status - one of 'Shipped', 'Complete', 'Returned', 'Cancelled', 'Processing'
+property id.gender string; # The gender encoded as either 'M' or 'F'
+property id.created_at timestamp; # Time the order was created/placed
+property id.returned_at timestamp; 
+property id.shipped_at timestamp;
+property id.delivered_at timestamp;
+property id.item_count int;
+
+datasource orders (
+    order_id:id,
+	user_id:users.id,
+	status:status,
+	gender:gender,
+	created_at:created_at,
+	returned_at:returned_at,
+	shipped_at:shipped_at,
+	delivered_at:delivered_at,
+	num_of_item:item_count
+    ) 
+grain (id) 
+address `bigquery-public-data.thelook_ecommerce.orders`;

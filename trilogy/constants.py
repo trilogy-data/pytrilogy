@@ -16,6 +16,7 @@ ENV_CACHE_NAME = ".preql_cache.json"
 
 class MagicConstants(Enum):
     NULL = "null"
+    LINE_SEPARATOR = "\n"
 
 
 NULL_VALUE = MagicConstants.NULL

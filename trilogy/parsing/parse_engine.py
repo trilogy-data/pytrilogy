@@ -378,15 +378,17 @@ class ParseToObjects(Transformer):
 
     def start(self, args):
         return args
+    
+    def LINE_SEPARATOR(self, args):
+        return MagicConstants.LINE_SEPARATOR
 
     def block(self, args):
         output = args[0]
         if isinstance(output, ConceptDeclarationStatement):
-            if len(args) > 1 and isinstance(args[1], Comment):
-                output.concept.metadata.description = (
-                    output.concept.metadata.description
-                    or args[1].text.split("#")[1].strip()
-                )
+            if len(args) > 1 and args[1] != MagicConstants.LINE_SEPARATOR:
+                comments = [x for x in args[1:] if isinstance(x, Comment)]
+                merged = '\n'.join([x.text.split("#")[1].strip() for x in comments])
+                output.concept.metadata.description = merged
         # this is a bad plan for now;
         # because a comment after an import statement is very common
         # and it's not intuitive that it modifies the import description
