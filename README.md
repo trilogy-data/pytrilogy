@@ -273,7 +273,30 @@ trilogy fmt <path to trilogy file>
 - [Public model repository](https://github.com/trilogydata/trilogy-public-models) - Great place for modeling examples
 - [Full documentation](https://trilogydata.dev/)
 
-## Syntax Reference
+## Python API Integration
+
+### Root Imports
+
+Are stable and should be sufficient for executing code from Trilogy as text.
+
+```python
+from pytrilogy import Executor, Dialect
+```
+
+### Authoring Imports
+
+Are also stable, and should be used for cases which programatically generate Trilogy statements without a base text format 
+or need to process/transform parsed code in more complicated ways.
+
+```python
+from pytrilogy.authoring import Concept, Function, ...
+```
+
+### Other Imports
+
+Are likely to be unstable. Open an issue if you need to take dependencies on other modules outside those two paths. 
+
+## Trilogy Syntax Reference
 
 ### Import
 ```sql
