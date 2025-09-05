@@ -95,4 +95,4 @@ def test_adhoc08():
         text = f.read()
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
     statement = engine.parse_text(text)[-1]
-    generated = BigqueryDialect().compile_statement(statement)
+    BigqueryDialect().compile_statement(statement)

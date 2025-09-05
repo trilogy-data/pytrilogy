@@ -1,6 +1,7 @@
 from collections import defaultdict
 from datetime import date, datetime
 from functools import singledispatchmethod
+from typing import Any
 
 from jinja2 import Template
 
@@ -12,6 +13,7 @@ from trilogy.core.models.author import (
     AlignItem,
     CaseElse,
     CaseWhen,
+    Comment,
     Comparison,
     Concept,
     ConceptRef,
@@ -26,7 +28,6 @@ from trilogy.core.models.author import (
     SubselectComparison,
     WhereClause,
     WindowItem,
-    Comment,
 )
 from trilogy.core.models.core import (
     ArrayType,
@@ -84,7 +85,7 @@ class Renderer:
     def __init__(self, environment: Environment | None = None):
         self.environment = environment
 
-    def render_statement_string(self, list_of_statements: list[any]) -> str:
+    def render_statement_string(self, list_of_statements: list[Any]) -> str:
         new = []
         last_statement_type = None
         for stmt in list_of_statements:
@@ -287,7 +288,9 @@ class Renderer:
     @to_string.register
     def _(self, arg: "Address"):
         if arg.is_query:
-            return f"query '''{arg.location[1:-1]}'''"
+            if arg.location.startswith("("):
+                return f"query '''{arg.location[1:-1]}'''"
+            return f"query '''{arg.location}'''"
         return f"address {arg.location}"
 
     @to_string.register
@@ -304,7 +307,7 @@ class Renderer:
     def _(self, arg: "ColumnAssignment"):
         if arg.modifiers:
             modifiers = "".join(
-                [self.to_string(modifier) for modifier in arg.modifiers]
+                [self.to_string(modifier) for modifier in sorted(arg.modifiers)]
             )
         else:
             modifiers = ""

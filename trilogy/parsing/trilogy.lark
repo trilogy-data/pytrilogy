@@ -1,5 +1,5 @@
  !start: ( block | show_statement | PARSE_COMMENT )*
-    block: statement _TERMINATOR LINE_SEPARATOR? PARSE_COMMENT?
+    block: statement _TERMINATOR LINE_SEPARATOR? PARSE_COMMENT*
     ?statement: concept
     | datasource
     | function

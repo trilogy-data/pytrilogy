@@ -1,3 +1,4 @@
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -6,15 +7,13 @@ from trilogy.authoring import ConceptDeclarationStatement, Datasource
 from trilogy.core.exceptions import (
     DatasourceColumnBindingData,
     DatasourceColumnBindingError,
-    DatasourceModelValidationError,
 )
 from trilogy.core.validation.environment import validate_environment
 from trilogy.parsing.render import Renderer
-from collections import defaultdict
 
 
 def rewrite_file_with_errors(
-    statements: list[Any], errors: list[DatasourceModelValidationError]
+    statements: list[Any], errors: list[DatasourceColumnBindingError]
 ):
     renderer = Renderer()
     output = []
@@ -51,7 +50,9 @@ def rewrite_file_with_errors(
 
     return renderer.render_statement_string(output)
 
+
 DEPTH_CUTOFF = 3
+
 
 def validate_and_rewrite(
     input: Path | str, exec: Executor | None = None, depth: int = 0
@@ -81,16 +82,16 @@ def validate_and_rewrite(
     if not errors:
         print("No validation errors found")
         return None
-    print(f"Found {len(errors)} validation errors, attempting to fix, current depth: {depth}...")
+    print(
+        f"Found {len(errors)} validation errors, attempting to fix, current depth: {depth}..."
+    )
     for error in errors:
         for item in error.errors:
             print(f"- {item.format_failure()}")
 
     new_text = rewrite_file_with_errors(statements, errors)
 
-    while (
-        iteration := validate_and_rewrite(new_text, exec=exec, depth=depth + 1)
-    ):
+    while iteration := validate_and_rewrite(new_text, exec=exec, depth=depth + 1):
         depth = depth + 1
         if depth >= DEPTH_CUTOFF:
             break
@@ -100,5 +101,6 @@ def validate_and_rewrite(
     if isinstance(input, Path):
         with open(input, "w") as f:
             f.write(new_text)
+        return None
     else:
         return new_text

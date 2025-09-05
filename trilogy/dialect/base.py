@@ -761,6 +761,7 @@ class BaseDialect:
         elif isinstance(e, MagicConstants):
             if e == MagicConstants.NULL:
                 return "null"
+            return str(e.value)
         elif isinstance(e, date):
             return self.FUNCTION_MAP[FunctionType.DATE_LITERAL](e)
         elif isinstance(e, datetime):

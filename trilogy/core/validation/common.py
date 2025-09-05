@@ -2,24 +2,23 @@ from dataclasses import dataclass
 from enum import Enum
 
 from trilogy import Environment
-from trilogy.core.enums import FunctionType, ComparisonOperator
 from trilogy.authoring import (
     ConceptRef,
-    Ordering,
-
     DataType,
+    Ordering,
     Purpose,
 )
+from trilogy.constants import MagicConstants
+from trilogy.core.enums import ComparisonOperator, FunctionType
 from trilogy.core.exceptions import ModelValidationError
 from trilogy.core.models.build import (
+    BuildCaseElse,
+    BuildCaseWhen,
     BuildComparison,
     BuildConcept,
     BuildConditional,
     BuildDatasource,
     BuildFunction,
-    BuildCaseWhen,
-    BuildCaseElse,
-    BuildComparison,
     BuildOrderBy,
     BuildOrderItem,
 )
@@ -28,7 +27,6 @@ from trilogy.core.models.execute import (
     CTE,
     QueryDatasource,
 )
-from trilogy.constants import MagicConstants
 from trilogy.core.statements.execute import ProcessedQuery
 
 

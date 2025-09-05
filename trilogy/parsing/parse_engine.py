@@ -331,7 +331,6 @@ class ParseToObjects(Transformer):
         self.import_keys: list[str] = import_keys or ["root"]
         self.parse_config: Parsing = parse_config or CONFIG.parsing
 
-
     def set_text(self, text: str):
         self.text_lookup[self.token_address] = text
 

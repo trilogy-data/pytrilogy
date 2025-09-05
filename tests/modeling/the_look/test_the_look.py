@@ -28,4 +28,4 @@ ORDER BY
     cancellation_rate desc;"""
     )
 
-    sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(queries[-1])
+    Dialects.DUCK_DB.default_executor(environment=env).generate_sql(queries[-1])

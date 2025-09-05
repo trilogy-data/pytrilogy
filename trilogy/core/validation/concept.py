@@ -1,10 +1,9 @@
 from trilogy import Environment, Executor
-from trilogy.core.enums import Derivation, Purpose, Modifier
+from trilogy.core.enums import Derivation, Modifier, Purpose
 from trilogy.core.exceptions import (
     ConceptModelValidationError,
-    DatasourceModelValidationError,
+    DatasourceColumnBindingData,
     DatasourceColumnBindingError,
-    DatasourceColumnBindingData
 )
 from trilogy.core.models.build import (
     BuildConcept,
@@ -72,19 +71,18 @@ def validate_key_concept(
             datasource_count: int = seen.get(datasource.name, 0)
             if datasource_count < max_seen and assignment.is_complete:
                 err = DatasourceColumnBindingError(
-                    address = datasource.identifier,
-                    errors= [
+                    address=datasource.identifier,
+                    errors=[
                         DatasourceColumnBindingData(
-                            address = concept.address,
-                            value = None,
-                            value_type = concept.datatype,
-                            value_modifiers = [Modifier.PARTIAL],
-                            actual_type = concept.datatype,
-                            actual_modifiers = concept.modifiers,
-                            )
+                            address=concept.address,
+                            value=None,
+                            value_type=concept.datatype,
+                            value_modifiers=[Modifier.PARTIAL],
+                            actual_type=concept.datatype,
+                            actual_modifiers=concept.modifiers,
+                        )
                     ],
-                    message = f"Key concept {concept.address} is missing values in datasource {datasource.name} (max cardinality in data {max_seen}, datasource has {seen[datasource.name]} values) but is not marked as partial."
-                        
+                    message=f"Key concept {concept.address} is missing values in datasource {datasource.name} (max cardinality in data {max_seen}, datasource has {seen[datasource.name]} values) but is not marked as partial.",
                 )
             results.append(
                 ValidationTest(

@@ -129,7 +129,11 @@ def validate_datasource(
                     DatasourceColumnBindingData(
                         address=col.concept.address,
                         value=rval,
-                        value_type=arg_to_datatype(rval) if rval is not None else col.concept.datatype,
+                        value_type=(
+                            arg_to_datatype(rval)
+                            if rval is not None
+                            else col.concept.datatype
+                        ),
                         value_modifiers=[Modifier.NULLABLE] if rval is None else [],
                         actual_type=col.concept.datatype,
                         actual_modifiers=col.concept.modifiers,

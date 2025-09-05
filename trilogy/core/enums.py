@@ -82,6 +82,15 @@ class Modifier(Enum):
             return Modifier.NULLABLE
         return super()._missing_(value=strval.capitalize())
 
+    def __lt__(self, other):
+        order = [
+            Modifier.HIDDEN,
+            Modifier.PARTIAL,
+            Modifier.NULLABLE,
+            Modifier.OPTIONAL,
+        ]
+        return order.index(self) < order.index(other)
+
 
 class JoinType(Enum):
     INNER = "inner"

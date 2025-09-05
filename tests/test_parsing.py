@@ -340,10 +340,10 @@ def test_the_comment_multiline():
         
         """
     )
-    query = parsed[-1]
+    parsed[-1]
     assert env.concepts["order_id"].metadata.description is not None
-    assert "this is the order id" in env.concepts["order_id"].metadata.description
-    assert "order ids are important" in env.concepts["order_id"].metadata.description
+    assert " this is the order id" in env.concepts["order_id"].metadata.description
+    assert " order ids are important" in env.concepts["order_id"].metadata.description
 
 
 def test_the_comment_multiline_enter():
