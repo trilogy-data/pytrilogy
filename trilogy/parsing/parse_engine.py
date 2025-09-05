@@ -2295,7 +2295,7 @@ def parse_text(
             raise _create_syntax_error(210, pos, text)
 
         # Handle FROM token error
-        parsed_tokens = [x.value for x in e.token_history] if e.token_history else []
+        parsed_tokens = [x.value for x in e.token_history if x] if e.token_history else []
         if parsed_tokens == ["FROM"]:
             raise _create_syntax_error(101, pos, text)
 
