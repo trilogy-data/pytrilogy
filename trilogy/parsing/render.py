@@ -26,6 +26,7 @@ from trilogy.core.models.author import (
     SubselectComparison,
     WhereClause,
     WindowItem,
+    Comment,
 )
 from trilogy.core.models.core import (
     ArrayType,
@@ -82,6 +83,23 @@ class Renderer:
 
     def __init__(self, environment: Environment | None = None):
         self.environment = environment
+
+    def render_statement_string(self, list_of_statements: list[any]) -> str:
+        new = []
+        last_statement_type = None
+        for stmt in list_of_statements:
+            stmt_type = type(stmt)
+            if last_statement_type is None:
+                pass
+            elif last_statement_type == Comment:
+                new.append("\n")
+            elif stmt_type != last_statement_type:
+                new.append("\n\n")
+            else:
+                new.append("\n")
+            new.append(Renderer().to_string(stmt))
+            last_statement_type = stmt_type
+        return "".join(new)
 
     @singledispatchmethod
     def to_string(self, arg):
@@ -269,7 +287,7 @@ class Renderer:
     @to_string.register
     def _(self, arg: "Address"):
         if arg.is_query:
-            return f"query '''{arg.location}'''"
+            return f"query '''{arg.location[1:-1]}'''"
         return f"address {arg.location}"
 
     @to_string.register
@@ -328,7 +346,7 @@ class Renderer:
         else:
             output = f"{concept.purpose.value} {namespace}{concept.name} <- {self.to_string(concept.lineage)};"
         if base_description:
-            output += f" # {base_description}"
+            output += f" #{base_description}"
         return output
 
     @to_string.register
@@ -427,6 +445,10 @@ class Renderer:
     @to_string.register
     def _(self, arg: "Comparison"):
         return f"{self.to_string(arg.left)} {arg.operator.value} {self.to_string(arg.right)}"
+
+    @to_string.register
+    def _(self, arg: "Comment"):
+        return f"{arg.text}"
 
     @to_string.register
     def _(self, arg: "WindowItem"):
@@ -551,8 +573,10 @@ class Renderer:
     def _(self, arg: Modifier):
         if arg == Modifier.PARTIAL:
             return "~"
-        if arg == Modifier.HIDDEN:
+        elif arg == Modifier.HIDDEN:
             return "--"
+        elif arg == Modifier.NULLABLE:
+            return "?"
         return arg.value
 
     @to_string.register

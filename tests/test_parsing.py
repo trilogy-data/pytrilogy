@@ -370,7 +370,6 @@ def test_the_comment_multiline_enter():
     assert env.concepts["order_id"].metadata.description is None
 
 
-
 def test_purpose_nesting():
     env, parsed = parse_text(
         """key year int;

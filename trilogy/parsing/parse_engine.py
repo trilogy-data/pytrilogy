@@ -331,6 +331,7 @@ class ParseToObjects(Transformer):
         self.import_keys: list[str] = import_keys or ["root"]
         self.parse_config: Parsing = parse_config or CONFIG.parsing
 
+
     def set_text(self, text: str):
         self.text_lookup[self.token_address] = text
 
@@ -378,7 +379,7 @@ class ParseToObjects(Transformer):
 
     def start(self, args):
         return args
-    
+
     def LINE_SEPARATOR(self, args):
         return MagicConstants.LINE_SEPARATOR
 
@@ -387,7 +388,7 @@ class ParseToObjects(Transformer):
         if isinstance(output, ConceptDeclarationStatement):
             if len(args) > 1 and args[1] != MagicConstants.LINE_SEPARATOR:
                 comments = [x for x in args[1:] if isinstance(x, Comment)]
-                merged = '\n'.join([x.text.split("#")[1].strip() for x in comments])
+                merged = "\n".join([x.text.split("#")[1].rstrip() for x in comments])
                 output.concept.metadata.description = merged
         # this is a bad plan for now;
         # because a comment after an import statement is very common
@@ -915,7 +916,7 @@ class ParseToObjects(Transformer):
         return Comment(text=args[0].value)
 
     def PARSE_COMMENT(self, args):
-        return Comment(text=args.value)
+        return Comment(text=args.value.rstrip())
 
     @v_args(meta=True)
     def select_transform(self, meta: Meta, args) -> ConceptTransform:

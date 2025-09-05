@@ -1139,7 +1139,7 @@ class BaseDialect:
         if isinstance(query, ProcessedShowStatement):
             return ";\n".join(
                 [
-                    f'{self.EXPLAIN_KEYWORD} {self.compile_statement(x)}'
+                    f"{self.EXPLAIN_KEYWORD} {self.compile_statement(x)}"
                     for x in query.output_values
                     if isinstance(x, (ProcessedQuery, ProcessedCopyStatement))
                 ]

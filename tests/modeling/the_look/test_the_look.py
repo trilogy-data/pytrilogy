@@ -1,13 +1,14 @@
-from trilogy import Environment
 from pathlib import Path
 
-from trilogy import Dialects
+from trilogy import Dialects, Environment
+
 base = Path(__file__).parent
 
 
 def test_studio_join_issue():
     env = Environment(working_path=base)
-    env, queries = env.parse('''import orders as orders;
+    env, queries = env.parse(
+        """import orders as orders;
 
 auto cancelled_orders <- filter orders.id where orders.status = 'Cancelled';
 auto orders.id.cancelled_count <- count(cancelled_orders);
@@ -24,7 +25,7 @@ HAVING
     orders.id.count>10
 ORDER BY
 
-    cancellation_rate desc;''')
+    cancellation_rate desc;"""
+    )
 
     sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(queries[-1])
-
