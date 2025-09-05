@@ -15,24 +15,37 @@ property id.descendants int;  #Number of story or poll descendants
 property id.ranking int;  #Comment ranking
 property id.deleted bool;  #deleted if true; can be false or null
 
-property id.domain <- REGEXP_EXTRACT((REGEXP_EXTRACT(url,'http(?:s)?://([^/]+)/')),'([^\\.]+\\.[^\\.]+(?:\\.[a-zA-Z].)?)$');
-property id.is_show_hn <- title like 'Show HN%';
+#compute section
+property id.lowercase_url <-lower(url); #lowercase! 
+property id.domain <- REGEXP_EXTRACT((REGEXP_EXTRACT(url,'http(?:s)?://([^/]+)/')),'([^\\.]+\\.[^\\.]+(?:\\.[a-zA-Z].)?)$'); # root domain of the URL
+property id.is_show_hn <- title like 'Show HN%'; # if the post is a Show HN post by the title
+
+property <id>.create_time.day_of_week_name <- CASE
+WHEN create_time.day_of_week = 0 THEN 'Sunday'
+WHEN create_time.day_of_week = 1 THEN 'Monday'
+WHEN create_time.day_of_week = 2 THEN 'Tuesday'
+WHEN create_time.day_of_week = 3 THEN 'Wednesday'
+WHEN create_time.day_of_week = 4 THEN 'Thursday'
+WHEN create_time.day_of_week = 5 THEN 'Friday'
+WHEN create_time.day_of_week = 6 THEN 'Saturday'
+ELSE 'Unknown'
+END;
 
 datasource full (
-	title:title,
-	url:url,
-	text:text,
-	dead:dead,
-	by:by,
-	score:score,
-	time:time,
-    timestamp:create_time,
-	type:type,
-	id:id,
-	parent:parent,
-	descendants:descendants,
-	ranking:ranking,
-	deleted:deleted,
+	title,
+	url,
+	text,
+	dead,
+	by,
+	score,
+	time,
+  timestamp:create_time,
+	type,
+	id,
+	parent,
+	descendants,
+	ranking,
+	deleted
 )
 grain (id)
 

@@ -1,0 +1,62 @@
+import hackernews;
+
+SELECT
+ title,
+        url,
+        text,
+        dead,
+        by,
+        score,
+        time,
+        create_time,
+        type,
+        id,
+        descendants,
+        ranking,
+        deleted,
+        parent,
+        direct_parent.id LIMIT 0;
+
+SELECT
+ root_parent.title,
+        root_parent.url,
+        root_parent.text,
+        root_parent.dead,
+        root_parent.by,
+        root_parent.score,
+        root_parent.time,
+        root_parent.create_time,
+        root_parent.type,
+        root_parent.id,
+        root_parent.parent,
+        root_parent.descendants,
+        root_parent.ranking,
+        root_parent.deleted LIMIT 0;
+
+
+SELECT
+ direct_parent.title,
+        direct_parent.url,
+        direct_parent.text,
+        direct_parent.dead,
+        direct_parent.by,
+        direct_parent.score,
+        direct_parent.time,
+        direct_parent.create_time,
+        direct_parent.type,
+        direct_parent.id,
+        direct_parent.parent,
+        direct_parent.descendants,
+        direct_parent.ranking,
+        direct_parent.deleted LIMIT 0;
+# for stories, which days of the week have the most posts in 2024?
+
+where type = 'story'
+  and create_time.year = 2024
+select
+  create_time.day_of_week,
+  id.count as story_count,
+  avg(score) as average_score
+order by
+  story_count desc
+limit 7;

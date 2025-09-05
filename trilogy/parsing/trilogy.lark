@@ -1,5 +1,5 @@
- !start: ( block | show_statement )*
-    block: statement _TERMINATOR PARSE_COMMENT?
+ !start: ( block | show_statement | PARSE_COMMENT )*
+    block: statement _TERMINATOR LINE_SEPARATOR? PARSE_COMMENT*
     ?statement: concept
     | datasource
     | function
@@ -14,9 +14,12 @@
     | rawsql_statement
     | validate_statement
     
-    _TERMINATOR:  ";"i /\s*/
+    _TERMINATOR:  ";"i
     
-    PARSE_COMMENT.1:   /#.*(\n|$)/ |  /\/\/.*\n/  
+    PARSE_COMMENT.1:   /#.*(\n|$)/ |  /\/\/.*(\n|$)/  
+
+    // when whitespace matters - comment placement
+    LINE_SEPARATOR.1: /[ \t\r\f\v]*\n+/
     
     // property display_name string
     concept_declaration: PURPOSE IDENTIFIER data_type concept_nullable_modifier? metadata?

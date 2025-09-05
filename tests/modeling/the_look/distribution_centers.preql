@@ -1,0 +1,13 @@
+key id int;
+property id.name string;
+property id.latitude float;
+property id.longitude float;
+
+datasource distribution_centers (
+    id:id,
+	name:name,
+	latitude:latitude,
+	longitude:longitude
+    ) 
+grain (id) 
+address `bigquery-public-data.thelook_ecommerce.distribution_centers`;

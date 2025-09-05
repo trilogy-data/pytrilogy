@@ -1747,6 +1747,55 @@ having value = 2;
     assert len(results) == 1
 
 
+def test_validate_fix():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    from trilogy.core.validation.fix import validate_and_rewrite
+
+    test = """key x int; # guessing at type
+
+key y int;
+
+datasource dim_y (
+    y: y
+)
+grain (y)
+query '''
+select 1 as y union all select 2 as y union all select 3 as y''';
+
+# a fun comment
+datasource example (
+    x: x,
+    y: y
+    )
+grain (x)
+query '''
+select 'abc' as x, 1 as y union all select null as x, null as y''';
+"""
+    rewritten = validate_and_rewrite(test, default_duckdb_engine)
+    print(rewritten)
+    assert (
+        rewritten.strip()
+        == """
+key x string; # guessing at type
+key y int;
+
+datasource dim_y (
+    y: y
+    )
+grain (y)
+query '''
+select 1 as y union all select 2 as y union all select 3 as y''';
+datasource example (
+    x: ?x,
+    y: ~?y
+    )
+grain (x)
+query '''
+select 'abc' as x, 1 as y union all select null as x, null as y''';
+""".strip()
+    ), rewritten.strip()
+
+
 def test_show_validate():
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
     test = """

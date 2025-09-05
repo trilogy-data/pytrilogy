@@ -761,6 +761,7 @@ class BaseDialect:
         elif isinstance(e, MagicConstants):
             if e == MagicConstants.NULL:
                 return "null"
+            return str(e.value)
         elif isinstance(e, date):
             return self.FUNCTION_MAP[FunctionType.DATE_LITERAL](e)
         elif isinstance(e, datetime):
@@ -1139,7 +1140,7 @@ class BaseDialect:
         if isinstance(query, ProcessedShowStatement):
             return ";\n".join(
                 [
-                    f'{self.EXPLAIN_KEYWORD} {self.compile_statement(x)}'
+                    f"{self.EXPLAIN_KEYWORD} {self.compile_statement(x)}"
                     for x in query.output_values
                     if isinstance(x, (ProcessedQuery, ProcessedCopyStatement))
                 ]

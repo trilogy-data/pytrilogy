@@ -10,9 +10,14 @@ from trilogy.authoring import (
     NumericType,
     StructType,
     TraitDataType,
+    arg_to_datatype,
 )
-from trilogy.core.enums import ComparisonOperator
-from trilogy.core.exceptions import DatasourceModelValidationError
+from trilogy.core.enums import ComparisonOperator, Modifier
+from trilogy.core.exceptions import (
+    DatasourceColumnBindingData,
+    DatasourceColumnBindingError,
+    DatasourceModelValidationError,
+)
 from trilogy.core.models.build import (
     BuildComparison,
     BuildDatasource,
@@ -64,6 +69,7 @@ def validate_datasource(
     env: Environment,
     build_env: BuildEnvironment,
     exec: Executor | None = None,
+    fix: bool = False,
 ) -> list[ValidationTest]:
     results: list[ValidationTest] = []
     # we might have merged concepts, where both will map out to the same
@@ -109,14 +115,7 @@ def validate_datasource(
             )
         )
         return results
-    failures: list[
-        tuple[
-            str,
-            Any,
-            DataType | ArrayType | StructType | MapType | NumericType | TraitDataType,
-            bool,
-        ]
-    ] = []
+    failures: list[DatasourceColumnBindingData] = []
     cols_with_error = set()
     for row in rows:
         for col in datasource.columns:
@@ -127,17 +126,20 @@ def validate_datasource(
             passed = type_check(rval, col.concept.datatype, col.is_nullable)
             if not passed:
                 failures.append(
-                    (
-                        col.concept.address,
-                        rval,
-                        col.concept.datatype,
-                        col.is_nullable,
+                    DatasourceColumnBindingData(
+                        address=col.concept.address,
+                        value=rval,
+                        value_type=(
+                            arg_to_datatype(rval)
+                            if rval is not None
+                            else col.concept.datatype
+                        ),
+                        value_modifiers=[Modifier.NULLABLE] if rval is None else [],
+                        actual_type=col.concept.datatype,
+                        actual_modifiers=col.concept.modifiers,
                     )
                 )
                 cols_with_error.add(actual_address)
-
-    def format_failure(failure):
-        return f"Concept {failure[0]} value '{failure[1]}' does not conform to expected type {str(failure[2])} (nullable={failure[3]})"
 
     if failures:
         results.append(
@@ -145,8 +147,8 @@ def validate_datasource(
                 check_type=ExpectationType.LOGICAL,
                 expected="datatype_match",
                 ran=True,
-                result=DatasourceModelValidationError(
-                    f"Datasource {datasource.name} failed validation. Found rows that do not conform to types: {[format_failure(failure) for failure in failures]}",
+                result=DatasourceColumnBindingError(
+                    address=datasource.identifier, errors=failures
                 ),
             )
         )

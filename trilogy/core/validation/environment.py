@@ -15,9 +15,10 @@ def validate_environment(
     scope: ValidationScope = ValidationScope.ALL,
     targets: list[str] | None = None,
     exec: Executor | None = None,
+    generate_only: bool = False,
 ) -> list[ValidationTest]:
     # avoid mutating the environment for validation
-    generate_only = exec is None
+    generate_only = exec is None or generate_only
     env = env.duplicate()
     grain_check = function_to_concept(
         parent=Function(

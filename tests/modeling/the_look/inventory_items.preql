@@ -1,0 +1,30 @@
+import products as products;
+import distribution_centers as distribution_centers;
+
+key id int;
+property id.created_at timestamp;
+property id.sold_at timestamp;
+property id.cost float;
+property id.product_category string;
+property id.product_name string;
+property id.product_brand string;
+property id.product_retail_price float;
+property id.product_department string;
+property id.product_sku string;
+
+datasource inventory_items (
+    id:id,
+	product_id:products.id,
+	created_at:created_at,
+	sold_at:sold_at,
+	cost:cost,
+	product_category:product_category,
+	product_name:product_name,
+	product_brand:product_brand,
+	product_retail_price:product_retail_price,
+	product_department:product_department,
+	product_sku:product_sku,
+	product_distribution_center_id:distribution_centers.id
+    ) 
+grain (id) 
+address `bigquery-public-data.thelook_ecommerce.inventory_items`;

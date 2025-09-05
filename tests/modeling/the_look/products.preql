@@ -1,0 +1,24 @@
+import distribution_centers as distribution_centers;
+
+key id int;
+property id.cost float;
+property id.category string;
+property id.name string;
+property id.brand string;
+property id.retail_price float;
+property id.department string;
+property id.sku string;
+
+datasource products (
+    id:id,
+	cost:cost,
+	category:category,
+	name:name,
+	brand:brand,
+	retail_price:retail_price,
+	department:department,
+	sku:sku,
+	distribution_center_id:distribution_centers.id
+    ) 
+grain (id) 
+address `bigquery-public-data.thelook_ecommerce.products`;

@@ -1,7 +1,6 @@
 import post;
 import post as root_parent;
 import post as direct_parent;
-# import post as recursive_children;
 
 auto recursive_parent<- recurse_edge(id, parent);
 

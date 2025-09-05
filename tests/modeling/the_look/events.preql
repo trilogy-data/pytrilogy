@@ -1,0 +1,33 @@
+import users as users;
+import std.geography;
+
+key id int;
+key ip_address string;
+property id.city string;
+property id.state string::us_state_short;
+property id.postal_code string;
+property id.browser string;
+property id.traffic_source string;
+property id.uri string;
+property id.event_type string;
+property id.sequence_number int;
+key session_id string;
+property id.created_at timestamp;
+
+datasource events (
+    id:id,
+	user_id:users.id,
+	sequence_number:sequence_number,
+	session_id:session_id,
+	created_at:created_at,
+	ip_address:ip_address,
+	city:city,
+	state:state,
+	postal_code:postal_code,
+	browser:browser,
+	traffic_source:traffic_source,
+	uri:uri,
+	event_type:event_type
+    ) 
+grain (id) 
+address `bigquery-public-data.thelook_ecommerce.events`;
