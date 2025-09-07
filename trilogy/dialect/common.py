@@ -10,7 +10,6 @@ from trilogy.core.models.build import (
     BuildParamaterizedConceptReference,
     BuildParenthetical,
 )
-from trilogy.core.models.datasource import RawColumnExpr
 from trilogy.core.models.execute import (
     CTE,
     InstantiatedUnnestJoin,
