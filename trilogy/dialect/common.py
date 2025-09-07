@@ -10,7 +10,6 @@ from trilogy.core.models.build import (
     BuildParamaterizedConceptReference,
     BuildParenthetical,
 )
-from trilogy.core.models.datasource import RawColumnExpr
 from trilogy.core.models.execute import (
     CTE,
     InstantiatedUnnestJoin,
@@ -65,15 +64,8 @@ def render_join_concept(
     inlined_ctes: set[str],
 ):
     if cte.name in inlined_ctes:
-        ds = cte.source.datasources[0]
-        raw_content = ds.get_alias(concept)
-        if isinstance(raw_content, RawColumnExpr):
-            rval = raw_content.text
-            return rval
-        elif isinstance(raw_content, BuildFunction):
-            rval = render_expr(raw_content, cte=cte)
-            return rval
-        return f"{quote_character}{name}{quote_character}.{quote_character}{raw_content}{quote_character}"
+        base = render_expr(concept, cte)
+        return base
     return f"{quote_character}{name}{quote_character}.{quote_character}{concept.safe_address}{quote_character}"
 
 

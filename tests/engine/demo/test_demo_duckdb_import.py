@@ -1,9 +1,11 @@
+from trilogy import Dialects
 from trilogy.core.env_processor import concept_to_node, generate_graph
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import History, search_concepts
 from trilogy.core.processing.node_generators.node_merge_node import (
     determine_induced_minimal_nodes,
     gen_merge_node,
+    reinject_common_join_keys_v2,
 )
 
 
@@ -89,6 +91,50 @@ merge rich_info.last_name into ~passenger.last_name;
     )
 
     assert found
+
+
+def test_merge_concept_readdition():
+    env = Environment()
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    engine = Dialects.DUCK_DB.default_executor(environment=env)
+
+    engine.parse_text(
+        """ 
+key x int;
+key x2 int;
+
+key y int;
+
+datasource x (
+    x)
+grain (x)
+query '''
+select 1 as x union all select 2 as x union all select 3 as x;
+''';
+
+
+datasource x2 (
+    x2,
+    y
+    )
+grain (x2)
+query '''
+select * from (values (1, 10), (2, 20), (3, 30)) as t(x2, y);
+''';
+
+merge x2 into x;
+
+"""
+    )
+    test_env = env.materialize_for_select()
+    g = generate_graph(test_env)
+    target_concepts = [test_env.concepts[c] for c in ["x", "y"]]
+    nodelist = [concept_to_node(c) for c in target_concepts]
+    final = g.subgraph(nodelist).copy()
+    reinjection = reinject_common_join_keys_v2(g, final, nodelist=nodelist)
+    assert not reinjection, "We should not inject synonyms"
 
 
 def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environment):

@@ -1,4 +1,5 @@
-from typing import List, Optional
+from itertools import combinations
+from typing import Callable, List, Optional
 
 import networkx as nx
 from networkx.algorithms import approximation as ax
@@ -11,7 +12,12 @@ from trilogy.core.graph_models import (
     concept_to_node,
     prune_sources_for_conditions,
 )
-from trilogy.core.models.build import BuildConcept, BuildConditional, BuildWhereClause
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildConditional,
+    BuildGrain,
+    BuildWhereClause,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import padding
@@ -29,7 +35,10 @@ def filter_pseudonyms_for_source(
         if edge in pseudonyms:
             lengths = {}
             for n in edge:
-                lengths[n] = nx.shortest_path_length(ds_graph, node, n)
+                try:
+                    lengths[n] = nx.shortest_path_length(ds_graph, node, n)
+                except nx.NetworkXNoPath:
+                    lengths[n] = 999
             to_remove.add(max(lengths, key=lambda x: lengths.get(x, 0)))
     for node in to_remove:
         ds_graph.remove_node(node)
@@ -84,12 +93,104 @@ def extract_ds_components(
     return graphs
 
 
+def prune_and_merge(
+    G: nx.DiGraph,
+    keep_node_lambda: Callable[[str], bool],
+) -> nx.DiGraph:
+    """
+    Prune nodes of one type and create direct connections between remaining nodes.
+
+    Args:
+        G: NetworkX graph
+        keep_node_type: The node type to keep
+        node_type_attr: Attribute name that stores node type
+
+    Returns:
+        New graph with only keep_node_type nodes and merged connections
+    """
+    # Get nodes to keep
+    nodes_to_keep = [n for n in G.nodes if keep_node_lambda(n)]
+    # Create new graph
+    new_graph = G.subgraph(nodes_to_keep).copy()
+
+    # Find paths between nodes to keep through removed nodes
+    nodes_to_remove = [n for n in G.nodes() if n not in nodes_to_keep]
+
+    for node_pair in combinations(nodes_to_keep, 2):
+        n1, n2 = node_pair
+
+        # Check if there's a path through removed nodes
+        try:
+            path = nx.shortest_path(G, n1, n2)
+            # If path exists and goes through nodes we're removing
+            if len(path) > 2 or any(node in nodes_to_remove for node in path[1:-1]):
+                new_graph.add_edge(n1, n2)
+        except nx.NetworkXNoPath:
+            continue
+
+    return new_graph
+
+
+def reinject_common_join_keys_v2(
+    G: ReferenceGraph,
+    final: nx.DiGraph,
+    nodelist: list[str],
+    synonyms: set[str] = set(),
+) -> bool:
+    # when we've discovered a concept join, for each pair of ds nodes
+    # check if they have more keys in common
+    # and inject those to discovery as join conditions
+    def is_ds_node(n: str) -> bool:
+        return n.startswith("ds~")
+
+    ds_graph = prune_and_merge(final, is_ds_node)
+    injected = False
+    for datasource in ds_graph.nodes:
+        node1 = G.datasources[datasource]
+        neighbors = nx.all_neighbors(ds_graph, datasource)
+        for neighbor in neighbors:
+            node2 = G.datasources[neighbor]
+            common_concepts = set(
+                x.concept.address for x in node1.columns
+            ).intersection(set(x.concept.address for x in node2.columns))
+            concrete_concepts = [
+                x.concept for x in node1.columns if x.concept.address in common_concepts
+            ]
+            reduced = BuildGrain.from_concepts(concrete_concepts).components
+            existing_addresses = set()
+            for concrete in concrete_concepts:
+                logger.info(
+                    f"looking at column {concrete.address} with pseudonyms {concrete.pseudonyms}"
+                )
+                cnode = concept_to_node(concrete.with_default_grain())
+                if cnode in final.nodes:
+                    existing_addresses.add(concrete.address)
+                    continue
+            for concrete in concrete_concepts:
+                if concrete.address in synonyms:
+                    continue
+                if concrete.address not in reduced:
+                    continue
+                # skip anything that is already in the graph pseudonyms
+                if any(x in concrete.pseudonyms for x in existing_addresses):
+                    continue
+                cnode = concept_to_node(concrete.with_default_grain())
+                final.add_edge(datasource, cnode)
+                final.add_edge(neighbor, cnode)
+                logger.info(
+                    f"{LOGGER_PREFIX} reinjecting common join key {cnode} between {datasource} and {neighbor}"
+                )
+                injected = True
+    return injected
+
+
 def determine_induced_minimal_nodes(
     G: ReferenceGraph,
     nodelist: list[str],
     environment: BuildEnvironment,
     filter_downstream: bool,
     accept_partial: bool = False,
+    synonyms: set[str] = set(),
 ) -> nx.DiGraph | None:
     H: nx.Graph = nx.to_undirected(G).copy()
     nodes_to_remove = []
@@ -129,7 +230,7 @@ def determine_induced_minimal_nodes(
         return None
     path_removals = list(x for x in H.nodes if x not in paths)
     if path_removals:
-        logger.debug(f"Removing paths {path_removals} from graph")
+        # logger.debug(f"Removing paths {path_removals} from graph")
         H.remove_nodes_from(path_removals)
     # logger.debug(f"Graph after path removal {H.nodes}")
     sG: nx.Graph = ax.steinertree.steiner_tree(H, nodelist).copy()
@@ -148,8 +249,10 @@ def determine_induced_minimal_nodes(
                 if not accept_partial:
                     continue
             final.add_edge(*edge)
-    # all concept nodes must have a parent
 
+    reinject_common_join_keys_v2(G, final, nodelist, synonyms)
+
+    # all concept nodes must have a parent
     if not all(
         [
             final.in_degree(node) > 0
@@ -302,6 +405,7 @@ def resolve_weak_components(
                 filter_downstream=filter_downstream,
                 accept_partial=accept_partial,
                 environment=environment,
+                synonyms=synonyms,
             )
 
             if not g or not g.nodes:

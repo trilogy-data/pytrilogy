@@ -4,7 +4,7 @@ LOAD httpfs;
 
 CREATE OR REPLACE TABLE launch_info AS 
 SELECT 
-    trim(Launch_Tag) Launch_Tag,
+    Launch_Tag,
     Launch_JD,
     Launch_Date,
     LV_Type,
@@ -26,7 +26,7 @@ SELECT
     OrbPay::float OrbPay,
     Agency,
     LaunchCode,
-    case when FailCode= '-' then null else FailCode End FailCode,
+    FailCode,
     "Group",
     Category,
     LTCite,
@@ -41,19 +41,30 @@ from read_csv_auto('tests/modeling/gcat/platforms.cleaned.tsv',
 sample_size=-1);
 
 CREATE OR REPLACE TABLE lv_info as
-SELECT * EXCLUDE (LEO_Capacity, GTO_Capacity, LV_FAMILY),
+SELECT * 
 
-trim(lv_family) as LV_Family,
-cast(case when LEO_Capacity = '-' then null else LEO_Capacity END as float) LEO_Capacity, cast(case when GTO_Capacity='-' then null else GTO_CAPACITY END as float) GTO_Capacity
 from read_csv_auto('tests/modeling/gcat/lv.cleaned.tsv',
 sample_size=-1);
 
-
-CREATE OR REPLACE TABLE launch_sites as
-SELECT * EXCLUDE(latitude, longitude), cast(case when latitude='-' then null else latitude end as float) latitude, cast(case when longitude='-' then null else longitude end as float) longitude
-from read_csv_auto('tests/modeling/gcat/sites.cleaned.tsv',
+CREATE OR REPLACE TABLE lvs_info as
+SELECT * 
+from read_csv_auto('tests/modeling/gcat/lvs.cleaned.tsv',
 sample_size=-1);
 
+CREATE OR REPLACE TABLE stages as
+SELECT * 
+from read_csv_auto('tests/modeling/gcat/stages.cleaned.tsv',
+sample_size=-1);
+
+CREATE OR REPLACE TABLE engines AS
+SELECT * EXCLUDE (Fuel), COALESCE(Fuel, 'Unspecified') AS Fuel
+FROM read_csv_auto('tests/modeling/gcat/engines.cleaned.tsv',
+sample_size=-1);
+
+CREATE OR REPLACE TABLE launch_sites as
+SELECT * 
+from read_csv_auto('tests/modeling/gcat/sites.cleaned.tsv',
+sample_size=-1);
 
 CREATE OR REPLACE TABLE organizations as
 SELECT *
@@ -64,4 +75,5 @@ CREATE OR REPLACE TABLE satcat as
 SELECT *
 from read_csv_auto('tests/modeling/gcat/satcat.cleaned.tsv',
 sample_size=-1);
+
 

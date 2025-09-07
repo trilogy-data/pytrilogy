@@ -69,4 +69,5 @@ def validate_environment(
                 f"Environment validation failed with the following errors:\n{messages}",
                 children=exceptions,
             )
+
     return results

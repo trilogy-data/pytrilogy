@@ -174,7 +174,7 @@ def raw_validation_to_result(
 ) -> Optional[MockResult]:
     """Convert raw validation tests to mock result."""
     if not raw:
-        return None
+        return MockResult([], ["check_type", "expected", "result", "ran", "query"])
     output = []
     for row in raw:
         if row.raw_query and generator and not row.generated_query:

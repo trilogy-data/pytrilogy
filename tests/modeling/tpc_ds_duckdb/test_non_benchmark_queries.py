@@ -128,7 +128,8 @@ ALIGN
 ORDER BY
     report_date asc;"""
 
-    r1 = engine.execute_text(x)[0].fetchall()
+    r1 = list(engine.execute_text(x)[0].fetchall())
+    assert r1[0].web_order_count == 11951
 
     y = """
 import store_sales as store_sales;

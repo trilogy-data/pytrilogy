@@ -1,0 +1,33 @@
+import std.metric;
+import std.date;
+
+import engine as engine;
+
+key name string; 
+property <name>.family string;
+property <name>.stage_manufacturer string;
+property <name>.stage_alt_name string;
+property <name>.length numeric::m;
+property <name>.diameter numeric::m;
+property <name>.launch_mass numeric::tonne;
+property <name>.dry_mass numeric::kg;
+property <name>.thrust numeric::kn;
+property <name>.duration numeric::second;
+property <name>.engine_count int;
+
+datasource stages (
+	Stage_Name:name,
+	Stage_Family:family,
+	Stage_Manufacturer:stage_manufacturer,
+	Stage_Alt_Name:stage_alt_name,
+	Length:length,
+	Diameter:diameter,
+	Launch_Mass:launch_mass,
+	Dry_Mass:dry_mass,
+	Thrust:thrust,
+	Duration:duration,
+	Engine:~engine.name,
+	NEng:engine_count,
+)
+grain (name)
+address stages;

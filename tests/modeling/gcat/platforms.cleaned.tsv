@@ -1,384 +1,384 @@
 Code	UCode	StateCode	Type	Class	TStart	TStop	ShortName	Name	Location	Longitude	Latitude	Error	Parent	ShortEName	EName	VClass	VClassID	VID	Group	UName
-LUT1	LUT1	US	PLAT	C	1965	1985	PLAT  LUT1	Launch Umbilical Tower 1	-	-	-	0.0000 	NASA	-	-	-	-	-	-	Launch Umbilical Tower 1
-LUT2	LUT2	US	PLAT	C	1965	1982	PLAT  LUT2	Launch Umbilical Tower 2	-	-	-	0.0000 	NASA	-	-	-	-	-	-	Launch Umbilical Tower 2
-LUT3	LUT3	US	PLAT	C	1965	1979	PLAT  LUT3	Launch Umbilical Tower 3	-	-	-	0.0000 	NASA	-	-	-	-	-	-	Launch Umbilical Tower 3
-MLP1	LUT3	US	PLAT	C	1979	-	PLAT  MLP1	Mobile Launch Platform 1	-	-	-	0.0000 	NASA	-	-	-	-	-	-	Mobile Launch Platform 1
-MLP2	LUT2	US	PLAT	C	1982	-	PLAT  MLP2	Mobile Launch Platform 2	-	-	-	0.0000 	NASA	-	-	-	-	-	-	Mobile Launch Platform 2
-MLP3	LUT1	US	PLAT	C	1985	-	PLAT  MLP3	Mobile Launch Platform 3	-	-	-	0.0000 	NASA	-	-	-	-	-	-	Mobile Launch Platform 3
-PASSAT	PASSAT	SU	SHIP	C	1968	2008	SHIP  PASSAT	Passat	-	-	-	0.0000 	GOIG	-	-	Passat	V88-I/1	IMO6904167	SOVSHIPS	Пассат
-MUSSON	MUSSON	SU	SHIP	C	1968	-	SHIP  MUSSON	Musson	-	-	-	0.0000 	GOIG	-	-	Passat	V88-I/2	IMO6904155	SOVSHIPS	Муссон
-VOLNA	VOLNA	SU	SHIP	C	1968	-	SHIP  VOLNA	Volna	-	-	-	0.0000 	DVNG	-	-	Passat	V88-I/3	IMO6914203	SOVSHIPS	Волна
-PRILIV	PRILIV	SU	SHIP	C	1969	-	SHIP  PRILIV	Priliv	-	-	-	0.0000 	DVNG	-	-	Passat	V88-I/4	IMO6916574	SOVSHIPS	Прилив
-BUGAEV	BUGAEV	SU	SHIP	C	1980	1990	SHIP  BUGAEV	Viktor Bugaev	-	-	-	0.0000 	GOIG	-	-	Poryv	V88-III/7	IMO7048427	SOVSHIPS	Виктор Бугаев
-USHAKOV	USHAKOV	SU	SHIP	C	1971	-	SHIP  USHAKOV	Georgiy Ushakov	-	-	-	0.0000 	GOIG	-	-	Poryv	V88-III/8	IMO7117371	SOVSHIPS	Георгий Ушаков
-KREN	KREN	SU	SHIP	C	1971	-	SHIP  KRENKEL'	Ernst Krenkel'	-	-	-	0.0000 	GOIG	-	-	Poryv	V88-III/9	IMO7205685	SOVSHIPS	Эрнст Кренкель
-SHOK	SHOK	SU	SHIP	C	1959	1980	SHIP  SHOK	Yu. M. Shokal'skiy	-	-	-	0.0000 	DVNG	-	-	224 A.I. Voeykov	-	IMO5396600	SOVSHIPS	Ю. М. Шокальский
-VOKV	VOKV	SU	SHIP	C	1959	1989	SHIP  VOKV	A. I. Voeykov	-	-	-	0.0000 	DVNG	-	-	224 A.I. Voeykov	-	IMO5010244	SOVSHIPS	А.И. Воейков
-SHIR	SHIR	SU	SHIP	C	1968	1991	SHIP  SHIR	Akademik Shirshov	-	-	-	0.0000 	DVNG	-	-	416 Ak. Kurchatov	-	IMO6712552	SOVSHIPS	Академик Ширшов
-VIZE	VIZE	SU	SHIP	C	1968	1999	SHIP  VIZE	Professor Vize	-	-	-	0.0000 	AANII	-	-	416 Ak. Kurchatov	-	IMO6707674	SOVSHIPS	Профессор Визе
-ZUB	ZUB	SU	SHIP	C	1969	1991	SHIP  ZUB	Professor Zubov	-	-	-	0.0000 	AANII	-	-	416 Ak. Kurchatov	-	IMO6718764	SOVSHIPS	Профессор Зубов
-KORO	KORO	SU	SHIP	C	1970	1996	SHIP  KORO	Akademik Korolev	-	-	-	0.0000 	GOIG	-	-	416 Ak. Kurchatov	-	IMO6707301	SOVSHIPS	Академик Королёв
-AGB-3	AGB-3	US	SHIP	D	-	-	SHIP  AGB-3	USS Atka	-	-	-	0.0000 	USNB	-	-	Wind	AGB-3	-	USSHIPS	USS Atka
-AGB-4	AGB-4	US	SHIP	D	1954	1966	SHIP  AGB-4	USS Glacier	-	-	-	0.0000 	USNB	-	-	Glacier	AGB-4	IMO6123672	USSHIPS	USS Glacier
-AGB-5	AGB-5	US	SHIP	D	1952	1974	SHIP  AGB-5	USS Staten Island	-	-	-	0.0000 	USNB	-	-	Wind	AGB-5	-	USSHIPS	USS Staten Island
-WYG-279	WYG-279	US	SHIP	D	1944	1968	SHIP  WYG-279	USS Eastwind	-	-	-	0.0000 	USN	-	-	Wind	WYG-279	-	USSHIPS	USS Eastwind
-AVM1	AVM1	US	SHIP	D	1951	1986	SHIP  AVM1	USS Norton Sound	-	-	-	0.0000 	NAMTC	-	-	Norton Sound	AVM-1	-	USSHIPS	USS Norton Sound
-LSD-1	LSD-1	US	SHIP	D	1955	-	SHIP  LSD-1	USS Ashland	-	-	-	0.0000 	USNVA	-	-	Ashland	LSD-1	-	USSHIPS	USS Ashland
-LSD-14	LSD-14	US	SHIP	D	1956	-	SHIP  LSD-14	USS Rushmore	-	-	-	0.0000 	USN	-	-	Casa Grande	LSD-14	-	USSHIPS	USS Rushmore
-LSD-18	LSD-18	US	SHIP	D	1956	-	SHIP  LSD-18	USS Colonial	-	-	-	0.0000 	USN	-	-	Casa Grande	LSD-18	-	USSHIPS	USS Colonial
-LSD-29	LSD-29	US	SHIP	D	1956	-	SHIP  LSD-29	USS Plymouth Rock	-	-	-	0.0000 	USN	-	-	Thomaston	LSD-29	-	USSHIPS	USS Plymouth Rock
-LSD-31	LSD-31	US	SHIP	D	1956	-	SHIP  LSD-31	USS Point Defiance	-	-	-	0.0000 	USN	-	-	Thomaston	LSD-31	-	USSHIPS	USS Point Defiance
-CVE-25	CVE-25	US	SHIP	D	1964	1965	SHIP  CVE-25	USNS Croatan, Wallops Mobile Range Facility	-	-	-	0.0000 	USN/NASA	-	-	Bogue	CVE-25	-	USSHIPS	USNS Croatan, Wallops Mobile Range Facility
-RREC	RREC	US	SHIP	D	1960	1972	SHIP  RREC	USNS Range Recoverer	-	-	-	0.0000 	USN	-	-	-	-	-	USSHIPS	USNS Range Recoverer
-T-AGM-8	T-AGM-8	US	SHIP	D	-	-	SHIP  T-AGM-8	USNS Wheeling	-	-	-	0.0000 	USN	-	-	-	T-AGM-8	-	USSHIPS	USNS Wheeling
-T-AGM-12	T-AGM-12	US	SHIP	D	-	-	SHIP  T-AGM-12	USAS American Mariner	-	-	-	0.0000 	USN	-	-	-	T-AGM-12	-	USSHIPS	USAS American Mariner
-CV-41	CV-41	US	SHIP	D	1947	-	SHIP  CV-41	USS Midway	-	-	-	0.0000 	USNVA	-	-	Midway	CV-41	-	USMSHIPS	USS Midway
-DD-531	DD-531	US	SHIP	D	1958	-	SHIP  DD-531	USS Hazelwood	-	-	-	0.0000 	USN	-	-	Fletcher	DD-531	-	USMSHIPS	USS Hazelwood
-DD-787	DD-787	US	SHIP	D	1956	-	SHIP  DD-787	USS Kyes	-	-	-	0.0000 	USN	-	-	Gearing	DD-787	-	USMSHIPS	USS Kyes
-DD-790	DD-790	US	SHIP	D	1956	-	SHIP  DD-790	USS Shelton	-	-	-	0.0000 	USN	-	-	Gearing	DD-790	-	USMSHIPS	USS Shelton
-DD-843	DD-843	US	SHIP	D	1958	-	SHIP  DD-843	USS Warrington	-	-	-	0.0000 	USN	-	-	Gearing	DD-843	-	USMSHIPS	USS Warrington
-EAG-154	EAG-154	US	SHIP	D	1958	2014	SHIP  EAG-154	USNS Observation Island	-	-	-	0.0000 	USN	-	-	-	EAG-154	-	USMSHIPS	USNS Observation Island
-SHIP-US	SHIP-US	US	SHIP	D	1965	1965	SHIP  SHIP-US	Unknown US Terrier missile ship	-	-	-	0.0000 	USN	-	-	-	-	-	USMSHIPS	Unknown US Terrier missile ship
-MLP	MLP	US	SHIP	D	2003	-	SHIP  MLP	US Army Mobile Launch Platform	-	-	-	0.0000 	USA	-	-	-	-	-	USMSHIPS	US Army Mobile Launch Platform
-DLG-20	DLG-20	US	SHIP	D	1961	1975	SHIP  CG-20	USS Richmond K. Turner	-	-	-	0.0000 	USN	-	-	Leahy	CG-20	-	-	USS Richmond K. Turner
-CG-20	DLG-20	US	SHIP	D	1975	1995	SHIP  CG-20	USS Richmond K. Turner	-	-	-	0.0000 	USN	-	-	Leahy	CG-20	-	AEGIS	USS Richmond K. Turner
-CG-29	CG-29	US	SHIP	D	1962	2007	SHIP  CG-29	USS Jouett	-	-	-	0.0000 	USN	-	-	Belknap	CG-29	-	AEGIS	USS Jouett
-CG-67	CG-67	US	SHIP	D	1987	-	SHIP  CG-67	USS Shiloh	-	-	-	0.0000 	USN	-	-	Ticonderoga	CG-67	-	AEGIS	USS Shiloh
-CG-70	CG-70	US	SHIP	D	1991	-	SHIP  CG-70	USS Lake Erie	-	-	-	0.0000 	USN	-	-	Ticonderoga	CG-70	-	AEGIS	USS Lake Erie
-DDG-51	DDG-51	US	SHIP	D	1991	-	SHIP  DDG-51	USS Arleigh Burke	-	-	-	0.0000 	USNROT	-	-	Arleigh Burke	DDG-51	-	AEGIS	USS Arleigh Burke
-DDG-53	DDG-53	US	SHIP	D	1991	-	SHIP  DDG-53	USS John Paul Jones	-	-	-	0.0000 	USNPH	-	-	Arleigh Burke	DDG-53	-	AEGIS	USS John Paul Jones
-DDG-60	DDG-60	US	SHIP	D	1993	-	SHIP  DDG-60	USS Paul Hamilton	-	-	-	0.0000 	USNSD	-	-	Arleigh Burke	DDG-60	-	AEGIS	USS Paul Hamilton
-DDG-62	DDG-62	US	SHIP	D	1994	-	SHIP  DDG-62	USS Fitzgerald	-	-	-	0.0000 	USNSD	-	-	Arleigh Burke	DDG-62	-	AEGIS	USS Fitzgerald
-DDG-64	DDG-64	US	SHIP	D	1994	-	SHIP  DDG-64	USS Carney	-	-	-	0.0000 	USNMYP	-	-	Arleigh Burke	DDG-64	-	AEGIS	USS Carney
-DDG-65	DDG-65	US	SHIP	D	1994	-	SHIP  DDG-65	USS Benfold	-	-	-	0.0000 	USNYOK	-	-	Arleigh Burke	DDG-65	-	AEGIS	USS Benfold
-DDG-68	DDG-68	US	SHIP	D	1995	-	SHIP  DDG-68	USS The Sullivans	-	-	-	0.0000 	USNMYP	-	-	Arleigh Burke	DDG-68	-	AEGIS	USS The Sullivans
-DDG-70	DDG-70	US	SHIP	D	1996	-	SHIP  DDG-70	USS Hopper	-	-	-	0.0000 	USNPH	-	-	Arleigh Burke	DDG-70	-	AEGIS	USS Hopper
-DDG-71	DDG-71	US	SHIP	D	1996	-	SHIP  DDG-71	USS Ross	-	-	-	0.0000 	USNVA	-	-	Arleigh Burke	DDG-71	-	AEGIS	USS Ross
-DDG-73	DDG-73	US	SHIP	D	1996	-	SHIP  DDG-73	USS Decatur	-	-	-	0.0000 	USNSD	-	-	Arleigh Burke	DDG-73	-	AEGIS	USS Decatur
-DDG-74	DDG-74	US	SHIP	D	1997	-	SHIP  DDG-74	USS McFaul	-	-	-	0.0000 	USNVA	-	-	Arleigh Burke	DDG-74	-	AEGIS	USS McFaul
-DDG-75	DDG-75	US	SHIP	D	1997	-	SHIP  DDG-75	USS Donald Cook	-	-	-	0.0000 	USNROT	-	-	Arleigh Burke	DDG-75	-	AEGIS	USS Donald Cook
-DDG-77	DDG-77	US	SHIP	D	1997	-	SHIP  DDG-77	USS O'Kane	-	-	-	0.0000 	USNPH	-	-	Arleigh Burke	DDG-77	-	AEGIS	USS O'Kane
-DDG-80	DDG-80	US	SHIP	D	1999	-	SHIP  DDG-80	USS Roosevelt	-	-	-	0.0000 	USNMYP	-	-	Arleigh Burke	DDG-80	-	AEGIS	USS Roosevelt
-DDG-85	DDG-85	US	SHIP	D	1999	-	SHIP  DDG-85	USS McCampbell	-	-	-	0.0000 	USNEV	-	-	Arleigh Burke	DDG-85	-	AEGIS	USS McCampbell
-DDG-88	DDG-88	US	SHIP	D	1999	-	SHIP  DDG-88	USS Preble	-	-	-	0.0000 	USNEV	-	-	Arleigh Burke	DDG-88	-	AEGIS	USS Preble
-DDG-113	DDG-113	US	SHIP	D	2015	-	SHIP  DDG-113	USS John Finn	-	-	-	0.0000 	USNSD	-	-	Arleigh Burke	DDG-113	-	AEGIS	USS John Finn
-DDG-114	DDG-114	US	SHIP	D	2015	-	SHIP  DDG-114	USS Ralph Johnson	-	-	-	0.0000 	USNSD	-	-	Arleigh Burke	DDG-114	-	AEGIS	USS Ralph Johnson
-DDG-117	DDG-117	US	SHIP	D	2017	-	SHIP  DDG-117	USS Paul Ignatius	-	-	-	0.0000 	USNSD	-	-	Arleigh Burke	DDG-117	-	AEGIS	USS Paul Ignatius
-DDG-118	DDG-118	US	SHIP	D	2023	-	SHIP  DDG-118	USS Daniel Inouye	-	-	-	0.0000 	USNSD	-	-	Arleigh Burke	DDG-117	-	AEGIS	USS Daniel Inouye
-DDG-120	DDG-120	US	SHIP	D	2023	-	SHIP  DDG-120	USS Carl Levin	-	-	-	0.0000 	USNSD	-	-	Arleigh Burke	DDG-117	-	AEGIS	USS Carl Levin
-DDG-173	DDG-173	J	SHIP	D	1991	-	SHIP  DDG-173	JS Kongo	-	-	-	0.0000 	JMSDSA	-	-	Kongo	DDG-173	-	AEGIS	JS Kongo
-DDG-174	DDG-174	J	SHIP	D	1993	-	SHIP  DDG-174	JS Kirishima	-	-	-	0.0000 	JMSDYO	-	-	Kongo	DDG-174	-	AEGIS	JS Kirishima
-DDG-175	DDG-175	J	SHIP	D	1994	-	SHIP  DDG-175	JS Myoko	-	-	-	0.0000 	JMSDMA	-	-	Kongo	DDG-175	-	AEGIS	JS Myoko
-DDG-176	DDG-176	J	SHIP	D	1996	-	SHIP  DDG-176	JS Chokai	-	-	-	0.0000 	JMSDSA	-	-	Kongo	DDG-176	-	AEGIS	JS Chokai
-DDG-177	DDG-177	J	SHIP	D	2005	-	SHIP  DDG-177	JS Atago	-	-	-	0.0000 	JMSDMA	-	-	Kongo	DDG-177	-	AEGIS	JS Atago
-DDG-178	DDG-178	J	SHIP	D	2005	-	SHIP  DDG-178	JS Ashigara	-	-	-	0.0000 	JMSDMA	-	-	Ashigara	DDG-178	-	AEGIS	JS Ashigara
-DDG-179	DDG-179	J	SHIP	D	2019	-	SHIP  DDG-179	JS Maya	-	-	-	0.0000 	JMSDMA	-	-	Ashigara	DDG-179	-	AEGIS	JS Maya
-DDG-180	DDG-180	J	SHIP	D	2019	-	SHIP  DDG-180	JS Haguro	-	-	-	0.0000 	JMSDMA	-	-	Ashigara	DDG-180	-	AEGIS	JS Haguro
-DDG-UNK	DDG-UNK	US	SHIP	D	-	-	SHIP	Unknown Aegis ship	-	-	-	0.0000 	USN	-	-	Arleigh Burke	DDG-UNK	-	AEGIS	Unknown Aegis ship
-INS-P51	INS-P51	IN	SHIP	D	2001	-	SHIP  INS-P51	INS Subhadra	-	-	-	0.0000 	INAV	-	-	Sukanya	INS-P51	-	INAV	INS Subhadra
-INS-P52	INS-P52	IN	SHIP	D	-	-	SHIP  INS-P52	INS Suvarna	-	-	-	0.0000 	INAV	-	-	Sukanya	INS-P52	-	INAV	INS Suvarna
-INS-D51	INS-D51	IN	SHIP	D	2005?	-	SHIP  INS-D51	INS Rajput	-	-	-	0.0000 	INAV	-	-	Rajput	INS-D51	-	INAV	INS Rajput
-INS-S73	INS-S73	IN	SUB	D	2015	-	SUB   INS-S73	INS Arihant (S-73)	-	-	-	0.0000 	INAV	-	-	Arihant	INS-S73	-	INSUB	INS Arihant
-INS-S74	INS-S74	IN	SHIP	D	2017	-	SHIP  INS-S3	INS Arighaat	-	-	-	0.0000 	INAV	-	-	Arihant	INS-S3	-	INSUB	INS Arighaat
-CCOC	CCOC	CN	SHIP	C	2019	-	SHIP CCOC	Tai Rui CCOCOOOO 37101 CZ-11 launch barge	-	-	-	0.0000 	CALTQ	-	-	CCOC	-	MMS412137101	OTHERSHIPS	CCOCOOOO 37101 CZ-11 launch barge (TAI RUI?)
-DEBO3	DEBO3	CN	SHIP	C	2020	-	SHIP DEBO3	Debo-3 launch barge	-	-	-	0.0000 	CALTQ	-	-	Debo-3	-	-	OTHERSHIPS	Debo-3
-DEFU2	DEFU2	CN	SHIP	C	2020	-	SHIP DEFU 15002	DEFU 15002 launch barge	-	-	-	0.0000 	CALTQ	-	-	Debo-3	-	-	OTHERSHIPS	DEFU 15002 launch barge
-BRJZ	BRJZ	CN	SHIP	C	2023	-	Bo run Jiu zhou	Bo Run Jiu Zhou	-	-	-	0.0000 	CALTQ	-	-	-	-	MMS413536970	OTHERSHIPS	Bo Run Jiu Zhou
-DFHT	DFHT	CN	SHIP	C	2023	-	DF Hangtian	Dongfeng Hangtiangang	-	-	-	0.0000 	CALTQ	-	-	-	-	-	OTHERSHIPS	东方航天港号
-SHIP-ISR	SHIP-ISR	IL	SHIP	D	-	-	SHIP  SHIP-ISR	Unknown Israeli ship	-	-	-	0.0000 	IDFN	-	-	-	-	-	OTHERSHIPS	Unknown Israeli ship
-SIR	SIR	KR	SHIP	D	2012	-	SHIP  SIRIUS	Sirius barge, Anhueng	-	-	-	0.0000 	ADDAH	-	-	-	-	IMO8772295	OTHERSHIPS	Sirius barge, Anhueng
-ODYSSEY	ODYSSEY	US	SHIP	B	1999	2020	SHIP  ODYSSEY	Sea Launch Odyssey	-	-	-	0.0000 	BOSL	-	-	-	-	IMO8753196	OTHERSHIPS	Sea Launch Odyssey
-OIALT	OIALT	US	SHIP	B	2024	-	Once In A LT	Once In A Lifetime	-	-	-	0.0000 	SPORT	-	-	-	-	MMS368379350	OTHERSHIPS	Once In A Lifetime
-JRTI1	JRTI1	US	SHIP	B	2014	2015 May	ASDS  JRTI 300	MARMAC 300 Just Read The Instructions, SpaceX Autonomous Spaceport Drone Ship	-	-	-	0.0000 	SPX	-	-	ASDS	-	-	ASDS	MARMAC 300 Just Read The Instructions, SpaceX Autonomous Spaceport Drone Ship
-JRTI	JRTI	US	SHIP	B	2015	-	ASDS  JRTI	MARMAC 303 Just Read The Instructions, SpaceX Autonomous Spaceport Drone Ship	-	-	-	0.0000 	SPX	-	-	ASDS	-	-	ASDS	MARMAC 303 Just Read The Instructions, SpaceX Autonomous Spaceport Drone Ship
-OCISLY	OCISLY	US	SHIP	B	2016	-	ASDS  OCISLY	MARMAC 304 Of Course I Still Love You, SpaceX Autonomous Spaceport Drone Ship	-	-	-	0.0000 	SPX	-	-	ASDS	-	-	ASDS	MARMAC 304 Of Course I Still Love You, SpaceX Autonomous Spaceport Drone Ship
-ASOG	ASOG	US	SHIP	B	2021	-	ASDS  ASOG	MARMAC 302 A Shortfall Of Gravitas, SpaceX Autonomous Spaceport Drone Ship	-	-	-	0.0000 	SPX	-	-	ASDS	-	-	ASDS	MARMAC 302 A Shortfall of Gravitas, SpaceX Autonomous Spaceport Drone Ship
-CH200	CH200	CN	SUB	D	1982	-	Changcheng 200	Changcheng 200 submarine	-	-	-	0.0000 	PLANS	-	-	Type 031	200	-	CNSUB	长城-200
-CH406	CH406	CN	SUB	D	1981	-	SUB   XIA	Changcheng 406 submarine	-	-	-	0.0000 	PLANS	-	-	Type 092	406	-	CNSUB	长城-406
-T094	T094	CN	SUB	D	2006?	-	SUB   Type 094	Unknown Jinji Qianting (Type 094) class sub	-	-	-	0.0000 	PLANS	-	-	Type 094	-	-	CNSUB	Unknown Jinji Qianting (Type 094) class sub
-B-62	B-62	SU	SUB	D	-	-	SUB   B-62	B-62 submarine	-	-	-	0.0000 	VMF	-	-	Proekt B-611A	B-62	-	SUSUB.611	Б-62
-B-67	B-67	SU	SUB	D	-	-	SUB   B-67	B-67 submarine	-	-	-	0.0000 	VMF	-	-	Proekt B-611AV	B-67	-	SUSUB.611	Б-67
-B-73	B-73	SU	SUB	D	-	-	SUB   B-73	B-73 submarine	-	-	-	0.0000 	VMF	-	-	Proekt B-611AV	B-73	-	SUSUB.611	Б-73
-B-78	B-78	SU	SUB	D	-	-	SUB   B-78	B-78 Murmanski Komsomolets submarine	-	-	-	0.0000 	VMF	-	-	Proekt B-611AV	B-78	-	SUSUB.611	Б-78
-B-79	B-79	SU	SUB	D	-	-	SUB   B-79	B-79 submarine	-	-	-	0.0000 	VMF	-	-	Proekt B-611AV	B-79	-	SUSUB.611	Б-79
-B-89	B-89	SU	SUB	D	-	-	SUB   B-89	B-89 submarine	-	-	-	0.0000 	VMF	-	-	Proekt B-611AV	B-89	-	SUSUB.611	Б-89
-ZULUV	ZULUV	SU	SUB	D	-	-	SUB   ZULUV	Unknown Zulu V class submarine	-	-	-	0.0000 	VMF	-	-	Proekt B-611AV	-	-	SUSUB.611	АВ-611
-DELTA2	DELTA2	SU	SUB	D	-	-	SUB   667BD	Unknown 667BD (Murena-M, Delta 2) class submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667BD	-	-	SUSUB.667BD	667БД
-DELTA4	DELTA4	SU	SUB	D	-	-	SUB   DELTA4	Unknown 667BDRM (Delfin, Delta 4) class submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667BDRM	-	-	SUSUB.667BDRM	667БДРМ
-GOLF	GOLF	SU	SUB	D	-	-	SUB   GOLF	Unknown 629 (Golf) submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629	-	-	SUSUB.629	629
-K-16	K-16	SU	SUB	D	-	-	SUB   K-16	K-16 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 658	K-16	-	SUSUB.658	К-16
-K-18	K-18	SU	SUB	D	-	-	SUB   K-18	K-18 Karelia submarine	Sev. Flot	-	-	0.0000 	VMF	-	-	Proekt 667BDRM	K-18	-	SUSUB.667BDRM	К-18 Карелия
-K-19	K-19	SU	SUB	D	-	-	SUB   K-19	K-19 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 658	K-19	-	SUSUB.658	К-19
-K-26	K-26	SU	SUB	D	-	-	SUB   K-26	K-26 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667A	K-26	-	SUSUB.667	К-26
-K-32	K-32	SU	SUB	D	-	-	SUB   K-32	K-32 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667A	K-32	-	SUSUB.667	К-32
-K-33	K-33	SU	SUB	D	-	-	SUB   K-33	K-33 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 658	K-33	-	SUSUB.658	К-33
-K-36	K-36	SU	SUB	D	-	-	SUB   K-36	K-36 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629A	B-26	-	SUSUB.629A	К-36
-K-40	K-40	SU	SUB	D	-	-	SUB   K-40	K-40 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 658	K-40	-	SUSUB.658	К-40
-K-44	K-44	SU	SUB	D	-	-	SUB   K-44	K-44 Ryazan Submarine	Sev. Flot	-	-	0.0000 	VMF	-	-	Proekt 667BDR	K-44	-	SUSUB.667BDR	К-44 Рязань
-K-51	K-51	SU	SUB	D	-	-	SUB   K-51	K-51 Verkhoturiye Submarine	Sev. Flot	-	-	0.0000 	VMF	-	-	Proekt 667BDRM	K-51	-	SUSUB.667BDRM	К-51 Верхоту́рье
-K-55	K-55	SU	SUB	D	-	-	SUB   K-55	K-55 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 658	K-55	-	SUSUB.658	К-55
-K-61	K-61	SU	SUB	D	-	-	SUB   K-61	K-61 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629	B-29	-	SUSUB.629	К-61
-K-64	K-64	SU	SUB	D	-	-	SUB   K-64	K-64 Podmoskovye Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667BDRM	K-64	-	SUSUB.667BDRM	К-64 Подмоско́вье
-K-72	K-72	SU	SUB	D	-	-	SUB   K-72	K-72 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629A	B-40	-	SUSUB.629A	К-72
-K-75	K-75	SU	SUB	D	-	-	SUB   K-75	K-75 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629A	B-46	-	SUSUB.629A	К-75
-K-79	K-79	SU	SUB	D	-	-	SUB   K-79	K-79 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629A	B-41	-	SUSUB.629A	К-79
-K-83	K-83	SU	SUB	D	-	-	SUB   K-83	K-83 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629	B-42	-	SUSUB.629	К-83
-K-84	K-84	SU	SUB	D	-	-	SUB   K-84	K-84 Ekaterinburg Submarine	Sev. Flot	-	-	0.0000 	VMF	-	-	Proekt 667BDRM	K-84	-	SUSUB.667BDRM	К-84 Екатеринбург
-K-88	K-88	SU	SUB	D	-	-	SUB   K-88	K-88 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629A	B-45	-	SUSUB.629A	К-88
-K-91	K-91	SU	SUB	D	-	-	SUB   K-91	K-91 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629A	B-48	-	SUSUB.629A	К-91
-K-92	K-92	SU	SUB	D	-	-	SUB   K-92	K-92 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667BD	K-92	-	SUSUB.667BD	К-92
-K-93	K-93	SU	SUB	D	-	-	SUB   K-93	K-93 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629A	K-93	-	SUSUB.629A	К-93
-K-96	K-96	SU	SUB	D	-	-	SUB   K-96	K-96 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629A	B-92	-	SUSUB.629A	К-96
-K-99	K-99	SU	SUB	D	-	-	SUB   K-99	K-99 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629A	B-51	-	SUSUB.629A	К-99
-K-102	K-102	SU	SUB	D	-	-	SUB   K-102	K-102 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629	B-121	-	SUSUB.629	К-102
-K-107	K-107	SU	SUB	D	-	-	SUB   K-107	K-107 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629	B-125	-	SUSUB.629	К-107
-K-110	K-110	SU	SUB	D	-	-	SUB   K-110	K-110 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629	K-110	-	SUSUB.629	К-110
-K-113	K-113	SU	SUB	D	-	-	SUB   K-113	K-113 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629	B-146	-	SUSUB.629	К-113
-K-114	K-114	SU	SUB	D	-	-	SUB   K-114	K-114 Tula Submarine	Sev. Flot	-	-	0.0000 	VMF	-	-	Proekt 667BDRM	K-114	-	SUSUB.667BDRM	К-114 Тула
-K-117	K-117	SU	SUB	D	-	-	SUB   K-117	K-117 Bryansk Submarine	Sev. Flot	-	-	0.0000 	VMF	-	-	Proekt 667BDRM	K-117	-	SUSUB.667BDRM	К-117 Брянск
-K-118	K-118	SU	SUB	D	-	-	SUB   K-118	K-118 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629	B-149	-	SUSUB.629	К-118
-K-126	K-126	SU	SUB	D	-	-	SUB   K-126	K-126 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629A	B-93	-	SUSUB.629A	К-126
-K-129A	K-129A	SU	SUB	D	-	-	SUB   K-129	K-129 Submarine (Proekt 629)	-	-	-	0.0000 	VMF	-	-	Proekt 629A	B-103	-	SUSUB.629A	К-129
-K-129	K-129	SU	SUB	D	-	-	SUB   K-129	K-129 Submarine (Proekt 667BDR)	-	-	-	0.0000 	VMF	-	-	Proekt 667BDR	K-129	-	SUSUB.667BDR	К-129
-K-136	K-136	SU	SUB	D	-	-	SUB   K-136	K-136 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629	B-109	-	SUSUB.629	К-136
-K-137	K-137	SU	SUB	D	-	-	SUB   K-137	K-137 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667AU	K-137	-	SUSUB.667	К-137
-K-139	K-139	SU	SUB	D	-	-	SUB   K-139	K-139 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629A	B-113	-	SUSUB.629A	К-139
-K-140	K-140	SU	SUB	D	-	-	SUB   K-140	K-140 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667AM	K-140	-	SUSUB.667	К-140
-K-142	K-142	SU	SUB	D	-	-	SUB   K-142	K-142 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629B	K-142	-	SUSUB.629A	К-142
-K-145	K-145	SU	SUB	D	-	-	SUB   K-145	K-145 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 658/701	K-145	-	SUSUB.658	К-145
-K-149	K-149	SU	SUB	D	-	-	SUB   K-149	K-149 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 658	K-149	-	SUSUB.658	К-149
-K-153	K-153	SU	SUB	D	-	-	SUB   K-153	K-153 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629	K-153	-	SUSUB.629	К-153
-K-163	K-163	SU	SUB	D	-	-	SUB   K-163	K-163 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 629A	K-163	-	SUSUB.629A	К-163
-K-171	K-171	SU	SUB	D	-	-	SUB   K-171	K-171 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667B	K-171	-	SUSUB.667B	К-171
-K-178	K-178	SU	SUB	D	-	-	SUB   K-178	K-178 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 658	K-178	-	SUSUB.658	К-178
-K-180	K-180	SU	SUB	D	-	-	SUB   K-180	K-180 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667BDR	K-180	-	SUSUB.667BDR	К-180
-K-182	K-182	SU	SUB	D	-	-	SUB   K-182	K-182 60 Let Velikogo Oktyabria Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667BD	K-182	-	SUSUB.667BD	К-182 60 лет Великого Октября
-K-193	K-193	SU	SUB	D	-	-	SUB   K-193	K-193 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667BD	K-193	-	SUSUB.667BD	К-193
-K-207	K-207	SU	SUB	D	-	-	SUB   K-207	K-207 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667A	K-207	-	SUSUB.667	К-207
-K-210	K-210	SU	SUB	D	-	-	SUB   K-210	K-210 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667A	K-210	-	SUSUB.667	К-210
-K-211	K-211	SU	SUB	D	-	-	SUB   K-211	K-211 Petropavlovsk-Kamchatkskiy submarine	Tikh. Flot	-	-	0.0000 	VMF	-	-	Proekt 667BDR	K-211	-	SUSUB.667BDR	К-211 Петропавловск-Камчатский
-K-214	K-214	SU	SUB	D	-	-	SUB   K-214	K-214 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667AU	K-214	-	SUSUB.667	К-214
-K-216	K-216	SU	SUB	D	-	-	SUB   K-216	K-216 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667A	K-216	-	SUSUB.667	К-216
-K-219	K-219	SU	SUB	D	-	-	SUB   K-219	K-219 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667AU	K-219	-	SUSUB.667	К-219
-K-223	K-223	SU	SUB	D	-	-	SUB   K-223	K-223 Podolsk submarine	Tikh. Flot	-	-	0.0000 	VMF	-	-	Proekt 667BDR	K-223	-	SUSUB.667BDR	К-233 Подольск
-K-228	K-228	SU	SUB	D	-	-	SUB   K-228	K-228 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667AU	K-228	-	SUSUB.667	К-228
-K-236	K-236	SU	SUB	D	-	-	SUB   K-236	K-236 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667AU	K-236	-	SUSUB.667	К-236
-K-241	K-241	SU	SUB	D	-	-	SUB   K-241	K-241 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667AU	K-241	-	SUSUB.667	К-241
-K-245	K-245	SU	SUB	D	-	-	SUB   K-245	K-245 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667AU	K-245	-	SUSUB.667	К-245
-K-249	K-249	SU	SUB	D	-	-	SUB   K-249	K-249 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667A	K-249	-	SUSUB.667	К-249
-K-252	K-252	SU	SUB	D	-	-	SUB   K-252	K-252 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667A	K-252	-	SUSUB.667	К-252
-K-253	K-253	SU	SUB	D	-	-	SUB   K-253	K-253 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667A	K-253	-	SUSUB.667	К-253
-K-258	K-258	SU	SUB	D	-	-	SUB   K-258	K-258 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667AU	K-258	-	SUSUB.667	К-258
-K-279	K-279	SU	SUB	D	-	-	SUB   K-279	K-279 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667B	K-279	-	SUSUB.667B	К-279
-K-336	K-336	SU	SUB	D	-	-	SUB   K-336	K-336 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667B	K-336	-	SUSUB.667B	К-336
-K-339	K-339	SU	SUB	D	-	-	SUB   K-339	K-339 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667A	K-339	-	SUSUB.667	К-339
-K-385	K-385	SU	SUB	D	-	-	SUB   K-385	K-385 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667B	K-385	-	SUSUB.667B	К-385
-K-389	K-389	SU	SUB	D	-	-	SUB   K-389	K-389 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667A	K-389	-	SUSUB.667	К-389
-K-395	K-395	SU	SUB	D	-	-	SUB   K-395	K-395 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667A	K-395	-	SUSUB.667	К-395
-K-403	K-403	SU	SUB	D	-	-	SUB   K-403	K-403 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667A	K-403	-	SUSUB.667	К-403
-K-407	K-407	SU	SUB	D	-	-	SUB   K-407	K-407 Novomoskvosk Submarine	Sev. Flot	-	-	0.0000 	VMF	-	-	Proekt 667BDRM	K-407	-	SUSUB.667BDRM	К-407 Новомосковск
-K-408	K-408	SU	SUB	D	-	-	SUB   K-408	K-408 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667A	K-408	-	SUSUB.667	К-408
-K-411	K-411	SU	SUB	D	-	-	SUB   K-411	K-411 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667A	K-411	-	SUSUB.667	К-411
-K-415	K-415	SU	SUB	D	-	-	SUB   K-415	K-415 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667A	K-415	-	SUSUB.667	К-415
-K-417	K-417	SU	SUB	D	-	-	SUB   K-417	K-417 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667B	K-417	-	SUSUB.667B	К-417
-K-418	K-418	SU	SUB	D	-	-	SUB   K-418	K-418 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667A	K-418	-	SUSUB.667	К-418
-K-420	K-420	SU	SUB	D	-	-	SUB   K-420	K-420 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667A	K-420	-	SUSUB.667	К-420
-K-421	K-421	SU	SUB	D	-	-	SUB   K-421	K-421 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667BD	K-193	-	SUSUB.667BD	К-421
-K-423	K-423	SU	SUB	D	-	-	SUB   K-423	K-423 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667A	K-423	-	SUSUB.667	К-423
-K-424	K-424	SU	SUB	D	-	-	SUB   K-424	K-424 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667BDR	K-424	-	SUSUB.667BDR	К-424
-K-426	K-426	SU	SUB	D	-	-	SUB   K-426	K-426 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667A	K-426	-	SUSUB.667	К-426
-K-430	K-430	SU	SUB	D	-	-	SUB   K-430	K-430 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667AU	K-430	-	SUSUB.667	К-430
-K-433	K-433	SU	SUB	D	-	-	SUB   K-433	K-433 Svyaity Georgiy Pobedonosets	Tikh. Flot	-	-	0.0000 	VMF	-	-	Proekt 667BDR	K-433	-	SUSUB.667BDR	К-433 Святой Георгий Победоносец
-K-434	K-434	SU	SUB	D	-	-	SUB   K-434	K-434 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667AU	K-434	-	SUSUB.667	К-434
-K-436	K-436	SU	SUB	D	-	-	SUB   K-436	K-436 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667AU	K-436	-	SUSUB.667	К-436
-K-441	K-441	SU	SUB	D	-	-	SUB   K-441	K-441 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667BDR	K-441	-	SUSUB.667BDR	К-441
-K-444	K-444	SU	SUB	D	-	-	SUB   K-444	K-444 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667AU	K-444	-	SUSUB.667	К-444
-K-446	K-446	SU	SUB	D	-	-	SUB   K-446	K-446 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667AU	K-446	-	SUSUB.667	К-446
-K-447	K-447	SU	SUB	D	-	-	SUB   K-447	K-447 Kislovodsk Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667B	K-447	-	SUSUB.667B	К-447 Кисловодск
-K-449	K-449	SU	SUB	D	-	-	SUB   K-449	K-449 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667BDR	K-449	-	SUSUB.667BDR	К-449
-K-450	K-450	SU	SUB	D	-	-	SUB   K-450	K-450 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667B	K-450	-	SUSUB.667B	К-450
-K-451	K-451	SU	SUB	D	-	-	SUB   K-451	K-451 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667AU	K-451	-	SUSUB.667	К-451
-K-455	K-455	SU	SUB	D	-	-	SUB   K-455	K-455 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667BDR	K-455	-	SUSUB.667BDR	К-455
-K-457	K-457	SU	SUB	D	-	-	SUB   K-457	K-457 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667B	K-457	-	SUSUB.667B	К-457
-K-460	K-460	SU	SUB	D	-	-	SUB   K-460	K-460 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667B	K-460	-	SUSUB.667B	К-460
-K-465	K-465	SU	SUB	D	-	-	SUB   K-465	K-465 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667B	K-465	-	SUSUB.667B	К-465
-K-472	K-472	SU	SUB	D	-	-	SUB   K-472	K-472 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667B	K-472	-	SUSUB.667B	К-472
-K-475	K-475	SU	SUB	D	-	-	SUB   K-475	K-475 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667B	K-475	-	SUSUB.667B	К-475
-K-477	K-477	SU	SUB	D	-	-	SUB   K-477	K-477 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667B	K-477	-	SUSUB.667B	К-477
-K-487	K-487	SU	SUB	D	-	-	SUB   K-487	K-487 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667BDR	K-487	-	SUSUB.667BDR	К-487
-K-490	K-490	SU	SUB	D	-	-	SUB   K-490	K-490 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667BDR	K-490	-	SUSUB.667BDR	К-490
-K-496	K-496	SU	SUB	D	-	-	SUB   K-496	K-496 Borisoglebsk submarine	Sev. Flt.	-	-	0.0000 	VMF	-	-	Proekt 667BDR	K-490	-	SUSUB.667BDR	К-496 Борисоглебск
-K-497	K-497	SU	SUB	D	-	-	SUB   K-497	K-497 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667B	K-497	-	SUSUB.667B	К-497
-K-500	K-500	SU	SUB	D	-	-	SUB   K-500	K-500 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667B	K-500	-	SUSUB.667B	К-500
-K-506	K-506	SU	SUB	D	-	-	SUB   K-506	K-506 Zelenograd submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667BDR	K-506	-	SUSUB.667BDR	К-506 Зеленоград
-K-512	K-512	SU	SUB	D	-	-	SUB   K-512	K-512 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667B	K-512	-	SUSUB.667B	К-512
-K-523	K-523	SU	SUB	D	-	-	SUB   K-523	K-523 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667B	K-523	-	SUSUB.667B	К-523
-K-530	K-530	SU	SUB	D	-	-	SUB   K-530	K-530 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 667B	K-530	-	SUSUB.667B	К-530
-K-535	K-535	RU	SUB	D	-	-	SUB   K-535	K-535 Yuriy Dolgorukiy submarine	-	-	-	0.0000 	VMF	-	-	Proekt 955	K-535	-	SUSUB.955	К-535 Юрий Долгорукий
-K-549	K-549	RU	SUB	D	-	-	SUB   K-549	K-549 Knyaz Vladimir submarine	-	-	-	0.0000 	VMF	-	-	Proekt 955A	K-549	-	SUSUB.955	К-549 Князь Владимир
-K-550	K-550	RU	SUB	D	-	-	SUB   K-550	K-550 Aleksandr Nevskiy submarine	-	-	-	0.0000 	VMF	-	-	Proekt 955	K-550	-	SUSUB.955	К-550 Александр Невский
-K-551	K-551	RU	SUB	D	-	-	SUB   K-551	K-551 Vladimir Monomakh	-	-	-	0.0000 	VMF	-	-	Proekt 955	K-551	-	SUSUB.955	К-551 Владимир Мономах
-K-552	K-552	RU	SUB	D	-	-	SUB   K-552	K-552 Knyaz Oleg	-	-	-	0.0000 	VMF	-	-	Proekt 955A	K-552	-	SUSUB.955	К-552 Князь Олег
-K-553	K-553	RU	SUB	D	-	-	SUB   K-553	K-553 Generalissimus Suvorov	-	-	-	0.0000 	VMF	-	-	Proekt 955A	K-553	-	SUSUB.955	К-553 Генералиссимус Суворов
-K-554	K-554	RU	SUB	D	-	-	SUB   K-554	K-554 Imperator Aleksandr Tretii	-	-	-	0.0000 	VMF	-	-	Proekt 955A	K-554	-	SUSUB.955	К-554 Император Александр III
-TK-12	TK-12	SU	SUB	D	1985	1999	SUB   TK-12	TK-12 Simbirsk submarine	-	-	-	0.0000 	VMF	-	-	Proekt 941	TK-12	-	SUSUB.941	ТК-12 Симбирск
-TK-13	TK-13	SU	SUB	D	1989	1998	SUB   TK-13	TK-13 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 941	TK-13	-	SUSUB.941	ТК-13
-TK-17	TK-17	SU	SUB	D	1990	2004	SUB   TK-17	TK-17 Arkhangelsk submarine	-	-	-	0.0000 	VMF	-	-	Proekt 941	TK-17	-	SUSUB.941	ТК-17 Архангельск
-TK-20	TK-20	SU	SUB	D	1992	2003	SUB   TK-20	TK-20 Severstal submarine	-	-	-	0.0000 	VMF	-	-	Proekt 941	TK-20	-	SUSUB.941	ТК-20 Северсталь
-TK-202	TK-202	SU	SUB	D	1984	-	SUB   TK-202	TK-202 submarine	-	-	-	0.0000 	VMF	-	-	Proekt 941	TK-202	-	SUSUB.941	ТК-202
-TK-208	TK-208	SU	SUB	D	1982	-	SUB   TK-208	TK-208 Dmitriy Donskoy submarine	-	-	-	0.0000 	VMF	-	-	Proekt 941	TK-208	-	SUSUB.941	ТК-208 Дмитрий Донской
-KALMAR	KALMAR	SU	SUB	D	-	-	SUB   KALMAR	Unknown Kalmar (667 BDR, Delta III) class sub	-	-	-	0.0000 	VMF	-	-	Proekt 667BDR	-	-	SUSUB.667BDR	667БДР Кальмар
-PLBR	PLBR	SU	SUB	D	-	-	SUB   PLBR	Unknown Soviet/Russian sub	-	-	-	0.0000 	VMF	-	-	-	-	-	SUSUB.X	Unknown Soviet/Russian sub
-S-229	S-229	SU	SUB	D	1961	1968	SUB   S-229	S-229 Submarine	-	-	-	0.0000 	VMF	-	-	Proekt 613D4	S-229	-	SUSUB.613	С-229
-824YONG	824YOG	KP	SUB	D	2016	-	SUB   SINPO	8.24 Yongung (Gorae class sub)	-	-	-	0.0000 	KPA	-	-	Gorae	-	-	KPSUB	8.24 Yongung
-KPN-PLAT	KPN-PLAT	KP	SUB	D	2015	-	SUB KPN Barge	Submerged barge,Korean People's Navy	-	-	-	0.0000 	KPA	-	-	-	-	-	KPSUB	Submerged barge,Korean People's Navy
-SS-083	SS-083	KR	SUB	D	2021	-	SUB   SS-083	SS-083 ROKS Dosan Ahn Changho	-	-	-	0.0000 	ADD	-	-	-	-	-	KRSUB	SS-083 도산안창호
-SS-085	SS-085	KR	SUB	D	2021	-	SUB   SS-085	SS-085 ROKS Ahn Mu	-	-	-	0.0000 	ADD	-	-	-	-	-	KRSUB	SS-083 도산안창호
-SS-086	SS-086	KR	SUB	D	2021	-	SUB   SS-086	SS-086 Shin Chae-ho	-	-	-	0.0000 	ADD	-	-	-	-	-	KRSUB	SS-083 도산안창호
-Q251	S655	F	SUB	D	1966	1980?	SUB   Q251	SNLE S655 Gymnote	-	-	-	0.0000 	ARMF	-	-	Gymnote	Q251	-	-	SNLE S655 Gymnote
-S655	S655	F	SUB	D	1980?	1986	SUB   S655	SNLE S655 Gymnote	-	-	-	0.0000 	ARMF	-	-	Gymnote	S655	-	SNLE	SNLE S655 Gymnote
-S610	S610	F	SUB	D	1971	1998	SUB   S610	SNLE S610 Le Foudroyant	-	-	-	0.0000 	ARMF	-	-	Redoutable	S610	-	SNLE	SNLE S610 Le Foudroyant
-S611	S611	F	SUB	D	1967	1991	SUB   S611	SNLE S611 Le Redoutable	-	-	-	0.0000 	ARMF	-	-	Redoutable	S611	-	SNLE	SNLE S611 Le Redoutable
-S612	S612	F	SUB	D	1969	1996	SUB   S612	SNLE S612 Le Terrible	-	-	-	0.0000 	ARMF	-	-	Redoutable	S612	-	SNLE	SNLE S612 Le Terrible
-S613	S613	F	SUB	D	1974	2003	SUB   S613	SNLE S613 L'Indomptable	-	-	-	0.0000 	ARMF	-	-	Redoutable	S613	-	SNLE	SNLE S613 L'Indomptable
-S614	S614	F	SUB	D	1977	1999	SUB   S614	SNLE S614 Le Tonnant	-	-	-	0.0000 	ARMF	-	-	Redoutable	S614	-	SNLE	SNLE S614 Le Tonnant
-S615	S615	F	SUB	D	1985	2008	SUB   S615	SNLE S615 L'Inflexible	-	-	-	0.0000 	ARMF	-	-	Redoutable	S615	-	SNLE	SNLE S615 L'Inflexible
-S616	S616	F	SUB	D	1994	-	SUB   S616	SNLE-NG S616 Le Triomphant	-	-	-	0.0000 	ARMF	-	-	Triomphant	S616	-	SNLE	SNLE-NG S616 Le Triomphant
-S617	S617	F	SUB	D	1998	-	SUB   S617	SNLE-NG S617 Le Temeraire	-	-	-	0.0000 	ARMF	-	-	Triomphant	S617	-	SNLE	S617 Le Téméraire
-S618	S618	F	SUB	D	2003	-	SUB   S618	SNLE-NG S618 Le Vigilant	-	-	-	0.0000 	ARMF	-	-	Triomphant	S618	-	SNLE	SNLE-NG S618 Le Vigilant
-S619	S619	F	SUB	D	2008	-	SUB   S619	SNLE-NG S619 Le Terrible	-	-	-	0.0000 	ARMF	-	-	Triomphant	S619	-	SNLE	SNLE-NG S619 Le Terrible
-UK-S22	UK-S22	UK	SUB	D	1966	1994	SUB   UK S22	HMS Resolution   (UK01)	-	-	-	-	RN	-	-	Resolution	S22	-	UKSUB	HMS Resolution   (UK01)
-UK-S23	UK-S23	UK	SUB	D	1967	1996	SUB   UK S23	HMS Repulse      (UK03)	-	-	-	-	RN	-	-	Resolution	S23	-	UKSUB	HMS Repulse      (UK03)
-UK-S26	UK-S26	UK	SUB	D	1967	1996	SUB   UK S26	HMS Renown       (UK02)	-	-	-	-	RN	-	-	Resolution	S26	-	UKSUB	HMS Renown       (UK02)
-UK-S27	UK-S27	UK	SUB	D	1968	1992	SUB   UK S27	HMS Revenge      (UK04)	-	-	-	-	RN	-	-	Resolution	S27	-	UKSUB	HMS Revenge      (UK04)
-UK-S28	UK-S28	UK	SUB	D	1992	-	SUB   UK S28	HMS Vanguard     (UK05)	-	-	-	-	RN	-	-	Vanguard	S28	-	UKSUB	HMS Vanguard     (UK05)
-UK-S29	UK-S29	UK	SUB	D	1993	-	SUB   UK S29	HMS Victorious   (UK06)	-	-	-	-	RN	-	-	Vanguard	S29	-	UKSUB	HMS Victorious   (UK06)
-UK-S30	UK-S30	UK	SUB	D	1995	-	SUB   UK S30	HMS Vigilant	-	-	-	-	RN	-	-	Vanguard	S30	-	UKSUB	HMS Vigilant
-UK-S31	UK-S31	UK	SUB	D	1998	-	SUB   UK S31	HMS Vengeance	-	-	-	-	RN	-	-	Vanguard	S31	-	UKSUB	HMS Vengeance
-SSBN-UNK	SSBN-UNK	US	SUB	D	-	-	SUB   SSBN	Unknown SSBN submarine, USN	-	-	-	0.0000 	ARMF	-	-	-	-	-	-	Unknown SSBN submarine, USN
-SSBN-598	SSBN-598	US	SUB	D	1959	1985	SUB   SSBN 598	USS George Washington	-	-	-	0.0000 	USN	-	-	George Washington	SSBN-598	-	POLARIS	USS George Washington
-SSBN-599	SSBN-599	US	SUB	D	1959	1984	SUB   SSBN 599	USS Patrick Henry	-	-	-	0.0000 	USN	-	-	George Washington	SSBN-599	-	POLARIS	USS Patrick Henry
-SSBN-600	SSBN-600	US	SUB	D	1959	1981	SUB   SSBN 600	USS Theodore Roosevelt	-	-	-	0.0000 	USN	-	-	George Washington	SSBN-600	-	POLARIS	USS Theodore Roosevelt
-SSBN-601	SSBN-601	US	SUB	D	1959	1983	SUB   SSBN 601	USS Robert E Lee	-	-	-	0.0000 	USN	-	-	George Washington	SSBN-601	-	POLARIS	USS Robert E Lee
-SSBN-602	SSBN-602	US	SUB	D	1960	1981	SUB   SSBN 602	USS Abraham Lincoln	-	-	-	0.0000 	USN	-	-	George Washington	SSBN-602	-	POLARIS	USS Abraham Lincoln
-SSBN-608	SSBN-608	US	SUB	D	1960	1983	SUB   SSBN 608	USS Ethan Allen	-	-	-	0.0000 	USN	-	-	Ethan Allen	SSBN-608	-	POLARIS	USS Ethan Allen
-SSBN-610	SSBN-610	US	SUB	D	1961	1983	SUB   SSBN 610	USS Thomas A Edison	-	-	-	0.0000 	USN	-	-	Ethan Allen	SSBN-610	-	POLARIS	USS Thomas A Edison
-SSBN-609	SSBN-609	US	SUB	D	1961	1991	SUB   SSBN 609	USS Sam Houston	-	-	-	0.0000 	USN	-	-	Ethan Allen	SSBN-609	-	POLARIS	USS Sam Houston
-SSBN-611	SSBN-611	US	SUB	D	1961	1992	SUB   SSBN 611	USS John Marshall	-	-	-	0.0000 	USN	-	-	Ethan Allen	SSBN-611	-	POLARIS	USS John Marshall
-SSBN-618	SSBN-618	US	SUB	D	1962	1985	SUB   SSBN 618	USS Thomas Jefferson	-	-	-	0.0000 	USN	-	-	Ethan Allen	SSBN-618	-	POLARIS	USS Thomas Jefferson
-SSBN-616	SSBN-616	US	SUB	D	1962	1991	SUB   SSBN 616	USS Lafayette	-	-	-	0.0000 	USN	-	-	Lafayette	SSBN-616	-	POLARIS	USS Lafayette
-SSBN-617	SSBN-617	US	SUB	D	1962	1993	SUB   SSBN 617	USS Alexander Hamilton	-	-	-	0.0000 	USN	-	-	Lafayette	SSBN-617	-	POLARIS	USS Alexander Hamilton
-SSBN-619	SSBN-619	US	SUB	D	1962	1989	SUB   SSBN 619	USS Andrew Jackson	-	-	-	0.0000 	USN	-	-	Lafayette	SSBN-619	-	POLARIS	USS Andrew Jackson
-SSBN-620	SSBN-620	US	SUB	D	1963	1989	SUB   SSBN 620	USS John Adams	-	-	-	0.0000 	USN	-	-	Lafayette	SSBN-620	-	POLARIS	USS John Adams
-SSBN-622	SSBN-622	US	SUB	D	1962	1990	SUB   SSBN 622	USS James Monroe	-	-	-	0.0000 	USN	-	-	Lafayette	SSBN-622	-	POLARIS	USS James Monroe
-SSBN-623	SSBN-623	US	SUB	D	1963	1986	SUB   SSBN 623	USS Nathan Hale	-	-	-	0.0000 	USN	-	-	Lafayette	SSBN-623	-	POLARIS	USS Nathan Hale
-SSBN-624	SSBN-624	US	SUB	D	1963	1994	SUB   SSBN 624	USS Woodrow Wilson	-	-	-	0.0000 	USN	-	-	Lafayette	SSBN-624	-	POLARIS	USS Woodrow Wilson
-SSBN-625	SSBN-625	US	SUB	D	1962	1990	SUB   SSBN 625	USS Henry Clay	-	-	-	0.0000 	USN	-	-	Lafayette	SSBN-625	-	POLARIS	USS Henry Clay
-SSBN-626	SSBN-626	US	SUB	D	1963	1990	SUB   SSBN 626	USS Daniel Webster	-	-	-	0.0000 	USN	-	-	Lafayette	SSBN-626	-	POLARIS	USS Daniel Webster
-SSBN-627	SSBN-627	US	SUB	D	1963	1992	SUB   SSBN 627	USS James Madison	-	-	-	0.0000 	USN	-	-	James Madison	SSBN-627	-	POLARIS	USS James Madison
-SSBN-628	SSBN-628	US	SUB	D	1963	1993	SUB   SSBN 628	USS Tecumseh	-	-	-	0.0000 	USN	-	-	James Madison	SSBN-628	-	POLARIS	USS Tecumseh
-SSBN-629	SSBN-629	US	SUB	D	1963	1994	SUB   SSBN 629	USS Daniel Boone	-	-	-	0.0000 	USN	-	-	James Madison	SSBN-629	-	POLARIS	USS Daniel Boone
-SSBN-630	SSBN-630	US	SUB	D	1963	1994	SUB   SSBN 630	USS John C Calhoun	-	-	-	0.0000 	USN	-	-	James Madison	SSBN-630	-	POLARIS	USS John C Calhoun
-SSBN-631	SSBN-631	US	SUB	D	1963	1992	SUB   SSBN 631	USS Ulysses S Grant	-	-	-	0.0000 	USN	-	-	James Madison	SSBN-631	-	POLARIS	USS Ulysses S Grant
-SSBN-632	SSBN-632	US	SUB	D	1963	1994	SUB   SSBN 632	USS Von Steuben	-	-	-	0.0000 	USN	-	-	James Madison	SSBN-632	-	POLARIS	USS Von Steuben
-SSBN-633	SSBN-633	US	SUB	D	1964	1994	SUB   SSBN 633	USS Casimir Pulaski	-	-	-	0.0000 	USN	-	-	James Madison	SSBN-633	-	POLARIS	USS Casimir Pulaski
-SSBN-634	SSBN-634	US	SUB	D	1963	1995	SUB   SSBN 634	USS Stonewall Jacskon	-	-	-	0.0000 	USN	-	-	James Madison	SSBN-634	-	POLARIS	USS Stonewall Jacskon
-SSBN-635	SSBN-635	US	SUB	D	1963	1989	SUB   SSBN 635	USS Sam Rayburn	-	-	-	0.0000 	USN	-	-	James Madison	SSBN-635	-	POLARIS	USS Sam Rayburn
-SSBN-636	SSBN-636	US	SUB	D	1964	1986	SUB   SSBN 636	USS Nathanael Greene	-	-	-	0.0000 	USN	-	-	James Madison	SSBN-636	-	POLARIS	USS Nathanael Greene
-SSBN-640	SSBN-640	US	SUB	D	1964	1993	SUB   SSBN 640	USS Benjamin Franklin	-	-	-	0.0000 	USN	-	-	Benjamin Franklin	SSBN-640	-	POLARIS	USS Benjamin Franklin
-SSBN-641	SSBN-641	US	SUB	D	1964	1995	SUB   SSBN 641	USS Simon Bolivar	-	-	-	0.0000 	USN	-	-	Benjamin Franklin	SSBN-641	-	POLARIS	USS Simon Bolivar
-SSBN-642	SSBN-642	US	SUB	D	1965	2002	SUB   SSBN 642	USS Kamehameha	-	-	-	0.0000 	USN	-	-	Benjamin Franklin	SSBN-642	-	POLARIS	USS Kamehameha
-SSBN-643	SSBN-643	US	SUB	D	1964	1993	SUB   SSBN 643	USS George Bancroft	-	-	-	0.0000 	USN	-	-	Benjamin Franklin	SSBN-643	-	POLARIS	USS George Bancroft
-SSBN-644	SSBN-644	US	SUB	D	1965	1992	SUB   SSBN 644	USS Lewis and Clark	-	-	-	0.0000 	USN	-	-	Benjamin Franklin	SSBN-644	-	POLARIS	USS Lewis and Clark
-SSBN-645	SSBN-645	US	SUB	D	1965	1999	SUB   SSBN 645	USS James K Polk	-	-	-	0.0000 	USN	-	-	Benjamin Franklin	SSBN-645	-	POLARIS	USS James K Polk
-SSBN-654	SSBN-654	US	SUB	D	1965	1992	SUB   SSBN 654	USS George C Marshall	-	-	-	0.0000 	USN	-	-	Benjamin Franklin	SSBN-654	-	POLARIS	USS George C Marshall
-SSBN-655	SSBN-655	US	SUB	D	1965	1993	SUB   SSBN 655	USS Henry L Stimson	-	-	-	0.0000 	USN	-	-	Benjamin Franklin	SSBN-655	-	POLARIS	USS Henry L Stimson
-SSBN-656	SSBN-656	US	SUB	D	1965	1993	SUB   SSBN 656	USS George Washington Carver	-	-	-	0.0000 	USN	-	-	Benjamin Franklin	SSBN-656	-	POLARIS	USS George Washington Carver
-SSBN-657	SSBN-657	US	SUB	D	1966	1993	SUB   SSBN 657	USS Francis Scott Key	-	-	-	0.0000 	USN	-	-	Benjamin Franklin	SSBN-657	-	POLARIS	USS Francis Scott Key
-SSBN-658	SSBN-658	US	SUB	D	1965	1995	SUB   SSBN 658	USS Mariano G Vallejo	-	-	-	0.0000 	USN	-	-	Benjamin Franklin	SSBN-658	-	POLARIS	USS Mariano G Vallejo
-SSBN-659	SSBN-659	US	SUB	D	1966	1993	SUB   SSBN 659	USS Will Rogers	-	-	-	0.0000 	USN	-	-	Benjamin Franklin	SSBN-659	-	POLARIS	USS Will Rogers
-SSBN-726	SSBN-726	US	SUB	D	1979	2003	SUB   SSBN 726	USS Ohio	-	-	-	0.0000 	USN	-	-	Ohio	SSBN-726	-	TRIDENT	USS Ohio
-SSBN-727	SSBN-727	US	SUB	D	1980	2007	SUB   SSBN 727	USS Michigan	-	-	-	0.0000 	USN	-	-	Ohio	SSBN-727	-	TRIDENT	USS Michigan
-SSBN-728	SSBN-728	US	SUB	D	1981	2003	SUB   SSBN 728	USS Florida	-	-	-	0.0000 	USN	-	-	Ohio	SSBN-728	-	TRIDENT	USS Florida
-SSBN-729	SSBN-729	US	SUB	D	1982	2003	SUB   SSBN 729	USS Georgia	-	-	-	0.0000 	USN	-	-	Ohio	SSBN-729	-	TRIDENT	USS Georgia
-SSBN-730	SSBN-730	US	SUB	D	1983	-	SUB   SSBN 730	USS Henry M. Jackson	-	-	-	0.0000 	USN	-	-	Ohio	SSBN-730	-	TRIDENT	USS Henry M. Jackson
-SSBN-731	SSBN-731	US	SUB	D	1984	-	SUB   SSBN 731	USS Alabama	-	-	-	0.0000 	USN	-	-	Ohio	SSBN-731	-	TRIDENT	USS Alabama
-SSBN-732	SSBN-732	US	SUB	D	1985	-	SUB   SSBN 732	USS Alaska	-	-	-	0.0000 	USN	-	-	Ohio	SSBN-732	-	TRIDENT	USS Alaska
-SSBN-733	SSBN-733	US	SUB	D	1985	-	SUB   SSBN 733	USS Nevada	-	-	-	0.0000 	USN	-	-	Ohio	SSBN-733	-	TRIDENT	USS Nevada
-SSBN-734	SSBN-734	US	SUB	D	1986	-	SUB   SSBN 734	USS Tennessee	-	-	-	0.0000 	USN	-	-	Ohio	SSBN-734	-	TRIDENT	USS Tennessee
-SSBN-735	SSBN-735	US	SUB	D	1988	-	SUB   SSBN 735	USS Pennsylvania	-	-	-	0.0000 	USN	-	-	Ohio	SSBN-735	-	TRIDENT	USS Pennsylvania
-SSBN-736	SSBN-736	US	SUB	D	1989	-	SUB   SSBN 736	USS West Virginia	-	-	-	0.0000 	USN	-	-	Ohio	SSBN-736	-	TRIDENT	USS West Virginia
-SSBN-737	SSBN-737	US	SUB	D	1990	-	SUB   SSBN 737	USS Kentucky	-	-	-	0.0000 	USN	-	-	Ohio	SSBN-737	-	TRIDENT	USS Kentucky
-SSBN-738	SSBN-738	US	SUB	D	1991	-	SUB   SSBN 738	USS Maryland	-	-	-	0.0000 	USN	-	-	Ohio	SSBN-738	-	TRIDENT	USS Maryland
-SSBN-739	SSBN-739	US	SUB	D	1992	-	SUB   SSBN 739	USS Nebraska	-	-	-	0.0000 	USN	-	-	Ohio	SSBN-739	-	TRIDENT	USS Nebraska
-SSBN-740	SSBN-740	US	SUB	D	1993	-	SUB   SSBN 740	USS Rhode Island	-	-	-	0.0000 	USN	-	-	Ohio	SSBN-740	-	TRIDENT	USS Rhode Island
-SSBN-741	SSBN-741	US	SUB	D	1994	-	SUB   SSBN 741	USS Maine	-	-	-	0.0000 	USN	-	-	Ohio	SSBN-741	-	TRIDENT	USS Maine
-SSBN-742	SSBN-742	US	SUB	D	1995	-	SUB   SSBN 742	USS Wyoming	-	-	-	0.0000 	USN	-	-	Ohio	SSBN-742	-	TRIDENT	USS Wyoming
-SSBN-743	SSBN-743	US	SUB	D	1996	-	SUB   SSBN 743	USS Louisiana	-	-	-	0.0000 	USN	-	-	Ohio	SSBN-743	-	TRIDENT	USS Louisiana
-B-1B	B-1B	US	AIR	D	-	-	AIR   B-1B	B-1B Lancer, unknown S/N	Dyess AFB	-	-	0.0000 	USAF	-	-	B-1B	-	-	USAIRB	B-1B Lancer, unknown S/N
-B-29	B-29	US	AIR	D	-	-	AIR   B-29	B-29 or B-50 Superfortress, unknown S/N	White Sands	-	-	0.0000 	USAF	-	-	B-29	-	-	USAIRB	B-29 or B-50 Superfortress, unknown S/N
-B-29-073	B-29-073	US	AIR	D	1951	1960	AIR   B-29	B-29B-60-BO Superfortress S/N 44-84073	White Sands	-	-	0.0000 	USAF	-	-	B-29	44-80473	-	USAIRB	B-29B-60-BO Superfortress S/N 44-84073
-B-29-402	B-29-402	US	AIR	D	1951	1960	AIR   B-29	B-29-55-BO Superfortress S/N 44-86402	White Sands	-	-	0.0000 	USAF	-	-	B-29	44-86402	-	USAIRB	B-29-55-BO Superfortress S/N 44-86402
-B-47E-220	B-47E-220	US	AIR	D	1958	1959	AIR   B-47	DB-47E-60-BW Stratojet S/N 51-5220	Eglin AFB?	-	-	0.0000 	USAF	-	-	B-47	51-5220	-	USAIRB	DB-47E-60-BW Stratojet S/N 51-5220
-B-50D-068	B-50D-068	US	AIR	D	1951	1960	AIR   B-50D	JTB-50D-80-BO Superfortress S/N 48-0068	White Sands	-	-	0.0000 	USAF	-	-	B-50	48-0068	-	USAIRB	JTB-50D-80-BO Superfortress S/N 48-0068
-B-52GH	B-52GH	US	AIR	D	1969	1984	AIR   B-52	B-52G/H Stratofortress	Grand Forks AFB and others	-	-	0.0000 	USAF	-	-	B-52	-	-	USAIRB	B-52G/H Stratofortress
-FB-111	FB-111	US	AIR	D	-	-	AIR   FB-111	FB-111	Plattsburgh AFB and others	-	-	0.0000 	USAF	-	-	FB-111	-	-	USAIRB	FB-111
-B-52G-473	B-52G-473	US	AIR	D	1962	1963	AIR   B-52G	B-52G Stratofortress S/N 57-6473	Eglin AFB	-	-	0.0000 	USAF	-	-	B-52	57-6473	-	USAIRB	B-52G Stratofortress S/N 57-6473
-B-52H	B-52H	US	AIR	D	-	-	AIR   B-52H	B-52H Stratofortress, unknown S/N	Edwards AFB	-	-	0.0000 	USAF	-	-	B-52	60-0024	-	USAIRB	B-52H Stratofortress, unknown S/N
-B-52H-T	B-52H-T	US	AIR	D	1967	1970	AIR   B-52H	B-52H Stratofortress S/N 60-0021 or 60-0036	Beale AFB	-	-	0.0000 	USAF	-	-	B-52	60-0021/36	-	USAIRB	B-52H Stratofortress S/N 60-0021 or 60-0036
-B-52H-021	B-52H-021	US	AIR	D	1967	1970	AIR   B-52H	B-52H Stratofortress S/N 60-0021	Beale AFB	-	-	0.0000 	USAF	-	-	B-52	60-0021	-	USAIRB	B-52H Stratofortress S/N 60-0021
-B-52H-024	B-52H-024	US	AIR	D	2009	2016	AIR   B-52H	B-52H Stratofortress S/N 60-0024?	Edwards AFB	-	-	0.0000 	USAF	-	-	B-52	60-0024	-	USAIRB	B-52H Stratofortress S/N 60-0024?
-B-52H-031	B-52H-031	US	AIR	D	2009	2016	AIR   B-52H	B-52H Stratofortress S/N 60-0031?	Edwards AFB	-	-	0.0000 	USAF	-	-	B-52	60-0031	-	USAIRB	B-52H Stratofortress S/N 60-0031?
-B-52H-036	B-52H-036	US	AIR	D	1967	1970	AIR   B-52H	B-52H Stratofortress S/N 60-0036	Beale AFB	-	-	0.0000 	USAF	-	-	B-52	60-0036	-	USAIRB	B-52H Stratofortress S/N 60-0036
-B-52H-050	B-52H-050	US	AIR	D	2009	2016	AIR   B-52H	B-52H Stratofortress S/N 60-0050	Edwards AFB	-	-	0.0000 	USAF	-	-	B-52	60-0050	-	USAIRB	B-52H Stratofortress S/N 60-0050
-NB-52	NB-52	US	AIR	C	-	-	AIR   NB-52	NB-52 Stratofortress (S/N 003 or 008)	Edwards AFB	-	-	0.0000 	FRC	-	-	B-52	52-003/008	-	USAIRB	NB-52 Stratofortress (S/N 003 or 008)
-NB-52-003	NB-52-003	US	AIR	C	-	-	AIR   NB-52 003	NB-52A Stratofortress S/N 003	Edwards AFB	-	-	0.0000 	FRC	-	-	B-52	52-003	-	USAIRB	NB-52A Stratofortress S/N 003
-NB-52-008	NB-52-008	US	AIR	C	-	-	AIR   NB-52 008	NB-52B Stratofortress S/N 008	Edwards AFB	-	-	0.0000 	FRC	-	-	B-52	52-008	-	USAIRB	NB-52B Stratofortress S/N 008
-B-57A-SWC	B-57A-SWC	US	AIR	D	-	-	AIR   B-57A	B-57A Canberra, AFSWC	White Sands	-	-	0.0000 	AFSWC	-	-	B-57	-	-	USAIRB	B-57A Canberra, AFSWC
-B-57A-218	B-57A-218	US	AIR	D	-	-	AIR   B-57A	B-57A Canberra NASA 218	Wallops Island	-	-	0.0000 	PARD	-	-	B-57	52-1418	NASA 218	USAIRB	B-57A Canberra NASA 218
-B-57B-502	B-57B-502	US	AIR	D	-	-	AIR   B-57B	WB-57B Canberra S/N 52-1502/3/4/6	Kirtland AFB	-	-	0.0000 	USAF	-	-	B-57	52-150x	-	USAIRB	WB-57B Canberra S/N 52-1502/3/4/6
-B-57C	B-57C	US	AIR	D	-	-	AIR   B-57C	WB-57C Canberra S/N 53-3832 and 53-3944	Kirtland AFB	-	-	0.0000 	USAF	-	-	B-57	53-3832/3944	-	USAIRB	WB-57C Canberra S/N 53-3832 and 53-3944
-B-57C-832	B-57C-832	US	AIR	D	-	-	AIR   B-57C	WB-57C Canberra S/N 53-3832 and 53-3944	Kirtland AFB	-	-	0.0000 	USAF	-	-	B-57	53-3832	-	USAIRB	WB-57C Canberra S/N 53-3832 and 53-3944
-B-57C-944	B-57C-944	US	AIR	D	-	-	AIR   B-57C	WB-57C Canberra S/N 53-3832 and 53-3944	Kirtland AFB	-	-	0.0000 	USAF	-	-	B-57	53-3944	-	USAIRB	WB-57C Canberra S/N 53-3832 and 53-3944
-B-58-660	B-58-660	US	AIR	D	-	-	AIR   B-58	B-58 Hustler S/N 55-660?	Eglin AFB	-	-	0.0000 	USAF/CONV	-	-	B-58	55-660	-	USAIRB	B-58 Hustler S/N 55-660?
-C-5A-014	C-5A-014	US	AIR	D	-	-	AIR   C-5A	C-5A Galaxy S/N 69-0014	Dover AFB	-	-	0.0000 	USAF	-	-	C-5	69-0014	-	USAIRT	C-5A Galaxy S/N 69-0014
-C-17	C-17	US	AIR	D	-	-	AIR   C-17	C-17 Globemaster III (AMC)	PMRF, Kauai	-	-	0.0000 	USAF	-	-	C-17	-	-	USAIRT	C-17 Globemaster III (AMC)
-C-17-E	C-17-E	US	AIR	D	-	-	AIR   C-17	C-17 Globemaster III (EAFB)	Edwards AFB	-	-	0.0000 	USAF	-	-	C-17	-	-	USAIRT	C-17 Globemaster III (EAFB)
-C-130	C-130	US	AIR	D	-	-	AIR   C-130	C-130 Hercules	China Lake NAS?	-	-	0.0000 	NAWC	-	-	C-130	-	-	USAIRT	C-130 Hercules
-F2H2-N	F2H2	US	AIR	D	-	-	AIR   F2H2	F2H-2 Banshee	Patuxent River NAS	-	-	0.0000 	NATC	-	-	F2H	-	-	USAIRF	F2H-2 Banshee
-F2H2-942	F2H2	US	AIR	C	-	-	AIR   F2H2	F2H-2 Banshee S/N 124942	PARD, Wallops Island	-	-	0.0000 	NACA	-	-	F2H	124942	-	USAIRF	F2H-2 Banshee S/N 124942
-F-3B	F-3B	US	AIR	D	-	-	AIR   F-3B	F-3B Demon	NMC Pt Mugu	-	-	0.0000 	NMC	-	-	F3B	-	-	USAIRF	F-3B Demon
-F-3B-484	F-3B-484	US	AIR	D	-	-	AIR   F-3B	F-3B Demon S/N 143484?	NMC Pt Mugu	-	-	0.0000 	NMC	-	-	F3B	143484	-	USAIRF	F-3B Demon S/N 143484?
-F-4B-451	F-4B-451	US	AIR	D	-	-	AIR   F-4B	F-4B Phantom S/N 149451	NMC Pt Mugu	-	-	0.0000 	NMC	-	-	F4B	149451	-	USAIRF	F-4B Phantom S/N 149451
-F-4C-654	F-4C-654	US	AIR	D	-	-	AIR   F-4C	F-4C Phantom S/N 63-7654	Kirtland AFB?	-	-	0.0000 	AFSWC	-	-	F4C	63-7654	-	USAIRF	F-4C Phantom S/N 63-7654
-F-4D-745	F-4D-745	US	AIR	D	-	-	AIR   F4D-1 745	F4D-1 Skyray S/N 130745	NMC Pt Mugu	-	-	0.0000 	NMC	-	-	F4D	130745	-	USAIRF	F4D-1 Skyray S/N 130745
-F-4D-747	F-4D-747	US	AIR	D	-	-	AIR   F4D-1 747	F4D-1 Skyray S/N 130747	NMC Pt Mugu	-	-	0.0000 	NMC	-	-	F4D	130747	-	USAIRF	F4D-1 Skyray S/N 130747
-F-4D-856	F-4D-856	US	AIR	D	-	-	AIR   F4D-1 856	F4D-1 Skyray S/N 134856	NMC Pt Mugu	-	-	0.0000 	NMC	-	-	F4D	134856	-	USAIRF	F4D-1 Skyray S/N 134856
-F-4D-A	F-4D-A	US	AIR	D	-	-	AIR   F-4D	F-4D Phantom	Kirtland AFB?	-	-	0.0000 	AFSWC	-	-	F4D	Unknown	-	USAIRF	F-4D Phantom
-F-4J-077	F-4J-077	US	AIR	D	-	-	AIR   F-4	F-4J Phantom S/N 153077	Patuxent River NAS	-	-	0.0000 	NATC	-	-	F4J	153077	-	USAIRF	F-4J Phantom S/N 153077
-F-15D-I	F-15D-I	IL	AIR	D	-	-	AIR   F-15	F-15D Eagle, Sparrow target program. (Tail 706, 714 and others)	Palmachim AFB?	-	-	0.0000 	IDF	-	-	F-15D	706/714/	-	USAIRF	F-15D Eagle, Sparrow target program. (Tail 706, 714 and others)
-F-15D-701	F-15D-701	IL	AIR	D	-	-	AIR   F-15	F-15D Eagle IAF S/N 701	Palmachim AFB?	-	-	0.0000 	IDF	-	-	F-15D	701	-	USAIRF	F-15D Eagle IAF S/N 701
-F-15D-706	F-15D-706	IL	AIR	D	-	-	AIR   F-15	F-15D Eagle IAF S/N 706	Palmachim AFB?	-	-	0.0000 	IDF	-	-	F-15D	706	-	USAIRF	F-15D Eagle IAF S/N 706
-F-15D-714	F-15D-714	IL	AIR	D	-	-	AIR   F-15	F-15D Eagle IAF S/N 714	Palmachim AFB?	-	-	0.0000 	IDF	-	-	F-15D	714	-	USAIRF	F-15D Eagle IAF S/N 714
-F-15D-715	F-15D-715	IL	AIR	D	-	-	AIR   F-15	F-15D Eagle IAF S/N 715	Palmachim AFB?	-	-	0.0000 	IDF	-	-	F-15D	715	-	USAIRF	F-15D Eagle IAF S/N 715
-F-86D	F-86D	US	AIR	D	-	-	AIR   F-86D	F-86D Sabre, Rockaire program	Holloman AFB?	-	-	0.0000 	USAF	-	-	F-86D	-	-	USAIRF	F-86D Sabre, Rockaire program
-F-89J-547	F-89J-547	US	AIR	D	-	-	AIR   F89J	F-89J Scorpion No. 53-2547	Indian Springs AFB	-	-	0.0000 	USAF	-	-	F-89J	53-2547	-	USAIRF	F-89J Scorpion No. 53-2547
-F-104-749	F-104	US	AIR	D	1956	1962	AIR   F-104	F-104A-10-LO Starfighter S/N 56-749	Edwards AFB	-	-	0.0000 	USAF	-	-	F-104	56-749	-	USAIRF	F-104A-10-LO Starfighter S/N 56-749
-F-15A-08x	F-15A-08x	US	AIR	D	-	-	AIR   F-15	F-15 Eagle, ASAT program (084 or 086)	Edwards AFB	-	-	0.0000 	USAF	-	-	F-15A	76-0084/0086	-	USAIRF	F-15 Eagle, ASAT program (084 or 086)
-F-15A-084	F-15A-084	US	AIR	D	-	-	Celestial Eagle	F-15A Eagle S/N 76-0084, ASAT program.	Edwards AFB	-	-	0.0000 	USAF	-	-	F-15A	76-0084	-	USAIRF	F-15A Eagle S/N 76-0084, ASAT program.
-F-15A-086	F-15A-086	US	AIR	D	-	-	AIR   F-15	F-15A Eagle S/N 76-0086, ASAT program.	Edwards AFB	-	-	0.0000 	USAF	-	-	F-15A	76-0086	-	USAIRF	F-15A Eagle S/N 76-0086, ASAT program.
-F4H-310	F4H-310	US	AIR	D	-	-	AIR   F-4H	F4H-1F Phantom II (F-4A-2-MC) S/N 145310	China Lake NAS	-	-	0.0000 	NOTS	-	-	F-4H	145310	-	USAIRF	F4H-1F Phantom II (F-4A-2-MC) S/N 145310
-F4H-317	F4H-317	US	AIR	D	-	-	AIR   F-4H	TF4H-1F Phantom II (F-4A-2-MC) S/N 145317	China Lake NAS	-	-	0.0000 	NOTS	-	-	F-4H	145317	-	USAIRF	TF4H-1F Phantom II (F-4A-2-MC) S/N 145317
-F4H-389	F4H-389	US	AIR	D	-	-	AIR   F-4H	YF4H-1 Phantom II (F-4A-1-MC) S/N 143389	China Lake NAS	-	-	0.0000 	NOTS	-	-	F-4H	145317	-	USAIRF	YF4H-1 Phantom II (F-4A-1-MC) S/N 143389
-F4H-N	F4H-N	US	AIR	D	-	-	AIR   F-4H	F4H Phantom II, 145317/145310/143389	China Lake NAS	-	-	0.0000 	NOTS	-	-	F-4H	145310/17	-	USAIRF	F4H Phantom II, 145317/145310/143389
-L-1011	L-1011	US	AIR	B	1994	-	Stargazer	L-1011-385-1 (MFR No. 1067) Stargazer N140SC	Mojave Air and Space Port	-	-	0.0000 	OSC	-	-	L-1011	N140SC	-	USAIRC	L-1011-385-1 (MFR No. 1067) Stargazer N140SC
-SCA905	SCA905	US	AIR	C	1977	2012	SCA 905	Boeing 747-123 Shuttle Carrier Aircraft N905NA	Edwards AFB	-	-	0.0000 	DFRC	-	-	B747	N905NA	-	USAIRC	Boeing 747-123 Shuttle Carrier Aircraft N905NA
-SCA911	SCA911	US	AIR	C	1977	2012	SCA 911	Boeing 747-SR46 Shuttle Carrier Aircraft N911NA	Edwards AFB	-	-	0.0000 	DFRC	-	-	B747	N911NA	-	USAIRC	Boeing 747-SR46 Shuttle Carrier Aircraft N911NA
-B747-744	B747-744	US	AIR	B	2020	-	Cosmic Girl	Boeing 747-400 (-41R) S/N 32745 Cosmic Girl N744VG	Mojave Air and Space Port	-	-	0.0000 	VORB	-	-	B747	N744VG	-	USAIRC	Boeing 747-400 (-41R) S/N 32745 Cosmic Girl N744VG
-WK1	WK1	US	AIR	B	2002	2014	White Knight 1	White Knight 1 N318SL	Mojave Air and Space Port	-	-	0.0000 	SCAL	-	-	WK1	N318SL	-	USAIRC	White Knight 1 N318SL
-WK2	WK2	US	AIR	B	2008	-	VMS Eve	White Knight 2 N348MS 'VMS Eve'	Spaceport America	-	-	0.0000 	TSCO	-	-	WK2	N348MS	-	USAIRC	White Knight 2 N348MS 'VMS Eve'
-BLN-FS	BLN-FS	US	AIR	D	1957	1958	AIR   Balloon	USAF Farside Balloon	Eniwetok	-	-	0.0000 	USAF	-	-	-	-	-	ROCKOON	USAF Farside Balloon
-BLN-LDSD	BLN-LDSD	US	AIR	C	-	-	NASA LDSD Balloon	NASA LDSD Balloon	Kauai PMRF	-	-	0.0000 	NASA	-	-	-	-	-	ROCKOON	NASA LDSD Balloon
-BLN-HAL5	BLN-HAL5	US	AIR	C	1997	1997	HAL5 Balloon	HAL5 Balloon	-	-	-	0.0000 	NASA	-	-	-	-	-	ROCKOON	HAL5 Balloon
-MiG31D-72	MiG31D-72	SU	AIR	D	-	-	MiG-31D 07-2	MiG-31D 07-2	LII Gromov, Zhukovskiy AFB	-	-	0.0000 	PVO	-	-	MiG-31	07-2	-	SUAIR	MiG-31D 07-2
-ROC	ROC	US	AIR	B	2019	-	Roc	Scaled Model 351 Stratolaunch 'Roc'	Mojave Air and Space Port	-	-	0.0000 	SCAL	-	-	-	N351SL	-	USAIRC	Scaled Model 351 Stratolaunch 'Roc'
+LUT1	LUT1	US	PLAT	C	1965	1985	PLAT  LUT1	Launch Umbilical Tower 1	-	-	-	0.0000	NASA	-	-	-	-	-	-	Launch Umbilical Tower 1
+LUT2	LUT2	US	PLAT	C	1965	1982	PLAT  LUT2	Launch Umbilical Tower 2	-	-	-	0.0000	NASA	-	-	-	-	-	-	Launch Umbilical Tower 2
+LUT3	LUT3	US	PLAT	C	1965	1979	PLAT  LUT3	Launch Umbilical Tower 3	-	-	-	0.0000	NASA	-	-	-	-	-	-	Launch Umbilical Tower 3
+MLP1	LUT3	US	PLAT	C	1979	-	PLAT  MLP1	Mobile Launch Platform 1	-	-	-	0.0000	NASA	-	-	-	-	-	-	Mobile Launch Platform 1
+MLP2	LUT2	US	PLAT	C	1982	-	PLAT  MLP2	Mobile Launch Platform 2	-	-	-	0.0000	NASA	-	-	-	-	-	-	Mobile Launch Platform 2
+MLP3	LUT1	US	PLAT	C	1985	-	PLAT  MLP3	Mobile Launch Platform 3	-	-	-	0.0000	NASA	-	-	-	-	-	-	Mobile Launch Platform 3
+PASSAT	PASSAT	SU	SHIP	C	1968	2008	SHIP  PASSAT	Passat	-	-	-	0.0000	GOIG	-	-	Passat	V88-I/1	IMO6904167	SOVSHIPS	Пассат
+MUSSON	MUSSON	SU	SHIP	C	1968	-	SHIP  MUSSON	Musson	-	-	-	0.0000	GOIG	-	-	Passat	V88-I/2	IMO6904155	SOVSHIPS	Муссон
+VOLNA	VOLNA	SU	SHIP	C	1968	-	SHIP  VOLNA	Volna	-	-	-	0.0000	DVNG	-	-	Passat	V88-I/3	IMO6914203	SOVSHIPS	Волна
+PRILIV	PRILIV	SU	SHIP	C	1969	-	SHIP  PRILIV	Priliv	-	-	-	0.0000	DVNG	-	-	Passat	V88-I/4	IMO6916574	SOVSHIPS	Прилив
+BUGAEV	BUGAEV	SU	SHIP	C	1980	1990	SHIP  BUGAEV	Viktor Bugaev	-	-	-	0.0000	GOIG	-	-	Poryv	V88-III/7	IMO7048427	SOVSHIPS	Виктор Бугаев
+USHAKOV	USHAKOV	SU	SHIP	C	1971	-	SHIP  USHAKOV	Georgiy Ushakov	-	-	-	0.0000	GOIG	-	-	Poryv	V88-III/8	IMO7117371	SOVSHIPS	Георгий Ушаков
+KREN	KREN	SU	SHIP	C	1971	-	SHIP  KRENKEL'	Ernst Krenkel'	-	-	-	0.0000	GOIG	-	-	Poryv	V88-III/9	IMO7205685	SOVSHIPS	Эрнст Кренкель
+SHOK	SHOK	SU	SHIP	C	1959	1980	SHIP  SHOK	Yu. M. Shokal'skiy	-	-	-	0.0000	DVNG	-	-	224 A.I. Voeykov	-	IMO5396600	SOVSHIPS	Ю. М. Шокальский
+VOKV	VOKV	SU	SHIP	C	1959	1989	SHIP  VOKV	A. I. Voeykov	-	-	-	0.0000	DVNG	-	-	224 A.I. Voeykov	-	IMO5010244	SOVSHIPS	А.И. Воейков
+SHIR	SHIR	SU	SHIP	C	1968	1991	SHIP  SHIR	Akademik Shirshov	-	-	-	0.0000	DVNG	-	-	416 Ak. Kurchatov	-	IMO6712552	SOVSHIPS	Академик Ширшов
+VIZE	VIZE	SU	SHIP	C	1968	1999	SHIP  VIZE	Professor Vize	-	-	-	0.0000	AANII	-	-	416 Ak. Kurchatov	-	IMO6707674	SOVSHIPS	Профессор Визе
+ZUB	ZUB	SU	SHIP	C	1969	1991	SHIP  ZUB	Professor Zubov	-	-	-	0.0000	AANII	-	-	416 Ak. Kurchatov	-	IMO6718764	SOVSHIPS	Профессор Зубов
+KORO	KORO	SU	SHIP	C	1970	1996	SHIP  KORO	Akademik Korolev	-	-	-	0.0000	GOIG	-	-	416 Ak. Kurchatov	-	IMO6707301	SOVSHIPS	Академик Королёв
+AGB-3	AGB-3	US	SHIP	D	-	-	SHIP  AGB-3	USS Atka	-	-	-	0.0000	USNB	-	-	Wind	AGB-3	-	USSHIPS	USS Atka
+AGB-4	AGB-4	US	SHIP	D	1954	1966	SHIP  AGB-4	USS Glacier	-	-	-	0.0000	USNB	-	-	Glacier	AGB-4	IMO6123672	USSHIPS	USS Glacier
+AGB-5	AGB-5	US	SHIP	D	1952	1974	SHIP  AGB-5	USS Staten Island	-	-	-	0.0000	USNB	-	-	Wind	AGB-5	-	USSHIPS	USS Staten Island
+WYG-279	WYG-279	US	SHIP	D	1944	1968	SHIP  WYG-279	USS Eastwind	-	-	-	0.0000	USN	-	-	Wind	WYG-279	-	USSHIPS	USS Eastwind
+AVM1	AVM1	US	SHIP	D	1951	1986	SHIP  AVM1	USS Norton Sound	-	-	-	0.0000	NAMTC	-	-	Norton Sound	AVM-1	-	USSHIPS	USS Norton Sound
+LSD-1	LSD-1	US	SHIP	D	1955	-	SHIP  LSD-1	USS Ashland	-	-	-	0.0000	USNVA	-	-	Ashland	LSD-1	-	USSHIPS	USS Ashland
+LSD-14	LSD-14	US	SHIP	D	1956	-	SHIP  LSD-14	USS Rushmore	-	-	-	0.0000	USN	-	-	Casa Grande	LSD-14	-	USSHIPS	USS Rushmore
+LSD-18	LSD-18	US	SHIP	D	1956	-	SHIP  LSD-18	USS Colonial	-	-	-	0.0000	USN	-	-	Casa Grande	LSD-18	-	USSHIPS	USS Colonial
+LSD-29	LSD-29	US	SHIP	D	1956	-	SHIP  LSD-29	USS Plymouth Rock	-	-	-	0.0000	USN	-	-	Thomaston	LSD-29	-	USSHIPS	USS Plymouth Rock
+LSD-31	LSD-31	US	SHIP	D	1956	-	SHIP  LSD-31	USS Point Defiance	-	-	-	0.0000	USN	-	-	Thomaston	LSD-31	-	USSHIPS	USS Point Defiance
+CVE-25	CVE-25	US	SHIP	D	1964	1965	SHIP  CVE-25	USNS Croatan, Wallops Mobile Range Facility	-	-	-	0.0000	USN/NASA	-	-	Bogue	CVE-25	-	USSHIPS	USNS Croatan, Wallops Mobile Range Facility
+RREC	RREC	US	SHIP	D	1960	1972	SHIP  RREC	USNS Range Recoverer	-	-	-	0.0000	USN	-	-	-	-	-	USSHIPS	USNS Range Recoverer
+T-AGM-8	T-AGM-8	US	SHIP	D	-	-	SHIP  T-AGM-8	USNS Wheeling	-	-	-	0.0000	USN	-	-	-	T-AGM-8	-	USSHIPS	USNS Wheeling
+T-AGM-12	T-AGM-12	US	SHIP	D	-	-	SHIP  T-AGM-12	USAS American Mariner	-	-	-	0.0000	USN	-	-	-	T-AGM-12	-	USSHIPS	USAS American Mariner
+CV-41	CV-41	US	SHIP	D	1947	-	SHIP  CV-41	USS Midway	-	-	-	0.0000	USNVA	-	-	Midway	CV-41	-	USMSHIPS	USS Midway
+DD-531	DD-531	US	SHIP	D	1958	-	SHIP  DD-531	USS Hazelwood	-	-	-	0.0000	USN	-	-	Fletcher	DD-531	-	USMSHIPS	USS Hazelwood
+DD-787	DD-787	US	SHIP	D	1956	-	SHIP  DD-787	USS Kyes	-	-	-	0.0000	USN	-	-	Gearing	DD-787	-	USMSHIPS	USS Kyes
+DD-790	DD-790	US	SHIP	D	1956	-	SHIP  DD-790	USS Shelton	-	-	-	0.0000	USN	-	-	Gearing	DD-790	-	USMSHIPS	USS Shelton
+DD-843	DD-843	US	SHIP	D	1958	-	SHIP  DD-843	USS Warrington	-	-	-	0.0000	USN	-	-	Gearing	DD-843	-	USMSHIPS	USS Warrington
+EAG-154	EAG-154	US	SHIP	D	1958	2014	SHIP  EAG-154	USNS Observation Island	-	-	-	0.0000	USN	-	-	-	EAG-154	-	USMSHIPS	USNS Observation Island
+SHIP-US	SHIP-US	US	SHIP	D	1965	1965	SHIP  SHIP-US	Unknown US Terrier missile ship	-	-	-	0.0000	USN	-	-	-	-	-	USMSHIPS	Unknown US Terrier missile ship
+MLP	MLP	US	SHIP	D	2003	-	SHIP  MLP	US Army Mobile Launch Platform	-	-	-	0.0000	USA	-	-	-	-	-	USMSHIPS	US Army Mobile Launch Platform
+DLG-20	DLG-20	US	SHIP	D	1961	1975	SHIP  CG-20	USS Richmond K. Turner	-	-	-	0.0000	USN	-	-	Leahy	CG-20	-	-	USS Richmond K. Turner
+CG-20	DLG-20	US	SHIP	D	1975	1995	SHIP  CG-20	USS Richmond K. Turner	-	-	-	0.0000	USN	-	-	Leahy	CG-20	-	AEGIS	USS Richmond K. Turner
+CG-29	CG-29	US	SHIP	D	1962	2007	SHIP  CG-29	USS Jouett	-	-	-	0.0000	USN	-	-	Belknap	CG-29	-	AEGIS	USS Jouett
+CG-67	CG-67	US	SHIP	D	1987	-	SHIP  CG-67	USS Shiloh	-	-	-	0.0000	USN	-	-	Ticonderoga	CG-67	-	AEGIS	USS Shiloh
+CG-70	CG-70	US	SHIP	D	1991	-	SHIP  CG-70	USS Lake Erie	-	-	-	0.0000	USN	-	-	Ticonderoga	CG-70	-	AEGIS	USS Lake Erie
+DDG-51	DDG-51	US	SHIP	D	1991	-	SHIP  DDG-51	USS Arleigh Burke	-	-	-	0.0000	USNROT	-	-	Arleigh Burke	DDG-51	-	AEGIS	USS Arleigh Burke
+DDG-53	DDG-53	US	SHIP	D	1991	-	SHIP  DDG-53	USS John Paul Jones	-	-	-	0.0000	USNPH	-	-	Arleigh Burke	DDG-53	-	AEGIS	USS John Paul Jones
+DDG-60	DDG-60	US	SHIP	D	1993	-	SHIP  DDG-60	USS Paul Hamilton	-	-	-	0.0000	USNSD	-	-	Arleigh Burke	DDG-60	-	AEGIS	USS Paul Hamilton
+DDG-62	DDG-62	US	SHIP	D	1994	-	SHIP  DDG-62	USS Fitzgerald	-	-	-	0.0000	USNSD	-	-	Arleigh Burke	DDG-62	-	AEGIS	USS Fitzgerald
+DDG-64	DDG-64	US	SHIP	D	1994	-	SHIP  DDG-64	USS Carney	-	-	-	0.0000	USNMYP	-	-	Arleigh Burke	DDG-64	-	AEGIS	USS Carney
+DDG-65	DDG-65	US	SHIP	D	1994	-	SHIP  DDG-65	USS Benfold	-	-	-	0.0000	USNYOK	-	-	Arleigh Burke	DDG-65	-	AEGIS	USS Benfold
+DDG-68	DDG-68	US	SHIP	D	1995	-	SHIP  DDG-68	USS The Sullivans	-	-	-	0.0000	USNMYP	-	-	Arleigh Burke	DDG-68	-	AEGIS	USS The Sullivans
+DDG-70	DDG-70	US	SHIP	D	1996	-	SHIP  DDG-70	USS Hopper	-	-	-	0.0000	USNPH	-	-	Arleigh Burke	DDG-70	-	AEGIS	USS Hopper
+DDG-71	DDG-71	US	SHIP	D	1996	-	SHIP  DDG-71	USS Ross	-	-	-	0.0000	USNVA	-	-	Arleigh Burke	DDG-71	-	AEGIS	USS Ross
+DDG-73	DDG-73	US	SHIP	D	1996	-	SHIP  DDG-73	USS Decatur	-	-	-	0.0000	USNSD	-	-	Arleigh Burke	DDG-73	-	AEGIS	USS Decatur
+DDG-74	DDG-74	US	SHIP	D	1997	-	SHIP  DDG-74	USS McFaul	-	-	-	0.0000	USNVA	-	-	Arleigh Burke	DDG-74	-	AEGIS	USS McFaul
+DDG-75	DDG-75	US	SHIP	D	1997	-	SHIP  DDG-75	USS Donald Cook	-	-	-	0.0000	USNROT	-	-	Arleigh Burke	DDG-75	-	AEGIS	USS Donald Cook
+DDG-77	DDG-77	US	SHIP	D	1997	-	SHIP  DDG-77	USS O'Kane	-	-	-	0.0000	USNPH	-	-	Arleigh Burke	DDG-77	-	AEGIS	USS O'Kane
+DDG-80	DDG-80	US	SHIP	D	1999	-	SHIP  DDG-80	USS Roosevelt	-	-	-	0.0000	USNMYP	-	-	Arleigh Burke	DDG-80	-	AEGIS	USS Roosevelt
+DDG-85	DDG-85	US	SHIP	D	1999	-	SHIP  DDG-85	USS McCampbell	-	-	-	0.0000	USNEV	-	-	Arleigh Burke	DDG-85	-	AEGIS	USS McCampbell
+DDG-88	DDG-88	US	SHIP	D	1999	-	SHIP  DDG-88	USS Preble	-	-	-	0.0000	USNEV	-	-	Arleigh Burke	DDG-88	-	AEGIS	USS Preble
+DDG-113	DDG-113	US	SHIP	D	2015	-	SHIP  DDG-113	USS John Finn	-	-	-	0.0000	USNSD	-	-	Arleigh Burke	DDG-113	-	AEGIS	USS John Finn
+DDG-114	DDG-114	US	SHIP	D	2015	-	SHIP  DDG-114	USS Ralph Johnson	-	-	-	0.0000	USNSD	-	-	Arleigh Burke	DDG-114	-	AEGIS	USS Ralph Johnson
+DDG-117	DDG-117	US	SHIP	D	2017	-	SHIP  DDG-117	USS Paul Ignatius	-	-	-	0.0000	USNSD	-	-	Arleigh Burke	DDG-117	-	AEGIS	USS Paul Ignatius
+DDG-118	DDG-118	US	SHIP	D	2023	-	SHIP  DDG-118	USS Daniel Inouye	-	-	-	0.0000	USNSD	-	-	Arleigh Burke	DDG-117	-	AEGIS	USS Daniel Inouye
+DDG-120	DDG-120	US	SHIP	D	2023	-	SHIP  DDG-120	USS Carl Levin	-	-	-	0.0000	USNSD	-	-	Arleigh Burke	DDG-117	-	AEGIS	USS Carl Levin
+DDG-173	DDG-173	J	SHIP	D	1991	-	SHIP  DDG-173	JS Kongo	-	-	-	0.0000	JMSDSA	-	-	Kongo	DDG-173	-	AEGIS	JS Kongo
+DDG-174	DDG-174	J	SHIP	D	1993	-	SHIP  DDG-174	JS Kirishima	-	-	-	0.0000	JMSDYO	-	-	Kongo	DDG-174	-	AEGIS	JS Kirishima
+DDG-175	DDG-175	J	SHIP	D	1994	-	SHIP  DDG-175	JS Myoko	-	-	-	0.0000	JMSDMA	-	-	Kongo	DDG-175	-	AEGIS	JS Myoko
+DDG-176	DDG-176	J	SHIP	D	1996	-	SHIP  DDG-176	JS Chokai	-	-	-	0.0000	JMSDSA	-	-	Kongo	DDG-176	-	AEGIS	JS Chokai
+DDG-177	DDG-177	J	SHIP	D	2005	-	SHIP  DDG-177	JS Atago	-	-	-	0.0000	JMSDMA	-	-	Kongo	DDG-177	-	AEGIS	JS Atago
+DDG-178	DDG-178	J	SHIP	D	2005	-	SHIP  DDG-178	JS Ashigara	-	-	-	0.0000	JMSDMA	-	-	Ashigara	DDG-178	-	AEGIS	JS Ashigara
+DDG-179	DDG-179	J	SHIP	D	2019	-	SHIP  DDG-179	JS Maya	-	-	-	0.0000	JMSDMA	-	-	Ashigara	DDG-179	-	AEGIS	JS Maya
+DDG-180	DDG-180	J	SHIP	D	2019	-	SHIP  DDG-180	JS Haguro	-	-	-	0.0000	JMSDMA	-	-	Ashigara	DDG-180	-	AEGIS	JS Haguro
+DDG-UNK	DDG-UNK	US	SHIP	D	-	-	SHIP	Unknown Aegis ship	-	-	-	0.0000	USN	-	-	Arleigh Burke	DDG-UNK	-	AEGIS	Unknown Aegis ship
+INS-P51	INS-P51	IN	SHIP	D	2001	-	SHIP  INS-P51	INS Subhadra	-	-	-	0.0000	INAV	-	-	Sukanya	INS-P51	-	INAV	INS Subhadra
+INS-P52	INS-P52	IN	SHIP	D	-	-	SHIP  INS-P52	INS Suvarna	-	-	-	0.0000	INAV	-	-	Sukanya	INS-P52	-	INAV	INS Suvarna
+INS-D51	INS-D51	IN	SHIP	D	2005?	-	SHIP  INS-D51	INS Rajput	-	-	-	0.0000	INAV	-	-	Rajput	INS-D51	-	INAV	INS Rajput
+INS-S73	INS-S73	IN	SUB	D	2015	-	SUB   INS-S73	INS Arihant (S-73)	-	-	-	0.0000	INAV	-	-	Arihant	INS-S73	-	INSUB	INS Arihant
+INS-S74	INS-S74	IN	SHIP	D	2017	-	SHIP  INS-S3	INS Arighaat	-	-	-	0.0000	INAV	-	-	Arihant	INS-S3	-	INSUB	INS Arighaat
+CCOC	CCOC	CN	SHIP	C	2019	-	SHIP CCOC	Tai Rui CCOCOOOO 37101 CZ-11 launch barge	-	-	-	0.0000	CALTQ	-	-	CCOC	-	MMS412137101	OTHERSHIPS	CCOCOOOO 37101 CZ-11 launch barge (TAI RUI?)
+DEBO3	DEBO3	CN	SHIP	C	2020	-	SHIP DEBO3	Debo-3 launch barge	-	-	-	0.0000	CALTQ	-	-	Debo-3	-	-	OTHERSHIPS	Debo-3
+DEFU2	DEFU2	CN	SHIP	C	2020	-	SHIP DEFU 15002	DEFU 15002 launch barge	-	-	-	0.0000	CALTQ	-	-	Debo-3	-	-	OTHERSHIPS	DEFU 15002 launch barge
+BRJZ	BRJZ	CN	SHIP	C	2023	-	Bo run Jiu zhou	Bo Run Jiu Zhou	-	-	-	0.0000	CALTQ	-	-	-	-	MMS413536970	OTHERSHIPS	Bo Run Jiu Zhou
+DFHT	DFHT	CN	SHIP	C	2023	-	DF Hangtian	Dongfeng Hangtiangang	-	-	-	0.0000	CALTQ	-	-	-	-	-	OTHERSHIPS	东方航天港号
+SHIP-ISR	SHIP-ISR	IL	SHIP	D	-	-	SHIP  SHIP-ISR	Unknown Israeli ship	-	-	-	0.0000	IDFN	-	-	-	-	-	OTHERSHIPS	Unknown Israeli ship
+SIR	SIR	KR	SHIP	D	2012	-	SHIP  SIRIUS	Sirius barge, Anhueng	-	-	-	0.0000	ADDAH	-	-	-	-	IMO8772295	OTHERSHIPS	Sirius barge, Anhueng
+ODYSSEY	ODYSSEY	US	SHIP	B	1999	2020	SHIP  ODYSSEY	Sea Launch Odyssey	-	-	-	0.0000	BOSL	-	-	-	-	IMO8753196	OTHERSHIPS	Sea Launch Odyssey
+OIALT	OIALT	US	SHIP	B	2024	-	Once In A LT	Once In A Lifetime	-	-	-	0.0000	SPORT	-	-	-	-	MMS368379350	OTHERSHIPS	Once In A Lifetime
+JRTI1	JRTI1	US	SHIP	B	2014	2015 May	ASDS  JRTI 300	MARMAC 300 Just Read The Instructions, SpaceX Autonomous Spaceport Drone Ship	-	-	-	0.0000	SPX	-	-	ASDS	-	-	ASDS	MARMAC 300 Just Read The Instructions, SpaceX Autonomous Spaceport Drone Ship
+JRTI	JRTI	US	SHIP	B	2015	-	ASDS  JRTI	MARMAC 303 Just Read The Instructions, SpaceX Autonomous Spaceport Drone Ship	-	-	-	0.0000	SPX	-	-	ASDS	-	-	ASDS	MARMAC 303 Just Read The Instructions, SpaceX Autonomous Spaceport Drone Ship
+OCISLY	OCISLY	US	SHIP	B	2016	-	ASDS  OCISLY	MARMAC 304 Of Course I Still Love You, SpaceX Autonomous Spaceport Drone Ship	-	-	-	0.0000	SPX	-	-	ASDS	-	-	ASDS	MARMAC 304 Of Course I Still Love You, SpaceX Autonomous Spaceport Drone Ship
+ASOG	ASOG	US	SHIP	B	2021	-	ASDS  ASOG	MARMAC 302 A Shortfall Of Gravitas, SpaceX Autonomous Spaceport Drone Ship	-	-	-	0.0000	SPX	-	-	ASDS	-	-	ASDS	MARMAC 302 A Shortfall of Gravitas, SpaceX Autonomous Spaceport Drone Ship
+CH200	CH200	CN	SUB	D	1982	-	Changcheng 200	Changcheng 200 submarine	-	-	-	0.0000	PLANS	-	-	Type 031	200	-	CNSUB	长城-200
+CH406	CH406	CN	SUB	D	1981	-	SUB   XIA	Changcheng 406 submarine	-	-	-	0.0000	PLANS	-	-	Type 092	406	-	CNSUB	长城-406
+T094	T094	CN	SUB	D	2006?	-	SUB   Type 094	Unknown Jinji Qianting (Type 094) class sub	-	-	-	0.0000	PLANS	-	-	Type 094	-	-	CNSUB	Unknown Jinji Qianting (Type 094) class sub
+B-62	B-62	SU	SUB	D	-	-	SUB   B-62	B-62 submarine	-	-	-	0.0000	VMF	-	-	Proekt B-611A	B-62	-	SUSUB.611	Б-62
+B-67	B-67	SU	SUB	D	-	-	SUB   B-67	B-67 submarine	-	-	-	0.0000	VMF	-	-	Proekt B-611AV	B-67	-	SUSUB.611	Б-67
+B-73	B-73	SU	SUB	D	-	-	SUB   B-73	B-73 submarine	-	-	-	0.0000	VMF	-	-	Proekt B-611AV	B-73	-	SUSUB.611	Б-73
+B-78	B-78	SU	SUB	D	-	-	SUB   B-78	B-78 Murmanski Komsomolets submarine	-	-	-	0.0000	VMF	-	-	Proekt B-611AV	B-78	-	SUSUB.611	Б-78
+B-79	B-79	SU	SUB	D	-	-	SUB   B-79	B-79 submarine	-	-	-	0.0000	VMF	-	-	Proekt B-611AV	B-79	-	SUSUB.611	Б-79
+B-89	B-89	SU	SUB	D	-	-	SUB   B-89	B-89 submarine	-	-	-	0.0000	VMF	-	-	Proekt B-611AV	B-89	-	SUSUB.611	Б-89
+ZULUV	ZULUV	SU	SUB	D	-	-	SUB   ZULUV	Unknown Zulu V class submarine	-	-	-	0.0000	VMF	-	-	Proekt B-611AV	-	-	SUSUB.611	АВ-611
+DELTA2	DELTA2	SU	SUB	D	-	-	SUB   667BD	Unknown 667BD (Murena-M, Delta 2) class submarine	-	-	-	0.0000	VMF	-	-	Proekt 667BD	-	-	SUSUB.667BD	667БД
+DELTA4	DELTA4	SU	SUB	D	-	-	SUB   DELTA4	Unknown 667BDRM (Delfin, Delta 4) class submarine	-	-	-	0.0000	VMF	-	-	Proekt 667BDRM	-	-	SUSUB.667BDRM	667БДРМ
+GOLF	GOLF	SU	SUB	D	-	-	SUB   GOLF	Unknown 629 (Golf) submarine	-	-	-	0.0000	VMF	-	-	Proekt 629	-	-	SUSUB.629	629
+K-16	K-16	SU	SUB	D	-	-	SUB   K-16	K-16 submarine	-	-	-	0.0000	VMF	-	-	Proekt 658	K-16	-	SUSUB.658	К-16
+K-18	K-18	SU	SUB	D	-	-	SUB   K-18	K-18 Karelia submarine	Sev. Flot	-	-	0.0000	VMF	-	-	Proekt 667BDRM	K-18	-	SUSUB.667BDRM	К-18 Карелия
+K-19	K-19	SU	SUB	D	-	-	SUB   K-19	K-19 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 658	K-19	-	SUSUB.658	К-19
+K-26	K-26	SU	SUB	D	-	-	SUB   K-26	K-26 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667A	K-26	-	SUSUB.667	К-26
+K-32	K-32	SU	SUB	D	-	-	SUB   K-32	K-32 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667A	K-32	-	SUSUB.667	К-32
+K-33	K-33	SU	SUB	D	-	-	SUB   K-33	K-33 submarine	-	-	-	0.0000	VMF	-	-	Proekt 658	K-33	-	SUSUB.658	К-33
+K-36	K-36	SU	SUB	D	-	-	SUB   K-36	K-36 submarine	-	-	-	0.0000	VMF	-	-	Proekt 629A	B-26	-	SUSUB.629A	К-36
+K-40	K-40	SU	SUB	D	-	-	SUB   K-40	K-40 submarine	-	-	-	0.0000	VMF	-	-	Proekt 658	K-40	-	SUSUB.658	К-40
+K-44	K-44	SU	SUB	D	-	-	SUB   K-44	K-44 Ryazan Submarine	Sev. Flot	-	-	0.0000	VMF	-	-	Proekt 667BDR	K-44	-	SUSUB.667BDR	К-44 Рязань
+K-51	K-51	SU	SUB	D	-	-	SUB   K-51	K-51 Verkhoturiye Submarine	Sev. Flot	-	-	0.0000	VMF	-	-	Proekt 667BDRM	K-51	-	SUSUB.667BDRM	К-51 Верхоту́рье
+K-55	K-55	SU	SUB	D	-	-	SUB   K-55	K-55 submarine	-	-	-	0.0000	VMF	-	-	Proekt 658	K-55	-	SUSUB.658	К-55
+K-61	K-61	SU	SUB	D	-	-	SUB   K-61	K-61 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629	B-29	-	SUSUB.629	К-61
+K-64	K-64	SU	SUB	D	-	-	SUB   K-64	K-64 Podmoskovye Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667BDRM	K-64	-	SUSUB.667BDRM	К-64 Подмоско́вье
+K-72	K-72	SU	SUB	D	-	-	SUB   K-72	K-72 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629A	B-40	-	SUSUB.629A	К-72
+K-75	K-75	SU	SUB	D	-	-	SUB   K-75	K-75 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629A	B-46	-	SUSUB.629A	К-75
+K-79	K-79	SU	SUB	D	-	-	SUB   K-79	K-79 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629A	B-41	-	SUSUB.629A	К-79
+K-83	K-83	SU	SUB	D	-	-	SUB   K-83	K-83 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629	B-42	-	SUSUB.629	К-83
+K-84	K-84	SU	SUB	D	-	-	SUB   K-84	K-84 Ekaterinburg Submarine	Sev. Flot	-	-	0.0000	VMF	-	-	Proekt 667BDRM	K-84	-	SUSUB.667BDRM	К-84 Екатеринбург
+K-88	K-88	SU	SUB	D	-	-	SUB   K-88	K-88 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629A	B-45	-	SUSUB.629A	К-88
+K-91	K-91	SU	SUB	D	-	-	SUB   K-91	K-91 submarine	-	-	-	0.0000	VMF	-	-	Proekt 629A	B-48	-	SUSUB.629A	К-91
+K-92	K-92	SU	SUB	D	-	-	SUB   K-92	K-92 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667BD	K-92	-	SUSUB.667BD	К-92
+K-93	K-93	SU	SUB	D	-	-	SUB   K-93	K-93 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629A	K-93	-	SUSUB.629A	К-93
+K-96	K-96	SU	SUB	D	-	-	SUB   K-96	K-96 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629A	B-92	-	SUSUB.629A	К-96
+K-99	K-99	SU	SUB	D	-	-	SUB   K-99	K-99 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629A	B-51	-	SUSUB.629A	К-99
+K-102	K-102	SU	SUB	D	-	-	SUB   K-102	K-102 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629	B-121	-	SUSUB.629	К-102
+K-107	K-107	SU	SUB	D	-	-	SUB   K-107	K-107 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629	B-125	-	SUSUB.629	К-107
+K-110	K-110	SU	SUB	D	-	-	SUB   K-110	K-110 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629	K-110	-	SUSUB.629	К-110
+K-113	K-113	SU	SUB	D	-	-	SUB   K-113	K-113 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629	B-146	-	SUSUB.629	К-113
+K-114	K-114	SU	SUB	D	-	-	SUB   K-114	K-114 Tula Submarine	Sev. Flot	-	-	0.0000	VMF	-	-	Proekt 667BDRM	K-114	-	SUSUB.667BDRM	К-114 Тула
+K-117	K-117	SU	SUB	D	-	-	SUB   K-117	K-117 Bryansk Submarine	Sev. Flot	-	-	0.0000	VMF	-	-	Proekt 667BDRM	K-117	-	SUSUB.667BDRM	К-117 Брянск
+K-118	K-118	SU	SUB	D	-	-	SUB   K-118	K-118 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629	B-149	-	SUSUB.629	К-118
+K-126	K-126	SU	SUB	D	-	-	SUB   K-126	K-126 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629A	B-93	-	SUSUB.629A	К-126
+K-129A	K-129A	SU	SUB	D	-	-	SUB   K-129	K-129 Submarine (Proekt 629)	-	-	-	0.0000	VMF	-	-	Proekt 629A	B-103	-	SUSUB.629A	К-129
+K-129	K-129	SU	SUB	D	-	-	SUB   K-129	K-129 Submarine (Proekt 667BDR)	-	-	-	0.0000	VMF	-	-	Proekt 667BDR	K-129	-	SUSUB.667BDR	К-129
+K-136	K-136	SU	SUB	D	-	-	SUB   K-136	K-136 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629	B-109	-	SUSUB.629	К-136
+K-137	K-137	SU	SUB	D	-	-	SUB   K-137	K-137 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667AU	K-137	-	SUSUB.667	К-137
+K-139	K-139	SU	SUB	D	-	-	SUB   K-139	K-139 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629A	B-113	-	SUSUB.629A	К-139
+K-140	K-140	SU	SUB	D	-	-	SUB   K-140	K-140 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667AM	K-140	-	SUSUB.667	К-140
+K-142	K-142	SU	SUB	D	-	-	SUB   K-142	K-142 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629B	K-142	-	SUSUB.629A	К-142
+K-145	K-145	SU	SUB	D	-	-	SUB   K-145	K-145 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 658/701	K-145	-	SUSUB.658	К-145
+K-149	K-149	SU	SUB	D	-	-	SUB   K-149	K-149 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 658	K-149	-	SUSUB.658	К-149
+K-153	K-153	SU	SUB	D	-	-	SUB   K-153	K-153 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629	K-153	-	SUSUB.629	К-153
+K-163	K-163	SU	SUB	D	-	-	SUB   K-163	K-163 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 629A	K-163	-	SUSUB.629A	К-163
+K-171	K-171	SU	SUB	D	-	-	SUB   K-171	K-171 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667B	K-171	-	SUSUB.667B	К-171
+K-178	K-178	SU	SUB	D	-	-	SUB   K-178	K-178 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 658	K-178	-	SUSUB.658	К-178
+K-180	K-180	SU	SUB	D	-	-	SUB   K-180	K-180 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667BDR	K-180	-	SUSUB.667BDR	К-180
+K-182	K-182	SU	SUB	D	-	-	SUB   K-182	K-182 60 Let Velikogo Oktyabria Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667BD	K-182	-	SUSUB.667BD	К-182 60 лет Великого Октября
+K-193	K-193	SU	SUB	D	-	-	SUB   K-193	K-193 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667BD	K-193	-	SUSUB.667BD	К-193
+K-207	K-207	SU	SUB	D	-	-	SUB   K-207	K-207 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667A	K-207	-	SUSUB.667	К-207
+K-210	K-210	SU	SUB	D	-	-	SUB   K-210	K-210 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667A	K-210	-	SUSUB.667	К-210
+K-211	K-211	SU	SUB	D	-	-	SUB   K-211	K-211 Petropavlovsk-Kamchatkskiy submarine	Tikh. Flot	-	-	0.0000	VMF	-	-	Proekt 667BDR	K-211	-	SUSUB.667BDR	К-211 Петропавловск-Камчатский
+K-214	K-214	SU	SUB	D	-	-	SUB   K-214	K-214 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667AU	K-214	-	SUSUB.667	К-214
+K-216	K-216	SU	SUB	D	-	-	SUB   K-216	K-216 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667A	K-216	-	SUSUB.667	К-216
+K-219	K-219	SU	SUB	D	-	-	SUB   K-219	K-219 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667AU	K-219	-	SUSUB.667	К-219
+K-223	K-223	SU	SUB	D	-	-	SUB   K-223	K-223 Podolsk submarine	Tikh. Flot	-	-	0.0000	VMF	-	-	Proekt 667BDR	K-223	-	SUSUB.667BDR	К-233 Подольск
+K-228	K-228	SU	SUB	D	-	-	SUB   K-228	K-228 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667AU	K-228	-	SUSUB.667	К-228
+K-236	K-236	SU	SUB	D	-	-	SUB   K-236	K-236 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667AU	K-236	-	SUSUB.667	К-236
+K-241	K-241	SU	SUB	D	-	-	SUB   K-241	K-241 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667AU	K-241	-	SUSUB.667	К-241
+K-245	K-245	SU	SUB	D	-	-	SUB   K-245	K-245 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667AU	K-245	-	SUSUB.667	К-245
+K-249	K-249	SU	SUB	D	-	-	SUB   K-249	K-249 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667A	K-249	-	SUSUB.667	К-249
+K-252	K-252	SU	SUB	D	-	-	SUB   K-252	K-252 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667A	K-252	-	SUSUB.667	К-252
+K-253	K-253	SU	SUB	D	-	-	SUB   K-253	K-253 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667A	K-253	-	SUSUB.667	К-253
+K-258	K-258	SU	SUB	D	-	-	SUB   K-258	K-258 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667AU	K-258	-	SUSUB.667	К-258
+K-279	K-279	SU	SUB	D	-	-	SUB   K-279	K-279 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667B	K-279	-	SUSUB.667B	К-279
+K-336	K-336	SU	SUB	D	-	-	SUB   K-336	K-336 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667B	K-336	-	SUSUB.667B	К-336
+K-339	K-339	SU	SUB	D	-	-	SUB   K-339	K-339 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667A	K-339	-	SUSUB.667	К-339
+K-385	K-385	SU	SUB	D	-	-	SUB   K-385	K-385 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667B	K-385	-	SUSUB.667B	К-385
+K-389	K-389	SU	SUB	D	-	-	SUB   K-389	K-389 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667A	K-389	-	SUSUB.667	К-389
+K-395	K-395	SU	SUB	D	-	-	SUB   K-395	K-395 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667A	K-395	-	SUSUB.667	К-395
+K-403	K-403	SU	SUB	D	-	-	SUB   K-403	K-403 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667A	K-403	-	SUSUB.667	К-403
+K-407	K-407	SU	SUB	D	-	-	SUB   K-407	K-407 Novomoskvosk Submarine	Sev. Flot	-	-	0.0000	VMF	-	-	Proekt 667BDRM	K-407	-	SUSUB.667BDRM	К-407 Новомосковск
+K-408	K-408	SU	SUB	D	-	-	SUB   K-408	K-408 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667A	K-408	-	SUSUB.667	К-408
+K-411	K-411	SU	SUB	D	-	-	SUB   K-411	K-411 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667A	K-411	-	SUSUB.667	К-411
+K-415	K-415	SU	SUB	D	-	-	SUB   K-415	K-415 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667A	K-415	-	SUSUB.667	К-415
+K-417	K-417	SU	SUB	D	-	-	SUB   K-417	K-417 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667B	K-417	-	SUSUB.667B	К-417
+K-418	K-418	SU	SUB	D	-	-	SUB   K-418	K-418 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667A	K-418	-	SUSUB.667	К-418
+K-420	K-420	SU	SUB	D	-	-	SUB   K-420	K-420 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667A	K-420	-	SUSUB.667	К-420
+K-421	K-421	SU	SUB	D	-	-	SUB   K-421	K-421 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667BD	K-193	-	SUSUB.667BD	К-421
+K-423	K-423	SU	SUB	D	-	-	SUB   K-423	K-423 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667A	K-423	-	SUSUB.667	К-423
+K-424	K-424	SU	SUB	D	-	-	SUB   K-424	K-424 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667BDR	K-424	-	SUSUB.667BDR	К-424
+K-426	K-426	SU	SUB	D	-	-	SUB   K-426	K-426 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667A	K-426	-	SUSUB.667	К-426
+K-430	K-430	SU	SUB	D	-	-	SUB   K-430	K-430 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667AU	K-430	-	SUSUB.667	К-430
+K-433	K-433	SU	SUB	D	-	-	SUB   K-433	K-433 Svyaity Georgiy Pobedonosets	Tikh. Flot	-	-	0.0000	VMF	-	-	Proekt 667BDR	K-433	-	SUSUB.667BDR	К-433 Святой Георгий Победоносец
+K-434	K-434	SU	SUB	D	-	-	SUB   K-434	K-434 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667AU	K-434	-	SUSUB.667	К-434
+K-436	K-436	SU	SUB	D	-	-	SUB   K-436	K-436 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667AU	K-436	-	SUSUB.667	К-436
+K-441	K-441	SU	SUB	D	-	-	SUB   K-441	K-441 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667BDR	K-441	-	SUSUB.667BDR	К-441
+K-444	K-444	SU	SUB	D	-	-	SUB   K-444	K-444 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667AU	K-444	-	SUSUB.667	К-444
+K-446	K-446	SU	SUB	D	-	-	SUB   K-446	K-446 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667AU	K-446	-	SUSUB.667	К-446
+K-447	K-447	SU	SUB	D	-	-	SUB   K-447	K-447 Kislovodsk Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667B	K-447	-	SUSUB.667B	К-447 Кисловодск
+K-449	K-449	SU	SUB	D	-	-	SUB   K-449	K-449 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667BDR	K-449	-	SUSUB.667BDR	К-449
+K-450	K-450	SU	SUB	D	-	-	SUB   K-450	K-450 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667B	K-450	-	SUSUB.667B	К-450
+K-451	K-451	SU	SUB	D	-	-	SUB   K-451	K-451 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667AU	K-451	-	SUSUB.667	К-451
+K-455	K-455	SU	SUB	D	-	-	SUB   K-455	K-455 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667BDR	K-455	-	SUSUB.667BDR	К-455
+K-457	K-457	SU	SUB	D	-	-	SUB   K-457	K-457 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667B	K-457	-	SUSUB.667B	К-457
+K-460	K-460	SU	SUB	D	-	-	SUB   K-460	K-460 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667B	K-460	-	SUSUB.667B	К-460
+K-465	K-465	SU	SUB	D	-	-	SUB   K-465	K-465 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667B	K-465	-	SUSUB.667B	К-465
+K-472	K-472	SU	SUB	D	-	-	SUB   K-472	K-472 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667B	K-472	-	SUSUB.667B	К-472
+K-475	K-475	SU	SUB	D	-	-	SUB   K-475	K-475 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667B	K-475	-	SUSUB.667B	К-475
+K-477	K-477	SU	SUB	D	-	-	SUB   K-477	K-477 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667B	K-477	-	SUSUB.667B	К-477
+K-487	K-487	SU	SUB	D	-	-	SUB   K-487	K-487 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667BDR	K-487	-	SUSUB.667BDR	К-487
+K-490	K-490	SU	SUB	D	-	-	SUB   K-490	K-490 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667BDR	K-490	-	SUSUB.667BDR	К-490
+K-496	K-496	SU	SUB	D	-	-	SUB   K-496	K-496 Borisoglebsk submarine	Sev. Flt.	-	-	0.0000	VMF	-	-	Proekt 667BDR	K-490	-	SUSUB.667BDR	К-496 Борисоглебск
+K-497	K-497	SU	SUB	D	-	-	SUB   K-497	K-497 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667B	K-497	-	SUSUB.667B	К-497
+K-500	K-500	SU	SUB	D	-	-	SUB   K-500	K-500 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 667B	K-500	-	SUSUB.667B	К-500
+K-506	K-506	SU	SUB	D	-	-	SUB   K-506	K-506 Zelenograd submarine	-	-	-	0.0000	VMF	-	-	Proekt 667BDR	K-506	-	SUSUB.667BDR	К-506 Зеленоград
+K-512	K-512	SU	SUB	D	-	-	SUB   K-512	K-512 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667B	K-512	-	SUSUB.667B	К-512
+K-523	K-523	SU	SUB	D	-	-	SUB   K-523	K-523 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667B	K-523	-	SUSUB.667B	К-523
+K-530	K-530	SU	SUB	D	-	-	SUB   K-530	K-530 submarine	-	-	-	0.0000	VMF	-	-	Proekt 667B	K-530	-	SUSUB.667B	К-530
+K-535	K-535	RU	SUB	D	-	-	SUB   K-535	K-535 Yuriy Dolgorukiy submarine	-	-	-	0.0000	VMF	-	-	Proekt 955	K-535	-	SUSUB.955	К-535 Юрий Долгорукий
+K-549	K-549	RU	SUB	D	-	-	SUB   K-549	K-549 Knyaz Vladimir submarine	-	-	-	0.0000	VMF	-	-	Proekt 955A	K-549	-	SUSUB.955	К-549 Князь Владимир
+K-550	K-550	RU	SUB	D	-	-	SUB   K-550	K-550 Aleksandr Nevskiy submarine	-	-	-	0.0000	VMF	-	-	Proekt 955	K-550	-	SUSUB.955	К-550 Александр Невский
+K-551	K-551	RU	SUB	D	-	-	SUB   K-551	K-551 Vladimir Monomakh	-	-	-	0.0000	VMF	-	-	Proekt 955	K-551	-	SUSUB.955	К-551 Владимир Мономах
+K-552	K-552	RU	SUB	D	-	-	SUB   K-552	K-552 Knyaz Oleg	-	-	-	0.0000	VMF	-	-	Proekt 955A	K-552	-	SUSUB.955	К-552 Князь Олег
+K-553	K-553	RU	SUB	D	-	-	SUB   K-553	K-553 Generalissimus Suvorov	-	-	-	0.0000	VMF	-	-	Proekt 955A	K-553	-	SUSUB.955	К-553 Генералиссимус Суворов
+K-554	K-554	RU	SUB	D	-	-	SUB   K-554	K-554 Imperator Aleksandr Tretii	-	-	-	0.0000	VMF	-	-	Proekt 955A	K-554	-	SUSUB.955	К-554 Император Александр III
+TK-12	TK-12	SU	SUB	D	1985	1999	SUB   TK-12	TK-12 Simbirsk submarine	-	-	-	0.0000	VMF	-	-	Proekt 941	TK-12	-	SUSUB.941	ТК-12 Симбирск
+TK-13	TK-13	SU	SUB	D	1989	1998	SUB   TK-13	TK-13 submarine	-	-	-	0.0000	VMF	-	-	Proekt 941	TK-13	-	SUSUB.941	ТК-13
+TK-17	TK-17	SU	SUB	D	1990	2004	SUB   TK-17	TK-17 Arkhangelsk submarine	-	-	-	0.0000	VMF	-	-	Proekt 941	TK-17	-	SUSUB.941	ТК-17 Архангельск
+TK-20	TK-20	SU	SUB	D	1992	2003	SUB   TK-20	TK-20 Severstal submarine	-	-	-	0.0000	VMF	-	-	Proekt 941	TK-20	-	SUSUB.941	ТК-20 Северсталь
+TK-202	TK-202	SU	SUB	D	1984	-	SUB   TK-202	TK-202 submarine	-	-	-	0.0000	VMF	-	-	Proekt 941	TK-202	-	SUSUB.941	ТК-202
+TK-208	TK-208	SU	SUB	D	1982	-	SUB   TK-208	TK-208 Dmitriy Donskoy submarine	-	-	-	0.0000	VMF	-	-	Proekt 941	TK-208	-	SUSUB.941	ТК-208 Дмитрий Донской
+KALMAR	KALMAR	SU	SUB	D	-	-	SUB   KALMAR	Unknown Kalmar (667 BDR, Delta III) class sub	-	-	-	0.0000	VMF	-	-	Proekt 667BDR	-	-	SUSUB.667BDR	667БДР Кальмар
+PLBR	PLBR	SU	SUB	D	-	-	SUB   PLBR	Unknown Soviet/Russian sub	-	-	-	0.0000	VMF	-	-	-	-	-	SUSUB.X	Unknown Soviet/Russian sub
+S-229	S-229	SU	SUB	D	1961	1968	SUB   S-229	S-229 Submarine	-	-	-	0.0000	VMF	-	-	Proekt 613D4	S-229	-	SUSUB.613	С-229
+824YONG	824YOG	KP	SUB	D	2016	-	SUB   SINPO	8.24 Yongung (Gorae class sub)	-	-	-	0.0000	KPA	-	-	Gorae	-	-	KPSUB	8.24 Yongung
+KPN-PLAT	KPN-PLAT	KP	SUB	D	2015	-	SUB KPN Barge	Submerged barge,Korean People's Navy	-	-	-	0.0000	KPA	-	-	-	-	-	KPSUB	Submerged barge,Korean People's Navy
+SS-083	SS-083	KR	SUB	D	2021	-	SUB   SS-083	SS-083 ROKS Dosan Ahn Changho	-	-	-	0.0000	ADD	-	-	-	-	-	KRSUB	SS-083 도산안창호
+SS-085	SS-085	KR	SUB	D	2021	-	SUB   SS-085	SS-085 ROKS Ahn Mu	-	-	-	0.0000	ADD	-	-	-	-	-	KRSUB	SS-083 도산안창호
+SS-086	SS-086	KR	SUB	D	2021	-	SUB   SS-086	SS-086 Shin Chae-ho	-	-	-	0.0000	ADD	-	-	-	-	-	KRSUB	SS-083 도산안창호
+Q251	S655	F	SUB	D	1966	1980?	SUB   Q251	SNLE S655 Gymnote	-	-	-	0.0000	ARMF	-	-	Gymnote	Q251	-	-	SNLE S655 Gymnote
+S655	S655	F	SUB	D	1980?	1986	SUB   S655	SNLE S655 Gymnote	-	-	-	0.0000	ARMF	-	-	Gymnote	S655	-	SNLE	SNLE S655 Gymnote
+S610	S610	F	SUB	D	1971	1998	SUB   S610	SNLE S610 Le Foudroyant	-	-	-	0.0000	ARMF	-	-	Redoutable	S610	-	SNLE	SNLE S610 Le Foudroyant
+S611	S611	F	SUB	D	1967	1991	SUB   S611	SNLE S611 Le Redoutable	-	-	-	0.0000	ARMF	-	-	Redoutable	S611	-	SNLE	SNLE S611 Le Redoutable
+S612	S612	F	SUB	D	1969	1996	SUB   S612	SNLE S612 Le Terrible	-	-	-	0.0000	ARMF	-	-	Redoutable	S612	-	SNLE	SNLE S612 Le Terrible
+S613	S613	F	SUB	D	1974	2003	SUB   S613	SNLE S613 L'Indomptable	-	-	-	0.0000	ARMF	-	-	Redoutable	S613	-	SNLE	SNLE S613 L'Indomptable
+S614	S614	F	SUB	D	1977	1999	SUB   S614	SNLE S614 Le Tonnant	-	-	-	0.0000	ARMF	-	-	Redoutable	S614	-	SNLE	SNLE S614 Le Tonnant
+S615	S615	F	SUB	D	1985	2008	SUB   S615	SNLE S615 L'Inflexible	-	-	-	0.0000	ARMF	-	-	Redoutable	S615	-	SNLE	SNLE S615 L'Inflexible
+S616	S616	F	SUB	D	1994	-	SUB   S616	SNLE-NG S616 Le Triomphant	-	-	-	0.0000	ARMF	-	-	Triomphant	S616	-	SNLE	SNLE-NG S616 Le Triomphant
+S617	S617	F	SUB	D	1998	-	SUB   S617	SNLE-NG S617 Le Temeraire	-	-	-	0.0000	ARMF	-	-	Triomphant	S617	-	SNLE	S617 Le Téméraire
+S618	S618	F	SUB	D	2003	-	SUB   S618	SNLE-NG S618 Le Vigilant	-	-	-	0.0000	ARMF	-	-	Triomphant	S618	-	SNLE	SNLE-NG S618 Le Vigilant
+S619	S619	F	SUB	D	2008	-	SUB   S619	SNLE-NG S619 Le Terrible	-	-	-	0.0000	ARMF	-	-	Triomphant	S619	-	SNLE	SNLE-NG S619 Le Terrible
+UK-S22	UK-S22	UK	SUB	D	1966	1994	SUB   UK S22	HMS Resolution   (UK01)	-	-	-		RN	-	-	Resolution	S22	-	UKSUB	HMS Resolution   (UK01)
+UK-S23	UK-S23	UK	SUB	D	1967	1996	SUB   UK S23	HMS Repulse      (UK03)	-	-	-		RN	-	-	Resolution	S23	-	UKSUB	HMS Repulse      (UK03)
+UK-S26	UK-S26	UK	SUB	D	1967	1996	SUB   UK S26	HMS Renown       (UK02)	-	-	-		RN	-	-	Resolution	S26	-	UKSUB	HMS Renown       (UK02)
+UK-S27	UK-S27	UK	SUB	D	1968	1992	SUB   UK S27	HMS Revenge      (UK04)	-	-	-		RN	-	-	Resolution	S27	-	UKSUB	HMS Revenge      (UK04)
+UK-S28	UK-S28	UK	SUB	D	1992	-	SUB   UK S28	HMS Vanguard     (UK05)	-	-	-		RN	-	-	Vanguard	S28	-	UKSUB	HMS Vanguard     (UK05)
+UK-S29	UK-S29	UK	SUB	D	1993	-	SUB   UK S29	HMS Victorious   (UK06)	-	-	-		RN	-	-	Vanguard	S29	-	UKSUB	HMS Victorious   (UK06)
+UK-S30	UK-S30	UK	SUB	D	1995	-	SUB   UK S30	HMS Vigilant	-	-	-		RN	-	-	Vanguard	S30	-	UKSUB	HMS Vigilant
+UK-S31	UK-S31	UK	SUB	D	1998	-	SUB   UK S31	HMS Vengeance	-	-	-		RN	-	-	Vanguard	S31	-	UKSUB	HMS Vengeance
+SSBN-UNK	SSBN-UNK	US	SUB	D	-	-	SUB   SSBN	Unknown SSBN submarine, USN	-	-	-	0.0000	ARMF	-	-	-	-	-	-	Unknown SSBN submarine, USN
+SSBN-598	SSBN-598	US	SUB	D	1959	1985	SUB   SSBN 598	USS George Washington	-	-	-	0.0000	USN	-	-	George Washington	SSBN-598	-	POLARIS	USS George Washington
+SSBN-599	SSBN-599	US	SUB	D	1959	1984	SUB   SSBN 599	USS Patrick Henry	-	-	-	0.0000	USN	-	-	George Washington	SSBN-599	-	POLARIS	USS Patrick Henry
+SSBN-600	SSBN-600	US	SUB	D	1959	1981	SUB   SSBN 600	USS Theodore Roosevelt	-	-	-	0.0000	USN	-	-	George Washington	SSBN-600	-	POLARIS	USS Theodore Roosevelt
+SSBN-601	SSBN-601	US	SUB	D	1959	1983	SUB   SSBN 601	USS Robert E Lee	-	-	-	0.0000	USN	-	-	George Washington	SSBN-601	-	POLARIS	USS Robert E Lee
+SSBN-602	SSBN-602	US	SUB	D	1960	1981	SUB   SSBN 602	USS Abraham Lincoln	-	-	-	0.0000	USN	-	-	George Washington	SSBN-602	-	POLARIS	USS Abraham Lincoln
+SSBN-608	SSBN-608	US	SUB	D	1960	1983	SUB   SSBN 608	USS Ethan Allen	-	-	-	0.0000	USN	-	-	Ethan Allen	SSBN-608	-	POLARIS	USS Ethan Allen
+SSBN-610	SSBN-610	US	SUB	D	1961	1983	SUB   SSBN 610	USS Thomas A Edison	-	-	-	0.0000	USN	-	-	Ethan Allen	SSBN-610	-	POLARIS	USS Thomas A Edison
+SSBN-609	SSBN-609	US	SUB	D	1961	1991	SUB   SSBN 609	USS Sam Houston	-	-	-	0.0000	USN	-	-	Ethan Allen	SSBN-609	-	POLARIS	USS Sam Houston
+SSBN-611	SSBN-611	US	SUB	D	1961	1992	SUB   SSBN 611	USS John Marshall	-	-	-	0.0000	USN	-	-	Ethan Allen	SSBN-611	-	POLARIS	USS John Marshall
+SSBN-618	SSBN-618	US	SUB	D	1962	1985	SUB   SSBN 618	USS Thomas Jefferson	-	-	-	0.0000	USN	-	-	Ethan Allen	SSBN-618	-	POLARIS	USS Thomas Jefferson
+SSBN-616	SSBN-616	US	SUB	D	1962	1991	SUB   SSBN 616	USS Lafayette	-	-	-	0.0000	USN	-	-	Lafayette	SSBN-616	-	POLARIS	USS Lafayette
+SSBN-617	SSBN-617	US	SUB	D	1962	1993	SUB   SSBN 617	USS Alexander Hamilton	-	-	-	0.0000	USN	-	-	Lafayette	SSBN-617	-	POLARIS	USS Alexander Hamilton
+SSBN-619	SSBN-619	US	SUB	D	1962	1989	SUB   SSBN 619	USS Andrew Jackson	-	-	-	0.0000	USN	-	-	Lafayette	SSBN-619	-	POLARIS	USS Andrew Jackson
+SSBN-620	SSBN-620	US	SUB	D	1963	1989	SUB   SSBN 620	USS John Adams	-	-	-	0.0000	USN	-	-	Lafayette	SSBN-620	-	POLARIS	USS John Adams
+SSBN-622	SSBN-622	US	SUB	D	1962	1990	SUB   SSBN 622	USS James Monroe	-	-	-	0.0000	USN	-	-	Lafayette	SSBN-622	-	POLARIS	USS James Monroe
+SSBN-623	SSBN-623	US	SUB	D	1963	1986	SUB   SSBN 623	USS Nathan Hale	-	-	-	0.0000	USN	-	-	Lafayette	SSBN-623	-	POLARIS	USS Nathan Hale
+SSBN-624	SSBN-624	US	SUB	D	1963	1994	SUB   SSBN 624	USS Woodrow Wilson	-	-	-	0.0000	USN	-	-	Lafayette	SSBN-624	-	POLARIS	USS Woodrow Wilson
+SSBN-625	SSBN-625	US	SUB	D	1962	1990	SUB   SSBN 625	USS Henry Clay	-	-	-	0.0000	USN	-	-	Lafayette	SSBN-625	-	POLARIS	USS Henry Clay
+SSBN-626	SSBN-626	US	SUB	D	1963	1990	SUB   SSBN 626	USS Daniel Webster	-	-	-	0.0000	USN	-	-	Lafayette	SSBN-626	-	POLARIS	USS Daniel Webster
+SSBN-627	SSBN-627	US	SUB	D	1963	1992	SUB   SSBN 627	USS James Madison	-	-	-	0.0000	USN	-	-	James Madison	SSBN-627	-	POLARIS	USS James Madison
+SSBN-628	SSBN-628	US	SUB	D	1963	1993	SUB   SSBN 628	USS Tecumseh	-	-	-	0.0000	USN	-	-	James Madison	SSBN-628	-	POLARIS	USS Tecumseh
+SSBN-629	SSBN-629	US	SUB	D	1963	1994	SUB   SSBN 629	USS Daniel Boone	-	-	-	0.0000	USN	-	-	James Madison	SSBN-629	-	POLARIS	USS Daniel Boone
+SSBN-630	SSBN-630	US	SUB	D	1963	1994	SUB   SSBN 630	USS John C Calhoun	-	-	-	0.0000	USN	-	-	James Madison	SSBN-630	-	POLARIS	USS John C Calhoun
+SSBN-631	SSBN-631	US	SUB	D	1963	1992	SUB   SSBN 631	USS Ulysses S Grant	-	-	-	0.0000	USN	-	-	James Madison	SSBN-631	-	POLARIS	USS Ulysses S Grant
+SSBN-632	SSBN-632	US	SUB	D	1963	1994	SUB   SSBN 632	USS Von Steuben	-	-	-	0.0000	USN	-	-	James Madison	SSBN-632	-	POLARIS	USS Von Steuben
+SSBN-633	SSBN-633	US	SUB	D	1964	1994	SUB   SSBN 633	USS Casimir Pulaski	-	-	-	0.0000	USN	-	-	James Madison	SSBN-633	-	POLARIS	USS Casimir Pulaski
+SSBN-634	SSBN-634	US	SUB	D	1963	1995	SUB   SSBN 634	USS Stonewall Jacskon	-	-	-	0.0000	USN	-	-	James Madison	SSBN-634	-	POLARIS	USS Stonewall Jacskon
+SSBN-635	SSBN-635	US	SUB	D	1963	1989	SUB   SSBN 635	USS Sam Rayburn	-	-	-	0.0000	USN	-	-	James Madison	SSBN-635	-	POLARIS	USS Sam Rayburn
+SSBN-636	SSBN-636	US	SUB	D	1964	1986	SUB   SSBN 636	USS Nathanael Greene	-	-	-	0.0000	USN	-	-	James Madison	SSBN-636	-	POLARIS	USS Nathanael Greene
+SSBN-640	SSBN-640	US	SUB	D	1964	1993	SUB   SSBN 640	USS Benjamin Franklin	-	-	-	0.0000	USN	-	-	Benjamin Franklin	SSBN-640	-	POLARIS	USS Benjamin Franklin
+SSBN-641	SSBN-641	US	SUB	D	1964	1995	SUB   SSBN 641	USS Simon Bolivar	-	-	-	0.0000	USN	-	-	Benjamin Franklin	SSBN-641	-	POLARIS	USS Simon Bolivar
+SSBN-642	SSBN-642	US	SUB	D	1965	2002	SUB   SSBN 642	USS Kamehameha	-	-	-	0.0000	USN	-	-	Benjamin Franklin	SSBN-642	-	POLARIS	USS Kamehameha
+SSBN-643	SSBN-643	US	SUB	D	1964	1993	SUB   SSBN 643	USS George Bancroft	-	-	-	0.0000	USN	-	-	Benjamin Franklin	SSBN-643	-	POLARIS	USS George Bancroft
+SSBN-644	SSBN-644	US	SUB	D	1965	1992	SUB   SSBN 644	USS Lewis and Clark	-	-	-	0.0000	USN	-	-	Benjamin Franklin	SSBN-644	-	POLARIS	USS Lewis and Clark
+SSBN-645	SSBN-645	US	SUB	D	1965	1999	SUB   SSBN 645	USS James K Polk	-	-	-	0.0000	USN	-	-	Benjamin Franklin	SSBN-645	-	POLARIS	USS James K Polk
+SSBN-654	SSBN-654	US	SUB	D	1965	1992	SUB   SSBN 654	USS George C Marshall	-	-	-	0.0000	USN	-	-	Benjamin Franklin	SSBN-654	-	POLARIS	USS George C Marshall
+SSBN-655	SSBN-655	US	SUB	D	1965	1993	SUB   SSBN 655	USS Henry L Stimson	-	-	-	0.0000	USN	-	-	Benjamin Franklin	SSBN-655	-	POLARIS	USS Henry L Stimson
+SSBN-656	SSBN-656	US	SUB	D	1965	1993	SUB   SSBN 656	USS George Washington Carver	-	-	-	0.0000	USN	-	-	Benjamin Franklin	SSBN-656	-	POLARIS	USS George Washington Carver
+SSBN-657	SSBN-657	US	SUB	D	1966	1993	SUB   SSBN 657	USS Francis Scott Key	-	-	-	0.0000	USN	-	-	Benjamin Franklin	SSBN-657	-	POLARIS	USS Francis Scott Key
+SSBN-658	SSBN-658	US	SUB	D	1965	1995	SUB   SSBN 658	USS Mariano G Vallejo	-	-	-	0.0000	USN	-	-	Benjamin Franklin	SSBN-658	-	POLARIS	USS Mariano G Vallejo
+SSBN-659	SSBN-659	US	SUB	D	1966	1993	SUB   SSBN 659	USS Will Rogers	-	-	-	0.0000	USN	-	-	Benjamin Franklin	SSBN-659	-	POLARIS	USS Will Rogers
+SSBN-726	SSBN-726	US	SUB	D	1979	2003	SUB   SSBN 726	USS Ohio	-	-	-	0.0000	USN	-	-	Ohio	SSBN-726	-	TRIDENT	USS Ohio
+SSBN-727	SSBN-727	US	SUB	D	1980	2007	SUB   SSBN 727	USS Michigan	-	-	-	0.0000	USN	-	-	Ohio	SSBN-727	-	TRIDENT	USS Michigan
+SSBN-728	SSBN-728	US	SUB	D	1981	2003	SUB   SSBN 728	USS Florida	-	-	-	0.0000	USN	-	-	Ohio	SSBN-728	-	TRIDENT	USS Florida
+SSBN-729	SSBN-729	US	SUB	D	1982	2003	SUB   SSBN 729	USS Georgia	-	-	-	0.0000	USN	-	-	Ohio	SSBN-729	-	TRIDENT	USS Georgia
+SSBN-730	SSBN-730	US	SUB	D	1983	-	SUB   SSBN 730	USS Henry M. Jackson	-	-	-	0.0000	USN	-	-	Ohio	SSBN-730	-	TRIDENT	USS Henry M. Jackson
+SSBN-731	SSBN-731	US	SUB	D	1984	-	SUB   SSBN 731	USS Alabama	-	-	-	0.0000	USN	-	-	Ohio	SSBN-731	-	TRIDENT	USS Alabama
+SSBN-732	SSBN-732	US	SUB	D	1985	-	SUB   SSBN 732	USS Alaska	-	-	-	0.0000	USN	-	-	Ohio	SSBN-732	-	TRIDENT	USS Alaska
+SSBN-733	SSBN-733	US	SUB	D	1985	-	SUB   SSBN 733	USS Nevada	-	-	-	0.0000	USN	-	-	Ohio	SSBN-733	-	TRIDENT	USS Nevada
+SSBN-734	SSBN-734	US	SUB	D	1986	-	SUB   SSBN 734	USS Tennessee	-	-	-	0.0000	USN	-	-	Ohio	SSBN-734	-	TRIDENT	USS Tennessee
+SSBN-735	SSBN-735	US	SUB	D	1988	-	SUB   SSBN 735	USS Pennsylvania	-	-	-	0.0000	USN	-	-	Ohio	SSBN-735	-	TRIDENT	USS Pennsylvania
+SSBN-736	SSBN-736	US	SUB	D	1989	-	SUB   SSBN 736	USS West Virginia	-	-	-	0.0000	USN	-	-	Ohio	SSBN-736	-	TRIDENT	USS West Virginia
+SSBN-737	SSBN-737	US	SUB	D	1990	-	SUB   SSBN 737	USS Kentucky	-	-	-	0.0000	USN	-	-	Ohio	SSBN-737	-	TRIDENT	USS Kentucky
+SSBN-738	SSBN-738	US	SUB	D	1991	-	SUB   SSBN 738	USS Maryland	-	-	-	0.0000	USN	-	-	Ohio	SSBN-738	-	TRIDENT	USS Maryland
+SSBN-739	SSBN-739	US	SUB	D	1992	-	SUB   SSBN 739	USS Nebraska	-	-	-	0.0000	USN	-	-	Ohio	SSBN-739	-	TRIDENT	USS Nebraska
+SSBN-740	SSBN-740	US	SUB	D	1993	-	SUB   SSBN 740	USS Rhode Island	-	-	-	0.0000	USN	-	-	Ohio	SSBN-740	-	TRIDENT	USS Rhode Island
+SSBN-741	SSBN-741	US	SUB	D	1994	-	SUB   SSBN 741	USS Maine	-	-	-	0.0000	USN	-	-	Ohio	SSBN-741	-	TRIDENT	USS Maine
+SSBN-742	SSBN-742	US	SUB	D	1995	-	SUB   SSBN 742	USS Wyoming	-	-	-	0.0000	USN	-	-	Ohio	SSBN-742	-	TRIDENT	USS Wyoming
+SSBN-743	SSBN-743	US	SUB	D	1996	-	SUB   SSBN 743	USS Louisiana	-	-	-	0.0000	USN	-	-	Ohio	SSBN-743	-	TRIDENT	USS Louisiana
+B-1B	B-1B	US	AIR	D	-	-	AIR   B-1B	B-1B Lancer, unknown S/N	Dyess AFB	-	-	0.0000	USAF	-	-	B-1B	-	-	USAIRB	B-1B Lancer, unknown S/N
+B-29	B-29	US	AIR	D	-	-	AIR   B-29	B-29 or B-50 Superfortress, unknown S/N	White Sands	-	-	0.0000	USAF	-	-	B-29	-	-	USAIRB	B-29 or B-50 Superfortress, unknown S/N
+B-29-073	B-29-073	US	AIR	D	1951	1960	AIR   B-29	B-29B-60-BO Superfortress S/N 44-84073	White Sands	-	-	0.0000	USAF	-	-	B-29	44-80473	-	USAIRB	B-29B-60-BO Superfortress S/N 44-84073
+B-29-402	B-29-402	US	AIR	D	1951	1960	AIR   B-29	B-29-55-BO Superfortress S/N 44-86402	White Sands	-	-	0.0000	USAF	-	-	B-29	44-86402	-	USAIRB	B-29-55-BO Superfortress S/N 44-86402
+B-47E-220	B-47E-220	US	AIR	D	1958	1959	AIR   B-47	DB-47E-60-BW Stratojet S/N 51-5220	Eglin AFB?	-	-	0.0000	USAF	-	-	B-47	51-5220	-	USAIRB	DB-47E-60-BW Stratojet S/N 51-5220
+B-50D-068	B-50D-068	US	AIR	D	1951	1960	AIR   B-50D	JTB-50D-80-BO Superfortress S/N 48-0068	White Sands	-	-	0.0000	USAF	-	-	B-50	48-0068	-	USAIRB	JTB-50D-80-BO Superfortress S/N 48-0068
+B-52GH	B-52GH	US	AIR	D	1969	1984	AIR   B-52	B-52G/H Stratofortress	Grand Forks AFB and others	-	-	0.0000	USAF	-	-	B-52	-	-	USAIRB	B-52G/H Stratofortress
+FB-111	FB-111	US	AIR	D	-	-	AIR   FB-111	FB-111	Plattsburgh AFB and others	-	-	0.0000	USAF	-	-	FB-111	-	-	USAIRB	FB-111
+B-52G-473	B-52G-473	US	AIR	D	1962	1963	AIR   B-52G	B-52G Stratofortress S/N 57-6473	Eglin AFB	-	-	0.0000	USAF	-	-	B-52	57-6473	-	USAIRB	B-52G Stratofortress S/N 57-6473
+B-52H	B-52H	US	AIR	D	-	-	AIR   B-52H	B-52H Stratofortress, unknown S/N	Edwards AFB	-	-	0.0000	USAF	-	-	B-52	60-0024	-	USAIRB	B-52H Stratofortress, unknown S/N
+B-52H-T	B-52H-T	US	AIR	D	1967	1970	AIR   B-52H	B-52H Stratofortress S/N 60-0021 or 60-0036	Beale AFB	-	-	0.0000	USAF	-	-	B-52	60-0021/36	-	USAIRB	B-52H Stratofortress S/N 60-0021 or 60-0036
+B-52H-021	B-52H-021	US	AIR	D	1967	1970	AIR   B-52H	B-52H Stratofortress S/N 60-0021	Beale AFB	-	-	0.0000	USAF	-	-	B-52	60-0021	-	USAIRB	B-52H Stratofortress S/N 60-0021
+B-52H-024	B-52H-024	US	AIR	D	2009	2016	AIR   B-52H	B-52H Stratofortress S/N 60-0024?	Edwards AFB	-	-	0.0000	USAF	-	-	B-52	60-0024	-	USAIRB	B-52H Stratofortress S/N 60-0024?
+B-52H-031	B-52H-031	US	AIR	D	2009	2016	AIR   B-52H	B-52H Stratofortress S/N 60-0031?	Edwards AFB	-	-	0.0000	USAF	-	-	B-52	60-0031	-	USAIRB	B-52H Stratofortress S/N 60-0031?
+B-52H-036	B-52H-036	US	AIR	D	1967	1970	AIR   B-52H	B-52H Stratofortress S/N 60-0036	Beale AFB	-	-	0.0000	USAF	-	-	B-52	60-0036	-	USAIRB	B-52H Stratofortress S/N 60-0036
+B-52H-050	B-52H-050	US	AIR	D	2009	2016	AIR   B-52H	B-52H Stratofortress S/N 60-0050	Edwards AFB	-	-	0.0000	USAF	-	-	B-52	60-0050	-	USAIRB	B-52H Stratofortress S/N 60-0050
+NB-52	NB-52	US	AIR	C	-	-	AIR   NB-52	NB-52 Stratofortress (S/N 003 or 008)	Edwards AFB	-	-	0.0000	FRC	-	-	B-52	52-003/008	-	USAIRB	NB-52 Stratofortress (S/N 003 or 008)
+NB-52-003	NB-52-003	US	AIR	C	-	-	AIR   NB-52 003	NB-52A Stratofortress S/N 003	Edwards AFB	-	-	0.0000	FRC	-	-	B-52	52-003	-	USAIRB	NB-52A Stratofortress S/N 003
+NB-52-008	NB-52-008	US	AIR	C	-	-	AIR   NB-52 008	NB-52B Stratofortress S/N 008	Edwards AFB	-	-	0.0000	FRC	-	-	B-52	52-008	-	USAIRB	NB-52B Stratofortress S/N 008
+B-57A-SWC	B-57A-SWC	US	AIR	D	-	-	AIR   B-57A	B-57A Canberra, AFSWC	White Sands	-	-	0.0000	AFSWC	-	-	B-57	-	-	USAIRB	B-57A Canberra, AFSWC
+B-57A-218	B-57A-218	US	AIR	D	-	-	AIR   B-57A	B-57A Canberra NASA 218	Wallops Island	-	-	0.0000	PARD	-	-	B-57	52-1418	NASA 218	USAIRB	B-57A Canberra NASA 218
+B-57B-502	B-57B-502	US	AIR	D	-	-	AIR   B-57B	WB-57B Canberra S/N 52-1502/3/4/6	Kirtland AFB	-	-	0.0000	USAF	-	-	B-57	52-150x	-	USAIRB	WB-57B Canberra S/N 52-1502/3/4/6
+B-57C	B-57C	US	AIR	D	-	-	AIR   B-57C	WB-57C Canberra S/N 53-3832 and 53-3944	Kirtland AFB	-	-	0.0000	USAF	-	-	B-57	53-3832/3944	-	USAIRB	WB-57C Canberra S/N 53-3832 and 53-3944
+B-57C-832	B-57C-832	US	AIR	D	-	-	AIR   B-57C	WB-57C Canberra S/N 53-3832 and 53-3944	Kirtland AFB	-	-	0.0000	USAF	-	-	B-57	53-3832	-	USAIRB	WB-57C Canberra S/N 53-3832 and 53-3944
+B-57C-944	B-57C-944	US	AIR	D	-	-	AIR   B-57C	WB-57C Canberra S/N 53-3832 and 53-3944	Kirtland AFB	-	-	0.0000	USAF	-	-	B-57	53-3944	-	USAIRB	WB-57C Canberra S/N 53-3832 and 53-3944
+B-58-660	B-58-660	US	AIR	D	-	-	AIR   B-58	B-58 Hustler S/N 55-660?	Eglin AFB	-	-	0.0000	USAF/CONV	-	-	B-58	55-660	-	USAIRB	B-58 Hustler S/N 55-660?
+C-5A-014	C-5A-014	US	AIR	D	-	-	AIR   C-5A	C-5A Galaxy S/N 69-0014	Dover AFB	-	-	0.0000	USAF	-	-	C-5	69-0014	-	USAIRT	C-5A Galaxy S/N 69-0014
+C-17	C-17	US	AIR	D	-	-	AIR   C-17	C-17 Globemaster III (AMC)	PMRF, Kauai	-	-	0.0000	USAF	-	-	C-17	-	-	USAIRT	C-17 Globemaster III (AMC)
+C-17-E	C-17-E	US	AIR	D	-	-	AIR   C-17	C-17 Globemaster III (EAFB)	Edwards AFB	-	-	0.0000	USAF	-	-	C-17	-	-	USAIRT	C-17 Globemaster III (EAFB)
+C-130	C-130	US	AIR	D	-	-	AIR   C-130	C-130 Hercules	China Lake NAS?	-	-	0.0000	NAWC	-	-	C-130	-	-	USAIRT	C-130 Hercules
+F2H2-N	F2H2	US	AIR	D	-	-	AIR   F2H2	F2H-2 Banshee	Patuxent River NAS	-	-	0.0000	NATC	-	-	F2H	-	-	USAIRF	F2H-2 Banshee
+F2H2-942	F2H2	US	AIR	C	-	-	AIR   F2H2	F2H-2 Banshee S/N 124942	PARD, Wallops Island	-	-	0.0000	NACA	-	-	F2H	124942	-	USAIRF	F2H-2 Banshee S/N 124942
+F-3B	F-3B	US	AIR	D	-	-	AIR   F-3B	F-3B Demon	NMC Pt Mugu	-	-	0.0000	NMC	-	-	F3B	-	-	USAIRF	F-3B Demon
+F-3B-484	F-3B-484	US	AIR	D	-	-	AIR   F-3B	F-3B Demon S/N 143484?	NMC Pt Mugu	-	-	0.0000	NMC	-	-	F3B	143484	-	USAIRF	F-3B Demon S/N 143484?
+F-4B-451	F-4B-451	US	AIR	D	-	-	AIR   F-4B	F-4B Phantom S/N 149451	NMC Pt Mugu	-	-	0.0000	NMC	-	-	F4B	149451	-	USAIRF	F-4B Phantom S/N 149451
+F-4C-654	F-4C-654	US	AIR	D	-	-	AIR   F-4C	F-4C Phantom S/N 63-7654	Kirtland AFB?	-	-	0.0000	AFSWC	-	-	F4C	63-7654	-	USAIRF	F-4C Phantom S/N 63-7654
+F-4D-745	F-4D-745	US	AIR	D	-	-	AIR   F4D-1 745	F4D-1 Skyray S/N 130745	NMC Pt Mugu	-	-	0.0000	NMC	-	-	F4D	130745	-	USAIRF	F4D-1 Skyray S/N 130745
+F-4D-747	F-4D-747	US	AIR	D	-	-	AIR   F4D-1 747	F4D-1 Skyray S/N 130747	NMC Pt Mugu	-	-	0.0000	NMC	-	-	F4D	130747	-	USAIRF	F4D-1 Skyray S/N 130747
+F-4D-856	F-4D-856	US	AIR	D	-	-	AIR   F4D-1 856	F4D-1 Skyray S/N 134856	NMC Pt Mugu	-	-	0.0000	NMC	-	-	F4D	134856	-	USAIRF	F4D-1 Skyray S/N 134856
+F-4D-A	F-4D-A	US	AIR	D	-	-	AIR   F-4D	F-4D Phantom	Kirtland AFB?	-	-	0.0000	AFSWC	-	-	F4D	Unknown	-	USAIRF	F-4D Phantom
+F-4J-077	F-4J-077	US	AIR	D	-	-	AIR   F-4	F-4J Phantom S/N 153077	Patuxent River NAS	-	-	0.0000	NATC	-	-	F4J	153077	-	USAIRF	F-4J Phantom S/N 153077
+F-15D-I	F-15D-I	IL	AIR	D	-	-	AIR   F-15	F-15D Eagle, Sparrow target program. (Tail 706, 714 and others)	Palmachim AFB?	-	-	0.0000	IDF	-	-	F-15D	706/714/	-	USAIRF	F-15D Eagle, Sparrow target program. (Tail 706, 714 and others)
+F-15D-701	F-15D-701	IL	AIR	D	-	-	AIR   F-15	F-15D Eagle IAF S/N 701	Palmachim AFB?	-	-	0.0000	IDF	-	-	F-15D	701	-	USAIRF	F-15D Eagle IAF S/N 701
+F-15D-706	F-15D-706	IL	AIR	D	-	-	AIR   F-15	F-15D Eagle IAF S/N 706	Palmachim AFB?	-	-	0.0000	IDF	-	-	F-15D	706	-	USAIRF	F-15D Eagle IAF S/N 706
+F-15D-714	F-15D-714	IL	AIR	D	-	-	AIR   F-15	F-15D Eagle IAF S/N 714	Palmachim AFB?	-	-	0.0000	IDF	-	-	F-15D	714	-	USAIRF	F-15D Eagle IAF S/N 714
+F-15D-715	F-15D-715	IL	AIR	D	-	-	AIR   F-15	F-15D Eagle IAF S/N 715	Palmachim AFB?	-	-	0.0000	IDF	-	-	F-15D	715	-	USAIRF	F-15D Eagle IAF S/N 715
+F-86D	F-86D	US	AIR	D	-	-	AIR   F-86D	F-86D Sabre, Rockaire program	Holloman AFB?	-	-	0.0000	USAF	-	-	F-86D	-	-	USAIRF	F-86D Sabre, Rockaire program
+F-89J-547	F-89J-547	US	AIR	D	-	-	AIR   F89J	F-89J Scorpion No. 53-2547	Indian Springs AFB	-	-	0.0000	USAF	-	-	F-89J	53-2547	-	USAIRF	F-89J Scorpion No. 53-2547
+F-104-749	F-104	US	AIR	D	1956	1962	AIR   F-104	F-104A-10-LO Starfighter S/N 56-749	Edwards AFB	-	-	0.0000	USAF	-	-	F-104	56-749	-	USAIRF	F-104A-10-LO Starfighter S/N 56-749
+F-15A-08x	F-15A-08x	US	AIR	D	-	-	AIR   F-15	F-15 Eagle, ASAT program (084 or 086)	Edwards AFB	-	-	0.0000	USAF	-	-	F-15A	76-0084/0086	-	USAIRF	F-15 Eagle, ASAT program (084 or 086)
+F-15A-084	F-15A-084	US	AIR	D	-	-	Celestial Eagle	F-15A Eagle S/N 76-0084, ASAT program.	Edwards AFB	-	-	0.0000	USAF	-	-	F-15A	76-0084	-	USAIRF	F-15A Eagle S/N 76-0084, ASAT program.
+F-15A-086	F-15A-086	US	AIR	D	-	-	AIR   F-15	F-15A Eagle S/N 76-0086, ASAT program.	Edwards AFB	-	-	0.0000	USAF	-	-	F-15A	76-0086	-	USAIRF	F-15A Eagle S/N 76-0086, ASAT program.
+F4H-310	F4H-310	US	AIR	D	-	-	AIR   F-4H	F4H-1F Phantom II (F-4A-2-MC) S/N 145310	China Lake NAS	-	-	0.0000	NOTS	-	-	F-4H	145310	-	USAIRF	F4H-1F Phantom II (F-4A-2-MC) S/N 145310
+F4H-317	F4H-317	US	AIR	D	-	-	AIR   F-4H	TF4H-1F Phantom II (F-4A-2-MC) S/N 145317	China Lake NAS	-	-	0.0000	NOTS	-	-	F-4H	145317	-	USAIRF	TF4H-1F Phantom II (F-4A-2-MC) S/N 145317
+F4H-389	F4H-389	US	AIR	D	-	-	AIR   F-4H	YF4H-1 Phantom II (F-4A-1-MC) S/N 143389	China Lake NAS	-	-	0.0000	NOTS	-	-	F-4H	145317	-	USAIRF	YF4H-1 Phantom II (F-4A-1-MC) S/N 143389
+F4H-N	F4H-N	US	AIR	D	-	-	AIR   F-4H	F4H Phantom II, 145317/145310/143389	China Lake NAS	-	-	0.0000	NOTS	-	-	F-4H	145310/17	-	USAIRF	F4H Phantom II, 145317/145310/143389
+L-1011	L-1011	US	AIR	B	1994	-	Stargazer	L-1011-385-1 (MFR No. 1067) Stargazer N140SC	Mojave Air and Space Port	-	-	0.0000	OSC	-	-	L-1011	N140SC	-	USAIRC	L-1011-385-1 (MFR No. 1067) Stargazer N140SC
+SCA905	SCA905	US	AIR	C	1977	2012	SCA 905	Boeing 747-123 Shuttle Carrier Aircraft N905NA	Edwards AFB	-	-	0.0000	DFRC	-	-	B747	N905NA	-	USAIRC	Boeing 747-123 Shuttle Carrier Aircraft N905NA
+SCA911	SCA911	US	AIR	C	1977	2012	SCA 911	Boeing 747-SR46 Shuttle Carrier Aircraft N911NA	Edwards AFB	-	-	0.0000	DFRC	-	-	B747	N911NA	-	USAIRC	Boeing 747-SR46 Shuttle Carrier Aircraft N911NA
+B747-744	B747-744	US	AIR	B	2020	-	Cosmic Girl	Boeing 747-400 (-41R) S/N 32745 Cosmic Girl N744VG	Mojave Air and Space Port	-	-	0.0000	VORB	-	-	B747	N744VG	-	USAIRC	Boeing 747-400 (-41R) S/N 32745 Cosmic Girl N744VG
+WK1	WK1	US	AIR	B	2002	2014	White Knight 1	White Knight 1 N318SL	Mojave Air and Space Port	-	-	0.0000	SCAL	-	-	WK1	N318SL	-	USAIRC	White Knight 1 N318SL
+WK2	WK2	US	AIR	B	2008	-	VMS Eve	White Knight 2 N348MS 'VMS Eve'	Spaceport America	-	-	0.0000	TSCO	-	-	WK2	N348MS	-	USAIRC	White Knight 2 N348MS 'VMS Eve'
+BLN-FS	BLN-FS	US	AIR	D	1957	1958	AIR   Balloon	USAF Farside Balloon	Eniwetok	-	-	0.0000	USAF	-	-	-	-	-	ROCKOON	USAF Farside Balloon
+BLN-LDSD	BLN-LDSD	US	AIR	C	-	-	NASA LDSD Balloon	NASA LDSD Balloon	Kauai PMRF	-	-	0.0000	NASA	-	-	-	-	-	ROCKOON	NASA LDSD Balloon
+BLN-HAL5	BLN-HAL5	US	AIR	C	1997	1997	HAL5 Balloon	HAL5 Balloon	-	-	-	0.0000	NASA	-	-	-	-	-	ROCKOON	HAL5 Balloon
+MiG31D-72	MiG31D-72	SU	AIR	D	-	-	MiG-31D 07-2	MiG-31D 07-2	LII Gromov, Zhukovskiy AFB	-	-	0.0000	PVO	-	-	MiG-31	07-2	-	SUAIR	MiG-31D 07-2
+ROC	ROC	US	AIR	B	2019	-	Roc	Scaled Model 351 Stratolaunch 'Roc'	Mojave Air and Space Port	-	-	0.0000	SCAL	-	-	-	N351SL	-	USAIRC	Scaled Model 351 Stratolaunch 'Roc'

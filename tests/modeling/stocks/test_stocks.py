@@ -176,19 +176,19 @@ def test_provider_name():
         mandatory_with_filter=target_concepts,
         environment=build_env,
     )
-    print(complete, found_c, missing_c, partial, virtual)
+
     assert not partial, partial
     assert not missing_c, missing_c
 
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
-    duckdb.parse_text(
-        """select
-    symbol.sector,
-    provider.name,
+    #     duckdb.parse_text(
+    #         """select
+    #     symbol.sector,
+    #     provider.name,
 
-    sum(dividend.amount) as total_div;
-  """
-    )
+    #     sum(dividend.amount) as total_div;
+    #   """
+    #     )
 
     sql = duckdb.generate_sql(
         """select
