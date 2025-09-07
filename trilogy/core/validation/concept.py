@@ -26,6 +26,15 @@ def validate_key_concept(
 ):
     results: list[ValidationTest] = []
     seen: dict[str, int] = {}
+
+    count = 0
+    for datasource in build_env.datasources.values():
+        if concept.address in [c.address for c in datasource.concepts]:
+            count += 1
+    # if it only has one source, it's a key
+    if count <= 1:
+        return results
+
     for datasource in build_env.datasources.values():
         if concept.address in [c.address for c in datasource.concepts]:
             assignment = [

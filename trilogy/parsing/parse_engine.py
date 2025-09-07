@@ -1002,7 +1002,7 @@ class ParseToObjects(Transformer):
     def validate_statement(self, meta: Meta, args) -> ValidateStatement:
         if len(args) == 2:
             scope = args[0]
-            targets = args[1]
+            targets = args[1].split(",")
         elif len(args) == 0:
             scope = ValidationScope.ALL
             targets = None

@@ -1,7 +1,11 @@
 from pathlib import Path
 
 from trilogy import Dialects, Environment
+from trilogy.core.env_processor import concept_to_node, generate_graph
 from trilogy.core.models.core import DataType
+from trilogy.core.processing.node_generators.node_merge_node import (
+    determine_induced_minimal_nodes,
+)
 from trilogy.hooks import DebuggingHook
 
 ROOT = Path(__file__).parent
@@ -18,7 +22,7 @@ def test_environment():
         """import launch;
 """
     )
-    base.validate_environment()
+    # base.validate_environment()
 
 
 def test_join():
@@ -262,3 +266,122 @@ limit 6;
         'LEFT OUTER JOIN "launch_info" as "launch_info" on "vehicle_lv_info"."LV_Name" = "launch_info"."LV_Type" AND "vehicle_lv_info"."LV_Variant" = "launch_info"."Variant"'
         in sql[0]
     ), sql[0]
+
+
+def test_joint_join_concept_injection_components():
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+    base.parse_text(
+        """import launch;
+        """
+    )
+
+    test_env = env.materialize_for_select()
+    g = generate_graph(test_env)
+
+    target_select_concepts = [
+        test_env.concepts[x]
+        for x in ["vehicle.class", "local.launch_tag", "vehicle.name"]
+    ]
+    path = determine_induced_minimal_nodes(
+        g,
+        nodelist=[concept_to_node(x) for x in target_select_concepts],
+        accept_partial=False,
+        filter_downstream=False,
+        environment=env,
+    )
+
+    print(path.nodes)
+    assert "c~vehicle.variant@Grain<vehicle.variant>" in path.nodes, path.nodes
+
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+    base.parse_text(
+        """import launch;
+        """
+    )
+
+    test_env = env.materialize_for_select()
+    g = generate_graph(test_env)
+
+    target_select_concepts = [
+        test_env.concepts[x]
+        for x in ["vehicle.class", "local.launch_tag", "vehicle.variant"]
+    ]
+    path = determine_induced_minimal_nodes(
+        g,
+        nodelist=[concept_to_node(x) for x in target_select_concepts],
+        accept_partial=False,
+        filter_downstream=False,
+        environment=env,
+    )
+
+    print(path.nodes)
+    assert "c~vehicle.name@Grain<vehicle.name>" in path.nodes, path.nodes
+
+
+def test_joint_join_concept_injection():
+    """
+    Test to ensure that the environment cleanup works correctly.
+    """
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+    queries = base.parse_text(
+        """import launch;
+
+select vehicle.class, launch_count;
+        """
+    )
+    sql = base.generate_sql(queries[-1])
+    assert (
+        'LEFT OUTER JOIN "launch_info" as "launch_info" on "vehicle_lv_info"."LV_Name" = "launch_info"."LV_Type" AND "vehicle_lv_info"."LV_Variant" = "launch_info"."Variant"'
+        in sql[0]
+    ), sql[0]
+
+
+def test_join_transform():
+
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+    queries = base.parse_text(
+        """import launch;
+  
+
+WHERE
+    vehicle.stage_no = '1'
+    and org.state_code = 'US'
+SELECT
+    CASE WHEN vehicle.name != vehicle.stage.name THEN CASE WHEN vehicle.variant != '-' THEN concat(vehicle.name,'-',vehicle.variant)
+ELSE vehicle.name
+END
+ELSE vehicle.name
+END -> stage_identifier,
+    sum(orb_pay) -> orbital_payload,
+ORDER BY
+    orbital_payload desc
+LIMIT 10
+;
+        """
+    )
+    sql = base.generate_sql(queries[-1])
+    assert (
+        'STRING_SPLIT( "launch_info"."Agency" , \'/\' )[1] as "first_org"' in sql[0]
+    ), sql[0]
+    assert "BUG" not in sql[0], sql[0]

@@ -546,8 +546,8 @@ class Renderer:
             return f"{self.to_string(arg.arguments[0])}[{self.to_string(arg.arguments[1])}]"
 
         if arg.operator == FunctionType.CASE:
-            inputs = "\n".join(args)
-            return f"CASE {inputs}\nEND"
+            inputs = "\n\t".join(args)
+            return f"CASE\n\t{inputs}\nEND"
         return f"{arg.operator.value}({inputs})"
 
     @to_string.register

@@ -1744,7 +1744,12 @@ having value = 2;
     test = """validate all;"""
 
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    assert len(results) == 1
+    assert len(results) == 0
+
+    test = """validate datasources example;"""
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 0
 
 
 def test_validate_fix():
@@ -1772,7 +1777,7 @@ query '''
 select 'abc' as x, 1 as y union all select null as x, null as y''';
 """
     rewritten = validate_and_rewrite(test, default_duckdb_engine)
-    print(rewritten)
+
     assert (
         rewritten.strip()
         == """
@@ -1816,7 +1821,7 @@ having value = 2;
     test = """validate all;"""
 
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    assert len(results) == 1
+    assert len(results) == 0
     for row in results:
         assert row.ran is True, str(row)
 
@@ -1825,6 +1830,6 @@ having value = 2;
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     # this has to include a DS query
     # that inline validation doesn't need to run
-    assert len(results) == 2
+    assert len(results) == 1
     for row in results:
         assert row.ran is False or row.check_type == "logical"

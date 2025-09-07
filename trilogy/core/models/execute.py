@@ -151,7 +151,6 @@ class CTE(BaseModel):
             ]
         ):
             return False
-
         self.source.datasources = [
             ds_being_inlined,
             *[

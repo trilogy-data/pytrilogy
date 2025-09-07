@@ -65,8 +65,13 @@ def render_join_concept(
     inlined_ctes: set[str],
 ):
     if cte.name in inlined_ctes:
+        base = render_expr(concept, cte)
+        return base
         ds = cte.source.datasources[0]
-        raw_content = ds.get_alias(concept)
+        try:
+            raw_content = ds.get_alias(concept)
+        except Exception:
+            raw_content = "<BUG>"
         if isinstance(raw_content, RawColumnExpr):
             rval = raw_content.text
             return rval

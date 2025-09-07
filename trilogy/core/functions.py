@@ -427,7 +427,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             {DataType.STRING},
         ],
         output_purpose=Purpose.PROPERTY,
-        output_type=DataType.BOOL,
+        output_type=DataType.STRING,
         arg_count=2,
     ),
     FunctionType.SUBSTRING: FunctionConfig(

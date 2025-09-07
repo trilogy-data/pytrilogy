@@ -334,8 +334,9 @@ auto y <- case when x = 1 then 1 else 2 end;"""
     test = Renderer().to_string(parsed[-1])
     assert (
         test
-        == """property y <- CASE WHEN x = 1 THEN 1
-ELSE 2
+        == """property y <- CASE
+\tWHEN x = 1 THEN 1
+\tELSE 2
 END;"""
     ), test
 
@@ -345,14 +346,16 @@ END;"""
         """
 
 key category_name string;
-auto y <- CASE WHEN category_name like '%abc%' then True else False END;"""
+auto y <- CASE 
+    WHEN category_name like '%abc%' then True else False END;"""
     )
 
     test = Renderer().to_string(parsed[-1])
     assert (
         test
-        == """property y <- CASE WHEN like(category_name,'%abc%') = True THEN True
-ELSE False
+        == """property y <- CASE
+\tWHEN like(category_name,'%abc%') = True THEN True
+\tELSE False
 END;"""
     ), test
 

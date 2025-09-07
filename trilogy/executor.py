@@ -410,6 +410,13 @@ class Executor(object):
                 )
                 output.extend(results)
                 continue
+            elif isinstance(statement, ProcessedValidateStatement):
+                validate_result = handle_processed_validate_statement(
+                    statement, self.generator, self.validate_environment
+                )
+                if validate_result:
+                    output.append(validate_result)
+                continue
             if non_interactive:
                 if not isinstance(
                     statement, (ProcessedCopyStatement, ProcessedQueryPersist)

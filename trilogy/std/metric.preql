@@ -1,0 +1,15 @@
+# Length and distance units
+type m numeric;      # meters
+type km numeric;     # kilometers
+type cm numeric;     # centimeters
+type mm numeric;     # millimeters
+
+# Mass units
+type kg numeric;     # kilograms
+type g numeric;      # grams
+type tonne numeric;  # metric tons (1000 kg)
+
+# Force units
+type n numeric;      # newtons
+type kn numeric;     # kilonewtons (1000 N)
+type mn numeric;     # meganewtons (1,000,000 N)
