@@ -145,6 +145,7 @@ def reinject_common_join_keys_v2(
 
     ds_graph = prune_and_merge(final, is_ds_node)
     injected = False
+
     for datasource in ds_graph.nodes:
         node1 = G.datasources[datasource]
         neighbors = nx.all_neighbors(ds_graph, datasource)
@@ -159,7 +160,7 @@ def reinject_common_join_keys_v2(
             reduced = BuildGrain.from_concepts(concrete_concepts).components
             existing_addresses = set()
             for concrete in concrete_concepts:
-                logger.info(
+                logger.debug(
                     f"looking at column {concrete.address} with pseudonyms {concrete.pseudonyms}"
                 )
                 cnode = concept_to_node(concrete.with_default_grain())
@@ -171,14 +172,16 @@ def reinject_common_join_keys_v2(
                     continue
                 if concrete.address not in reduced:
                     continue
+                if concrete.address in existing_addresses:
+                    continue
                 # skip anything that is already in the graph pseudonyms
                 if any(x in concrete.pseudonyms for x in existing_addresses):
                     continue
                 cnode = concept_to_node(concrete.with_default_grain())
                 final.add_edge(datasource, cnode)
                 final.add_edge(neighbor, cnode)
-                logger.info(
-                    f"{LOGGER_PREFIX} reinjecting common join key {cnode} between {datasource} and {neighbor}"
+                logger.debug(
+                    f"{LOGGER_PREFIX} reinjecting common join key {cnode} to list {nodelist} between {datasource} and {neighbor}, existing {existing_addresses}"
                 )
                 injected = True
     return injected

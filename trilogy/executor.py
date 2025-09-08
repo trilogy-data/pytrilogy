@@ -204,6 +204,15 @@ class Executor(object):
         output.append(compiled_sql)
         return output
 
+    @generate_sql.register
+    def _(self, command: ProcessedShowStatement) -> List[str]:
+        output = []
+        for statement in command.output_values:
+            if isinstance(statement, (ProcessedQuery, ProcessedQueryPersist)):
+                compiled_sql = self.generator.compile_statement(statement)
+                output.append(compiled_sql)
+        return output
+
     @generate_sql.register  # type: ignore
     def _(self, command: MultiSelectStatement) -> List[str]:
         output = []

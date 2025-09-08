@@ -35,10 +35,11 @@ auto _split_orgs <-split(orgs, '/');
 
 auto first_org <- _split_orgs[1];
 
-merge first_org into ~org.code;
+
 
 # file merges
 merge payload.launch_tag into ~launch_tag;
+merge first_org into ~org.code;
 
 auto launch_date <- date_add('1900-01-01'::date, day, (launch_jd::float - 2415021)::int);
 

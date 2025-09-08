@@ -385,3 +385,33 @@ LIMIT 10
         'STRING_SPLIT( "launch_info"."Agency" , \'/\' )[1] as "first_org"' in sql[0]
     ), sql[0]
     assert "BUG" not in sql[0], sql[0]
+
+
+# [GEN_MERGE_NODE] Was able to resolve graph through weak component resolution - final graph [['local.category', 'local.launch_tag'], ['payload.jcat', 'payload.launch_tag']]
+# [GEN_MERGE_NODE] fetching subgraphs [['local.category', 'local.launch_tag'], ['payload.jcat', 'payload.launch_tag']]
+
+
+def test_full_join_issue():
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+    queries = base.parse_text(
+        """import launch_dashboard;
+
+
+select
+    orbit_code,
+    payload.jcat.count as payload_count,
+limit 50;
+
+
+        """
+    )
+    # assert env.concepts['payl']
+    sql = base.generate_sql(queries[-1])
+    assert "1=1" not in sql[0], sql[0]
