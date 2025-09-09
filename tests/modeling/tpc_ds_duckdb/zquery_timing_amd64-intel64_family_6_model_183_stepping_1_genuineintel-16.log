@@ -24,81 +24,81 @@ exec_time = 0.124436
 comp_time = 0.091271
 
 [query_08]
-parse_time = 0.164414
-exec_time = 0.044578
-comp_time = 0.039431
+parse_time = 0.183242
+exec_time = 0.052911
+comp_time = 0.048242
 
 [query_10]
-parse_time = 0.609222
-exec_time = 0.161161
-comp_time = 0.41326
+parse_time = 0.467602
+exec_time = 0.122017
+comp_time = 0.300851
 
 [query_12]
-parse_time = 0.115479
-exec_time = 0.050141
-comp_time = 0.071117
+parse_time = 0.144584
+exec_time = 0.046717
+comp_time = 0.071323
 
 [query_15]
-parse_time = 0.104829
-exec_time = 0.015922
-comp_time = 0.180274
+parse_time = 0.599657
+exec_time = 0.016034
+comp_time = 0.154976
 
 [query_16]
-parse_time = 0.442546
-exec_time = 0.140211
-comp_time = 0.103855
+parse_time = 0.288738
+exec_time = 0.130666
+comp_time = 0.020438
 
 [query_20]
-parse_time = 0.111861
-exec_time = 0.106908
-comp_time = 0.108341
+parse_time = 0.124596
+exec_time = 0.101286
+comp_time = 0.103983
 
 [query_21]
-parse_time = 0.030763
-exec_time = 0.022337
-comp_time = 0.020166
+parse_time = 0.037827
+exec_time = 0.024429
+comp_time = 0.022131
 
 [query_24]
-parse_time = 0.676116
-exec_time = 0.315067
-comp_time = 0.205045
+parse_time = 0.515607
+exec_time = 0.350928
+comp_time = 0.212611
 
 [query_25]
-parse_time = 0.414433
-exec_time = 0.144711
-comp_time = 0.044464
+parse_time = 0.50598
+exec_time = 0.17486
+comp_time = 0.049179
 
 [query_26]
-parse_time = 0.102776
-exec_time = 0.072756
-comp_time = 0.059229
+parse_time = 0.141708
+exec_time = 0.082765
+comp_time = 0.059255
 
 [query_30]
-parse_time = 0.386924
-exec_time = 0.116219
-comp_time = 0.071653
+parse_time = 0.231492
+exec_time = 0.097179
+comp_time = 0.065184
 
 [query_32]
-parse_time = 0.121064
-exec_time = 0.054281
-comp_time = 0.005218
+parse_time = 0.122918
+exec_time = 0.053033
+comp_time = 0.005311
 
 [query_95]
-parse_time = 0.1821
-exec_time = 0.079339
-comp_time = 0.517516
+parse_time = 0.857346
+exec_time = 0.075614
+comp_time = 0.518327
 
 [query_97]
-parse_time = 0.530658
-exec_time = 0.286303
-comp_time = 0.144838
+parse_time = 0.335602
+exec_time = 0.318611
+comp_time = 0.077222
 
 [query_98]
-parse_time = 0.336786
-exec_time = 0.03958
-comp_time = 0.169817
+parse_time = 0.154044
+exec_time = 0.043446
+comp_time = 0.169716
 
 [query_99]
-parse_time = 0.124133
-exec_time = 0.110548
-comp_time = 0.070171
+parse_time = 0.127569
+exec_time = 0.107283
+comp_time = 0.066334
