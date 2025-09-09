@@ -20,7 +20,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
+from trilogy.core.processing.nodes import History, MergeNode, StrategyNode, GroupNode
 from trilogy.core.processing.utility import padding
 from trilogy.utility import unique
 
@@ -510,6 +510,7 @@ def subgraphs_to_merge_node(
     search_conditions: BuildWhereClause | None = None,
     enable_early_exit: bool = True,
 ):
+    target_grain = BuildGrain.from_concepts(all_concepts, environment=environment)
     parents: List[StrategyNode] = []
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} fetching subgraphs {[[c.address for c in subgraph] for subgraph in concept_subgraphs]}"
@@ -549,16 +550,34 @@ def subgraphs_to_merge_node(
                 output_c.append(y)
 
     if len(parents) == 1 and enable_early_exit:
+
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} only one parent node, exiting early w/ {[c.address for c in parents[0].output_concepts]}"
         )
-        return parents[0]
+        parent = parents[0]
+        resolved = parent.resolve()
+        if GroupNode.check_if_required(
+            all_concepts, [resolved], environment, depth=depth
+        ).required:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} parent node requires grouping to reach target grain {target_grain} from {resolved.grain}, wrapping in group node"
+            )
+            return GroupNode(
+                output_concepts=all_concepts,
+                input_concepts=parent.output_concepts,
+                environment=environment,
+                parents=[parent],
+                depth=depth,
+                preexisting_conditions=parent.preexisting_conditions,
+            )
+        return parent
     rval = MergeNode(
         input_concepts=unique(input_c, "address"),
         output_concepts=output_c,
         environment=environment,
         parents=parents,
         depth=depth,
+        grain=target_grain,
         # hidden_concepts=[]
         # conditions=conditions,
         # conditions=search_conditions.conditional,

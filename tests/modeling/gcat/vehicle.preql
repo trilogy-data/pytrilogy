@@ -91,5 +91,5 @@ datasource lvs_info (
 	Stage_Perigee:stage_perigee,
 	Perigee_Qual:perigee_qual,
 )
-grain (name, variant, stage_no)
+grain (name, variant, stage.name)
 address lvs_info;

@@ -1,5 +1,5 @@
 query_id = 6
-gen_length = 3149
+gen_length = 4337
 generated_sql = """
 
 WITH 
@@ -8,6 +8,9 @@ SELECT
     \"item_items\".\"I_CATEGORY\" as \"item_category\",
     \"item_items\".\"I_ITEM_SK\" as \"item_id\",
     \"store_sales_customer_customer_address\".\"CA_STATE\" as \"store_sales_customer_state\",
+    \"store_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" as \"store_sales_customer_address_id\",
+    \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
+    \"store_sales_date_date\".\"D_DATE_SK\" as \"store_sales_date_id\",
     \"store_sales_date_date\".\"D_MOY\" as \"store_sales_date_month_of_year\",
     \"store_sales_item_items\".\"I_CATEGORY\" as \"store_sales_item_category\",
     \"store_sales_item_items\".\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
@@ -23,7 +26,7 @@ FROM
 WHERE
     cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 2001 and \"store_sales_item_items\".\"I_CATEGORY\" is not null and \"store_sales_date_date\".\"D_MOY\" = 1
 ),
-abundant as (
+uneven as (
 SELECT
     \"item_items\".\"I_CATEGORY\" as \"item_category\",
     avg(\"item_items\".\"I_CURRENT_PRICE\") as \"_virt_agg_avg_5942253052406187\"
@@ -31,38 +34,59 @@ FROM
     \"memory\".\"item\" as \"item_items\"
 GROUP BY 
     \"item_items\".\"I_CATEGORY\"),
-uneven as (
+abundant as (
 SELECT
+    \"questionable\".\"item_category\" as \"item_category\",
     \"questionable\".\"item_id\" as \"item_id\",
     \"questionable\".\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    \"questionable\".\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    \"questionable\".\"store_sales_date_year\" as \"store_sales_date_year\",
+    \"questionable\".\"store_sales_item_category\" as \"store_sales_item_category\",
+    \"questionable\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
     \"questionable\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\"
 FROM
     \"questionable\"
-    INNER JOIN \"abundant\" on (\"questionable\".\"item_category\" = \"abundant\".\"item_category\" or (\"questionable\".\"item_category\" is null and \"abundant\".\"item_category\" is null))
-WHERE
-    \"questionable\".\"store_sales_date_year\" = 2001 and \"questionable\".\"store_sales_item_category\" is not null and \"questionable\".\"store_sales_date_month_of_year\" = 1 and \"questionable\".\"store_sales_item_current_price\" > 1.2 * \"abundant\".\"_virt_agg_avg_5942253052406187\"
-),
+GROUP BY 
+    \"questionable\".\"item_category\",
+    \"questionable\".\"item_id\",
+    \"questionable\".\"store_sales_customer_state\",
+    \"questionable\".\"store_sales_date_month_of_year\",
+    \"questionable\".\"store_sales_date_year\",
+    \"questionable\".\"store_sales_item_category\",
+    \"questionable\".\"store_sales_item_current_price\",
+    \"questionable\".\"store_sales_ticket_number\"),
 yummy as (
 SELECT
-    \"uneven\".\"item_id\" as \"item_id\",
-    \"uneven\".\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    \"uneven\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\"
+    \"abundant\".\"item_id\" as \"item_id\",
+    \"abundant\".\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    \"abundant\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\"
 FROM
-    \"uneven\"
-GROUP BY 
-    \"uneven\".\"item_id\",
-    \"uneven\".\"store_sales_customer_state\",
-    \"uneven\".\"store_sales_ticket_number\")
+    \"abundant\"
+    INNER JOIN \"uneven\" on (\"abundant\".\"item_category\" = \"uneven\".\"item_category\" or (\"abundant\".\"item_category\" is null and \"uneven\".\"item_category\" is null))
+WHERE
+    \"abundant\".\"store_sales_date_year\" = 2001 and \"abundant\".\"store_sales_item_category\" is not null and \"abundant\".\"store_sales_date_month_of_year\" = 1 and \"abundant\".\"store_sales_item_current_price\" > 1.2 * \"uneven\".\"_virt_agg_avg_5942253052406187\"
+),
+juicy as (
 SELECT
+    \"yummy\".\"item_id\" as \"item_id\",
     \"yummy\".\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    sum(1) as \"customer_count\"
+    \"yummy\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\"
 FROM
     \"yummy\"
 GROUP BY 
-    \"yummy\".\"store_sales_customer_state\"
+    \"yummy\".\"item_id\",
+    \"yummy\".\"store_sales_customer_state\",
+    \"yummy\".\"store_sales_ticket_number\")
+SELECT
+    \"juicy\".\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    sum(1) as \"customer_count\"
+FROM
+    \"juicy\"
+GROUP BY 
+    \"juicy\".\"store_sales_customer_state\"
 HAVING
     sum(1) >= 10
 
 ORDER BY 
     sum(1) asc nulls first,
-    \"yummy\".\"store_sales_customer_state\" asc nulls first"""
+    \"juicy\".\"store_sales_customer_state\" asc nulls first"""

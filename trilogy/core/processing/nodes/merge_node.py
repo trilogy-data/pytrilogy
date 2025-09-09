@@ -308,7 +308,13 @@ class MergeNode(StrategyNode):
                     f"{self.logging_prefix}{LOGGER_PREFIX} skipping existence only source with {source.output_concepts} from grain accumulation"
                 )
                 continue
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} adding source grain {source.grain} from source {source.identifier} to pregrain"
+            )
             pregrain += source.grain
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} pregrain is now {pregrain}"
+            )
 
         pregrain = BuildGrain.from_concepts(
             pregrain.components, environment=self.environment

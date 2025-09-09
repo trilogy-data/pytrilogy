@@ -497,3 +497,40 @@ LIMIT 1
         '"vehicle_lv_info"."LV_Name" = "wakeful"."vehicle_name" AND "vehicle_lv_info"."LV_Variant" = "wakeful"."vehicle_variant"'
         in sql[0]
     ), sql[0]
+
+
+def test_should_group():
+    from trilogy.hooks import DebuggingHook
+    from trilogy.core.models.build import BuildGrain
+
+    DebuggingHook()
+
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+    base.execute_raw_sql(ROOT / "setup.sql")
+    queries = base.parse_text(
+        """import launch;
+
+
+SELECT
+    vehicle.stage.engine.group,
+    sum(orb_pay) as payload_to_orbit_one,
+    sum(group orb_pay by launch_tag, vehicle.stage.engine.group) as  payload_to_orbit,
+    launch_count,
+    count(group launch_tag by vehicle.stage.engine.group) as launch_count_two,
+    count_distinct(launch_tag) as launches
+order by launch_count desc limit 15;
+"""
+    )
+    build_env = env.materialize_for_select()
+    validation_components = "local.launch_tag,vehicle.name,vehicle.stage.engine.name,vehicle.stage.name,vehicle.variant".split(
+        ","
+    )
+    pregrain = BuildGrain.from_concepts(validation_components, environment=build_env)
+    assert "vehicle.stage.engine.name" not in pregrain.components, pregrain
+    sql = base.generate_sql(queries[-1])
+    results = base.execute_query(queries[-1])
+    for row in results.fetchall():
+        assert row["launches"] == row["launch_count"], row

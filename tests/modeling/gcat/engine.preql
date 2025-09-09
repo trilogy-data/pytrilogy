@@ -19,7 +19,7 @@ property <name>.durflag string;
 property <name>.chambers string;
 property <name>.date string;
 property <name>.usage string;
-property <name>.group string;
+key group string;
 
 datasource engines (
 	Name: name,

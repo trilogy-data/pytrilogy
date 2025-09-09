@@ -1,5 +1,5 @@
 query_id = 1
-gen_length = 4181
+gen_length = 4399
 generated_sql = """
 
 WITH 
@@ -32,7 +32,10 @@ cooperative as (
 SELECT
     \"returns_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
     \"returns_customer_customers\".\"C_CUSTOMER_SK\" as \"returns_customer_id\",
-    \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_id\"
+    \"returns_return_date_date\".\"D_DATE_SK\" as \"returns_return_date_id\",
+    \"returns_store_store\".\"S_STATE\" as \"returns_store_state\",
+    \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_id\",
+    cast(\"returns_return_date_date\".\"D_YEAR\" as int) as \"returns_return_date_year\"
 FROM
     \"thoughtful\"
     INNER JOIN \"memory\".\"store\" as \"returns_store_store\" on \"thoughtful\".\"returns_store_id\" = \"returns_store_store\".\"S_STORE_SK\"

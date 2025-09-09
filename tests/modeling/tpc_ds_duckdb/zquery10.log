@@ -1,5 +1,5 @@
 query_id = 10
-gen_length = 6226
+gen_length = 7461
 generated_sql = """
 
 WITH 
@@ -32,7 +32,18 @@ GROUP BY
     \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\"),
 concerned as (
 SELECT
-    \"customer_customers\".\"C_CUSTOMER_SK\" as \"relevant_customers\"
+    \"catalog_sales_date_date\".\"D_DATE_SK\" as \"catalog_sales_date_id\",
+    \"catalog_sales_date_date\".\"D_MOY\" as \"catalog_sales_date_month_of_year\",
+    \"customer_customer_address\".\"CA_COUNTY\" as \"customer_county\",
+    \"customer_customers\".\"C_CURRENT_ADDR_SK\" as \"customer_address_id\",
+    \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_id\",
+    \"store_sales_date_date\".\"D_DATE_SK\" as \"store_sales_date_id\",
+    \"store_sales_date_date\".\"D_MOY\" as \"store_sales_date_month_of_year\",
+    \"web_sales_date_date\".\"D_DATE_SK\" as \"web_sales_date_id\",
+    \"web_sales_date_date\".\"D_MOY\" as \"web_sales_date_month_of_year\",
+    cast(\"catalog_sales_date_date\".\"D_YEAR\" as int) as \"catalog_sales_date_year\",
+    cast(\"store_sales_date_date\".\"D_YEAR\" as int) as \"store_sales_date_year\",
+    cast(\"web_sales_date_date\".\"D_YEAR\" as int) as \"web_sales_date_year\"
 FROM
     \"uneven\"
     INNER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"uneven\".\"web_sales_date_id\" = \"web_sales_date_date\".\"D_DATE_SK\"
@@ -47,11 +58,14 @@ WHERE
 ),
 young as (
 SELECT
-    \"concerned\".\"relevant_customers\" as \"relevant_customers\"
+    \"concerned\".\"customer_id\" as \"relevant_customers\"
 FROM
     \"concerned\"
+WHERE
+    \"concerned\".\"store_sales_date_year\" = 2002 and \"concerned\".\"store_sales_date_month_of_year\" in (1,2,3,4) and \"concerned\".\"customer_county\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( \"concerned\".\"web_sales_date_year\" = 2002 and \"concerned\".\"web_sales_date_month_of_year\" in (1,2,3,4) ) or ( \"concerned\".\"catalog_sales_date_year\" = 2002 and \"concerned\".\"catalog_sales_date_month_of_year\" in (1,2,3,4) ) )
+
 GROUP BY 
-    \"concerned\".\"relevant_customers\"),
+    \"concerned\".\"customer_id\"),
 sparkling as (
 SELECT
     \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_id\",
