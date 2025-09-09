@@ -385,3 +385,115 @@ LIMIT 10
         'STRING_SPLIT( "launch_info"."Agency" , \'/\' )[1] as "first_org"' in sql[0]
     ), sql[0]
     assert "BUG" not in sql[0], sql[0]
+
+
+# [GEN_MERGE_NODE] Was able to resolve graph through weak component resolution - final graph [['local.category', 'local.launch_tag'], ['payload.jcat', 'payload.launch_tag']]
+# [GEN_MERGE_NODE] fetching subgraphs [['local.category', 'local.launch_tag'], ['payload.jcat', 'payload.launch_tag']]
+
+
+def test_full_join_issue():
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+    queries = base.parse_text(
+        """import launch_dashboard;
+
+
+select
+    orbit_code,
+    payload.jcat.count as payload_count,
+limit 50;
+
+
+        """
+    )
+    # assert env.concepts['payl']
+    sql = base.generate_sql(queries[-1])
+    assert "1=1" not in sql[0], sql[0]
+
+
+def test_full_join_issue_2():
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+    queries = base.parse_text(
+        """
+import launch_dashboard;
+
+select 
+
+   payload_label,
+      --  vehicle.name,
+    orbit_code,
+    payload.jcat.count as payload_count,
+    --rank vehicle.name order by sum(orb_pay) by vehicle.name desc  as vehicle_rank
+having
+    vehicle_rank = 1
+limit 50;
+
+        """
+    )
+    sql = base.generate_sql(queries[-1])
+    assert "1=1" not in sql[0], sql[0]
+
+
+def test_join_discovery():
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+    queries = base.parse_text(
+        """import launch_dashboard;
+
+where
+  org.flag = 'abc123'
+SELECT
+    count(vehicle.family) by __preql_internal.all_rows -> all_vehicles,
+LIMIT 1
+;
+"""
+    )
+    sql = base.generate_sql(queries[-1])
+    assert "1=1" not in sql[0], sql[0]
+
+
+def test_join_discovery_two():
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+    queries = base.parse_text(
+        """import launch_dashboard;
+
+SELECT
+    org.flag,
+    vehicle.name,
+    vehicle.variant,
+
+LIMIT 1
+;
+"""
+    )
+    sql = base.generate_sql(queries[-1])
+    assert (
+        '"vehicle_lv_info"."LV_Name" = "wakeful"."vehicle_name" AND "vehicle_lv_info"."LV_Variant" = "wakeful"."vehicle_variant"'
+        in sql[0]
+    ), sql[0]

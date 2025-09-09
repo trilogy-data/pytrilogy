@@ -12,3 +12,14 @@ when org.state_code = 'US' then 'https://upload.wikimedia.org/wikipedia/commons/
 when org.state_code = 'CN' then 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Flag_of_the_People%27s_Republic_of_China.svg/2880px-Flag_of_the_People%27s_Republic_of_China.svg.png'
 else 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Flag_of_the_United_Nations.svg/2880px-Flag_of_the_United_Nations.svg.png'
 end::string::url_image;
+
+auto  total_orbital_payload_tonnes <-round(sum(orb_pay),2);
+
+auto payload_label <- case when payload.bus ='-' then payload.name else payload.bus end;
+
+auto  vehicle_label <-  CASE WHEN vehicle.variant != '-' THEN concat(vehicle.name,'-',vehicle.variant)
+ELSE vehicle.name
+END;
+
+auto launch_count_by_label <- group launch_count by vehicle_label;
+auto tonnes_by_label <- group total_orbital_payload_tonnes by vehicle_label;
