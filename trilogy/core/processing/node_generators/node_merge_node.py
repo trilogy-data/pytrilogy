@@ -5,7 +5,7 @@ import networkx as nx
 from networkx.algorithms import approximation as ax
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation
+from trilogy.core.enums import Derivation, FunctionType
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
 from trilogy.core.graph_models import (
     ReferenceGraph,
@@ -15,6 +15,7 @@ from trilogy.core.graph_models import (
 from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
+    BuildFunction,
     BuildGrain,
     BuildWhereClause,
 )
@@ -196,6 +197,26 @@ def determine_induced_minimal_nodes(
     synonyms: set[str] = set(),
 ) -> nx.DiGraph | None:
     H: nx.Graph = nx.to_undirected(G).copy()
+
+    # Add weights to edges based on target node's derivation type
+    for edge in G.edges():
+        _, target = edge
+        target_lookup = G.concepts.get(target)
+
+        weight = 1  # default weight
+        # If either node is BASIC, set higher weight
+        if target_lookup and target_lookup.derivation == Derivation.BASIC:
+            if (
+                isinstance(target_lookup.lineage, BuildFunction)
+                and target_lookup.lineage.operator == FunctionType.ATTR_ACCESS
+            ):
+                weight = 1
+            else:
+                # raise SyntaxError(target_lookup.lineage.operator)
+                weight = 50
+
+        H.edges[edge]["weight"] = weight
+
     nodes_to_remove = []
     for node, lookup in G.concepts.items():
         # inclusion of aggregates can create ambiguous node relation chains
@@ -220,27 +241,29 @@ def determine_induced_minimal_nodes(
 
     zero_out = list(x for x in H.nodes if G.out_degree(x) == 0 and x not in nodelist)
     while zero_out:
-        # logger.debug(f"Removing zero out nodes {zero_out} from graph")
+        logger.debug(f"Removing zero out nodes {zero_out} from graph")
         H.remove_nodes_from(zero_out)
         zero_out = list(
             x for x in H.nodes if G.out_degree(x) == 0 and x not in nodelist
         )
     try:
-        paths = nx.multi_source_dijkstra_path(H, nodelist)
-        # logger.debug(f"Paths found for {nodelist}")
-    except nx.exception.NodeNotFound:
-        # logger.debug(f"Unable to find paths for {nodelist}- {str(e)}")
+        # Use weight attribute for Dijkstra pathfinding
+        paths = nx.multi_source_dijkstra_path(H, nodelist, weight="weight")
+        # logger.debug(f"Paths found for {nodelist} {paths}")
+    except nx.exception.NodeNotFound as e:
+        logger.debug(f"Unable to find paths for {nodelist}- {str(e)}")
         return None
     path_removals = list(x for x in H.nodes if x not in paths)
     if path_removals:
         # logger.debug(f"Removing paths {path_removals} from graph")
         H.remove_nodes_from(path_removals)
     # logger.debug(f"Graph after path removal {H.nodes}")
-    sG: nx.Graph = ax.steinertree.steiner_tree(H, nodelist).copy()
+    sG: nx.Graph = ax.steinertree.steiner_tree(H, nodelist, weight="weight").copy()
     if not sG.nodes:
         logger.debug(f"No Steiner tree found for nodes {nodelist}")
         return None
-    # logger.debug(f"Steiner tree found for nodes {nodelist} {sG.nodes}")
+
+    logger.debug(f"Steiner tree found for nodes {nodelist} {sG.nodes}")
     final: nx.DiGraph = nx.subgraph(G, sG.nodes).copy()
 
     for edge in G.edges:
@@ -276,6 +299,7 @@ def determine_induced_minimal_nodes(
         logger.debug(
             f"Skipping graph for initial list {nodelist} as missing nodes {missing} from final graph {final.nodes}"
         )
+
         return None
     logger.debug(f"Found final graph {final.nodes}")
     return final
