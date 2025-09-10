@@ -566,13 +566,20 @@ def subgraphs_to_merge_node(
                 f"{padding(depth)}{LOGGER_PREFIX} setting output concepts {[c.address for c in output_concepts]}"
             )
             parent.set_output_concepts(output_concepts)
+            if isinstance(parent, MergeNode):
+                parent.force_group = True
+                logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} Parent is merge node, forcing to group"
+            )
+                return parent
             return GroupNode(
                 output_concepts=output_concepts,
-                input_concepts=output_concepts,
+                input_concepts=all_concepts,
                 environment=environment,
                 parents=parents,
                 depth=depth,
                 preexisting_conditions=parent.preexisting_conditions,
+                is_passthrough_group = True
             )
         return parent
     rval = MergeNode(
@@ -602,6 +609,12 @@ def gen_merge_node(
     conditions: BuildConditional | None = None,
     search_conditions: BuildWhereClause | None = None,
 ) -> Optional[MergeNode]:
+
+    # we do not actually APPLY these conditions anywhere
+    # though we could look at doing that as an optimization
+    # it's important to include them so the base discovery loop that was generating 
+    # the merge node can then add them automatically
+    # so we should not return a node with preexisting conditions
     if search_conditions:
         all_search_concepts = unique(
             all_concepts + list(search_conditions.row_arguments), "address"

@@ -114,6 +114,28 @@ def test_adhoc_one(engine: Executor):
     engine.execute_raw_sql(query)
 
 
+
+# def test_adhoc_shape_two(engine: Executor):
+#     engine.environment = Environment(working_path=working_path)
+#     from trilogy.core.processing.node_generators import gen_group_node
+#     from trilogy.core.processing.concept_strategies_v3 import search_concepts, History
+#     idx = 11
+#     with open(working_path / f"adhoc{idx:02d}.preql") as f:
+#         text = f.read()
+#     engine.environment.parse(text)
+#     built = engine.environment.materialize_for_select()
+
+#     base = gen_group_node(
+#         environment=built,
+#         depth = 0,
+#         source_concepts = search_concepts,
+#         history = History(),
+#         conditions=[]
+#     )
+
+
+
+
 def test_one(engine):
     query = run_query(engine, 1)
     assert len(query) < 4300, query
