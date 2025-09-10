@@ -1,5 +1,5 @@
 query_id = 97
-gen_length = 4323
+gen_length = 4596
 generated_sql = """
 
 WITH 
@@ -35,7 +35,11 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"abundant\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"catalog_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"catalog_sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
-),
+
+GROUP BY 
+    \"abundant\".\"catalog_sales_bill_customer_id\",
+    \"abundant\".\"catalog_sales_item_id\",
+    \"catalog_sales_date_date\".\"D_MONTH_SEQ\"),
 cheerful as (
 SELECT
     \"store_sales_date_date\".\"D_MONTH_SEQ\" as \"store_sales_date_month_seq\",
@@ -46,7 +50,11 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"wakeful\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"store_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"store_sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
-),
+
+GROUP BY 
+    \"store_sales_date_date\".\"D_MONTH_SEQ\",
+    \"wakeful\".\"store_sales_customer_id\",
+    \"wakeful\".\"store_sales_item_id\"),
 yummy as (
 SELECT
     \"uneven\".\"catalog_sales_bill_customer_id\" as \"catalog_sales_bill_customer_id\",

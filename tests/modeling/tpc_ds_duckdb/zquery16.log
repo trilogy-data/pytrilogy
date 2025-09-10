@@ -1,5 +1,5 @@
 query_id = 16
-gen_length = 5059
+gen_length = 4962
 generated_sql = """
 
 WITH 
@@ -55,7 +55,7 @@ GROUP BY
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\",
     \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\",
     \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\"),
-sparkling as (
+young as (
 SELECT
     \"cs_catalog_sales\".\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",
     \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_item_id\",
@@ -79,32 +79,27 @@ FROM
     INNER JOIN \"memory\".\"customer_address\" as \"cs_customer_address_customer_address\" on \"thoughtful\".\"cs_customer_address_id\" = \"cs_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
     cast(\"cs_ship_date_date\".\"D_DATE\" as date) >= date '2002-02-01' and cast(\"cs_ship_date_date\".\"D_DATE\" as date) <= date '2002-04-02' and \"cs_customer_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"thoughtful\".\"cs_order_number\" not in (select questionable.\"cr_order_number\" from questionable where questionable.\"cr_order_number\" is not null) and \"thoughtful\".\"cs_order_number\" in (select juicy.\"multi_warehouse_sales\" from juicy where juicy.\"multi_warehouse_sales\" is not null)
-),
-abhorrent as (
+
+GROUP BY 
+    \"thoughtful\".\"cs_order_number\"),
+sparkling as (
 SELECT
-    sum(\"sparkling\".\"cs_extra_ship_cost\") as \"total_shipping_cost\",
-    sum(\"sparkling\".\"cs_net_profit\") as \"total_net_profit\"
+    sum(\"young\".\"cs_extra_ship_cost\") as \"total_shipping_cost\",
+    sum(\"young\".\"cs_net_profit\") as \"total_net_profit\"
 FROM
-    \"sparkling\"),
+    \"young\"),
 concerned as (
 SELECT
-    \"vacuous\".\"cs_order_number\" as \"cs_order_number\"
+    count(distinct \"vacuous\".\"cs_order_number\") as \"order_count\"
 FROM
-    \"vacuous\"
-GROUP BY 
-    \"vacuous\".\"cs_order_number\"),
-young as (
+    \"vacuous\")
 SELECT
-    count(distinct \"concerned\".\"cs_order_number\") as \"order_count\"
+    \"concerned\".\"order_count\" as \"order_count\",
+    \"sparkling\".\"total_shipping_cost\" as \"total_shipping_cost\",
+    \"sparkling\".\"total_net_profit\" as \"total_net_profit\"
 FROM
-    \"concerned\")
-SELECT
-    \"young\".\"order_count\" as \"order_count\",
-    \"abhorrent\".\"total_shipping_cost\" as \"total_shipping_cost\",
-    \"abhorrent\".\"total_net_profit\" as \"total_net_profit\"
-FROM
-    \"young\"
-    FULL JOIN \"abhorrent\" on 1=1
+    \"concerned\"
+    FULL JOIN \"sparkling\" on 1=1
 ORDER BY 
-    \"young\".\"order_count\" desc
+    \"concerned\".\"order_count\" desc
 LIMIT (100)"""

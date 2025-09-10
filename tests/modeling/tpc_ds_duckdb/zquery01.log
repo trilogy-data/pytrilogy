@@ -1,5 +1,5 @@
 query_id = 1
-gen_length = 4181
+gen_length = 3971
 generated_sql = """
 
 WITH 
@@ -14,7 +14,7 @@ GROUP BY
     \"returns_store_returns\".\"SR_CUSTOMER_SK\",
     \"returns_store_returns\".\"SR_RETURNED_DATE_SK\",
     \"returns_store_returns\".\"SR_STORE_SK\"),
-abundant as (
+questionable as (
 SELECT
     \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
     \"returns_store_returns\".\"SR_ITEM_SK\" as \"returns_item_id\",
@@ -40,66 +40,59 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"returns_return_date_date\" on \"thoughtful\".\"returns_return_date_id\" = \"returns_return_date_date\".\"D_DATE_SK\"
 WHERE
     \"returns_store_store\".\"S_STATE\" = 'TN' and cast(\"returns_return_date_date\".\"D_YEAR\" as int) = 2000
-),
-uneven as (
+
+GROUP BY 
+    \"returns_customer_customers\".\"C_CUSTOMER_ID\",
+    \"returns_customer_customers\".\"C_CUSTOMER_SK\",
+    \"returns_store_store\".\"S_STORE_SK\"),
+abundant as (
 SELECT
-    \"abundant\".\"returns_customer_id\" as \"returns_customer_id\",
+    \"questionable\".\"returns_customer_id\" as \"returns_customer_id\",
+    \"questionable\".\"returns_store_id\" as \"returns_store_id\",
+    sum(\"questionable\".\"returns_return_amount\") as \"total_returns\"
+FROM
+    \"questionable\"
+GROUP BY 
+    \"questionable\".\"returns_customer_id\",
+    \"questionable\".\"returns_store_id\"),
+yummy as (
+SELECT
     \"abundant\".\"returns_store_id\" as \"returns_store_id\",
-    sum(\"abundant\".\"returns_return_amount\") as \"total_returns\"
+    avg(\"abundant\".\"total_returns\") as \"avg_store_returns\"
 FROM
     \"abundant\"
 GROUP BY 
-    \"abundant\".\"returns_customer_id\",
     \"abundant\".\"returns_store_id\"),
-questionable as (
+uneven as (
 SELECT
+    \"abundant\".\"total_returns\" as \"total_returns\",
     \"cooperative\".\"returns_customer_id\" as \"returns_customer_id\",
     \"cooperative\".\"returns_customer_text_id\" as \"returns_customer_text_id\",
     \"cooperative\".\"returns_store_id\" as \"returns_store_id\"
 FROM
     \"cooperative\"
-GROUP BY 
-    \"cooperative\".\"returns_customer_id\",
-    \"cooperative\".\"returns_customer_text_id\",
-    \"cooperative\".\"returns_store_id\"),
+    INNER JOIN \"abundant\" on \"cooperative\".\"returns_customer_id\" = \"abundant\".\"returns_customer_id\" AND \"cooperative\".\"returns_store_id\" = \"abundant\".\"returns_store_id\"),
 juicy as (
 SELECT
+    \"uneven\".\"returns_customer_text_id\" as \"returns_customer_text_id\",
     \"uneven\".\"returns_store_id\" as \"returns_store_id\",
-    avg(\"uneven\".\"total_returns\") as \"avg_store_returns\"
+    \"uneven\".\"total_returns\" as \"total_returns\",
+    \"yummy\".\"avg_store_returns\" as \"avg_store_returns\"
 FROM
     \"uneven\"
-GROUP BY 
-    \"uneven\".\"returns_store_id\"),
-yummy as (
+    INNER JOIN \"yummy\" on \"uneven\".\"returns_store_id\" = \"yummy\".\"returns_store_id\")
 SELECT
-    \"questionable\".\"returns_customer_id\" as \"returns_customer_id\",
-    \"questionable\".\"returns_customer_text_id\" as \"returns_customer_text_id\",
-    \"questionable\".\"returns_store_id\" as \"returns_store_id\",
-    \"uneven\".\"total_returns\" as \"total_returns\"
+    \"juicy\".\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
-    \"questionable\"
-    INNER JOIN \"uneven\" on \"questionable\".\"returns_customer_id\" = \"uneven\".\"returns_customer_id\" AND \"questionable\".\"returns_store_id\" = \"uneven\".\"returns_store_id\"),
-vacuous as (
-SELECT
-    \"juicy\".\"avg_store_returns\" as \"avg_store_returns\",
-    \"yummy\".\"returns_customer_text_id\" as \"returns_customer_text_id\",
-    \"yummy\".\"returns_store_id\" as \"returns_store_id\",
-    \"yummy\".\"total_returns\" as \"total_returns\"
-FROM
-    \"yummy\"
-    INNER JOIN \"juicy\" on \"yummy\".\"returns_store_id\" = \"juicy\".\"returns_store_id\")
-SELECT
-    \"vacuous\".\"returns_customer_text_id\" as \"returns_customer_text_id\"
-FROM
-    \"vacuous\"
+    \"juicy\"
 WHERE
-    \"vacuous\".\"total_returns\" > ( 1.2 * \"vacuous\".\"avg_store_returns\" )
+    \"juicy\".\"total_returns\" > ( 1.2 * \"juicy\".\"avg_store_returns\" )
 
 GROUP BY 
-    \"vacuous\".\"avg_store_returns\",
-    \"vacuous\".\"returns_customer_text_id\",
-    \"vacuous\".\"returns_store_id\",
-    \"vacuous\".\"total_returns\"
+    \"juicy\".\"avg_store_returns\",
+    \"juicy\".\"returns_customer_text_id\",
+    \"juicy\".\"returns_store_id\",
+    \"juicy\".\"total_returns\"
 ORDER BY 
-    \"vacuous\".\"returns_customer_text_id\" asc
+    \"juicy\".\"returns_customer_text_id\" asc
 LIMIT (100)"""

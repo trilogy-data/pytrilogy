@@ -1,5 +1,5 @@
 query_id = 6
-gen_length = 3149
+gen_length = 3304
 generated_sql = """
 
 WITH 
@@ -22,7 +22,16 @@ FROM
     LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"item_items\".\"I_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
     cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 2001 and \"store_sales_item_items\".\"I_CATEGORY\" is not null and \"store_sales_date_date\".\"D_MOY\" = 1
-),
+
+GROUP BY 
+    \"item_items\".\"I_CATEGORY\",
+    \"item_items\".\"I_ITEM_SK\",
+    \"store_sales_customer_customer_address\".\"CA_STATE\",
+    \"store_sales_date_date\".\"D_MOY\",
+    \"store_sales_item_items\".\"I_CATEGORY\",
+    \"store_sales_item_items\".\"I_CURRENT_PRICE\",
+    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\",
+    cast(\"store_sales_date_date\".\"D_YEAR\" as int)),
 abundant as (
 SELECT
     \"item_items\".\"I_CATEGORY\" as \"item_category\",
@@ -41,28 +50,21 @@ FROM
     INNER JOIN \"abundant\" on (\"questionable\".\"item_category\" = \"abundant\".\"item_category\" or (\"questionable\".\"item_category\" is null and \"abundant\".\"item_category\" is null))
 WHERE
     \"questionable\".\"store_sales_date_year\" = 2001 and \"questionable\".\"store_sales_item_category\" is not null and \"questionable\".\"store_sales_date_month_of_year\" = 1 and \"questionable\".\"store_sales_item_current_price\" > 1.2 * \"abundant\".\"_virt_agg_avg_5942253052406187\"
-),
-yummy as (
+
+GROUP BY 
+    \"questionable\".\"item_id\",
+    \"questionable\".\"store_sales_customer_state\",
+    \"questionable\".\"store_sales_ticket_number\")
 SELECT
-    \"uneven\".\"item_id\" as \"item_id\",
     \"uneven\".\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    \"uneven\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\"
+    sum(1) as \"customer_count\"
 FROM
     \"uneven\"
 GROUP BY 
-    \"uneven\".\"item_id\",
-    \"uneven\".\"store_sales_customer_state\",
-    \"uneven\".\"store_sales_ticket_number\")
-SELECT
-    \"yummy\".\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    sum(1) as \"customer_count\"
-FROM
-    \"yummy\"
-GROUP BY 
-    \"yummy\".\"store_sales_customer_state\"
+    \"uneven\".\"store_sales_customer_state\"
 HAVING
     sum(1) >= 10
 
 ORDER BY 
     sum(1) asc nulls first,
-    \"yummy\".\"store_sales_customer_state\" asc nulls first"""
+    \"uneven\".\"store_sales_customer_state\" asc nulls first"""

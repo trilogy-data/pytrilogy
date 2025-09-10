@@ -340,7 +340,9 @@ class MergeNode(StrategyNode):
             if isinstance(join, BaseJoin) and join.join_type == JoinType.FULL:
                 full_join_concepts += join.input_concepts
 
-        if self.whole_grain:
+        if self.force_group is True:
+            force_group = True
+        elif self.whole_grain:
             force_group = False
         elif self.force_group is False:
             force_group = False

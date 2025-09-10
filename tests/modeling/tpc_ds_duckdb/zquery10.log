@@ -1,5 +1,5 @@
 query_id = 10
-gen_length = 6226
+gen_length = 6277
 generated_sql = """
 
 WITH 
@@ -44,7 +44,9 @@ FROM
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"vacuous\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
 WHERE
     cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 2002 and \"store_sales_date_date\".\"D_MOY\" in (1,2,3,4) and \"customer_customer_address\".\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( cast(\"web_sales_date_date\".\"D_YEAR\" as int) = 2002 and \"web_sales_date_date\".\"D_MOY\" in (1,2,3,4) ) or ( cast(\"catalog_sales_date_date\".\"D_YEAR\" as int) = 2002 and \"catalog_sales_date_date\".\"D_MOY\" in (1,2,3,4) ) )
-),
+
+GROUP BY 
+    \"customer_customers\".\"C_CUSTOMER_SK\"),
 young as (
 SELECT
     \"concerned\".\"relevant_customers\" as \"relevant_customers\"

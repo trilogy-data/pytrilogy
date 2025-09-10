@@ -565,9 +565,11 @@ def subgraphs_to_merge_node(
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} setting output concepts {[c.address for c in output_concepts]}"
             )
-            parent.set_output_concepts(output_concepts)
+            
             if isinstance(parent, MergeNode):
+                parent.set_output_concepts(output_concepts, rebuild=False)
                 parent.force_group = True
+                parent.rebuild_cache()
                 logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} Parent is merge node, forcing to group"
             )
@@ -579,7 +581,6 @@ def subgraphs_to_merge_node(
                 parents=parents,
                 depth=depth,
                 preexisting_conditions=parent.preexisting_conditions,
-                is_passthrough_group = True
             )
         return parent
     rval = MergeNode(

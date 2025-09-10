@@ -1,5 +1,5 @@
 query_id = 95
-gen_length = 5777
+gen_length = 5656
 generated_sql = """
 
 WITH 
@@ -66,7 +66,7 @@ GROUP BY
     \"web_sales_web_sales\".\"WS_SHIP_ADDR_SK\",
     \"web_sales_web_sales\".\"WS_SHIP_DATE_SK\",
     \"web_sales_web_sales\".\"WS_WEB_SITE_SK\"),
-abhorrent as (
+sparkling as (
 SELECT
     \"web_sales_web_sales\".\"WS_EXT_SHIP_COST\" as \"web_sales_extra_ship_cost\",
     \"web_sales_web_sales\".\"WS_ITEM_SK\" as \"web_sales_item_id\",
@@ -90,32 +90,27 @@ FROM
     INNER JOIN \"memory\".\"customer_address\" as \"web_sales_ship_address_customer_address\" on \"thoughtful\".\"web_sales_ship_address_id\" = \"web_sales_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
     cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) >= date '1999-02-01' and cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) <= date '1999-04-02' and \"web_sales_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"web_sales_web_site_web_site\".\"web_company_name\" = 'pri' and \"thoughtful\".\"web_sales_order_number\" in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null) and \"thoughtful\".\"web_sales_order_number\" in (select vacuous.\"returned_orders\" from vacuous where vacuous.\"returned_orders\" is not null)
-),
-sweltering as (
+
+GROUP BY 
+    \"thoughtful\".\"web_sales_order_number\"),
+abhorrent as (
 SELECT
-    sum(\"abhorrent\".\"web_sales_extra_ship_cost\") as \"total_shipping_cost\",
-    sum(\"abhorrent\".\"web_sales_net_profit\") as \"total_net_profit\"
+    sum(\"sparkling\".\"web_sales_extra_ship_cost\") as \"total_shipping_cost\",
+    sum(\"sparkling\".\"web_sales_net_profit\") as \"total_net_profit\"
 FROM
-    \"abhorrent\"),
+    \"sparkling\"),
 young as (
 SELECT
-    \"concerned\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    count(\"concerned\".\"web_sales_order_number\") as \"order_count\"
 FROM
-    \"concerned\"
-GROUP BY 
-    \"concerned\".\"web_sales_order_number\"),
-sparkling as (
+    \"concerned\")
 SELECT
-    count(\"young\".\"web_sales_order_number\") as \"order_count\"
+    \"young\".\"order_count\" as \"order_count\",
+    \"abhorrent\".\"total_shipping_cost\" as \"total_shipping_cost\",
+    \"abhorrent\".\"total_net_profit\" as \"total_net_profit\"
 FROM
-    \"young\")
-SELECT
-    \"sparkling\".\"order_count\" as \"order_count\",
-    \"sweltering\".\"total_shipping_cost\" as \"total_shipping_cost\",
-    \"sweltering\".\"total_net_profit\" as \"total_net_profit\"
-FROM
-    \"sparkling\"
-    FULL JOIN \"sweltering\" on 1=1
+    \"young\"
+    FULL JOIN \"abhorrent\" on 1=1
 ORDER BY 
-    \"sparkling\".\"order_count\" desc
+    \"young\".\"order_count\" desc
 LIMIT (100)"""

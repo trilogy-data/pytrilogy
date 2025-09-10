@@ -419,7 +419,6 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
         logger.info(
             f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Conditions {context.conditions} were injected, checking if we need a group to restore grain"
         )
-
         result = GroupNode.check_if_required(
             downstream_concepts=output.usable_outputs,
             parents=[output.resolve()],
@@ -427,6 +426,16 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
             depth=context.depth,
         )
         if result.required:
+            # we're covered, don't inject additional merge node
+            if isinstance(output, MergeNode) and output.force_group is True:
+                return output
+            elif isinstance(output, MergeNode):
+                output.force_group = True
+                output.rebuild_cache()
+                logger.info(
+                    f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Output is merge node, forcing to group"
+                )
+                return output
             logger.info(
                 f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Adding group node with outputs {[x.address for x in context.original_mandatory]}"
             )
