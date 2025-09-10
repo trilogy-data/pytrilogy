@@ -128,18 +128,6 @@ def gen_group_node(
                 f"{padding(depth)}{LOGGER_PREFIX} group by node parents unresolvable"
             )
             return None
-        # if not parent.resolve().grain == target_grain:
-        #     parent = GroupNode(
-        #         output_concepts=parent_concepts,
-        #         input_concepts=parent_concepts,
-        #         environment=environment,
-        #         parents=[parent],
-        #         depth=depth,
-        #         preexisting_conditions=conditions.conditional
-        #         if conditions
-        #         else None,
-        #         target_grain=target_grain,
-        #     )
         parents: List[StrategyNode] = [parent]
     else:
         parents = []

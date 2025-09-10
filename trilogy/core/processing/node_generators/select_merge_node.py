@@ -648,7 +648,6 @@ def gen_select_merge_node(
         depth=depth,
         parents=parents,
         preexisting_conditions=preexisting_conditions,
-        grain=BuildGrain.from_concepts(all_concepts, environment=environment),
     )
 
     return base
