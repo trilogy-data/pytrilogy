@@ -1,5 +1,5 @@
 query_id = 30
-gen_length = 13419
+gen_length = 13222
 generated_sql = """
 
 WITH 
@@ -34,7 +34,6 @@ SELECT
     \"web_returns_customer_customers\".\"C_BIRTH_DAY\" as \"web_returns_customer_birth_day\",
     \"web_returns_customer_customers\".\"C_BIRTH_MONTH\" as \"web_returns_customer_birth_month\",
     \"web_returns_customer_customers\".\"C_BIRTH_YEAR\" as \"web_returns_customer_birth_year\",
-    \"web_returns_customer_customers\".\"C_CURRENT_ADDR_SK\" as \"web_returns_customer_address_id\",
     \"web_returns_customer_customers\".\"C_CUSTOMER_ID\" as \"web_returns_customer_text_id\",
     \"web_returns_customer_customers\".\"C_CUSTOMER_SK\" as \"web_returns_customer_id\",
     \"web_returns_customer_customers\".\"C_EMAIL_ADDRESS\" as \"web_returns_customer_email_address\",
@@ -44,7 +43,6 @@ SELECT
     \"web_returns_customer_customers\".\"C_LOGIN\" as \"web_returns_customer_login\",
     \"web_returns_customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"web_returns_customer_preferred_cust_flag\",
     \"web_returns_customer_customers\".\"C_SALUTATION\" as \"web_returns_customer_salutation\",
-    \"web_returns_return_address_customer_address\".\"CA_ADDRESS_SK\" as \"web_returns_return_address_id\",
     \"web_returns_return_address_customer_address\".\"CA_STATE\" as \"web_returns_return_address_state\"
 FROM
     \"thoughtful\"

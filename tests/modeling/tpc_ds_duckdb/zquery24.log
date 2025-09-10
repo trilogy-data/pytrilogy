@@ -1,5 +1,5 @@
 query_id = 24
-gen_length = 11243
+gen_length = 10669
 generated_sql = """
 
 WITH 
@@ -8,12 +8,9 @@ SELECT
     \"store_sales_customer_customer_address\".\"CA_COUNTRY\" as \"store_sales_customer_country\",
     \"store_sales_customer_customer_address\".\"CA_ZIP\" as \"store_sales_customer_zip\",
     \"store_sales_customer_customers\".\"C_BIRTH_COUNTRY\" as \"store_sales_customer_birth_country\",
-    \"store_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" as \"store_sales_customer_address_id\",
     \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
     \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
-    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
-    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     \"store_sales_store_store\".\"S_MARKET_ID\" as \"store_sales_store_market\",
     \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
     \"store_sales_store_store\".\"S_STORE_SK\" as \"store_sales_store_id\",
@@ -49,13 +46,9 @@ SELECT
     \"store_sales_customer_customer_address\".\"CA_COUNTRY\" as \"store_sales_customer_country\",
     \"store_sales_customer_customer_address\".\"CA_ZIP\" as \"store_sales_customer_zip\",
     \"store_sales_customer_customers\".\"C_BIRTH_COUNTRY\" as \"store_sales_customer_birth_country\",
-    \"store_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" as \"store_sales_customer_address_id\",
-    \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
     \"store_sales_item_items\".\"I_COLOR\" as \"store_sales_item_color\",
     \"store_sales_item_items\".\"I_ITEM_SK\" as \"store_sales_item_id\",
-    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     \"store_sales_store_store\".\"S_MARKET_ID\" as \"store_sales_store_market\",
-    \"store_sales_store_store\".\"S_STORE_SK\" as \"store_sales_store_id\",
     \"store_sales_store_store\".\"S_ZIP\" as \"store_sales_store_zip\",
     CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END as \"store_sales_is_returned\"
 FROM

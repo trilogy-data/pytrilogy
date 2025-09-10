@@ -133,9 +133,6 @@ def concept_is_relevant(
         and concept.keys
         and all([c in others and c != concept.address for c in concept.keys])
     ):
-        logger.info(
-            f"irrelevant key concept {concept.address} due to keys {concept.keys} being present   "
-        )
         return False
     if concept.purpose in (Purpose.METRIC,):
         if all([c in others for c in concept.grain.components]):

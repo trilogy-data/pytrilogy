@@ -1,5 +1,5 @@
 query_id = 6
-gen_length = 4337
+gen_length = 4093
 generated_sql = """
 
 WITH 
@@ -8,9 +8,6 @@ SELECT
     \"item_items\".\"I_CATEGORY\" as \"item_category\",
     \"item_items\".\"I_ITEM_SK\" as \"item_id\",
     \"store_sales_customer_customer_address\".\"CA_STATE\" as \"store_sales_customer_state\",
-    \"store_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" as \"store_sales_customer_address_id\",
-    \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
-    \"store_sales_date_date\".\"D_DATE_SK\" as \"store_sales_date_id\",
     \"store_sales_date_date\".\"D_MOY\" as \"store_sales_date_month_of_year\",
     \"store_sales_item_items\".\"I_CATEGORY\" as \"store_sales_item_category\",
     \"store_sales_item_items\".\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",

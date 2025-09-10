@@ -118,19 +118,20 @@ class CTE(BaseModel):
         base += f" Source: {self.source.source_type}."
         if self.parent_ctes:
             base += f" References: {', '.join([x.name for x in self.parent_ctes])}."
-        if self.joins:
+        if self.joins and CONFIG.comments.joins:
             base += f"\n-- Joins: {', '.join([str(x) for x in self.joins])}."
-        if self.partial_concepts:
+        if self.partial_concepts and CONFIG.comments.partial:
             base += (
                 f"\n-- Partials: {', '.join([str(x) for x in self.partial_concepts])}."
             )
-        base += f"\n-- Source Map: {self.source_map}."
+        if CONFIG.comments.source_map:
+            base += f"\n-- Source Map: {self.source_map}."
         base += f"\n-- Output: {', '.join([str(x) for x in self.output_columns])}."
         if self.source.input_concepts:
             base += f"\n-- Inputs: {', '.join([str(x) for x in self.source.input_concepts])}."
         if self.hidden_concepts:
             base += f"\n-- Hidden: {', '.join([str(x) for x in self.hidden_concepts])}."
-        if self.nullable_concepts:
+        if self.nullable_concepts and CONFIG.comments.nullable:
             base += (
                 f"\n-- Nullable: {', '.join([str(x) for x in self.nullable_concepts])}."
             )

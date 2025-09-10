@@ -1,5 +1,5 @@
 query_id = 97
-gen_length = 4459
+gen_length = 4323
 generated_sql = """
 
 WITH 
@@ -29,7 +29,6 @@ uneven as (
 SELECT
     \"abundant\".\"catalog_sales_bill_customer_id\" as \"catalog_sales_bill_customer_id\",
     \"abundant\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
-    \"catalog_sales_date_date\".\"D_DATE_SK\" as \"catalog_sales_date_id\",
     \"catalog_sales_date_date\".\"D_MONTH_SEQ\" as \"catalog_sales_date_month_seq\"
 FROM
     \"abundant\"
@@ -39,7 +38,6 @@ WHERE
 ),
 cheerful as (
 SELECT
-    \"store_sales_date_date\".\"D_DATE_SK\" as \"store_sales_date_id\",
     \"store_sales_date_date\".\"D_MONTH_SEQ\" as \"store_sales_date_month_seq\",
     \"wakeful\".\"store_sales_customer_id\" as \"store_sales_customer_id\",
     \"wakeful\".\"store_sales_item_id\" as \"store_sales_item_id\"

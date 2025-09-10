@@ -1,5 +1,5 @@
 query_id = 25
-gen_length = 12552
+gen_length = 11899
 generated_sql = """
 
 WITH 
@@ -18,21 +18,16 @@ concerned as (
 SELECT
     \"catalog_sales_catalog_sales\".\"CS_NET_PROFIT\" as \"catalog_sales_net_profit\",
     \"catalog_sales_catalog_sales\".\"CS_ORDER_NUMBER\" as \"catalog_sales_order_number\",
-    \"catalog_sales_date_date\".\"D_DATE_SK\" as \"catalog_sales_date_id\",
     \"catalog_sales_date_date\".\"D_MOY\" as \"catalog_sales_date_month_of_year\",
-    \"store_sales_date_date\".\"D_DATE_SK\" as \"store_sales_date_id\",
     \"store_sales_date_date\".\"D_MOY\" as \"store_sales_date_month_of_year\",
     \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
     \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_name\",
     \"store_sales_item_items\".\"I_ITEM_SK\" as \"store_sales_item_id\",
-    \"store_sales_return_date_date\".\"D_DATE_SK\" as \"store_sales_return_date_id\",
     \"store_sales_return_date_date\".\"D_MOY\" as \"store_sales_return_date_month_of_year\",
     \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" as \"store_sales_return_customer_id\",
     \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
-    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     \"store_sales_store_store\".\"S_STORE_ID\" as \"store_sales_store_text_id\",
     \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
-    \"store_sales_store_store\".\"S_STORE_SK\" as \"store_sales_store_id\",
     CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END as \"store_sales_is_returned\",
     cast(\"catalog_sales_date_date\".\"D_YEAR\" as int) as \"catalog_sales_date_year\",
     cast(\"store_sales_date_date\".\"D_YEAR\" as int) as \"store_sales_date_year\",
@@ -51,14 +46,11 @@ WHERE
 ),
 yummy as (
 SELECT
-    \"catalog_sales_date_date\".\"D_DATE_SK\" as \"catalog_sales_date_id\",
     \"catalog_sales_date_date\".\"D_MOY\" as \"catalog_sales_date_month_of_year\",
-    \"store_sales_date_date\".\"D_DATE_SK\" as \"store_sales_date_id\",
     \"store_sales_date_date\".\"D_MOY\" as \"store_sales_date_month_of_year\",
     \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
     \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_name\",
     \"store_sales_item_items\".\"I_ITEM_SK\" as \"store_sales_item_id\",
-    \"store_sales_return_date_date\".\"D_DATE_SK\" as \"store_sales_return_date_id\",
     \"store_sales_return_date_date\".\"D_MOY\" as \"store_sales_return_date_month_of_year\",
     \"store_sales_store_returns\".\"SR_CUSTOMER_SK\" as \"store_sales_return_customer_id\",
     \"store_sales_store_returns\".\"SR_NET_LOSS\" as \"store_sales_return_net_loss\",
@@ -67,7 +59,6 @@ SELECT
     \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     \"store_sales_store_store\".\"S_STORE_ID\" as \"store_sales_store_text_id\",
     \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
-    \"store_sales_store_store\".\"S_STORE_SK\" as \"store_sales_store_id\",
     CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END as \"store_sales_is_returned\",
     cast(\"catalog_sales_date_date\".\"D_YEAR\" as int) as \"catalog_sales_date_year\",
     cast(\"store_sales_date_date\".\"D_YEAR\" as int) as \"store_sales_date_year\",

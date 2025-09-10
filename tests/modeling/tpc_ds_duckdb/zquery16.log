@@ -1,5 +1,5 @@
 query_id = 16
-gen_length = 6017
+gen_length = 5794
 generated_sql = """
 
 WITH 
@@ -71,11 +71,8 @@ WHERE
 ),
 cooperative as (
 SELECT
-    \"cs_call_center_call_center\".\"CC_CALL_CENTER_SK\" as \"cs_call_center_id\",
     \"cs_call_center_call_center\".\"CC_COUNTY\" as \"cs_call_center_county\",
-    \"cs_customer_address_customer_address\".\"CA_ADDRESS_SK\" as \"cs_customer_address_id\",
     \"cs_customer_address_customer_address\".\"CA_STATE\" as \"cs_customer_address_state\",
-    \"cs_ship_date_date\".\"D_DATE_SK\" as \"cs_ship_date_id\",
     \"thoughtful\".\"cs_order_number\" as \"cs_order_number\",
     cast(\"cs_ship_date_date\".\"D_DATE\" as date) as \"cs_ship_date_date\"
 FROM
