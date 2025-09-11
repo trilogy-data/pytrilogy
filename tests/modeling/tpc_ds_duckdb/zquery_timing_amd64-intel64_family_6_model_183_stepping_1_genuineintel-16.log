@@ -89,9 +89,9 @@ exec_time = 0.112594
 comp_time = 0.474736
 
 [query_97]
-parse_time = 0.289795
-exec_time = 0.306466
-comp_time = 0.070507
+parse_time = 0.479295
+exec_time = 0.242883
+comp_time = 0.13592
 
 [query_98]
 parse_time = 0.131958
