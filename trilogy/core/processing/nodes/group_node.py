@@ -113,16 +113,15 @@ class GroupNode(StrategyNode):
             environment.concepts[c] for c in (comp_grain - target_grain).components
         ]
         logger.info(
-            f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain}, {target_grain}, difference {difference}"
+            f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain}, {target_grain}, difference {[x.address for x in difference]}"
         )
 
         # if the difference is all unique properties whose keys are in the source grain
         # we can also suppress the group
         if all(
             [
-                x.purpose == Purpose.UNIQUE_PROPERTY
-                and x.keys
-                and all(z in comp_grain.components for z in x.keys)
+                x.keys
+                and all(environment.concepts[z].address in comp_grain.components for z in x.keys)
                 for x in difference
             ]
         ):

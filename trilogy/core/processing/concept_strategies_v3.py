@@ -436,6 +436,8 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
                     f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Output is merge node, forcing to group"
                 )
                 return output
+            elif isinstance(output, GroupNode):
+                return output
             logger.info(
                 f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Adding group node with outputs {[x.address for x in context.original_mandatory]}"
             )

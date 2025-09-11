@@ -574,6 +574,12 @@ def subgraphs_to_merge_node(
                 f"{padding(depth)}{LOGGER_PREFIX} Parent is merge node, forcing to group"
             )
                 return parent
+            elif isinstance(parent, GroupNode):
+                parent.set_output_concepts(output_concepts, rebuild=True)
+                logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} Parent is group node, setting output concepts"
+            )
+                return parent
             return GroupNode(
                 output_concepts=output_concepts,
                 input_concepts=all_concepts,
