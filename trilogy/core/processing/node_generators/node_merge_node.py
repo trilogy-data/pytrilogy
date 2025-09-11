@@ -20,7 +20,10 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.nodes import History, MergeNode, StrategyNode, GroupNode
+from trilogy.core.processing.discovery_utility import (
+    group_if_required,
+)
+from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import padding
 from trilogy.utility import unique
 
@@ -555,40 +558,8 @@ def subgraphs_to_merge_node(
             f"{padding(depth)}{LOGGER_PREFIX} only one parent node, exiting early w/ {[c.address for c in parents[0].output_concepts]}"
         )
         parent = parents[0]
-        resolved = parent.resolve()
-        if GroupNode.check_if_required(
-            output_concepts, [resolved], environment, depth=depth
-        ).required:
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} parent node requires grouping to reach target grain {target_grain} from {resolved.grain}, wrapping in group node"
-            )
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} setting output concepts {[c.address for c in output_concepts]}"
-            )
-            
-            if isinstance(parent, MergeNode):
-                parent.set_output_concepts(output_concepts, rebuild=False)
-                parent.force_group = True
-                parent.rebuild_cache()
-                logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} Parent is merge node, forcing to group"
-            )
-                return parent
-            elif isinstance(parent, GroupNode):
-                parent.set_output_concepts(output_concepts, rebuild=True)
-                logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} Parent is group node, setting output concepts"
-            )
-                return parent
-            return GroupNode(
-                output_concepts=output_concepts,
-                input_concepts=all_concepts,
-                environment=environment,
-                parents=parents,
-                depth=depth,
-                preexisting_conditions=parent.preexisting_conditions,
-            )
-        return parent
+        return group_if_required(parent, output_concepts, environment)
+
     rval = MergeNode(
         input_concepts=unique(input_c, "address"),
         output_concepts=output_concepts,
@@ -619,7 +590,7 @@ def gen_merge_node(
 
     # we do not actually APPLY these conditions anywhere
     # though we could look at doing that as an optimization
-    # it's important to include them so the base discovery loop that was generating 
+    # it's important to include them so the base discovery loop that was generating
     # the merge node can then add them automatically
     # so we should not return a node with preexisting conditions
     if search_conditions:

@@ -112,9 +112,6 @@ class BuildConceptArgs(ABC):
         return self.concept_arguments
 
 
-from trilogy.constants import logger
-
-
 def concept_is_relevant(
     concept: BuildConcept,
     others: list[BuildConcept],

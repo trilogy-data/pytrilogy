@@ -114,7 +114,6 @@ def test_adhoc_one(engine: Executor):
     engine.execute_raw_sql(query)
 
 
-
 # def test_adhoc_shape_two(engine: Executor):
 #     engine.environment = Environment(working_path=working_path)
 #     from trilogy.core.processing.node_generators import gen_group_node
@@ -132,8 +131,6 @@ def test_adhoc_one(engine: Executor):
 #         history = History(),
 #         conditions=[]
 #     )
-
-
 
 
 def test_one(engine):
@@ -227,15 +224,15 @@ def test_twenty_six(engine):
 
 
 def test_thirty(engine):
-    _ = run_query(engine, 30)
+    query = run_query(engine, 30)
     # size gating
-    # assert len(query) < 6000, query
+    assert len(query) < 12000, query
 
 
 def test_thirty_two(engine):
-    _ = run_query(engine, 32)
+    query = run_query(engine, 32)
     # size gating
-    # assert len(query) < 6000, query
+    assert len(query) < 12640, query
 
 
 def test_ninety_five(engine):

@@ -382,8 +382,6 @@ class CTE(BaseModel):
                 and c.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
             ):
                 return True
-            if c.purpose == Purpose.METRIC:
-                return True
 
             if c.derivation == Derivation.BASIC and c.lineage:
                 if all([check_is_not_in_group(x) for x in c.lineage.concept_arguments]):
@@ -393,6 +391,10 @@ class CTE(BaseModel):
                     and c.lineage.operator == FunctionType.GROUP
                 ):
                     return check_is_not_in_group(c.lineage.concept_arguments[0])
+                return False
+            if c.purpose == Purpose.METRIC:
+                return True
+
             return False
 
         return (
@@ -778,7 +780,7 @@ class QueryDatasource(BaseModel):
         filters = abs(hash(str(self.condition))) if self.condition else ""
         grain = "_".join([str(c).replace(".", "_") for c in self.grain.components])
         group = ""
-        if self.source_type == SourceType.GROUP:
+        if self.group_required:
             keys = [
                 x.address for x in self.output_concepts if x.purpose != Purpose.METRIC
             ]

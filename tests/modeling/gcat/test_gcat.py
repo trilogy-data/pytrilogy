@@ -500,8 +500,8 @@ LIMIT 1
 
 
 def test_should_group():
-    from trilogy.hooks import DebuggingHook
     from trilogy.core.models.build import BuildGrain
+    from trilogy.hooks import DebuggingHook
 
     DebuggingHook()
 
@@ -530,7 +530,7 @@ order by launch_count desc limit 15;
     )
     pregrain = BuildGrain.from_concepts(validation_components, environment=build_env)
     assert "vehicle.stage.engine.name" not in pregrain.components, pregrain
-    sql = base.generate_sql(queries[-1])
+    base.generate_sql(queries[-1])
     results = base.execute_query(queries[-1])
     for row in results.fetchall():
         assert row["launches"] == row["launch_count"], row

@@ -1,5 +1,5 @@
 query_id = 1
-gen_length = 3971
+gen_length = 3974
 generated_sql = """
 
 WITH 
@@ -80,7 +80,12 @@ SELECT
     \"yummy\".\"avg_store_returns\" as \"avg_store_returns\"
 FROM
     \"uneven\"
-    INNER JOIN \"yummy\" on \"uneven\".\"returns_store_id\" = \"yummy\".\"returns_store_id\")
+    INNER JOIN \"yummy\" on \"uneven\".\"returns_store_id\" = \"yummy\".\"returns_store_id\"
+GROUP BY 
+    \"uneven\".\"returns_customer_text_id\",
+    \"uneven\".\"returns_store_id\",
+    \"uneven\".\"total_returns\",
+    \"yummy\".\"avg_store_returns\")
 SELECT
     \"juicy\".\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
@@ -88,11 +93,6 @@ FROM
 WHERE
     \"juicy\".\"total_returns\" > ( 1.2 * \"juicy\".\"avg_store_returns\" )
 
-GROUP BY 
-    \"juicy\".\"avg_store_returns\",
-    \"juicy\".\"returns_customer_text_id\",
-    \"juicy\".\"returns_store_id\",
-    \"juicy\".\"total_returns\"
 ORDER BY 
     \"juicy\".\"returns_customer_text_id\" asc
 LIMIT (100)"""

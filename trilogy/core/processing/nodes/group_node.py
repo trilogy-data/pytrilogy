@@ -121,7 +121,10 @@ class GroupNode(StrategyNode):
         if all(
             [
                 x.keys
-                and all(environment.concepts[z].address in comp_grain.components for z in x.keys)
+                and all(
+                    environment.concepts[z].address in comp_grain.components
+                    for z in x.keys
+                )
                 for x in difference
             ]
         ):

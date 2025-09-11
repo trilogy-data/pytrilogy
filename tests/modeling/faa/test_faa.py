@@ -24,14 +24,9 @@ select
     )[-1]
     # if we don't have this group by, we will get the wrong result
     assert (
-        '''SELECT
-    "cheerful"."carrier_code" as "carrier_code",
-    "cheerful"."carrier_name" as "carrier_name"
-FROM
-    "cheerful"
-GROUP BY 
-    "cheerful"."carrier_code",
-    "cheerful"."carrier_name"'''
+        '''GROUP BY 
+    "carrier_carrier"."code",
+    "carrier_carrier"."name"'''
         in sql
     )
 

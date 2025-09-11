@@ -2,11 +2,11 @@ from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.models.build import BuildGrain
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import (
-    GroupNode,
     History,
     search_concepts,
 )
 from trilogy.core.processing.node_generators import gen_group_node
+from trilogy.core.processing.nodes import GroupNode
 
 
 def test_group_node(test_environment, test_environment_graph):

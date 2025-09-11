@@ -19,13 +19,13 @@ from trilogy.core.processing.discovery_utility import (
     LOGGER_PREFIX,
     depth_to_prefix,
     get_priority_concept,
+    group_if_required,
 )
 from trilogy.core.processing.discovery_validation import (
     ValidationResult,
     validate_stack,
 )
 from trilogy.core.processing.nodes import (
-    GroupNode,
     History,
     MergeNode,
     StrategyNode,
@@ -419,37 +419,9 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
         logger.info(
             f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Conditions {context.conditions} were injected, checking if we need a group to restore grain"
         )
-        result = GroupNode.check_if_required(
-            downstream_concepts=output.usable_outputs,
-            parents=[output.resolve()],
-            environment=context.environment,
-            depth=context.depth,
+        return group_if_required(
+            output, context.original_mandatory, context.environment
         )
-        if result.required:
-            # we're covered, don't inject additional merge node
-            if isinstance(output, MergeNode) and output.force_group is True:
-                return output
-            elif isinstance(output, MergeNode):
-                output.force_group = True
-                output.rebuild_cache()
-                logger.info(
-                    f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Output is merge node, forcing to group"
-                )
-                return output
-            elif isinstance(output, GroupNode):
-                return output
-            logger.info(
-                f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Adding group node with outputs {[x.address for x in context.original_mandatory]}"
-            )
-            return GroupNode(
-                output_concepts=context.original_mandatory,
-                input_concepts=output.usable_outputs,
-                environment=context.environment,
-                parents=[output],
-                partial_concepts=output.partial_concepts,
-                preexisting_conditions=context.conditions.conditional,
-                depth=context.depth,
-            )
     return output
 
 
@@ -615,18 +587,4 @@ def source_query_concepts(
     logger.info(
         f"{depth_to_prefix(0)}{LOGGER_PREFIX} final concepts are {[x.address for x in final]}"
     )
-    if GroupNode.check_if_required(
-        downstream_concepts=final,
-        parents=[root.resolve()],
-        environment=environment,
-    ).required:
-        candidate: StrategyNode = GroupNode(
-            output_concepts=final,
-            input_concepts=final,
-            environment=environment,
-            parents=[root],
-            partial_concepts=root.partial_concepts,
-        )
-    else:
-        candidate = root
-    return candidate
+    return group_if_required(root, output_concepts, environment)
