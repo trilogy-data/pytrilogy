@@ -213,14 +213,7 @@ def initialize_loop_context(
             )
             and x.address in conditions.row_arguments
         ]
-        if not mandatory_list:
-            mandatory_list = completion_mandatory
-            logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} No mandatory concepts, but have conditions, forcing evaluation of all condition inputs {conditions.row_arguments}"
-            )
-            all_mandatory = set(c.address for c in completion_mandatory)
-            must_evaluate_condition_on_this_level_not_push_down = True
-        elif any(required_filters):
+        if any(required_filters):
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} derived condition row inputs {[x.address for x in required_filters]} present in mandatory list, forcing condition evaluation at this level. "
             )
@@ -464,8 +457,7 @@ def _search_concepts(
         accept_partial=accept_partial,
         conditions=conditions,
     )
-    if not context.incomplete:
-        raise SyntaxError(f"context must be incomplete to start, is {context}")
+
     while context.incomplete:
 
         priority_concept = get_priority_concept(
