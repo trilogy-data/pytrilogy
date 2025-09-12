@@ -1802,6 +1802,48 @@ select 'abc' as x, 1 as y union all select null as x, null as y''';
     ), rewritten.strip()
 
 
+def test_validate_fix_types():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    from trilogy.core.validation.fix import validate_and_rewrite
+
+    test = """
+import std.geography;
+key x int; # guessing at type
+key y int::latitude;
+key z numeric::longitude;
+
+# a fun comment
+datasource example (
+    x: x,
+    y: y,
+    z: z
+    )
+grain (x)
+query '''
+select 'abc' as x, 1.0 as y, 2.0 as z union all select null as x, null as y, null as z''';
+"""
+    rewritten = validate_and_rewrite(test, default_duckdb_engine)
+
+    assert (
+        rewritten.strip()
+        == """import std.geography;
+
+key x string; # guessing at type
+key y numeric::latitude;
+key z numeric::longitude;
+
+datasource example (
+    x: ?x,
+    y: ?y,
+    z: ?z
+    )
+grain (x)
+query '''
+select 'abc' as x, 1.0 as y, 2.0 as z union all select null as x, null as y, null as z''';
+""".strip()
+    ), rewritten.strip()
+
+
 def test_show_validate():
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
     test = """
