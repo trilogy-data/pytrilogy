@@ -1,5 +1,5 @@
 query_id = 10
-gen_length = 6226
+gen_length = 6012
 generated_sql = """
 
 WITH 
@@ -44,15 +44,10 @@ FROM
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"vacuous\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
 WHERE
     cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 2002 and \"store_sales_date_date\".\"D_MOY\" in (1,2,3,4) and \"customer_customer_address\".\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( cast(\"web_sales_date_date\".\"D_YEAR\" as int) = 2002 and \"web_sales_date_date\".\"D_MOY\" in (1,2,3,4) ) or ( cast(\"catalog_sales_date_date\".\"D_YEAR\" as int) = 2002 and \"catalog_sales_date_date\".\"D_MOY\" in (1,2,3,4) ) )
-),
-young as (
-SELECT
-    \"concerned\".\"relevant_customers\" as \"relevant_customers\"
-FROM
-    \"concerned\"
+
 GROUP BY 
-    \"concerned\".\"relevant_customers\"),
-sparkling as (
+    \"customer_customers\".\"C_CUSTOMER_SK\"),
+young as (
 SELECT
     \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_id\",
     \"customer_demographics_customer_demographics\".\"CD_CREDIT_RATING\" as \"customer_demographics_credit_rating\",
@@ -67,40 +62,40 @@ FROM
     \"memory\".\"customer_demographics\" as \"customer_demographics_customer_demographics\"
     INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_demographics_customer_demographics\".\"CD_DEMO_SK\" = \"customer_customers\".\"C_CURRENT_CDEMO_SK\"
 WHERE
-    \"customer_customers\".\"C_CUSTOMER_SK\" in (select young.\"relevant_customers\" from young where young.\"relevant_customers\" is not null) and \"customer_demographics_customer_demographics\".\"CD_GENDER\" is not null
+    \"customer_customers\".\"C_CUSTOMER_SK\" in (select concerned.\"relevant_customers\" from concerned where concerned.\"relevant_customers\" is not null) and \"customer_demographics_customer_demographics\".\"CD_GENDER\" is not null
 )
 SELECT
-    \"sparkling\".\"customer_demographics_gender\" as \"customer_demographics_gender\",
-    \"sparkling\".\"customer_demographics_marital_status\" as \"customer_demographics_marital_status\",
-    \"sparkling\".\"customer_demographics_education_status\" as \"customer_demographics_education_status\",
-    count(\"sparkling\".\"customer_id\") as \"cnt1\",
-    \"sparkling\".\"customer_demographics_purchase_estimate\" as \"customer_demographics_purchase_estimate\",
-    count(\"sparkling\".\"customer_id\") as \"cnt2\",
-    \"sparkling\".\"customer_demographics_credit_rating\" as \"customer_demographics_credit_rating\",
-    count(\"sparkling\".\"customer_id\") as \"cnt3\",
-    \"sparkling\".\"customer_demographics_dependent_count\" as \"customer_demographics_dependent_count\",
-    count(\"sparkling\".\"customer_id\") as \"cnt4\",
-    \"sparkling\".\"customer_demographics_employed_dependent_count\" as \"customer_demographics_employed_dependent_count\",
-    count(\"sparkling\".\"customer_id\") as \"cnt5\",
-    \"sparkling\".\"customer_demographics_college_dependent_count\" as \"customer_demographics_college_dependent_count\",
-    count(\"sparkling\".\"customer_id\") as \"cnt6\"
+    \"young\".\"customer_demographics_gender\" as \"customer_demographics_gender\",
+    \"young\".\"customer_demographics_marital_status\" as \"customer_demographics_marital_status\",
+    \"young\".\"customer_demographics_education_status\" as \"customer_demographics_education_status\",
+    count(\"young\".\"customer_id\") as \"cnt1\",
+    \"young\".\"customer_demographics_purchase_estimate\" as \"customer_demographics_purchase_estimate\",
+    count(\"young\".\"customer_id\") as \"cnt2\",
+    \"young\".\"customer_demographics_credit_rating\" as \"customer_demographics_credit_rating\",
+    count(\"young\".\"customer_id\") as \"cnt3\",
+    \"young\".\"customer_demographics_dependent_count\" as \"customer_demographics_dependent_count\",
+    count(\"young\".\"customer_id\") as \"cnt4\",
+    \"young\".\"customer_demographics_employed_dependent_count\" as \"customer_demographics_employed_dependent_count\",
+    count(\"young\".\"customer_id\") as \"cnt5\",
+    \"young\".\"customer_demographics_college_dependent_count\" as \"customer_demographics_college_dependent_count\",
+    count(\"young\".\"customer_id\") as \"cnt6\"
 FROM
-    \"sparkling\"
+    \"young\"
 GROUP BY 
-    \"sparkling\".\"customer_demographics_college_dependent_count\",
-    \"sparkling\".\"customer_demographics_credit_rating\",
-    \"sparkling\".\"customer_demographics_dependent_count\",
-    \"sparkling\".\"customer_demographics_education_status\",
-    \"sparkling\".\"customer_demographics_employed_dependent_count\",
-    \"sparkling\".\"customer_demographics_gender\",
-    \"sparkling\".\"customer_demographics_marital_status\",
-    \"sparkling\".\"customer_demographics_purchase_estimate\"
+    \"young\".\"customer_demographics_college_dependent_count\",
+    \"young\".\"customer_demographics_credit_rating\",
+    \"young\".\"customer_demographics_dependent_count\",
+    \"young\".\"customer_demographics_education_status\",
+    \"young\".\"customer_demographics_employed_dependent_count\",
+    \"young\".\"customer_demographics_gender\",
+    \"young\".\"customer_demographics_marital_status\",
+    \"young\".\"customer_demographics_purchase_estimate\"
 ORDER BY 
-    \"sparkling\".\"customer_demographics_gender\" asc,
-    \"sparkling\".\"customer_demographics_marital_status\" asc,
-    \"sparkling\".\"customer_demographics_education_status\" asc,
-    \"sparkling\".\"customer_demographics_purchase_estimate\" asc,
-    \"sparkling\".\"customer_demographics_credit_rating\" asc,
-    \"sparkling\".\"customer_demographics_dependent_count\" asc,
-    \"sparkling\".\"customer_demographics_employed_dependent_count\" asc,
-    \"sparkling\".\"customer_demographics_college_dependent_count\" asc"""
+    \"young\".\"customer_demographics_gender\" asc,
+    \"young\".\"customer_demographics_marital_status\" asc,
+    \"young\".\"customer_demographics_education_status\" asc,
+    \"young\".\"customer_demographics_purchase_estimate\" asc,
+    \"young\".\"customer_demographics_credit_rating\" asc,
+    \"young\".\"customer_demographics_dependent_count\" asc,
+    \"young\".\"customer_demographics_employed_dependent_count\" asc,
+    \"young\".\"customer_demographics_college_dependent_count\" asc"""

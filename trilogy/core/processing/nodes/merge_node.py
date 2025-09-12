@@ -308,7 +308,13 @@ class MergeNode(StrategyNode):
                     f"{self.logging_prefix}{LOGGER_PREFIX} skipping existence only source with {source.output_concepts} from grain accumulation"
                 )
                 continue
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} adding source grain {source.grain} from source {source.identifier} to pregrain"
+            )
             pregrain += source.grain
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} pregrain is now {pregrain}"
+            )
 
         pregrain = BuildGrain.from_concepts(
             pregrain.components, environment=self.environment
@@ -334,7 +340,9 @@ class MergeNode(StrategyNode):
             if isinstance(join, BaseJoin) and join.join_type == JoinType.FULL:
                 full_join_concepts += join.input_concepts
 
-        if self.whole_grain:
+        if self.force_group is True:
+            force_group = True
+        elif self.whole_grain:
             force_group = False
         elif self.force_group is False:
             force_group = False

@@ -588,7 +588,7 @@ def test_random_query(base_test_env, engine: Executor):
     query = """auto survivor <- filter passenger.id 
 where passenger.survived= 1;
 
-property passenger.id.decade<- cast(passenger.age / 10 as int) * 10;
+key passenger.decade<- cast(passenger.age / 10 as int) * 10;
 select 
     passenger.decade, 
     count(passenger.id) -> bucket_size,

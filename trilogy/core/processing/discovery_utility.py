@@ -6,6 +6,8 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildRowsetItem,
 )
+from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.nodes import GroupNode, MergeNode, StrategyNode
 
 
 def depth_to_prefix(depth: int) -> str:
@@ -13,6 +15,34 @@ def depth_to_prefix(depth: int) -> str:
 
 
 LOGGER_PREFIX = "[DISCOVERY LOOP]"
+
+
+def group_if_required(
+    root: StrategyNode, final: List[BuildConcept], environment: BuildEnvironment
+):
+    if isinstance(root, MergeNode) and root.force_group is True:
+        return root
+    elif isinstance(root, GroupNode):
+        return root
+    elif GroupNode.check_if_required(
+        downstream_concepts=final,
+        parents=[root.resolve()],
+        environment=environment,
+    ).required:
+        if isinstance(root, MergeNode):
+            root.force_group = True
+            root.set_output_concepts(final, rebuild=False)
+            root.rebuild_cache()
+            return root
+        return GroupNode(
+            output_concepts=final,
+            input_concepts=final,
+            environment=environment,
+            parents=[root],
+            partial_concepts=root.partial_concepts,
+            preexisting_conditions=root.preexisting_conditions,
+        )
+    return root
 
 
 def get_upstream_concepts(base: BuildConcept, nested: bool = False) -> set[str]:

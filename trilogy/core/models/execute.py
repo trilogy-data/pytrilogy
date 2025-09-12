@@ -118,19 +118,20 @@ class CTE(BaseModel):
         base += f" Source: {self.source.source_type}."
         if self.parent_ctes:
             base += f" References: {', '.join([x.name for x in self.parent_ctes])}."
-        if self.joins:
+        if self.joins and CONFIG.comments.joins:
             base += f"\n-- Joins: {', '.join([str(x) for x in self.joins])}."
-        if self.partial_concepts:
+        if self.partial_concepts and CONFIG.comments.partial:
             base += (
                 f"\n-- Partials: {', '.join([str(x) for x in self.partial_concepts])}."
             )
-        base += f"\n-- Source Map: {self.source_map}."
+        if CONFIG.comments.source_map:
+            base += f"\n-- Source Map: {self.source_map}."
         base += f"\n-- Output: {', '.join([str(x) for x in self.output_columns])}."
         if self.source.input_concepts:
             base += f"\n-- Inputs: {', '.join([str(x) for x in self.source.input_concepts])}."
         if self.hidden_concepts:
             base += f"\n-- Hidden: {', '.join([str(x) for x in self.hidden_concepts])}."
-        if self.nullable_concepts:
+        if self.nullable_concepts and CONFIG.comments.nullable:
             base += (
                 f"\n-- Nullable: {', '.join([str(x) for x in self.nullable_concepts])}."
             )
@@ -368,6 +369,7 @@ class CTE(BaseModel):
     @property
     def group_concepts(self) -> List[BuildConcept]:
         def check_is_not_in_group(c: BuildConcept):
+
             if len(self.source_map.get(c.address, [])) > 0:
                 return False
             if c.derivation == Derivation.ROWSET:
@@ -381,8 +383,6 @@ class CTE(BaseModel):
                 and c.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
             ):
                 return True
-            if c.purpose == Purpose.METRIC:
-                return True
 
             if c.derivation == Derivation.BASIC and c.lineage:
                 if all([check_is_not_in_group(x) for x in c.lineage.concept_arguments]):
@@ -392,6 +392,10 @@ class CTE(BaseModel):
                     and c.lineage.operator == FunctionType.GROUP
                 ):
                     return check_is_not_in_group(c.lineage.concept_arguments[0])
+                return False
+            if c.purpose == Purpose.METRIC:
+                return True
+
             return False
 
         return (
@@ -707,6 +711,8 @@ class QueryDatasource(BaseModel):
             f" {[c.address for c in self.output_concepts]} concepts and"
             f" {other.name} with {[c.address for c in other.output_concepts]} concepts"
         )
+        logger.info(self.source_map)
+        logger.info(other.source_map)
 
         merged_datasources: dict[str, Union[BuildDatasource, "QueryDatasource"]] = {}
 
@@ -770,6 +776,7 @@ class QueryDatasource(BaseModel):
         logger.debug(
             f"[Query Datasource] merged with {[c.address for c in qds.output_concepts]} concepts"
         )
+        logger.debug(qds.source_map)
         return qds
 
     @property
@@ -777,7 +784,7 @@ class QueryDatasource(BaseModel):
         filters = abs(hash(str(self.condition))) if self.condition else ""
         grain = "_".join([str(c).replace(".", "_") for c in self.grain.components])
         group = ""
-        if self.source_type == SourceType.GROUP:
+        if self.group_required:
             keys = [
                 x.address for x in self.output_concepts if x.purpose != Purpose.METRIC
             ]

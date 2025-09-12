@@ -40,6 +40,7 @@ class Comments:
     joins: bool = True
     nullable: bool = True
     partial: bool = True
+    source_map: bool = False
 
 
 @dataclass

@@ -85,14 +85,11 @@ Versus SQL, Trilogy aims to:
 **Improve:**
 - Simplicity
 - Refactoring/maintainability
-- Reusability
+- Reusability/composability
+- Expressivness
 
 **Maintain:**
 - Acceptable performance
-
-**Remove:**
-- Lower-level procedural features
-- Transactional optimizations/non-analytics features
 
 ## Backend Support
 
@@ -123,6 +120,7 @@ property sentence_id.word_three string::word; # a description to it
 # comments in other places are just comments
 
 # define our datasource to bind the model to data
+# for most work, you can import something already defined
 # testing using query fixtures is a common pattern
 datasource word_one(
     sentence: sentence_id,
@@ -285,7 +283,7 @@ from pytrilogy import Executor, Dialect
 
 ### Authoring Imports
 
-Are also stable, and should be used for cases which programatically generate Trilogy statements without a base text format 
+Are also stable, and should be used for cases which programatically generate Trilogy statements without text inputs
 or need to process/transform parsed code in more complicated ways.
 
 ```python
@@ -353,6 +351,16 @@ datasource <name>(
 )
 grain(<concept>, <concept>)
 address <table>;
+
+datasource orders(
+    order_id,
+    order_date,
+    total_rev: point_of_sale_rev,
+    customomer_id: customer.id
+)
+grain orders
+address orders;
+
 ```
 
 ### Queries

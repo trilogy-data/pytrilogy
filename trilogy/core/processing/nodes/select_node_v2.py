@@ -221,6 +221,7 @@ class SelectNode(StrategyNode):
 
 
 class ConstantNode(SelectNode):
+    source_type = SourceType.CONSTANT
     """Represents a constant value."""
 
     def copy(self) -> "ConstantNode":

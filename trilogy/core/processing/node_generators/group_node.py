@@ -108,13 +108,14 @@ def gen_group_node(
                         f"{padding(depth)}{LOGGER_PREFIX} cannot include optional agg {possible_agg.address}; it has mismatched parent grain {comp_grain } vs local parent {build_grain_parents}"
                     )
     if parent_concepts:
+        target_grain = BuildGrain.from_concepts(parent_concepts)
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} fetching group node parents {LooseBuildConceptList(concepts=parent_concepts)}"
+            f"{padding(depth)}{LOGGER_PREFIX} fetching group node parents {LooseBuildConceptList(concepts=parent_concepts)} with expected grain {target_grain}"
         )
         parent_concepts = unique(
             [x for x in parent_concepts if not x.name == ALL_ROWS_CONCEPT], "address"
         )
-        parent = source_concepts(
+        parent: StrategyNode | None = source_concepts(
             mandatory_list=parent_concepts,
             environment=environment,
             g=g,

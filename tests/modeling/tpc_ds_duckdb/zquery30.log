@@ -1,5 +1,5 @@
 query_id = 30
-gen_length = 11137
+gen_length = 10593
 generated_sql = """
 
 WITH 
@@ -51,7 +51,23 @@ FROM
     INNER JOIN \"memory\".\"customer_address\" as \"web_returns_customer_customer_address\" on \"web_returns_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"web_returns_customer_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
     \"web_returns_customer_customer_address\".\"CA_STATE\" = 'GA' and \"web_returns_return_address_customer_address\".\"CA_STATE\" is not null
-),
+
+GROUP BY 
+    \"web_returns_customer_customer_address\".\"CA_STATE\",
+    \"web_returns_customer_customers\".\"C_BIRTH_COUNTRY\",
+    \"web_returns_customer_customers\".\"C_BIRTH_DAY\",
+    \"web_returns_customer_customers\".\"C_BIRTH_MONTH\",
+    \"web_returns_customer_customers\".\"C_BIRTH_YEAR\",
+    \"web_returns_customer_customers\".\"C_CUSTOMER_ID\",
+    \"web_returns_customer_customers\".\"C_CUSTOMER_SK\",
+    \"web_returns_customer_customers\".\"C_EMAIL_ADDRESS\",
+    \"web_returns_customer_customers\".\"C_FIRST_NAME\",
+    \"web_returns_customer_customers\".\"C_LAST_NAME\",
+    \"web_returns_customer_customers\".\"C_LAST_REVIEW_DATE_SK\",
+    \"web_returns_customer_customers\".\"C_LOGIN\",
+    \"web_returns_customer_customers\".\"C_PREFERRED_CUST_FLAG\",
+    \"web_returns_customer_customers\".\"C_SALUTATION\",
+    \"web_returns_return_address_customer_address\".\"CA_STATE\"),
 uneven as (
 SELECT
     \"abundant\".\"web_returns_customer_id\" as \"web_returns_customer_id\",
@@ -98,76 +114,58 @@ SELECT
     \"cooperative\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
     \"yummy\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
 FROM
-    \"yummy\"
-    INNER JOIN \"cooperative\" on \"yummy\".\"web_returns_customer_id\" = \"cooperative\".\"web_returns_customer_id\" AND (\"yummy\".\"web_returns_return_address_state\" = \"cooperative\".\"web_returns_return_address_state\" or (\"yummy\".\"web_returns_return_address_state\" is null and \"cooperative\".\"web_returns_return_address_state\" is null))
+    \"cooperative\"
+    INNER JOIN \"yummy\" on \"cooperative\".\"web_returns_customer_id\" = \"yummy\".\"web_returns_customer_id\" AND (\"cooperative\".\"web_returns_return_address_state\" = \"yummy\".\"web_returns_return_address_state\" or (\"cooperative\".\"web_returns_return_address_state\" is null and \"yummy\".\"web_returns_return_address_state\" is null))
 WHERE
     \"cooperative\".\"web_returns_customer_state\" = 'GA' and \"cooperative\".\"web_returns_return_address_state\" is not null
-),
-concerned as (
+)
 SELECT
-    \"juicy\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\",
-    \"juicy\".\"web_returns_customer_birth_country\" as \"web_returns_customer_birth_country\",
+    \"juicy\".\"web_returns_customer_text_id\" as \"web_returns_customer_text_id\",
+    \"juicy\".\"web_returns_customer_salutation\" as \"web_returns_customer_salutation\",
+    \"juicy\".\"web_returns_customer_first_name\" as \"web_returns_customer_first_name\",
+    \"juicy\".\"web_returns_customer_last_name\" as \"web_returns_customer_last_name\",
+    \"juicy\".\"web_returns_customer_preferred_cust_flag\" as \"web_returns_customer_preferred_cust_flag\",
     \"juicy\".\"web_returns_customer_birth_day\" as \"web_returns_customer_birth_day\",
     \"juicy\".\"web_returns_customer_birth_month\" as \"web_returns_customer_birth_month\",
     \"juicy\".\"web_returns_customer_birth_year\" as \"web_returns_customer_birth_year\",
-    \"juicy\".\"web_returns_customer_email_address\" as \"web_returns_customer_email_address\",
-    \"juicy\".\"web_returns_customer_first_name\" as \"web_returns_customer_first_name\",
-    \"juicy\".\"web_returns_customer_id\" as \"web_returns_customer_id\",
-    \"juicy\".\"web_returns_customer_last_name\" as \"web_returns_customer_last_name\",
-    \"juicy\".\"web_returns_customer_last_review_date\" as \"web_returns_customer_last_review_date\",
+    \"juicy\".\"web_returns_customer_birth_country\" as \"web_returns_customer_birth_country\",
     \"juicy\".\"web_returns_customer_login\" as \"web_returns_customer_login\",
-    \"juicy\".\"web_returns_customer_preferred_cust_flag\" as \"web_returns_customer_preferred_cust_flag\",
-    \"juicy\".\"web_returns_customer_salutation\" as \"web_returns_customer_salutation\",
-    \"juicy\".\"web_returns_customer_text_id\" as \"web_returns_customer_text_id\"
+    \"juicy\".\"web_returns_customer_email_address\" as \"web_returns_customer_email_address\",
+    \"juicy\".\"web_returns_customer_last_review_date\" as \"web_returns_customer_last_review_date\",
+    \"juicy\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
 FROM
     \"juicy\"
     INNER JOIN \"vacuous\" on (\"juicy\".\"web_returns_return_address_state\" = \"vacuous\".\"web_returns_return_address_state\" or (\"juicy\".\"web_returns_return_address_state\" is null and \"vacuous\".\"web_returns_return_address_state\" is null))
 WHERE
     \"juicy\".\"customer_state_returns_2002\" > 1.2 * \"vacuous\".\"_virt_agg_avg_3885168128306444\" and \"juicy\".\"web_returns_customer_state\" = 'GA' and \"juicy\".\"web_returns_return_address_state\" is not null
-)
-SELECT
-    \"concerned\".\"web_returns_customer_text_id\" as \"web_returns_customer_text_id\",
-    \"concerned\".\"web_returns_customer_salutation\" as \"web_returns_customer_salutation\",
-    \"concerned\".\"web_returns_customer_first_name\" as \"web_returns_customer_first_name\",
-    \"concerned\".\"web_returns_customer_last_name\" as \"web_returns_customer_last_name\",
-    \"concerned\".\"web_returns_customer_preferred_cust_flag\" as \"web_returns_customer_preferred_cust_flag\",
-    \"concerned\".\"web_returns_customer_birth_day\" as \"web_returns_customer_birth_day\",
-    \"concerned\".\"web_returns_customer_birth_month\" as \"web_returns_customer_birth_month\",
-    \"concerned\".\"web_returns_customer_birth_year\" as \"web_returns_customer_birth_year\",
-    \"concerned\".\"web_returns_customer_birth_country\" as \"web_returns_customer_birth_country\",
-    \"concerned\".\"web_returns_customer_login\" as \"web_returns_customer_login\",
-    \"concerned\".\"web_returns_customer_email_address\" as \"web_returns_customer_email_address\",
-    \"concerned\".\"web_returns_customer_last_review_date\" as \"web_returns_customer_last_review_date\",
-    \"concerned\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
-FROM
-    \"concerned\"
+
 GROUP BY 
-    \"concerned\".\"customer_state_returns_2002\",
-    \"concerned\".\"web_returns_customer_birth_country\",
-    \"concerned\".\"web_returns_customer_birth_day\",
-    \"concerned\".\"web_returns_customer_birth_month\",
-    \"concerned\".\"web_returns_customer_birth_year\",
-    \"concerned\".\"web_returns_customer_email_address\",
-    \"concerned\".\"web_returns_customer_first_name\",
-    \"concerned\".\"web_returns_customer_id\",
-    \"concerned\".\"web_returns_customer_last_name\",
-    \"concerned\".\"web_returns_customer_last_review_date\",
-    \"concerned\".\"web_returns_customer_login\",
-    \"concerned\".\"web_returns_customer_preferred_cust_flag\",
-    \"concerned\".\"web_returns_customer_salutation\",
-    \"concerned\".\"web_returns_customer_text_id\"
+    \"juicy\".\"customer_state_returns_2002\",
+    \"juicy\".\"web_returns_customer_birth_country\",
+    \"juicy\".\"web_returns_customer_birth_day\",
+    \"juicy\".\"web_returns_customer_birth_month\",
+    \"juicy\".\"web_returns_customer_birth_year\",
+    \"juicy\".\"web_returns_customer_email_address\",
+    \"juicy\".\"web_returns_customer_first_name\",
+    \"juicy\".\"web_returns_customer_id\",
+    \"juicy\".\"web_returns_customer_last_name\",
+    \"juicy\".\"web_returns_customer_last_review_date\",
+    \"juicy\".\"web_returns_customer_login\",
+    \"juicy\".\"web_returns_customer_preferred_cust_flag\",
+    \"juicy\".\"web_returns_customer_salutation\",
+    \"juicy\".\"web_returns_customer_text_id\"
 ORDER BY 
-    \"concerned\".\"web_returns_customer_text_id\" asc nulls first,
-    \"concerned\".\"web_returns_customer_salutation\" asc nulls first,
-    \"concerned\".\"web_returns_customer_first_name\" asc nulls first,
-    \"concerned\".\"web_returns_customer_last_name\" asc nulls first,
-    \"concerned\".\"web_returns_customer_preferred_cust_flag\" asc nulls first,
-    \"concerned\".\"web_returns_customer_birth_day\" asc nulls first,
-    \"concerned\".\"web_returns_customer_birth_month\" asc nulls first,
-    \"concerned\".\"web_returns_customer_birth_year\" asc nulls first,
-    \"concerned\".\"web_returns_customer_birth_country\" asc nulls first,
-    \"concerned\".\"web_returns_customer_login\" asc nulls first,
-    \"concerned\".\"web_returns_customer_email_address\" asc nulls first,
-    \"concerned\".\"web_returns_customer_last_review_date\" asc nulls first,
-    \"concerned\".\"customer_state_returns_2002\" asc nulls first
+    \"juicy\".\"web_returns_customer_text_id\" asc nulls first,
+    \"juicy\".\"web_returns_customer_salutation\" asc nulls first,
+    \"juicy\".\"web_returns_customer_first_name\" asc nulls first,
+    \"juicy\".\"web_returns_customer_last_name\" asc nulls first,
+    \"juicy\".\"web_returns_customer_preferred_cust_flag\" asc nulls first,
+    \"juicy\".\"web_returns_customer_birth_day\" asc nulls first,
+    \"juicy\".\"web_returns_customer_birth_month\" asc nulls first,
+    \"juicy\".\"web_returns_customer_birth_year\" asc nulls first,
+    \"juicy\".\"web_returns_customer_birth_country\" asc nulls first,
+    \"juicy\".\"web_returns_customer_login\" asc nulls first,
+    \"juicy\".\"web_returns_customer_email_address\" asc nulls first,
+    \"juicy\".\"web_returns_customer_last_review_date\" asc nulls first,
+    \"juicy\".\"customer_state_returns_2002\" asc nulls first
 LIMIT (100)"""

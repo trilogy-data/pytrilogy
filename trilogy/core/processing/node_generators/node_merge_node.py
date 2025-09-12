@@ -20,6 +20,9 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.discovery_utility import (
+    group_if_required,
+)
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import padding
 from trilogy.utility import unique
@@ -510,6 +513,7 @@ def subgraphs_to_merge_node(
     search_conditions: BuildWhereClause | None = None,
     enable_early_exit: bool = True,
 ):
+    target_grain = BuildGrain.from_concepts(output_concepts, environment=environment)
     parents: List[StrategyNode] = []
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} fetching subgraphs {[[c.address for c in subgraph] for subgraph in concept_subgraphs]}"
@@ -549,16 +553,20 @@ def subgraphs_to_merge_node(
                 output_c.append(y)
 
     if len(parents) == 1 and enable_early_exit:
+
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} only one parent node, exiting early w/ {[c.address for c in parents[0].output_concepts]}"
         )
-        return parents[0]
+        parent = parents[0]
+        return group_if_required(parent, output_concepts, environment)
+
     rval = MergeNode(
         input_concepts=unique(input_c, "address"),
-        output_concepts=output_c,
+        output_concepts=output_concepts,
         environment=environment,
         parents=parents,
         depth=depth,
+        grain=target_grain,
         # hidden_concepts=[]
         # conditions=conditions,
         # conditions=search_conditions.conditional,
@@ -579,6 +587,12 @@ def gen_merge_node(
     conditions: BuildConditional | None = None,
     search_conditions: BuildWhereClause | None = None,
 ) -> Optional[MergeNode]:
+
+    # we do not actually APPLY these conditions anywhere
+    # though we could look at doing that as an optimization
+    # it's important to include them so the base discovery loop that was generating
+    # the merge node can then add them automatically
+    # so we should not return a node with preexisting conditions
     if search_conditions:
         all_search_concepts = unique(
             all_concepts + list(search_conditions.row_arguments), "address"
