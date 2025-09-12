@@ -534,3 +534,29 @@ order by launch_count desc limit 15;
     results = base.execute_query(queries[-1])
     for row in results.fetchall():
         assert row["launches"] == row["launch_count"], row
+
+
+def test_flag():
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+    base.execute_raw_sql(
+        """CREATE OR REPLACE TABLE organizations as
+SELECT *
+from read_csv_auto('tests/modeling/gcat/orgs.cleaned.tsv',
+sample_size=-1);"""
+    )
+    queries = base.parse_text(
+        """import launch;
+
+        select org.flag;
+        """
+    )
+    base.generate_sql(queries[-1])
+    results = base.execute_query(queries[-1])
+    assert len(results.fetchall()) == 4

@@ -53,7 +53,7 @@ def test_group_node_property(test_environment: Environment, test_environment_gra
     }
     assert input_concept_names == {
         "category_name_length",
-        "category_name",
+        # "category_name",
         "category_id",
     }
     final = group_node.resolve()
@@ -85,7 +85,7 @@ def test_group_node_property_all(test_environment: Environment, test_environment
     }
     assert input_concept_names == {
         "category_name_length",
-        "category_name",
+        # "category_name",
         "category_id",
     }
     final = group_node.resolve()

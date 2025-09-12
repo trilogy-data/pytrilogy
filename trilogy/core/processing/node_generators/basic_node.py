@@ -120,8 +120,8 @@ def gen_basic_node(
             f"{depth_prefix}{LOGGER_PREFIX} No basic node could be generated for {concept}"
         )
         return None
-
-    parent_node.source_type = SourceType.BASIC
+    if parent_node.source_type != SourceType.CONSTANT:
+        parent_node.source_type = SourceType.BASIC
     parent_node.add_output_concept(concept)
     for x in equivalent_optional:
         parent_node.add_output_concept(x)
@@ -129,24 +129,18 @@ def gen_basic_node(
     logger.info(
         f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept}: output {[x.address for x in parent_node.output_concepts]}"
     )
+    # if it's a constant, don't prune outputs
+    if parent_node.source_type == SourceType.CONSTANT:
+        return parent_node
     targets = [concept] + local_optional + equivalent_optional
-    should_hide = [
-        x
-        for x in parent_node.output_concepts
-        if (
-            x.address not in targets
-            and not any(x.address in y.pseudonyms for y in targets)
-        )
-    ]
-    parent_node.hide_output_concepts(should_hide)
-    should_not_hide = [
-        x
-        for x in parent_node.output_concepts
-        if x.address in targets or any(x.address in y.pseudonyms for y in targets)
-    ]
-    parent_node.unhide_output_concepts(should_not_hide)
+    targets = [
+        s
+        for s in parent_node.output_concepts
+        if any(s.address in y.pseudonyms for y in targets)
+    ] + targets
+    parent_node.set_output_concepts(targets)
 
     logger.info(
-        f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept}: output {[x.address for x in parent_node.output_concepts]} hidden {[x for x in parent_node.hidden_concepts]}"
+        f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept}: input: {[x.address for x in parent_node.input_concepts]} output {[x.address for x in parent_node.output_concepts]} hidden {[x for x in parent_node.hidden_concepts]}"
     )
     return parent_node

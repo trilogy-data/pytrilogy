@@ -369,6 +369,7 @@ class CTE(BaseModel):
     @property
     def group_concepts(self) -> List[BuildConcept]:
         def check_is_not_in_group(c: BuildConcept):
+
             if len(self.source_map.get(c.address, [])) > 0:
                 return False
             if c.derivation == Derivation.ROWSET:
@@ -710,6 +711,8 @@ class QueryDatasource(BaseModel):
             f" {[c.address for c in self.output_concepts]} concepts and"
             f" {other.name} with {[c.address for c in other.output_concepts]} concepts"
         )
+        logger.info(self.source_map)
+        logger.info(other.source_map)
 
         merged_datasources: dict[str, Union[BuildDatasource, "QueryDatasource"]] = {}
 
@@ -773,6 +776,7 @@ class QueryDatasource(BaseModel):
         logger.debug(
             f"[Query Datasource] merged with {[c.address for c in qds.output_concepts]} concepts"
         )
+        logger.debug(qds.source_map)
         return qds
 
     @property
