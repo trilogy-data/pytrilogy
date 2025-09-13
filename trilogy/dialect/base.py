@@ -163,7 +163,7 @@ def render_case(args):
 
 
 def struct_arg(args):
-    return [f"{x[0]}: {x[1]}" for x in zip(args[::2], args[1::2])]
+    return [f"{x[1]}: {x[0]}" for x in zip(args[::2], args[1::2])]
 
 
 FUNCTION_MAP = {

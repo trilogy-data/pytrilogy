@@ -1,18 +1,19 @@
 #auto-generated datasource from table/view engines
+import std.metric;
 
 key name string;
 property <name>.manufacturer string;
 property <name>.family string;
 property <name>.alt_name string;
-property <name>.oxidizer string;
-property <name>.fuel string;
+key oxidizer string;
+key fuel string;
 property <name>.mass string;
 property <name>.mflag string;
 property <name>.impulse string;
 property <name>.impflag string;
-property <name>.thrust string;
+property <name>.thrust numeric::kn;
 property <name>.tflag string;
-property <name>.isp string;
+property <name>.isp float;
 property <name>.ispflag string;
 property <name>.duration string;
 property <name>.durflag string;

@@ -1758,7 +1758,7 @@ def test_validate_fix():
     from trilogy.core.validation.fix import validate_and_rewrite
 
     test = """key x int; # guessing at type
-
+# but who cares, right
 key y int;
 
 datasource dim_y (
@@ -1783,6 +1783,7 @@ select 'abc' as x, 1 as y union all select null as x, null as y''';
         rewritten.strip()
         == """
 key x string; # guessing at type
+# but who cares, right
 key y int;
 
 datasource dim_y (

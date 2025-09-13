@@ -75,7 +75,22 @@ end;
 
 auto launch_count <-count(launch_tag); # count of launches
 
-auto orbit_code <- split(category, ' ')[2];  #Three letter, captial. One of: DSO	Deep space orbit (Earth orbit with apogee beyond 150,000 km) EEO	Earth escape orbit GEO	Direct geosync insertion GTO	Geosync transfer orbit HEO	Highly elliptical orbit (except MTO, MOL, DSO) ISS	International Space Station LEO	Low Earth Orbit (other than SSO, LSS, ISS) LSS	LEO space station other than ISS MEO	Medium Earth Orbit MOL	Molniya orbit MTO	MEO transfer orbit (with payload performing MEO circularization) SSO	Sun-sync orbit STO	Supersync transfer orbit (apogee more than 45000 km) XO	Extraterrestrial launch (e.g. launch from lunar surface)
+key orbit_code <- split(category, ' ')[2];  # Orbit code definitions (3-letter codes, capitalized):
+# DSO - Deep Space Orbit: Earth orbit with apogee beyond 150,000 km
+# EEO - Earth Escape Orbit
+# GEO - Direct Geosynchronous insertion
+# GTO - Geosynchronous Transfer Orbit
+# HEO - Highly Elliptical Orbit (excludes MTO, MOL, DSO)
+# ISS - International Space Station
+# LEO - Low Earth Orbit (excludes SSO, LSS, ISS)
+# LSS - LEO Space Station (other than ISS)
+# MEO - Medium Earth Orbit
+# MOL - Molniya Orbit
+# MTO - MEO Transfer Orbit (payload performs MEO circularization)
+# SSO - Sun-Synchronous Orbit
+# STO - Supersynchronous Transfer Orbit (apogee > 45,000 km)
+# XO  - Extraterrestrial Launch (e.g., launch from lunar surface)
+
 
 datasource launch_info (
 	Launch_Tag:launch_tag,

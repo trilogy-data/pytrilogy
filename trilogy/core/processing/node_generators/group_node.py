@@ -28,6 +28,7 @@ def get_aggregate_grain(
     parent_concepts: List[BuildConcept] = unique(
         resolve_function_parent_concepts(concept, environment=environment), "address"
     )
+
     if (
         concept.grain
         and len(concept.grain.components) > 0

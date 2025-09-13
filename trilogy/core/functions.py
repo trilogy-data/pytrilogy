@@ -129,8 +129,8 @@ def validate_case_output(
 def create_struct_output(
     args: list[Any],
 ) -> StructType:
-    zipped = dict(zip(args[::2], args[1::2]))
-    types = [arg_to_datatype(x) for x in args[1::2]]
+    zipped = dict(zip(args[1::2], args[::2]))
+    types = [arg_to_datatype(x) for x in args[::2]]
     return StructType(fields=types, fields_map=zipped)
 
 

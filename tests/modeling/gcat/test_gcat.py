@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from trilogy import Dialects, Environment
+from trilogy import Dialects, Environment, Executor
 from trilogy.core.env_processor import concept_to_node, generate_graph
 from trilogy.core.models.core import DataType
 from trilogy.core.processing.node_generators.node_merge_node import (
@@ -196,7 +196,7 @@ auto date_function <- current_date();
         current_timestamp() as timestamp_function,
         current_date() as date_function,
         date_diff(min(launch_date), current_date(), year) as launch_days, 
-        struct( first_launch -> min(launch_date), last_launch -> max(launch_date)) as launch_date_range,
+        struct( first_launch <- min(launch_date), last_launch <- max(launch_date)) as launch_date_range,
         min(launch_date) as min_date;
         """
     )
@@ -560,3 +560,33 @@ sample_size=-1);"""
     base.generate_sql(queries[-1])
     results = base.execute_query(queries[-1])
     assert len(results.fetchall()) == 4
+
+
+def test_array_agg(gcat_env: Executor):
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+
+    queries = gcat_env.parse_text(
+        """import launch;
+
+
+SELECT
+    # launch_count,
+    # sum(orb_pay) as payload_to_orbit,
+    # round(avg(group(vehicle.stage.engine.isp) by flight_id),2) -> average_isp,
+    array_agg(
+       struct(
+        sum(orb_pay) by vehicle.stage.engine.fuel->payload,
+
+        vehicle.stage.engine.fuel -> fuel
+        )
+    ) as fuel_payloads
+;"""
+    )
+
+    # gcat_env.generate_sql(queries[-1])
+    # assert len(gcat_env.environment.concepts['fuel_readout'].lineage.concept_arguments) == 2, gcat_env.environment.concepts['fuel_readout'].lineage.concept_arguments
+    results = gcat_env.execute_query(queries[-1])
+    assert len(results.fetchall()) == 1
