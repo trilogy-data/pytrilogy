@@ -60,7 +60,7 @@ def type_check(
     if target_type == DataType.BOOL:
         return isinstance(input, bool)
     if target_type == DataType.DATE:
-        return isinstance(input, date)
+        return isinstance(input, date) and not isinstance(input, datetime)
     if target_type == DataType.DATETIME:
         return isinstance(input, datetime)
     if target_type == DataType.TIMESTAMP:
@@ -80,8 +80,7 @@ def type_check(
     if target_type == DataType.NULL:
         return input is None
     if target_type == DataType.UNKNOWN:
-        return True  # or False, depending on your requirements
-
+        return True
     return False
 
 
@@ -154,12 +153,6 @@ def validate_datasource(
                     traits = col.concept.datatype.traits
                 if traits and not isinstance(value_type, TraitDataType):
                     value_type = TraitDataType(type=value_type, traits=traits)
-                if (
-                    value_type == col.concept.datatype
-                    and rval is not None
-                    and col.concept.modifiers == []
-                ):
-                    raise SyntaxError("dafuq")
                 failures.append(
                     DatasourceColumnBindingData(
                         address=col.concept.address,
