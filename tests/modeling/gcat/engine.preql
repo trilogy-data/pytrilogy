@@ -1,47 +1,48 @@
 #auto-generated datasource from table/view engines
+import std.metric;
 
 key name string;
-property <name>.manufacturer string;
-property <name>.family string;
-property <name>.alt_name string;
-property <name>.oxidizer string;
-property <name>.fuel string;
-property <name>.mass string;
-property <name>.mflag string;
-property <name>.impulse string;
-property <name>.impflag string;
-property <name>.thrust string;
-property <name>.tflag string;
-property <name>.isp string;
-property <name>.ispflag string;
-property <name>.duration string;
-property <name>.durflag string;
-property <name>.chambers string;
-property <name>.date string;
-property <name>.usage string;
+property name.manufacturer string;
+property name.family string;
+property name.alt_name string;
+key oxidizer string;
+key fuel string;
+property name.mass float;
+property name.mflag string;
+property name.impulse int;
+property name.impflag string;
+property name.thrust numeric::kn;
+property name.tflag string;
+property name.isp float;
+property name.ispflag string;
+property name.duration float;
+property name.durflag string;
+property name.chambers int;
+property name.date string;
+property name.usage string;
 key group string;
 
 datasource engines (
-	Name: name,
-	Manufacturer: manufacturer,
-	Family: family,
-	Alt_name: alt_name,
-	Oxidizer: oxidizer,
-	Fuel: fuel,
-	Mass: mass,
-	MFlag: mflag,
-	Impulse: impulse,
-	ImpFlag: impflag,
-	Thrust: thrust,
-	TFlag: tflag,
-	Isp: isp,
-	IspFlag: ispflag,
-	Duration: duration,
-	DurFlag: durflag,
-	Chambers: chambers,
-	Date: date,
-	Usage: usage,
-	Group: group
-)
+    Name: name,
+    Manufacturer: manufacturer,
+    Family: family,
+    Alt_name: alt_name,
+    Oxidizer: oxidizer,
+    Fuel: fuel,
+    Mass: ?mass,
+    MFlag: ?mflag,
+    Impulse: ?impulse,
+    ImpFlag: ?impflag,
+    Thrust: ?thrust,
+    TFlag: ?tflag,
+    Isp: ?isp,
+    IspFlag: ?ispflag,
+    Duration: ?duration,
+    DurFlag: ?durflag,
+    Chambers: ?chambers,
+    Date: date,
+    Usage: usage,
+    Group: group
+    )
 grain (name)
 address engines;

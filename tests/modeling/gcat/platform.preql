@@ -1,47 +1,49 @@
-# auto-generated datasource from table/view platform_info
+import std.geography;
+
 key code string;
-property <code>.u_code string;
-property <code>.state_code string;
-property <code>.type string;
-property <code>.class string;
-property <code>.t_start string;
-property <code>.t_stop string;
-property <code>.short_name string;
-property <code>.name string;
-property <code>.location string;
-property <code>.longitude string;
-property <code>.latitude string;
-property <code>.error string;
-property <code>.parent string;
-property <code>.short_e_name string;
-property <code>.e_name string;
-property <code>.v_class string;
-property <code>.v_class_id string;
-property <code>.v_id string;
-# property <code>.group string;
-property <code>.u_name string;
+property code.u_code string;
+property code.state_code string::country_code;
+property code.type string;
+property code.class string;
+property code.t_start string;
+property code.t_stop string;
+property code.short_name string;
+property code.name string;
+property code.location string;
+# these are all null
+# excluding from model for the moment
+# property code.longitude float::longitude; 
+# property code.latitude float::latitude;
+property code.error float;
+property code.parent string;
+property code.short_e_name string;
+property code.e_name string;
+property code.v_class string;
+property code.v_class_id string;
+property code.v_id string;
+property code.u_name string;
+
 datasource platform_info (
-    Code:code,
-    UCode:u_code,
-    StateCode:state_code,
-    Type:type,
-    Class:class,
-    TStart:t_start,
-    TStop:t_stop,
-    ShortName:short_name,
-    Name:name,
-    Location:location,
-    Longitude:longitude,
-    Latitude:latitude,
-    Error:error,
-    Parent:parent,
-    ShortEName:short_e_name,
-    EName:e_name,
-    VClass:v_class,
-    VClassID:v_class_id,
-    VID:v_id,
-    # Group:group,
-    UName:u_name,
-)
+    Code: code,
+    UCode: u_code,
+    StateCode: state_code,
+    Type: type,
+    Class: class,
+    TStart: t_start,
+    TStop: t_stop,
+    ShortName: short_name,
+    Name: name,
+    Location: location,
+    # Longitude: longitude,
+    # Latitude: latitude,
+    Error: ?error,
+    Parent: parent,
+    ShortEName: short_e_name,
+    EName: e_name,
+    VClass: v_class,
+    VClassID: v_class_id,
+    VID: v_id,
+    UName: u_name
+    )
 grain (code)
 address platform_info;

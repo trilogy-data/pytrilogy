@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC
 from collections import UserDict, UserList
 from datetime import date, datetime
+from decimal import Decimal
 from enum import Enum
 from typing import (
     Any,
@@ -448,6 +449,8 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
         return DataType.STRING
     elif isinstance(arg, float):
         return DataType.FLOAT
+    elif isinstance(arg, Decimal):
+        return DataType.NUMERIC
     elif isinstance(arg, DataType):
         return arg
     elif isinstance(arg, NumericType):

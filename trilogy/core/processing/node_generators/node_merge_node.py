@@ -164,9 +164,6 @@ def reinject_common_join_keys_v2(
             reduced = BuildGrain.from_concepts(concrete_concepts).components
             existing_addresses = set()
             for concrete in concrete_concepts:
-                logger.debug(
-                    f"looking at column {concrete.address} with pseudonyms {concrete.pseudonyms}"
-                )
                 cnode = concept_to_node(concrete.with_default_grain())
                 if cnode in final.nodes:
                     existing_addresses.add(concrete.address)

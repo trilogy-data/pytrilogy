@@ -349,7 +349,8 @@ class Renderer:
         else:
             output = f"{concept.purpose.value} {namespace}{concept.name} <- {self.to_string(concept.lineage)};"
         if base_description:
-            output += f" #{base_description}"
+            lines = "\n#".join(base_description.split("\n"))
+            output += f" #{lines}"
         return output
 
     @to_string.register
@@ -439,7 +440,7 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "Conditional"):
-        return f"({self.to_string(arg.left)} {arg.operator.value} {self.to_string(arg.right)})"
+        return f"{self.to_string(arg.left)} {arg.operator.value} {self.to_string(arg.right)}"
 
     @to_string.register
     def _(self, arg: "SubselectComparison"):
@@ -451,7 +452,8 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "Comment"):
-        return f"{arg.text}"
+        lines = "\n#".join(arg.text.split("\n"))
+        return f"{lines}"
 
     @to_string.register
     def _(self, arg: "WindowItem"):

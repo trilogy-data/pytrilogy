@@ -69,7 +69,7 @@ class DatasourceColumnBindingData:
     actual_modifiers: List[Modifier]
 
     def format_failure(self):
-        return f"Concept {self.address} value '{self.value}' with type {self.value_modifiers} does not conform to expected type {str(self.actual_type)} with modifiers {self.actual_modifiers}"
+        return f"Concept {self.address} value '{self.value}' with type {self.value_type} and {self.value_modifiers} does not conform to expected type {str(self.actual_type)} with modifiers {self.actual_modifiers}"
 
     def is_modifier_issue(self) -> bool:
         return len(self.value_modifiers) > 0 and any(

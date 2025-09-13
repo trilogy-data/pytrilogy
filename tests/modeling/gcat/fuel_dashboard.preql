@@ -1,0 +1,14 @@
+import launch;
+
+auto stage_identifier <-  CASE WHEN vehicle.name != vehicle.stage.name THEN CASE WHEN vehicle.variant != '-' THEN concat(vehicle.name,'-',vehicle.variant)
+ELSE vehicle.name
+END
+ELSE vehicle.name
+END;
+
+auto era <-
+  CASE
+        WHEN launch_date.year < 1975 THEN 'Space Race'
+        WHEN launch_date.year BETWEEN 1975 AND 2000 THEN 'Post Apollo'
+        ELSE 'Modern'
+    END;

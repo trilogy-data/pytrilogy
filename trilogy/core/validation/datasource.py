@@ -36,31 +36,51 @@ def type_check(
 ) -> bool:
     if input is None and nullable:
         return True
+
     target_type = expected_type
     while isinstance(target_type, TraitDataType):
         return type_check(input, target_type.data_type, nullable)
+
     if target_type == DataType.STRING:
         return isinstance(input, str)
     if target_type == DataType.INTEGER:
         return isinstance(input, int)
+    if target_type == DataType.BIGINT:
+        return isinstance(input, int)  # or check for larger int if needed
     if target_type == DataType.FLOAT or isinstance(target_type, NumericType):
         return (
             isinstance(input, float)
             or isinstance(input, int)
             or isinstance(input, Decimal)
         )
+    if target_type == DataType.NUMBER:
+        return isinstance(input, (int, float, Decimal))
+    if target_type == DataType.NUMERIC:
+        return isinstance(input, (int, float, Decimal))
     if target_type == DataType.BOOL:
         return isinstance(input, bool)
     if target_type == DataType.DATE:
-        return isinstance(input, date)
+        return isinstance(input, date) and not isinstance(input, datetime)
     if target_type == DataType.DATETIME:
         return isinstance(input, datetime)
+    if target_type == DataType.TIMESTAMP:
+        return isinstance(input, datetime)  # or timestamp type if you have one
+    if target_type == DataType.UNIX_SECONDS:
+        return isinstance(input, (int, float))  # Unix timestamps are numeric
+    if target_type == DataType.DATE_PART:
+        return isinstance(
+            input, str
+        )  # assuming date parts are strings like "year", "month"
     if target_type == DataType.ARRAY or isinstance(target_type, ArrayType):
         return isinstance(input, list)
     if target_type == DataType.MAP or isinstance(target_type, MapType):
         return isinstance(input, dict)
     if target_type == DataType.STRUCT or isinstance(target_type, StructType):
         return isinstance(input, dict)
+    if target_type == DataType.NULL:
+        return input is None
+    if target_type == DataType.UNKNOWN:
+        return True
     return False
 
 
@@ -125,15 +145,19 @@ def validate_datasource(
             rval = row[actual_address]
             passed = type_check(rval, col.concept.datatype, col.is_nullable)
             if not passed:
+                value_type = (
+                    arg_to_datatype(rval) if rval is not None else col.concept.datatype
+                )
+                traits = None
+                if isinstance(col.concept.datatype, TraitDataType):
+                    traits = col.concept.datatype.traits
+                if traits and not isinstance(value_type, TraitDataType):
+                    value_type = TraitDataType(type=value_type, traits=traits)
                 failures.append(
                     DatasourceColumnBindingData(
                         address=col.concept.address,
                         value=rval,
-                        value_type=(
-                            arg_to_datatype(rval)
-                            if rval is not None
-                            else col.concept.datatype
-                        ),
+                        value_type=value_type,
                         value_modifiers=[Modifier.NULLABLE] if rval is None else [],
                         actual_type=col.concept.datatype,
                         actual_modifiers=col.concept.modifiers,

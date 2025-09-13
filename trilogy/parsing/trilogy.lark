@@ -134,10 +134,12 @@
     metadata: "metadata" "(" IDENTIFIER "=" string_lit ")"
     
     limit: "LIMIT"i /[0-9]+/
+
+    _order_atom: expr ordering
     
-    order_list: expr ordering (","  expr ordering)* ","?
+    order_list: _order_atom (","  _order_atom)* ","?
     
-    over_list: concept_lit (","  concept_lit )* ","?
+    over_list: (concept_lit ",")*  concept_lit ","?
     
     ORDERING_DIRECTION: /ASC|DESC/i
 
@@ -433,7 +435,8 @@
     map_lit: "{" (literal ":" literal ",")* literal ":" literal ","? "}"
 
     _STRUCT.1: "struct("i
-    struct_lit: _STRUCT (IDENTIFIER "->" expr ",")* IDENTIFIER "->" expr ","? ")"
+    _BINDING.1: "->"
+    struct_lit: _STRUCT expr _BINDING IDENTIFIER   ( "," expr _BINDING  IDENTIFIER  )* ","? ")"
     
     !bool_lit: "True"i | "False"i
 

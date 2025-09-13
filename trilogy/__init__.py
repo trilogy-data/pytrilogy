@@ -4,6 +4,6 @@ from trilogy.dialect.enums import Dialects
 from trilogy.executor import Executor
 from trilogy.parser import parse
 
-__version__ = "0.0.3.100"
+__version__ = "0.0.3.101"
 
 __all__ = ["parse", "Executor", "Dialects", "Environment", "CONFIG"]
