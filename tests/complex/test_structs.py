@@ -82,8 +82,8 @@ def get_a(xz)-> getattr(xz,'a');
 def get_a2(x2)-> x2.a;       
 SELECT
   array_sum(array_transform(array_struct,@get_a)) as total_a,
-   @get_a(struct(a<-1, b<-2)) as a2,
-   @get_a2(struct(a<-1, b<-2)) as a22
+   @get_a(struct(1->a, 2->b)) as a2,
+   @get_a2(struct(1->a, 2->b)) as a22
 ;
     
   """

@@ -440,7 +440,7 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "Conditional"):
-        return f"({self.to_string(arg.left)} {arg.operator.value} {self.to_string(arg.right)})"
+        return f"{self.to_string(arg.left)} {arg.operator.value} {self.to_string(arg.right)}"
 
     @to_string.register
     def _(self, arg: "SubselectComparison"):

@@ -4,7 +4,7 @@ LOAD httpfs;
 
 CREATE OR REPLACE TABLE launch_info AS 
 SELECT 
-    Launch_Tag,
+    trim(Launch_Tag) Launch_Tag,
     Launch_JD,
     Launch_Date,
     LV_Type,
@@ -25,6 +25,7 @@ SELECT
     Dest,
     OrbPay::float OrbPay,
     Agency,
+    split(Agency, '/')[1] FirstAgency,
     LaunchCode,
     FailCode,
     "Group",

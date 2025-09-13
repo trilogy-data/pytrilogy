@@ -1,95 +1,90 @@
+#auto-generated datasource from table/view lv_info
 import stage as stage;
 
 key name string;
 key variant string;
-property <name, variant>.family string;
-property <name, variant>.manufacturer string;
-
-property <name, variant>.alias string;
-property <name, variant>.min_stage int;
-property <name, variant>.max_stage int;
-property <name, variant>.length string;
-property <name, variant>.lflag string;
-property <name, variant>.diameter string;
-property <name, variant>.dflag string;
-property <name, variant>.launch_mass string;
-property <name, variant>.mflag string;
-property <name, variant>.leo_capacity float;
-property <name, variant>.gto_capacity float;
-property <name, variant>.to_thrust string;
-property <name, variant>.class string;
-property <name, variant>.apogee string;
-property <name, variant>.range string;
-
-auto class_name <-
-case
-    when class = 'D' then 'Deep Space'
-    when class = 'M' then 'Missile'
-    when class = 'O' then 'Orbital'
-    when class = 'R' then 'Research'
-    when class = 'V' then 'Reentry Test'
-    when class = 'X' then 'Exoatmospheric Test'
-    when class = 'Y' then 'Exoatmospheric Weather'
-    when class = 'A' then 'Endoatmospheric Missile'
-    when class = 'C' then 'Cruise Missile'
-    when class = 'Q' then 'Endoatmospheric reentry test'
-    when class = 'T' then 'Endoatmospheric test/research'
-    when class = 'W' then 'Endoatmospheric weather rocket'
-    else 'Unknown'
-  end;
-
-
-auto  full_name <-  CASE WHEN variant != '-' THEN concat(name,' ',variant)
-ELSE name
+property <name,variant>.family string;
+property <name,variant>.manufacturer string;
+property <name,variant>.alias string;
+property <name,variant>.min_stage int;
+property <name,variant>.max_stage int;
+property <name,variant>.length float;
+property <name,variant>.lflag string;
+property <name,variant>.diameter float;
+property <name,variant>.dflag string;
+property <name,variant>.launch_mass float;
+property <name,variant>.mflag string;
+property <name,variant>.leo_capacity float;
+property <name,variant>.gto_capacity float;
+property <name,variant>.to_thrust int;
+property <name,variant>.class string;
+property <name,variant>.apogee int;
+property <name,variant>.range int;
+property class_name <- CASE
+	WHEN class = 'D' THEN 'Deep Space'
+	WHEN class = 'M' THEN 'Missile'
+	WHEN class = 'O' THEN 'Orbital'
+	WHEN class = 'R' THEN 'Research'
+	WHEN class = 'V' THEN 'Reentry Test'
+	WHEN class = 'X' THEN 'Exoatmospheric Test'
+	WHEN class = 'Y' THEN 'Exoatmospheric Weather'
+	WHEN class = 'A' THEN 'Endoatmospheric Missile'
+	WHEN class = 'C' THEN 'Cruise Missile'
+	WHEN class = 'Q' THEN 'Endoatmospheric reentry test'
+	WHEN class = 'T' THEN 'Endoatmospheric test/research'
+	WHEN class = 'W' THEN 'Endoatmospheric weather rocket'
+	ELSE 'Unknown'
+END;
+property full_name <- CASE
+	WHEN variant != '-' THEN concat(name,' ',variant)
+	ELSE name
 END;
 
 datasource lv_info (
-	LV_Name:name,
-	LV_Family:family,
-	LV_Manufacturer:manufacturer,
-	LV_Variant:variant,
-	LV_Alias:alias,
-	LV_Min_Stage:min_stage,
-	LV_Max_Stage:max_stage,
-	Length:length,
-	LFlag:lflag,
-	Diameter:diameter,
-	DFlag:dflag,
-	Launch_Mass:launch_mass,
-	MFlag:mflag,
-	LEO_Capacity:leo_capacity,
-	GTO_Capacity:gto_capacity,
-	TO_Thrust:to_thrust,
-	Class:class,
-	Apogee:apogee,
-	Range:range,
-)
-grain (name, variant)
+    LV_Name: name,
+    LV_Family: family,
+    LV_Manufacturer: manufacturer,
+    LV_Variant: variant,
+    LV_Alias: alias,
+    LV_Min_Stage: min_stage,
+    LV_Max_Stage: max_stage,
+    Length: length,
+    LFlag: ?lflag,
+    Diameter: diameter,
+    DFlag: ?dflag,
+    Launch_Mass: ?launch_mass,
+    MFlag: ?mflag,
+    LEO_Capacity: ?leo_capacity,
+    GTO_Capacity: ?gto_capacity,
+    TO_Thrust: ?to_thrust,
+    Class: class,
+    Apogee: apogee,
+    Range: ?range
+    )
+grain (name,variant)
 address lv_info;
 
-
 key stage_no string; # (which can be -1 or 0 for strapons, and F for fairing)
-
-property <name,variant,stage_no>.qualifier string;
-property <name,variant,stage_no>.dummy string; # a flag to indicate a dummy stage (e.g. the Cora vehicle always carries a dummy Astris stage)
-property <name,variant,stage_no>.multiplicity int; # e.g. stage 0 of the ASLV consists of two AS-0 strapon stages, and so has multiplicity 2.
-property <name,variant,stage_no>.stage_impulse string;
-property <name,variant,stage_no>.stage_apogee int;
-property <name,variant,stage_no>.stage_perigee int;
-property <name,variant,stage_no>.perigee_qual string;
+property <name,stage_no,variant>.qualifier string;
+property <name,stage_no,variant>.dummy string; # a flag to indicate a dummy stage (e.g. the Cora vehicle always carries a dummy Astris stage)
+property <name,stage_no,variant>.multiplicity int; # e.g. stage 0 of the ASLV consists of two AS-0 strapon stages, and so has multiplicity 2.
+property <name,stage_no,variant>.stage_impulse float;
+property <name,stage_no,variant>.stage_apogee int;
+property <name,stage_no,variant>.stage_perigee int;
+property <name,stage_no,variant>.perigee_qual string;
 
 datasource lvs_info (
-	LV_Name:name,
-	LV_Variant:variant,
-	Stage_No:stage_no,
-	Stage_Name:stage.name,
-	Qualifier:qualifier,
-	Dummy:dummy,
-	Multiplicity:multiplicity,
-	Stage_Impulse:stage_impulse,
-	Stage_Apogee:stage_apogee,
-	Stage_Perigee:stage_perigee,
-	Perigee_Qual:perigee_qual,
-)
-grain (name, variant, stage.name)
+    LV_Name: name,
+    LV_Variant: variant,
+    Stage_No: stage_no,
+    Stage_Name: ~stage.name,
+    Qualifier: qualifier,
+    Dummy: dummy,
+    Multiplicity: multiplicity,
+    Stage_Impulse: ?stage_impulse,
+    Stage_Apogee: stage_apogee,
+    Stage_Perigee: stage_perigee,
+    Perigee_Qual: perigee_qual
+    )
+grain (name,stage_no,variant)
 address lvs_info;

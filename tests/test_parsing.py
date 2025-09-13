@@ -552,7 +552,7 @@ const labels <- '';
 
 def test_struct_attr_access():
     text = """
-const labels <- struct(a<-1, b<-2, c<-3);
+const labels <- struct(1->a, 2->b, 3->c);
 
 
 select

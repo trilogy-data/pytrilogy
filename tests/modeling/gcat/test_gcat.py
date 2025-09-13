@@ -2,13 +2,46 @@ from pathlib import Path
 
 from trilogy import Dialects, Environment, Executor
 from trilogy.core.env_processor import concept_to_node, generate_graph
+from trilogy.core.exceptions import ModelValidationError
 from trilogy.core.models.core import DataType
 from trilogy.core.processing.node_generators.node_merge_node import (
     determine_induced_minimal_nodes,
 )
 from trilogy.hooks import DebuggingHook
+from trilogy.parser import parse_text
+from trilogy.parsing.render import Renderer
 
 ROOT = Path(__file__).parent
+
+"""WITH 
+datasource_lvs_info_base as (
+SELECT
+    "lvs_info"."LV_Name" as "name",
+    "lvs_info"."LV_Variant" as "variant",
+    "lvs_info"."Stage_Name" as "stage_name",
+    sum(1) as "grain_check"
+FROM
+    "lvs_info"
+GROUP BY 
+    "lvs_info"."LV_Name",
+    "lvs_info"."LV_Variant",
+    "lvs_info"."Stage_Name")
+SELECT
+    "datasource_lvs_info_base"."name" as "name",
+    "datasource_lvs_info_base"."variant" as "variant",
+    "datasource_lvs_info_base"."stage_name" as "stage_name",
+    "datasource_lvs_info_base"."grain_check" as "grain_check"
+FROM
+    "datasource_lvs_info_base"
+WHERE
+    "datasource_lvs_info_base"."grain_check" > 1
+
+ORDER BY 
+    CASE
+        WHEN "datasource_lvs_info_base"."name" is null THEN 1
+        ELSE 0
+        END desc
+LIMIT (100)"""
 
 
 def test_environment():
@@ -18,11 +51,33 @@ def test_environment():
     )
     base = Dialects.DUCK_DB.default_executor(environment=env)
     base.execute_raw_sql(ROOT / "setup.sql")
+
     base.parse_text(
-        """import launch;
+        """import vehicle;
 """
     )
-    # base.validate_environment()
+    try:
+        base.validate_environment()
+    except ModelValidationError as e:
+        for x in e.children or []:
+            raise x
+
+
+def test_case():
+    DebuggingHook()
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+    base.execute_raw_sql(ROOT / "setup.sql")
+    with open(ROOT / "fuel_dashboard.preql", "r") as f:
+        raw = f.read()
+        _, statements = parse_text(raw, environment=base.environment)
+    assert len(statements) == 3
+    rendered = Renderer().render_statement_string(statements)
+    _, statements = parse_text(rendered, environment=base.environment)
+    rendered = Renderer().render_statement_string(statements)
+    assert "True" not in rendered, rendered
 
 
 def test_join():
@@ -196,7 +251,7 @@ auto date_function <- current_date();
         current_timestamp() as timestamp_function,
         current_date() as date_function,
         date_diff(min(launch_date), current_date(), year) as launch_days, 
-        struct( first_launch <- min(launch_date), last_launch <- max(launch_date)) as launch_date_range,
+        struct(  min(launch_date)->first_launch,  max(launch_date)->last_launch) as launch_date_range,
         min(launch_date) as min_date;
         """
     )
@@ -381,9 +436,7 @@ LIMIT 10
         """
     )
     sql = base.generate_sql(queries[-1])
-    assert (
-        'STRING_SPLIT( "launch_info"."Agency" , \'/\' )[1] as "first_org"' in sql[0]
-    ), sql[0]
+    assert '"launch_info"."FirstAgency"' in sql[0], sql[0]
     assert "BUG" not in sql[0], sql[0]
 
 
@@ -494,7 +547,7 @@ LIMIT 1
     )
     sql = base.generate_sql(queries[-1])
     assert (
-        '"vehicle_lv_info"."LV_Name" = "wakeful"."vehicle_name" AND "vehicle_lv_info"."LV_Variant" = "wakeful"."vehicle_variant"'
+        '"vehicle_lv_info" on "cheerful"."vehicle_name" = "vehicle_lv_info"."LV_Name" AND "cheerful"."vehicle_variant" = "vehicle_lv_info"."LV_Variant"'
         in sql[0]
     ), sql[0]
 

@@ -18,6 +18,7 @@ from trilogy.core.models.author import (
     AggregateWrapper,
     Concept,
     ConceptRef,
+    Conditional,
     Function,
     Parenthetical,
     UndefinedConcept,
@@ -996,6 +997,8 @@ def argument_to_purpose(arg) -> Purpose:
     elif isinstance(arg, Parenthetical):
         return argument_to_purpose(arg.content)
     elif isinstance(arg, WindowItem):
+        return Purpose.PROPERTY
+    elif isinstance(arg, Conditional):
         return Purpose.PROPERTY
     elif isinstance(arg, Concept):
         base = arg.purpose
