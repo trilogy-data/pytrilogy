@@ -58,7 +58,7 @@ datasource lv_info (
     GTO_Capacity: ?gto_capacity,
     TO_Thrust: ?to_thrust,
     Class: class,
-    Apogee: apogee,
+    Apogee: ?apogee,
     Range: ?range
     )
 grain (name,variant)
