@@ -1,4 +1,6 @@
 from collections import defaultdict
+from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import date, datetime
 from functools import singledispatchmethod
 from typing import Any
@@ -23,6 +25,7 @@ from trilogy.core.models.author import (
     FunctionCallWrapper,
     Grain,
     OrderBy,
+    Ordering,
     OrderItem,
     Parenthetical,
     SubselectComparison,
@@ -67,23 +70,72 @@ from trilogy.core.statements.author import (
 
 QUERY_TEMPLATE = Template(
     """{% if where %}WHERE
-    {{ where }}
+{{ where }}
 {% endif %}SELECT{%- for select in select_columns %}
-    {{ select }},{% endfor %}{% if having %}
+{{ select }},{% endfor %}{% if having %}
 HAVING
-    {{ having }}
+{{ having }}
 {% endif %}{%- if order_by %}
 ORDER BY{% for order in order_by %}
-    {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{%- if limit is not none %}
+{{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{%- if limit is not none %}
 LIMIT {{ limit }}{% endif %}
 ;"""
 )
 
 
+@dataclass
+class IndentationContext:
+    """Tracks indentation state during rendering"""
+
+    depth: int = 0
+    indent_string: str = "    "  # 4 spaces by default
+
+    @property
+    def current_indent(self) -> str:
+        return self.indent_string * self.depth
+
+    def increase_depth(self, extra_levels: int = 1) -> "IndentationContext":
+        return IndentationContext(
+            depth=self.depth + extra_levels, indent_string=self.indent_string
+        )
+
+
 class Renderer:
 
-    def __init__(self, environment: Environment | None = None):
+    def __init__(
+        self, environment: Environment | None = None, indent_string: str = "    "
+    ):
         self.environment = environment
+        self.indent_context = IndentationContext(indent_string=indent_string)
+
+    @contextmanager
+    def indented(self, levels: int = 1):
+        """Context manager for temporarily increasing indentation"""
+        old_context = self.indent_context
+        self.indent_context = self.indent_context.increase_depth(levels)
+        try:
+            yield
+        finally:
+            self.indent_context = old_context
+
+    def indent_lines(self, text: str, extra_levels: int = 0) -> str:
+        """Apply current indentation to all lines in text"""
+        if not text:
+            return text
+
+        indent = self.indent_context.indent_string * (
+            self.indent_context.depth + extra_levels
+        )
+        lines = text.split("\n")
+        indented_lines = []
+
+        for line in lines:
+            if line.strip():  # Only indent non-empty lines
+                indented_lines.append(indent + line)
+            else:
+                indented_lines.append(line)  # Keep empty lines as-is
+
+        return "\n".join(indented_lines)
 
     def render_statement_string(self, list_of_statements: list[Any]) -> str:
         new = []
@@ -98,7 +150,7 @@ class Renderer:
                 new.append("\n\n")
             else:
                 new.append("\n")
-            new.append(Renderer().to_string(stmt))
+            new.append(self.to_string(stmt))
             last_statement_type = stmt_type
         return "".join(new)
 
@@ -192,14 +244,19 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: Datasource):
-        assignments = ",\n    ".join([self.to_string(x) for x in arg.columns])
+        with self.indented():
+            assignments = ",\n".join(
+                [self.indent_lines(self.to_string(x)) for x in arg.columns]
+            )
+
         if arg.non_partial_for:
             non_partial = f"\ncomplete where {self.to_string(arg.non_partial_for)}"
         else:
             non_partial = ""
+
         base = f"""datasource {arg.name} (
-    {assignments}
-    )
+{assignments}
+)
 {self.to_string(arg.grain) if arg.grain.components else ''}{non_partial}
 {self.to_string(arg.address)}"""
 
@@ -390,26 +447,45 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: SelectStatement):
+        with self.indented():
+            select_columns = [
+                self.indent_lines(self.to_string(c)) for c in arg.selection
+            ]
+            where_clause = None
+            if arg.where_clause:
+                where_clause = self.indent_lines(self.to_string(arg.where_clause))
+            having_clause = None
+            if arg.having_clause:
+                having_clause = self.indent_lines(self.to_string(arg.having_clause))
+            order_by = None
+            if arg.order_by:
+                order_by = [
+                    self.indent_lines(self.to_string(c)) for c in arg.order_by.items
+                ]
+
         return QUERY_TEMPLATE.render(
-            select_columns=[self.to_string(c) for c in arg.selection],
-            where=self.to_string(arg.where_clause) if arg.where_clause else None,
-            having=self.to_string(arg.having_clause) if arg.having_clause else None,
-            order_by=(
-                [self.to_string(c) for c in arg.order_by.items]
-                if arg.order_by
-                else None
-            ),
+            select_columns=select_columns,
+            where=where_clause,
+            having=having_clause,
+            order_by=order_by,
             limit=arg.limit,
         )
 
     @to_string.register
     def _(self, arg: MultiSelectStatement):
-        base = "\nMERGE\n".join([self.to_string(select)[:-2] for select in arg.selects])
+        # Each select gets its own indentation
+        select_parts = []
+        for select in arg.selects:
+            select_parts.append(
+                self.to_string(select)[:-2]
+            )  # Remove the trailing ";\n"
+
+        base = "\nMERGE\n".join(select_parts)
         base += self.to_string(arg.align)
         if arg.where_clause:
             base += f"\nWHERE\n{self.to_string(arg.where_clause)}"
         if arg.order_by:
-            base += f"\nORDER BY\n\t{self.to_string(arg.order_by)}"
+            base += f"\nORDER BY\n{self.to_string(arg.order_by)}"
         if arg.limit:
             base += f"\nLIMIT {arg.limit}"
         base += "\n;"
@@ -421,7 +497,9 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: AlignClause):
-        return "\nALIGN\n\t" + ",\n\t".join([self.to_string(c) for c in arg.items])
+        with self.indented():
+            align_items = [self.indent_lines(self.to_string(c)) for c in arg.items]
+        return "\nALIGN\n" + ",\n".join(align_items)
 
     @to_string.register
     def _(self, arg: AlignItem):
@@ -429,7 +507,13 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: OrderBy):
-        return ",\n".join([self.to_string(c) for c in arg.items])
+        with self.indented():
+            order_items = [self.indent_lines(self.to_string(c)) for c in arg.items]
+        return ",\n".join(order_items)
+
+    @to_string.register
+    def _(self, arg: Ordering):
+        return arg.value
 
     @to_string.register
     def _(self, arg: "WhereClause"):
@@ -469,7 +553,6 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "FilterItem"):
-
         return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
 
     @to_string.register
@@ -538,18 +621,34 @@ class Renderer:
             if len(args) == 1:
                 return f"group({args[0]})"
             return f"group({args[0]}) by {arg_string}"
-        inputs = ",".join(args)
 
         if arg.operator == FunctionType.CONSTANT:
-            return f"{inputs}"
+            return f"{', '.join(args)}"
         if arg.operator == FunctionType.CAST:
             return f"CAST({self.to_string(arg.arguments[0])} AS {self.to_string(arg.arguments[1])})"
         if arg.operator == FunctionType.INDEX_ACCESS:
             return f"{self.to_string(arg.arguments[0])}[{self.to_string(arg.arguments[1])}]"
 
         if arg.operator == FunctionType.CASE:
-            inputs = "\n\t".join(args)
-            return f"CASE\n\t{inputs}\nEND"
+            with self.indented():
+                indented_args = [
+                    self.indent_lines(self.to_string(a)) for a in arg.arguments
+                ]
+            inputs = "\n".join(indented_args)
+            return f"CASE\n{inputs}\n{self.indent_context.current_indent}END"
+
+        if arg.operator == FunctionType.STRUCT:
+            # zip arguments to pairs
+            input_pairs = zip(arg.arguments[0::2], arg.arguments[1::2])
+            with self.indented():
+                pair_strings = []
+                for k, v in input_pairs:
+                    pair_line = f"{self.to_string(k)}-> {v}"
+                    pair_strings.append(self.indent_lines(pair_line))
+            inputs = ",\n".join(pair_strings)
+            return f"struct(\n{inputs}\n{self.indent_context.current_indent})"
+
+        inputs = ",".join(args)
         return f"{arg.operator.value}({inputs})"
 
     @to_string.register

@@ -1511,7 +1511,10 @@ def requires_concept_nesting(
 ) -> AggregateWrapper | WindowItem | FilterItem | Function | None:
     if isinstance(expr, (AggregateWrapper, WindowItem, FilterItem)):
         return expr
-    if isinstance(expr, Function) and expr.operator == FunctionType.GROUP:
+    if isinstance(expr, Function) and expr.operator in (
+        FunctionType.GROUP,
+        FunctionType.PARENTHETICAL,
+    ):
         # group by requires nesting
         return expr
     return None
@@ -1696,13 +1699,12 @@ class Factory:
         return self._build_case_when(base)
 
     def _build_case_when(self, base: CaseWhen) -> BuildCaseWhen:
-        comparison = base.comparison
         expr: Concept | FuncArgs = base.expr
         validation = requires_concept_nesting(expr)
         if validation:
             expr, _ = self.instantiate_concept(validation)
         return BuildCaseWhen(
-            comparison=self.build(comparison),
+            comparison=self.build(base.comparison),
             expr=self.build(expr),
         )
 
@@ -2019,7 +2021,12 @@ class Factory:
         return self._build_parenthetical(base)
 
     def _build_parenthetical(self, base: Parenthetical) -> BuildParenthetical:
-        return BuildParenthetical(content=(self.build(base.content)))
+        validate = requires_concept_nesting(base.content)
+        if validate:
+            content, _ = self.instantiate_concept(validate)
+            return BuildParenthetical(content=self.build(content))
+        else:
+            return BuildParenthetical(content=self.build(base.content))
 
     @build.register
     def _(self, base: SelectLineage) -> BuildSelectLineage:

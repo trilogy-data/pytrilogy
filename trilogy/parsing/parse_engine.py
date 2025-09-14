@@ -992,6 +992,9 @@ class ParseToObjects(Transformer):
     def order_by(self, args):
         return OrderBy(items=args[0])
 
+    def over_component(self, args):
+        return ConceptRef(address=args[0].value.lstrip(",").strip())
+
     def over_list(self, args):
         return [x for x in args]
 

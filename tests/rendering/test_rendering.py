@@ -141,9 +141,9 @@ MERGE
 SELECT
     order_id,
 ALIGN
-\tmerge:order_id
+    merge:order_id
 ORDER BY
-\torder_id asc
+    order_id asc
 ;"""
     ), string_query
 
@@ -335,8 +335,8 @@ auto y <- case when x = 1 then 1 else 2 end;"""
     assert (
         test
         == """property y <- CASE
-\tWHEN x = 1 THEN 1
-\tELSE 2
+    WHEN x = 1 THEN 1
+    ELSE 2
 END;"""
     ), test
 
@@ -354,8 +354,8 @@ auto y <- CASE
     assert (
         test
         == """property y <- CASE
-\tWHEN like(category_name,'%abc%') = True THEN True
-\tELSE False
+    WHEN like(category_name,'%abc%') = True THEN True
+    ELSE False
 END;"""
     ), test
 
@@ -673,7 +673,7 @@ def test_render_datasource():
         test
         == """datasource useful_data (
     user_id: ~user_id
-    )
+)
 grain (user_id)
 complete where user_id = 123
 address customers.dim_customers
@@ -706,7 +706,7 @@ where user_id = 123 or user_id = 456;"""
         test
         == """datasource useful_data (
     user_id: user_id
-    )
+)
 grain (user_id)
 query '''SELECT * FROM test'''
 where user_id = 123 or user_id = 456;"""
@@ -752,7 +752,7 @@ address memory.date_dim;"""
     D_QOY: quarter,
     D_WEEK_SEQ1: d_week_seq1,
     raw('''cast("D_YEAR" as int)'''): year
-    )
+)
 grain (id)
 address memory.date_dim;"""
     ), test
@@ -783,7 +783,7 @@ address memory.date_dim;"""
         test2
         == """datasource useful_data (
     user_id: user_id
-    )
+)
 
 query '''SELECT * FROM test'''
 where user_id = 123 or user_id = 456;"""
@@ -995,6 +995,33 @@ def test_render_map():
     )
     expected = [
         """const num_map <- {1: 10, 2: 20};""",
+    ]
+    for idx, cmd in enumerate(commands):
+        rendered = Renderer().to_string(cmd)
+        assert rendered == expected[idx], rendered
+
+
+def test_render_struct():
+    basic = Environment()
+
+    env, commands = basic.parse(
+        """
+   const x <- 1;
+   const y <- 2;
+
+   select
+   struct(x-> label, y-> field) as num_struct;
+   """
+    )
+    expected = [
+        """const x <- 1;""",
+        """const y <- 2;""",
+        """SELECT
+    struct(
+            x-> label,
+            y-> field
+        ) -> num_struct,
+;""",
     ]
     for idx, cmd in enumerate(commands):
         rendered = Renderer().to_string(cmd)
