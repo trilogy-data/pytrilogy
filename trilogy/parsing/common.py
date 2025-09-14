@@ -249,11 +249,14 @@ def atom_is_relevant(
         return atom_is_relevant(atom.left, others, environment) or atom_is_relevant(
             atom.right, others, environment
         )
+    elif isinstance(atom, Parenthetical):
+        return atom_is_relevant(atom.content, others, environment)
     elif isinstance(atom, ConceptArgs):
         # use atom is relevant here to trigger the early exit behavior for concepts in set
         return any(
             [atom_is_relevant(x, others, environment) for x in atom.concept_arguments]
         )
+
     return False
 
 
@@ -294,12 +297,18 @@ def concept_is_relevant(
         if all([c in others for c in concept.grain.components]):
             return False
     if concept.derivation in (Derivation.BASIC,) and isinstance(
-        concept.lineage, Function
+        concept.lineage, (Function, CaseWhen)
     ):
         relevant = False
         for arg in concept.lineage.arguments:
             relevant = atom_is_relevant(arg, others, environment) or relevant
+
         return relevant
+    if concept.derivation in (Derivation.BASIC,) and isinstance(
+        concept.lineage, Parenthetical
+    ):
+        return atom_is_relevant(concept.lineage.content, others, environment)
+
     if concept.granularity == Granularity.SINGLE_ROW:
         return False
     return True
@@ -346,6 +355,7 @@ def concepts_to_grain_concepts(
         if sub.address in seen:
             continue
         if not concept_is_relevant(sub, pconcepts, environment):  # type: ignore
+
             continue
         seen.add(sub.address)
 

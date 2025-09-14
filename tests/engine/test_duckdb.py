@@ -1788,14 +1788,14 @@ key y int;
 
 datasource dim_y (
     y: y
-    )
+)
 grain (y)
 query '''
 select 1 as y union all select 2 as y union all select 3 as y''';
 datasource example (
     x: ?x,
     y: ~?y
-    )
+)
 grain (x)
 query '''
 select 'abc' as x, 1 as y union all select null as x, null as y''';
@@ -1818,7 +1818,7 @@ datasource example (
     x: x,
     y: y,
     z: z
-    )
+)
 grain (x)
 query '''
 select 'abc' as x, 1.0 as y, 2.0 as z union all select null as x, null as y, null as z''';
@@ -1837,7 +1837,7 @@ datasource example (
     x: ?x,
     y: ?y,
     z: ?z
-    )
+)
 grain (x)
 query '''
 select 'abc' as x, 1.0 as y, 2.0 as z union all select null as x, null as y, null as z''';
@@ -1897,6 +1897,35 @@ having value = 2;
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
 
     test = """show validate all;"""
+
+    results = default_duckdb_engine.parse_text(test)
+
+    default_duckdb_engine.generate_sql(results[0])
+
+
+def test_group_syntax():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    test = """
+key x int;
+key y int;
+
+datasource example (
+x,
+y
+)
+grain (x)
+query '''
+select 1 as x, 1 as y union all select 2 as x, 2 as y union all select 3 as x, 3 as y''';
+
+where x = 1
+SELECT unnest([1,2,3,4]) as value, 'example' as dim
+having value = 2;
+"""
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+
+    test = """select
+    round(avg(x) by y/avg(x) by y, 2) as rounded;
+    """
 
     results = default_duckdb_engine.parse_text(test)
 

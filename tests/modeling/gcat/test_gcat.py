@@ -378,7 +378,6 @@ def test_joint_join_concept_injection_components():
         environment=env,
     )
 
-    print(path.nodes)
     assert "c~vehicle.name@Grain<vehicle.name>" in path.nodes, path.nodes
 
 
@@ -641,5 +640,99 @@ SELECT
 
     # gcat_env.generate_sql(queries[-1])
     # assert len(gcat_env.environment.concepts['fuel_readout'].lineage.concept_arguments) == 2, gcat_env.environment.concepts['fuel_readout'].lineage.concept_arguments
+    results = gcat_env.execute_query(queries[-1])
+    assert len(results.fetchall()) == 1
+
+
+def test_parenthetical_basic_parentheses(gcat_env: Executor):
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+
+    queries = gcat_env.parse_text(
+        """
+import fuel_dashboard;
+import std.display;
+
+SELECT
+    vehicle.stage.engine.fuel,
+    @calc_percent(
+        count(launch_tag ? was_complete_success),
+        count(launch_tag),
+        2
+        ) as success_rate,
+    @calc_percent(
+        count(launch_tag ? was_complete_success),
+        (count(launch_tag)),
+        2
+        ) as success_rate2
+;
+"""
+    )
+    results = gcat_env.execute_query(queries[-1])
+    for row in results.fetchall():
+        assert 0 <= row["success_rate"] <= 1, row
+
+
+def test_parenthetical_basic(gcat_env: Executor):
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+
+    queries = gcat_env.parse_text(
+        """
+import fuel_dashboard;
+import std.display;
+WHERE
+    vehicle.stage_no in ('2', '3', '4') and  sum(orb_pay) by vehicle.stage.engine.fuel >0
+SELECT
+    vehicle.stage.engine.fuel,
+    (count(launch_tag) by vehicle.stage.engine.fuel) as fun,
+          @calc_percent(
+            (count(launch_tag ? was_complete_success) by vehicle.stage.engine.fuel), 
+           fun
+            , 2
+         ) as success_rate ;
+"""
+    )
+    results = gcat_env.execute_query(queries[-1])
+    for row in results.fetchall():
+        assert 0 <= row["success_rate"] <= 1, row
+
+
+def test_parenthetical(gcat_env: Executor):
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+
+    queries = gcat_env.parse_text(
+        """
+import fuel_dashboard;
+import std.display;
+WHERE
+    vehicle.stage_no in ('2', '3', '4') and  sum(orb_pay) by vehicle.stage.engine.fuel >0
+SELECT
+    launch_count,
+    sum(orb_pay) as payload_to_orbit,
+    count(vehicle.full_name) as rockets,
+    round(avg(group(vehicle.stage.engine.isp) by flight_id),2) -> average_isp,
+    array_sort(array_agg(
+        struct(
+        sum(orb_pay) by vehicle.stage.engine.fuel ->payload , 
+        vehicle.stage.engine.fuel  ->fuel,
+        @calc_percent(
+            (count(launch_tag ? was_complete_success ) by vehicle.stage.engine.fuel), 
+            (count(launch_tag) by vehicle.stage.engine.fuel)
+            , 2
+         ) ->success_rate 
+       
+         )
+    ), desc) as fuel_payloads
+;
+"""
+    )
     results = gcat_env.execute_query(queries[-1])
     assert len(results.fetchall()) == 1

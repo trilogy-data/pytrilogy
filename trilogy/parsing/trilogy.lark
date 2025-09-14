@@ -139,7 +139,9 @@
     
     order_list: _order_atom (","  _order_atom)* ","?
     
-    over_list: (concept_lit ",")*  concept_lit ","?
+    over_component: /,\s*[a-zA-Z\_][a-zA-Z0-9\_\.]*/ "END"?
+    
+    over_list: concept_lit  over_component* 
     
     ORDERING_DIRECTION: /ASC|DESC/i
 

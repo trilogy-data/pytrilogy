@@ -259,6 +259,15 @@ class Parenthetical(
             )
         )
 
+    def with_reference_replacement(self, source, target):
+        return Parenthetical.model_construct(
+            content=(
+                self.content.with_reference_replacement(source, target)
+                if isinstance(self.content, Mergeable)
+                else self.content
+            )
+        )
+
     @property
     def concept_arguments(self) -> Sequence[ConceptRef]:
         base: List[ConceptRef] = []
