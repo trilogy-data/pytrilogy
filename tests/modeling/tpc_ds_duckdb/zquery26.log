@@ -18,7 +18,15 @@ FROM
     INNER JOIN \"memory\".\"customer_demographics\" as \"cs_bill_customer_demographic_customer_demographics\" on \"cs_catalog_sales\".\"CS_BILL_CDEMO_SK\" = \"cs_bill_customer_demographic_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
     \"cs_bill_customer_demographic_customer_demographics\".\"CD_GENDER\" = 'M' and \"cs_bill_customer_demographic_customer_demographics\".\"CD_MARITAL_STATUS\" = 'S' and \"cs_bill_customer_demographic_customer_demographics\".\"CD_EDUCATION_STATUS\" = 'College' and ( \"cs_promotion_promotion\".\"P_CHANNEL_EMAIL\" = 'N' or \"cs_promotion_promotion\".\"P_CHANNEL_EVENT\" = 'N' ) and cast(\"cs_date_date\".\"D_YEAR\" as int) = 2000
-)
+
+GROUP BY 
+    \"cs_catalog_sales\".\"CS_COUPON_AMT\",
+    \"cs_catalog_sales\".\"CS_LIST_PRICE\",
+    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\",
+    \"cs_catalog_sales\".\"CS_QUANTITY\",
+    \"cs_catalog_sales\".\"CS_SALES_PRICE\",
+    \"cs_item_items\".\"I_ITEM_ID\",
+    \"cs_item_items\".\"I_ITEM_SK\")
 SELECT
     \"cooperative\".\"cs_item_name\" as \"cs_item_name\",
     avg(\"cooperative\".\"cs_quantity\") as \"agg1\",

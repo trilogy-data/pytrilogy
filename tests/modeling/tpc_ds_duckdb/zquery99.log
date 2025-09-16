@@ -19,7 +19,15 @@ FROM
     LEFT OUTER JOIN \"memory\".\"call_center\" as \"call_center_call_center\" on \"catalog_sales\".\"CS_CALL_CENTER_SK\" = \"call_center_call_center\".\"CC_CALL_CENTER_SK\"
 WHERE
     \"ship_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ship_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"catalog_sales\".\"CS_ORDER_NUMBER\" is not null and \"call_center_call_center\".\"CC_CALL_CENTER_SK\" is not null and \"warehouse_warehouse\".\"w_warehouse_sk\" is not null and \"ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\" is not null
-),
+
+GROUP BY 
+    \"catalog_sales\".\"CS_ITEM_SK\",
+    \"catalog_sales\".\"CS_ORDER_NUMBER\",
+    \"ship_mode_ship_mode\".\"SM_TYPE\",
+    (cast(\"catalog_sales\".\"CS_ORDER_NUMBER\" as string) || cast(\"catalog_sales\".\"CS_ITEM_SK\" as string)),
+    LOWER(\"call_center_call_center\".\"CC_NAME\") ,
+    SUBSTRING(\"warehouse_warehouse\".\"w_warehouse_name\",1,20),
+    date_diff('day', cast(\"sold_date_date\".\"D_DATE\" as date), cast(\"ship_date_date\".\"D_DATE\" as date))),
 abundant as (
 SELECT
     \"questionable\".\"cc_name_lower\" as \"cc_name_lower\",

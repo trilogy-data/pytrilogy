@@ -1,5 +1,5 @@
 query_id = 6
-gen_length = 2813
+gen_length = 2949
 generated_sql = """
 
 WITH 
@@ -41,7 +41,11 @@ FROM
     INNER JOIN \"abundant\" on (\"questionable\".\"item_category\" = \"abundant\".\"item_category\" or (\"questionable\".\"item_category\" is null and \"abundant\".\"item_category\" is null))
 WHERE
     \"questionable\".\"store_sales_date_year\" = 2001 and \"questionable\".\"store_sales_item_category\" is not null and \"questionable\".\"store_sales_date_month_of_year\" = 1 and \"questionable\".\"store_sales_item_current_price\" > 1.2 * \"abundant\".\"_virt_agg_avg_5942253052406187\"
-)
+
+GROUP BY 
+    \"questionable\".\"item_id\",
+    \"questionable\".\"store_sales_customer_state\",
+    \"questionable\".\"store_sales_ticket_number\")
 SELECT
     \"uneven\".\"store_sales_customer_state\" as \"store_sales_customer_state\",
     sum(1) as \"customer_count\"

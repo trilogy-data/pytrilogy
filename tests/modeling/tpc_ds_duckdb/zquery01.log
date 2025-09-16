@@ -25,7 +25,13 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"returns_return_date_date\" on \"returns_store_returns\".\"SR_RETURNED_DATE_SK\" = \"returns_return_date_date\".\"D_DATE_SK\"
 WHERE
     \"returns_store_store\".\"S_STATE\" = 'TN' and cast(\"returns_return_date_date\".\"D_YEAR\" as int) = 2000
-),
+
+GROUP BY 
+    \"returns_store_returns\".\"SR_CUSTOMER_SK\",
+    \"returns_store_returns\".\"SR_ITEM_SK\",
+    \"returns_store_returns\".\"SR_RETURN_AMT\",
+    \"returns_store_returns\".\"SR_TICKET_NUMBER\",
+    \"returns_store_store\".\"S_STORE_SK\"),
 cooperative as (
 SELECT
     \"returns_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
@@ -68,7 +74,11 @@ SELECT
     \"cooperative\".\"returns_store_id\" as \"returns_store_id\"
 FROM
     \"cooperative\"
-    INNER JOIN \"abundant\" on \"cooperative\".\"returns_customer_id\" = \"abundant\".\"returns_customer_id\" AND \"cooperative\".\"returns_store_id\" = \"abundant\".\"returns_store_id\")
+    INNER JOIN \"abundant\" on \"cooperative\".\"returns_customer_id\" = \"abundant\".\"returns_customer_id\" AND \"cooperative\".\"returns_store_id\" = \"abundant\".\"returns_store_id\"
+GROUP BY 
+    \"abundant\".\"total_returns\",
+    \"cooperative\".\"returns_customer_text_id\",
+    \"cooperative\".\"returns_store_id\")
 SELECT
     \"uneven\".\"returns_customer_text_id\" as \"returns_customer_text_id\",
     \"uneven\".\"total_returns\" as \"total_returns\",

@@ -16,7 +16,15 @@ FROM
     LEFT OUTER JOIN \"memory\".\"warehouse\" as \"inventory_warehouse_warehouse\" on \"inventory_warehouse_inventory\".\"inv_warehouse_sk\" = \"inventory_warehouse_warehouse\".\"w_warehouse_sk\"
 WHERE
     cast(\"inventory_date_date\".\"D_DATE\" as date) >= date '2000-02-10' and cast(\"inventory_date_date\".\"D_DATE\" as date) <= date '2000-04-10' and \"inventory_item_items\".\"I_CURRENT_PRICE\" >= 0.99 and \"inventory_item_items\".\"I_CURRENT_PRICE\" <= 1.49
-)
+
+GROUP BY 
+    \"inventory_date_date\".\"D_DATE_SK\",
+    \"inventory_item_items\".\"I_ITEM_ID\",
+    \"inventory_item_items\".\"I_ITEM_SK\",
+    \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\",
+    \"inventory_warehouse_warehouse\".\"w_warehouse_name\",
+    \"inventory_warehouse_warehouse\".\"w_warehouse_sk\",
+    cast(\"inventory_date_date\".\"D_DATE\" as date))
 SELECT
     \"thoughtful\".\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
     \"thoughtful\".\"inventory_item_name\" as \"inventory_item_name\",

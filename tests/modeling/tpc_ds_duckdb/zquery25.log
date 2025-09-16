@@ -110,6 +110,14 @@ SELECT
 FROM
     \"juicy\"
     INNER JOIN \"concerned\" on \"juicy\".\"store_sales_item_name\" = \"concerned\".\"store_sales_item_name\" AND \"juicy\".\"store_sales_store_name\" = \"concerned\".\"store_sales_store_name\" AND \"juicy\".\"store_sales_store_text_id\" = \"concerned\".\"store_sales_store_text_id\" AND (\"juicy\".\"store_sales_item_desc\" = \"concerned\".\"store_sales_item_desc\" or (\"juicy\".\"store_sales_item_desc\" is null and \"concerned\".\"store_sales_item_desc\" is null))
+GROUP BY 
+    \"concerned\".\"catalog_sales_profit\",
+    \"juicy\".\"store_returns_loss\",
+    \"juicy\".\"store_sales_item_desc\",
+    \"juicy\".\"store_sales_item_name\",
+    \"juicy\".\"store_sales_profit\",
+    \"juicy\".\"store_sales_store_name\",
+    \"juicy\".\"store_sales_store_text_id\"
 ORDER BY 
     \"juicy\".\"store_sales_item_name\" asc,
     \"juicy\".\"store_sales_item_desc\" asc,

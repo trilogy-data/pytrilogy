@@ -66,7 +66,12 @@ FROM
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
 WHERE
     \"store_sales_date_date\".\"D_QOY\" = 2 and cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 1998 and SUBSTRING(\"store_sales_store_store\".\"S_ZIP\",1,2) in (select concerned.\"final_zips\" from concerned where concerned.\"final_zips\" is not null)
-)
+
+GROUP BY 
+    \"store_sales_store_sales\".\"SS_ITEM_SK\",
+    \"store_sales_store_sales\".\"SS_NET_PROFIT\",
+    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\",
+    \"store_sales_store_store\".\"S_STORE_NAME\")
 SELECT
     \"young\".\"store_sales_store_name\" as \"store_sales_store_name\",
     sum(\"young\".\"store_sales_net_profit\") as \"store_net_profit\"

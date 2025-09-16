@@ -383,6 +383,10 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
                 ],
                 rebuild=False,
             )
+            raise ValueError('We need to force a group here _if_ the remove of the output concepts changes the inherent grain of the upstream node')
+            # if isinstance(output, MergeNode):
+            #     output.force_group = True
+            #     output.rebuild_cache()
 
         logger.info(
             f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Source stack has single node, returning that {type(output)}"

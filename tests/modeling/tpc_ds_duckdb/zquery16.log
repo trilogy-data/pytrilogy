@@ -48,7 +48,7 @@ GROUP BY
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\",
     \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\",
     \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\"),
-concerned as (
+sparkling as (
 SELECT
     \"cs_catalog_sales\".\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",
     \"cs_catalog_sales\".\"CS_NET_PROFIT\" as \"cs_net_profit\"
@@ -59,7 +59,11 @@ FROM
     INNER JOIN \"memory\".\"customer_address\" as \"cs_customer_address_customer_address\" on \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" = \"cs_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
     cast(\"cs_ship_date_date\".\"D_DATE\" as date) >= date '2002-02-01' and cast(\"cs_ship_date_date\".\"D_DATE\" as date) <= date '2002-04-02' and \"cs_customer_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select questionable.\"cr_order_number\" from questionable where questionable.\"cr_order_number\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select yummy.\"multi_warehouse_sales\" from yummy where yummy.\"multi_warehouse_sales\" is not null)
-),
+
+GROUP BY 
+    \"cs_catalog_sales\".\"CS_ITEM_SK\",
+    \"cs_catalog_sales\".\"CS_NET_PROFIT\",
+    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\"),
 juicy as (
 SELECT
     \"thoughtful\".\"cs_order_number\" as \"cs_order_number\"
@@ -73,9 +77,13 @@ WHERE
 
 GROUP BY 
     \"thoughtful\".\"cs_order_number\"),
+abhorrent as (
+SELECT
+    sum(\"sparkling\".\"cs_extra_ship_cost\") as \"total_shipping_cost\"
+FROM
+    \"sparkling\"),
 young as (
 SELECT
-    sum(\"concerned\".\"cs_extra_ship_cost\") as \"total_shipping_cost\",
     sum(\"concerned\".\"cs_net_profit\") as \"total_net_profit\"
 FROM
     \"concerned\"),
@@ -86,11 +94,12 @@ FROM
     \"juicy\")
 SELECT
     \"vacuous\".\"order_count\" as \"order_count\",
-    \"young\".\"total_shipping_cost\" as \"total_shipping_cost\",
+    \"abhorrent\".\"total_shipping_cost\" as \"total_shipping_cost\",
     \"young\".\"total_net_profit\" as \"total_net_profit\"
 FROM
     \"vacuous\"
     FULL JOIN \"young\" on 1=1
+    FULL JOIN \"abhorrent\" on 1=1
 ORDER BY 
     \"vacuous\".\"order_count\" desc
 LIMIT (100)"""

@@ -46,7 +46,11 @@ FROM
     INNER JOIN \"cheerful\" on \"questionable\".\"item_id\" = \"cheerful\".\"item_id\"
 WHERE
     \"cheerful\".\"item_manufacturer_id\" = 977 and \"cheerful\".\"sold_date_date\" >= :start_date and \"cheerful\".\"sold_date_date\" <= :end_date and \"cheerful\".\"discount_amount\" > 1.3 * \"questionable\".\"_virt_agg_avg_721736882945984\"
-)
+
+GROUP BY 
+    \"cheerful\".\"discount_amount\",
+    \"cheerful\".\"item_id\",
+    \"cheerful\".\"order_number\")
 SELECT
     sum(\"abundant\".\"discount_amount\") as \"total_discount\"
 FROM

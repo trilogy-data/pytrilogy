@@ -17,7 +17,34 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
     \"store_sales_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home') and cast(\"store_sales_date_date\".\"D_DATE\" as date) >= date '1999-02-22' and cast(\"store_sales_date_date\".\"D_DATE\" as date) <= date '1999-03-24'
-),
+
+GROUP BY 
+    \"store_sales_item_items\".\"I_CATEGORY\",
+    \"store_sales_item_items\".\"I_CLASS\",
+    \"store_sales_item_items\".\"I_CURRENT_PRICE\",
+    \"store_sales_item_items\".\"I_ITEM_DESC\",
+    \"store_sales_item_items\".\"I_ITEM_ID\",
+    \"store_sales_item_items\".\"I_ITEM_SK\",
+    \"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\",
+    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\"),
+cooperative as (
+SELECT
+    \"store_sales_item_items\".\"I_CLASS\" as \"store_sales_item_class\",
+    \"store_sales_item_items\".\"I_ITEM_SK\" as \"store_sales_item_id\",
+    \"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\" as \"store_sales_ext_sales_price\",
+    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\"
+FROM
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+WHERE
+    \"store_sales_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home') and cast(\"store_sales_date_date\".\"D_DATE\" as date) >= date '1999-02-22' and cast(\"store_sales_date_date\".\"D_DATE\" as date) <= date '1999-03-24'
+
+GROUP BY 
+    \"store_sales_item_items\".\"I_CLASS\",
+    \"store_sales_item_items\".\"I_ITEM_SK\",
+    \"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\",
+    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\"),
 thoughtful as (
 SELECT
     \"cheerful\".\"store_sales_item_category\" as \"store_sales_item_category\",
@@ -35,17 +62,17 @@ GROUP BY
     \"cheerful\".\"store_sales_item_current_price\",
     \"cheerful\".\"store_sales_item_desc\",
     \"cheerful\".\"store_sales_item_name\"),
-cooperative as (
-SELECT
-    \"cheerful\".\"store_sales_item_class\" as \"store_sales_item_class\",
-    sum(\"cheerful\".\"store_sales_ext_sales_price\") as \"_virt_agg_sum_7595906549305205\"
-FROM
-    \"cheerful\"
-GROUP BY 
-    \"cheerful\".\"store_sales_item_class\"),
 questionable as (
 SELECT
-    \"thoughtful\".\"_virt_agg_sum_9873055619986236\" * 100.0 / (\"cooperative\".\"_virt_agg_sum_7595906549305205\") as \"revenueratio\",
+    \"cooperative\".\"store_sales_item_class\" as \"store_sales_item_class\",
+    sum(\"cooperative\".\"store_sales_ext_sales_price\") as \"_virt_agg_sum_7595906549305205\"
+FROM
+    \"cooperative\"
+GROUP BY 
+    \"cooperative\".\"store_sales_item_class\"),
+abundant as (
+SELECT
+    \"thoughtful\".\"_virt_agg_sum_9873055619986236\" * 100.0 / (\"questionable\".\"_virt_agg_sum_7595906549305205\") as \"revenueratio\",
     \"thoughtful\".\"store_sales_item_category\" as \"store_sales_item_category\",
     \"thoughtful\".\"store_sales_item_class\" as \"store_sales_item_class\",
     \"thoughtful\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
@@ -53,21 +80,36 @@ SELECT
     \"thoughtful\".\"store_sales_item_name\" as \"store_sales_item_name\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"cooperative\" on (\"thoughtful\".\"store_sales_item_class\" = \"cooperative\".\"store_sales_item_class\" or (\"thoughtful\".\"store_sales_item_class\" is null and \"cooperative\".\"store_sales_item_class\" is null)))
+    INNER JOIN \"questionable\" on (\"thoughtful\".\"store_sales_item_class\" = \"questionable\".\"store_sales_item_class\" or (\"thoughtful\".\"store_sales_item_class\" is null and \"questionable\".\"store_sales_item_class\" is null))
+GROUP BY 
+    \"thoughtful\".\"_virt_agg_sum_9873055619986236\" * 100.0 / (\"questionable\".\"_virt_agg_sum_7595906549305205\"),
+    \"thoughtful\".\"store_sales_item_category\",
+    \"thoughtful\".\"store_sales_item_class\",
+    \"thoughtful\".\"store_sales_item_current_price\",
+    \"thoughtful\".\"store_sales_item_desc\",
+    \"thoughtful\".\"store_sales_item_name\")
 SELECT
-    \"questionable\".\"store_sales_item_name\" as \"store_sales_item_name\",
-    \"questionable\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    \"questionable\".\"store_sales_item_category\" as \"store_sales_item_category\",
-    \"questionable\".\"store_sales_item_class\" as \"store_sales_item_class\",
-    \"questionable\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    \"abundant\".\"store_sales_item_name\" as \"store_sales_item_name\",
+    \"abundant\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    \"abundant\".\"store_sales_item_category\" as \"store_sales_item_category\",
+    \"abundant\".\"store_sales_item_class\" as \"store_sales_item_class\",
+    \"abundant\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
     \"thoughtful\".\"item_revenue\" as \"item_revenue\",
-    \"questionable\".\"revenueratio\" as \"revenueratio\"
+    \"abundant\".\"revenueratio\" as \"revenueratio\"
 FROM
-    \"questionable\"
-    INNER JOIN \"thoughtful\" on \"questionable\".\"store_sales_item_name\" = \"thoughtful\".\"store_sales_item_name\" AND (\"questionable\".\"store_sales_item_category\" = \"thoughtful\".\"store_sales_item_category\" or (\"questionable\".\"store_sales_item_category\" is null and \"thoughtful\".\"store_sales_item_category\" is null)) AND (\"questionable\".\"store_sales_item_class\" = \"thoughtful\".\"store_sales_item_class\" or (\"questionable\".\"store_sales_item_class\" is null and \"thoughtful\".\"store_sales_item_class\" is null)) AND (\"questionable\".\"store_sales_item_current_price\" = \"thoughtful\".\"store_sales_item_current_price\" or (\"questionable\".\"store_sales_item_current_price\" is null and \"thoughtful\".\"store_sales_item_current_price\" is null)) AND (\"questionable\".\"store_sales_item_desc\" = \"thoughtful\".\"store_sales_item_desc\" or (\"questionable\".\"store_sales_item_desc\" is null and \"thoughtful\".\"store_sales_item_desc\" is null))
+    \"abundant\"
+    INNER JOIN \"thoughtful\" on \"abundant\".\"store_sales_item_name\" = \"thoughtful\".\"store_sales_item_name\" AND (\"abundant\".\"store_sales_item_category\" = \"thoughtful\".\"store_sales_item_category\" or (\"abundant\".\"store_sales_item_category\" is null and \"thoughtful\".\"store_sales_item_category\" is null)) AND (\"abundant\".\"store_sales_item_class\" = \"thoughtful\".\"store_sales_item_class\" or (\"abundant\".\"store_sales_item_class\" is null and \"thoughtful\".\"store_sales_item_class\" is null)) AND (\"abundant\".\"store_sales_item_current_price\" = \"thoughtful\".\"store_sales_item_current_price\" or (\"abundant\".\"store_sales_item_current_price\" is null and \"thoughtful\".\"store_sales_item_current_price\" is null)) AND (\"abundant\".\"store_sales_item_desc\" = \"thoughtful\".\"store_sales_item_desc\" or (\"abundant\".\"store_sales_item_desc\" is null and \"thoughtful\".\"store_sales_item_desc\" is null))
+GROUP BY 
+    \"abundant\".\"revenueratio\",
+    \"abundant\".\"store_sales_item_category\",
+    \"abundant\".\"store_sales_item_class\",
+    \"abundant\".\"store_sales_item_current_price\",
+    \"abundant\".\"store_sales_item_desc\",
+    \"abundant\".\"store_sales_item_name\",
+    \"thoughtful\".\"item_revenue\"
 ORDER BY 
-    \"questionable\".\"store_sales_item_category\" asc nulls first,
-    \"questionable\".\"store_sales_item_class\" asc nulls first,
-    \"questionable\".\"store_sales_item_name\" asc nulls first,
-    \"questionable\".\"store_sales_item_desc\" asc nulls first,
-    \"questionable\".\"revenueratio\" asc nulls first"""
+    \"abundant\".\"store_sales_item_category\" asc nulls first,
+    \"abundant\".\"store_sales_item_class\" asc nulls first,
+    \"abundant\".\"store_sales_item_name\" asc nulls first,
+    \"abundant\".\"store_sales_item_desc\" asc nulls first,
+    \"abundant\".\"revenueratio\" asc nulls first"""
