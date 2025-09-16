@@ -143,4 +143,5 @@ def gen_basic_node(
     logger.info(
         f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept}: input: {[x.address for x in parent_node.input_concepts]} output {[x.address for x in parent_node.output_concepts]} hidden {[x for x in parent_node.hidden_concepts]}"
     )
+
     return parent_node

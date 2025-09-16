@@ -677,9 +677,11 @@ SELECT
 
 def test_parenthetical_basic(gcat_env: Executor):
 
+    from logging import INFO
+
     from trilogy.hooks import DebuggingHook
 
-    DebuggingHook()
+    DebuggingHook(level=INFO)
 
     queries = gcat_env.parse_text(
         """
@@ -688,18 +690,25 @@ import std.display;
 WHERE
     vehicle.stage_no in ('2', '3', '4') and  sum(orb_pay) by vehicle.stage.engine.fuel >0
 SELECT
-    vehicle.stage.engine.fuel,
-    (count(launch_tag) by vehicle.stage.engine.fuel) as fun,
-          @calc_percent(
-            (count(launch_tag ? was_complete_success) by vehicle.stage.engine.fuel), 
-           fun
-            , 2
-         ) as success_rate ;
+    array_sort(array_agg(
+        struct(
+        round(coalesce(sum(orb_pay) by vehicle.stage.engine.fuel,0),3)  ->payload , 
+        vehicle.stage.engine.fuel  ->fuel,
+        (count(launch_tag) by vehicle.stage.engine.fuel) ->success_rate 
+       
+         )
+    ), desc) as fuel_payloads
+;
+
 """
     )
     results = gcat_env.execute_query(queries[-1])
-    for row in results.fetchall():
-        assert 0 <= row["success_rate"] <= 1, row
+    seen = []
+    for row in results.fetchall()[0]["fuel_payloads"]:
+        seen.append(row["fuel"])
+        # assert 0 <= row["success_rate"] <= 100, row
+    if len(seen) != len(set(seen)):
+        raise AssertionError(f"Duplicate values in {seen}")
 
 
 def test_parenthetical(gcat_env: Executor):

@@ -92,7 +92,7 @@ def gen_rowset_node(
 
     node.rebuild_cache()
     logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} final output is {[x.address for x in node.output_concepts]}"
+        f"{padding(depth)}{LOGGER_PREFIX} final output is {[x.address for x in node.output_concepts]} with grain {node.grain}"
     )
     if not local_optional or all(
         (

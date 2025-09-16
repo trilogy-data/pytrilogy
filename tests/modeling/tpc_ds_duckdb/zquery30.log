@@ -49,23 +49,7 @@ FROM
     INNER JOIN \"memory\".\"customer_address\" as \"web_returns_customer_customer_address\" on \"web_returns_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"web_returns_customer_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
     \"web_returns_customer_customer_address\".\"CA_STATE\" = 'GA' and \"web_returns_return_address_customer_address\".\"CA_STATE\" is not null
-
-GROUP BY 
-    \"web_returns_customer_customer_address\".\"CA_STATE\",
-    \"web_returns_customer_customers\".\"C_BIRTH_COUNTRY\",
-    \"web_returns_customer_customers\".\"C_BIRTH_DAY\",
-    \"web_returns_customer_customers\".\"C_BIRTH_MONTH\",
-    \"web_returns_customer_customers\".\"C_BIRTH_YEAR\",
-    \"web_returns_customer_customers\".\"C_CUSTOMER_ID\",
-    \"web_returns_customer_customers\".\"C_CUSTOMER_SK\",
-    \"web_returns_customer_customers\".\"C_EMAIL_ADDRESS\",
-    \"web_returns_customer_customers\".\"C_FIRST_NAME\",
-    \"web_returns_customer_customers\".\"C_LAST_NAME\",
-    \"web_returns_customer_customers\".\"C_LAST_REVIEW_DATE_SK\",
-    \"web_returns_customer_customers\".\"C_LOGIN\",
-    \"web_returns_customer_customers\".\"C_PREFERRED_CUST_FLAG\",
-    \"web_returns_customer_customers\".\"C_SALUTATION\",
-    \"web_returns_return_address_customer_address\".\"CA_STATE\"),
+),
 uneven as (
 SELECT
     \"abundant\".\"web_returns_customer_id\" as \"web_returns_customer_id\",
@@ -110,8 +94,8 @@ SELECT
     \"cooperative\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
     \"yummy\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"yummy\" on \"cooperative\".\"web_returns_customer_id\" = \"yummy\".\"web_returns_customer_id\" AND (\"cooperative\".\"web_returns_return_address_state\" = \"yummy\".\"web_returns_return_address_state\" or (\"cooperative\".\"web_returns_return_address_state\" is null and \"yummy\".\"web_returns_return_address_state\" is null))
+    \"yummy\"
+    INNER JOIN \"cooperative\" on \"yummy\".\"web_returns_customer_id\" = \"cooperative\".\"web_returns_customer_id\" AND (\"yummy\".\"web_returns_return_address_state\" = \"cooperative\".\"web_returns_return_address_state\" or (\"yummy\".\"web_returns_return_address_state\" is null and \"cooperative\".\"web_returns_return_address_state\" is null))
 WHERE
     \"cooperative\".\"web_returns_customer_state\" = 'GA' and \"cooperative\".\"web_returns_return_address_state\" is not null
 )

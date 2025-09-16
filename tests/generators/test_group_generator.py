@@ -49,6 +49,9 @@ def test_gen_group_node_basic(test_environment, test_environment_graph):
 
 def test_gen_group_node(test_environment: Environment, test_environment_graph):
     history = History(base_environment=test_environment)
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
     test_environment = test_environment.materialize_for_select()
     cat = test_environment.concepts["category_id"]
     test_environment.concepts["category_top_50_revenue_products"]

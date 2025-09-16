@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from trilogy.constants import logger
-from trilogy.core.enums import Purpose, SourceType
+from trilogy.core.enums import Derivation, Purpose, SourceType
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
@@ -86,8 +86,8 @@ class GroupNode(StrategyNode):
             environment=environment,
         )
 
-        # the concepts of the souce grain might not exist in the output environment
-        # so we need to construct a new
+        # the concepts of the source grain might not exist in the output environment
+        # so we need to construct a new grain
         concept_map: dict[str, BuildConcept] = {}
         comp_grain = BuildGrain()
         for source in parents:
@@ -97,15 +97,18 @@ class GroupNode(StrategyNode):
         lookups: list[BuildConcept | str] = [
             concept_map[x] if x in concept_map else x for x in comp_grain.components
         ]
+        # lookups = []
+        # for source in parents:
+        #     lookups.extend(source.output_concepts)
 
         comp_grain = BuildGrain.from_concepts(lookups, environment=environment)
 
         # dynamically select if we need to group
-        # because sometimes, we are already at required grain
+        # we must avoid grouping if we are already at grain
         if comp_grain.issubset(target_grain):
 
             logger.info(
-                f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain}, {target_grain}, grain is subset of target, no group node required"
+                f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain}, target: {target_grain}, grain is subset of target, no group node required"
             )
             return GroupRequiredResponse(target_grain, comp_grain, False)
         # find out what extra is in the comp grain vs target grain
@@ -113,8 +116,12 @@ class GroupNode(StrategyNode):
             environment.concepts[c] for c in (comp_grain - target_grain).components
         ]
         logger.info(
-            f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain}, {target_grain}, difference {[x.address for x in difference]}"
+            f"{padding}{LOGGER_PREFIX} Group requirement check: upstream grain: {comp_grain} from {[x.source_type for x in parents]}, desired grain: {target_grain} from , difference {[x.address for x in difference]}"
         )
+        for x in difference:
+            logger.info(
+                f"{padding}{LOGGER_PREFIX} Difference concept {x.address} purpose {x.purpose} keys {x.keys}"
+            )
 
         # if the difference is all unique properties whose keys are in the source grain
         # we can also suppress the group
@@ -158,6 +165,28 @@ class GroupNode(StrategyNode):
                     f"{padding}{LOGGER_PREFIX} Group requirement check: skipped due to unique property validation"
                 )
                 return GroupRequiredResponse(target_grain, comp_grain, False)
+        logger.info(
+            f"{padding}{LOGGER_PREFIX} Checking for grain equivalence for filters and rowsets"
+        )
+        ngrain = []
+        for x in target_grain.components:
+            full = environment.concepts[x]
+            if full.derivation == Derivation.ROWSET:
+                ngrain.append(full.address.split(".", 1)[1])
+            elif full.derivation == Derivation.FILTER:
+                if isinstance(full.lineage.content, BuildConcept):
+                    ngrain.append(full.lineage.content.address)
+            else:
+                ngrain.append(full.address)
+        target_grain2 = BuildGrain.from_concepts(
+            ngrain,
+            environment=environment,
+        )
+        if comp_grain.issubset(target_grain2):
+            logger.info(
+                f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain}, {target_grain2}, pre rowset grain is subset of target, no group node required"
+            )
+            return GroupRequiredResponse(target_grain2, comp_grain, False)
 
         logger.info(f"{padding}{LOGGER_PREFIX} Group requirement check: group required")
         return GroupRequiredResponse(target_grain, comp_grain, True)

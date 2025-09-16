@@ -510,7 +510,7 @@ def subgraphs_to_merge_node(
     search_conditions: BuildWhereClause | None = None,
     enable_early_exit: bool = True,
 ):
-    target_grain = BuildGrain.from_concepts(output_concepts, environment=environment)
+
     parents: List[StrategyNode] = []
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} fetching subgraphs {[[c.address for c in subgraph] for subgraph in concept_subgraphs]}"
@@ -555,7 +555,7 @@ def subgraphs_to_merge_node(
             f"{padding(depth)}{LOGGER_PREFIX} only one parent node, exiting early w/ {[c.address for c in parents[0].output_concepts]}"
         )
         parent = parents[0]
-        return group_if_required(parent, output_concepts, environment)
+        return parent
 
     rval = MergeNode(
         input_concepts=unique(input_c, "address"),
@@ -563,7 +563,6 @@ def subgraphs_to_merge_node(
         environment=environment,
         parents=parents,
         depth=depth,
-        grain=target_grain,
         # hidden_concepts=[]
         # conditions=conditions,
         # conditions=search_conditions.conditional,

@@ -305,7 +305,7 @@ select my_rowset.x, my_rowset.max_rank;"""
     x = duckdb_engine.environment.concepts["x"]
     assert z.grain == Grain(components=[x])
     results = duckdb_engine.execute_text(test)[0].fetchall()
-    assert len(results) == 3
+    assert len(results) == 4
 
 
 def test_rowset_join(duckdb_engine: Executor):

@@ -284,6 +284,12 @@ class StrategyNode:
         if rebuild:
             self.rebuild_cache()
         return self
+    
+    def set_visible_concepts(self, concepts: List[BuildConcept]):
+        for x in self.output_concepts:
+            if x.address not in [c.address for c in concepts]:
+                self.hidden_concepts.add(x.address)
+        return self
 
     def set_output_concepts(self, concepts: List[BuildConcept], rebuild: bool = True):
         # exit if no changes

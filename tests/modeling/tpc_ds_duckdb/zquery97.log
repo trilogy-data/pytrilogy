@@ -38,7 +38,6 @@ WHERE
     \"catalog_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"catalog_sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
 
 GROUP BY 
-    \"catalog_sales_date_date\".\"D_MONTH_SEQ\",
     \"questionable\".\"catalog_sales_bill_customer_id\",
     \"questionable\".\"catalog_sales_item_id\"),
 cheerful as (
@@ -54,7 +53,6 @@ WHERE
     \"store_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"store_sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
 
 GROUP BY 
-    \"store_sales_date_date\".\"D_MONTH_SEQ\",
     \"wakeful\".\"store_sales_customer_id\",
     \"wakeful\".\"store_sales_item_id\"),
 uneven as (
@@ -73,15 +71,15 @@ GROUP BY
     coalesce(\"abundant\".\"item_id\",\"cheerful\".\"item_id\"))
 SELECT
     sum(CASE
-	WHEN \"uneven\".\"merged_store_sales_customer_id\" is not null and \"uneven\".\"merged_catalog_sales_bill_customer_id\" is null THEN 1
+	WHEN \"uneven\".\"merged_store_sales_customer_id\" is not null and \"uneven\".\"merged_store_sales_item_id\" is not null and \"uneven\".\"merged_catalog_sales_bill_customer_id\" is null and \"uneven\".\"merged_catalog_sales_item_id\" is null THEN 1
 	ELSE 0
 	END) as \"store_sales\",
     sum(CASE
-	WHEN \"uneven\".\"merged_store_sales_customer_id\" is null and \"uneven\".\"merged_catalog_sales_bill_customer_id\" is not null THEN 1
+	WHEN \"uneven\".\"merged_store_sales_customer_id\" is null and \"uneven\".\"merged_store_sales_item_id\" is null and \"uneven\".\"merged_catalog_sales_bill_customer_id\" is not null and \"uneven\".\"merged_catalog_sales_item_id\" is not null THEN 1
 	ELSE 0
 	END) as \"catalog_sales\",
     sum(CASE
-	WHEN \"uneven\".\"merged_store_sales_customer_id\" is not null and \"uneven\".\"merged_catalog_sales_bill_customer_id\" is not null THEN 1
+	WHEN \"uneven\".\"merged_store_sales_customer_id\" is not null and \"uneven\".\"merged_store_sales_item_id\" is not null and \"uneven\".\"merged_catalog_sales_bill_customer_id\" is not null and \"uneven\".\"merged_catalog_sales_item_id\" is not null THEN 1
 	ELSE 0
 	END) as \"both_sales\"
 FROM

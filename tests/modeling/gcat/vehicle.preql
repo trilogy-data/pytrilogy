@@ -48,7 +48,7 @@ datasource lv_info (
     LV_Alias: alias,
     LV_Min_Stage: min_stage,
     LV_Max_Stage: max_stage,
-    Length: length,
+    Length: ?length,
     LFlag: ?lflag,
     Diameter: diameter,
     DFlag: ?dflag,

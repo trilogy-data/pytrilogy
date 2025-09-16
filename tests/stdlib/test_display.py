@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from trilogy import Dialects
 from trilogy.hooks import DebuggingHook
 
@@ -48,11 +50,11 @@ order by
     results = all_results.fetchall()
     assert len(results) == 3
     assert results[0][0] == 1
-    assert round(results[0][1], 2) == 0.18
-    assert round(results[0][2], 2) == 0.2
+    assert round(results[0][1], 2) == Decimal("0.18")
+    assert round(results[0][2], 2) == Decimal("0.2")
     assert results[1][0] == 2
-    assert round(results[1][1], 2) == 0.18
-    assert round(results[1][2], 2) == 0.2
+    assert round(results[1][1], 2) == Decimal("0.18")
+    assert round(results[1][2], 2) == Decimal("0.2")
     assert results[2][0] == 3
-    assert round(results[2][1], 2) == 0.64
-    assert round(results[2][2], 2) == 0.6
+    assert round(results[2][1], 2) == Decimal("0.64")
+    assert round(results[2][2], 2) == Decimal("0.6")

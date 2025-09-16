@@ -68,8 +68,7 @@ SELECT
     \"cooperative\".\"returns_store_id\" as \"returns_store_id\"
 FROM
     \"cooperative\"
-    INNER JOIN \"abundant\" on \"cooperative\".\"returns_customer_id\" = \"abundant\".\"returns_customer_id\" AND \"cooperative\".\"returns_store_id\" = \"abundant\".\"returns_store_id\"),
-juicy as (
+    INNER JOIN \"abundant\" on \"cooperative\".\"returns_customer_id\" = \"abundant\".\"returns_customer_id\" AND \"cooperative\".\"returns_store_id\" = \"abundant\".\"returns_store_id\")
 SELECT
     \"uneven\".\"returns_customer_text_id\" as \"returns_customer_text_id\",
     \"uneven\".\"total_returns\" as \"total_returns\",
@@ -77,18 +76,14 @@ SELECT
 FROM
     \"uneven\"
     INNER JOIN \"yummy\" on \"uneven\".\"returns_store_id\" = \"yummy\".\"returns_store_id\"
+WHERE
+    \"uneven\".\"total_returns\" > ( 1.2 * \"yummy\".\"avg_store_returns\" )
+
 GROUP BY 
     \"uneven\".\"returns_customer_text_id\",
     \"uneven\".\"returns_store_id\",
     \"uneven\".\"total_returns\",
-    \"yummy\".\"avg_store_returns\")
-SELECT
-    \"juicy\".\"returns_customer_text_id\" as \"returns_customer_text_id\"
-FROM
-    \"juicy\"
-WHERE
-    \"juicy\".\"total_returns\" > ( 1.2 * \"juicy\".\"avg_store_returns\" )
-
+    \"yummy\".\"avg_store_returns\"
 ORDER BY 
-    \"juicy\".\"returns_customer_text_id\" asc
+    \"uneven\".\"returns_customer_text_id\" asc
 LIMIT (100)"""

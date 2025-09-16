@@ -224,7 +224,5 @@ def test_adhoc08():
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
     env, queries = env.parse(text)
     generated = engine.generate_sql(text)[0]
-    assert (
-        '("abundant"."shot_subtype" = "vacuous"."shot_subtype" or ("abundant"."shot_subtype" is null and "vacuous"."shot_subtype" is null'
-        in generated
-    ), generated
+    pattern = r'\("(\w+)"\."shot_subtype" = "(\w+)"\."shot_subtype" or \("\1"\."shot_subtype" is null and "\2"\."shot_subtype" is null'
+    assert re.search(pattern, generated), generated

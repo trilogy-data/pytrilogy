@@ -222,6 +222,7 @@ def gen_enrichment_node(
         parents=[enrich_node, base_node],
         force_group=False,
         preexisting_conditions=conditions.conditional if conditions else None,
+        depth=depth,
     )
 
 
