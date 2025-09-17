@@ -17,16 +17,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"cs_sold_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_sold_date_date\".\"D_DATE_SK\"
 WHERE
     \"cs_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home') and cast(\"cs_sold_date_date\".\"D_DATE\" as date) >= date '1999-02-22' and cast(\"cs_sold_date_date\".\"D_DATE\" as date) <= date '1999-03-24'
-
-GROUP BY 
-    \"cs_catalog_sales\".\"CS_EXT_SALES_PRICE\",
-    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\",
-    \"cs_item_items\".\"I_CATEGORY\",
-    \"cs_item_items\".\"I_CLASS\",
-    \"cs_item_items\".\"I_CURRENT_PRICE\",
-    \"cs_item_items\".\"I_ITEM_DESC\",
-    \"cs_item_items\".\"I_ITEM_ID\",
-    \"cs_item_items\".\"I_ITEM_SK\"),
+),
 thoughtful as (
 SELECT
     \"cheerful\".\"cs_item_category\" as \"cs_item_category\",
@@ -64,14 +55,6 @@ FROM
 WHERE
     \"thoughtful\".\"cs_item_name\" is not null
 
-GROUP BY 
-    \"thoughtful\".\"cs_item_category\",
-    \"thoughtful\".\"cs_item_class\",
-    \"thoughtful\".\"cs_item_current_price\",
-    \"thoughtful\".\"cs_item_desc\",
-    \"thoughtful\".\"cs_item_name\",
-    \"thoughtful\".\"revenue\",
-    \"thoughtful\".\"revenue\" * 100.0 / (\"cooperative\".\"_virt_window_sum_69632973582362\")
 ORDER BY 
     \"thoughtful\".\"cs_item_category\" asc nulls first,
     \"thoughtful\".\"cs_item_class\" asc nulls first,

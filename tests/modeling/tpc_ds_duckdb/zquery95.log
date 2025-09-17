@@ -63,11 +63,7 @@ FROM
     INNER JOIN \"memory\".\"customer_address\" as \"web_sales_ship_address_customer_address\" on \"web_sales_web_sales\".\"WS_SHIP_ADDR_SK\" = \"web_sales_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
     cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) >= date '1999-02-01' and cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) <= date '1999-04-02' and \"web_sales_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"web_sales_web_site_web_site\".\"web_company_name\" = 'pri' and \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select abundant.\"multi_warehouse_order\" from abundant where abundant.\"multi_warehouse_order\" is not null) and \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select yummy.\"returned_orders\" from yummy where yummy.\"returned_orders\" is not null)
-
-GROUP BY 
-    \"web_sales_web_sales\".\"WS_ITEM_SK\",
-    \"web_sales_web_sales\".\"WS_NET_PROFIT\",
-    \"web_sales_web_sales\".\"WS_ORDER_NUMBER\"),
+),
 juicy as (
 SELECT
     \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\"
@@ -81,13 +77,9 @@ WHERE
 
 GROUP BY 
     \"thoughtful\".\"web_sales_order_number\"),
-abhorrent as (
-SELECT
-    sum(\"sparkling\".\"web_sales_extra_ship_cost\") as \"total_shipping_cost\"
-FROM
-    \"sparkling\"),
 young as (
 SELECT
+    sum(\"concerned\".\"web_sales_extra_ship_cost\") as \"total_shipping_cost\",
     sum(\"concerned\".\"web_sales_net_profit\") as \"total_net_profit\"
 FROM
     \"concerned\"),
@@ -98,12 +90,11 @@ FROM
     \"juicy\")
 SELECT
     \"vacuous\".\"order_count\" as \"order_count\",
-    \"abhorrent\".\"total_shipping_cost\" as \"total_shipping_cost\",
+    \"young\".\"total_shipping_cost\" as \"total_shipping_cost\",
     \"young\".\"total_net_profit\" as \"total_net_profit\"
 FROM
     \"vacuous\"
     FULL JOIN \"young\" on 1=1
-    FULL JOIN \"abhorrent\" on 1=1
 ORDER BY 
     \"vacuous\".\"order_count\" desc
 LIMIT (100)"""

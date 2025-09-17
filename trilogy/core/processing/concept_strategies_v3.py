@@ -383,7 +383,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
                 ],
                 rebuild=False,
             )
-            raise ValueError('We need to force a group here _if_ the remove of the output concepts changes the inherent grain of the upstream node')
+
             # if isinstance(output, MergeNode):
             #     output.force_group = True
             #     output.rebuild_cache()
@@ -427,7 +427,9 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
         return group_if_required(
             output, context.original_mandatory, context.environment
         )
+    from trilogy.core.processing.discovery_utility import group_if_required_v2
     return output
+    return group_if_required_v2(output, context.original_mandatory, context.environment)
 
 
 def _search_concepts(

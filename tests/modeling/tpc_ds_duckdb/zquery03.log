@@ -15,14 +15,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
     \"store_sales_date_date\".\"D_MOY\" = 11 and \"store_sales_item_items\".\"I_MANUFACT_ID\" = 128
-
-GROUP BY 
-    \"store_sales_item_items\".\"I_BRAND\",
-    \"store_sales_item_items\".\"I_BRAND_ID\",
-    \"store_sales_item_items\".\"I_ITEM_SK\",
-    \"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\",
-    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\",
-    cast(\"store_sales_date_date\".\"D_YEAR\" as int))
+)
 SELECT
     \"cheerful\".\"store_sales_date_year\" as \"store_sales_date_year\",
     \"cheerful\".\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",

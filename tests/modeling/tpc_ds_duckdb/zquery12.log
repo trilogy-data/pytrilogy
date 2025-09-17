@@ -17,16 +17,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"web_sales_item_items\" on \"web_sales_web_sales\".\"WS_ITEM_SK\" = \"web_sales_item_items\".\"I_ITEM_SK\"
 WHERE
     cast(\"web_sales_date_date\".\"D_DATE\" as date) >= date '1999-02-22' and cast(\"web_sales_date_date\".\"D_DATE\" as date) <= date '1999-03-24' and \"web_sales_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home')
-
-GROUP BY 
-    \"web_sales_item_items\".\"I_CATEGORY\",
-    \"web_sales_item_items\".\"I_CLASS\",
-    \"web_sales_item_items\".\"I_CURRENT_PRICE\",
-    \"web_sales_item_items\".\"I_ITEM_DESC\",
-    \"web_sales_item_items\".\"I_ITEM_ID\",
-    \"web_sales_item_items\".\"I_ITEM_SK\",
-    \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\",
-    \"web_sales_web_sales\".\"WS_ORDER_NUMBER\"),
+),
 thoughtful as (
 SELECT
     \"cheerful\".\"web_sales_item_category\" as \"web_sales_item_category\",
@@ -61,15 +52,6 @@ SELECT
 FROM
     \"cooperative\"
     INNER JOIN \"thoughtful\" on \"cooperative\".\"itemrevenue\" = \"thoughtful\".\"itemrevenue\" AND (\"cooperative\".\"web_sales_item_class\" = \"thoughtful\".\"web_sales_item_class\" or (\"cooperative\".\"web_sales_item_class\" is null and \"thoughtful\".\"web_sales_item_class\" is null))
-GROUP BY 
-    \"cooperative\".\"itemclassrevenue\",
-    \"thoughtful\".\"itemrevenue\",
-    \"thoughtful\".\"web_sales_item_category\",
-    \"thoughtful\".\"web_sales_item_class\",
-    \"thoughtful\".\"web_sales_item_current_price\",
-    \"thoughtful\".\"web_sales_item_desc\",
-    \"thoughtful\".\"web_sales_item_name\",
-    (\"thoughtful\".\"itemrevenue\" * 100.0) / \"cooperative\".\"itemclassrevenue\"
 ORDER BY 
     \"thoughtful\".\"web_sales_item_category\" asc,
     \"thoughtful\".\"web_sales_item_class\" asc,
