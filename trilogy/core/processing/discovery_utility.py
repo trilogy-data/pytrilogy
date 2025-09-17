@@ -201,7 +201,7 @@ def group_if_required_v2(
             return root
         elif isinstance(root, GroupNode):
             # root.set_output_concepts(final, rebuild=False)
-            root.rebuild_cache()
+            # root.rebuild_cache()
             return root
         return GroupNode(
             output_concepts=final,

@@ -383,6 +383,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
                 ],
                 rebuild=False,
             )
+            # output.set_output_concepts(context.original_mandatory)
 
             # if isinstance(output, MergeNode):
             #     output.force_group = True
@@ -428,7 +429,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
             output, context.original_mandatory, context.environment
         )
     from trilogy.core.processing.discovery_utility import group_if_required_v2
-    return output
+
     return group_if_required_v2(output, context.original_mandatory, context.environment)
 
 
