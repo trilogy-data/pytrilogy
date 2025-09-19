@@ -1,5 +1,5 @@
 query_id = 95
-gen_length = 5700
+gen_length = 5554
 generated_sql = """
 
 WITH 
@@ -52,7 +52,7 @@ GROUP BY
     \"web_sales_web_sales\".\"WS_SHIP_ADDR_SK\",
     \"web_sales_web_sales\".\"WS_SHIP_DATE_SK\",
     \"web_sales_web_sales\".\"WS_WEB_SITE_SK\"),
-sparkling as (
+concerned as (
 SELECT
     \"web_sales_web_sales\".\"WS_EXT_SHIP_COST\" as \"web_sales_extra_ship_cost\",
     \"web_sales_web_sales\".\"WS_NET_PROFIT\" as \"web_sales_net_profit\"

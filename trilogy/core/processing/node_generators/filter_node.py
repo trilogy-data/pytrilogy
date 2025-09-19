@@ -261,9 +261,9 @@ def gen_filter_node(
             output_concepts=[concept] + same_filter_optional + parent_row_concepts,
             environment=environment,
             parents=core_parent_nodes,
-            grain=BuildGrain.from_concepts(
-                parents_for_grain + parent_row_concepts, environment=environment
-            ),
+            # grain=BuildGrain.from_concepts(
+            #     parents_for_grain + parent_row_concepts, environment=environment
+            # ),
             preexisting_conditions=conditions.conditional if conditions else None,
         )
 

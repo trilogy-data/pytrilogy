@@ -2,10 +2,17 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from trilogy import Dialects, Executor
-from trilogy.core.models.environment import Environment
-from trilogy.core.processing.discovery_utility import calculate_effective_parent_grain, check_if_group_required
-from trilogy.core.processing.concept_strategies_v3 import search_concepts, generate_graph, History
 from trilogy.core.models.build import BuildGrain
+from trilogy.core.models.environment import Environment
+from trilogy.core.processing.concept_strategies_v3 import (
+    History,
+    generate_graph,
+    search_concepts,
+)
+from trilogy.core.processing.discovery_utility import (
+    calculate_effective_parent_grain,
+    check_if_group_required,
+)
 
 working_path = Path(__file__).parent
 
@@ -244,11 +251,10 @@ limit 5;
 """
     engine.execute_query(query).fetchall()
 
-def test_merge_grain_discovery(engine:Executor):
-    
-    engine.parse_text(
-        """import store_sales as store_sales;"""
-    )
+
+def test_merge_grain_discovery(engine: Executor):
+
+    engine.parse_text("""import store_sales as store_sales;""")
     environment = engine.environment
     build_environment = environment.materialize_for_select()
     graph = generate_graph(build_environment)
@@ -259,21 +265,28 @@ def test_merge_grain_discovery(engine:Executor):
         build_environment.concepts["store_sales.item.id"],
     ]
     node = search_concepts(
-        mandatory_list = target_concepts,
-        history = History(base_environment=environment),
-        environment = build_environment,
-        g = graph,
-        depth = 0, 
-        accept_partial = False
-
+        mandatory_list=target_concepts,
+        history=History(base_environment=environment),
+        environment=build_environment,
+        g=graph,
+        depth=0,
+        accept_partial=False,
     )
     grain = calculate_effective_parent_grain(node)
     for x in node.parents:
         print(x)
-    assert grain.components == BuildGrain(components={'store_sales.ticket_number', 'store_sales.item.id'}).components
+    assert (
+        grain.components
+        == BuildGrain(
+            components={"store_sales.ticket_number", "store_sales.item.id"}
+        ).components
+    )
 
-    assert check_if_group_required(
-        downstream_concepts=target_concepts,
-        parents=[node.resolve()],
-        environment=build_environment
-    ).required == False
+    assert (
+        check_if_group_required(
+            downstream_concepts=target_concepts,
+            parents=[node.resolve()],
+            environment=build_environment,
+        ).required
+        == False
+    )

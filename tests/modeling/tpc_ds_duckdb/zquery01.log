@@ -1,5 +1,5 @@
 query_id = 1
-gen_length = 3703
+gen_length = 3473
 generated_sql = """
 
 WITH 
@@ -74,9 +74,7 @@ GROUP BY
     \"cooperative\".\"returns_customer_text_id\",
     \"cooperative\".\"returns_store_id\")
 SELECT
-    \"uneven\".\"returns_customer_text_id\" as \"returns_customer_text_id\",
-    \"uneven\".\"total_returns\" as \"total_returns\",
-    \"yummy\".\"avg_store_returns\" as \"avg_store_returns\"
+    \"uneven\".\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
     \"uneven\"
     INNER JOIN \"yummy\" on \"uneven\".\"returns_store_id\" = \"yummy\".\"returns_store_id\"

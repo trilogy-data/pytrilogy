@@ -1,5 +1,5 @@
 query_id = 24
-gen_length = 9221
+gen_length = 9382
 generated_sql = """
 
 WITH 
@@ -101,10 +101,7 @@ GROUP BY
     \"uneven\".\"store_sales_store_name\"),
 vacuous as (
 SELECT
-    \"vacuous\".\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
-    \"vacuous\".\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    \"vacuous\".\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
-    CASE WHEN \"vacuous\".\"su_store_sales_item_color\" = 'peach' THEN \"vacuous\".\"su_net_paid\" ELSE NULL END as \"_virt_filter_net_paid_3139932349044856\"
+    \"questionable\".\"net_paid\" as \"su_net_paid\"
 FROM
     \"questionable\"
     INNER JOIN \"juicy\" on \"questionable\".\"store_sales_item_id\" = \"juicy\".\"store_sales_item_id\"
@@ -114,7 +111,6 @@ GROUP BY
     \"questionable\".\"net_paid\"),
 sparkling as (
 SELECT
-    \"young\".\"su_net_paid\" as \"su_net_paid\",
     \"young\".\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     \"young\".\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
     \"young\".\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
@@ -128,34 +124,20 @@ FROM
     \"vacuous\"),
 abhorrent as (
 SELECT
-    \"sparkling\".\"_virt_filter_net_paid_3139932349044856\" as \"_virt_filter_net_paid_3139932349044856\",
+    \"sparkling\".\"_virt_filter_net_paid_3139932349044856\" as \"peach_sales\",
     \"sparkling\".\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     \"sparkling\".\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
     \"sparkling\".\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
 FROM
-    \"sparkling\"
-GROUP BY 
-    \"sparkling\".\"_virt_filter_net_paid_3139932349044856\",
-    \"sparkling\".\"su_net_paid\",
-    \"sparkling\".\"su_store_sales_customer_first_name\",
-    \"sparkling\".\"su_store_sales_customer_last_name\",
-    \"sparkling\".\"su_store_sales_store_name\"),
-sweltering as (
+    \"sparkling\")
 SELECT
-    \"abhorrent\".\"_virt_filter_net_paid_3139932349044856\" as \"peach_sales\",
-    \"abhorrent\".\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     \"abhorrent\".\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    \"abhorrent\".\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
+    \"abhorrent\".\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    \"abhorrent\".\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
+    \"abhorrent\".\"peach_sales\" as \"peach_sales\"
 FROM
-    \"abhorrent\")
-SELECT
-    \"sweltering\".\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    \"sweltering\".\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
-    \"sweltering\".\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
-    \"sweltering\".\"peach_sales\" as \"peach_sales\"
-FROM
-    \"sweltering\"
+    \"abhorrent\"
     FULL JOIN \"concerned\" on 1=1
 WHERE
-    \"sweltering\".\"peach_sales\" > 0.05 * \"concerned\".\"avg_store_customer_sales\"
+    \"abhorrent\".\"peach_sales\" > 0.05 * \"concerned\".\"avg_store_customer_sales\"
 """

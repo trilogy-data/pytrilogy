@@ -1,5 +1,5 @@
 query_id = 16
-gen_length = 4846
+gen_length = 4686
 generated_sql = """
 
 WITH 
@@ -48,7 +48,7 @@ GROUP BY
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\",
     \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\",
     \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\"),
-sparkling as (
+concerned as (
 SELECT
     \"cs_catalog_sales\".\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",
     \"cs_catalog_sales\".\"CS_NET_PROFIT\" as \"cs_net_profit\"

@@ -32,25 +32,23 @@ FROM
     \"thoughtful\"),
 questionable as (
 SELECT
-    \"cooperative\".\"_virt_filter_discount_amount_8859191248994797\" as \"_virt_filter_discount_amount_8859191248994797\",
-    \"cooperative\".\"item_id\" as \"item_id\"
+    \"cooperative\".\"item_id\" as \"item_id\",
+    avg(\"cooperative\".\"_virt_filter_discount_amount_8859191248994797\") as \"_virt_agg_avg_721736882945984\"
 FROM
     \"cooperative\"
 GROUP BY 
-    \"cooperative\".\"_virt_filter_discount_amount_8859191248994797\",
-    \"cooperative\".\"item_id\",
-    \"cooperative\".\"order_number\"),
+    \"cooperative\".\"item_id\"),
 abundant as (
 SELECT
     \"cheerful\".\"discount_amount\" as \"discount_amount\"
 FROM
-    \"abundant\"
-    INNER JOIN \"cheerful\" on \"abundant\".\"item_id\" = \"cheerful\".\"item_id\"
+    \"questionable\"
+    INNER JOIN \"cheerful\" on \"questionable\".\"item_id\" = \"cheerful\".\"item_id\"
 WHERE
-    \"cheerful\".\"item_manufacturer_id\" = 977 and \"cheerful\".\"sold_date_date\" >= :start_date and \"cheerful\".\"sold_date_date\" <= :end_date and \"cheerful\".\"discount_amount\" > 1.3 * \"abundant\".\"_virt_agg_avg_721736882945984\"
+    \"cheerful\".\"item_manufacturer_id\" = 977 and \"cheerful\".\"sold_date_date\" >= :start_date and \"cheerful\".\"sold_date_date\" <= :end_date and \"cheerful\".\"discount_amount\" > 1.3 * \"questionable\".\"_virt_agg_avg_721736882945984\"
 )
 SELECT
-    sum(\"uneven\".\"discount_amount\") as \"total_discount\"
+    sum(\"abundant\".\"discount_amount\") as \"total_discount\"
 FROM
-    \"uneven\"
+    \"abundant\"
 LIMIT (100)"""

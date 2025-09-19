@@ -1,5 +1,5 @@
 query_id = 97
-gen_length = 3555
+gen_length = 4827
 generated_sql = """
 
 WITH 
@@ -72,7 +72,9 @@ GROUP BY
 uneven as (
 SELECT
     \"abundant\".\"catalog_sales_bill_customer_id\" as \"merged_catalog_sales_bill_customer_id\",
-    \"cheerful\".\"store_sales_customer_id\" as \"merged_store_sales_customer_id\"
+    \"abundant\".\"catalog_sales_item_id\" as \"merged_catalog_sales_item_id\",
+    \"cheerful\".\"store_sales_customer_id\" as \"merged_store_sales_customer_id\",
+    \"cheerful\".\"store_sales_item_id\" as \"merged_store_sales_item_id\"
 FROM
     \"cheerful\"
     FULL JOIN \"abundant\" on \"cheerful\".\"customer_id\" = \"abundant\".\"customer_id\" AND \"cheerful\".\"item_id\" = \"abundant\".\"item_id\"

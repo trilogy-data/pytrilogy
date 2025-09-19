@@ -180,7 +180,7 @@ def test_ten(engine):
 
 def test_twelve(engine):
     query = run_query(engine, 12)
-    assert len(query) <=3200, query
+    assert len(query) <= 3200, query
 
 
 def test_fifteen(engine):
