@@ -62,13 +62,12 @@ def render_join_concept(
     concept: BuildConcept,
     render_expr,
     inlined_ctes: set[str],
-    use_map: dict[str, set[str]] = None,
+    use_map: dict[str, set[str]],
 ):
     if cte.name in inlined_ctes:
         base = render_expr(concept, cte)
         return base
-    if use_map is not None:
-        use_map[name].add(concept.address)
+    use_map[name].add(concept.address)
     return f"{quote_character}{name}{quote_character}.{quote_character}{concept.safe_address}{quote_character}"
 
 
@@ -88,8 +87,8 @@ def render_join(
         str,
     ],
     cte: CTE,
+    use_map: dict[str, set[str]],
     unnest_mode: UnnestMode = UnnestMode.CROSS_APPLY,
-    use_map: dict[str, set[str]] = None,
 ) -> str | None:
     # {% for key in join.joinkeys %}{{ key.inner }} = {{ key.outer}}{% endfor %}
     if isinstance(join, InstantiatedUnnestJoin):

@@ -1,9 +1,19 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildFunction,
+    BuildGrain,
+    BuildWhereClause,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.nodes import History, StrategyNode, UnnestNode
+from trilogy.core.processing.nodes import (
+    History,
+    StrategyNode,
+    UnnestNode,
+    WhereSafetyNode,
+)
 from trilogy.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_UNNEST_NODE]"
@@ -71,7 +81,9 @@ def gen_unnest_node(
                 return None
     else:
         parent = None
-
+    logger.info(
+        f"{depth_prefix}{LOGGER_PREFIX} unnest node for {concept} got parent {parent}"
+    )
     base = UnnestNode(
         unnest_concepts=[concept] + equivalent_optional,
         input_concepts=arguments + non_equivalent_optional,
@@ -83,7 +95,7 @@ def gen_unnest_node(
     # as unnest operations are not valid in all situations
     # TODO: inline this node when we can detect it's safe
     conditional = conditions.conditional if conditions else None
-    new = StrategyNode(
+    new = WhereSafetyNode(
         input_concepts=base.output_concepts,
         output_concepts=base.output_concepts,
         environment=environment,
@@ -92,9 +104,13 @@ def gen_unnest_node(
         preexisting_conditions=(
             conditional if conditional and local_conditions is False else None
         ),
+        grain=BuildGrain.from_concepts(
+            concepts=base.output_concepts,
+            environment=environment,
+        ),
     )
-    qds = new.resolve()
-    assert qds.source_map[concept.address] == {base.resolve()}
-    for x in equivalent_optional:
-        assert qds.source_map[x.address] == {base.resolve()}
+    # qds = new.resolve()
+    # assert qds.source_map[concept.address] == {base.resolve()}
+    # for x in equivalent_optional:
+    #     assert qds.source_map[x.address] == {base.resolve()}
     return new

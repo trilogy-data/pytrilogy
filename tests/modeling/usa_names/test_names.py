@@ -223,8 +223,7 @@ def test_multi_window():
     #     ), sql
     pattern = r"""[a-z]+ as \(
 SELECT
-    (["a-z]+)\."_virt_agg_sum_\d+" as "_virt_agg_sum_\d+",
-    \1\."name" as "name",
+    (["a-z]+)\."name" as "name",
     rank\(\) over \(order by \1\."_virt_agg_sum_\d+" desc \) as "all_rank"
 FROM
     \1\)"""

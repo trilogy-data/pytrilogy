@@ -356,14 +356,12 @@ class BaseDialect:
 
     def __init__(self, rendering: Rendering | None = None):
         self.rendering = rendering or CONFIG.rendering
-        self.used_map = defaultdict(set)
+        self.used_map: dict[str, set[str]] = defaultdict(set)
 
     def render_order_item(
         self,
         order_item: BuildOrderItem,
         cte: CTE | UnionCTE,
-        final: bool = False,
-        alias: bool = True,
     ) -> str:
         # if final:
         #     if not alias:
@@ -836,10 +834,7 @@ class BaseDialect:
             )
             if cte.order_by:
 
-                ordering = [
-                    self.render_order_item(i, cte, final=True, alias=False)
-                    for i in cte.order_by.items
-                ]
+                ordering = [self.render_order_item(i, cte) for i in cte.order_by.items]
                 base_statement += "\nORDER BY " + ",".join(ordering)
             return CompiledCTE(name=cte.name, statement=base_statement)
         elif isinstance(cte, RecursiveCTE):
@@ -964,8 +959,8 @@ class BaseDialect:
                             self.QUOTE_CHARACTER,
                             self.render_expr,
                             cte,
-                            self.UNNEST_MODE,
-                            self.used_map,
+                            use_map=self.used_map,
+                            unnest_mode=self.UNNEST_MODE,
                         )
                         for join in final_joins
                     ]
