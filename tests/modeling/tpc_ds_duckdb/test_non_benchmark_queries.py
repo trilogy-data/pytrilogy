@@ -282,11 +282,8 @@ def test_merge_grain_discovery(engine: Executor):
         ).components
     )
 
-    assert (
-        check_if_group_required(
-            downstream_concepts=target_concepts,
-            parents=[node.resolve()],
-            environment=build_environment,
-        ).required
-        == False
-    )
+    assert not check_if_group_required(
+        downstream_concepts=target_concepts,
+        parents=[node.resolve()],
+        environment=build_environment,
+    ).required

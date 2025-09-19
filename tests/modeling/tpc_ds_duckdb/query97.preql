@@ -21,14 +21,15 @@ align
 ;
 
 
+
 SELECT
     sum(CASE 
         WHEN merged.store_sales.customer.id is not null and merged.store_sales.item.id is not null and 
-        merged.catalog_sales.bill_customer.id is null and merged.catalog_sales.item.id is null THEN 1 ELSE 0 END) as store_sales,
+        merged.catalog_sales.bill_customer.id is null and merged.catalog_sales.item.id is null THEN 1 ELSE 0 END) as store_sale_count,
     sum(CASE 
-        WHEN merged.store_sales.customer.id is null and merged.store_sales.item.id is null and merged.catalog_sales.bill_customer.id is not null 
-        and merged.catalog_sales.item.id is not null THEN 1 ELSE 0 END) as catalog_sales,
+        WHEN merged.store_sales.customer.id is null and merged.store_sales.item.id is null 
+        and merged.catalog_sales.bill_customer.id is not null and merged.catalog_sales.item.id is not null THEN 1 ELSE 0 END) as catalog_sale_count,
     sum(CASE 
         WHEN merged.store_sales.customer.id is not null and merged.store_sales.item.id is not null 
-        and merged.catalog_sales.bill_customer.id is not null and merged.catalog_sales.item.id is not null THEN 1 ELSE 0 END) as both_sales
+        and merged.catalog_sales.bill_customer.id is not null and merged.catalog_sales.item.id is not null THEN 1 ELSE 0 END) as both_sale_count
 ;

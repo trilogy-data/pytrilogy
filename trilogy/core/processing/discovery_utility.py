@@ -5,16 +5,14 @@ from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
+    BuildFilterItem,
     BuildGrain,
     BuildRowsetItem,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.models.execute import QueryDatasource
+from trilogy.core.models.execute import QueryDatasource, UnnestJoin
 from trilogy.core.processing.nodes import GroupNode, MergeNode, StrategyNode
-from trilogy.core.processing.nodes.base_node import (
-    StrategyNode,
-)
-from trilogy.core.processing.nodes.group_node import GroupRequiredResponse
+from trilogy.core.processing.utility import GroupRequiredResponse
 
 
 def depth_to_prefix(depth: int) -> str:
@@ -24,20 +22,24 @@ def depth_to_prefix(depth: int) -> str:
 LOGGER_PREFIX = "[DISCOVERY LOOP]"
 
 
-def calculate_effective_parent_grain(node: StrategyNode) -> BuildGrain:
+def calculate_effective_parent_grain(
+    node: QueryDatasource | BuildDatasource,
+) -> BuildGrain:
     # calculate the effective grain of the parent node
     # this is the union of all parent grains
     if isinstance(node, MergeNode):
         grain = BuildGrain()
         qds = node.resolve()
-        base = qds
+        if not qds.joins:
+            return qds.datasources[0].grain
         for join in qds.joins:
-            # print(join)
-            # base = join.left_datasource.grain
-            for key in join.concept_pairs:
+            if isinstance(join, UnnestJoin):
+                continue
+            pairs = join.concept_pairs or []
+            for key in pairs:
                 left = key.existing_datasource
                 grain += left.grain
-            keys = [key.right for key in join.concept_pairs]
+            keys = [key.right for key in pairs]
             join_grain = BuildGrain.from_concepts(keys)
             if join_grain == join.right_datasource.grain:
                 logger.info(f"irrelevant right join {join}, does not change grain")
@@ -48,9 +50,9 @@ def calculate_effective_parent_grain(node: StrategyNode) -> BuildGrain:
                 grain += join.right_datasource.grain
         return grain
     else:
-        return node.grain
+        return node.grain or BuildGrain()
 
-#Difference concept local.days_to_ship
+
 def check_if_group_required(
     downstream_concepts: List[BuildConcept],
     parents: list[QueryDatasource | BuildDatasource],
@@ -63,23 +65,10 @@ def check_if_group_required(
         environment=environment,
     )
 
-    # the concepts of the source grain might not exist in the output environment
-    # so we need to construct a new grain
-    concept_map: dict[str, BuildConcept] = {}
     comp_grain = BuildGrain()
     for source in parents:
         # comp_grain += source.grain
         comp_grain += calculate_effective_parent_grain(source)
-        for x in source.output_concepts:
-            concept_map[x.address] = x
-    lookups: list[BuildConcept | str] = [
-        concept_map[x] if x in concept_map else x for x in comp_grain.components
-    ]
-    # lookups = []
-    # for source in parents:
-    #     lookups.extend(source.output_concepts)
-
-    # comp_grain = BuildGrain.from_concepts(lookups, environment=environment)
 
     # dynamically select if we need to group
     # we must avoid grouping if we are already at grain
@@ -94,7 +83,7 @@ def check_if_group_required(
         environment.concepts[c] for c in (comp_grain - target_grain).components
     ]
     logger.info(
-        f"{padding}{LOGGER_PREFIX} Group requirement check: upstream grain: {comp_grain} from {[x.source_type for x in parents]}, desired grain: {target_grain} from , difference {[x.address for x in difference]}"
+        f"{padding}{LOGGER_PREFIX} Group requirement check: upstream grain: {comp_grain}, desired grain: {target_grain} from , difference {[x.address for x in difference]}"
     )
     for x in difference:
         logger.info(
@@ -144,11 +133,12 @@ def check_if_group_required(
         f"{padding}{LOGGER_PREFIX} Checking for grain equivalence for filters and rowsets"
     )
     ngrain = []
-    for x in target_grain.components:
-        full = environment.concepts[x]
+    for con in target_grain.components:
+        full = environment.concepts[con]
         if full.derivation == Derivation.ROWSET:
             ngrain.append(full.address.split(".", 1)[1])
         elif full.derivation == Derivation.FILTER:
+            assert isinstance(full.lineage, BuildFilterItem)
             if isinstance(full.lineage.content, BuildConcept):
                 ngrain.append(full.lineage.content.address)
         else:
@@ -179,9 +169,7 @@ def group_if_required_v2(
         if x.address in final or any(c in final for c in x.pseudonyms)
     ]
     if required.required:
-
         if isinstance(root, MergeNode):
-            logger.info(f"{LOGGER_PREFIX} Group requirement check: group required2")
             root.force_group = True
             root.set_output_concepts(targets, rebuild=False, change_visibility=False)
             root.rebuild_cache()
@@ -203,34 +191,6 @@ def group_if_required_v2(
         return root
     else:
         root.set_output_concepts(targets, rebuild=False, change_visibility=False)
-    return root
-
-
-def group_if_required(
-    root: StrategyNode, final: List[BuildConcept], environment: BuildEnvironment
-):
-    if isinstance(root, MergeNode) and root.force_group is True:
-        return root
-    elif isinstance(root, GroupNode):
-        return root
-    elif GroupNode.check_if_required(
-        downstream_concepts=final,
-        parents=[root.resolve()],
-        environment=environment,
-    ).required:
-        if isinstance(root, MergeNode):
-            root.force_group = True
-            root.set_output_concepts(final, rebuild=False)
-            root.rebuild_cache()
-            return root
-        return GroupNode(
-            output_concepts=final,
-            input_concepts=final,
-            environment=environment,
-            parents=[root],
-            partial_concepts=root.partial_concepts,
-            preexisting_conditions=root.preexisting_conditions,
-        )
     return root
 
 

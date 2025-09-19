@@ -369,8 +369,12 @@ class MergeNode(StrategyNode):
             source_map=source_map, joins=joins, datasources=final_datasets
         )
         if force_group:
+
             grain = BuildGrain.from_concepts(
                 self.output_concepts, environment=self.environment
+            )
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} forcing group by to achieve grain {grain}"
             )
         qds = QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),

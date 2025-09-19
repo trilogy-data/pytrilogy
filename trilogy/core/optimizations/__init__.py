@@ -8,4 +8,5 @@ __all__ = [
     "InlineDatasource",
     "PredicatePushdown",
     "PredicatePushdownRemove",
+    "HideUnusedConcepts",
 ]
