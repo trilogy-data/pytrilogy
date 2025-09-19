@@ -1,23 +1,8 @@
-from trilogy.core.enums import (
-    BooleanOperator,
-)
 from trilogy.core.models.build import (
     BuildConcept,
-    BuildConditional,
 )
 from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.optimizations.base_optimization import OptimizationRule
-
-
-def is_child_of(a, comparison):
-    base = comparison == a
-    if base:
-        return True
-    if isinstance(comparison, BuildConditional):
-        return (
-            is_child_of(a, comparison.left) or is_child_of(a, comparison.right)
-        ) and comparison.operator == BooleanOperator.AND
-    return base
 
 
 class HideUnusedConcepts(OptimizationRule):
