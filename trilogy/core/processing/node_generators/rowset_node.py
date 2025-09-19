@@ -91,10 +91,7 @@ def gen_rowset_node(
         and x.derivation != Derivation.ROWSET
         and not any(z in lineage.rowset.derived_concepts for z in x.pseudonyms)
     ]
-    logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} hiding {final_hidden} local optional {local_optional}"
-    )
-    node.hide_output_concepts(final_hidden)
+
 
     node.grain = BuildGrain.from_concepts(
         [

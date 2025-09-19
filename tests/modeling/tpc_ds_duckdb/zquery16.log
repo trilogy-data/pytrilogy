@@ -1,5 +1,5 @@
 query_id = 16
-gen_length = 4962
+gen_length = 4846
 generated_sql = """
 
 WITH 
@@ -58,9 +58,7 @@ GROUP BY
 young as (
 SELECT
     \"cs_catalog_sales\".\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",
-    \"cs_catalog_sales\".\"CS_ITEM_SK\" as \"cs_item_id\",
-    \"cs_catalog_sales\".\"CS_NET_PROFIT\" as \"cs_net_profit\",
-    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\"
+    \"cs_catalog_sales\".\"CS_NET_PROFIT\" as \"cs_net_profit\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\" = \"cs_ship_date_date\".\"D_DATE_SK\"

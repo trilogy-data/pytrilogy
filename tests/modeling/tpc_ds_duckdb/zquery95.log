@@ -1,5 +1,5 @@
 query_id = 95
-gen_length = 5836
+gen_length = 5700
 generated_sql = """
 
 WITH 
@@ -62,9 +62,7 @@ GROUP BY
 young as (
 SELECT
     \"web_sales_web_sales\".\"WS_EXT_SHIP_COST\" as \"web_sales_extra_ship_cost\",
-    \"web_sales_web_sales\".\"WS_ITEM_SK\" as \"web_sales_item_id\",
-    \"web_sales_web_sales\".\"WS_NET_PROFIT\" as \"web_sales_net_profit\",
-    \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" as \"web_sales_order_number\"
+    \"web_sales_web_sales\".\"WS_NET_PROFIT\" as \"web_sales_net_profit\"
 FROM
     \"memory\".\"web_sales\" as \"web_sales_web_sales\"
     INNER JOIN \"memory\".\"web_site\" as \"web_sales_web_site_web_site\" on \"web_sales_web_sales\".\"WS_WEB_SITE_SK\" = \"web_sales_web_site_web_site\".\"web_site_sk\"

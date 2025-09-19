@@ -1,5 +1,5 @@
 query_id = 30
-gen_length = 10593
+gen_length = 10279
 generated_sql = """
 
 WITH 
@@ -15,8 +15,6 @@ GROUP BY
 abundant as (
 SELECT
     \"web_returns_return_address_customer_address\".\"CA_STATE\" as \"web_returns_return_address_state\",
-    \"web_returns_web_returns\".\"WR_ITEM_SK\" as \"web_returns_item_id\",
-    \"web_returns_web_returns\".\"WR_ORDER_NUMBER\" as \"web_returns_web_sales_order_number\",
     \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\" as \"web_returns_customer_id\",
     \"web_returns_web_returns\".\"WR_RETURN_AMT\" as \"web_returns_return_amount\",
     cast(\"web_returns_return_date_date\".\"D_YEAR\" as int) as \"web_returns_return_date_year\"
@@ -71,9 +69,7 @@ GROUP BY
 uneven as (
 SELECT
     \"abundant\".\"web_returns_customer_id\" as \"web_returns_customer_id\",
-    \"abundant\".\"web_returns_item_id\" as \"web_returns_item_id\",
     \"abundant\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
-    \"abundant\".\"web_returns_web_sales_order_number\" as \"web_returns_web_sales_order_number\",
     CASE WHEN \"abundant\".\"web_returns_return_date_year\" = 2002 THEN \"abundant\".\"web_returns_return_amount\" ELSE NULL END as \"_virt_filter_return_amount_1075768703847083\"
 FROM
     \"abundant\"),

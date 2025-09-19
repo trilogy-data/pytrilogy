@@ -1,12 +1,10 @@
 query_id = 99
-gen_length = 3743
+gen_length = 3543
 generated_sql = """
 
 WITH 
 questionable as (
 SELECT
-    \"catalog_sales\".\"CS_ITEM_SK\" as \"item_id\",
-    \"catalog_sales\".\"CS_ORDER_NUMBER\" as \"order_number\",
     \"ship_mode_ship_mode\".\"SM_TYPE\" as \"ship_mode_type\",
     (cast(\"catalog_sales\".\"CS_ORDER_NUMBER\" as string) || cast(\"catalog_sales\".\"CS_ITEM_SK\" as string)) as \"catalog_pk\",
     LOWER(\"call_center_call_center\".\"CC_NAME\")  as \"cc_name_lower\",
@@ -25,8 +23,6 @@ WHERE
 abundant as (
 SELECT
     \"questionable\".\"cc_name_lower\" as \"cc_name_lower\",
-    \"questionable\".\"item_id\" as \"item_id\",
-    \"questionable\".\"order_number\" as \"order_number\",
     \"questionable\".\"ship_mode_type\" as \"ship_mode_type\",
     \"questionable\".\"warehouse_short_name\" as \"warehouse_short_name\",
     CASE WHEN \"questionable\".\"days_to_ship\" <= 30 THEN \"questionable\".\"catalog_pk\" ELSE NULL END as \"_virt_filter_catalog_pk_8168372723999465\",

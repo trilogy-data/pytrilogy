@@ -74,7 +74,7 @@ def gen_union_node(
             history=history,
             conditions=conditions,
         )
-        parent.hide_output_concepts(parent.output_concepts)
+
         parent.add_output_concepts(resolved)
         parent_nodes.append(parent)
         if not parent:

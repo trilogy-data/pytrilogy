@@ -1905,6 +1905,8 @@ having value = 2;
 
 def test_group_syntax():
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    from trilogy.hooks.query_debugger import DebuggingHook
+    DebuggingHook()
     test = """
 key x int;
 key y int;
@@ -1930,3 +1932,5 @@ having value = 2;
     results = default_duckdb_engine.parse_text(test)
 
     default_duckdb_engine.generate_sql(results[0])
+
+    assert 1 == 0 
