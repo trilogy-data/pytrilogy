@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
@@ -311,6 +312,7 @@ def safe_get_cte_value(
     c: BuildConcept,
     quote_char: str,
     render_expr: Callable,
+    use_map: dict[str, set[str]],
 ) -> Optional[str]:
     address = c.address
     raw = cte.source_map.get(address, None)
@@ -319,13 +321,17 @@ def safe_get_cte_value(
         return None
     if isinstance(raw, str):
         rendered = cte.get_alias(c, raw)
+        use_map[raw].add(c.address)
         return f"{quote_char}{raw}{quote_char}.{safe_quote(rendered, quote_char)}"
     if isinstance(raw, list) and len(raw) == 1:
         rendered = cte.get_alias(c, raw[0])
         if isinstance(rendered, FUNCTION_ITEMS):
             # if it's a function, we need to render it as a function
             return f"{render_expr(rendered, cte=cte, raise_invalid=True)}"
+        use_map[raw[0]].add(c.address)
         return f"{quote_char}{raw[0]}{quote_char}.{safe_quote(rendered, quote_char)}"
+    for x in raw:
+        use_map[x].add(c.address)
     return coalesce(
         sorted(
             [
@@ -350,13 +356,12 @@ class BaseDialect:
 
     def __init__(self, rendering: Rendering | None = None):
         self.rendering = rendering or CONFIG.rendering
+        self.used_map: dict[str, set[str]] = defaultdict(set)
 
     def render_order_item(
         self,
         order_item: BuildOrderItem,
         cte: CTE | UnionCTE,
-        final: bool = False,
-        alias: bool = True,
     ) -> str:
         # if final:
         #     if not alias:
@@ -527,6 +532,9 @@ class BaseDialect:
             )
 
             raw_content = cte.get_alias(c)
+            parent = cte.source_map.get(c.address, None)
+            if parent:
+                self.used_map[parent[0]].add(c.address)
             if isinstance(raw_content, RawColumnExpr):
                 rval = raw_content.text
             elif isinstance(raw_content, FUNCTION_ITEMS):
@@ -540,6 +548,7 @@ class BaseDialect:
                     c,
                     self.QUOTE_CHARACTER,
                     self.render_expr,
+                    self.used_map,
                 )
                 if not rval:
                     # unions won't have a specific source mapped; just use a generic column reference
@@ -615,6 +624,7 @@ class BaseDialect:
                 lookup_cte = cte
                 if cte_map and not lookup_cte:
                     lookup_cte = cte_map.get(e.right.address)
+
                 assert lookup_cte, "Subselects must be rendered with a CTE in context"
                 if e.right.address not in lookup_cte.existence_source_map:
                     lookup = lookup_cte.source_map.get(
@@ -634,6 +644,7 @@ class BaseDialect:
                         f"Missing source CTE for {e.right.address}"
                     )
                 assert cte, "CTE must be provided for inlined CTEs"
+                self.used_map[target].add(e.right.address)
                 if target in cte.inlined_ctes:
                     info = cte.inlined_ctes[target]
                     return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} from {info.new_base} as {target} where {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} is not null)"
@@ -738,6 +749,7 @@ class BaseDialect:
                     raise_invalid=raise_invalid,
                 )
             elif cte_map:
+                self.used_map[cte_map[e.address].name].add(e.address)
                 return f"{cte_map[e.address].name}.{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
             return f"{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
         elif isinstance(e, bool):
@@ -822,10 +834,7 @@ class BaseDialect:
             )
             if cte.order_by:
 
-                ordering = [
-                    self.render_order_item(i, cte, final=True, alias=False)
-                    for i in cte.order_by.items
-                ]
+                ordering = [self.render_order_item(i, cte) for i in cte.order_by.items]
                 base_statement += "\nORDER BY " + ",".join(ordering)
             return CompiledCTE(name=cte.name, statement=base_statement)
         elif isinstance(cte, RecursiveCTE):
@@ -950,7 +959,8 @@ class BaseDialect:
                             self.QUOTE_CHARACTER,
                             self.render_expr,
                             cte,
-                            self.UNNEST_MODE,
+                            use_map=self.used_map,
+                            unnest_mode=self.UNNEST_MODE,
                         )
                         for join in final_joins
                     ]

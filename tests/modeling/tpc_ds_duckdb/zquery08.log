@@ -1,5 +1,5 @@
 query_id = 8
-gen_length = 3199
+gen_length = 2924
 generated_sql = """
 
 WITH 
@@ -17,7 +17,6 @@ SELECT
 ),
 abundant as (
 SELECT
-    \"questionable\".\"customer_id\" as \"customer_id\",
     \"questionable\".\"customer_zip\" as \"customer_zip\",
     CASE WHEN \"questionable\".\"customer_preferred_cust_flag\" = 'Y' THEN \"questionable\".\"customer_id\" ELSE NULL END as \"_virt_filter_id_8603331542397217\"
 FROM
@@ -32,7 +31,6 @@ GROUP BY
     \"abundant\".\"customer_zip\"),
 yummy as (
 SELECT
-    \"customer_customer_address\".\"CA_ADDRESS_SK\" as \"customer_address_id\",
     \"customer_customer_address\".\"CA_ZIP\" as \"customer_zip\",
     \"uneven\".\"zip_p_count\" as \"zip_p_count\"
 FROM
@@ -60,9 +58,7 @@ GROUP BY
     \"vacuous\".\"final_zips\"),
 young as (
 SELECT
-    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
     \"store_sales_store_sales\".\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
-    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"

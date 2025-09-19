@@ -1,18 +1,16 @@
 query_id = 20
-gen_length = 2874
+gen_length = 2762
 generated_sql = """
 
 WITH 
 cheerful as (
 SELECT
     \"cs_catalog_sales\".\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
-    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     \"cs_item_items\".\"I_CATEGORY\" as \"cs_item_category\",
     \"cs_item_items\".\"I_CLASS\" as \"cs_item_class\",
     \"cs_item_items\".\"I_CURRENT_PRICE\" as \"cs_item_current_price\",
     \"cs_item_items\".\"I_ITEM_DESC\" as \"cs_item_desc\",
-    \"cs_item_items\".\"I_ITEM_ID\" as \"cs_item_name\",
-    \"cs_item_items\".\"I_ITEM_SK\" as \"cs_item_id\"
+    \"cs_item_items\".\"I_ITEM_ID\" as \"cs_item_name\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
     INNER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_item_items\".\"I_ITEM_SK\"

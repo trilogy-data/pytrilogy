@@ -376,11 +376,6 @@ class RootNodeHandler:
 
         if pseudonyms:
             expanded.add_output_concepts(pseudonyms)
-            logger.info(
-                f"{depth_to_prefix(self.ctx.depth)}{LOGGER_PREFIX} "
-                f"Hiding pseudonyms {[c.address for c in pseudonyms]}"
-            )
-            expanded.hide_output_concepts(pseudonyms)
 
         logger.info(
             f"{depth_to_prefix(self.ctx.depth)}{LOGGER_PREFIX} "

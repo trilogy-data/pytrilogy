@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 from trilogy import parse
 from trilogy.core.models.build import BuildGrain
 from trilogy.core.models.execute import CTE, QueryDatasource
@@ -47,6 +49,7 @@ address x_source;
         quote_character=x.QUOTE_CHARACTER,
         inlined_ctes=["test"],
         concept=concept,
+        use_map=defaultdict(set),
     )
 
     assert rendered == "`x_source`.`y` + 1"
@@ -92,6 +95,7 @@ address x_source;
         quote_character=x.QUOTE_CHARACTER,
         inlined_ctes=["test"],
         concept=concept,
+        use_map=defaultdict(set),
     )
 
     assert rendered == "y + 1"

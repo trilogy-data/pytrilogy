@@ -1,5 +1,5 @@
 query_id = 24
-gen_length = 9348
+gen_length = 9221
 generated_sql = """
 
 WITH 
@@ -8,7 +8,6 @@ SELECT
     \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
     \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
     \"store_sales_store_sales\".\"SS_NET_PAID\" as \"store_sales_net_paid\",
-    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     \"store_sales_store_store\".\"S_STORE_SK\" as \"store_sales_store_id\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
@@ -105,7 +104,6 @@ GROUP BY
     \"uneven\".\"store_sales_store_name\"),
 young as (
 SELECT
-    \"vacuous\".\"su_net_paid\" as \"su_net_paid\",
     \"vacuous\".\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     \"vacuous\".\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
     \"vacuous\".\"su_store_sales_store_name\" as \"su_store_sales_store_name\",

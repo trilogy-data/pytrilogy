@@ -64,14 +64,6 @@ def gen_rowset_node(
         v for v in concept_pool if v.address in rowset_outputs
     ]
 
-    select_hidden = node.hidden_concepts
-    rowset_hidden = [
-        x
-        for x in rowset_relevant
-        if x.address in lineage.rowset.derived_concepts
-        and isinstance(x.lineage, BuildRowsetItem)
-        and x.lineage.content.address in select_hidden
-    ]
     additional_relevant = [
         factory.build(x) for x in select.output_components if x.address in enrichment
     ]
@@ -83,18 +75,6 @@ def gen_rowset_node(
                 f"{padding(depth)}{LOGGER_PREFIX} adding {item} to partial concepts"
             )
             node.partial_concepts.append(item)
-
-    final_hidden = rowset_hidden + [
-        x
-        for x in node.output_concepts
-        if x.address not in local_optional + [concept]
-        and x.derivation != Derivation.ROWSET
-        and not any(z in lineage.rowset.derived_concepts for z in x.pseudonyms)
-    ]
-    logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} hiding {final_hidden} local optional {local_optional}"
-    )
-    node.hide_output_concepts(final_hidden)
 
     node.grain = BuildGrain.from_concepts(
         [

@@ -1,5 +1,5 @@
 query_id = 98
-gen_length = 4724
+gen_length = 4576
 generated_sql = """
 
 WITH 
@@ -10,9 +10,7 @@ SELECT
     \"store_sales_item_items\".\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
     \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
     \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_name\",
-    \"store_sales_item_items\".\"I_ITEM_SK\" as \"store_sales_item_id\",
-    \"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\" as \"store_sales_ext_sales_price\",
-    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\"
+    \"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\" as \"store_sales_ext_sales_price\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"

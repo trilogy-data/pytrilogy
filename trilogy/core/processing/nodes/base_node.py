@@ -489,7 +489,6 @@ class WhereSafetyNode(StrategyNode):
             parent = parent.copy()
             # avoid performance hit by not rebuilding until end
             parent.set_output_concepts(self.output_concepts, rebuild=False)
-            parent.hide_output_concepts(self.hidden_concepts, rebuild=False)
 
             # these conditions
             if self.preexisting_conditions:

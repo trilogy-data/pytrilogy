@@ -5,6 +5,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import CTE, RecursiveCTE, UnionCTE
 from trilogy.core.optimizations import (
+    HideUnusedConcepts,
     InlineDatasource,
     OptimizationRule,
     PredicatePushdown,
@@ -84,11 +85,18 @@ def filter_irrelevant_ctes(
         #                 child.existence_source_map[x2].append(parent.name)
         # else:
         relevant_ctes.add(cte.name)
-        for cte in cte.parent_ctes:
-            recurse(cte, inverse_map)
+
+        for parent in cte.parent_ctes:
+            if parent.name in relevant_ctes:
+                logger.info(
+                    f"[Optimization][Irrelevent CTE filtering] Already visited {parent.name} when visting {cte.name}, potential recursive dag"
+                )
+                continue
+
+            recurse(parent, inverse_map)
         if isinstance(cte, UnionCTE):
-            for cte in cte.internal_ctes:
-                recurse(cte, inverse_map)
+            for internal in cte.internal_ctes:
+                recurse(internal, inverse_map)
 
     inverse_map = gen_inverse_map(input)
     recurse(root_cte, inverse_map)
@@ -220,6 +228,7 @@ def optimize_ctes(
         REGISTERED_RULES.append(PredicatePushdown())
     if CONFIG.optimizations.predicate_pushdown:
         REGISTERED_RULES.append(PredicatePushdownRemove())
+    REGISTERED_RULES.append(HideUnusedConcepts())
     for rule in REGISTERED_RULES:
         loops = 0
         complete = False

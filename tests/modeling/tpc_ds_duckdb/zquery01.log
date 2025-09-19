@@ -1,5 +1,5 @@
 query_id = 1
-gen_length = 3974
+gen_length = 3703
 generated_sql = """
 
 WITH 
@@ -17,9 +17,7 @@ GROUP BY
 questionable as (
 SELECT
     \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
-    \"returns_store_returns\".\"SR_ITEM_SK\" as \"returns_item_id\",
     \"returns_store_returns\".\"SR_RETURN_AMT\" as \"returns_return_amount\",
-    \"returns_store_returns\".\"SR_TICKET_NUMBER\" as \"returns_store_sales_ticket_number\",
     \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_id\"
 FROM
     \"memory\".\"store_returns\" as \"returns_store_returns\"
@@ -66,7 +64,6 @@ GROUP BY
 uneven as (
 SELECT
     \"abundant\".\"total_returns\" as \"total_returns\",
-    \"cooperative\".\"returns_customer_id\" as \"returns_customer_id\",
     \"cooperative\".\"returns_customer_text_id\" as \"returns_customer_text_id\",
     \"cooperative\".\"returns_store_id\" as \"returns_store_id\"
 FROM
@@ -75,7 +72,6 @@ FROM
 juicy as (
 SELECT
     \"uneven\".\"returns_customer_text_id\" as \"returns_customer_text_id\",
-    \"uneven\".\"returns_store_id\" as \"returns_store_id\",
     \"uneven\".\"total_returns\" as \"total_returns\",
     \"yummy\".\"avg_store_returns\" as \"avg_store_returns\"
 FROM

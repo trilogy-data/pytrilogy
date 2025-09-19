@@ -62,10 +62,12 @@ def render_join_concept(
     concept: BuildConcept,
     render_expr,
     inlined_ctes: set[str],
+    use_map: dict[str, set[str]],
 ):
     if cte.name in inlined_ctes:
         base = render_expr(concept, cte)
         return base
+    use_map[name].add(concept.address)
     return f"{quote_character}{name}{quote_character}.{quote_character}{concept.safe_address}{quote_character}"
 
 
@@ -85,6 +87,7 @@ def render_join(
         str,
     ],
     cte: CTE,
+    use_map: dict[str, set[str]],
     unnest_mode: UnnestMode = UnnestMode.CROSS_APPLY,
 ) -> str | None:
     # {% for key in join.joinkeys %}{{ key.inner }} = {{ key.outer}}{% endfor %}
@@ -121,6 +124,7 @@ def render_join(
                         pair.left,
                         render_expr_func,
                         join.inlined_ctes,
+                        use_map=use_map,
                     ),
                     render_join_concept(
                         right_name,
@@ -129,6 +133,7 @@ def render_join(
                         pair.right,
                         render_expr_func,
                         join.inlined_ctes,
+                        use_map=use_map,
                     ),
                     modifiers=pair.modifiers
                     + (pair.left.modifiers or [])
