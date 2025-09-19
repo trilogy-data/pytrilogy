@@ -291,12 +291,12 @@ class StrategyNode:
                 self.hidden_concepts.add(x.address)
         return self
 
-    def set_output_concepts(self, concepts: List[BuildConcept], rebuild: bool = True):
+    def set_output_concepts(self, concepts: List[BuildConcept], rebuild: bool = True, change_visibility:bool = True):
         # exit if no changes
         if self.output_concepts == concepts:
             return self
         self.output_concepts = concepts
-        if self.hidden_concepts:
+        if self.hidden_concepts and change_visibility:
             self.hidden_concepts = set(
                 x for x in self.hidden_concepts if x not in concepts
             )

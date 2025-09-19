@@ -190,13 +190,13 @@ def group_if_required_v2(
         parents=[root.resolve()],
         environment=environment
     )
-
+    targets = [x for x in root.output_concepts if x.address in final or any(c in final for c in x.pseudonyms)]
     if required.required:
 
         if isinstance(root, MergeNode):
             logger.info(f"{LOGGER_PREFIX} Group requirement check: group required2")
             root.force_group = True
-            root.set_output_concepts(final, rebuild=False)
+            root.set_output_concepts(targets, rebuild=False, change_visibility=False)
             root.rebuild_cache()
             return root
         elif isinstance(root, GroupNode):
@@ -204,13 +204,18 @@ def group_if_required_v2(
             # root.rebuild_cache()
             return root
         return GroupNode(
-            output_concepts=final,
-            input_concepts=final,
+            output_concepts=targets,
+            input_concepts=targets,
             environment=environment,
             parents=[root],
             partial_concepts=root.partial_concepts,
             preexisting_conditions=root.preexisting_conditions,
         )
+    elif isinstance(root, GroupNode):
+
+        return root
+    else:
+        root.set_output_concepts(targets, rebuild=False, change_visibility=False)
     return root
 
 def group_if_required(

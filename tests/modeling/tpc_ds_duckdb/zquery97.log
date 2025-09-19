@@ -55,6 +55,20 @@ WHERE
 GROUP BY 
     \"wakeful\".\"store_sales_customer_id\",
     \"wakeful\".\"store_sales_item_id\"),
+juicy as (
+SELECT
+    \"abundant\".\"catalog_sales_bill_customer_id\" as \"merged_catalog_sales_bill_customer_id\",
+    \"abundant\".\"catalog_sales_item_id\" as \"merged_catalog_sales_item_id\",
+    \"cheerful\".\"store_sales_customer_id\" as \"merged_store_sales_customer_id\",
+    \"cheerful\".\"store_sales_item_id\" as \"merged_store_sales_item_id\"
+FROM
+    \"cheerful\"
+    FULL JOIN \"abundant\" on \"cheerful\".\"customer_id\" = \"abundant\".\"customer_id\" AND \"cheerful\".\"item_id\" = \"abundant\".\"item_id\"
+GROUP BY 
+    \"abundant\".\"catalog_sales_bill_customer_id\",
+    \"abundant\".\"catalog_sales_item_id\",
+    \"cheerful\".\"store_sales_customer_id\",
+    \"cheerful\".\"store_sales_item_id\"),
 uneven as (
 SELECT
     \"abundant\".\"catalog_sales_bill_customer_id\" as \"merged_catalog_sales_bill_customer_id\",
@@ -68,19 +82,31 @@ GROUP BY
     \"cheerful\".\"store_sales_customer_id\",
     \"cheerful\".\"store_sales_item_id\",
     coalesce(\"abundant\".\"customer_id\",\"cheerful\".\"customer_id\"),
-    coalesce(\"abundant\".\"item_id\",\"cheerful\".\"item_id\"))
+    coalesce(\"abundant\".\"item_id\",\"cheerful\".\"item_id\")),
+vacuous as (
 SELECT
     sum(CASE
-	WHEN \"uneven\".\"merged_store_sales_customer_id\" is not null and \"uneven\".\"merged_store_sales_item_id\" is not null and \"uneven\".\"merged_catalog_sales_bill_customer_id\" is null and \"uneven\".\"merged_catalog_sales_item_id\" is null THEN 1
+	WHEN \"juicy\".\"merged_store_sales_customer_id\" is not null and \"juicy\".\"merged_store_sales_item_id\" is not null and \"juicy\".\"merged_catalog_sales_bill_customer_id\" is null and \"juicy\".\"merged_catalog_sales_item_id\" is null THEN 1
 	ELSE 0
 	END) as \"store_sales\",
     sum(CASE
-	WHEN \"uneven\".\"merged_store_sales_customer_id\" is null and \"uneven\".\"merged_store_sales_item_id\" is null and \"uneven\".\"merged_catalog_sales_bill_customer_id\" is not null and \"uneven\".\"merged_catalog_sales_item_id\" is not null THEN 1
+	WHEN \"juicy\".\"merged_store_sales_customer_id\" is null and \"juicy\".\"merged_store_sales_item_id\" is null and \"juicy\".\"merged_catalog_sales_bill_customer_id\" is not null and \"juicy\".\"merged_catalog_sales_item_id\" is not null THEN 1
 	ELSE 0
-	END) as \"catalog_sales\",
+	END) as \"catalog_sales\"
+FROM
+    \"juicy\"),
+yummy as (
+SELECT
     sum(CASE
 	WHEN \"uneven\".\"merged_store_sales_customer_id\" is not null and \"uneven\".\"merged_store_sales_item_id\" is not null and \"uneven\".\"merged_catalog_sales_bill_customer_id\" is not null and \"uneven\".\"merged_catalog_sales_item_id\" is not null THEN 1
 	ELSE 0
 	END) as \"both_sales\"
 FROM
-    \"uneven\""""
+    \"uneven\")
+SELECT
+    \"vacuous\".\"store_sales\" as \"store_sales\",
+    \"vacuous\".\"catalog_sales\" as \"catalog_sales\",
+    \"yummy\".\"both_sales\" as \"both_sales\"
+FROM
+    \"yummy\"
+    FULL JOIN \"vacuous\" on 1=1"""

@@ -40,8 +40,6 @@ SELECT
     \"abundant\".\"_virt_filter_catalog_pk_6661083751970711\" as \"_virt_filter_catalog_pk_6661083751970711\",
     \"abundant\".\"_virt_filter_catalog_pk_8168372723999465\" as \"_virt_filter_catalog_pk_8168372723999465\",
     \"abundant\".\"cc_name_lower\" as \"cc_name_lower\",
-    \"abundant\".\"item_id\" as \"item_id\",
-    \"abundant\".\"order_number\" as \"order_number\",
     \"abundant\".\"ship_mode_type\" as \"ship_mode_type\",
     \"abundant\".\"warehouse_short_name\" as \"warehouse_short_name\"
 FROM

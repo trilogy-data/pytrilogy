@@ -10,6 +10,7 @@ from trilogy.core.optimizations import (
     OptimizationRule,
     PredicatePushdown,
     PredicatePushdownRemove,
+    HideUnusedConcepts,
 )
 from trilogy.core.processing.utility import sort_select_output
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement

@@ -33,8 +33,7 @@ FROM
 questionable as (
 SELECT
     \"cooperative\".\"_virt_filter_discount_amount_8859191248994797\" as \"_virt_filter_discount_amount_8859191248994797\",
-    \"cooperative\".\"item_id\" as \"item_id\",
-    \"cooperative\".\"order_number\" as \"order_number\"
+    \"cooperative\".\"item_id\" as \"item_id\"
 FROM
     \"cooperative\"
 GROUP BY 

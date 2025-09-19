@@ -129,7 +129,6 @@ FROM
 abhorrent as (
 SELECT
     \"sparkling\".\"_virt_filter_net_paid_3139932349044856\" as \"_virt_filter_net_paid_3139932349044856\",
-    \"sparkling\".\"su_net_paid\" as \"su_net_paid\",
     \"sparkling\".\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     \"sparkling\".\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
     \"sparkling\".\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
