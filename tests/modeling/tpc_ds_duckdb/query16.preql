@@ -11,7 +11,7 @@ WHERE
     AND cs.order_number in multi_warehouse_sales
 SELECT
     count_distinct(cs.order_number) -> order_count,
-    sum(cs.extra_ship_cost) -> total_shipping_cost,
+    sum(cs.ext_ship_cost) -> total_shipping_cost,
     sum(cs.net_profit) -> total_net_profit
 ORDER BY
     order_count desc limit 100

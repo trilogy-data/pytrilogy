@@ -1,5 +1,5 @@
 query_id = 16
-gen_length = 4675
+gen_length = 4671
 generated_sql = """
 
 WITH 
@@ -50,7 +50,7 @@ GROUP BY
     \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\"),
 yummy as (
 SELECT
-    \"cs_catalog_sales\".\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",
+    \"cs_catalog_sales\".\"CS_EXT_SHIP_COST\" as \"cs_ext_ship_cost\",
     \"cs_catalog_sales\".\"CS_NET_PROFIT\" as \"cs_net_profit\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
@@ -75,7 +75,7 @@ GROUP BY
     \"vacuous\".\"cs_order_number\"),
 juicy as (
 SELECT
-    sum(\"yummy\".\"cs_extra_ship_cost\") as \"total_shipping_cost\",
+    sum(\"yummy\".\"cs_ext_ship_cost\") as \"total_shipping_cost\",
     sum(\"yummy\".\"cs_net_profit\") as \"total_net_profit\"
 FROM
     \"yummy\"),

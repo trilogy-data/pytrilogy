@@ -11,20 +11,31 @@ merge store_sales.item.* into ~item.*;
 merge catalog_sales.item.* into ~item.*;
 merge web_sales.item.* into ~item.*;
 
-auto color_ids <- item.id ? item.color in ('slate', 'blanched', 'burnished');
+auto color_ids <- item.name ? item.color in ('slate', 'blanched', 'burnished');
+const year <- 2001;
+const month <- 2;
+const gmt_offset <- -5;
 
-where item.id in color_ids
+where item.name in color_ids
 SELECT  
     item.name,
-    coalesce(sum(store_sales.ext_sales_price? store_sales.date.year = 2001 and store_sales.date.month_of_year = 2 and store_sales.customer_address.gmt_offset=-5
-),0) -> total_sales
+    -- count(store_sales.ticket_number ? store_sales.date.year = year and store_sales.date.month_of_year = month and store_sales.customer_address.gmt_offset = gmt_offset
+) + 
+    count(catalog_sales.order_number ? catalog_sales.date.year = year and catalog_sales.date.month_of_year = month and catalog_sales.bill_address.gmt_offset = gmt_offset
+)+
 
-#     + coalesce(sum(catalog_sales.ext_sales_price ?
-#     catalog_sales.date.year = 2001 and catalog_sales.date.month_of_year = 2 and catalog_sales.bill_address.gmt_offset=-5
-# ),0)
-#     + coalesce(sum(web_sales.ext_sales_price ? web_sales.date.year = 2001 and web_sales.date.month_of_year = 2 and web_sales.bill_address.gmt_offset=-5
+    count(web_sales.order_number ? web_sales.date.year = year and web_sales.date.month_of_year = month and web_sales.bill_address.gmt_offset = gmt_offset
+) -> num_sold,
+    sum(store_sales.ext_sales_price? store_sales.date.year = year and store_sales.date.month_of_year = month and store_sales.customer_address.gmt_offset = gmt_offset
+)
 
-#         ),0) -> total_sales
+    + sum(catalog_sales.ext_sales_price ?
+    catalog_sales.date.year = year and catalog_sales.date.month_of_year = month and catalog_sales.bill_address.gmt_offset = gmt_offset
+)
+    + sum(web_sales.ext_sales_price ? web_sales.date.year = year and web_sales.date.month_of_year = month and web_sales.bill_address.gmt_offset = gmt_offset
+        ) -> total_sales
+having
+    num_sold>0
 order by
     total_sales asc NULLS first,
     item.name asc NULLS first

@@ -12,7 +12,7 @@ WHERE
     web_sales.order_number IN returned_orders
 SELECT
     count(web_sales.order_number) -> order_count,
-    sum(web_sales.extra_ship_cost) -> total_shipping_cost,
+    sum(web_sales.ext_ship_cost) -> total_shipping_cost,
     sum(web_sales.net_profit) -> total_net_profit
 ORDER BY
     order_count desc

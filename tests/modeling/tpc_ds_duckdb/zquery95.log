@@ -1,5 +1,5 @@
 query_id = 95
-gen_length = 5568
+gen_length = 5564
 generated_sql = """
 
 WITH 
@@ -54,7 +54,7 @@ GROUP BY
     \"web_sales_web_sales\".\"WS_WEB_SITE_SK\"),
 yummy as (
 SELECT
-    \"web_sales_web_sales\".\"WS_EXT_SHIP_COST\" as \"web_sales_extra_ship_cost\",
+    \"web_sales_web_sales\".\"WS_EXT_SHIP_COST\" as \"web_sales_ext_ship_cost\",
     \"web_sales_web_sales\".\"WS_NET_PROFIT\" as \"web_sales_net_profit\"
 FROM
     \"memory\".\"web_sales\" as \"web_sales_web_sales\"
@@ -79,7 +79,7 @@ GROUP BY
     \"vacuous\".\"web_sales_order_number\"),
 juicy as (
 SELECT
-    sum(\"yummy\".\"web_sales_extra_ship_cost\") as \"total_shipping_cost\",
+    sum(\"yummy\".\"web_sales_ext_ship_cost\") as \"total_shipping_cost\",
     sum(\"yummy\".\"web_sales_net_profit\") as \"total_net_profit\"
 FROM
     \"yummy\"),

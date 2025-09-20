@@ -16,7 +16,11 @@ from trilogy.core.processing.nodes.base_node import (
     StrategyNode,
     resolve_concept_map,
 )
-from trilogy.core.processing.utility import GroupRequiredResponse, find_nullable_concepts, is_scalar_condition
+from trilogy.core.processing.utility import (
+    GroupRequiredResponse,
+    find_nullable_concepts,
+    is_scalar_condition,
+)
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"

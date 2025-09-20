@@ -18,7 +18,7 @@ WHERE
 SELECT
     \"cheerful\".\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
     \"cheerful\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    sum(\"cheerful\".\"store_sales_ext_sales_price\") as \"ext_sales_price\"
+    sum(\"cheerful\".\"store_sales_ext_sales_price\") as \"total_ext_sales\"
 FROM
     \"cheerful\"
 GROUP BY 
