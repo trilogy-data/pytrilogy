@@ -711,8 +711,6 @@ class QueryDatasource(BaseModel):
             f" {[c.address for c in self.output_concepts]} concepts and"
             f" {other.name} with {[c.address for c in other.output_concepts]} concepts"
         )
-        logger.info(self.source_map)
-        logger.info(other.source_map)
 
         merged_datasources: dict[str, Union[BuildDatasource, "QueryDatasource"]] = {}
 
@@ -816,10 +814,7 @@ class QueryDatasource(BaseModel):
                     use_raw_name,
                     force_alias=force_alias,
                 )
-            except ValueError as e:
-                from trilogy.constants import logger
-
-                logger.debug(e)
+            except ValueError:
                 continue
         existing = [c.with_grain(self.grain) for c in self.output_concepts]
         if concept in existing:

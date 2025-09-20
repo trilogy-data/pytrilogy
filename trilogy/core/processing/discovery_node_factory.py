@@ -177,7 +177,12 @@ def _generate_union_node(ctx: NodeGenerationContext) -> StrategyNode | None:
 def _generate_aggregate_node(ctx: NodeGenerationContext) -> StrategyNode | None:
     # Filter out constants to avoid multiplication issues
     agg_optional = [
-        x for x in ctx.local_optional if x.granularity != Granularity.SINGLE_ROW
+        x
+        for x in ctx.local_optional
+        if not (
+            x.granularity == Granularity.SINGLE_ROW
+            and x.derivation != Derivation.AGGREGATE
+        )
     ]
 
     logger.info(

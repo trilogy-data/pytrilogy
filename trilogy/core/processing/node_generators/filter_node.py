@@ -246,13 +246,6 @@ def gen_filter_node(
         filter_node = parent
     else:
         core_parent_nodes.append(row_parent)
-        filters = [concept] + same_filter_optional
-        parents_for_grain = [
-            x.lineage.content
-            for x in filters
-            if isinstance(x.lineage, BuildFilterItem)
-            and isinstance(x.lineage.content, BuildConcept)
-        ]
         filter_node = FilterNode(
             input_concepts=unique(
                 parent_row_concepts + flattened_existence,
@@ -261,9 +254,6 @@ def gen_filter_node(
             output_concepts=[concept] + same_filter_optional + parent_row_concepts,
             environment=environment,
             parents=core_parent_nodes,
-            grain=BuildGrain.from_concepts(
-                parents_for_grain + parent_row_concepts, environment=environment
-            ),
             preexisting_conditions=conditions.conditional if conditions else None,
         )
 

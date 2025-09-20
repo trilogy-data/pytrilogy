@@ -7,6 +7,7 @@ property id.state string?;
 property id.zip string;
 property id.county string;
 property id.country string;
+property id.gmt_offset float;
 
 
 datasource customer_address(
@@ -17,6 +18,7 @@ datasource customer_address(
     CA_ZIP: zip,
     CA_COUNTY: county,
     CA_COUNTRY:country,
+    CA_GMT_OFFSET: gmt_offset
 )
 grain (id)
 address memory.customer_address;

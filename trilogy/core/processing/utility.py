@@ -27,6 +27,7 @@ from trilogy.core.models.build import (
     BuildDatasource,
     BuildFilterItem,
     BuildFunction,
+    BuildGrain,
     BuildParenthetical,
     BuildSubselectComparison,
     BuildWindowItem,
@@ -80,6 +81,13 @@ class JoinOrderOutput:
     @property
     def lefts(self):
         return set(self.keys.keys())
+
+
+@dataclass
+class GroupRequiredResponse:
+    target: BuildGrain
+    upstream: BuildGrain
+    required: bool
 
 
 def resolve_join_order_v2(

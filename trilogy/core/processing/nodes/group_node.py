@@ -1,14 +1,12 @@
-from dataclasses import dataclass
 from typing import List, Optional
 
 from trilogy.constants import logger
-from trilogy.core.enums import Purpose, SourceType
+from trilogy.core.enums import SourceType
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConditional,
     BuildDatasource,
-    BuildGrain,
     BuildOrderBy,
     BuildParenthetical,
 )
@@ -18,17 +16,14 @@ from trilogy.core.processing.nodes.base_node import (
     StrategyNode,
     resolve_concept_map,
 )
-from trilogy.core.processing.utility import find_nullable_concepts, is_scalar_condition
+from trilogy.core.processing.utility import (
+    GroupRequiredResponse,
+    find_nullable_concepts,
+    is_scalar_condition,
+)
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"
-
-
-@dataclass
-class GroupRequiredResponse:
-    target: BuildGrain
-    upstream: BuildGrain
-    required: bool
 
 
 class GroupNode(StrategyNode):
@@ -80,92 +75,15 @@ class GroupNode(StrategyNode):
         environment: BuildEnvironment,
         depth: int = 0,
     ) -> GroupRequiredResponse:
-        padding = "\t" * depth
-        target_grain = BuildGrain.from_concepts(
-            downstream_concepts,
-            environment=environment,
-        )
+        from trilogy.core.processing.discovery_utility import check_if_group_required
 
-        # the concepts of the souce grain might not exist in the output environment
-        # so we need to construct a new
-        concept_map: dict[str, BuildConcept] = {}
-        comp_grain = BuildGrain()
-        for source in parents:
-            comp_grain += source.grain
-            for x in source.output_concepts:
-                concept_map[x.address] = x
-        lookups: list[BuildConcept | str] = [
-            concept_map[x] if x in concept_map else x for x in comp_grain.components
-        ]
-
-        comp_grain = BuildGrain.from_concepts(lookups, environment=environment)
-
-        # dynamically select if we need to group
-        # because sometimes, we are already at required grain
-        if comp_grain.issubset(target_grain):
-
-            logger.info(
-                f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain}, {target_grain}, grain is subset of target, no group node required"
-            )
-            return GroupRequiredResponse(target_grain, comp_grain, False)
-        # find out what extra is in the comp grain vs target grain
-        difference = [
-            environment.concepts[c] for c in (comp_grain - target_grain).components
-        ]
-        logger.info(
-            f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain}, {target_grain}, difference {[x.address for x in difference]}"
-        )
-
-        # if the difference is all unique properties whose keys are in the source grain
-        # we can also suppress the group
-        if all(
-            [
-                x.keys
-                and all(
-                    environment.concepts[z].address in comp_grain.components
-                    for z in x.keys
-                )
-                for x in difference
-            ]
-        ):
-            logger.info(
-                f"{padding}{LOGGER_PREFIX} Group requirement check: skipped due to unique property validation"
-            )
-            return GroupRequiredResponse(target_grain, comp_grain, False)
-        if all([x.purpose == Purpose.KEY for x in difference]):
-            logger.info(
-                f"{padding}{LOGGER_PREFIX} checking if downstream is unique properties of key"
-            )
-            replaced_grain_raw: list[set[str]] = [
-                (
-                    x.keys or set()
-                    if x.purpose == Purpose.UNIQUE_PROPERTY
-                    else set([x.address])
-                )
-                for x in downstream_concepts
-                if x.address in target_grain.components
-            ]
-            # flatten the list of lists
-            replaced_grain = [
-                item for sublist in replaced_grain_raw for item in sublist
-            ]
-            # if the replaced grain is a subset of the comp grain, we can skip the group
-            unique_grain_comp = BuildGrain.from_concepts(
-                replaced_grain, environment=environment
-            )
-            if comp_grain.issubset(unique_grain_comp):
-                logger.info(
-                    f"{padding}{LOGGER_PREFIX} Group requirement check: skipped due to unique property validation"
-                )
-                return GroupRequiredResponse(target_grain, comp_grain, False)
-
-        logger.info(f"{padding}{LOGGER_PREFIX} Group requirement check: group required")
-        return GroupRequiredResponse(target_grain, comp_grain, True)
+        return check_if_group_required(downstream_concepts, parents, environment, depth)
 
     def _resolve(self) -> QueryDatasource:
         parent_sources: List[QueryDatasource | BuildDatasource] = [
             p.resolve() for p in self.parents
         ]
+
         grains = self.check_if_required(
             self.output_concepts, parent_sources, self.environment, self.depth
         )

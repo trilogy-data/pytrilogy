@@ -1,4 +1,4 @@
-from logging import DEBUG
+from logging import INFO
 from pathlib import Path
 
 import pytest
@@ -15,7 +15,7 @@ working_path = Path(__file__).parent
 @pytest.fixture(scope="session")
 def engine():
     env = Environment(working_path=working_path)
-    debugger = DebuggingHook(level=DEBUG, process_other=False, process_ctes=False)
+    debugger = DebuggingHook(level=INFO, process_other=False, process_ctes=False)
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=env,
         hooks=[debugger],

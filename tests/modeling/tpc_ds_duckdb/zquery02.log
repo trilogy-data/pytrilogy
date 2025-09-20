@@ -1,5 +1,5 @@
 query_id = 2
-gen_length = 6878
+gen_length = 6850
 generated_sql = """
 
 WITH 
@@ -22,7 +22,7 @@ cooperative as (
 SELECT
     \"date_date\".\"D_DOW\" as \"date_day_of_week\",
     \"date_date\".\"D_WEEK_SEQ\" as \"date_week_seq\",
-    \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\" as \"web_sales_extra_sales_price\"
+    \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\" as \"web_sales_ext_sales_price\"
 FROM
     \"memory\".\"date_dim\" as \"date_date\"
     LEFT OUTER JOIN \"memory\".\"web_sales\" as \"web_sales_web_sales\" on \"date_date\".\"D_DATE_SK\" = \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\"
@@ -31,7 +31,7 @@ WHERE
 ),
 wakeful as (
 SELECT
-    \"catalog_sales_catalog_sales\".\"CS_EXT_SALES_PRICE\" as \"catalog_sales_extra_sales_price\",
+    \"catalog_sales_catalog_sales\".\"CS_EXT_SALES_PRICE\" as \"catalog_sales_ext_sales_price\",
     \"date_date\".\"D_DOW\" as \"date_day_of_week\",
     \"date_date\".\"D_WEEK_SEQ\" as \"date_week_seq\"
 FROM
@@ -44,33 +44,33 @@ questionable as (
 SELECT
     \"cooperative\".\"date_week_seq\" as \"date_week_seq\",
     sum(CASE
-	WHEN \"cooperative\".\"date_day_of_week\" = 0 THEN \"cooperative\".\"web_sales_extra_sales_price\"
+	WHEN \"cooperative\".\"date_day_of_week\" = 0 THEN \"cooperative\".\"web_sales_ext_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_agg_sum_1430965672846720\",
+	END) as \"_virt_agg_sum_5143137897073676\",
     sum(CASE
-	WHEN \"cooperative\".\"date_day_of_week\" = 1 THEN \"cooperative\".\"web_sales_extra_sales_price\"
+	WHEN \"cooperative\".\"date_day_of_week\" = 1 THEN \"cooperative\".\"web_sales_ext_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_agg_sum_9180600749516014\",
+	END) as \"_virt_agg_sum_1570334759919972\",
     sum(CASE
-	WHEN \"cooperative\".\"date_day_of_week\" = 2 THEN \"cooperative\".\"web_sales_extra_sales_price\"
+	WHEN \"cooperative\".\"date_day_of_week\" = 2 THEN \"cooperative\".\"web_sales_ext_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_agg_sum_5843356674090839\",
+	END) as \"_virt_agg_sum_8190865245751457\",
     sum(CASE
-	WHEN \"cooperative\".\"date_day_of_week\" = 3 THEN \"cooperative\".\"web_sales_extra_sales_price\"
+	WHEN \"cooperative\".\"date_day_of_week\" = 3 THEN \"cooperative\".\"web_sales_ext_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_agg_sum_7719154804838251\",
+	END) as \"_virt_agg_sum_8885909169003246\",
     sum(CASE
-	WHEN \"cooperative\".\"date_day_of_week\" = 4 THEN \"cooperative\".\"web_sales_extra_sales_price\"
+	WHEN \"cooperative\".\"date_day_of_week\" = 4 THEN \"cooperative\".\"web_sales_ext_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_agg_sum_2215622277191905\",
+	END) as \"_virt_agg_sum_1385964036159911\",
     sum(CASE
-	WHEN \"cooperative\".\"date_day_of_week\" = 5 THEN \"cooperative\".\"web_sales_extra_sales_price\"
+	WHEN \"cooperative\".\"date_day_of_week\" = 5 THEN \"cooperative\".\"web_sales_ext_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_agg_sum_591087579650056\",
+	END) as \"_virt_agg_sum_5217979575177733\",
     sum(CASE
-	WHEN \"cooperative\".\"date_day_of_week\" = 6 THEN \"cooperative\".\"web_sales_extra_sales_price\"
+	WHEN \"cooperative\".\"date_day_of_week\" = 6 THEN \"cooperative\".\"web_sales_ext_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_agg_sum_864268046946303\"
+	END) as \"_virt_agg_sum_2413334090732067\"
 FROM
     \"cooperative\"
 GROUP BY 
@@ -79,33 +79,33 @@ cheerful as (
 SELECT
     \"wakeful\".\"date_week_seq\" as \"date_week_seq\",
     sum(CASE
-	WHEN \"wakeful\".\"date_day_of_week\" = 0 THEN \"wakeful\".\"catalog_sales_extra_sales_price\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 0 THEN \"wakeful\".\"catalog_sales_ext_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_agg_sum_9100576239670120\",
+	END) as \"_virt_agg_sum_6264456279410894\",
     sum(CASE
-	WHEN \"wakeful\".\"date_day_of_week\" = 1 THEN \"wakeful\".\"catalog_sales_extra_sales_price\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 1 THEN \"wakeful\".\"catalog_sales_ext_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_agg_sum_4284672965134623\",
+	END) as \"_virt_agg_sum_9480744325624715\",
     sum(CASE
-	WHEN \"wakeful\".\"date_day_of_week\" = 2 THEN \"wakeful\".\"catalog_sales_extra_sales_price\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 2 THEN \"wakeful\".\"catalog_sales_ext_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_agg_sum_4203843215898205\",
+	END) as \"_virt_agg_sum_5907416257743266\",
     sum(CASE
-	WHEN \"wakeful\".\"date_day_of_week\" = 3 THEN \"wakeful\".\"catalog_sales_extra_sales_price\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 3 THEN \"wakeful\".\"catalog_sales_ext_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_agg_sum_3491982279232038\",
+	END) as \"_virt_agg_sum_3855250115865627\",
     sum(CASE
-	WHEN \"wakeful\".\"date_day_of_week\" = 4 THEN \"wakeful\".\"catalog_sales_extra_sales_price\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 4 THEN \"wakeful\".\"catalog_sales_ext_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_agg_sum_8193012987854847\",
+	END) as \"_virt_agg_sum_8612587756824465\",
     sum(CASE
-	WHEN \"wakeful\".\"date_day_of_week\" = 5 THEN \"wakeful\".\"catalog_sales_extra_sales_price\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 5 THEN \"wakeful\".\"catalog_sales_ext_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_agg_sum_8649824413129684\",
+	END) as \"_virt_agg_sum_2376372337588698\",
     sum(CASE
-	WHEN \"wakeful\".\"date_day_of_week\" = 6 THEN \"wakeful\".\"catalog_sales_extra_sales_price\"
+	WHEN \"wakeful\".\"date_day_of_week\" = 6 THEN \"wakeful\".\"catalog_sales_ext_sales_price\"
 	ELSE 0.0
-	END) as \"_virt_agg_sum_2181143902401134\"
+	END) as \"_virt_agg_sum_6364119342659388\"
 FROM
     \"wakeful\"
 GROUP BY 
@@ -113,13 +113,13 @@ GROUP BY
 yummy as (
 SELECT
     \"cheerful\".\"date_week_seq\" as \"yearly_agg_date_week_seq\",
-    \"questionable\".\"_virt_agg_sum_1430965672846720\" + \"cheerful\".\"_virt_agg_sum_9100576239670120\" as \"yearly_agg_sunday_sales\",
-    \"questionable\".\"_virt_agg_sum_2215622277191905\" + \"cheerful\".\"_virt_agg_sum_8193012987854847\" as \"yearly_agg_thursday_sales\",
-    \"questionable\".\"_virt_agg_sum_5843356674090839\" + \"cheerful\".\"_virt_agg_sum_4203843215898205\" as \"yearly_agg_tuesday_sales\",
-    \"questionable\".\"_virt_agg_sum_591087579650056\" + \"cheerful\".\"_virt_agg_sum_8649824413129684\" as \"yearly_agg_friday_sales\",
-    \"questionable\".\"_virt_agg_sum_7719154804838251\" + \"cheerful\".\"_virt_agg_sum_3491982279232038\" as \"yearly_agg_wednesday_sales\",
-    \"questionable\".\"_virt_agg_sum_864268046946303\" + \"cheerful\".\"_virt_agg_sum_2181143902401134\" as \"yearly_agg_saturday_sales\",
-    \"questionable\".\"_virt_agg_sum_9180600749516014\" + \"cheerful\".\"_virt_agg_sum_4284672965134623\" as \"yearly_agg_monday_sales\"
+    \"questionable\".\"_virt_agg_sum_1385964036159911\" + \"cheerful\".\"_virt_agg_sum_8612587756824465\" as \"yearly_agg_thursday_sales\",
+    \"questionable\".\"_virt_agg_sum_1570334759919972\" + \"cheerful\".\"_virt_agg_sum_9480744325624715\" as \"yearly_agg_monday_sales\",
+    \"questionable\".\"_virt_agg_sum_2413334090732067\" + \"cheerful\".\"_virt_agg_sum_6364119342659388\" as \"yearly_agg_saturday_sales\",
+    \"questionable\".\"_virt_agg_sum_5143137897073676\" + \"cheerful\".\"_virt_agg_sum_6264456279410894\" as \"yearly_agg_sunday_sales\",
+    \"questionable\".\"_virt_agg_sum_5217979575177733\" + \"cheerful\".\"_virt_agg_sum_2376372337588698\" as \"yearly_agg_friday_sales\",
+    \"questionable\".\"_virt_agg_sum_8190865245751457\" + \"cheerful\".\"_virt_agg_sum_5907416257743266\" as \"yearly_agg_tuesday_sales\",
+    \"questionable\".\"_virt_agg_sum_8885909169003246\" + \"cheerful\".\"_virt_agg_sum_3855250115865627\" as \"yearly_agg_wednesday_sales\"
 FROM
     \"cheerful\"
     INNER JOIN \"questionable\" on \"cheerful\".\"date_week_seq\" = \"questionable\".\"date_week_seq\"),

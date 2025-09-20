@@ -8,7 +8,7 @@ select
     web_sales.item.category,
     web_sales.item.class,
     web_sales.item.current_price,
-    sum(web_sales.extra_sales_price) -> itemrevenue,
+    sum(web_sales.ext_sales_price) -> itemrevenue,
     -- sum itemrevenue over web_sales.item.class ->itemclassrevenue,
     (itemrevenue *100.00) / itemclassrevenue ->revenueratio
 WHERE

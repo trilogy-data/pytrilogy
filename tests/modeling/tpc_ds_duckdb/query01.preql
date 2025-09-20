@@ -7,7 +7,6 @@ where
     returns.return_date.year = 2000
 select
     returns.customer.text_id,
-    # todo - figure out why this matters?
     --sum(returns.return_amount) by returns.customer.id, returns.store.id -> total_returns,
     --returns.store.id,
     --avg(total_returns) by returns.store.id -> avg_store_returns

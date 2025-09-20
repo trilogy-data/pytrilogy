@@ -1,11 +1,11 @@
 query_id = 20
-gen_length = 2762
+gen_length = 2758
 generated_sql = """
 
 WITH 
 cheerful as (
 SELECT
-    \"cs_catalog_sales\".\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
+    \"cs_catalog_sales\".\"CS_EXT_SALES_PRICE\" as \"cs_ext_sales_price\",
     \"cs_item_items\".\"I_CATEGORY\" as \"cs_item_category\",
     \"cs_item_items\".\"I_CLASS\" as \"cs_item_class\",
     \"cs_item_items\".\"I_CURRENT_PRICE\" as \"cs_item_current_price\",
@@ -25,7 +25,7 @@ SELECT
     \"cheerful\".\"cs_item_current_price\" as \"cs_item_current_price\",
     \"cheerful\".\"cs_item_desc\" as \"cs_item_desc\",
     \"cheerful\".\"cs_item_name\" as \"cs_item_name\",
-    sum(\"cheerful\".\"cs_extra_sales_price\") as \"revenue\"
+    sum(\"cheerful\".\"cs_ext_sales_price\") as \"revenue\"
 FROM
     \"cheerful\"
 GROUP BY 

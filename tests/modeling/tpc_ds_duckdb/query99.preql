@@ -2,12 +2,10 @@
 #61 to 90 days, from 91 to 120 days and over 120 days within a given year, grouped by warehouse, call center
 # and shipping mode.
 
-
-
 import catalog_sales;
 
 auto warehouse_short_name <- substring(warehouse.name, 1, 20);
-auto catalog_pk <- order_number::string || item.id::string;
+property <order_number, item.id>.catalog_pk <- order_number::string || item.id::string;
 
 WHERE ship_date.month_seq BETWEEN 1200 and 1211 and order_number is not null and call_center.id is not null and warehouse.id is not null and ship_mode.id is not null
 SELECT

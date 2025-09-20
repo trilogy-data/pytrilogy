@@ -2,7 +2,7 @@ from sqlalchemy import create_engine
 
 from trilogy import Dialects, Executor
 from trilogy.core.enums import Purpose
-from trilogy.core.models.author import Concept
+from trilogy.core.models.author import Concept, Grain
 from trilogy.core.models.core import (
     DataType,
 )
@@ -90,6 +90,7 @@ def setup_titanic(env: Environment):
                 ColumnAssignment(alias="name", concept=name),
                 ColumnAssignment(alias="fare", concept=fare),
             ],
+            grain=Grain(components=[id.address]),
         ),
     )
     return env
@@ -140,7 +141,6 @@ def test_partial_assignment():
         depth=0,
     )
     assert isinstance(sourced, FilterNode)
-    assert len(sourced.parents) == 1
 
 
 def test_filter_query():

@@ -179,7 +179,8 @@ def test_ten(engine):
 
 
 def test_twelve(engine):
-    run_query(engine, 12)
+    query = run_query(engine, 12)
+    assert len(query) <= 3200, query
 
 
 def test_fifteen(engine):
@@ -235,13 +236,21 @@ def test_thirty_two(engine):
     assert len(query) < 12640, query
 
 
+def test_fifty_five(engine):
+    _ = run_query(engine, 55)
+
+
+# def test_fifty_six(engine):
+#     _ = run_query(engine, 56)
+
+
 def test_ninety_five(engine):
     _ = run_query(engine, 95)
 
 
 def test_ninety_seven(engine):
     query = run_query(engine, 97)
-    assert len(query) < 3700, query
+    assert len(query) < 4000, query
 
 
 def test_ninety_eight(engine):

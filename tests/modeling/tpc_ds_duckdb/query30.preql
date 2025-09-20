@@ -13,6 +13,7 @@ WHERE
     and web_returns.return_address.state is not null
 SELECT 
     -- web_returns.customer.id, # avoid deduplication
+    # -- web_returns.return_address.id,
     web_returns.customer.text_id,
     web_returns.customer.salutation,
     web_returns.customer.first_name,

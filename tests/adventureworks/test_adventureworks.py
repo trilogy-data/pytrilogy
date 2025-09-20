@@ -282,14 +282,17 @@ def test_group_to_grain(environment: Environment):
     assert len(test.parents) == 2
     resolved = test.resolve()
     expected_grain = BuildGrain(
-        components={"internet_sales.order_line_number", "internet_sales.order_number"}
+        components={
+            "internet_sales.total_sales_amount_debug",
+            "internet_sales.dates.order_date",
+        }
     )
-    assert resolved.grain == expected_grain, [
+    assert resolved.grain.components == expected_grain.components, [
         resolved.grain.components,
         expected_grain.components,
     ]
-    assert resolved.force_group is False
-    assert resolved.group_required is False
+    assert resolved.force_group is True
+    assert resolved.group_required is True
 
 
 @pytest.mark.adventureworks

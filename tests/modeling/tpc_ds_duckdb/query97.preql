@@ -9,13 +9,11 @@ where store_sales.date.month_seq between 1200 and 1200 + 11
 SELECT
     store_sales.customer.id,
     store_sales.item.id,
-    --store_sales.date.month_seq,
 MERGE 
 where catalog_sales.date.month_seq between 1200 and 1200 + 11
 SELECT
     catalog_sales.bill_customer.id,
     catalog_sales.item.id,
-    --catalog_sales.date.month_seq,
 align 
     customer_id: store_sales.customer.id, catalog_sales.bill_customer.id
     AND
@@ -23,8 +21,15 @@ align
 ;
 
 
+
 SELECT
-    sum(CASE WHEN merged.store_sales.customer.id is not null and merged.catalog_sales.bill_customer.id is null THEN 1 ELSE 0 END) as store_sales,
-    sum(CASE WHEN merged.store_sales.customer.id is null and merged.catalog_sales.bill_customer.id is not null THEN 1 ELSE 0 END) as catalog_sales,
-    sum(CASE WHEN merged.store_sales.customer.id is not null and merged.catalog_sales.bill_customer.id is not null THEN 1 ELSE 0 END) as both_sales
+    sum(CASE 
+        WHEN merged.store_sales.customer.id is not null and merged.store_sales.item.id is not null and 
+        merged.catalog_sales.bill_customer.id is null and merged.catalog_sales.item.id is null THEN 1 ELSE 0 END) as store_sale_count,
+    sum(CASE 
+        WHEN merged.store_sales.customer.id is null and merged.store_sales.item.id is null 
+        and merged.catalog_sales.bill_customer.id is not null and merged.catalog_sales.item.id is not null THEN 1 ELSE 0 END) as catalog_sale_count,
+    sum(CASE 
+        WHEN merged.store_sales.customer.id is not null and merged.store_sales.item.id is not null 
+        and merged.catalog_sales.bill_customer.id is not null and merged.catalog_sales.item.id is not null THEN 1 ELSE 0 END) as both_sale_count
 ;

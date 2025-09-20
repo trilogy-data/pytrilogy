@@ -156,7 +156,7 @@ def gen_multiselect_node(
     possible_joins = concept_to_relevant_joins(additional_relevant)
     if not local_optional:
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} no enriched required for rowset node; exiting early"
+            f"{padding(depth)}{LOGGER_PREFIX} no enrichment required for rowset node; exiting early"
         )
         return node
     if not possible_joins:

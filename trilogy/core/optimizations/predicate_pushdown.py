@@ -1,5 +1,6 @@
 from trilogy.core.enums import (
     BooleanOperator,
+    SourceType,
 )
 from trilogy.core.models.build import (
     BuildComparison,
@@ -59,12 +60,19 @@ class PredicatePushdown(OptimizationRule):
             )
             return False
         materialized = {k for k, v in parent_cte.source_map.items() if v != []}
+
         if not row_conditions or not materialized:
             return False
         output_addresses = {x.address for x in parent_cte.output_columns}
         # if any of the existence conditions are created on the asset, we can't push up to it
         if existence_conditions and existence_conditions.intersection(output_addresses):
             return False
+        if existence_conditions:
+            self.log(
+                f"Not pushing up existence {candidate} to {parent_cte.name} as it is a filter node"
+            )
+            if parent_cte.source.source_type == SourceType.FILTER:
+                return False
         # if it's a root datasource, we can filter on _any_ of the output concepts
         if parent_cte.is_root_datasource:
             extra_check = {
@@ -81,7 +89,7 @@ class PredicatePushdown(OptimizationRule):
             children = inverse_map.get(parent_cte.name, [])
             if all([is_child_of(candidate, child.condition) for child in children]):
                 self.log(
-                    f"All concepts are found on {parent_cte.name} with existing {parent_cte.condition} and all it's {len(children)} children include same filter; pushing up {candidate}"
+                    f"All concepts [{row_conditions}] and existence conditions [{existence_conditions}] not block pushup of [{output_addresses}]found on {parent_cte.name} with existing {parent_cte.condition} and all it's {len(children)} children include same filter; pushing up {candidate}"
                 )
                 if parent_cte.condition and not is_scalar_condition(
                     parent_cte.condition

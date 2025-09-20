@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from pytest import raises
@@ -80,11 +81,10 @@ def test_adhoc07():
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
     statement = engine.parse_text(text)[-1]
     generated = BigqueryDialect().compile_statement(statement)
-    # TODO: better test
-    assert (
-        """    `thoughtful`.`github_language` as `github_language`,
-    rank() over (order by `thoughtful`.`_virt_agg_count_7657693770587142` desc ) as `popularity_rank`"""
-        in generated
+    assert re.search(
+        r"`[a-z]+`\.`github_language` as `github_language`,\s+"
+        r"rank\(\) over \(order by `[a-z]+`\.`_virt_agg_count_7657693770587142` desc \) as `popularity_rank`",
+        generated,
     ), generated
 
 

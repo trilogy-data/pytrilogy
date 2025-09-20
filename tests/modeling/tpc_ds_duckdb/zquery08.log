@@ -1,5 +1,5 @@
 query_id = 8
-gen_length = 2924
+gen_length = 3011
 generated_sql = """
 
 WITH 
@@ -43,7 +43,7 @@ FROM
     \"yummy\"),
 vacuous as (
 SELECT
-    SUBSTRING(SUBSTRING(cast(\"cheerful\".\"zips_pre\" as string),1,5),1,2) as \"final_zips\"
+    SUBSTRING(cast(\"cheerful\".\"zips_pre\" as string),1,5) as \"_virt_filter_zips_9007816554154539\"
 FROM
     \"cheerful\"
 WHERE
@@ -51,11 +51,11 @@ WHERE
 ),
 concerned as (
 SELECT
-    \"vacuous\".\"final_zips\" as \"final_zips\"
+    SUBSTRING(\"vacuous\".\"_virt_filter_zips_9007816554154539\",1,2) as \"final_zips\"
 FROM
     \"vacuous\"
 GROUP BY 
-    \"vacuous\".\"final_zips\"),
+    SUBSTRING(\"vacuous\".\"_virt_filter_zips_9007816554154539\",1,2)),
 young as (
 SELECT
     \"store_sales_store_sales\".\"SS_NET_PROFIT\" as \"store_sales_net_profit\",

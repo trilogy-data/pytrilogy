@@ -8,8 +8,8 @@ merge web_sales.date.* into ~date.*;
 auto relevent_week_seq <- filter date.week_seq where date.year in (2001, 2002);
 
 def weekday_sales(weekday) ->  
-    SUM(CASE WHEN date.day_of_week = weekday THEN web_sales.extra_sales_price ELSE 0.0 END) + 
-    SUM(CASE WHEN date.day_of_week = weekday THEN catalog_sales.extra_sales_price ELSE 0.0 END)
+    SUM(CASE WHEN date.day_of_week = weekday THEN web_sales.ext_sales_price ELSE 0.0 END) + 
+    SUM(CASE WHEN date.day_of_week = weekday THEN catalog_sales.ext_sales_price ELSE 0.0 END)
 ;
 
 WITH

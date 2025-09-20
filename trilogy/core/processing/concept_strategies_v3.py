@@ -19,7 +19,7 @@ from trilogy.core.processing.discovery_utility import (
     LOGGER_PREFIX,
     depth_to_prefix,
     get_priority_concept,
-    group_if_required,
+    group_if_required_v2,
 )
 from trilogy.core.processing.discovery_validation import (
     ValidationResult,
@@ -66,7 +66,19 @@ def generate_candidates_restrictive(
 
     # if it's single row, joins are irrelevant. Fetch without keys.
     if priority_concept.granularity == Granularity.SINGLE_ROW:
-        return [], conditions
+        logger.info("Have single row concept, including only other single row optional")
+        optional = (
+            [
+                x
+                for x in candidates
+                if x.granularity == Granularity.SINGLE_ROW
+                and x.address not in priority_concept.pseudonyms
+                and priority_concept.address not in x.pseudonyms
+            ]
+            if priority_concept.derivation == Derivation.AGGREGATE
+            else []
+        )
+        return optional, conditions
 
     if conditions and priority_concept.derivation in ROOT_DERIVATIONS:
         logger.info(
@@ -374,15 +386,21 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
             logger.info(
                 f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Found different non-virtual output concepts ({non_virtual_difference_values}), removing condition injected values by setting outputs to {[x.address for x in output.output_concepts if x.address in non_virtual_output]}"
             )
-            output.set_output_concepts(
-                [
-                    x
-                    for x in output.output_concepts
-                    if x.address in non_virtual_output
-                    or any(c in non_virtual_output for c in x.pseudonyms)
-                ],
-                rebuild=False,
-            )
+            # output.set_output_concepts(
+            #     [
+            #         x
+            #         for x in output.output_concepts
+            #         if x.address not in non_virtual_difference_values
+            #         or any(c in non_virtual_output for c in x.pseudonyms)
+            #     ],
+            #     rebuild=True,
+            #     change_visibility=False
+            # )
+            # output.set_output_concepts(context.original_mandatory)
+
+            # if isinstance(output, MergeNode):
+            #     output.force_group = True
+            #     output.rebuild_cache()
 
         logger.info(
             f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Source stack has single node, returning that {type(output)}"
@@ -416,14 +434,17 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
     logger.info(
         f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Graph is connected, returning {type(output)} node output {[x.address for x in output.usable_outputs]} partial {[c.address for c in output.partial_concepts or []]} with {context.conditions}"
     )
+    from trilogy.core.processing.discovery_utility import group_if_required_v2
+
     if condition_required and context.conditions and non_virtual_different:
         logger.info(
             f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Conditions {context.conditions} were injected, checking if we need a group to restore grain"
         )
-        return group_if_required(
+        return group_if_required_v2(
             output, context.original_mandatory, context.environment
         )
-    return output
+
+    return group_if_required_v2(output, context.original_mandatory, context.environment)
 
 
 def _search_concepts(
@@ -588,4 +609,4 @@ def source_query_concepts(
     logger.info(
         f"{depth_to_prefix(0)}{LOGGER_PREFIX} final concepts are {[x.address for x in final]}"
     )
-    return group_if_required(root, output_concepts, environment)
+    return group_if_required_v2(root, output_concepts, environment)

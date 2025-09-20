@@ -1,0 +1,121 @@
+import store_sales as store_sales;
+import catalog_sales as catalog_sales;
+import web_sales as web_sales;
+import item as item;
+import customer as customer;
+import address as customer_address;
+import date as date;
+
+
+merge store_sales.item.* into ~item.*;
+merge catalog_sales.item.* into ~item.*;
+merge web_sales.item.* into ~item.*;
+
+auto color_ids <- item.name ? item.color in ('slate', 'blanched', 'burnished');
+const year <- 2001;
+const month <- 2;
+const gmt_offset <- -5;
+
+where item.name in color_ids
+SELECT  
+    item.name,
+    -- count(store_sales.ticket_number ? store_sales.date.year = year and store_sales.date.month_of_year = month and store_sales.customer_address.gmt_offset = gmt_offset
+) + 
+    count(catalog_sales.order_number ? catalog_sales.date.year = year and catalog_sales.date.month_of_year = month and catalog_sales.bill_address.gmt_offset = gmt_offset
+)+
+
+    count(web_sales.order_number ? web_sales.date.year = year and web_sales.date.month_of_year = month and web_sales.bill_address.gmt_offset = gmt_offset
+) -> num_sold,
+    sum(store_sales.ext_sales_price? store_sales.date.year = year and store_sales.date.month_of_year = month and store_sales.customer_address.gmt_offset = gmt_offset
+)
+
+    + sum(catalog_sales.ext_sales_price ?
+    catalog_sales.date.year = year and catalog_sales.date.month_of_year = month and catalog_sales.bill_address.gmt_offset = gmt_offset
+)
+    + sum(web_sales.ext_sales_price ? web_sales.date.year = year and web_sales.date.month_of_year = month and web_sales.bill_address.gmt_offset = gmt_offset
+        ) -> total_sales
+having
+    num_sold>0
+order by
+    total_sales asc NULLS first,
+    item.name asc NULLS first
+limit 100;
+
+
+# Compute the monthly sales amount for a specific month in a specific year, for items with three specific
+# colors across all sales channels. Only consider sales of customers residing in a specific time zone. Group
+# sales by item and sort output by sales amount.
+
+# WITH ss AS
+#   (SELECT i_item_id,
+#           sum(ss_ext_sales_price) total_sales
+#    FROM store_sales,
+#         date_dim,
+#         customer_address,
+#         item
+#    WHERE i_item_id IN
+#        (SELECT i_item_id
+#         FROM item
+#         WHERE i_color IN ('slate',
+#                           'blanched',
+#                           'burnished'))
+#      AND ss_item_sk = i_item_sk
+#      AND ss_sold_date_sk = d_date_sk
+#      AND d_year = 2001
+#      AND d_moy = 2
+#      AND ss_addr_sk = ca_address_sk
+#      AND ca_gmt_offset = -5
+#    GROUP BY i_item_id),
+#      cs AS
+#   (SELECT i_item_id,
+#           sum(cs_ext_sales_price) total_sales
+#    FROM catalog_sales,
+#         date_dim,
+#         customer_address,
+#         item
+#    WHERE i_item_id IN
+#        (SELECT i_item_id
+#         FROM item
+#         WHERE i_color IN ('slate',
+#                           'blanched',
+#                           'burnished'))
+#      AND cs_item_sk = i_item_sk
+#      AND cs_sold_date_sk = d_date_sk
+#      AND d_year = 2001
+#      AND d_moy = 2
+#      AND cs_bill_addr_sk = ca_address_sk
+#      AND ca_gmt_offset = -5
+#    GROUP BY i_item_id),
+#      ws AS
+#   (SELECT i_item_id,
+#           sum(ws_ext_sales_price) total_sales
+#    FROM web_sales,
+#         date_dim,
+#         customer_address,
+#         item
+#    WHERE i_item_id IN
+#        (SELECT i_item_id
+#         FROM item
+#         WHERE i_color IN ('slate',
+#                           'blanched',
+#                           'burnished'))
+#      AND ws_item_sk = i_item_sk
+#      AND ws_sold_date_sk = d_date_sk
+#      AND d_year = 2001
+#      AND d_moy = 2
+#      AND ws_bill_addr_sk = ca_address_sk
+#      AND ca_gmt_offset = -5
+#    GROUP BY i_item_id)
+# SELECT i_item_id,
+#        sum(total_sales) total_sales
+# FROM
+#   (SELECT *
+#    FROM ss
+#    UNION ALL SELECT *
+#    FROM cs
+#    UNION ALL SELECT *
+#    FROM ws) tmp1
+# GROUP BY i_item_id
+# ORDER BY total_sales  NULLS FIRST,
+#          i_item_id NULLS FIRST
+# LIMIT 100;

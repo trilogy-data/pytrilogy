@@ -9,6 +9,7 @@ import promotion as promotion;
 import customer_demographic as customer_demographic;
 import store as store;
 import store as return_store;
+import address as customer_address;
 
 
 
@@ -49,6 +50,7 @@ datasource store_sales (
     SS_COUPON_AMT: coupon_amt,
     SS_STORE_SK: store.id,
     SS_NET_PAID: net_paid,
+    SS_ADDR_SK: customer_address.id,
 )
 grain (ticket_number, item.id)
 address memory.store_sales

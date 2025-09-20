@@ -108,6 +108,42 @@ def gen_group_node(
                     logger.info(
                         f"{padding(depth)}{LOGGER_PREFIX} cannot include optional agg {possible_agg.address}; it has mismatched parent grain {comp_grain } vs local parent {build_grain_parents}"
                     )
+    elif concept.grain.abstract:
+        for possible_agg in local_optional:
+            if not isinstance(
+                possible_agg.lineage,
+                (BuildAggregateWrapper, BuildFunction),
+            ):
+
+                continue
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} considering optional agg {possible_agg.address} for {concept.address}"
+            )
+            agg_parents = resolve_function_parent_concepts(
+                possible_agg,
+                environment=environment,
+            )
+            comp_grain = get_aggregate_grain(possible_agg, environment)
+            if not possible_agg.grain.abstract:
+                continue
+            if set([x.address for x in agg_parents]).issubset(
+                set([x.address for x in parent_concepts])
+            ):
+                output_concepts.append(possible_agg)
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} found equivalent group by optional concept {possible_agg.address} for {concept.address}"
+                )
+            elif comp_grain == get_aggregate_grain(concept, environment):
+                extra = [x for x in agg_parents if x.address not in parent_concepts]
+                parent_concepts += extra
+                output_concepts.append(possible_agg)
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} found equivalent group by optional concept {possible_agg.address} for {concept.address}"
+                )
+            else:
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} cannot include optional agg {possible_agg.address}; it has mismatched parent grain {comp_grain } vs local parent {get_aggregate_grain(concept, environment)}"
+                )
     if parent_concepts:
         target_grain = BuildGrain.from_concepts(parent_concepts)
         logger.info(
