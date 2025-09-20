@@ -83,6 +83,11 @@ parse_time = 0.228903
 exec_time = 0.106902
 comp_time = 0.008936
 
+[query_55]
+parse_time = 0.765287
+exec_time = 0.052365
+comp_time = 1.907521
+
 [query_95]
 parse_time = 0.533098
 exec_time = 0.32685

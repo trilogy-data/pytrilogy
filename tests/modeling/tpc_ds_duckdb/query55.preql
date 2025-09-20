@@ -1,0 +1,13 @@
+import store_sales as store_sales;
+
+where store_sales.item.manager_id=28
+and store_sales.date.year=1999
+and store_sales.date.month_of_year=11
+SELECT  
+    store_sales.item.brand_id,
+    store_sales.item.brand_name,
+    sum(store_sales.ext_sales_price) -> total_ext_sales
+ORDER BY
+    total_ext_sales desc,
+    store_sales.item.brand_id asc
+limit 100;

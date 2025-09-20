@@ -786,6 +786,8 @@ class BaseDialect:
             return str(e.value)
         elif isinstance(e, ArrayType):
             return f"{self.COMPLEX_DATATYPE_MAP[DataType.ARRAY](self.render_expr(e.value_data_type, cte=cte, cte_map=cte_map))}"
+        elif isinstance(e, list):
+            return f"{self.FUNCTION_MAP[FunctionType.ARRAY]([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}"
         elif isinstance(e, BuildParamaterizedConceptReference):
             if self.rendering.parameters:
                 if e.concept.namespace == DEFAULT_NAMESPACE:
@@ -794,6 +796,7 @@ class BaseDialect:
             elif e.concept.lineage:
                 return self.render_expr(e.concept.lineage, cte=cte, cte_map=cte_map)
             return f"{self.QUOTE_CHARACTER}{e.concept.address}{self.QUOTE_CHARACTER}"
+        
         else:
             raise ValueError(f"Unable to render type {type(e)} {e}")
 
