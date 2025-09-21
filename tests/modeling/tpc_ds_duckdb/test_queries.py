@@ -140,7 +140,7 @@ def test_one(engine):
 
 def test_two(engine):
     query = run_query(engine, 2, sql_override=True)
-    assert len(query) < 8800, query
+    assert len(query) < 7000, query
 
 
 def test_three(engine):

@@ -1261,6 +1261,9 @@ order by local.ward asc
 
 
 def test_multiple_string_filters():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
     query = """
     key case_number int;
 property case_number.primary_type string;

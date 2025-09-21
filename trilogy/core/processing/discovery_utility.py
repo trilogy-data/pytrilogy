@@ -54,8 +54,19 @@ def calculate_effective_parent_grain(
                 grain += join.right_datasource.grain
             seen.add(join.right_datasource.name)
         for x in qds.datasources:
-            if x.name not in seen and any(
-                [c.address in node.output_concepts for c in x.output_concepts]
+            # if we haven't seen it, it's still contributing to grain
+            # unless used ONLY in a subselect
+            # so the existence check is a [bad] proxy for that
+            if x.name not in seen and not (
+                qds.condition
+                and qds.condition.existence_arguments
+                and any(
+                    [
+                        c.address in block
+                        for c in x.output_concepts
+                        for block in qds.condition.existence_arguments
+                    ]
+                )
             ):
                 logger.info(f"adding unjoined grain {x.grain} for datasource {x.name}")
                 grain += x.grain
