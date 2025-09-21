@@ -32,13 +32,17 @@ def calculate_effective_parent_grain(
         qds = node
         if not qds.joins:
             return qds.datasources[0].grain
+        seen = set()
         for join in qds.joins:
             if isinstance(join, UnnestJoin):
+                grain += BuildGrain(components=[x.address for x in join.concepts])
                 continue
             pairs = join.concept_pairs or []
             for key in pairs:
                 left = key.existing_datasource
+                logger.info(f"adding left grain {left.grain} for join key {key.left}")
                 grain += left.grain
+                seen.add(left.name)
             keys = [key.right for key in pairs]
             join_grain = BuildGrain.from_concepts(keys)
             if join_grain == join.right_datasource.grain:
@@ -48,6 +52,13 @@ def calculate_effective_parent_grain(
                     f"join changes grain, adding {join.right_datasource.grain} to {grain}"
                 )
                 grain += join.right_datasource.grain
+            seen.add(join.right_datasource.name)
+        for x in qds.datasources:
+            if x.name not in seen and any(
+                [c.address in node.output_concepts for c in x.output_concepts]
+            ):
+                logger.info(f"adding unjoined grain {x.grain} for datasource {x.name}")
+                grain += x.grain
         return grain
     else:
         return node.grain or BuildGrain()

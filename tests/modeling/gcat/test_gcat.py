@@ -766,7 +766,6 @@ limit 1;
     results = gcat_env.execute_query(queries[-1])
     q1 = results.fetchall()[0]["fuel_launches"]
 
-
     queries = gcat_env.parse_text(
         """
 import fuel_dashboard;

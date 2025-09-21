@@ -4,7 +4,6 @@ from trilogy.constants import logger
 from trilogy.core.models.build import (
     BuildConcept,
     BuildFunction,
-    BuildGrain,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -103,10 +102,6 @@ def gen_unnest_node(
         conditions=conditional if local_conditions is True else None,
         preexisting_conditions=(
             conditional if conditional and local_conditions is False else None
-        ),
-        grain=BuildGrain.from_concepts(
-            concepts=base.output_concepts,
-            environment=environment,
         ),
     )
     # qds = new.resolve()
