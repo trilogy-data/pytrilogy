@@ -1170,7 +1170,10 @@ select game.home_team.name, count(game.id)->game_count;"""
 
 
 def test_global_aggregate_inclusion():
-    """check that including a global aggregate constant in output select doesn't force changed evaluation orde"""
+    """check that including a global aggregate constant in output select doesn't force changed evaluation order"""
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
     query = """
     key id int;
 key date date;
@@ -1258,6 +1261,9 @@ order by local.ward asc
 
 
 def test_multiple_string_filters():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
     query = """
     key case_number int;
 property case_number.primary_type string;

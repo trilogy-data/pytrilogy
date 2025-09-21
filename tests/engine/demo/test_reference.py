@@ -4,7 +4,9 @@ from trilogy.hooks.query_debugger import DebuggingHook
 
 def test_basic_agg():
     executor = Dialects.DUCK_DB.default_executor()
+    from trilogy.hooks.query_debugger import DebuggingHook
 
+    DebuggingHook()
     results = executor.execute_query(
         """const x <- unnest([1,2,2,3]);
 

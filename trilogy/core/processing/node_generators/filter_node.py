@@ -4,7 +4,6 @@ from trilogy.constants import logger
 from trilogy.core.models.build import (
     BuildConcept,
     BuildFilterItem,
-    BuildGrain,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -238,10 +237,10 @@ def gen_filter_node(
         if not parent.preexisting_conditions == where.conditional:
             parent.add_condition(where.conditional)
         parent.add_existence_concepts(flattened_existence, False)
-        parent.grain = BuildGrain.from_concepts(
-            parent.output_concepts,
-            environment=environment,
-        )
+        # parent.grain = BuildGrain.from_concepts(
+        #     parent.output_concepts,
+        #     environment=environment,
+        # )
         parent.rebuild_cache()
         filter_node = parent
     else:

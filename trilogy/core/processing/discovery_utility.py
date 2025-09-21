@@ -27,18 +27,22 @@ def calculate_effective_parent_grain(
 ) -> BuildGrain:
     # calculate the effective grain of the parent node
     # this is the union of all parent grains
-    if isinstance(node, MergeNode):
+    if isinstance(node, QueryDatasource):
         grain = BuildGrain()
-        qds = node.resolve()
+        qds = node
         if not qds.joins:
             return qds.datasources[0].grain
+        seen = set()
         for join in qds.joins:
             if isinstance(join, UnnestJoin):
+                grain += BuildGrain(components=set([x.address for x in join.concepts]))
                 continue
             pairs = join.concept_pairs or []
             for key in pairs:
                 left = key.existing_datasource
+                logger.info(f"adding left grain {left.grain} for join key {key.left}")
                 grain += left.grain
+                seen.add(left.name)
             keys = [key.right for key in pairs]
             join_grain = BuildGrain.from_concepts(keys)
             if join_grain == join.right_datasource.grain:
@@ -48,6 +52,24 @@ def calculate_effective_parent_grain(
                     f"join changes grain, adding {join.right_datasource.grain} to {grain}"
                 )
                 grain += join.right_datasource.grain
+            seen.add(join.right_datasource.name)
+        for x in qds.datasources:
+            # if we haven't seen it, it's still contributing to grain
+            # unless used ONLY in a subselect
+            # so the existence check is a [bad] proxy for that
+            if x.name not in seen and not (
+                qds.condition
+                and qds.condition.existence_arguments
+                and any(
+                    [
+                        c.address in block
+                        for c in x.output_concepts
+                        for block in qds.condition.existence_arguments
+                    ]
+                )
+            ):
+                logger.info(f"adding unjoined grain {x.grain} for datasource {x.name}")
+                grain += x.grain
         return grain
     else:
         return node.grain or BuildGrain()
@@ -75,7 +97,7 @@ def check_if_group_required(
     if comp_grain.issubset(target_grain):
 
         logger.info(
-            f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain}, target: {target_grain}, grain is subset of target, no group node required"
+            f"{padding}{LOGGER_PREFIX} Group requirement check:  {comp_grain}, target: {target_grain}, grain is subset of target, no group node required"
         )
         return GroupRequiredResponse(target_grain, comp_grain, False)
     # find out what extra is in the comp grain vs target grain

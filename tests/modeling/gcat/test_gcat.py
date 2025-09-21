@@ -745,3 +745,38 @@ SELECT
     )
     results = gcat_env.execute_query(queries[-1])
     assert len(results.fetchall()) == 1
+
+
+def test_filter_node_group_injection(gcat_env: Executor):
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+
+    queries = gcat_env.parse_text(
+        """
+import fuel_dashboard;
+import std.display;
+select
+    count(launch_tag ? vehicle.stage.engine.fuel = 'Kero' and vehicle.stage_no in ('0', '1')) as fuel_launches
+limit 1;
+
+"""
+    )
+    results = gcat_env.execute_query(queries[-1])
+    q1 = results.fetchall()[0]["fuel_launches"]
+
+    queries = gcat_env.parse_text(
+        """
+import fuel_dashboard;
+import std.display;
+where vehicle.stage.engine.fuel = 'Kero' and vehicle.stage_no in ('0', '1')
+select
+    count(launch_tag) as fuel_launches
+limit 1500;
+
+"""
+    )
+    results = gcat_env.execute_query(queries[-1])
+    q2 = results.fetchall()[0]["fuel_launches"]
+    assert q1 == q2, (q1, q2)

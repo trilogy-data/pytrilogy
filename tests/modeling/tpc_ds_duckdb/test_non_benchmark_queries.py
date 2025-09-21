@@ -272,15 +272,13 @@ def test_merge_grain_discovery(engine: Executor):
         depth=0,
         accept_partial=False,
     )
-    grain = calculate_effective_parent_grain(node)
-    for x in node.parents:
-        print(x)
+    grain = calculate_effective_parent_grain(node.resolve())
     assert (
         grain.components
         == BuildGrain(
             components={"store_sales.ticket_number", "store_sales.item.id"}
         ).components
-    )
+    ), grain.components
 
     assert not check_if_group_required(
         downstream_concepts=target_concepts,
