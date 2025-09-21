@@ -1,5 +1,5 @@
 query_id = 97
-gen_length = 3948
+gen_length = 3826
 generated_sql = """
 
 WITH 
@@ -68,9 +68,7 @@ GROUP BY
     \"abundant\".\"catalog_sales_bill_customer_id\",
     \"abundant\".\"catalog_sales_item_id\",
     \"cheerful\".\"store_sales_customer_id\",
-    \"cheerful\".\"store_sales_item_id\",
-    coalesce(\"abundant\".\"customer_id\",\"cheerful\".\"customer_id\"),
-    coalesce(\"abundant\".\"item_id\",\"cheerful\".\"item_id\"))
+    \"cheerful\".\"store_sales_item_id\")
 SELECT
     sum(CASE
 	WHEN \"uneven\".\"merged_store_sales_customer_id\" is not null and \"uneven\".\"merged_store_sales_item_id\" is not null and \"uneven\".\"merged_catalog_sales_bill_customer_id\" is null and \"uneven\".\"merged_catalog_sales_item_id\" is null THEN 1

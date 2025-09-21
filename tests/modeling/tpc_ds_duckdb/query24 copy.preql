@@ -1,0 +1,31 @@
+import store_sales as store_sales;
+
+with su as 
+WHERE
+    store_sales.store.market = 8
+    and store_sales.customer.birth_country != upper(store_sales.customer.country)
+    and store_sales.is_returned is True
+    and store_sales.store.zip = store_sales.customer.zip
+SELECT
+    --store_sales.customer.id,
+    --store_sales.item.id,
+    --store_sales.store.id,
+    store_sales.customer.first_name,
+    store_sales.customer.last_name,
+    store_sales.store.name,
+    store_sales.item.color,
+    sum(store_sales.net_paid ) as net_paid
+;
+
+auto avg_store_customer_sales <- avg(su.net_paid) by *;
+
+
+SELECT
+    su.store_sales.customer.last_name,
+    su.store_sales.customer.first_name,
+    su.store_sales.store.name,
+    --avg_store_customer_sales,
+    sum(su.net_paid ? su.store_sales.item.color = 'peach') as peach_sales
+HAVING
+    peach_sales> .05*avg_store_customer_sales;
+

@@ -27,9 +27,9 @@ def calculate_effective_parent_grain(
 ) -> BuildGrain:
     # calculate the effective grain of the parent node
     # this is the union of all parent grains
-    if isinstance(node, MergeNode):
+    if isinstance(node, QueryDatasource):
         grain = BuildGrain()
-        qds = node.resolve()
+        qds = node
         if not qds.joins:
             return qds.datasources[0].grain
         for join in qds.joins:
@@ -75,7 +75,7 @@ def check_if_group_required(
     if comp_grain.issubset(target_grain):
 
         logger.info(
-            f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain}, target: {target_grain}, grain is subset of target, no group node required"
+            f"{padding}{LOGGER_PREFIX} Group requirement check:  {comp_grain}, target: {target_grain}, grain is subset of target, no group node required"
         )
         return GroupRequiredResponse(target_grain, comp_grain, False)
     # find out what extra is in the comp grain vs target grain
