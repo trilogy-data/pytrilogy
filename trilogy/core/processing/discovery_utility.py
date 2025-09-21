@@ -35,7 +35,7 @@ def calculate_effective_parent_grain(
         seen = set()
         for join in qds.joins:
             if isinstance(join, UnnestJoin):
-                grain += BuildGrain(components=[x.address for x in join.concepts])
+                grain += BuildGrain(components=set([x.address for x in join.concepts]))
                 continue
             pairs = join.concept_pairs or []
             for key in pairs:
