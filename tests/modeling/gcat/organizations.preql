@@ -1,5 +1,6 @@
 import std.geography;
 import std.net;
+import std.color;
 
 key code string;
 property code.u_code string;
@@ -18,11 +19,11 @@ property code.parent string;
 property code.short_e_name string;
 property code.e_name string;
 property code.u_name string;
-property flag <- CAST(CASE
-	WHEN state_code in ('SU', 'RU') THEN 'https://upload.wikimedia.org/wikipedia/commons/5/53/Flag_of_the_Soviet_Union_%283-2%29.svg'
-	WHEN state_code = 'US' THEN 'https://upload.wikimedia.org/wikipedia/commons/5/55/Flag_of_the_United_States_%283-2_aspect_ratio%29.svg'
-	WHEN state_code = 'CN' THEN 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Flag_of_the_People%27s_Republic_of_China.svg/2880px-Flag_of_the_People%27s_Republic_of_China.svg.png'
-	ELSE 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Flag_of_the_United_Nations.svg/2880px-Flag_of_the_United_Nations.svg.png'
+property code.hex string::hex;
+property flag <- CAST(CASE WHEN state_code in ('SU', 'RU') THEN 'https://upload.wikimedia.org/wikipedia/commons/5/53/Flag_of_the_Soviet_Union_%283-2%29.svg'
+WHEN state_code = 'US' THEN 'https://upload.wikimedia.org/wikipedia/commons/5/55/Flag_of_the_United_States_%283-2_aspect_ratio%29.svg'
+WHEN state_code = 'CN' THEN 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Flag_of_the_People%27s_Republic_of_China.svg/2880px-Flag_of_the_People%27s_Republic_of_China.svg.png'
+ELSE 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Flag_of_the_United_Nations.svg/2880px-Flag_of_the_United_Nations.svg.png'
 END AS string::url_image);
 
 datasource organizations (
@@ -42,7 +43,8 @@ datasource organizations (
     Parent: parent,
     ShortEName: short_e_name,
     EName: e_name,
-    UName: u_name
+    UName: u_name,
+    hex_code: hex,
     )
 grain (code)
 address organizations;
