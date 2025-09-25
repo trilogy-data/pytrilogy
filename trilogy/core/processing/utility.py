@@ -90,13 +90,86 @@ class GroupRequiredResponse:
     required: bool
 
 
+def find_all_connecting_concepts(g: nx.Graph, ds1: str, ds2: str) -> set[str]:
+    """Find all concepts that connect two datasources"""
+    concepts1 = set(g.neighbors(ds1))
+    concepts2 = set(g.neighbors(ds2))
+    return concepts1 & concepts2
+
+
+def get_connection_keys(
+    all_connections: dict[tuple[str, str], set[str]], left: str, right: str
+) -> set[str]:
+    """Get all concepts that connect two datasources"""
+    lookup = sorted([left, right])
+    key: tuple[str, str] = (lookup[0], lookup[1])
+    return all_connections.get(key, set())
+
+
+def get_join_type(
+    left: str,
+    right: str,
+    partials: dict[str, list[str]],
+    nullables: dict[str, list[str]],
+    all_connecting_keys: set[str],
+) -> JoinType:
+    left_is_partial = any(key in partials.get(left, []) for key in all_connecting_keys)
+    left_is_nullable = any(
+        key in nullables.get(left, []) for key in all_connecting_keys
+    )
+    right_is_partial = any(
+        key in partials.get(right, []) for key in all_connecting_keys
+    )
+    right_is_nullable = any(
+        key in nullables.get(right, []) for key in all_connecting_keys
+    )
+
+    if left_is_nullable and right_is_nullable:
+        join_type = JoinType.FULL
+    elif left_is_partial and right_is_partial:
+        join_type = JoinType.FULL
+    elif left_is_partial:
+        join_type = JoinType.FULL
+    elif right_is_nullable:
+        join_type = JoinType.RIGHT_OUTER
+    elif right_is_partial or left_is_nullable:
+        join_type = JoinType.LEFT_OUTER
+    # we can't inner join if the left was an outer join
+    else:
+        join_type = JoinType.INNER
+    return join_type
+
+
+def reduce_join_types(join_types: Set[JoinType]) -> JoinType:
+    final_join_type = JoinType.INNER
+    if any([x == JoinType.FULL for x in join_types]):
+        final_join_type = JoinType.FULL
+    elif any([x == JoinType.LEFT_OUTER for x in join_types]):
+        final_join_type = JoinType.LEFT_OUTER
+    elif any([x == JoinType.RIGHT_OUTER for x in join_types]):
+        final_join_type = JoinType.RIGHT_OUTER
+
+    return final_join_type
+
+
 def resolve_join_order_v2(
     g: nx.Graph, partials: dict[str, list[str]], nullables: dict[str, list[str]]
 ) -> list[JoinOrderOutput]:
     datasources = [x for x in g.nodes if x.startswith("ds~")]
     concepts = [x for x in g.nodes if x.startswith("c~")]
 
+    # Pre-compute all possible connections between datasources
+    all_connections: dict[tuple[str, str], set[str]] = {}
+    for i, ds1 in enumerate(datasources):
+        for ds2 in datasources[i + 1 :]:
+            connecting_concepts = find_all_connecting_concepts(g, ds1, ds2)
+            if connecting_concepts:
+                key = tuple(sorted([ds1, ds2]))
+                all_connections[key] = connecting_concepts
+
     output: list[JoinOrderOutput] = []
+
+    # create our map of pivots, or common join concepts
     pivot_map = {
         concept: [x for x in g.neighbors(concept) if x in datasources]
         for concept in concepts
@@ -108,8 +181,9 @@ def resolve_join_order_v2(
         )
     )
     solo = [x for x in pivot_map if len(pivot_map[x]) == 1]
-    eligible_left = set()
+    eligible_left: set[str] = set()
 
+    # while we have pivots, keep joining them in
     while pivots:
         next_pivots = [
             x for x in pivots if any(y in eligible_left for y in pivot_map[x])
@@ -120,7 +194,7 @@ def resolve_join_order_v2(
         else:
             root = pivots.pop(0)
 
-        # sort so less partials is last and eligible lefts are
+        # sort so less partials is last and eligible lefts are first
         def score_key(x: str) -> tuple[int, int, str]:
             base = 1
             # if it's left, higher weight
@@ -133,79 +207,56 @@ def resolve_join_order_v2(
                 base -= 1
             return (base, len(x), x)
 
-        # get remainig un-joined datasets
+        # get remaining un-joined datasets
         to_join = sorted(
             [x for x in pivot_map[root] if x not in eligible_left], key=score_key
         )
         while to_join:
             # need to sort this to ensure we join on the best match
-            base = sorted(
-                [x for x in pivot_map[root] if x in eligible_left], key=score_key
-            )
+            # but check ALL left in case there are non-pivt keys to join on
+            base = sorted([x for x in eligible_left], key=score_key)
             if not base:
                 new = to_join.pop()
                 eligible_left.add(new)
                 base = [new]
             right = to_join.pop()
             # we already joined it
-            # this could happen if the same pivot is shared with multiple Dses
+            # this could happen if the same pivot is shared with multiple DSes
             if right in eligible_left:
                 continue
+
             joinkeys: dict[str, set[str]] = {}
             # sorting puts the best candidate last for pop
             # so iterate over the reversed list
             join_types = set()
-            for left_candidate in reversed(base):
-                common = nx.common_neighbors(g, left_candidate, right)
 
-                if not common:
+            for left_candidate in reversed(base):
+                # Get all concepts that connect these two datasources
+                all_connecting_keys = get_connection_keys(
+                    all_connections, left_candidate, right
+                )
+
+                if not all_connecting_keys:
                     continue
+
+                # Check if we already have this exact set of keys
                 exists = False
                 for _, v in joinkeys.items():
-                    if v == common:
+                    if v == all_connecting_keys:
                         exists = True
                 if exists:
                     continue
-                left_is_partial = any(
-                    key in partials.get(left_candidate, []) for key in common
-                )
-                left_is_nullable = any(
-                    key in nullables.get(left_candidate, []) for key in common
-                )
-                right_is_partial = any(key in partials.get(right, []) for key in common)
-                # we don't care if left is nullable for join type (just keys), but if we did
-                # left_is_nullable = any(
-                #     key in nullables.get(left_candidate, []) for key in common
-                # )
-                right_is_nullable = any(
-                    key in nullables.get(right, []) for key in common
-                )
-                if left_is_nullable and right_is_nullable:
-                    join_type = JoinType.FULL
-                elif left_is_partial and right_is_partial:
-                    join_type = JoinType.FULL
-                elif left_is_partial:
-                    join_type = JoinType.FULL
-                elif right_is_nullable:
-                    join_type = JoinType.RIGHT_OUTER
-                elif right_is_partial or left_is_nullable:
-                    join_type = JoinType.LEFT_OUTER
-                # we can't inner join if the left was an outer join
-                else:
-                    join_type = JoinType.INNER
 
+                join_type = get_join_type(
+                    left_candidate, right, partials, nullables, all_connecting_keys
+                )
                 join_types.add(join_type)
-                joinkeys[left_candidate] = common
-            final_join_type = JoinType.INNER
-            if any([x == JoinType.FULL for x in join_types]):
-                final_join_type = JoinType.FULL
-            elif any([x == JoinType.LEFT_OUTER for x in join_types]):
-                final_join_type = JoinType.LEFT_OUTER
-            elif any([x == JoinType.RIGHT_OUTER for x in join_types]):
-                final_join_type = JoinType.RIGHT_OUTER
+                joinkeys[left_candidate] = all_connecting_keys
+
+            final_join_type = reduce_join_types(join_types)
+
             output.append(
                 JoinOrderOutput(
-                    # left=left_candidate,
                     right=right,
                     type=final_join_type,
                     keys=joinkeys,
@@ -216,7 +267,6 @@ def resolve_join_order_v2(
     for concept in solo:
         for ds in pivot_map[concept]:
             # if we already have it, skip it
-
             if ds in eligible_left:
                 continue
             # if we haven't had ANY left datasources yet
@@ -224,17 +274,39 @@ def resolve_join_order_v2(
             if not eligible_left:
                 eligible_left.add(ds)
                 continue
-            # otherwise do a full out join
-            output.append(
-                JoinOrderOutput(
-                    # pick random one to be left
-                    left=list(eligible_left)[0],
-                    right=ds,
-                    type=JoinType.FULL,
-                    keys={},
+            # otherwise do a full outer join
+            # Try to find if there are any connecting keys with existing left tables
+            best_left = None
+            best_keys: set[str] = set()
+            for existing_left in eligible_left:
+                connecting_keys = get_connection_keys(
+                    all_connections, existing_left, ds
                 )
-            )
+                if connecting_keys and len(connecting_keys) > len(best_keys):
+                    best_left = existing_left
+                    best_keys = connecting_keys
+
+            if best_left and best_keys:
+                output.append(
+                    JoinOrderOutput(
+                        left=best_left,
+                        right=ds,
+                        type=JoinType.FULL,
+                        keys={best_left: best_keys},
+                    )
+                )
+            else:
+                output.append(
+                    JoinOrderOutput(
+                        # pick random one to be left
+                        left=list(eligible_left)[0],
+                        right=ds,
+                        type=JoinType.FULL,
+                        keys={},
+                    )
+                )
             eligible_left.add(ds)
+
     # only once we have all joins
     # do we know if some inners need to be left outers
     for review_join in output:
@@ -248,6 +320,7 @@ def resolve_join_order_v2(
             ]
         ):
             review_join.type = JoinType.LEFT_OUTER
+
     return output
 
 
@@ -352,7 +425,9 @@ def resolve_instantiated_concept(
     )
 
 
-def reduce_concept_pairs(input: list[ConceptPair]) -> list[ConceptPair]:
+def reduce_concept_pairs(
+    input: list[ConceptPair], right_source: QueryDatasource | BuildDatasource
+) -> list[ConceptPair]:
     left_keys = set()
     right_keys = set()
     for pair in input:
@@ -361,7 +436,10 @@ def reduce_concept_pairs(input: list[ConceptPair]) -> list[ConceptPair]:
         if pair.right.purpose == Purpose.KEY:
             right_keys.add(pair.right.address)
     final: list[ConceptPair] = []
+    seen_right_keys = set()
     for pair in input:
+        if pair.right.address in seen_right_keys:
+            continue
         if (
             pair.left.purpose == Purpose.PROPERTY
             and pair.left.keys
@@ -374,7 +452,15 @@ def reduce_concept_pairs(input: list[ConceptPair]) -> list[ConceptPair]:
             and pair.right.keys.issubset(right_keys)
         ):
             continue
+
+        seen_right_keys.add(pair.right.address)
         final.append(pair)
+    all_keys = set([x.right.address for x in final])
+    if right_source.grain.components and right_source.grain.components.issubset(
+        all_keys
+    ):
+        return [x for x in final if x.right.address in right_source.grain.components]
+
     return final
 
 
@@ -443,7 +529,8 @@ def get_node_joins(
                     )
                     for k, v in j.keys.items()
                     for concept in v
-                ]
+                ],
+                ds_node_map[j.right],
             ),
         )
         for j in joins

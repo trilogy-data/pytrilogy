@@ -224,6 +224,72 @@ def create_pruned_concept_graph(
     return g
 
 
+# def deduplicate_nodes(subgraph: nx.DiGraph, nodes: list[str], partial_map: dict[str, list[str]], depth: int) -> list[str]:
+#     """
+#     Remove duplicate datasource nodes that are connected to the same concepts
+#     and have the same partial state, keeping the one with the most unique concepts.
+
+#     Args:
+#         subgraph: NetworkX DiGraph containing the nodes and edges
+#         nodes: List of node names to deduplicate
+#         partial_map: Map of datasource to partial nodes
+
+#     Returns:
+#         List of deduplicated node names
+#     """
+#     # Filter for datasource nodes only
+#     ds_nodes = [node for node in nodes if node.startswith("ds~")]
+#     non_ds_nodes = [node for node in nodes if not node.startswith("ds~")]
+
+#     if len(ds_nodes) <= 1:
+#         return nodes  # No deduplication needed
+
+#     # Build a map of each datasource to its connected concepts and partial state
+#     ds_info = {}
+
+#     for ds_node in ds_nodes:
+#         # Get connected concept nodes (nodes starting with "c~")
+#         connected_concepts = set()
+#         for neighbor in subgraph.neighbors(ds_node):
+#             if neighbor.startswith("c~"):
+#                 connected_concepts.add(neighbor)
+
+#         # Get partial state for this datasource
+#         partial_state = tuple(sorted(partial_map.get(ds_node, [])))
+
+#         ds_info[ds_node] = {
+#             'concepts': connected_concepts,
+#             'partial_state': partial_state
+#         }
+
+#     # Find datasources to remove (those that are subsets of others)
+#     nodes_to_remove = set()
+#     logger.info('LOOK HERE')
+#     logger.info(ds_info)
+#     for ds_a, info_a in ds_info.items():
+#         for ds_b, info_b in ds_info.items():
+#             if ds_a != ds_b and ds_a not in nodes_to_remove:
+#                 # Check if ds_a is a subset of ds_b (same partial state and concepts are subset)
+#                 if (info_a['partial_state'] == info_b['partial_state'] and
+#                     info_a['concepts'].issubset(info_b['concepts']) and
+#                     len(info_a['concepts']) < len(info_b['concepts'])):
+#                     # ds_a connects to fewer concepts than ds_b, so remove ds_a
+#                     nodes_to_remove.add(ds_a)
+#                 elif (info_a['partial_state'] == info_b['partial_state'] and
+#                       info_a['concepts'] == info_b['concepts']):
+#                     # Exact same concepts and partial state - keep one arbitrarily
+#                     # (keep the lexicographically smaller one for consistency)
+#                     if ds_a > ds_b:
+#                         nodes_to_remove.add(ds_a)
+
+#     # Keep datasource nodes that weren't marked for removal
+#     logger.info(f"{padding(depth)}{LOGGER_PREFIX} Removing duplicate datasource nodes: {nodes_to_remove}")
+#     deduplicated_ds_nodes = [ds for ds in ds_nodes if ds not in nodes_to_remove]
+
+#     # Return deduplicated datasource nodes plus all non-datasource nodes
+#     return deduplicated_ds_nodes + non_ds_nodes
+
+
 def resolve_subgraphs(
     g: ReferenceGraph,
     relevant: list[BuildConcept],

@@ -53,7 +53,7 @@ def test_environment():
     base.execute_raw_sql(ROOT / "setup.sql")
 
     base.parse_text(
-        """import vehicle;
+        """import launch;
 """
     )
     try:
@@ -61,6 +61,7 @@ def test_environment():
     except ModelValidationError as e:
         for x in e.children or []:
             raise x
+    assert "year" in base.environment.concepts["launch_date.year"].datatype.traits
 
 
 def test_case():
@@ -780,3 +781,59 @@ limit 1500;
     results = gcat_env.execute_query(queries[-1])
     q2 = results.fetchall()[0]["fuel_launches"]
     assert q1 == q2, (q1, q2)
+
+
+def test_aggregate_optimization(gcat_env: Executor):
+    from logging import INFO
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook(level=INFO)
+
+    queries = gcat_env.parse_text(
+        """
+    import fuel_dashboard;
+    datasource fuel_aggregates (
+  launch_tag,
+  orb_pay,
+  org_state_code:org.state_code,
+  org_hex:org.hex,
+  vehicle_stage_engine_name:vehicle.stage.engine.name,
+  vehicle_stage_engine_fuel:vehicle.stage.engine.fuel,
+  vehicle_stage_engine_oxidizer: vehicle.stage.engine.oxidizer,
+  vehicle_stage_engine_group:vehicle.stage.engine.group,
+  stage_no: vehicle.stage_no,
+  lv_type: vehicle.name,
+  lv_variant: vehicle.variant,
+  launch_date_year:launch_date.year,
+
+)
+grain (launch_tag, vehicle.stage_no)
+address fuel_dashboard_agg;
+
+                                  WHERE
+        vehicle.stage_no in ('0', '1')
+SELECT
+    stage_identifier,
+    org.state_code,
+    org.hex,
+    sum(orb_pay)-> orbital_payload,
+ORDER BY
+    orbital_payload desc
+LIMIT 10
+;
+"""
+    )
+    query = gcat_env.generate_sql(queries[-1])
+
+    assert (
+        'LEFT OUTER JOIN "launch_info" as "launch_info" on "fuel_aggregates"."launch_tag" = "launch_info"."Launch_Tag"'
+        in query[0]
+    ), query[0]
+    assert (
+        'FULL JOIN "lvs_info" as "vehicle_lvs_info" on "fuel_aggregates"."lv_type" = "vehicle_lvs_info"."LV_Name" AND "fuel_aggregates"."lv_variant" = "vehicle_lvs_info"."LV_Variant" AND "fuel_aggregates"."stage_no" = "vehicle_lvs_info"."Stage_No"'
+        in query[0]
+    ), query[0]
+    # results = gcat_env.execute_query(queries[-1])
+    # q2 = results.fetchall()[0]["fuel_launches"]
+    # assert q1 == q2, (q1, q2)
