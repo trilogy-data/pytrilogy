@@ -350,9 +350,6 @@ def check_for_early_exit(
 def generate_loop_completion(context: LoopContext, virtual: set[str]) -> StrategyNode:
     condition_required = True
     non_virtual = [c for c in context.completion_mandatory if c.address not in virtual]
-    non_virtual_output = [
-        c for c in context.original_mandatory if c.address not in virtual
-    ]
     non_virtual_different = len(context.completion_mandatory) != len(
         context.original_mandatory
     )
@@ -380,11 +377,12 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
         logger.info(
             f"Condition {context.conditions} not required, parents included filtering! {parent_map}"
         )
+
     if len(context.stack) == 1:
         output: StrategyNode = context.stack[0]
         if non_virtual_different:
             logger.info(
-                f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Found different non-virtual output concepts ({non_virtual_difference_values}), removing condition injected values by setting outputs to {[x.address for x in output.output_concepts if x.address in non_virtual_output]}"
+                f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Found added non-virtual output concepts ({non_virtual_difference_values})"
             )
             # output.set_output_concepts(
             #     [
@@ -398,13 +396,6 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
             # )
             # output.set_output_concepts(context.original_mandatory)
 
-            # if isinstance(output, MergeNode):
-            #     output.force_group = True
-            #     output.rebuild_cache()
-
-        logger.info(
-            f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Source stack has single node, returning that {type(output)}"
-        )
     else:
         logger.info(
             f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} wrapping multiple parent nodes {[type(x) for x in context.stack]} in merge node"
@@ -441,10 +432,18 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
             f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Conditions {context.conditions} were injected, checking if we need a group to restore grain"
         )
         return group_if_required_v2(
-            output, context.original_mandatory, context.environment
+            output,
+            context.original_mandatory,
+            context.environment,
+            non_virtual_difference_values,
         )
 
-    return group_if_required_v2(output, context.original_mandatory, context.environment)
+    return group_if_required_v2(
+        output,
+        context.original_mandatory,
+        context.environment,
+        non_virtual_difference_values,
+    )
 
 
 def _search_concepts(

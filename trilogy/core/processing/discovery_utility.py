@@ -180,8 +180,12 @@ def check_if_group_required(
 
 
 def group_if_required_v2(
-    root: StrategyNode, final: List[BuildConcept], environment: BuildEnvironment
+    root: StrategyNode,
+    final: List[BuildConcept],
+    environment: BuildEnvironment,
+    where_injected: set[str] | None = None,
 ):
+    where_injected = where_injected or set()
     required = check_if_group_required(
         downstream_concepts=final, parents=[root.resolve()], environment=environment
     )
@@ -197,8 +201,23 @@ def group_if_required_v2(
             root.rebuild_cache()
             return root
         elif isinstance(root, GroupNode):
-            # root.set_output_concepts(final, rebuild=False)
-            # root.rebuild_cache()
+
+            if set(x.address for x in final) != set(
+                x.address for x in root.output_concepts
+            ):
+                allowed_outputs = [
+                    x
+                    for x in root.output_concepts
+                    if not (
+                        x.address in where_injected
+                        and x.address not in (root.required_outputs or set())
+                    )
+                ]
+
+                logger.info(
+                    f"Adjusting group node outputs to remove injected concepts {where_injected}: remaining {allowed_outputs}"
+                )
+                root.set_output_concepts(allowed_outputs)
             return root
         return GroupNode(
             output_concepts=targets,

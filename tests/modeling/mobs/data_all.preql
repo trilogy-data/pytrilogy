@@ -8,25 +8,33 @@ key class string;
 key orders string;
 key family string;
 
+
 key scientificName string;
 property <column00>.scientificNameAuthorship string;
-property <column00>._length_cm string; # raw string length
-auto length_cm <- CASE WHEN _length_cm = 'NA' then null::float else _length_cm::float end; # float length
+property <column00>.length_cm float;
 property <column00>.diameter_width_cm string;
-property <column00>._height_cm string; # raw string height
-auto height_cm <-  CASE WHEN _height_cm = 'NA' then null::float else _height_cm::float end;
+property <column00>.height_cm float;
 property <column00>.notes string;
 property <column00>.size_ref string;
 property <column00>.date_added date;
 
 auto sample_count<-count(column00);
-auto log_length_bin <- case  
-    when length_cm < 1 then '0-1 (Plankton or baby shrimp)'  
-    when length_cm < 10 then '1-10 (Seahorse or small crab)'  
-    when length_cm < 100 then '10-100 (Octopus or medium fish)'  
-    when length_cm < 1000 then '100-1000 (Dolphin or tuna)'  
-    else '1000+ (Whale or giant squid)'  
-end;
+
+auto  log_length_bin <- case  
+        when length_cm < 1 then '0-1'  
+        when length_cm < 10 then '1-10'  
+        when length_cm < 100 then '10-100'  
+        when length_cm < 1000 then '100-1000'  
+        else '1000+'  
+    end;
+
+auto avg_genus_size <- avg(length_cm) by genus.name;
+auto avg_class_size <- avg(length_cm) by class;
+auto log_genus_size <- log(avg_genus_size);
+auto log_class_size <- log(avg_class_size);
+auto genus_size_bucket <- round(log_genus_size, 10);
+auto class_size_bucket <- round(log_class_size, 10);
+
 datasource data_all_112224 (
 	column00,
 	Order_Added,
@@ -38,9 +46,9 @@ datasource data_all_112224 (
 	genus:genus.name,
 	scientificName,
 	scientificNameAuthorship,
-	length_cm:_length_cm,
+	length_cm:length_cm,
 	diameter_width_cm,
-	height_cm:_height_cm,
+	height_cm:height_cm,
 	notes,
 	size_ref,
 	date_added

@@ -74,7 +74,7 @@ def test_case():
     with open(ROOT / "fuel_dashboard.preql", "r") as f:
         raw = f.read()
         _, statements = parse_text(raw, environment=base.environment)
-    assert len(statements) == 3
+    assert len(statements) == 5
     rendered = Renderer().render_statement_string(statements)
     _, statements = parse_text(rendered, environment=base.environment)
     rendered = Renderer().render_statement_string(statements)
@@ -837,3 +837,34 @@ LIMIT 10
     # results = gcat_env.execute_query(queries[-1])
     # q2 = results.fetchall()[0]["fuel_launches"]
     # assert q1 == q2, (q1, q2)
+
+
+def test_no_duplicates(gcat_env: Executor):
+
+    from logging import INFO
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook(level=INFO)
+
+    queries = gcat_env.parse_text(
+        """
+import fuel_dashboard;
+WHERE
+    vehicle.stage_no in ('2', '3', '4')
+SELECT
+    stage_identifier,
+    org.state_code,
+    org.hex,
+    sum(orb_pay) -> orbital_payload,
+ORDER BY
+    orbital_payload desc
+LIMIT 10
+;
+
+"""
+    )
+    del gcat_env.environment.datasources["launch_info"]
+    query = gcat_env.generate_sql(queries[-1])
+
+    assert "launch_info" not in query[0], query[0]

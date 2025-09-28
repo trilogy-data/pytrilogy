@@ -1,5 +1,5 @@
 query_id = 20
-gen_length = 2758
+gen_length = 3113
 generated_sql = """
 
 WITH 
@@ -18,6 +18,17 @@ FROM
 WHERE
     \"cs_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home') and cast(\"cs_sold_date_date\".\"D_DATE\" as date) >= date '1999-02-22' and cast(\"cs_sold_date_date\".\"D_DATE\" as date) <= date '1999-03-24'
 ),
+cooperative as (
+SELECT
+    \"cheerful\".\"cs_item_class\" as \"cs_item_class\",
+    sum(\"cheerful\".\"cs_ext_sales_price\") as \"revenue\"
+FROM
+    \"cheerful\"
+GROUP BY 
+    \"cheerful\".\"cs_item_class\",
+    \"cheerful\".\"cs_item_current_price\",
+    \"cheerful\".\"cs_item_desc\",
+    \"cheerful\".\"cs_item_name\"),
 thoughtful as (
 SELECT
     \"cheerful\".\"cs_item_category\" as \"cs_item_category\",
@@ -28,19 +39,22 @@ SELECT
     sum(\"cheerful\".\"cs_ext_sales_price\") as \"revenue\"
 FROM
     \"cheerful\"
+WHERE
+    \"cheerful\".\"cs_item_name\" is not null
+
 GROUP BY 
     \"cheerful\".\"cs_item_category\",
     \"cheerful\".\"cs_item_class\",
     \"cheerful\".\"cs_item_current_price\",
     \"cheerful\".\"cs_item_desc\",
     \"cheerful\".\"cs_item_name\"),
-cooperative as (
+questionable as (
 SELECT
-    \"thoughtful\".\"cs_item_class\" as \"cs_item_class\",
-    \"thoughtful\".\"revenue\" as \"revenue\",
-    sum(\"thoughtful\".\"revenue\") over (partition by \"thoughtful\".\"cs_item_class\") as \"_virt_window_sum_69632973582362\"
+    \"cooperative\".\"cs_item_class\" as \"cs_item_class\",
+    \"cooperative\".\"revenue\" as \"revenue\",
+    sum(\"cooperative\".\"revenue\") over (partition by \"cooperative\".\"cs_item_class\") as \"_virt_window_sum_69632973582362\"
 FROM
-    \"thoughtful\")
+    \"cooperative\")
 SELECT
     \"thoughtful\".\"cs_item_name\" as \"cs_item_name\",
     \"thoughtful\".\"cs_item_desc\" as \"cs_item_desc\",
@@ -48,10 +62,10 @@ SELECT
     \"thoughtful\".\"cs_item_class\" as \"cs_item_class\",
     \"thoughtful\".\"cs_item_current_price\" as \"cs_item_current_price\",
     \"thoughtful\".\"revenue\" as \"revenue\",
-    \"thoughtful\".\"revenue\" * 100.0 / (\"cooperative\".\"_virt_window_sum_69632973582362\") as \"revenue_ratio\"
+    \"thoughtful\".\"revenue\" * 100.0 / (\"questionable\".\"_virt_window_sum_69632973582362\") as \"revenue_ratio\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"thoughtful\" on \"cooperative\".\"revenue\" = \"thoughtful\".\"revenue\" AND (\"cooperative\".\"cs_item_class\" = \"thoughtful\".\"cs_item_class\" or (\"cooperative\".\"cs_item_class\" is null and \"thoughtful\".\"cs_item_class\" is null))
+    \"questionable\"
+    INNER JOIN \"thoughtful\" on \"questionable\".\"revenue\" = \"thoughtful\".\"revenue\" AND (\"questionable\".\"cs_item_class\" = \"thoughtful\".\"cs_item_class\" or (\"questionable\".\"cs_item_class\" is null and \"thoughtful\".\"cs_item_class\" is null))
 WHERE
     \"thoughtful\".\"cs_item_name\" is not null
 
@@ -60,5 +74,5 @@ ORDER BY
     \"thoughtful\".\"cs_item_class\" asc nulls first,
     \"thoughtful\".\"cs_item_name\" asc nulls first,
     \"thoughtful\".\"cs_item_desc\" asc nulls first,
-    \"thoughtful\".\"revenue\" * 100.0 / (\"cooperative\".\"_virt_window_sum_69632973582362\") asc nulls first
+    \"thoughtful\".\"revenue\" * 100.0 / (\"questionable\".\"_virt_window_sum_69632973582362\") asc nulls first
 LIMIT (100)"""

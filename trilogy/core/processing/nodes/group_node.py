@@ -49,6 +49,7 @@ class GroupNode(StrategyNode):
         existence_concepts: List[BuildConcept] | None = None,
         hidden_concepts: set[str] | None = None,
         ordering: BuildOrderBy | None = None,
+        required_outputs: List[BuildConcept] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -66,6 +67,10 @@ class GroupNode(StrategyNode):
             hidden_concepts=hidden_concepts,
             ordering=ordering,
         )
+        # we do shenanigans with outptu concepts a lot
+        # but a group node MUST preserve the original outputs
+        # for grain to work
+        self.required_outputs = required_outputs
 
     @classmethod
     def check_if_required(
@@ -184,4 +189,7 @@ class GroupNode(StrategyNode):
             existence_concepts=list(self.existence_concepts),
             hidden_concepts=set(self.hidden_concepts),
             ordering=self.ordering,
+            required_outputs=(
+                list(self.required_outputs) if self.required_outputs else None
+            ),
         )
