@@ -67,9 +67,8 @@ class GroupNode(StrategyNode):
             hidden_concepts=hidden_concepts,
             ordering=ordering,
         )
-        # we do shenanigans with outptu concepts a lot
-        # but a group node MUST preserve the original outputs
-        # for grain to work
+        # the set of concepts required to preserve grain
+        # set by group by node generation with aggregates
         self.required_outputs = required_outputs
 
     @classmethod
