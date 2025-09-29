@@ -868,3 +868,39 @@ LIMIT 10
     query = gcat_env.generate_sql(queries[-1])
 
     assert "launch_info" not in query[0], query[0]
+
+
+def test_big_group_by(gcat_env: Executor):
+    from logging import INFO
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook(level=INFO)
+    base = gcat_env
+    base.execute_raw_sql(ROOT / "setup.sql")
+    queries = base.parse_text(
+        """import fuel_dashboard;
+        WHERE
+        vehicle.stage_no in ('0', '1')
+
+        and vehicle.stage.engine.isp >300
+SELECT
+    stage_identifier,
+    org.state_code,
+    org.hex,
+    sum(orb_pay)-> orbital_payload,
+ORDER BY
+    orbital_payload desc
+LIMIT 10
+;"""
+    )
+    sql = base.generate_sql(queries[-1])
+    assert (
+        """GROUP BY 
+    "fuel_aggregates"."launch_tag",
+    "fuel_aggregates"."orb_pay",
+    "fuel_aggregates"."org_hex",
+    "fuel_aggregates"."org_state_code",
+    CASE"""
+        in sql[0]
+    ), sql[0]

@@ -2,8 +2,17 @@
 
 type percent float; # Percentage value
 
-def calc_percent(a, b, digits=-1) -> case when digits =-1 then 
-case when b = 0 then 0.0::numeric::percent else
-(a/b)::numeric::percent end
-else round((case when b = 0 then 0.0::float::percent else
-(a/b)::float::percent end):: numeric::percent, digits) end;
+def calc_percent(a, b, digits=-1) -> 
+    case 
+        when digits =-1 then 
+            case 
+                when b = 0 then 0.0::numeric
+                else (a/b)::numeric
+            end
+        else round((
+            case 
+                when b = 0 then 0.0::float
+                else (a/b)::float
+            end
+            )::numeric, digits) 
+    end::numeric::percent;
