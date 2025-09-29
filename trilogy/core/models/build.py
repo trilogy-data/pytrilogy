@@ -1993,7 +1993,10 @@ class Factory:
             where = factory._build_where_clause(base.where_clause)
         else:
             where = None
-        return BuildGrain(components=base.components, where_clause=where)
+        return BuildGrain.from_concepts(
+            components=[self.build(self.environment.concepts[c]) for c in base.components],
+            where_clause=where,
+        )
 
     @build.register
     def _(self, base: TupleWrapper) -> TupleWrapper:
