@@ -27,7 +27,7 @@ WINDOW_TYPES = (BuildWindowItem,)
 
 
 def resolve_window_parent_concepts(
-    concept: BuildConcept, environment: BuildEnvironment
+    concept: BuildConcept, environment: BuildEnvironment, depth: int
 ) -> tuple[BuildConcept, List[BuildConcept]]:
     if not isinstance(concept.lineage, WINDOW_TYPES):
         raise ValueError
@@ -39,7 +39,9 @@ def resolve_window_parent_concepts(
             base += item.concept_arguments
     if concept.grain:
         for gitem in concept.grain.components:
-            logger.info(f"{LOGGER_PREFIX} appending grain item {gitem} to base")
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} appending grain item {gitem} to base"
+            )
             base.append(environment.concepts[gitem])
     return concept.lineage.content, unique(base, "address")
 
@@ -54,7 +56,7 @@ def gen_window_node(
     history: History,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
-    base, parent_concepts = resolve_window_parent_concepts(concept, environment)
+    base, parent_concepts = resolve_window_parent_concepts(concept, environment, depth)
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} generating window node for {concept} with parents {[x.address for x in parent_concepts]} and optional {local_optional}"
     )
@@ -62,7 +64,7 @@ def gen_window_node(
         x
         for x in local_optional
         if isinstance(x.lineage, WINDOW_TYPES)
-        and resolve_window_parent_concepts(x, environment)[1] == parent_concepts
+        and resolve_window_parent_concepts(x, environment, depth)[1] == parent_concepts
     ]
 
     targets = [base]
@@ -79,7 +81,7 @@ def gen_window_node(
     if equivalent_optional:
         for x in equivalent_optional:
             assert isinstance(x.lineage, WINDOW_TYPES)
-            base, parents = resolve_window_parent_concepts(x, environment)
+            base, parents = resolve_window_parent_concepts(x, environment, depth)
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} found equivalent optional {x} with parents {parents}"
             )

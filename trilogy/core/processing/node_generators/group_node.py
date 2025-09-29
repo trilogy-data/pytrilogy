@@ -176,6 +176,7 @@ def gen_group_node(
         parents=parents,
         depth=depth,
         preexisting_conditions=conditions.conditional if conditions else None,
+        required_outputs=parent_concepts,
     )
 
     # early exit if no optional

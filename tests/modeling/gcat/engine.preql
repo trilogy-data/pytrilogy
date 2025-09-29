@@ -1,5 +1,6 @@
 #auto-generated datasource from table/view engines
 import std.metric;
+import std.color;
 
 key name string;
 property name.manufacturer string;
@@ -20,7 +21,9 @@ property name.durflag string;
 property name.chambers int;
 property name.date string;
 property name.usage string;
+property fuel.fuel_hex string::hex;
 key group string;
+property group.group_hex string::hex;
 
 datasource engines (
     Name: name,
@@ -42,7 +45,9 @@ datasource engines (
     Chambers: ?chambers,
     Date: date,
     Usage: usage,
-    Group: group
+    Group: group,
+    fuel_hex_color:fuel_hex,
+    group_hex_color:group_hex
     )
 grain (name)
 address engines;

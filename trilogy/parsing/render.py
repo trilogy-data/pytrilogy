@@ -8,7 +8,14 @@ from typing import Any
 from jinja2 import Template
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
-from trilogy.core.enums import ConceptSource, DatePart, FunctionType, Modifier, Purpose
+from trilogy.core.enums import (
+    ConceptSource,
+    DatePart,
+    FunctionType,
+    Modifier,
+    Purpose,
+    ValidationScope,
+)
 from trilogy.core.models.author import (
     AggregateWrapper,
     AlignClause,
@@ -66,6 +73,7 @@ from trilogy.core.statements.author import (
     SelectItem,
     SelectStatement,
     TypeDeclaration,
+    ValidateStatement,
 )
 
 QUERY_TEMPLATE = Template(
@@ -444,6 +452,13 @@ class Renderer:
             prefixes.append("~")
         final = "".join(prefixes)
         return f"{final}{self.to_string(arg.content)}"
+
+    @to_string.register
+    def _(self, arg: ValidateStatement):
+        targets = ",".join(arg.targets) if arg.targets else "*"
+        if arg.scope.value == ValidationScope.ALL:
+            return "validate all;"
+        return f"validate {arg.scope.value} {targets};"
 
     @to_string.register
     def _(self, arg: SelectStatement):
