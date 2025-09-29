@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from trilogy import Dialects
+from trilogy.core.models.core import TraitDataType
 from trilogy.hooks import DebuggingHook
 
 
@@ -58,3 +59,10 @@ order by
     assert results[2][0] == 3
     assert round(results[2][1], 2) == Decimal("0.64")
     assert round(results[2][2], 2) == Decimal("0.6")
+    assert isinstance(
+        duckdb.environment.concepts["percent_of_total_rounded"].datatype, TraitDataType
+    )
+    assert (
+        "percent"
+        in duckdb.environment.concepts["percent_of_total_rounded"].datatype.traits
+    )

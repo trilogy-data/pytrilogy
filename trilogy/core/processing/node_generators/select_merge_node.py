@@ -416,17 +416,22 @@ def create_datasource_node(
 ) -> tuple[StrategyNode, bool]:
 
     target_grain = BuildGrain.from_concepts(all_concepts, environment=environment)
+    # datasource grain may have changed since reference graph creation
+    datasource_grain = BuildGrain.from_concepts(
+        datasource.grain.components, environment=environment
+    )
+    # datasource_grain = datasource.grain
     force_group = False
-    if not datasource.grain.issubset(target_grain):
+    if not datasource_grain.issubset(target_grain):
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX}_DS_NODE Select node must be wrapped in group, {datasource.grain} not subset of target grain {target_grain}"
+            f"{padding(depth)}{LOGGER_PREFIX}_DS_NODE Select node must be wrapped in group, {datasource_grain} not subset of target grain {target_grain} from {all_concepts}"
         )
         force_group = True
     else:
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX}_DS_NODE Select node grain {datasource.grain} is subset of target grain {target_grain}, no group required"
+            f"{padding(depth)}{LOGGER_PREFIX}_DS_NODE Select node grain {datasource_grain} is subset of target grain {target_grain}, no group required"
         )
-    if not datasource.grain.components:
+    if not datasource_grain.components:
         force_group = True
     partial_concepts = [
         c.concept
