@@ -1,5 +1,6 @@
 from typing import List, Optional
 
+from trilogy.ai.enums import Provider
 from trilogy.ai.models import LLMMessage, LLMResponse, UsageDict
 
 from .base import LLMProvider, LLMRequestOptions
@@ -12,14 +13,13 @@ class OpenAIProvider(LLMProvider):
         name: str,
         api_key: str,
         model: str,
-        save_credential: bool = False,
         retry_options: Optional[RetryOptions] = None,
     ):
-        super().__init__(name, api_key, model, save_credential)
+        super().__init__(name, api_key, model, Provider.OPENAI)
         self.base_completion_url = "https://api.openai.com/v1/chat/completions"
         self.base_model_url = "https://api.openai.com/v1/models"
         self.models: List[str] = []
-        self.type = "openai"
+        self.type = Provider.OPENAI
 
         self.retry_options = retry_options or RetryOptions(
             max_retries=3,
@@ -29,29 +29,6 @@ class OpenAIProvider(LLMProvider):
                 f"Retry attempt {attempt} after {delay_ms}ms delay due to error: {str(error)}"
             ),
         )
-
-    def reset(self) -> None:
-        import httpx
-
-        self.error = None
-        try:
-
-            def make_request():
-                with httpx.Client() as client:
-                    response = client.get(
-                        self.base_model_url,
-                        headers={"Authorization": f"Bearer {self.api_key}"},
-                    )
-                    response.raise_for_status()
-                    return response.json()
-
-            model_data = fetch_with_retry(make_request, self.retry_options)
-            self.models = sorted([model["id"] for model in model_data["data"]])
-            self.connected = True
-        except Exception as e:
-            self.error = str(e)
-            self.connected = False
-            raise
 
     def generate_completion(
         self, options: LLMRequestOptions, history: List[LLMMessage]

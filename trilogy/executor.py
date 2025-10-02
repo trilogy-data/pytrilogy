@@ -6,7 +6,7 @@ from sqlalchemy import text
 
 from trilogy.constants import MagicConstants, Rendering, logger
 from trilogy.core.enums import FunctionType, Granularity, IOType, ValidationScope
-from trilogy.core.models.author import Concept, Function
+from trilogy.core.models.author import Comment, Concept, Function
 from trilogy.core.models.build import BuildFunction
 from trilogy.core.models.core import ListWrapper, MapWrapper
 from trilogy.core.models.datasource import Datasource
@@ -85,6 +85,10 @@ class Executor(object):
     @singledispatchmethod
     def execute_query(self, query) -> ResultProtocol | None:
         raise NotImplementedError("Cannot execute type {}".format(type(query)))
+
+    @execute_query.register
+    def _(self, query: Comment) -> ResultProtocol | None:
+        return None
 
     @execute_query.register
     def _(self, query: ConceptDeclarationStatement) -> ResultProtocol | None:

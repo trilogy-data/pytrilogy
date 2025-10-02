@@ -21,7 +21,7 @@ For any response to the user, use this format -> put your actual response within
 
 
 def concepts_to_fields_prompt(concepts: list[Concept]) -> str:
-    return ", ".join([f"[name: {c.name} | type: {c.datatype}" for c in concepts])
+    return ", ".join([f"[name: {c.address} | type: {c.datatype}" for c in concepts])
 
 
 def create_query_prompt(query: str, environment: Environment) -> str:

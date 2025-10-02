@@ -1,6 +1,6 @@
 import time
-from dataclasses import dataclass
-from typing import Callable, List, Optional, TypeVar
+from dataclasses import dataclass, field
+from typing import Callable, List, TypeVar
 
 T = TypeVar("T")
 
@@ -9,15 +9,15 @@ T = TypeVar("T")
 class RetryOptions:
     max_retries: int = 3
     initial_delay_ms: int = 1000
-    retry_status_codes: List[int] = None
-    on_retry: Optional[Callable[[int, int, Exception], None]] = None
-
-    def __post_init__(self):
-        if self.retry_status_codes is None:
-            self.retry_status_codes = [429, 500, 502, 503, 504]
+    retry_status_codes: List[int] = field(
+        default_factory=lambda: [429, 500, 502, 503, 504]
+    )
+    on_retry: Callable[[int, int, Exception], None] | None = None
 
 
 def fetch_with_retry(fetch_fn: Callable[[], T], options: RetryOptions) -> T:
+    from httpx import HTTPError
+
     """
     Retry a fetch operation with exponential backoff.
 
@@ -31,23 +31,24 @@ def fetch_with_retry(fetch_fn: Callable[[], T], options: RetryOptions) -> T:
     Raises:
         The last exception encountered if all retries fail
     """
+    from httpx import HTTPStatusError
+
     last_error = None
     delay_ms = options.initial_delay_ms
 
     for attempt in range(options.max_retries + 1):
         try:
             return fetch_fn()
-        except Exception as error:
+        except HTTPError as error:
             last_error = error
-
-            # Check if we should retry based on status code (if available)
             should_retry = False
-            if hasattr(error, "response") and hasattr(error.response, "status_code"):
-                if error.response.status_code in options.retry_status_codes:
+
+            if isinstance(error, HTTPStatusError):
+                if (
+                    options.retry_status_codes
+                    and error.response.status_code in options.retry_status_codes
+                ):
                     should_retry = True
-            elif attempt < options.max_retries:
-                # Retry for other errors too, unless we're out of retries
-                should_retry = True
 
             if not should_retry or attempt >= options.max_retries:
                 raise
