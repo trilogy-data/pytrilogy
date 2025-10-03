@@ -1,3 +1,4 @@
+from os import environ
 from typing import List, Optional
 
 from trilogy.ai.enums import Provider
@@ -13,10 +14,15 @@ class AnthropicProvider(LLMProvider):
     def __init__(
         self,
         name: str,
-        api_key: str,
         model: str,
+        api_key: str | None = None,
         retry_options: Optional[RetryOptions] = None,
     ):
+        api_key = api_key or environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "API key argument or environment variable ANTHROPIC_API_KEY is required"
+            )
         super().__init__(name, api_key, model, Provider.ANTHROPIC)
         self.base_completion_url = "https://api.anthropic.com/v1/messages"
         self.base_model_url = "https://api.anthropic.com/v1/models"
@@ -34,7 +40,12 @@ class AnthropicProvider(LLMProvider):
     def generate_completion(
         self, options: LLMRequestOptions, history: List[LLMMessage]
     ) -> LLMResponse:
-        import httpx
+        try:
+            import httpx
+        except ImportError:
+            raise ImportError(
+                "Missing httpx. Install pytrilogy[ai] to use AnthropicProvider."
+            )
 
         # Separate system messages from user/assistant messages
         system_messages = [msg.content for msg in history if msg.role == "system"]

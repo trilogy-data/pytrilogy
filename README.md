@@ -225,6 +225,31 @@ for row in results:
         print(x)
 ```
 
+### LLM usage
+
+```python
+from trilogy import Environment, Dialects
+from trilogy.ai import Provider, text_to_query
+
+# load a model
+
+exec = Dialects.DUCK_DB.default_executor()
+environment, _ = Environment(working_path=env_path).parse("""import flight;""")
+
+# generate a query
+query = text_to_query(
+    environment,
+    "number of flights by month in 2020",
+    Provider.OPENAI,
+    "gpt-5-chat-latest",
+    <YOUR_API_KEY>,
+)
+
+# print the generated trilogy query
+print(response)
+
+```
+
 ### CLI Usage
 
 Trilogy can be run through a CLI tool, also named 'trilogy'.

@@ -1,3 +1,4 @@
+from os import environ
 from typing import List, Optional
 
 from trilogy.ai.enums import Provider
@@ -11,10 +12,15 @@ class OpenAIProvider(LLMProvider):
     def __init__(
         self,
         name: str,
-        api_key: str,
         model: str,
+        api_key: str | None = None,
         retry_options: Optional[RetryOptions] = None,
     ):
+        api_key = api_key or environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "API key argument or environment variable OPENAI_API_KEY is required"
+            )
         super().__init__(name, api_key, model, Provider.OPENAI)
         self.base_completion_url = "https://api.openai.com/v1/chat/completions"
         self.base_model_url = "https://api.openai.com/v1/models"
@@ -33,7 +39,12 @@ class OpenAIProvider(LLMProvider):
     def generate_completion(
         self, options: LLMRequestOptions, history: List[LLMMessage]
     ) -> LLMResponse:
-        import httpx
+        try:
+            import httpx
+        except ImportError:
+            raise ImportError(
+                "Missing httpx. Install pytrilogy[ai] to use OpenAIProvider."
+            )
 
         messages: List[dict] = []
         messages = [{"role": msg.role, "content": msg.content} for msg in history]

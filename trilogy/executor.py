@@ -270,9 +270,22 @@ class Executor(object):
         None,
     ]:
         file = Path(file)
-        with open(file, "r") as f:
-            command = f.read()
-            return self.parse_text_generator(command, persist=persist, root=file)
+        candidates = [file, self.environment.working_path / file]
+        err = None
+        for file in candidates:
+            try:
+                with open(file, "r") as f:
+                    command = f.read()
+                    return self.parse_text_generator(
+                        command, persist=persist, root=file
+                    )
+            except FileNotFoundError as e:
+                if not err:
+                    err = e
+                continue
+        if err:
+            raise err
+        raise FileNotFoundError(f"File {file} not found")
 
     def parse_text(
         self, command: str, persist: bool = False, root: Path | None = None
@@ -444,9 +457,20 @@ class Executor(object):
         self, file: str | Path, non_interactive: bool = False
     ) -> List[ResultProtocol]:
         file = Path(file)
-        with open(file, "r") as f:
-            command = f.read()
-        return self.execute_text(command, non_interactive=non_interactive)
+        candidates = [file, self.environment.working_path / file]
+        err = None
+        for file in candidates:
+            if not file.exists():
+                continue
+            with open(file, "r") as f:
+                command = f.read()
+            if file.suffix == ".sql":
+                return [self.execute_raw_sql(command)]
+            else:
+                return self.execute_text(command, non_interactive=non_interactive)
+        if err:
+            raise err
+        raise FileNotFoundError(f"File {file} not found")
 
     def validate_environment(
         self,

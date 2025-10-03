@@ -16,13 +16,17 @@ from trilogy.core.query_processor import process_query
 
 @dataclass
 class Conversation:
-    id: str
+
     messages: list[LLMMessage]
     provider: LLMProvider
+    id: str | None = None
 
     @classmethod
     def create(
-        cls, id: str, provider: LLMProvider, model_prompt: str = TRILOGY_LEAD_IN
+        cls,
+        provider: LLMProvider,
+        model_prompt: str = TRILOGY_LEAD_IN,
+        id: str | None = None,
     ) -> "Conversation":
         system_message = LLMMessage(role="system", content=model_prompt)
         messages = [system_message]

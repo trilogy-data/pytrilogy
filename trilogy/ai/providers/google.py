@@ -1,3 +1,4 @@
+from os import environ
 from typing import Any, Dict, List, Optional
 
 from trilogy.ai.enums import Provider
@@ -11,10 +12,15 @@ class GoogleProvider(LLMProvider):
     def __init__(
         self,
         name: str,
-        api_key: str,
         model: str,
+        api_key: str | None = None,
         retry_options: Optional[RetryOptions] = None,
     ):
+        api_key = api_key or environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "API key argument or environment variable GOOGLE_API_KEY is required"
+            )
         super().__init__(name, api_key, model, Provider.GOOGLE)
         self.base_model_url = "https://generativelanguage.googleapis.com/v1/models"
         self.base_completion_url = "https://generativelanguage.googleapis.com/v1beta"
@@ -44,7 +50,12 @@ class GoogleProvider(LLMProvider):
     def generate_completion(
         self, options: LLMRequestOptions, history: List[LLMMessage]
     ) -> LLMResponse:
-        import httpx
+        try:
+            import httpx
+        except ImportError:
+            raise ImportError(
+                "Missing httpx. Install pytrilogy[ai] to use GoogleProvider."
+            )
 
         # Convert messages to Gemini format
         gemini_history = self._convert_to_gemini_history(history)

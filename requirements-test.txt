@@ -14,3 +14,4 @@ fakesnow
 matplotlib
 tomli-w
 types-tabulate
+httpx
