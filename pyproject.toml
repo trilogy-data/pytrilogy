@@ -9,3 +9,8 @@ log_cli_level="INFO"
 # Allow lines to be as long as 200 characters.
 line-length = 200
 lint.extend-select = ["I"]
+
+[tool.setuptools.dynamic]
+description = "Declarative, typed query language that compiles to SQL."
+readme = {file = ["README.md"], content-type = "text/markdown"}
+dependencies = {file = ["requirements.txt"]}
