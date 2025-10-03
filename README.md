@@ -250,7 +250,9 @@ for row in results:
         print(x)
 ```
 
-### LLM usage
+### LLM Usage
+
+Connect to your favorite provider and generate queries with confidence and high accuracy.
 
 ```python
 from trilogy import Environment, Dialects
