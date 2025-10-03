@@ -10,7 +10,12 @@ log_cli_level="INFO"
 line-length = 200
 lint.extend-select = ["I"]
 
+[project]
+name = "pytrilogy"
+dynamic = ["version"]
+
 [tool.setuptools.dynamic]
 description = "Declarative, typed query language that compiles to SQL."
 readme = {file = ["README.md"], content-type = "text/markdown"}
 dependencies = {file = ["requirements.txt"]}
+version = {attr = "trilogy.__version__"}
