@@ -15,7 +15,35 @@ name = "pytrilogy"
 description = "Declarative, typed query language that compiles to SQL."
 dynamic = ["version", "dependencies"]
 readme = {file = "README.md", content-type = "text/markdown"}
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+[project.scripts]
+trilogy = "trilogy.scripts.trilogy:cli"
+
+[project.optional-dependencies]
+postgres = ["psycopg2-binary"]
+bigquery = ["sqlalchemy-bigquery"]
+snowflake = ["snowflake-sqlalchemy"]
+ai = ["httpx"]
 
 [tool.setuptools.dynamic]
 version = {attr = "trilogy.__version__"}
 dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools]
+packages = {find = {exclude = ["dist", "build", "*.tests", "*.tests.*", "tests.*", "tests", "docs", ".github", "examples"]}}
+
+[tool.setuptools.package-data]
+"*" = ["*.tf", "*.jinja", "py.typed", "*.lark", "*.preql"]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
