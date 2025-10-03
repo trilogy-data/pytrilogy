@@ -74,6 +74,31 @@ ORDER BY
 LIMIT 10;
 ```
 
+## Trilogy is Easy to Write
+For humans *and* AI. Enjoy flexible, one-shot query generation without any DB access or security risks. 
+
+(full code in the python API section.)
+
+```python
+query = text_to_query(
+    executor.environment,
+    "number of flights by month in 2005",
+    Provider.OPENAI,
+    "gpt-5-chat-latest",
+    api_key,
+)
+
+# get a ready to run query
+print(query)
+# typical output
+'''where local.dep_time.year = 2020  
+select
+    local.dep_time.month,
+    count(local.id2) as number_of_flights
+order by
+    local.dep_time.month asc;'''
+```
+
 ## Goals
 
 Versus SQL, Trilogy aims to: 
