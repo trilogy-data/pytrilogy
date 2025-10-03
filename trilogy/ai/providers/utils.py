@@ -31,7 +31,7 @@ def fetch_with_retry(fetch_fn: Callable[[], T], options: RetryOptions) -> T:
     Raises:
         The last exception encountered if all retries fail
     """
-    from httpx import HTTPStatusError
+    from httpx import HTTPStatusError, TimeoutException
 
     last_error = None
     delay_ms = options.initial_delay_ms
@@ -39,7 +39,7 @@ def fetch_with_retry(fetch_fn: Callable[[], T], options: RetryOptions) -> T:
     for attempt in range(options.max_retries + 1):
         try:
             return fetch_fn()
-        except HTTPError as error:
+        except (HTTPError, TimeoutException) as error:
             last_error = error
             should_retry = False
 
@@ -49,7 +49,8 @@ def fetch_with_retry(fetch_fn: Callable[[], T], options: RetryOptions) -> T:
                     and error.response.status_code in options.retry_status_codes
                 ):
                     should_retry = True
-
+            elif isinstance(error, TimeoutException):
+                should_retry = True
             if not should_retry or attempt >= options.max_retries:
                 raise
 

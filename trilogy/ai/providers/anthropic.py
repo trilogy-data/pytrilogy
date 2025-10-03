@@ -58,7 +58,7 @@ class AnthropicProvider(LLMProvider):
         try:
 
             def make_request():
-                with httpx.Client(timeout=30) as client:
+                with httpx.Client(timeout=60) as client:
                     payload = {
                         "model": self.model,
                         "messages": conversation_messages,
