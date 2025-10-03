@@ -14,21 +14,6 @@ class LLMProvider(ABC):
         self.type = provider
         self.error: Optional[str] = None
 
-    def set_api_key(self, api_key: str) -> None:
-        if self.api_key == api_key:
-            return  # No change, do nothing
-        self.changed = True
-        self.api_key = api_key
-
-    def set_model(self, model: str) -> None:
-        if self.model == model:
-            return  # No change, do nothing
-        self.changed = True
-        self.model = model
-
-    def get_api_key(self) -> str:
-        return self.api_key
-
     # Abstract method to be implemented by specific providers
     @abstractmethod
     def generate_completion(
