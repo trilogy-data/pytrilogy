@@ -46,3 +46,5 @@ duckdb_temp_*
 
 debug*.log
 
+
+.env.secrets

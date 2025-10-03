@@ -47,6 +47,7 @@ setuptools.setup(
         "postgres": ["psycopg2-binary"],
         "bigquery": ["sqlalchemy-bigquery"],
         "snowflake": ["snowflake-sqlalchemy"],
+        "ai": ["httpx"],
     },
     entry_points={
         "console_scripts": ["trilogy=trilogy.scripts.trilogy:cli"],

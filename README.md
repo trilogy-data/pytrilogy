@@ -74,6 +74,31 @@ ORDER BY
 LIMIT 10;
 ```
 
+## Trilogy is Easy to Write
+For humans *and* AI. Enjoy flexible, one-shot query generation without any DB access or security risks. 
+
+(full code in the python API section.)
+
+```python
+query = text_to_query(
+    executor.environment,
+    "number of flights by month in 2005",
+    Provider.OPENAI,
+    "gpt-5-chat-latest",
+    api_key,
+)
+
+# get a ready to run query
+print(query)
+# typical output
+'''where local.dep_time.year = 2020  
+select
+    local.dep_time.month,
+    count(local.id2) as number_of_flights
+order by
+    local.dep_time.month asc;'''
+```
+
 ## Goals
 
 Versus SQL, Trilogy aims to: 
@@ -223,6 +248,47 @@ for row in results:
     answers = row.fetchall()
     for x in answers:
         print(x)
+```
+
+### LLM Usage
+
+Connect to your favorite provider and generate queries with confidence and high accuracy.
+
+```python
+from trilogy import Environment, Dialects
+from trilogy.ai import Provider, text_to_query
+import os
+
+executor = Dialects.DUCK_DB.default_executor(
+    environment=Environment(working_path=Path(__file__).parent)
+)
+
+api_key = os.environ.get(OPENAI_API_KEY)
+if not api_key:
+    raise ValueError("OPENAI_API_KEY required for gpt generation")
+# load a model
+executor.parse_file("flight.preql")
+# create tables in the DB if needed
+executor.execute_file("setup.sql")
+# generate a query
+query = text_to_query(
+    executor.environment,
+    "number of flights by month in 2005",
+    Provider.OPENAI,
+    "gpt-5-chat-latest",
+    api_key,
+)
+
+# print the generated trilogy query
+print(query)
+# run it
+results = executor.execute_text(query)[-1].fetchall()
+assert len(results) == 12
+
+for row in results:
+    # all monthly flights are between 5000 and 7000
+    assert row[1] > 5000 and row[1] < 7000, row
+
 ```
 
 ### CLI Usage

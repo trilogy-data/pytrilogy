@@ -51,6 +51,10 @@ jobs:
           pip install pytest-cov
           # disable active adventureworks queries unless we get docker configured
           pytest --ignore=docs_src/ --cov=./ -m "not adventureworks_execution" 
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
