@@ -230,23 +230,37 @@ for row in results:
 ```python
 from trilogy import Environment, Dialects
 from trilogy.ai import Provider, text_to_query
+import os
 
+executor = Dialects.DUCK_DB.default_executor(
+    environment=Environment(working_path=Path(__file__).parent)
+)
+
+api_key = os.environ.get(OPENAI_API_KEY)
+if not api_key:
+    raise ValueError("OPENAI_API_KEY required for gpt generation")
 # load a model
-
-exec = Dialects.DUCK_DB.default_executor()
-environment, _ = Environment(working_path=env_path).parse("""import flight;""")
-
+executor.parse_file("flight.preql")
+# create tables in the DB if needed
+executor.execute_file("setup.sql")
 # generate a query
 query = text_to_query(
-    environment,
-    "number of flights by month in 2020",
+    executor.environment,
+    "number of flights by month in 2005",
     Provider.OPENAI,
     "gpt-5-chat-latest",
-    <YOUR_API_KEY>,
+    api_key,
 )
 
 # print the generated trilogy query
-print(response)
+print(query)
+# run it
+results = executor.execute_text(query)[-1].fetchall()
+assert len(results) == 12
+
+for row in results:
+    # all monthly flights are between 5000 and 7000
+    assert row[1] > 5000 and row[1] < 7000, row
 
 ```
 
