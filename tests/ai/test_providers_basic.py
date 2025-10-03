@@ -29,6 +29,11 @@ OPENAI_LATEST_MODEL = "gpt-5-chat-latest"
 ANTHROPIC_LATEST_MODEL = "claude-sonnet-4-5-20250929"
 
 
+def validate_response(response: str):
+    assert "dep_time.year = 2020" in response, response
+    assert "count(id2) as" in response, response
+
+
 def test_basic_openai_completion():
     # Load API key from .env.secrets file
     api_key = load_secret("OPENAI_API_KEY")
@@ -45,8 +50,7 @@ def test_basic_openai_completion():
         api_key,
     )
 
-    assert "where dep_time.year = 2020" in response, response
-    assert "count(id2) as" in response, response
+    validate_response(response)
 
 
 def test_basic_anthropic_completion():
@@ -64,8 +68,7 @@ def test_basic_anthropic_completion():
         ANTHROPIC_LATEST_MODEL,
         api_key,
     )
-    assert "where dep_time.year = 2020" in response, response
-    assert "count(id2) as" in response, response
+    validate_response(response)
 
 
 def test_basic_google_completion():
@@ -81,5 +84,4 @@ def test_basic_google_completion():
         GOOGLE_LATEST_MODEL,
         api_key,
     )
-    assert "where dep_time.year = 2020" in response, response
-    assert "count(id2) as" in response, response
+    validate_response(response)
