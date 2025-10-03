@@ -10,7 +10,7 @@ class RetryOptions:
     max_retries: int = 3
     initial_delay_ms: int = 1000
     retry_status_codes: List[int] = field(
-        default_factory=lambda: [429, 500, 502, 503, 504]
+        default_factory=lambda: [429, 500, 502, 503, 504, 525]
     )
     on_retry: Callable[[int, int, Exception], None] | None = None
 
