@@ -111,7 +111,7 @@ def render_join(
         base_joinkeys.extend(
             [
                 null_wrapper(
-                    lval=render_join_concept(
+                    render_join_concept(
                         join.get_name(pair.cte),
                         quote_character,
                         pair.cte,
@@ -120,7 +120,7 @@ def render_join(
                         join.inlined_ctes,
                         use_map=use_map,
                     ),
-                    rval=render_join_concept(
+                    render_join_concept(
                         right_name,
                         quote_character,
                         join.right_cte,
@@ -129,7 +129,7 @@ def render_join(
                         join.inlined_ctes,
                         use_map=use_map,
                     ),
-                    modifiers=pair.modifiers
+                    pair.modifiers
                     + (pair.left.modifiers or [])
                     + (pair.right.modifiers or []),
                 )
