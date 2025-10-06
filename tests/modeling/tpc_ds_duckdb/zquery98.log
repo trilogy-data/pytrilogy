@@ -1,5 +1,5 @@
 query_id = 98
-gen_length = 4576
+gen_length = 4127
 generated_sql = """
 
 WITH 
@@ -53,7 +53,7 @@ SELECT
     \"thoughtful\".\"store_sales_item_name\" as \"store_sales_item_name\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"cooperative\" on (\"thoughtful\".\"store_sales_item_class\" = \"cooperative\".\"store_sales_item_class\" or (\"thoughtful\".\"store_sales_item_class\" is null and \"cooperative\".\"store_sales_item_class\" is null)))
+    INNER JOIN \"cooperative\" on \"thoughtful\".\"store_sales_item_class\" is not distinct from \"cooperative\".\"store_sales_item_class\")
 SELECT
     \"questionable\".\"store_sales_item_name\" as \"store_sales_item_name\",
     \"questionable\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
@@ -64,7 +64,7 @@ SELECT
     \"questionable\".\"revenueratio\" as \"revenueratio\"
 FROM
     \"questionable\"
-    INNER JOIN \"thoughtful\" on \"questionable\".\"store_sales_item_name\" = \"thoughtful\".\"store_sales_item_name\" AND (\"questionable\".\"store_sales_item_category\" = \"thoughtful\".\"store_sales_item_category\" or (\"questionable\".\"store_sales_item_category\" is null and \"thoughtful\".\"store_sales_item_category\" is null)) AND (\"questionable\".\"store_sales_item_class\" = \"thoughtful\".\"store_sales_item_class\" or (\"questionable\".\"store_sales_item_class\" is null and \"thoughtful\".\"store_sales_item_class\" is null)) AND (\"questionable\".\"store_sales_item_current_price\" = \"thoughtful\".\"store_sales_item_current_price\" or (\"questionable\".\"store_sales_item_current_price\" is null and \"thoughtful\".\"store_sales_item_current_price\" is null)) AND (\"questionable\".\"store_sales_item_desc\" = \"thoughtful\".\"store_sales_item_desc\" or (\"questionable\".\"store_sales_item_desc\" is null and \"thoughtful\".\"store_sales_item_desc\" is null))
+    INNER JOIN \"thoughtful\" on \"questionable\".\"store_sales_item_category\" is not distinct from \"thoughtful\".\"store_sales_item_category\" AND \"questionable\".\"store_sales_item_class\" is not distinct from \"thoughtful\".\"store_sales_item_class\" AND \"questionable\".\"store_sales_item_current_price\" is not distinct from \"thoughtful\".\"store_sales_item_current_price\" AND \"questionable\".\"store_sales_item_desc\" is not distinct from \"thoughtful\".\"store_sales_item_desc\" AND \"questionable\".\"store_sales_item_name\" = \"thoughtful\".\"store_sales_item_name\"
 ORDER BY 
     \"questionable\".\"store_sales_item_category\" asc nulls first,
     \"questionable\".\"store_sales_item_class\" asc nulls first,
