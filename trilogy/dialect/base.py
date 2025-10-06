@@ -17,6 +17,7 @@ from trilogy.core.enums import (
     DatePart,
     FunctionType,
     GroupMode,
+    Modifier,
     Ordering,
     ShowCategory,
     UnnestMode,
@@ -88,6 +89,14 @@ from trilogy.core.statements.execute import (
 from trilogy.core.utility import safe_quote
 from trilogy.dialect.common import render_join, render_unnest
 from trilogy.hooks.base_hook import BaseHook
+
+
+def null_wrapper(lval: str, rval: str, modifiers: list[Modifier]) -> str:
+
+    if Modifier.NULLABLE in modifiers:
+        return f"({lval} = {rval} or ({lval} is null and {rval} is null))"
+    return f"{lval} = {rval}"
+
 
 LOGGER_PREFIX = "[RENDERING]"
 
@@ -353,6 +362,7 @@ class BaseDialect:
     UNNEST_MODE = UnnestMode.CROSS_APPLY
     GROUP_MODE = GroupMode.AUTO
     EXPLAIN_KEYWORD = "EXPLAIN"
+    NULL_WRAPPER = staticmethod(null_wrapper)
 
     def __init__(self, rendering: Rendering | None = None):
         self.rendering = rendering or CONFIG.rendering
@@ -964,6 +974,7 @@ class BaseDialect:
                             cte,
                             use_map=self.used_map,
                             unnest_mode=self.UNNEST_MODE,
+                            null_wrapper=self.NULL_WRAPPER,
                         )
                         for join in final_joins
                     ]

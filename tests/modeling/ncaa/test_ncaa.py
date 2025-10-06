@@ -224,5 +224,5 @@ def test_adhoc08():
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
     env, queries = env.parse(text)
     generated = engine.generate_sql(text)[0]
-    pattern = r'\("(\w+)"\."shot_subtype" = "(\w+)"\."shot_subtype" or \("\1"\."shot_subtype" is null and "\2"\."shot_subtype" is null'
+    pattern = r'"(\w+)"\."shot_subtype" is not distinct from "(\w+)"\."shot_subtype"'
     assert re.search(pattern, generated), generated

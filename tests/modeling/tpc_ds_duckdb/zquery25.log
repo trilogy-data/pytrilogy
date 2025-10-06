@@ -1,5 +1,5 @@
 query_id = 25
-gen_length = 8067
+gen_length = 7991
 generated_sql = """
 
 WITH 
@@ -109,7 +109,7 @@ SELECT
     \"concerned\".\"catalog_sales_profit\" as \"catalog_sales_profit\"
 FROM
     \"juicy\"
-    INNER JOIN \"concerned\" on \"juicy\".\"store_sales_item_name\" = \"concerned\".\"store_sales_item_name\" AND \"juicy\".\"store_sales_store_name\" = \"concerned\".\"store_sales_store_name\" AND \"juicy\".\"store_sales_store_text_id\" = \"concerned\".\"store_sales_store_text_id\" AND (\"juicy\".\"store_sales_item_desc\" = \"concerned\".\"store_sales_item_desc\" or (\"juicy\".\"store_sales_item_desc\" is null and \"concerned\".\"store_sales_item_desc\" is null))
+    INNER JOIN \"concerned\" on \"juicy\".\"store_sales_item_desc\" is not distinct from \"concerned\".\"store_sales_item_desc\" AND \"juicy\".\"store_sales_item_name\" = \"concerned\".\"store_sales_item_name\" AND \"juicy\".\"store_sales_store_name\" = \"concerned\".\"store_sales_store_name\" AND \"juicy\".\"store_sales_store_text_id\" = \"concerned\".\"store_sales_store_text_id\"
 ORDER BY 
     \"juicy\".\"store_sales_item_name\" asc,
     \"juicy\".\"store_sales_item_desc\" asc,

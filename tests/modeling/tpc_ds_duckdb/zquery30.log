@@ -1,5 +1,5 @@
 query_id = 30
-gen_length = 10279
+gen_length = 10083
 generated_sql = """
 
 WITH 
@@ -111,7 +111,7 @@ SELECT
     \"yummy\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
 FROM
     \"cooperative\"
-    INNER JOIN \"yummy\" on \"cooperative\".\"web_returns_customer_id\" = \"yummy\".\"web_returns_customer_id\" AND (\"cooperative\".\"web_returns_return_address_state\" = \"yummy\".\"web_returns_return_address_state\" or (\"cooperative\".\"web_returns_return_address_state\" is null and \"yummy\".\"web_returns_return_address_state\" is null))
+    INNER JOIN \"yummy\" on \"cooperative\".\"web_returns_customer_id\" = \"yummy\".\"web_returns_customer_id\" AND \"cooperative\".\"web_returns_return_address_state\" is not distinct from \"yummy\".\"web_returns_return_address_state\"
 WHERE
     \"cooperative\".\"web_returns_customer_state\" = 'GA' and \"cooperative\".\"web_returns_return_address_state\" is not null
 )
@@ -131,7 +131,7 @@ SELECT
     \"juicy\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
 FROM
     \"juicy\"
-    INNER JOIN \"vacuous\" on (\"juicy\".\"web_returns_return_address_state\" = \"vacuous\".\"web_returns_return_address_state\" or (\"juicy\".\"web_returns_return_address_state\" is null and \"vacuous\".\"web_returns_return_address_state\" is null))
+    INNER JOIN \"vacuous\" on \"juicy\".\"web_returns_return_address_state\" is not distinct from \"vacuous\".\"web_returns_return_address_state\"
 WHERE
     \"juicy\".\"customer_state_returns_2002\" > 1.2 * \"vacuous\".\"_virt_agg_avg_3885168128306444\" and \"juicy\".\"web_returns_customer_state\" = 'GA' and \"juicy\".\"web_returns_return_address_state\" is not null
 

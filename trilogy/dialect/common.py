@@ -18,13 +18,6 @@ from trilogy.core.models.execute import (
 )
 
 
-def null_wrapper(lval: str, rval: str, modifiers: list[Modifier]) -> str:
-
-    if Modifier.NULLABLE in modifiers:
-        return f"({lval} = {rval} or ({lval} is null and {rval} is null))"
-    return f"{lval} = {rval}"
-
-
 def render_unnest(
     unnest_mode: UnnestMode,
     quote_character: str,
@@ -88,6 +81,7 @@ def render_join(
     ],
     cte: CTE,
     use_map: dict[str, set[str]],
+    null_wrapper: Callable[[str, str, list[Modifier]], str],
     unnest_mode: UnnestMode = UnnestMode.CROSS_APPLY,
 ) -> str | None:
     # {% for key in join.joinkeys %}{{ key.inner }} = {{ key.outer}}{% endfor %}
@@ -135,7 +129,7 @@ def render_join(
                         join.inlined_ctes,
                         use_map=use_map,
                     ),
-                    modifiers=pair.modifiers
+                    pair.modifiers
                     + (pair.left.modifiers or [])
                     + (pair.right.modifiers or []),
                 )

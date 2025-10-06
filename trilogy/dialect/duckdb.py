@@ -3,13 +3,24 @@ from typing import Any, Callable, Mapping
 
 from jinja2 import Template
 
-from trilogy.core.enums import FunctionType, UnnestMode, WindowType
+from trilogy.core.enums import FunctionType, Modifier, UnnestMode, WindowType
 from trilogy.core.models.core import DataType
 from trilogy.dialect.base import BaseDialect
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
 SENTINAL_AUTO_CAPTURE_GROUP_VALUE = "-1"
+
+
+def null_wrapper(
+    lval: str,
+    rval: str,
+    modifiers: list[Modifier],
+) -> str:
+
+    if Modifier.NULLABLE in modifiers:
+        return f"{lval} is not distinct from {rval}"
+    return f"{lval} = {rval}"
 
 
 def generate_regex_extract(x: list[str]) -> str:
@@ -151,3 +162,4 @@ class DuckDBDialect(BaseDialect):
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = DUCKDB_TEMPLATE
     UNNEST_MODE = UnnestMode.DIRECT
+    NULL_WRAPPER = staticmethod(null_wrapper)
