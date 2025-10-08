@@ -47,7 +47,7 @@ from trilogy.dialect.metadata import (
     handle_processed_validate_statement,
     handle_show_statement_outputs,
 )
-from trilogy.engine import ExecutionEngine, ResultProtocol
+from trilogy.engine import EngineConnection, ExecutionEngine, ResultProtocol
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.parser import parse_text
 from trilogy.render import get_dialect_generator
@@ -69,10 +69,26 @@ class Executor(object):
         self.logger = logger
         self.hooks = hooks
         self.generator = get_dialect_generator(self.dialect, rendering)
-        self.connection = self.engine.connect()
+        self.connection = self.connect()
         # TODO: make generic
         if self.dialect == Dialects.DATAFRAME:
             self.engine.setup(self.environment, self.connection)
+
+    def connect(self) -> EngineConnection:
+        self.connection = self.engine.connect()
+        self.connected = True
+        return self.connection
+
+    def close(self):
+        self.engine.dispose(close=True)
+        if self.dialect == Dialects.DUCK_DB:
+            import duckdb
+
+            duckdb.default_connection().close()
+            import gc
+
+            gc.collect()
+        self.connected = False
 
     def execute_statement(
         self,
@@ -244,7 +260,9 @@ class Executor(object):
         """generate SQL for execution"""
         _, parsed = parse_text(command, self.environment)
         generatable = [
-            x for x in parsed if isinstance(x, (SelectStatement, PersistStatement))
+            x
+            for x in parsed
+            if isinstance(x, (SelectStatement, PersistStatement, MultiSelectStatement))
         ]
         sql = self.generator.generate_queries(
             self.environment, generatable, hooks=self.hooks
@@ -419,6 +437,9 @@ class Executor(object):
     def execute_text(
         self, command: str, non_interactive: bool = False
     ) -> List[ResultProtocol]:
+        if not self.connected:
+            self.connect()
+
         """Run a trilogy query expressed as text."""
         output: list[ResultProtocol] = []
         # connection = self.engine.connect()

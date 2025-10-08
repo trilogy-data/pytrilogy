@@ -114,6 +114,23 @@ def test_adhoc_one(engine: Executor):
     engine.execute_raw_sql(query)
 
 
+def test_adhoc_two(engine: Executor):
+    engine.environment = Environment(working_path=working_path)
+    idx = 2
+    with open(working_path / f"adhoc{idx:02d}.preql") as f:
+        text = f.read()
+    # find better non-hacky way to do this
+    with open(working_path / f"adhoc{idx:02d}_imports.preql", "r") as f:
+        text2 = f.read()
+        engine.execute_text(text2, non_interactive=True)
+    print(text)
+    query = engine.generate_sql(text)[-1]
+
+    results = engine.execute_raw_sql(query)
+    assert "is not distinct from" in query, query
+    assert len(results.fetchall()) == 6, query
+
+
 # def test_adhoc_shape_two(engine: Executor):
 #     engine.environment = Environment(working_path=working_path)
 #     from trilogy.core.processing.node_generators import gen_group_node

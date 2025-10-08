@@ -169,6 +169,7 @@ class MergeNode(StrategyNode):
                     join_type=join.join_type,
                     concepts=join.concepts,
                     concept_pairs=join.concept_pairs,
+                    modifiers=join.modifiers,
                 )
             )
         return joins
