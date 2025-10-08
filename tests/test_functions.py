@@ -146,6 +146,8 @@ def test_date_functions(test_environment):
         date_trunc(order_timestamp, hour) -> order_hour_trunc,
         date_trunc(order_timestamp, minute) -> order_minute_trunc,
         date_trunc(order_timestamp, second) -> order_second_trunc,
+        date_trunc(order_timestamp, quarter) -> order_quarter_trunc,
+        date_trunc(order_timestamp, week) -> order_week_trunc,
         date_part(order_timestamp, month) -> order_month_part,
         date_part(order_timestamp, day) -> order_day_part,
         date_part(order_timestamp, year) -> order_year_part,
@@ -155,6 +157,8 @@ def test_date_functions(test_environment):
         date_part(order_timestamp, quarter) -> order_quarter_part,
         date_part(order_timestamp, week) -> order_week_part,
         date_part(order_timestamp, day_of_week) -> order_day_of_week_part,
+        month_name(order_timestamp) -> order_month_name,
+        day_name(order_timestamp) -> order_day_name
     ;
     
     
@@ -163,7 +167,28 @@ def test_date_functions(test_environment):
     select: SelectStatement = parsed[-1]
 
     for dialect in TEST_DIALECTS:
+        engine = None
+        if isinstance(dialect, BigqueryDialect):
+            engine = Dialects.DUCK_DB.default_executor(environment=test_environment)
         dialect.compile_statement(process_query(test_environment, select))
+        if engine:
+            engine.execute_raw_sql(
+                """CREATE TABLE tblRevenue AS
+SELECT 
+    100.50 as revenue,
+    1 as order_id,
+    101 as product_id,
+    TIMESTAMP '2024-01-15 10:30:00' as order_timestamp
+UNION ALL
+SELECT 
+    250.75 as revenue,
+    2 as order_id,
+    102 as product_id,
+    TIMESTAMP '2024-01-16 14:45:30' as order_timestamp;"""
+            )
+            results = engine.execute_query(select)
+            assert results
+            assert results.fetchall()
 
 
 def test_bad_cast(test_environment):

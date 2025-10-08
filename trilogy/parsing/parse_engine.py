@@ -1952,7 +1952,11 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fday(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.DAY, meta)
-
+    
+    @v_args(meta=True)
+    def fday_name(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.DAY_NAME, meta)
+    
     @v_args(meta=True)
     def fday_of_week(self, meta, args):
         return self.function_factory.create_function(
@@ -1966,6 +1970,10 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fmonth(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.MONTH, meta)
+    
+    @v_args(meta=True)
+    def fmonth_name(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.MONTH_NAME, meta)
 
     @v_args(meta=True)
     def fquarter(self, meta, args):
