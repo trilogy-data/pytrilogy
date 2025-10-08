@@ -45,3 +45,6 @@ class DataframeConnectionWrapper(ExecutionEngine):
 
     def connect(self) -> Any:
         return self.engine.connect()
+
+    def dispose(self, close=True):
+        return super().dispose(close)

@@ -33,6 +33,9 @@ class EngineConnection(Protocol):
     def rollback(self):
         raise NotImplementedError()
 
+    def close(self) -> None:
+        return
+
 
 class ExecutionEngine(Protocol):
     pass
@@ -41,6 +44,9 @@ class ExecutionEngine(Protocol):
         pass
 
     def setup(self, env: Environment, connection):
+        pass
+
+    def dispose(self, close: bool = True):
         pass
 
 

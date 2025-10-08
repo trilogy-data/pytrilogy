@@ -1939,3 +1939,10 @@ having value = 2;
     results = default_duckdb_engine.parse_text(test)
 
     default_duckdb_engine.generate_sql(results[0])
+
+
+def test_connection_management():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text("""select 1 as test;""")
+    executor.close()
+    executor.execute_text("""select 1 as test;""")
