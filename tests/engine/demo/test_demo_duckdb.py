@@ -599,3 +599,16 @@ order by passenger.decade desc;"""
     results = engine.execute_text(query)
 
     assert len(results[0].fetchall()) == 10
+
+
+def test_group_case_output(base_test_env, engine: Executor):
+    query = """
+auto family_size <- case when count(passenger.id) by passenger.last_name > 2 then 'large' else 'small' end;
+select
+    family_size
+;
+"""
+    engine.environment = base_test_env
+    results = engine.execute_text(query)
+
+    assert len(results[0].fetchall()) == 2, 'Should return two rows'

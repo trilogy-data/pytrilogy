@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.enums import Derivation, Purpose, SourceType
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
@@ -200,8 +200,10 @@ def group_if_required_v2(
             root.set_output_concepts(targets, rebuild=False, change_visibility=False)
             root.rebuild_cache()
             return root
+        elif isinstance(root, GroupNode) and root.source_type == SourceType.BASIC:
+            # we need to group this one more time
+            pass
         elif isinstance(root, GroupNode):
-
             if set(x.address for x in final) != set(
                 x.address for x in root.output_concepts
             ):
