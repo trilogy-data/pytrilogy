@@ -82,9 +82,6 @@ class Executor(object):
     def close(self):
         self.engine.dispose(close=True)
         if self.dialect == Dialects.DUCK_DB:
-            import duckdb
-
-            duckdb.default_connection().close()
             import gc
 
             gc.collect()
