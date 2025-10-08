@@ -611,4 +611,4 @@ select
     engine.environment = base_test_env
     results = engine.execute_text(query)
 
-    assert len(results[0].fetchall()) == 2, 'Should return two rows'
+    assert len(results[0].fetchall()) == 2, "Should return two rows"

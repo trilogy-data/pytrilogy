@@ -1,5 +1,5 @@
 query_id = 97
-gen_length = 3826
+gen_length = 3864
 generated_sql = """
 
 WITH 
@@ -63,7 +63,7 @@ SELECT
     \"cheerful\".\"store_sales_item_id\" as \"merged_store_sales_item_id\"
 FROM
     \"cheerful\"
-    FULL JOIN \"abundant\" on \"cheerful\".\"customer_id\" = \"abundant\".\"customer_id\" AND \"cheerful\".\"item_id\" = \"abundant\".\"item_id\"
+    FULL JOIN \"abundant\" on \"cheerful\".\"customer_id\" is not distinct from \"abundant\".\"customer_id\" AND \"cheerful\".\"item_id\" is not distinct from \"abundant\".\"item_id\"
 GROUP BY 
     \"abundant\".\"catalog_sales_bill_customer_id\",
     \"abundant\".\"catalog_sales_item_id\",
