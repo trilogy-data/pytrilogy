@@ -500,6 +500,7 @@ class BaseJoin(BaseModel):
     concepts: Optional[List[BuildConcept]] = None
     left_datasource: Optional[Union[BuildDatasource, "QueryDatasource"]] = None
     concept_pairs: list[ConceptPair] | None = None
+    modifiers: List[Modifier] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_join(self) -> "BaseJoin":
@@ -1103,6 +1104,7 @@ class Join(BaseModel):
     inlined_ctes: set[str] = Field(default_factory=set)
     quote: str | None = None
     condition: BuildConditional | BuildComparison | BuildParenthetical | None = None
+    modifiers: List[Modifier] = Field(default_factory=list)
 
     def inline_cte(self, cte: CTE):
         self.inlined_ctes.add(cte.name)

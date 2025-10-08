@@ -122,6 +122,7 @@ def base_join_to_join(
         right_cte=right_cte,
         jointype=base_join.join_type,
         joinkey_pairs=final_pairs,
+        modifiers=base_join.modifiers,
     )
 
 

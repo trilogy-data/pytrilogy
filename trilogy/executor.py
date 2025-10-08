@@ -74,6 +74,9 @@ class Executor(object):
         if self.dialect == Dialects.DATAFRAME:
             self.engine.setup(self.environment, self.connection)
 
+    def close(self):
+        self.engine.dispose()
+
     def execute_statement(
         self,
         statement: PROCESSED_STATEMENT_TYPES,
@@ -244,7 +247,9 @@ class Executor(object):
         """generate SQL for execution"""
         _, parsed = parse_text(command, self.environment)
         generatable = [
-            x for x in parsed if isinstance(x, (SelectStatement, PersistStatement))
+            x
+            for x in parsed
+            if isinstance(x, (SelectStatement, PersistStatement, MultiSelectStatement))
         ]
         sql = self.generator.generate_queries(
             self.environment, generatable, hooks=self.hooks

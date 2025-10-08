@@ -1,11 +1,12 @@
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional
 
 from trilogy.core.enums import (
     BooleanOperator,
     Derivation,
     JoinType,
+    Modifier,
     SourceType,
 )
 from trilogy.core.models.build import (
@@ -436,6 +437,7 @@ class NodeJoin:
     join_type: JoinType
     filter_to_mutual: bool = False
     concept_pairs: list[ConceptPair] | None = None
+    modifiers: List[Modifier] = field(default_factory=list)
 
     def __post_init__(self):
         if self.left_node == self.right_node:

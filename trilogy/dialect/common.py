@@ -131,7 +131,8 @@ def render_join(
                     ),
                     pair.modifiers
                     + (pair.left.modifiers or [])
-                    + (pair.right.modifiers or []),
+                    + (pair.right.modifiers or [])
+                    + (join.modifiers or []),
                 )
                 for pair in join.joinkey_pairs
             ]

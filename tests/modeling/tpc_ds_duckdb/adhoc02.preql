@@ -1,0 +1,15 @@
+SELECT
+    store_sales.date.year,
+    count(store_sales.ticket_number) as store_order_count
+HAVING
+    store_order_count>0
+MERGE
+SELECT
+    web_sales.date.year,
+    count(web_sales.order_number) as web_order_count
+HAVING
+    web_order_count>0 
+ALIGN 
+    report_date: store_sales.date.year, web_sales.date.year
+ORDER BY
+    report_date asc;

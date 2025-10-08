@@ -3,7 +3,7 @@ from itertools import combinations
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.enums import JoinType, Purpose
+from trilogy.core.enums import JoinType, Modifier, Purpose
 from trilogy.core.models.build import (
     BuildConcept,
     BuildGrain,
@@ -47,6 +47,7 @@ def extra_align_joins(
                 right_node=right,
                 concepts=matched_concepts,
                 join_type=JoinType.FULL,
+                modifiers=[Modifier.NULLABLE],
             )
         )
     return resolve_join_order(output)
