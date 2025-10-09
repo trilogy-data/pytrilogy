@@ -31,6 +31,7 @@ from trilogy.core.models.author import (
     Metadata,
     MultiSelectLineage,
     OrderBy,
+    Parenthetical,
     SelectLineage,
     UndefinedConcept,
     WhereClause,
@@ -48,7 +49,12 @@ from trilogy.utility import unique
 
 class ConceptTransform(BaseModel):
     function: (
-        Function | FilterItem | WindowItem | AggregateWrapper | FunctionCallWrapper
+        Function
+        | FilterItem
+        | WindowItem
+        | AggregateWrapper
+        | FunctionCallWrapper
+        | Parenthetical
     )
     output: Concept  # this has to be a full concept, as it may not exist in environment
     modifiers: List[Modifier] = Field(default_factory=list)
@@ -190,9 +196,17 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         if self.where_clause:
             for x in self.where_clause.concept_arguments:
                 if isinstance(x, UndefinedConcept):
-                    environment.concepts.raise_undefined(
-                        x.address, x.metadata.line_number if x.metadata else None
-                    )
+                    validate = environment.concepts.get(x.address)
+                    if validate:
+                        self.where_clause = (
+                            self.where_clause.with_reference_replacement(
+                                x.address, validate.reference
+                            )
+                        )
+                    else:
+                        environment.concepts.raise_undefined(
+                            x.address, x.metadata.line_number if x.metadata else None
+                        )
         all_in_output = [x for x in self.output_components]
         if self.where_clause:
             for cref in self.where_clause.concept_arguments:

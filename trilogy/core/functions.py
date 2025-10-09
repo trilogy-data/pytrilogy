@@ -678,7 +678,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         arg_count=1,
     ),
     FunctionType.MONTH_NAME: FunctionConfig(
-        valid_inputs={  
+        valid_inputs={
             DataType.DATE,
             DataType.TIMESTAMP,
             DataType.DATETIME,

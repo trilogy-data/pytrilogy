@@ -1946,3 +1946,40 @@ def test_connection_management():
     executor.execute_text("""select 1 as test;""")
     executor.close()
     executor.execute_text("""select 1 as test;""")
+
+
+def test_proper_basic_unnest_handling():
+    """const prime <- unnest([2, 3, 5, 7, 11, 13, 17, 19, 23, 29]);
+
+    def cube_plus_one(x) -> (x * x * x + 1);
+
+    WHERE
+        @cube_plus_one(prime) % 7 = 0
+    SELECT
+        prime,
+        @cube_plus_one(prime) as prime_cubed_plus_one
+    ORDER BY
+        prime asc
+    LIMIT 10;"""
+    executor = Dialects.DUCK_DB.default_executor()
+    test = """const prime <- unnest([2, 3, 5, 7, 11, 13, 17, 19, 23, 29]);
+
+def cube_plus_one(x) -> (x * x * x + 1);
+
+WHERE 
+    prime_cubed_plus_one % 7 = 0
+SELECT
+    prime,
+    @cube_plus_one(prime) as prime_cubed_plus_one
+ORDER BY
+    prime asc
+LIMIT 10;"""
+    executor.parse_text(test)
+    c = executor.environment.concepts["prime_cubed_plus_one"]
+    if c.lineage.operator == FunctionType.CONSTANT:  # type: ignore
+        raise ValueError(
+            "prime_cubed_plus_one should not be constant {}".format(c.lineage)
+        )
+    results = executor.execute_text(test)[-1].fetchall()
+
+    assert len(results) == 5
