@@ -175,6 +175,10 @@ def get_date_trunc_output(
         return DataType.DATETIME
     elif target == DatePart.SECOND:
         return DataType.DATETIME
+    elif target == DatePart.WEEK:
+        return DataType.DATE
+    elif target == DatePart.QUARTER:
+        return DataType.DATE
     else:
         raise InvalidSyntaxException(f"Date truncation not supported for {target}")
 
@@ -640,6 +644,17 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type=TraitDataType(type=DataType.INTEGER, traits=["day"]),
         arg_count=1,
     ),
+    FunctionType.DAY_NAME: FunctionConfig(
+        valid_inputs={
+            DataType.DATE,
+            DataType.TIMESTAMP,
+            DataType.DATETIME,
+            # DataType.STRING,
+        },
+        output_purpose=Purpose.PROPERTY,
+        output_type=TraitDataType(type=DataType.STRING, traits=["day_name"]),
+        arg_count=1,
+    ),
     FunctionType.WEEK: FunctionConfig(
         valid_inputs={
             DataType.DATE,
@@ -660,6 +675,17 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         },
         output_purpose=Purpose.PROPERTY,
         output_type=TraitDataType(type=DataType.INTEGER, traits=["month"]),
+        arg_count=1,
+    ),
+    FunctionType.MONTH_NAME: FunctionConfig(
+        valid_inputs={
+            DataType.DATE,
+            DataType.TIMESTAMP,
+            DataType.DATETIME,
+            # DataType.STRING,
+        },
+        output_purpose=Purpose.PROPERTY,
+        output_type=TraitDataType(type=DataType.STRING, traits=["month_name"]),
         arg_count=1,
     ),
     FunctionType.QUARTER: FunctionConfig(

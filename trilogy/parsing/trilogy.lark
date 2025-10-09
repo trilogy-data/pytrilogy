@@ -379,12 +379,16 @@
     fhour: _HOUR expr ")"
     _DAY.1: "day("i
     fday:  _DAY expr ")"
+    _DAY_NAME.1: "day_name("i
+    fday_name:  _DAY_NAME expr ")"
     _DAY_OF_WEEK.1: "day_of_week("i
     fday_of_week:  _DAY_OF_WEEK expr ")"
     _WEEK.1: "week("i
     fweek: _WEEK expr ")"
     _MONTH.1: "month("i
     fmonth: _MONTH expr ")"
+    _MONTH_NAME.1: "month_name("i
+    fmonth_name: _MONTH_NAME expr ")"
     _QUARTER.1: "quarter("i
     fquarter: _QUARTER expr ")"
     _YEAR.1: "year("i
@@ -402,7 +406,7 @@
     _DATE_DIFF.1: "date_diff("i
     fdate_diff: _DATE_DIFF expr "," expr "," DATE_PART ")"
     
-    _date_functions: fdate | fdate_add | fdate_sub | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part | fdate_trunc
+    _date_functions: fdate | fdate_add | fdate_sub | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday |fday_name | fday_of_week | fweek | fmonth | fmonth_name | fquarter | fyear | fdate_part | fdate_trunc
     
     _static_functions:  _string_functions | _math_functions | _array_functions | _map_functions
 

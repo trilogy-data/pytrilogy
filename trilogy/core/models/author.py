@@ -461,6 +461,11 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, BaseModel):
             conditional=self.conditional.with_namespace(namespace)
         )
 
+    def with_reference_replacement(self, source, target):
+        return self.__class__.model_construct(
+            conditional=self.conditional.with_reference_replacement(source, target)
+        )
+
 
 class HavingClause(WhereClause):
     pass
@@ -1212,6 +1217,8 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             return Derivation.FILTER
         elif lineage and isinstance(lineage, (BuildAggregateWrapper, AggregateWrapper)):
             return Derivation.AGGREGATE
+        # elif lineage and isinstance(lineage, (BuildParenthetical, Parenthetical)):
+        #     return Derivation.PARENTHETICAL
         elif lineage and isinstance(lineage, (BuildRowsetItem, RowsetItem)):
             return Derivation.ROWSET
         elif lineage and isinstance(

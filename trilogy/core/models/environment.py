@@ -563,6 +563,7 @@ class Environment(BaseModel):
             existing = self.validate_concept(concept, meta=meta)
             if existing:
                 concept = existing
+
         self.concepts[concept.address] = concept
 
         from trilogy.core.environment_helpers import generate_related_concepts

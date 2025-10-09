@@ -19,59 +19,39 @@ The Trilogy language is an experiment in better SQL for analytics - a streamline
 
 Trilogy is especially powerful for data consumption, providing a rich metadata layer that makes creating, interpreting, and visualizing queries easy and expressive.
 
+
+We recommend starting with the studio to explore Trilogy. For integration, `pytrilogy` can be run locally to parse and execute trilogy model [.preql] files using the `trilogy` CLI tool, or can be run in python by importing the `trilogy` package.
+
+
 ## Quick Start
 
 > [!TIP]
 > **Try it now:** [Open-source studio](https://trilogydata.dev/trilogy-studio-core/) | [Interactive demo](https://trilogydata.dev/demo/) | [Documentation](https://trilogydata.dev/)
 
-**Install locally:**
+**Install**
 ```bash
 pip install pytrilogy
 ```
 
-**Your first query:**
+**Save in hello.preql**
 ```sql
-# Save as hello.preql
-import names;
+const prime <- unnest([2, 3, 5, 7, 11, 13, 17, 19, 23, 29]);
 
-const top_names <- ['Elvis', 'Elvira', 'Elrond', 'Sam'];
-
-def initcap(word) -> upper(substring(word, 1, 1)) || substring(word, 2, len(word));
+def cube_plus_one(x) -> (x * x * x + 1);
 
 WHERE 
-    @initcap(name) in top_names
+    prime_cubed_plus_one % 7 = 0
 SELECT
-    name,
-    sum(births) as name_count
+    prime,
+    @cube_plus_one(prime) as prime_cubed_plus_one
 ORDER BY
-    name_count desc
+    prime asc
 LIMIT 10;
 ```
 
-**Run it:**
+**Run it in DuckDB**
 ```bash
 trilogy run hello.preql duckdb
-```
-
-We recommend starting with the studio to explore Trilogy. For integration, `pytrilogy` can be run locally to parse and execute trilogy model [.preql] files using the `trilogy` CLI tool, or can be run in python by importing the `trilogy` package.
-
-## Trilogy Looks Like SQL
-
-```sql
-import names;
-
-const top_names <- ['Elvis', 'Elvira', 'Elrond', 'Sam'];
-
-def initcap(word) -> upper(substring(word, 1, 1)) || substring(word, 2, len(word));
-
-WHERE 
-    @initcap(name) in top_names
-SELECT
-    name,
-    sum(births) as name_count
-ORDER BY
-    name_count desc
-LIMIT 10;
 ```
 
 ## Trilogy is Easy to Write

@@ -236,6 +236,8 @@ class FunctionType(Enum):
     MONTH = "month"
     QUARTER = "quarter"
     YEAR = "year"
+    MONTH_NAME = "month_name"
+    DAY_NAME = "day_name"
 
     DATE_PART = "date_part"
     DATE_TRUNCATE = "date_truncate"

@@ -55,6 +55,21 @@ from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import RowsetDerivationStatement, SelectStatement
 from trilogy.utility import string_to_hash, unique
 
+ARBITRARY_INPUTS = (
+    AggregateWrapper
+    | FunctionCallWrapper
+    | WindowItem
+    | FilterItem
+    | Function
+    | Parenthetical
+    | ListWrapper
+    | MapWrapper
+    | int
+    | float
+    | str
+    | date
+)
+
 
 def process_function_arg(
     arg,
@@ -625,7 +640,7 @@ def window_item_to_concept(
     fmetadata = metadata or Metadata()
     if not isinstance(parent.content, ConceptRef):
         raise NotImplementedError(
-            f"Window function wiht non ref content {parent.content} not yet supported"
+            f"Window function with non ref content {parent.content} not yet supported"
         )
     bcontent = environment.concepts[parent.content.address]
     if isinstance(bcontent, UndefinedConcept):
@@ -844,6 +859,7 @@ def generate_concept_name(
         | Function
         | ListWrapper
         | MapWrapper
+        | Parenthetical
         | int
         | float
         | str
@@ -865,24 +881,36 @@ def generate_concept_name(
             return f"{VIRTUAL_CONCEPT_PREFIX}_group_to_{string_to_hash(str(parent))}"
         else:
             return f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(str(parent))}"
+    elif isinstance(parent, Parenthetical):
+        return f"{VIRTUAL_CONCEPT_PREFIX}_paren_{string_to_hash(str(parent))}"
+    elif isinstance(parent, FunctionCallWrapper):
+        return f"{VIRTUAL_CONCEPT_PREFIX}_{parent.name}_{string_to_hash(str(parent))}"
     else:  # ListWrapper, MapWrapper, or primitive types
         return f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
 
 
+def parenthetical_to_concept(
+    parent: Parenthetical,
+    name: str,
+    namespace: str,
+    environment: Environment,
+    metadata: Metadata | None = None,
+) -> Concept:
+    if isinstance(
+        parent.content,
+        ARBITRARY_INPUTS,
+    ):
+
+        return arbitrary_to_concept(
+            parent.content, environment, namespace, name, metadata
+        )
+    raise NotImplementedError(
+        f"Parenthetical with non-supported content {parent.content} ({type(parent.content)}) not yet supported"
+    )
+
+
 def arbitrary_to_concept(
-    parent: (
-        AggregateWrapper
-        | FunctionCallWrapper
-        | WindowItem
-        | FilterItem
-        | Function
-        | ListWrapper
-        | MapWrapper
-        | int
-        | float
-        | str
-        | date
-    ),
+    parent: ARBITRARY_INPUTS,
     environment: Environment,
     namespace: str | None = None,
     name: str | None = None,
@@ -938,5 +966,7 @@ def arbitrary_to_concept(
         )
     elif isinstance(parent, ListWrapper):
         return constant_to_concept(parent, name, namespace, metadata)
+    elif isinstance(parent, Parenthetical):
+        return parenthetical_to_concept(parent, name, namespace, environment, metadata)
     else:
         return constant_to_concept(parent, name, namespace, metadata)

@@ -223,7 +223,14 @@ def expr_to_boolean(
 def unwrap_transformation(
     input: Expr,
     environment: Environment,
-) -> Function | FilterItem | WindowItem | AggregateWrapper | FunctionCallWrapper:
+) -> (
+    Function
+    | FilterItem
+    | WindowItem
+    | AggregateWrapper
+    | FunctionCallWrapper
+    | Parenthetical
+):
     if isinstance(input, Function):
         return input
     elif isinstance(input, AggregateWrapper):
@@ -243,7 +250,7 @@ def unwrap_transformation(
     elif isinstance(input, FunctionCallWrapper):
         return input
     elif isinstance(input, Parenthetical):
-        return unwrap_transformation(input.content, environment)
+        return input
     else:
         return Function.model_construct(
             operator=FunctionType.CONSTANT,
@@ -779,7 +786,6 @@ class ParseToObjects(Transformer):
         lookup, namespace, name, parent = parse_concept_reference(
             name, self.environment
         )
-
         concept = Concept(
             name=name,
             datatype=arg_to_datatype(constant),
@@ -1954,6 +1960,10 @@ class ParseToObjects(Transformer):
         return self.function_factory.create_function(args, FunctionType.DAY, meta)
 
     @v_args(meta=True)
+    def fday_name(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.DAY_NAME, meta)
+
+    @v_args(meta=True)
     def fday_of_week(self, meta, args):
         return self.function_factory.create_function(
             args, FunctionType.DAY_OF_WEEK, meta
@@ -1966,6 +1976,12 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fmonth(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.MONTH, meta)
+
+    @v_args(meta=True)
+    def fmonth_name(self, meta, args):
+        return self.function_factory.create_function(
+            args, FunctionType.MONTH_NAME, meta
+        )
 
     @v_args(meta=True)
     def fquarter(self, meta, args):
