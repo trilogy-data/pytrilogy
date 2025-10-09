@@ -33,16 +33,14 @@ We recommend starting with the studio to explore Trilogy. For integration, `pytr
 pip install pytrilogy
 ```
 
-**Save**
+**Save in hello.preql**
 ```sql
-# save as hello.preql
-
 const prime <- unnest([2, 3, 5, 7, 11, 13, 17, 19, 23, 29]);
 
 def cube_plus_one(x) -> (x * x * x + 1);
 
 WHERE 
-    @cube_plus_one(prime) % 7 = 0
+    prime_cubed_plus_one % 7 = 0
 SELECT
     prime,
     @cube_plus_one(prime) as prime_cubed_plus_one
