@@ -2018,7 +2018,7 @@ def test_date_spine():
         assert len(results) == 8, sql
 
 
-@mark.skip("Date spine not yet supported")
+
 def test_date_spine_merge():
     from trilogy.hooks import DebuggingHook
 

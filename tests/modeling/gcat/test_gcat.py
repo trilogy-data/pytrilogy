@@ -964,7 +964,7 @@ align
     assert len(results.fetchall()) > 0, sql
 
 
-@mark.skip("Date spine not yet supported")
+
 def test_date_spine(gcat_env: Executor):
     from logging import INFO
 
@@ -975,7 +975,7 @@ def test_date_spine(gcat_env: Executor):
 
     DebuggingHook(level=INFO)
     base = gcat_env
-    base.parse_text(
+    queries = base.parse_text(
         """import satcat;
 const target_company <- 'PLAN';
 
@@ -988,7 +988,7 @@ merge launch_date into ~chart_spine;
 where launch.org.name like '%Rocket%'
 select
     chart_spine,
-    #launches
+    launches
 having
     chart_spine >= date_add(current_date(), day, -60)
 order by
@@ -1016,4 +1016,6 @@ order by
     ).components == {
         "local.chart_spine",
     }
-    # results  = base.execute_query(queries[-1]).fetchall()
+    sql = base.generate_sql(queries[-1])
+    results  = base.execute_query(queries[-1]).fetchall()
+    assert len(results) ==61, sql
