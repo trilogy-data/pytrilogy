@@ -1,7 +1,9 @@
 import random
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from logging import getLogger
+from typing import Any
 
 logger = getLogger("trilogy")
 
@@ -49,6 +51,32 @@ class Rendering:
 
     parameters: bool = True
     concise: bool = False
+
+    @contextmanager
+    def temporary(self, **kwargs: Any):
+        """
+        Context manager to temporarily set attributes and revert them afterwards.
+
+        Usage:
+            r = Rendering()
+            with r.temporary(parameters=False, concise=True):
+                # parameters is False, concise is True here
+                do_something()
+            # parameters and concise are back to their original values
+        """
+        # Store original values
+        original_values = {key: getattr(self, key) for key in kwargs}
+
+        # Set new values
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+        try:
+            yield self
+        finally:
+            # Restore original values
+            for key, value in original_values.items():
+                setattr(self, key, value)
 
 
 @dataclass

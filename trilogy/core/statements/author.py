@@ -197,7 +197,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             for x in self.where_clause.concept_arguments:
                 if isinstance(x, UndefinedConcept):
                     validate = environment.concepts.get(x.address)
-                    if validate:
+                    if validate and self.where_clause:
                         self.where_clause = (
                             self.where_clause.with_reference_replacement(
                                 x.address, validate.reference

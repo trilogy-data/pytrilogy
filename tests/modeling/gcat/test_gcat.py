@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from pytest import mark
+
 from trilogy import Dialects, Environment, Executor
 from trilogy.core.env_processor import concept_to_node, generate_graph
 from trilogy.core.exceptions import ModelValidationError
@@ -904,3 +906,114 @@ LIMIT 10
     CASE"""
         in sql[0]
     ), sql[0]
+
+
+def test_wrong_global_join_agg(gcat_env: Executor):
+    from logging import INFO
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook(level=INFO)
+
+    base = gcat_env
+    queries = base.parse_text(
+        """import satcat;
+import std.color;
+
+
+where owner.code = 'PLAN'
+select
+
+    array_agg( struct(
+        bus -> bus_name, count(jcat) by bus ->bus_count
+    )) as per_bus_counts,
+        # count(jcat) by * as total_satellites,
+;
+"""
+    )
+    sql = base.generate_sql(queries[-1])
+    # assert base.environment.concepts["per_bus_counts"].
+    assert '''"highfalutin"."bus" = "quizzical"."bus"''' not in sql[0], sql[0]
+
+
+def test_merge_with_filter(gcat_env: Executor):
+    from logging import INFO
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook(level=INFO)
+    base = gcat_env
+    queries = base.parse_text(
+        """
+import satcat;
+where owner.code = 'PLAN'
+select
+l_date, 
+sum case when jcat is not null then 1 else 0 end order by l_date asc as running_total
+merge
+select
+d_date,
+sum case when jcat is not null then 1 else 0 end order by d_date asc as running_decom
+align
+    display_date: l_date,d_date
+;
+"""
+    )
+    sql = base.generate_sql(queries[-1])
+    results = base.execute_query(queries[-1])
+    assert len(results.fetchall()) > 0, sql
+
+
+@mark.skip("Date spine not yet supported")
+def test_date_spine(gcat_env: Executor):
+    from logging import INFO
+
+    from trilogy.core.enums import Derivation, Granularity, Purpose
+    from trilogy.core.models.author import Grain
+    from trilogy.core.models.build import BuildGrain
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook(level=INFO)
+    base = gcat_env
+    base.parse_text(
+        """import satcat;
+const target_company <- 'PLAN';
+
+auto launches <- count(jcat ? owner.code = target_company) by launch_date;
+
+key chart_spine <- date_spine(date_add(current_date(), day, -60), current_date());
+
+merge launch_date into ~chart_spine;
+
+where launch.org.name like '%Rocket%'
+select
+    chart_spine,
+    #launches
+having
+    chart_spine >= date_add(current_date(), day, -60)
+order by
+    chart_spine asc;
+    """
+    )
+
+    assert base.environment.concepts["chart_spine"].purpose == Purpose.KEY
+    assert base.environment.concepts["chart_spine"].derivation == Derivation.UNNEST
+    assert base.environment.concepts["chart_spine"].granularity == Granularity.MULTI_ROW
+    assert (
+        "local.chart_spine" in base.environment.datasources["satcat"].partial_concepts
+    )
+    assert Grain.from_concepts(
+        [base.environment.concepts["chart_spine"]], environment=base.environment
+    ).components == {
+        "local.chart_spine",
+    }
+    build_env = base.environment.materialize_for_select()
+    assert build_env.concepts["local.chart_spine"].purpose == Purpose.KEY
+    assert build_env.concepts["local.chart_spine"].derivation == Derivation.UNNEST
+    assert build_env.concepts["local.chart_spine"].granularity == Granularity.MULTI_ROW
+    assert BuildGrain.from_concepts(
+        ["local.chart_spine"], environment=build_env
+    ).components == {
+        "local.chart_spine",
+    }
+    # results  = base.execute_query(queries[-1]).fetchall()

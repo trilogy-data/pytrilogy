@@ -2022,6 +2022,12 @@ class ParseToObjects(Transformer):
             )
         return self.function_factory.create_function(args, FunctionType.CAST, meta)
 
+    @v_args(meta=True)
+    def fdate_spine(self, meta, args) -> Function:
+        return self.function_factory.create_function(
+            args, FunctionType.DATE_SPINE, meta
+        )
+
     # utility functions
     @v_args(meta=True)
     def fcast(self, meta, args) -> Function:
@@ -2227,6 +2233,7 @@ ERROR_CODES: dict[int, str] = {
     101: "Using FROM keyword? Trilogy does not have a FROM clause (Datasource resolution is automatic).",
     # 200 codes relate to required explicit syntax (we could loosen these?)
     201: 'Missing alias? Alias must be specified with "AS" - e.g. `SELECT x+1 AS y`',
+    202: "Missing closing semicolon? Statements must be terminated with a semicolon `;`.",
     210: "Missing order direction? Order by must be explicit about direction - specify `asc` or `desc`.",
 }
 
@@ -2319,12 +2326,25 @@ def parse_text(
         )
         if parsed_tokens == ["FROM"]:
             raise _create_syntax_error(101, pos, text)
-
+        try:
+            e.interactive_parser.feed_token(Token("_TERMINATOR", ";"))
+            new_token = e.interactive_parser.lexer_thread.state.last_token
+            if new_token:
+                new_pos = new_token.end_pos or pos
+            else:
+                new_pos = pos
+            raise _create_syntax_error(202, new_pos, text)
+        except UnexpectedToken:
+            pass
         # Attempt recovery for aliasing
         try:
             e.interactive_parser.feed_token(Token("AS", "AS"))
+            if new_token:
+                new_pos = new_token.end_pos or pos
+            else:
+                new_pos = pos
             e.interactive_parser.feed_token(Token("IDENTIFIER", e.token.value))
-            raise _create_syntax_error(201, pos, text)
+            raise _create_syntax_error(201, new_pos, text)
         except UnexpectedToken:
             pass
 

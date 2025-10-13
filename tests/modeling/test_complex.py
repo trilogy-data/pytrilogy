@@ -199,3 +199,39 @@ def test_map_access():
     assert results.local_concepts["num_map_5"].datatype == DataType.INTEGER
     assert test_executor.environment.concepts["num_map_5"].datatype == DataType.INTEGER
     results = test_executor.execute_text(test_select)[0]
+
+
+def test_running_sum():
+    test_executor = Dialects.DUCK_DB.default_executor()
+
+    test_select = """
+   auto nums <- unnest([1,2,3,4,5,6,7,8,9,10]);
+
+    SELECT
+        nums, sum nums order by nums asc -> running_sum
+    order by nums asc
+    ;"""
+
+    results = test_executor.parse_text(test_select)[-1]
+    results = test_executor.execute_text(test_select)[0]
+    all_results = list(results.fetchall())
+    assert len(all_results) == 10
+    assert all_results[-1] == (10, 55)
+
+
+def test_running_count():
+    test_executor = Dialects.DUCK_DB.default_executor()
+
+    test_select = """
+   auto nums <- unnest([1,2,3,4,5,6,7,8,9,10]);
+
+    SELECT
+        nums, count nums order by nums asc -> running_sum
+    order by nums asc
+    ;"""
+
+    results = test_executor.parse_text(test_select)[-1]
+    results = test_executor.execute_text(test_select)[0]
+    all_results = list(results.fetchall())
+    assert len(all_results) == 10
+    assert all_results[-1] == (10, 10)

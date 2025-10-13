@@ -244,6 +244,7 @@ class FunctionType(Enum):
     DATE_ADD = "date_add"
     DATE_SUB = "date_sub"
     DATE_DIFF = "date_diff"
+    DATE_SPINE = "date_spine"
 
     # UNIX
     UNIX_TO_TIMESTAMP = "unix_to_timestamp"
@@ -270,7 +271,7 @@ class FunctionClass(Enum):
         FunctionType.CURRENT_DATETIME,
     ]
 
-    ONE_TO_MANY = [FunctionType.UNNEST]
+    ONE_TO_MANY = [FunctionType.UNNEST, FunctionType.DATE_SPINE]
 
     RECURSIVE = [FunctionType.RECURSE_EDGE]
 

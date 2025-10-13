@@ -1234,7 +1234,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         elif (
             lineage
             and isinstance(lineage, (BuildFunction, Function))
-            and lineage.operator == FunctionType.UNNEST
+            and lineage.operator in FunctionClass.ONE_TO_MANY.value
         ):
             return Derivation.UNNEST
         elif (
@@ -1286,7 +1286,8 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         elif (
             lineage
             and isinstance(lineage, (Function, BuildFunction))
-            and lineage.operator in (FunctionType.UNNEST, FunctionType.UNION)
+            and lineage.operator
+            in (FunctionType.UNNEST, FunctionType.UNION, FunctionType.DATE_SPINE)
         ):
             return Granularity.MULTI_ROW
         elif lineage and all(

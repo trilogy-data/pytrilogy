@@ -194,6 +194,13 @@ FUNCTION_MAP = {
     FunctionType.INDEX_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.MAP_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.UNNEST: lambda x: f"unnest({x[0]})",
+    FunctionType.DATE_SPINE: lambda x: f"""unnest(
+        generate_series(
+            {x[0]},
+            {x[1]},
+            INTERVAL '1 day'
+        )
+    )""",
     FunctionType.RECURSE_EDGE: lambda x: f"CASE WHEN {x[1]} IS NULL THEN {x[0]} ELSE {x[1]} END",
     FunctionType.ATTR_ACCESS: lambda x: f"""{x[0]}.{x[1].replace("'", "")}""",
     FunctionType.STRUCT: lambda x: f"{{{', '.join(struct_arg(x))}}}",

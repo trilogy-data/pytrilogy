@@ -113,7 +113,7 @@
     filter_item: _filter_base | _filter_alt
 
     // rank/lag/lead
-    WINDOW_TYPE: ("row_number"i|"rank"i|"lag"i|"lead"i | "sum"i | "avg"i | "max"i | "min"i )  /[\s]+/
+    WINDOW_TYPE: ("row_number"i|"rank"i|"lag"i|"lead"i | "sum"i | "avg"i | "max"i | "min"i | "count"i  )  /[\s]+/
 
     window_item_over: ("OVER"i over_list)
    
@@ -405,8 +405,10 @@
     fdate_sub: _DATE_SUB expr "," DATE_PART "," expr ")"
     _DATE_DIFF.1: "date_diff("i
     fdate_diff: _DATE_DIFF expr "," expr "," DATE_PART ")"
+    _DATE_SPINE.1: "date_spine("i
+    fdate_spine: _DATE_SPINE expr "," expr  ")"
     
-    _date_functions: fdate | fdate_add | fdate_sub | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday |fday_name | fday_of_week | fweek | fmonth | fmonth_name | fquarter | fyear | fdate_part | fdate_trunc
+    _date_functions: fdate | fdate_add | fdate_sub | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday |fday_name | fday_of_week | fweek | fmonth | fmonth_name | fquarter | fyear | fdate_part | fdate_trunc | fdate_spine
     
     _static_functions:  _string_functions | _math_functions | _array_functions | _map_functions
 
@@ -434,7 +436,7 @@
     
     float_lit: /\-?[0-9]*\.[0-9]+/
 
-    array_lit: "[" (literal ",")* literal ","? "]"()
+    array_lit: "[" (expr ",")* expr ","? "]"()
 
     tuple_lit: "(" (literal ",")* literal ","? ")"
 
