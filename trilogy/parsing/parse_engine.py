@@ -2314,7 +2314,7 @@ def parse_text(
         )
 
     def _handle_unexpected_token(e: UnexpectedToken, text: str) -> None:
-        """Handle UnexpectedToken errors with specific logic."""
+        """Handle UnexpectedToken errors to make friendlier error messages."""
         # Handle ordering direction error
         pos = e.pos_in_stream or 0
         if e.expected == {"ORDERING_DIRECTION"}:
@@ -2326,21 +2326,23 @@ def parse_text(
         )
         if parsed_tokens == ["FROM"]:
             raise _create_syntax_error(101, pos, text)
+        # check if they are missing a semicolon
         try:
             e.interactive_parser.feed_token(Token("_TERMINATOR", ";"))
-            new_token = e.interactive_parser.lexer_thread.state.last_token
-            if new_token:
-                new_pos = new_token.end_pos or pos
+            state = e.interactive_parser.lexer_thread.state
+            if state and state.last_token:
+                new_pos = state.last_token.end_pos or pos
             else:
                 new_pos = pos
             raise _create_syntax_error(202, new_pos, text)
         except UnexpectedToken:
             pass
-        # Attempt recovery for aliasing
+        # check if they forgot an as
         try:
             e.interactive_parser.feed_token(Token("AS", "AS"))
-            if new_token:
-                new_pos = new_token.end_pos or pos
+            state = e.interactive_parser.lexer_thread.state
+            if state and state.last_token:
+                new_pos = state.last_token.end_pos or pos
             else:
                 new_pos = pos
             e.interactive_parser.feed_token(Token("IDENTIFIER", e.token.value))
