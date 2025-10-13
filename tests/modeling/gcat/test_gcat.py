@@ -948,14 +948,14 @@ def test_merge_with_filter(gcat_env: Executor):
 import satcat;
 where owner.code = 'PLAN'
 select
-l_date, 
-sum case when jcat is not null then 1 else 0 end order by l_date asc as running_total
+launch_date, 
+sum case when jcat is not null then 1 else 0 end order by launch_date asc as running_total
 merge
 select
-d_date,
-sum case when jcat is not null then 1 else 0 end order by d_date asc as running_decom
+decom_date,
+sum case when jcat is not null then 1 else 0 end order by decom_date asc as running_decom
 align
-    display_date: l_date,d_date
+    display_date: launch_date,decom_date
 ;
 """
     )

@@ -22,9 +22,9 @@ property jcat.primary string; # Central body for the current phase; usually Eart
 
 property jcat.status string; # Event that ends the current phase.
 property jcat.dest string; # Destination of the current phase, could be a reentry location or JCAT identifier of a new parent.
-property jcat.owner string; # OrgCode for the owner/operator of the object.
+
 # property jcat.state string; # OrgCode for the country/state of the owner/operator.
-property jcat.manufacturer string; # OrgCode for the entity that built the object.
+
 key bus string; # Spacecraft bus type; indicates chassis type or standardization.
 property jcat.motor string; # Name of the main thruster or rocket engine; details may be in Engines file.
 property jcat.mass float; # Mass in kg at launch, excluding attached objects; identified if the mass is an estimate.
@@ -62,21 +62,21 @@ auto base_category <- substring(split(type, ' ')[1],1,1); #P	Payload (for orbita
 datasource satcat (
     JCAT: jcat,
     Satcat: satcat,
-    Launch_Tag: launch.launch_tag,
+    Launch_Tag: ~launch.launch_tag,
     Piece: piece,
     Type: type,
     Name: name,
     PLName: pl_name,
-    LDate: launch_date,
+    LDate: ?launch_date,
     Parent: parent,
     SDate: s_date,
     Primary: primary,
-    DDate: decom_date,
+    DDate: ?decom_date,
     Status: status,
     Dest: dest,
-    Owner: owner.code,
-    State: state.code,
-    Manufacturer: manufacturer.code,
+    Owner: ~owner.code,
+    State: ~state.code,
+    Manufacturer: ~manufacturer.code,
     Bus: bus,
     Motor: motor,
     Mass: mass,
