@@ -32,6 +32,11 @@ def gen_unnest_node(
     depth_prefix = "\t" * depth
     if isinstance(concept.lineage, BuildFunction):
         arguments = concept.lineage.concept_arguments
+    if not arguments:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} unnest node for {concept} has no parents; creating solo unnest node"
+        )
+        local_optional = []
 
     equivalent_optional = [x for x in local_optional if x.lineage == concept.lineage]
 

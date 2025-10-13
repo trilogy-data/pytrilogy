@@ -271,8 +271,8 @@ def get_priority_concept(
     )
     # sometimes we need to scan intermediate concepts to get merge keys or filter keys,
     # so do an exhaustive search
-    # pass_two = [c for c in all_concepts+filter_only if c.address not in attempted_addresses]
-    for remaining_concept in (pass_one,):
+    # pass_two = [c for c in all_concepts if c.address not in attempted_addresses]
+    for remaining_concept in (pass_one, ):
         priority = (
             # then multiselects to remove them from scope
             [c for c in remaining_concept if c.derivation == Derivation.MULTISELECT]
@@ -333,5 +333,5 @@ def get_priority_concept(
         if final:
             return final[0]
     raise ValueError(
-        f"Cannot resolve query. No remaining priority concepts, have attempted {attempted_addresses}"
+        f"Cannot resolve query. No remaining priority concepts, have attempted {attempted_addresses} out of {all_concepts} with found {found_concepts}"
     )

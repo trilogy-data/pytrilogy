@@ -2063,7 +2063,7 @@ def test_date_spine_merge():
         assert results[-1].day_count == 18, sql
 
 
-@mark.skip("Date spine not yet supported")
+
 def test_const_equivalence_merge():
     from trilogy.hooks import DebuggingHook
 

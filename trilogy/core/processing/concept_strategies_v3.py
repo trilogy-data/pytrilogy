@@ -466,6 +466,7 @@ def _search_concepts(
         conditions=conditions,
     )
 
+    # if we get a can
     if candidate:
         return candidate
     context = initialize_loop_context(
