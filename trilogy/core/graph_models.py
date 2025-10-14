@@ -46,8 +46,6 @@ def prune_sources_for_conditions(
             to_remove.append(node)
 
     for node in to_remove:
-        from trilogy.constants import logger
-        logger.info(f" pruning datasource node {node}")
         g.remove_node(node)
 
 

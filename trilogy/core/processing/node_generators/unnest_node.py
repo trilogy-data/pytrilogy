@@ -56,7 +56,7 @@ def gen_unnest_node(
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     arguments = []
-    join_nodes = []
+    join_nodes:list[StrategyNode] = []
     depth_prefix = "\t" * depth
     if isinstance(concept.lineage, BuildFunction):
         arguments = concept.lineage.concept_arguments
@@ -91,6 +91,7 @@ def gen_unnest_node(
     )
     local_conditions = False
     expected_outputs = [concept] + local_optional
+    parent:StrategyNode | None = None
     if arguments or search_optional:
         parent = source_concepts(
             mandatory_list=all_parents,
@@ -143,6 +144,12 @@ def gen_unnest_node(
         logger.info(
             f"{depth_prefix}{LOGGER_PREFIX} unnest node for {concept} needs to merge with join nodes {join_nodes}"
         )
+        for x in join_nodes:
+            logger.info(
+                f"{depth_prefix}{LOGGER_PREFIX} join node {x} with partial {x.partial_concepts}"
+            )
+            pseudonyms = [environment.alias_origin_lookup[p] for p in concept.pseudonyms]
+            x.add_partial_concepts(pseudonyms)
         return MergeNode(
             input_concepts=base.output_concepts
             + [j for n in join_nodes for j in n.output_concepts],

@@ -184,10 +184,11 @@ def group_if_required_v2(
     final: List[BuildConcept],
     environment: BuildEnvironment,
     where_injected: set[str] | None = None,
+    depth: int = 0,
 ):
     where_injected = where_injected or set()
     required = check_if_group_required(
-        downstream_concepts=final, parents=[root.resolve()], environment=environment
+        downstream_concepts=final, parents=[root.resolve()], environment=environment, depth=depth
     )
     targets = [
         x

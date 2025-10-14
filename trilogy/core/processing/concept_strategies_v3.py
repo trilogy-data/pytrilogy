@@ -375,7 +375,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
             for x in context.stack
         }
         logger.info(
-            f"Condition {context.conditions} not required, parents included filtering! {parent_map}"
+            f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Condition {context.conditions} not required, parents included filtering! {parent_map}"
         )
 
     if len(context.stack) == 1:
@@ -436,6 +436,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
             context.original_mandatory,
             context.environment,
             non_virtual_difference_values,
+            depth=context.depth
         )
 
     return group_if_required_v2(
@@ -443,6 +444,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
         context.original_mandatory,
         context.environment,
         non_virtual_difference_values,
+        depth=context.depth
     )
 
 
@@ -609,4 +611,4 @@ def source_query_concepts(
     logger.info(
         f"{depth_to_prefix(0)}{LOGGER_PREFIX} final concepts are {[x.address for x in final]}"
     )
-    return group_if_required_v2(root, output_concepts, environment)
+    return group_if_required_v2(root, output_concepts, environment, depth=0)

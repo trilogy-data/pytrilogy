@@ -12,7 +12,12 @@ from trilogy.core.processing.node_generators.node_merge_node import (
 from trilogy.hooks import DebuggingHook
 from trilogy.parser import parse_text
 from trilogy.parsing.render import Renderer
+from logging import INFO
 
+from trilogy.core.enums import Derivation, Granularity, Purpose
+from trilogy.core.models.author import Grain
+from trilogy.core.models.build import BuildGrain
+from trilogy.hooks import DebuggingHook
 ROOT = Path(__file__).parent
 
 """WITH 
@@ -284,6 +289,64 @@ order by launch_filter asc
 ;"""
     )
 
+
+
+
+def test_environment_cleanup_multiselect():
+    """
+    Test to ensure that the environment cleanup works correctly.
+    """
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+    base.parse_text(
+        """import satcat;
+auto launches <- count(jcat?  owner.code = 'PLAN') by launch_date;
+auto decoms <- count(jcat ? decom_date is not null and owner.code = 'PLAN' ) by decom_date;
+
+key launch_spine <- date_spine(date_add(current_date(), day, -6000), current_date());
+key decom_spine <- date_spine(date_add(current_date(), day, -6000), current_date());
+
+merge launch_date into ~launch_spine;
+merge decom_date into ~decom_spine;
+        """
+    )
+    pre_concepts = set(base.environment.concepts.keys())
+    queries = base.parse_text(
+        """
+select
+    launch_spine,
+    sum launches order by launch_spine asc as cumulative_launches,
+having
+    cumulative_launches >1
+merge
+select
+    decom_spine,
+    sum decoms order by decom_spine asc as cumulative_decoms,
+having cumulative_decoms >1
+align date:launch_spine,decom_spine;
+        """
+    )
+
+    query = queries[-1]
+    assert "local.date" in query.locally_derived
+    assert (
+        base.environment.concepts["local.date"].datatype
+        == DataType.DATE
+    )
+    assert "local.date" in query.locally_derived
+    assert "local.date.month" in base.environment.concepts
+    for c in query.locally_derived:
+        base.environment.remove_concept(c)
+    post_concepts = set(base.environment.concepts.keys())
+    assert (
+        pre_concepts == post_concepts
+    ), f"Environment cleanup did not remove locally derived concepts: {post_concepts - pre_concepts}"
+
+    # check we can materialize it safely
+    assert "local.date.month" not in base.environment.concepts
+    base.environment.materialize_for_select()
 
 def test_join_inclusion():
     """
@@ -966,12 +1029,7 @@ align
 
 
 def test_date_spine(gcat_env: Executor):
-    from logging import INFO
 
-    from trilogy.core.enums import Derivation, Granularity, Purpose
-    from trilogy.core.models.author import Grain
-    from trilogy.core.models.build import BuildGrain
-    from trilogy.hooks import DebuggingHook
 
     DebuggingHook(level=INFO)
     base = gcat_env
@@ -1019,3 +1077,33 @@ order by
     sql = base.generate_sql(queries[-1])
     results  = base.execute_query(queries[-1]).fetchall()
     assert len(results) ==61, sql
+
+
+def test_date_spine_local_filter(gcat_env: Executor):
+    
+    DebuggingHook(level=INFO)
+
+    base = gcat_env
+    queries = base.parse_text(
+        """import satcat;   
+        import satcat;
+
+auto launches <- count(jcat?  owner.code = 'PLAN') by launch_date;
+
+key launch_spine <- date_spine(date_add(current_date(), day, -6000), current_date());
+
+merge launch_date into ~launch_spine;
+
+where owner.code = 'PLAN'
+select
+    launch_spine,
+    sum launches order by launch_spine asc as cumulative_launches,
+having
+    cumulative_launches >1
+;
+"""
+    )
+
+    sql = base.generate_sql(queries[-1])
+    results  = base.execute_query(queries[-1]).fetchall()
+    assert len(results) >100, sql
