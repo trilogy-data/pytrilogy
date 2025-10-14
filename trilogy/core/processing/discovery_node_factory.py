@@ -441,7 +441,7 @@ def generate_node(
     depth: int,
     source_concepts: SearchConceptsType,
     history: History,
-    accept_partial: set[str],
+    accept_partial: bool,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
 

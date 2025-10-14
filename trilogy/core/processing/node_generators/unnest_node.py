@@ -28,7 +28,7 @@ def get_pseudonym_parents(
     depth,
     history,
     conditions,
-) -> List[BuildConcept]:
+) -> List[StrategyNode]:
     for x in concept.pseudonyms:
         attempt = source_concepts(
             mandatory_list=[environment.alias_origin_lookup[x]] + local_optional,
