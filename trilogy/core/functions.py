@@ -895,6 +895,11 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         ),
         arg_count=1,
     ),
+    FunctionType.ANY: FunctionConfig(
+        valid_inputs={*DataType},
+        output_purpose=Purpose.PROPERTY,
+        arg_count=1,
+    ),
     FunctionType.AVG: FunctionConfig(
         valid_inputs={
             DataType.INTEGER,

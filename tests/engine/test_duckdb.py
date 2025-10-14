@@ -2018,7 +2018,6 @@ def test_date_spine():
         assert len(results) == 8, sql
 
 
-
 def test_date_spine_merge():
     from trilogy.hooks import DebuggingHook
 
@@ -2061,7 +2060,6 @@ def test_date_spine_merge():
         results = executor.execute_text(test)[-1].fetchall()
 
         assert results[-1].day_count == 18, sql
-
 
 
 def test_const_equivalence_merge():

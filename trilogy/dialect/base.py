@@ -244,6 +244,7 @@ FUNCTION_MAP = {
     FunctionType.AVG: lambda x: f"avg({x[0]})",
     FunctionType.MAX: lambda x: f"max({x[0]})",
     FunctionType.MIN: lambda x: f"min({x[0]})",
+    FunctionType.ANY: lambda x: f"any_value({x[0]})",
     # string types
     FunctionType.LIKE: lambda x: f" {x[0]} like {x[1]} ",
     FunctionType.UPPER: lambda x: f"UPPER({x[0]}) ",
@@ -292,6 +293,7 @@ FUNCTION_GRAIN_MATCH_MAP = {
     FunctionType.AVG: lambda args: f"{args[0]}",
     FunctionType.MAX: lambda args: f"{args[0]}",
     FunctionType.MIN: lambda args: f"{args[0]}",
+    FunctionType.ANY: lambda args: f"{args[0]}",
 }
 
 

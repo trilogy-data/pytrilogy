@@ -321,8 +321,12 @@ def concept_is_relevant(
         concept.lineage, (Function, CaseWhen)
     ):
         relevant = False
+        print("---")
         for arg in concept.lineage.arguments:
             relevant = atom_is_relevant(arg, others, environment) or relevant
+
+            print(arg)
+            print(relevant)
 
         return relevant
     if concept.derivation in (Derivation.BASIC,) and isinstance(
@@ -378,6 +382,8 @@ def concepts_to_grain_concepts(
         if not concept_is_relevant(sub, pconcepts, environment):  # type: ignore
 
             continue
+        print("concept is relevant")
+        print(sub.address)
         seen.add(sub.address)
 
     return seen

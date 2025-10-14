@@ -375,7 +375,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
             for x in context.stack
         }
         logger.info(
-            f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Condition {context.conditions} not required, parents included filtering! {parent_map}"
+            f"Condition {context.conditions} not required, parents included filtering! {parent_map}"
         )
 
     if len(context.stack) == 1:
@@ -436,7 +436,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
             context.original_mandatory,
             context.environment,
             non_virtual_difference_values,
-            depth=context.depth
+            depth=context.depth,
         )
 
     return group_if_required_v2(
@@ -444,7 +444,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
         context.original_mandatory,
         context.environment,
         non_virtual_difference_values,
-        depth=context.depth
+        depth=context.depth,
     )
 
 

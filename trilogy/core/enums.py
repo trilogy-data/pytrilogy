@@ -204,6 +204,7 @@ class FunctionType(Enum):
     MIN = "min"
     AVG = "avg"
     ARRAY_AGG = "array_agg"
+    ANY = "any"
 
     # String
     LIKE = "like"
@@ -264,6 +265,7 @@ class FunctionClass(Enum):
         FunctionType.ARRAY_AGG,
         FunctionType.COUNT,
         FunctionType.COUNT_DISTINCT,
+        FunctionType.ANY,
     ]
     SINGLE_ROW = [
         FunctionType.CONSTANT,

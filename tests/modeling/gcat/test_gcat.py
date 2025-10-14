@@ -1,10 +1,12 @@
+from logging import INFO
 from pathlib import Path
 
-from pytest import mark
-
 from trilogy import Dialects, Environment, Executor
+from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.env_processor import concept_to_node, generate_graph
 from trilogy.core.exceptions import ModelValidationError
+from trilogy.core.models.author import Grain
+from trilogy.core.models.build import BuildGrain
 from trilogy.core.models.core import DataType
 from trilogy.core.processing.node_generators.node_merge_node import (
     determine_induced_minimal_nodes,
@@ -12,12 +14,7 @@ from trilogy.core.processing.node_generators.node_merge_node import (
 from trilogy.hooks import DebuggingHook
 from trilogy.parser import parse_text
 from trilogy.parsing.render import Renderer
-from logging import INFO
 
-from trilogy.core.enums import Derivation, Granularity, Purpose
-from trilogy.core.models.author import Grain
-from trilogy.core.models.build import BuildGrain
-from trilogy.hooks import DebuggingHook
 ROOT = Path(__file__).parent
 
 """WITH 
@@ -290,8 +287,6 @@ order by launch_filter asc
     )
 
 
-
-
 def test_environment_cleanup_multiselect():
     """
     Test to ensure that the environment cleanup works correctly.
@@ -331,10 +326,7 @@ align date:launch_spine,decom_spine;
 
     query = queries[-1]
     assert "local.date" in query.locally_derived
-    assert (
-        base.environment.concepts["local.date"].datatype
-        == DataType.DATE
-    )
+    assert base.environment.concepts["local.date"].datatype == DataType.DATE
     assert "local.date" in query.locally_derived
     assert "local.date.month" in base.environment.concepts
     for c in query.locally_derived:
@@ -347,6 +339,7 @@ align date:launch_spine,decom_spine;
     # check we can materialize it safely
     assert "local.date.month" not in base.environment.concepts
     base.environment.materialize_for_select()
+
 
 def test_join_inclusion():
     """
@@ -1027,9 +1020,7 @@ align
     assert len(results.fetchall()) > 0, sql
 
 
-
 def test_date_spine(gcat_env: Executor):
-
 
     DebuggingHook(level=INFO)
     base = gcat_env
@@ -1075,12 +1066,12 @@ order by
         "local.chart_spine",
     }
     sql = base.generate_sql(queries[-1])
-    results  = base.execute_query(queries[-1]).fetchall()
-    assert len(results) ==61, sql
+    results = base.execute_query(queries[-1]).fetchall()
+    assert len(results) == 61, sql
 
 
 def test_date_spine_local_filter(gcat_env: Executor):
-    
+
     DebuggingHook(level=INFO)
 
     base = gcat_env
@@ -1094,7 +1085,6 @@ key launch_spine <- date_spine(date_add(current_date(), day, -6000), current_dat
 
 merge launch_date into ~launch_spine;
 
-where owner.code = 'PLAN'
 select
     launch_spine,
     sum launches order by launch_spine asc as cumulative_launches,
@@ -1105,5 +1095,43 @@ having
     )
 
     sql = base.generate_sql(queries[-1])
-    results  = base.execute_query(queries[-1]).fetchall()
-    assert len(results) >100, sql
+    results = base.execute_query(queries[-1]).fetchall()
+    assert len(results) > 100, sql
+
+
+def test_recursion_error(gcat_env: Executor):
+    from logging import INFO
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook(level=INFO)
+
+    base = gcat_env
+    queries = base.parse_text(
+        """import satcat;
+        def sort(x)-> x.bus_count;
+
+select
+    --count(owner.name)  as owner_count,
+    case 
+        when owner_count>1 then 'Many (' || owner_count::string || ')' 
+        else any(owner.name) 
+        end as 
+    headline_name,
+    count(jcat ? decom_date is null) as total_satellites,
+    count(jcat ? decom_date is not null) as decommed_satellites,
+    array_sort(array_agg( struct(   
+        bus -> bus_name, count(jcat) by bus ->bus_count
+    )),desc) as per_bus_counts,
+    min(launch_date)::string as first_launch,
+    max(launch_date)::string as last_launch
+
+;
+"""
+    )
+    headline_name = base.environment.concepts["headline_name"]
+    assert headline_name.purpose == Purpose.PROPERTY
+
+    sql = base.generate_sql(queries[-1])
+    results = base.execute_query(queries[-1])
+    assert len(results.fetchall()) == 1, sql

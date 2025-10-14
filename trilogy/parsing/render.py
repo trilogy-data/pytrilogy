@@ -662,7 +662,8 @@ class Renderer:
                     pair_strings.append(self.indent_lines(pair_line))
             inputs = ",\n".join(pair_strings)
             return f"struct(\n{inputs}\n{self.indent_context.current_indent})"
-
+        if arg.operator == FunctionType.ALIAS:
+            return f"{self.to_string(arg.arguments[0])}"
         inputs = ",".join(args)
         return f"{arg.operator.value}({inputs})"
 

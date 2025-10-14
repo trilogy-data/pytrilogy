@@ -188,7 +188,10 @@ def group_if_required_v2(
 ):
     where_injected = where_injected or set()
     required = check_if_group_required(
-        downstream_concepts=final, parents=[root.resolve()], environment=environment, depth=depth
+        downstream_concepts=final,
+        parents=[root.resolve()],
+        environment=environment,
+        depth=depth,
     )
     targets = [
         x
@@ -273,7 +276,7 @@ def get_priority_concept(
     # sometimes we need to scan intermediate concepts to get merge keys or filter keys,
     # so do an exhaustive search
     # pass_two = [c for c in all_concepts if c.address not in attempted_addresses]
-    for remaining_concept in (pass_one, ):
+    for remaining_concept in (pass_one,):
         priority = (
             # then multiselects to remove them from scope
             [c for c in remaining_concept if c.derivation == Derivation.MULTISELECT]

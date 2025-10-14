@@ -1820,6 +1820,10 @@ class ParseToObjects(Transformer):
         return self.function_factory.create_function(args, FunctionType.ARRAY_AGG, meta)
 
     @v_args(meta=True)
+    def any(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.ANY, meta)
+
+    @v_args(meta=True)
     def avg(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.AVG, meta)
 

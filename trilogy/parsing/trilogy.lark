@@ -358,11 +358,13 @@
     min: _MIN expr ")"
     _ARRAY_AGG.1: "array_agg("i
     array_agg: _ARRAY_AGG expr ")"
+    _ANY.1: "any("i
+    any: _ANY expr ")"
     
     //aggregates can force a grain
     aggregate_all: "*"
     aggregate_over: ("BY"i (aggregate_all | over_list))
-    aggregate_functions: (count | count_distinct | sum | avg | max | min | array_agg) aggregate_over?
+    aggregate_functions: (count | count_distinct | sum | avg | max | min | array_agg | any) aggregate_over?
 
     // date functions
     _DATE.1: "date("i

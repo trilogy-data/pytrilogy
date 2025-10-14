@@ -1724,6 +1724,14 @@ class Factory:
         return self._build_concept(base)
 
     def _build_concept(self, base: Concept) -> BuildConcept:
+        try:
+            return self.__build_concept(base)
+        except RecursionError as e:
+            raise RecursionError(
+                f"Recursion error building concept {base.address}. This is likely due to a circular reference."
+            ) from e
+
+    def __build_concept(self, base: Concept) -> BuildConcept:
         # TODO: if we are using parameters, wrap it in a new model and use that in rendering
         if base.address in self.local_concepts:
             return self.local_concepts[base.address]
