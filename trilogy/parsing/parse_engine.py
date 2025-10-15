@@ -602,6 +602,9 @@ class ParseToObjects(Transformer):
 
     def PROPERTY(self, args):
         return Purpose.PROPERTY
+    
+    def HASH_TYPE(self, args):
+        return args.value
 
     @v_args(meta=True)
     def prop_ident(self, meta: Meta, args) -> Tuple[List[Concept], str]:
@@ -1882,6 +1885,10 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def ftrim(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.TRIM, meta)
+
+    @v_args(meta=True)
+    def fhash(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.HASH, meta)
 
     @v_args(meta=True)
     def fsubstring(self, meta, args):

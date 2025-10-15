@@ -308,8 +308,11 @@
     fregexp_contains: _REGEXP_CONTAINS expr "," expr  ")"
     _REGEXP_REPLACE.1: "regexp_replace("
     fregexp_replace: _REGEXP_REPLACE expr "," expr "," expr   ")"
+    _HASH.1: "hash("
+    HASH_TYPE: "md5"i | "sha1"i | "sha256"i | "sha512"i
+    fhash: _HASH expr "," HASH_TYPE ")"
 
-    _string_functions: like | ilike | upper | flower | fsplit | fstrpos | fsubstring | fcontains | ftrim | freplace | fregexp_extract | fregexp_contains | fregexp_replace
+    _string_functions: like | ilike | upper | flower | fsplit | fstrpos | fsubstring | fcontains | ftrim | freplace | fregexp_extract | fregexp_contains | fregexp_replace | fhash
 
     //array_functions
     _ARRAY_SUM.1: "array_sum("i

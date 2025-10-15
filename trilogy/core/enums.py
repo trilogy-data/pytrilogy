@@ -217,6 +217,7 @@ class FunctionType(Enum):
     CONTAINS = "contains"
     TRIM = "trim"
     REPLACE = "replace"
+    HASH = "hash"
 
     # STRING REGEX
     REGEXP_CONTAINS = "regexp_contains"

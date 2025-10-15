@@ -175,6 +175,18 @@ def render_case(args):
 def struct_arg(args):
     return [f"{x[1]}: {x[0]}" for x in zip(args[::2], args[1::2])]
 
+def hash_from_args(val, hash_type):
+    hash_type = hash_type[1:-1]
+    if hash_type.lower() == "md5":  
+        return f"md5({val})"
+    elif hash_type.lower() == "sha1":
+        return f"sha1({val})"
+    elif hash_type.lower() == "sha256":
+        return f"sha256({val})"
+    elif hash_type.lower() == "sha512":
+        return f"sha512({val})"
+    else:
+        raise ValueError(f"Unsupported hash type: {hash_type}")
 
 FUNCTION_MAP = {
     # generic types
@@ -260,6 +272,7 @@ FUNCTION_MAP = {
     FunctionType.REGEXP_REPLACE: lambda x: f"REGEXP_REPLACE({x[0]},{x[1]}, {x[2]})",
     FunctionType.TRIM: lambda x: f"TRIM({x[0]})",
     FunctionType.REPLACE: lambda x: f"REPLACE({x[0]},{x[1]},{x[2]})",
+    FunctionType.HASH: lambda x: hash_from_args(x[0], x[1]),
     # FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
     # date types
     FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc({x[0]},{x[1]})",

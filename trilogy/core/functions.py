@@ -928,6 +928,12 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type=DataType.TIMESTAMP,
         arg_count=1,
     ),
+    FunctionType.HASH: FunctionConfig(
+        valid_inputs={DataType.STRING,},
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.STRING,
+        arg_count=2,
+    ),
 }
 
 EXCLUDED_FUNCTIONS = {

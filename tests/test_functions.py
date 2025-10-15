@@ -168,7 +168,7 @@ def test_date_functions(test_environment):
 
     for dialect in TEST_DIALECTS:
         engine = None
-        if isinstance(dialect, BigqueryDialect):
+        if isinstance(dialect, DuckDBDialect):
             engine = Dialects.DUCK_DB.default_executor(environment=test_environment)
         dialect.compile_statement(process_query(test_environment, select))
         if engine:
@@ -308,16 +308,45 @@ def test_string_functions(test_environment):
     property regex_replace <- regexp_replace(category_name, 'a', 'b');
 
     select
+        category_id,
         test_name,
         upper_name,
         lower_name,
         substring_name,
         strpos_name,
+        like_name,
+        like_alt,
+        regex_contains,
+        regex_substring,
+        regex_replace,
+        hash(category_name, md5) -> hash_md5,
+        hash(category_name, sha1) -> hash_sha1,
+        hash(category_name, sha256) -> hash_sha256,
+        # hash(category_name, sha512) -> hash_sha512
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
     for dialect in TEST_DIALECTS:
+        engine = None
+        if isinstance(dialect, DuckDBDialect):
+            engine = Dialects.DUCK_DB.default_executor(environment=test_environment)
         dialect.compile_statement(process_query(test_environment, select))
+        if engine:
+            engine.execute_raw_sql(
+                """CREATE TABLE tblCategory AS
+SELECT 
+    2 category_id,
+    'category_a' as category_name
+UNION ALL
+SELECT 
+    3 category_id,
+    'category_b' as category_name;"""
+            )
+            results = engine.execute_query(select)
+            assert results
+            assert results.fetchall()
+    
+
 
 
 def test_case_function(test_environment):
