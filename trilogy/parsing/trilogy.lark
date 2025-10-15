@@ -113,7 +113,7 @@
     filter_item: _filter_base | _filter_alt
 
     // rank/lag/lead
-    WINDOW_TYPE: ("row_number"i|"rank"i|"lag"i|"lead"i | "sum"i | "avg"i | "max"i | "min"i )  /[\s]+/
+    WINDOW_TYPE: ("row_number"i|"rank"i|"lag"i|"lead"i | "sum"i | "avg"i | "max"i | "min"i | "count"i  )  /[\s]+/
 
     window_item_over: ("OVER"i over_list)
    
@@ -323,8 +323,10 @@
     _ARRAY_TRANSFORM.1: "array_transform("i
     transform_lambda: "@" IDENTIFIER
     farray_transform: _ARRAY_TRANSFORM expr ","  transform_lambda   ")"
+    _ARRAY_FILTER.1: "array_filter("i
+    farray_filter: _ARRAY_FILTER expr "," transform_lambda ")"
 
-    _array_functions: farray_sum | farray_distinct | farray_sort | farray_transform | farray_to_string
+    _array_functions: farray_sum | farray_distinct | farray_sort | farray_transform | farray_to_string | farray_filter
 
     //map_functions
     _MAP_KEYS.1: "map_keys("i
@@ -358,11 +360,13 @@
     min: _MIN expr ")"
     _ARRAY_AGG.1: "array_agg("i
     array_agg: _ARRAY_AGG expr ")"
+    _ANY.1: "any("i
+    any: _ANY expr ")"
     
     //aggregates can force a grain
     aggregate_all: "*"
     aggregate_over: ("BY"i (aggregate_all | over_list))
-    aggregate_functions: (count | count_distinct | sum | avg | max | min | array_agg) aggregate_over?
+    aggregate_functions: (count | count_distinct | sum | avg | max | min | array_agg | any) aggregate_over?
 
     // date functions
     _DATE.1: "date("i
@@ -405,8 +409,10 @@
     fdate_sub: _DATE_SUB expr "," DATE_PART "," expr ")"
     _DATE_DIFF.1: "date_diff("i
     fdate_diff: _DATE_DIFF expr "," expr "," DATE_PART ")"
+    _DATE_SPINE.1: "date_spine("i
+    fdate_spine: _DATE_SPINE expr "," expr  ")"
     
-    _date_functions: fdate | fdate_add | fdate_sub | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday |fday_name | fday_of_week | fweek | fmonth | fmonth_name | fquarter | fyear | fdate_part | fdate_trunc
+    _date_functions: fdate | fdate_add | fdate_sub | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday |fday_name | fday_of_week | fweek | fmonth | fmonth_name | fquarter | fyear | fdate_part | fdate_trunc | fdate_spine
     
     _static_functions:  _string_functions | _math_functions | _array_functions | _map_functions
 
@@ -434,7 +440,7 @@
     
     float_lit: /\-?[0-9]*\.[0-9]+/
 
-    array_lit: "[" (literal ",")* literal ","? "]"()
+    array_lit: "[" (expr ",")* expr ","? "]"()
 
     tuple_lit: "(" (literal ",")* literal ","? ")"
 

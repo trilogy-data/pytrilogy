@@ -96,6 +96,8 @@ def build_parent_concepts(
                 continue
         elif global_filter_is_local_filter:
             same_filter_optional.append(x)
+            # also append it to the parent row concepts
+            parent_row_concepts.append(x)
 
     # sometimes, it's okay to include other local optional above the filter
     # in case it is, prep our list
@@ -204,11 +206,16 @@ def gen_filter_node(
             f"{padding(depth)}{LOGGER_PREFIX} filter node row parents {[x.address for x in parent_row_concepts]} could not be found"
         )
         return None
+    else:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} filter node has row parents {[x.address for x in parent_row_concepts]} from node with output [{[x.address for x in row_parent.output_concepts]}] partial {row_parent.partial_concepts}"
+        )
     if global_filter_is_local_filter:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} filter node conditions match global conditions adding row parent {row_parent.output_concepts} with condition {where.conditional}"
         )
         row_parent.add_parents(core_parent_nodes)
+        # all local optional will be in the parent already, so we can set outputs
         row_parent.set_output_concepts([concept] + local_optional)
         return row_parent
     if optimized_pushdown:

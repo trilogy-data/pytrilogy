@@ -1,4 +1,7 @@
+from pytest import raises
+
 from trilogy import Dialects
+from trilogy.core.exceptions import InvalidSyntaxException
 
 
 def test_array():
@@ -32,6 +35,45 @@ def test_array_agg():
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 1
     assert results[0] == ([1, 2, 3, 3, 4, 5],)  # aggregated_values
+
+
+def test_array_filter():
+    test_executor = Dialects.DUCK_DB.default_executor()
+    test_select = """
+    const num_list <- [1,2,3,3,4,5];
+
+    def filter(x) -> x > 2;
+
+    SELECT
+        array_filter(num_list, @filter) AS filtered_values,
+    ;"""
+
+    results = list(test_executor.execute_text(test_select)[0].fetchall())
+    assert len(results) == 1
+    assert results[0] == ([3, 3, 4, 5],)  # filtered_values
+
+    with raises(InvalidSyntaxException) as e:
+        test_select_invalid = """
+        const num<- 5;
+
+        SELECT
+            array_filter(num, @filter) AS filtered_values,
+        ;"""
+        list(test_executor.execute_text(test_select_invalid)[0].fetchall())
+    assert (
+        str(e.value)
+        == f"Array filter function must be applied to an array, not INTEGER"
+    )
+    with raises(InvalidSyntaxException) as e:
+
+        test_select_invalid = """
+
+        def filter(x, y) -> x > 2;
+        SELECT
+            array_filter(num_list, @filter) AS filtered_values,
+        ;"""
+        list(test_executor.execute_text(test_select_invalid)[0].fetchall())
+    assert str(e.value) == "Array filter function must have exactly one argument;"
 
 
 def test_transform():

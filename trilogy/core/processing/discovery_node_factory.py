@@ -187,7 +187,7 @@ def _generate_aggregate_node(ctx: NodeGenerationContext) -> StrategyNode | None:
 
     logger.info(
         f"{depth_to_prefix(ctx.depth)}{LOGGER_PREFIX} "
-        f"for {ctx.concept.address}, generating aggregate node with {agg_optional}"
+        f"for {ctx.concept.address}, generating aggregate node with optional {agg_optional}"
     )
 
     return gen_group_node(
@@ -441,7 +441,7 @@ def generate_node(
     depth: int,
     source_concepts: SearchConceptsType,
     history: History,
-    accept_partial: bool = False,
+    accept_partial: bool,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
 

@@ -194,6 +194,13 @@ FUNCTION_MAP = {
     FunctionType.INDEX_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.MAP_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.UNNEST: lambda x: f"unnest({x[0]})",
+    FunctionType.DATE_SPINE: lambda x: f"""unnest(
+        generate_series(
+            {x[0]},
+            {x[1]},
+            INTERVAL '1 day'
+        )
+    )""",
     FunctionType.RECURSE_EDGE: lambda x: f"CASE WHEN {x[1]} IS NULL THEN {x[0]} ELSE {x[1]} END",
     FunctionType.ATTR_ACCESS: lambda x: f"""{x[0]}.{x[1].replace("'", "")}""",
     FunctionType.STRUCT: lambda x: f"{{{', '.join(struct_arg(x))}}}",
@@ -212,6 +219,9 @@ FUNCTION_MAP = {
     ),
     FunctionType.ARRAY_TO_STRING: lambda args: (
         f"array_to_string({args[0]}, {args[1]})"
+    ),
+    FunctionType.ARRAY_FILTER: lambda args: (
+        f"array_filter({args[0]}, {args[1]} -> {args[2]})"
     ),
     # math
     FunctionType.ADD: lambda x: " + ".join(x),
@@ -237,6 +247,7 @@ FUNCTION_MAP = {
     FunctionType.AVG: lambda x: f"avg({x[0]})",
     FunctionType.MAX: lambda x: f"max({x[0]})",
     FunctionType.MIN: lambda x: f"min({x[0]})",
+    FunctionType.ANY: lambda x: f"any_value({x[0]})",
     # string types
     FunctionType.LIKE: lambda x: f" {x[0]} like {x[1]} ",
     FunctionType.UPPER: lambda x: f"UPPER({x[0]}) ",
@@ -285,6 +296,7 @@ FUNCTION_GRAIN_MATCH_MAP = {
     FunctionType.AVG: lambda args: f"{args[0]}",
     FunctionType.MAX: lambda args: f"{args[0]}",
     FunctionType.MIN: lambda args: f"{args[0]}",
+    FunctionType.ANY: lambda args: f"{args[0]}",
 }
 
 

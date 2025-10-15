@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import networkx as nx
-from pytest import raises
+from pytest import mark, raises
 
 from trilogy import Dialects
 from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
@@ -1949,18 +1949,7 @@ def test_connection_management():
 
 
 def test_proper_basic_unnest_handling():
-    """const prime <- unnest([2, 3, 5, 7, 11, 13, 17, 19, 23, 29]);
 
-    def cube_plus_one(x) -> (x * x * x + 1);
-
-    WHERE
-        @cube_plus_one(prime) % 7 = 0
-    SELECT
-        prime,
-        @cube_plus_one(prime) as prime_cubed_plus_one
-    ORDER BY
-        prime asc
-    LIMIT 10;"""
     executor = Dialects.DUCK_DB.default_executor()
     test = """const prime <- unnest([2, 3, 5, 7, 11, 13, 17, 19, 23, 29]);
 
@@ -1983,3 +1972,123 @@ LIMIT 10;"""
     results = executor.execute_text(test)[-1].fetchall()
 
     assert len(results) == 5
+
+
+@mark.skip("Date spine not yet supported")
+def test_date_spine():
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    executor = Dialects.DUCK_DB.default_executor()
+    with executor.generator.rendering.temporary(parameters=False):
+        test = """key prime date;
+        property prime.val int;
+        datasource primes(  
+            prime,
+            val
+        )
+        grain(prime)
+        query '''
+    SELECT current_date AS prime, 2 as  val
+    UNION ALL
+    SELECT current_date - INTERVAL 1 DAY AS prime, 1 as  val
+    UNION ALL
+    SELECT current_date - INTERVAL 1 DAY AS prime, 3 as  val
+    UNION ALL
+    SELECT current_date - INTERVAL 2 DAY AS prime, 3 as  val
+    UNION ALL
+    SELECT current_date - INTERVAL 3 DAY AS prime, 4 as  val
+    UNION ALL
+    SELECT current_date - INTERVAL 10 DAY AS prime, 5 as  val
+        '''
+        ;
+
+
+        auto first_date <- min(prime) by *;
+        auto last_date <- max(prime) by *;
+
+        SELECT
+            date_spine(prime, current_date()) as filled_in_dates,
+            sum val order by filled_in_dates asc -> day_count
+        ;
+        """
+        sql = executor.generate_sql(executor.parse_text(test)[-1])
+        results = executor.execute_text(test)[-1].fetchall()
+
+        assert len(results) == 8, sql
+
+
+def test_date_spine_merge():
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    executor = Dialects.DUCK_DB.default_executor()
+    with executor.generator.rendering.temporary(parameters=False):
+        test = """key prime date;
+        property prime.val int;
+        datasource primes(  
+            prime,
+            val
+        )
+        grain(prime)
+        query '''
+    SELECT current_date AS prime, 2 as  val
+    UNION ALL
+    SELECT current_date - INTERVAL 1 DAY AS prime, 1 as  val
+    UNION ALL
+    SELECT current_date - INTERVAL 1 DAY AS prime, 3 as  val
+    UNION ALL
+    SELECT current_date - INTERVAL 2 DAY AS prime, 3 as  val
+    UNION ALL
+    SELECT current_date - INTERVAL 3 DAY AS prime, 4 as  val
+    UNION ALL
+    SELECT current_date - INTERVAL 10 DAY AS prime, 5 as  val
+        '''
+        ;
+
+
+        auto base_spine <- date_spine(date_add(current_date(), day, -10), current_date());
+
+        merge prime into ~base_spine;
+
+        SELECT
+            base_spine,
+            sum sum(val) by base_spine order by base_spine asc -> day_count
+        ;
+        """
+        sql = executor.generate_sql(executor.parse_text(test)[-1])
+        results = executor.execute_text(test)[-1].fetchall()
+
+        assert results[-1].day_count == 18, sql
+
+
+def test_const_equivalence_merge():
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    executor = Dialects.DUCK_DB.default_executor()
+    with executor.generator.rendering.temporary(parameters=False):
+        test = """key orid int;
+        auto orid_2 <- unnest([1,2,3,4,5]);
+
+        property orid.val int;
+
+        datasource orders (
+            ~orid,
+            val
+        )
+        grain (orid)
+        query '''
+        select 1 as orid, 10 as val
+        union all
+        select 2, 20
+        ''';
+
+        merge orid into ~orid_2;
+
+        select orid_2, val;
+        """
+
+        sql = executor.generate_sql(executor.parse_text(test)[-1])
+        results = executor.execute_text(test)[-1].fetchall()
+        assert len(results) == 5, sql

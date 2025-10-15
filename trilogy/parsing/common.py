@@ -91,7 +91,7 @@ def process_function_arg(
         # to simplify anonymous function handling
         if (
             arg.operator not in FunctionClass.AGGREGATE_FUNCTIONS.value
-            and arg.operator != FunctionType.UNNEST
+            and arg.operator not in FunctionClass.ONE_TO_MANY.value
         ):
             return arg
         id_hash = string_to_hash(str(arg))
@@ -311,13 +311,18 @@ def concept_is_relevant(
     if concept.purpose in (Purpose.METRIC,):
         if all([c in others for c in concept.grain.components]):
             return False
+    if (
+        concept.derivation in (Derivation.BASIC,)
+        and isinstance(concept.lineage, Function)
+        and concept.lineage.operator == FunctionType.DATE_SPINE
+    ):
+        return True
     if concept.derivation in (Derivation.BASIC,) and isinstance(
         concept.lineage, (Function, CaseWhen)
     ):
         relevant = False
         for arg in concept.lineage.arguments:
             relevant = atom_is_relevant(arg, others, environment) or relevant
-
         return relevant
     if concept.derivation in (Derivation.BASIC,) and isinstance(
         concept.lineage, Parenthetical
@@ -529,7 +534,7 @@ def function_to_concept(
     elif parent.operator == FunctionType.UNION:
         derivation = Derivation.UNION
         granularity = Granularity.MULTI_ROW
-    elif parent.operator == FunctionType.UNNEST:
+    elif parent.operator in FunctionClass.ONE_TO_MANY.value:
         derivation = Derivation.UNNEST
         granularity = Granularity.MULTI_ROW
     elif parent.operator == FunctionType.RECURSE_EDGE:

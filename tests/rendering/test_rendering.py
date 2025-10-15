@@ -1067,3 +1067,25 @@ select group(1) by x as test;
     for idx, cmd in enumerate(commands):
         rendered = Renderer(environment=env).to_string(cmd)
         assert rendered == expected[idx], rendered
+
+
+def test_render_alias():
+    basic = Environment()
+
+    env, commands = basic.parse(
+        """
+
+key x int;
+
+select x as x2;
+"""
+    )
+    expected = [
+        """key x int;""",
+        """SELECT
+    x -> x2,
+;""",
+    ]
+    for idx, cmd in enumerate(commands):
+        rendered = Renderer(environment=env).to_string(cmd)
+        assert rendered == expected[idx], rendered

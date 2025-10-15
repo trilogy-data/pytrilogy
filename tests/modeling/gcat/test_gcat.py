@@ -1,8 +1,12 @@
+from logging import INFO
 from pathlib import Path
 
 from trilogy import Dialects, Environment, Executor
+from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.env_processor import concept_to_node, generate_graph
 from trilogy.core.exceptions import ModelValidationError
+from trilogy.core.models.author import Grain
+from trilogy.core.models.build import BuildGrain
 from trilogy.core.models.core import DataType
 from trilogy.core.processing.node_generators.node_merge_node import (
     determine_induced_minimal_nodes,
@@ -281,6 +285,60 @@ launch_filter,
 order by launch_filter asc
 ;"""
     )
+
+
+def test_environment_cleanup_multiselect():
+    """
+    Test to ensure that the environment cleanup works correctly.
+    """
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+    base = Dialects.DUCK_DB.default_executor(environment=env)
+    base.parse_text(
+        """import satcat;
+auto launches <- count(jcat?  owner.code = 'PLAN') by launch_date;
+auto decoms <- count(jcat ? decom_date is not null and owner.code = 'PLAN' ) by decom_date;
+
+key launch_spine <- date_spine(date_add(current_date(), day, -6000), current_date());
+key decom_spine <- date_spine(date_add(current_date(), day, -6000), current_date());
+
+merge launch_date into ~launch_spine;
+merge decom_date into ~decom_spine;
+        """
+    )
+    pre_concepts = set(base.environment.concepts.keys())
+    queries = base.parse_text(
+        """
+select
+    launch_spine,
+    sum launches order by launch_spine asc as cumulative_launches,
+having
+    cumulative_launches >1
+merge
+select
+    decom_spine,
+    sum decoms order by decom_spine asc as cumulative_decoms,
+having cumulative_decoms >1
+align date:launch_spine,decom_spine;
+        """
+    )
+
+    query = queries[-1]
+    assert "local.date" in query.locally_derived
+    assert base.environment.concepts["local.date"].datatype == DataType.DATE
+    assert "local.date" in query.locally_derived
+    assert "local.date.month" in base.environment.concepts
+    for c in query.locally_derived:
+        base.environment.remove_concept(c)
+    post_concepts = set(base.environment.concepts.keys())
+    assert (
+        pre_concepts == post_concepts
+    ), f"Environment cleanup did not remove locally derived concepts: {post_concepts - pre_concepts}"
+
+    # check we can materialize it safely
+    assert "local.date.month" not in base.environment.concepts
+    base.environment.materialize_for_select()
 
 
 def test_join_inclusion():
@@ -904,3 +962,218 @@ LIMIT 10
     CASE"""
         in sql[0]
     ), sql[0]
+
+
+def test_wrong_global_join_agg(gcat_env: Executor):
+    from logging import INFO
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook(level=INFO)
+
+    base = gcat_env
+    queries = base.parse_text(
+        """import satcat;
+import std.color;
+
+
+where owner.code = 'PLAN'
+select
+
+    array_agg( struct(
+        bus -> bus_name, count(jcat) by bus ->bus_count
+    )) as per_bus_counts,
+        # count(jcat) by * as total_satellites,
+;
+"""
+    )
+    sql = base.generate_sql(queries[-1])
+    # assert base.environment.concepts["per_bus_counts"].
+    assert '''"highfalutin"."bus" = "quizzical"."bus"''' not in sql[0], sql[0]
+
+
+def test_merge_with_filter(gcat_env: Executor):
+    from logging import INFO
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook(level=INFO)
+    base = gcat_env
+    queries = base.parse_text(
+        """
+import satcat;
+where owner.code = 'PLAN'
+select
+launch_date, 
+sum case when jcat is not null then 1 else 0 end order by launch_date asc as running_total
+merge
+select
+decom_date,
+sum case when jcat is not null then 1 else 0 end order by decom_date asc as running_decom
+align
+    display_date: launch_date,decom_date
+;
+"""
+    )
+    sql = base.generate_sql(queries[-1])
+    results = base.execute_query(queries[-1])
+    assert len(results.fetchall()) > 0, sql
+
+
+def test_date_spine(gcat_env: Executor):
+
+    DebuggingHook(level=INFO)
+    base = gcat_env
+    queries = base.parse_text(
+        """import satcat;
+const target_company <- 'PLAN';
+
+auto launches <- count(jcat ? owner.code = target_company) by launch_date;
+
+key chart_spine <- date_spine(date_add(current_date(), day, -60), current_date());
+
+merge launch_date into ~chart_spine;
+
+where launch.org.name like '%Rocket%'
+select
+    chart_spine,
+    launches
+having
+    chart_spine >= date_add(current_date(), day, -60)
+order by
+    chart_spine asc;
+    """
+    )
+
+    assert base.environment.concepts["chart_spine"].purpose == Purpose.KEY
+    assert base.environment.concepts["chart_spine"].derivation == Derivation.UNNEST
+    assert base.environment.concepts["chart_spine"].granularity == Granularity.MULTI_ROW
+    assert (
+        "local.chart_spine" in base.environment.datasources["satcat"].partial_concepts
+    )
+    assert Grain.from_concepts(
+        [base.environment.concepts["chart_spine"]], environment=base.environment
+    ).components == {
+        "local.chart_spine",
+    }
+    build_env = base.environment.materialize_for_select()
+    assert build_env.concepts["local.chart_spine"].purpose == Purpose.KEY
+    assert build_env.concepts["local.chart_spine"].derivation == Derivation.UNNEST
+    assert build_env.concepts["local.chart_spine"].granularity == Granularity.MULTI_ROW
+    assert BuildGrain.from_concepts(
+        ["local.chart_spine"], environment=build_env
+    ).components == {
+        "local.chart_spine",
+    }
+    sql = base.generate_sql(queries[-1])
+    results = base.execute_query(queries[-1]).fetchall()
+    assert len(results) == 61, sql
+
+
+def test_date_spine_local_filter(gcat_env: Executor):
+
+    DebuggingHook(level=INFO)
+
+    base = gcat_env
+    queries = base.parse_text(
+        """import satcat;   
+        import satcat;
+
+auto launches <- count(jcat?  owner.code = 'PLAN') by launch_date;
+
+key launch_spine <- date_spine(date_add(current_date(), day, -6000), current_date());
+
+merge launch_date into ~launch_spine;
+
+select
+    launch_spine,
+    sum launches order by launch_spine asc as cumulative_launches,
+having
+    cumulative_launches >1
+;
+"""
+    )
+
+    sql = base.generate_sql(queries[-1])
+    results = base.execute_query(queries[-1]).fetchall()
+    assert len(results) > 100, sql
+
+
+def test_recursion_error(gcat_env: Executor):
+    from logging import INFO
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook(level=INFO)
+
+    base = gcat_env
+    queries = base.parse_text(
+        """import satcat;
+        def sort(x)-> x.bus_count;
+
+select
+    --count(owner.name)  as owner_count,
+    case 
+        when owner_count>1 then 'Many (' || owner_count::string || ')' 
+        else any(owner.name) 
+        end as 
+    headline_name,
+    count(jcat ? decom_date is null) as total_satellites,
+    count(jcat ? decom_date is not null) as decommed_satellites,
+    array_sort(array_agg( struct(   
+        bus -> bus_name, count(jcat) by bus ->bus_count
+    )),desc) as per_bus_counts,
+    min(launch_date)::string as first_launch,
+    max(launch_date)::string as last_launch
+
+;
+"""
+    )
+    headline_name = base.environment.concepts["headline_name"]
+    assert headline_name.purpose == Purpose.PROPERTY
+
+    sql = base.generate_sql(queries[-1])
+    results = base.execute_query(queries[-1])
+    assert len(results.fetchall()) == 1, sql
+
+
+def test_extra_filter(gcat_env: Executor):
+    from logging import INFO
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook(level=INFO)
+
+    base = gcat_env
+    queries = base.parse_text(
+        """import satcat;
+
+
+auto launches <- count(jcat ? base_category = 'P') by launch_date;
+auto decoms <- count(jcat ? decom_date is not null and base_category = 'P'  ) by decom_date;
+
+key launch_spine <- date_spine(date_add(current_date(), day, -60000), current_date());
+key decom_spine <- date_spine(date_add(current_date(), day, -60000), current_date());
+
+
+merge launch_date into ~launch_spine;
+merge decom_date into ~decom_spine;
+
+
+select
+    launch_spine,
+    sum launches order by launch_spine asc as cumulative_launches,
+having
+    cumulative_launches >=1
+merge
+select
+    decom_spine,
+    sum decoms order by decom_spine asc as cumulative_decoms,
+having cumulative_decoms >=1
+align date:launch_spine,decom_spine;
+"""
+    )
+    sql = base.generate_sql(queries[-1])
+    results = base.execute_query(queries[-1])
+    assert len(results.fetchall()) > 0, sql
+    assert "date_add(current_date(), -60000 * INTERVAL 1 day)," in sql[0], sql[0]

@@ -212,6 +212,14 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type_function=get_unnest_output_type,
         arg_count=1,
     ),
+    FunctionType.DATE_SPINE: FunctionConfig(
+        valid_inputs={
+            DataType.DATE,
+        },
+        output_purpose=Purpose.KEY,
+        output_type=DataType.DATE,
+        arg_count=2,
+    ),
     FunctionType.RECURSE_EDGE: FunctionConfig(
         arg_count=2,
     ),
@@ -307,6 +315,18 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         arg_count=2,
     ),
     FunctionType.ARRAY_TRANSFORM: FunctionConfig(
+        valid_inputs=[
+            {
+                DataType.ARRAY,
+            },
+            {*DataType},
+            {*DataType},
+        ],
+        output_purpose=Purpose.PROPERTY,
+        output_type_function=get_transform_output_type,
+        arg_count=3,
+    ),
+    FunctionType.ARRAY_FILTER: FunctionConfig(
         valid_inputs=[
             {
                 DataType.ARRAY,
@@ -885,6 +905,11 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type_function=lambda args: ArrayType(
             type=merge_datatypes([arg_to_datatype(x) for x in args])
         ),
+        arg_count=1,
+    ),
+    FunctionType.ANY: FunctionConfig(
+        valid_inputs={*DataType},
+        output_purpose=Purpose.PROPERTY,
         arg_count=1,
     ),
     FunctionType.AVG: FunctionConfig(

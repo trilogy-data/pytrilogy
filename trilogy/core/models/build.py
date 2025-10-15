@@ -134,8 +134,9 @@ def concept_is_relevant(
     if concept.purpose in (Purpose.METRIC,):
         if all([c in others for c in concept.grain.components]):
             return False
+    if concept.derivation in (Derivation.UNNEST,):
+        return True
     if concept.derivation in (Derivation.BASIC,):
-
         return any(concept_is_relevant(c, others) for c in concept.concept_arguments)
     if concept.granularity == Granularity.SINGLE_ROW:
         return False
@@ -1668,7 +1669,6 @@ class Factory:
                     valid_inputs=base.valid_inputs,
                     arg_count=base.arg_count,
                 )
-
         new = BuildFunction(
             operator=base.operator,
             arguments=[self.handle_constant(self.build(c)) for c in raw_args],
@@ -1724,6 +1724,14 @@ class Factory:
         return self._build_concept(base)
 
     def _build_concept(self, base: Concept) -> BuildConcept:
+        try:
+            return self.__build_concept(base)
+        except RecursionError as e:
+            raise RecursionError(
+                f"Recursion error building concept {base.address}. This is likely due to a circular reference."
+            ) from e
+
+    def __build_concept(self, base: Concept) -> BuildConcept:
         # TODO: if we are using parameters, wrap it in a new model and use that in rendering
         if base.address in self.local_concepts:
             return self.local_concepts[base.address]
@@ -2001,6 +2009,13 @@ class Factory:
 
     def _build_tuple_wrapper(self, base: TupleWrapper) -> TupleWrapper:
         return TupleWrapper(val=[self.build(x) for x in base.val], type=base.type)
+
+    @build.register
+    def _(self, base: ListWrapper) -> ListWrapper:
+        return self._build_list_wrapper(base)
+
+    def _build_list_wrapper(self, base: ListWrapper) -> ListWrapper:
+        return ListWrapper([self.build(x) for x in base], type=base.type)
 
     @build.register
     def _(self, base: FilterItem) -> BuildFilterItem:

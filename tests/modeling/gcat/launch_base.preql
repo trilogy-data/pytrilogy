@@ -1,0 +1,114 @@
+import platform as platform;
+import vehicle as vehicle;
+import launch_sites as site;
+import organizations as org;
+
+key launch_tag string; # Each rocket launch in the database is labelled with a unique designation. For successful orbital launches, we use the International Designation (also called the COSPAR designation, after the Committee on Space Research which adopted the system.) For other launches, I use a variation on that scheme of my own design. I introduce the generalized concept of `launch designation' to include the International/COSPAR designation and other similar schemes. The term `piece designation' is also introduced to generalize the per-piece (per-cataloged-object) international designation.
+property launch_tag.launch_jd string; # float of launch date on julian calendar
+# property <launch_tag>.launch_date string;
+property launch_tag.flight_id string; #  an identifier for the particular launch, for example the serial number of the launch vehicle or the mission number or name assigned by the launch agency.
+property launch_tag.flight string; #  additional identifers for the launch. For orbital flights, at least one flight/mission/flightode is usually the name of the payload. Some launches have a lot of different designations. I haven't been fully consistent about which name goes in which of the Flight, Mission, FlightCode fields, although usually names in a specific series are in the same column.
+property launch_tag.mission string; #  additional identifers for the launch. For orbital flights, at least one flight/mission/flightode is usually the name of the payload. Some launches have a lot of different designations. I haven't been fully consistent about which name goes in which of the Flight, Mission, FlightCode fields, although usually names in a specific series are in the same column.
+property launch_tag.flight_code string; #  additional identifers for the launch. For orbital flights, at least one flight/mission/flightode is usually the name of the payload. Some launches have a lot of different designations. I haven't been fully consistent about which name goes in which of the Flight, Mission, FlightCode fields, although usually names in a specific series are in the same column.
+# property <launch_tag>.launch_site string;
+property launch_tag.launch_pad string;
+property launch_tag.ascent_site string;
+property launch_tag.ascent_pad string;
+property launch_tag.apogee string; # the highest altitude actually reached, in km. This field may be omitted for orbital launches. In many cases for non-orbital launches the value is a guess based on known capabilities of the launch vehicle, so only values with no appended question-mark should be taken as accurate.
+property launch_tag.apo_flag string;
+property launch_tag.range string; # the range in km measured along the curved surface of the Earth between launch site and impact site, for a suborbital launch. I have only recently added this field and very few entries are filled in.
+property launch_tag.range_flag string;
+property launch_tag.dest string;
+property launch_tag.orb_pay float; # payload in tonnes delivered to orbit
+key _launch_code string;
+property launch_tag.fail_code string;
+property launch_tag.category string;
+property launch_tag.lt_cite string;
+property launch_tag.cite string;
+property launch_tag.notes string;
+property launch_tag.orgs string;
+property _split_orgs <- split(orgs,'/');
+property first_org <- _split_orgs[1];
+
+
+MERGE first_org into ~org.code;
+
+property launch_date <- date_add('1900-01-01'::date,day,CAST((CAST(launch_jd AS float) - 2415021) AS int));
+property success_flag <- CASE
+	WHEN _launch_code = '' THEN null
+	WHEN len(_launch_code) > 1 THEN substring(_launch_code,2,len(_launch_code) - 1)
+	ELSE null
+END; # F|E|O for most cases; F is failure. E is pad issue.
+property was_complete_success <- CASE
+	WHEN success_flag = 'S' THEN True
+	ELSE False
+END; #whether the mission was a complete sucess
+property launch_type_code <- CASE
+	WHEN (_launch_code is null or _launch_code = '') THEN null
+	ELSE substring(_launch_code,1,1)
+END; #O | M | T | A | S | D | H | R | X | Y - see launch_type_label for details
+property launch_type_label <- CASE
+	WHEN launch_type_code is null THEN null
+	WHEN launch_type_code = 'O' THEN 'Orbital'
+	WHEN launch_type_code = 'M' THEN 'Military Missile'
+	WHEN launch_type_code = 'T' THEN 'Test Rocket'
+	WHEN launch_type_code = 'A' THEN 'Atmospheric Rocket'
+	WHEN launch_type_code = 'S' THEN 'Suborbital Rocket'
+	WHEN launch_type_code = 'D' THEN 'Deep Space'
+	WHEN launch_type_code = 'H' THEN 'High-altitude Sounding'
+	WHEN launch_type_code = 'R' THEN 'Reentry Test'
+	WHEN launch_type_code = 'X' THEN 'Launch from other world'
+	WHEN launch_type_code = 'Y' THEN 'Suborbital Spaceplane'
+	ELSE launch_type_code
+END; # interpret the first letter of the existing launch_code into a readable label. Kept as launch_code_label to avoid shadowing the original launch_code property
+metric launch_count <- count(launch_tag); # count of launches
+key orbit_code <- split(category,' ')[2]; # Orbit code definitions (3-letter codes, capitalized):
+# DSO - Deep Space Orbit: Earth orbit with apogee beyond 150,000 km
+# EEO - Earth Escape Orbit
+# GEO - Direct Geosynchronous insertion
+# GTO - Geosynchronous Transfer Orbit
+# HEO - Highly Elliptical Orbit (excludes MTO, MOL, DSO)
+# ISS - International Space Station
+# LEO - Low Earth Orbit (excludes SSO, LSS, ISS)
+# LSS - LEO Space Station (other than ISS)
+# MEO - Medium Earth Orbit
+# MOL - Molniya Orbit
+# MTO - MEO Transfer Orbit (payload performs MEO circularization)
+# SSO - Sun-Synchronous Orbit
+# STO - Supersynchronous Transfer Orbit (apogee > 45,000 km)
+# XO  - Extraterrestrial Launch (e.g., launch from lunar surface)
+
+datasource launch_info (
+    Launch_Tag: launch_tag,
+    Launch_JD: launch_jd,
+    LV_Type: ~vehicle.name,
+    Variant: ~vehicle.variant,
+    Flight_ID: flight_id,
+    Flight: flight,
+    Mission: mission,
+    FlightCode: flight_code,
+    Platform: ~?platform.code,
+    Launch_Site: ~?site.key,
+    Launch_Pad: launch_pad,
+    Ascent_Site: ascent_site,
+    Ascent_Pad: ascent_pad,
+    Apogee: apogee,
+    Apoflag: apo_flag,
+    Range: range,
+    RangeFlag: range_flag,
+    Dest: dest,
+    OrbPay: orb_pay,
+    Agency: orgs,
+    FirstAgency: ~org.code,
+    LaunchCode: _launch_code,
+    FailCode: ?fail_code,
+    Category: category,
+    LTCite: lt_cite,
+    Cite: cite,
+    Notes: notes
+    )
+grain (launch_tag)
+address launch_info;
+
+
+

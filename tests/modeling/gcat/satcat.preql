@@ -1,65 +1,82 @@
+import organizations as manufacturer;
+import organizations as owner;
+import organizations as state;
+import launch_base as launch;
+
+
 #auto-generated datasource from table/view satcat
-key jcat string; # The General Catalog (GCAT) uses an alphanumeric identifier (JCAT, originally Jonathan's Catalog ID) to uniquely tag space objects. The identifier consists of a single prefix letter followed by a sequence number with either 5 or 9 digits (examples: A00022; S101234009). The 9 digit case is not yet in use, but is supported in anticipation of the introduction of 9-digit SATCAT numbers by the US DoD.
-property jcat.satcat string;
-property jcat.launch_tag string;
-property jcat.piece string;
-property jcat.type string;
-property jcat.name string;
-property jcat.pl_name string;
-property jcat.l_date string;
-property jcat.parent string;
-property jcat.s_date string;
-property jcat.primary string;
-property jcat.d_date string;
-property jcat.status string;
-property jcat.dest string;
-property jcat.owner string;
-property jcat.state string;
-property jcat.manufacturer string;
-property jcat.bus string;
-property jcat.motor string;
-property jcat.mass float;
-property jcat.mass_flag string;
-property jcat.dry_mass float;
-property jcat.dry_flag string;
-property jcat.tot_mass float;
-property jcat.tot_flag string;
-property jcat.length float;
-property jcat.l_flag string;
-property jcat.diameter float;
-property jcat.d_flag string;
-property jcat.span float;
-property jcat.span_flag string;
-property jcat.shape string;
-property jcat.o_date string;
-property jcat.perigee int;
-property jcat.pf string;
-property jcat.apogee float;
-property jcat.af string;
-property jcat.inc float;
-property jcat.if string;
-property jcat.op_orbit string;
-property jcat.oqual string;
-property jcat.alt_names string;
+key jcat string; # Alphanumeric identifier to uniquely tag space objects, consisting of a prefix letter and a sequence number.
+property jcat.satcat string; # Corresponds to the US SATCAT number; an integer value or a descriptive string if not present in SATCAT.
+
+property jcat.launch_date date;
+property jcat.decom_date date;
+
+property jcat.piece string; # Piece designation for the object; often matches the Launch Tag.
+property jcat.type string; # Contains SatType string; characterizes the object (P for payload, R for rocket stage, etc.).
+property jcat.name string; # Recommended name based on that used by owner/operator; represents an objects name.
+property jcat.pl_name string; # An alternative name for the object; may indicate radar cross section or unidentified debris.
+
+property jcat.parent string; # Parent object or central body the object is attached to at the start of a phase.
+property jcat.s_date string; # Separation Date; start time for the current phase in UTC.
+property jcat.primary string; # Central body for the current phase; usually Earth.
+
+property jcat.status string; # Event that ends the current phase.
+property jcat.dest string; # Destination of the current phase, could be a reentry location or JCAT identifier of a new parent.
+
+# property jcat.state string; # OrgCode for the country/state of the owner/operator.
+
+key bus string; # Spacecraft bus type; indicates chassis type or standardization.
+property jcat.motor string; # Name of the main thruster or rocket engine; details may be in Engines file.
+property jcat.mass float; # Mass in kg at launch, excluding attached objects; identified if the mass is an estimate.
+property jcat.mass_flag string; # Indicates estimation in mass; '?' implies estimate, accurate to about 20%.
+property jcat.dry_mass float; # Dry mass in kg; proxy for object's mass post active life, not including attached objects.
+property jcat.dry_flag string; # Indicates dry mass estimation; '?' imply it's an estimation.
+property jcat.tot_mass float; # Total mass in kg at launch; for attached GCAT objects, sum should equate to TotMass.
+property jcat.tot_flag string; # Indicates estimation of total mass; '?' symbolizes estimation.
+property jcat.length float; # Longest dimension in metres; if '?', it's a guess within ~20% accuracy.
+property jcat.l_flag string; # Estimation indicator for length; '?' depicts estimation.
+property jcat.diameter float; # Second longest dimension; often second-longest dimension for cross-sectional approximation.
+property jcat.d_flag string; # Diameter estimation indication; '?' signifies guessed measure.
+property jcat.span float; # Largest dimension including all appendages, in metres; stay outside a sphere of Span diameter.
+property jcat.span_flag string; # Span estimation; '?' indicates a guess within ~20% accuracy.
+property jcat.shape string; # Approximate shape description; not a substitute for a CAD model.
+property jcat.o_date string; # Orbit Epoch Date; date format for canonical orbital data.
+property jcat.perigee int; # Perigee height in km of canonical orbit; if '?', value is estimated.
+property jcat.pf string; # Indicator if the perigee is a guess; uses '?' to symbolize.
+property jcat.apogee float; # Apogee height in km; if '?', it’s an estimate.
+property jcat.af string; # Apogee guess indicator; '?' meaning estimation.
+property jcat.inc float; # Inclination of orbit in degrees; if '?', signifies estimation.
+property jcat.if string; # Orbit inclination estimation; '?' means it's an estimation.
+property jcat.op_orbit string; # Orbit type of the canonical orbit.
+property jcat.oqual string; # Orbit Quality Note; where the orbit data was sourced from.
+property jcat.alt_names string; # Comma-delimited list of alternative names for the space object.
+
+auto base_category <- substring(split(type, ' ')[1],1,1); #P	Payload (for orbital attempt)
+#C	Component
+#R	Launch vehicle stage
+#D	Fragmentation debris
+#S	Suborbital payload (e.g. sounding rocket payload or missile reentry vehicle)
+#X	Catalog entry that has been deleted (used in auxcat etc.)
+#Z	Spurious catalog entry (was in SATCAT, perhaps in TLEs, but there was no real object)
 
 datasource satcat (
     JCAT: jcat,
     Satcat: satcat,
-    Launch_Tag: launch_tag,
+    Launch_Tag: ~launch.launch_tag,
     Piece: piece,
     Type: type,
     Name: name,
     PLName: pl_name,
-    LDate: l_date,
+    LDate: ?launch_date,
     Parent: parent,
     SDate: s_date,
     Primary: primary,
-    DDate: d_date,
+    DDate: ?decom_date,
     Status: status,
     Dest: dest,
-    Owner: owner,
-    State: state,
-    Manufacturer: manufacturer,
+    Owner: ~owner.code,
+    State: ~state.code,
+    Manufacturer: ~manufacturer.code,
     Bus: bus,
     Motor: motor,
     Mass: mass,

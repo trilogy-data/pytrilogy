@@ -306,7 +306,12 @@ def evaluate_loop_conditions(
 
 
 def check_for_early_exit(
-    complete, partial, missing, context: LoopContext, priority_concept: BuildConcept
+    complete: ValidationResult,
+    found: set[str],
+    partial: set[str],
+    missing: set[str],
+    context: LoopContext,
+    priority_concept: BuildConcept,
 ) -> bool:
     if complete == ValidationResult.INCOMPLETE_CONDITION:
         cond_dict = {str(node): node.preexisting_conditions for node in context.stack}
@@ -331,8 +336,18 @@ def check_for_early_exit(
                 f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Breaking as we have attempted all nodes"
             )
             return True
+        elif all(
+            [
+                x.address in found and x.address not in partial
+                for x in context.mandatory_list
+            ]
+        ):
+            logger.info(
+                f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Breaking as we have found all mandatory nodes without partials"
+            )
+            return True
         logger.info(
-            f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Found complete stack with partials {partial}, continuing search, attempted {context.attempted} all {len(context.mandatory_list)}"
+            f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Found complete stack with partials {partial}, continuing search, attempted {context.attempted} of total {len(context.mandatory_list)}."
         )
     else:
         logger.info(
@@ -436,6 +451,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
             context.original_mandatory,
             context.environment,
             non_virtual_difference_values,
+            depth=context.depth,
         )
 
     return group_if_required_v2(
@@ -443,6 +459,7 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
         context.original_mandatory,
         context.environment,
         non_virtual_difference_values,
+        depth=context.depth,
     )
 
 
@@ -466,6 +483,7 @@ def _search_concepts(
         conditions=conditions,
     )
 
+    # if we get a can
     if candidate:
         return candidate
     context = initialize_loop_context(
@@ -477,13 +495,14 @@ def _search_concepts(
         accept_partial=accept_partial,
         conditions=conditions,
     )
-
+    partial: set[str] = set()
     while context.incomplete:
 
         priority_concept = get_priority_concept(
             context.mandatory_list,
             context.attempted,
             found_concepts=context.found,
+            partial_concepts=partial,
             depth=depth,
         )
 
@@ -538,7 +557,7 @@ def _search_concepts(
         # assign
         context.found = found_c
         early_exit = check_for_early_exit(
-            complete, partial, missing_c, context, priority_concept
+            complete, found_c, partial, missing_c, context, priority_concept
         )
         if early_exit:
             break
@@ -608,4 +627,4 @@ def source_query_concepts(
     logger.info(
         f"{depth_to_prefix(0)}{LOGGER_PREFIX} final concepts are {[x.address for x in final]}"
     )
-    return group_if_required_v2(root, output_concepts, environment)
+    return group_if_required_v2(root, output_concepts, environment, depth=0)

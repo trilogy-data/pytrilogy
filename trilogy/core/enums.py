@@ -169,6 +169,7 @@ class FunctionType(Enum):
     ARRAY_SORT = "array_sort"
     ARRAY_TRANSFORM = "array_transform"
     ARRAY_TO_STRING = "array_to_string"
+    ARRAY_FILTER = "array_filter"
 
     # MAP
     MAP_KEYS = "map_keys"
@@ -204,6 +205,7 @@ class FunctionType(Enum):
     MIN = "min"
     AVG = "avg"
     ARRAY_AGG = "array_agg"
+    ANY = "any"
 
     # String
     LIKE = "like"
@@ -244,6 +246,7 @@ class FunctionType(Enum):
     DATE_ADD = "date_add"
     DATE_SUB = "date_sub"
     DATE_DIFF = "date_diff"
+    DATE_SPINE = "date_spine"
 
     # UNIX
     UNIX_TO_TIMESTAMP = "unix_to_timestamp"
@@ -263,6 +266,7 @@ class FunctionClass(Enum):
         FunctionType.ARRAY_AGG,
         FunctionType.COUNT,
         FunctionType.COUNT_DISTINCT,
+        FunctionType.ANY,
     ]
     SINGLE_ROW = [
         FunctionType.CONSTANT,
@@ -270,7 +274,7 @@ class FunctionClass(Enum):
         FunctionType.CURRENT_DATETIME,
     ]
 
-    ONE_TO_MANY = [FunctionType.UNNEST]
+    ONE_TO_MANY = [FunctionType.UNNEST, FunctionType.DATE_SPINE]
 
     RECURSIVE = [FunctionType.RECURSE_EDGE]
 
