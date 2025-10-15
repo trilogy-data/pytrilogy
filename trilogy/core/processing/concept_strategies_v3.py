@@ -306,7 +306,7 @@ def evaluate_loop_conditions(
 
 
 def check_for_early_exit(
-    complete: set[str],
+    complete: ValidationResult,
     found: set[str],
     partial: set[str],
     missing: set[str],

@@ -323,8 +323,10 @@
     _ARRAY_TRANSFORM.1: "array_transform("i
     transform_lambda: "@" IDENTIFIER
     farray_transform: _ARRAY_TRANSFORM expr ","  transform_lambda   ")"
+    _ARRAY_FILTER.1: "array_filter("i
+    farray_filter: _ARRAY_FILTER expr "," transform_lambda ")"
 
-    _array_functions: farray_sum | farray_distinct | farray_sort | farray_transform | farray_to_string
+    _array_functions: farray_sum | farray_distinct | farray_sort | farray_transform | farray_to_string | farray_filter
 
     //map_functions
     _MAP_KEYS.1: "map_keys("i

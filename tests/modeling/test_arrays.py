@@ -34,6 +34,22 @@ def test_array_agg():
     assert results[0] == ([1, 2, 3, 3, 4, 5],)  # aggregated_values
 
 
+def test_array_filter():
+    test_executor = Dialects.DUCK_DB.default_executor()
+    test_select = """
+    const num_list <- [1,2,3,3,4,5];
+
+    def filter(x) -> x > 2;
+
+    SELECT
+        array_filter(num_list, @filter) AS filtered_values,
+    ;"""
+
+    results = list(test_executor.execute_text(test_select)[0].fetchall())
+    assert len(results) == 1
+    assert results[0] == ([3, 3, 4, 5],)  # filtered_values
+
+
 def test_transform():
     test_executor = Dialects.DUCK_DB.default_executor()
     test_select = """

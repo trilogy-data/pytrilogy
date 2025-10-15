@@ -326,6 +326,18 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type_function=get_transform_output_type,
         arg_count=3,
     ),
+    FunctionType.ARRAY_FILTER: FunctionConfig(
+        valid_inputs=[
+            {
+                DataType.ARRAY,
+            },
+            {*DataType},
+            {*DataType},
+        ],
+        output_purpose=Purpose.PROPERTY,
+        output_type_function=get_transform_output_type,
+        arg_count=3,
+    ),
     FunctionType.ARRAY_TO_STRING: FunctionConfig(
         valid_inputs={
             DataType.ARRAY,

@@ -2201,6 +2201,33 @@ class ParseToObjects(Transformer):
             meta,
         )
 
+    @v_args(meta=True)
+    def farray_filter(self, meta, args) -> Function:
+        factory: CustomFunctionFactory = args[1]
+        if not len(factory.function_arguments) == 1:
+            raise InvalidSyntaxException(
+                "Array filter function must have exactly one argument;"
+            )
+        array_type = arg_to_datatype(args[0])
+        if not isinstance(array_type, ArrayType):
+            raise InvalidSyntaxException(
+                f"Array filter function must be applied to an array, not {array_type}"
+            )
+        return self.function_factory.create_function(
+            [
+                args[0],
+                factory.function_arguments[0],
+                factory(
+                    ArgBinding(
+                        name=factory.function_arguments[0].name,
+                        datatype=array_type.value_data_type,
+                    )
+                ),
+            ],
+            FunctionType.ARRAY_FILTER,
+            meta,
+        )
+
 
 def unpack_visit_error(e: VisitError, text: str | None = None):
     """This is required to get exceptions from imports, which would

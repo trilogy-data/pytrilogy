@@ -169,6 +169,7 @@ class FunctionType(Enum):
     ARRAY_SORT = "array_sort"
     ARRAY_TRANSFORM = "array_transform"
     ARRAY_TO_STRING = "array_to_string"
+    ARRAY_FILTER = "array_filter"
 
     # MAP
     MAP_KEYS = "map_keys"
