@@ -175,9 +175,10 @@ def render_case(args):
 def struct_arg(args):
     return [f"{x[1]}: {x[0]}" for x in zip(args[::2], args[1::2])]
 
+
 def hash_from_args(val, hash_type):
     hash_type = hash_type[1:-1]
-    if hash_type.lower() == "md5":  
+    if hash_type.lower() == "md5":
         return f"md5({val})"
     elif hash_type.lower() == "sha1":
         return f"sha1({val})"
@@ -187,6 +188,7 @@ def hash_from_args(val, hash_type):
         return f"sha512({val})"
     else:
         raise ValueError(f"Unsupported hash type: {hash_type}")
+
 
 FUNCTION_MAP = {
     # generic types
@@ -498,6 +500,8 @@ class BaseDialect:
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False, raise_invalid=raise_invalid)}"
             elif isinstance(c.lineage, BuildMultiSelectLineage):
                 rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False, raise_invalid=raise_invalid)}"
+            elif isinstance(c.lineage, BuildComparison):
+                rval = f"{self.render_expr(c.lineage.left, cte=cte, raise_invalid=raise_invalid)} {c.lineage.operator.value} {self.render_expr(c.lineage.right, cte=cte, raise_invalid=raise_invalid)}"
             elif isinstance(c.lineage, AGGREGATE_ITEMS):
                 args = [
                     self.render_expr(v, cte)  # , alias=False)

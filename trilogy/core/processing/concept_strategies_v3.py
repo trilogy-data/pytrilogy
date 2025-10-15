@@ -496,6 +496,8 @@ def _search_concepts(
         conditions=conditions,
     )
     partial: set[str] = set()
+    virtual: set[str] = set()
+    complete = ValidationResult.INCOMPLETE
     while context.incomplete:
 
         priority_concept = get_priority_concept(

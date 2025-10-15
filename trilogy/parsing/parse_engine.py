@@ -602,7 +602,7 @@ class ParseToObjects(Transformer):
 
     def PROPERTY(self, args):
         return Purpose.PROPERTY
-    
+
     def HASH_TYPE(self, args):
         return args.value
 
@@ -710,7 +710,14 @@ class ParseToObjects(Transformer):
 
         if isinstance(
             source_value,
-            (FilterItem, WindowItem, AggregateWrapper, Function, FunctionCallWrapper),
+            (
+                FilterItem,
+                WindowItem,
+                AggregateWrapper,
+                Function,
+                FunctionCallWrapper,
+                Comparison,
+            ),
         ):
             concept = arbitrary_to_concept(
                 source_value,

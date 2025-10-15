@@ -86,6 +86,36 @@ def test_concept_derivation():
         )
 
 
+def test_boolean_derivation():
+    executor = Dialects.DUCK_DB.default_executor()
+
+    results = executor.execute_text(
+        f"""const test <- 1 is not null;
+
+        select test;
+    """
+    )
+
+    assert results[0].fetchall()[0][0] is True
+
+    # results = executor.execute_text(
+    #     f""" const rows <- unnest([1,2,3,4,5]);
+
+    # auto big <- rows >3;
+
+    # select rows, big
+    # order by rows asc;
+    # """
+    # )
+    # assert results[0].fetchall() == [
+    #     (1, None),
+    #     (2, None),
+    #     (3, None),
+    #     (4, True),
+    #     (5, True),
+    # ]
+
+
 def test_render_query(duckdb_engine: Executor, expected_results):
     results = duckdb_engine.generate_sql("""select total_count;""")[0]
 

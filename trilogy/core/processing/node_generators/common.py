@@ -8,6 +8,7 @@ from trilogy.core.models.build import (
     BuildFilterItem,
     BuildFunction,
     BuildWhereClause,
+    BuildComparison,
     LooseBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -26,7 +27,7 @@ FUNCTION_TYPES = (BuildFunction,)
 def resolve_function_parent_concepts(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> List[BuildConcept]:
-    if not isinstance(concept.lineage, (*FUNCTION_TYPES, *AGGREGATE_TYPES)):
+    if not isinstance(concept.lineage, (*FUNCTION_TYPES, *AGGREGATE_TYPES, BuildComparison)):
         raise ValueError(
             f"Concept {concept} lineage is not function or aggregate, is {type(concept.lineage)}"
         )

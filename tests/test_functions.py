@@ -345,8 +345,6 @@ SELECT
             results = engine.execute_query(select)
             assert results
             assert results.fetchall()
-    
-
 
 
 def test_case_function(test_environment):

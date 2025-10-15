@@ -64,10 +64,12 @@ ARBITRARY_INPUTS = (
     | Parenthetical
     | ListWrapper
     | MapWrapper
+    | Comparison
     | int
     | float
     | str
     | date
+    | bool
 )
 
 
@@ -399,6 +401,10 @@ def _get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
         return [x.reference for x in arg.by], True
     elif isinstance(arg, FunctionCallWrapper):
         return get_relevant_parent_concepts(arg.content)
+    elif isinstance(arg, Comparison):
+        left, lflag = get_relevant_parent_concepts(arg.left)
+        right, rflag = get_relevant_parent_concepts(arg.right)
+        return left + right, lflag or rflag
     return get_concept_arguments(arg), False
 
 
@@ -914,6 +920,82 @@ def parenthetical_to_concept(
     )
 
 
+def comparison_to_concept(
+    parent: Comparison,
+    name: str,
+    namespace: str,
+    environment: Environment,
+    metadata: Metadata | None = None,
+):
+    fmetadata = metadata or Metadata()
+
+    pkeys: List[Concept] = []
+    namespace = namespace or environment.namespace
+    is_metric = False
+    ref_args, is_metric = get_relevant_parent_concepts(parent)
+    concrete_args = [environment.concepts[c.address] for c in ref_args]
+    pkeys += [
+        x
+        for x in concrete_args
+        if not x.derivation == Derivation.CONSTANT
+        and not (x.derivation == Derivation.AGGREGATE and not x.grain.components)
+    ]
+    grain: Grain | None = Grain()
+    for x in pkeys:
+        grain += x.grain
+    if parent.operator in FunctionClass.ONE_TO_MANY.value:
+        # if the function will create more rows, we don't know what grain this is at
+        grain = None
+    modifiers = get_upstream_modifiers(pkeys, environment)
+    key_grain: list[str] = []
+    for x in pkeys:
+        # metrics will group to keys, so do not do key traversal
+        if is_metric:
+            key_grain.append(x.address)
+        # otherwse, for row ops, assume keys are transitive
+        elif x.keys:
+            key_grain += [*x.keys]
+        else:
+            key_grain.append(x.address)
+    keys = set(key_grain)
+    if is_metric:
+        purpose = Purpose.METRIC
+    elif not pkeys:
+        purpose = Purpose.CONSTANT
+    else:
+        purpose = Purpose.PROPERTY
+    fmetadata = metadata or Metadata()
+
+    if grain is not None:
+        r = Concept(
+            name=name,
+            datatype=parent.output_datatype,
+            purpose=purpose,
+            lineage=parent,
+            namespace=namespace,
+            keys=keys,
+            modifiers=modifiers,
+            grain=grain,
+            metadata=fmetadata,
+            derivation=Derivation.BASIC,
+            granularity=Granularity.MULTI_ROW,
+        )
+        return r
+
+    return Concept(
+        name=name,
+        datatype=parent.output_datatype,
+        purpose=purpose,
+        lineage=parent,
+        namespace=namespace,
+        keys=keys,
+        modifiers=modifiers,
+        metadata=fmetadata,
+        derivation=Derivation.BASIC,
+        granularity=Granularity.MULTI_ROW,
+    )
+
+
 def arbitrary_to_concept(
     parent: ARBITRARY_INPUTS,
     environment: Environment,
@@ -973,5 +1055,7 @@ def arbitrary_to_concept(
         return constant_to_concept(parent, name, namespace, metadata)
     elif isinstance(parent, Parenthetical):
         return parenthetical_to_concept(parent, name, namespace, environment, metadata)
+    elif isinstance(parent, Comparison):
+        return comparison_to_concept(parent, name, namespace, environment, metadata)
     else:
         return constant_to_concept(parent, name, namespace, metadata)

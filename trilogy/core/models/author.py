@@ -865,6 +865,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             AggregateWrapper,
             RowsetItem,
             MultiSelectLineage,
+            Comparison,
         ]
     ] = None
     namespace: str = Field(default=DEFAULT_NAMESPACE, validate_default=True)
@@ -1209,6 +1210,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             BuildMultiSelectLineage,
             BuildRowsetItem,
             BuildWindowItem,
+            BuildComparison,
         )
 
         if lineage and isinstance(lineage, (BuildWindowItem, WindowItem)):
@@ -1221,6 +1223,8 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         #     return Derivation.PARENTHETICAL
         elif lineage and isinstance(lineage, (BuildRowsetItem, RowsetItem)):
             return Derivation.ROWSET
+        elif lineage and isinstance(lineage, BuildComparison):
+            return Derivation.BASIC
         elif lineage and isinstance(
             lineage, (BuildMultiSelectLineage, MultiSelectLineage)
         ):
