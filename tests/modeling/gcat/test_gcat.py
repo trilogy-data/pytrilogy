@@ -1135,3 +1135,45 @@ select
     sql = base.generate_sql(queries[-1])
     results = base.execute_query(queries[-1])
     assert len(results.fetchall()) == 1, sql
+
+
+def test_extra_filter(gcat_env: Executor):
+    from logging import INFO
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook(level=INFO)
+
+    base = gcat_env
+    queries = base.parse_text(
+        """import satcat;
+
+
+auto launches <- count(jcat ? base_category = 'P') by launch_date;
+auto decoms <- count(jcat ? decom_date is not null and base_category = 'P'  ) by decom_date;
+
+key launch_spine <- date_spine(date_add(current_date(), day, -60000), current_date());
+key decom_spine <- date_spine(date_add(current_date(), day, -60000), current_date());
+
+
+merge launch_date into ~launch_spine;
+merge decom_date into ~decom_spine;
+
+
+select
+    launch_spine,
+    sum launches order by launch_spine asc as cumulative_launches,
+having
+    cumulative_launches >=1
+merge
+select
+    decom_spine,
+    sum decoms order by decom_spine asc as cumulative_decoms,
+having cumulative_decoms >=1
+align date:launch_spine,decom_spine;
+"""
+    )
+    sql = base.generate_sql(queries[-1])
+    results = base.execute_query(queries[-1])
+    assert len(results.fetchall()) > 0, sql
+    assert "date_add(current_date(), -60000 * INTERVAL 1 day)," in sql[0], sql[0]

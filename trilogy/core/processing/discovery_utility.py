@@ -262,6 +262,7 @@ def get_priority_concept(
     all_concepts: List[BuildConcept],
     attempted_addresses: set[str],
     found_concepts: set[str],
+    partial_concepts: set[str],
     depth: int,
 ) -> BuildConcept:
     # optimized search for missing concepts
@@ -269,13 +270,15 @@ def get_priority_concept(
         [
             c
             for c in all_concepts
-            if c.address not in attempted_addresses and c.address not in found_concepts
+            if c.address not in attempted_addresses
+            and (c.address not in found_concepts or c.address in partial_concepts)
         ],
         key=lambda x: x.address,
     )
     # sometimes we need to scan intermediate concepts to get merge keys or filter keys,
     # so do an exhaustive search
     # pass_two = [c for c in all_concepts if c.address not in attempted_addresses]
+
     for remaining_concept in (pass_one,):
         priority = (
             # then multiselects to remove them from scope
