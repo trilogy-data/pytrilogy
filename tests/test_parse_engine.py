@@ -121,3 +121,17 @@ def test_alias_error():
     with raises(InvalidSyntaxException) as e:
         env.parse(TEXT2)
     assert ERROR_CODES[201] in str(e.value), e.value
+
+
+def test_semicolon_error():
+    env = Environment()
+    TEXT2 = """
+    const a <- 1;
+
+    select
+        a+2 as fun,
+    
+    """
+    with raises(InvalidSyntaxException) as e:
+        env.parse(TEXT2)
+    assert ERROR_CODES[202] in str(e.value), e.value
