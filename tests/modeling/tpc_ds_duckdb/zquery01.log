@@ -3,17 +3,6 @@ gen_length = 3473
 generated_sql = """
 
 WITH 
-thoughtful as (
-SELECT
-    \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
-    \"returns_store_returns\".\"SR_RETURNED_DATE_SK\" as \"returns_return_date_id\",
-    \"returns_store_returns\".\"SR_STORE_SK\" as \"returns_store_id\"
-FROM
-    \"memory\".\"store_returns\" as \"returns_store_returns\"
-GROUP BY 
-    \"returns_store_returns\".\"SR_CUSTOMER_SK\",
-    \"returns_store_returns\".\"SR_RETURNED_DATE_SK\",
-    \"returns_store_returns\".\"SR_STORE_SK\"),
 questionable as (
 SELECT
     \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
@@ -26,6 +15,27 @@ FROM
 WHERE
     \"returns_store_store\".\"S_STATE\" = 'TN' and cast(\"returns_return_date_date\".\"D_YEAR\" as int) = 2000
 ),
+thoughtful as (
+SELECT
+    \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
+    \"returns_store_returns\".\"SR_RETURNED_DATE_SK\" as \"returns_return_date_id\",
+    \"returns_store_returns\".\"SR_STORE_SK\" as \"returns_store_id\"
+FROM
+    \"memory\".\"store_returns\" as \"returns_store_returns\"
+GROUP BY 
+    \"returns_store_returns\".\"SR_CUSTOMER_SK\",
+    \"returns_store_returns\".\"SR_RETURNED_DATE_SK\",
+    \"returns_store_returns\".\"SR_STORE_SK\"),
+abundant as (
+SELECT
+    \"questionable\".\"returns_customer_id\" as \"returns_customer_id\",
+    \"questionable\".\"returns_store_id\" as \"returns_store_id\",
+    sum(\"questionable\".\"returns_return_amount\") as \"total_returns\"
+FROM
+    \"questionable\"
+GROUP BY 
+    \"questionable\".\"returns_customer_id\",
+    \"questionable\".\"returns_store_id\"),
 cooperative as (
 SELECT
     \"returns_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
@@ -43,16 +53,6 @@ GROUP BY
     \"returns_customer_customers\".\"C_CUSTOMER_ID\",
     \"returns_customer_customers\".\"C_CUSTOMER_SK\",
     \"returns_store_store\".\"S_STORE_SK\"),
-abundant as (
-SELECT
-    \"questionable\".\"returns_customer_id\" as \"returns_customer_id\",
-    \"questionable\".\"returns_store_id\" as \"returns_store_id\",
-    sum(\"questionable\".\"returns_return_amount\") as \"total_returns\"
-FROM
-    \"questionable\"
-GROUP BY 
-    \"questionable\".\"returns_customer_id\",
-    \"questionable\".\"returns_store_id\"),
 yummy as (
 SELECT
     \"abundant\".\"returns_store_id\" as \"returns_store_id\",

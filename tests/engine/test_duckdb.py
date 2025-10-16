@@ -87,10 +87,13 @@ def test_concept_derivation():
 
 
 def test_boolean_derivation():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
     executor = Dialects.DUCK_DB.default_executor()
 
     results = executor.execute_text(
-        f"""const test <- 1 is not null;
+        """const test <- 1 is not null;
 
         select test;
     """
@@ -98,22 +101,22 @@ def test_boolean_derivation():
 
     assert results[0].fetchall()[0][0] is True
 
-    # results = executor.execute_text(
-    #     f""" const rows <- unnest([1,2,3,4,5]);
+    results = executor.execute_text(
+        """ const rows <- unnest([1,2,3,4,5]);
 
-    # auto big <- rows >3;
+    auto big <- rows >3;
 
-    # select rows, big
-    # order by rows asc;
-    # """
-    # )
-    # assert results[0].fetchall() == [
-    #     (1, None),
-    #     (2, None),
-    #     (3, None),
-    #     (4, True),
-    #     (5, True),
-    # ]
+    select rows, big
+    order by rows asc;
+    """
+    )
+    assert results[0].fetchall() == [
+        (1, False),
+        (2, False),
+        (3, False),
+        (4, True),
+        (5, True),
+    ]
 
 
 def test_render_query(duckdb_engine: Executor, expected_results):
@@ -2126,25 +2129,30 @@ def test_const_equivalence_merge():
 
 def test_multi_select_derive():
     exec = Dialects.DUCK_DB.default_executor()
+    from trilogy.hooks import DebuggingHook
 
+    DebuggingHook()
     queries = exec.parse_text(
         """
 
 auto x <- 1;
                     
 select
-1-> x_val,
+    1-> x_val,
     x + 1 -> x_next
 merge               
 select
-2-> y_val
+    2-> y_val,
     x + 2 -> y_next
 align val:x_val, y_val
-derive total-> x_next + y_next;
+derive x_next + y_next -> total
+;
                     
 """
     )
 
     for idx, x in enumerate(queries):
+        print(x.output_columns)
         results = exec.execute_query(x).fetchall()
         assert results[0].x_next == 2 + idx
+        assert results[0].total == 5

@@ -1,0 +1,12 @@
+import top_player_dashboard; 
+select
+    player.full_name,
+    # shot_type,
+    total_points/game_count as points_per_game,
+    coalesce(sum(points_scored),0) as total_points,
+    --count(game.id) as game_count,
+    --player_rank,
+having
+    player_rank<100
+order by
+    player_rank asc;

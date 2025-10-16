@@ -499,7 +499,18 @@ class BaseDialect:
             elif isinstance(c.lineage, BuildRowsetItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False, raise_invalid=raise_invalid)}"
             elif isinstance(c.lineage, BuildMultiSelectLineage):
-                rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False, raise_invalid=raise_invalid)}"
+                if c.address in c.lineage.calculated_derivations:
+                    assert c.lineage.derive is not None
+                    for x in c.lineage.derive.items:
+                        if x.address == c.address:
+                            rval = self.render_expr(
+                                x.expr,
+                                cte=cte,
+                                raise_invalid=raise_invalid,
+                            )
+                            break
+                else:
+                    rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False, raise_invalid=raise_invalid)}"
             elif isinstance(c.lineage, BuildComparison):
                 rval = f"{self.render_expr(c.lineage.left, cte=cte, raise_invalid=raise_invalid)} {c.lineage.operator.value} {self.render_expr(c.lineage.right, cte=cte, raise_invalid=raise_invalid)}"
             elif isinstance(c.lineage, AGGREGATE_ITEMS):

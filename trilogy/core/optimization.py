@@ -228,7 +228,8 @@ def optimize_ctes(
         REGISTERED_RULES.append(PredicatePushdown())
     if CONFIG.optimizations.predicate_pushdown:
         REGISTERED_RULES.append(PredicatePushdownRemove())
-    REGISTERED_RULES.append(HideUnusedConcepts())
+    if CONFIG.optimizations.hide_unused_concepts:
+        REGISTERED_RULES.append(HideUnusedConcepts())
     for rule in REGISTERED_RULES:
         loops = 0
         complete = False
@@ -242,7 +243,7 @@ def optimize_ctes(
                 actions_taken = actions_taken or opt
             complete = not actions_taken
             loops += 1
-            input = reorder_ctes(filter_irrelevant_ctes(input, root_cte))
+        input = reorder_ctes(filter_irrelevant_ctes(input, root_cte))
         logger.info(
             f"[Optimization] Finished checking for {type(rule).__name__} after {loops} loop(s)"
         )

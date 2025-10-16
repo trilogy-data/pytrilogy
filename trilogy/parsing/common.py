@@ -3,9 +3,7 @@ from typing import Iterable, List, Sequence, Tuple
 
 from lark.tree import Meta
 
-from trilogy.constants import (
-    VIRTUAL_CONCEPT_PREFIX,
-)
+from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX
 from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
     ConceptSource,
@@ -781,6 +779,27 @@ def align_item_to_concept(
     return new
 
 
+def derive_item_to_concept(
+    parent: ARBITRARY_INPUTS,
+    name: str,
+    lineage: MultiSelectLineage,
+    namespace: str | None = None,
+) -> Concept:
+    datatype = arg_to_datatype(parent)
+    grain = Grain()
+    new = Concept(
+        name=name,
+        datatype=datatype,
+        purpose=Purpose.PROPERTY,
+        lineage=lineage,
+        grain=grain,
+        namespace=namespace or DEFAULT_NAMESPACE,
+        granularity=Granularity.MULTI_ROW,
+        derivation=Derivation.MULTISELECT,
+    )
+    return new
+
+
 def rowset_concept(
     orig_address: ConceptRef,
     environment: Environment,
@@ -862,20 +881,7 @@ def rowset_to_concepts(rowset: RowsetDerivationStatement, environment: Environme
 
 
 def generate_concept_name(
-    parent: (
-        AggregateWrapper
-        | FunctionCallWrapper
-        | WindowItem
-        | FilterItem
-        | Function
-        | ListWrapper
-        | MapWrapper
-        | Parenthetical
-        | int
-        | float
-        | str
-        | date
-    ),
+    parent: ARBITRARY_INPUTS,
 ) -> str:
     """Generate a name for a concept based on its parent type and content."""
     if isinstance(parent, AggregateWrapper):
@@ -896,6 +902,8 @@ def generate_concept_name(
         return f"{VIRTUAL_CONCEPT_PREFIX}_paren_{string_to_hash(str(parent))}"
     elif isinstance(parent, FunctionCallWrapper):
         return f"{VIRTUAL_CONCEPT_PREFIX}_{parent.name}_{string_to_hash(str(parent))}"
+    elif isinstance(parent, Comparison):
+        return f"{VIRTUAL_CONCEPT_PREFIX}_comp_{string_to_hash(str(parent))}"
     else:  # ListWrapper, MapWrapper, or primitive types
         return f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
 

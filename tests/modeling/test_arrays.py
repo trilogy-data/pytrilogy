@@ -61,8 +61,7 @@ def test_array_filter():
         ;"""
         list(test_executor.execute_text(test_select_invalid)[0].fetchall())
     assert (
-        str(e.value)
-        == f"Array filter function must be applied to an array, not INTEGER"
+        str(e.value) == "Array filter function must be applied to an array, not INTEGER"
     )
     with raises(InvalidSyntaxException) as e:
 

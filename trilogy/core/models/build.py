@@ -48,6 +48,8 @@ from trilogy.core.models.author import (
     Concept,
     ConceptRef,
     Conditional,
+    DeriveClause,
+    DeriveItem,
     FilterItem,
     FuncArgs,
     Function,
@@ -1269,6 +1271,22 @@ class BuildAlignClause:
 
 
 @dataclass
+class BuildDeriveClause:
+    items: List[BuildDeriveItem]
+
+
+@dataclass
+class BuildDeriveItem:
+    expr: BuildExpr
+    name: str
+    namespace: str = field(default=DEFAULT_NAMESPACE)
+
+    @property
+    def address(self) -> str:
+        return f"{self.namespace}.{self.name}"
+
+
+@dataclass
 class BuildSelectLineage:
     selection: List[BuildConcept]
     hidden_components: set[str]
@@ -1299,12 +1317,16 @@ class BuildMultiSelectLineage(BuildConceptArgs):
     limit: Optional[int] = None
     where_clause: Union["BuildWhereClause", None] = field(default=None)
     having_clause: Union["BuildHavingClause", None] = field(default=None)
+    derive: BuildDeriveClause | None = None
 
     @property
     def derived_concepts(self) -> set[str]:
         output = set()
         for item in self.align.items:
             output.add(item.aligned_concept)
+        if self.derive:
+            for ditem in self.derive.items:
+                output.add(ditem.address)
         return output
 
     @property
@@ -1312,10 +1334,12 @@ class BuildMultiSelectLineage(BuildConceptArgs):
         return self.build_output_components
 
     @property
-    def derived_concept(self) -> set[str]:
-        output = set()
-        for item in self.align.items:
-            output.add(item.aligned_concept)
+    def calculated_derivations(self) -> set[str]:
+        output: set[str] = set()
+        if not self.derive:
+            return output
+        for item in self.derive.items:
+            output.add(item.address)
         return output
 
     @property
@@ -1335,6 +1359,7 @@ class BuildMultiSelectLineage(BuildConceptArgs):
                 for c in x.concepts:
                     if c.address in cte.output_lcl:
                         return c
+
         raise SyntaxError(
             f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})"
         )
@@ -1962,6 +1987,28 @@ class Factory:
         return BuildAlignClause(items=[self._build_align_item(x) for x in base.items])
 
     @build.register
+    def _(self, base: DeriveItem) -> BuildDeriveItem:
+        return self._build_derive_item(base)
+
+    def _build_derive_item(self, base: DeriveItem) -> BuildDeriveItem:
+        expr: Concept | FuncArgs = base.expr
+        validation = requires_concept_nesting(expr)
+        if validation:
+            expr, _ = self.instantiate_concept(validation)
+        return BuildDeriveItem(
+            expr=self.build(expr),
+            name=base.name,
+            namespace=base.namespace,
+        )
+
+    @build.register
+    def _(self, base: DeriveClause) -> BuildDeriveClause:
+        return self._build_derive_clause(base)
+
+    def _build_derive_clause(self, base: DeriveClause) -> BuildDeriveClause:
+        return BuildDeriveClause(items=[self.build(x) for x in base.items])
+
+    @build.register
     def _(self, base: RowsetItem) -> BuildRowsetItem:
         return self._build_rowset_item(base)
 
@@ -2162,6 +2209,7 @@ class Factory:
             selects=base.selects,
             grain=final_grain,
             align=factory.build(base.align),
+            derive=factory.build(base.derive) if base.derive else None,
             # self.align.with_select_context(
             #     local_build_cache, self.grain, environment
             # ),

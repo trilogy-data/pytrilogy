@@ -3,21 +3,6 @@ gen_length = 4987
 generated_sql = """
 
 WITH 
-cooperative as (
-SELECT
-    \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
-    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
-    \"store_sales_store_sales\".\"SS_NET_PAID\" as \"store_sales_net_paid\",
-    \"store_sales_store_store\".\"S_STORE_SK\" as \"store_sales_store_id\"
-FROM
-    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    LEFT OUTER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
-    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
-    INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"store_sales_customer_customer_address\" on \"store_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"store_sales_customer_customer_address\".\"CA_ADDRESS_SK\"
-WHERE
-    \"store_sales_store_store\".\"S_MARKET_ID\" = 8 and \"store_sales_customer_customers\".\"C_BIRTH_COUNTRY\" != UPPER(\"store_sales_customer_customer_address\".\"CA_COUNTRY\")  and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END is True and \"store_sales_store_store\".\"S_ZIP\" = \"store_sales_customer_customer_address\".\"CA_ZIP\"
-),
 yummy as (
 SELECT
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
@@ -35,6 +20,29 @@ FROM
 WHERE
     \"store_sales_store_store\".\"S_MARKET_ID\" = 8 and \"store_sales_customer_customers\".\"C_BIRTH_COUNTRY\" != UPPER(\"store_sales_customer_customer_address\".\"CA_COUNTRY\")  and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END is True and \"store_sales_store_store\".\"S_ZIP\" = \"store_sales_customer_customer_address\".\"CA_ZIP\"
 ),
+cooperative as (
+SELECT
+    \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
+    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
+    \"store_sales_store_sales\".\"SS_NET_PAID\" as \"store_sales_net_paid\",
+    \"store_sales_store_store\".\"S_STORE_SK\" as \"store_sales_store_id\"
+FROM
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+    LEFT OUTER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
+    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"store_sales_customer_customer_address\" on \"store_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"store_sales_customer_customer_address\".\"CA_ADDRESS_SK\"
+WHERE
+    \"store_sales_store_store\".\"S_MARKET_ID\" = 8 and \"store_sales_customer_customers\".\"C_BIRTH_COUNTRY\" != UPPER(\"store_sales_customer_customer_address\".\"CA_COUNTRY\")  and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END is True and \"store_sales_store_store\".\"S_ZIP\" = \"store_sales_customer_customer_address\".\"CA_ZIP\"
+),
+juicy as (
+SELECT
+    \"yummy\".\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
+    \"yummy\".\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
+    \"yummy\".\"store_sales_store_name\" as \"store_sales_store_name\",
+    CASE WHEN \"yummy\".\"store_sales_item_color\" = 'peach' THEN \"yummy\".\"store_sales_net_paid\" ELSE NULL END as \"_virt_filter_net_paid_7736053037874424\"
+FROM
+    \"yummy\"),
 questionable as (
 SELECT
     sum(\"cooperative\".\"store_sales_net_paid\") as \"_virt_agg_sum_1360566110228423\"
@@ -44,19 +52,6 @@ GROUP BY
     \"cooperative\".\"store_sales_customer_id\",
     \"cooperative\".\"store_sales_item_id\",
     \"cooperative\".\"store_sales_store_id\"),
-juicy as (
-SELECT
-    \"yummy\".\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
-    \"yummy\".\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
-    \"yummy\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    CASE WHEN \"yummy\".\"store_sales_item_color\" = 'peach' THEN \"yummy\".\"store_sales_net_paid\" ELSE NULL END as \"_virt_filter_net_paid_7736053037874424\"
-FROM
-    \"yummy\"),
-abundant as (
-SELECT
-    avg(\"questionable\".\"_virt_agg_sum_1360566110228423\") as \"avg_store_customer_sales\"
-FROM
-    \"questionable\"),
 vacuous as (
 SELECT
     \"juicy\".\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
@@ -68,7 +63,12 @@ FROM
 GROUP BY 
     \"juicy\".\"store_sales_customer_first_name\",
     \"juicy\".\"store_sales_customer_last_name\",
-    \"juicy\".\"store_sales_store_name\")
+    \"juicy\".\"store_sales_store_name\"),
+abundant as (
+SELECT
+    avg(\"questionable\".\"_virt_agg_sum_1360566110228423\") as \"avg_store_customer_sales\"
+FROM
+    \"questionable\")
 SELECT
     \"vacuous\".\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
     \"vacuous\".\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",

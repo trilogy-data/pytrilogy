@@ -157,19 +157,19 @@ def gen_multiselect_node(
     possible_joins = concept_to_relevant_joins(additional_relevant)
     if not local_optional:
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} no enrichment required for rowset node; exiting early"
+            f"{padding(depth)}{LOGGER_PREFIX} no enrichment required for multiselect node; exiting early"
         )
         return node
     if not possible_joins:
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} no possible joins for rowset node; exiting early"
+            f"{padding(depth)}{LOGGER_PREFIX} no possible joins for multiselect node; exiting early"
         )
         return node
     if all(
         [x.address in [y.address for y in node.output_concepts] for x in local_optional]
     ):
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} all enriched concepts returned from base rowset node; exiting early"
+            f"{padding(depth)}{LOGGER_PREFIX} all enriched concepts returned from base multiselect node; exiting early"
         )
         return node
     logger.info(
