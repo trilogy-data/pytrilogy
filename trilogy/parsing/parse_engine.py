@@ -51,6 +51,7 @@ from trilogy.core.internal import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.models.author import (
     AggregateWrapper,
     AlignClause,
+    DeriveClause,
     AlignItem,
     ArgBinding,
     CaseElse,
@@ -1284,6 +1285,10 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def align_clause(self, meta: Meta, args) -> AlignClause:
         return AlignClause(items=args)
+    
+    @v_args(meta=True)
+    def derive_clause(self, meta: Meta, args) -> DeriveClause:
+        return DeriveClause(items=args)
 
     @v_args(meta=True)
     def multi_select_statement(self, meta: Meta, args) -> MultiSelectStatement:

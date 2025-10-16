@@ -2122,3 +2122,29 @@ def test_const_equivalence_merge():
         sql = executor.generate_sql(executor.parse_text(test)[-1])
         results = executor.execute_text(test)[-1].fetchall()
         assert len(results) == 5, sql
+
+
+def test_multi_select_derive():
+    exec = Dialects.DUCK_DB.default_executor()
+
+    queries = exec.parse_text(
+        """
+
+auto x <- 1;
+                    
+select
+1-> x_val,
+    x + 1 -> x_next
+merge               
+select
+2-> y_val
+    x + 2 -> y_next
+align val:x_val, y_val
+derive total-> x_next + y_next;
+                    
+"""
+    )
+
+    for idx, x in enumerate(queries):
+        results = exec.execute_query(x).fetchall()
+        assert results[0].x_next == 2 + idx

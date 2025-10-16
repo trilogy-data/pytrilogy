@@ -2136,6 +2136,13 @@ class AlignClause(Namespaced, BaseModel):
             items=[x.with_namespace(namespace) for x in self.items]
         )
 
+class DeriveClause(Namespaced, BaseModel):
+    items: List[AlignItem]
+
+    def with_namespace(self, namespace: str) -> "DeriveClause":
+        return DeriveClause.model_construct(
+            items=[x.with_namespace(namespace) for x in self.items]
+        )
 
 class SelectLineage(Mergeable, Namespaced, BaseModel):
     selection: List[ConceptRef]
@@ -2185,11 +2192,13 @@ class SelectLineage(Mergeable, Namespaced, BaseModel):
 class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
     selects: List[SelectLineage]
     align: AlignClause
+
     namespace: str
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     where_clause: Union["WhereClause", None] = Field(default=None)
     having_clause: Union["HavingClause", None] = Field(default=None)
+    derive: DeriveClause | None = None
     hidden_components: set[str]
 
     @property

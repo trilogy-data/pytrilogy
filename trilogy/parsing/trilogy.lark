@@ -74,11 +74,13 @@
     select_statement: where? "select"i select_list where?  having?  order_by?  limit? 
 
     // multiple_selects
-    multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause  where? order_by?  limit? 
+    multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause ("derive" derive_clause)  where? order_by?  limit? 
 
     align_item: IDENTIFIER ":" IDENTIFIER ("," IDENTIFIER)*  ","?
 
     align_clause: align_item ("AND"i align_item)*  "AND"i?
+
+    derive_clause: expr "->" IDENTIFIER ("," expr "->" IDENTIFIER)* ","?
 
     merge_statement: "merge"i  WILDCARD_IDENTIFIER "into"i SHORTHAND_MODIFIER? WILDCARD_IDENTIFIER
 
