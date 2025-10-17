@@ -413,7 +413,8 @@ class Environment(BaseModel):
             self.imports[alias].append(imp_stm)
         # we can't exit early
         # as there may be new concepts
-        for k, concept in source.concepts.items():
+        iteration = [[x, y] for x, y in source.concepts.items()]
+        for k, concept in iteration:
             # skip internal namespace
             if INTERNAL_NAMESPACE in concept.address:
                 continue

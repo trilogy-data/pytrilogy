@@ -249,7 +249,7 @@ class BuildParamaterizedConceptReference(DataTyped):
     concept: BuildConcept
 
     def __str__(self):
-        return f":{self.concept.address}"
+        return f":{self.concept.address.replace('.', '_')}"
 
     @property
     def safe_address(self) -> str:

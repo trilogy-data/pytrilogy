@@ -2156,3 +2156,49 @@ derive x_next + y_next -> total
         results = exec.execute_query(x).fetchall()
         assert results[0].x_next == 2 + idx
         assert results[0].total == 5
+
+
+def test_multi_select_derive_import():
+    exec = Dialects.DUCK_DB.default_executor()
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    queries = exec.parse_text(
+        """
+
+auto x <- 1;
+
+with rows as             
+select
+    1-> x_val,
+    x + 1 -> x_next
+merge               
+select
+    2-> y_val,
+    x + 2 -> y_next
+align val:x_val, y_val
+derive x_next + y_next -> total
+;
+
+
+
+                    
+"""
+    )
+    exec2 = Dialects.DUCK_DB.default_executor()
+    exec2.environment.add_import("dependent", exec.environment, None)
+
+    assert exec2.environment.concepts["dependent.rows.x_next"]
+    queries = exec2.parse_text(
+        """
+        select
+        dependent.rows.x_next, dependent.rows.total
+        ;
+        """
+    )
+
+    for idx, x in enumerate(queries):
+        print(x.output_columns)
+        results = exec2.execute_query(x).fetchall()
+        assert results[0].dependent_rows_x_next == 2 + idx
+        assert results[0].dependent_rows_total == 5

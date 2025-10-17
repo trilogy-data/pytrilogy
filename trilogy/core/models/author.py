@@ -2266,6 +2266,29 @@ class SelectLineage(Mergeable, Namespaced, BaseModel):
             ),
         )
 
+    def with_namespace(self, namespace):
+        return SelectLineage.model_construct(
+            selection=[x.with_namespace(namespace) for x in self.selection],
+            hidden_components=self.hidden_components,
+            local_concepts={
+                x: y.with_namespace(namespace) for x, y in self.local_concepts.items()
+            },
+            order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
+            limit=self.limit,
+            meta=self.meta,
+            grain=self.grain.with_namespace(namespace),
+            where_clause=(
+                self.where_clause.with_namespace(namespace)
+                if self.where_clause
+                else None
+            ),
+            having_clause=(
+                self.having_clause.with_namespace(namespace)
+                if self.having_clause
+                else None
+            ),
+        )
+
 
 class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
     selects: List[SelectLineage]

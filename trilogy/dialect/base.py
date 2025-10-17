@@ -844,7 +844,7 @@ class BaseDialect:
             if self.rendering.parameters:
                 if e.concept.namespace == DEFAULT_NAMESPACE:
                     return f":{e.concept.name}"
-                return f":{e.concept.address}"
+                return f":{e.concept.address.replace('.', '_')}"
             elif e.concept.lineage:
                 return self.render_expr(e.concept.lineage, cte=cte, cte_map=cte_map)
             return f"{self.QUOTE_CHARACTER}{e.concept.address}{self.QUOTE_CHARACTER}"
