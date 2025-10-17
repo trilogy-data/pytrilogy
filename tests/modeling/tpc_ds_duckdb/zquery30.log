@@ -3,15 +3,6 @@ gen_length = 10083
 generated_sql = """
 
 WITH 
-thoughtful as (
-SELECT
-    \"web_returns_web_returns\".\"WR_RETURNING_ADDR_SK\" as \"web_returns_return_address_id\",
-    \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\" as \"web_returns_customer_id\"
-FROM
-    \"memory\".\"web_returns\" as \"web_returns_web_returns\"
-GROUP BY 
-    \"web_returns_web_returns\".\"WR_RETURNING_ADDR_SK\",
-    \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\"),
 abundant as (
 SELECT
     \"web_returns_return_address_customer_address\".\"CA_STATE\" as \"web_returns_return_address_state\",
@@ -25,6 +16,22 @@ FROM
 WHERE
     \"web_returns_return_address_customer_address\".\"CA_STATE\" is not null
 ),
+thoughtful as (
+SELECT
+    \"web_returns_web_returns\".\"WR_RETURNING_ADDR_SK\" as \"web_returns_return_address_id\",
+    \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\" as \"web_returns_customer_id\"
+FROM
+    \"memory\".\"web_returns\" as \"web_returns_web_returns\"
+GROUP BY 
+    \"web_returns_web_returns\".\"WR_RETURNING_ADDR_SK\",
+    \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\"),
+uneven as (
+SELECT
+    \"abundant\".\"web_returns_customer_id\" as \"web_returns_customer_id\",
+    \"abundant\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
+    CASE WHEN \"abundant\".\"web_returns_return_date_year\" = 2002 THEN \"abundant\".\"web_returns_return_amount\" ELSE NULL END as \"_virt_filter_return_amount_1075768703847083\"
+FROM
+    \"abundant\"),
 cooperative as (
 SELECT
     \"web_returns_customer_customer_address\".\"CA_STATE\" as \"web_returns_customer_state\",
@@ -66,13 +73,6 @@ GROUP BY
     \"web_returns_customer_customers\".\"C_PREFERRED_CUST_FLAG\",
     \"web_returns_customer_customers\".\"C_SALUTATION\",
     \"web_returns_return_address_customer_address\".\"CA_STATE\"),
-uneven as (
-SELECT
-    \"abundant\".\"web_returns_customer_id\" as \"web_returns_customer_id\",
-    \"abundant\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
-    CASE WHEN \"abundant\".\"web_returns_return_date_year\" = 2002 THEN \"abundant\".\"web_returns_return_amount\" ELSE NULL END as \"_virt_filter_return_amount_1075768703847083\"
-FROM
-    \"abundant\"),
 yummy as (
 SELECT
     \"uneven\".\"web_returns_customer_id\" as \"web_returns_customer_id\",

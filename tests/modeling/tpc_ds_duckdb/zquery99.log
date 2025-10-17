@@ -1,18 +1,14 @@
 query_id = 99
-gen_length = 3802
+gen_length = 3543
 generated_sql = """
 
 WITH 
 questionable as (
 SELECT
-    \"call_center_call_center\".\"CC_NAME\" as \"call_center_name\",
     \"ship_mode_ship_mode\".\"SM_TYPE\" as \"ship_mode_type\",
-    \"warehouse_warehouse\".\"w_warehouse_name\" as \"warehouse_name\",
     (cast(\"catalog_sales\".\"CS_ORDER_NUMBER\" as string) || cast(\"catalog_sales\".\"CS_ITEM_SK\" as string)) as \"catalog_pk\",
     LOWER(\"call_center_call_center\".\"CC_NAME\")  as \"cc_name_lower\",
     SUBSTRING(\"warehouse_warehouse\".\"w_warehouse_name\",1,20) as \"warehouse_short_name\",
-    cast(\"ship_date_date\".\"D_DATE\" as date) as \"ship_date_date\",
-    cast(\"sold_date_date\".\"D_DATE\" as date) as \"sold_date_date\",
     date_diff('day', cast(\"sold_date_date\".\"D_DATE\" as date), cast(\"ship_date_date\".\"D_DATE\" as date)) as \"days_to_ship\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales\"

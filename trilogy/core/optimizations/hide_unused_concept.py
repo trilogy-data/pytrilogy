@@ -39,11 +39,7 @@ class HideUnusedConcepts(OptimizationRule):
         self.log(
             f"Hiding unused concepts {[x.address for x in add_to_hidden]} from {cte.name} (used: {used}, all: {[x.address for x in cte.output_columns]})"
         )
-        candidates = [
-            x.address
-            for x in cte.output_columns
-            if x.address not in used and x.address not in cte.hidden_concepts
-        ]
+        candidates = [x.address for x in cte.output_columns if x.address not in used]
         if len(candidates) == len(set([x.address for x in cte.output_columns])):
             # pop one out
             candidates.pop()

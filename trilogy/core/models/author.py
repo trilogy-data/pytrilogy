@@ -865,6 +865,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             AggregateWrapper,
             RowsetItem,
             MultiSelectLineage,
+            Comparison,
         ]
     ] = None
     namespace: str = Field(default=DEFAULT_NAMESPACE, validate_default=True)
@@ -1079,6 +1080,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         | AggregateWrapper
         | RowsetItem
         | MultiSelectLineage
+        | Comparison
         | None,
         Grain,
         set[str] | None,
@@ -1178,6 +1180,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
                     AggregateWrapper,
                     RowsetItem,
                     MultiSelectLineage,
+                    Comparison,
                 ],
                 output: List[ConceptRef],
             ):
@@ -1204,6 +1207,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
     def calculate_derivation(self, lineage, purpose: Purpose) -> Derivation:
         from trilogy.core.models.build import (
             BuildAggregateWrapper,
+            BuildComparison,
             BuildFilterItem,
             BuildFunction,
             BuildMultiSelectLineage,
@@ -1221,6 +1225,8 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         #     return Derivation.PARENTHETICAL
         elif lineage and isinstance(lineage, (BuildRowsetItem, RowsetItem)):
             return Derivation.ROWSET
+        elif lineage and isinstance(lineage, BuildComparison):
+            return Derivation.BASIC
         elif lineage and isinstance(
             lineage, (BuildMultiSelectLineage, MultiSelectLineage)
         ):
@@ -2133,6 +2139,89 @@ class AlignClause(Namespaced, BaseModel):
         )
 
 
+class DeriveItem(Namespaced, DataTyped, ConceptArgs, Mergeable, BaseModel):
+    expr: Expr
+    name: str
+    namespace: str
+
+    @property
+    def derived_concept(self) -> str:
+        return f"{self.namespace}.{self.name}"
+        # return ConceptRef(
+        #     address=f"{self.namespace}.{self.name}",
+        #     datatype=arg_to_datatype(self.expr),
+        # )
+
+    def with_namespace(self, namespace):
+        return DeriveItem.model_construct(
+            expr=(self.expr.with_namespace(namespace) if self.expr else None),
+            name=self.name,
+            namespace=namespace,
+        )
+
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> "DeriveItem":
+        return DeriveItem.model_construct(
+            expr=(
+                self.expr.with_merge(source, target, modifiers)
+                if isinstance(self.expr, Mergeable)
+                else self.expr
+            ),
+            name=self.name,
+            namespace=self.namespace,
+        )
+
+    def with_reference_replacement(self, source, target):
+        return DeriveItem.model_construct(
+            expr=(
+                self.expr.with_reference_replacement(source, target)
+                if isinstance(self.expr, Mergeable)
+                else self.expr
+            ),
+            name=self.name,
+            namespace=self.namespace,
+        )
+
+
+class DeriveClause(Mergeable, Namespaced, BaseModel):
+    items: List[DeriveItem]
+
+    def with_namespace(self, namespace: str) -> "DeriveClause":
+        return DeriveClause.model_construct(
+            items=[
+                x.with_namespace(namespace) if isinstance(x, Namespaced) else x
+                for x in self.items
+            ]
+        )
+
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> "DeriveClause":
+        return DeriveClause.model_construct(
+            items=[
+                (
+                    x.with_merge(source, target, modifiers)
+                    if isinstance(x, Mergeable)
+                    else x
+                )
+                for x in self.items
+            ]
+        )
+
+    def with_reference_replacement(self, source, target):
+        return DeriveClause.model_construct(
+            items=[
+                (
+                    x.with_reference_replacement(source, target)
+                    if isinstance(x, Mergeable)
+                    else x
+                )
+                for x in self.items
+            ]
+        )
+
+
 class SelectLineage(Mergeable, Namespaced, BaseModel):
     selection: List[ConceptRef]
     hidden_components: set[str]
@@ -2177,15 +2266,40 @@ class SelectLineage(Mergeable, Namespaced, BaseModel):
             ),
         )
 
+    def with_namespace(self, namespace):
+        return SelectLineage.model_construct(
+            selection=[x.with_namespace(namespace) for x in self.selection],
+            hidden_components=self.hidden_components,
+            local_concepts={
+                x: y.with_namespace(namespace) for x, y in self.local_concepts.items()
+            },
+            order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
+            limit=self.limit,
+            meta=self.meta,
+            grain=self.grain.with_namespace(namespace),
+            where_clause=(
+                self.where_clause.with_namespace(namespace)
+                if self.where_clause
+                else None
+            ),
+            having_clause=(
+                self.having_clause.with_namespace(namespace)
+                if self.having_clause
+                else None
+            ),
+        )
+
 
 class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
     selects: List[SelectLineage]
     align: AlignClause
+
     namespace: str
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     where_clause: Union["WhereClause", None] = Field(default=None)
     having_clause: Union["HavingClause", None] = Field(default=None)
+    derive: DeriveClause | None = None
     hidden_components: set[str]
 
     @property
@@ -2211,6 +2325,11 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
         new = MultiSelectLineage.model_construct(
             selects=[s.with_merge(source, target, modifiers) for s in self.selects],
             align=self.align,
+            derive=(
+                self.derive.with_merge(source, target, modifiers)
+                if self.derive
+                else None
+            ),
             namespace=self.namespace,
             hidden_components=self.hidden_components,
             order_by=(
@@ -2236,6 +2355,7 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
         return MultiSelectLineage.model_construct(
             selects=[c.with_namespace(namespace) for c in self.selects],
             align=self.align.with_namespace(namespace),
+            derive=self.derive.with_namespace(namespace) if self.derive else None,
             namespace=namespace,
             hidden_components=self.hidden_components,
             order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
@@ -2257,6 +2377,9 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
         output = set()
         for item in self.align.items:
             output.add(item.aligned_concept)
+        if self.derive:
+            for ditem in self.derive.items:
+                output.add(ditem.derived_concept)
         return output
 
     @property

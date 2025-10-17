@@ -1,4 +1,5 @@
 import re
+from logging import INFO
 from pathlib import Path
 
 from pytest import raises
@@ -188,3 +189,16 @@ def test_adhoc08():
     generated = engine.generate_sql(text)[0]
     pattern = r'"(\w+)"\."shot_subtype" is not distinct from "(\w+)"\."shot_subtype"'
     assert re.search(pattern, generated), generated
+
+
+def test_adhoc9():
+    DebuggingHook(INFO)
+    env = Environment(working_path=working_path)
+    with open(working_path / "adhoc09.preql") as f:
+        text = f.read()
+    engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
+    env, queries = env.parse(text)
+    generated = engine.generate_sql(text)[0]
+    pattern = r'"wakeful"."_virt_agg_sum_1889332829440409" as "_virt_agg_sum_1889332829440409"'
+
+    assert not re.search(pattern, generated), generated

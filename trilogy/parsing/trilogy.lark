@@ -74,11 +74,15 @@
     select_statement: where? "select"i select_list where?  having?  order_by?  limit? 
 
     // multiple_selects
-    multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause  where? order_by?  limit? 
+    multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause ("derive" derive_clause)?  where? order_by?  limit? 
 
     align_item: IDENTIFIER ":" IDENTIFIER ("," IDENTIFIER)*  ","?
 
     align_clause: align_item ("AND"i align_item)*  "AND"i?
+
+    derive_item: expr "->" IDENTIFIER
+
+    derive_clause: derive_item ("," derive_item)* ","?
 
     merge_statement: "merge"i  WILDCARD_IDENTIFIER "into"i SHORTHAND_MODIFIER? WILDCARD_IDENTIFIER
 
@@ -308,8 +312,11 @@
     fregexp_contains: _REGEXP_CONTAINS expr "," expr  ")"
     _REGEXP_REPLACE.1: "regexp_replace("
     fregexp_replace: _REGEXP_REPLACE expr "," expr "," expr   ")"
+    _HASH.1: "hash("
+    HASH_TYPE: "md5"i | "sha1"i | "sha256"i | "sha512"i
+    fhash: _HASH expr "," HASH_TYPE ")"
 
-    _string_functions: like | ilike | upper | flower | fsplit | fstrpos | fsubstring | fcontains | ftrim | freplace | fregexp_extract | fregexp_contains | fregexp_replace
+    _string_functions: like | ilike | upper | flower | fsplit | fstrpos | fsubstring | fcontains | ftrim | freplace | fregexp_extract | fregexp_contains | fregexp_replace | fhash
 
     //array_functions
     _ARRAY_SUM.1: "array_sum("i

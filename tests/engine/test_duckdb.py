@@ -86,6 +86,39 @@ def test_concept_derivation():
         )
 
 
+def test_boolean_derivation():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+    executor = Dialects.DUCK_DB.default_executor()
+
+    results = executor.execute_text(
+        """const test <- 1 is not null;
+
+        select test;
+    """
+    )
+
+    assert results[0].fetchall()[0][0] is True
+
+    results = executor.execute_text(
+        """ const rows <- unnest([1,2,3,4,5]);
+
+    auto big <- rows >3;
+
+    select rows, big
+    order by rows asc;
+    """
+    )
+    assert results[0].fetchall() == [
+        (1, False),
+        (2, False),
+        (3, False),
+        (4, True),
+        (5, True),
+    ]
+
+
 def test_render_query(duckdb_engine: Executor, expected_results):
     results = duckdb_engine.generate_sql("""select total_count;""")[0]
 
@@ -2092,3 +2125,80 @@ def test_const_equivalence_merge():
         sql = executor.generate_sql(executor.parse_text(test)[-1])
         results = executor.execute_text(test)[-1].fetchall()
         assert len(results) == 5, sql
+
+
+def test_multi_select_derive():
+    exec = Dialects.DUCK_DB.default_executor()
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    queries = exec.parse_text(
+        """
+
+auto x <- 1;
+                    
+select
+    1-> x_val,
+    x + 1 -> x_next
+merge               
+select
+    2-> y_val,
+    x + 2 -> y_next
+align val:x_val, y_val
+derive x_next + y_next -> total
+;
+                    
+"""
+    )
+
+    for idx, x in enumerate(queries):
+        print(x.output_columns)
+        results = exec.execute_query(x).fetchall()
+        assert results[0].x_next == 2 + idx
+        assert results[0].total == 5
+
+
+def test_multi_select_derive_import():
+    exec = Dialects.DUCK_DB.default_executor()
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    queries = exec.parse_text(
+        """
+
+auto x <- 1;
+
+with rows as             
+select
+    1-> x_val,
+    x + 1 -> x_next
+merge               
+select
+    2-> y_val,
+    x + 2 -> y_next
+align val:x_val, y_val
+derive x_next + y_next -> total
+;
+
+
+
+                    
+"""
+    )
+    exec2 = Dialects.DUCK_DB.default_executor()
+    exec2.environment.add_import("dependent", exec.environment, None)
+
+    assert exec2.environment.concepts["dependent.rows.x_next"]
+    queries = exec2.parse_text(
+        """
+        select
+        dependent.rows.x_next, dependent.rows.total
+        ;
+        """
+    )
+
+    for idx, x in enumerate(queries):
+        print(x.output_columns)
+        results = exec2.execute_query(x).fetchall()
+        assert results[0].dependent_rows_x_next == 2 + idx
+        assert results[0].dependent_rows_total == 5

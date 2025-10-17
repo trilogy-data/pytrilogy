@@ -62,6 +62,8 @@ from trilogy.core.models.author import (
     Conditional,
     CustomFunctionFactory,
     CustomType,
+    DeriveClause,
+    DeriveItem,
     Expr,
     FilterItem,
     Function,
@@ -69,6 +71,7 @@ from trilogy.core.models.author import (
     Grain,
     HavingClause,
     Metadata,
+    MultiSelectLineage,
     OrderBy,
     OrderItem,
     Parenthetical,
@@ -135,6 +138,7 @@ from trilogy.parsing.common import (
     align_item_to_concept,
     arbitrary_to_concept,
     constant_to_concept,
+    derive_item_to_concept,
     process_function_args,
     rowset_to_concepts,
 )
@@ -603,6 +607,9 @@ class ParseToObjects(Transformer):
     def PROPERTY(self, args):
         return Purpose.PROPERTY
 
+    def HASH_TYPE(self, args):
+        return args.value
+
     @v_args(meta=True)
     def prop_ident(self, meta: Meta, args) -> Tuple[List[Concept], str]:
         return [self.environment.concepts[grain] for grain in args[:-1]], args[-1]
@@ -707,7 +714,14 @@ class ParseToObjects(Transformer):
 
         if isinstance(
             source_value,
-            (FilterItem, WindowItem, AggregateWrapper, Function, FunctionCallWrapper),
+            (
+                FilterItem,
+                WindowItem,
+                AggregateWrapper,
+                Function,
+                FunctionCallWrapper,
+                Comparison,
+            ),
         ):
             concept = arbitrary_to_concept(
                 source_value,
@@ -1276,6 +1290,17 @@ class ParseToObjects(Transformer):
         return AlignClause(items=args)
 
     @v_args(meta=True)
+    def derive_item(self, meta: Meta, args) -> DeriveItem:
+        return DeriveItem(
+            expr=args[0], name=args[1], namespace=self.environment.namespace
+        )
+
+    @v_args(meta=True)
+    def derive_clause(self, meta: Meta, args) -> DeriveClause:
+
+        return DeriveClause(items=args)
+
+    @v_args(meta=True)
     def multi_select_statement(self, meta: Meta, args) -> MultiSelectStatement:
 
         selects: list[SelectStatement] = []
@@ -1284,6 +1309,7 @@ class ParseToObjects(Transformer):
         order_by: OrderBy | None = None
         where: WhereClause | None = None
         having: HavingClause | None = None
+        derive: DeriveClause | None = None
         for arg in args:
             if isinstance(arg, SelectStatement):
                 selects.append(arg)
@@ -1297,11 +1323,24 @@ class ParseToObjects(Transformer):
                 having = arg
             elif isinstance(arg, AlignClause):
                 align = arg
+            elif isinstance(arg, DeriveClause):
+                derive = arg
 
         assert align
         assert align is not None
 
         derived_concepts = []
+        new_selects = [x.as_lineage(self.environment) for x in selects]
+        lineage = MultiSelectLineage(
+            selects=new_selects,
+            align=align,
+            derive=derive,
+            namespace=self.environment.namespace,
+            where_clause=where,
+            having_clause=having,
+            limit=limit,
+            hidden_components=set(y for x in new_selects for y in x.hidden_components),
+        )
         for x in align.items:
             concept = align_item_to_concept(
                 x,
@@ -1314,6 +1353,19 @@ class ParseToObjects(Transformer):
             )
             derived_concepts.append(concept)
             self.environment.add_concept(concept, meta=meta)
+        if derive:
+            for derived in derive.items:
+                derivation = derived.expr
+                name = derived.name
+                if not isinstance(derivation, (Function, Comparison, WindowItem)):
+                    raise SyntaxError(
+                        f"Invalid derive expression {derivation} in {meta.line}, must be a function or conditional"
+                    )
+                concept = derive_item_to_concept(
+                    derivation, name, lineage, self.environment.namespace
+                )
+                derived_concepts.append(concept)
+                self.environment.add_concept(concept, meta=meta)
         multi = MultiSelectStatement(
             selects=selects,
             align=align,
@@ -1323,6 +1375,7 @@ class ParseToObjects(Transformer):
             limit=limit,
             meta=Metadata(line_number=meta.line),
             derived_concepts=derived_concepts,
+            derive=derive,
         )
         return multi
 
@@ -1882,6 +1935,10 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def ftrim(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.TRIM, meta)
+
+    @v_args(meta=True)
+    def fhash(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.HASH, meta)
 
     @v_args(meta=True)
     def fsubstring(self, meta, args):

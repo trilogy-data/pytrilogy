@@ -397,7 +397,7 @@ class Executor(object):
                 if v.safe_address == param or v.address == param
             ]
         if not matched:
-            raise SyntaxError(f"No concept found for parameter {param}")
+            raise SyntaxError(f"No concept found for parameter {param};")
 
         concept: Concept = matched.pop()
         return self._concept_to_value(concept, local_concepts=local_concepts)

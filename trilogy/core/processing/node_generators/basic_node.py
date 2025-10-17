@@ -7,7 +7,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
-from trilogy.core.processing.nodes import History, StrategyNode
+from trilogy.core.processing.nodes import ConstantNode, History, StrategyNode
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[GEN_BASIC_NODE]"
@@ -51,11 +51,14 @@ def gen_basic_node(
     )
     synonyms: list[BuildConcept] = []
     ignored_optional: set[str] = set()
-    assert isinstance(concept.lineage, BuildFunction)
+
     # when we are getting an attribute, if there is anything else
     # that is an attribute of the same struct in local optional
     # select that value for discovery as well
-    if concept.lineage.operator == FunctionType.ATTR_ACCESS:
+    if (
+        isinstance(concept.lineage, BuildFunction)
+        and concept.lineage.operator == FunctionType.ATTR_ACCESS
+    ):
         logger.info(
             f"{depth_prefix}{LOGGER_PREFIX} checking for synonyms for attribute access"
         )
@@ -106,20 +109,28 @@ def gen_basic_node(
     logger.info(
         f"{depth_prefix}{LOGGER_PREFIX} Fetching parents {[x.address for x in all_parents]}"
     )
-    parent_node: StrategyNode | None = source_concepts(
-        mandatory_list=all_parents,
-        environment=environment,
-        g=g,
-        depth=depth + 1,
-        history=history,
-        conditions=conditions,
-    )
-
-    if not parent_node:
-        logger.info(
-            f"{depth_prefix}{LOGGER_PREFIX} No basic node could be generated for {concept}"
+    if all_parents:
+        parent_node: StrategyNode | None = source_concepts(
+            mandatory_list=all_parents,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+            history=history,
+            conditions=conditions,
         )
-        return None
+
+        if not parent_node:
+            logger.info(
+                f"{depth_prefix}{LOGGER_PREFIX} No basic node could be generated for {concept}"
+            )
+            return None
+    else:
+        return ConstantNode(
+            input_concepts=[],
+            output_concepts=[concept],
+            environment=environment,
+            depth=depth,
+        )
     if parent_node.source_type != SourceType.CONSTANT:
         parent_node.source_type = SourceType.BASIC
     parent_node.add_output_concept(concept)

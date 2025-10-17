@@ -176,6 +176,20 @@ def struct_arg(args):
     return [f"{x[1]}: {x[0]}" for x in zip(args[::2], args[1::2])]
 
 
+def hash_from_args(val, hash_type):
+    hash_type = hash_type[1:-1]
+    if hash_type.lower() == "md5":
+        return f"md5({val})"
+    elif hash_type.lower() == "sha1":
+        return f"sha1({val})"
+    elif hash_type.lower() == "sha256":
+        return f"sha256({val})"
+    elif hash_type.lower() == "sha512":
+        return f"sha512({val})"
+    else:
+        raise ValueError(f"Unsupported hash type: {hash_type}")
+
+
 FUNCTION_MAP = {
     # generic types
     FunctionType.ALIAS: lambda x: f"{x[0]}",
@@ -260,6 +274,7 @@ FUNCTION_MAP = {
     FunctionType.REGEXP_REPLACE: lambda x: f"REGEXP_REPLACE({x[0]},{x[1]}, {x[2]})",
     FunctionType.TRIM: lambda x: f"TRIM({x[0]})",
     FunctionType.REPLACE: lambda x: f"REPLACE({x[0]},{x[1]},{x[2]})",
+    FunctionType.HASH: lambda x: hash_from_args(x[0], x[1]),
     # FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
     # date types
     FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc({x[0]},{x[1]})",
@@ -484,7 +499,20 @@ class BaseDialect:
             elif isinstance(c.lineage, BuildRowsetItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False, raise_invalid=raise_invalid)}"
             elif isinstance(c.lineage, BuildMultiSelectLineage):
-                rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False, raise_invalid=raise_invalid)}"
+                if c.address in c.lineage.calculated_derivations:
+                    assert c.lineage.derive is not None
+                    for x in c.lineage.derive.items:
+                        if x.address == c.address:
+                            rval = self.render_expr(
+                                x.expr,
+                                cte=cte,
+                                raise_invalid=raise_invalid,
+                            )
+                            break
+                else:
+                    rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False, raise_invalid=raise_invalid)}"
+            elif isinstance(c.lineage, BuildComparison):
+                rval = f"{self.render_expr(c.lineage.left, cte=cte, raise_invalid=raise_invalid)} {c.lineage.operator.value} {self.render_expr(c.lineage.right, cte=cte, raise_invalid=raise_invalid)}"
             elif isinstance(c.lineage, AGGREGATE_ITEMS):
                 args = [
                     self.render_expr(v, cte)  # , alias=False)
@@ -816,7 +844,7 @@ class BaseDialect:
             if self.rendering.parameters:
                 if e.concept.namespace == DEFAULT_NAMESPACE:
                     return f":{e.concept.name}"
-                return f":{e.concept.address}"
+                return f":{e.concept.address.replace('.', '_')}"
             elif e.concept.lineage:
                 return self.render_expr(e.concept.lineage, cte=cte, cte_map=cte_map)
             return f"{self.QUOTE_CHARACTER}{e.concept.address}{self.QUOTE_CHARACTER}"

@@ -21,6 +21,7 @@ from trilogy.core.models.author import (
     Concept,
     ConceptRef,
     CustomType,
+    DeriveClause,
     Expr,
     FilterItem,
     Function,
@@ -352,11 +353,13 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
     local_concepts: Annotated[
         EnvironmentConceptDict, PlainValidator(validate_concepts)
     ] = Field(default_factory=EnvironmentConceptDict)
+    derive: DeriveClause | None = None
 
     def as_lineage(self, environment: Environment):
         return MultiSelectLineage(
             selects=[x.as_lineage(environment) for x in self.selects],
             align=self.align,
+            derive=self.derive,
             namespace=self.namespace,
             # derived_concepts = self.derived_concepts,
             limit=self.limit,
