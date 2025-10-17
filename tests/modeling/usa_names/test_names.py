@@ -170,7 +170,7 @@ def test_group_by_with_existing():
     year,
     name,
     total_births,
-    rank name by group total_births by name desc as name_rank
+    rank name by (group total_births by name) desc as name_rank
 having 
     name_rank <6
 order by
