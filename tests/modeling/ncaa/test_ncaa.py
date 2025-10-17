@@ -211,4 +211,4 @@ def test_adhoc10():
         text = f.read()
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
     env, queries = env.parse(text)
-    generated = engine.generate_sql(text)[0]
+    engine.generate_sql(text)[0]
