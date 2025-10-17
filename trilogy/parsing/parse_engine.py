@@ -2444,8 +2444,6 @@ def parse_text(
             else:
                 new_pos = pos
             e.interactive_parser.feed_token(Token("IDENTIFIER", e.token.value))
-            next(e.interactive_parser.iter_parse())
-
             raise _create_syntax_error(201, new_pos, text)
         except UnexpectedToken:
             pass
