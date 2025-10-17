@@ -425,7 +425,7 @@ class ParseToObjects(Transformer):
     def IDENTIFIER(self, args) -> str:
         return args.value
 
-    def ORDER_IDENTIFIER(self, args) -> str:
+    def ORDER_IDENTIFIER(self, args) -> ConceptRef:
         return self.environment.concepts[args.value.strip()].reference
 
     def WILDCARD_IDENTIFIER(self, args) -> str:
@@ -2408,7 +2408,10 @@ def parse_text(
         """Handle UnexpectedToken errors to make friendlier error messages."""
         # Handle ordering direction error
         pos = e.pos_in_stream or 0
-        last_token = e.interactive_parser.lexer_thread.state.last_token
+        if e.interactive_parser.lexer_thread.state:
+            last_token = e.interactive_parser.lexer_thread.state.last_token
+        else:
+            last_token = None
         if e.expected == {"ORDERING_DIRECTION"}:
             raise _create_syntax_error(210, pos, text)
 
