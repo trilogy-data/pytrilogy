@@ -202,3 +202,13 @@ def test_adhoc9():
     pattern = r'"wakeful"."_virt_agg_sum_1889332829440409" as "_virt_agg_sum_1889332829440409"'
 
     assert not re.search(pattern, generated), generated
+
+
+def test_adhoc10():
+    DebuggingHook(INFO)
+    env = Environment(working_path=working_path)
+    with open(working_path / "adhoc10.preql") as f:
+        text = f.read()
+    engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
+    env, queries = env.parse(text)
+    engine.generate_sql(text)[0]

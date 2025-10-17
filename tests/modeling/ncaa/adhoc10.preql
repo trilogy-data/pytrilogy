@@ -1,0 +1,10 @@
+import game_event as game_event;
+SELECT 
+    case 
+        when game_event.points_scored = 3 then 'Three Pointer'
+        when game_event.points_scored = 2 then 'Two Pointer'
+        when game_event.points_scored = 1 then 'Free Throw'
+        else 'Other'
+    end as shot_type,
+    count(game_event.id) as count
+order by count desc;

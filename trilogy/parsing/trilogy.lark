@@ -139,7 +139,8 @@
     
     limit: "LIMIT"i /[0-9]+/
 
-    _order_atom: expr ordering
+    ORDER_IDENTIFIER.2: /(?!LIMIT)[a-zA-Z_][a-zA-Z0-9_\.]*\s+/
+    _order_atom: (ORDER_IDENTIFIER ordering) | (expr ordering)
     
     order_list: _order_atom (","  _order_atom)* ","?
     

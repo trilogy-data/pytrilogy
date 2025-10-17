@@ -425,6 +425,9 @@ class ParseToObjects(Transformer):
     def IDENTIFIER(self, args) -> str:
         return args.value
 
+    def ORDER_IDENTIFIER(self, args) -> ConceptRef:
+        return self.environment.concepts[args.value.strip()].reference
+
     def WILDCARD_IDENTIFIER(self, args) -> str:
         return args.value
 
@@ -2405,6 +2408,10 @@ def parse_text(
         """Handle UnexpectedToken errors to make friendlier error messages."""
         # Handle ordering direction error
         pos = e.pos_in_stream or 0
+        if e.interactive_parser.lexer_thread.state:
+            last_token = e.interactive_parser.lexer_thread.state.last_token
+        else:
+            last_token = None
         if e.expected == {"ORDERING_DIRECTION"}:
             raise _create_syntax_error(210, pos, text)
 
@@ -2412,19 +2419,22 @@ def parse_text(
         parsed_tokens = (
             [x.value for x in e.token_history if x] if e.token_history else []
         )
+
         if parsed_tokens == ["FROM"]:
             raise _create_syntax_error(101, pos, text)
         # check if they are missing a semicolon
-        try:
-            e.interactive_parser.feed_token(Token("_TERMINATOR", ";"))
-            state = e.interactive_parser.lexer_thread.state
-            if state and state.last_token:
-                new_pos = state.last_token.end_pos or pos
-            else:
-                new_pos = pos
-            raise _create_syntax_error(202, new_pos, text)
-        except UnexpectedToken:
-            pass
+        if last_token and e.token.type == "$END":
+            try:
+
+                e.interactive_parser.feed_token(Token("_TERMINATOR", ";"))
+                state = e.interactive_parser.lexer_thread.state
+                if state and state.last_token:
+                    new_pos = state.last_token.end_pos or pos
+                else:
+                    new_pos = pos
+                raise _create_syntax_error(202, new_pos, text)
+            except UnexpectedToken:
+                pass
         # check if they forgot an as
         try:
             e.interactive_parser.feed_token(Token("AS", "AS"))
@@ -2434,6 +2444,8 @@ def parse_text(
             else:
                 new_pos = pos
             e.interactive_parser.feed_token(Token("IDENTIFIER", e.token.value))
+            next(e.interactive_parser.iter_parse())
+
             raise _create_syntax_error(201, new_pos, text)
         except UnexpectedToken:
             pass
