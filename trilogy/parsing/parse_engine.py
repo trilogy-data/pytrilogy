@@ -2349,7 +2349,7 @@ def inject_context_maker(pos: int, text: str, span: int = 40) -> str:
         rcap = ""
         # if it goes beyond the end of text, no ...
         # if it terminates on a space, no need for ...
-        if not after[-1].isspace() and not (end > len(text)):
+        if after and not after[-1].isspace() and not (end > len(text)):
             rcap = "..."
         lcap = ""
         if start > 0 and not before[0].isspace():
