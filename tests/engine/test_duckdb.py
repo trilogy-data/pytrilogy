@@ -2201,14 +2201,12 @@ derive x_next + y_next -> total
         assert results[0].dependent_rows_total == 5
 
 
-
 def test_order_by_count():
     exec = Dialects.DUCK_DB.default_executor()
     from trilogy.hooks import DebuggingHook
 
     DebuggingHook()
     exec.parse_text(
-
         """
 key state string;
 property state.count int;
@@ -2232,5 +2230,3 @@ select
 
 """
     )
-
-

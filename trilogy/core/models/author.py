@@ -2598,7 +2598,7 @@ class ArgBinding(Namespaced, DataTyped, BaseModel):
 
 class CustomType(BaseModel):
     name: str
-    type: DataType
+    type: DataType | list[DataType]
 
     def with_namespace(self, namespace: str) -> "CustomType":
         return CustomType.model_construct(

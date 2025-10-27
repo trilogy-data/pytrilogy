@@ -1515,7 +1515,10 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def type_declaration(self, meta: Meta, args) -> TypeDeclaration:
         key = args[0]
-        datatype = args[1]
+        if len(args) > 2:
+            datatype = args[1:]
+        else:
+            datatype = args[1]
         new = CustomType(name=key, type=datatype)
         self.environment.data_types[key] = new
         return TypeDeclaration(type=new)

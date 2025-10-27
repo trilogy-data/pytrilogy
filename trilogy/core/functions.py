@@ -99,7 +99,7 @@ def get_attr_datatype(
 
 def get_cast_output_type(
     args: list[Any],
-) -> DataType:
+) -> DataType | TraitDataType:
     return args[1]
 
 

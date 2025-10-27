@@ -39,3 +39,65 @@ select @add_positive_numbers(field, 2::int::positive) as fun;
     select @add_positive_numbers(1, -2) as fun;
     """
         )[0]
+
+
+def test_any_type_custom_type():
+    env, parsed = parse_text(
+        """type identifier any;
+
+        key field int::identifier;
+
+        datasource test (
+            field
+        )
+        grain (field)
+        query '''
+        select 1 as field union all select 2''';
+
+
+        def add_identifiers(x: int::identifier, y: int::identifier) -> x + y;
+
+        select @add_identifiers(field, 2::int::identifier) as fun;
+
+
+        """
+    )
+    dialects = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
+
+    sql = dialects.generate_sql(parsed[-1])[0]
+    assert '"test"."field" + cast(2 as int)' in sql, sql
+
+    with raises(InvalidSyntaxException, match="expected traits \['identifier'\]"):
+        sql = dialects.parse_text(
+            """
+
+    select @add_identifiers(1, -2) as fun;
+    """
+        )[0]
+
+
+def test_multi_type_custom_type():
+    env, parsed = parse_text(
+        """type identifier int | string;
+
+        key field int::identifier;
+
+        datasource test (
+            field
+        )
+        grain (field)
+        query '''
+        select 1 as field union all select 2''';
+
+
+        def add_identifiers(x: int::identifier, y: int::identifier) -> x::string || '.' || y::string;
+
+        select @add_identifiers(field, 2::int::identifier) as fun;
+
+
+        """
+    )
+    dialects = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
+
+    sql = dialects.generate_sql(parsed[-1])[0]
+    assert "cast(cast(2 as int) as string)" in sql, sql
