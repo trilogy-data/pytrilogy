@@ -19,6 +19,7 @@ from trilogy.core.models.author import (
     Concept,
     ConceptRef,
     Conditional,
+    CustomType,
     Function,
     Parenthetical,
     UndefinedConcept,
@@ -38,6 +39,11 @@ from trilogy.core.models.core import (
 from trilogy.core.models.environment import Environment
 
 GENERIC_ARGS = Concept | ConceptRef | Function | str | int | float | date | datetime
+
+
+CUSTOM_PLACEHOLDER = CustomType(
+    name="__placeholder__", type=DataType.UNKNOWN, drop_on=[], add_on=[]
+)
 
 
 @dataclass
@@ -1010,7 +1016,10 @@ class FunctionFactory:
                 traits=[
                     x
                     for x in final_output_type.traits
-                    if operator not in self.environment.data_types[x].drop_on
+                    if operator
+                    not in self.environment.data_types.get(
+                        x, CUSTOM_PLACEHOLDER
+                    ).drop_on
                 ],
             )
 
