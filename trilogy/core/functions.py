@@ -19,6 +19,7 @@ from trilogy.core.models.author import (
     Concept,
     ConceptRef,
     Conditional,
+    CustomType,
     Function,
     Parenthetical,
     UndefinedConcept,
@@ -38,6 +39,11 @@ from trilogy.core.models.core import (
 from trilogy.core.models.environment import Environment
 
 GENERIC_ARGS = Concept | ConceptRef | Function | str | int | float | date | datetime
+
+
+CUSTOM_PLACEHOLDER = CustomType(
+    name="__placeholder__", type=DataType.UNKNOWN, drop_on=[], add_on=[]
+)
 
 
 @dataclass
@@ -99,7 +105,18 @@ def get_attr_datatype(
 
 def get_cast_output_type(
     args: list[Any],
-) -> DataType:
+) -> DataType | TraitDataType:
+    base = arg_to_datatype(args[0])
+    if isinstance(base, TraitDataType):
+        traits = base.traits
+    else:
+        traits = []
+    if isinstance(args[1], TraitDataType):
+        return TraitDataType(
+            type=args[1].type, traits=list(set(traits + args[1].traits))
+        )
+    elif traits:
+        return TraitDataType(type=args[1], traits=traits)
     return args[1]
 
 
@@ -995,6 +1012,19 @@ class FunctionFactory:
             final_output_type = base_output_type
         else:
             raise SyntaxError(f"Could not determine output type for {operator}")
+        if isinstance(final_output_type, TraitDataType) and self.environment:
+            final_output_type = TraitDataType(
+                type=final_output_type.type,
+                traits=[
+                    x
+                    for x in final_output_type.traits
+                    if operator
+                    not in self.environment.data_types.get(
+                        x, CUSTOM_PLACEHOLDER
+                    ).drop_on
+                ],
+            )
+
         if not output_purpose:
             if operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
                 output_purpose = Purpose.METRIC

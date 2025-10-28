@@ -109,7 +109,9 @@
     raw_function: "def"  IDENTIFIER  "("  function_binding_list ")" "->" expr
 
     // TYPE blocks
-    type_declaration: "type" IDENTIFIER data_type 
+    type_drop_clause: "DROP"  IDENTIFIER ("|" IDENTIFIER)*
+    //type_add_clause: "ADD" IDENTIFIER ("|" IDENTIFIER)* type_add_clause?
+    type_declaration: "type" IDENTIFIER data_type ("|" data_type)* type_drop_clause? 
 
     // user_id where state = Mexico
     _filter_alt: (IDENTIFIER | literal | "(" expr ")") "?" conditional

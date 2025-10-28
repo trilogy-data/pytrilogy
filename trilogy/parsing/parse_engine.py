@@ -171,6 +171,16 @@ class FunctionBindingType:
     type: DataType | TraitDataType | None = None
 
 
+@dataclass
+class DropOn:
+    functions: List[FunctionType]
+
+
+@dataclass
+class AddOn:
+    functions: List[FunctionType]
+
+
 with open(join(dirname(__file__), "trilogy.lark"), "r") as f:
     PARSER = Lark(
         f.read(),
@@ -1513,10 +1523,34 @@ class ParseToObjects(Transformer):
         return args[0]
 
     @v_args(meta=True)
+    def type_drop_clause(self, meta: Meta, args) -> DropOn:
+        return DropOn([FunctionType(x) for x in args])
+
+    @v_args(meta=True)
+    def type_add_clause(self, meta: Meta, args) -> AddOn:
+        return AddOn([FunctionType(x) for x in args])
+
+    @v_args(meta=True)
     def type_declaration(self, meta: Meta, args) -> TypeDeclaration:
         key = args[0]
-        datatype = args[1]
-        new = CustomType(name=key, type=datatype)
+        datatype: list[DataType] = [x for x in args[1:] if isinstance(x, DataType)]
+        if len(datatype) == 1:
+            final_datatype: list[DataType] | DataType = datatype[0]
+        else:
+            final_datatype = datatype
+        add_on = None
+        drop_on = None
+        for x in args[1:]:
+            if isinstance(x, AddOn):
+                add_on = x
+            elif isinstance(x, DropOn):
+                drop_on = x
+        new = CustomType(
+            name=key,
+            type=final_datatype,
+            drop_on=drop_on.functions if drop_on else [],
+            add_on=add_on.functions if add_on else [],
+        )
         self.environment.data_types[key] = new
         return TypeDeclaration(type=new)
 
@@ -2349,7 +2383,7 @@ def inject_context_maker(pos: int, text: str, span: int = 40) -> str:
         rcap = ""
         # if it goes beyond the end of text, no ...
         # if it terminates on a space, no need for ...
-        if not after[-1].isspace() and not (end > len(text)):
+        if after and not after[-1].isspace() and not (end > len(text)):
             rcap = "..."
         lcap = ""
         if start > 0 and not before[0].isspace():
@@ -2444,8 +2478,6 @@ def parse_text(
             else:
                 new_pos = pos
             e.interactive_parser.feed_token(Token("IDENTIFIER", e.token.value))
-            next(e.interactive_parser.iter_parse())
-
             raise _create_syntax_error(201, new_pos, text)
         except UnexpectedToken:
             pass

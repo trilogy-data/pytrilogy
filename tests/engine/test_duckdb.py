@@ -2180,9 +2180,6 @@ align val:x_val, y_val
 derive x_next + y_next -> total
 ;
 
-
-
-                    
 """
     )
     exec2 = Dialects.DUCK_DB.default_executor()
@@ -2202,3 +2199,34 @@ derive x_next + y_next -> total
         results = exec2.execute_query(x).fetchall()
         assert results[0].dependent_rows_x_next == 2 + idx
         assert results[0].dependent_rows_total == 5
+
+
+def test_order_by_count():
+    exec = Dialects.DUCK_DB.default_executor()
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    exec.parse_text(
+        """
+key state string;
+property state.count int;
+datasource origin (
+state: state,
+count: count
+)
+grain (state)
+query '''
+select 'CA' as state, 10 as count
+union all
+select 'NY', 20
+union all
+select 'TX', 30 
+''';
+
+select
+   state,
+   count, 
+   order by count desc;
+
+"""
+    )

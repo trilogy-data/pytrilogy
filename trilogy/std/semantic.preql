@@ -1,0 +1,6 @@
+
+
+type identifier any;
+type flag any 
+    drop sum|count|avg|add|subtract|multiply|divide|mod
+;

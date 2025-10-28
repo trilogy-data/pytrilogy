@@ -99,6 +99,7 @@ class DataType(Enum):
 
     # PARSING
     UNKNOWN = "unknown"
+    ANY = "any"
 
     @property
     def data_type(self):
@@ -411,6 +412,12 @@ def merge_datatypes(
 
 def is_compatible_datatype(left, right):
     # for unknown types, we can't make any assumptions
+    if isinstance(left, list):
+        return any(is_compatible_datatype(ltype, right) for ltype in left)
+    if isinstance(right, list):
+        return any(is_compatible_datatype(left, rtype) for rtype in right)
+    if left == DataType.ANY or right == DataType.ANY:
+        return True
     if all(
         isinstance(x, NumericType)
         or x in (DataType.INTEGER, DataType.FLOAT, DataType.NUMERIC)
