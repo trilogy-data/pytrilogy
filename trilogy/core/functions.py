@@ -1004,7 +1004,7 @@ class FunctionFactory:
             final_output_type = base_output_type
         else:
             raise SyntaxError(f"Could not determine output type for {operator}")
-        if isinstance(final_output_type, TraitDataType):
+        if isinstance(final_output_type, TraitDataType) and self.environment:
             final_output_type = TraitDataType(
                 type=final_output_type.type,
                 traits=[

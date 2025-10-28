@@ -1533,9 +1533,11 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def type_declaration(self, meta: Meta, args) -> TypeDeclaration:
         key = args[0]
-        datatype = [x for x in args[1:] if isinstance(x, DataType)]
+        datatype: list[DataType] = [x for x in args[1:] if isinstance(x, DataType)]
         if len(datatype) == 1:
-            datatype = datatype[0]
+            final_datatype: list[DataType] | DataType = datatype[0]
+        else:
+            final_datatype = datatype
         add_on = None
         drop_on = None
         for x in args[1:]:
@@ -1545,7 +1547,7 @@ class ParseToObjects(Transformer):
                 drop_on = x
         new = CustomType(
             name=key,
-            type=datatype,
+            type=final_datatype,
             drop_on=drop_on.functions if drop_on else [],
             add_on=add_on.functions if add_on else [],
         )
