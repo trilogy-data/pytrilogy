@@ -2599,10 +2599,15 @@ class ArgBinding(Namespaced, DataTyped, BaseModel):
 class CustomType(BaseModel):
     name: str
     type: DataType | list[DataType]
+    drop_on: Optional[list[FunctionType]]
+    add_on: Optional[list[FunctionType]]
 
     def with_namespace(self, namespace: str) -> "CustomType":
         return CustomType.model_construct(
-            name=address_with_namespace(self.name, namespace), type=self.type
+            name=address_with_namespace(self.name, namespace),
+            type=self.type,
+            drop_on=self.drop_on,
+            add_on=self.add_on,
         )
 
 

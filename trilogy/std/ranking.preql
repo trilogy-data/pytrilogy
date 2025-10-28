@@ -4,3 +4,4 @@ type score int;
 type position int;
 type index int;
 type grade int;
+type letter_grade str;

@@ -171,6 +171,16 @@ class FunctionBindingType:
     type: DataType | TraitDataType | None = None
 
 
+@dataclass
+class DropOn:
+    functions: List[FunctionType]
+
+
+@dataclass
+class AddOn:
+    functions: List[FunctionType]
+
+
 with open(join(dirname(__file__), "trilogy.lark"), "r") as f:
     PARSER = Lark(
         f.read(),
@@ -1513,13 +1523,32 @@ class ParseToObjects(Transformer):
         return args[0]
 
     @v_args(meta=True)
+    def type_drop_clause(self, meta: Meta, args) -> DropOn:
+        return DropOn([FunctionType(x) for x in args])
+
+    @v_args(meta=True)
+    def type_add_clause(self, meta: Meta, args) -> AddOn:
+        return AddOn([FunctionType(x) for x in args])
+
+    @v_args(meta=True)
     def type_declaration(self, meta: Meta, args) -> TypeDeclaration:
         key = args[0]
-        if len(args) > 2:
-            datatype = args[1:]
-        else:
-            datatype = args[1]
-        new = CustomType(name=key, type=datatype)
+        datatype = [x for x in args[1:] if isinstance(x, DataType)]
+        if len(datatype) == 1:
+            datatype = datatype[0]
+        add_on = None
+        drop_on = None
+        for x in args[1:]:
+            if isinstance(x, AddOn):
+                add_on = x
+            elif isinstance(x, DropOn):
+                drop_on = x
+        new = CustomType(
+            name=key,
+            type=datatype,
+            drop_on=drop_on.functions if drop_on else [],
+            add_on=add_on.functions if add_on else [],
+        )
         self.environment.data_types[key] = new
         return TypeDeclaration(type=new)
 

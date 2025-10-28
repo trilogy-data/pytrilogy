@@ -101,3 +101,31 @@ def test_multi_type_custom_type():
 
     sql = dialects.generate_sql(parsed[-1])[0]
     assert "cast(cast(2 as int) as string)" in sql, sql
+
+
+def test_identifier():
+    env, parse = parse_text(
+        """
+import std.semantic;
+
+key field int::flag;
+
+datasource test (
+    field
+)
+grain (field)
+query '''
+select 1 as field union all select 0''';
+
+                            select field::string as string_field,
+                            field +1 as no_field;
+
+select sum(field) as fun;
+"""
+    )
+    dialects = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
+
+    dialects.generate_sql(parse[-1])[0]
+    assert "flag" not in env.concepts["fun"].datatype.traits
+    assert "flag" in env.concepts["string_field"].datatype.traits
+    assert "flag" not in env.concepts["no_field"].datatype.traits
