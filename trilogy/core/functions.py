@@ -109,10 +109,12 @@ def get_cast_output_type(
     base = arg_to_datatype(args[0])
     if isinstance(base, TraitDataType):
         traits = base.traits
-    elif isinstance(base, DataType):
+    else:
         traits = []
     if isinstance(args[1], TraitDataType):
-        return TraitDataType(type=args[1].type, traits=traits + args[1].traits)
+        return TraitDataType(
+            type=args[1].type, traits=list(set(traits + args[1].traits))
+        )
     elif traits:
         return TraitDataType(type=args[1], traits=traits)
     return args[1]
