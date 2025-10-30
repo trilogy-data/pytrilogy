@@ -1162,9 +1162,13 @@ def test_extra_filter_two(gcat_env: Executor):
 
     DebuggingHook(level=INFO)
 
-    base = gcat_env
-    queries = base.parse_text(
-        """import fuel_dashboard;
+    base_env = gcat_env.environment
+    gcat_env.environment = gcat_env.environment.duplicate()
+    # purge our aggregate to trigger conditions
+    if "fuel_aggregates" in gcat_env.environment.datasources:
+        del gcat_env.environment.datasources["fuel_aggregates"]
+    queries = gcat_env.parse_text(
+        """import fuel_dashboard2;
 
 WHERE
     era = 'Apollo'
@@ -1174,4 +1178,6 @@ SELECT
 ;
 """
     )
-    _ = base.generate_sql(queries[-1])
+    _ = gcat_env.generate_sql(queries[-1])
+
+    gcat_env.environment = base_env

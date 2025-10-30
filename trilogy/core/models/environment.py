@@ -215,7 +215,7 @@ class Environment(BaseModel):
     functions: Dict[str, CustomFunctionFactory] = Field(default_factory=dict)
     data_types: Dict[str, CustomType] = Field(default_factory=dict)
     named_statements: Dict[str, SelectLineage] = Field(default_factory=dict)
-    imports: Dict[str, list[Import]] = Field(
+    imports: defaultdict[str, list[Import]] = Field(
         default_factory=lambda: defaultdict(list)  # type: ignore
     )
     namespace: str = DEFAULT_NAMESPACE
@@ -252,7 +252,7 @@ class Environment(BaseModel):
             concepts=self.concepts.duplicate(),
             functions=dict(self.functions),
             data_types=dict(self.data_types),
-            imports=dict(self.imports),
+            imports=defaultdict(list, self.imports),
             namespace=self.namespace,
             working_path=self.working_path,
             environment_config=self.config.model_copy(deep=True),
@@ -262,6 +262,7 @@ class Environment(BaseModel):
             alias_origin_lookup={
                 k: v.duplicate() for k, v in self.alias_origin_lookup.items()
             },
+            env_file_path=self.env_file_path,
         )
 
     def _add_path_concepts(self):
