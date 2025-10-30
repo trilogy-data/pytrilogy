@@ -74,14 +74,14 @@ exec_time = 0.068875
 comp_time = 0.058117
 
 [query_30]
-parse_time = 1.031206
-exec_time = 0.131335
-comp_time = 0.079815
+parse_time = 0.31192
+exec_time = 0.131824
+comp_time = 0.069071
 
 [query_32]
-parse_time = 0.14234
-exec_time = 0.058846
-comp_time = 0.00699
+parse_time = 0.146546
+exec_time = 0.057117
+comp_time = 0.005522
 
 [query_55]
 parse_time = 0.118932
