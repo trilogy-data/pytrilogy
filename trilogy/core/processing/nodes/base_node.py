@@ -258,10 +258,14 @@ class StrategyNode:
         self.partial_lcl = LooseBuildConceptList(concepts=partials)
         return partials
 
-    def add_output_concepts(self, concepts: List[BuildConcept], rebuild: bool = True):
+    def add_output_concepts(
+        self, concepts: List[BuildConcept], rebuild: bool = True, unhide: bool = True
+    ):
         for concept in concepts:
             if concept.address not in self.output_lcl.addresses:
                 self.output_concepts.append(concept)
+            if unhide and concept.address in self.hidden_concepts:
+                self.hidden_concepts.remove(concept.address)
         self.output_lcl = LooseBuildConceptList(concepts=self.output_concepts)
         if rebuild:
             self.rebuild_cache()

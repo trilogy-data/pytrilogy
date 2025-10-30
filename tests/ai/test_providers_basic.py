@@ -30,7 +30,10 @@ ANTHROPIC_LATEST_MODEL = "claude-sonnet-4-5-20250929"
 
 
 def validate_response(response: str):
-    assert "dep_time.year = 2020" in response, response
+    assert (
+        "dep_time.year = 2020" in response
+        or "date_part(local.dep_time, year) = 2020" in response
+    ), response
     assert (
         "count(id2) as" in response
         or "count(local.id2) as" in response

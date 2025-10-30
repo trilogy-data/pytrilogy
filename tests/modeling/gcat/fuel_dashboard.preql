@@ -31,6 +31,7 @@ datasource fuel_aggregates (
   lv_type: vehicle.name,
   lv_variant: vehicle.variant,
   launch_date_year:?launch_date.year,
+  launch_date:?launch_date,
   launch_jd:?launch_jd,
 )
 grain (launch_tag, vehicle.stage_no, vehicle.name, vehicle.variant)

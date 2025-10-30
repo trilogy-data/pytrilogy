@@ -510,6 +510,7 @@ SELECT
     vehicle_stage_engine_engines.oxidizer as vehicle_stage_engine_oxidizer,
     "vehicle_lvs_info"."Stage_No" as "stage_no",
     "vehicle_lvs_info"."Stage_Name" as stage_name,
+    date_add(date '1900-01-01', cast((cast("launch_info"."Launch_JD" as float) - 2415021) as int) * INTERVAL 1 day) as launch_date,
     year(date_add(date '1900-01-01', cast((cast("launch_info"."Launch_JD" as float) - 2415021) as int) * INTERVAL 1 day)) as launch_date_year,
     launch_jd
 FROM

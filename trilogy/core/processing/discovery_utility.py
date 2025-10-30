@@ -40,15 +40,15 @@ def calculate_effective_parent_grain(
             pairs = join.concept_pairs or []
             for key in pairs:
                 left = key.existing_datasource
-                logger.info(f"adding left grain {left.grain} for join key {key.left}")
+                logger.debug(f"adding left grain {left.grain} for join key {key.left}")
                 grain += left.grain
                 seen.add(left.name)
             keys = [key.right for key in pairs]
             join_grain = BuildGrain.from_concepts(keys)
             if join_grain == join.right_datasource.grain:
-                logger.info(f"irrelevant right join {join}, does not change grain")
+                logger.debug(f"irrelevant right join {join}, does not change grain")
             else:
-                logger.info(
+                logger.debug(
                     f"join changes grain, adding {join.right_datasource.grain} to {grain}"
                 )
                 grain += join.right_datasource.grain
@@ -68,7 +68,7 @@ def calculate_effective_parent_grain(
                     ]
                 )
             ):
-                logger.info(f"adding unjoined grain {x.grain} for datasource {x.name}")
+                logger.debug(f"adding unjoined grain {x.grain} for datasource {x.name}")
                 grain += x.grain
         return grain
     else:
