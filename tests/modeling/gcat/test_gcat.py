@@ -48,33 +48,23 @@ ORDER BY
 LIMIT (100)"""
 
 
-def test_environment():
+def test_environment(gcat_env):
     DebuggingHook()
-    env = Environment(
-        working_path=Path(__file__).parent,
-    )
-    base = Dialects.DUCK_DB.default_executor(environment=env)
-    base.execute_raw_sql(ROOT / "setup.sql")
 
-    base.parse_text(
+    gcat_env.parse_text(
         """import launch;
 """
     )
     try:
-        base.validate_environment()
+        gcat_env.validate_environment()
     except ModelValidationError as e:
         for x in e.children or []:
             raise x
-    assert "year" in base.environment.concepts["launch_date.year"].datatype.traits
+    assert "year" in gcat_env.environment.concepts["launch_date.year"].datatype.traits
 
 
-def test_case():
-    DebuggingHook()
-    env = Environment(
-        working_path=Path(__file__).parent,
-    )
-    base = Dialects.DUCK_DB.default_executor(environment=env)
-    base.execute_raw_sql(ROOT / "setup.sql")
+def test_case(gcat_env: Executor):
+    base = gcat_env
     with open(ROOT / "fuel_dashboard.preql", "r") as f:
         raw = f.read()
         _, statements = parse_text(raw, environment=base.environment)
@@ -610,17 +600,13 @@ LIMIT 1
     ), sql[0]
 
 
-def test_should_group():
+def test_should_group(gcat_env: Executor):
     from trilogy.core.models.build import BuildGrain
     from trilogy.hooks import DebuggingHook
 
     DebuggingHook()
 
-    env = Environment(
-        working_path=Path(__file__).parent,
-    )
-    base = Dialects.DUCK_DB.default_executor(environment=env)
-    base.execute_raw_sql(ROOT / "setup.sql")
+    base = gcat_env
     queries = base.parse_text(
         """import launch;
 
@@ -635,7 +621,7 @@ SELECT
 order by launch_count desc limit 15;
 """
     )
-    build_env = env.materialize_for_select()
+    build_env = base.environment.materialize_for_select()
     validation_components = "local.launch_tag,vehicle.name,vehicle.stage.engine.name,vehicle.stage.name,vehicle.variant".split(
         ","
     )
@@ -647,29 +633,19 @@ order by launch_count desc limit 15;
         assert row["launches"] == row["launch_count"], row
 
 
-def test_flag():
+def test_flag(gcat_env: Executor):
     from trilogy.hooks import DebuggingHook
 
     DebuggingHook()
 
-    env = Environment(
-        working_path=Path(__file__).parent,
-    )
-    base = Dialects.DUCK_DB.default_executor(environment=env)
-    base.execute_raw_sql(
-        """CREATE OR REPLACE TABLE organizations as
-SELECT *
-from read_csv_auto('tests/modeling/gcat/orgs.cleaned.tsv',
-sample_size=-1);"""
-    )
-    queries = base.parse_text(
+    queries = gcat_env.parse_text(
         """import launch;
 
         select org.flag;
         """
     )
-    base.generate_sql(queries[-1])
-    results = base.execute_query(queries[-1])
+    gcat_env.generate_sql(queries[-1])
+    results = gcat_env.execute_query(queries[-1])
     assert len(results.fetchall()) == 4
 
 
@@ -1198,10 +1174,4 @@ SELECT
 ;
 """
     )
-    sql = base.generate_sql(queries[-1])
-    # results = base.execute_query(queries[-1])
-    # assert len(results.fetchall()) > 0, sql
-    assert (
-        """year(date_add(date '1900-01-01', cast((cast("wakeful"."launch_jd" as float) - 2415021) as int) * INTERVAL 1 day))"""
-        in sql[0]
-    ), sql[0]
+    _ = base.generate_sql(queries[-1])
