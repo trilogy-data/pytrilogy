@@ -1,77 +1,77 @@
 [query_01]
-parse_time = 0.229544
-exec_time = 0.099644
-comp_time = 0.104913
+parse_time = 0.409653
+exec_time = 0.146534
+comp_time = 0.581938
 
 [query_02]
-parse_time = 0.466495
-exec_time = 0.110859
-comp_time = 0.103473
+parse_time = 0.807974
+exec_time = 0.219532
+comp_time = 0.28711
 
 [query_03]
-parse_time = 0.152561
-exec_time = 0.047558
-comp_time = 0.0396
+parse_time = 1.397582
+exec_time = 0.069693
+comp_time = 0.064375
 
 [query_06]
-parse_time = 1.153035
-exec_time = 0.660981
-comp_time = 0.125454
+parse_time = 0.399805
+exec_time = 0.757096
+comp_time = 0.128507
 
 [query_07]
-parse_time = 0.340521
-exec_time = 0.244049
-comp_time = 0.19259
+parse_time = 0.253566
+exec_time = 0.215546
+comp_time = 0.146206
 
 [query_08]
-parse_time = 0.515778
-exec_time = 0.15817
-comp_time = 0.758785
+parse_time = 0.427675
+exec_time = 0.127635
+comp_time = 0.26776
 
 [query_10]
-parse_time = 1.044245
-exec_time = 0.307391
-comp_time = 0.59598
+parse_time = 0.61774
+exec_time = 0.144463
+comp_time = 0.277926
 
 [query_12]
-parse_time = 0.306984
-exec_time = 0.090245
-comp_time = 0.213464
+parse_time = 0.142486
+exec_time = 0.045748
+comp_time = 0.067638
 
 [query_15]
-parse_time = 0.319233
-exec_time = 0.040864
-comp_time = 0.336876
+parse_time = 0.101086
+exec_time = 0.015555
+comp_time = 0.139283
 
 [query_16]
-parse_time = 0.740073
-exec_time = 0.447514
-comp_time = 0.057991
+parse_time = 0.277677
+exec_time = 0.234024
+comp_time = 0.063551
 
 [query_20]
-parse_time = 0.312702
-exec_time = 0.220221
-comp_time = 0.211874
+parse_time = 0.127884
+exec_time = 0.087875
+comp_time = 0.081287
 
 [query_21]
-parse_time = 0.090509
-exec_time = 0.045684
-comp_time = 0.044817
+parse_time = 0.034902
+exec_time = 0.023413
+comp_time = 0.023599
 
 [query_24]
-parse_time = 0.487911
-exec_time = 0.440673
-comp_time = 0.396548
+parse_time = 0.210297
+exec_time = 0.187741
+comp_time = 0.176893
 
 [query_25]
-parse_time = 0.855883
-exec_time = 0.150621
-comp_time = 0.050798
+parse_time = 1.16744
+exec_time = 0.138282
+comp_time = 0.045951
 
 [query_26]
-parse_time = 0.119123
-exec_time = 0.075606
-comp_time = 0.067649
+parse_time = 0.115673
+exec_time = 0.068875
+comp_time = 0.058117
 
 [query_30]
 parse_time = 1.031206

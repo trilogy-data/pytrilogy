@@ -492,31 +492,3 @@ FROM read_csv_auto(
 );
 
 
--- OPTIMIZATION
-
-CREATE OR REPLACE TABLE fuel_dashboard_agg as 
-SELECT
-    "launch_info".Launch_Tag as launch_tag,
-    "launch_info"."OrbPay" as "orb_pay",
-    "vehicle_lvs_info"."LV_Name" as lv_type,
-    "vehicle_lvs_info"."LV_Variant" as lv_variant,
-    "launch_info"."LaunchCode" as launch_code,
-    "org_organizations".code as org_code,
-    "org_organizations"."StateCode" as "org_state_code",
-    "org_organizations"."hex_code" as "org_hex",
-    "vehicle_stage_engine_engines"."Name" as "vehicle_stage_engine_name",
-    "vehicle_stage_engine_engines".fuel as vehicle_stage_engine_fuel,
-    vehicle_stage_engine_engines."group" as vehicle_stage_engine_group,
-    vehicle_stage_engine_engines.oxidizer as vehicle_stage_engine_oxidizer,
-    "vehicle_lvs_info"."Stage_No" as "stage_no",
-    "vehicle_lvs_info"."Stage_Name" as stage_name,
-    year(date_add(date '1900-01-01', cast((cast("launch_info"."Launch_JD" as float) - 2415021) as int) * INTERVAL 1 day)) as launch_date_year,
-    launch_jd
-FROM
-    "launch_info"
-    INNER JOIN "organizations" as "org_organizations" on "launch_info"."FirstAgency" = "org_organizations"."Code"
-    FULL JOIN "lvs_info" as "vehicle_lvs_info" on "launch_info"."LV_Type" = "vehicle_lvs_info"."LV_Name" AND "launch_info"."Variant" = "vehicle_lvs_info"."LV_Variant"
-    LEFT OUTER JOIN "stages" as "vehicle_stage_stages" on "vehicle_lvs_info"."Stage_Name" = "vehicle_stage_stages"."Stage_Name"
-    FULL JOIN "engines" as "vehicle_stage_engine_engines" on "vehicle_stage_stages"."Engine" = "vehicle_stage_engine_engines"."Name"
-;
-

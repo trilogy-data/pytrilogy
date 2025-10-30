@@ -1177,3 +1177,31 @@ align date:launch_spine,decom_spine;
     results = base.execute_query(queries[-1])
     assert len(results.fetchall()) > 0, sql
     assert "date_add(current_date(), -60000 * INTERVAL 1 day)," in sql[0], sql[0]
+
+
+def test_extra_filter_two(gcat_env: Executor):
+    from logging import INFO
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook(level=INFO)
+
+    base = gcat_env
+    queries = base.parse_text(
+        """import fuel_dashboard;
+
+WHERE
+    era = 'Apollo'
+SELECT
+    launch_date.year,
+    vehicle.stage_no
+;
+"""
+    )
+    sql = base.generate_sql(queries[-1])
+    # results = base.execute_query(queries[-1])
+    # assert len(results.fetchall()) > 0, sql
+    assert (
+        """year(date_add(date '1900-01-01', cast((cast("wakeful"."launch_jd" as float) - 2415021) as int) * INTERVAL 1 day))"""
+        in sql[0]
+    ), sql[0]

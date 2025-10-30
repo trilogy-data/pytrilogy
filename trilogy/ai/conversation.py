@@ -61,7 +61,7 @@ class Conversation:
         if "```" in content:
             parts = content.split("```")
             if len(parts) >= 3:
-                return parts[1].strip()
+                return parts[-2].strip()
         return content
 
     def generate_query(
@@ -78,7 +78,7 @@ class Conversation:
             if not response.strip()[-1] == ";":
                 response += ";"
             try:
-                env, raw = environment.parse(response)
+                _, raw = environment.parse(response)
                 process_query(statement=raw[-1], environment=environment)
                 return response
             except (
@@ -90,10 +90,9 @@ class Conversation:
             ) as e2:
                 e = e2
                 self.add_message(
-                    f"The previous response could not be parsed due to the error: {str(e)}. Please generate a new query with the issues fixed. Use the same response format.",
+                    f"Your extracted response - {response} - could not be parsed due to the error: {str(e)}. Please generate a new query with the issues fixed. Use the same response format.",
                     role="user",
                 )
-
         raise Exception(
             f"Failed to generate a valid query after {attempts} attempts. Last error: {str(e)}. Full conversation: {self.messages}"
         )

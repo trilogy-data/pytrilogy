@@ -14,26 +14,3 @@ auto era <-
     END;
 
 
-
-datasource fuel_aggregates (
-  launch_tag:?launch_tag,
-  launch_code:_launch_code,
-  orb_pay:?orb_pay,
-  org_code:?org.code,
-  org_state_code:?org.state_code,
-  org_hex:?org.hex,
-  vehicle_stage_engine_name:?vehicle.stage.engine.name,
-  vehicle_stage_engine_fuel:?vehicle.stage.engine.fuel,
-  vehicle_stage_engine_oxidizer: ?vehicle.stage.engine.oxidizer,
-  vehicle_stage_engine_group:?vehicle.stage.engine.group,
-  stage_no: vehicle.stage_no,
-  stage_name: vehicle.stage.name,
-  lv_type: vehicle.name,
-  lv_variant: vehicle.variant,
-  launch_date_year:?launch_date.year,
-  launch_jd:?launch_jd,
-)
-grain (launch_tag, vehicle.stage_no, vehicle.name, vehicle.variant)
-address fuel_dashboard_agg;
-
-validate datasources fuel_aggregates;
