@@ -104,6 +104,7 @@ FUNCTION_MAP = {
     FunctionType.CONCAT: lambda x: f"({' || '.join(x)})",
     FunctionType.DATE_LITERAL: lambda x: f"date '{x}'",
     FunctionType.DATETIME_LITERAL: lambda x: f"datetime '{x}'",
+    FunctionType.DAY_OF_WEEK: lambda x: f"dayofweek({x[0]})",
     # string
     FunctionType.CONTAINS: lambda x: f"CONTAINS(LOWER({x[0]}), LOWER({x[1]}))",
     # regexp
