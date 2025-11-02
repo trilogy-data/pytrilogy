@@ -312,3 +312,38 @@ auto random <- @plus_two(@weekday_sales(10));
     results = results.fetchall()
     assert results[0].test2 == 10
     assert results[1].test2 == 17
+
+
+def test_user_function_aggregate_two():
+    x = Dialects.DUCK_DB.default_executor()
+
+    results = x.execute_query(
+        """import std.geography;
+import std.display;
+
+key state string::us_state;
+key year int;
+property state.val string;
+
+datasource states
+(
+    state,
+    year,
+    val
+)
+grain (state, year)
+query '''
+select 'Vermont' as state, 2000 as year, 10 as val union all select 'Florida' as state, 2000, 5 as val
+union all select 'Vermont', 2001, 16 union all select 'Florida' as state, 2001, 7
+'''
+;
+
+def avg_year_percent_of_all_avg_year(field, dim)->round((avg(sum(field) by year, dim)/ avg(sum(field) by year )),2)::float::percent;
+
+select @avg_year_percent_of_all_avg_year(val, state) as p_of_whole, state
+order by p_of_whole desc;
+"""
+    )
+
+    results = results.fetchall()
+    assert int(results[0].p_of_whole * 100) == 68
