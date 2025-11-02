@@ -294,7 +294,8 @@ def test_basic_dates(duckdb_engine: Executor):
     tomorrow,
     yesterday,
     date_diff(today, today, day)->zero,
-    date_trunc(today, year) -> current_year 
+    date_trunc(today, year) -> current_year,
+    day_of_week(today) -> today_dow
   ;
     """
     duckdb_engine.parse_text(test)
@@ -303,7 +304,7 @@ def test_basic_dates(duckdb_engine: Executor):
         == Granularity.SINGLE_ROW
     )
     results = duckdb_engine.execute_text(test)[0].fetchall()
-    assert len(results[0]) == 4
+    assert len(results[0]) == 5
 
 
 def test_rowset(duckdb_engine: Executor):

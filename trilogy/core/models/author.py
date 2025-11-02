@@ -162,14 +162,13 @@ class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
         )
 
     def with_reference_replacement(self, source: str, target: Expr | ArgBinding):
-        if self.address == source:
-            return target
-
         # a reference might be to an attribute of a struct that is bound late
         # if the replacement is a parent in the access path; replace reference
         # with an attribute access call
-        candidates = [f"local.{self.address}", self.address]
+        candidates = [f"{DEFAULT_NAMESPACE}.{self.address}", self.address]
         for candidate in candidates:
+            if candidate == source:
+                return target
             if not candidate.startswith(f"{source}."):
                 continue
             attribute = self.address.rsplit(".", 1)[1]
@@ -2535,11 +2534,7 @@ class CustomFunctionFactory:
                     target = f"{DEFAULT_NAMESPACE}.{self.function_arguments[idx].name}"
                 else:
                     target = self.function_arguments[idx].name
-                nout = (
-                    nout.with_reference_replacement(target, x)
-                    if isinstance(nout, Mergeable)
-                    else nout
-                )
+                nout = nout.with_reference_replacement(target, x)
         return nout
 
 

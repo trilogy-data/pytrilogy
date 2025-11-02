@@ -1516,6 +1516,7 @@ class ParseToObjects(Transformer):
         remapped = FunctionCallWrapper(
             content=self.environment.functions[name](*args), name=name, args=args
         )
+
         return remapped
 
     @v_args(meta=True)
