@@ -43,3 +43,15 @@ def test_adhoc04():
     # results = engine.execute_query(text).fetchall()
     # really, this is checking that there is no extra inner join with the filtered quantity
     assert len(query) < 1400, query
+
+
+def test_adhoc05():
+    env = Environment(working_path=working_path)
+    DebuggingHook()
+    with open(working_path / "adhoc05.preql") as f:
+        text = f.read()
+
+    engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
+
+    results = engine.execute_query(text).fetchall()
+    assert results[0].total_orders == 15000, results[0].total_orders

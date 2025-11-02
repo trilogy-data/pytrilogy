@@ -126,8 +126,8 @@ def gen_group_node(
             comp_grain = get_aggregate_grain(possible_agg, environment)
             if not possible_agg.grain.abstract:
                 continue
-            if set([x.address for x in agg_parents]).issubset(
-                set([x.address for x in parent_concepts])
+            if set([x.address for x in agg_parents]) == set(
+                [x.address for x in parent_concepts]
             ):
                 output_concepts.append(possible_agg)
                 logger.info(

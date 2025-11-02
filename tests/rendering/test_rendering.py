@@ -1055,13 +1055,14 @@ def test_render_group_by():
 
 key x int;
 
-select group(1) by x as test;
+select group(1) by x as test, group(1) by * as all_rows;
 """
     )
     expected = [
         """key x int;""",
         """SELECT
     group(1) by x -> test,
+    group(1) by * -> all_rows,
 ;""",
     ]
     for idx, cmd in enumerate(commands):
