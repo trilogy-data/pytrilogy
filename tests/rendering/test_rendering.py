@@ -1090,3 +1090,26 @@ select x as x2;
     for idx, cmd in enumerate(commands):
         rendered = Renderer(environment=env).to_string(cmd)
         assert rendered == expected[idx], rendered
+
+
+def test_render_cast():
+    basic = Environment()
+
+    env, commands = basic.parse(
+        """
+
+key x int;
+
+select x::float as x2, cast(x as float) as x3;
+"""
+    )
+    expected = [
+        """key x int;""",
+        """SELECT
+    x::float -> x2,
+    x::float -> x3,
+;""",
+    ]
+    for idx, cmd in enumerate(commands):
+        rendered = Renderer(environment=env).to_string(cmd)
+        assert rendered == expected[idx], rendered
