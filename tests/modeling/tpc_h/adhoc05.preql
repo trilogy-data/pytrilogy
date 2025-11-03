@@ -1,0 +1,7 @@
+import lineitem;
+# Selecting total revenue
+# Total revenue is based on the extended price minus discount
+select 
+    sum(quantity) as total_items_sold,
+    count(order.id) as total_orders,
+;

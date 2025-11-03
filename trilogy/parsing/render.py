@@ -572,8 +572,11 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "ConceptRef"):
+        if arg.address == "__preql_internal.all_rows":
+            return "*"
         if arg.name.startswith(VIRTUAL_CONCEPT_PREFIX) and self.environment:
             return self.to_string(self.environment.concepts[arg.address])
+
         ns, base = arg.address.rsplit(".", 1)
         if ns == DEFAULT_NAMESPACE:
             return base
@@ -640,7 +643,7 @@ class Renderer:
         if arg.operator == FunctionType.CONSTANT:
             return f"{', '.join(args)}"
         if arg.operator == FunctionType.CAST:
-            return f"CAST({self.to_string(arg.arguments[0])} AS {self.to_string(arg.arguments[1])})"
+            return f"{self.to_string(arg.arguments[0])}::{self.to_string(arg.arguments[1])}"
         if arg.operator == FunctionType.INDEX_ACCESS:
             return f"{self.to_string(arg.arguments[0])}[{self.to_string(arg.arguments[1])}]"
 
