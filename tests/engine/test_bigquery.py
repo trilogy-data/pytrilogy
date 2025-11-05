@@ -8,12 +8,12 @@ from trilogy.core.models.core import ArrayType, DataType, ListWrapper
 from trilogy.core.models.environment import Environment
 from trilogy.hooks.query_debugger import DebuggingHook
 
-UNSUPPORTED_TUPLE = (3, 11)
+UNSUPPORTED_TUPLE = (3, 14)
 
 # FORCE INSTALL sqlalchemy-bigquery (#--ignore-requires-python) to run this test if needed
 
 
-# bigquery is not supported on 13 yet
+# bigquery is not supported on 14 yet
 @pytest.mark.skipif(
     sys.version_info >= UNSUPPORTED_TUPLE, reason="BigQuery not supported on 3.13"
 )
@@ -81,11 +81,11 @@ def test_readme():
     for row in results:
         # get results for first query
         answers = row.fetchall()
-        assert len(answers) == 3
+        assert len(answers) == 10
 
 
 @pytest.mark.skipif(
-    sys.version_info >= UNSUPPORTED_TUPLE, reason="BigQuery not supported on 3.13"
+    sys.version_info >= UNSUPPORTED_TUPLE, reason="BigQuery not supported on 3.14"
 )
 def test_unnest_rendering():
     environment = Environment()
