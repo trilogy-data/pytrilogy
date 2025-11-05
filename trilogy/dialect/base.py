@@ -24,7 +24,7 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.internal import DEFAULT_CONCEPTS
-from trilogy.core.models.author import ArgBinding
+from trilogy.core.models.author import ArgBinding, arg_to_datatype
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildCaseElse,
@@ -192,126 +192,126 @@ def hash_from_args(val, hash_type):
 
 FUNCTION_MAP = {
     # generic types
-    FunctionType.ALIAS: lambda x: f"{x[0]}",
-    FunctionType.GROUP: lambda x: f"{x[0]}",
-    FunctionType.CONSTANT: lambda x: f"{x[0]}",
-    FunctionType.TYPED_CONSTANT: lambda x: f"{x[0]}",
-    FunctionType.COALESCE: lambda x: f"coalesce({','.join(x)})",
-    FunctionType.NULLIF: lambda x: f"nullif({x[0]},{x[1]})",
-    FunctionType.CAST: lambda x: f"cast({x[0]} as {x[1]})",
-    FunctionType.CASE: lambda x: render_case(x),
-    FunctionType.SPLIT: lambda x: f"split({x[0]}, {x[1]})",
-    FunctionType.IS_NULL: lambda x: f"{x[0]} is null",
-    FunctionType.BOOL: lambda x: f"CASE WHEN {x[0]} THEN TRUE ELSE FALSE END",
-    FunctionType.PARENTHETICAL: lambda x: f"({x[0]})",
+    FunctionType.ALIAS: lambda x, types: f"{x[0]}",
+    FunctionType.GROUP: lambda x, types: f"{x[0]}",
+    FunctionType.CONSTANT: lambda x, types: f"{x[0]}",
+    FunctionType.TYPED_CONSTANT: lambda x, types: f"{x[0]}",
+    FunctionType.COALESCE: lambda x, types: f"coalesce({','.join(x)})",
+    FunctionType.NULLIF: lambda x, types: f"nullif({x[0]},{x[1]})",
+    FunctionType.CAST: lambda x, types: f"cast({x[0]} as {x[1]})",
+    FunctionType.CASE: lambda x, types: render_case(x),
+    FunctionType.SPLIT: lambda x, types: f"split({x[0]}, {x[1]})",
+    FunctionType.IS_NULL: lambda x, types: f"{x[0]} is null",
+    FunctionType.BOOL: lambda x, types: f"CASE WHEN {x[0]} THEN TRUE ELSE FALSE END",
+    FunctionType.PARENTHETICAL: lambda x, types: f"({x[0]})",
     # Complex
-    FunctionType.INDEX_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
-    FunctionType.MAP_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
-    FunctionType.UNNEST: lambda x: f"unnest({x[0]})",
-    FunctionType.DATE_SPINE: lambda x: f"""unnest(
+    FunctionType.INDEX_ACCESS: lambda x, types: f"{x[0]}[{x[1]}]",
+    FunctionType.MAP_ACCESS: lambda x, types: f"{x[0]}[{x[1]}]",
+    FunctionType.UNNEST: lambda x, types: f"unnest({x[0]})",
+    FunctionType.DATE_SPINE: lambda x, types: f"""unnest(
         generate_series(
             {x[0]},
             {x[1]},
             INTERVAL '1 day'
         )
     )""",
-    FunctionType.RECURSE_EDGE: lambda x: f"CASE WHEN {x[1]} IS NULL THEN {x[0]} ELSE {x[1]} END",
-    FunctionType.ATTR_ACCESS: lambda x: f"""{x[0]}.{x[1].replace("'", "")}""",
-    FunctionType.STRUCT: lambda x: f"{{{', '.join(struct_arg(x))}}}",
-    FunctionType.ARRAY: lambda x: f"[{', '.join(x)}]",
-    FunctionType.DATE_LITERAL: lambda x: f"date '{x}'",
-    FunctionType.DATETIME_LITERAL: lambda x: f"datetime '{x}'",
+    FunctionType.RECURSE_EDGE: lambda x, types: f"CASE WHEN {x[1]} IS NULL THEN {x[0]} ELSE {x[1]} END",
+    FunctionType.ATTR_ACCESS: lambda x, types: f"""{x[0]}.{x[1].replace("'", "")}""",
+    FunctionType.STRUCT: lambda x, types: f"{{{', '.join(struct_arg(x))}}}",
+    FunctionType.ARRAY: lambda x, types: f"[{', '.join(x)}]",
+    FunctionType.DATE_LITERAL: lambda x, types: f"date '{x}'",
+    FunctionType.DATETIME_LITERAL: lambda x, types: f"datetime '{x}'",
     # MAP
-    FunctionType.MAP_KEYS: lambda x: f"map_keys({x[0]})",
-    FunctionType.MAP_VALUES: lambda x: f"map_values({x[0]})",
+    FunctionType.MAP_KEYS: lambda x, types: f"map_keys({x[0]})",
+    FunctionType.MAP_VALUES: lambda x, types: f"map_values({x[0]})",
     # ARRAY
-    FunctionType.ARRAY_SUM: lambda x: f"array_sum({x[0]})",
-    FunctionType.ARRAY_DISTINCT: lambda x: f"array_distinct({x[0]})",
-    FunctionType.ARRAY_SORT: lambda x: f"array_sort({x[0]})",
-    FunctionType.ARRAY_TRANSFORM: lambda args: (
+    FunctionType.ARRAY_SUM: lambda x, types: f"array_sum({x[0]})",
+    FunctionType.ARRAY_DISTINCT: lambda x, types: f"array_distinct({x[0]})",
+    FunctionType.ARRAY_SORT: lambda x, types: f"array_sort({x[0]})",
+    FunctionType.ARRAY_TRANSFORM: lambda args, types: (
         f"array_transform({args[0]}, {args[1]} -> {args[2]})"
     ),
-    FunctionType.ARRAY_TO_STRING: lambda args: (
+    FunctionType.ARRAY_TO_STRING: lambda args, types: (
         f"array_to_string({args[0]}, {args[1]})"
     ),
-    FunctionType.ARRAY_FILTER: lambda args: (
+    FunctionType.ARRAY_FILTER: lambda args, types: (
         f"array_filter({args[0]}, {args[1]} -> {args[2]})"
     ),
     # math
-    FunctionType.ADD: lambda x: " + ".join(x),
-    FunctionType.ABS: lambda x: f"abs({x[0]})",
-    FunctionType.SUBTRACT: lambda x: " - ".join(x),
-    FunctionType.DIVIDE: lambda x: " / ".join(x),
-    FunctionType.MULTIPLY: lambda x: " * ".join(x),
-    FunctionType.ROUND: lambda x: f"round({x[0]},{x[1]})",
-    FunctionType.FLOOR: lambda x: f"floor({x[0]})",
-    FunctionType.CEIL: lambda x: f"ceil({x[0]})",
-    FunctionType.MOD: lambda x: f"({x[0]} % {x[1]})",
-    FunctionType.SQRT: lambda x: f"sqrt({x[0]})",
-    FunctionType.RANDOM: lambda x: "random()",
-    FunctionType.LOG: lambda x: (
+    FunctionType.ADD: lambda x, types: " + ".join(x),
+    FunctionType.ABS: lambda x, types: f"abs({x[0]})",
+    FunctionType.SUBTRACT: lambda x, types: " - ".join(x),
+    FunctionType.DIVIDE: lambda x, types: " / ".join(x),
+    FunctionType.MULTIPLY: lambda x, types: " * ".join(x),
+    FunctionType.ROUND: lambda x, types: f"round({x[0]},{x[1]})",
+    FunctionType.FLOOR: lambda x, types: f"floor({x[0]})",
+    FunctionType.CEIL: lambda x, types: f"ceil({x[0]})",
+    FunctionType.MOD: lambda x, types: f"({x[0]} % {x[1]})",
+    FunctionType.SQRT: lambda x, types: f"sqrt({x[0]})",
+    FunctionType.RANDOM: lambda x, types: "random()",
+    FunctionType.LOG: lambda x, types: (
         f"log({x[0]})" if x[1] == 10 else f"log({x[0]}, {x[1]})"
     ),
     # aggregate types
-    FunctionType.COUNT_DISTINCT: lambda x: f"count(distinct {x[0]})",
-    FunctionType.COUNT: lambda x: f"count({x[0]})",
-    FunctionType.SUM: lambda x: f"sum({x[0]})",
-    FunctionType.ARRAY_AGG: lambda x: f"array_agg({x[0]})",
-    FunctionType.LENGTH: lambda x: f"length({x[0]})",
-    FunctionType.AVG: lambda x: f"avg({x[0]})",
-    FunctionType.MAX: lambda x: f"max({x[0]})",
-    FunctionType.MIN: lambda x: f"min({x[0]})",
-    FunctionType.ANY: lambda x: f"any_value({x[0]})",
+    FunctionType.COUNT_DISTINCT: lambda x, types: f"count(distinct {x[0]})",
+    FunctionType.COUNT: lambda x, types: f"count({x[0]})",
+    FunctionType.SUM: lambda x, types: f"sum({x[0]})",
+    FunctionType.ARRAY_AGG: lambda x, types: f"array_agg({x[0]})",
+    FunctionType.LENGTH: lambda x, types: f"length({x[0]})",
+    FunctionType.AVG: lambda x, types: f"avg({x[0]})",
+    FunctionType.MAX: lambda x, types: f"max({x[0]})",
+    FunctionType.MIN: lambda x, types: f"min({x[0]})",
+    FunctionType.ANY: lambda x, types: f"any_value({x[0]})",
     # string types
-    FunctionType.LIKE: lambda x: f" {x[0]} like {x[1]} ",
-    FunctionType.UPPER: lambda x: f"UPPER({x[0]}) ",
-    FunctionType.LOWER: lambda x: f"LOWER({x[0]}) ",
-    FunctionType.SUBSTRING: lambda x: f"SUBSTRING({x[0]},{x[1]},{x[2]})",
-    FunctionType.STRPOS: lambda x: f"STRPOS({x[0]},{x[1]})",
-    FunctionType.CONTAINS: lambda x: f"CONTAINS({x[0]},{x[1]})",
-    FunctionType.REGEXP_CONTAINS: lambda x: f"REGEXP_CONTAINS({x[0]},{x[1]})",
-    FunctionType.REGEXP_EXTRACT: lambda x: f"REGEXP_EXTRACT({x[0]},{x[1]})",
-    FunctionType.REGEXP_REPLACE: lambda x: f"REGEXP_REPLACE({x[0]},{x[1]}, {x[2]})",
-    FunctionType.TRIM: lambda x: f"TRIM({x[0]})",
-    FunctionType.REPLACE: lambda x: f"REPLACE({x[0]},{x[1]},{x[2]})",
-    FunctionType.HASH: lambda x: hash_from_args(x[0], x[1]),
+    FunctionType.LIKE: lambda x, types: f" {x[0]} like {x[1]} ",
+    FunctionType.UPPER: lambda x, types: f"UPPER({x[0]}) ",
+    FunctionType.LOWER: lambda x, types: f"LOWER({x[0]}) ",
+    FunctionType.SUBSTRING: lambda x, types: f"SUBSTRING({x[0]},{x[1]},{x[2]})",
+    FunctionType.STRPOS: lambda x, types: f"STRPOS({x[0]},{x[1]})",
+    FunctionType.CONTAINS: lambda x, types: f"CONTAINS({x[0]},{x[1]})",
+    FunctionType.REGEXP_CONTAINS: lambda x, types: f"REGEXP_CONTAINS({x[0]},{x[1]})",
+    FunctionType.REGEXP_EXTRACT: lambda x, types: f"REGEXP_EXTRACT({x[0]},{x[1]})",
+    FunctionType.REGEXP_REPLACE: lambda x, types: f"REGEXP_REPLACE({x[0]},{x[1]}, {x[2]})",
+    FunctionType.TRIM: lambda x, types: f"TRIM({x[0]})",
+    FunctionType.REPLACE: lambda x, types: f"REPLACE({x[0]},{x[1]},{x[2]})",
+    FunctionType.HASH: lambda x, types: hash_from_args(x[0], x[1]),
     # FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
     # date types
-    FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc({x[0]},{x[1]})",
-    FunctionType.DATE_PART: lambda x: f"date_part({x[0]},{x[1]})",
-    FunctionType.DATE_ADD: lambda x: f"date_add({x[0]},{x[1]}, {x[2]})",
-    FunctionType.DATE_SUB: lambda x: f"date_sub({x[0]},{x[1]}, {x[2]})",
-    FunctionType.DATE_DIFF: lambda x: f"date_diff({x[0]},{x[1]}, {x[2]})",
-    FunctionType.DATE: lambda x: f"date({x[0]})",
-    FunctionType.DATETIME: lambda x: f"datetime({x[0]})",
-    FunctionType.TIMESTAMP: lambda x: f"timestamp({x[0]})",
-    FunctionType.SECOND: lambda x: f"second({x[0]})",
-    FunctionType.MINUTE: lambda x: f"minute({x[0]})",
-    FunctionType.HOUR: lambda x: f"hour({x[0]})",
-    FunctionType.DAY: lambda x: f"day({x[0]})",
-    FunctionType.DAY_NAME: lambda x: f"dayname({x[0]})",
-    FunctionType.DAY_OF_WEEK: lambda x: f"day_of_week({x[0]})",
-    FunctionType.WEEK: lambda x: f"week({x[0]})",
-    FunctionType.MONTH: lambda x: f"month({x[0]})",
-    FunctionType.MONTH_NAME: lambda x: f"monthname({x[0]})",
-    FunctionType.QUARTER: lambda x: f"quarter({x[0]})",
-    FunctionType.YEAR: lambda x: f"year({x[0]})",
+    FunctionType.DATE_TRUNCATE: lambda x, types: f"date_trunc({x[0]},{x[1]})",
+    FunctionType.DATE_PART: lambda x, types: f"date_part({x[0]},{x[1]})",
+    FunctionType.DATE_ADD: lambda x, types: f"date_add({x[0]},{x[1]}, {x[2]})",
+    FunctionType.DATE_SUB: lambda x, types: f"date_sub({x[0]},{x[1]}, {x[2]})",
+    FunctionType.DATE_DIFF: lambda x, types: f"date_diff({x[0]},{x[1]}, {x[2]})",
+    FunctionType.DATE: lambda x, types: f"date({x[0]})",
+    FunctionType.DATETIME: lambda x, types: f"datetime({x[0]})",
+    FunctionType.TIMESTAMP: lambda x, types: f"timestamp({x[0]})",
+    FunctionType.SECOND: lambda x, types: f"second({x[0]})",
+    FunctionType.MINUTE: lambda x, types: f"minute({x[0]})",
+    FunctionType.HOUR: lambda x, types: f"hour({x[0]})",
+    FunctionType.DAY: lambda x, types: f"day({x[0]})",
+    FunctionType.DAY_NAME: lambda x, types: f"dayname({x[0]})",
+    FunctionType.DAY_OF_WEEK: lambda x, types: f"day_of_week({x[0]})",
+    FunctionType.WEEK: lambda x, types: f"week({x[0]})",
+    FunctionType.MONTH: lambda x, types: f"month({x[0]})",
+    FunctionType.MONTH_NAME: lambda x, types: f"monthname({x[0]})",
+    FunctionType.QUARTER: lambda x, types: f"quarter({x[0]})",
+    FunctionType.YEAR: lambda x, types: f"year({x[0]})",
     # string types
-    FunctionType.CONCAT: lambda x: f"concat({','.join(x)})",
+    FunctionType.CONCAT: lambda x, types: f"concat({','.join(x)})",
     # constant types
-    FunctionType.CURRENT_DATE: lambda x: "current_date()",
-    FunctionType.CURRENT_DATETIME: lambda x: "current_datetime()",
+    FunctionType.CURRENT_DATE: lambda x, types: "current_date()",
+    FunctionType.CURRENT_DATETIME: lambda x, types: "current_datetime()",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
     **FUNCTION_MAP,
-    FunctionType.COUNT_DISTINCT: lambda args: f"CASE WHEN{args[0]} IS NOT NULL THEN 1 ELSE 0 END",
-    FunctionType.COUNT: lambda args: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
-    FunctionType.SUM: lambda args: f"{args[0]}",
-    FunctionType.AVG: lambda args: f"{args[0]}",
-    FunctionType.MAX: lambda args: f"{args[0]}",
-    FunctionType.MIN: lambda args: f"{args[0]}",
-    FunctionType.ANY: lambda args: f"{args[0]}",
+    FunctionType.COUNT_DISTINCT: lambda args, types: f"CASE WHEN{args[0]} IS NOT NULL THEN 1 ELSE 0 END",
+    FunctionType.COUNT: lambda args, types: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
+    FunctionType.SUM: lambda args, types: f"{args[0]}",
+    FunctionType.AVG: lambda args, types: f"{args[0]}",
+    FunctionType.MAX: lambda args, types: f"{args[0]}",
+    FunctionType.MIN: lambda args, types: f"{args[0]}",
+    FunctionType.ANY: lambda args, types: f"{args[0]}",
 }
 
 
@@ -345,7 +345,7 @@ ORDER BY{% for order in order_by %}
 
 
 def safe_get_cte_value(
-    coalesce,
+    coalesce: Callable,
     cte: CTE | UnionCTE,
     c: BuildConcept,
     quote_char: str,
@@ -376,7 +376,8 @@ def safe_get_cte_value(
                 f"{quote_char}{x}{quote_char}.{safe_quote(cte.get_alias(c, x), quote_char)}"
                 for x in raw
             ]
-        )
+        ),
+        [],
     )
 
 
@@ -519,13 +520,13 @@ class BaseDialect:
                     for v in c.lineage.function.arguments
                 ]
                 if cte.group_to_grain:
-                    rval = self.FUNCTION_MAP[c.lineage.function.operator](args)
+                    rval = self.FUNCTION_MAP[c.lineage.function.operator](args, [])
                 else:
                     logger.debug(
                         f"{LOGGER_PREFIX} [{c.address}] ignoring aggregate, already at"
                         " target grain"
                     )
-                    rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.function.operator](args)}"
+                    rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.function.operator](args, [])}"
             elif (
                 isinstance(c.lineage, FUNCTION_ITEMS)
                 and c.lineage.operator == FunctionType.UNION
@@ -549,6 +550,7 @@ class BaseDialect:
                 rval = f":{c.safe_address}"
             else:
                 args = []
+                types = []
                 for arg in c.lineage.arguments:
                     if (
                         isinstance(arg, BuildConcept)
@@ -573,11 +575,13 @@ class BaseDialect:
                         args.append(
                             self.render_expr(arg, cte=cte, raise_invalid=raise_invalid)
                         )
+                    types.append(arg_to_datatype(arg))
 
                 if cte.group_to_grain:
-                    rval = f"{self.FUNCTION_MAP[c.lineage.operator](args)}"
+                    rval = f"{self.FUNCTION_MAP[c.lineage.operator](args, types)}"
                 else:
-                    rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
+
+                    rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args, types)}"
         else:
             logger.debug(
                 f"{LOGGER_PREFIX} [{c.address}] Rendering basic lookup from {cte.source_map.get(c.address,None)}"
@@ -776,9 +780,9 @@ class BaseDialect:
                     )
 
             if cte and cte.group_to_grain:
-                return self.FUNCTION_MAP[e.operator](arguments)
+                return self.FUNCTION_MAP[e.operator](arguments, [])
 
-            return self.FUNCTION_GRAIN_MATCH_MAP[e.operator](arguments)
+            return self.FUNCTION_GRAIN_MATCH_MAP[e.operator](arguments, [])
         elif isinstance(e, AGGREGATE_ITEMS):
             return self.render_expr(
                 e.function, cte, cte_map=cte_map, raise_invalid=raise_invalid
@@ -815,7 +819,7 @@ class BaseDialect:
         elif isinstance(e, MapWrapper):
             return f"MAP {{{','.join([f'{self.render_expr(k, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}:{self.render_expr(v, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}' for k, v in e.items()])}}}"
         elif isinstance(e, ListWrapper):
-            return f"{self.FUNCTION_MAP[FunctionType.ARRAY]([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) for x in e])}"
+            return f"{self.FUNCTION_MAP[FunctionType.ARRAY]([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) for x in e], [])}"
         elif isinstance(e, DataType):
             return self.DATATYPE_MAP.get(e, e.value)
         elif isinstance(e, DatePart):
@@ -827,9 +831,9 @@ class BaseDialect:
                 return "null"
             return str(e.value)
         elif isinstance(e, date):
-            return self.FUNCTION_MAP[FunctionType.DATE_LITERAL](e)
+            return self.FUNCTION_MAP[FunctionType.DATE_LITERAL](e, [])
         elif isinstance(e, datetime):
-            return self.FUNCTION_MAP[FunctionType.DATETIME_LITERAL](e)
+            return self.FUNCTION_MAP[FunctionType.DATETIME_LITERAL](e, [])
         elif isinstance(e, TraitDataType):
             return self.render_expr(e.type, cte=cte, cte_map=cte_map)
         elif isinstance(e, ArgBinding):
@@ -839,7 +843,7 @@ class BaseDialect:
         elif isinstance(e, ArrayType):
             return f"{self.COMPLEX_DATATYPE_MAP[DataType.ARRAY](self.render_expr(e.value_data_type, cte=cte, cte_map=cte_map))}"
         elif isinstance(e, list):
-            return f"{self.FUNCTION_MAP[FunctionType.ARRAY]([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}"
+            return f"{self.FUNCTION_MAP[FunctionType.ARRAY]([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e], [])}"
         elif isinstance(e, BuildParamaterizedConceptReference):
             if self.rendering.parameters:
                 if e.concept.namespace == DEFAULT_NAMESPACE:
