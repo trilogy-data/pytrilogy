@@ -75,6 +75,12 @@ class Conversation:
 
             response_message = self.get_response()
             response = self.extract_response(response_message.content)
+            if not response.strip():
+                self.add_message(
+                    "Your response did not contain a valid SQL query. Please provide a valid SQL query enclosed in triple backticks.",
+                    role="user",
+                )
+                continue
             if not response.strip()[-1] == ";":
                 response += ";"
             try:

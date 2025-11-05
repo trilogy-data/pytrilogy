@@ -27,20 +27,20 @@ def date_diff(first: str, second: str, grain: DatePart) -> str:
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
 FUNCTION_MAP = {
-    FunctionType.SPLIT: lambda x: f"string_to_array({x[0]}, {x[1]})",
-    FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc('{x[1]}', {x[0]})",
-    FunctionType.DATE_ADD: lambda x: f"({x[0]} + INTERVAL '{x[2]} {x[1]}')",
-    FunctionType.DATE_PART: lambda x: f"date_part('{x[1]}', {x[0]})",
-    FunctionType.DATE_DIFF: lambda x: date_diff(x[0], x[1], x[2]),
-    FunctionType.IS_NULL: lambda x: f"{x[0]} IS NULL",
+    FunctionType.SPLIT: lambda x, types: f"string_to_array({x[0]}, {x[1]})",
+    FunctionType.DATE_TRUNCATE: lambda x, types: f"date_trunc('{x[1]}', {x[0]})",
+    FunctionType.DATE_ADD: lambda x, types: f"({x[0]} + INTERVAL '{x[2]} {x[1]}')",
+    FunctionType.DATE_PART: lambda x, types: f"date_part('{x[1]}', {x[0]})",
+    FunctionType.DATE_DIFF: lambda x, types: date_diff(x[0], x[1], x[2]),
+    FunctionType.IS_NULL: lambda x, types: f"{x[0]} IS NULL",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
     **FUNCTION_MAP,
-    FunctionType.COUNT_DISTINCT: lambda args: f"CASE WHEN{args[0]} IS NOT NULL THEN 1 ELSE 0 END",
-    FunctionType.COUNT: lambda args: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
-    FunctionType.SUM: lambda args: f"{args[0]}",
-    FunctionType.AVG: lambda args: f"{args[0]}",
+    FunctionType.COUNT_DISTINCT: lambda args, types: f"CASE WHEN{args[0]} IS NOT NULL THEN 1 ELSE 0 END",
+    FunctionType.COUNT: lambda args, types: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
+    FunctionType.SUM: lambda args, types: f"{args[0]}",
+    FunctionType.AVG: lambda args, types: f"{args[0]}",
 }
 
 PG_SQL_TEMPLATE = Template(

@@ -438,7 +438,7 @@ class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs):
 
 
 @dataclass
-class BuildConditional(BuildConceptArgs, ConstantInlineable):
+class BuildConditional(DataTyped, BuildConceptArgs, ConstantInlineable):
     left: Union[
         int,
         str,
@@ -565,6 +565,10 @@ class BuildConditional(BuildConceptArgs, ConstantInlineable):
             chunks.append(self)
         return chunks
 
+    @property
+    def output_datatype(self):
+        return DataType.BOOL
+
 
 @dataclass
 class BuildWhereClause(BuildConceptArgs):
@@ -604,7 +608,7 @@ class BuildHavingClause(BuildWhereClause):
 
 
 @dataclass
-class BuildComparison(BuildConceptArgs, ConstantInlineable):
+class BuildComparison(DataTyped, BuildConceptArgs, ConstantInlineable):
 
     left: Union[
         int,
@@ -732,6 +736,10 @@ class BuildComparison(BuildConceptArgs, ConstantInlineable):
         if isinstance(self.right, BuildConceptArgs):
             output += self.right.existence_arguments
         return output
+
+    @property
+    def output_datatype(self):
+        return DataType.BOOL
 
 
 @dataclass
@@ -1059,7 +1067,7 @@ class BuildWindowItem(DataTyped, BuildConceptArgs):
 
 
 @dataclass
-class BuildCaseWhen(BuildConceptArgs):
+class BuildCaseWhen(DataTyped, BuildConceptArgs):
     comparison: BuildConditional | BuildSubselectComparison | BuildComparison
     expr: "BuildExpr"
 
@@ -1079,14 +1087,21 @@ class BuildCaseWhen(BuildConceptArgs):
             self.expr
         )
 
+    @property
+    def output_datatype(self):
+        return DataType.BOOL
+
 
 @dataclass
-class BuildCaseElse(BuildConceptArgs):
+class BuildCaseElse(DataTyped, BuildConceptArgs):
     expr: "BuildExpr"
 
     @property
     def concept_arguments(self):
         return get_concept_arguments(self.expr)
+
+    def output_datatype(self):
+        return arg_to_datatype(self.expr)
 
 
 @dataclass

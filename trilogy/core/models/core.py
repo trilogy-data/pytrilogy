@@ -28,7 +28,7 @@ from pydantic_core import core_schema
 from trilogy.constants import (
     MagicConstants,
 )
-from trilogy.core.enums import Modifier, Ordering
+from trilogy.core.enums import DatePart, Modifier, Ordering
 
 
 class DataTyped(ABC):
@@ -466,6 +466,8 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
         return arg
     elif isinstance(arg, ListWrapper):
         return ArrayType(type=arg.type)
+    elif isinstance(arg, ArrayType):
+        return arg
     elif isinstance(arg, DataTyped):
         return arg.output_datatype
     elif isinstance(arg, TupleWrapper):
@@ -481,6 +483,8 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
         return DataType.DATE
     elif isinstance(arg, StructComponent):
         return arg_to_datatype(arg.type)
+    elif isinstance(arg, DatePart):
+        return DataType.DATE_PART
     else:
         raise ValueError(
             f"Cannot parse arg datatype for arg of raw type {type(arg)} value {arg}"

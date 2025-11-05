@@ -16,14 +16,14 @@ from trilogy.utility import string_to_hash
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
 FUNCTION_MAP = {
-    FunctionType.COUNT: lambda args: f"count({args[0]})",
-    FunctionType.SUM: lambda args: f"sum({args[0]})",
-    FunctionType.AVG: lambda args: f"avg({args[0]})",
-    FunctionType.LENGTH: lambda args: f"length({args[0]})",
-    FunctionType.LIKE: lambda args: (
+    FunctionType.COUNT: lambda args, types: f"count({args[0]})",
+    FunctionType.SUM: lambda args, types: f"sum({args[0]})",
+    FunctionType.AVG: lambda args, types: f"avg({args[0]})",
+    FunctionType.LENGTH: lambda args, types: f"length({args[0]})",
+    FunctionType.LIKE: lambda args, types: (
         f" CASE WHEN {args[0]} like {args[1]} THEN True ELSE False END"
     ),
-    FunctionType.CONCAT: lambda args: (
+    FunctionType.CONCAT: lambda args, types: (
         f"CONCAT({','.join([f''' '{a}' ''' for a in args])})"
     ),
 }
@@ -32,10 +32,10 @@ FUNCTION_MAP = {
 # we may return a static value
 FUNCTION_GRAIN_MATCH_MAP = {
     **FUNCTION_MAP,
-    FunctionType.COUNT_DISTINCT: lambda args: f"CASE WHEN{args[0]} IS NOT NULL THEN 1 ELSE 0 END",
-    FunctionType.COUNT: lambda args: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
-    FunctionType.SUM: lambda args: f"{args[0]}",
-    FunctionType.AVG: lambda args: f"{args[0]}",
+    FunctionType.COUNT_DISTINCT: lambda args, types: f"CASE WHEN{args[0]} IS NOT NULL THEN 1 ELSE 0 END",
+    FunctionType.COUNT: lambda args, types: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
+    FunctionType.SUM: lambda args, types: f"{args[0]}",
+    FunctionType.AVG: lambda args, types: f"{args[0]}",
 }
 
 TSQL_TEMPLATE = Template(

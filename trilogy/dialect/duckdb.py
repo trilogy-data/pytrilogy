@@ -34,7 +34,7 @@ def generate_regex_extract(x: list[str]) -> str:
     return f"REGEXP_EXTRACT({x[0]},{x[1]},{x[2]})"
 
 
-def render_sort(args):
+def render_sort(args, types):
     if len(args) == 1:
         return f"list_sort({args[0]})"
     order = args[1].split(" ", 1)
@@ -67,61 +67,61 @@ def map_date_part_specifier(specifier: str) -> str:
 
 
 FUNCTION_MAP = {
-    FunctionType.COUNT: lambda args: f"count({args[0]})",
-    FunctionType.SUM: lambda args: f"sum({args[0]})",
-    FunctionType.AVG: lambda args: f"avg({args[0]})",
-    FunctionType.LENGTH: lambda args: f"length({args[0]})",
-    FunctionType.LOG: lambda args: render_log(args),
-    FunctionType.LIKE: lambda args: (
+    FunctionType.COUNT: lambda args, types: f"count({args[0]})",
+    FunctionType.SUM: lambda args, types: f"sum({args[0]})",
+    FunctionType.AVG: lambda args, types: f"avg({args[0]})",
+    FunctionType.LENGTH: lambda args, types: f"length({args[0]})",
+    FunctionType.LOG: lambda args, types: render_log(args),
+    FunctionType.LIKE: lambda args, types: (
         f" CASE WHEN {args[0]} like {args[1]} THEN True ELSE False END"
     ),
-    FunctionType.CONCAT: lambda args: (
+    FunctionType.CONCAT: lambda args, types: (
         f"CONCAT({','.join([f''' {str(a)} ''' for a in args])})"
     ),
-    FunctionType.SPLIT: lambda args: (
+    FunctionType.SPLIT: lambda args, types: (
         f"STRING_SPLIT({','.join([f''' {str(a)} ''' for a in args])})"
     ),
     ## Duckdb indexes from 1, not 0
-    FunctionType.INDEX_ACCESS: lambda args: (f"{args[0]}[{args[1]}]"),
+    FunctionType.INDEX_ACCESS: lambda args, types: (f"{args[0]}[{args[1]}]"),
     ## Duckdb uses list for array
-    FunctionType.ARRAY_DISTINCT: lambda args: f"list_distinct({args[0]})",
-    FunctionType.ARRAY_SUM: lambda args: f"list_sum({args[0]})",
+    FunctionType.ARRAY_DISTINCT: lambda args, types: f"list_distinct({args[0]})",
+    FunctionType.ARRAY_SUM: lambda args, types: f"list_sum({args[0]})",
     FunctionType.ARRAY_SORT: render_sort,
-    FunctionType.ARRAY_TRANSFORM: lambda args: (
+    FunctionType.ARRAY_TRANSFORM: lambda args, types: (
         f"list_transform({args[0]}, {args[1]} -> {args[2]})"
     ),
-    FunctionType.ARRAY_AGG: lambda args: f"array_agg({args[0]})",
-    # datetime is aliased
-    FunctionType.CURRENT_DATETIME: lambda x: "cast(get_current_timestamp() as datetime)",
-    FunctionType.DATETIME: lambda x: f"cast({x[0]} as datetime)",
-    FunctionType.TIMESTAMP: lambda x: f"cast({x[0]} as timestamp)",
-    FunctionType.DATE: lambda x: f"cast({x[0]} as date)",
-    FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc('{x[1]}', {x[0]})",
-    FunctionType.DATE_ADD: lambda x: f"date_add({x[0]}, {x[2]} * INTERVAL 1 {x[1]})",
-    FunctionType.DATE_SUB: lambda x: f"date_add({x[0]}, -{x[2]} * INTERVAL 1 {x[1]})",
-    FunctionType.DATE_PART: lambda x: f"date_part('{map_date_part_specifier(x[1])}', {x[0]})",
-    FunctionType.DATE_DIFF: lambda x: f"date_diff('{x[2]}', {x[0]}, {x[1]})",
-    FunctionType.CONCAT: lambda x: f"({' || '.join(x)})",
-    FunctionType.DATE_LITERAL: lambda x: f"date '{x}'",
-    FunctionType.DATETIME_LITERAL: lambda x: f"datetime '{x}'",
-    FunctionType.DAY_OF_WEEK: lambda x: f"dayofweek({x[0]})",
+    FunctionType.ARRAY_AGG: lambda args, types: f"array_agg({args[0]})",
+    # datetime is aliased,
+    FunctionType.CURRENT_DATETIME: lambda x, types: "cast(get_current_timestamp() as datetime)",
+    FunctionType.DATETIME: lambda x, types: f"cast({x[0]} as datetime)",
+    FunctionType.TIMESTAMP: lambda x, types: f"cast({x[0]} as timestamp)",
+    FunctionType.DATE: lambda x, types: f"cast({x[0]} as date)",
+    FunctionType.DATE_TRUNCATE: lambda x, types: f"date_trunc('{x[1]}', {x[0]})",
+    FunctionType.DATE_ADD: lambda x, types: f"date_add({x[0]}, {x[2]} * INTERVAL 1 {x[1]})",
+    FunctionType.DATE_SUB: lambda x, types: f"date_add({x[0]}, -{x[2]} * INTERVAL 1 {x[1]})",
+    FunctionType.DATE_PART: lambda x, types: f"date_part('{map_date_part_specifier(x[1])}', {x[0]})",
+    FunctionType.DATE_DIFF: lambda x, types: f"date_diff('{x[2]}', {x[0]}, {x[1]})",
+    FunctionType.CONCAT: lambda x, types: f"({' || '.join(x)})",
+    FunctionType.DATE_LITERAL: lambda x, types: f"date '{x}'",
+    FunctionType.DATETIME_LITERAL: lambda x, types: f"datetime '{x}'",
+    FunctionType.DAY_OF_WEEK: lambda x, types: f"dayofweek({x[0]})",
     # string
-    FunctionType.CONTAINS: lambda x: f"CONTAINS(LOWER({x[0]}), LOWER({x[1]}))",
+    FunctionType.CONTAINS: lambda x, types: f"CONTAINS(LOWER({x[0]}), LOWER({x[1]}))",
     # regexp
-    FunctionType.REGEXP_CONTAINS: lambda x: f"REGEXP_MATCHES({x[0]},{x[1]})",
-    FunctionType.REGEXP_EXTRACT: lambda x: generate_regex_extract(x),
+    FunctionType.REGEXP_CONTAINS: lambda x, types: f"REGEXP_MATCHES({x[0]},{x[1]})",
+    FunctionType.REGEXP_EXTRACT: lambda x, types: generate_regex_extract(x),
 }
 
 # if an aggregate function is called on a source that is at the same grain as the aggregate
 # we may return a static value
 FUNCTION_GRAIN_MATCH_MAP = {
     **FUNCTION_MAP,
-    FunctionType.COUNT_DISTINCT: lambda args: f"CASE WHEN{args[0]} IS NOT NULL THEN 1 ELSE 0 END",
-    FunctionType.COUNT: lambda args: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
-    FunctionType.SUM: lambda args: f"{args[0]}",
-    FunctionType.AVG: lambda args: f"{args[0]}",
-    FunctionType.MAX: lambda args: f"{args[0]}",
-    FunctionType.MIN: lambda args: f"{args[0]}",
+    FunctionType.COUNT_DISTINCT: lambda args, types: f"CASE WHEN{args[0]} IS NOT NULL THEN 1 ELSE 0 END",
+    FunctionType.COUNT: lambda args, types: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
+    FunctionType.SUM: lambda args, types: f"{args[0]}",
+    FunctionType.AVG: lambda args, types: f"{args[0]}",
+    FunctionType.MAX: lambda args, types: f"{args[0]}",
+    FunctionType.MIN: lambda args, types: f"{args[0]}",
 }
 
 DATATYPE_MAP: dict[DataType, str] = {}
