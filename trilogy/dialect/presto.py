@@ -95,6 +95,9 @@ class PrestoDialect(BaseDialect):
     }
     UNNEST_MODE = UnnestMode.PRESTO
     GROUP_MODE = GroupMode.BY_INDEX
+    ALIAS_ORDER_REFERENCING_ALLOWED = (
+        False  # some complex presto functions don't support aliasing
+    )
 
 
 class TrinoDialect(PrestoDialect):

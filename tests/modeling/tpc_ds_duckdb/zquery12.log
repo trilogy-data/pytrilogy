@@ -1,5 +1,5 @@
 query_id = 12
-gen_length = 2933
+gen_length = 2876
 generated_sql = """
 
 WITH 
@@ -57,5 +57,5 @@ ORDER BY
     \"thoughtful\".\"web_sales_item_class\" asc,
     \"thoughtful\".\"web_sales_item_name\" asc,
     \"thoughtful\".\"web_sales_item_desc\" asc,
-    (\"thoughtful\".\"itemrevenue\" * 100.0) / \"cooperative\".\"itemclassrevenue\" asc
+    \"revenueratio\" asc
 LIMIT (100)"""

@@ -1,5 +1,5 @@
 query_id = 6
-gen_length = 2747
+gen_length = 2757
 generated_sql = """
 
 WITH 
@@ -53,5 +53,5 @@ HAVING
     sum(1) >= 10
 
 ORDER BY 
-    sum(1) asc nulls first,
+    \"customer_count\" asc nulls first,
     \"uneven\".\"store_sales_customer_state\" asc nulls first"""
