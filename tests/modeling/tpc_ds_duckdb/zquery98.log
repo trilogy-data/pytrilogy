@@ -1,5 +1,5 @@
 query_id = 98
-gen_length = 4052
+gen_length = 4127
 generated_sql = """
 
 WITH 
@@ -66,8 +66,8 @@ FROM
     \"questionable\"
     INNER JOIN \"thoughtful\" on \"questionable\".\"store_sales_item_category\" is not distinct from \"thoughtful\".\"store_sales_item_category\" AND \"questionable\".\"store_sales_item_class\" is not distinct from \"thoughtful\".\"store_sales_item_class\" AND \"questionable\".\"store_sales_item_current_price\" is not distinct from \"thoughtful\".\"store_sales_item_current_price\" AND \"questionable\".\"store_sales_item_desc\" is not distinct from \"thoughtful\".\"store_sales_item_desc\" AND \"questionable\".\"store_sales_item_name\" = \"thoughtful\".\"store_sales_item_name\"
 ORDER BY 
-    \"store_sales_item_category\" asc nulls first,
-    \"store_sales_item_class\" asc nulls first,
-    \"store_sales_item_name\" asc nulls first,
-    \"store_sales_item_desc\" asc nulls first,
-    \"revenueratio\" asc nulls first"""
+    \"questionable\".\"store_sales_item_category\" asc nulls first,
+    \"questionable\".\"store_sales_item_class\" asc nulls first,
+    \"questionable\".\"store_sales_item_name\" asc nulls first,
+    \"questionable\".\"store_sales_item_desc\" asc nulls first,
+    \"questionable\".\"revenueratio\" asc nulls first"""

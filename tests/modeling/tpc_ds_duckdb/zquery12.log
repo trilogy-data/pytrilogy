@@ -1,5 +1,5 @@
 query_id = 12
-gen_length = 2824
+gen_length = 2876
 generated_sql = """
 
 WITH 
@@ -53,9 +53,9 @@ FROM
     \"cooperative\"
     INNER JOIN \"thoughtful\" on \"cooperative\".\"itemrevenue\" = \"thoughtful\".\"itemrevenue\" AND \"cooperative\".\"web_sales_item_class\" is not distinct from \"thoughtful\".\"web_sales_item_class\"
 ORDER BY 
-    \"web_sales_item_category\" asc,
-    \"web_sales_item_class\" asc,
-    \"web_sales_item_name\" asc,
-    \"web_sales_item_desc\" asc,
+    \"thoughtful\".\"web_sales_item_category\" asc,
+    \"thoughtful\".\"web_sales_item_class\" asc,
+    \"thoughtful\".\"web_sales_item_name\" asc,
+    \"thoughtful\".\"web_sales_item_desc\" asc,
     \"revenueratio\" asc
 LIMIT (100)"""

@@ -1,5 +1,5 @@
 query_id = 15
-gen_length = 1561
+gen_length = 1574
 generated_sql = """
 
 WITH 
@@ -23,5 +23,5 @@ FROM
 GROUP BY 
     \"thoughtful\".\"catalog_sales_bill_customer_zip\"
 ORDER BY 
-    \"catalog_sales_bill_customer_zip\" asc nulls first
+    \"thoughtful\".\"catalog_sales_bill_customer_zip\" asc nulls first
 LIMIT (100)"""

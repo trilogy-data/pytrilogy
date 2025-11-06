@@ -1,5 +1,5 @@
 query_id = 20
-gen_length = 2572
+gen_length = 2624
 generated_sql = """
 
 WITH 
@@ -56,9 +56,9 @@ WHERE
     \"thoughtful\".\"cs_item_name\" is not null
 
 ORDER BY 
-    \"cs_item_category\" asc nulls first,
-    \"cs_item_class\" asc nulls first,
-    \"cs_item_name\" asc nulls first,
-    \"cs_item_desc\" asc nulls first,
+    \"thoughtful\".\"cs_item_category\" asc nulls first,
+    \"thoughtful\".\"cs_item_class\" asc nulls first,
+    \"thoughtful\".\"cs_item_name\" asc nulls first,
+    \"thoughtful\".\"cs_item_desc\" asc nulls first,
     \"revenue_ratio\" asc nulls first
 LIMIT (100)"""

@@ -1,5 +1,5 @@
 query_id = 26
-gen_length = 1742
+gen_length = 1756
 generated_sql = """
 
 WITH 
@@ -30,5 +30,5 @@ FROM
 GROUP BY 
     \"cooperative\".\"cs_item_name\"
 ORDER BY 
-    \"cs_item_name\" asc
+    \"cooperative\".\"cs_item_name\" asc
 LIMIT (100)"""

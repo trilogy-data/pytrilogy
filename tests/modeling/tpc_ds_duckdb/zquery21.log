@@ -1,5 +1,5 @@
 query_id = 21
-gen_length = 2734
+gen_length = 2760
 generated_sql = """
 
 WITH 
@@ -61,6 +61,6 @@ HAVING
 	END <= 3.0 / 2.0
 
 ORDER BY 
-    \"inventory_warehouse_name\" asc nulls first,
-    \"inventory_item_name\" asc nulls first
+    \"thoughtful\".\"inventory_warehouse_name\" asc nulls first,
+    \"thoughtful\".\"inventory_item_name\" asc nulls first
 LIMIT (100)"""

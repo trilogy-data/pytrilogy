@@ -404,16 +404,15 @@ class BaseDialect:
         order_item: BuildOrderItem,
         cte: CTE | UnionCTE,
     ) -> str:
-        # if final:
-        #     if not alias:
-        #         return f"{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
-
-        #     return f"{cte.name}.{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
         if (
             isinstance(order_item.expr, BuildConcept)
             and order_item.expr.address in cte.output_columns
             and self.ALIAS_ORDER_REFERENCING_ALLOWED
         ):
+            if cte.source_map.get(order_item.expr.address, []):
+                # if it is sourced from somewhere, we need to reference the alias directly
+                return f"{self.render_expr(order_item.expr, cte=cte, )} {order_item.order.value}"
+            # otherwise we've derived it, safe to use alias
             return f"{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
         return (
             f"{self.render_expr(order_item.expr, cte=cte, )} {order_item.order.value}"
