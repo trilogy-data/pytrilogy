@@ -450,7 +450,7 @@ WHERE
      CASE WHEN "raw_data"."name" like '%a%' THEN True ELSE False END = True
 
 ORDER BY 
-    "raw_data"."name" asc""".strip()
+    "passenger_name" asc""".strip()
     )
 
 

@@ -1,5 +1,5 @@
 query_id = 1
-gen_length = 3473
+gen_length = 3464
 generated_sql = """
 
 WITH 
@@ -82,5 +82,5 @@ WHERE
     \"uneven\".\"total_returns\" > ( 1.2 * \"yummy\".\"avg_store_returns\" )
 
 ORDER BY 
-    \"uneven\".\"returns_customer_text_id\" asc
+    \"returns_customer_text_id\" asc
 LIMIT (100)"""

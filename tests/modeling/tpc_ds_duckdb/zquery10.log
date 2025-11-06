@@ -1,5 +1,5 @@
 query_id = 10
-gen_length = 6012
+gen_length = 5948
 generated_sql = """
 
 WITH 
@@ -91,11 +91,11 @@ GROUP BY
     \"young\".\"customer_demographics_marital_status\",
     \"young\".\"customer_demographics_purchase_estimate\"
 ORDER BY 
-    \"young\".\"customer_demographics_gender\" asc,
-    \"young\".\"customer_demographics_marital_status\" asc,
-    \"young\".\"customer_demographics_education_status\" asc,
-    \"young\".\"customer_demographics_purchase_estimate\" asc,
-    \"young\".\"customer_demographics_credit_rating\" asc,
-    \"young\".\"customer_demographics_dependent_count\" asc,
-    \"young\".\"customer_demographics_employed_dependent_count\" asc,
-    \"young\".\"customer_demographics_college_dependent_count\" asc"""
+    \"customer_demographics_gender\" asc,
+    \"customer_demographics_marital_status\" asc,
+    \"customer_demographics_education_status\" asc,
+    \"customer_demographics_purchase_estimate\" asc,
+    \"customer_demographics_credit_rating\" asc,
+    \"customer_demographics_dependent_count\" asc,
+    \"customer_demographics_employed_dependent_count\" asc,
+    \"customer_demographics_college_dependent_count\" asc"""

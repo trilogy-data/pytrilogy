@@ -1,5 +1,5 @@
 query_id = 16
-gen_length = 4671
+gen_length = 4663
 generated_sql = """
 
 WITH 
@@ -92,5 +92,5 @@ FROM
     \"juicy\"
     FULL JOIN \"young\" on 1=1
 ORDER BY 
-    \"young\".\"order_count\" desc
+    \"order_count\" desc
 LIMIT (100)"""

@@ -1,5 +1,5 @@
 query_id = 3
-gen_length = 1403
+gen_length = 1345
 generated_sql = """
 
 WITH 
@@ -28,7 +28,7 @@ GROUP BY
     \"cheerful\".\"store_sales_item_brand_id\",
     \"cheerful\".\"store_sales_item_brand_name\"
 ORDER BY 
-    \"cheerful\".\"store_sales_date_year\" asc,
-    sum(\"cheerful\".\"store_sales_ext_sales_price\") desc,
-    \"cheerful\".\"store_sales_item_brand_id\" asc
+    \"store_sales_date_year\" asc,
+    \"sum_agg\" desc,
+    \"store_sales_item_brand_id\" asc
 LIMIT (100)"""

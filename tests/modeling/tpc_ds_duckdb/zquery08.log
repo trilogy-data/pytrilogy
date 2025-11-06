@@ -1,5 +1,5 @@
 query_id = 8
-gen_length = 3584
+gen_length = 3571
 generated_sql = """
 
 WITH 
@@ -98,5 +98,5 @@ FROM
 GROUP BY 
     \"sweltering\".\"store_sales_store_name\"
 ORDER BY 
-    \"sweltering\".\"store_sales_store_name\" asc
+    \"store_sales_store_name\" asc
 LIMIT (100)"""

@@ -1,5 +1,5 @@
 query_id = 2
-gen_length = 6850
+gen_length = 6842
 generated_sql = """
 
 WITH 
@@ -150,5 +150,5 @@ WHERE
     \"juicy\".\"sunday_increase\" is not null
 
 ORDER BY 
-    \"juicy\".\"yearly_agg_date_week_seq\" asc nulls first
+    \"yearly_agg_date_week_seq\" asc nulls first
 LIMIT (100)"""

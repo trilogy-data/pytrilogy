@@ -80,7 +80,7 @@ FROM
     "highfalutin"
     INNER JOIN "cheerful" on "highfalutin"."names_name" = "cheerful"."names_name"
 ORDER BY 
-    "cheerful"."name_rank" asc""".strip()
+    "name_rank" asc""".strip()
     )
 
 

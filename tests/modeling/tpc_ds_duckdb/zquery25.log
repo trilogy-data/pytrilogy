@@ -1,5 +1,5 @@
 query_id = 25
-gen_length = 7991
+gen_length = 7959
 generated_sql = """
 
 WITH 
@@ -111,8 +111,8 @@ FROM
     \"juicy\"
     INNER JOIN \"concerned\" on \"juicy\".\"store_sales_item_desc\" is not distinct from \"concerned\".\"store_sales_item_desc\" AND \"juicy\".\"store_sales_item_name\" = \"concerned\".\"store_sales_item_name\" AND \"juicy\".\"store_sales_store_name\" = \"concerned\".\"store_sales_store_name\" AND \"juicy\".\"store_sales_store_text_id\" = \"concerned\".\"store_sales_store_text_id\"
 ORDER BY 
-    \"juicy\".\"store_sales_item_name\" asc,
-    \"juicy\".\"store_sales_item_desc\" asc,
-    \"juicy\".\"store_sales_store_text_id\" asc,
-    \"juicy\".\"store_sales_store_name\" asc
+    \"store_sales_item_name\" asc,
+    \"store_sales_item_desc\" asc,
+    \"store_sales_store_text_id\" asc,
+    \"store_sales_store_name\" asc
 LIMIT (100)"""

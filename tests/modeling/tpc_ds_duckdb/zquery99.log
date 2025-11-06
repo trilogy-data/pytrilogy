@@ -1,5 +1,5 @@
 query_id = 99
-gen_length = 3543
+gen_length = 3510
 generated_sql = """
 
 WITH 
@@ -48,7 +48,7 @@ GROUP BY
     \"abundant\".\"ship_mode_type\",
     \"abundant\".\"warehouse_short_name\"
 ORDER BY 
-    \"abundant\".\"warehouse_short_name\" asc nulls first,
-    \"abundant\".\"ship_mode_type\" asc nulls first,
-    \"abundant\".\"cc_name_lower\" asc nulls first
+    \"warehouse_short_name\" asc nulls first,
+    \"ship_mode_type\" asc nulls first,
+    \"cc_name_lower\" asc nulls first
 LIMIT (100)"""
