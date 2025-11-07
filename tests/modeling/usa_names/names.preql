@@ -3,17 +3,19 @@ import std.geography;
 import std.display;
 
 
-key name string; # Given name of a person at birth 
+key name string; # Given name of a person at birth. Firrst name only, typically with first letter capitalized. 
 key gender string; # Sex (M=male or F=female) 
 key state string::us_state_short; # The common two character abbreviation for a state, such as MA for Massachusetts or CT for Connecticut
-key year int::year; #	4-digit year of birth 
+key year int::year; #	4-digit year of birth. 1910-2021. 
 property <name, gender, state, year>.births int; # Number of occurrences of the name 
 auto total_births <- sum(births); # Sum of name count along chosen dimensions
+auto male_births <- sum(births? gender = 'M'); # total births where gender is M
+auto female_births <- sum(births ? gender = 'F'); # total births where gender is F
 
-auto percent_of_total <- (sum(births) / sum(births) by *)::float::percent;
+auto percent_of_total <- (sum(births) / sum(births) by *)::float::percent; # ratio of dimensions to all births
 
-auto female_births <- sum(births ? gender = 'F');
-auto male_births <- sum(births ? gender = 'M');
+auto name_gender_neutrality_index <- 1- (
+    (group male_births by name / total_births)**2 ); # score of how close to gender neutral the name is based on births; .5 is perfectly balanced.
 
 datasource usa_names(
     name:name,
@@ -24,5 +26,3 @@ datasource usa_names(
 )
 grain(name, year, state, gender)
 address `bigquery-public-data.usa_names.usa_1910_current`;
-
-

@@ -369,7 +369,6 @@ class CTE(BaseModel):
     @property
     def group_concepts(self) -> List[BuildConcept]:
         def check_is_not_in_group(c: BuildConcept):
-
             if len(self.source_map.get(c.address, [])) > 0:
                 return False
             if c.derivation == Derivation.ROWSET:
@@ -385,7 +384,12 @@ class CTE(BaseModel):
                 return True
 
             if c.derivation == Derivation.BASIC and c.lineage:
-                if all([check_is_not_in_group(x) for x in c.lineage.concept_arguments]):
+                if all(
+                    [
+                        check_is_not_in_group(x)
+                        for x in c.lineage.rendered_concept_arguments
+                    ]
+                ):
                     return True
                 if (
                     isinstance(c.lineage, BuildFunction)

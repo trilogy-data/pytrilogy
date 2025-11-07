@@ -3,6 +3,7 @@ from pathlib import Path
 
 from trilogy import Dialects, Environment
 from trilogy.hooks import DebuggingHook
+from trilogy.parsing.common import concept_is_relevant
 
 
 def test_ranking():
@@ -324,3 +325,36 @@ SELECT value, 'example' as dim;
     query = exec.generate_sql(query)[0]
 
     assert '."value" = 2' in query, query
+
+
+def test_aggregate_detection_handling():
+    query = """
+import names;
+
+
+SELECT
+    name,
+    name_gender_neutrality_index
+ORDER BY
+    name_gender_neutrality_index desc
+LIMIT 15
+;"""
+
+    env = Environment(working_path=Path(__file__).parent)
+    DebuggingHook()
+    exec = Dialects.DUCK_DB.default_executor(environment=env)
+    query = exec.generate_sql(query)[0]
+    assert (
+        concept_is_relevant(
+            env.concepts["name_gender_neutrality_index"],
+            others=[env.concepts["name"].reference],
+            environment=env,
+        )
+        is False
+    )
+    assert (
+        """GROUP BY 
+    "highfalutin"."name"
+"""
+        in query
+    ), query
