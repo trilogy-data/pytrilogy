@@ -213,7 +213,7 @@
 
     ?sum_chain: product_chain (PLUS_OR_MINUS product_chain)* -> sum_operator
     
-    MULTIPLY_DIVIDE_PERCENT: ("*" | "/" | "%")
+    MULTIPLY_DIVIDE_PERCENT: ("**" | "*" | "/" | "%")
 
     ?product_chain: atom ( MULTIPLY_DIVIDE_PERCENT atom)* -> product_operator
 

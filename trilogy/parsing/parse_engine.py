@@ -1605,6 +1605,10 @@ class ParseToObjects(Transformer):
                 new_result = self.function_factory.create_function(
                     [result, right], operator=FunctionType.MULTIPLY
                 )
+            elif op == "**":
+                new_result = self.function_factory.create_function(
+                    [result, right], operator=FunctionType.POWER
+                )
             elif op == "/":
                 new_result = self.function_factory.create_function(
                     [result, right], operator=FunctionType.DIVIDE
@@ -1622,7 +1626,7 @@ class ParseToObjects(Transformer):
         return args.value
 
     def MULTIPLY_DIVIDE_PERCENT(self, args) -> str:
-        return args[0]
+        return args.value
 
     @v_args(meta=True)
     def sum_operator(self, meta: Meta, args) -> Function | Any:

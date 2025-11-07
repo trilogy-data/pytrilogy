@@ -29,6 +29,7 @@ FUNCTION_MAP = {
     FunctionType.WEEK: lambda x, types: f"EXTRACT(WEEK from {x[0]})",
     FunctionType.QUARTER: lambda x, types: f"EXTRACT(QUARTER from {x[0]})",
     # math
+    FunctionType.POWER: lambda x, types: f"POWER({x[0]}, {x[1]})",
     FunctionType.DIVIDE: lambda x, types: f"DIV0({x[0]},{x[1]})",
     FunctionType.UNNEST: lambda x, types: f"table(flatten({x[0]}))",
     FunctionType.ARRAY: lambda x, types: f"ARRAY_CONSTRUCT({', '.join(x)})",

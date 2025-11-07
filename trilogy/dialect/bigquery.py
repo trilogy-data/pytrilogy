@@ -50,6 +50,7 @@ FUNCTION_MAP = {
     FunctionType.WEEK: lambda x, types: f"EXTRACT(WEEK from {x[0]})",
     FunctionType.QUARTER: lambda x, types: f"EXTRACT(QUARTER from {x[0]})",
     # math
+    FunctionType.POWER: lambda x, types: f"POWER({x[0]}, {x[1]})",
     FunctionType.DIVIDE: lambda x, types: f"COALESCE(SAFE_DIVIDE({x[0]},{x[1]}),0)",
     FunctionType.DATE_ADD: lambda x, types: f"DATE_ADD({x[0]}, INTERVAL {x[2]} {x[1]})",
     FunctionType.DATE_SUB: lambda x, types: f"DATE_SUB({x[0]}, INTERVAL {x[2]} {x[1]})",

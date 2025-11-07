@@ -179,7 +179,7 @@ class FunctionType(Enum):
     SPLIT = "split"
     LENGTH = "len"
 
-    # Math
+    # Mathas
     DIVIDE = "divide"
     MULTIPLY = "multiply"
     ADD = "add"
@@ -192,6 +192,7 @@ class FunctionType(Enum):
     FLOOR = "floor"
     CEIL = "ceil"
     LOG = "log"
+    POWER = "power"
 
     # Aggregates
     ## group is not a real aggregate - it just means group by this + some other set of fields
