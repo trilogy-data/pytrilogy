@@ -788,6 +788,16 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_purpose=Purpose.PROPERTY,
         arg_count=InfiniteFunctionArgs,
     ),
+    FunctionType.POWER: FunctionConfig(
+        valid_inputs={
+            DataType.INTEGER,
+            DataType.FLOAT,
+            DataType.NUMBER,
+            DataType.NUMERIC,
+        },
+        output_purpose=Purpose.PROPERTY,
+        arg_count=2,
+    ),
     FunctionType.DIVIDE: FunctionConfig(
         valid_inputs={
             DataType.INTEGER,

@@ -338,6 +338,7 @@ def test_math_functions():
     auto rounded_default <- round(revenue + 2.01);
     auto floor <- floor(revenue + 2.01);
     auto ceil <- ceil(revenue + 2.01);
+    auto squared <- revenue ** 2;
     auto random <- random(1);
     select
         order_id,
@@ -350,6 +351,7 @@ def test_math_functions():
         rounded_default,
         floor,
         ceil,
+        squared,
         random,
     ;
         """
@@ -359,7 +361,12 @@ def test_math_functions():
         environment=environment, rendering=Rendering(parameters=False)
     )
 
-    executor.execute_query(queries[-1])
+    results = executor.execute_query(queries[-1])
+    list_results = list(results.fetchall())
+    assert len(list_results) == 1
+    assert list_results[0].squared == 100.50**2
+    assert list_results[0].ceil == 103
+    assert list_results[0].floor == 102
 
 
 def test_array():

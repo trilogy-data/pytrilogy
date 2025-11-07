@@ -238,6 +238,7 @@ def test_math_functions():
     auto rounded_default <- round(revenue + 2.01);
     auto floor <- floor(revenue + 2.01);
     auto ceil <- ceil(revenue + 2.01);
+    auto power <- revenue ** 2;
     auto random <- random(1);
     select
         order_id,
@@ -250,6 +251,7 @@ def test_math_functions():
         rounded_default,
         floor,
         ceil,
+        power,
         random,
     ;
         """
