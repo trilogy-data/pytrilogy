@@ -429,21 +429,11 @@ class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs):
 
     @property
     def concept_arguments(self) -> List[BuildConcept]:
-        base: List[BuildConcept] = []
-        x = self.content
-        if isinstance(x, BuildConcept):
-            base += [x]
-        elif isinstance(x, BuildConceptArgs):
-            base += x.concept_arguments
-        return base
+        return get_concept_arguments(self.content)
 
     @property
     def rendered_concept_arguments(self) -> Sequence[BuildConcept]:
-        if isinstance(self.content, BuildConceptArgs):
-            return self.content.rendered_concept_arguments
-        elif isinstance(self.content, BuildConcept):
-            return [self.content]
-        return []
+        return get_rendered_concept_arguments(self.content)
 
     @property
     def row_arguments(self) -> Sequence[BuildConcept]:
@@ -1264,11 +1254,14 @@ class BuildFilterItem(BuildConceptArgs):
 
     @property
     def concept_arguments(self):
-        if isinstance(self.content, BuildConcept):
-            return [self.content] + self.where.concept_arguments
-        elif isinstance(self.content, BuildConceptArgs):
-            return self.content.concept_arguments + self.where.concept_arguments
-        return self.where.concept_arguments
+        return self.where.concept_arguments + get_concept_arguments(self.content)
+
+    @property
+    def rendered_concept_arguments(self):
+        return (
+            get_rendered_concept_arguments(self.content)
+            + self.where.rendered_concept_arguments
+        )
 
 
 @dataclass
