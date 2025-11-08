@@ -106,6 +106,10 @@ class BuildConceptArgs(ABC):
         raise NotImplementedError
 
     @property
+    def rendered_concept_arguments(self) -> Sequence["BuildConcept"]:
+        return self.concept_arguments
+
+    @property
     def existence_arguments(self) -> Sequence[tuple["BuildConcept", ...]]:
         return []
 
@@ -241,6 +245,19 @@ def get_concept_arguments(expr) -> List["BuildConcept"]:
         BuildConceptArgs,
     ):
         output += expr.concept_arguments
+    return output
+
+
+def get_rendered_concept_arguments(expr) -> List["BuildConcept"]:
+    output = []
+    if isinstance(expr, BuildConcept):
+        output += [expr]
+
+    elif isinstance(
+        expr,
+        BuildConceptArgs,
+    ):
+        output += expr.rendered_concept_arguments
     return output
 
 
@@ -412,13 +429,11 @@ class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs):
 
     @property
     def concept_arguments(self) -> List[BuildConcept]:
-        base: List[BuildConcept] = []
-        x = self.content
-        if isinstance(x, BuildConcept):
-            base += [x]
-        elif isinstance(x, BuildConceptArgs):
-            base += x.concept_arguments
-        return base
+        return get_concept_arguments(self.content)
+
+    @property
+    def rendered_concept_arguments(self) -> Sequence[BuildConcept]:
+        return get_rendered_concept_arguments(self.content)
 
     @property
     def row_arguments(self) -> Sequence[BuildConcept]:
@@ -1166,6 +1181,16 @@ class BuildFunction(DataTyped, BuildConceptArgs):
         return base
 
     @property
+    def rendered_concept_arguments(self) -> List[BuildConcept]:
+        if self.operator == FunctionType.GROUP:
+            base = self.arguments[0]
+            return get_rendered_concept_arguments(base)
+        base = []
+        for arg in self.arguments:
+            base += get_rendered_concept_arguments(arg)
+        return base
+
+    @property
     def output_grain(self):
         # aggregates have an abstract grain
         if self.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
@@ -1229,11 +1254,14 @@ class BuildFilterItem(BuildConceptArgs):
 
     @property
     def concept_arguments(self):
-        if isinstance(self.content, BuildConcept):
-            return [self.content] + self.where.concept_arguments
-        elif isinstance(self.content, BuildConceptArgs):
-            return self.content.concept_arguments + self.where.concept_arguments
-        return self.where.concept_arguments
+        return self.where.concept_arguments + get_concept_arguments(self.content)
+
+    @property
+    def rendered_concept_arguments(self):
+        return (
+            get_rendered_concept_arguments(self.content)
+            + self.where.rendered_concept_arguments
+        )
 
 
 @dataclass

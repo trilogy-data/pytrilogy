@@ -41,8 +41,8 @@ class Comments:
     show: bool = False
     basic: bool = True
     joins: bool = False
-    nullable: bool = True
-    partial: bool = True
+    nullable: bool = False
+    partial: bool = False
     source_map: bool = False
 
 
