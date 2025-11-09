@@ -629,8 +629,16 @@ class Environment(BaseModel):
             # TODO: refine this section;
             # too hacky for maintainability
             if current_derivation not in (Derivation.ROOT, Derivation.CONSTANT):
+                from trilogy.core.models.author import AggregateWrapper
+                
+                if current_derivation == Derivation.AGGREGATE and (
+                    not isinstance(new_persisted_concept.lineage, AggregateWrapper)
+                    or len(new_persisted_concept.lineage.by) == 0
+                ):
+                    logger.info("Cannot persist non-grain specified aggregate")
+                    continue
                 logger.info(
-                    f"A datasource has been added which will persist derived concept {new_persisted_concept.address} with derivation {current_derivation}"
+                    f"A datasource has been added which will persist derived concept {new_persisted_concept.address} with derivation {current_derivation} and source {type(new_persisted_concept.lineage)}"
                 )
                 persisted = f"{PERSISTED_CONCEPT_PREFIX}_" + new_persisted_concept.name
                 # override the current concept source to reflect that it's now coming from a datasource

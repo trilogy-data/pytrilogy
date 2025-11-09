@@ -1815,8 +1815,24 @@ class Factory:
         granularity = Concept.calculate_granularity(
             derivation, final_grain, build_lineage
         )
-        is_aggregate = Concept.calculate_is_aggregate(build_lineage)
 
+        def calculate_is_aggregate(lineage):
+            if lineage and isinstance(lineage, BuildFunction):
+                if lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+                    return True
+            if (
+                lineage
+                and isinstance(lineage, BuildAggregateWrapper)
+                and lineage.function.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
+            ):
+                return True
+            return False
+
+        print(
+            f"Calculating is_aggregate for {base.address} with lineage {build_lineage}"
+        )
+        is_aggregate = calculate_is_aggregate(build_lineage)
+        print(f"Result: is_aggregate={is_aggregate}")
         # if this is a pseudonym, we need to look up the base address
         if base.address in self.environment.alias_origin_lookup:
             lookup_address = self.environment.concepts[base.address].address
