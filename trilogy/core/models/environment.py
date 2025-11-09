@@ -630,7 +630,7 @@ class Environment(BaseModel):
             # too hacky for maintainability
             if current_derivation not in (Derivation.ROOT, Derivation.CONSTANT):
                 from trilogy.core.models.author import AggregateWrapper
-                
+
                 if current_derivation == Derivation.AGGREGATE and (
                     not isinstance(new_persisted_concept.lineage, AggregateWrapper)
                     or len(new_persisted_concept.lineage.by) == 0

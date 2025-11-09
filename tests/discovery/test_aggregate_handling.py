@@ -67,7 +67,6 @@ SELECT
     )[-1]
     assert "aggregated_class" not in generated
 
-
     generated = exec.generate_sql(
         """
 SELECT
