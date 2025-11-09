@@ -9,6 +9,7 @@ from trilogy.core.graph_models import (
     ReferenceGraph,
     concept_to_node,
     get_graph_exact_match,
+    prune_sources_for_aggregates,
     prune_sources_for_conditions,
 )
 from trilogy.core.models.build import (
@@ -129,6 +130,7 @@ def create_pruned_concept_graph(
             g.add_edge(node_address, cnode)
             g.add_edge(cnode, node_address)
     prune_sources_for_conditions(g, accept_partial, conditions)
+    prune_sources_for_aggregates(g, all_concepts, logger)
     target_addresses = set([c.address for c in all_concepts])
     concepts: dict[str, BuildConcept] = orig_g.concepts
     datasource_map: dict[str, BuildDatasource] = orig_g.datasources

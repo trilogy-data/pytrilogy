@@ -5,6 +5,8 @@ property order_id.price float;
 key customer_id int;
 property customer_id.name string;
 
+auto total_customer_revenue <- sum(price) by customer_id;
+
 
 datasource orders (
     order_id:order_id,
@@ -45,10 +47,6 @@ select
 ;
 
 
-select
-    customer_id,
-    sum(price) as total_customer_revenue
-;
 
 datasource customer_revenue (
     customer_id:customer_id,
