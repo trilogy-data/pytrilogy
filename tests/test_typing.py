@@ -175,6 +175,8 @@ revenue-revenue_two->sub_total
 
 
 def test_custom_function_typing():
+    from trilogy.hooks.query_debugger import DebuggingHook
+    DebuggingHook()
     env = Dialects.DUCK_DB.default_executor()
     env.environment.parse(
         """
@@ -202,6 +204,7 @@ select 10.0 as revenue, 13.1 as revenue_two, 3.0 as multiplier
 """
     )
 
+    # TIS IS FAILING BECAUSE IT ALIASES REVENUE AS REVENUE
     _ = env.execute_query(
         """
 with scaled as

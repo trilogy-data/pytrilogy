@@ -196,7 +196,7 @@ def test_map_access():
     ;"""
 
     results = test_executor.parse_text(test_select)[-1]
-    assert results.local_concepts["num_map_5"].datatype == DataType.INTEGER
+    assert results.local_concepts["local.num_map_5"].datatype == DataType.INTEGER
     assert test_executor.environment.concepts["num_map_5"].datatype == DataType.INTEGER
     results = test_executor.execute_text(test_select)[0]
 

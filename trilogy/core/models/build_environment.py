@@ -108,6 +108,11 @@ class BuildEnvironment(BaseModel):
     concepts: Annotated[
         BuildEnvironmentConceptDict, PlainValidator(validate_concepts)
     ] = Field(default_factory=BuildEnvironmentConceptDict)
+
+    canonical_concepts: Annotated[
+        BuildEnvironmentConceptDict, PlainValidator(validate_concepts)
+    ] = Field(default_factory=BuildEnvironmentConceptDict)
+    
     datasources: Annotated[
         BuildEnvironmentDatasourceDict, PlainValidator(validate_datasources)
     ] = Field(default_factory=BuildEnvironmentDatasourceDict)

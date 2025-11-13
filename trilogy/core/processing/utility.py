@@ -789,6 +789,7 @@ def sort_select_output_processed(
                 new_output.append(
                     BuildConcept(
                         name=x.name,
+                        canonical_name=x.name,
                         namespace=x.namespace,
                         pseudonyms={oc.address},
                         datatype=oc.datatype,

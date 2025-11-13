@@ -81,7 +81,7 @@ def prune_sources_for_aggregates(
 def concept_to_node(input: BuildConcept) -> str:
     # if input.purpose == Purpose.METRIC:
     #     return f"c~{input.namespace}.{input.name}@{input.grain}"
-    return f"c~{input.address}@{input.grain.str_no_condition}"
+    return f"c~{input.canonical_address}@{input.grain.str_no_condition}"
 
 
 def datasource_to_node(input: BuildDatasource) -> str:

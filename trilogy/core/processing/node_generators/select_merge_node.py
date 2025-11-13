@@ -525,9 +525,10 @@ def create_select_node(
     depth: int,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode:
-
+    for k,v in environment.canonical_concepts.items():
+        logger.info(k)
     all_concepts = [
-        environment.concepts[extract_address(c)] for c in subgraph if c.startswith("c~")
+        environment.canonical_concepts[extract_address(c)] for c in subgraph if c.startswith("c~")
     ]
 
     if all([c.derivation == Derivation.CONSTANT for c in all_concepts]):

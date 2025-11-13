@@ -397,7 +397,7 @@ def test_joint_join_concept_injection_components():
         nodelist=[concept_to_node(x) for x in target_select_concepts],
         accept_partial=False,
         filter_downstream=False,
-        environment=env,
+        environment=test_env,
     )
 
     print(path.nodes)
@@ -424,7 +424,7 @@ def test_joint_join_concept_injection_components():
         nodelist=[concept_to_node(x) for x in target_select_concepts],
         accept_partial=False,
         filter_downstream=False,
-        environment=env,
+        environment=test_env,
     )
 
     assert "c~vehicle.name@Grain<vehicle.name>" in path.nodes, path.nodes
