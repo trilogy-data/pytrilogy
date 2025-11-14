@@ -124,17 +124,15 @@ def get_join_type(
         key in nullables.get(right, []) for key in all_connecting_keys
     )
 
-    if left_is_nullable and right_is_nullable:
+    left_complete = not left_is_partial and not left_is_nullable
+    right_complete = not right_is_partial and not right_is_nullable
+
+    if not left_complete and not right_complete:
         join_type = JoinType.FULL
-    elif left_is_partial and right_is_partial:
-        join_type = JoinType.FULL
-    elif left_is_partial:
-        join_type = JoinType.FULL
-    elif right_is_nullable:
+    elif not left_complete and right_complete:
         join_type = JoinType.RIGHT_OUTER
-    elif right_is_partial or left_is_nullable:
+    elif not right_complete and left_complete:
         join_type = JoinType.LEFT_OUTER
-    # we can't inner join if the left was an outer join
     else:
         join_type = JoinType.INNER
     return join_type

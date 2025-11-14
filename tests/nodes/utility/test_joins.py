@@ -1,9 +1,16 @@
 from collections import defaultdict
 
+import pytest
+
 from trilogy import parse
+from trilogy.core.enums import JoinType
 from trilogy.core.models.build import BuildGrain
 from trilogy.core.models.execute import CTE, QueryDatasource
-from trilogy.core.processing.utility import ConceptPair, reduce_concept_pairs
+from trilogy.core.processing.utility import (
+    ConceptPair,
+    get_join_type,
+    reduce_concept_pairs,
+)
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.common import render_join_concept
 
@@ -221,3 +228,77 @@ address baz;
     assert (
         len(reduced_different) == 2
     )  # Should keep both since they're different concepts
+
+
+@pytest.mark.parametrize(
+    "left_partial,left_nullable,right_partial,right_nullable,expected",
+    [
+        (False, False, False, False, JoinType.INNER),
+        (True, False, False, False, JoinType.RIGHT_OUTER),
+        (False, True, False, False, JoinType.RIGHT_OUTER),
+        (False, False, True, False, JoinType.LEFT_OUTER),
+        (False, False, False, True, JoinType.LEFT_OUTER),
+        (True, False, True, False, JoinType.FULL),
+        (False, True, False, True, JoinType.FULL),
+        (True, True, False, False, JoinType.RIGHT_OUTER),
+        (False, False, True, True, JoinType.LEFT_OUTER),
+        (True, True, True, True, JoinType.FULL),
+    ],
+)
+def test_get_join_type_all_combinations(
+    left_partial, left_nullable, right_partial, right_nullable, expected
+):
+    """Test all combinations of partial/nullable states"""
+    left = "table_a"
+    right = "table_b"
+    partials = {}
+    nullables = {}
+    all_connecting_keys = {"key1"}
+
+    if left_partial:
+        partials[left] = ["key1"]
+    if left_nullable:
+        nullables[left] = ["key1"]
+    if right_partial:
+        partials[right] = ["key1"]
+    if right_nullable:
+        nullables[right] = ["key1"]
+
+    result = get_join_type(left, right, partials, nullables, all_connecting_keys)
+    assert result == expected
+
+
+def test_get_join_type_no_matching_keys():
+    """Test when tables exist in partials/nullables but no connecting keys match"""
+    left = "table_a"
+    right = "table_b"
+    partials = {"table_a": ["other_key"], "table_b": ["another_key"]}
+    nullables = {"table_a": ["different_key"]}
+    all_connecting_keys = {"key1", "key2"}
+
+    result = get_join_type(left, right, partials, nullables, all_connecting_keys)
+    assert result == JoinType.INNER
+
+
+def test_get_join_type_empty_connecting_keys():
+    """Test with empty set of connecting keys"""
+    left = "table_a"
+    right = "table_b"
+    partials = {"table_a": ["key1"], "table_b": ["key2"]}
+    nullables = {"table_a": ["key3"]}
+    all_connecting_keys = set()
+
+    result = get_join_type(left, right, partials, nullables, all_connecting_keys)
+    assert result == JoinType.INNER
+
+
+def test_get_join_type_multiple_connecting_keys():
+    """Test that ANY partial/nullable key among multiple connecting keys triggers incomplete"""
+    left = "table_a"
+    right = "table_b"
+    partials = {"table_b": ["key1"]}  # Only one of three keys is partial
+    nullables = {}
+    all_connecting_keys = {"key1", "key2", "key3"}
+
+    result = get_join_type(left, right, partials, nullables, all_connecting_keys)
+    assert result == JoinType.LEFT_OUTER
