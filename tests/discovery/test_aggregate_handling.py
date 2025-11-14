@@ -50,6 +50,7 @@ SELECT
 
 """
 
+
 def test_aggregate_handling():
     from trilogy.hooks.query_debugger import DebuggingHook
 
@@ -86,7 +87,6 @@ def test_aggregate_handling_alias():
     exec = Dialects.DUCK_DB.default_executor()
 
     exec.parse_text(q1)
-
 
     generated = exec.generate_sql(
         """

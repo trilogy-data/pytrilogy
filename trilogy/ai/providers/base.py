@@ -4,6 +4,8 @@ from typing import List, Optional
 from trilogy.ai.enums import Provider
 from trilogy.ai.models import LLMMessage, LLMRequestOptions, LLMResponse
 
+RETRYABLE_CODES = [429, 500, 502, 503, 504]
+
 
 class LLMProvider(ABC):
     def __init__(self, name: str, api_key: str, model: str, provider: Provider):

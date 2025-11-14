@@ -665,7 +665,6 @@ class Environment(BaseModel):
                         "derivation": Derivation.ROOT,
                         "purpose": new_persisted_concept.purpose,
                         "pseudonyms": {*original_pseudonyms, original_concept.address},
-
                     }
                     # purpose is used in derivation calculation
                     # which should be fixed, but we'll do in a followup
@@ -742,7 +741,7 @@ class Environment(BaseModel):
         for k, ds in self.datasources.items():
             if source.address in ds.output_lcl:
                 ds.merge_concept(source, target, modifiers=modifiers)
-        
+
         return True
 
 

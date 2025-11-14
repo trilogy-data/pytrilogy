@@ -1,5 +1,5 @@
 query_id = 16
-gen_length = 4673
+gen_length = 4685
 generated_sql = """
 
 WITH 
@@ -56,7 +56,7 @@ FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\" = \"cs_ship_date_date\".\"D_DATE_SK\"
     RIGHT OUTER JOIN \"memory\".\"call_center\" as \"cs_call_center_call_center\" on \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" = \"cs_call_center_call_center\".\"CC_CALL_CENTER_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"cs_customer_address_customer_address\" on \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" = \"cs_customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    RIGHT OUTER JOIN \"memory\".\"customer_address\" as \"cs_customer_address_customer_address\" on \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" = \"cs_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
     cast(\"cs_ship_date_date\".\"D_DATE\" as date) >= date '2002-02-01' and cast(\"cs_ship_date_date\".\"D_DATE\" as date) <= date '2002-04-02' and \"cs_customer_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select cooperative.\"cr_order_number\" from cooperative where cooperative.\"cr_order_number\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_sales\" from uneven where uneven.\"multi_warehouse_sales\" is not null)
 ),
@@ -67,7 +67,7 @@ FROM
     \"vacuous\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"vacuous\".\"cs_ship_date_id\" = \"cs_ship_date_date\".\"D_DATE_SK\"
     RIGHT OUTER JOIN \"memory\".\"call_center\" as \"cs_call_center_call_center\" on \"vacuous\".\"cs_call_center_id\" = \"cs_call_center_call_center\".\"CC_CALL_CENTER_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"cs_customer_address_customer_address\" on \"vacuous\".\"cs_customer_address_id\" = \"cs_customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    RIGHT OUTER JOIN \"memory\".\"customer_address\" as \"cs_customer_address_customer_address\" on \"vacuous\".\"cs_customer_address_id\" = \"cs_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
     cast(\"cs_ship_date_date\".\"D_DATE\" as date) >= date '2002-02-01' and cast(\"cs_ship_date_date\".\"D_DATE\" as date) <= date '2002-04-02' and \"cs_customer_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"vacuous\".\"cs_order_number\" not in (select cooperative.\"cr_order_number\" from cooperative where cooperative.\"cr_order_number\" is not null) and \"vacuous\".\"cs_order_number\" in (select uneven.\"multi_warehouse_sales\" from uneven where uneven.\"multi_warehouse_sales\" is not null)
 

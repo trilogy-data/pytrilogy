@@ -3,8 +3,9 @@ from typing import List, Optional
 
 from trilogy.ai.enums import Provider
 from trilogy.ai.models import LLMMessage, LLMResponse, UsageDict
+from trilogy.constants import logger
 
-from .base import LLMProvider, LLMRequestOptions
+from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions
 from .utils import RetryOptions, fetch_with_retry
 
 DEFAULT_MAX_TOKENS = 10000
@@ -31,8 +32,8 @@ class AnthropicProvider(LLMProvider):
         self.retry_options = retry_options or RetryOptions(
             max_retries=5,
             initial_delay_ms=5000,
-            retry_status_codes=[429, 500, 502, 503, 504],
-            on_retry=lambda attempt, delay_ms, error: print(
+            retry_status_codes=RETRYABLE_CODES,
+            on_retry=lambda attempt, delay_ms, error: logger.info(
                 f"Anthropic API retry attempt {attempt} after {delay_ms}ms delay due to error: {str(error)}"
             ),
         )
@@ -62,7 +63,7 @@ class AnthropicProvider(LLMProvider):
                     payload = {
                         "model": self.model,
                         "messages": conversation_messages,
-                        "max_tokens": options.max_tokens or 10000,
+                        "max_tokens": options.max_tokens or DEFAULT_MAX_TOKENS,
                         # "temperature": options.temperature or 0.7,
                         # "top_p": options.top_p if hasattr(options, "top_p") else 1.0,
                     }

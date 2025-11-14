@@ -39,7 +39,7 @@ def fetch_with_retry(fetch_fn: Callable[[], T], options: RetryOptions) -> T:
     for attempt in range(options.max_retries + 1):
         try:
             return fetch_fn()
-        except (HTTPError, TimeoutException) as error:
+        except (HTTPError, TimeoutException, Exception) as error:
             last_error = error
             should_retry = False
 
@@ -60,7 +60,7 @@ def fetch_with_retry(fetch_fn: Callable[[], T], options: RetryOptions) -> T:
 
             # Wait before retrying with exponential backoff
             time.sleep(delay_ms / 1000.0)
-            delay_ms *= 2  # Exponential backoff
+            delay_ms *= 2  # backoff
 
     # This should never be reached, but just in case
     if last_error:

@@ -4,7 +4,7 @@ from trilogy.core.exceptions import NoDatasourceException
 from trilogy.core.models.build import (
     BuildConcept,
     BuildWhereClause,
-    LooseBuildConceptList,
+    CanonicalBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.select_merge_node import (
@@ -21,7 +21,7 @@ LOGGER_PREFIX = "[GEN_SELECT_NODE]"
 def validate_query_is_resolvable(
     missing: list[str],
     environment: BuildEnvironment,
-    materialized_lcl: LooseBuildConceptList,
+    materialized_lcl: CanonicalBuildConceptList,
 ) -> None:
     # if a query cannot ever be resolved, exit early with an error
     for x in missing:
@@ -64,12 +64,12 @@ def gen_select_node(
     fail_if_not_found: bool = True,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
-    all_lcl = LooseBuildConceptList(concepts=concepts)
-    materialized_lcl = LooseBuildConceptList(
+    all_lcl = CanonicalBuildConceptList(concepts=concepts)
+    materialized_lcl = CanonicalBuildConceptList(
         concepts=[
             x
             for x in concepts
-            if x.address in environment.materialized_concepts
+            if x.canonical_address in environment.materialized_canonical_concepts
             or x.derivation == Derivation.CONSTANT
         ]
     )
@@ -77,7 +77,7 @@ def gen_select_node(
         missing = all_lcl.difference(materialized_lcl)
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Skipping select node generation for {concepts}"
-            f" as it + optional includes non-materialized concepts (looking for all {all_lcl}, missing {missing}) "
+            f" as it + optional includes non-materialized concepts (looking for all {all_lcl}, missing {missing}, have {environment.materialized_canonical_concepts}) "
         )
         validate_query_is_resolvable(missing, environment, materialized_lcl)
         if fail_if_not_found:

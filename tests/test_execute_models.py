@@ -18,7 +18,7 @@ def test_raise_helpful_join_validation_error():
             concepts=[
                 BuildConcept(
                     name="test_concept",
-                    canonical_name = "test_concept",
+                    canonical_name="test_concept",
                     datatype=DataType.INTEGER,
                     purpose=Purpose.KEY,
                     build_is_aggregate=False,

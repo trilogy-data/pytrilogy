@@ -16,14 +16,13 @@ from typing import (
     Set,
     Tuple,
     Union,
-    Any,
 )
 
 from pydantic import (
     ConfigDict,
 )
 
-from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
+from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
 from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
     BooleanOperator,
@@ -91,9 +90,8 @@ from trilogy.core.models.datasource import (
     DatasourceMetadata,
     RawColumnExpr,
 )
-from trilogy.utility import string_to_hash, unique
 from trilogy.core.models.environment import Environment
-from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX
+from trilogy.utility import string_to_hash
 
 # TODO: refactor to avoid these
 if TYPE_CHECKING:
@@ -242,6 +240,52 @@ class LooseBuildConceptList:
 
     def isdisjoint(self, other):
         if not isinstance(other, LooseBuildConceptList):
+            return False
+        return self.addresses.isdisjoint(other.addresses)
+
+
+@dataclass
+class CanonicalBuildConceptList:
+    concepts: Sequence[BuildConcept]
+
+    @cached_property
+    def addresses(self) -> set[str]:
+        return {s.canonical_address for s in self.concepts}
+
+    @cached_property
+    def sorted_addresses(self) -> List[str]:
+        return sorted(list(self.addresses))
+
+    def __str__(self) -> str:
+        return f"lcl{str(self.sorted_addresses)}"
+
+    def __iter__(self):
+        return iter(self.concepts)
+
+    def __eq__(self, other):
+        if not isinstance(other, CanonicalBuildConceptList):
+            return False
+        return self.addresses == other.addresses
+
+    def issubset(self, other):
+        if not isinstance(other, CanonicalBuildConceptList):
+            return False
+        return self.addresses.issubset(other.addresses)
+
+    def __contains__(self, other):
+        if isinstance(other, str):
+            return other in self.addresses
+        if not isinstance(other, BuildConcept):
+            return False
+        return other.address in self.addresses
+
+    def difference(self, other):
+        if not isinstance(other, CanonicalBuildConceptList):
+            return False
+        return self.addresses.difference(other.addresses)
+
+    def isdisjoint(self, other):
+        if not isinstance(other, CanonicalBuildConceptList):
             return False
         return self.addresses.isdisjoint(other.addresses)
 
@@ -1833,12 +1877,9 @@ class Factory:
             ) from e
 
     def __build_concept(self, base: Concept) -> BuildConcept:
-        from trilogy.constants import logger
-        logger.info(f'building FOR REAL concept for {base.address}')
-        logger.info(base.lineage)
         # TODO: if we are using parameters, wrap it in a new model and use that in rendering
         # this doesn't work for persisted addresses.
-        # we need to early exit if we have it in local concepts, because in that case, 
+        # we need to early exit if we have it in local concepts, because in that case,
         # it is built with appropriate grain only in that dictionary
         # if base.address in self.local_concepts:
         #     return self.local_concepts[base.address]
@@ -2213,7 +2254,7 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
         )
         for k, v in base.local_concepts.items():
-            
+
             materialized[k] = factory.build(v)
         where_factory = Factory(
             grain=Grain(),
@@ -2344,19 +2385,14 @@ class Factory:
 
     def _build_environment(self, base: Environment):
         from trilogy.core.models.build_environment import BuildEnvironment
-        from trilogy.constants import logger
+
         new = BuildEnvironment(
             namespace=base.namespace,
             cte_name_map=base.cte_name_map,
         )
 
         for k, v in base.concepts.items():
-            logger.info(f'building concept for {k}')
-            logger.info(v.lineage)
             v_build = self._build_concept(v)
-            logger.info(v_build.lineage)
-            logger.info(v_build.canonical_address)
-            logger.info('----')
             new.concepts[k] = v_build
             new.canonical_concepts[v_build.canonical_address] = v_build
         for (
@@ -2365,7 +2401,6 @@ class Factory:
         ) in base.datasources.items():
             new.datasources[k] = self._build_datasource(d)
         for k, a in base.alias_origin_lookup.items():
-            logger.info(f'building alias origin for {k}')
             a_build = self._build_concept(a)
             new.alias_origin_lookup[k] = a_build
             new.canonical_concepts[a_build.canonical_address] = a_build
@@ -2374,14 +2409,6 @@ class Factory:
             if bk not in new.concepts:
                 new.concepts[bk] = bv
                 new.canonical_concepts[bv.canonical_address] = bv
-        
-        logger.info('build results')
-        for k, v in new.canonical_concepts.items():
-            logger.info(k)
-            logger.info(v.name)
-            logger.info(v.lineage)
-            logger.info(v.canonical_name)
-            logger.info('---')
         new.gen_concept_list_caches()
         return new
 

@@ -129,14 +129,10 @@ def get_join_type(
 
     if not left_complete and not right_complete:
         join_type = JoinType.FULL
-    elif left_is_partial and right_is_partial:
-        join_type = JoinType.FULL
-    elif left_is_partial or left_is_nullable:
+    elif not left_complete and right_complete:
         join_type = JoinType.RIGHT_OUTER
-    elif right_is_nullable or right_is_partial:
+    elif not right_complete and left_complete:
         join_type = JoinType.LEFT_OUTER
-
-    # we can't inner join if the left was an outer join
     else:
         join_type = JoinType.INNER
     return join_type

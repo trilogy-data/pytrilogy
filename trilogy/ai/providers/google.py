@@ -3,8 +3,9 @@ from typing import Any, Dict, List, Optional
 
 from trilogy.ai.enums import Provider
 from trilogy.ai.models import LLMMessage, LLMResponse, UsageDict
+from trilogy.constants import logger
 
-from .base import LLMProvider, LLMRequestOptions
+from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions
 from .utils import RetryOptions, fetch_with_retry
 
 
@@ -28,9 +29,9 @@ class GoogleProvider(LLMProvider):
         self.type = Provider.GOOGLE
         self.retry_options = retry_options or RetryOptions(
             max_retries=3,
-            initial_delay_ms=30000,  # 30s default for Google's 429 rate limits
-            retry_status_codes=[429, 500, 502, 503, 504],
-            on_retry=lambda attempt, delay_ms, error: print(
+            initial_delay_ms=30000,
+            retry_status_codes=RETRYABLE_CODES,
+            on_retry=lambda attempt, delay_ms, error: logger.info(
                 f"Google API retry attempt {attempt} after {delay_ms}ms delay due to error: {str(error)}"
             ),
         )
@@ -91,21 +92,24 @@ class GoogleProvider(LLMProvider):
 
         try:
             # Make the API request with retry logic using a lambda
-            response = fetch_with_retry(
-                fetch_fn=lambda: httpx.post(
-                    url,
-                    headers={
-                        "Content-Type": "application/json",
-                        "x-goog-api-key": self.api_key,
-                    },
-                    json=request_body,
-                    timeout=60.0,
-                ),
+
+            def fetch_function() -> Dict[str, Any]:
+                with httpx.Client(timeout=60) as client:
+                    resp = client.post(
+                        url,
+                        headers={
+                            "Content-Type": "application/json",
+                            "x-goog-api-key": self.api_key,
+                        },
+                        json=request_body,
+                    )
+                    resp.raise_for_status()
+                    return resp.json()
+
+            data = fetch_with_retry(
+                fetch_fn=fetch_function,
                 options=self.retry_options,
             )
-
-            response.raise_for_status()
-            data = response.json()
 
             # Extract text from response
             candidates = data.get("candidates", [])

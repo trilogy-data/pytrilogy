@@ -65,13 +65,13 @@ def test_derivations():
 
     """
     env, parsed = parse(declarations)
-    assert 'local.test_upper_case_2' in env.concepts
-    
+    assert "local.test_upper_case_2" in env.concepts
+
     for dialect in TEST_DIALECTS:
         compiled = []
 
         for idx, statement in enumerate(parsed[-2:]):
-            print('processing statement:', idx, str(statement))
+            print("processing statement:", idx, str(statement))
             if idx > 0:
                 hooks = [DebuggingHook()]
             else:
@@ -87,8 +87,12 @@ def test_derivations():
             # force add since we didn't run it
             if isinstance(processed, ProcessedQueryPersist):
                 env.add_datasource(processed.datasource)
-            assert env.concepts['local.test_upper_case_2'].derivation == Derivation.ROOT, env.concepts['local.test_upper_case_2'].derivation
-            assert env.concepts['local.test_upper_case_2'].lineage is None, env.concepts['local.test_upper_case_2'].lineage
+            assert (
+                env.concepts["local.test_upper_case_2"].derivation == Derivation.ROOT
+            ), env.concepts["local.test_upper_case_2"].derivation
+            assert (
+                env.concepts["local.test_upper_case_2"].lineage is None
+            ), env.concepts["local.test_upper_case_2"].lineage
         build_env = env.materialize_for_select()
         test_concept = build_env.concepts["local.test_upper_case_2"]
         assert test_concept.purpose == Purpose.PROPERTY

@@ -106,11 +106,14 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
     local_concepts: Annotated[
         EnvironmentConceptDict, PlainValidator(validate_concepts)
     ] = Field(default_factory=EnvironmentConceptDict)
-    local_concepts: dict[str, ConceptRef] = Field(default_factory=dict)
     grain: Grain = Field(default_factory=Grain)
 
     def as_lineage(self, environment: Environment) -> SelectLineage:
-        derived = [x.concept.address for x in self.selection if isinstance(x.content, ConceptTransform)]
+        derived = [
+            x.concept.address
+            for x in self.selection
+            if isinstance(x.content, ConceptTransform)
+        ]
         return SelectLineage(
             selection=[
                 environment.concepts[x.concept.address].reference
@@ -120,7 +123,9 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             limit=self.limit,
             where_clause=self.where_clause,
             having_clause=self.having_clause,
-            local_concepts={k:v for k, v in self.local_concepts.items() if k in derived},
+            local_concepts={
+                k: v for k, v in self.local_concepts.items() if k in derived
+            },
             hidden_components=self.hidden_components,
             grain=self.grain,
         )

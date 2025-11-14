@@ -167,7 +167,7 @@ def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environme
         nodelist=[concept_to_node(x) for x in target_select_concepts],
         accept_partial=False,
         filter_downstream=False,
-        environment=build_env
+        environment=build_env,
     )
 
     assert path
