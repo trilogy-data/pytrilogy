@@ -16,8 +16,6 @@ from trilogy.core.processing.utility import (
 
 
 def test_resolve_join_order():
-    # empty
-
     env, _ = parse(
         """
 key order_id int;
