@@ -102,7 +102,7 @@ def test_resolve_join_order_v2():
         ),
         JoinOrderOutput(
             right="ds~customer",
-            type=JoinType.FULL,
+            type=JoinType.RIGHT_OUTER,
             keys={"ds~orders": {"c~customer_id"}},
         ),
         JoinOrderOutput(

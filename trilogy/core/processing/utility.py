@@ -140,11 +140,17 @@ def get_join_type(
 
 def reduce_join_types(join_types: Set[JoinType]) -> JoinType:
     final_join_type = JoinType.INNER
-    if any([x == JoinType.FULL for x in join_types]):
+    has_full = any([x == JoinType.FULL for x in join_types])
+
+    if has_full:
         final_join_type = JoinType.FULL
-    elif any([x == JoinType.LEFT_OUTER for x in join_types]):
+    has_left = any([x == JoinType.LEFT_OUTER for x in join_types])
+    has_right = any([x == JoinType.RIGHT_OUTER for x in join_types])
+    if has_left and has_right:
+        final_join_type = JoinType.FULL
+    elif has_left:
         final_join_type = JoinType.LEFT_OUTER
-    elif any([x == JoinType.RIGHT_OUTER for x in join_types]):
+    elif has_right:
         final_join_type = JoinType.RIGHT_OUTER
 
     return final_join_type
@@ -310,12 +316,15 @@ def resolve_join_order_v2(
     for review_join in output:
         if review_join.type in (JoinType.LEFT_OUTER, JoinType.FULL):
             continue
-        if any(
-            [
-                join.right in review_join.lefts
-                for join in output
-                if join.type in (JoinType.LEFT_OUTER, JoinType.FULL)
-            ]
+        if (
+            any(
+                [
+                    join.right in review_join.lefts
+                    for join in output
+                    if join.type in (JoinType.LEFT_OUTER, JoinType.FULL)
+                ]
+            )
+            and review_join.type == JoinType.INNER
         ):
             review_join.type = JoinType.LEFT_OUTER
 
