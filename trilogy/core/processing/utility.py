@@ -124,17 +124,15 @@ def get_join_type(
         key in nullables.get(right, []) for key in all_connecting_keys
     )
 
-    if left_is_nullable and right_is_nullable:
+    left_complete = not left_is_partial and not left_is_nullable
+    right_complete = not right_is_partial and not right_is_nullable
+
+    if not left_complete and not right_complete:
         join_type = JoinType.FULL
-    elif left_is_partial and right_is_partial:
-        join_type = JoinType.FULL
-    elif left_is_partial:
-        join_type = JoinType.FULL
-    elif right_is_nullable:
+    elif not left_complete and right_complete:
         join_type = JoinType.RIGHT_OUTER
-    elif right_is_partial or left_is_nullable:
+    elif not right_complete and left_complete:
         join_type = JoinType.LEFT_OUTER
-    # we can't inner join if the left was an outer join
     else:
         join_type = JoinType.INNER
     return join_type
@@ -142,14 +140,61 @@ def get_join_type(
 
 def reduce_join_types(join_types: Set[JoinType]) -> JoinType:
     final_join_type = JoinType.INNER
-    if any([x == JoinType.FULL for x in join_types]):
+    has_full = any([x == JoinType.FULL for x in join_types])
+
+    if has_full:
         final_join_type = JoinType.FULL
-    elif any([x == JoinType.LEFT_OUTER for x in join_types]):
+        return final_join_type
+    has_left = any([x == JoinType.LEFT_OUTER for x in join_types])
+    has_right = any([x == JoinType.RIGHT_OUTER for x in join_types])
+    if has_left and has_right:
+        final_join_type = JoinType.FULL
+    elif has_left:
         final_join_type = JoinType.LEFT_OUTER
-    elif any([x == JoinType.RIGHT_OUTER for x in join_types]):
+    elif has_right:
         final_join_type = JoinType.RIGHT_OUTER
 
     return final_join_type
+
+
+def ensure_content_preservation(joins: list[JoinOrderOutput]):
+    # ensure that for a join, if we have prior joins that would
+    # introduce nulls, we are controlling for that
+    for idx, review_join in enumerate(joins):
+        predecessors = joins[:idx]
+        if review_join.type == JoinType.FULL:
+            continue
+        has_prior_left = False
+        has_prior_right = False
+        for pred in predecessors:
+            if (
+                pred.type in (JoinType.LEFT_OUTER, JoinType.FULL)
+                and pred.right in review_join.lefts
+            ):
+                has_prior_left = True
+            if pred.type in (JoinType.RIGHT_OUTER, JoinType.FULL) and any(
+                x in review_join.lefts for x in pred.lefts
+            ):
+                has_prior_right = True
+        if has_prior_left and has_prior_right:
+            target = JoinType.FULL
+        elif has_prior_left:
+            target = (
+                JoinType.LEFT_OUTER
+                if review_join.type != JoinType.RIGHT_OUTER
+                else JoinType.FULL
+            )
+        elif has_prior_right:
+            target = (
+                JoinType.RIGHT_OUTER
+                if review_join.type != JoinType.LEFT_OUTER
+                else JoinType.FULL
+            )
+        else:
+            target = review_join.type
+        if review_join.type != target:
+            review_join.type = target
+            continue
 
 
 def resolve_join_order_v2(
@@ -309,17 +354,7 @@ def resolve_join_order_v2(
 
     # only once we have all joins
     # do we know if some inners need to be left outers
-    for review_join in output:
-        if review_join.type in (JoinType.LEFT_OUTER, JoinType.FULL):
-            continue
-        if any(
-            [
-                join.right in review_join.lefts
-                for join in output
-                if join.type in (JoinType.LEFT_OUTER, JoinType.FULL)
-            ]
-        ):
-            review_join.type = JoinType.LEFT_OUTER
+    ensure_content_preservation(output)
 
     return output
 

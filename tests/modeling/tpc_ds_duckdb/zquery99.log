@@ -1,5 +1,5 @@
 query_id = 99
-gen_length = 3543
+gen_length = 3544
 generated_sql = """
 
 WITH 
@@ -16,7 +16,7 @@ FROM
     INNER JOIN \"memory\".\"ship_mode\" as \"ship_mode_ship_mode\" on \"catalog_sales\".\"CS_SHIP_MODE_SK\" = \"ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"sold_date_date\" on \"catalog_sales\".\"CS_SOLD_DATE_SK\" = \"sold_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"warehouse\" as \"warehouse_warehouse\" on \"catalog_sales\".\"CS_WAREHOUSE_SK\" = \"warehouse_warehouse\".\"w_warehouse_sk\"
-    LEFT OUTER JOIN \"memory\".\"call_center\" as \"call_center_call_center\" on \"catalog_sales\".\"CS_CALL_CENTER_SK\" = \"call_center_call_center\".\"CC_CALL_CENTER_SK\"
+    RIGHT OUTER JOIN \"memory\".\"call_center\" as \"call_center_call_center\" on \"catalog_sales\".\"CS_CALL_CENTER_SK\" = \"call_center_call_center\".\"CC_CALL_CENTER_SK\"
 WHERE
     \"ship_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ship_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"catalog_sales\".\"CS_ORDER_NUMBER\" is not null and \"call_center_call_center\".\"CC_CALL_CENTER_SK\" is not null and \"warehouse_warehouse\".\"w_warehouse_sk\" is not null and \"ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\" is not null
 ),

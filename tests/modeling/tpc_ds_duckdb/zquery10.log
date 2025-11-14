@@ -1,5 +1,5 @@
 query_id = 10
-gen_length = 6012
+gen_length = 6014
 generated_sql = """
 
 WITH 
@@ -36,10 +36,10 @@ SELECT
 FROM
     \"uneven\"
     INNER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"uneven\".\"web_sales_date_id\" = \"web_sales_date_date\".\"D_DATE_SK\"
-    FULL JOIN \"memory\".\"customer\" as \"customer_customers\" on \"uneven\".\"customer_id\" = \"customer_customers\".\"C_CUSTOMER_SK\"
+    RIGHT OUTER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"uneven\".\"customer_id\" = \"customer_customers\".\"C_CUSTOMER_SK\"
     LEFT OUTER JOIN \"vacuous\" on \"customer_customers\".\"C_CUSTOMER_SK\" = \"vacuous\".\"customer_id\"
     LEFT OUTER JOIN \"cooperative\" on \"customer_customers\".\"C_CUSTOMER_SK\" = \"cooperative\".\"customer_id\"
-    LEFT OUTER JOIN \"memory\".\"customer_address\" as \"customer_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"customer_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_customer_address\".\"CA_ADDRESS_SK\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"cooperative\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"vacuous\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
 WHERE
