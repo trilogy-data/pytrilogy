@@ -144,6 +144,7 @@ def reduce_join_types(join_types: Set[JoinType]) -> JoinType:
 
     if has_full:
         final_join_type = JoinType.FULL
+        return final_join_type
     has_left = any([x == JoinType.LEFT_OUTER for x in join_types])
     has_right = any([x == JoinType.RIGHT_OUTER for x in join_types])
     if has_left and has_right:
@@ -156,11 +157,54 @@ def reduce_join_types(join_types: Set[JoinType]) -> JoinType:
     return final_join_type
 
 
+def ensure_content_preservation(joins: list[JoinOrderOutput]):
+    # ensure that for a join, if we have prior joins that would
+    # introduce nulls, we are controlling for that
+    for idx, review_join in enumerate(joins):
+        predecessors = joins[:idx]
+        if review_join.type == JoinType.FULL:
+            continue
+        has_prior_left = False
+        has_prior_right = False
+        for pred in predecessors:
+            if (
+                pred.type in (JoinType.LEFT_OUTER, JoinType.FULL)
+                and pred.right in review_join.lefts
+            ):
+                has_prior_left = True
+            if pred.type in (JoinType.RIGHT_OUTER, JoinType.FULL) and any(
+                x in review_join.lefts for x in pred.lefts
+            ):
+                has_prior_right = True
+        if has_prior_left and has_prior_right:
+            target = JoinType.FULL
+        elif has_prior_left:
+            target = (
+                JoinType.LEFT_OUTER
+                if review_join.type != JoinType.RIGHT_OUTER
+                else JoinType.FULL
+            )
+        elif has_prior_right:
+            target = (
+                JoinType.RIGHT_OUTER
+                if review_join.type != JoinType.LEFT_OUTER
+                else JoinType.FULL
+            )
+        else:
+            target = review_join.type
+        if review_join.type != target:
+            review_join.type = target
+            continue
+
+
 def resolve_join_order_v2(
     g: nx.Graph, partials: dict[str, list[str]], nullables: dict[str, list[str]]
 ) -> list[JoinOrderOutput]:
     datasources = [x for x in g.nodes if x.startswith("ds~")]
     concepts = [x for x in g.nodes if x.startswith("c~")]
+    # rebind these 
+    nullables = {**nullables}
+    partials = {**partials}
 
     # Pre-compute all possible connections between datasources
     all_connections: dict[tuple[str, str], set[str]] = {}
@@ -258,6 +302,23 @@ def resolve_join_order_v2(
                 joinkeys[left_candidate] = all_connecting_keys
 
             final_join_type = reduce_join_types(join_types)
+            if final_join_type == JoinType.LEFT_OUTER:
+                nullables[right] = nullables.get(right, []) + [x for x in g.neighbors(right) if x.startswith('c~')]
+            elif final_join_type == JoinType.RIGHT_OUTER:
+                for left_ds in joinkeys.keys():
+                    nullables[left_ds] = nullables.get(left_ds, []) + [
+                        x for x in g.neighbors(left_ds) if x.startswith("c~")
+                    ]
+            elif final_join_type == JoinType.FULL:
+
+                for left_ds in joinkeys.keys():
+                    nullables[left_ds] = nullables.get(left_ds, []) + [
+                        x for x in g.neighbors(left_ds) if x.startswith("c~")
+                    ]
+                nullables[right] = nullables.get(right, []) + [
+                    x for x in g.neighbors(right) if x.startswith("c~")
+                ]
+                # make all right columns nullable
 
             output.append(
                 JoinOrderOutput(
@@ -313,20 +374,7 @@ def resolve_join_order_v2(
 
     # only once we have all joins
     # do we know if some inners need to be left outers
-    for review_join in output:
-        if review_join.type in (JoinType.LEFT_OUTER, JoinType.FULL):
-            continue
-        if (
-            any(
-                [
-                    join.right in review_join.lefts
-                    for join in output
-                    if join.type in (JoinType.LEFT_OUTER, JoinType.FULL)
-                ]
-            )
-            and review_join.type == JoinType.INNER
-        ):
-            review_join.type = JoinType.LEFT_OUTER
+    ensure_content_preservation(output)
 
     return output
 
