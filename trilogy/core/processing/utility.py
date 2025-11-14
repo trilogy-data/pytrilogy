@@ -202,9 +202,6 @@ def resolve_join_order_v2(
 ) -> list[JoinOrderOutput]:
     datasources = [x for x in g.nodes if x.startswith("ds~")]
     concepts = [x for x in g.nodes if x.startswith("c~")]
-    # rebind these 
-    nullables = {**nullables}
-    partials = {**partials}
 
     # Pre-compute all possible connections between datasources
     all_connections: dict[tuple[str, str], set[str]] = {}
@@ -302,23 +299,6 @@ def resolve_join_order_v2(
                 joinkeys[left_candidate] = all_connecting_keys
 
             final_join_type = reduce_join_types(join_types)
-            if final_join_type == JoinType.LEFT_OUTER:
-                nullables[right] = nullables.get(right, []) + [x for x in g.neighbors(right) if x.startswith('c~')]
-            elif final_join_type == JoinType.RIGHT_OUTER:
-                for left_ds in joinkeys.keys():
-                    nullables[left_ds] = nullables.get(left_ds, []) + [
-                        x for x in g.neighbors(left_ds) if x.startswith("c~")
-                    ]
-            elif final_join_type == JoinType.FULL:
-
-                for left_ds in joinkeys.keys():
-                    nullables[left_ds] = nullables.get(left_ds, []) + [
-                        x for x in g.neighbors(left_ds) if x.startswith("c~")
-                    ]
-                nullables[right] = nullables.get(right, []) + [
-                    x for x in g.neighbors(right) if x.startswith("c~")
-                ]
-                # make all right columns nullable
 
             output.append(
                 JoinOrderOutput(
