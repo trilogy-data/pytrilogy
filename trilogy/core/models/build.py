@@ -108,10 +108,7 @@ def generate_concept_name(parent: Any) -> str:
     elif isinstance(parent, BuildWindowItem):
         return f"{VIRTUAL_CONCEPT_PREFIX}_window_{parent.type.value}_{string_to_hash(str(parent))}"
     elif isinstance(parent, BuildFilterItem):
-        if isinstance(parent.content, ConceptRef):
-            return f"{VIRTUAL_CONCEPT_PREFIX}_filter_{parent.content.name}_{string_to_hash(str(parent))}"
-        else:
-            return f"{VIRTUAL_CONCEPT_PREFIX}_filter_{string_to_hash(str(parent))}"
+        return f"{VIRTUAL_CONCEPT_PREFIX}_filter_{string_to_hash(str(parent))}"
     elif isinstance(parent, BuildFunction):
         if parent.operator == FunctionType.GROUP:
             return f"{VIRTUAL_CONCEPT_PREFIX}_group_to_{string_to_hash(str(parent))}"

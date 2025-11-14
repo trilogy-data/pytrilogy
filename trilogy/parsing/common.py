@@ -889,7 +889,10 @@ def generate_concept_name(
     elif isinstance(parent, WindowItem):
         return f"{VIRTUAL_CONCEPT_PREFIX}_window_{parent.type.value}_{string_to_hash(str(parent))}"
     elif isinstance(parent, FilterItem):
-        return f"{VIRTUAL_CONCEPT_PREFIX}_filter_{string_to_hash(str(parent))}"
+        if isinstance(parent.content, ConceptRef):
+            return f"{VIRTUAL_CONCEPT_PREFIX}_filter_{parent.content.name}_{string_to_hash(str(parent))}"
+        else:
+            return f"{VIRTUAL_CONCEPT_PREFIX}_filter_{string_to_hash(str(parent))}"
     elif isinstance(parent, Function):
         if parent.operator == FunctionType.GROUP:
             return f"{VIRTUAL_CONCEPT_PREFIX}_group_to_{string_to_hash(str(parent))}"
