@@ -277,7 +277,7 @@ class CanonicalBuildConceptList:
             return other in self.addresses
         if not isinstance(other, BuildConcept):
             return False
-        return other.address in self.addresses
+        return other.canonical_address in self.addresses
 
     def difference(self, other):
         if not isinstance(other, CanonicalBuildConceptList):
@@ -968,10 +968,6 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
         return f"{self.namespace}.{self.canonical_name}"
 
     @property
-    def output(self) -> "BuildConcept":
-        return self
-
-    @property
     def safe_address(self) -> str:
         if self.namespace == DEFAULT_NAMESPACE:
             return self.name.replace(".", "_")
@@ -1142,10 +1138,6 @@ class BuildWindowItem(DataTyped, BuildConceptArgs):
         for item in self.over:
             output += [item]
         return output
-
-    @property
-    def output(self) -> BuildConcept:
-        return self.content
 
     @property
     def output_datatype(self):
@@ -1358,10 +1350,6 @@ class BuildRowsetItem(DataTyped, BuildConceptArgs):
 
     def __str__(self):
         return self.__repr__()
-
-    @property
-    def output(self) -> BuildConcept:
-        return self.content
 
     @property
     def output_datatype(self):
