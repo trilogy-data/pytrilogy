@@ -108,6 +108,11 @@ class BuildEnvironment(BaseModel):
     concepts: Annotated[
         BuildEnvironmentConceptDict, PlainValidator(validate_concepts)
     ] = Field(default_factory=BuildEnvironmentConceptDict)
+
+    canonical_concepts: Annotated[
+        BuildEnvironmentConceptDict, PlainValidator(validate_concepts)
+    ] = Field(default_factory=BuildEnvironmentConceptDict)
+
     datasources: Annotated[
         BuildEnvironmentDatasourceDict, PlainValidator(validate_datasources)
     ] = Field(default_factory=BuildEnvironmentDatasourceDict)
@@ -116,13 +121,17 @@ class BuildEnvironment(BaseModel):
     namespace: str = DEFAULT_NAMESPACE
     cte_name_map: Dict[str, str] = Field(default_factory=dict)
     materialized_concepts: set[str] = Field(default_factory=set)
+    materialized_canonical_concepts: set[str] = Field(default_factory=set)
     alias_origin_lookup: Dict[str, BuildConcept] = Field(default_factory=dict)
 
     def gen_concept_list_caches(self) -> None:
-        concrete_addresses = set()
+        concrete_concepts: list[BuildConcept] = []
         for datasource in self.datasources.values():
             for concept in datasource.output_concepts:
-                concrete_addresses.add(concept.address)
+                concrete_concepts.append(concept)
+        concrete_addresses = set([x.address for x in concrete_concepts])
+        canonical_addresses = set([x.canonical_address for x in concrete_concepts])
+
         self.materialized_concepts = set(
             [
                 c.address
@@ -133,6 +142,18 @@ class BuildEnvironment(BaseModel):
                 c.address
                 for c in self.alias_origin_lookup.values()
                 if c.address in concrete_addresses
+            ],
+        )
+        self.materialized_canonical_concepts = set(
+            [
+                c.canonical_address
+                for c in self.concepts.values()
+                if c.canonical_address in canonical_addresses
+            ]
+            + [
+                c.canonical_address
+                for c in self.alias_origin_lookup.values()
+                if c.canonical_address in canonical_addresses
             ],
         )
 

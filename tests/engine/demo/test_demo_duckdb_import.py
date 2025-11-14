@@ -161,13 +161,13 @@ def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environme
         test_env.concepts[c]
         for c in ["passenger.last_name", "rich_info.net_worth_1918_dollars"]
     ]
-
+    build_env = normalized_engine.environment.materialize_for_select()
     path = determine_induced_minimal_nodes(
         g,
         nodelist=[concept_to_node(x) for x in target_select_concepts],
         accept_partial=False,
         filter_downstream=False,
-        environment=normalized_engine.environment,
+        environment=build_env,
     )
 
     assert path

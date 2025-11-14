@@ -22,7 +22,7 @@ from pydantic import (
     ConfigDict,
 )
 
-from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
+from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
 from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
     BooleanOperator,
@@ -91,6 +91,7 @@ from trilogy.core.models.datasource import (
     RawColumnExpr,
 )
 from trilogy.core.models.environment import Environment
+from trilogy.utility import string_to_hash
 
 # TODO: refactor to avoid these
 if TYPE_CHECKING:
@@ -98,6 +99,27 @@ if TYPE_CHECKING:
     from trilogy.core.models.execute import CTE, UnionCTE
 
 LOGGER_PREFIX = "[MODELS_BUILD]"
+
+
+def generate_concept_name(parent: Any) -> str:
+    """Generate a name for a concept based on its parent type and content."""
+    if isinstance(parent, BuildAggregateWrapper):
+        return f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
+    elif isinstance(parent, BuildWindowItem):
+        return f"{VIRTUAL_CONCEPT_PREFIX}_window_{parent.type.value}_{string_to_hash(str(parent))}"
+    elif isinstance(parent, BuildFilterItem):
+        return f"{VIRTUAL_CONCEPT_PREFIX}_filter_{string_to_hash(str(parent))}"
+    elif isinstance(parent, BuildFunction):
+        if parent.operator == FunctionType.GROUP:
+            return f"{VIRTUAL_CONCEPT_PREFIX}_group_to_{string_to_hash(str(parent))}"
+        else:
+            return f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(str(parent))}"
+    elif isinstance(parent, BuildParenthetical):
+        return f"{VIRTUAL_CONCEPT_PREFIX}_paren_{string_to_hash(str(parent))}"
+    elif isinstance(parent, BuildComparison):
+        return f"{VIRTUAL_CONCEPT_PREFIX}_comp_{string_to_hash(str(parent))}"
+    else:  # ListWrapper, MapWrapper, or primitive types
+        return f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
 
 
 class BuildConceptArgs(ABC):
@@ -215,6 +237,52 @@ class LooseBuildConceptList:
 
     def isdisjoint(self, other):
         if not isinstance(other, LooseBuildConceptList):
+            return False
+        return self.addresses.isdisjoint(other.addresses)
+
+
+@dataclass
+class CanonicalBuildConceptList:
+    concepts: Sequence[BuildConcept]
+
+    @cached_property
+    def addresses(self) -> set[str]:
+        return {s.canonical_address for s in self.concepts}
+
+    @cached_property
+    def sorted_addresses(self) -> List[str]:
+        return sorted(list(self.addresses))
+
+    def __str__(self) -> str:
+        return f"lcl{str(self.sorted_addresses)}"
+
+    def __iter__(self):
+        return iter(self.concepts)
+
+    def __eq__(self, other):
+        if not isinstance(other, CanonicalBuildConceptList):
+            return False
+        return self.addresses == other.addresses
+
+    def issubset(self, other):
+        if not isinstance(other, CanonicalBuildConceptList):
+            return False
+        return self.addresses.issubset(other.addresses)
+
+    def __contains__(self, other):
+        if isinstance(other, str):
+            return other in self.addresses
+        if not isinstance(other, BuildConcept):
+            return False
+        return other.canonical_address in self.addresses
+
+    def difference(self, other):
+        if not isinstance(other, CanonicalBuildConceptList):
+            return False
+        return self.addresses.difference(other.addresses)
+
+    def isdisjoint(self, other):
+        if not isinstance(other, CanonicalBuildConceptList):
             return False
         return self.addresses.isdisjoint(other.addresses)
 
@@ -823,6 +891,7 @@ class BuildSubselectComparison(BuildComparison):
 class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
     model_config = ConfigDict(extra="forbid")
     name: str
+    canonical_name: str
     datatype: DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
     purpose: Purpose
     build_is_aggregate: bool
@@ -842,7 +911,6 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
             BuildMultiSelectLineage,
         ]
     ] = None
-
     keys: Optional[set[str]] = None
     grain: BuildGrain = field(default=None)  # type: ignore
     modifiers: List[Modifier] = field(default_factory=list)  # type: ignore
@@ -892,9 +960,9 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
     def address(self) -> str:
         return f"{self.namespace}.{self.name}"
 
-    @property
-    def output(self) -> "BuildConcept":
-        return self
+    @cached_property
+    def canonical_address(self) -> str:
+        return f"{self.namespace}.{self.canonical_name}"
 
     @property
     def safe_address(self) -> str:
@@ -915,6 +983,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
             )
         return self.__class__(
             name=self.name,
+            canonical_name=self.canonical_name,
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
@@ -957,6 +1026,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
             grain = self.grain  # type: ignore
         return self.__class__(
             name=self.name,
+            canonical_name=self.canonical_name,
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
@@ -1065,10 +1135,6 @@ class BuildWindowItem(DataTyped, BuildConceptArgs):
         for item in self.over:
             output += [item]
         return output
-
-    @property
-    def output(self) -> BuildConcept:
-        return self.content
 
     @property
     def output_datatype(self):
@@ -1281,10 +1347,6 @@ class BuildRowsetItem(DataTyped, BuildConceptArgs):
 
     def __str__(self):
         return self.__repr__()
-
-    @property
-    def output(self) -> BuildConcept:
-        return self.content
 
     @property
     def output_datatype(self):
@@ -1801,8 +1863,11 @@ class Factory:
 
     def __build_concept(self, base: Concept) -> BuildConcept:
         # TODO: if we are using parameters, wrap it in a new model and use that in rendering
-        if base.address in self.local_concepts:
-            return self.local_concepts[base.address]
+        # this doesn't work for persisted addresses.
+        # we need to early exit if we have it in local concepts, because in that case,
+        # it is built with appropriate grain only in that dictionary
+        # if base.address in self.local_concepts:
+        #     return self.local_concepts[base.address]
         new_lineage, final_grain, _ = base.get_select_grain_and_keys(
             self.grain, self.environment
         )
@@ -1840,8 +1905,12 @@ class Factory:
                 for x in self.pseudonym_map.get(base.address, set())
                 if x != base.address
             }
+
         rval = BuildConcept(
             name=base.name,
+            canonical_name=(
+                generate_concept_name(build_lineage) if build_lineage else base.name
+            ),
             datatype=base.datatype,
             purpose=base.purpose,
             metadata=base.metadata,
@@ -1856,6 +1925,13 @@ class Factory:
             granularity=granularity,
             build_is_aggregate=is_aggregate,
         )
+        if base.address in self.local_concepts:
+            # comp = self.local_concepts[base.address]
+            # if comp.canonical_address != rval.canonical_address:
+            #     raise ValueError(
+            #         f"Conflicting concepts for address {base.address}: {comp.canonical_address} vs {rval.canonical_address} {comp.lineage} vs {rval.lineage}"
+            #     )
+            return self.local_concepts[base.address]
         self.local_concepts[base.address] = rval
         return rval
 
@@ -2163,6 +2239,7 @@ class Factory:
             pseudonym_map=self.pseudonym_map,
         )
         for k, v in base.local_concepts.items():
+
             materialized[k] = factory.build(v)
         where_factory = Factory(
             grain=Grain(),
@@ -2233,6 +2310,7 @@ class Factory:
             base_concept = self.environment.concepts[k]
             x = BuildConcept(
                 name=base_concept.name,
+                canonical_name=base_concept.name,
                 datatype=base_concept.datatype,
                 purpose=base_concept.purpose,
                 build_is_aggregate=False,
@@ -2299,18 +2377,23 @@ class Factory:
         )
 
         for k, v in base.concepts.items():
-            new.concepts[k] = self._build_concept(v)
+            v_build = self._build_concept(v)
+            new.concepts[k] = v_build
+            new.canonical_concepts[v_build.canonical_address] = v_build
         for (
             k,
             d,
         ) in base.datasources.items():
             new.datasources[k] = self._build_datasource(d)
         for k, a in base.alias_origin_lookup.items():
-            new.alias_origin_lookup[k] = self._build_concept(a)
+            a_build = self._build_concept(a)
+            new.alias_origin_lookup[k] = a_build
+            new.canonical_concepts[a_build.canonical_address] = a_build
         # add in anything that was built as a side-effect
         for bk, bv in self.local_concepts.items():
             if bk not in new.concepts:
                 new.concepts[bk] = bv
+                new.canonical_concepts[bv.canonical_address] = bv
         new.gen_concept_list_caches()
         return new
 

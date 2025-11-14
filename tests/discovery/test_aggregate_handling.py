@@ -1,11 +1,6 @@
 from trilogy import Dialects
 
-
-def test_aggregate_handling():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    DebuggingHook()
-    q1 = """
+SETUP_CODE = """
 
 key id int;
 key id_class int;
@@ -54,6 +49,13 @@ SELECT
 ''';
 
 """
+
+
+def test_aggregate_handling():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+    q1 = SETUP_CODE
     exec = Dialects.DUCK_DB.default_executor()
 
     exec.parse_text(q1)
@@ -71,6 +73,26 @@ SELECT
         """
 SELECT
     total_val_class
+            ;
+"""
+    )[-1]
+    assert "aggregated_class" in generated, generated
+
+
+def test_aggregate_handling_alias():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+    q1 = SETUP_CODE
+    exec = Dialects.DUCK_DB.default_executor()
+
+    exec.parse_text(q1)
+
+    generated = exec.generate_sql(
+        """
+SELECT
+    id_class,
+    sum(val) as total_value
             ;
 """
     )[-1]

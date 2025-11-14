@@ -50,9 +50,10 @@ def extract_address(node: str):
 
 
 def extract_concept(node: str, env: BuildEnvironment):
-    if node in env.alias_origin_lookup:
-        return env.alias_origin_lookup[node]
-    return env.concepts[node]
+    # removing this as part of canonical mapping
+    # if node in env.alias_origin_lookup:
+    #     return env.alias_origin_lookup[node]
+    return env.canonical_concepts[node]
 
 
 def filter_unique_graphs(graphs: list[list[str]]) -> list[list[str]]:
@@ -267,7 +268,7 @@ def determine_induced_minimal_nodes(
         if edge[1] in final.nodes and edge[0].startswith("ds~"):
             ds_name = extract_address(edge[0])
             ds = environment.datasources[ds_name]
-            concept = environment.concepts[extract_address(edge[1])]
+            concept = environment.canonical_concepts[extract_address(edge[1])]
             if concept.address in [x.address for x in ds.partial_concepts]:
                 if not accept_partial:
                     continue

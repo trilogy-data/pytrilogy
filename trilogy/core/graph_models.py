@@ -1,3 +1,4 @@
+from logging import Logger
 from typing import Union
 
 import networkx as nx
@@ -52,26 +53,29 @@ def prune_sources_for_conditions(
 def prune_sources_for_aggregates(
     g: "ReferenceGraph",
     all_concepts: list[BuildConcept],
-    logger,
+    logger: Logger,
 ) -> None:
     required_grains = []
     for x in all_concepts:
-        logger.info(
+        logger.debug(
             f"Checking concept {x.address} at grain {x.grain}, is_aggregate={x.is_aggregate}"
         )
         if x.is_aggregate:
-            logger.info(f"Aggregate found: {x.address} at grain {x.grain}")
+            logger.debug(f"Aggregate found: {x.address} at grain {x.grain}")
             required_grains.append(x.grain)
     # if no aggregates, exit
-    logger.info(f"Required grains for aggregates: {required_grains}")
+    logger.debug(f"Required grains for aggregates: {required_grains}")
     if not required_grains:
+
         return
     # if we have distinct grains required, exit
     if len(required_grains) > 1:
+        logger.debug("Multiple required grains found, cannot prune datasources.")
         return
     to_remove = []
     for node, ds in g.datasources.items():
         if ds.grain != required_grains[0]:
+            logger.debug(f"Removing datasource {node} at grain {ds.grain}")
             to_remove.append(node)
     for node in to_remove:
         g.remove_node(node)
@@ -81,7 +85,7 @@ def prune_sources_for_aggregates(
 def concept_to_node(input: BuildConcept) -> str:
     # if input.purpose == Purpose.METRIC:
     #     return f"c~{input.namespace}.{input.name}@{input.grain}"
-    return f"c~{input.address}@{input.grain.str_no_condition}"
+    return f"c~{input.canonical_address}@{input.grain.str_no_condition}"
 
 
 def datasource_to_node(input: BuildDatasource) -> str:

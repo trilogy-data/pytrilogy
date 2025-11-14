@@ -14,6 +14,7 @@ from trilogy.core.processing.node_generators.select_helpers.datasource_injection
 
 test_concept = BuildConcept(
     name="test_concept",
+    canonical_name="test_concept",
     datatype=DataType.INTEGER,
     purpose=Purpose.KEY,
     build_is_aggregate=False,
@@ -22,6 +23,7 @@ test_concept = BuildConcept(
 
 float_concept = BuildConcept(
     name="float_concept",
+    canonical_name="float_concept",
     datatype=DataType.FLOAT,
     purpose=Purpose.KEY,
     build_is_aggregate=False,
@@ -30,6 +32,7 @@ float_concept = BuildConcept(
 
 date_concept = BuildConcept(
     name="date_concept",
+    canonical_name="date_concept",
     datatype=DataType.DATE,
     purpose=Purpose.KEY,
     build_is_aggregate=False,
@@ -38,6 +41,7 @@ date_concept = BuildConcept(
 
 datetime_concept = BuildConcept(
     name="datetime_concept",
+    canonical_name="datetime_concept",
     datatype=DataType.DATETIME,
     purpose=Purpose.KEY,
     build_is_aggregate=False,
@@ -46,6 +50,7 @@ datetime_concept = BuildConcept(
 
 boolean_concept = BuildConcept(
     name="boolean_concept",
+    canonical_name="boolean_concept",
     datatype=DataType.BOOL,
     purpose=Purpose.KEY,
     build_is_aggregate=False,

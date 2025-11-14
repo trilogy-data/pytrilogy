@@ -853,6 +853,7 @@ class RecursiveCTE(CTE):
 
         join_gate = BuildConcept(
             name=RECURSIVE_GATING_CONCEPT,
+            canonical_name=RECURSIVE_GATING_CONCEPT,
             namespace=DEFAULT_NAMESPACE,
             grain=recursive_derived.grain,
             build_is_aggregate=False,
@@ -878,6 +879,7 @@ class RecursiveCTE(CTE):
         )
         bottom_join_gate = BuildConcept(
             name=f"{RECURSIVE_GATING_CONCEPT}_two",
+            canonical_name=f"{RECURSIVE_GATING_CONCEPT}_two",
             namespace=DEFAULT_NAMESPACE,
             grain=recursive_derived.grain,
             build_is_aggregate=False,
@@ -903,6 +905,7 @@ class RecursiveCTE(CTE):
         )
         bottom_derivation = BuildConcept(
             name=recursive_derived.name + "_bottom",
+            canonical_name=recursive_derived.canonical_name + "_bottom",
             namespace=recursive_derived.namespace,
             grain=recursive_derived.grain,
             build_is_aggregate=False,

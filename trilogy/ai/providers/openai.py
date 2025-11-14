@@ -3,8 +3,9 @@ from typing import List, Optional
 
 from trilogy.ai.enums import Provider
 from trilogy.ai.models import LLMMessage, LLMResponse, UsageDict
+from trilogy.constants import logger
 
-from .base import LLMProvider, LLMRequestOptions
+from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions
 from .utils import RetryOptions, fetch_with_retry
 
 
@@ -30,8 +31,8 @@ class OpenAIProvider(LLMProvider):
         self.retry_options = retry_options or RetryOptions(
             max_retries=3,
             initial_delay_ms=1000,
-            retry_status_codes=[429, 500, 502, 503, 504],  # Add common API error codes
-            on_retry=lambda attempt, delay_ms, error: print(
+            retry_status_codes=RETRYABLE_CODES,
+            on_retry=lambda attempt, delay_ms, error: logger.info(
                 f"Retry attempt {attempt} after {delay_ms}ms delay due to error: {str(error)}"
             ),
         )

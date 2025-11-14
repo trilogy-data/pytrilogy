@@ -82,9 +82,9 @@ def subgraph_is_complete(
     # Check if all targets are present in mapped nodes
     mapped = {mapping.get(n, n) for n in nodes}
     if not targets.issubset(mapped):
-        # logger.info(
-        #     f"Subgraph {nodes} is not complete, missing targets {targets} - mapped {mapped}"
-        # )
+        logger.debug(
+            f"Subgraph {nodes} is not complete, missing targets {targets} - mapped {mapped}"
+        )
         return False
 
     # Check if at least one concept node has a datasource edge
@@ -131,14 +131,14 @@ def create_pruned_concept_graph(
             g.add_edge(cnode, node_address)
     prune_sources_for_conditions(g, accept_partial, conditions)
     prune_sources_for_aggregates(g, all_concepts, logger)
-    target_addresses = set([c.address for c in all_concepts])
+    target_addresses = set([c.canonical_address for c in all_concepts])
     concepts: dict[str, BuildConcept] = orig_g.concepts
     datasource_map: dict[str, BuildDatasource] = orig_g.datasources
     relevant_concepts_pre = {
-        n: x.address
+        n: x.canonical_address
         for n in g.nodes()
         # filter out synonyms
-        if (x := concepts.get(n, None)) and x.address in target_addresses
+        if (x := concepts.get(n, None)) and x.canonical_address in target_addresses
     }
 
     relevant_concepts: list[str] = list(relevant_concepts_pre.keys())
@@ -167,7 +167,7 @@ def create_pruned_concept_graph(
         if any([[n, x] in g.edges for x in relevant_concepts]):
             relevent_datasets.append(n)
             continue
-
+    logger.debug(f"Relevant datasets after pruning: {relevent_datasets}")
     # for injecting extra join concepts that are shared between datasets
     # use the original graph, pre-partial pruning
     for n in orig_g.concepts:
@@ -525,9 +525,12 @@ def create_select_node(
     depth: int,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode:
-
+    for k, v in environment.canonical_concepts.items():
+        logger.info(k)
     all_concepts = [
-        environment.concepts[extract_address(c)] for c in subgraph if c.startswith("c~")
+        environment.canonical_concepts[extract_address(c)]
+        for c in subgraph
+        if c.startswith("c~")
     ]
 
     if all([c.derivation == Derivation.CONSTANT for c in all_concepts]):

@@ -1741,13 +1741,13 @@ def test_array_to_string():
     test = """
 const values <- [ ' abc ', ' def', 'jkl ', 'mon'];
 
-select array_to_string(values, ', ') as values;
+select array_to_string(values, ', ') as value_string;
 """
 
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
 
     assert len(results) == 1
-    assert results[0].values == " abc ,  def, jkl , mon"
+    assert results[0].value_string == " abc ,  def, jkl , mon"
 
 
 def test_not_value():

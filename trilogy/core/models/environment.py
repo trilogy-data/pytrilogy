@@ -686,7 +686,6 @@ class Environment(BaseModel):
                         new_persisted_concept,
                         meta=meta,
                     )
-
         return datasource
 
     def delete_datasource(
@@ -742,6 +741,7 @@ class Environment(BaseModel):
         for k, ds in self.datasources.items():
             if source.address in ds.output_lcl:
                 ds.merge_concept(source, target, modifiers=modifiers)
+
         return True
 
 

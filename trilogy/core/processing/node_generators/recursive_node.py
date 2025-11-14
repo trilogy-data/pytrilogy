@@ -20,6 +20,7 @@ LOGGER_PREFIX = "[GEN_RECURSIVE_NODE]"
 
 GATING_CONCEPT = BuildConcept(
     name=RECURSIVE_GATING_CONCEPT,
+    canonical_name=RECURSIVE_GATING_CONCEPT,
     namespace=DEFAULT_NAMESPACE,
     grain=BuildGrain(),
     build_is_aggregate=False,

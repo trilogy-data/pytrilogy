@@ -102,8 +102,8 @@ def test_adhoc03():
     for aggregate in [
         # 'home_wins',
         # 'away_wins',
-        "home_games",
-        "away_games",
+        "local.home_games",
+        "local.away_games",
     ]:
         print(select.local_concepts[aggregate])
         assert select.local_concepts[aggregate].grain.components == {
