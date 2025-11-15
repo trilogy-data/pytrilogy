@@ -73,9 +73,10 @@ def prune_sources_for_aggregates(
         logger.debug("Multiple required grains found, cannot prune datasources.")
         return
     to_remove = []
+    target_grain = required_grains[0]
     for node, ds in g.datasources.items():
-        if ds.grain != required_grains[0]:
-            logger.debug(f"Removing datasource {node} at grain {ds.grain}")
+        if ds.grain != target_grain:
+            logger.debug(f"Removing datasource {node} at grain {ds.grain.abstract} (need {target_grain.abstract}) {ds.grain == target_grain}")
             to_remove.append(node)
     for node in to_remove:
         g.remove_node(node)

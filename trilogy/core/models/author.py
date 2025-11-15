@@ -582,6 +582,9 @@ class Grain(Namespaced, BaseModel):
             return False
         if self.components == other.components:
             return True
+        if self.abstract and other.abstract:
+            return True
+        
         return False
 
     def issubset(self, other: "Grain"):

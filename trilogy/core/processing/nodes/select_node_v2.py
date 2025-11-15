@@ -86,7 +86,6 @@ class SelectNode(StrategyNode):
         source_map: dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]] = {
             concept.address: {datasource} for concept in self.input_concepts
         }
-
         derived_concepts = [
             c
             for c in datasource.columns

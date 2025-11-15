@@ -175,8 +175,3 @@ def test_canonical_build_concept_list_membership():
     assert not cbcl1.isdisjoint(cbcl_overlapping)
     assert not cbcl1.isdisjoint("not a list")
 
-
-if __name__ == "__main__":
-    test_loose_concept_list()
-    test_canonical_build_concept_list_membership()
-    print("All tests passed!")

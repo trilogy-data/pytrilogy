@@ -100,9 +100,13 @@ if TYPE_CHECKING:
 
 LOGGER_PREFIX = "[MODELS_BUILD]"
 
-
 def generate_concept_name(parent: Any) -> str:
+    output = _generate_concept_name(parent)
+    return output
+
+def _generate_concept_name(parent: Any) -> str:
     """Generate a name for a concept based on its parent type and content."""
+    
     if isinstance(parent, BuildAggregateWrapper):
         return f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
     elif isinstance(parent, BuildWindowItem):
@@ -414,6 +418,8 @@ class BuildGrain:
         if not isinstance(other, BuildGrain):
             return False
         if self.components == other.components:
+            return True
+        if self.abstract == other.abstract:
             return True
         return False
 
@@ -1274,7 +1280,12 @@ class BuildAggregateWrapper(BuildConceptArgs, DataTyped):
     by: List[BuildConcept] = field(default_factory=list)
 
     def __str__(self):
-        grain_str = [str(c) for c in self.by] if self.by else "abstract"
+        filtered_by = [
+            str(c)
+            for c in self.by
+            if not (c.name == ALL_ROWS_CONCEPT and "__preql_internal" in c.namespace)
+        ]
+        grain_str = filtered_by if filtered_by else "abstract"
         return f"{str(self.function)}<{grain_str}>"
 
     @property

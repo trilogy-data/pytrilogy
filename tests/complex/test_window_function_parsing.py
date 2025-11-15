@@ -45,7 +45,7 @@ datasource users (
     about_me: about_me,
     )
     grain (user_id)
-    address `bigquery-public-data.stackoverflow.users`
+    address `bigquery-publicggg-data.stackoverflow.users`
 ;
 
 
