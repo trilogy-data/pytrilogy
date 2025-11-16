@@ -419,7 +419,7 @@ class BuildGrain:
             return False
         if self.components == other.components:
             return True
-        if self.abstract == other.abstract:
+        if self.abstract == True == other.abstract:
             return True
         return False
 

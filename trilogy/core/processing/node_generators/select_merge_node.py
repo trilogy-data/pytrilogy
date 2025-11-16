@@ -17,7 +17,6 @@ from trilogy.core.models.build import (
     BuildDatasource,
     BuildGrain,
     BuildWhereClause,
-    LooseBuildConceptList,
     CanonicalBuildConceptList
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -83,8 +82,9 @@ def subgraph_is_complete(
     # Check if all targets are present in mapped nodes
     mapped = {mapping.get(n, n) for n in nodes}
     if not targets.issubset(mapped):
+        missing = targets - mapped
         logger.debug(
-            f"Subgraph {nodes} is not complete, missing targets {targets} - mapped {mapped}"
+            f"Subgraph {nodes} is not complete, missing targets {missing} - mapped {mapped}"
         )
         return False
 
