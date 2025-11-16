@@ -83,7 +83,7 @@ def test_rowset_shape(normalized_engine, test_env):
 where 
     passenger.survived =1; 
 
-auto eldest <- row_number survivors.passenger.id over survivors.passenger.name order by survivors.passenger.age desc;
+auto eldest <- row_number survivors.passenger.id over survivors.passenger.last_name order by survivors.passenger.age desc;
 # now we can reference our rowset like any other concept
 select 
     --survivors.passenger.id,

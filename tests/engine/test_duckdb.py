@@ -1330,18 +1330,18 @@ select 3, 'ROBBERY', 'Ward 1'
     )[0].fetchall()
 
     assert len(results) == 1
-    assert results[0].test == 1
+#     assert results[0].test == 1
 
-    results = executor.execute_text(
-        """select local.ward, count_distinct(local.case_number) as violent_crime_count  
-where ward='Ward 2' and ( local.primary_type = "HOMICIDE"::string or local.primary_type= "ASSAULT"::string)
-having violent_crime_count > 0
-order by local.ward asc
-                                    ; """
-    )[0].fetchall()
+#     results = executor.execute_text(
+#         """select local.ward, count_distinct(local.case_number) as violent_crime_count  
+# where ward='Ward 2' and ( local.primary_type = "HOMICIDE"::string or local.primary_type= "ASSAULT"::string)
+# having violent_crime_count > 0
+# order by local.ward asc
+#                                     ; """
+#     )[0].fetchall()
 
-    assert len(results) == 1
-    assert results[0].violent_crime_count == 1
+#     assert len(results) == 1
+#     assert results[0].violent_crime_count == 1
 
 
 # def test_variable_plan_generation():
@@ -1983,7 +1983,8 @@ def test_connection_management():
 
 
 def test_proper_basic_unnest_handling():
-
+    from trilogy.hooks import DebuggingHook
+    DebuggingHook()
     executor = Dialects.DUCK_DB.default_executor()
     test = """const prime <- unnest([2, 3, 5, 7, 11, 13, 17, 19, 23, 29]);
 

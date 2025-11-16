@@ -77,7 +77,7 @@ def gen_select_node(
         missing = all_lcl.difference(materialized_lcl)
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Skipping select node generation for {concepts}"
-            f" as it + optional includes non-materialized concepts (looking for all {all_lcl}, missing {missing}, have {environment.materialized_canonical_concepts}) "
+            f" as it + optional includes non-materialized concepts (looking for all {all_lcl}, missing {missing})."
         )
         validate_query_is_resolvable(missing, environment, materialized_lcl)
         if fail_if_not_found:

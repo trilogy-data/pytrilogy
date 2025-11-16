@@ -389,6 +389,7 @@ def _search_concepts(
             mandatory=context.mandatory_list,
             conditions=context.conditions,
             attempted=context.attempted,
+            force_conditions=context.must_evaluate_condition_on_this_level_not_push_down,
             found=context.found,
             partial=partial,
             depth=depth,

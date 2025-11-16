@@ -267,6 +267,7 @@ def evaluate_loop_conditions(
     remaining: set[str],
     conditions: BuildConditional | None,
     depth: int,
+    force_conditions: bool,
 ) -> BuildWhereClause | None:
     # filter evaluation
     # always pass the filter up when we aren't looking at all filter inputs
@@ -286,6 +287,7 @@ def evaluate_loop_conditions(
     local_conditions = (
         conditions
         if conditions
+        and not force_conditions    
         # and not must_evaluate_condition_on_this_level_not_push_down
         and not should_evaluate_filter_on_this_level_not_push_down
         else None
@@ -300,8 +302,11 @@ def evaluate_loop_conditions(
         and x.address not in conditions.row_arguments
         for x in remaining
     ):
+        forced = [x for x in remaining if x.address not in conditions.row_arguments and x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC]]
+        for x in forced:
+            logger.info(x.derivation)
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Force including conditions to push filtering above complex condition that is not condition member or parent"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Force including conditions to push filtering above complex concepts {forced} that are not condition member or parent"
         )
         local_conditions = conditions
     return local_conditions
@@ -311,14 +316,19 @@ def generate_candidates_restrictive(
     priority_concept: BuildConcept,
     candidates: list[BuildConcept],
     exhausted: set[str],
+    # conditions_exist: bool,
 ) -> list[BuildConcept]:
+    unselected_candidates = [
+        x for x in candidates if x.address != priority_concept.address
+    ]
     local_candidates = [
         x
-        for x in list(candidates)
+        for x in unselected_candidates
         if x.address not in exhausted
         and x.granularity != Granularity.SINGLE_ROW
         and x.address not in priority_concept.pseudonyms
         and priority_concept.address not in x.pseudonyms
+
     ]
 
     # if it's single row, joins are irrelevant. Fetch without keys.
@@ -327,7 +337,7 @@ def generate_candidates_restrictive(
         optional = (
             [
                 x
-                for x in candidates
+                for x in unselected_candidates
                 if x.granularity == Granularity.SINGLE_ROW
                 and x.address not in priority_concept.pseudonyms
                 and priority_concept.address not in x.pseudonyms
@@ -401,6 +411,7 @@ def get_priority_concept(
             + [
                 c for c in remaining_concept if c.derivation == Derivation.ROOT
             ]  # and any non-single row constants
+                        
         )
 
         priority += [
@@ -441,10 +452,11 @@ def get_priority_concept(
 def get_loop_iteration_targets(
     mandatory: list[BuildConcept],
     conditions: BuildConditional | None,
-    attempted:set[str],
-    found:set[str],
-    partial:set[str],
-    depth:int,
+    attempted: set[str],
+    force_conditions: bool,
+    found: set[str],
+    partial: set[str],
+    depth: int,
     # materialized_canonical=set[str],
 ) -> tuple[BuildConcept, List[BuildConcept], BuildConditional | None]:
     # objectives
@@ -453,12 +465,22 @@ def get_loop_iteration_targets(
     # 3. from the final candidate list, select the highest priority concept to attempt next
     remaining = [x for x in mandatory if x.address not in attempted]
     conditions = evaluate_loop_conditions(
-        mandatory=mandatory, conditions=conditions, depth=depth, remaining=remaining
+        mandatory=mandatory, conditions=conditions, depth=depth, remaining=remaining,
+        force_conditions=force_conditions
     )
     local_all = [*mandatory]
-    if all([x.derivation in ROOT_DERIVATIONS for x in remaining]) and conditions:
+    if all([x.derivation in (Derivation.ROOT,) for x in remaining]) and conditions:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} All remaining mandatory concepts are roots or constants, injecting condition inputs into candidate list"
+        )
+        local_all = unique(
+            list(conditions.row_arguments) + remaining,
+            "address",
+        )
+        conditions = None
+    if conditions and force_conditions:
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} condition evaluation at this level forced"
         )
         local_all = unique(
             list(conditions.row_arguments) + remaining,
@@ -479,6 +501,7 @@ def get_loop_iteration_targets(
         priority_concept=priority_concept,
         candidates=local_all,
         exhausted=attempted,
+        # conditions_exist = conditions is not None,
         # depth=depth,
     )
     return priority_concept, optional, conditions
