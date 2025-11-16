@@ -125,12 +125,20 @@ class BuildEnvironment(BaseModel):
     alias_origin_lookup: Dict[str, BuildConcept] = Field(default_factory=dict)
 
     def gen_concept_list_caches(self) -> None:
-        concrete_concepts: list[BuildConcept] = []
+        complete_concrete_concepts: list[BuildConcept] = []
+        partial_concrete_concepts: list[BuildConcept] = []
         for datasource in self.datasources.values():
-            for concept in datasource.output_concepts:
-                concrete_concepts.append(concept)
-        concrete_addresses = set([x.address for x in concrete_concepts])
-        canonical_addresses = set([x.canonical_address for x in concrete_concepts])
+            for column in datasource.columns:
+                if column.is_complete:
+                    complete_concrete_concepts.append(column.concept)
+                else:
+                    partial_concrete_concepts.append(column.concept)
+        # concrete is all
+        concrete_addresses = set([x.address for x in complete_concrete_concepts]).union(
+            [x.address for x in partial_concrete_concepts]
+        )
+        # canonical we only care about complete materialized
+        canonical_addresses = set([x.canonical_address for x in complete_concrete_concepts])
 
         self.materialized_concepts = set(
             [

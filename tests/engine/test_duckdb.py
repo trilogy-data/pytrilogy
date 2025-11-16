@@ -2068,7 +2068,6 @@ def test_date_spine_merge():
             prime,
             val
         )
-        grain(prime)
         query '''
     SELECT current_date AS prime, 2 as  val
     UNION ALL
@@ -2112,7 +2111,7 @@ def test_const_equivalence_merge():
         property orid.val int;
 
         datasource orders (
-            ~orid,
+            orid,
             val
         )
         grain (orid)

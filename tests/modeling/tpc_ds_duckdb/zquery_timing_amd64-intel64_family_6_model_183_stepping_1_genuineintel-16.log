@@ -1,17 +1,17 @@
 [query_01]
-parse_time = 4.887774
-exec_time = 0.24122
-comp_time = 0.746352
+parse_time = 0.273426
+exec_time = 0.096899
+comp_time = 0.708744
 
 [query_02]
-parse_time = 2.813203
-exec_time = 0.470593
-comp_time = 0.351907
+parse_time = 0.513448
+exec_time = 0.1132
+comp_time = 0.109615
 
 [query_03]
-parse_time = 0.500086
-exec_time = 0.205517
-comp_time = 0.17355
+parse_time = 0.161197
+exec_time = 0.037454
+comp_time = 0.032898
 
 [query_06]
 parse_time = 0.982967

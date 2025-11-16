@@ -1,13 +1,14 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, Granularity, Purpose, SourceType
+from trilogy.core.enums import Derivation, Purpose, SourceType, Granularity
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
     BuildFilterItem,
     BuildGrain,
     BuildRowsetItem,
+    BuildConditional,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -15,7 +16,7 @@ from trilogy.core.models.execute import QueryDatasource, UnnestJoin
 from trilogy.core.processing.constants import ROOT_DERIVATIONS
 from trilogy.core.processing.nodes import GroupNode, MergeNode, StrategyNode
 from trilogy.core.processing.utility import GroupRequiredResponse
-from trilogy.utility import unique
+from trilogy.core.processing.constants import ROOT_DERIVATIONS, SKIPPED_DERIVATIONS
 
 
 def depth_to_prefix(depth: int) -> str:
@@ -261,42 +262,22 @@ def get_upstream_concepts(base: BuildConcept, nested: bool = False) -> set[str]:
     return upstream
 
 
-def evaluate_loop_condition_pushdown(
-    mandatory: list[BuildConcept],
-    remaining: list[BuildConcept],
-    conditions: BuildWhereClause | None,
+def evaluate_loop_conditions(
+    mandatory:list[BuildConcept],
+    remaining: set[str],
+    conditions:BuildConditional | None,
     depth: int,
-    force_no_condition_pushdown: bool,
 ) -> BuildWhereClause | None:
     # filter evaluation
     # always pass the filter up when we aren't looking at all filter inputs
     # or there are any non-filter complex types
     if not conditions:
         return None
-    # first, check if we *have* to push up conditions above complex derivations
-    if any(
-        conditions
-        and x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC]
-        and x.address not in conditions.row_arguments
-        for x in remaining
-    ):
-        forced = [
-            x
-            for x in remaining
-            if x.address not in conditions.row_arguments
-            and x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC]
-        ]
-        for x in forced:
-            logger.info(x.derivation)
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Force including conditions to push filtering above complex concepts {forced} that are not condition member or parent"
-        )
-        return conditions
-    # otherwise, only prevent pushdown
-    # (forcing local condition evaluation)
-    # only if all condition inputs are here and we only have roots
     should_evaluate_filter_on_this_level_not_push_down = all(
-        [x.address in mandatory for x in conditions.row_arguments]
+        [
+            x.address in mandatory
+            for x in conditions.row_arguments
+        ]
     ) and not any(
         [
             x.derivation not in (ROOT_DERIVATIONS + [Derivation.BASIC])
@@ -304,30 +285,42 @@ def evaluate_loop_condition_pushdown(
             if x.address not in conditions.row_arguments
         ]
     )
-    if (
-        force_no_condition_pushdown
-        or should_evaluate_filter_on_this_level_not_push_down
+
+    local_conditions = (
+        conditions
+        if conditions
+        # and not must_evaluate_condition_on_this_level_not_push_down
+        and not should_evaluate_filter_on_this_level_not_push_down
+        else None
+    )
+    # but if it's not basic, and it's not condition;
+    # we do need to push it down (and have another layer of filter evaluation)
+    # to ensure filtering happens before something like a SUM
+    remaining:list[BuildConcept] = [x for x in mandatory if x.address in remaining]
+    if any(
+        conditions
+        and x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC]
+        and x.address not in conditions.row_arguments 
+        for x in remaining
     ):
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Forcing condition evaluation at this level"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Force including conditions to push filtering above complex condition that is not condition member or parent"
         )
-        return None
+        local_conditions = conditions
+    return local_conditions
 
-    return conditions
 
 
 def generate_candidates_restrictive(
     priority_concept: BuildConcept,
     candidates: list[BuildConcept],
     exhausted: set[str],
-    # conditions_exist: bool,
-) -> list[BuildConcept]:
-    unselected_candidates = [
-        x for x in candidates if x.address != priority_concept.address
-    ]
+    depth: int,
+    conditions: BuildWhereClause | None = None,
+) -> tuple[list[BuildConcept], BuildWhereClause | None]:
     local_candidates = [
         x
-        for x in unselected_candidates
+        for x in list(candidates)
         if x.address not in exhausted
         and x.granularity != Granularity.SINGLE_ROW
         and x.address not in priority_concept.pseudonyms
@@ -340,7 +333,7 @@ def generate_candidates_restrictive(
         optional = (
             [
                 x
-                for x in unselected_candidates
+                for x in candidates
                 if x.granularity == Granularity.SINGLE_ROW
                 and x.address not in priority_concept.pseudonyms
                 and priority_concept.address not in x.pseudonyms
@@ -348,8 +341,20 @@ def generate_candidates_restrictive(
             if priority_concept.derivation == Derivation.AGGREGATE
             else []
         )
-        return optional
-    return local_candidates
+        return optional, conditions
+
+    if conditions and priority_concept.derivation in ROOT_DERIVATIONS:
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Injecting additional conditional row arguments as all remaining concepts are roots or constant"
+        )
+        # otherwise, we can ignore the conditions now that we've injected inputs
+        return (
+            unique(list(conditions.row_arguments) + local_candidates, "address"),
+            None,
+        )
+
+    return local_candidates, conditions
+
 
 
 def get_priority_concept(
@@ -358,10 +363,16 @@ def get_priority_concept(
     found_concepts: set[str],
     partial_concepts: set[str],
     depth: int,
-    # materialized_canonical: set[str],
+    materialized_canonical: set[str],
 ) -> BuildConcept:
     # optimized search for missing concepts
-    all_concepts_local: list[BuildConcept] = all_concepts
+    all_concepts_local: list[BuildConcept] = [x for x in all_concepts if x.canonical_address not in materialized_canonical or x.derivation == Derivation.ROOT]
+    remaining = [x for x in all_concepts if x.address not in all_concepts_local]
+    for x in remaining:
+        logger.info(f"Adding materialized concept {x.address} to priority search")
+        all_concepts_local.append(x.with_materialized_source())
+
+
     pass_one = sorted(
         [
             c
@@ -371,6 +382,10 @@ def get_priority_concept(
         ],
         key=lambda x: x.address,
     )
+
+    # sometimes we need to scan intermediate concepts to get merge keys or filter keys,
+    # so do an exhaustive search
+    # pass_two = [c for c in all_concepts if c.address not in attempted_addresses]
 
     for remaining_concept in (pass_one,):
         priority = (
@@ -438,61 +453,24 @@ def get_priority_concept(
 
 
 def get_loop_iteration_targets(
-    mandatory: list[BuildConcept],
-    conditions: BuildWhereClause | None,
-    attempted: set[str],
-    force_conditions: bool,
-    found: set[str],
-    partial: set[str],
-    depth: int,
-    # materialized_canonical=set[str],
-) -> tuple[BuildConcept, List[BuildConcept], BuildWhereClause | None]:
-    # objectives
-    # 1. if we have complex types; push any conditions further up until we only have roots
-    # 2. if we only have roots left, push all condition inputs into the candidate list
-    # 3. from the final candidate list, select the highest priority concept to attempt next
+        mandatory:list[BuildConcept],
+        conditions:BuildConditional | None,
+        attempted = set[str],
+        found = set[str],
+        partial = set[str],
+        depth = int,
+        materialized_canonical = set[str],
+) -> tuple[BuildConcept, List[BuildConcept], BuildConditional | None]:
+    # 
     remaining = [x for x in mandatory if x.address not in attempted]
-    conditions = evaluate_loop_condition_pushdown(
-        mandatory=mandatory,
-        conditions=conditions,
-        depth=depth,
-        remaining=remaining,
-        force_no_condition_pushdown=force_conditions,
-    )
-    local_all = [*mandatory]
-    if all([x.derivation in (Derivation.ROOT,) for x in remaining]) and conditions:
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} All remaining mandatory concepts are roots or constants, injecting condition inputs into candidate list"
-        )
-        local_all = unique(
-            list(conditions.row_arguments) + remaining,
-            "address",
-        )
-        conditions = None
-    if conditions and force_conditions:
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} condition evaluation at this level forced"
-        )
-        local_all = unique(
-            list(conditions.row_arguments) + remaining,
-            "address",
-        )
-        conditions = None
+    conditions = evaluate_loop_conditions(mandatory=mandatory, conditions=conditions, depth=depth, remaining = remaining)
 
     priority_concept = get_priority_concept(
-        all_concepts=local_all,
+        all_concepts=mandatory,
         attempted_addresses=attempted,
         found_concepts=found,
         partial_concepts=partial,
         depth=depth,
-        # materialized_canonical=materialized_canonical,
+        materialized_canonical=materialized_canonical,
     )
-
-    optional = generate_candidates_restrictive(
-        priority_concept=priority_concept,
-        candidates=local_all,
-        exhausted=attempted,
-        # conditions_exist = conditions is not None,
-        # depth=depth,
-    )
-    return priority_concept, optional, conditions
+    return priority_concept

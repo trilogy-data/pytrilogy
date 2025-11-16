@@ -43,6 +43,35 @@ Things that might need work:
 verifies all partial constraints. 
 
 
+## Canonical Addressing
+
+Canonical addressing is our method of enabling materialized calculations to be identified early.
+
+Canonical addresses are deterministic based on lineage. If a concept is a root, they are the normal address. If a concept is derived, they are the hash of the lineage.
+
+This means that if someone materializes a table with UPPER(x) as fun; and you select UPPER(X) as bar; we should be able to recognize that we can satisfy your query out of that materialized address.
+
+In discovery, the present a challenge. With no materialized derivations, the discovery loop is easy.
+
+1. Unpack derived concepts
+2. repeat until we only have roots
+3. see if we can get these; if not, search for join keys to inject
+
+But with materialized values, at 1, we may _not_ want to unpack the concept. We should treat it as a metaphorical root, and only unpack if needed. 
+
+Solution:
+Move materialized values later in discovery;
+
+When sourcing a materialized concept, first attempt a select discovery with it treated as a root
+
+Implementation
+The first attempt at this used pseudonyms to handle this.
+
+When a concept was materialized, create a new _root_ version, then add a pseudonym with original derivation. This was nice in that it played well with existing discovery mechanisms. 
+
+Cons: new concept. 
+[TODO: determine how to do this? ]
+
 
 ## Always pass up local optional
 ## pass up filter

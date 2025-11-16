@@ -7,7 +7,8 @@ from trilogy.core.processing.nodes import History
 def test_gen_rowset_node_with_filter(
     test_environment: Environment, test_environment_graph
 ):
-
+    from trilogy.hooks.query_debugger import DebuggingHook
+    DebuggingHook()
     test_environment.parse(
         """
                            

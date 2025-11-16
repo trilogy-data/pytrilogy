@@ -28,11 +28,16 @@ GOOGLE_LATEST_MODEL = "gemini-2.5-flash"
 OPENAI_LATEST_MODEL = "gpt-5-chat-latest"
 ANTHROPIC_LATEST_MODEL = "claude-sonnet-4-5-20250929"
 
+DATE_PARTIALS = [
+    "date_part(local.dep_time.date, year) = 2020",
+    "date_part(local.dep_time, year) = 2020",
+    "local.dep_time.year = 2020",
+]
 
 def validate_response(response: str):
+    '''where date_part(local.dep_time.date, year)'''
     assert (
-        "dep_time.year = 2020" in response
-        or "date_part(local.dep_time, year) = 2020" in response
+        any(partial in response for partial in DATE_PARTIALS)
     ), response
     assert (
         "count(id2) as" in response

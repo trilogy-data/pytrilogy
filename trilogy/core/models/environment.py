@@ -326,28 +326,14 @@ class Environment(BaseModel):
         if isinstance(existing, UndefinedConcept):
             return None
 
-        def handle_persist():
-            deriv_lookup = (
-                f"{existing.namespace}.{PERSISTED_CONCEPT_PREFIX}_{existing.name}"
-            )
-
-            alt_source = self.alias_origin_lookup.get(deriv_lookup)
-            if not alt_source:
-                return None
-            # del self.alias_origin_lookup[deriv_lookup]
-            # del self.concepts[deriv_lookup]
-            # if the new concept binding has no lineage
-            # nothing to cause us to think a persist binding
-            # needs to be invalidated
-            if not new_concept.lineage:
-                return existing
-            if str(alt_source.lineage) == str(new_concept.lineage):
+        def handle_currently_bound_sources():
+            if str(existing.lineage) == str(new_concept.lineage):
                 logger.info(
                     f"Persisted concept {existing.address} matched redeclaration, keeping current persistence binding."
                 )
                 return existing
             logger.warning(
-                f"Persisted concept {existing.address} lineage {str(alt_source.lineage)} did not match redeclaration {str(new_concept.lineage)}, overwriting and invalidating persist binding."
+                f"Persisted concept {existing.address} lineage {str(existing.lineage)} did not match redeclaration {str(new_concept.lineage)}, invalidating current bound datasource."
             )
             for k, datasource in self.datasources.items():
                 if existing.address in datasource.output_concepts:
@@ -359,21 +345,18 @@ class Environment(BaseModel):
                         x
                         for x in datasource.columns
                         if x.concept.address != existing.address
-                        and x.concept.address != deriv_lookup
                     ]
                     assert len(datasource.columns) < clen
             return None
 
         if existing and self.config.allow_duplicate_declaration:
-            if existing.metadata.concept_source == ConceptSource.PERSIST_STATEMENT:
-                return handle_persist()
-            return None
-        elif existing.metadata:
-            if existing.metadata.concept_source == ConceptSource.PERSIST_STATEMENT:
-                return handle_persist()
-            # if the existing concept is auto derived, we can overwrite it
             if existing.metadata.concept_source == ConceptSource.AUTO_DERIVED:
                 return None
+            return handle_currently_bound_sources()
+        elif existing.metadata:
+            if existing.metadata.concept_source == ConceptSource.AUTO_DERIVED:
+                return None
+            return handle_currently_bound_sources()
         elif meta and existing.metadata:
             raise ValueError(
                 f"Assignment to concept '{lookup}' on line {meta.line} is a duplicate"

@@ -20,7 +20,7 @@ from trilogy.core.processing.node_generators import (
     gen_multiselect_node,
     gen_recursive_node,
     gen_rowset_node,
-    gen_synonym_node,
+    gen_pseudonym_node,
     gen_union_node,
     gen_unnest_node,
     gen_window_node,
@@ -284,6 +284,9 @@ class RootNodeHandler:
 
         root_targets = [self.ctx.concept] + self.ctx.local_optional
 
+        # if self._has_non_root_concepts():
+        #     return self._handle_non_root_concepts(root_targets)
+
         return self._resolve_root_concepts(root_targets)
 
     def _resolve_root_concepts(
@@ -293,13 +296,13 @@ class RootNodeHandler:
         if expanded_node:
             return expanded_node
         if self.ctx.accept_partial:
-            synonym_node = self._try_synonym_resolution(root_targets)
-            if synonym_node:
+            pseudonym_node = self._try_pseudonym_resolution(root_targets)
+            if pseudonym_node:
                 logger.info(
                     f"{depth_to_prefix(self.ctx.depth)}{LOGGER_PREFIX} "
-                    f"resolved root concepts through synonyms"
+                    f"resolved root concepts through pseudonyms"
                 )
-                return synonym_node
+                return pseudonym_node
 
         return None
 
@@ -349,12 +352,12 @@ class RootNodeHandler:
             f"via concept addition; removing extra {[c.address for c in extra]}"
         )
 
-    def _try_synonym_resolution(
+    def _try_pseudonym_resolution(
         self, root_targets: List[BuildConcept]
     ) -> Optional[StrategyNode]:
         logger.info(
             f"{depth_to_prefix(self.ctx.depth)}{LOGGER_PREFIX} "
-            f"Could not resolve root concepts, checking for synonyms for {root_targets}"
+            f"Could not resolve root concepts, checking for pseudonyms for {root_targets}"
         )
 
         if not self.ctx.history.check_started(
@@ -368,7 +371,7 @@ class RootNodeHandler:
                 conditions=self.ctx.conditions,
             )
 
-            resolved = gen_synonym_node(
+            resolved = gen_pseudonym_node(
                 all_concepts=root_targets,
                 environment=self.ctx.environment,
                 g=self.ctx.g,
@@ -382,13 +385,13 @@ class RootNodeHandler:
             if resolved:
                 logger.info(
                     f"{depth_to_prefix(self.ctx.depth)}{LOGGER_PREFIX} "
-                    f"resolved concepts through synonyms"
+                    f"resolved concepts through pseudonyms"
                 )
                 return resolved
         else:
             logger.info(
                 f"{depth_to_prefix(self.ctx.depth)}{LOGGER_PREFIX} "
-                f"skipping synonym search, already in a recursion for these concepts"
+                f"skipping pseudonym search, already in a recursion for these concepts"
             )
 
         return None
