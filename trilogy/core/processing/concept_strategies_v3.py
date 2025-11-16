@@ -20,6 +20,7 @@ from trilogy.core.processing.discovery_utility import (
     depth_to_prefix,
     get_priority_concept,
     group_if_required_v2,
+    get_loop_iteration_targets,
 )
 from trilogy.core.processing.discovery_validation import (
     ValidationResult,
@@ -31,66 +32,7 @@ from trilogy.core.processing.nodes import (
     StrategyNode,
 )
 from trilogy.utility import unique
-
-SKIPPED_DERIVATIONS = [
-    Derivation.AGGREGATE,
-    Derivation.FILTER,
-    Derivation.WINDOW,
-    Derivation.UNNEST,
-    Derivation.RECURSIVE,
-    Derivation.ROWSET,
-    Derivation.BASIC,
-    Derivation.GROUP_TO,
-    Derivation.MULTISELECT,
-    Derivation.UNION,
-]
-
-ROOT_DERIVATIONS = [Derivation.ROOT, Derivation.CONSTANT]
-
-
-def generate_candidates_restrictive(
-    priority_concept: BuildConcept,
-    candidates: list[BuildConcept],
-    exhausted: set[str],
-    depth: int,
-    conditions: BuildWhereClause | None = None,
-) -> tuple[list[BuildConcept], BuildWhereClause | None]:
-    local_candidates = [
-        x
-        for x in list(candidates)
-        if x.address not in exhausted
-        and x.granularity != Granularity.SINGLE_ROW
-        and x.address not in priority_concept.pseudonyms
-        and priority_concept.address not in x.pseudonyms
-    ]
-
-    # if it's single row, joins are irrelevant. Fetch without keys.
-    if priority_concept.granularity == Granularity.SINGLE_ROW:
-        logger.info("Have single row concept, including only other single row optional")
-        optional = (
-            [
-                x
-                for x in candidates
-                if x.granularity == Granularity.SINGLE_ROW
-                and x.address not in priority_concept.pseudonyms
-                and priority_concept.address not in x.pseudonyms
-            ]
-            if priority_concept.derivation == Derivation.AGGREGATE
-            else []
-        )
-        return optional, conditions
-
-    if conditions and priority_concept.derivation in ROOT_DERIVATIONS:
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Injecting additional conditional row arguments as all remaining concepts are roots or constant"
-        )
-        # otherwise, we can ignore the conditions now that we've injected inputs
-        return (
-            unique(list(conditions.row_arguments) + local_candidates, "address"),
-            None,
-        )
-
-    return local_candidates, conditions
+from trilogy.core.processing.constants import ROOT_DERIVATIONS, SKIPPED_DERIVATIONS
 
 
 def append_existence_check(
@@ -262,49 +204,6 @@ def initialize_loop_context(
     )
 
 
-def evaluate_loop_conditions(
-    context: LoopContext, priority_concept: BuildConcept
-) -> BuildWhereClause | None:
-    # filter evaluation
-    # always pass the filter up when we aren't looking at all filter inputs
-    # or there are any non-filter complex types
-    if context.conditions:
-        should_evaluate_filter_on_this_level_not_push_down = all(
-            [
-                x.address in context.mandatory_list
-                for x in context.conditions.row_arguments
-            ]
-        ) and not any(
-            [
-                x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC]
-                for x in context.mandatory_list
-                if x.address not in context.conditions.row_arguments
-            ]
-        )
-    else:
-        should_evaluate_filter_on_this_level_not_push_down = True
-    local_conditions = (
-        context.conditions
-        if context.conditions
-        and not context.must_evaluate_condition_on_this_level_not_push_down
-        and not should_evaluate_filter_on_this_level_not_push_down
-        else None
-    )
-    # but if it's not basic, and it's not condition;
-    # we do need to push it down (and have another layer of filter evaluation)
-    # to ensure filtering happens before something like a SUM
-    if (
-        context.conditions
-        and priority_concept.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC]
-        and priority_concept.address not in context.conditions.row_arguments
-    ):
-        logger.info(
-            f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Force including conditions in {priority_concept.address} to push filtering above complex condition that is not condition member or parent"
-        )
-        local_conditions = context.conditions
-    return local_conditions
-
-
 def check_for_early_exit(
     complete: ValidationResult,
     found: set[str],
@@ -399,18 +298,6 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
             logger.info(
                 f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Found added non-virtual output concepts ({non_virtual_difference_values})"
             )
-            # output.set_output_concepts(
-            #     [
-            #         x
-            #         for x in output.output_concepts
-            #         if x.address not in non_virtual_difference_values
-            #         or any(c in non_virtual_output for c in x.pseudonyms)
-            #     ],
-            #     rebuild=True,
-            #     change_visibility=False
-            # )
-            # output.set_output_concepts(context.original_mandatory)
-
     else:
         logger.info(
             f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} wrapping multiple parent nodes {[type(x) for x in context.stack]} in merge node"
@@ -440,7 +327,6 @@ def generate_loop_completion(context: LoopContext, virtual: set[str]) -> Strateg
     logger.info(
         f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Graph is connected, returning {type(output)} node output {[x.address for x in output.usable_outputs]} partial {[c.address for c in output.partial_concepts or []]} with {context.conditions}"
     )
-    from trilogy.core.processing.discovery_utility import group_if_required_v2
 
     if condition_required and context.conditions and non_virtual_different:
         logger.info(
@@ -499,29 +385,15 @@ def _search_concepts(
     virtual: set[str] = set()
     complete = ValidationResult.INCOMPLETE
     while context.incomplete:
-
-        priority_concept = get_priority_concept(
-            context.mandatory_list,
-            context.attempted,
-            found_concepts=context.found,
-            partial_concepts=partial,
+        priority_concept, candidate_list, local_conditions = get_loop_iteration_targets(
+            mandatory=context.mandatory_list,
+            conditions=context.conditions,
+            attempted=context.attempted,
+            found=context.found,
+            partial=partial,
             depth=depth,
+            # materialized_canonical=environment.materialized_canonical_concepts,
         )
-
-        local_conditions = evaluate_loop_conditions(context, priority_concept)
-
-        candidates = [
-            c for c in context.mandatory_list if c.address != priority_concept.address
-        ]
-        # the local conditions list may be overriden if we end up injecting conditions
-        candidate_list, local_conditions = generate_candidates_restrictive(
-            priority_concept,
-            candidates,
-            context.skip,
-            depth=depth,
-            conditions=local_conditions,
-        )
-
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {str(priority_concept)} derivation {priority_concept.derivation} granularity {priority_concept.granularity} with conditions {local_conditions}"
         )
