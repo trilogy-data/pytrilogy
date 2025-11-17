@@ -361,7 +361,12 @@ def get_priority_concept(
     materialized_canonical: set[str],
 ) -> BuildConcept:
     # optimized search for missing concepts
-    all_concepts_local: list[BuildConcept] = [x for x in all_concepts if x.canonical_address not in materialized_canonical or x.derivation == Derivation.ROOT]
+    all_concepts_local: list[BuildConcept] = [
+        x
+        for x in all_concepts
+        if x.canonical_address not in materialized_canonical
+        or x.derivation == Derivation.ROOT
+    ]
     remaining = [x for x in all_concepts if x.address not in all_concepts_local]
     for x in remaining:
         logger.info(f"Adding materialized concept {x.address} to priority search")

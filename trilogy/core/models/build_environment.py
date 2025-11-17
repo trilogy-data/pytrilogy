@@ -139,10 +139,12 @@ class BuildEnvironment(BaseModel):
             set([x.address for x in partial_concrete_concepts])
         )
         # canonical we only care about complete materialized
-        canonical_addresses = set([x.canonical_address for x in complete_concrete_concepts])
+        canonical_addresses = set(
+            [x.canonical_address for x in complete_concrete_concepts]
+        )
         partial_canonical_addresses = set(
             [x.canonical_address for x in partial_concrete_concepts]
-        )   
+        )
 
         self.materialized_concepts = set(
             [

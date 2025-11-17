@@ -100,13 +100,15 @@ if TYPE_CHECKING:
 
 LOGGER_PREFIX = "[MODELS_BUILD]"
 
+
 def generate_concept_name(parent: Any) -> str:
     output = _generate_concept_name(parent)
     return output
 
+
 def _generate_concept_name(parent: Any) -> str:
     """Generate a name for a concept based on its parent type and content."""
-    
+
     if isinstance(parent, BuildAggregateWrapper):
         return f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
     elif isinstance(parent, BuildWindowItem):

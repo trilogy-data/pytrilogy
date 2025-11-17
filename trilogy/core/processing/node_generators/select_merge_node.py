@@ -17,7 +17,7 @@ from trilogy.core.models.build import (
     BuildDatasource,
     BuildGrain,
     BuildWhereClause,
-    CanonicalBuildConceptList
+    CanonicalBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
@@ -321,7 +321,11 @@ def resolve_subgraphs(
     grain_length = get_graph_grains(g)
     concepts: dict[str, BuildConcept] = g.concepts
     non_partial_map = {
-        ds: [concepts[c].canonical_address for c in subgraphs[ds] if c not in partial_map[ds]]
+        ds: [
+            concepts[c].canonical_address
+            for c in subgraphs[ds]
+            if c not in partial_map[ds]
+        ]
         for ds in datasources
     }
     concept_map = {
@@ -388,9 +392,11 @@ def resolve_subgraphs(
         # filter out synonyms
         if (x := concepts.get(n, None)) and x.canonical_address in canonical_relevant
     }
-    logger.debug(f"{padding(depth)}{LOGGER_PREFIX} Final nodes before relevance pruning: {final_nodes}")
+    logger.debug(
+        f"{padding(depth)}{LOGGER_PREFIX} Final nodes before relevance pruning: {final_nodes}"
+    )
     for node in final_nodes:
-        keep = True 
+        keep = True
         if node.startswith("c~") and node not in relevant_concepts_pre:
             keep = (
                 sum(
@@ -406,7 +412,8 @@ def resolve_subgraphs(
                 f"{padding(depth)}{LOGGER_PREFIX} Pruning node {node} as irrelevant after subgraph resolution"
             )
             pruned_subgraphs = {
-                canonical_map.get(k,k): [n for n in v if n != node] for k, v in pruned_subgraphs.items()
+                canonical_map.get(k, k): [n for n in v if n != node]
+                for k, v in pruned_subgraphs.items()
             }
 
     return pruned_subgraphs
@@ -464,7 +471,7 @@ def create_datasource_node(
     for x in all_concepts:
         if x not in all_inputs and x in canonical_all:
             all_inputs.append(x)
-    
+
     rval = SelectNode(
         input_concepts=all_inputs,
         output_concepts=sorted(all_concepts, key=lambda x: x.address),

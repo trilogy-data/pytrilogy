@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic.functional_validators import PlainValidator
 
 from trilogy.constants import DEFAULT_NAMESPACE, ENV_CACHE_NAME, logger
-from trilogy.core.constants import INTERNAL_NAMESPACE, PERSISTED_CONCEPT_PREFIX
+from trilogy.core.constants import INTERNAL_NAMESPACE
 from trilogy.core.enums import (
     ConceptSource,
     Derivation,

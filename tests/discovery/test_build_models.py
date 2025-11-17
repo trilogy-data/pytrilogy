@@ -174,4 +174,3 @@ def test_canonical_build_concept_list_membership():
     assert cbcl1.isdisjoint(cbcl_disjoint)
     assert not cbcl1.isdisjoint(cbcl_overlapping)
     assert not cbcl1.isdisjoint("not a list")
-

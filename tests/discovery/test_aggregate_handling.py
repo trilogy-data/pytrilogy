@@ -60,7 +60,6 @@ SELECT
 """
 
 
-
 def test_aggregate_handling():
     from trilogy.hooks.query_debugger import DebuggingHook
 
@@ -151,6 +150,7 @@ SELECT
 ;
 ''';
 """
+
 
 def test_aggregate_handling_abstract():
     from trilogy.hooks.query_debugger import DebuggingHook

@@ -202,7 +202,7 @@ def test_derivations_reparse():
 
 
 def test_derivations_reparse_new():
-    # test that if we redefine 
+    # test that if we redefine
     declarations = """
     key category_id int;
     property category_id.category_name string;

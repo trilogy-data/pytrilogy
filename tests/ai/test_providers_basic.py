@@ -34,11 +34,10 @@ DATE_PARTIALS = [
     "local.dep_time.year = 2020",
 ]
 
+
 def validate_response(response: str):
-    '''where date_part(local.dep_time.date, year)'''
-    assert (
-        any(partial in response for partial in DATE_PARTIALS)
-    ), response
+    """where date_part(local.dep_time.date, year)"""
+    assert any(partial in response for partial in DATE_PARTIALS), response
     assert (
         "count(id2) as" in response
         or "count(local.id2) as" in response

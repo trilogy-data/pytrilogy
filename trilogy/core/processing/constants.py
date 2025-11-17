@@ -1,7 +1,7 @@
 from trilogy.core.enums import Derivation
 
-ROOT_DERIVATIONS:list[Derivation] = [Derivation.ROOT, Derivation.CONSTANT]
-SKIPPED_DERIVATIONS:list[Derivation] = [
+ROOT_DERIVATIONS: list[Derivation] = [Derivation.ROOT, Derivation.CONSTANT]
+SKIPPED_DERIVATIONS: list[Derivation] = [
     Derivation.AGGREGATE,
     Derivation.FILTER,
     Derivation.WINDOW,
@@ -13,5 +13,3 @@ SKIPPED_DERIVATIONS:list[Derivation] = [
     Derivation.MULTISELECT,
     Derivation.UNION,
 ]
-
-
