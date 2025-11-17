@@ -12,7 +12,7 @@ from trilogy.core.processing.utility import padding
 LOGGER_PREFIX = "[GEN_SYNONYM_NODE]"
 
 
-def gen_pseudonym_node(
+def gen_synonym_node(
     all_concepts: List[BuildConcept],
     environment: BuildEnvironment,
     g,
@@ -24,31 +24,31 @@ def gen_pseudonym_node(
 ) -> StrategyNode | None:
     local_prefix = f"{padding(depth)}[GEN_SYNONYM_NODE]"
     base_fingerprint = tuple(sorted([x.address for x in all_concepts]))
-    pseudonyms = defaultdict(list)
-    has_pseudonyms = False
+    synonyms = defaultdict(list)
+    has_synonyms = False
     for x in all_concepts:
-        pseudonyms[x.address] = [x]
+        synonyms[x.address] = [x]
         if x.address in environment.alias_origin_lookup:
             parent = environment.concepts[x.address]
             if parent.address != x.address:
-                pseudonyms[x.address].append(parent)
-                has_pseudonyms = True
+                synonyms[x.address].append(parent)
+                has_synonyms = True
         for y in x.pseudonyms:
             if y in environment.alias_origin_lookup:
-                pseudonyms[x.address].append(environment.alias_origin_lookup[y])
-                has_pseudonyms = True
+                synonyms[x.address].append(environment.alias_origin_lookup[y])
+                has_synonyms = True
             elif y in environment.concepts:
-                pseudonyms[x.address].append(environment.concepts[y])
-                has_pseudonyms = True
-    for address in pseudonyms:
-        pseudonyms[address].sort(key=lambda obj: obj.address)
-    if not has_pseudonyms:
+                synonyms[x.address].append(environment.concepts[y])
+                has_synonyms = True
+    for address in synonyms:
+        synonyms[address].sort(key=lambda obj: obj.address)
+    if not has_synonyms:
         return None
 
-    logger.info(f"{local_prefix} Generating Synonym Node with {len(pseudonyms)} pseudonyms")
-    sorted_keys = sorted(pseudonyms.keys())
+    logger.info(f"{local_prefix} Generating Synonym Node with {len(synonyms)} synonyms")
+    sorted_keys = sorted(synonyms.keys())
     combinations_list: list[tuple[BuildConcept, ...]] = list(
-        itertools.product(*(pseudonyms[obj] for obj in sorted_keys))
+        itertools.product(*(synonyms[obj] for obj in sorted_keys))
     )
 
     def similarity_sort_key(combo: tuple[BuildConcept, ...]):

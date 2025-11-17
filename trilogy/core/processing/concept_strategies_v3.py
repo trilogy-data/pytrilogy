@@ -21,7 +21,6 @@ from trilogy.core.processing.discovery_utility import (
     depth_to_prefix,
     get_loop_iteration_targets,
     group_if_required_v2,
-    get_loop_iteration_targets,
 )
 from trilogy.core.processing.discovery_validation import (
     ValidationResult,
@@ -33,7 +32,6 @@ from trilogy.core.processing.nodes import (
     StrategyNode,
 )
 from trilogy.utility import unique
-from trilogy.core.processing.constants import ROOT_DERIVATIONS, SKIPPED_DERIVATIONS
 
 
 def append_existence_check(
@@ -386,40 +384,16 @@ def _search_concepts(
     virtual: set[str] = set()
     complete = ValidationResult.INCOMPLETE
     while context.incomplete:
-
-        # priority_concept = get_priority_concept(
-        #     context.mandatory_list,
-        #     context.attempted,
-        #     found_concepts=context.found,
-        #     partial_concepts=partial,
-        #     depth=depth,
-        #     materialized_canonical = environment.materialized_canonical_concepts,
-        # )
-
         priority_concept, candidate_list, local_conditions = get_loop_iteration_targets(
             mandatory=context.mandatory_list,
             conditions=context.conditions,
             attempted=context.attempted,
+            force_conditions=context.must_evaluate_condition_on_this_level_not_push_down,
             found=context.found,
             partial=partial,
             depth=depth,
-            materialized_canonical=environment.materialized_canonical_concepts,
+            # materialized_canonical=environment.materialized_canonical_concepts,
         )
-
-        # local_conditions = evaluate_loop_conditions(context, priority_concept)
-
-        # candidates:list[BuildConcept] = [
-        #     c for c in context.mandatory_list if c.address != priority_concept.address
-        # ]
-        # the local conditions list may be overriden if we end up injecting conditions
-        # candidate_list, local_conditions = generate_candidates_restrictive(
-        #     priority_concept,
-        #     candidates,
-        #     context.skip,
-        #     depth=depth,
-        #     conditions=local_conditions,
-        # )
-
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {str(priority_concept)} derivation {priority_concept.derivation} granularity {priority_concept.granularity} with conditions {local_conditions}"
         )
