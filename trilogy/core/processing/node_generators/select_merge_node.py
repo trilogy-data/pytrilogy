@@ -525,8 +525,6 @@ def create_select_node(
     depth: int,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode:
-    for k, v in environment.canonical_concepts.items():
-        logger.info(k)
     all_concepts = [
         environment.canonical_concepts[extract_address(c)]
         for c in subgraph
@@ -618,7 +616,7 @@ def gen_select_merge_node(
                 [x.derivation == Derivation.CONSTANT for x in conditions.row_arguments]
             ):
                 logger.info(
-                    f"{padding(depth)}{LOGGER_PREFIX} conditions being passed in to constant node {conditions}, but not all concepts are constants."
+                    f"{padding(depth)}{LOGGER_PREFIX} conditions being passed in to constant node {conditions}, but not all concepts are constants, cannot generate select node."
                 )
                 return None
             else:

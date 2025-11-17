@@ -284,46 +284,7 @@ class RootNodeHandler:
 
         root_targets = [self.ctx.concept] + self.ctx.local_optional
 
-        if self._has_non_root_concepts():
-            return self._handle_non_root_concepts(root_targets)
-
         return self._resolve_root_concepts(root_targets)
-
-    def _has_non_root_concepts(self) -> bool:
-        return any(
-            x.derivation not in (Derivation.ROOT, Derivation.CONSTANT)
-            for x in self.ctx.local_optional
-        )
-
-    def _handle_non_root_concepts(
-        self, root_targets: List[BuildConcept]
-    ) -> Optional[StrategyNode]:
-        non_root = [
-            x.address
-            for x in self.ctx.local_optional
-            if x.derivation not in (Derivation.ROOT, Derivation.CONSTANT)
-        ]
-
-        logger.info(
-            f"{depth_to_prefix(self.ctx.depth)}{LOGGER_PREFIX} "
-            f"including any filters, there are non-root concepts we should expand first: {non_root}. "
-            f"Recursing with all of these as mandatory"
-        )
-
-        self.ctx.history.log_start(
-            root_targets,
-            accept_partial=self.ctx.accept_partial,
-            conditions=self.ctx.conditions,
-        )
-
-        return self.ctx.source_concepts(
-            mandatory_list=root_targets,
-            environment=self.ctx.environment,
-            g=self.ctx.g,
-            depth=self.ctx.next_depth,
-            accept_partial=self.ctx.accept_partial,
-            history=self.ctx.history,
-        )
 
     def _resolve_root_concepts(
         self, root_targets: List[BuildConcept]

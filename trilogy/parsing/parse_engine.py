@@ -1407,6 +1407,10 @@ class ParseToObjects(Transformer):
             elif isinstance(arg, OrderBy):
                 order_by = arg
             elif isinstance(arg, WhereClause) and not isinstance(arg, HavingClause):
+                if where is not None:
+                    raise ParseError(
+                        "Multiple where clauses defined are not supported!"
+                    )
                 where = arg
             elif isinstance(arg, HavingClause):
                 having = arg
