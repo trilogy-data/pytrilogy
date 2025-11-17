@@ -4,7 +4,6 @@ from trilogy.constants import logger
 from trilogy.core.enums import Derivation, Granularity, Purpose, SourceType
 from trilogy.core.models.build import (
     BuildConcept,
-    BuildConditional,
     BuildDatasource,
     BuildFilterItem,
     BuildGrain,
@@ -264,8 +263,8 @@ def get_upstream_concepts(base: BuildConcept, nested: bool = False) -> set[str]:
 
 def evaluate_loop_condition_pushdown(
     mandatory: list[BuildConcept],
-    remaining: set[str],
-    conditions: BuildConditional | None,
+    remaining: list[BuildConcept],
+    conditions: BuildWhereClause | None,
     depth: int,
     force_no_condition_pushdown: bool,
 ) -> BuildWhereClause | None:
@@ -275,7 +274,6 @@ def evaluate_loop_condition_pushdown(
     if not conditions:
         return None
     # first, check if we *have* to push up conditions above complex derivations
-    remaining: list[BuildConcept] = [x for x in mandatory if x.address in remaining]
     if any(
         conditions
         and x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC]
@@ -296,7 +294,7 @@ def evaluate_loop_condition_pushdown(
         return conditions
     # otherwise, only prevent pushdown
     # (forcing local condition evaluation)
-    # only if all condition inputs are here and we only have roots.
+    # only if all condition inputs are here and we only have roots
     should_evaluate_filter_on_this_level_not_push_down = all(
         [x.address in mandatory for x in conditions.row_arguments]
     ) and not any(
@@ -455,14 +453,14 @@ def get_priority_concept(
 
 def get_loop_iteration_targets(
     mandatory: list[BuildConcept],
-    conditions: BuildConditional | None,
+    conditions: BuildWhereClause | None,
     attempted: set[str],
     force_conditions: bool,
     found: set[str],
     partial: set[str],
     depth: int,
     # materialized_canonical=set[str],
-) -> tuple[BuildConcept, List[BuildConcept], BuildConditional | None]:
+) -> tuple[BuildConcept, List[BuildConcept], BuildWhereClause | None]:
     # objectives
     # 1. if we have complex types; push any conditions further up until we only have roots
     # 2. if we only have roots left, push all condition inputs into the candidate list
