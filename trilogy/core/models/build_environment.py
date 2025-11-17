@@ -122,6 +122,7 @@ class BuildEnvironment(BaseModel):
     cte_name_map: Dict[str, str] = Field(default_factory=dict)
     materialized_concepts: set[str] = Field(default_factory=set)
     materialized_canonical_concepts: set[str] = Field(default_factory=set)
+    partial_materialized_canonical_concepts: set[str] = Field(default_factory=set)
     alias_origin_lookup: Dict[str, BuildConcept] = Field(default_factory=dict)
 
     def gen_concept_list_caches(self) -> None:
@@ -135,10 +136,13 @@ class BuildEnvironment(BaseModel):
                     partial_concrete_concepts.append(column.concept)
         # concrete is all
         concrete_addresses = set([x.address for x in complete_concrete_concepts]).union(
-            [x.address for x in partial_concrete_concepts]
+            set([x.address for x in partial_concrete_concepts])
         )
         # canonical we only care about complete materialized
         canonical_addresses = set([x.canonical_address for x in complete_concrete_concepts])
+        partial_canonical_addresses = set(
+            [x.canonical_address for x in partial_concrete_concepts]
+        )   
 
         self.materialized_concepts = set(
             [
@@ -164,6 +168,19 @@ class BuildEnvironment(BaseModel):
                 if c.canonical_address in canonical_addresses
             ],
         )
+
+        self.partial_materialized_canonical_concepts = set(
+            [
+                c.canonical_address
+                for c in self.concepts.values()
+                if c.canonical_address in partial_canonical_addresses
+            ]
+            + [
+                c.canonical_address
+                for c in self.alias_origin_lookup.values()
+                if c.canonical_address in partial_canonical_addresses
+            ],
+        ).union(self.materialized_canonical_concepts)
 
 
 BuildEnvironment.model_rebuild()

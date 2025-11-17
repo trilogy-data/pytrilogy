@@ -22,6 +22,7 @@ def validate_query_is_resolvable(
     missing: list[str],
     environment: BuildEnvironment,
     materialized_lcl: CanonicalBuildConceptList,
+    accept_partial: bool = False,
 ) -> None:
     # if a query cannot ever be resolved, exit early with an error
     for x in missing:
@@ -48,7 +49,7 @@ def validate_query_is_resolvable(
                 if pseudonym_concept.address in materialized_lcl:
                     has_source = True
                     break
-            if not has_source:
+            if not has_source and accept_partial:
                 raise NoDatasourceException(
                     f"No datasource exists for root concept {validation_concept}, and no resolvable pseudonyms found from {validation_concept.pseudonyms}. This query is unresolvable from your environment. Check your datasource configuration?"
                 )
@@ -69,7 +70,7 @@ def gen_select_node(
         concepts=[
             x
             for x in concepts
-            if x.canonical_address in environment.materialized_canonical_concepts
+            if x.canonical_address in (environment.partial_materialized_canonical_concepts if accept_partial else environment.materialized_canonical_concepts)
             or x.derivation == Derivation.CONSTANT
         ]
     )
@@ -79,7 +80,7 @@ def gen_select_node(
             f"{padding(depth)}{LOGGER_PREFIX} Skipping select node generation for {concepts}"
             f" as it + optional includes non-materialized concepts (looking for all {all_lcl}, missing {missing})."
         )
-        validate_query_is_resolvable(missing, environment, materialized_lcl)
+        validate_query_is_resolvable(missing, environment, materialized_lcl, accept_partial)
         if fail_if_not_found:
             raise NoDatasourceException(f"No datasource exists for {concepts}")
         return None
