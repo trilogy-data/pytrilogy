@@ -1,21 +1,21 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, Purpose, SourceType, Granularity
+from trilogy.core.enums import Derivation, Granularity, Purpose, SourceType
 from trilogy.core.models.build import (
     BuildConcept,
+    BuildConditional,
     BuildDatasource,
     BuildFilterItem,
     BuildGrain,
     BuildRowsetItem,
-    BuildConditional,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
+from trilogy.core.processing.constants import ROOT_DERIVATIONS
 from trilogy.core.processing.nodes import GroupNode, MergeNode, StrategyNode
 from trilogy.core.processing.utility import GroupRequiredResponse
-from trilogy.core.processing.constants import ROOT_DERIVATIONS, SKIPPED_DERIVATIONS
 from trilogy.utility import unique
 
 
@@ -262,18 +262,41 @@ def get_upstream_concepts(base: BuildConcept, nested: bool = False) -> set[str]:
     return upstream
 
 
-def evaluate_loop_conditions(
+def evaluate_loop_condition_pushdown(
     mandatory: list[BuildConcept],
     remaining: set[str],
     conditions: BuildConditional | None,
     depth: int,
-    force_conditions: bool,
+    force_no_condition_pushdown: bool,
 ) -> BuildWhereClause | None:
     # filter evaluation
     # always pass the filter up when we aren't looking at all filter inputs
     # or there are any non-filter complex types
     if not conditions:
         return None
+    # first, check if we *have* to push up conditions above complex derivations
+    remaining: list[BuildConcept] = [x for x in mandatory if x.address in remaining]
+    if any(
+        conditions
+        and x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC]
+        and x.address not in conditions.row_arguments
+        for x in remaining
+    ):
+        forced = [
+            x
+            for x in remaining
+            if x.address not in conditions.row_arguments
+            and x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC]
+        ]
+        for x in forced:
+            logger.info(x.derivation)
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Force including conditions to push filtering above complex concepts {forced} that are not condition member or parent"
+        )
+        return conditions
+    # otherwise, only prevent pushdown
+    # (forcing local condition evaluation)
+    # only if all condition inputs are here and we only have roots.
     should_evaluate_filter_on_this_level_not_push_down = all(
         [x.address in mandatory for x in conditions.row_arguments]
     ) and not any(
@@ -283,33 +306,16 @@ def evaluate_loop_conditions(
             if x.address not in conditions.row_arguments
         ]
     )
-
-    local_conditions = (
-        conditions
-        if conditions
-        and not force_conditions    
-        # and not must_evaluate_condition_on_this_level_not_push_down
-        and not should_evaluate_filter_on_this_level_not_push_down
-        else None
-    )
-    # but if it's not basic, and it's not condition;
-    # we do need to push it down (and have another layer of filter evaluation)
-    # to ensure filtering happens before something like a SUM
-    remaining: list[BuildConcept] = [x for x in mandatory if x.address in remaining]
-    if any(
-        conditions
-        and x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC]
-        and x.address not in conditions.row_arguments
-        for x in remaining
+    if (
+        force_no_condition_pushdown
+        or should_evaluate_filter_on_this_level_not_push_down
     ):
-        forced = [x for x in remaining if x.address not in conditions.row_arguments and x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC]]
-        for x in forced:
-            logger.info(x.derivation)
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Force including conditions to push filtering above complex concepts {forced} that are not condition member or parent"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Forcing condition evaluation at this level"
         )
-        local_conditions = conditions
-    return local_conditions
+        return None
+
+    return conditions
 
 
 def generate_candidates_restrictive(
@@ -328,7 +334,6 @@ def generate_candidates_restrictive(
         and x.granularity != Granularity.SINGLE_ROW
         and x.address not in priority_concept.pseudonyms
         and priority_concept.address not in x.pseudonyms
-
     ]
 
     # if it's single row, joins are irrelevant. Fetch without keys.
@@ -411,7 +416,6 @@ def get_priority_concept(
             + [
                 c for c in remaining_concept if c.derivation == Derivation.ROOT
             ]  # and any non-single row constants
-                        
         )
 
         priority += [
@@ -464,9 +468,12 @@ def get_loop_iteration_targets(
     # 2. if we only have roots left, push all condition inputs into the candidate list
     # 3. from the final candidate list, select the highest priority concept to attempt next
     remaining = [x for x in mandatory if x.address not in attempted]
-    conditions = evaluate_loop_conditions(
-        mandatory=mandatory, conditions=conditions, depth=depth, remaining=remaining,
-        force_conditions=force_conditions
+    conditions = evaluate_loop_condition_pushdown(
+        mandatory=mandatory,
+        conditions=conditions,
+        depth=depth,
+        remaining=remaining,
+        force_no_condition_pushdown=force_conditions,
     )
     local_all = [*mandatory]
     if all([x.derivation in (Derivation.ROOT,) for x in remaining]) and conditions:

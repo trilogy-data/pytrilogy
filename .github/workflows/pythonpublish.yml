@@ -1,4 +1,4 @@
-# This workflows will upload a Python Package using Twine when a release is created
+# This workflow will upload a Python Package using Twine when a release is created
 # For more information see: https://help.github.com/en/actions/language-and-framework-guides/using-python-with-github-actions#publishing-to-package-registries
 name: Push to PyPI
 on:
@@ -21,10 +21,63 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install build
+        pip install build packaging requests
+        # Install the package in development mode to access trilogy.__version__
+        pip install -e .
+    - name: Check if version needs publishing
+      id: version_check
+      run: |
+        # Get local version from trilogy.__version__ (as configured in pyproject.toml)
+        LOCAL_VERSION=$(python -c "import trilogy; print(trilogy.__version__)")
+        
+        if [ -z "$LOCAL_VERSION" ]; then
+          echo "Error: Could not determine local version from trilogy.__version__"
+          exit 1
+        fi
+        
+        echo "Local version: $LOCAL_VERSION"
+        
+        # Get PyPI version
+        PYPI_VERSION=$(python -c "
+        import requests
+        import json
+        try:
+          response = requests.get('https://pypi.org/pypi/pytrilogy/json', timeout=10)
+          if response.status_code == 200:
+            data = response.json()
+            print(data['info']['version'])
+          else:
+            print('0.0.0')  # Default if package doesn't exist yet
+        except:
+          print('0.0.0')  # Default if request fails
+        " 2>/dev/null || echo "0.0.0")
+        
+        echo "PyPI version: $PYPI_VERSION"
+        
+        # Compare versions using packaging.version
+        SHOULD_PUBLISH=$(python -c "
+        from packaging import version
+        local_ver = version.parse('$LOCAL_VERSION')
+        pypi_ver = version.parse('$PYPI_VERSION')
+        print('true' if local_ver > pypi_ver else 'false')
+        ")
+        
+        echo "Should publish: $SHOULD_PUBLISH"
+        echo "should_publish=$SHOULD_PUBLISH" >> $GITHUB_OUTPUT
+        echo "local_version=$LOCAL_VERSION" >> $GITHUB_OUTPUT
+        echo "pypi_version=$PYPI_VERSION" >> $GITHUB_OUTPUT
+    
     - name: Build package
+      if: steps.version_check.outputs.should_publish == 'true'
       run: python -m build
+      
     - name: Publish package distributions to PyPI
+      if: steps.version_check.outputs.should_publish == 'true'
       uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc # commit hash for v1.12.4
       with:
         verbose: true
+        
+    - name: Skip publishing
+      if: steps.version_check.outputs.should_publish == 'false'
+      run: |
+        echo "Skipping publish: Local version (${{ steps.version_check.outputs.local_version }}) is not newer than PyPI version (${{ steps.version_check.outputs.pypi_version }})"

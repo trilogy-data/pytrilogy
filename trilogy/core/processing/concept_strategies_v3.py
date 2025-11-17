@@ -14,13 +14,13 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.constants import ROOT_DERIVATIONS, SKIPPED_DERIVATIONS
 from trilogy.core.processing.discovery_node_factory import generate_node
 from trilogy.core.processing.discovery_utility import (
     LOGGER_PREFIX,
     depth_to_prefix,
-    get_priority_concept,
-    group_if_required_v2,
     get_loop_iteration_targets,
+    group_if_required_v2,
 )
 from trilogy.core.processing.discovery_validation import (
     ValidationResult,
@@ -32,7 +32,6 @@ from trilogy.core.processing.nodes import (
     StrategyNode,
 )
 from trilogy.utility import unique
-from trilogy.core.processing.constants import ROOT_DERIVATIONS, SKIPPED_DERIVATIONS
 
 
 def append_existence_check(
