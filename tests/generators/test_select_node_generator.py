@@ -133,12 +133,12 @@ address blended;
           """,
         persist=True,
     )
-
+    build_env = env.materialize_for_select()
     gnode = resolve_subgraphs(
-        g=generate_graph(env.materialize_for_select()),
+        g=generate_graph(build_env),
         conditions=None,
         relevant=[
-            env.concepts[x]
+            build_env.concepts[x]
             for x in ["order_id", "customer_id", "customer_name", "revenue"]
         ],
         accept_partial=False,

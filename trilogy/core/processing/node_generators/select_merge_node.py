@@ -17,7 +17,7 @@ from trilogy.core.models.build import (
     BuildDatasource,
     BuildGrain,
     BuildWhereClause,
-    LooseBuildConceptList,
+    CanonicalBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
@@ -59,7 +59,6 @@ def get_graph_partial_nodes(
             partial[node] = []
     return partial
 
-
 def get_graph_grains(g: ReferenceGraph) -> dict[str, list[str]]:
     grain_length: dict[str, list[str]] = {}
     for node, lookup in g.datasources.items():
@@ -82,8 +81,9 @@ def subgraph_is_complete(
     # Check if all targets are present in mapped nodes
     mapped = {mapping.get(n, n) for n in nodes}
     if not targets.issubset(mapped):
+        missing = targets - mapped
         logger.debug(
-            f"Subgraph {nodes} is not complete, missing targets {targets} - mapped {mapped}"
+            f"Subgraph {nodes} is not complete, missing targets {missing} - mapped {mapped}"
         )
         return False
 
@@ -310,6 +310,8 @@ def resolve_subgraphs(
     that can evolve in the future but is currently based on datasource
     cardinality."""
     datasources = [n for n in g.nodes if n.startswith("ds~")]
+    canonical_relevant = set([c.canonical_address for c in relevant])
+    canonical_map = {c.canonical_address: c.address for c in relevant}
     subgraphs: dict[str, list[str]] = {
         ds: list(set(list(nx.all_neighbors(g, ds)))) for ds in datasources
     }
@@ -318,11 +320,15 @@ def resolve_subgraphs(
     grain_length = get_graph_grains(g)
     concepts: dict[str, BuildConcept] = g.concepts
     non_partial_map = {
-        ds: [concepts[c].address for c in subgraphs[ds] if c not in partial_map[ds]]
+        ds: [
+            concepts[c].canonical_address
+            for c in subgraphs[ds]
+            if c not in partial_map[ds]
+        ]
         for ds in datasources
     }
     concept_map = {
-        ds: [concepts[c].address for c in subgraphs[ds]] for ds in datasources
+        ds: [concepts[c].canonical_address for c in subgraphs[ds]] for ds in datasources
     }
     pruned_subgraphs = {}
 
@@ -380,11 +386,14 @@ def resolve_subgraphs(
 
     final_nodes: set[str] = set([n for v in pruned_subgraphs.values() for n in v])
     relevant_concepts_pre = {
-        n: x.address
+        n: x.canonical_address
         for n in g.nodes()
         # filter out synonyms
-        if (x := concepts.get(n, None)) and x.address in relevant
+        if (x := concepts.get(n, None)) and x.canonical_address in canonical_relevant
     }
+    logger.debug(
+        f"{padding(depth)}{LOGGER_PREFIX} Final nodes before relevance pruning: {final_nodes}"
+    )
     for node in final_nodes:
         keep = True
         if node.startswith("c~") and node not in relevant_concepts_pre:
@@ -402,7 +411,8 @@ def resolve_subgraphs(
                 f"{padding(depth)}{LOGGER_PREFIX} Pruning node {node} as irrelevant after subgraph resolution"
             )
             pruned_subgraphs = {
-                k: [n for n in v if n != node] for k, v in pruned_subgraphs.items()
+                canonical_map.get(k, k): [n for n in v if n != node]
+                for k, v in pruned_subgraphs.items()
             }
 
     return pruned_subgraphs
@@ -441,19 +451,28 @@ def create_datasource_node(
         if not c.is_complete and c.concept.address in all_concepts
     ]
 
-    partial_lcl = LooseBuildConceptList(concepts=partial_concepts)
+    partial_lcl = CanonicalBuildConceptList(concepts=partial_concepts)
     nullable_concepts = [
         c.concept
         for c in datasource.columns
         if c.is_nullable and c.concept.address in all_concepts
     ]
 
-    nullable_lcl = LooseBuildConceptList(concepts=nullable_concepts)
+    nullable_lcl = CanonicalBuildConceptList(concepts=nullable_concepts)
     partial_is_full = conditions and (conditions == datasource.non_partial_for)
 
     datasource_conditions = datasource.where.conditional if datasource.where else None
+    all_inputs = [c.concept for c in datasource.columns]
+    canonical_all = CanonicalBuildConceptList(concepts=all_inputs)
+
+    # if we're binding a via a canonical address association
+    # we need to add it here.
+    for x in all_concepts:
+        if x not in all_inputs and x in canonical_all:
+            all_inputs.append(x)
+
     rval = SelectNode(
-        input_concepts=[c.concept for c in datasource.columns],
+        input_concepts=all_inputs,
         output_concepts=sorted(all_concepts, key=lambda x: x.address),
         environment=environment,
         parents=[],
@@ -548,6 +567,7 @@ def create_select_node(
         )
 
     datasource: BuildDatasource = g.datasources[ds_name]
+
     if isinstance(datasource, BuildDatasource):
         bcandidate, force_group = create_datasource_node(
             datasource,
@@ -652,7 +672,7 @@ def gen_select_merge_node(
         )
         if pruned_concept_graph:
             logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} found covering graph w/ partial flag {attempt}"
+                f"{padding(depth)}{LOGGER_PREFIX} found covering graph w/ partial flag {attempt} {list(pruned_concept_graph.nodes)}"
             )
             break
 

@@ -108,3 +108,8 @@ loop 1:
 
 18 Failing tests to start
 
+16 after fixing pseudonym binding
+
+17 after updating select nodes
+
+6 failing after using partial/full mappings
