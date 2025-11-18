@@ -102,3 +102,8 @@ so required becomes x, a, count(z) by x
 
 loop 1:
     count(z) optional x, a no filter
+
+
+[Agg Updates]
+
+18 Failing tests to start
