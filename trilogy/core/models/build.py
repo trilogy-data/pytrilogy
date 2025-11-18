@@ -971,7 +971,26 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
         elif self.namespace:
             return f"{self.namespace.replace('.','_')}_{self.name.replace('.','_')}"
         return self.name.replace(".", "_")
-
+    
+    def with_materialized_source(self) -> Self:
+        return self.__class__(
+            name=self.name,
+            canonical_name=self.canonical_name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=None,
+            grain=self.grain,
+            namespace=self.namespace,
+            keys=self.keys,
+            modifiers=self.modifiers,
+            pseudonyms=self.pseudonyms,
+            ## bound
+            derivation=Derivation.ROOT,
+            granularity=self.granularity,
+            build_is_aggregate=self.build_is_aggregate,
+        )
+    
     def with_grain(self, grain: Optional["BuildGrain" | BuildConcept] = None) -> Self:
         if isinstance(grain, BuildConcept):
             grain = BuildGrain(

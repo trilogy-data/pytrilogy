@@ -25,45 +25,45 @@ property id.logo_medium string;
 property id.logo_small string;
 
 datasource mbb_teams (
-id:id,
-code_ncaa:code_ncaa,
-alias:alias,
-name:name,
-kaggle_team_id:kaggle_team_id,
-school_ncaa:school_ncaa,
-turner_name:turner_name,
+    id:id,
+    code_ncaa:code_ncaa,
+    alias:alias,
+    name:name,
+    kaggle_team_id:kaggle_team_id,
+    school_ncaa:school_ncaa,
+    turner_name:turner_name,
 
-league_name:league.name,
-league_alias:league.alias,
-league_id:league.id,
+    league_name:league.name,
+    league_alias:league.alias,
+    league_id:league.id,
 
-conf_name:conference.name,
-conf_alias:conference.alias,
-conf_id:conference.id,
+    conf_name:conference.name,
+    conf_alias:conference.alias,
+    conf_id:conference.id,
 
-division_name:division.name,
-division_alias:division.alias,
-division_id:division.id,
+    division_name:division.name,
+    division_alias:division.alias,
+    division_id:division.id,
 
-venue_id:venue_id,
-venue_city:venue_city,
-venue_state:venue_state,
-venue_address:venue_address,
-venue_zip:venue_zip,
-venue_country:venue_country,
-venue_name:venue_name,
-venue_capacity:venue_capacity,
+    venue_id:venue_id,
+    venue_city:venue_city,
+    venue_state:venue_state,
+    venue_address:venue_address,
+    venue_zip:venue_zip,
+    venue_country:venue_country,
+    venue_name:venue_name,
+    venue_capacity:venue_capacity,
 
-logo_large:logo_large,
-logo_medium:logo_medium,
-logo_small:logo_small
+    logo_large:logo_large,
+    logo_medium:logo_medium,
+    logo_small:logo_small
 )
 grain (id)
 address `bigquery-public-data.ncaa_basketball.mbb_teams`;
 
 
 datasource team_colors (
-id:id,
-color:color
+    id:id,
+    color:color
 )
 address `bigquery-public-data.ncaa_basketball.team_colors`;

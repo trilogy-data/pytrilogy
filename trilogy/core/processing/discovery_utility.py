@@ -358,10 +358,20 @@ def get_priority_concept(
     found_concepts: set[str],
     partial_concepts: set[str],
     depth: int,
-    # materialized_canonical: set[str],
+    materialized_canonical: set[str],
 ) -> BuildConcept:
     # optimized search for missing concepts
-    all_concepts_local: list[BuildConcept] = all_concepts
+    all_concepts_local: list[BuildConcept] = [
+        x
+        for x in all_concepts
+        if (x.canonical_address not in materialized_canonical)
+        # keep Root/Constant
+        or x.derivation in (Derivation.ROOT, Derivation.CONSTANT)
+    ]
+    remaining = [x for x in all_concepts if x.address not in all_concepts_local]
+    for x in remaining:
+        logger.info(f"{depth_to_prefix(depth)}{LOGGER_PREFIX}  Adding materialized concept {x.address} as root instead of derived.")
+        all_concepts_local.append(x.with_materialized_source())
     pass_one = sorted(
         [
             c
@@ -445,7 +455,7 @@ def get_loop_iteration_targets(
     found: set[str],
     partial: set[str],
     depth: int,
-    # materialized_canonical=set[str],
+    materialized_canonical:set[str],
 ) -> tuple[BuildConcept, List[BuildConcept], BuildWhereClause | None]:
     # objectives
     # 1. if we have complex types; push any conditions further up until we only have roots
@@ -485,7 +495,7 @@ def get_loop_iteration_targets(
         found_concepts=found,
         partial_concepts=partial,
         depth=depth,
-        # materialized_canonical=materialized_canonical,
+        materialized_canonical=materialized_canonical,
     )
 
     optional = generate_candidates_restrictive(
