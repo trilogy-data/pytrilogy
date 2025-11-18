@@ -122,7 +122,7 @@ class BuildEnvironment(BaseModel):
     cte_name_map: Dict[str, str] = Field(default_factory=dict)
     materialized_concepts: set[str] = Field(default_factory=set)
     materialized_canonical_concepts: set[str] = Field(default_factory=set)
-    non_partial_materialized_concepts: set[str] = Field(default_factory=set)
+    non_partial_materialized_canonical_concepts: set[str] = Field(default_factory=set)
     alias_origin_lookup: Dict[str, BuildConcept] = Field(default_factory=dict)
 
     def gen_concept_list_caches(self) -> None:
@@ -163,7 +163,7 @@ class BuildEnvironment(BaseModel):
                 if c.canonical_address in canonical_addresses
             ],
         )
-        self.non_partial_materialized_concepts = set(
+        self.non_partial_materialized_canonical_concepts = set(
             [
                 c.address
                 for c in self.concepts.values()

@@ -22,7 +22,6 @@ def validate_query_is_resolvable(
     missing: list[str],
     environment: BuildEnvironment,
     materialized_lcl: CanonicalBuildConceptList,
-    accept_partial: bool = False,
 ) -> None:
     # if a query cannot ever be resolved, exit early with an error
     for x in missing:
@@ -66,6 +65,7 @@ def gen_select_node(
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     all_lcl = CanonicalBuildConceptList(concepts=concepts)
+    # search all concepts here, including partial
     materialized_lcl = CanonicalBuildConceptList(
         concepts=[
             x
@@ -80,7 +80,7 @@ def gen_select_node(
             f"{padding(depth)}{LOGGER_PREFIX} Skipping select node generation for {concepts}"
             f" as it + optional includes non-materialized concepts (looking for all {all_lcl}, missing {missing})."
         )
-        validate_query_is_resolvable(missing, environment, materialized_lcl, accept_partial)
+        validate_query_is_resolvable(missing, environment, materialized_lcl)
         if fail_if_not_found:
             raise NoDatasourceException(f"No datasource exists for {concepts}")
         return None

@@ -286,8 +286,6 @@ def evaluate_loop_condition_pushdown(
             if x.address not in conditions.row_arguments
             and x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC]
         ]
-        for x in forced:
-            logger.info(x.derivation)
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Force including conditions to push filtering above complex concepts {forced} that are not condition member or parent"
         )

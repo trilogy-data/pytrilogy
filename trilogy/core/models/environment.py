@@ -316,7 +316,65 @@ class Environment(BaseModel):
             f.write(self.model_dump_json())
         return ppath
 
+    def validate_concept_v2(
+        self, new_concept: Concept, meta: Meta | None = None
+    ) -> Concept | None:
+        lookup = new_concept.address
+        if lookup not in self.concepts:
+            return None
+        existing: Concept = self.concepts.get(lookup)  # type: ignore
+        if isinstance(existing, UndefinedConcept):
+            return None
+
+        def handle_currently_bound_sources():
+            if str(existing.lineage) == str(new_concept.lineage):
+                logger.info(
+                    f"Persisted concept {existing.address} matched redeclaration, keeping current bound datasource."
+                )
+                return None
+            logger.warning(
+                f"Persisted concept {existing.address} lineage {str(existing.lineage)} did not match redeclaration {str(new_concept.lineage)}, invalidating current bound datasource."
+            )
+            for k, datasource in self.datasources.items():
+                if existing.address in datasource.output_concepts:
+                    logger.warning(
+                        f"Removed concept for {existing} assignment from {k}"
+                    )
+                    clen = len(datasource.columns)
+                    datasource.columns = [
+                        x
+                        for x in datasource.columns
+                        if x.concept.address != existing.address
+                    ]
+                    assert len(datasource.columns) < clen
+            return None
+
+        if existing and self.config.allow_duplicate_declaration:
+            return handle_currently_bound_sources()
+        elif existing.metadata and existing.metadata.concept_source == ConceptSource.AUTO_DERIVED:
+            return None
+        elif meta and existing.metadata:
+            raise ValueError(
+                f"Assignment to concept '{lookup}' on line {meta.line} is a duplicate"
+                f" declaration; '{lookup}' was originally defined on line"
+                f" {existing.metadata.line_number}"
+            )
+        elif existing.metadata:
+            raise ValueError(
+                f"Assignment to concept '{lookup}'  is a duplicate declaration;"
+                f" '{lookup}' was originally defined on line"
+                f" {existing.metadata.line_number}"
+            )
+        raise ValueError(
+            f"Assignment to concept '{lookup}'  is a duplicate declaration;"
+        )
     def validate_concept(
+        self, new_concept: Concept, meta: Meta | None = None
+    ) -> Concept | None:
+        return self.validate_concept_v2(new_concept, meta=meta)
+
+    
+    def validate_concept_v1(
         self, new_concept: Concept, meta: Meta | None = None
     ) -> Concept | None:
         lookup = new_concept.address

@@ -113,3 +113,5 @@ loop 1:
 17 after updating select nodes
 
 6 failing after using partial/full mappings
+
+3 failing after fixing persisted rebind handling
