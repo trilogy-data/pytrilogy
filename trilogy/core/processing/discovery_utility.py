@@ -380,66 +380,65 @@ def get_priority_concept(
         key=lambda x: x.address,
     )
 
-    for remaining_concept in (pass_one,):
-        priority = (
-            # then multiselects to remove them from scope
-            [c for c in remaining_concept if c.derivation == Derivation.MULTISELECT]
-            +
-            # then rowsets to remove them from scope, as they cannot get partials
-            [c for c in remaining_concept if c.derivation == Derivation.ROWSET]
-            +
-            # then rowsets to remove them from scope, as they cannot get partials
-            [c for c in remaining_concept if c.derivation == Derivation.UNION]
-            # we should be home-free here
-            +
-            # then aggregates to remove them from scope, as they cannot get partials
-            [c for c in remaining_concept if c.derivation == Derivation.AGGREGATE]
-            # then windows to remove them from scope, as they cannot get partials
-            + [c for c in remaining_concept if c.derivation == Derivation.WINDOW]
-            # then filters to remove them from scope, also cannot get partials
-            + [c for c in remaining_concept if c.derivation == Derivation.FILTER]
-            # unnests are weird?
-            + [c for c in remaining_concept if c.derivation == Derivation.UNNEST]
-            + [c for c in remaining_concept if c.derivation == Derivation.RECURSIVE]
-            + [c for c in remaining_concept if c.derivation == Derivation.BASIC]
-            + [c for c in remaining_concept if c.derivation == Derivation.GROUP_TO]
-            + [c for c in remaining_concept if c.derivation == Derivation.CONSTANT]
-            # finally our plain selects
-            + [
-                c for c in remaining_concept if c.derivation == Derivation.ROOT
-            ]  # and any non-single row constants
-        )
+    priority = (
+        # then multiselects to remove them from scope
+        [c for c in pass_one if c.derivation == Derivation.MULTISELECT]
+        +
+        # then rowsets to remove them from scope, as they cannot get partials
+        [c for c in pass_one if c.derivation == Derivation.ROWSET]
+        +
+        # then rowsets to remove them from scope, as they cannot get partials
+        [c for c in pass_one if c.derivation == Derivation.UNION]
+        # we should be home-free here
+        +
+        # then aggregates to remove them from scope, as they cannot get partials
+        [c for c in pass_one if c.derivation == Derivation.AGGREGATE]
+        # then windows to remove them from scope, as they cannot get partials
+        + [c for c in pass_one if c.derivation == Derivation.WINDOW]
+        # then filters to remove them from scope, also cannot get partials
+        + [c for c in pass_one if c.derivation == Derivation.FILTER]
+        # unnests are weird?
+        + [c for c in pass_one if c.derivation == Derivation.UNNEST]
+        + [c for c in pass_one if c.derivation == Derivation.RECURSIVE]
+        + [c for c in pass_one if c.derivation == Derivation.BASIC]
+        + [c for c in pass_one if c.derivation == Derivation.GROUP_TO]
+        + [c for c in pass_one if c.derivation == Derivation.CONSTANT]
+        # finally our plain selects
+        + [
+            c for c in pass_one if c.derivation == Derivation.ROOT
+        ]  # and any non-single row constants
+    )
 
-        priority += [
-            c
-            for c in remaining_concept
-            if c.address not in [x.address for x in priority]
-        ]
-        final = []
-        # if any thing is derived from another concept
-        # get the derived copy first
-        # as this will usually resolve cleaner
-        for x in priority:
-            if any(
-                [
-                    x.address
-                    in get_upstream_concepts(
-                        c,
-                    )
-                    for c in priority
-                ]
-            ):
-                logger.info(
-                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} delaying fetch of {x.address} as parent of another concept"
+    priority += [
+        c
+        for c in pass_one
+        if c.address not in [x.address for x in priority]
+    ]
+    final = []
+    # if any thing is derived from another concept
+    # get the derived copy first
+    # as this will usually resolve cleaner
+    for x in priority:
+        if any(
+            [
+                x.address
+                in get_upstream_concepts(
+                    c,
                 )
-                continue
-            final.append(x)
-        # then append anything we didn't get
-        for x2 in priority:
-            if x2 not in final:
-                final.append(x2)
-        if final:
-            return final[0]
+                for c in priority
+            ]
+        ):
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} delaying fetch of {x.address} as parent of another concept"
+            )
+            continue
+        final.append(x)
+    # then append anything we didn't get
+    for x2 in priority:
+        if x2 not in final:
+            final.append(x2)
+    if final:
+        return final[0]
     raise ValueError(
         f"Cannot resolve query. No remaining priority concepts, have attempted {attempted_addresses} out of {all_concepts} with found {found_concepts}"
     )

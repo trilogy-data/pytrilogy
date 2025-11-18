@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic.functional_validators import PlainValidator
 
 from trilogy.constants import DEFAULT_NAMESPACE, ENV_CACHE_NAME, logger
-from trilogy.core.constants import INTERNAL_NAMESPACE, PERSISTED_CONCEPT_PREFIX
+from trilogy.core.constants import INTERNAL_NAMESPACE, PERSISTED_CONCEPT_PREFIX, WORKING_PATH_CONCEPT
 from trilogy.core.enums import (
     ConceptSource,
     Derivation,
@@ -223,7 +223,6 @@ class Environment(BaseModel):
     config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
     version: str = Field(default_factory=get_version)
     cte_name_map: Dict[str, str] = Field(default_factory=dict)
-    materialized_concepts: set[str] = Field(default_factory=set)
     alias_origin_lookup: Dict[str, Concept] = Field(default_factory=dict)
     # TODO: support freezing environments to avoid mutation
     frozen: bool = False
@@ -258,7 +257,6 @@ class Environment(BaseModel):
             environment_config=self.config.model_copy(deep=True),
             version=self.version,
             cte_name_map=dict(self.cte_name_map),
-            materialized_concepts=set(self.materialized_concepts),
             alias_origin_lookup={
                 k: v.duplicate() for k, v in self.alias_origin_lookup.items()
             },
@@ -267,7 +265,7 @@ class Environment(BaseModel):
 
     def _add_path_concepts(self):
         concept = Concept(
-            name="_env_working_path",
+            name=WORKING_PATH_CONCEPT,
             namespace=self.namespace,
             lineage=Function(
                 operator=FunctionType.CONSTANT,
@@ -332,6 +330,7 @@ class Environment(BaseModel):
                     f"Persisted concept {existing.address} matched redeclaration, keeping current bound datasource."
                 )
                 return None
+            
             logger.warning(
                 f"Persisted concept {existing.address} lineage {str(existing.lineage)} did not match redeclaration {str(new_concept.lineage)}, invalidating current bound datasource."
             )
@@ -350,6 +349,9 @@ class Environment(BaseModel):
             return None
 
         if existing and self.config.allow_duplicate_declaration:
+            if existing.metadata and existing.metadata.concept_source == ConceptSource.AUTO_DERIVED:
+                # auto derived concepts will not have sources nad do not need to be checked
+                return None
             return handle_currently_bound_sources()
         elif existing.metadata and existing.metadata.concept_source == ConceptSource.AUTO_DERIVED:
             return None
@@ -476,6 +478,9 @@ class Environment(BaseModel):
         for k, concept in iteration:
             # skip internal namespace
             if INTERNAL_NAMESPACE in concept.address:
+                continue
+            # don't overwrite working path
+            if concept.name == WORKING_PATH_CONCEPT:
                 continue
             if same_namespace:
                 new = self.add_concept(concept, add_derived=False)
@@ -843,7 +848,6 @@ class LazyEnvironment(Environment):
         self.concepts = env.concepts
         self.imports = env.imports
         self.alias_origin_lookup = env.alias_origin_lookup
-        self.materialized_concepts = env.materialized_concepts
         self.functions = env.functions
         self.data_types = env.data_types
         self.cte_name_map = env.cte_name_map
@@ -853,7 +857,6 @@ class LazyEnvironment(Environment):
             "datasources",
             "concepts",
             "imports",
-            "materialized_concepts",
             "functions",
             "datatypes",
             "cte_name_map",

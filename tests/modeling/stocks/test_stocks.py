@@ -120,11 +120,12 @@ limit 10;
 def test_provider_name():
     env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
     from trilogy.hooks import DebuggingHook
+    from logging import INFO
 
     # test covering root cause of
     # INFO   [DISCOVERY LOOP] finished sourcing loop (complete: ValidationResult.INCOMPLETE), have {'dividend.amount', 'dividend.id', 'provider.id', 'symbol.sector'} from [MergeNode<dividend.amount,dividend.id,provider.id...1 more>]
     #  (missing {'dividend.symbol.sector'}), attempted {'dividend.amount'}, virtual set()
-    DebuggingHook()
+    DebuggingHook(INFO)
     build_env: BuildEnvironment = Factory(environment=env).build(env)
     assert (
         "dividend.symbol.sector" in build_env.materialized_concepts
@@ -185,7 +186,7 @@ def test_provider_name():
     #     sum(dividend.amount) as total_div;
     #   """
     #     )
-
+    assert 'provider.name' in build_env.materialized_concepts
     sql = duckdb.generate_sql(
         """select
     symbol.sector,

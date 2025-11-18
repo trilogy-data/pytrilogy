@@ -244,9 +244,10 @@ def test_derivations_reparse_new():
         compiled.append(dialect.compile_statement(process_auto(env, parsed[-1])))
 
         test_concept = env.concepts["local.test_upper_case_2"]
+        build_env = env.materialize_for_select()
         assert test_concept.purpose == Purpose.PROPERTY
         assert test_concept.metadata.concept_source == ConceptSource.MANUAL
-        assert test_concept not in env.materialized_concepts
+        assert test_concept not in build_env.materialized_concepts
         assert test_concept.derivation == Derivation.BASIC
 
         # test that the rendered SQL did need to use a case
