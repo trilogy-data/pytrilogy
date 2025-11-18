@@ -379,10 +379,10 @@ def filter_duplicate_subgraphs(
     # due to alias resolution
     # if so, drop any that are strict subsets.
     for graph in subgraphs:
-        logger.info(f"Checking graph {graph} for duplicates in {seen}")
+        logger.info(f"{LOGGER_PREFIX} Checking graph {graph} for duplicates in {seen}")
         set_x = canonicalize_addresses(set([x.address for x in graph]), environment)
-        if any([set_x.issubset(y) and set_x != y for y in seen]):
-            continue
+        # if any([set_x.issubset(y) and set_x != y for y in seen]):
+        #     continue
         final.append(graph)
     return final
 

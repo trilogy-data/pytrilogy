@@ -165,12 +165,12 @@ class BuildEnvironment(BaseModel):
         )
         self.non_partial_materialized_canonical_concepts = set(
             [
-                c.address
+                c.canonical_address
                 for c in self.concepts.values()
                 if c.canonical_address in non_partial_canonical_addresses
             ]
             + [
-                c.address
+                c.canonical_address
                 for c in self.alias_origin_lookup.values()
                 if c.canonical_address in non_partial_canonical_addresses
             ],

@@ -115,3 +115,5 @@ loop 1:
 6 failing after using partial/full mappings
 
 3 failing after fixing persisted rebind handling
+
+3 [different] failing after fixing the materialized_cache

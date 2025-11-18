@@ -186,7 +186,10 @@ def test_provider_name():
     #     sum(dividend.amount) as total_div;
     #   """
     #     )
-    assert 'provider.name' in build_env.materialized_concepts
+    build_concept = build_env.concepts["provider.name"]
+    assert build_concept.address in build_env.materialized_concepts
+    assert build_concept.canonical_address in build_env.canonical_concepts
+    assert build_concept.canonical_address in build_env.non_partial_materialized_canonical_concepts
     sql = duckdb.generate_sql(
         """select
     symbol.sector,
@@ -249,18 +252,21 @@ def test_filter_sector_two():
 
     DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
-
-    sql = duckdb.generate_sql(
-        """
+    """       
 where symbol.sector in ('Energy', 'Materials', 'Utilities') 
   or symbol.industry in ('Oil & Gas', 'Coal', 'Mining', 'Paper & Forest Products', 'Chemicals')
   or symbol.name like '%Oil%' 
   or symbol.name like '%Coal%'
   select
     symbol.sector,
-    provider.name,
+    provider.name,"""
+    sql = duckdb.generate_sql(
+        """
+where symbol.industry in ('Oil & Gas', 'Coal', 'Mining', 'Paper & Forest Products', 'Chemicals')
 
-    
+  select
+
+    provider.name,
     sum(dividend.amount) as total_div;
     """
     )[0]
