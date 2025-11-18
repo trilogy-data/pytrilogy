@@ -1,5 +1,5 @@
 query_id = 15
-gen_length = 1574
+gen_length = 1797
 generated_sql = """
 
 WITH 
@@ -14,7 +14,12 @@ FROM
     INNER JOIN \"memory\".\"customer_address\" as \"catalog_sales_bill_customer_customer_address\" on \"catalog_sales_bill_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"catalog_sales_bill_customer_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
     \"catalog_sales_date_date\".\"D_QOY\" = 2 and cast(\"catalog_sales_date_date\".\"D_YEAR\" as int) = 2001 and ( \"catalog_sales_bill_customer_customer_address\".\"CA_STATE\" in ('CA','WA','GA') or \"catalog_sales_catalog_sales\".\"CS_SALES_PRICE\" > 500 or SUBSTRING(\"catalog_sales_bill_customer_customer_address\".\"CA_ZIP\",1,5) in ('85669','86197','88274','83405','86475','85392','85460','80348','81792') )
-)
+
+GROUP BY 
+    \"catalog_sales_bill_customer_customer_address\".\"CA_ZIP\",
+    \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\",
+    \"catalog_sales_catalog_sales\".\"CS_ORDER_NUMBER\",
+    \"catalog_sales_catalog_sales\".\"CS_SALES_PRICE\")
 SELECT
     \"thoughtful\".\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
     sum(\"thoughtful\".\"catalog_sales_sales_price\") as \"sales\"

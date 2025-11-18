@@ -11,6 +11,7 @@ from trilogy.core.graph_models import (
     ReferenceGraph,
     concept_to_node,
     prune_sources_for_conditions,
+    get_graph_partial_concepts
 )
 from trilogy.core.models.build import (
     BuildConcept,
@@ -366,21 +367,24 @@ def filter_relevant_subgraphs(
 
 
 def filter_duplicate_subgraphs(
-    subgraphs: list[list[BuildConcept]], environment
+    subgraphs: list[list[BuildConcept]], environment: BuildEnvironment, partials: set[str]
 ) -> list[list[BuildConcept]]:
     seen: list[set[str]] = []
 
     for graph in subgraphs:
+        # seen.append(set([x.address for x in graph]))
         seen.append(
             canonicalize_addresses(set([x.address for x in graph]), environment)
         )
     final = []
-    # sometimes w can get two subcomponents that are the same
+    # sometimes we can get two subcomponents that are the same
     # due to alias resolution
-    # if so, drop any that are strict subsets.
+    # if so, drop any that are strict subsets
+    # and not partial
     for graph in subgraphs:
-        logger.info(f"Checking graph {graph} for duplicates in {seen}")
+        logger.info(f"Checking graph {graph} for duplicates in {seen} with partials {partials}")
         set_x = canonicalize_addresses(set([x.address for x in graph]), environment)
+        # set_x = set([x.address for x in graph if x.address])
         if any([set_x.issubset(y) and set_x != y for y in seen]):
             continue
         final.append(graph)
@@ -490,7 +494,12 @@ def resolve_weak_components(
         if not sub_component:
             continue
         subgraphs.append(sub_component)
-    final = filter_duplicate_subgraphs(subgraphs, environment)
+    partials = get_graph_partial_concepts(search_graph, search_conditions, logger)
+    # if not partials:
+    #     raise ValueError("No partials found in weak component resolution")
+    # partials = set()
+    final = filter_duplicate_subgraphs(subgraphs, environment, partials)
+    logger.info(f"Filtered duplicate subgraphs to {final}")
     return final
     # return filter_relevant_subgraphs(subgraphs)
 

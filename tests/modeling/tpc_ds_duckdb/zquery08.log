@@ -1,5 +1,5 @@
 query_id = 8
-gen_length = 3584
+gen_length = 3727
 generated_sql = """
 
 WITH 
@@ -10,7 +10,11 @@ SELECT
     \"customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\"
 FROM
     \"memory\".\"customer_address\" as \"customer_customer_address\"
-    INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_customer_address\".\"CA_ADDRESS_SK\" = \"customer_customers\".\"C_CURRENT_ADDR_SK\"),
+    INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_customer_address\".\"CA_ADDRESS_SK\" = \"customer_customers\".\"C_CURRENT_ADDR_SK\"
+GROUP BY 
+    \"customer_customer_address\".\"CA_ZIP\",
+    \"customer_customers\".\"C_CUSTOMER_SK\",
+    \"customer_customers\".\"C_PREFERRED_CUST_FLAG\"),
 cheerful as (
 SELECT
     unnest(:_virt_7180871482901048) as \"zips_pre\"

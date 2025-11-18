@@ -369,7 +369,7 @@ def get_priority_concept(
     ]
     remaining = [x for x in all_concepts if x.address not in all_concepts_local]
     for x in remaining:
-        logger.info(f"Adding materialized concept {x.address} to priority search")
+        logger.info(f"{depth_to_prefix(depth)}{LOGGER_PREFIX}  Adding materialized concept {x.address} as root instead of derived.")
         all_concepts_local.append(x.with_materialized_source())
     pass_one = sorted(
         [

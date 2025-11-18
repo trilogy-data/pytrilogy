@@ -204,11 +204,11 @@ def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environme
 
 def test_demo_merge_rowset_e2e(normalized_engine, test_env: Environment):
     # assert test_env.concept_links[test_env.concepts["passenger.last_name"]][0] == test_env.concepts["rich_info.last_name"]
-    from logging import DEBUG
+    from logging import DEBUG, INFO
 
     from trilogy.constants import logger
 
-    logger.setLevel(DEBUG)
+    logger.setLevel(INFO)
     normalized_engine.environment = test_env
     test = """    
 merge rich_info.last_name into ~passenger.last_name;
@@ -221,6 +221,10 @@ WHERE
 ORDER BY 
     passenger.last_name desc ;"""
     results = normalized_engine.execute_text(test)[-1].fetchall()
+    # rich_ds = test_env.datasources['rich_info.rich_info']
+    # matched = [c for c in rich_ds.columns if c.concept.address == 'passenger.last_name'].pop()
+    # assert matched.is_complete is False
+ 
 
     assert len(results) == 8
 

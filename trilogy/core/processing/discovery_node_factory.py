@@ -80,7 +80,7 @@ def restrict_node_outputs_targets(
     ex_resolve = node.resolve()
     target_addresses = {y.address for y in targets}
 
-    extra = [x for x in ex_resolve.output_concepts if x.address not in target_addresses]
+    extra = [x for x in ex_resolve.output_concepts if x.address not in target_addresses and not any(c in targets for c in x.pseudonyms)]
 
     base = [
         x
@@ -91,7 +91,7 @@ def restrict_node_outputs_targets(
     logger.info(
         f"{depth_to_prefix(depth)}{LOGGER_PREFIX} reducing final outputs, "
         f"was {[c.address for c in ex_resolve.output_concepts]} "
-        f"with extra {[c.address for c in extra]}, remaining {base}"
+        f"with extra {[c.address for c in extra]}, remaining {base} (targets {target_addresses})"
     )
 
     # Add missing targets
@@ -333,15 +333,10 @@ class RootNodeHandler:
     ) -> None:
         extra = restrict_node_outputs_targets(expanded, root_targets, self.ctx.depth)
 
-        pseudonyms = [
-            x
-            for x in extra
-            if any(x.address in y.pseudonyms for y in root_targets)
-            and x.address not in root_targets
-        ]
 
-        if pseudonyms:
-            expanded.add_output_concepts(pseudonyms)
+
+        # if pseudonyms:
+        #     expanded.add_output_concepts(pseudonyms)
 
         logger.info(
             f"{depth_to_prefix(self.ctx.depth)}{LOGGER_PREFIX} "

@@ -140,3 +140,28 @@ class ReferenceGraph(nx.DiGraph):
 
     def add_edge(self, u_of_edge, v_of_edge, fast: bool = False, **attr):
         return super().add_edge(u_of_edge, v_of_edge, **attr)
+
+
+def get_graph_partial_nodes(
+    g: ReferenceGraph, conditions: BuildWhereClause | None
+) -> dict[str, list[str]]:
+    partial: dict[str, list[str]] = {}
+    for node, ds in g.datasources.items():
+
+        if not isinstance(ds, list):
+
+            if ds.non_partial_for and conditions == ds.non_partial_for:
+                partial[node] = []
+                continue
+            partial[node] = [concept_to_node(c) for c in ds.partial_concepts]
+        # assume union sources have no partial
+        else:
+            partial[node] = []
+    return partial
+
+def get_graph_partial_concepts(
+    g: ReferenceGraph, conditions: BuildWhereClause | None, logger
+) -> set[str]:
+    any_partial:set[str] = set()
+    
+    return any_partial

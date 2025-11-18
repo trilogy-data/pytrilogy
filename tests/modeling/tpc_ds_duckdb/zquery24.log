@@ -1,5 +1,5 @@
 query_id = 24
-gen_length = 4987
+gen_length = 5324
 generated_sql = """
 
 WITH 
@@ -19,7 +19,15 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
     \"store_sales_store_store\".\"S_MARKET_ID\" = 8 and \"store_sales_customer_customers\".\"C_BIRTH_COUNTRY\" != UPPER(\"store_sales_customer_customer_address\".\"CA_COUNTRY\")  and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END is True and \"store_sales_store_store\".\"S_ZIP\" = \"store_sales_customer_customer_address\".\"CA_ZIP\"
-),
+
+GROUP BY 
+    \"store_sales_customer_customers\".\"C_FIRST_NAME\",
+    \"store_sales_customer_customers\".\"C_LAST_NAME\",
+    \"store_sales_item_items\".\"I_COLOR\",
+    \"store_sales_item_items\".\"I_ITEM_SK\",
+    \"store_sales_store_sales\".\"SS_NET_PAID\",
+    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\",
+    \"store_sales_store_store\".\"S_STORE_NAME\"),
 cooperative as (
 SELECT
     \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",

@@ -11,6 +11,7 @@ from trilogy.core.graph_models import (
     get_graph_exact_match,
     prune_sources_for_aggregates,
     prune_sources_for_conditions,
+    get_graph_partial_nodes
 )
 from trilogy.core.models.build import (
     BuildConcept,
@@ -41,23 +42,6 @@ LOGGER_PREFIX = "[GEN_ROOT_MERGE_NODE]"
 def extract_address(node: str):
     return node.split("~")[1].split("@")[0]
 
-
-def get_graph_partial_nodes(
-    g: ReferenceGraph, conditions: BuildWhereClause | None
-) -> dict[str, list[str]]:
-    partial: dict[str, list[str]] = {}
-    for node, ds in g.datasources.items():
-
-        if not isinstance(ds, list):
-
-            if ds.non_partial_for and conditions == ds.non_partial_for:
-                partial[node] = []
-                continue
-            partial[node] = [concept_to_node(c) for c in ds.partial_concepts]
-        # assume union sources have no partial
-        else:
-            partial[node] = []
-    return partial
 
 
 def get_graph_grains(g: ReferenceGraph) -> dict[str, list[str]]:

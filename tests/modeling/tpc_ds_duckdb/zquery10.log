@@ -1,5 +1,5 @@
 query_id = 10
-gen_length = 6014
+gen_length = 6631
 generated_sql = """
 
 WITH 
@@ -63,7 +63,17 @@ FROM
     INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_demographics_customer_demographics\".\"CD_DEMO_SK\" = \"customer_customers\".\"C_CURRENT_CDEMO_SK\"
 WHERE
     \"customer_customers\".\"C_CUSTOMER_SK\" in (select concerned.\"relevant_customers\" from concerned where concerned.\"relevant_customers\" is not null) and \"customer_demographics_customer_demographics\".\"CD_GENDER\" is not null
-)
+
+GROUP BY 
+    \"customer_customers\".\"C_CUSTOMER_SK\",
+    \"customer_demographics_customer_demographics\".\"CD_CREDIT_RATING\",
+    \"customer_demographics_customer_demographics\".\"CD_DEP_COLLEGE_COUNT\",
+    \"customer_demographics_customer_demographics\".\"CD_DEP_COUNT\",
+    \"customer_demographics_customer_demographics\".\"CD_DEP_EMPLOYED_COUNT\",
+    \"customer_demographics_customer_demographics\".\"CD_EDUCATION_STATUS\",
+    \"customer_demographics_customer_demographics\".\"CD_GENDER\",
+    \"customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\",
+    \"customer_demographics_customer_demographics\".\"CD_PURCHASE_ESTIMATE\")
 SELECT
     \"young\".\"customer_demographics_gender\" as \"customer_demographics_gender\",
     \"young\".\"customer_demographics_marital_status\" as \"customer_demographics_marital_status\",
