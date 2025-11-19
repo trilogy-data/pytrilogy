@@ -117,3 +117,5 @@ loop 1:
 3 failing after fixing persisted rebind handling
 
 3 [different] failing after fixing the materialized_cache
+
+1 failing after fixing order of injecting materialized roots

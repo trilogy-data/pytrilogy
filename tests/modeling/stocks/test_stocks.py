@@ -252,20 +252,15 @@ def test_filter_sector_two():
 
     DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
-    """       
+
+    sql = duckdb.generate_sql(
+        """
 where symbol.sector in ('Energy', 'Materials', 'Utilities') 
   or symbol.industry in ('Oil & Gas', 'Coal', 'Mining', 'Paper & Forest Products', 'Chemicals')
   or symbol.name like '%Oil%' 
   or symbol.name like '%Coal%'
   select
     symbol.sector,
-    provider.name,"""
-    sql = duckdb.generate_sql(
-        """
-where symbol.industry in ('Oil & Gas', 'Coal', 'Mining', 'Paper & Forest Products', 'Chemicals')
-
-  select
-
     provider.name,
     sum(dividend.amount) as total_div;
     """

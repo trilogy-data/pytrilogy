@@ -267,6 +267,7 @@ def evaluate_loop_condition_pushdown(
     conditions: BuildWhereClause | None,
     depth: int,
     force_no_condition_pushdown: bool,
+    forced_pushdown: bool
 ) -> BuildWhereClause | None:
     # filter evaluation
     # always pass the filter up when we aren't looking at all filter inputs
@@ -274,12 +275,7 @@ def evaluate_loop_condition_pushdown(
     if not conditions:
         return None
     # first, check if we *have* to push up conditions above complex derivations
-    if any(
-        conditions
-        and x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC]
-        and x.address not in conditions.row_arguments
-        for x in remaining
-    ):
+    if forced_pushdown:
         forced = [
             x
             for x in remaining
@@ -356,20 +352,9 @@ def get_priority_concept(
     found_concepts: set[str],
     partial_concepts: set[str],
     depth: int,
-    materialized_canonical: set[str],
 ) -> BuildConcept:
     # optimized search for missing concepts
-    all_concepts_local: list[BuildConcept] = [
-        x
-        for x in all_concepts
-        if (x.canonical_address not in materialized_canonical)
-        # keep Root/Constant
-        or x.derivation in (Derivation.ROOT, Derivation.CONSTANT)
-    ]
-    remaining = [x for x in all_concepts if x.address not in all_concepts_local]
-    for x in remaining:
-        logger.info(f"{depth_to_prefix(depth)}{LOGGER_PREFIX}  Adding materialized concept {x.address} as root instead of derived.")
-        all_concepts_local.append(x.with_materialized_source())
+    all_concepts_local = all_concepts
     pass_one = sorted(
         [
             c
@@ -458,15 +443,40 @@ def get_loop_iteration_targets(
     # 1. if we have complex types; push any conditions further up until we only have roots
     # 2. if we only have roots left, push all condition inputs into the candidate list
     # 3. from the final candidate list, select the highest priority concept to attempt next
-    remaining = [x for x in mandatory if x.address not in attempted]
+    forced_pushdown = False
+    if any(
+        conditions
+        and x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC]
+        and x.address not in conditions.row_arguments
+        for x in mandatory
+    ):
+        forced_pushdown = True
+    # a list of all non-materialized concepts, or all concepts
+    # if a pushdown is required
+    all_concepts_local: list[BuildConcept] = [
+        x
+        for x in mandatory
+        if forced_pushdown or (x.canonical_address not in materialized_canonical)
+        # keep Root/Constant
+        or x.derivation in (Derivation.ROOT, Derivation.CONSTANT)
+    ]
+    remaining_concrete = [x for x in mandatory if x.address not in all_concepts_local]
+ 
+    for x in remaining_concrete:
+        logger.info(f"{depth_to_prefix(depth)}{LOGGER_PREFIX}  Adding materialized concept {x.address} as root instead of derived.")
+        all_concepts_local.append(x.with_materialized_source())
+
+    remaining = [x for x in  all_concepts_local if x.address not in attempted]
     conditions = evaluate_loop_condition_pushdown(
-        mandatory=mandatory,
+        mandatory=all_concepts_local,
         conditions=conditions,
         depth=depth,
         remaining=remaining,
         force_no_condition_pushdown=force_conditions,
+        forced_pushdown=forced_pushdown,
     )
-    local_all = [*mandatory]
+    local_all = [*all_concepts_local]
+    
     if all([x.derivation in (Derivation.ROOT,) for x in remaining]) and conditions:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} All remaining mandatory concepts are roots or constants, injecting condition inputs into candidate list"
@@ -492,7 +502,6 @@ def get_loop_iteration_targets(
         found_concepts=found,
         partial_concepts=partial,
         depth=depth,
-        materialized_canonical=materialized_canonical,
     )
 
     optional = generate_candidates_restrictive(
