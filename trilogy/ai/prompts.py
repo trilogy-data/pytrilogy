@@ -42,6 +42,9 @@ def datatype_to_field_prompt(
         | NumericType
         | DataTyped
         | StructComponent
+        | int
+        | float
+        | str
     ),
 ) -> str:
     if isinstance(datatype, TraitDataType):
@@ -64,6 +67,8 @@ def datatype_to_field_prompt(
         return datatype_to_field_prompt(datatype.output_datatype)
     if isinstance(datatype, StructComponent):
         return f"{datatype.name}: {datatype_to_field_prompt(datatype.type)}"
+    if isinstance(datatype, (int, float, str)):
+        return f"{datatype}"
     return f"{datatype.value}"
 
 
