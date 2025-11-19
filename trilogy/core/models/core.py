@@ -222,7 +222,7 @@ class StructComponent(BaseModel):
     modifiers: list[Modifier] = []
 
     @field_validator("type", mode="plain")
-    def validate_Type(cls, v):
+    def validate_type(cls, v):
         return v
 
 
