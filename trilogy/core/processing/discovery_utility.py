@@ -267,7 +267,7 @@ def evaluate_loop_condition_pushdown(
     conditions: BuildWhereClause | None,
     depth: int,
     force_no_condition_pushdown: bool,
-    forced_pushdown: bool
+    forced_pushdown: bool,
 ) -> BuildWhereClause | None:
     # filter evaluation
     # always pass the filter up when we aren't looking at all filter inputs
@@ -394,11 +394,7 @@ def get_priority_concept(
         ]  # and any non-single row constants
     )
 
-    priority += [
-        c
-        for c in pass_one
-        if c.address not in [x.address for x in priority]
-    ]
+    priority += [c for c in pass_one if c.address not in [x.address for x in priority]]
     final = []
     # if any thing is derived from another concept
     # get the derived copy first
@@ -437,7 +433,7 @@ def get_loop_iteration_targets(
     found: set[str],
     partial: set[str],
     depth: int,
-    materialized_canonical:set[str],
+    materialized_canonical: set[str],
 ) -> tuple[BuildConcept, List[BuildConcept], BuildWhereClause | None]:
     # objectives
     # 1. if we have complex types; push any conditions further up until we only have roots
@@ -461,12 +457,14 @@ def get_loop_iteration_targets(
         or x.derivation in (Derivation.ROOT, Derivation.CONSTANT)
     ]
     remaining_concrete = [x for x in mandatory if x.address not in all_concepts_local]
- 
+
     for x in remaining_concrete:
-        logger.info(f"{depth_to_prefix(depth)}{LOGGER_PREFIX}  Adding materialized concept {x.address} as root instead of derived.")
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX}  Adding materialized concept {x.address} as root instead of derived."
+        )
         all_concepts_local.append(x.with_materialized_source())
 
-    remaining = [x for x in  all_concepts_local if x.address not in attempted]
+    remaining = [x for x in all_concepts_local if x.address not in attempted]
     conditions = evaluate_loop_condition_pushdown(
         mandatory=all_concepts_local,
         conditions=conditions,
@@ -476,7 +474,7 @@ def get_loop_iteration_targets(
         forced_pushdown=forced_pushdown,
     )
     local_all = [*all_concepts_local]
-    
+
     if all([x.derivation in (Derivation.ROOT,) for x in remaining]) and conditions:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} All remaining mandatory concepts are roots or constants, injecting condition inputs into candidate list"

@@ -415,6 +415,8 @@ class BuildGrain:
             return False
         if self.components == other.components:
             return True
+        if self.abstract is True and other.abstract is True:
+            return True
         return False
 
     def issubset(self, other: "BuildGrain"):
@@ -971,7 +973,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
         elif self.namespace:
             return f"{self.namespace.replace('.','_')}_{self.name.replace('.','_')}"
         return self.name.replace(".", "_")
-    
+
     def with_materialized_source(self) -> Self:
         return self.__class__(
             name=self.name,
@@ -990,7 +992,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
             granularity=self.granularity,
             build_is_aggregate=self.build_is_aggregate,
         )
-    
+
     def with_grain(self, grain: Optional["BuildGrain" | BuildConcept] = None) -> Self:
         if isinstance(grain, BuildConcept):
             grain = BuildGrain(

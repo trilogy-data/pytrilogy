@@ -23,7 +23,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic.functional_validators import PlainValidator
 
 from trilogy.constants import DEFAULT_NAMESPACE, ENV_CACHE_NAME, logger
-from trilogy.core.constants import INTERNAL_NAMESPACE, PERSISTED_CONCEPT_PREFIX, WORKING_PATH_CONCEPT
+from trilogy.core.constants import (
+    INTERNAL_NAMESPACE,
+    PERSISTED_CONCEPT_PREFIX,
+    WORKING_PATH_CONCEPT,
+)
 from trilogy.core.enums import (
     ConceptSource,
     Derivation,
@@ -330,7 +334,7 @@ class Environment(BaseModel):
                     f"Persisted concept {existing.address} matched redeclaration, keeping current bound datasource."
                 )
                 return None
-            
+
             logger.warning(
                 f"Persisted concept {existing.address} lineage {str(existing.lineage)} did not match redeclaration {str(new_concept.lineage)}, invalidating current bound datasource."
             )
@@ -349,11 +353,17 @@ class Environment(BaseModel):
             return None
 
         if existing and self.config.allow_duplicate_declaration:
-            if existing.metadata and existing.metadata.concept_source == ConceptSource.AUTO_DERIVED:
+            if (
+                existing.metadata
+                and existing.metadata.concept_source == ConceptSource.AUTO_DERIVED
+            ):
                 # auto derived concepts will not have sources nad do not need to be checked
                 return None
             return handle_currently_bound_sources()
-        elif existing.metadata and existing.metadata.concept_source == ConceptSource.AUTO_DERIVED:
+        elif (
+            existing.metadata
+            and existing.metadata.concept_source == ConceptSource.AUTO_DERIVED
+        ):
             return None
         elif meta and existing.metadata:
             raise ValueError(
@@ -370,12 +380,12 @@ class Environment(BaseModel):
         raise ValueError(
             f"Assignment to concept '{lookup}'  is a duplicate declaration;"
         )
+
     def validate_concept(
         self, new_concept: Concept, meta: Meta | None = None
     ) -> Concept | None:
         return self.validate_concept_v2(new_concept, meta=meta)
 
-    
     def validate_concept_v1(
         self, new_concept: Concept, meta: Meta | None = None
     ) -> Concept | None:

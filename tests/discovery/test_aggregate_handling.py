@@ -97,3 +97,65 @@ SELECT
 """
     )[-1]
     assert "aggregated_class" in generated, generated
+
+
+SETUP_CODE_ALL = """
+
+key id int;
+key id_class int;
+property id.val int;
+
+auto total_val <- sum(val);
+auto total_total_val <- sum(val) by *;
+auto total_val_class <- sum(val) by id_class;
+datasource raw_ids (
+id,
+    id_class,
+    val
+)
+grain (id)
+query '''
+SELECT
+    1 as id,
+    10 as id_class,
+    100 as val
+UNION ALL
+SELECT
+    2 as id,
+    20 as id_class,
+    200 as val
+UNION ALL
+SELECT
+    3 as id,
+    10 as id_class,
+    300 as val
+''';
+
+
+datasource aggregated_all (
+    total_total_val
+)   
+query '''
+SELECT
+    600 as total_total_val
+;
+''';
+"""
+
+
+def test_aggregate_handling_abstract():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+    exec = Dialects.DUCK_DB.default_executor()
+
+    exec.parse_text(SETUP_CODE_ALL)
+
+    generated = exec.generate_sql(
+        """
+SELECT
+    sum(val) by * as total_value
+            ;
+"""
+    )[-1]
+    assert "aggregated_all" in generated, generated

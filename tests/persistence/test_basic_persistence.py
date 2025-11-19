@@ -92,7 +92,6 @@ def test_derivations():
         assert test_concept.purpose == Purpose.PROPERTY
         assert test_concept.address in build_env.materialized_concepts
 
-
         persist: PersistStatement = parsed[-2]
         assert persist.select.grain == Grain(components=[test_concept])
         assert len(compiled) == 2
@@ -189,7 +188,6 @@ def test_derivations_reparse():
 
         build_env = env.materialize_for_select()
         assert test_concept.address in build_env.materialized_concepts
-
 
         # test that the rendered SQL didn't need to use a cASE
         assert "CASE" not in compiled[-1]

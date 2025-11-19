@@ -59,6 +59,7 @@ def get_graph_partial_nodes(
             partial[node] = []
     return partial
 
+
 def get_graph_grains(g: ReferenceGraph) -> dict[str, list[str]]:
     grain_length: dict[str, list[str]] = {}
     for node, lookup in g.datasources.items():
