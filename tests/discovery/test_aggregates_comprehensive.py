@@ -225,7 +225,7 @@ WHERE customer_revenue > 100
     ), f"Expected high_value_customers table, got: {generated}"
 
 
-@pytest.mark.skip(reason="Need to match on canonical IDs for filtering")
+
 def test_high_value_customer_filter_two():
     """Test filtered customer aggregate for high-value customers resolves to high_value_customers table"""
     env, exec = setup_environment()
@@ -351,7 +351,7 @@ WHERE order_date > '2024-01-15'::date
     ), f"Expected customer_summary or orders table, got: {generated}"
 
 
-@pytest.mark.skip(reason="Need to implement smarter table selection logic")
+
 def test_cross_dimensional_aggregation():
     """Test aggregation across different dimensions"""
     env, exec = setup_environment()
@@ -371,7 +371,7 @@ WHERE product_id in (201, 202)
     ), f"Expected appropriate table, got: {generated}"
 
 
-@pytest.mark.skip(reason="Need to implement smarter table selection logic")
+
 def test_temporal_aggregation():
     """Test temporal aggregation patterns"""
     env, exec = setup_environment()

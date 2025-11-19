@@ -1,0 +1,12 @@
+
+
+datasource dashboard_agg_1(
+    _total_rev,
+    _total_items_sold,
+    _total_orders,
+    _total_customers
+)
+address `dashboard_agg_1`
+;
+
+
