@@ -102,3 +102,20 @@ so required becomes x, a, count(z) by x
 
 loop 1:
     count(z) optional x, a no filter
+
+
+[Agg Updates]
+
+18 Failing tests to start
+
+16 after fixing pseudonym binding
+
+17 after updating select nodes
+
+6 failing after using partial/full mappings
+
+3 failing after fixing persisted rebind handling
+
+3 [different] failing after fixing the materialized_cache
+
+1 failing after fixing order of injecting materialized roots

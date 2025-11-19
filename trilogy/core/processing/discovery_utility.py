@@ -267,6 +267,7 @@ def evaluate_loop_condition_pushdown(
     conditions: BuildWhereClause | None,
     depth: int,
     force_no_condition_pushdown: bool,
+    forced_pushdown: bool,
 ) -> BuildWhereClause | None:
     # filter evaluation
     # always pass the filter up when we aren't looking at all filter inputs
@@ -274,20 +275,13 @@ def evaluate_loop_condition_pushdown(
     if not conditions:
         return None
     # first, check if we *have* to push up conditions above complex derivations
-    if any(
-        conditions
-        and x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC]
-        and x.address not in conditions.row_arguments
-        for x in remaining
-    ):
+    if forced_pushdown:
         forced = [
             x
             for x in remaining
             if x.address not in conditions.row_arguments
             and x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC]
         ]
-        for x in forced:
-            logger.info(x.derivation)
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Force including conditions to push filtering above complex concepts {forced} that are not condition member or parent"
         )
@@ -358,10 +352,9 @@ def get_priority_concept(
     found_concepts: set[str],
     partial_concepts: set[str],
     depth: int,
-    # materialized_canonical: set[str],
 ) -> BuildConcept:
     # optimized search for missing concepts
-    all_concepts_local: list[BuildConcept] = all_concepts
+    all_concepts_local = all_concepts
     pass_one = sorted(
         [
             c
@@ -372,66 +365,61 @@ def get_priority_concept(
         key=lambda x: x.address,
     )
 
-    for remaining_concept in (pass_one,):
-        priority = (
-            # then multiselects to remove them from scope
-            [c for c in remaining_concept if c.derivation == Derivation.MULTISELECT]
-            +
-            # then rowsets to remove them from scope, as they cannot get partials
-            [c for c in remaining_concept if c.derivation == Derivation.ROWSET]
-            +
-            # then rowsets to remove them from scope, as they cannot get partials
-            [c for c in remaining_concept if c.derivation == Derivation.UNION]
-            # we should be home-free here
-            +
-            # then aggregates to remove them from scope, as they cannot get partials
-            [c for c in remaining_concept if c.derivation == Derivation.AGGREGATE]
-            # then windows to remove them from scope, as they cannot get partials
-            + [c for c in remaining_concept if c.derivation == Derivation.WINDOW]
-            # then filters to remove them from scope, also cannot get partials
-            + [c for c in remaining_concept if c.derivation == Derivation.FILTER]
-            # unnests are weird?
-            + [c for c in remaining_concept if c.derivation == Derivation.UNNEST]
-            + [c for c in remaining_concept if c.derivation == Derivation.RECURSIVE]
-            + [c for c in remaining_concept if c.derivation == Derivation.BASIC]
-            + [c for c in remaining_concept if c.derivation == Derivation.GROUP_TO]
-            + [c for c in remaining_concept if c.derivation == Derivation.CONSTANT]
-            # finally our plain selects
-            + [
-                c for c in remaining_concept if c.derivation == Derivation.ROOT
-            ]  # and any non-single row constants
-        )
+    priority = (
+        # then multiselects to remove them from scope
+        [c for c in pass_one if c.derivation == Derivation.MULTISELECT]
+        +
+        # then rowsets to remove them from scope, as they cannot get partials
+        [c for c in pass_one if c.derivation == Derivation.ROWSET]
+        +
+        # then rowsets to remove them from scope, as they cannot get partials
+        [c for c in pass_one if c.derivation == Derivation.UNION]
+        # we should be home-free here
+        +
+        # then aggregates to remove them from scope, as they cannot get partials
+        [c for c in pass_one if c.derivation == Derivation.AGGREGATE]
+        # then windows to remove them from scope, as they cannot get partials
+        + [c for c in pass_one if c.derivation == Derivation.WINDOW]
+        # then filters to remove them from scope, also cannot get partials
+        + [c for c in pass_one if c.derivation == Derivation.FILTER]
+        # unnests are weird?
+        + [c for c in pass_one if c.derivation == Derivation.UNNEST]
+        + [c for c in pass_one if c.derivation == Derivation.RECURSIVE]
+        + [c for c in pass_one if c.derivation == Derivation.BASIC]
+        + [c for c in pass_one if c.derivation == Derivation.GROUP_TO]
+        + [c for c in pass_one if c.derivation == Derivation.CONSTANT]
+        # finally our plain selects
+        + [
+            c for c in pass_one if c.derivation == Derivation.ROOT
+        ]  # and any non-single row constants
+    )
 
-        priority += [
-            c
-            for c in remaining_concept
-            if c.address not in [x.address for x in priority]
-        ]
-        final = []
-        # if any thing is derived from another concept
-        # get the derived copy first
-        # as this will usually resolve cleaner
-        for x in priority:
-            if any(
-                [
-                    x.address
-                    in get_upstream_concepts(
-                        c,
-                    )
-                    for c in priority
-                ]
-            ):
-                logger.info(
-                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} delaying fetch of {x.address} as parent of another concept"
+    priority += [c for c in pass_one if c.address not in [x.address for x in priority]]
+    final = []
+    # if any thing is derived from another concept
+    # get the derived copy first
+    # as this will usually resolve cleaner
+    for x in priority:
+        if any(
+            [
+                x.address
+                in get_upstream_concepts(
+                    c,
                 )
-                continue
-            final.append(x)
-        # then append anything we didn't get
-        for x2 in priority:
-            if x2 not in final:
-                final.append(x2)
-        if final:
-            return final[0]
+                for c in priority
+            ]
+        ):
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} delaying fetch of {x.address} as parent of another concept"
+            )
+            continue
+        final.append(x)
+    # then append anything we didn't get
+    for x2 in priority:
+        if x2 not in final:
+            final.append(x2)
+    if final:
+        return final[0]
     raise ValueError(
         f"Cannot resolve query. No remaining priority concepts, have attempted {attempted_addresses} out of {all_concepts} with found {found_concepts}"
     )
@@ -445,21 +433,48 @@ def get_loop_iteration_targets(
     found: set[str],
     partial: set[str],
     depth: int,
-    # materialized_canonical=set[str],
+    materialized_canonical: set[str],
 ) -> tuple[BuildConcept, List[BuildConcept], BuildWhereClause | None]:
     # objectives
     # 1. if we have complex types; push any conditions further up until we only have roots
     # 2. if we only have roots left, push all condition inputs into the candidate list
     # 3. from the final candidate list, select the highest priority concept to attempt next
-    remaining = [x for x in mandatory if x.address not in attempted]
+    forced_pushdown = False
+    if any(
+        conditions
+        and x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC]
+        and x.address not in conditions.row_arguments
+        for x in mandatory
+    ):
+        forced_pushdown = True
+    # a list of all non-materialized concepts, or all concepts
+    # if a pushdown is required
+    all_concepts_local: list[BuildConcept] = [
+        x
+        for x in mandatory
+        if forced_pushdown or (x.canonical_address not in materialized_canonical)
+        # keep Root/Constant
+        or x.derivation in (Derivation.ROOT, Derivation.CONSTANT)
+    ]
+    remaining_concrete = [x for x in mandatory if x.address not in all_concepts_local]
+
+    for x in remaining_concrete:
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX}  Adding materialized concept {x.address} as root instead of derived."
+        )
+        all_concepts_local.append(x.with_materialized_source())
+
+    remaining = [x for x in all_concepts_local if x.address not in attempted]
     conditions = evaluate_loop_condition_pushdown(
-        mandatory=mandatory,
+        mandatory=all_concepts_local,
         conditions=conditions,
         depth=depth,
         remaining=remaining,
         force_no_condition_pushdown=force_conditions,
+        forced_pushdown=forced_pushdown,
     )
-    local_all = [*mandatory]
+    local_all = [*all_concepts_local]
+
     if all([x.derivation in (Derivation.ROOT,) for x in remaining]) and conditions:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} All remaining mandatory concepts are roots or constants, injecting condition inputs into candidate list"
@@ -485,7 +500,6 @@ def get_loop_iteration_targets(
         found_concepts=found,
         partial_concepts=partial,
         depth=depth,
-        # materialized_canonical=materialized_canonical,
     )
 
     optional = generate_candidates_restrictive(

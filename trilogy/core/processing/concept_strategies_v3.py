@@ -392,7 +392,11 @@ def _search_concepts(
             found=context.found,
             partial=partial,
             depth=depth,
-            # materialized_canonical=environment.materialized_canonical_concepts,
+            materialized_canonical=(
+                environment.non_partial_materialized_canonical_concepts
+                if not accept_partial
+                else environment.materialized_canonical_concepts
+            ),
         )
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {str(priority_concept)} derivation {priority_concept.derivation} granularity {priority_concept.granularity} with conditions {local_conditions}"

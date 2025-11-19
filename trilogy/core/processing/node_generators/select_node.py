@@ -65,6 +65,7 @@ def gen_select_node(
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     all_lcl = CanonicalBuildConceptList(concepts=concepts)
+    # search all concepts here, including partial
     materialized_lcl = CanonicalBuildConceptList(
         concepts=[
             x

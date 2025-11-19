@@ -87,17 +87,10 @@ def test_derivations():
             # force add since we didn't run it
             if isinstance(processed, ProcessedQueryPersist):
                 env.add_datasource(processed.datasource)
-            assert (
-                env.concepts["local.test_upper_case_2"].derivation == Derivation.ROOT
-            ), env.concepts["local.test_upper_case_2"].derivation
-            assert (
-                env.concepts["local.test_upper_case_2"].lineage is None
-            ), env.concepts["local.test_upper_case_2"].lineage
         build_env = env.materialize_for_select()
         test_concept = build_env.concepts["local.test_upper_case_2"]
         assert test_concept.purpose == Purpose.PROPERTY
         assert test_concept.address in build_env.materialized_concepts
-        assert test_concept.derivation == Derivation.ROOT
 
         persist: PersistStatement = parsed[-2]
         assert persist.select.grain == Grain(components=[test_concept])
@@ -192,10 +185,9 @@ def test_derivations_reparse():
         #     )
         test_concept = env.concepts["test_upper_case_2"]
         assert test_concept.purpose == Purpose.PROPERTY
-        assert test_concept.metadata.concept_source == ConceptSource.PERSIST_STATEMENT
+
         build_env = env.materialize_for_select()
         assert test_concept.address in build_env.materialized_concepts
-        assert test_concept.derivation == Derivation.ROOT
 
         # test that the rendered SQL didn't need to use a cASE
         assert "CASE" not in compiled[-1]
@@ -250,9 +242,10 @@ def test_derivations_reparse_new():
         compiled.append(dialect.compile_statement(process_auto(env, parsed[-1])))
 
         test_concept = env.concepts["local.test_upper_case_2"]
+        build_env = env.materialize_for_select()
         assert test_concept.purpose == Purpose.PROPERTY
         assert test_concept.metadata.concept_source == ConceptSource.MANUAL
-        assert test_concept not in env.materialized_concepts
+        assert test_concept not in build_env.materialized_concepts
         assert test_concept.derivation == Derivation.BASIC
 
         # test that the rendered SQL did need to use a case

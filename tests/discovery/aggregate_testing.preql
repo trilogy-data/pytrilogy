@@ -1,0 +1,316 @@
+// Base keys and properties
+key order_id int;
+property order_id.order_value float;
+
+key customer_id int;
+property customer_id.customer_name string;
+
+key product_id int;
+property product_id.product_name string;
+
+key order_date date;
+
+// Aggregate calculations
+auto total_revenue <- sum(order_value);
+auto order_count <- count(order_id);
+auto customer_count <- count_distinct( customer_id);
+auto product_count <- count_distinct( product_id);
+
+auto customer_revenue <- sum(order_value) by customer_id;
+auto customer_order_count <- count(order_id) by customer_id;
+
+auto product_revenue <- sum(order_value) by product_id;
+auto product_order_count <- count(order_id) by product_id;
+auto product_customer_count <- count_distinct( customer_id) by product_id;
+
+auto daily_revenue <- sum(order_value) by order_date;
+auto daily_order_count <- count(order_id) by order_date;
+auto daily_customer_count <- count_distinct( customer_id) by order_date;
+auto daily_product_count <- count_distinct( product_id) by order_date;
+
+auto customer_product_revenue <- sum(order_value) by customer_id, product_id;
+auto customer_product_order_count <- count(order_id) by customer_id, product_id;
+
+auto customer_daily_revenue <- sum(order_value) by customer_id, order_date;
+auto customer_daily_order_count <- count(order_id) by customer_id, order_date;
+
+auto product_daily_revenue <- sum(order_value) by product_id, order_date;
+auto product_daily_order_count <- count(order_id) by product_id, order_date;
+auto product_daily_customer_count <- count_distinct( customer_id) by product_id, order_date;
+
+auto customer_product_daily_revenue <- sum(order_value) by customer_id, product_id, order_date;
+auto customer_product_daily_order_count <- count(order_id) by customer_id, product_id, order_date;
+
+# Base orders table
+datasource orders (
+    order_id: order_id,
+    customer_id: customer_id,
+    product_id: product_id,
+    order_date: order_date,
+    order_value: order_value,
+)
+grain (order_id)
+query '''
+select 1 as order_id, 101 as customer_id, 201 as product_id, '2024-01-15'::date as order_date, 25.99 as order_value
+union all
+select 2 as order_id, 102 as customer_id, 202 as product_id, '2024-01-15'::date as order_date, 45.50 as order_value
+union all
+select 3 as order_id, 101 as customer_id, 202 as product_id, '2024-01-16'::date as order_date, 33.25 as order_value
+union all
+select 4 as order_id, 103 as customer_id, 201 as product_id, '2024-01-16'::date as order_date, 78.00 as order_value
+union all
+select 5 as order_id, 102 as customer_id, 203 as product_id, '2024-01-17'::date as order_date, 12.75 as order_value
+union all
+select 6 as order_id, 101 as customer_id, 203 as product_id, '2024-01-17'::date as order_date, 89.99 as order_value
+union all
+select 7 as order_id, 104 as customer_id, 202 as product_id, '2024-01-18'::date as order_date, 156.80 as order_value
+union all
+select 8 as order_id, 103 as customer_id, 203 as product_id, '2024-01-18'::date as order_date, 67.45 as order_value
+''';
+
+# Customer dimension table
+datasource customers (
+    customer_id: customer_id,
+name: customer_name,
+)
+grain (customer_id)
+query '''
+select 101 as customer_id, 'Alice Johnson' as name
+union all
+select 102 as customer_id, 'Bob Smith' as name
+union all
+select 103 as customer_id, 'Carol Davis' as name
+union all
+select 104 as customer_id, 'David Wilson' as name
+''';
+
+# Product dimension table
+datasource products (
+    product_id: product_id,
+    name: product_name,
+)
+grain (product_id)
+query '''
+select 201 as product_id, 'Laptop' as name
+union all
+select 202 as product_id, 'Mouse' as name
+union all
+select 203 as product_id, 'Keyboard' as name
+''';
+
+# Overall totals (grain: all data)
+datasource total_summary (
+    total_revenue: total_revenue,
+    order_count: order_count,
+    customer_count: customer_count,
+    product_count: product_count,
+)
+query '''
+select 
+    509.73 as total_revenue,
+    8 as order_count,
+    4 as customer_count,
+    3 as product_count
+''';
+
+# Customer aggregates (grain: customer_id)
+datasource customer_summary (
+    customer_id: customer_id,
+    customer_revenue: customer_revenue,
+    customer_order_count: customer_order_count,
+)
+grain (customer_id)
+query '''
+select 101 as customer_id, 149.23 as customer_revenue, 3 as customer_order_count
+union all
+select 102 as customer_id, 58.25 as customer_revenue, 2 as customer_order_count
+union all
+select 103 as customer_id, 145.45 as customer_revenue, 2 as customer_order_count
+union all
+select 104 as customer_id, 156.80 as customer_revenue, 1 as customer_order_count
+''';
+
+# Product aggregates (grain: product_id)
+datasource product_summary (
+    product_id: product_id,
+    product_revenue: product_revenue,
+    product_order_count: product_order_count,
+    product_customer_count: product_customer_count,
+)
+grain (product_id)
+query '''
+select 201 as product_id, 103.99 as product_revenue, 2 as product_order_count, 2 as product_customer_count
+union all
+select 202 as product_id, 235.55 as product_revenue, 3 as product_order_count, 3 as product_customer_count
+union all
+select 203 as product_id, 170.19 as product_revenue, 3 as product_order_count, 3 as product_customer_count
+''';
+
+# Daily aggregates (grain: order_date)
+datasource daily_summary (
+    order_date: order_date,
+    daily_revenue: daily_revenue,
+    daily_order_count: daily_order_count,
+    daily_customer_count: daily_customer_count,
+    daily_product_count: daily_product_count,
+)
+grain (order_date)
+query '''
+select '2024-01-15'::date as order_date, 71.49 as daily_revenue, 2 as daily_order_count, 2 as daily_customer_count, 2 as daily_product_count
+union all
+select '2024-01-16'::date as order_date, 111.25 as daily_revenue, 2 as daily_order_count, 2 as daily_customer_count, 2 as daily_product_count
+union all
+select '2024-01-17'::date as order_date, 102.74 as daily_revenue, 2 as daily_order_count, 2 as daily_customer_count, 2 as daily_product_count
+union all
+select '2024-01-18'::date as order_date, 224.25 as daily_revenue, 2 as daily_order_count, 2 as daily_customer_count, 2 as daily_product_count
+''';
+
+# Customer-Product aggregates (grain: customer_id, product_id)
+datasource customer_product_summary (
+    customer_id: customer_id,
+    product_id: product_id,
+    customer_product_revenue: customer_product_revenue,
+    customer_product_order_count: customer_product_order_count,
+)
+grain (customer_id, product_id)
+query '''
+select 101 as customer_id, 201 as product_id, 25.99 as customer_product_revenue, 1 as customer_product_order_count
+union all
+select 101 as customer_id, 202 as product_id, 33.25 as customer_product_revenue, 1 as customer_product_order_count
+union all
+select 101 as customer_id, 203 as product_id, 89.99 as customer_product_revenue, 1 as customer_product_order_count
+union all
+select 102 as customer_id, 202 as product_id, 45.50 as customer_product_revenue, 1 as customer_product_order_count
+union all
+select 102 as customer_id, 203 as product_id, 12.75 as customer_product_revenue, 1 as customer_product_order_count
+union all
+select 103 as customer_id, 201 as product_id, 78.00 as customer_product_revenue, 1 as customer_product_order_count
+union all
+select 103 as customer_id, 203 as product_id, 67.45 as customer_product_revenue, 1 as customer_product_order_count
+union all
+select 104 as customer_id, 202 as product_id, 156.80 as customer_product_revenue, 1 as customer_product_order_count
+''';
+
+# Customer-Date aggregates (grain: customer_id, order_date)
+datasource customer_daily_summary (
+    customer_id: customer_id,
+    order_date: order_date,
+    customer_daily_revenue: customer_daily_revenue,
+    customer_daily_order_count: customer_daily_order_count,
+)
+grain (customer_id, order_date)
+query '''
+select 101 as customer_id, '2024-01-15'::date as order_date, 25.99 as customer_daily_revenue, 1 as customer_daily_order_count
+union all
+select 101 as customer_id, '2024-01-16'::date as order_date, 33.25 as customer_daily_revenue, 1 as customer_daily_order_count
+union all
+select 101 as customer_id, '2024-01-17'::date as order_date, 89.99 as customer_daily_revenue, 1 as customer_daily_order_count
+union all
+select 102 as customer_id, '2024-01-15'::date as order_date, 45.50 as customer_daily_revenue, 1 as customer_daily_order_count
+union all
+select 102 as customer_id, '2024-01-17'::date as order_date, 12.75 as customer_daily_revenue, 1 as customer_daily_order_count
+union all
+select 103 as customer_id, '2024-01-16'::date as order_date, 78.00 as customer_daily_revenue, 1 as customer_daily_order_count
+union all
+select 103 as customer_id, '2024-01-18'::date as order_date, 67.45 as customer_daily_revenue, 1 as customer_daily_order_count
+union all
+select 104 as customer_id, '2024-01-18'::date as order_date, 156.80 as customer_daily_revenue, 1 as customer_daily_order_count
+''';
+
+# Product-Date aggregates (grain: product_id, order_date)
+datasource product_daily_summary (
+    product_id: product_id,
+    order_date: order_date,
+    product_daily_revenue: product_daily_revenue,
+    product_daily_order_count: product_daily_order_count,
+    product_daily_customer_count: product_daily_customer_count,
+)
+grain (product_id, order_date)
+query '''
+select 201 as product_id, '2024-01-15'::date as order_date, 25.99 as product_daily_revenue, 1 as product_daily_order_count, 1 as product_daily_customer_count
+union all
+select 201 as product_id, '2024-01-16'::date as order_date, 78.00 as product_daily_revenue, 1 as product_daily_order_count, 1 as product_daily_customer_count
+union all
+select 202 as product_id, '2024-01-15'::date as order_date, 45.50 as product_daily_revenue, 1 as product_daily_order_count, 1 as product_daily_customer_count
+union all
+select 202 as product_id, '2024-01-16'::date as order_date, 33.25 as product_daily_revenue, 1 as product_daily_order_count, 1 as product_daily_customer_count
+union all
+select 202 as product_id, '2024-01-18'::date as order_date, 156.80 as product_daily_revenue, 1 as product_daily_order_count, 1 as product_daily_customer_count
+union all
+select 203 as product_id, '2024-01-17'::date as order_date, 102.74 as product_daily_revenue, 2 as product_daily_order_count, 2 as product_daily_customer_count
+union all
+select 203 as product_id, '2024-01-18'::date as order_date, 67.45 as product_daily_revenue, 1 as product_daily_order_count, 1 as product_daily_customer_count
+''';
+
+# Customer-Product-Date aggregates (grain: customer_id, product_id, order_date)
+datasource customer_product_daily_summary (
+    customer_id: customer_id,
+    product_id: product_id,
+    order_date: order_date,
+    customer_product_daily_revenue: customer_product_daily_revenue,
+    customer_product_daily_order_count: customer_product_daily_order_count,
+)
+grain (customer_id, product_id, order_date)
+query '''
+select 101 as customer_id, 201 as product_id, '2024-01-15'::date as order_date, 25.99 as customer_product_daily_revenue, 1 as customer_product_daily_order_count
+union all
+select 101 as customer_id, 202 as product_id, '2024-01-16'::date as order_date, 33.25 as customer_product_daily_revenue, 1 as customer_product_daily_order_count
+union all
+select 101 as customer_id, 203 as product_id, '2024-01-17'::date as order_date, 89.99 as customer_product_daily_revenue, 1 as customer_product_daily_order_count
+union all
+select 102 as customer_id, 202 as product_id, '2024-01-15'::date as order_date, 45.50 as customer_product_daily_revenue, 1 as customer_product_daily_order_count
+union all
+select 102 as customer_id, 203 as product_id, '2024-01-17'::date as order_date, 12.75 as customer_product_daily_revenue, 1 as customer_product_daily_order_count
+union all
+select 103 as customer_id, 201 as product_id, '2024-01-16'::date as order_date, 78.00 as customer_product_daily_revenue, 1 as customer_product_daily_order_count
+union all
+select 103 as customer_id, 203 as product_id, '2024-01-18'::date as order_date, 67.45 as customer_product_daily_revenue, 1 as customer_product_daily_order_count
+union all
+select 104 as customer_id, 202 as product_id, '2024-01-18'::date as order_date, 156.80 as customer_product_daily_revenue, 1 as customer_product_daily_order_count
+''';
+
+// Special filtered aggregate: Mouse (product_id = 202) specific totals
+datasource mouse_product_summary (
+    product_id: ~product_id,
+    product_revenue: ~product_revenue,
+    product_order_count: ~product_order_count,
+    product_customer_count: ~product_customer_count,
+)
+grain (product_id)
+complete where product_id = 202
+query '''
+select 202 as product_id, 235.55 as product_revenue, 3 as product_order_count, 3 as product_customer_count
+''';
+
+# Special filtered aggregate: Mouse sales by customer
+datasource mouse_customer_summary (
+    customer_id: ~customer_id,
+    product_id: ~product_id,
+    customer_product_revenue: ~customer_product_revenue,
+    customer_product_order_count: ~customer_product_order_count,
+)
+grain (customer_id, product_id)
+complete where product_id = 202
+query '''
+select 101 as customer_id, 202 as product_id, 33.25 as customer_product_revenue, 1 as customer_product_order_count
+union all
+select 102 as customer_id, 202 as product_id, 45.50 as customer_product_revenue, 1 as customer_product_order_count
+union all
+select 104 as customer_id, 202 as product_id, 156.80 as customer_product_revenue, 1 as customer_product_order_count
+''';
+
+# Special filtered aggregate: High-value customers (>$100 total revenue)
+datasource high_value_customers (
+    customer_id: ~customer_id,
+    customer_revenue: ~customer_revenue,
+    customer_order_count: ~customer_order_count,
+)
+grain (customer_id)
+complete where customer_revenue > 100
+query '''
+select 101 as customer_id, 149.23 as customer_revenue, 3 as customer_order_count
+union all
+select 103 as customer_id, 145.45 as customer_revenue, 2 as customer_order_count
+union all
+select 104 as customer_id, 156.80 as customer_revenue, 1 as customer_order_count
+''';

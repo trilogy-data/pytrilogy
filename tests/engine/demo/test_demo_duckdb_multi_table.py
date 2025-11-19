@@ -42,7 +42,8 @@ def get_parents(node: StrategyNode):
 def test_demo_filter(normalized_engine: Environment, test_env):
     executor = normalized_engine
     env = test_env
-    assert "passenger.id.count" not in env.materialized_concepts
+    build_env = env.materialize_for_select()
+    assert "passenger.id.count" not in build_env.materialized_concepts
     executor.environment = env
 
     test = """
@@ -70,7 +71,8 @@ limit 5;"""
 def test_rowset_shape(normalized_engine, test_env):
     executor = normalized_engine
     env = test_env
-    assert "passenger.id.count" not in env.materialized_concepts
+    build_env = env.materialize_for_select()
+    assert "passenger.id.count" not in build_env.materialized_concepts
     executor.environment = env
 
     test = """

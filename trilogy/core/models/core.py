@@ -222,7 +222,7 @@ class StructComponent(BaseModel):
     modifiers: list[Modifier] = []
 
     @field_validator("type", mode="plain")
-    def validate_Type(cls, v):
+    def validate_type(cls, v):
         return v
 
 
@@ -467,6 +467,8 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
     elif isinstance(arg, ListWrapper):
         return ArrayType(type=arg.type)
     elif isinstance(arg, ArrayType):
+        return arg
+    elif isinstance(arg, MapType):
         return arg
     elif isinstance(arg, DataTyped):
         return arg.output_datatype

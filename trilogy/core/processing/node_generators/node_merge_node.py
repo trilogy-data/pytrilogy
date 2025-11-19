@@ -365,26 +365,29 @@ def filter_relevant_subgraphs(
     ]
 
 
-def filter_duplicate_subgraphs(
-    subgraphs: list[list[BuildConcept]], environment
-) -> list[list[BuildConcept]]:
-    seen: list[set[str]] = []
+# 2025-11-18 - removing this as it was causing us to drop
+# partial concept required parents
+# but leaving here for possible future use
+# def filter_duplicate_subgraphs(
+#     subgraphs: list[list[BuildConcept]], environment
+# ) -> list[list[BuildConcept]]:
+#     seen: list[set[str]] = []
 
-    for graph in subgraphs:
-        seen.append(
-            canonicalize_addresses(set([x.address for x in graph]), environment)
-        )
-    final = []
-    # sometimes w can get two subcomponents that are the same
-    # due to alias resolution
-    # if so, drop any that are strict subsets.
-    for graph in subgraphs:
-        logger.info(f"Checking graph {graph} for duplicates in {seen}")
-        set_x = canonicalize_addresses(set([x.address for x in graph]), environment)
-        if any([set_x.issubset(y) and set_x != y for y in seen]):
-            continue
-        final.append(graph)
-    return final
+#     for graph in subgraphs:
+#         seen.append(
+#             canonicalize_addresses(set([x.address for x in graph]), environment)
+#         )
+#     final = []
+#     # sometimes w can get two subcomponents that are the same
+#     # due to alias resolution
+#     # if so, drop any that are strict subsets.
+#     for graph in subgraphs:
+#         logger.info(f"{LOGGER_PREFIX} Checking graph {graph} for duplicates in {seen}")
+#         set_x = canonicalize_addresses(set([x.address for x in graph]), environment)
+#         if any([set_x.issubset(y) and set_x != y for y in seen]):
+#             continue
+#         final.append(graph)
+#     return final
 
 
 def resolve_weak_components(
@@ -490,9 +493,8 @@ def resolve_weak_components(
         if not sub_component:
             continue
         subgraphs.append(sub_component)
-    final = filter_duplicate_subgraphs(subgraphs, environment)
-    return final
-    # return filter_relevant_subgraphs(subgraphs)
+
+    return subgraphs
 
 
 def subgraphs_to_merge_node(

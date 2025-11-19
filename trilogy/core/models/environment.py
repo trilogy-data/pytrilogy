@@ -23,7 +23,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic.functional_validators import PlainValidator
 
 from trilogy.constants import DEFAULT_NAMESPACE, ENV_CACHE_NAME, logger
-from trilogy.core.constants import INTERNAL_NAMESPACE, PERSISTED_CONCEPT_PREFIX
+from trilogy.core.constants import (
+    INTERNAL_NAMESPACE,
+    WORKING_PATH_CONCEPT,
+)
 from trilogy.core.enums import (
     ConceptSource,
     Derivation,
@@ -223,7 +226,6 @@ class Environment(BaseModel):
     config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
     version: str = Field(default_factory=get_version)
     cte_name_map: Dict[str, str] = Field(default_factory=dict)
-    materialized_concepts: set[str] = Field(default_factory=set)
     alias_origin_lookup: Dict[str, Concept] = Field(default_factory=dict)
     # TODO: support freezing environments to avoid mutation
     frozen: bool = False
@@ -258,7 +260,6 @@ class Environment(BaseModel):
             environment_config=self.config.model_copy(deep=True),
             version=self.version,
             cte_name_map=dict(self.cte_name_map),
-            materialized_concepts=set(self.materialized_concepts),
             alias_origin_lookup={
                 k: v.duplicate() for k, v in self.alias_origin_lookup.items()
             },
@@ -267,7 +268,7 @@ class Environment(BaseModel):
 
     def _add_path_concepts(self):
         concept = Concept(
-            name="_env_working_path",
+            name=WORKING_PATH_CONCEPT,
             namespace=self.namespace,
             lineage=Function(
                 operator=FunctionType.CONSTANT,
@@ -326,28 +327,15 @@ class Environment(BaseModel):
         if isinstance(existing, UndefinedConcept):
             return None
 
-        def handle_persist():
-            deriv_lookup = (
-                f"{existing.namespace}.{PERSISTED_CONCEPT_PREFIX}_{existing.name}"
-            )
-
-            alt_source = self.alias_origin_lookup.get(deriv_lookup)
-            if not alt_source:
-                return None
-            # del self.alias_origin_lookup[deriv_lookup]
-            # del self.concepts[deriv_lookup]
-            # if the new concept binding has no lineage
-            # nothing to cause us to think a persist binding
-            # needs to be invalidated
-            if not new_concept.lineage:
-                return existing
-            if str(alt_source.lineage) == str(new_concept.lineage):
+        def handle_currently_bound_sources():
+            if str(existing.lineage) == str(new_concept.lineage):
                 logger.info(
-                    f"Persisted concept {existing.address} matched redeclaration, keeping current persistence binding."
+                    f"Persisted concept {existing.address} matched redeclaration, keeping current bound datasource."
                 )
-                return existing
+                return None
+
             logger.warning(
-                f"Persisted concept {existing.address} lineage {str(alt_source.lineage)} did not match redeclaration {str(new_concept.lineage)}, overwriting and invalidating persist binding."
+                f"Persisted concept {existing.address} lineage {str(existing.lineage)} did not match redeclaration {str(new_concept.lineage)}, invalidating current bound datasource."
             )
             for k, datasource in self.datasources.items():
                 if existing.address in datasource.output_concepts:
@@ -359,21 +347,23 @@ class Environment(BaseModel):
                         x
                         for x in datasource.columns
                         if x.concept.address != existing.address
-                        and x.concept.address != deriv_lookup
                     ]
                     assert len(datasource.columns) < clen
             return None
 
         if existing and self.config.allow_duplicate_declaration:
-            if existing.metadata.concept_source == ConceptSource.PERSIST_STATEMENT:
-                return handle_persist()
-            return None
-        elif existing.metadata:
-            if existing.metadata.concept_source == ConceptSource.PERSIST_STATEMENT:
-                return handle_persist()
-            # if the existing concept is auto derived, we can overwrite it
-            if existing.metadata.concept_source == ConceptSource.AUTO_DERIVED:
+            if (
+                existing.metadata
+                and existing.metadata.concept_source == ConceptSource.AUTO_DERIVED
+            ):
+                # auto derived concepts will not have sources nad do not need to be checked
                 return None
+            return handle_currently_bound_sources()
+        elif (
+            existing.metadata
+            and existing.metadata.concept_source == ConceptSource.AUTO_DERIVED
+        ):
+            return None
         elif meta and existing.metadata:
             raise ValueError(
                 f"Assignment to concept '{lookup}' on line {meta.line} is a duplicate"
@@ -418,6 +408,9 @@ class Environment(BaseModel):
         for k, concept in iteration:
             # skip internal namespace
             if INTERNAL_NAMESPACE in concept.address:
+                continue
+            # don't overwrite working path
+            if concept.name == WORKING_PATH_CONCEPT:
                 continue
             if same_namespace:
                 new = self.add_concept(concept, add_derived=False)
@@ -612,80 +605,6 @@ class Environment(BaseModel):
                 "Environment is frozen, cannot add datasource"
             )
         self.datasources[datasource.identifier] = datasource
-
-        eligible_to_promote_roots = datasource.non_partial_for is None
-        # mark this as canonical source
-        for c in datasource.columns:
-            cref = c.concept
-            if cref.address not in self.concepts:
-                continue
-            new_persisted_concept = self.concepts[cref.address]
-            if isinstance(new_persisted_concept, UndefinedConcept):
-                continue
-            if not eligible_to_promote_roots:
-                continue
-
-            current_derivation = new_persisted_concept.derivation
-            # TODO: refine this section;
-            # too hacky for maintainability
-            if current_derivation not in (Derivation.ROOT, Derivation.CONSTANT):
-                from trilogy.core.models.author import AggregateWrapper
-
-                if current_derivation == Derivation.AGGREGATE and (
-                    not isinstance(new_persisted_concept.lineage, AggregateWrapper)
-                    or len(new_persisted_concept.lineage.by) == 0
-                ):
-                    logger.info("Cannot persist non-grain specified aggregate")
-                    continue
-                logger.info(
-                    f"A datasource has been added which will persist derived concept {new_persisted_concept.address} with derivation {current_derivation} and source {type(new_persisted_concept.lineage)}"
-                )
-                persisted = f"{PERSISTED_CONCEPT_PREFIX}_" + new_persisted_concept.name
-                # override the current concept source to reflect that it's now coming from a datasource
-                base_pseudonyms = new_persisted_concept.pseudonyms or set()
-                original_pseudonyms = {*base_pseudonyms, new_persisted_concept.address}
-                if (
-                    new_persisted_concept.metadata.concept_source
-                    != ConceptSource.PERSIST_STATEMENT
-                ):
-                    original_concept = new_persisted_concept.model_copy(
-                        deep=True,
-                        update={"name": persisted, "pseudonyms": original_pseudonyms},
-                    )
-                    self.add_concept(
-                        original_concept,
-                        meta=meta,
-                        force=True,
-                    )
-                    base = {
-                        "lineage": None,
-                        "metadata": new_persisted_concept.metadata.model_copy(
-                            update={"concept_source": ConceptSource.PERSIST_STATEMENT}
-                        ),
-                        "derivation": Derivation.ROOT,
-                        "purpose": new_persisted_concept.purpose,
-                        "pseudonyms": {*original_pseudonyms, original_concept.address},
-                    }
-                    # purpose is used in derivation calculation
-                    # which should be fixed, but we'll do in a followup
-                    # so override here
-                    if new_persisted_concept.purpose == Purpose.CONSTANT:
-                        base["purpose"] = Purpose.KEY
-                    new_persisted_concept = new_persisted_concept.model_copy(
-                        deep=True, update=base
-                    )
-                    self.add_concept(
-                        new_persisted_concept,
-                        meta=meta,
-                        force=True,
-                    )
-                    # datasource.add_column(original_concept, alias=c.alias, modifiers = c.modifiers)
-                    self.merge_concept(original_concept, new_persisted_concept, [])
-                else:
-                    self.add_concept(
-                        new_persisted_concept,
-                        meta=meta,
-                    )
         return datasource
 
     def delete_datasource(
@@ -785,7 +704,6 @@ class LazyEnvironment(Environment):
         self.concepts = env.concepts
         self.imports = env.imports
         self.alias_origin_lookup = env.alias_origin_lookup
-        self.materialized_concepts = env.materialized_concepts
         self.functions = env.functions
         self.data_types = env.data_types
         self.cte_name_map = env.cte_name_map
@@ -795,7 +713,6 @@ class LazyEnvironment(Environment):
             "datasources",
             "concepts",
             "imports",
-            "materialized_concepts",
             "functions",
             "datatypes",
             "cte_name_map",

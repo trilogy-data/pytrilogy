@@ -122,15 +122,22 @@ class BuildEnvironment(BaseModel):
     cte_name_map: Dict[str, str] = Field(default_factory=dict)
     materialized_concepts: set[str] = Field(default_factory=set)
     materialized_canonical_concepts: set[str] = Field(default_factory=set)
+    non_partial_materialized_canonical_concepts: set[str] = Field(default_factory=set)
     alias_origin_lookup: Dict[str, BuildConcept] = Field(default_factory=dict)
 
     def gen_concept_list_caches(self) -> None:
         concrete_concepts: list[BuildConcept] = []
+        non_partial_concrete_concepts: list[BuildConcept] = []
         for datasource in self.datasources.values():
-            for concept in datasource.output_concepts:
-                concrete_concepts.append(concept)
+            for column in datasource.columns:
+                if column.is_complete:
+                    non_partial_concrete_concepts.append(column.concept)
+                concrete_concepts.append(column.concept)
         concrete_addresses = set([x.address for x in concrete_concepts])
         canonical_addresses = set([x.canonical_address for x in concrete_concepts])
+        non_partial_canonical_addresses = set(
+            [x.canonical_address for x in non_partial_concrete_concepts]
+        )
 
         self.materialized_concepts = set(
             [
@@ -154,6 +161,18 @@ class BuildEnvironment(BaseModel):
                 c.canonical_address
                 for c in self.alias_origin_lookup.values()
                 if c.canonical_address in canonical_addresses
+            ],
+        )
+        self.non_partial_materialized_canonical_concepts = set(
+            [
+                c.canonical_address
+                for c in self.concepts.values()
+                if c.canonical_address in non_partial_canonical_addresses
+            ]
+            + [
+                c.canonical_address
+                for c in self.alias_origin_lookup.values()
+                if c.canonical_address in non_partial_canonical_addresses
             ],
         )
 

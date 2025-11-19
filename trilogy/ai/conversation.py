@@ -58,6 +58,9 @@ class Conversation:
     def extract_response(self, content: str) -> str:
         # get contents in triple backticks
         content = content.replace('"""', "```")
+        # replace markdown trilogy code block prefix that is
+        # sometimes added
+        content = content.replace("```trilogy", "```")
         if "```" in content:
             parts = content.split("```")
             if len(parts) >= 3:
@@ -77,7 +80,7 @@ class Conversation:
             response = self.extract_response(response_message.content)
             if not response.strip():
                 self.add_message(
-                    "Your response did not contain a valid SQL query. Please provide a valid SQL query enclosed in triple backticks.",
+                    "Your response did not contain a valid Trilogy query. Please provide a valid Trilogy query enclosed in triple backticks, without a language specification.",
                     role="user",
                 )
                 continue

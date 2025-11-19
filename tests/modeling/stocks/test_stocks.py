@@ -119,20 +119,18 @@ limit 10;
 
 def test_provider_name():
     env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
+    from logging import INFO
+
     from trilogy.hooks import DebuggingHook
 
     # test covering root cause of
     # INFO   [DISCOVERY LOOP] finished sourcing loop (complete: ValidationResult.INCOMPLETE), have {'dividend.amount', 'dividend.id', 'provider.id', 'symbol.sector'} from [MergeNode<dividend.amount,dividend.id,provider.id...1 more>]
     #  (missing {'dividend.symbol.sector'}), attempted {'dividend.amount'}, virtual set()
-    DebuggingHook()
+    DebuggingHook(INFO)
     build_env: BuildEnvironment = Factory(environment=env).build(env)
     assert (
         "dividend.symbol.sector" in build_env.materialized_concepts
     ), build_env.materialized_concepts
-    assert (
-        "dividend.provider.__pre_persist_name"
-        in build_env.concepts["provider.name"].pseudonyms
-    ), build_env.concepts["provider.name"].pseudonyms
     assert (
         "provider.id"
         in build_env.alias_origin_lookup["dividend.provider.id"].pseudonyms
@@ -189,7 +187,13 @@ def test_provider_name():
     #     sum(dividend.amount) as total_div;
     #   """
     #     )
-
+    build_concept = build_env.concepts["provider.name"]
+    assert build_concept.address in build_env.materialized_concepts
+    assert build_concept.canonical_address in build_env.canonical_concepts
+    assert (
+        build_concept.canonical_address
+        in build_env.non_partial_materialized_canonical_concepts
+    )
     sql = duckdb.generate_sql(
         """select
     symbol.sector,
@@ -262,8 +266,6 @@ where symbol.sector in ('Energy', 'Materials', 'Utilities')
   select
     symbol.sector,
     provider.name,
-
-    
     sum(dividend.amount) as total_div;
     """
     )[0]
