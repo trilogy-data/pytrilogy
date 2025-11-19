@@ -58,6 +58,9 @@ class Conversation:
     def extract_response(self, content: str) -> str:
         # get contents in triple backticks
         content = content.replace('"""', "```")
+        # replace markdown trilogy code block prefix that is
+        # sometimes added
+        content = content.replace("```trilogy", "```")
         if "```" in content:
             parts = content.split("```")
             if len(parts) >= 3:
