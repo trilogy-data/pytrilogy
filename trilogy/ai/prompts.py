@@ -1,14 +1,13 @@
 from trilogy import Environment
 from trilogy.ai.constants import AGGREGATE_FUNCTIONS, FUNCTIONS, RULE_PROMPT
 from trilogy.authoring import (
+    ArrayType,
     Concept,
     DataType,
-    TraitDataType,
-    DataType,
-    ArrayType,
-    StructType,
     MapType,
     NumericType,
+    StructType,
+    TraitDataType,
 )
 from trilogy.core.models.core import DataTyped, StructComponent
 
