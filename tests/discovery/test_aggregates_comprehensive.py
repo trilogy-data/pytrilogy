@@ -225,7 +225,7 @@ WHERE customer_revenue > 100
     ), f"Expected high_value_customers table, got: {generated}"
 
 
-@pytest.mark.skip(reason="Need to match on canonical IDs for filtering")
+@pytest.mark.skip(reason="Need to implement complete detection for canonical types")
 def test_high_value_customer_filter_two():
     """Test filtered customer aggregate for high-value customers resolves to high_value_customers table"""
     env, exec = setup_environment()
@@ -351,10 +351,50 @@ WHERE order_date > '2024-01-15'::date
     ), f"Expected customer_summary or orders table, got: {generated}"
 
 
-@pytest.mark.skip(reason="Need to implement smarter table selection logic")
 def test_cross_dimensional_aggregation():
     """Test aggregation across different dimensions"""
     env, exec = setup_environment()
+    from trilogy.core.models.build import Factory, generate_concept_name
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+    _, statements = exec.environment.parse(
+        """
+import aggregate_testing;
+SELECT
+    customer_id,
+    product_id,
+    sum(order_value) as total_revenue
+;
+"""
+    )
+    generated = exec.generate_sql(statements[-1])[-1]
+    # Should use appropriate table or fall back to base
+    build_statement = Factory(
+        environment=env,
+    ).build(statements[-1].as_lineage(env))
+    build_env = env.materialize_for_select(
+        local_concepts=build_statement.local_concepts
+    )
+    # assert build_env.concepts['local.total_revenue'].canonical_address == build_env.concepts['customer_product_revenue'].canonical_address
+
+    assert generate_concept_name(
+        build_env.concepts["local.total_revenue"].lineage, True
+    ) == generate_concept_name(
+        build_env.concepts["customer_product_revenue"].lineage, True
+    )
+    assert any(
+        table in generated for table in ["customer_product_summary"]
+    ), f"Expected appropriate table, got: {generated}"
+
+
+@pytest.mark.skip(reason="Stretch: detect when we can use partial agg for full agg")
+def test_cross_dimensional_aggregation_one_key_only():
+    """Test aggregation across different dimensions"""
+    env, exec = setup_environment()
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
     generated = exec.generate_sql(
         """
 import aggregate_testing;
@@ -371,7 +411,6 @@ WHERE product_id in (201, 202)
     ), f"Expected appropriate table, got: {generated}"
 
 
-@pytest.mark.skip(reason="Need to implement smarter table selection logic")
 def test_temporal_aggregation():
     """Test temporal aggregation patterns"""
     env, exec = setup_environment()

@@ -1,0 +1,10 @@
+import lineitem;
+import cache;
+
+# Selecting total revenue
+# Total revenue is based on the extended price minus discount
+select 
+    local.total_revenue,
+    sum(quantity) as total_items_sold,
+    count(order.id) as total_orders,
+    count(order.customer.id) as total_customers;

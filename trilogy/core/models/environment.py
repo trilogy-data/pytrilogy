@@ -329,9 +329,6 @@ class Environment(BaseModel):
 
         def handle_currently_bound_sources():
             if str(existing.lineage) == str(new_concept.lineage):
-                logger.info(
-                    f"Persisted concept {existing.address} matched redeclaration, keeping current bound datasource."
-                )
                 return None
 
             logger.warning(
