@@ -66,14 +66,14 @@ def test_adhoc06():
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
     # warm cache
     engine.execute_query(cache_sql)
-    assert 'local._total_customers' in env.concepts, env.concepts.keys()
-    assert 'local.total_customers' not in env.concepts, env.concepts.keys()
-    engine.execute_query('import cache;')
-    cache_table = env.datasources['dashboard_agg_1']
+    assert "local._total_customers" in env.concepts, env.concepts.keys()
+    assert "local.total_customers" not in env.concepts, env.concepts.keys()
+    engine.execute_query("import cache;")
+    cache_table = env.datasources["dashboard_agg_1"]
     for x in cache_table.columns:
-        assert x.alias.startswith('_')
+        assert x.alias.startswith("_")
 
     query = engine.generate_sql(text)[0]
     results = engine.execute_query(text).fetchall()
-    assert 'dashboard_agg_1' in query, query
+    assert "dashboard_agg_1" in query, query
     assert results[0].total_orders == 15000, results[0].total_orders

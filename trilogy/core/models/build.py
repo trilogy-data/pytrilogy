@@ -101,9 +101,11 @@ if TYPE_CHECKING:
 LOGGER_PREFIX = "[MODELS_BUILD]"
 
 
-def generate_concept_name(parent: Any) -> str:
+def generate_concept_name(parent: Any, debug: bool = False) -> str:
     """Generate a name for a concept based on its parent type and content."""
     if isinstance(parent, BuildAggregateWrapper):
+        if debug:
+            print(parent)
         if parent.is_abstract:
             return f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent.with_abstract_by()))}"
         return f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
@@ -1299,7 +1301,7 @@ class BuildAggregateWrapper(BuildConceptArgs, DataTyped):
     def __str__(self):
         grain_str = [str(c) for c in self.by] if self.by else "abstract"
         return f"{str(self.function)}<{grain_str}>"
-    
+
     @property
     def is_abstract(self):
         if not self.by:
@@ -1307,10 +1309,10 @@ class BuildAggregateWrapper(BuildConceptArgs, DataTyped):
         if all(x.name == ALL_ROWS_CONCEPT for x in self.by):
             return True
         return False
-    
+
     def with_abstract_by(self) -> "BuildAggregateWrapper":
         return BuildAggregateWrapper(function=self.function, by=[])
-    
+
     @property
     def datatype(self):
         return self.function.datatype
@@ -1618,9 +1620,11 @@ class BuildDatasource:
         # if concept.lineage:
         # #     return None
         for x in self.columns:
-            print(x.concept.canonical_address)
-            print(concept.canonical_address)
-            if x.concept.canonical_address == concept.canonical_address or x.concept == concept or x.concept.with_grain(concept.grain) == concept:
+            if (
+                x.concept.canonical_address == concept.canonical_address
+                or x.concept == concept
+                or x.concept.with_grain(concept.grain) == concept
+            ):
                 if use_raw_name:
                     return x.alias
                 return concept.safe_address
@@ -1985,7 +1989,9 @@ class Factory:
             by = [self.build(x) for x in base.by]
 
         parent: BuildFunction = self._build_function(base.function)  # type: ignore
-        return BuildAggregateWrapper(function=parent, by=by)
+        return BuildAggregateWrapper(
+            function=parent, by=sorted(by, key=lambda x: x.address)
+        )
 
     @build.register
     def _(self, base: ColumnAssignment) -> BuildColumnAssignment:
