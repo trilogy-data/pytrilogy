@@ -51,12 +51,13 @@ def datatype_to_field_prompt(
     if isinstance(datatype, ArrayType):
         return f"ARRAY<{datatype_to_field_prompt(datatype.type)}>"
     if isinstance(datatype, StructType):
-        fields_str = ", ".join(
-            [
-                f"{name}: {datatype_to_field_prompt(field_type)}"
-                for name, field_type in datatype.fields_map.items()
-            ]
-        )
+        instantiated = []
+        for name, field_type in datatype.field_types.items():
+            if isinstance(field_type, StructComponent):
+                instantiated.append(f"{datatype_to_field_prompt(field_type.type)}")
+            else:
+                instantiated.append(f"{name}: {datatype_to_field_prompt(field_type)}")
+        fields_str = ", ".join(instantiated)
         return f"STRUCT<{fields_str}>"
     if isinstance(datatype, MapType):
         return f"MAP<{datatype_to_field_prompt(datatype.key_type)}, {datatype_to_field_prompt(datatype.value_type)}>"

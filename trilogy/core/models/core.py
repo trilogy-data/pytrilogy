@@ -468,6 +468,8 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
         return ArrayType(type=arg.type)
     elif isinstance(arg, ArrayType):
         return arg
+    elif isinstance(arg, MapType):
+        return arg
     elif isinstance(arg, DataTyped):
         return arg.output_datatype
     elif isinstance(arg, TupleWrapper):

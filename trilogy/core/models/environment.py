@@ -25,7 +25,6 @@ from pydantic.functional_validators import PlainValidator
 from trilogy.constants import DEFAULT_NAMESPACE, ENV_CACHE_NAME, logger
 from trilogy.core.constants import (
     INTERNAL_NAMESPACE,
-    PERSISTED_CONCEPT_PREFIX,
     WORKING_PATH_CONCEPT,
 )
 from trilogy.core.enums import (
@@ -318,7 +317,7 @@ class Environment(BaseModel):
             f.write(self.model_dump_json())
         return ppath
 
-    def validate_concept_v2(
+    def validate_concept(
         self, new_concept: Concept, meta: Meta | None = None
     ) -> Concept | None:
         lookup = new_concept.address
@@ -365,85 +364,6 @@ class Environment(BaseModel):
             and existing.metadata.concept_source == ConceptSource.AUTO_DERIVED
         ):
             return None
-        elif meta and existing.metadata:
-            raise ValueError(
-                f"Assignment to concept '{lookup}' on line {meta.line} is a duplicate"
-                f" declaration; '{lookup}' was originally defined on line"
-                f" {existing.metadata.line_number}"
-            )
-        elif existing.metadata:
-            raise ValueError(
-                f"Assignment to concept '{lookup}'  is a duplicate declaration;"
-                f" '{lookup}' was originally defined on line"
-                f" {existing.metadata.line_number}"
-            )
-        raise ValueError(
-            f"Assignment to concept '{lookup}'  is a duplicate declaration;"
-        )
-
-    def validate_concept(
-        self, new_concept: Concept, meta: Meta | None = None
-    ) -> Concept | None:
-        return self.validate_concept_v2(new_concept, meta=meta)
-
-    def validate_concept_v1(
-        self, new_concept: Concept, meta: Meta | None = None
-    ) -> Concept | None:
-        lookup = new_concept.address
-        if lookup not in self.concepts:
-            return None
-        existing: Concept = self.concepts.get(lookup)  # type: ignore
-        if isinstance(existing, UndefinedConcept):
-            return None
-
-        def handle_persist():
-            deriv_lookup = (
-                f"{existing.namespace}.{PERSISTED_CONCEPT_PREFIX}_{existing.name}"
-            )
-
-            alt_source = self.alias_origin_lookup.get(deriv_lookup)
-            if not alt_source:
-                return None
-            # del self.alias_origin_lookup[deriv_lookup]
-            # del self.concepts[deriv_lookup]
-            # if the new concept binding has no lineage
-            # nothing to cause us to think a persist binding
-            # needs to be invalidated
-            if not new_concept.lineage:
-                return existing
-            if str(alt_source.lineage) == str(new_concept.lineage):
-                logger.info(
-                    f"Persisted concept {existing.address} matched redeclaration, keeping current persistence binding."
-                )
-                return existing
-            logger.warning(
-                f"Persisted concept {existing.address} lineage {str(alt_source.lineage)} did not match redeclaration {str(new_concept.lineage)}, overwriting and invalidating persist binding."
-            )
-            for k, datasource in self.datasources.items():
-                if existing.address in datasource.output_concepts:
-                    logger.warning(
-                        f"Removed concept for {existing} assignment from {k}"
-                    )
-                    clen = len(datasource.columns)
-                    datasource.columns = [
-                        x
-                        for x in datasource.columns
-                        if x.concept.address != existing.address
-                        and x.concept.address != deriv_lookup
-                    ]
-                    assert len(datasource.columns) < clen
-            return None
-
-        if existing and self.config.allow_duplicate_declaration:
-            if existing.metadata.concept_source == ConceptSource.PERSIST_STATEMENT:
-                return handle_persist()
-            return None
-        elif existing.metadata:
-            if existing.metadata.concept_source == ConceptSource.PERSIST_STATEMENT:
-                return handle_persist()
-            # if the existing concept is auto derived, we can overwrite it
-            if existing.metadata.concept_source == ConceptSource.AUTO_DERIVED:
-                return None
         elif meta and existing.metadata:
             raise ValueError(
                 f"Assignment to concept '{lookup}' on line {meta.line} is a duplicate"
