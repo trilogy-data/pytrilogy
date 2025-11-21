@@ -97,6 +97,11 @@ def check_if_group_required(
 
     # dynamically select if we need to group
     # we must avoid grouping if we are already at grain
+    if comp_grain.abstract and not target_grain.abstract:
+        logger.info(
+            f"{padding}{LOGGER_PREFIX} Group requirement check: upstream grain is abstract, cannot determine grouping requirement, assuming group required"
+        )
+        return GroupRequiredResponse(target_grain, comp_grain, True)
     if comp_grain.issubset(target_grain):
 
         logger.info(
@@ -108,7 +113,7 @@ def check_if_group_required(
         environment.concepts[c] for c in (comp_grain - target_grain).components
     ]
     logger.info(
-        f"{padding}{LOGGER_PREFIX} Group requirement check: upstream grain: {comp_grain}, desired grain: {target_grain} from , difference {[x.address for x in difference]}"
+        f"{padding}{LOGGER_PREFIX} Group requirement check: upstream grain: {comp_grain}, desired grain: {target_grain} from, difference {[x.address for x in difference]}"
     )
     for x in difference:
         logger.info(
@@ -117,7 +122,7 @@ def check_if_group_required(
 
     # if the difference is all unique properties whose keys are in the source grain
     # we can also suppress the group
-    if all(
+    if difference and all(
         [
             x.keys
             and all(
@@ -130,7 +135,7 @@ def check_if_group_required(
             f"{padding}{LOGGER_PREFIX} Group requirement check: skipped due to unique property validation"
         )
         return GroupRequiredResponse(target_grain, comp_grain, False)
-    if all([x.purpose == Purpose.KEY for x in difference]):
+    if difference and all([x.purpose == Purpose.KEY for x in difference]):
         logger.info(
             f"{padding}{LOGGER_PREFIX} checking if downstream is unique properties of key"
         )

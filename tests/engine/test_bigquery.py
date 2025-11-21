@@ -49,7 +49,7 @@ def test_readme():
     key gender string;
     key state string;
     key year int;
-    key yearly_name_count int;
+    property <name, gender, state, year>.yearly_name_count int;
 
     datasource usa_names(
         name:name,
@@ -58,6 +58,7 @@ def test_readme():
         gender:gender,
         state:state
     )
+    grain (name, year, gender, state)
     address `bigquery-public-data.usa_names.usa_1910_2013`;
 
     """
@@ -81,7 +82,7 @@ def test_readme():
     for row in results:
         # get results for first query
         answers = row.fetchall()
-        assert len(answers) == 10
+        assert len(answers) == 3
 
 
 @pytest.mark.skipif(

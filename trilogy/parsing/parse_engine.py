@@ -1142,11 +1142,23 @@ class ParseToObjects(Transformer):
             )
         return text
 
+    def IMPORT_DOT(self, args) -> str:
+        return "."
+
     def import_statement(self, args: list[str]) -> ImportStatement:
         start = datetime.now()
         is_file_resolver = isinstance(
             self.environment.config.import_resolver, FileSystemImportResolver
         )
+        parent_dirs = -1
+        parsed_args = []
+        for x in args:
+            if x == ".":
+                parent_dirs += 1
+            else:
+                parsed_args.append(x)
+        parent_dirs = max(parent_dirs, 0)
+        args = parsed_args
         if len(args) == 2:
             alias = args[-1]
             cache_key = args[-1]
@@ -1154,6 +1166,9 @@ class ParseToObjects(Transformer):
             alias = self.environment.namespace
             cache_key = args[0]
         input_path = args[0]
+        # lstrip off '.' from parent if they exist;
+        # each one is an extra directory up after the first
+
         path = input_path.split(".")
         is_stdlib = False
         if path[0] == "std":
@@ -1161,7 +1176,11 @@ class ParseToObjects(Transformer):
             target = join(STDLIB_ROOT, *path) + ".preql"
             token_lookup: Path | str = Path(target)
         elif is_file_resolver:
-            target = join(self.environment.working_path, *path) + ".preql"
+            troot = Path(self.environment.working_path)
+            if parent_dirs > 0:
+                for _ in range(parent_dirs):
+                    troot = troot.parent
+            target = join(troot, *path) + ".preql"
             # tokens + text are cached by path
             token_lookup = Path(target)
         elif isinstance(self.environment.config.import_resolver, DictImportResolver):
@@ -1270,7 +1289,7 @@ class ParseToObjects(Transformer):
         if len(args) > 3:
             grain: Grain | None = args[3]
         else:
-            grain = None
+            grain = select.grain
         if self.parse_pass == ParsePass.VALIDATION:
             new_datasource = select.to_datasource(
                 namespace=(
