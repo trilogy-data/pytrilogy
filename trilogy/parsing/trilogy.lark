@@ -64,8 +64,10 @@
     column_assignment_list : column_assignment (","  column_assignment)* ","?
     
     column_list : (IDENTIFIER "," )* IDENTIFIER ","?
+
+    IMPORT_DOT: "."
     
-    import_statement: "import" IDENTIFIER ("."  IDENTIFIER)* ("as" IDENTIFIER)?
+    import_statement: "import" IMPORT_DOT* IDENTIFIER ("."  IDENTIFIER)* ("as" IDENTIFIER)?
 
     // persist_statement
     persist_statement: "persist"i IDENTIFIER "into"i IDENTIFIER "from"i select_statement grain_clause?
