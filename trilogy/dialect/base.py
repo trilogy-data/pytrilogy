@@ -679,58 +679,60 @@ class BaseDialect:
         raise_invalid: bool = False,
     ) -> str:
         if isinstance(e, SUBSELECT_COMPARISON_ITEMS):
-
-            if isinstance(e.right, BuildConcept):
+            right: Any = e.right
+            while isinstance(right, BuildParenthetical):
+                right = right.content
+            if isinstance(right, BuildConcept):
                 # we won't always have an existnce map
                 # so fall back to the normal map
                 lookup_cte = cte
                 if cte_map and not lookup_cte:
-                    lookup_cte = cte_map.get(e.right.address)
+                    lookup_cte = cte_map.get(right.address)
 
                 assert lookup_cte, "Subselects must be rendered with a CTE in context"
-                if e.right.address not in lookup_cte.existence_source_map:
+                if right.address not in lookup_cte.existence_source_map:
                     lookup = lookup_cte.source_map.get(
-                        e.right.address,
+                        right.address,
                         [
                             INVALID_REFERENCE_STRING(
-                                f"Missing source reference to {e.right.address}"
+                                f"Missing source reference to {right.address}"
                             )
                         ],
                     )
                 else:
-                    lookup = lookup_cte.existence_source_map[e.right.address]
+                    lookup = lookup_cte.existence_source_map[right.address]
                 if len(lookup) > 0:
                     target = lookup[0]
                 else:
                     target = INVALID_REFERENCE_STRING(
-                        f"Missing source CTE for {e.right.address}"
+                        f"Missing source CTE for {right.address}"
                     )
                 assert cte, "CTE must be provided for inlined CTEs"
-                self.used_map[target].add(e.right.address)
+                self.used_map[target].add(right.address)
                 if target in cte.inlined_ctes:
                     info = cte.inlined_ctes[target]
-                    return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} from {info.new_base} as {target} where {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} is not null)"
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} from {target} where {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} is not null)"
-            elif isinstance(e.right, BuildParamaterizedConceptReference):
-                if isinstance(e.right.concept.lineage, BuildFunction) and isinstance(
-                    e.right.concept.lineage.arguments[0], ListWrapper
+                    return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} from {info.new_base} as {target} where {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} is not null)"
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} from {target} where {target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER} is not null)"
+            elif isinstance(right, BuildParamaterizedConceptReference):
+                if isinstance(right.concept.lineage, BuildFunction) and isinstance(
+                    right.concept.lineage.arguments[0], ListWrapper
                 ):
                     return self.render_array_unnest(
                         e.left,
-                        e.right,
+                        right,
                         e.operator,
                         cte=cte,
                         cte_map=cte_map,
                         raise_invalid=raise_invalid,
                     )
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
             elif isinstance(
-                e.right,
+                right,
                 (ListWrapper, TupleWrapper, BuildParenthetical),
             ):
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
 
-            return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} ({self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
+            return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} ({self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
         elif isinstance(e, COMPARISON_ITEMS):
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
         elif isinstance(e, CONDITIONAL_ITEMS):

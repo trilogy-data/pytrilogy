@@ -1,0 +1,62 @@
+# Trilogy Workflow Script
+# Combined code from all workflow steps
+
+# Step 1: Define concepts and sources
+# Foundations of your model; incremental, same syntax as you query in, and no YAML.
+
+import station as start_station;
+import station as end_station;
+
+key ride_id int;
+property ride_id.ride_start_time timestamp; # UTC start time
+property ride_id.ride_end_time timestamp;   # UTC end time
+
+auto ride_seconds <- date_diff(ride_start_time, ride_end_time, second);
+auto ride_date <- date_trunc(ride_start_time, day);
+
+datasource rides (
+    ride_id: ride_id,
+    start_time: ride_start_time,
+    end_time: ride_end_time,
+    start_station: start_station.id,
+    end_station: end_station.id
+)
+grain (ride_id)
+query '''
+select * from (
+    values
+      (1, '2025-01-01 08:00:00'::timestamp, '2025-01-01 08:15:00'::timestamp, 10, 20),
+      (2, '2025-01-01 09:30:00'::timestamp, '2025-01-01 09:45:30'::timestamp, 11, 21),
+      (3, '2025-01-02 12:00:00'::timestamp, '2025-01-02 12:05:00'::timestamp, 10, 22),
+      (4, '2025-01-02 18:20:00'::timestamp, '2025-01-02 18:50:00'::timestamp, 12, 10),
+      (5, '2025-01-03 07:05:00'::timestamp, '2025-01-03 07:25:00'::timestamp, 20, 11)
+) as t(ride_id, start_time, end_time, start_station, end_station)
+''';
+
+# size our data
+select count(ride_id) as rides; 
+
+# Step 2: Extend and iterate
+# Easily iterate on the model with either inline definition or in queries.
+
+auto daily_rides <- count(ride_id) by ride_date;
+
+SELECT
+    day_of_week,
+    rank start_station.id by avg(daily_rides) desc as daily_station_rank
+HAVING
+    daily_station_rank <5
+;
+
+# Step 3: Save data back
+# Support for the full data lifecycle.
+
+persist daily_ranking into tbl_daily_ranking from
+SELECT
+    day_of_week,
+    daily_station_rank
+;
+
+# Step 4: Reuse
+# Promote your new definitions up to a team model, deploy, and reuse everywhere.
+
