@@ -30,6 +30,64 @@ def extra_to_kwargs(arg_list: list[str]) -> dict[str, str | int]:
     return final
 
 
+def parse_env_params(env_param_list: tuple[str]) -> dict[str, str]:
+    """Parse environment parameters from key=value format."""
+    env_params = {}
+    for param in env_param_list:
+        if "=" not in param:
+            raise ValueError(
+                f"Environment parameter must be in key=value format: {param}"
+            )
+        key, value = param.split("=", 1)  # Split on first = only
+        env_params[key] = value
+    return env_params
+
+
+def separate_conn_and_env_args(
+    args: tuple[str], dialect: Dialects
+) -> tuple[dict[str, str | int], dict[str, str | int]]:
+    """
+    Separates connection arguments from environment parameters.
+    Connection args are dialect-specific, environment args are everything else.
+    """
+    # Define known connection argument keys for each dialect
+    conn_arg_keys = {
+        Dialects.DUCK_DB: {"database", "path", "config", "read_only"},
+        Dialects.SNOWFLAKE: {
+            "account",
+            "user",
+            "password",
+            "database",
+            "schema",
+            "warehouse",
+            "role",
+        },
+        Dialects.SQL_SERVER: {
+            "server",
+            "database",
+            "username",
+            "password",
+            "driver",
+            "trusted_connection",
+        },
+        Dialects.POSTGRES: {"host", "port", "database", "user", "password", "sslmode"},
+    }
+
+    all_args = extra_to_kwargs(args)
+    dialect_conn_keys = conn_arg_keys.get(dialect, set())
+
+    conn_args = {}
+    env_args = {}
+
+    for key, value in all_args.items():
+        if key in dialect_conn_keys:
+            conn_args[key] = value
+        else:
+            env_args[key] = value
+
+    return conn_args, env_args
+
+
 @group()
 @option("--debug", default=False)
 @pass_context
@@ -45,7 +103,6 @@ def fmt(ctx, input):
     start = datetime.now()
     with open(input, "r") as f:
         script = f.read()
-
     _, queries = parse(script)
     r = Renderer()
     with open(input, "w") as f:
@@ -61,9 +118,10 @@ def fmt(ctx, input):
 )
 @argument("input", type=Path())
 @argument("dialect", type=str)
+@option("--env", multiple=True, help="Environment parameters as key=value pairs")
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
-def run(ctx, input, dialect: str, conn_args):
+def run(ctx, input, dialect: str, env, conn_args):
     if PathlibPath(input).exists():
         inputp = PathlibPath(input)
         with open(input, "r") as f:
@@ -74,10 +132,16 @@ def run(ctx, input, dialect: str, conn_args):
         script = input
         namespace = DEFAULT_NAMESPACE
         directory = PathlibPath.cwd()
-    edialect = Dialects(dialect)
 
+    edialect = Dialects(dialect)
     debug = ctx.obj["DEBUG"]
-    conn_dict = extra_to_kwargs((conn_args))
+
+    # Parse environment parameters from dedicated flag
+    env_params = parse_env_params(env)
+
+    # Parse connection arguments from remaining args
+    conn_dict = extra_to_kwargs(conn_args)
+
     if edialect == Dialects.DUCK_DB:
         from trilogy.dialect.config import DuckDBConfig
 
@@ -96,10 +160,16 @@ def run(ctx, input, dialect: str, conn_args):
         conf = PostgresConfig(**conn_dict)  # type: ignore
     else:
         conf = None
+
+    # Create environment and set additional parameters if any exist
+    environment = Environment(working_path=str(directory), namespace=namespace)
+    if env_params:
+        environment.set_parameters(**env_params)
+
     exec = Executor(
         dialect=edialect,
         engine=edialect.default_engine(conf=conf),
-        environment=Environment(working_path=str(directory), namespace=namespace),
+        environment=environment,
         hooks=[DebuggingHook()] if debug else [],
     )
 

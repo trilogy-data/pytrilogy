@@ -2,6 +2,9 @@ from enum import Enum
 
 InfiniteFunctionArgs = -1
 
+class DatasourceStatus(Enum):
+    PUBLISHED = "published"
+    UNPUBLISHED = "unpublished"
 
 class UnnestMode(Enum):
     DIRECT = "direct"
@@ -66,6 +69,7 @@ class Derivation(Enum):
 class Granularity(Enum):
     SINGLE_ROW = "single_row"
     MULTI_ROW = "multi_row"
+
 
 class PersistMode(Enum):
     OVERWRITE = "overwrite"

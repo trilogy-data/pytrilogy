@@ -63,6 +63,9 @@ FUNCTION_MAP = {
     FunctionType.ARRAY_SUM: lambda x, types: f"(select sum(x) from unnest({x[0]}) as x)",
     FunctionType.ARRAY_DISTINCT: lambda x, types: f"ARRAY(SELECT DISTINCT element FROM UNNEST({x[0]}) AS element)",
     FunctionType.ARRAY_SORT: lambda x, types: f"ARRAY(SELECT element FROM UNNEST({x[0]}) AS element ORDER BY element)",
+    # aggregate
+    FunctionType.BOOL_AND: lambda x, types: f"LOGICAL_AND({x[0]})",
+    FunctionType.BOOL_OR: lambda x, types: f"LOGICAL_OR({x[0]})",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
@@ -88,7 +91,7 @@ DATATYPE_MAP: dict[DataType, str] = {
 
 BQ_SQL_TEMPLATE = Template(
     """{%- if output %}
-CREATE OR REPLACE TABLE {{ output.address.location }} AS
+{{output}}
 {% endif %}{%- if ctes %}
 WITH {% if recursive%}RECURSIVE{% endif %}{% for cte in ctes %}
 {{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% else%}

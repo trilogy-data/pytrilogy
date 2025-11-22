@@ -1,13 +1,14 @@
 from dataclasses import dataclass, field
 from typing import List, Optional, Union
 
-from trilogy.core.enums import IOType, ValidationScope
+from trilogy.core.enums import IOType, PersistMode, ValidationScope
 from trilogy.core.models.author import ConceptRef, HavingClause, WhereClause
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
     BuildOrderBy,
 )
+from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import Address, Datasource
 from trilogy.core.models.environment import EnvironmentConceptDict
 from trilogy.core.models.execute import CTE, UnionCTE
@@ -28,6 +29,7 @@ class MaterializedDataset:
 class PersistQueryMixin:
     output_to: MaterializedDataset
     datasource: Datasource
+    persist_mode: PersistMode
 
 
 @dataclass
@@ -74,6 +76,30 @@ class ProcessedValidateStatement:
     scope: ValidationScope
     targets: Optional[List[str]]
 
+@dataclass
+class ColumnInfo:
+    name: str
+    type: DataType
+    nullable: bool = True
+    primary_key: bool = False
+    description: Optional[str] = None
+
+@dataclass
+class CreateTableInfo:
+    name:str
+    columns:List[ColumnInfo]
+    partition_keys:Optional[List[str]] = field(default = list)
+
+
+@dataclass
+class ProcessedCreateStatement:
+    scope: ValidationScope
+    targets: list[CreateTableInfo]
+
+@dataclass
+class ProcessedPublishStatement:
+    scope: ValidationScope
+    targets: Optional[List[str]]
 
 @dataclass
 class ProcessedStaticValueOutput:
@@ -103,4 +129,6 @@ PROCESSED_STATEMENT_TYPES = (
     | ProcessedQueryPersist
     | ProcessedShowStatement
     | ProcessedValidateStatement
+    | ProcessedCreateStatement
+    | ProcessedPublishStatement
 )

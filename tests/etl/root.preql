@@ -52,3 +52,4 @@ datasource tbl_ride_data (
 )
 grain (ride_id)
 address tbl_ride_data;
+

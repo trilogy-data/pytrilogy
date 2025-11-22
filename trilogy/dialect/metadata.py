@@ -13,10 +13,12 @@ from trilogy.core.statements.execute import (
     ProcessedShowStatement,
     ProcessedStaticValueOutput,
     ProcessedValidateStatement,
+    ProcessedPublishStatement
 )
 from trilogy.core.validation.common import ValidationTest
 from trilogy.dialect.base import BaseDialect
 from trilogy.engine import ResultProtocol
+from trilogy.core.enums import DatasourceStatus
 
 
 @dataclass
@@ -140,6 +142,25 @@ def handle_import_statement(query: ImportStatement) -> MockResult:
         ["path", "alias"],
     )
 
+def handle_publish_statement(
+    query: ProcessedPublishStatement, environment: Environment
+) -> MockResult:
+    """Handle publish statements by updating environment and returning result."""
+    for x in query.targets:
+        datasource = environment.datasources.get(x)
+        if not datasource:
+            raise ValueError(f"Datasource {x} not found in environment")
+        datasource.status = DatasourceStatus.PUBLISHED
+
+    return MockResult(
+        [
+            {
+                "sources": ",".join([x.address for x in query.sources]),
+                "targets": ",".join([x.address for _, x in query.targets.items()]),
+            }
+        ],
+        ["source", "target"],
+    )
 
 def handle_merge_statement(
     query: MergeStatementV2, environment: Environment

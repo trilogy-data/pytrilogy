@@ -370,6 +370,80 @@ def test_math_functions():
     assert list_results[0].floor == 102
 
 
+def test_aggregate_functions():
+    exec = Dialects.BIGQUERY.default_executor()
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    results = exec.execute_text(
+        """
+key order_id int;
+property order_id.revenue float;
+property order_id.quantity int;
+property order_id.is_premium bool;
+key category string;
+
+datasource orders (
+    order_id,
+    revenue,
+    quantity,
+    is_premium,
+    category
+)
+grain (order_id)
+query '''
+select 1 as order_id, 100.50 as revenue, 2 as quantity, true as is_premium, 'A' as category
+union all
+select 2, 250.75, 1, false, 'B'
+union all
+select 3, 75.25, 3, true, 'A'
+union all
+select 4, 300.00, 1, false, 'C'
+union all
+select 5, 150.80, 4, true, 'B'
+''';
+
+auto total_revenue <- sum(revenue);
+auto max_revenue <- max(revenue);
+auto min_revenue <- min(revenue);
+auto avg_revenue <- avg(revenue);
+auto order_count <- count(order_id);
+auto distinct_categories <- count(category);
+auto total_quantity <- sum(quantity);
+auto any_premium <- bool_or(is_premium);
+auto all_premium <- bool_and(is_premium);
+auto revenue_array <- array_agg(revenue);
+
+select
+    total_revenue,
+    max_revenue,
+    min_revenue,
+    avg_revenue,
+    order_count,
+    distinct_categories,
+    total_quantity,
+    any_premium,
+    all_premium,
+    revenue_array,
+;
+"""
+    )
+
+    result = list(results[-1].fetchall())[0]
+
+    # Test aggregate calculations
+    assert result.total_revenue == 877.30
+    assert result.max_revenue == 300.00
+    assert result.min_revenue == 75.25
+    assert abs(result.avg_revenue - 175.46) < 0.01
+    assert result.order_count == 5
+    assert result.distinct_categories == 3
+    assert result.total_quantity == 11
+    assert result.any_premium == True
+    assert result.all_premium == False
+    assert len(result.revenue_array) == 5
+
+
 def test_array():
     test_executor = Dialects.BIGQUERY.default_executor()
     test_select = """

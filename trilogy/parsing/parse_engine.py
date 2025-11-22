@@ -36,12 +36,13 @@ from trilogy.core.enums import (
     IOType,
     Modifier,
     Ordering,
+    PersistMode,
     Purpose,
     ShowCategory,
     ValidationScope,
     WindowOrder,
     WindowType,
-    PersistMode
+    DatasourceStatus,
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.functions import (
@@ -134,6 +135,8 @@ from trilogy.core.statements.author import (
     ShowStatement,
     TypeDeclaration,
     ValidateStatement,
+    PublishStatement,
+    CreateStatement,
 )
 from trilogy.parsing.common import (
     align_item_to_concept,
@@ -687,11 +690,12 @@ class ParseToObjects(Transformer):
         if purpose == Purpose.PARAMETER:
             value = self.environment.parameters.get(name, None)
             if not value:
-                raise UndefinedConceptException(
-                    f"Parameter {name} not set in environment parameters."
+                raise SyntaxError(
+                    f'This script requires parameter "{name}" to be set in environment.'
                 )
-            rval = self.constant_derivation(meta, [Purpose.CONSTANT, name, value, metadata])
-            print(rval)
+            rval = self.constant_derivation(
+                meta, [Purpose.CONSTANT, name, value, metadata]
+            )
             return rval
 
         concept = Concept(
@@ -814,14 +818,15 @@ class ParseToObjects(Transformer):
         return output
 
     @v_args(meta=True)
-    def constant_derivation(self, meta: Meta, args:tuple[Purpose, str, Any, Optional[Meta]]) -> Concept:
+    def constant_derivation(
+        self, meta: Meta, args: tuple[Purpose, str, Any, Optional[Meta]]
+    ) -> Concept:
 
         if len(args) > 3:
             metadata = args[3]
         else:
             metadata = None
         name = args[1]
-        print(args)
         constant: Union[str, float, int, bool, MapWrapper, ListWrapper] = args[2]
         lookup, namespace, name, parent = parse_concept_reference(
             name, self.environment
@@ -839,7 +844,7 @@ class ParseToObjects(Transformer):
             ),
             grain=Grain(components=set()),
             namespace=namespace,
-            granularity = Granularity.SINGLE_ROW
+            granularity=Granularity.SINGLE_ROW,
         )
         if concept.metadata:
             concept.metadata.line_number = meta.line
@@ -883,6 +888,13 @@ class ParseToObjects(Transformer):
     def raw_column_assignment(self, args):
         return RawColumnExpr(text=args[1])
 
+    def DATASOURCE_STATUS_CLAUSE(self, args) -> str:
+        return DatasourceStatus(args.value.lower())
+
+    @v_args(meta=True)
+    def datasource_status_clause(self, meta: Meta, args):
+        return args[0]
+
     @v_args(meta=True)
     def datasource(self, meta: Meta, args):
         name = args[0]
@@ -891,6 +903,7 @@ class ParseToObjects(Transformer):
         address: Optional[Address] = None
         where: Optional[WhereClause] = None
         non_partial_for: Optional[WhereClause] = None
+        datasource_status: DatasourceStatus = DatasourceStatus.PUBLISHED
         for val in args[1:]:
             if isinstance(val, Address):
                 address = val
@@ -902,6 +915,8 @@ class ParseToObjects(Transformer):
                 address = Address(location=f"({val.text})", is_query=True)
             elif isinstance(val, WhereClause):
                 where = val
+            elif isinstance(val, DatasourceStatus):
+                datasource_status = val
         if not address:
             raise ValueError(
                 "Malformed datasource, missing address or query declaration"
@@ -916,6 +931,7 @@ class ParseToObjects(Transformer):
             namespace=self.environment.namespace,
             where=where,
             non_partial_for=non_partial_for,
+            status=datasource_status,
         )
         if datasource.where:
             for x in datasource.where.concept_arguments:
@@ -1045,7 +1061,43 @@ class ParseToObjects(Transformer):
     def over_list(self, args):
         return [x for x in args]
 
-    def VALIDATION_SCOPE(self, args) -> ValidationScope:
+    @v_args(meta=True)
+    def publish_statement(self, meta: Meta, args) -> PublishStatement:
+        targets = []
+        scope = ValidationScope.DATASOURCES
+        for arg in args:
+            if isinstance(arg, str):
+                targets.append(arg)
+            elif isinstance(arg, ValidationScope):
+                scope = arg
+                if arg != ValidationScope.DATASOURCES:
+                    raise SyntaxError(
+                        f"Publishing is only supported for Datasources, got {arg} on line {meta.line}"
+                    )
+        return PublishStatement(
+            scope=scope,
+            targets=targets,
+        )
+
+    @v_args(meta=True)
+    def create_statement(self, meta: Meta, args) -> CreateStatement:
+        targets = []
+        scope = ValidationScope.DATASOURCES
+        for arg in args:
+            if isinstance(arg, str):
+                targets.append(arg)
+            elif isinstance(arg, ValidationScope):
+                scope = arg
+                if arg != ValidationScope.DATASOURCES:
+                    raise SyntaxError(
+                        f"Creating is only supported for Datasources, got {arg} on line {meta.line}"
+                    )
+        return CreateStatement(
+            scope=scope,
+            targets=targets,
+        )
+
+    def VALIDATE_SCOPE(self, args) -> ValidationScope:
         return ValidationScope(args.lower())
 
     @v_args(meta=True)
@@ -1294,18 +1346,17 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def show_statement(self, meta: Meta, args) -> ShowStatement:
         return ShowStatement(content=args[0])
-    
+
     @v_args(meta=True)
     def persist_partition_clause(self, meta: Meta, args) -> list[ConceptRef]:
         return [ConceptRef(address=a) for a in args[0]]
-    
+
     @v_args(meta=True)
     def PERSIST_MODE(self, args) -> PersistMode:
         return PersistMode(args.value.lower())
-    
+
     @v_args(meta=True)
     def persist_statement(self, meta: Meta, args) -> PersistStatement | None:
-        address: str = args[1]
         labels = [x for x in args if isinstance(x, str)]
         if len(labels) == 2:
             identifier = labels[0]
@@ -1313,10 +1364,9 @@ class ParseToObjects(Transformer):
         else:
             identifier = labels[0]
             address = identifier
-        modes =  [x for x in args if isinstance(x, PersistMode)]
+        modes = [x for x in args if isinstance(x, PersistMode)]
         mode = modes[0] if modes else PersistMode.OVERWRITE
         select: SelectStatement = [x for x in args if isinstance(x, SelectStatement)][0]
-        
         if self.parse_pass == ParsePass.VALIDATION:
             new_datasource = select.to_datasource(
                 namespace=(
@@ -1332,6 +1382,7 @@ class ParseToObjects(Transformer):
             return PersistStatement(
                 select=select,
                 datasource=new_datasource,
+                persist_mode=mode,
                 meta=Metadata(line_number=meta.line),
             )
         return None
@@ -1967,7 +2018,7 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def any(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.ANY, meta)
-    
+
     @v_args(meta=True)
     def bool_and(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.BOOL_AND, meta)

@@ -502,6 +502,7 @@ def process_persist(
     return ProcessedQueryPersist(
         **arg_dict,
         output_to=MaterializedDataset(address=statement.address),
+        persist_mode=statement.persist_mode,
         datasource=statement.datasource,
     )
 

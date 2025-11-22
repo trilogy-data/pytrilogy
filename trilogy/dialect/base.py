@@ -22,6 +22,7 @@ from trilogy.core.enums import (
     ShowCategory,
     UnnestMode,
     WindowType,
+    PersistMode
 )
 from trilogy.core.internal import DEFAULT_CONCEPTS
 from trilogy.core.models.author import ArgBinding, arg_to_datatype
@@ -62,6 +63,7 @@ from trilogy.core.processing.utility import (
     sort_select_output,
 )
 from trilogy.core.query_processor import process_copy, process_persist, process_query
+from trilogy.core.table_processor import process_create_statement
 from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     CopyStatement,
@@ -75,6 +77,8 @@ from trilogy.core.statements.author import (
     SelectStatement,
     ShowStatement,
     ValidateStatement,
+    CreateStatement,
+    PublishStatement,
 )
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
@@ -85,6 +89,8 @@ from trilogy.core.statements.execute import (
     ProcessedShowStatement,
     ProcessedStaticValueOutput,
     ProcessedValidateStatement,
+    ProcessedCreateStatement,
+    ProcessedPublishStatement
 )
 from trilogy.core.utility import safe_quote
 from trilogy.dialect.common import render_join, render_unnest
@@ -318,7 +324,7 @@ FUNCTION_GRAIN_MATCH_MAP = {
 }
 
 
-GENERIC_SQL_TEMPLATE = Template(
+GENERIC_SQL_TEMPLATE:Template = Template(
     """{%- if ctes %}
 WITH {% if recursive%} RECURSIVE {% endif %}{% for cte in ctes %}
 {{cte.name}} as (
@@ -346,6 +352,24 @@ ORDER BY{% for order in order_by %}
 """
 )
 
+
+
+CREATE_TABLE_SQL_TEMPLATE = Template(
+    """
+CREATE OR REPLACE TABLE {{ name }} (
+{%- for column in columns %}
+    {{ column.name }} {{ type_map[column.name] }}{% if column.comment %} COMMENT '{{ column.comment }}'{% endif %}{% if not loop.last %},{% endif %}
+{%- endfor %}
+)
+{%- if partition_keys %}
+PARTITIONED BY (
+{%- for partition_key in partition_keys %}
+    {{ partition_key }}{% if not loop.last %},{% endif %}
+{%- endfor %}
+)
+{%- endif %};
+""".strip()
+)
 
 def safe_get_cte_value(
     coalesce: Callable,
@@ -1111,6 +1135,8 @@ class BaseDialect:
             | MergeStatementV2
             | CopyStatement
             | ValidateStatement
+            | CreateStatement
+            | PublishStatement
         ],
         hooks: Optional[List[BaseHook]] = None,
     ) -> List[PROCESSED_STATEMENT_TYPES]:
@@ -1197,6 +1223,18 @@ class BaseDialect:
                         targets=statement.targets,
                     )
                 )
+            elif isinstance(statement, CreateStatement):
+                output.append(
+                    process_create_statement(statement,
+                                                      environment)
+                )
+            elif isinstance(statement, PublishStatement):
+                output.append(
+                    ProcessedPublishStatement(
+                        scope=statement.scope,
+                        targets=statement.targets,
+                    )
+                )
             elif isinstance(
                 statement,
                 (
@@ -1230,16 +1268,38 @@ class BaseDialect:
 
         elif isinstance(query, ProcessedValidateStatement):
             return "select 1;"
+        elif isinstance(query, ProcessedCreateStatement):
+
+            text = []
+            for target in query.targets:
+                type_map = {}
+                for c in target.columns:
+                    type_map[c.name] = self.render_expr(c.type)
+                text.append(
+                    CREATE_TABLE_SQL_TEMPLATE.render(
+                        name = target.name,
+                        columns = target.columns,
+                        type_map = type_map,
+                        partition_keys = target.partition_keys
+                    )
+                )
+            return "\n".join(text)
 
         recursive = any(isinstance(x, RecursiveCTE) for x in query.ctes)
 
         compiled_ctes = self.generate_ctes(query)
+        output = None
+        if isinstance(query, ProcessedQueryPersist):
+            if query.persist_mode == PersistMode.OVERWRITE:
+                output = f"CREATE OR REPLACE TABLE {safe_quote(query.output_to.address.location, self.QUOTE_CHARACTER)} AS "
+            elif query.persist_mode == PersistMode.APPEND:
+                output = f"INSERT INTO {safe_quote(query.output_to.address.location, self.QUOTE_CHARACTER)} "
+            else:
+                raise NotImplementedError(f"Persist mode {query.persist_mode} not implemented")
 
         final = self.SQL_TEMPLATE.render(
             recursive=recursive,
-            output=(
-                query.output_to if isinstance(query, ProcessedQueryPersist) else None
-            ),
+            output=output,
             full_select=compiled_ctes[-1].statement,
             ctes=compiled_ctes[:-1],
         )

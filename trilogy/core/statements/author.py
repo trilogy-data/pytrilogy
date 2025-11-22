@@ -11,6 +11,7 @@ from trilogy.core.enums import (
     FunctionClass,
     IOType,
     Modifier,
+    PersistMode,
     ShowCategory,
     ValidationScope,
 )
@@ -451,6 +452,7 @@ class ImportStatement(HasUUID, BaseModel):
 class PersistStatement(HasUUID, BaseModel):
     datasource: Datasource
     select: SelectStatement
+    persist_mode: PersistMode = PersistMode.OVERWRITE
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
 
     @property
@@ -466,6 +468,13 @@ class ValidateStatement(BaseModel):
     scope: ValidationScope
     targets: Optional[List[str]] = None  # list of identifiers
 
+class PublishStatement(BaseModel):
+    scope: ValidationScope
+    targets: Optional[List[str]] = None  # list of identifiers
+
+class CreateStatement(BaseModel):
+    scope: ValidationScope
+    targets: Optional[List[str]] = None  # list of identifiers
 
 class ShowStatement(BaseModel):
     content: SelectStatement | PersistStatement | ValidateStatement | ShowCategory

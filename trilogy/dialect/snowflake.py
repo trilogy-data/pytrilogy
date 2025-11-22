@@ -46,7 +46,7 @@ FUNCTION_GRAIN_MATCH_MAP = {
 
 SNOWFLAKE_SQL_TEMPLATE = Template(
     """{%- if output %}
-CREATE OR REPLACE TABLE {{ output.address.location }} AS
+{{output}}
 {% endif %}{%- if ctes %}
 WITH {% if recursive%}RECURSIVE{% endif %}{% for cte in ctes %}
 "{{cte.name}}" as ({{cte.statement}}){% if not loop.last %},{% endif %}{% else %}

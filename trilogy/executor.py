@@ -5,7 +5,13 @@ from typing import Any, Generator, List, Optional
 from sqlalchemy import text
 
 from trilogy.constants import MagicConstants, Rendering, logger
-from trilogy.core.enums import FunctionType, Granularity, IOType, ValidationScope
+from trilogy.core.enums import (
+    FunctionType,
+    Granularity,
+    IOType,
+    PersistMode,
+    ValidationScope,
+)
 from trilogy.core.models.author import Comment, Concept, Function
 from trilogy.core.models.build import BuildFunction
 from trilogy.core.models.core import ListWrapper, MapWrapper
@@ -22,6 +28,8 @@ from trilogy.core.statements.author import (
     SelectStatement,
     ShowStatement,
     ValidateStatement,
+    CreateStatement,
+    PublishStatement,
 )
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
@@ -31,6 +39,8 @@ from trilogy.core.statements.execute import (
     ProcessedRawSQLStatement,
     ProcessedShowStatement,
     ProcessedValidateStatement,
+    ProcessedCreateStatement,
+    ProcessedPublishStatement
 )
 from trilogy.core.validation.common import (
     ValidationTest,
@@ -159,7 +169,19 @@ class Executor(object):
         return handle_processed_validate_statement(
             query, self.generator, self.validate_environment
         )
+    
+    @execute_query.register
+    def _(self, query: ProcessedCreateStatement) -> ResultProtocol | None:
+        sql = self.generator.compile_statement(query)
+        output = self.execute_raw_sql(sql)
+        return output
 
+    @execute_query.register
+    def _(self, query: ProcessedPublishStatement) -> ResultProtocol | None:
+        return handle_processed_validate_statement(
+            query, self.generator, self.validate_environment
+        )
+    
     @execute_query.register
     def _(self, query: ImportStatement) -> ResultProtocol | None:
         return handle_import_statement(query)
@@ -183,7 +205,8 @@ class Executor(object):
         sql = self.generator.compile_statement(query)
 
         output = self.execute_raw_sql(sql, local_concepts=query.local_concepts)
-        self.environment.add_datasource(query.datasource)
+        if query.persist_mode == PersistMode.OVERWRITE:
+            self.environment.add_datasource(query.datasource)
         return output
 
     @execute_query.register
@@ -329,6 +352,8 @@ class Executor(object):
                     RawSQLStatement,
                     CopyStatement,
                     ValidateStatement,
+                    CreateStatement,
+                    PublishStatement,
                 ),
             )
         ]
@@ -354,7 +379,9 @@ class Executor(object):
         local_concepts: dict[str, Concept] | None = None,
     ) -> Any:
         if not concept.granularity == Granularity.SINGLE_ROW:
-            raise SyntaxError(f"Cannot bind non-singleton concept {concept.address} ({concept.granularity}) to a parameter.")
+            raise SyntaxError(
+                f"Cannot bind non-singleton concept {concept.address} ({concept.granularity}) to a parameter."
+            )
         # TODO: to get rid of function here - need to figure out why it's getting passed in
         if (
             isinstance(concept.lineage, (BuildFunction, Function))

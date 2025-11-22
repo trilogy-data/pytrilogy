@@ -14,6 +14,7 @@ from typing import (
     List,
     Never,
     Optional,
+    Self,
     Tuple,
     ValuesView,
 )
@@ -238,10 +239,9 @@ class Environment(BaseModel):
     def thaw(self):
         self.frozen = False
 
-    def set_parameters(self, **kwargs):
+    def set_parameters(self, **kwargs) -> Self:
         self.parameters.update(kwargs)
-
-    
+        return self
 
     def materialize_for_select(
         self, local_concepts: dict[str, "BuildConcept"] | None = None

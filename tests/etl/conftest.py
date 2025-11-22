@@ -1,6 +1,8 @@
-import pytest
-from trilogy import Dialects, Environment
 from pathlib import Path
+
+import pytest
+
+from trilogy import Dialects, Environment
 
 
 @pytest.fixture(scope="module")

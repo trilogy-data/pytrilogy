@@ -27,6 +27,7 @@ from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
     BooleanOperator,
     ComparisonOperator,
+    DatasourceStatus,
     DatePart,
     Derivation,
     FunctionClass,
@@ -1898,7 +1899,7 @@ class Factory:
             return self.__build_concept(base)
         except RecursionError as e:
             raise RecursionError(
-                f"Recursion error building concept {base.address}. This is likely due to a circular reference."
+                f"Recursion error building concept {base.address} with grain {base.grain} and lineage {base.lineage}. This is likely due to a circular reference."
             ) from e
 
     def __build_concept(self, base: Concept) -> BuildConcept:
@@ -2426,6 +2427,8 @@ class Factory:
             k,
             d,
         ) in base.datasources.items():
+            if d.status != DatasourceStatus.PUBLISHED:
+                continue
             new.datasources[k] = self._build_datasource(d)
         for k, a in base.alias_origin_lookup.items():
             a_build = self._build_concept(a)
