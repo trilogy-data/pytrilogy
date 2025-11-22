@@ -2234,3 +2234,39 @@ select
 
 """
     )
+
+
+def test_existence():
+    exec = Dialects.DUCK_DB.default_executor()
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+    results = exec.execute_text(
+        """
+key state string;
+property state.count int;
+datasource origin (
+state: state,
+count: count
+)
+grain (state)
+query '''
+select 'CA' as state, 10 as count
+union all
+select 'NY', 20
+union all
+select 'TX', 30 
+''';
+
+where state in (state? count>20)
+select
+   state,
+;
+
+where state in state? count>20
+select
+   state,
+;
+"""
+    )
+    assert results[-1].fetchall()[0].state == "TX"

@@ -1,0 +1,12 @@
+
+
+key id int;
+
+datasource stations(
+    id
+)
+grain (id)
+query '''
+select 1 as id union select 2 union all select 20 union all select 10 union all select 11 union all select 12 union all select 21 union all select 22
+'''
+;
