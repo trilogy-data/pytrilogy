@@ -888,7 +888,7 @@ class ParseToObjects(Transformer):
     def raw_column_assignment(self, args):
         return RawColumnExpr(text=args[1])
 
-    def DATASOURCE_STATUS_CLAUSE(self, args) -> str:
+    def DATASOURCE_STATUS(self, args) -> str:
         return DatasourceStatus(args.value.lower())
 
     @v_args(meta=True)

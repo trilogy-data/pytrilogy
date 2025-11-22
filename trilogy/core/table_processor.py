@@ -34,7 +34,7 @@ def process_create_statement(
         ]
 
         targets_info.append(
-            CreateTableInfo(name=target, columns=columns_info, partition_keys=[])
+            CreateTableInfo(name=datasource.address.location, columns=columns_info, partition_keys=[])
         )
 
     return ProcessedCreateStatement(scope=statement.scope, targets=targets_info)

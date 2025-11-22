@@ -88,3 +88,59 @@ address tbl_daily_fact
 state UNPUBLISHED;
 
 create datasources daily_fact;
+
+
+#INSERT INTO daily_fact BY ride_year, ride_month
+PERSIST APPEND INTO tbl_daily_fact by ride_year, ride_month 
+FROM  
+WHERE ride_year = load_year
+SELECT 
+    # Extract year and month for partitioning
+    ride_year,
+    ride_month,
+    # Basic counts and aggregations - now using reusable references
+    total_rides, 
+    total_riders,
+    total_distance_miles,
+    total_duration_minutes,
+    total_duration_hours,
+    total_calories_burned,
+    
+    # Average metrics - now using reusable references
+    avg_distance_per_ride,
+    avg_duration_per_ride,
+    avg_ride_avg_speed_mph,
+    avg_fun_rating,
+    avg_temp_f,
+    
+    # Weather boolean flags - now using reusable references
+    had_sunny_weather,
+    had_rainy_weather,
+    had_windy_weather,
+    had_poor_weather,
+    
+    # Ride type boolean flags - now using reusable references
+    had_commute_rides,
+    had_adventure_rides,
+    had_training_rides,
+    
+    # Performance boolean flags - now using reusable references
+    had_long_rides,
+    had_fast_rides,
+    had_high_fun_rides,
+    had_high_calorie_rides,
+    
+    # Bike type diversity - now using reusable references
+    bike_types_used,
+    had_ebike_rides,
+    had_mountain_bike_rides,
+    
+    # Location diversity - now using reusable references
+    locations_used,
+    had_park_rides,
+    
+    # Temperature categories - now using reusable references
+    had_cold_rides,
+    had_hot_rides
+ ;
+
