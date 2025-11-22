@@ -263,6 +263,8 @@ FUNCTION_MAP = {
     FunctionType.MAX: lambda x, types: f"max({x[0]})",
     FunctionType.MIN: lambda x, types: f"min({x[0]})",
     FunctionType.ANY: lambda x, types: f"any_value({x[0]})",
+    FunctionType.BOOL_OR: lambda x, types: f"bool_or({x[0]})",
+    FunctionType.BOOL_AND: lambda x, types: f"bool_and({x[0]})",
     # string types
     FunctionType.LIKE: lambda x, types: f" {x[0]} like {x[1]} ",
     FunctionType.UPPER: lambda x, types: f"UPPER({x[0]}) ",

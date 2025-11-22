@@ -1,0 +1,63 @@
+# script to update our aggregate table
+# partitioned by year, month
+# updates one year at a time
+import root;
+
+parameter load_year int; # the year of data to load into the daily fact table;
+
+PERSIST INCREMENTAL INTO tbl_daily_fact BY ride_year, ride_month
+FROM  
+WHERE ride_year = load_year
+SELECT 
+    ride_date,
+    # Extract year and month for partitioning
+    ride_year,
+    ride_month,
+    # Basic counts and aggregations
+    COUNT(ride_id) AS total_rides,
+    COUNT(rider_id) AS unique_riders,
+    ROUND(SUM(distance_miles), 2) AS total_distance_miles,
+    ROUND(SUM(duration_minutes), 2) AS total_duration_minutes,
+    ROUND(SUM(duration_minutes) / 60, 2) AS total_duration_hours,
+    ROUND(SUM(calories_burned), 0) AS total_calories_burned,
+    
+    # Average metrics
+    ROUND(AVG(distance_miles), 2) AS avg_distance_per_ride,
+    ROUND(AVG(duration_minutes), 2) AS avg_duration_per_ride,
+    ROUND(AVG(avg_speed_mph), 2) AS avg_speed_mph,
+    ROUND(AVG(fun_rating), 2) AS avg_fun_rating,
+    ROUND(AVG(temp_f), 1) AS avg_temp_f,
+    
+    # Weather boolean flags
+    BOOL_OR(weather = 'Sunny') AS had_sunny_weather,
+    BOOL_OR(weather = 'Light Rain') AS had_rainy_weather,
+    BOOL_OR(weather = 'Windy') AS had_windy_weather,
+    BOOL_OR(weather IN ('Light Rain', 'Overcast')) AS had_poor_weather,
+    
+    # Ride type boolean flags
+    BOOL_OR(ride_type LIKE '%Commute%') AS had_commute_rides,
+    BOOL_OR(ride_type LIKE '%Adventure%') AS had_adventure_rides,
+    BOOL_OR(ride_type LIKE '%Training%') AS had_training_rides,
+    
+    # Performance boolean flags
+    BOOL_OR(distance_miles > 20) AS had_long_rides,
+    BOOL_OR(avg_speed_mph > 15) AS had_fast_rides,
+    BOOL_OR(fun_rating >= 8) AS had_high_fun_rides,
+    BOOL_OR(calories_burned > 500) AS had_high_calorie_rides,
+    
+    # Bike type diversity
+    COUNT(bike_type) AS bike_types_used,
+    BOOL_OR(bike_type = 'E-bike') AS had_ebike_rides,
+    BOOL_OR(bike_type = 'Mountain Bike') AS had_mountain_bike_rides,
+    
+    # Location diversity  
+    COUNT(start_location) AS locations_used,
+    BOOL_OR(start_location LIKE '%Park%') AS had_park_rides,
+    
+    # Weather stats
+    # STRING_AGG(weather, ', ' ORDER BY weather) AS weather_conditions,
+    
+    # Temperature categories
+    BOOL_OR(temp_f < 40) AS had_cold_rides,
+    BOOL_OR(temp_f > 75) AS had_hot_rides
+ ;

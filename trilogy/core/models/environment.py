@@ -230,12 +230,18 @@ class Environment(BaseModel):
     # TODO: support freezing environments to avoid mutation
     frozen: bool = False
     env_file_path: Path | str | None = None
+    parameters: Dict[str, Any] = Field(default_factory=dict)
 
     def freeze(self):
         self.frozen = True
 
     def thaw(self):
         self.frozen = False
+
+    def set_parameters(self, **kwargs):
+        self.parameters.update(kwargs)
+
+    
 
     def materialize_for_select(
         self, local_concepts: dict[str, "BuildConcept"] | None = None

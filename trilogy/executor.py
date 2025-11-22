@@ -354,7 +354,7 @@ class Executor(object):
         local_concepts: dict[str, Concept] | None = None,
     ) -> Any:
         if not concept.granularity == Granularity.SINGLE_ROW:
-            raise SyntaxError(f"Cannot bind non-singleton concept {concept.address}")
+            raise SyntaxError(f"Cannot bind non-singleton concept {concept.address} ({concept.granularity}) to a parameter.")
         # TODO: to get rid of function here - need to figure out why it's getting passed in
         if (
             isinstance(concept.lineage, (BuildFunction, Function))

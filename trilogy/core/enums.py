@@ -38,6 +38,7 @@ class Purpose(Enum):
     METRIC = "metric"
     ROWSET = "rowset"
     AUTO = "auto"
+    PARAMETER = "parameter"
     UNKNOWN = "unknown"
 
     @classmethod
@@ -65,6 +66,10 @@ class Derivation(Enum):
 class Granularity(Enum):
     SINGLE_ROW = "single_row"
     MULTI_ROW = "multi_row"
+
+class PersistMode(Enum):
+    OVERWRITE = "overwrite"
+    APPEND = "append"
 
 
 class Modifier(Enum):
@@ -206,6 +211,8 @@ class FunctionType(Enum):
     MIN = "min"
     AVG = "avg"
     ARRAY_AGG = "array_agg"
+    BOOL_OR = "bool_or"
+    BOOL_AND = "bool_and"
     ANY = "any"
 
     # String
@@ -269,6 +276,8 @@ class FunctionClass(Enum):
         FunctionType.COUNT,
         FunctionType.COUNT_DISTINCT,
         FunctionType.ANY,
+        FunctionType.BOOL_OR,
+        FunctionType.BOOL_AND,
     ]
     SINGLE_ROW = [
         FunctionType.CONSTANT,

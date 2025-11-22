@@ -41,6 +41,7 @@ from trilogy.core.enums import (
     ValidationScope,
     WindowOrder,
     WindowType,
+    PersistMode
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.functions import (
@@ -675,6 +676,7 @@ class ParseToObjects(Transformer):
     def concept_declaration(self, meta: Meta, args) -> ConceptDeclarationStatement:
         metadata = Metadata()
         modifiers = []
+        purpose = args[0]
         for arg in args:
             if isinstance(arg, Metadata):
                 metadata = arg
@@ -682,10 +684,20 @@ class ParseToObjects(Transformer):
                 modifiers.append(arg)
         name = args[1]
         _, namespace, name, _ = parse_concept_reference(name, self.environment)
+        if purpose == Purpose.PARAMETER:
+            value = self.environment.parameters.get(name, None)
+            if not value:
+                raise UndefinedConceptException(
+                    f"Parameter {name} not set in environment parameters."
+                )
+            rval = self.constant_derivation(meta, [Purpose.CONSTANT, name, value, metadata])
+            print(rval)
+            return rval
+
         concept = Concept(
             name=name,
             datatype=args[2],
-            purpose=args[0],
+            purpose=purpose,
             metadata=metadata,
             namespace=namespace,
             modifiers=modifiers,
@@ -802,13 +814,14 @@ class ParseToObjects(Transformer):
         return output
 
     @v_args(meta=True)
-    def constant_derivation(self, meta: Meta, args) -> Concept:
+    def constant_derivation(self, meta: Meta, args:tuple[Purpose, str, Any, Optional[Meta]]) -> Concept:
 
         if len(args) > 3:
             metadata = args[3]
         else:
             metadata = None
         name = args[1]
+        print(args)
         constant: Union[str, float, int, bool, MapWrapper, ListWrapper] = args[2]
         lookup, namespace, name, parent = parse_concept_reference(
             name, self.environment
@@ -826,6 +839,7 @@ class ParseToObjects(Transformer):
             ),
             grain=Grain(components=set()),
             namespace=namespace,
+            granularity = Granularity.SINGLE_ROW
         )
         if concept.metadata:
             concept.metadata.line_number = meta.line
@@ -1280,16 +1294,29 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def show_statement(self, meta: Meta, args) -> ShowStatement:
         return ShowStatement(content=args[0])
-
+    
+    @v_args(meta=True)
+    def persist_partition_clause(self, meta: Meta, args) -> list[ConceptRef]:
+        return [ConceptRef(address=a) for a in args[0]]
+    
+    @v_args(meta=True)
+    def PERSIST_MODE(self, args) -> PersistMode:
+        return PersistMode(args.value.lower())
+    
     @v_args(meta=True)
     def persist_statement(self, meta: Meta, args) -> PersistStatement | None:
-        identifier: str = args[0]
         address: str = args[1]
-        select: SelectStatement = args[2]
-        if len(args) > 3:
-            grain: Grain | None = args[3]
+        labels = [x for x in args if isinstance(x, str)]
+        if len(labels) == 2:
+            identifier = labels[0]
+            address = labels[1]
         else:
-            grain = select.grain
+            identifier = labels[0]
+            address = identifier
+        modes =  [x for x in args if isinstance(x, PersistMode)]
+        mode = modes[0] if modes else PersistMode.OVERWRITE
+        select: SelectStatement = [x for x in args if isinstance(x, SelectStatement)][0]
+        
         if self.parse_pass == ParsePass.VALIDATION:
             new_datasource = select.to_datasource(
                 namespace=(
@@ -1299,7 +1326,7 @@ class ParseToObjects(Transformer):
                 ),
                 name=identifier,
                 address=Address(location=address),
-                grain=grain,
+                grain=select.grain,
                 environment=self.environment,
             )
             return PersistStatement(
@@ -1658,7 +1685,7 @@ class ParseToObjects(Transformer):
         result = args[0]
         for i in range(1, len(args), 2):
             new_result = None
-            op = args[i]
+            op = args[i].lower()
             right = args[i + 1]
             if op == "+":
                 new_result = self.function_factory.create_function(
@@ -1940,6 +1967,14 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def any(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.ANY, meta)
+    
+    @v_args(meta=True)
+    def bool_and(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.BOOL_AND, meta)
+
+    @v_args(meta=True)
+    def bool_or(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.BOOL_OR, meta)
 
     @v_args(meta=True)
     def avg(self, meta, args):

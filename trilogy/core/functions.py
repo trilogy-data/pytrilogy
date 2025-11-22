@@ -939,6 +939,18 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_purpose=Purpose.PROPERTY,
         arg_count=1,
     ),
+    FunctionType.BOOL_AND: FunctionConfig(
+        valid_inputs={DataType.BOOL},
+        output_purpose=Purpose.METRIC,
+        output_type=DataType.BOOL,
+        arg_count=1,
+    ),
+    FunctionType.BOOL_OR: FunctionConfig(
+        valid_inputs={DataType.BOOL},
+        output_purpose=Purpose.METRIC,
+        output_type=DataType.BOOL,
+        arg_count=1,
+    ),
     FunctionType.AVG: FunctionConfig(
         valid_inputs={
             DataType.INTEGER,
