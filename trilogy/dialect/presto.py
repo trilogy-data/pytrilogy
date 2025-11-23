@@ -47,7 +47,7 @@ FUNCTION_GRAIN_MATCH_MAP = {
 
 SQL_TEMPLATE = Template(
     """{%- if output %}
-CREATE OR REPLACE TABLE {{ output.address }} AS
+{{output}}
 {% endif %}{%- if ctes %}
 WITH {% for cte in ctes %}
 {{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}

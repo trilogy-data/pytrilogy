@@ -3,6 +3,17 @@ from enum import Enum
 InfiniteFunctionArgs = -1
 
 
+class DatasourceStatus(Enum):
+    PUBLISHED = "published"
+    UNPUBLISHED = "unpublished"
+
+
+class CreateMode(Enum):
+    CREATE = "create"
+    CREATE_IF_NOT_EXISTS = "create_if_not_exists"
+    CREATE_OR_REPLACE = "create_or_replace"
+
+
 class UnnestMode(Enum):
     DIRECT = "direct"
     CROSS_APPLY = "cross_apply"
@@ -38,6 +49,7 @@ class Purpose(Enum):
     METRIC = "metric"
     ROWSET = "rowset"
     AUTO = "auto"
+    PARAMETER = "parameter"
     UNKNOWN = "unknown"
 
     @classmethod
@@ -65,6 +77,11 @@ class Derivation(Enum):
 class Granularity(Enum):
     SINGLE_ROW = "single_row"
     MULTI_ROW = "multi_row"
+
+
+class PersistMode(Enum):
+    OVERWRITE = "overwrite"
+    APPEND = "append"
 
 
 class Modifier(Enum):
@@ -170,6 +187,7 @@ class FunctionType(Enum):
     ARRAY_TRANSFORM = "array_transform"
     ARRAY_TO_STRING = "array_to_string"
     ARRAY_FILTER = "array_filter"
+    GENERATE_ARRAY = "generate_array"
 
     # MAP
     MAP_KEYS = "map_keys"
@@ -206,6 +224,8 @@ class FunctionType(Enum):
     MIN = "min"
     AVG = "avg"
     ARRAY_AGG = "array_agg"
+    BOOL_OR = "bool_or"
+    BOOL_AND = "bool_and"
     ANY = "any"
 
     # String
@@ -269,6 +289,8 @@ class FunctionClass(Enum):
         FunctionType.COUNT,
         FunctionType.COUNT_DISTINCT,
         FunctionType.ANY,
+        FunctionType.BOOL_OR,
+        FunctionType.BOOL_AND,
     ]
     SINGLE_ROW = [
         FunctionType.CONSTANT,

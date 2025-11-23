@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, List, Optional
 
+from trilogy.core.enums import DatasourceStatus
 from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
@@ -10,6 +11,7 @@ from trilogy.core.statements.author import (
     MergeStatementV2,
 )
 from trilogy.core.statements.execute import (
+    ProcessedPublishStatement,
     ProcessedShowStatement,
     ProcessedStaticValueOutput,
     ProcessedValidateStatement,
@@ -138,6 +140,24 @@ def handle_import_statement(query: ImportStatement) -> MockResult:
             }
         ],
         ["path", "alias"],
+    )
+
+
+def handle_publish_statement(
+    query: ProcessedPublishStatement, environment: Environment
+) -> MockResult:
+    """Handle publish statements by updating environment and returning result."""
+    for x in query.targets:
+        datasource = environment.datasources.get(x)
+        if not datasource:
+            raise ValueError(f"Datasource {x} not found in environment")
+        datasource.status = DatasourceStatus.PUBLISHED
+
+    return MockResult(
+        [{"published": target} for target in query.targets],
+        [
+            "published",
+        ],
     )
 
 

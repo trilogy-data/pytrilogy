@@ -129,7 +129,7 @@ DATATYPE_MAP: dict[DataType, str] = {}
 
 DUCKDB_TEMPLATE = Template(
     """{%- if output %}
-CREATE OR REPLACE TABLE {{ output.address.location }} AS
+{{output}}
 {% endif %}{%- if ctes %}
 WITH {% if recursive%}RECURSIVE{% endif %}{% for cte in ctes %}
 {{cte.name}} as (

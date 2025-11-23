@@ -4,11 +4,9 @@ from jinja2 import Template
 
 from trilogy.core.enums import FunctionType, WindowType
 from trilogy.core.statements.execute import (
+    PROCESSED_STATEMENT_TYPES,
     ProcessedQuery,
     ProcessedQueryPersist,
-    ProcessedRawSQLStatement,
-    ProcessedShowStatement,
-    ProcessedValidateStatement,
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.utility import string_to_hash
@@ -84,16 +82,7 @@ class SqlServerDialect(BaseDialect):
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = TSQL_TEMPLATE
 
-    def compile_statement(
-        self,
-        query: (
-            ProcessedQuery
-            | ProcessedQueryPersist
-            | ProcessedShowStatement
-            | ProcessedRawSQLStatement
-            | ProcessedValidateStatement
-        ),
-    ) -> str:
+    def compile_statement(self, query: PROCESSED_STATEMENT_TYPES) -> str:
         base = super().compile_statement(query)
         if isinstance(query, (ProcessedQuery, ProcessedQueryPersist)):
             for cte in query.ctes:

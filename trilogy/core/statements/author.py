@@ -8,9 +8,11 @@ from pydantic.functional_validators import PlainValidator
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
 from trilogy.core.enums import (
     ConceptSource,
+    CreateMode,
     FunctionClass,
     IOType,
     Modifier,
+    PersistMode,
     ShowCategory,
     ValidationScope,
 )
@@ -451,6 +453,7 @@ class ImportStatement(HasUUID, BaseModel):
 class PersistStatement(HasUUID, BaseModel):
     datasource: Datasource
     select: SelectStatement
+    persist_mode: PersistMode = PersistMode.OVERWRITE
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
 
     @property
@@ -465,6 +468,17 @@ class PersistStatement(HasUUID, BaseModel):
 class ValidateStatement(BaseModel):
     scope: ValidationScope
     targets: Optional[List[str]] = None  # list of identifiers
+
+
+class PublishStatement(BaseModel):
+    scope: ValidationScope
+    targets: list[str]
+
+
+class CreateStatement(BaseModel):
+    scope: ValidationScope
+    create_mode: CreateMode = CreateMode.CREATE_OR_REPLACE
+    targets: list[str]
 
 
 class ShowStatement(BaseModel):

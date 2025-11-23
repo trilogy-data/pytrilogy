@@ -13,6 +13,8 @@
     | merge_statement
     | rawsql_statement
     | validate_statement
+    | publish_statement
+    | create_statement
     
     _TERMINATOR:  ";"i
     
@@ -41,7 +43,12 @@
     prop_ident: "<" IDENTIFIER ("," IDENTIFIER )* ","? ">" "." IDENTIFIER
 
     // datasource concepts
-    datasource: "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? whole_grain_clause? (address | query) where?
+
+    DATASOURCE_STATUS: "published"i | "unpublished"i
+
+    datasource_status_clause: "state"i DATASOURCE_STATUS
+
+    datasource: "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? whole_grain_clause? (address | query) where? datasource_status_clause?
    
     whole_grain_clause: "complete" where
 
@@ -70,7 +77,9 @@
     import_statement: "import" IMPORT_DOT* IDENTIFIER ("."  IDENTIFIER)* ("as" IDENTIFIER)?
 
     // persist_statement
-    persist_statement: "persist"i IDENTIFIER "into"i IDENTIFIER "from"i select_statement grain_clause?
+    PERSIST_MODE: "append"i | "overwrite"i | "persist"
+    persist_partition_clause: "by"i column_list
+    persist_statement: PERSIST_MODE IDENTIFIER? "into"i IDENTIFIER persist_partition_clause? "from"i select_statement
 
     // select statement
     select_statement: where? "select"i select_list where?  having?  order_by?  limit? 
@@ -93,9 +102,20 @@
 
     // validate_statement
 
-    VALIDATE_SCOPE: "concepts"i | "datasources"i 
+    VALIDATE_SCOPE: "concepts"i | "datasources"i | "datasource"i | "concept"i
 
     validate_statement: ("validate"i "all"i) | ( "validate"i VALIDATE_SCOPE (IDENTIFIER ("," IDENTIFIER)* ","? )? )
+    
+    // publish statement
+    publish_statement: "publish"i VALIDATE_SCOPE IDENTIFIER
+
+    // create_statement
+    CREATE_IF_NOT_EXISTS: /if\s+not\s+exists/i
+    CREATE_OR_REPLACE: /or\s+replace/i
+
+    create_modifier_clause: CREATE_IF_NOT_EXISTS | CREATE_OR_REPLACE
+    create_statement: "create"i create_modifier_clause? VALIDATE_SCOPE IDENTIFIER
+    
     // copy statement
 
     COPY_TYPE: "csv"i
@@ -337,8 +357,10 @@
     farray_transform: _ARRAY_TRANSFORM expr ","  transform_lambda   ")"
     _ARRAY_FILTER.1: "array_filter("i
     farray_filter: _ARRAY_FILTER expr "," transform_lambda ")"
+    _GENERATE_ARRAY.1: "generate_array("i
+    fgenerate_array: _GENERATE_ARRAY expr "," expr "," expr ")"
 
-    _array_functions: farray_sum | farray_distinct | farray_sort | farray_transform | farray_to_string | farray_filter
+    _array_functions: farray_sum | farray_distinct | farray_sort | farray_transform | farray_to_string | farray_filter | fgenerate_array
 
     //map_functions
     _MAP_KEYS.1: "map_keys("i
@@ -372,13 +394,17 @@
     min: _MIN expr ")"
     _ARRAY_AGG.1: "array_agg("i
     array_agg: _ARRAY_AGG expr ")"
+    _BOOL_OR.1: "bool_or("i
+    bool_or: _BOOL_OR expr ")"
+    _BOOL_AND.1: "bool_and("i
+    bool_and: _BOOL_AND expr ")"
     _ANY.1: "any("i
     any: _ANY expr ")"
     
     //aggregates can force a grain
     aggregate_all: "*"
     aggregate_over: ("BY"i (aggregate_all | over_list))
-    aggregate_functions: (count | count_distinct | sum | avg | max | min | array_agg | any) aggregate_over?
+    aggregate_functions: (count | count_distinct | sum | avg | max | min | array_agg | bool_and | bool_or | any) aggregate_over?
 
     // date functions
     _DATE.1: "date("i
@@ -482,7 +508,7 @@
 
     !data_type:  ("string"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type) ("::" IDENTIFIER)?
     
-    PURPOSE:  "key"i | "metric"i  | CONST
+    PURPOSE:  "key"i | "metric"i | "parameter"i  | CONST
     PROPERTY: "property"i
     CONST: "const"i | "constant"i
     AUTO: "AUTO"i 

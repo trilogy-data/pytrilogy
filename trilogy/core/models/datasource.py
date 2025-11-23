@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, ItemsView, List, Optional, Union, ValuesView
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 from trilogy.constants import DEFAULT_NAMESPACE, logger
-from trilogy.core.enums import Modifier
+from trilogy.core.enums import DatasourceStatus, Modifier
 from trilogy.core.models.author import (
     Concept,
     ConceptRef,
@@ -44,6 +44,10 @@ class ColumnAssignment(BaseModel):
             and self.concept == other.concept
             and self.modifiers == other.modifiers
         )
+
+    @property
+    def is_concrete(self) -> bool:
+        return isinstance(self.alias, str)
 
     @property
     def is_complete(self) -> bool:
@@ -116,6 +120,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     )
     where: Optional[WhereClause] = None
     non_partial_for: Optional[WhereClause] = None
+    status: DatasourceStatus = Field(default=DatasourceStatus.PUBLISHED)
 
     @property
     def safe_address(self) -> str:

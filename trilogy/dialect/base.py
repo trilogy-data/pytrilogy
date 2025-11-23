@@ -19,6 +19,7 @@ from trilogy.core.enums import (
     GroupMode,
     Modifier,
     Ordering,
+    PersistMode,
     ShowCategory,
     UnnestMode,
     WindowType,
@@ -65,11 +66,13 @@ from trilogy.core.query_processor import process_copy, process_persist, process_
 from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     CopyStatement,
+    CreateStatement,
     FunctionDeclaration,
     ImportStatement,
     MergeStatementV2,
     MultiSelectStatement,
     PersistStatement,
+    PublishStatement,
     RawSQLStatement,
     RowsetDerivationStatement,
     SelectStatement,
@@ -79,6 +82,8 @@ from trilogy.core.statements.author import (
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
     ProcessedCopyStatement,
+    ProcessedCreateStatement,
+    ProcessedPublishStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
     ProcessedRawSQLStatement,
@@ -86,6 +91,7 @@ from trilogy.core.statements.execute import (
     ProcessedStaticValueOutput,
     ProcessedValidateStatement,
 )
+from trilogy.core.table_processor import process_create_statement
 from trilogy.core.utility import safe_quote
 from trilogy.dialect.common import render_join, render_unnest
 from trilogy.hooks.base_hook import BaseHook
@@ -225,6 +231,7 @@ FUNCTION_MAP = {
     FunctionType.MAP_KEYS: lambda x, types: f"map_keys({x[0]})",
     FunctionType.MAP_VALUES: lambda x, types: f"map_values({x[0]})",
     # ARRAY
+    FunctionType.GENERATE_ARRAY: lambda x, types: f"generate_series({x[0]}, {x[1]}, {x[2]})",
     FunctionType.ARRAY_SUM: lambda x, types: f"array_sum({x[0]})",
     FunctionType.ARRAY_DISTINCT: lambda x, types: f"array_distinct({x[0]})",
     FunctionType.ARRAY_SORT: lambda x, types: f"array_sort({x[0]})",
@@ -263,6 +270,8 @@ FUNCTION_MAP = {
     FunctionType.MAX: lambda x, types: f"max({x[0]})",
     FunctionType.MIN: lambda x, types: f"min({x[0]})",
     FunctionType.ANY: lambda x, types: f"any_value({x[0]})",
+    FunctionType.BOOL_OR: lambda x, types: f"bool_or({x[0]})",
+    FunctionType.BOOL_AND: lambda x, types: f"bool_and({x[0]})",
     # string types
     FunctionType.LIKE: lambda x, types: f" {x[0]} like {x[1]} ",
     FunctionType.UPPER: lambda x, types: f"UPPER({x[0]}) ",
@@ -316,7 +325,7 @@ FUNCTION_GRAIN_MATCH_MAP = {
 }
 
 
-GENERIC_SQL_TEMPLATE = Template(
+GENERIC_SQL_TEMPLATE: Template = Template(
     """{%- if ctes %}
 WITH {% if recursive%} RECURSIVE {% endif %}{% for cte in ctes %}
 {{cte.name}} as (
@@ -342,6 +351,24 @@ ORDER BY{% for order in order_by %}
 \t{{ order }}{% if not loop.last %},{% endif %}{% endfor %}
 {% endif %}{% endif %}
 """
+)
+
+
+CREATE_TABLE_SQL_TEMPLATE = Template(
+    """
+CREATE {% if create_mode == "create_or_replace" %}OR REPLACE TABLE{% elif create_mode == "create_if_not_exists" %}TABLE IF NOT EXISTS{% else %}TABLE{% endif %} {{ name }} (
+{%- for column in columns %}
+    {{ column.name }} {{ type_map[column.name] }}{% if column.comment %} COMMENT '{{ column.comment }}'{% endif %}{% if not loop.last %},{% endif %}
+{%- endfor %}
+)
+{%- if partition_keys %}
+PARTITIONED BY (
+{%- for partition_key in partition_keys %}
+    {{ partition_key }}{% if not loop.last %},{% endif %}
+{%- endfor %}
+)
+{%- endif %};
+""".strip()
 )
 
 
@@ -470,7 +497,7 @@ class BaseDialect:
         # check if it's not inherited AND no pseudonyms are inherited
         if c.lineage and cte.source_map.get(c.address, []) == []:
             logger.debug(
-                f"{LOGGER_PREFIX} [{c.address}] rendering concept with lineage that is not already existing, have {cte.source_map}"
+                f"{LOGGER_PREFIX} [{c.address}] rendering concept with lineage that is not already existing"
             )
             if isinstance(c.lineage, WINDOW_ITEMS):
                 rendered_order_components = [
@@ -1109,6 +1136,8 @@ class BaseDialect:
             | MergeStatementV2
             | CopyStatement
             | ValidateStatement
+            | CreateStatement
+            | PublishStatement
         ],
         hooks: Optional[List[BaseHook]] = None,
     ) -> List[PROCESSED_STATEMENT_TYPES]:
@@ -1195,6 +1224,15 @@ class BaseDialect:
                         targets=statement.targets,
                     )
                 )
+            elif isinstance(statement, CreateStatement):
+                output.append(process_create_statement(statement, environment))
+            elif isinstance(statement, PublishStatement):
+                output.append(
+                    ProcessedPublishStatement(
+                        scope=statement.scope,
+                        targets=statement.targets,
+                    )
+                )
             elif isinstance(
                 statement,
                 (
@@ -1228,16 +1266,43 @@ class BaseDialect:
 
         elif isinstance(query, ProcessedValidateStatement):
             return "select 1;"
+        elif isinstance(query, ProcessedPublishStatement):
+            return "select 1;"
+        elif isinstance(query, ProcessedCreateStatement):
+
+            text = []
+            for target in query.targets:
+                type_map = {}
+                for c in target.columns:
+                    type_map[c.name] = self.render_expr(c.type)
+                text.append(
+                    CREATE_TABLE_SQL_TEMPLATE.render(
+                        create_mode=query.create_mode.value,
+                        name=target.name,
+                        columns=target.columns,
+                        type_map=type_map,
+                        partition_keys=target.partition_keys,
+                    )
+                )
+            return "\n".join(text)
 
         recursive = any(isinstance(x, RecursiveCTE) for x in query.ctes)
 
         compiled_ctes = self.generate_ctes(query)
+        output = None
+        if isinstance(query, ProcessedQueryPersist):
+            if query.persist_mode == PersistMode.OVERWRITE:
+                output = f"CREATE OR REPLACE TABLE {safe_quote(query.output_to.address.location, self.QUOTE_CHARACTER)} AS "
+            elif query.persist_mode == PersistMode.APPEND:
+                output = f"INSERT INTO {safe_quote(query.output_to.address.location, self.QUOTE_CHARACTER)} "
+            else:
+                raise NotImplementedError(
+                    f"Persist mode {query.persist_mode} not implemented"
+                )
 
         final = self.SQL_TEMPLATE.render(
             recursive=recursive,
-            output=(
-                query.output_to if isinstance(query, ProcessedQueryPersist) else None
-            ),
+            output=output,
             full_select=compiled_ctes[-1].statement,
             ctes=compiled_ctes[:-1],
         )

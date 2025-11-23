@@ -14,6 +14,7 @@ from typing import (
     List,
     Never,
     Optional,
+    Self,
     Tuple,
     ValuesView,
 )
@@ -230,12 +231,17 @@ class Environment(BaseModel):
     # TODO: support freezing environments to avoid mutation
     frozen: bool = False
     env_file_path: Path | str | None = None
+    parameters: Dict[str, Any] = Field(default_factory=dict)
 
     def freeze(self):
         self.frozen = True
 
     def thaw(self):
         self.frozen = False
+
+    def set_parameters(self, **kwargs) -> Self:
+        self.parameters.update(kwargs)
+        return self
 
     def materialize_for_select(
         self, local_concepts: dict[str, "BuildConcept"] | None = None
@@ -331,9 +337,7 @@ class Environment(BaseModel):
             if str(existing.lineage) == str(new_concept.lineage):
                 return None
 
-            logger.warning(
-                f"Persisted concept {existing.address} lineage {str(existing.lineage)} did not match redeclaration {str(new_concept.lineage)}, invalidating current bound datasource."
-            )
+            invalidated = False
             for k, datasource in self.datasources.items():
                 if existing.address in datasource.output_concepts:
                     logger.warning(
@@ -346,6 +350,11 @@ class Environment(BaseModel):
                         if x.concept.address != existing.address
                     ]
                     assert len(datasource.columns) < clen
+                    invalidated = len(datasource.columns) < clen
+            if invalidated:
+                logger.warning(
+                    f"Persisted concept {existing.address} lineage {str(existing.lineage)} did not match redeclaration {str(new_concept.lineage)}, invalidated current bound datasource."
+                )
             return None
 
         if existing and self.config.allow_duplicate_declaration:

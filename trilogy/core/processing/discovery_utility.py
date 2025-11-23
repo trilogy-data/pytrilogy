@@ -380,6 +380,7 @@ def get_priority_concept(
         # then rowsets to remove them from scope, as they cannot get partials
         [c for c in pass_one if c.derivation == Derivation.UNION]
         # we should be home-free here
+        + [c for c in pass_one if c.derivation == Derivation.BASIC]
         +
         # then aggregates to remove them from scope, as they cannot get partials
         [c for c in pass_one if c.derivation == Derivation.AGGREGATE]
@@ -390,7 +391,6 @@ def get_priority_concept(
         # unnests are weird?
         + [c for c in pass_one if c.derivation == Derivation.UNNEST]
         + [c for c in pass_one if c.derivation == Derivation.RECURSIVE]
-        + [c for c in pass_one if c.derivation == Derivation.BASIC]
         + [c for c in pass_one if c.derivation == Derivation.GROUP_TO]
         + [c for c in pass_one if c.derivation == Derivation.CONSTANT]
         # finally our plain selects

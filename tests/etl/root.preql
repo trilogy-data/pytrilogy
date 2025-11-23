@@ -1,0 +1,55 @@
+import std.geography;
+
+#  Primary key
+key ride_id string;
+
+# Secondary keys for relationships
+key rider_id string;
+key ride_date datetime;
+
+# Properties for rider information (tied to rider_id)
+property <rider_id>.rider_name string;
+
+# Properties for ride details (tied to unique ride_id)
+property <ride_id>.rider_id string;
+property <ride_id>.ride_date datetime;
+property <ride_id>.ride_type string;
+property <ride_id>.distance_miles float;
+property <ride_id>.duration_minutes float;
+property <ride_id>.avg_speed_mph float;
+property <ride_id>.calories_burned int;
+property <ride_id>.fun_rating int;
+
+# Properties for environmental conditions (tied to ride_id)
+property <ride_id>.weather string;
+property <ride_id>.temp_f float;
+property <ride_id>.difficulty string;
+
+# Properties for equipment and location (tied to ride_id)
+property <ride_id>.bike_type string;
+property <ride_id>.start_location string;
+
+auto ride_year <- date_part(ride_date, year);
+auto ride_month <- date_part(ride_date, month);
+
+# Datasource definition
+datasource tbl_ride_data (
+    ride_id,
+    rider_id,
+    rider_name,
+    ride_date,
+    ride_type,
+    distance_miles,
+    duration_minutes,
+    avg_speed_mph,
+    calories_burned,
+    fun_rating,
+    weather,
+    temp_f,
+    difficulty,
+    bike_type,
+    start_location
+)
+grain (ride_id)
+address tbl_ride_data;
+

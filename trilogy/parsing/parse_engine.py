@@ -29,6 +29,8 @@ from trilogy.core.enums import (
     BooleanOperator,
     ComparisonOperator,
     ConceptSource,
+    CreateMode,
+    DatasourceStatus,
     DatePart,
     Derivation,
     FunctionType,
@@ -36,13 +38,18 @@ from trilogy.core.enums import (
     IOType,
     Modifier,
     Ordering,
+    PersistMode,
     Purpose,
     ShowCategory,
     ValidationScope,
     WindowOrder,
     WindowType,
 )
-from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
+from trilogy.core.exceptions import (
+    InvalidSyntaxException,
+    MissingParameterException,
+    UndefinedConceptException,
+)
 from trilogy.core.functions import (
     CurrentDate,
     FunctionFactory,
@@ -120,12 +127,14 @@ from trilogy.core.statements.author import (
     ConceptDerivationStatement,
     ConceptTransform,
     CopyStatement,
+    CreateStatement,
     FunctionDeclaration,
     ImportStatement,
     Limit,
     MergeStatementV2,
     MultiSelectStatement,
     PersistStatement,
+    PublishStatement,
     RawSQLStatement,
     RowsetDerivationStatement,
     SelectItem,
@@ -675,6 +684,7 @@ class ParseToObjects(Transformer):
     def concept_declaration(self, meta: Meta, args) -> ConceptDeclarationStatement:
         metadata = Metadata()
         modifiers = []
+        purpose = args[0]
         for arg in args:
             if isinstance(arg, Metadata):
                 metadata = arg
@@ -682,10 +692,21 @@ class ParseToObjects(Transformer):
                 modifiers.append(arg)
         name = args[1]
         _, namespace, name, _ = parse_concept_reference(name, self.environment)
+        if purpose == Purpose.PARAMETER:
+            value = self.environment.parameters.get(name, None)
+            if not value:
+                raise MissingParameterException(
+                    f'This script requires parameter "{name}" to be set in environment.'
+                )
+            rval = self.constant_derivation(
+                meta, [Purpose.CONSTANT, name, value, metadata]
+            )
+            return rval
+
         concept = Concept(
             name=name,
             datatype=args[2],
-            purpose=args[0],
+            purpose=purpose,
             metadata=metadata,
             namespace=namespace,
             modifiers=modifiers,
@@ -802,7 +823,9 @@ class ParseToObjects(Transformer):
         return output
 
     @v_args(meta=True)
-    def constant_derivation(self, meta: Meta, args) -> Concept:
+    def constant_derivation(
+        self, meta: Meta, args: tuple[Purpose, str, Any, Optional[Metadata]]
+    ) -> Concept:
 
         if len(args) > 3:
             metadata = args[3]
@@ -817,7 +840,7 @@ class ParseToObjects(Transformer):
             name=name,
             datatype=arg_to_datatype(constant),
             purpose=Purpose.CONSTANT,
-            metadata=metadata,
+            metadata=Metadata(line_number=meta.line) if not metadata else metadata,
             lineage=Function(
                 operator=FunctionType.CONSTANT,
                 output_datatype=arg_to_datatype(constant),
@@ -826,6 +849,7 @@ class ParseToObjects(Transformer):
             ),
             grain=Grain(components=set()),
             namespace=namespace,
+            granularity=Granularity.SINGLE_ROW,
         )
         if concept.metadata:
             concept.metadata.line_number = meta.line
@@ -869,6 +893,13 @@ class ParseToObjects(Transformer):
     def raw_column_assignment(self, args):
         return RawColumnExpr(text=args[1])
 
+    def DATASOURCE_STATUS(self, args) -> DatasourceStatus:
+        return DatasourceStatus(args.value.lower())
+
+    @v_args(meta=True)
+    def datasource_status_clause(self, meta: Meta, args):
+        return args[0]
+
     @v_args(meta=True)
     def datasource(self, meta: Meta, args):
         name = args[0]
@@ -877,6 +908,7 @@ class ParseToObjects(Transformer):
         address: Optional[Address] = None
         where: Optional[WhereClause] = None
         non_partial_for: Optional[WhereClause] = None
+        datasource_status: DatasourceStatus = DatasourceStatus.PUBLISHED
         for val in args[1:]:
             if isinstance(val, Address):
                 address = val
@@ -888,6 +920,8 @@ class ParseToObjects(Transformer):
                 address = Address(location=f"({val.text})", is_query=True)
             elif isinstance(val, WhereClause):
                 where = val
+            elif isinstance(val, DatasourceStatus):
+                datasource_status = val
         if not address:
             raise ValueError(
                 "Malformed datasource, missing address or query declaration"
@@ -902,6 +936,7 @@ class ParseToObjects(Transformer):
             namespace=self.environment.namespace,
             where=where,
             non_partial_for=non_partial_for,
+            status=datasource_status,
         )
         if datasource.where:
             for x in datasource.where.concept_arguments:
@@ -1031,8 +1066,55 @@ class ParseToObjects(Transformer):
     def over_list(self, args):
         return [x for x in args]
 
-    def VALIDATION_SCOPE(self, args) -> ValidationScope:
-        return ValidationScope(args.lower())
+    @v_args(meta=True)
+    def publish_statement(self, meta: Meta, args) -> PublishStatement:
+        targets = []
+        scope = ValidationScope.DATASOURCES
+        for arg in args:
+            if isinstance(arg, str):
+                targets.append(arg)
+            elif isinstance(arg, ValidationScope):
+                scope = arg
+                if arg != ValidationScope.DATASOURCES:
+                    raise SyntaxError(
+                        f"Publishing is only supported for Datasources, got {arg} on line {meta.line}"
+                    )
+        return PublishStatement(
+            scope=scope,
+            targets=targets,
+        )
+
+    def create_modifier_clause(self, args):
+        token = args[0]
+        if token.type == "CREATE_IF_NOT_EXISTS":
+            return CreateMode.CREATE_IF_NOT_EXISTS
+        elif token.type == "CREATE_OR_REPLACE":
+            return CreateMode.CREATE_OR_REPLACE
+
+    @v_args(meta=True)
+    def create_statement(self, meta: Meta, args) -> CreateStatement:
+        targets = []
+        scope = ValidationScope.DATASOURCES
+        create_mode = CreateMode.CREATE
+        for arg in args:
+            if isinstance(arg, str):
+                targets.append(arg)
+            elif isinstance(arg, ValidationScope):
+                scope = arg
+                if arg != ValidationScope.DATASOURCES:
+                    raise SyntaxError(
+                        f"Creating is only supported for Datasources, got {arg} on line {meta.line}"
+                    )
+            elif isinstance(arg, CreateMode):
+                create_mode = arg
+
+        return CreateStatement(scope=scope, targets=targets, create_mode=create_mode)
+
+    def VALIDATE_SCOPE(self, args) -> ValidationScope:
+        base: str = args.lower()
+        if not base.endswith("s"):
+            base += "s"
+        return ValidationScope(base)
 
     @v_args(meta=True)
     def validate_statement(self, meta: Meta, args) -> ValidateStatement:
@@ -1282,14 +1364,28 @@ class ParseToObjects(Transformer):
         return ShowStatement(content=args[0])
 
     @v_args(meta=True)
+    def persist_partition_clause(self, meta: Meta, args) -> list[ConceptRef]:
+        return [ConceptRef(address=a) for a in args[0]]
+
+    @v_args(meta=True)
+    def PERSIST_MODE(self, args) -> PersistMode:
+        base = args.value.lower()
+        if base == "persist":
+            return PersistMode.OVERWRITE
+        return PersistMode(args.value.lower())
+
+    @v_args(meta=True)
     def persist_statement(self, meta: Meta, args) -> PersistStatement | None:
-        identifier: str = args[0]
-        address: str = args[1]
-        select: SelectStatement = args[2]
-        if len(args) > 3:
-            grain: Grain | None = args[3]
+        labels = [x for x in args if isinstance(x, str)]
+        if len(labels) == 2:
+            identifier = labels[0]
+            address = labels[1]
         else:
-            grain = select.grain
+            identifier = labels[0]
+            address = identifier
+        modes = [x for x in args if isinstance(x, PersistMode)]
+        mode = modes[0] if modes else PersistMode.OVERWRITE
+        select: SelectStatement = [x for x in args if isinstance(x, SelectStatement)][0]
         if self.parse_pass == ParsePass.VALIDATION:
             new_datasource = select.to_datasource(
                 namespace=(
@@ -1299,12 +1395,13 @@ class ParseToObjects(Transformer):
                 ),
                 name=identifier,
                 address=Address(location=address),
-                grain=grain,
+                grain=select.grain,
                 environment=self.environment,
             )
             return PersistStatement(
                 select=select,
                 datasource=new_datasource,
+                persist_mode=mode,
                 meta=Metadata(line_number=meta.line),
             )
         return None
@@ -1658,7 +1755,7 @@ class ParseToObjects(Transformer):
         result = args[0]
         for i in range(1, len(args), 2):
             new_result = None
-            op = args[i]
+            op = args[i].lower()
             right = args[i + 1]
             if op == "+":
                 new_result = self.function_factory.create_function(
@@ -1940,6 +2037,14 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def any(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.ANY, meta)
+
+    @v_args(meta=True)
+    def bool_and(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.BOOL_AND, meta)
+
+    @v_args(meta=True)
+    def bool_or(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.BOOL_OR, meta)
 
     @v_args(meta=True)
     def avg(self, meta, args):
@@ -2272,6 +2377,12 @@ class ParseToObjects(Transformer):
         return self.function_factory.create_function(args, FunctionType.ARRAY_SUM, meta)
 
     @v_args(meta=True)
+    def fgenerate_array(self, meta, args):
+        return self.function_factory.create_function(
+            args, FunctionType.GENERATE_ARRAY, meta
+        )
+
+    @v_args(meta=True)
     def farray_distinct(self, meta, args):
         return self.function_factory.create_function(
             args, FunctionType.ARRAY_DISTINCT, meta
@@ -2357,6 +2468,8 @@ def unpack_visit_error(e: VisitError, text: str | None = None):
     if isinstance(e.orig_exc, VisitError):
         unpack_visit_error(e.orig_exc, text)
     elif isinstance(e.orig_exc, (UndefinedConceptException, ImportError)):
+        raise e.orig_exc
+    elif isinstance(e.orig_exc, InvalidSyntaxException):
         raise e.orig_exc
     elif isinstance(e.orig_exc, (SyntaxError, TypeError)):
         if isinstance(e.obj, Tree):

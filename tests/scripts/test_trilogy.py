@@ -57,3 +57,25 @@ def test_db_args_string():
         raise result.exception
     assert result.exit_code == 0
     assert "(42,)" in result.output.strip()
+
+
+def test_parameters():
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "run",
+            str(Path(__file__).parent / "param_test.preql"),
+            "duckdb",
+            "--param",
+            "scale=42",
+            "--param",
+            "float=3.14",
+            "--param",
+            "string=hello",
+        ],
+    )
+    if result.exception:
+        raise result.exception
+    assert result.exit_code == 0
+    assert "(42, 3.14, 'hello')" in result.output.strip()

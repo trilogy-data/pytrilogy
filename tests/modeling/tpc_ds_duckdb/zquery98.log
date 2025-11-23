@@ -1,5 +1,5 @@
 query_id = 98
-gen_length = 4127
+gen_length = 3077
 generated_sql = """
 
 WITH 
@@ -18,6 +18,14 @@ FROM
 WHERE
     \"store_sales_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home') and cast(\"store_sales_date_date\".\"D_DATE\" as date) >= date '1999-02-22' and cast(\"store_sales_date_date\".\"D_DATE\" as date) <= date '1999-03-24'
 ),
+cooperative as (
+SELECT
+    \"cheerful\".\"store_sales_item_class\" as \"store_sales_item_class\",
+    sum(\"cheerful\".\"store_sales_ext_sales_price\") as \"_virt_agg_sum_7595906549305205\"
+FROM
+    \"cheerful\"
+GROUP BY 
+    \"cheerful\".\"store_sales_item_class\"),
 thoughtful as (
 SELECT
     \"cheerful\".\"store_sales_item_category\" as \"store_sales_item_category\",
@@ -34,40 +42,21 @@ GROUP BY
     \"cheerful\".\"store_sales_item_class\",
     \"cheerful\".\"store_sales_item_current_price\",
     \"cheerful\".\"store_sales_item_desc\",
-    \"cheerful\".\"store_sales_item_name\"),
-cooperative as (
+    \"cheerful\".\"store_sales_item_name\")
 SELECT
-    \"cheerful\".\"store_sales_item_class\" as \"store_sales_item_class\",
-    sum(\"cheerful\".\"store_sales_ext_sales_price\") as \"_virt_agg_sum_7595906549305205\"
-FROM
-    \"cheerful\"
-GROUP BY 
-    \"cheerful\".\"store_sales_item_class\"),
-questionable as (
-SELECT
-    \"thoughtful\".\"_virt_agg_sum_9873055619986236\" * 100.0 / (\"cooperative\".\"_virt_agg_sum_7595906549305205\") as \"revenueratio\",
+    \"thoughtful\".\"store_sales_item_name\" as \"store_sales_item_name\",
+    \"thoughtful\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
     \"thoughtful\".\"store_sales_item_category\" as \"store_sales_item_category\",
     \"thoughtful\".\"store_sales_item_class\" as \"store_sales_item_class\",
     \"thoughtful\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    \"thoughtful\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    \"thoughtful\".\"store_sales_item_name\" as \"store_sales_item_name\"
+    \"thoughtful\".\"item_revenue\" as \"item_revenue\",
+    \"thoughtful\".\"_virt_agg_sum_9873055619986236\" * 100.0 / (\"cooperative\".\"_virt_agg_sum_7595906549305205\") as \"revenueratio\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"cooperative\" on \"thoughtful\".\"store_sales_item_class\" is not distinct from \"cooperative\".\"store_sales_item_class\")
-SELECT
-    \"questionable\".\"store_sales_item_name\" as \"store_sales_item_name\",
-    \"questionable\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    \"questionable\".\"store_sales_item_category\" as \"store_sales_item_category\",
-    \"questionable\".\"store_sales_item_class\" as \"store_sales_item_class\",
-    \"questionable\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    \"thoughtful\".\"item_revenue\" as \"item_revenue\",
-    \"questionable\".\"revenueratio\" as \"revenueratio\"
-FROM
-    \"questionable\"
-    INNER JOIN \"thoughtful\" on \"questionable\".\"store_sales_item_category\" is not distinct from \"thoughtful\".\"store_sales_item_category\" AND \"questionable\".\"store_sales_item_class\" is not distinct from \"thoughtful\".\"store_sales_item_class\" AND \"questionable\".\"store_sales_item_current_price\" is not distinct from \"thoughtful\".\"store_sales_item_current_price\" AND \"questionable\".\"store_sales_item_desc\" is not distinct from \"thoughtful\".\"store_sales_item_desc\" AND \"questionable\".\"store_sales_item_name\" = \"thoughtful\".\"store_sales_item_name\"
+    INNER JOIN \"cooperative\" on \"thoughtful\".\"store_sales_item_class\" is not distinct from \"cooperative\".\"store_sales_item_class\"
 ORDER BY 
-    \"questionable\".\"store_sales_item_category\" asc nulls first,
-    \"questionable\".\"store_sales_item_class\" asc nulls first,
-    \"questionable\".\"store_sales_item_name\" asc nulls first,
-    \"questionable\".\"store_sales_item_desc\" asc nulls first,
-    \"questionable\".\"revenueratio\" asc nulls first"""
+    \"thoughtful\".\"store_sales_item_category\" asc nulls first,
+    \"thoughtful\".\"store_sales_item_class\" asc nulls first,
+    \"thoughtful\".\"store_sales_item_name\" asc nulls first,
+    \"thoughtful\".\"store_sales_item_desc\" asc nulls first,
+    \"revenueratio\" asc nulls first"""
