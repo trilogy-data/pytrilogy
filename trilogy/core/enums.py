@@ -187,6 +187,7 @@ class FunctionType(Enum):
     ARRAY_TRANSFORM = "array_transform"
     ARRAY_TO_STRING = "array_to_string"
     ARRAY_FILTER = "array_filter"
+    GENERATE_ARRAY = "generate_array"
 
     # MAP
     MAP_KEYS = "map_keys"

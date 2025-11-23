@@ -27,6 +27,10 @@ class InvalidSyntaxException(Exception):
     pass
 
 
+class MissingParameterException(InvalidSyntaxException):
+    pass
+
+
 class UnresolvableQueryException(Exception):
     pass
 

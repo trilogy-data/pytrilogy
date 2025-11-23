@@ -357,8 +357,10 @@
     farray_transform: _ARRAY_TRANSFORM expr ","  transform_lambda   ")"
     _ARRAY_FILTER.1: "array_filter("i
     farray_filter: _ARRAY_FILTER expr "," transform_lambda ")"
+    _GENERATE_ARRAY.1: "generate_array("i
+    fgenerate_array: _GENERATE_ARRAY expr "," expr "," expr ")"
 
-    _array_functions: farray_sum | farray_distinct | farray_sort | farray_transform | farray_to_string | farray_filter
+    _array_functions: farray_sum | farray_distinct | farray_sort | farray_transform | farray_to_string | farray_filter | fgenerate_array
 
     //map_functions
     _MAP_KEYS.1: "map_keys("i

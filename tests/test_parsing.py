@@ -1,6 +1,9 @@
+from pytest import raises
+
 from trilogy import Dialects
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
+from trilogy.core.exceptions import MissingParameterException
 from trilogy.core.functions import argument_to_purpose, function_args_to_output_purpose
 from trilogy.core.models.author import (
     Comparison,
@@ -831,3 +834,16 @@ auto x_sum <- sum(x);
         [env.concepts["x_sum"]],
         env,
     )
+
+
+def test_params():
+    with raises(MissingParameterException):
+        parse_text(
+            """
+    parameter scale int;
+
+    auto numbers <- generate_array(1, scale, 1);
+
+    select count(unnest(numbers)) as cnt;
+    """
+        )

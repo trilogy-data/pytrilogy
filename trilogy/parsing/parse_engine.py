@@ -45,7 +45,11 @@ from trilogy.core.enums import (
     WindowOrder,
     WindowType,
 )
-from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
+from trilogy.core.exceptions import (
+    InvalidSyntaxException,
+    MissingParameterException,
+    UndefinedConceptException,
+)
 from trilogy.core.functions import (
     CurrentDate,
     FunctionFactory,
@@ -691,7 +695,7 @@ class ParseToObjects(Transformer):
         if purpose == Purpose.PARAMETER:
             value = self.environment.parameters.get(name, None)
             if not value:
-                raise SyntaxError(
+                raise MissingParameterException(
                     f'This script requires parameter "{name}" to be set in environment.'
                 )
             rval = self.constant_derivation(
@@ -2373,6 +2377,12 @@ class ParseToObjects(Transformer):
         return self.function_factory.create_function(args, FunctionType.ARRAY_SUM, meta)
 
     @v_args(meta=True)
+    def fgenerate_array(self, meta, args):
+        return self.function_factory.create_function(
+            args, FunctionType.GENERATE_ARRAY, meta
+        )
+
+    @v_args(meta=True)
     def farray_distinct(self, meta, args):
         return self.function_factory.create_function(
             args, FunctionType.ARRAY_DISTINCT, meta
@@ -2458,6 +2468,8 @@ def unpack_visit_error(e: VisitError, text: str | None = None):
     if isinstance(e.orig_exc, VisitError):
         unpack_visit_error(e.orig_exc, text)
     elif isinstance(e.orig_exc, (UndefinedConceptException, ImportError)):
+        raise e.orig_exc
+    elif isinstance(e.orig_exc, InvalidSyntaxException):
         raise e.orig_exc
     elif isinstance(e.orig_exc, (SyntaxError, TypeError)):
         if isinstance(e.obj, Tree):

@@ -1,0 +1,6 @@
+
+parameter scale int;
+
+auto numbers <- generate_array(1, scale, 1);
+
+select count(unnest(numbers)) as cnt;

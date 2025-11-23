@@ -89,3 +89,19 @@ def test_transform():
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 1
     assert results[0] == ([2, 4, 6, 8, 10],)  # transformed_values
+
+
+def test_generate_array():
+    test_executor = Dialects.DUCK_DB.default_executor()
+    test_select = """
+    const num_list <- generate_array(1,5,1);
+
+    def double_value(x)->  x * 2;
+
+    SELECT
+        array_transform(num_list, @double_value) AS transformed_values,
+    ;"""
+
+    results = list(test_executor.execute_text(test_select)[0].fetchall())
+    assert len(results) == 1
+    assert results[0] == ([2, 4, 6, 8, 10],)  # transformed_values

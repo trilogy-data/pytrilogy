@@ -314,6 +314,16 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type_function=lambda args: get_map_value_type(args[0]),
         arg_count=1,
     ),
+    FunctionType.GENERATE_ARRAY: FunctionConfig(
+        valid_inputs={
+            DataType.INTEGER,
+            DataType.INTEGER,
+            DataType.INTEGER,
+        },
+        output_purpose=Purpose.PROPERTY,
+        output_type=ArrayType(type=DataType.INTEGER),
+        arg_count=3,
+    ),
     FunctionType.ARRAY_DISTINCT: FunctionConfig(
         valid_inputs={
             DataType.ARRAY,

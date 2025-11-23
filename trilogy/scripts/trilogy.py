@@ -12,6 +12,24 @@ from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parsing.render import Renderer
 
 
+def smart_convert(value: str):
+    """Convert string to appropriate Python type."""
+    if not value:
+        return value
+
+    # Handle booleans
+    if value.lower() in ("true", "false"):
+        return value.lower() == "true"
+
+    # Try numeric conversion
+    try:
+        if "." not in value and "e" not in value.lower():
+            return int(value)
+        return float(value)
+    except ValueError:
+        return value
+
+
 def print_tabulate(q, tabulate):
     result = q.fetchall()
     print(tabulate(result, headers=q.keys(), tablefmt="psql"))
@@ -40,7 +58,7 @@ def parse_env_params(env_param_list: tuple[str]) -> dict[str, str]:
                 f"Environment parameter must be in key=value format: {param}"
             )
         key, value = param.split("=", 1)  # Split on first = only
-        env_params[key] = value
+        env_params[key] = smart_convert(value)
     return env_params
 
 
@@ -119,10 +137,10 @@ def fmt(ctx, input):
 )
 @argument("input", type=Path())
 @argument("dialect", type=str)
-@option("--env", multiple=True, help="Environment parameters as key=value pairs")
+@option("--param", multiple=True, help="Environment parameters as key=value pairs")
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
-def run(ctx, input, dialect: str, env, conn_args):
+def run(ctx, input, dialect: str, param, conn_args):
     if PathlibPath(input).exists():
         inputp = PathlibPath(input)
         with open(input, "r") as f:
@@ -138,7 +156,7 @@ def run(ctx, input, dialect: str, env, conn_args):
     debug = ctx.obj["DEBUG"]
 
     # Parse environment parameters from dedicated flag
-    env_params = parse_env_params(env)
+    env_params = parse_env_params(param)
 
     # Parse connection arguments from remaining args
     conn_dict = extra_to_kwargs(conn_args)

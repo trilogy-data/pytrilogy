@@ -231,6 +231,7 @@ FUNCTION_MAP = {
     FunctionType.MAP_KEYS: lambda x, types: f"map_keys({x[0]})",
     FunctionType.MAP_VALUES: lambda x, types: f"map_values({x[0]})",
     # ARRAY
+    FunctionType.GENERATE_ARRAY: lambda x, types: f"generate_series({x[0]}, {x[1]}, {x[2]})",
     FunctionType.ARRAY_SUM: lambda x, types: f"array_sum({x[0]})",
     FunctionType.ARRAY_DISTINCT: lambda x, types: f"array_distinct({x[0]})",
     FunctionType.ARRAY_SORT: lambda x, types: f"array_sort({x[0]})",
