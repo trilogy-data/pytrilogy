@@ -69,9 +69,13 @@ def test_parameters():
             "duckdb",
             "--param",
             "scale=42",
+            "--param",
+            "float=3.14",
+            "--param",
+            "string=hello",
         ],
     )
     if result.exception:
         raise result.exception
     assert result.exit_code == 0
-    assert "(42,)" in result.output.strip()
+    assert "(42, 3.14, 'hello')" in result.output.strip()

@@ -62,51 +62,6 @@ def parse_env_params(env_param_list: tuple[str]) -> dict[str, str]:
     return env_params
 
 
-def separate_conn_and_env_args(
-    args: tuple[str], dialect: Dialects
-) -> tuple[dict[str, str | int], dict[str, str | int]]:
-    """
-    Separates connection arguments from environment parameters.
-    Connection args are dialect-specific, environment args are everything else.
-    """
-    # Define known connection argument keys for each dialect
-    conn_arg_keys = {
-        Dialects.DUCK_DB: {"database", "path", "config", "read_only"},
-        Dialects.SNOWFLAKE: {
-            "account",
-            "user",
-            "password",
-            "database",
-            "schema",
-            "warehouse",
-            "role",
-        },
-        Dialects.SQL_SERVER: {
-            "server",
-            "database",
-            "username",
-            "password",
-            "driver",
-            "trusted_connection",
-        },
-        Dialects.POSTGRES: {"host", "port", "database", "user", "password", "sslmode"},
-    }
-
-    all_args = extra_to_kwargs(args)
-    dialect_conn_keys = conn_arg_keys.get(dialect, set())
-
-    conn_args = {}
-    env_args = {}
-
-    for key, value in all_args.items():
-        if key in dialect_conn_keys:
-            conn_args[key] = value
-        else:
-            env_args[key] = value
-
-    return conn_args, env_args
-
-
 @group()
 @option("--debug", default=False)
 @pass_context
