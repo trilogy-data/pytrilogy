@@ -240,6 +240,7 @@ class Environment(BaseModel):
         self.frozen = False
 
     def set_parameters(self, **kwargs) -> Self:
+
         self.parameters.update(kwargs)
         return self
 

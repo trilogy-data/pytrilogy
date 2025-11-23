@@ -54,8 +54,10 @@ class Purpose(Enum):
 
     @classmethod
     def _missing_(cls, value):
-        if value == "constant":
+        if value.lower() == "constant":
             return Purpose.CONSTANT
+        if value.lower() == "param":
+            return Purpose.PARAMETER
         return super()._missing_(value)
 
 

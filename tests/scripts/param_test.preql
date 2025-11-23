@@ -2,7 +2,7 @@
 parameter scale int;
 parameter float float;
 parameter string string;
-
+parameter date date;
 auto numbers <- generate_array(1, scale, 1);
 
-select count(unnest(numbers))  as cnt, float, string;
+select count(unnest(numbers))  as cnt, float, string, date;

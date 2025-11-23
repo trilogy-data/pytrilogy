@@ -415,6 +415,7 @@ class BaseDialect:
     FUNCTION_GRAIN_MATCH_MAP = FUNCTION_GRAIN_MATCH_MAP
     QUOTE_CHARACTER = "`"
     SQL_TEMPLATE = GENERIC_SQL_TEMPLATE
+    CREATE_TABLE_SQL_TEMPLATE = CREATE_TABLE_SQL_TEMPLATE
     DATATYPE_MAP = DATATYPE_MAP
     COMPLEX_DATATYPE_MAP = COMPLEX_DATATYPE_MAP
     UNNEST_MODE = UnnestMode.CROSS_APPLY
@@ -1276,9 +1277,9 @@ class BaseDialect:
                 for c in target.columns:
                     type_map[c.name] = self.render_expr(c.type)
                 text.append(
-                    CREATE_TABLE_SQL_TEMPLATE.render(
+                    self.CREATE_TABLE_SQL_TEMPLATE.render(
                         create_mode=query.create_mode.value,
-                        name=target.name,
+                        name=safe_quote(target.name, self.QUOTE_CHARACTER),
                         columns=target.columns,
                         type_map=type_map,
                         partition_keys=target.partition_keys,

@@ -48,7 +48,11 @@
 
     datasource_status_clause: "state"i DATASOURCE_STATUS
 
-    datasource: "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? whole_grain_clause? (address | query) where? datasource_status_clause?
+    datasource_increment_clause: "incremental"i "by"i column_list
+
+    datasource_partition_clause: "partition"i "by"i column_list
+
+    datasource: "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? whole_grain_clause? (address | query) where? datasource_increment_clause? datasource_partition_clause? datasource_status_clause? 
    
     whole_grain_clause: "complete" where
 
@@ -508,7 +512,7 @@
 
     !data_type:  ("string"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type) ("::" IDENTIFIER)?
     
-    PURPOSE:  "key"i | "metric"i | "parameter"i  | CONST
+    PURPOSE:  "key"i | "metric"i | "parameter"i | "param"i  | CONST
     PROPERTY: "property"i
     CONST: "const"i | "constant"i
     AUTO: "AUTO"i 

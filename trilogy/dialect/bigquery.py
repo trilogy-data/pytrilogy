@@ -119,6 +119,30 @@ ORDER BY {% for order in order_by %}
 LIMIT {{ limit }}{% endif %}{% endif %}
 """
 )
+
+
+BQ_CREATE_TABLE_SQL_TEMPLATE = Template(
+    """
+CREATE {% if create_mode == "create_or_replace" %}OR REPLACE TABLE{% elif create_mode == "create_if_not_exists" %}TABLE IF NOT EXISTS{% else %}TABLE{% endif %} {{ name}} (
+{%- for column in columns %}
+    `{{ column.name }}` {{ type_map[column.name] }}{% if column.description %} OPTIONS(description='{{ column.description }}'){% endif %}{% if not loop.last %},{% endif %}
+{%- endfor %}
+)
+{%- if partition_by %}
+PARTITION BY {{ partition_by }}
+{%- endif %}
+{%- if cluster_by %}
+CLUSTER BY {{ cluster_by | join(', ') }}
+{%- endif %}
+{%- if table_description %}
+OPTIONS(
+    description='{{ table_description }}'
+)
+{%- endif %};
+""".strip()
+)
+
+
 MAX_IDENTIFIER_LENGTH = 50
 
 
@@ -131,6 +155,7 @@ class BigqueryDialect(BaseDialect):
     }
     QUOTE_CHARACTER = "`"
     SQL_TEMPLATE = BQ_SQL_TEMPLATE
+    CREATE_TABLE_SQL_TEMPLATE = BQ_CREATE_TABLE_SQL_TEMPLATE
     UNNEST_MODE = UnnestMode.CROSS_JOIN_UNNEST
     DATATYPE_MAP = DATATYPE_MAP
 

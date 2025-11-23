@@ -47,7 +47,7 @@ def test_db_args_string():
         cli,
         [
             "run",
-            "key in int; datasource test_source ( i:in) grain(in) address test; select in;",
+            "key in int; datasource test_source ( i:in) grain(in) address test; publish datasource test_source; select in;",
             "duckdb",
             "--path",
             str(path),
@@ -73,9 +73,11 @@ def test_parameters():
             "float=3.14",
             "--param",
             "string=hello",
+            "--param",
+            "date=2023-01-01",
         ],
     )
     if result.exception:
         raise result.exception
     assert result.exit_code == 0
-    assert "(42, 3.14, 'hello')" in result.output.strip()
+    assert "(42, 3.14, 'hello', datetime.date(2023, 1, 1))" in result.output.strip()

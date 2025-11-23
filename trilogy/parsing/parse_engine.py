@@ -190,6 +190,16 @@ class AddOn:
     functions: List[FunctionType]
 
 
+@dataclass
+class DatasourcePartitionClause:
+    columns: List[ConceptRef]
+
+
+@dataclass
+class DatasourceIncrementalClause:
+    columns: List[ConceptRef]
+
+
 with open(join(dirname(__file__), "trilogy.lark"), "r") as f:
     PARSER = Lark(
         f.read(),
@@ -685,6 +695,7 @@ class ParseToObjects(Transformer):
         metadata = Metadata()
         modifiers = []
         purpose = args[0]
+        datatype = args[2]
         for arg in args:
             if isinstance(arg, Metadata):
                 metadata = arg
@@ -698,6 +709,28 @@ class ParseToObjects(Transformer):
                 raise MissingParameterException(
                     f'This script requires parameter "{name}" to be set in environment.'
                 )
+            if datatype == DataType.INTEGER:
+                value = int(value)
+            elif datatype == DataType.FLOAT:
+                value = float(value)
+            elif datatype == DataType.BOOL:
+                value = bool(value)
+            elif datatype == DataType.STRING:
+                value = str(value)
+            elif datatype == DataType.DATE:
+                if isinstance(value, date):
+                    value = value
+                else:
+                    value = date.fromisoformat(value)
+            elif datatype == DataType.DATETIME:
+                if isinstance(value, datetime):
+                    value = value
+                else:
+                    value = datetime.fromisoformat(value)
+            else:
+                raise ParseError(
+                    f"Unsupported datatype {datatype} for parameter {name}."
+                )
             rval = self.constant_derivation(
                 meta, [Purpose.CONSTANT, name, value, metadata]
             )
@@ -705,7 +738,7 @@ class ParseToObjects(Transformer):
 
         concept = Concept(
             name=name,
-            datatype=args[2],
+            datatype=datatype,
             purpose=purpose,
             metadata=metadata,
             namespace=namespace,
@@ -901,6 +934,14 @@ class ParseToObjects(Transformer):
         return args[0]
 
     @v_args(meta=True)
+    def datasource_partition_clause(self, meta: Meta, args):
+        return DatasourcePartitionClause([ConceptRef(address=arg) for arg in args[0]])
+
+    @v_args(meta=True)
+    def datasource_incremental_clause(self, meta: Meta, args):
+        return DatasourceIncrementalClause([ConceptRef(address=arg) for arg in args[0]])
+
+    @v_args(meta=True)
     def datasource(self, meta: Meta, args):
         name = args[0]
         columns: List[ColumnAssignment] = args[1]
@@ -908,6 +949,8 @@ class ParseToObjects(Transformer):
         address: Optional[Address] = None
         where: Optional[WhereClause] = None
         non_partial_for: Optional[WhereClause] = None
+        incremental_by: List[ConceptRef] = []
+        partition_by: List[ConceptRef] = []
         datasource_status: DatasourceStatus = DatasourceStatus.PUBLISHED
         for val in args[1:]:
             if isinstance(val, Address):
@@ -922,6 +965,10 @@ class ParseToObjects(Transformer):
                 where = val
             elif isinstance(val, DatasourceStatus):
                 datasource_status = val
+            elif isinstance(val, DatasourceIncrementalClause):
+                incremental_by = val.columns
+            elif isinstance(val, DatasourcePartitionClause):
+                partition_by = val.columns
         if not address:
             raise ValueError(
                 "Malformed datasource, missing address or query declaration"
@@ -937,6 +984,8 @@ class ParseToObjects(Transformer):
             where=where,
             non_partial_for=non_partial_for,
             status=datasource_status,
+            incremental_by=incremental_by,
+            partition_by=partition_by,
         )
         if datasource.where:
             for x in datasource.where.concept_arguments:
@@ -1376,35 +1425,40 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def persist_statement(self, meta: Meta, args) -> PersistStatement | None:
+        if self.parse_pass != ParsePass.VALIDATION:
+            return None
         labels = [x for x in args if isinstance(x, str)]
         if len(labels) == 2:
             identifier = labels[0]
             address = labels[1]
         else:
             identifier = labels[0]
-            address = identifier
+            target: Datasource | None = self.environment.datasources.get(identifier)
+            if not target:
+                raise SyntaxError(
+                    f"Persist target {identifier} not found in environment datasources on line {meta.line}"
+                )
+            address = target.safe_address
         modes = [x for x in args if isinstance(x, PersistMode)]
         mode = modes[0] if modes else PersistMode.OVERWRITE
         select: SelectStatement = [x for x in args if isinstance(x, SelectStatement)][0]
-        if self.parse_pass == ParsePass.VALIDATION:
-            new_datasource = select.to_datasource(
-                namespace=(
-                    self.environment.namespace
-                    if self.environment.namespace
-                    else DEFAULT_NAMESPACE
-                ),
-                name=identifier,
-                address=Address(location=address),
-                grain=select.grain,
-                environment=self.environment,
-            )
-            return PersistStatement(
-                select=select,
-                datasource=new_datasource,
-                persist_mode=mode,
-                meta=Metadata(line_number=meta.line),
-            )
-        return None
+        new_datasource = select.to_datasource(
+            namespace=(
+                self.environment.namespace
+                if self.environment.namespace
+                else DEFAULT_NAMESPACE
+            ),
+            name=identifier,
+            address=Address(location=address),
+            grain=select.grain,
+            environment=self.environment,
+        )
+        return PersistStatement(
+            select=select,
+            datasource=new_datasource,
+            persist_mode=mode,
+            meta=Metadata(line_number=meta.line),
+        )
 
     @v_args(meta=True)
     def align_item(self, meta: Meta, args) -> AlignItem:

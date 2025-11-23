@@ -121,6 +121,8 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     where: Optional[WhereClause] = None
     non_partial_for: Optional[WhereClause] = None
     status: DatasourceStatus = Field(default=DatasourceStatus.PUBLISHED)
+    incremental_by: List[ConceptRef] = Field(default_factory=list)
+    partition_by: List[ConceptRef] = Field(default_factory=list)
 
     @property
     def safe_address(self) -> str:
@@ -259,6 +261,9 @@ class Datasource(HasUUID, Namespaced, BaseModel):
                 if self.non_partial_for
                 else None
             ),
+            status=self.status,
+            incremental_by=[c.with_namespace(namespace) for c in self.incremental_by],
+            partition_by=[c.with_namespace(namespace) for c in self.partition_by],
         )
         return new
 

@@ -1,0 +1,46 @@
+import events as events;
+
+param load_date date;
+
+auto session_count <- count(events.session_id);
+auto purchase_count <- count(events.session_id ? events.event_type = "purchase");
+auto cart_count <- count(events.session_id ? events.event_type = "cart");
+auto product_count <- count(events.session_id ? events.event_type = "product");
+
+datasource funnel_reporting (
+    date:events.created_at.date,
+    traffic_source:events.traffic_source,
+    event_type:events.event_type,
+    browser:events.browser,
+    session_count:session_count,
+    purchase_count:purchase_count,
+    cart_count:cart_count,
+    product_count:product_count
+    )
+grain (date, traffic_source, event_type, browser)
+address `preqldata.look_etl.funnel_reporting`
+incremental by date
+partition by date
+state unpublished;
+
+create if not exists datasource funnel_reporting;
+
+
+append into funnel_reporting by date from
+where events.event_type in ("purchase", "cart", "product")
+and events.created_at.date = load_date
+select 
+events.created_at.date,
+events.traffic_source,
+events.event_type,
+events.browser,
+session_count,
+purchase_count,
+cart_count,
+product_count
+;
+
+
+publish datasource funnel_reporting;
+
+
