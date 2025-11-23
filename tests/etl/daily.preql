@@ -87,11 +87,11 @@ grain (ride_year, ride_month)
 address tbl_daily_fact
 state UNPUBLISHED;
 
-create datasources daily_fact;
+create if not exists datasources daily_fact;
 
 
 #INSERT INTO daily_fact BY ride_year, ride_month
-PERSIST APPEND INTO tbl_daily_fact by ride_year, ride_month 
+APPEND INTO tbl_daily_fact by ride_year, ride_month 
 FROM  
 WHERE ride_year = load_year
 SELECT 

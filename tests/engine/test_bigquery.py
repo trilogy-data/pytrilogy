@@ -439,8 +439,8 @@ select
     assert result.order_count == 5
     assert result.distinct_categories == 3
     assert result.total_quantity == 11
-    assert result.any_premium == True
-    assert result.all_premium == False
+    assert result.any_premium is True
+    assert result.all_premium is False
     assert len(result.revenue_array) == 5
 
 

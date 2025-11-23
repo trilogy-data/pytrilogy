@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path as PathlibPath
+from typing import Iterable
 
 from click import UNPROCESSED, Path, argument, group, option, pass_context
 
@@ -21,7 +22,7 @@ def pairwise(t):
     return zip(it, it)
 
 
-def extra_to_kwargs(arg_list: list[str]) -> dict[str, str | int]:
+def extra_to_kwargs(arg_list: Iterable[str]) -> dict[str, str | int]:
     pairs = pairwise(arg_list)
     final = {}
     for k, v in pairs:

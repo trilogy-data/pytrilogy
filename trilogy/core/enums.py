@@ -2,9 +2,17 @@ from enum import Enum
 
 InfiniteFunctionArgs = -1
 
+
 class DatasourceStatus(Enum):
     PUBLISHED = "published"
     UNPUBLISHED = "unpublished"
+
+
+class CreateMode(Enum):
+    CREATE = "create"
+    CREATE_IF_NOT_EXISTS = "create_if_not_exists"
+    CREATE_OR_REPLACE = "create_or_replace"
+
 
 class UnnestMode(Enum):
     DIRECT = "direct"

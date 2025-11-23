@@ -170,10 +170,10 @@ def test_adhoc07():
     # Regex pattern to validate the SQL CTE structure
     target = r"""
 SELECT
-    "cooperative"."player_full_name" as "player_full_name",
-    rank() over (order by "cooperative"."eligible" desc,"cooperative"."_virt_agg_sum_2295964629883628" / "cooperative"."_virt_agg_count_6314412377293846" desc ) as "player_rank"
+    "thoughtful"."player_full_name" as "player_full_name",
+    rank() over (order by "thoughtful"."eligible" desc,"thoughtful"."_virt_agg_sum_2295964629883628" / "thoughtful"."_virt_agg_count_6314412377293846" desc ) as "player_rank"
 FROM
-    "cooperative"
+    "thoughtful"
 LIMIT (100)"""
     assert target in generated, generated.strip()
     # assert re.match(target, generated, re.VERBOSE)

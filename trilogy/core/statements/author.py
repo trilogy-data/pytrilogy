@@ -8,6 +8,7 @@ from pydantic.functional_validators import PlainValidator
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
 from trilogy.core.enums import (
     ConceptSource,
+    CreateMode,
     FunctionClass,
     IOType,
     Modifier,
@@ -468,13 +469,17 @@ class ValidateStatement(BaseModel):
     scope: ValidationScope
     targets: Optional[List[str]] = None  # list of identifiers
 
+
 class PublishStatement(BaseModel):
     scope: ValidationScope
-    targets: Optional[List[str]] = None  # list of identifiers
+    targets: list[str]
+
 
 class CreateStatement(BaseModel):
     scope: ValidationScope
-    targets: Optional[List[str]] = None  # list of identifiers
+    create_mode: CreateMode = CreateMode.CREATE_OR_REPLACE
+    targets: list[str]
+
 
 class ShowStatement(BaseModel):
     content: SelectStatement | PersistStatement | ValidateStatement | ShowCategory

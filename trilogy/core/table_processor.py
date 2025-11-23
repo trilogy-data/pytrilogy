@@ -1,12 +1,12 @@
-from trilogy.core.statements.author import CreateStatement, Datasource
-from trilogy.core.models.core import TraitDataType
+from trilogy.core.enums import Modifier
+from trilogy.core.models.datasource import Address, Datasource
+from trilogy.core.models.environment import Environment
+from trilogy.core.statements.author import CreateStatement
 from trilogy.core.statements.execute import (
-    ProcessedCreateStatement,
     ColumnInfo,
     CreateTableInfo,
+    ProcessedCreateStatement,
 )
-from trilogy.core.enums import Modifier
-from trilogy.core.models.environment import Environment
 
 
 def process_create_statement(
@@ -15,26 +15,37 @@ def process_create_statement(
 ) -> ProcessedCreateStatement:
     # Process the create statement to extract table info
     targets_info = []
-    print(statement)
     for target in statement.targets:
-        datasource: Datasource = environment.datasources.get(target)
+        datasource: Datasource | None = environment.datasources.get(target)
         if not datasource:
             raise ValueError(f"Datasource {target} not found in environment.")
         columns_info = [
             ColumnInfo(
-                name=col.alias,
+                # the is_concrete restricts this
+                name=col.alias,  # type: ignore
                 type=col.concept.output_datatype,
                 description=(
                     col.concept.metadata.description if col.concept.metadata else None
                 ),
                 nullable=Modifier.OPTIONAL in col.modifiers,
-                primary_key=col.concept.address in datasource.grain
+                primary_key=col.concept.address in datasource.grain.components,
             )
             for col in datasource.columns
+            if col.is_concrete
         ]
 
         targets_info.append(
-            CreateTableInfo(name=datasource.address.location, columns=columns_info, partition_keys=[])
+            CreateTableInfo(
+                name=(
+                    datasource.address.location
+                    if isinstance(datasource.address, Address)
+                    else datasource.address
+                ),
+                columns=columns_info,
+                partition_keys=[],
+            )
         )
 
-    return ProcessedCreateStatement(scope=statement.scope, targets=targets_info)
+    return ProcessedCreateStatement(
+        scope=statement.scope, targets=targets_info, create_mode=statement.create_mode
+    )

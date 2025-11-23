@@ -20,27 +20,27 @@ from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     CopyStatement,
+    CreateStatement,
     ImportStatement,
     MergeStatementV2,
     MultiSelectStatement,
     PersistStatement,
+    PublishStatement,
     RawSQLStatement,
     SelectStatement,
     ShowStatement,
     ValidateStatement,
-    CreateStatement,
-    PublishStatement,
 )
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
     ProcessedCopyStatement,
+    ProcessedCreateStatement,
+    ProcessedPublishStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
     ProcessedRawSQLStatement,
     ProcessedShowStatement,
     ProcessedValidateStatement,
-    ProcessedCreateStatement,
-    ProcessedPublishStatement
 )
 from trilogy.core.validation.common import (
     ValidationTest,
@@ -55,6 +55,7 @@ from trilogy.dialect.metadata import (
     handle_merge_statement,
     handle_processed_show_statement,
     handle_processed_validate_statement,
+    handle_publish_statement,
     handle_show_statement_outputs,
 )
 from trilogy.engine import EngineConnection, ExecutionEngine, ResultProtocol
@@ -169,7 +170,7 @@ class Executor(object):
         return handle_processed_validate_statement(
             query, self.generator, self.validate_environment
         )
-    
+
     @execute_query.register
     def _(self, query: ProcessedCreateStatement) -> ResultProtocol | None:
         sql = self.generator.compile_statement(query)
@@ -178,10 +179,8 @@ class Executor(object):
 
     @execute_query.register
     def _(self, query: ProcessedPublishStatement) -> ResultProtocol | None:
-        return handle_processed_validate_statement(
-            query, self.generator, self.validate_environment
-        )
-    
+        return handle_publish_statement(query, self.environment)
+
     @execute_query.register
     def _(self, query: ImportStatement) -> ResultProtocol | None:
         return handle_import_statement(query)

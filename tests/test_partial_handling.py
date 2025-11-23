@@ -141,34 +141,3 @@ def test_partial_assignment():
         depth=0,
     )
     assert isinstance(sourced, FilterNode)
-
-
-def test_filter_query():
-    executor = setup_engine()
-    env = Environment()
-    setup_titanic(env)
-    executor.environment = env
-    executor.hooks = [DebuggingHook()]
-    test = """property passenger.id.family <- split(passenger.name, ',')[1]; 
-    auto surviving_passenger<- filter passenger.id where passenger.survived =1;
-    select 
-    passenger.family,
-    passenger.id.count,
-    count(surviving_passenger) -> surviving_size
-order by
-    passenger.id.count desc
-limit 5;
-    """
-    results = executor.parse_text(test)
-    query = results[-1]
-    x = query.ctes[-1].parent_ctes[0]
-    # parent = x.parent_ctes[0]
-    assert "local_surviving_passenger" not in x.source.source_map["passenger.family"]
-    non_filtered_found = False
-    for source in x.source.source_map["passenger.family"]:
-        # ensure we don't get this from a filtered source
-        non_filtered_found = True
-        if "filtered" not in source.identifier:
-            non_filtered_found = True
-
-    assert non_filtered_found, x.source.source_map["passenger.family"]

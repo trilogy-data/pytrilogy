@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List, Optional, Union
 
-from trilogy.core.enums import IOType, PersistMode, ValidationScope
+from trilogy.core.enums import CreateMode, IOType, PersistMode, ValidationScope
 from trilogy.core.models.author import ConceptRef, HavingClause, WhereClause
 from trilogy.core.models.build import (
     BuildConcept,
@@ -76,6 +76,7 @@ class ProcessedValidateStatement:
     scope: ValidationScope
     targets: Optional[List[str]]
 
+
 @dataclass
 class ColumnInfo:
     name: str
@@ -84,22 +85,26 @@ class ColumnInfo:
     primary_key: bool = False
     description: Optional[str] = None
 
+
 @dataclass
 class CreateTableInfo:
-    name:str
-    columns:List[ColumnInfo]
-    partition_keys:Optional[List[str]] = field(default = list)
+    name: str
+    columns: List[ColumnInfo]
+    partition_keys: list[str] = field(default_factory=list)
 
 
 @dataclass
 class ProcessedCreateStatement:
     scope: ValidationScope
+    create_mode: CreateMode
     targets: list[CreateTableInfo]
+
 
 @dataclass
 class ProcessedPublishStatement:
     scope: ValidationScope
-    targets: Optional[List[str]]
+    targets: list[str]
+
 
 @dataclass
 class ProcessedStaticValueOutput:

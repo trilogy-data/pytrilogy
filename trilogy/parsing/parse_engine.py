@@ -29,6 +29,8 @@ from trilogy.core.enums import (
     BooleanOperator,
     ComparisonOperator,
     ConceptSource,
+    CreateMode,
+    DatasourceStatus,
     DatePart,
     Derivation,
     FunctionType,
@@ -42,7 +44,6 @@ from trilogy.core.enums import (
     ValidationScope,
     WindowOrder,
     WindowType,
-    DatasourceStatus,
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.functions import (
@@ -122,12 +123,14 @@ from trilogy.core.statements.author import (
     ConceptDerivationStatement,
     ConceptTransform,
     CopyStatement,
+    CreateStatement,
     FunctionDeclaration,
     ImportStatement,
     Limit,
     MergeStatementV2,
     MultiSelectStatement,
     PersistStatement,
+    PublishStatement,
     RawSQLStatement,
     RowsetDerivationStatement,
     SelectItem,
@@ -135,8 +138,6 @@ from trilogy.core.statements.author import (
     ShowStatement,
     TypeDeclaration,
     ValidateStatement,
-    PublishStatement,
-    CreateStatement,
 )
 from trilogy.parsing.common import (
     align_item_to_concept,
@@ -819,7 +820,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def constant_derivation(
-        self, meta: Meta, args: tuple[Purpose, str, Any, Optional[Meta]]
+        self, meta: Meta, args: tuple[Purpose, str, Any, Optional[Metadata]]
     ) -> Concept:
 
         if len(args) > 3:
@@ -835,7 +836,7 @@ class ParseToObjects(Transformer):
             name=name,
             datatype=arg_to_datatype(constant),
             purpose=Purpose.CONSTANT,
-            metadata=metadata,
+            metadata=Metadata(line_number=meta.line) if not metadata else metadata,
             lineage=Function(
                 operator=FunctionType.CONSTANT,
                 output_datatype=arg_to_datatype(constant),
@@ -888,7 +889,7 @@ class ParseToObjects(Transformer):
     def raw_column_assignment(self, args):
         return RawColumnExpr(text=args[1])
 
-    def DATASOURCE_STATUS(self, args) -> str:
+    def DATASOURCE_STATUS(self, args) -> DatasourceStatus:
         return DatasourceStatus(args.value.lower())
 
     @v_args(meta=True)
@@ -1079,10 +1080,18 @@ class ParseToObjects(Transformer):
             targets=targets,
         )
 
+    def create_modifier_clause(self, args):
+        token = args[0]
+        if token.type == "CREATE_IF_NOT_EXISTS":
+            return CreateMode.CREATE_IF_NOT_EXISTS
+        elif token.type == "CREATE_OR_REPLACE":
+            return CreateMode.CREATE_OR_REPLACE
+
     @v_args(meta=True)
     def create_statement(self, meta: Meta, args) -> CreateStatement:
         targets = []
         scope = ValidationScope.DATASOURCES
+        create_mode = CreateMode.CREATE
         for arg in args:
             if isinstance(arg, str):
                 targets.append(arg)
@@ -1092,13 +1101,16 @@ class ParseToObjects(Transformer):
                     raise SyntaxError(
                         f"Creating is only supported for Datasources, got {arg} on line {meta.line}"
                     )
-        return CreateStatement(
-            scope=scope,
-            targets=targets,
-        )
+            elif isinstance(arg, CreateMode):
+                create_mode = arg
+
+        return CreateStatement(scope=scope, targets=targets, create_mode=create_mode)
 
     def VALIDATE_SCOPE(self, args) -> ValidationScope:
-        return ValidationScope(args.lower())
+        base: str = args.lower()
+        if not base.endswith("s"):
+            base += "s"
+        return ValidationScope(base)
 
     @v_args(meta=True)
     def validate_statement(self, meta: Meta, args) -> ValidateStatement:
@@ -1353,6 +1365,9 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def PERSIST_MODE(self, args) -> PersistMode:
+        base = args.value.lower()
+        if base == "persist":
+            return PersistMode.OVERWRITE
         return PersistMode(args.value.lower())
 
     @v_args(meta=True)

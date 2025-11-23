@@ -353,8 +353,8 @@ class Environment(BaseModel):
                     invalidated = len(datasource.columns) < clen
             if invalidated:
                 logger.warning(
-                f"Persisted concept {existing.address} lineage {str(existing.lineage)} did not match redeclaration {str(new_concept.lineage)}, invalidated current bound datasource."
-            )
+                    f"Persisted concept {existing.address} lineage {str(existing.lineage)} did not match redeclaration {str(new_concept.lineage)}, invalidated current bound datasource."
+                )
             return None
 
         if existing and self.config.allow_duplicate_declaration:

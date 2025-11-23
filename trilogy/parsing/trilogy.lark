@@ -77,10 +77,9 @@
     import_statement: "import" IMPORT_DOT* IDENTIFIER ("."  IDENTIFIER)* ("as" IDENTIFIER)?
 
     // persist_statement
-    PERSIST_MODE: "append"i | "overwrite"i
+    PERSIST_MODE: "append"i | "overwrite"i | "persist"
     persist_partition_clause: "by"i column_list
-    persist_identifier_clause: ("AS" IDENTIFIER)
-    persist_statement: "persist"i PERSIST_MODE? persist_identifier_clause? "into"i IDENTIFIER persist_partition_clause? "from"i select_statement
+    persist_statement: PERSIST_MODE IDENTIFIER? "into"i IDENTIFIER persist_partition_clause? "from"i select_statement
 
     // select statement
     select_statement: where? "select"i select_list where?  having?  order_by?  limit? 
@@ -103,7 +102,7 @@
 
     // validate_statement
 
-    VALIDATE_SCOPE: "concepts"i | "datasources"i 
+    VALIDATE_SCOPE: "concepts"i | "datasources"i | "datasource"i | "concept"i
 
     validate_statement: ("validate"i "all"i) | ( "validate"i VALIDATE_SCOPE (IDENTIFIER ("," IDENTIFIER)* ","? )? )
     
@@ -111,7 +110,11 @@
     publish_statement: "publish"i VALIDATE_SCOPE IDENTIFIER
 
     // create_statement
-    create_statement: "create"i VALIDATE_SCOPE IDENTIFIER
+    CREATE_IF_NOT_EXISTS: /if\s+not\s+exists/i
+    CREATE_OR_REPLACE: /or\s+replace/i
+
+    create_modifier_clause: CREATE_IF_NOT_EXISTS | CREATE_OR_REPLACE
+    create_statement: "create"i create_modifier_clause? VALIDATE_SCOPE IDENTIFIER
     
     // copy statement
 
