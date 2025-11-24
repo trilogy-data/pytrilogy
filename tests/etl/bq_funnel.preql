@@ -19,14 +19,14 @@ datasource funnel_reporting (
     )
 grain (date, traffic_source, event_type, browser)
 address `preqldata.look_etl.funnel_reporting`
-incremental by date
-partition by date
+incremental by events.created_at.date
+partition by events.created_at.date
 state unpublished;
 
 create if not exists datasource funnel_reporting;
 
 
-append into funnel_reporting by date from
+append into funnel_reporting by events.created_at.date from
 where events.event_type in ("purchase", "cart", "product")
 and events.created_at.date = load_date
 select 

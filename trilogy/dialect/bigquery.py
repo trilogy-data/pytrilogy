@@ -11,8 +11,11 @@ from trilogy.core.enums import (
 from trilogy.core.models.core import (
     DataType,
 )
-from trilogy.core.models.execute import CTE, UnionCTE
-from trilogy.dialect.base import BaseDialect
+from trilogy.core.models.execute import CTE, UnionCTE, CompiledCTE
+from trilogy.dialect.base import BaseDialect, safe_quote
+from trilogy.dialect.config import BigQueryConfig
+from trilogy.core.statements.execute import ProcessedQueryPersist
+import uuid
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
@@ -142,6 +145,46 @@ OPTIONS(
 """.strip()
 )
 
+PARTITIONED_INSERT_TEMPLATE = Template("""
+-- Step 1: materialize results
+CREATE TEMP TABLE {{ tmp_table }} like {{ target_table }};
+                                       
+INSERT INTO {{ tmp_table }}
+    {{ final_select }}
+;
+
+-- Step 2: extract distinct partitions and generate dynamic statements
+BEGIN
+    DECLARE partition_values ARRAY<{{ partition_type }}>;
+    DECLARE current_partition {{ partition_type }};
+    DECLARE i INT64 DEFAULT 0;
+    
+    -- Get all distinct partition values
+    SET partition_values = (
+        SELECT ARRAY_AGG(DISTINCT {{ partition_key[0] }})
+        FROM {{ tmp_table }}
+    );
+    
+    -- Loop through each partition value
+    WHILE i < ARRAY_LENGTH(partition_values) DO
+        SET current_partition = partition_values[OFFSET(i)];
+        
+        -- Delete existing records for this partition
+        EXECUTE IMMEDIATE FORMAT(
+            'DELETE FROM {{ target_table }} WHERE {{ partition_key[0] }} = "%t"',
+            current_partition
+        );
+        
+        -- Insert new records for this partition
+        EXECUTE IMMEDIATE FORMAT(
+            'INSERT INTO {{ target_table }} SELECT * FROM {{ tmp_table }} WHERE {{ partition_key[0] }} = "%t"',
+            current_partition
+        );
+        
+        SET i = i + 1;
+    END WHILE;
+END;
+""")
 
 MAX_IDENTIFIER_LENGTH = 50
 
@@ -169,3 +212,41 @@ class BigqueryDialect(BaseDialect):
         raise_invalid: bool = False,
     ):
         return f"{self.render_expr(left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {operator.value} unnest({self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
+
+    def generate_partitioned_insert(
+        self,
+        query: ProcessedQueryPersist,
+        recursive: bool,
+        compiled_ctes: list[CompiledCTE],
+    ) -> str:
+        tmp_table = f"tmp__{uuid.uuid4().hex}"
+        final_select = compiled_ctes[-1].statement
+        ctes = compiled_ctes[:-1]
+
+        if not query.partition_by:
+            raise ValueError("partition_by must be set for partitioned inserts.")
+
+        partition_key = query.partition_by
+        target_table = safe_quote(query.output_to.address.location, self.QUOTE_CHARACTER)
+
+        # render intermediate CTEs
+        ctes_sql = ""
+        if ctes:
+            rendered = []
+            for c in ctes:
+                rendered.append(f"{c.name} AS ({c.statement})")
+            ctes_sql = "WITH " + ",\n".join(rendered)
+
+        # create temp table first
+        full_select_with_ctes = (
+            final_select if not ctes_sql else f"{ctes_sql}\n{final_select}"
+        )
+
+        sql_script = PARTITIONED_INSERT_TEMPLATE.render(
+            tmp_table=tmp_table,
+            final_select=full_select_with_ctes,
+            partition_key=partition_key,
+            target_table=target_table,
+        )
+
+        return sql_script

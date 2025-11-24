@@ -91,7 +91,7 @@ create if not exists datasources daily_fact;
 
 
 #INSERT INTO daily_fact BY ride_year, ride_month
-APPEND INTO tbl_daily_fact by ride_year, ride_month 
+APPEND INTO tbl_daily_fact
 FROM  
 WHERE ride_year = load_year
 SELECT 

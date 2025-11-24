@@ -454,7 +454,9 @@ class PersistStatement(HasUUID, BaseModel):
     datasource: Datasource
     select: SelectStatement
     persist_mode: PersistMode = PersistMode.OVERWRITE
+    partition_by: List[ConceptRef] = Field(default_factory=list)
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+
 
     @property
     def identifier(self):

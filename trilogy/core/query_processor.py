@@ -499,10 +499,17 @@ def process_persist(
 
     # build our object to return
     arg_dict = {k: v for k, v in select.__dict__.items()}
+    partition_by = []
+    for addr in statement.partition_by:
+        for c in statement.datasource.columns:
+            if c.concept.address == addr:
+                partition_by.append(c.alias)
+                break
     return ProcessedQueryPersist(
         **arg_dict,
         output_to=MaterializedDataset(address=statement.address),
         persist_mode=statement.persist_mode,
+        partition_by=partition_by,
         datasource=statement.datasource,
     )
 

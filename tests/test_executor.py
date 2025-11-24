@@ -47,6 +47,7 @@ def test_mock_result():
         assert isinstance(row, MockResultRow)
         assert set(result.keys()) == {"a", "b", "c"}
         assert all(isinstance(v, int) for v in row.values())
+        _ = [v for v in row]
 
     result = MockResult(
         columns=["a", "b", "c"],
