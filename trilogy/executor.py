@@ -237,14 +237,14 @@ class Executor(object):
         )
 
     @generate_sql.register  # type: ignore
-    def _(self, command: ProcessedQuery) -> List[str]:
+    def _(self, command: ProcessedQuery) -> list[str]:
         output = []
         compiled_sql = self.generator.compile_statement(command)
         output.append(compiled_sql)
         return output
 
     @generate_sql.register
-    def _(self, command: ProcessedShowStatement) -> List[str]:
+    def _(self, command: ProcessedShowStatement) -> list[str]:
         output = []
         for statement in command.output_values:
             if isinstance(statement, (ProcessedQuery, ProcessedQueryPersist)):
@@ -253,7 +253,7 @@ class Executor(object):
         return output
 
     @generate_sql.register  # type: ignore
-    def _(self, command: MultiSelectStatement) -> List[str]:
+    def _(self, command: MultiSelectStatement) -> list[str]:
         output = []
         sql = self.generator.generate_queries(
             self.environment, [command], hooks=self.hooks
@@ -263,8 +263,8 @@ class Executor(object):
             output.append(compiled_sql)
         return output
 
-    @generate_sql.register  # type: ignore
-    def _(self, command: SelectStatement) -> List[str]:
+    @generate_sql.register
+    def _(self, command: SelectStatement) -> list[str]:
         output = []
         sql = self.generator.generate_queries(
             self.environment, [command], hooks=self.hooks
@@ -274,9 +274,22 @@ class Executor(object):
             output.append(compiled_sql)
         return output
 
-    @generate_sql.register  # type: ignore
-    def _(self, command: str) -> List[str]:
-        """generate SQL for execution"""
+    @generate_sql.register
+    def _(self, command: ProcessedCreateStatement) -> list[str]:
+        output = []
+        compiled_sql = self.generator.compile_statement(command)
+        output.append(compiled_sql)
+        return output
+
+    @generate_sql.register
+    def _(self, command: ProcessedPublishStatement) -> list[str]:
+        output = []
+        compiled_sql = self.generator.compile_statement(command)
+        output.append(compiled_sql)
+        return output
+
+    @generate_sql.register
+    def _(self, command: str) -> list[str]:
         _, parsed = parse_text(command, self.environment)
         generatable = [
             x
@@ -519,7 +532,7 @@ class Executor(object):
     def validate_environment(
         self,
         scope: ValidationScope = ValidationScope.ALL,
-        targets: Optional[List[str]] = None,
+        targets: Optional[list[str]] = None,
         generate_only: bool = False,
     ) -> list[ValidationTest]:
         from trilogy.core.validation.environment import validate_environment
