@@ -1,3 +1,4 @@
+import uuid
 from typing import Any, Callable, Dict, Mapping, Optional
 
 from jinja2 import Template
@@ -11,11 +12,9 @@ from trilogy.core.enums import (
 from trilogy.core.models.core import (
     DataType,
 )
-from trilogy.core.models.execute import CTE, UnionCTE, CompiledCTE
-from trilogy.dialect.base import BaseDialect, safe_quote
-from trilogy.dialect.config import BigQueryConfig
+from trilogy.core.models.execute import CTE, CompiledCTE, UnionCTE
 from trilogy.core.statements.execute import ProcessedQueryPersist
-import uuid
+from trilogy.dialect.base import BaseDialect, safe_quote
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
@@ -145,9 +144,10 @@ OPTIONS(
 """.strip()
 )
 
-PARTITIONED_INSERT_TEMPLATE = Template("""
+PARTITIONED_INSERT_TEMPLATE = Template(
+    """
 -- Step 1: materialize results
-CREATE TEMP TABLE {{ tmp_table }} like {{ target_table }};
+CREATE TEMP TABLE {{ tmp_table }} AS SELECT * FROM  {{ target_table }} limit 0;
                                        
 INSERT INTO {{ tmp_table }}
     {{ final_select }}
@@ -184,7 +184,8 @@ BEGIN
         SET i = i + 1;
     END WHILE;
 END;
-""")
+"""
+)
 
 MAX_IDENTIFIER_LENGTH = 50
 
@@ -227,7 +228,9 @@ class BigqueryDialect(BaseDialect):
             raise ValueError("partition_by must be set for partitioned inserts.")
 
         partition_key = query.partition_by
-        target_table = safe_quote(query.output_to.address.location, self.QUOTE_CHARACTER)
+        target_table = safe_quote(
+            query.output_to.address.location, self.QUOTE_CHARACTER
+        )
 
         # render intermediate CTEs
         ctes_sql = ""
@@ -247,6 +250,7 @@ class BigqueryDialect(BaseDialect):
             final_select=full_select_with_ctes,
             partition_key=partition_key,
             target_table=target_table,
+            partition_type=self.DATATYPE_MAP[query.partition_types[0]],
         )
 
         return sql_script

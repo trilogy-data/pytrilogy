@@ -54,9 +54,9 @@ def test_readme():
     datasource usa_names(
         name:name,
         number:yearly_name_count,
-        year:year,
-        gender:gender,
-        state:state
+        year,
+        gender,
+        state
     )
     grain (name, year, gender, state)
     address `bigquery-public-data.usa_names.usa_1910_2013`;

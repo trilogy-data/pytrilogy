@@ -31,6 +31,7 @@ class PersistQueryMixin:
     datasource: Datasource
     persist_mode: PersistMode
     partition_by: List[str]
+    partition_types: List[DataType]
 
 
 @dataclass

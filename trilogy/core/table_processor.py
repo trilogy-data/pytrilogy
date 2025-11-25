@@ -20,8 +20,8 @@ def process_create_statement(
         if not datasource:
             raise ValueError(f"Datasource {target} not found in environment.")
 
-        address_field_map: dict[str, str] = { 
-            column.concept.address: column.alias #type: ignore
+        address_field_map: dict[str, str] = {
+            column.concept.address: column.alias  # type: ignore
             for column in datasource.columns
             if column.is_concrete
         }

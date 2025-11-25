@@ -457,7 +457,6 @@ class PersistStatement(HasUUID, BaseModel):
     partition_by: List[ConceptRef] = Field(default_factory=list)
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
 
-
     @property
     def identifier(self):
         return self.datasource.identifier

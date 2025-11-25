@@ -199,7 +199,7 @@ class FunctionType(Enum):
     SPLIT = "split"
     LENGTH = "len"
 
-    # Mathas
+    # Maths
     DIVIDE = "divide"
     MULTIPLY = "multiply"
     ADD = "add"
@@ -271,6 +271,10 @@ class FunctionType(Enum):
     DATE_SUB = "date_sub"
     DATE_DIFF = "date_diff"
     DATE_SPINE = "date_spine"
+
+    # Geography
+    GEO_POINT = "geo_point"
+    GEO_DISTANCE = "geo_distance"
 
     # UNIX
     UNIX_TO_TIMESTAMP = "unix_to_timestamp"

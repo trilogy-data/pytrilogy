@@ -1,16 +1,21 @@
 """Display helpers for prettier CLI output."""
-from datetime import datetime
+
 from click import echo, style
 
 # Try to import Rich for enhanced output
 try:
-    from rich.console import Console
-    from rich.table import Table
-    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
-    from rich.panel import Panel
-    from rich.text import Text
     from rich import box
-    from rich.align import Align
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.progress import (
+        BarColumn,
+        Progress,
+        SpinnerColumn,
+        TextColumn,
+        TimeElapsedColumn,
+    )
+    from rich.table import Table
+
     RICH_AVAILABLE = True
     console = Console()
 except ImportError:
@@ -23,7 +28,7 @@ def print_success(message: str):
     if RICH_AVAILABLE:
         console.print(message, style="bold green")
     else:
-        echo(style(message, fg='green', bold=True))
+        echo(style(message, fg="green", bold=True))
 
 
 def print_info(message: str):
@@ -31,7 +36,7 @@ def print_info(message: str):
     if RICH_AVAILABLE:
         console.print(message, style="bold blue")
     else:
-        echo(style(message, fg='blue', bold=True))
+        echo(style(message, fg="blue", bold=True))
 
 
 def print_warning(message: str):
@@ -39,7 +44,7 @@ def print_warning(message: str):
     if RICH_AVAILABLE:
         console.print(message, style="bold yellow")
     else:
-        echo(style(message, fg='yellow', bold=True))
+        echo(style(message, fg="yellow", bold=True))
 
 
 def print_error(message: str):
@@ -47,7 +52,7 @@ def print_error(message: str):
     if RICH_AVAILABLE:
         console.print(message, style="bold red")
     else:
-        echo(style(message, fg='red', bold=True))
+        echo(style(message, fg="red", bold=True))
 
 
 def print_header(message: str):
@@ -55,7 +60,7 @@ def print_header(message: str):
     if RICH_AVAILABLE:
         console.print(message, style="bold magenta")
     else:
-        echo(style(message, fg='magenta', bold=True))
+        echo(style(message, fg="magenta", bold=True))
 
 
 def format_duration(duration):
@@ -83,7 +88,9 @@ def show_execution_info(input_type: str, input_name: str, dialect: str, debug: b
         panel = Panel.fit(info_text, style="blue", title="Setup")
         console.print(panel)
     else:
-        print_info(f"Executing {input_type}: {input_name} | Dialect: {dialect} | Debug: {debug}")
+        print_info(
+            f"Executing {input_type}: {input_name} | Dialect: {dialect} | Debug: {debug}"
+        )
 
 
 def show_environment_params(env_params: dict):
@@ -92,7 +99,7 @@ def show_environment_params(env_params: dict):
         if RICH_AVAILABLE:
             console.print(f"Environment parameters: {env_params}", style="dim cyan")
         else:
-            echo(style(f"Environment parameters: {env_params}", fg='cyan'))
+            echo(style(f"Environment parameters: {env_params}", fg="cyan"))
 
 
 def show_debug_mode():
@@ -107,11 +114,13 @@ def show_statement_type(idx: int, total: int, statement_type: str):
     statement_num = f"Statement {idx+1}"
     if total > 1:
         statement_num += f"/{total}"
-    
+
     if RICH_AVAILABLE:
-        console.print(f"[bold cyan]{statement_num}[/bold cyan] [dim]({statement_type})[/dim]")
+        console.print(
+            f"[bold cyan]{statement_num}[/bold cyan] [dim]({statement_type})[/dim]"
+        )
     else:
-        echo(style(f"{statement_num} ({statement_type})", fg='cyan', bold=True))
+        echo(style(f"{statement_num} ({statement_type})", fg="cyan", bold=True))
 
 
 def print_results_table(q, headers=None):
@@ -128,26 +137,30 @@ def _print_rich_table(q, headers=None):
     if not result:
         console.print("No results returned.", style="dim")
         return
-    
+
     # Create Rich table
-    table = Table(box=box.MINIMAL_DOUBLE_HEAD, show_header=True, header_style="bold blue")
-    
+    table = Table(
+        box=box.MINIMAL_DOUBLE_HEAD, show_header=True, header_style="bold blue"
+    )
+
     # Add columns
     column_names = headers or q.keys()
     for col in column_names:
         table.add_column(str(col), style="white", no_wrap=False)
-    
+
     # Add rows (limit to reasonable number for display)
     display_limit = 50
     for i, row in enumerate(result):
         if i >= display_limit:
             table.add_row(*["..." for _ in column_names], style="dim")
-            console.print(f"[dim]Showing first {display_limit} rows of {len(result)} total.[/dim]")
+            console.print(
+                f"[dim]Showing first {display_limit} rows of {len(result)} total.[/dim]"
+            )
             break
         # Convert all values to strings and handle None
         row_data = [str(val) if val is not None else "[dim]NULL[/dim]" for val in row]
         table.add_row(*row_data)
-    
+
     console.print(table)
 
 
@@ -179,19 +192,21 @@ def create_progress_context(num_queries: int):
             BarColumn(),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
             TimeElapsedColumn(),
-            console=console
+            console=console,
         )
     return None
 
 
-def show_statement_result(idx: int, total: int, duration, has_results: bool, error=None, exception_type=None):
+def show_statement_result(
+    idx: int, total: int, duration, has_results: bool, error=None, exception_type=None
+):
     """Show result of individual statement execution."""
     statement_num = f"Statement {idx+1}"
     if total > 1:
         statement_num += f"/{total}"
-    
+
     duration_str = f"({format_duration(duration)})"
-    
+
     if error is not None:
         # Provide more context for unclear error messages
         error_str = str(error).strip()
@@ -206,16 +221,20 @@ def show_statement_result(idx: int, total: int, duration, has_results: bool, err
                     error_msg += f": '{error_str}'"
         else:
             error_msg = f"{statement_num} failed: {error_str}"
-        
+
         print_error(error_msg)
     elif has_results:
         if RICH_AVAILABLE:
-            console.print(f"\n[bold green]{statement_num} Results[/bold green] [dim]{duration_str}[/dim]")
+            console.print(
+                f"\n[bold green]{statement_num} Results[/bold green] [dim]{duration_str}[/dim]"
+            )
         else:
             print_success(f"{statement_num} completed {duration_str}")
     else:
         if RICH_AVAILABLE:
-            console.print(f"[green]{statement_num} completed[/green] [dim]{duration_str}[/dim]")
+            console.print(
+                f"[green]{statement_num} completed[/green] [dim]{duration_str}[/dim]"
+            )
         else:
             print_success(f"{statement_num} completed {duration_str}")
 
@@ -232,14 +251,18 @@ def show_execution_summary(num_queries: int, total_duration):
         console.print("\n")
         console.print(summary)
     else:
-        print_success(f"All {num_queries} statements completed in {format_duration(total_duration)}")
+        print_success(
+            f"All {num_queries} statements completed in {format_duration(total_duration)}"
+        )
 
 
 def show_formatting_result(filename: str, num_queries: int, duration):
     """Show formatting operation result."""
     if RICH_AVAILABLE:
         console.print(f"File: [bold]{filename}[/bold]")
-        console.print(f"Processed [cyan]{num_queries}[/cyan] queries in [cyan]{format_duration(duration)}[/cyan]")
+        console.print(
+            f"Processed [cyan]{num_queries}[/cyan] queries in [cyan]{format_duration(duration)}[/cyan]"
+        )
     else:
         print_success(f"Formatted {num_queries} queries in {format_duration(duration)}")
 
@@ -255,8 +278,9 @@ def with_status(message: str):
 
 class _DummyContext:
     """Dummy context manager for fallback."""
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, *args):
         pass

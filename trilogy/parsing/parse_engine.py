@@ -167,7 +167,7 @@ SELF_LABEL = "root"
 
 MAX_PARSE_DEPTH = 10
 
-SUPPORTED_INCREMENTAL_TYPES:set[DataType] = set([DataType.DATE, DataType.TIMESTAMP])
+SUPPORTED_INCREMENTAL_TYPES: set[DataType] = set([DataType.DATE, DataType.TIMESTAMP])
 
 STDLIB_ROOT = Path(__file__).parent.parent
 
@@ -933,7 +933,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def datasource_status_clause(self, meta: Meta, args):
-        return args[0]
+        return args[1]
 
     @v_args(meta=True)
     def datasource_partition_clause(self, meta: Meta, args):
@@ -975,6 +975,7 @@ class ParseToObjects(Transformer):
             raise ValueError(
                 "Malformed datasource, missing address or query declaration"
             )
+
         datasource = Datasource(
             name=name,
             columns=columns,
@@ -1368,6 +1369,7 @@ class ParseToObjects(Transformer):
                     working_path=dirname(target),
                     env_file_path=token_lookup,
                     config=self.environment.config,
+                    parameters=self.environment.parameters,
                 )
                 new_env.concepts.fail_on_missing = False
                 self.parsed[self.parse_address] = self
@@ -1429,7 +1431,7 @@ class ParseToObjects(Transformer):
     def persist_statement(self, meta: Meta, args) -> PersistStatement | None:
         if self.parse_pass != ParsePass.VALIDATION:
             return None
-        partition_clause = None
+        partition_clause = DatasourcePartitionClause([])
         labels = [x for x in args if isinstance(x, str)]
         for x in args:
             if isinstance(x, DatasourcePartitionClause):
@@ -1443,23 +1445,28 @@ class ParseToObjects(Transformer):
         target: Datasource | None = self.environment.datasources.get(identifier)
 
         if not address and not target:
-                raise SyntaxError(
-                    f"Persist without physical address on line {meta.line} targets datasource {identifier} that is not found."
-                )
+            raise SyntaxError(
+                f'Append statement without concrete table address on line {meta.line} attempts to insert into datasource "{identifier}" that cannot be found in the environment. Add a physical address to create a new datasource, or check the name.'
+            )
         elif target:
             address = target.safe_address
+
+        assert address is not None
+        assert target is not None
+
         modes = [x for x in args if isinstance(x, PersistMode)]
         mode = modes[0] if modes else PersistMode.OVERWRITE
         select: SelectStatement = [x for x in args if isinstance(x, SelectStatement)][0]
+        
         if mode == PersistMode.APPEND:
-            new_datasource:Datasource = target
+            new_datasource: Datasource = target
             if not new_datasource.partition_by == partition_clause.columns:
                 raise SyntaxError(
-                    f"Cannot append to datasource {identifier} with different partitioning scheme on line {meta.line}."
+                    f"Cannot append to datasource {identifier} with different partitioning scheme then insert on line {meta.line}. Datasource partitioning: {new_datasource.partition_by}, insert partitioning: {partition_clause.columns if partition_clause else '[]'}"
                 )
-            if len(partition_clause.columns)>1:
+            if len(partition_clause.columns) > 1:
                 raise NotImplementedError(
-                    f"Incremental partition overwrites by more than 1 column are not yet supported."
+                    "Incremental partition overwrites by more than 1 column are not yet supported."
                 )
             for x in partition_clause.columns:
                 concept = self.environment.concepts[x.address]
@@ -1483,7 +1490,7 @@ class ParseToObjects(Transformer):
             select=select,
             datasource=new_datasource,
             persist_mode=mode,
-            partition_by = partition_clause.columns if partition_clause else [],
+            partition_by=partition_clause.columns if partition_clause else [],
             meta=Metadata(line_number=meta.line),
         )
 

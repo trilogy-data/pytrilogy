@@ -43,10 +43,9 @@
     prop_ident: "<" IDENTIFIER ("," IDENTIFIER )* ","? ">" "." IDENTIFIER
 
     // datasource concepts
-
     DATASOURCE_STATUS: "published"i | "unpublished"i
 
-    datasource_status_clause: "state"i DATASOURCE_STATUS
+    datasource_status_clause: /state/i DATASOURCE_STATUS
 
     datasource_increment_clause: "incremental"i "by"i column_list
 

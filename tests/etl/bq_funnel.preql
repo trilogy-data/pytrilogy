@@ -17,7 +17,7 @@ datasource funnel_reporting (
     cart_count:cart_count,
     product_count:product_count
     )
-grain (date, traffic_source, event_type, browser)
+grain (events.created_at.date, events.traffic_source, events.event_type, events.browser)
 address `preqldata.look_etl.funnel_reporting`
 incremental by events.created_at.date
 partition by events.created_at.date
@@ -30,14 +30,14 @@ append into funnel_reporting by events.created_at.date from
 where events.event_type in ("purchase", "cart", "product")
 and events.created_at.date = load_date
 select 
-events.created_at.date,
-events.traffic_source,
-events.event_type,
-events.browser,
-session_count,
-purchase_count,
-cart_count,
-product_count
+    events.created_at.date,
+    events.traffic_source,
+    events.event_type,
+    events.browser,
+    session_count,
+    purchase_count,
+    cart_count,
+    product_count
 ;
 
 

@@ -84,9 +84,9 @@ class MockResultRow:
 
     def __getitem__(self, key: str) -> Any:
         return self._values[key]
-    
+
     def __iter__(self):
-        return iter(self._values.values()) 
+        return iter(self._values.values())
 
     def values(self):
         return self._values.values()

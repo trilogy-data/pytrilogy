@@ -46,6 +46,7 @@ from trilogy.core.statements.execute import (
     ProcessedQuery,
     ProcessedQueryPersist,
 )
+from trilogy.core.models.core import DataType
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.utility import unique
 
@@ -499,11 +500,13 @@ def process_persist(
 
     # build our object to return
     arg_dict = {k: v for k, v in select.__dict__.items()}
-    partition_by = []
+    partition_by: list[str] = []
+    partition_types: list[DataType] = []
     for addr in statement.partition_by:
         for c in statement.datasource.columns:
-            if c.concept.address == addr:
-                partition_by.append(c.alias)
+            if c.concept.address == addr and c.is_concrete:
+                partition_by.append(c.alias)  # type: ignore
+                partition_types.append(c.concept.output_datatype)
                 break
     return ProcessedQueryPersist(
         **arg_dict,
@@ -511,6 +514,7 @@ def process_persist(
         persist_mode=statement.persist_mode,
         partition_by=partition_by,
         datasource=statement.datasource,
+        partition_types=partition_types,
     )
 
 
