@@ -1,7 +1,7 @@
 import traceback
 from datetime import datetime
 from pathlib import Path as PathlibPath
-from typing import Iterable
+from typing import Any, Iterable, Union
 
 from click import UNPROCESSED, Path, argument, group, option, pass_context
 
@@ -53,12 +53,12 @@ def pairwise(t):
     return zip(it, it)
 
 
-def extra_to_kwargs(arg_list: Iterable[str]) -> dict[str, str | int | None]:
+def extra_to_kwargs(arg_list: Iterable[str]) -> dict[str, Any]:
     pairs = pairwise(arg_list)
     final = {}
     for k, v in pairs:
         k = k.lstrip("--")
-        final[k] = v
+        final[k] = smart_convert(v)
     return final
 
 
@@ -241,6 +241,7 @@ def run(ctx, input, dialect: str, param, conn_args):
     conn_dict = extra_to_kwargs(conn_args)
 
     # Configure dialect
+    conf: Union[Any, None] = None
     try:
         if edialect == Dialects.DUCK_DB:
             from trilogy.dialect.config import DuckDBConfig

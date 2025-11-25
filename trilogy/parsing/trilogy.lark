@@ -139,7 +139,7 @@
     type_declaration: "type" IDENTIFIER data_type ("|" data_type)* type_drop_clause? 
 
     // user_id where state = Mexico
-    _filter_alt: (IDENTIFIER | literal | "(" expr ")") "?" conditional
+    _filter_alt: (IDENTIFIER | literal | _static_functions | "(" expr ")") "?" conditional
     _filter_base: "filter"i IDENTIFIER where
     filter_item: _filter_base | _filter_alt
 

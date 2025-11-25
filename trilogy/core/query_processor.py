@@ -18,6 +18,7 @@ from trilogy.core.models.build import (
     BuildSelectLineage,
     Factory,
 )
+from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
     CTE,
@@ -46,7 +47,6 @@ from trilogy.core.statements.execute import (
     ProcessedQuery,
     ProcessedQueryPersist,
 )
-from trilogy.core.models.core import DataType
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.utility import unique
 

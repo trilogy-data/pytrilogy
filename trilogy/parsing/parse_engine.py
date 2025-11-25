@@ -1452,13 +1452,16 @@ class ParseToObjects(Transformer):
             address = target.safe_address
 
         assert address is not None
-        assert target is not None
 
         modes = [x for x in args if isinstance(x, PersistMode)]
         mode = modes[0] if modes else PersistMode.OVERWRITE
         select: SelectStatement = [x for x in args if isinstance(x, SelectStatement)][0]
-        
+
         if mode == PersistMode.APPEND:
+            if target is None:
+                raise SyntaxError(
+                    f"Cannot append to non-existent datasource {identifier} on line {meta.line}."
+                )
             new_datasource: Datasource = target
             if not new_datasource.partition_by == partition_clause.columns:
                 raise SyntaxError(
