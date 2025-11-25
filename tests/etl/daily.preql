@@ -89,7 +89,6 @@ state UNPUBLISHED;
 
 create if not exists datasources daily_fact;
 
-
 #INSERT INTO daily_fact BY ride_year, ride_month
 APPEND INTO daily_fact
 FROM  
