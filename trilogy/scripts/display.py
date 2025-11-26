@@ -25,29 +25,69 @@ except ImportError:
     console = None
 
 
-def set_rich_mode(enabled: bool):
+class SetRichMode:
     """
-    Dynamically enable or disable Rich mode.
-    Useful for testing or runtime configuration.
+    Callable class that can be used as both a function and a context manager.
 
-    Args:
-        enabled: True to enable Rich mode, False to use fallback
+    Regular usage:
+        set_rich_mode(True)   # Enable Rich for output formatting for CL
+        set_rich_mode(False)  # Disables Rich for output formatting
+
+    Context manager usage:
+        with set_rich_mode(True):
+            # Rich output mode temporarily disabled
+            pass
+        # Previous state automatically restored
     """
-    global RICH_AVAILABLE, console
 
-    # Can only enable if Rich is actually importable
-    if enabled:
-        try:
-            from rich.console import Console
+    def __call__(self, enabled: bool):
+        self._set_mode(enabled)
+        return RichModeContext(enabled)
 
-            RICH_AVAILABLE = True
-            console = Console()
-        except ImportError:
+    def _set_mode(self, enabled: bool):
+        global RICH_AVAILABLE, console
+
+        if enabled:
+            try:
+                from rich.console import Console
+
+                RICH_AVAILABLE = True
+                console = Console()
+            except ImportError:
+                RICH_AVAILABLE = False
+                console = None
+        else:
             RICH_AVAILABLE = False
             console = None
-    else:
-        RICH_AVAILABLE = False
-        console = None
+
+
+class RichModeContext:
+    """Context manager returned by SetRichMode for 'with' statement usage."""
+
+    def __init__(self, enabled: bool):
+        self.enabled = enabled
+        self.old_rich_available = None
+        self.old_console = None
+
+    def __enter__(self):
+        global RICH_AVAILABLE, console
+
+        # Store current state
+        self.old_rich_available = RICH_AVAILABLE
+        self.old_console = console
+
+        # The mode was already set by __call__, so we're good
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        global RICH_AVAILABLE, console
+
+        # Restore previous state
+        RICH_AVAILABLE = self.old_rich_available
+        console = self.old_console
+
+
+set_rich_mode = SetRichMode()
 
 
 def is_rich_available() -> bool:

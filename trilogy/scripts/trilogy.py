@@ -18,6 +18,7 @@ from .display import (
     print_info,
     print_results_table,
     print_success,
+    set_rich_mode,
     show_debug_mode,
     show_environment_params,
     show_execution_info,
@@ -28,6 +29,8 @@ from .display import (
     show_statement_type,
     with_status,
 )
+
+set_rich_mode = set_rich_mode
 
 
 def smart_convert(value: str):
