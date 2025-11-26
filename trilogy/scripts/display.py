@@ -1,5 +1,7 @@
 """Display helpers for prettier CLI output with configurable Rich support."""
 
+from typing import Optional
+
 from click import echo, style
 
 # Try to import Rich for enhanced output
@@ -17,7 +19,7 @@ try:
     from rich.table import Table
 
     RICH_AVAILABLE = True
-    console = Console() if RICH_AVAILABLE else None
+    console: Optional[Console] = Console()
 except ImportError:
     RICH_AVAILABLE = False
     console = None
@@ -55,7 +57,7 @@ def is_rich_available() -> bool:
 
 def print_success(message: str):
     """Print success message with styling."""
-    if RICH_AVAILABLE:
+    if RICH_AVAILABLE and console is not None:
         console.print(message, style="bold green")
     else:
         echo(style(message, fg="green", bold=True))
@@ -63,7 +65,7 @@ def print_success(message: str):
 
 def print_info(message: str):
     """Print info message with styling."""
-    if RICH_AVAILABLE:
+    if RICH_AVAILABLE and console is not None:
         console.print(message, style="bold blue")
     else:
         echo(style(message, fg="blue", bold=True))
@@ -71,7 +73,7 @@ def print_info(message: str):
 
 def print_warning(message: str):
     """Print warning message with styling."""
-    if RICH_AVAILABLE:
+    if RICH_AVAILABLE and console is not None:
         console.print(message, style="bold yellow")
     else:
         echo(style(message, fg="yellow", bold=True))
@@ -79,7 +81,7 @@ def print_warning(message: str):
 
 def print_error(message: str):
     """Print error message with styling."""
-    if RICH_AVAILABLE:
+    if RICH_AVAILABLE and console is not None:
         console.print(message, style="bold red")
     else:
         echo(style(message, fg="red", bold=True))
@@ -87,7 +89,7 @@ def print_error(message: str):
 
 def print_header(message: str):
     """Print header message with styling."""
-    if RICH_AVAILABLE:
+    if RICH_AVAILABLE and console is not None:
         console.print(message, style="bold magenta")
     else:
         echo(style(message, fg="magenta", bold=True))
@@ -108,7 +110,7 @@ def format_duration(duration):
 
 def show_execution_info(input_type: str, input_name: str, dialect: str, debug: bool):
     """Display execution information in a clean format."""
-    if RICH_AVAILABLE:
+    if RICH_AVAILABLE and console is not None:
         info_text = (
             f"[bold]Execution Info[/bold]\n"
             f"Input: {input_type} ({input_name})\n"
@@ -126,7 +128,7 @@ def show_execution_info(input_type: str, input_name: str, dialect: str, debug: b
 def show_environment_params(env_params: dict):
     """Display environment parameters if any."""
     if env_params:
-        if RICH_AVAILABLE:
+        if RICH_AVAILABLE and console is not None:
             console.print(f"Environment parameters: {env_params}", style="dim cyan")
         else:
             echo(style(f"Environment parameters: {env_params}", fg="cyan"))
@@ -134,7 +136,7 @@ def show_environment_params(env_params: dict):
 
 def show_debug_mode():
     """Show debug mode indicator."""
-    if RICH_AVAILABLE:
+    if RICH_AVAILABLE and console is not None:
         panel = Panel.fit("Debug mode enabled", style="yellow", title="Debug")
         console.print(panel)
 
@@ -145,7 +147,7 @@ def show_statement_type(idx: int, total: int, statement_type: str):
     if total > 1:
         statement_num += f"/{total}"
 
-    if RICH_AVAILABLE:
+    if RICH_AVAILABLE and console is not None:
         console.print(
             f"[bold cyan]{statement_num}[/bold cyan] [dim]({statement_type})[/dim]"
         )
@@ -155,7 +157,7 @@ def show_statement_type(idx: int, total: int, statement_type: str):
 
 def print_results_table(q, headers=None):
     """Print query results using Rich tables or fallback."""
-    if RICH_AVAILABLE:
+    if RICH_AVAILABLE and console is not None:
         _print_rich_table(q, headers)
     else:
         _print_fallback_table(q)
@@ -163,6 +165,9 @@ def print_results_table(q, headers=None):
 
 def _print_rich_table(q, headers=None):
     """Print query results using Rich tables."""
+    if console is None:
+        return
+
     result = q.fetchall()
     if not result:
         console.print("No results returned.", style="dim")
@@ -207,7 +212,7 @@ def _print_fallback_table(q):
 def show_execution_start(num_queries: int):
     """Show execution start message."""
     statement_word = "statement" if num_queries == 1 else "statements"
-    if RICH_AVAILABLE:
+    if RICH_AVAILABLE and console is not None:
         console.print(f"\n[bold]Executing {num_queries} {statement_word}...[/bold]")
     else:
         print_info(f"Executing {num_queries} {statement_word}...")
@@ -215,7 +220,7 @@ def show_execution_start(num_queries: int):
 
 def create_progress_context(num_queries: int):
     """Create progress context for multiple statements."""
-    if RICH_AVAILABLE and num_queries > 1:
+    if RICH_AVAILABLE and console is not None and num_queries > 1:
         return Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -254,14 +259,14 @@ def show_statement_result(
 
         print_error(error_msg)
     elif has_results:
-        if RICH_AVAILABLE:
+        if RICH_AVAILABLE and console is not None:
             console.print(
                 f"\n[bold green]{statement_num} Results[/bold green] [dim]{duration_str}[/dim]"
             )
         else:
             print_success(f"{statement_num} completed {duration_str}")
     else:
-        if RICH_AVAILABLE:
+        if RICH_AVAILABLE and console is not None:
             console.print(
                 f"[green]{statement_num} completed[/green] [dim]{duration_str}[/dim]"
             )
@@ -271,7 +276,7 @@ def show_statement_result(
 
 def show_execution_summary(num_queries: int, total_duration):
     """Show final execution summary."""
-    if RICH_AVAILABLE:
+    if RICH_AVAILABLE and console is not None:
         summary_text = (
             f"[bold green]Execution Complete[/bold green]\n"
             f"Total time: [cyan]{format_duration(total_duration)}[/cyan]\n"
@@ -288,7 +293,7 @@ def show_execution_summary(num_queries: int, total_duration):
 
 def show_formatting_result(filename: str, num_queries: int, duration):
     """Show formatting operation result."""
-    if RICH_AVAILABLE:
+    if RICH_AVAILABLE and console is not None:
         console.print(f"File: [bold]{filename}[/bold]")
         console.print(
             f"Processed [cyan]{num_queries}[/cyan] queries in [cyan]{format_duration(duration)}[/cyan]"
@@ -299,7 +304,7 @@ def show_formatting_result(filename: str, num_queries: int, duration):
 
 def with_status(message: str):
     """Context manager for showing status."""
-    if RICH_AVAILABLE:
+    if RICH_AVAILABLE and console is not None:
         return console.status(f"[bold green]{message}...")
     else:
         print_info(f"{message}...")

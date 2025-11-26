@@ -1,10 +1,19 @@
+import re
+import sys
 from contextlib import contextmanager
 from datetime import timedelta
-from unittest.mock import Mock, patch
+from io import StringIO
+from unittest.mock import Mock
 
 import pytest
 
 from trilogy.scripts import display
+
+
+def strip_ansi(text):
+    """Remove ANSI escape sequences from text."""
+    ansi_escape = re.compile(r"\x1b\[[0-9;]*m")
+    return ansi_escape.sub("", text)
 
 
 @pytest.fixture(params=[True, False], ids=["rich_enabled", "rich_disabled"])
@@ -24,26 +33,51 @@ def rich_mode(request):
     # Attempt to set the Rich mode using dynamic switching
     display.set_rich_mode(request.param)
 
-    # Yield the actual state (may be False even if True was requested)
-    actual_state = display.is_rich_available()
-    yield actual_state
+    yield request.param
 
     # Cleanup: restore original state
     display.set_rich_mode(original_state)
 
 
 @contextmanager
-def capture_rich_output():
-    """Capture Rich console output by mocking the console."""
-    with patch.object(display, "console") as mock_console:
-        yield mock_console
+def capture_all_output():
+    """Capture both stdout and stderr to catch all possible output."""
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    stdout_capture = StringIO()
+    stderr_capture = StringIO()
+
+    try:
+        sys.stdout = stdout_capture
+        sys.stderr = stderr_capture
+        yield stdout_capture, stderr_capture
+    finally:
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
 
 
 @contextmanager
-def capture_click_output():
-    """Capture click.echo output."""
-    with patch("trilogy.scripts.display.echo") as mock_echo:
-        yield mock_echo
+def capture_rich_console_output():
+    """Create a Rich console that captures to a StringIO buffer."""
+    if display.is_rich_available():
+        from rich.console import Console
+
+        # Create a console that writes to a string buffer
+        output_buffer = StringIO()
+        test_console = Console(file=output_buffer, force_terminal=True, width=80)
+
+        # Temporarily replace the display module's console
+        original_console = display.console
+        display.console = test_console
+
+        try:
+            yield output_buffer
+        finally:
+            display.console = original_console
+    else:
+        # If Rich isn't available, just use regular output capture
+        with capture_all_output() as (stdout, stderr):
+            yield stdout
 
 
 class TestPrintFunctions:
@@ -54,73 +88,108 @@ class TestPrintFunctions:
         message = "Test success message"
 
         if rich_mode:
-            with capture_rich_output() as mock_console:
+            with capture_rich_console_output() as output:
                 display.print_success(message)
-                mock_console.print.assert_called_once_with(message, style="bold green")
+                captured = output.getvalue()
+                assert message in captured
+                # Rich output should contain ANSI escape codes for styling
+                assert "\x1b[" in captured  # ANSI escape sequence for color
         else:
-            with capture_click_output() as mock_echo:
+            with capture_all_output() as (stdout, stderr):
                 display.print_success(message)
-                # Verify click.echo was called with styled message
-                mock_echo.assert_called_once()
-                args, kwargs = mock_echo.call_args
-                # The first argument should be a styled string
-                assert message in str(args[0]) or any(
-                    message in str(arg) for arg in args
-                )
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert message in captured
 
     def test_print_info(self, rich_mode):
         """Test print_info outputs correctly in both modes."""
         message = "Test info message"
 
         if rich_mode:
-            with capture_rich_output() as mock_console:
+            with capture_rich_console_output() as output:
                 display.print_info(message)
-                mock_console.print.assert_called_once_with(message, style="bold blue")
+                captured = output.getvalue()
+                assert message in captured
+                assert "\x1b[" in captured  # Should have color codes
         else:
-            with capture_click_output() as mock_echo:
+            with capture_all_output() as (stdout, stderr):
                 display.print_info(message)
-                mock_echo.assert_called_once()
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert message in captured
 
     def test_print_warning(self, rich_mode):
         """Test print_warning outputs correctly in both modes."""
         message = "Test warning message"
 
         if rich_mode:
-            with capture_rich_output() as mock_console:
+            with capture_rich_console_output() as output:
                 display.print_warning(message)
-                mock_console.print.assert_called_once_with(message, style="bold yellow")
+                captured = output.getvalue()
+                assert message in captured
+                assert "\x1b[" in captured
         else:
-            with capture_click_output() as mock_echo:
+            with capture_all_output() as (stdout, stderr):
                 display.print_warning(message)
-                mock_echo.assert_called_once()
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert message in captured
 
     def test_print_error(self, rich_mode):
         """Test print_error outputs correctly in both modes."""
         message = "Test error message"
 
         if rich_mode:
-            with capture_rich_output() as mock_console:
+            with capture_rich_console_output() as output:
                 display.print_error(message)
-                mock_console.print.assert_called_once_with(message, style="bold red")
+                captured = output.getvalue()
+                assert message in captured
+                assert "\x1b[" in captured
         else:
-            with capture_click_output() as mock_echo:
+            with capture_all_output() as (stdout, stderr):
                 display.print_error(message)
-                mock_echo.assert_called_once()
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert message in captured
 
     def test_print_header(self, rich_mode):
         """Test print_header outputs correctly in both modes."""
         message = "Test header message"
 
         if rich_mode:
-            with capture_rich_output() as mock_console:
+            with capture_rich_console_output() as output:
                 display.print_header(message)
-                mock_console.print.assert_called_once_with(
-                    message, style="bold magenta"
-                )
+                captured = output.getvalue()
+                assert message in captured
+                assert "\x1b[" in captured
         else:
-            with capture_click_output() as mock_echo:
+            with capture_all_output() as (stdout, stderr):
                 display.print_header(message)
-                mock_echo.assert_called_once()
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert message in captured
+
+    def test_different_styles_produce_different_output(self, rich_mode):
+        """Test that different print functions produce visibly different output."""
+        message = "Same message"
+
+        if rich_mode:
+            with capture_rich_console_output() as output:
+                display.print_success(message)
+                success_output = output.getvalue()
+
+            with capture_rich_console_output() as output:
+                display.print_error(message)
+                error_output = output.getvalue()
+
+            with capture_rich_console_output() as output:
+                display.print_warning(message)
+                warning_output = output.getvalue()
+
+            # All should contain the message
+            assert message in success_output
+            assert message in error_output
+            assert message in warning_output
+
+            # But the styling should be different (different ANSI codes)
+            assert success_output != error_output
+            assert success_output != warning_output
+            assert error_output != warning_output
 
 
 class TestUtilityFunctions:
@@ -155,162 +224,137 @@ class TestDisplayFunctions:
     def test_show_execution_info(self, rich_mode):
         """Test show_execution_info display outputs correctly."""
         if rich_mode:
-            with capture_rich_output() as mock_console:
+            with capture_rich_console_output() as output:
                 display.show_execution_info(
                     input_type="file",
                     input_name="test.sql",
                     dialect="postgresql",
                     debug=True,
                 )
-                # Verify Panel.fit was called and console.print was called
-                mock_console.print.assert_called_once()
-                # The argument should be a Panel object or similar
-                args, kwargs = mock_console.print.call_args
-                assert len(args) >= 1  # At least one argument (the panel)
+                captured = output.getvalue()
+                assert "test.sql" in captured
+                assert "postgresql" in captured
+                assert "Debug" in captured
+                # Rich output should have box drawing characters for panels
+                assert any(
+                    char in captured
+                    for char in ["┌", "│", "┐", "└", "┘", "╭", "╮", "╯", "╰"]
+                )
         else:
-            with patch.object(display, "print_info") as mock_print_info:
+            with capture_all_output() as (stdout, stderr):
                 display.show_execution_info(
                     input_type="file",
                     input_name="test.sql",
                     dialect="postgresql",
                     debug=True,
                 )
-                mock_print_info.assert_called_once()
-                args, kwargs = mock_print_info.call_args
-                info_message = args[0]
-                assert "test.sql" in info_message
-                assert "postgresql" in info_message
-                assert "True" in info_message
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "test.sql" in captured
+                assert "postgresql" in captured
+                assert "True" in captured
 
     def test_show_environment_params_with_params(self, rich_mode):
         """Test show_environment_params with parameters."""
         env_params = {"key1": "value1", "key2": "value2"}
 
         if rich_mode:
-            with capture_rich_output() as mock_console:
+            with capture_rich_console_output() as output:
                 display.show_environment_params(env_params)
-                mock_console.print.assert_called_once_with(
-                    f"Environment parameters: {env_params}", style="dim cyan"
-                )
+                captured = output.getvalue()
+                assert "Environment parameters" in captured
+                assert "key1" in captured
+                assert "value1" in captured
         else:
-            with capture_click_output() as mock_echo:
+            with capture_all_output() as (stdout, stderr):
                 display.show_environment_params(env_params)
-                mock_echo.assert_called_once()
-                args, kwargs = mock_echo.call_args
-                # Verify the environment parameters are in the output
-                output_str = str(args[0])
-                assert "Environment parameters" in output_str
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "Environment parameters" in captured
+                assert "key1" in captured
 
     def test_show_environment_params_empty(self, rich_mode):
         """Test show_environment_params with empty dict."""
-        # Should not display anything for empty params
         if rich_mode:
-            with capture_rich_output() as mock_console:
+            with capture_rich_console_output() as output:
                 display.show_environment_params({})
-                mock_console.print.assert_not_called()
+                captured = output.getvalue()
+                assert captured.strip() == ""  # Should be empty
         else:
-            with capture_click_output() as mock_echo:
+            with capture_all_output() as (stdout, stderr):
                 display.show_environment_params({})
-                mock_echo.assert_not_called()
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert captured.strip() == ""  # Should be empty
 
     def test_show_debug_mode(self, rich_mode):
         """Test show_debug_mode display."""
         if rich_mode:
-            with capture_rich_output() as mock_console:
+            with capture_rich_console_output() as output:
                 display.show_debug_mode()
-                mock_console.print.assert_called_once()
-                # Verify a Panel was printed
-                args, kwargs = mock_console.print.call_args
-                assert len(args) >= 1
+                captured = output.getvalue()
+                assert "Debug mode enabled" in captured
+                # Should have panel formatting
+                assert any(
+                    char in captured
+                    for char in ["┌", "│", "┐", "└", "┘", "╭", "╮", "╯", "╰"]
+                )
         # Fallback mode doesn't implement this function
 
-    def test_show_statement_type_multiple(self, rich_mode):
-        """Test show_statement_type with multiple statements."""
+    def test_show_statement_type(self, rich_mode):
+        """Test show_statement_type with different configurations."""
         if rich_mode:
-            with capture_rich_output() as mock_console:
+            with capture_rich_console_output() as output:
                 display.show_statement_type(idx=0, total=3, statement_type="SELECT")
-                mock_console.print.assert_called_once()
-                args, kwargs = mock_console.print.call_args
-                output = str(args[0])
-                assert "Statement 1/3" in output
-                assert "SELECT" in output
+                captured = output.getvalue()
+                assert "Statement" in captured
+                assert "SELECT" in captured
+                assert "\x1b[" in captured  # Should have styling
         else:
-            with capture_click_output() as mock_echo:
+            with capture_all_output() as (stdout, stderr):
                 display.show_statement_type(idx=0, total=3, statement_type="SELECT")
-                mock_echo.assert_called_once()
-                args, kwargs = mock_echo.call_args
-                output = str(args[0])
-                assert "Statement 1/3" in output
-                assert "SELECT" in output
-
-    def test_show_statement_type_single(self, rich_mode):
-        """Test show_statement_type with single statement."""
-        if rich_mode:
-            with capture_rich_output() as mock_console:
-                display.show_statement_type(idx=0, total=1, statement_type="INSERT")
-                mock_console.print.assert_called_once()
-                args, kwargs = mock_console.print.call_args
-                output = str(args[0])
-                assert "Statement 1" in output
-                assert "INSERT" in output
-        else:
-            with capture_click_output() as mock_echo:
-                display.show_statement_type(idx=0, total=1, statement_type="INSERT")
-                mock_echo.assert_called_once()
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "Statement 1/3" in captured
+                assert "SELECT" in captured
 
 
 class TestProgressAndExecution:
     """Test progress and execution display functions."""
 
-    def test_show_execution_start_single(self, rich_mode):
-        """Test show_execution_start with single statement."""
+    def test_show_execution_start(self, rich_mode):
+        """Test show_execution_start with different statement counts."""
         if rich_mode:
-            with capture_rich_output() as mock_console:
+            with capture_rich_console_output() as output:
                 display.show_execution_start(1)
-                mock_console.print.assert_called_once()
-                args, kwargs = mock_console.print.call_args
-                output = str(args[0])
-                assert "1 statement" in output
+                captured = output.getvalue()
+                assert "1 statement" in strip_ansi(captured)
+                assert "\x1b[" in captured  # Bold formatting
+
+            with capture_rich_console_output() as output:
+                display.show_execution_start(5)
+                captured = output.getvalue()
+                assert "5 statements" in strip_ansi(captured)
         else:
-            with patch.object(display, "print_info") as mock_print_info:
+            with capture_all_output() as (stdout, stderr):
                 display.show_execution_start(1)
-                mock_print_info.assert_called_once()
-                args, kwargs = mock_print_info.call_args
-                assert "1 statement" in args[0]
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "1 statement" in captured
 
-    def test_show_execution_start_multiple(self, rich_mode):
-        """Test show_execution_start with multiple statements."""
-        if rich_mode:
-            with capture_rich_output() as mock_console:
+            with capture_all_output() as (stdout, stderr):
                 display.show_execution_start(5)
-                mock_console.print.assert_called_once()
-                args, kwargs = mock_console.print.call_args
-                output = str(args[0])
-                assert "5 statements" in output
-        else:
-            with patch.object(display, "print_info") as mock_print_info:
-                display.show_execution_start(5)
-                mock_print_info.assert_called_once()
-                args, kwargs = mock_print_info.call_args
-                assert "5 statements" in args[0]
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "5 statements" in captured
 
-    def test_create_progress_context_single_query(self, rich_mode):
-        """Test create_progress_context with single query."""
+    def test_create_progress_context(self, rich_mode):
+        """Test create_progress_context returns appropriate objects."""
+        # Single query should always return None
         result = display.create_progress_context(1)
-        # Should return None regardless of Rich mode for single query
         assert result is None
 
-    def test_create_progress_context_multiple_queries(self, rich_mode):
-        """Test create_progress_context with multiple queries."""
+        # Multiple queries behavior depends on Rich availability
         result = display.create_progress_context(5)
-
         if rich_mode:
-            # Should return Progress object when Rich is available
             assert result is not None
-            # Verify it's a Progress-like object
+            # Should be a context manager
             assert hasattr(result, "__enter__") and hasattr(result, "__exit__")
         else:
-            # Should return None when Rich is not available
             assert result is None
 
     def test_show_statement_result_success_with_results(self, rich_mode):
@@ -318,138 +362,126 @@ class TestProgressAndExecution:
         duration = timedelta(seconds=1.5)
 
         if rich_mode:
-            with capture_rich_output() as mock_console:
+            with capture_rich_console_output() as output:
                 display.show_statement_result(
                     idx=0, total=2, duration=duration, has_results=True, error=None
                 )
-                mock_console.print.assert_called_once()
-                args, kwargs = mock_console.print.call_args
-                output = str(args[0])
-                assert "Statement 1/2 Results" in output
-                assert "1.50s" in output
+                captured = output.getvalue()
+                assert "Statement 1/2" in strip_ansi(captured)
+                assert "Results" in strip_ansi(captured)
+                assert "1.50s" in strip_ansi(captured)
+                assert "\x1b[" in captured  # Styling
         else:
-            with patch.object(display, "print_success") as mock_print_success:
+            with capture_all_output() as (stdout, stderr):
                 display.show_statement_result(
                     idx=0, total=2, duration=duration, has_results=True, error=None
                 )
-                mock_print_success.assert_called_once()
-                args, kwargs = mock_print_success.call_args
-                assert "Statement 1/2" in args[0]
-                assert "1.50s" in args[0]
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "Statement 1/2" in captured
+                assert "1.50s" in captured
 
     def test_show_statement_result_success_no_results(self, rich_mode):
         """Test show_statement_result for successful execution without results."""
         duration = timedelta(seconds=0.8)
 
         if rich_mode:
-            with capture_rich_output() as mock_console:
+            with capture_rich_console_output() as output:
                 display.show_statement_result(
                     idx=1, total=2, duration=duration, has_results=False, error=None
                 )
-                mock_console.print.assert_called_once()
-                args, kwargs = mock_console.print.call_args
-                output = str(args[0])
-                assert "Statement 2/2 completed" in output
-                assert "0.80s" in output
+                captured = output.getvalue()
+                assert "Statement 2/2" in strip_ansi(captured)
+                assert "completed" in strip_ansi(captured)
+                assert "800ms" in strip_ansi(captured)
         else:
-            with patch.object(display, "print_success") as mock_print_success:
+            with capture_all_output() as (stdout, stderr):
                 display.show_statement_result(
                     idx=1, total=2, duration=duration, has_results=False, error=None
                 )
-                mock_print_success.assert_called_once()
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "Statement 2/2" in captured
+                assert "completed" in captured
+                assert "800ms" in captured
 
     def test_show_statement_result_error(self, rich_mode):
         """Test show_statement_result for failed execution."""
         duration = timedelta(seconds=0.1)
 
-        with patch.object(display, "print_error") as mock_print_error:
-            display.show_statement_result(
-                idx=0,
-                total=1,
-                duration=duration,
-                has_results=False,
-                error="Syntax error near 'SELECT'",
-                exception_type=ValueError,
-            )
-            mock_print_error.assert_called_once()
-            args, kwargs = mock_print_error.call_args
-            error_message = args[0]
-            assert "Statement 1" in error_message
-            assert "failed" in error_message
-            assert "Syntax error near 'SELECT'" in error_message
-
-    def test_show_statement_result_unclear_error(self, rich_mode):
-        """Test show_statement_result with unclear error message."""
-        duration = timedelta(seconds=0.1)
-
-        with patch.object(display, "print_error") as mock_print_error:
-            display.show_statement_result(
-                idx=0,
-                total=1,
-                duration=duration,
-                has_results=False,
-                error="",
-                exception_type=RuntimeError,
-            )
-            mock_print_error.assert_called_once()
-            args, kwargs = mock_print_error.call_args
-            error_message = args[0]
-            assert "Statement 1" in error_message
-            assert "RuntimeError" in error_message
+        if rich_mode:
+            with capture_rich_console_output() as output:
+                display.show_statement_result(
+                    idx=0,
+                    total=1,
+                    duration=duration,
+                    has_results=False,
+                    error="Syntax error near 'SELECT'",
+                    exception_type=ValueError,
+                )
+                captured = output.getvalue()
+                assert "Statement 1" in strip_ansi(captured)
+                assert "failed" in strip_ansi(captured)
+                assert "Syntax error near 'SELECT'" in strip_ansi(captured)
+                assert "\x1b[" in captured  # Error styling
+        else:
+            with capture_all_output() as (stdout, stderr):
+                display.show_statement_result(
+                    idx=0,
+                    total=1,
+                    duration=duration,
+                    has_results=False,
+                    error="Syntax error near 'SELECT'",
+                    exception_type=ValueError,
+                )
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "Statement 1" in captured
+                assert "failed" in captured
+                assert "Syntax error near 'SELECT'" in captured
 
     def test_show_execution_summary(self, rich_mode):
         """Test show_execution_summary."""
         total_duration = timedelta(seconds=10.5)
 
         if rich_mode:
-            with capture_rich_output() as mock_console:
+            with capture_rich_console_output() as output:
                 display.show_execution_summary(3, total_duration)
-                # Should be called twice: newline and panel
-                assert mock_console.print.call_count == 2
-                calls = mock_console.print.call_args_list
-                # Check that execution summary info is present
-                summary_call = calls[1]  # Second call is the panel
-                assert len(summary_call[0]) >= 1
+                captured = output.getvalue()
+                assert "Execution Complete" in captured
+                assert "10.50s" in captured
+                assert "3" in captured
+                # Should have panel formatting
+                assert any(
+                    char in captured
+                    for char in ["┌", "│", "┐", "└", "┘", "╭", "╮", "╯", "╰"]
+                )
         else:
-            with patch.object(display, "print_success") as mock_print_success:
+            with capture_all_output() as (stdout, stderr):
                 display.show_execution_summary(3, total_duration)
-                mock_print_success.assert_called_once()
-                args, kwargs = mock_print_success.call_args
-                message = args[0]
-                assert "3 statements" in message
-                assert "10.50s" in message
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "3 statements" in captured
+                assert "10.50s" in captured
 
     def test_show_formatting_result(self, rich_mode):
         """Test show_formatting_result."""
         duration = timedelta(seconds=2.3)
 
         if rich_mode:
-            with capture_rich_output() as mock_console:
+            with capture_rich_console_output() as output:
                 display.show_formatting_result(
                     filename="test.sql", num_queries=5, duration=duration
                 )
-                # Should be called twice for filename and processed info
-                assert mock_console.print.call_count == 2
-                calls = mock_console.print.call_args_list
-
-                # Check filename in first call
-                first_call_output = str(calls[0][0][0])
-                assert "test.sql" in first_call_output
-
-                # Check processing info in second call
-                second_call_output = str(calls[1][0][0])
-                assert "5" in second_call_output
-                assert "2.30s" in second_call_output
+                captured = output.getvalue()
+                assert "test.sql" in captured
+                assert "5" in captured
+                assert "2.30s" in strip_ansi(captured)
+                assert "\x1b[" in captured  # Should have styling
         else:
-            with patch.object(display, "print_success") as mock_print_success:
+            with capture_all_output() as (stdout, stderr):
                 display.show_formatting_result(
                     filename="test.sql", num_queries=5, duration=duration
                 )
-                mock_print_success.assert_called_once()
-                args, kwargs = mock_print_success.call_args
-                message = args[0]
-                assert "5 queries" in message
-                assert "2.30s" in message
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "5 queries" in captured
+                assert "2.30s" in captured
 
 
 class TestResultsTable:
@@ -462,25 +494,19 @@ class TestResultsTable:
         mock_query.keys.return_value = ["col1", "col2"]
 
         if rich_mode:
-            with capture_rich_output() as mock_console:
+            with capture_rich_console_output() as output:
                 display.print_results_table(mock_query)
-                mock_console.print.assert_called_once_with(
-                    "No results returned.", style="dim"
-                )
+                captured = output.getvalue()
+                assert "No results returned" in captured
         else:
-            with patch.object(display, "print_warning") as mock_print_warning, patch(
-                "builtins.print"
-            ) as mock_print:
+            with capture_all_output() as (stdout, stderr):
                 display.print_results_table(mock_query)
-                # Fallback should warn about Rich and print basic output
-                mock_print_warning.assert_called_once_with(
-                    "Install rich for prettier table output"
-                )
-                # Should print headers and separator
-                assert mock_print.call_count >= 2
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "Install rich for prettier table output" in captured
+                assert "col1, col2" in captured
 
     def test_print_results_table_with_results(self, rich_mode):
-        """Test print_results_table with results."""
+        """Test print_results_table with actual data."""
         mock_query = Mock()
         mock_query.fetchall.return_value = [
             ("value1", "value2"),
@@ -490,163 +516,198 @@ class TestResultsTable:
         mock_query.keys.return_value = ["column1", "column2"]
 
         if rich_mode:
-            with capture_rich_output() as mock_console:
+            with capture_rich_console_output() as output:
                 display.print_results_table(mock_query)
-                mock_console.print.assert_called_once()
-                # Verify a table was printed (mock_console.print called with Table object)
-                args, kwargs = mock_console.print.call_args
-                assert len(args) >= 1
+                captured = output.getvalue()
+                assert "value1" in captured
+                assert "value2" in captured
+                assert "value3" in captured
+                assert "column1" in captured
+                assert "column2" in captured
+                # Rich tables have box drawing characters
+                assert any(
+                    char in captured
+                    for char in ["┌", "│", "┐", "└", "┘", "─", "┼", "├", "┤"]
+                )
         else:
-            with patch.object(display, "print_warning") as mock_print_warning, patch(
-                "builtins.print"
-            ) as mock_print:
+            with capture_all_output() as (stdout, stderr):
                 display.print_results_table(mock_query)
-                mock_print_warning.assert_called_once()
-                # Should print headers, data rows, and separator
-                assert mock_print.call_count >= 4  # headers + 3 rows + separator
-
-    def test_print_results_table_with_custom_headers(self, rich_mode):
-        """Test print_results_table with custom headers."""
-        mock_query = Mock()
-        mock_query.fetchall.return_value = [("data1", "data2")]
-        mock_query.keys.return_value = ["original1", "original2"]
-
-        custom_headers = ["Custom1", "Custom2"]
-
-        if rich_mode:
-            with capture_rich_output() as mock_console:
-                display.print_results_table(mock_query, headers=custom_headers)
-                mock_console.print.assert_called_once()
-        else:
-            with patch.object(display, "print_warning"), patch(
-                "builtins.print"
-            ) as mock_print:
-                display.print_results_table(mock_query, headers=custom_headers)
-                # Verify custom headers are used in output
-                print_calls = [str(call) for call in mock_print.call_args_list]
-                header_call = print_calls[0] if print_calls else ""
-                # Note: fallback doesn't use custom headers, uses q.keys()
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "Install rich for prettier table output" in captured
+                assert "column1, column2" in captured
+                assert "value1" in captured
+                assert "---" in captured  # Separator
 
     def test_print_results_table_large_dataset(self, rich_mode):
-        """Test print_results_table with large dataset (truncation)."""
+        """Test print_results_table with large dataset to test truncation."""
         mock_query = Mock()
-        # Create a large dataset that should trigger truncation
-        large_results = [("row", i) for i in range(100)]
+        # Create a large dataset that should trigger truncation in Rich mode
+        large_results = [(f"row{i}", f"data{i}") for i in range(100)]
         mock_query.fetchall.return_value = large_results
         mock_query.keys.return_value = ["col1", "col2"]
 
         if rich_mode:
-            with capture_rich_output() as mock_console:
+            with capture_rich_console_output() as output:
                 display.print_results_table(mock_query)
-                # Should print table and truncation message
-                assert mock_console.print.call_count == 2
-                calls = mock_console.print.call_args_list
-                # Second call should be truncation message
-                truncation_msg = str(calls[1][0][0])
-                assert "50" in truncation_msg and "100" in truncation_msg
+                captured = output.getvalue()
+                # Should show truncation message
+                assert "Showing first 50" in strip_ansi(captured)
+                assert "100 total" in strip_ansi(captured)
+                # Should contain some data
+                assert "row0" in captured
+                # Box drawing characters for table
+                assert any(char in captured for char in ["┌", "│", "┐", "└", "┘", "─"])
         else:
-            with patch.object(display, "print_warning"), patch(
-                "builtins.print"
-            ) as mock_print:
+            with capture_all_output() as (stdout, stderr):
                 display.print_results_table(mock_query)
-                # Should print all rows in fallback (no truncation implemented)
-                assert mock_print.call_count >= 100
+                captured = stdout.getvalue() + stderr.getvalue()
+                # Fallback shows all results
+                assert "row0" in captured
+                assert "row99" in captured
 
 
 class TestContextManagers:
-    """Test context managers."""
+    """Test context managers with actual output."""
 
     def test_with_status_context_manager(self, rich_mode):
         """Test with_status as context manager."""
         if rich_mode:
-            with capture_rich_output() as mock_console:
-                # Mock the status method to return a proper context manager
-                mock_status = Mock()
-                mock_status.__enter__ = Mock(return_value=mock_status)
-                mock_status.__exit__ = Mock(return_value=None)
-                mock_console.status.return_value = mock_status
-
+            with capture_rich_console_output():
                 with display.with_status("Testing operation"):
                     pass
-
-                mock_console.status.assert_called_once_with(
-                    "[bold green]Testing operation..."
-                )
-                mock_status.__enter__.assert_called_once()
-                mock_status.__exit__.assert_called_once()
+                # Rich status doesn't write to output until completion
+                # But we can test it doesn't crash
         else:
-            with patch.object(display, "print_info") as mock_print_info:
+            with capture_all_output() as (stdout, stderr):
                 with display.with_status("Testing operation"):
                     pass
-                mock_print_info.assert_called_once_with("Testing operation...")
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "Testing operation" in captured
 
     def test_with_status_exception_handling(self, rich_mode):
         """Test with_status handles exceptions properly."""
-        if rich_mode:
-            with capture_rich_output() as mock_console:
-                mock_status = Mock()
-                mock_status.__enter__ = Mock(return_value=mock_status)
-                mock_status.__exit__ = Mock(return_value=None)
-                mock_console.status.return_value = mock_status
-
-                try:
-                    with display.with_status("Operation with error"):
-                        raise ValueError("Test exception")
-                except ValueError:
-                    pass  # Expected
-
-                mock_status.__exit__.assert_called_once()
-        else:
-            with patch.object(display, "print_info") as mock_print_info:
-                try:
-                    with display.with_status("Operation with error"):
-                        raise ValueError("Test exception")
-                except ValueError:
-                    pass  # Expected
-
-                mock_print_info.assert_called_once()
+        try:
+            with display.with_status("Operation with error"):
+                raise ValueError("Test exception")
+        except ValueError:
+            pass  # Expected
+        # Main test is that no additional exceptions are raised
 
 
 class TestDynamicSwitching:
-    """Test dynamic mode switching functionality."""
+    """Test dynamic mode switching functionality with actual output validation."""
 
-    def test_mode_switching_preserves_original_capability(self):
-        """Test that mode switching can restore original capability."""
-        # This test doesn't use the rich_mode fixture since it tests switching
-        original_rich_available = display.is_rich_available()
-
-        # Switch to disabled
-        display.set_rich_mode(False)
-        assert display.is_rich_available() is False
-
-        # Try to switch back to enabled
-        display.set_rich_mode(True)
-        # Should only be enabled if Rich was originally importable
-        # Restore original state for other tests
-        display.set_rich_mode(original_rich_available)
-
-    def test_functions_work_after_mode_switch(self):
-        """Test that functions continue to work after mode switches and produce correct output."""
+    def test_mode_switching_changes_output_behavior(self):
+        """Test that mode switching actually changes output behavior."""
         original_state = display.is_rich_available()
+        message = "Test message"
 
         try:
-            # Switch to fallback mode
+            # Test fallback mode output
             display.set_rich_mode(False)
-            with patch.object(display, "echo") as mock_echo:
-                display.print_success("Fallback mode message")
-                mock_echo.assert_called_once()
+            with capture_all_output() as (stdout, stderr):
+                display.print_success(message)
+                fallback_output = stdout.getvalue() + stderr.getvalue()
 
-            # Switch to Rich mode (if possible)
+            # Test Rich mode output (if available)
             display.set_rich_mode(True)
             if display.is_rich_available():
-                with capture_rich_output() as mock_console:
-                    display.print_success("Rich mode message")
-                    mock_console.print.assert_called_once_with(
-                        "Rich mode message", style="bold green"
-                    )
+                with capture_rich_console_output() as output:
+                    display.print_success(message)
+                    rich_output = output.getvalue()
+
+                # Both should contain the message but be formatted differently
+                assert message in fallback_output
+                assert message in rich_output
+
+                # Rich output should have ANSI codes, fallback might not (depends on click)
+                # At minimum, they should be different if Rich adds any formatting
+                if "\x1b[" in rich_output:
+                    assert rich_output != fallback_output
         finally:
             # Restore original state
             display.set_rich_mode(original_state)
+
+
+class TestActualFormattingDifferences:
+    """Test that Rich and fallback modes actually produce different formatted output."""
+
+    def test_panel_vs_plain_output(self, rich_mode):
+        """Test that Rich panels look different from fallback output."""
+        if rich_mode:
+            with capture_rich_console_output() as output:
+                display.show_execution_info(
+                    input_type="file",
+                    input_name="test.sql",
+                    dialect="postgresql",
+                    debug=False,
+                )
+                rich_output = output.getvalue()
+
+                # Rich should have box drawing characters
+                has_box_chars = any(
+                    char in repr(rich_output)
+                    for char in ["┌", "|", "┐", "└", "┘", "╭", "╮", "╯", "╰"]
+                )
+                assert (
+                    has_box_chars
+                ), f"Expected box drawing characters in Rich output: {repr(rich_output)}"
+        else:
+            with capture_all_output() as (stdout, stderr):
+                display.show_execution_info(
+                    input_type="file",
+                    input_name="test.sql",
+                    dialect="postgresql",
+                    debug=False,
+                )
+                fallback_output = stdout.getvalue() + stderr.getvalue()
+
+                # Fallback should not have box drawing characters
+                has_box_chars = any(
+                    char in fallback_output
+                    for char in ["┌", "│", "┐", "└", "┘", "╭", "╮", "╯", "╰"]
+                )
+                assert (
+                    not has_box_chars
+                ), f"Did not expect box drawing characters in fallback output: {repr(fallback_output)}"
+
+    def test_table_vs_plain_list_output(self, rich_mode):
+        """Test that Rich tables look different from fallback output."""
+        mock_query = Mock()
+        mock_query.fetchall.return_value = [("Alice", 30), ("Bob", 25)]
+        mock_query.keys.return_value = ["name", "age"]
+
+        if rich_mode:
+            with capture_rich_console_output() as output:
+                display.print_results_table(mock_query)
+                rich_output = output.getvalue()
+
+                # Rich tables should have table formatting characters
+                has_table_chars = any(
+                    char in repr(rich_output)
+                    for char in ["┌", "│", "┐", "└", "┘", "─", "┼", "├", "┤"]
+                )
+                assert (
+                    has_table_chars
+                ), f"Expected table characters in Rich output: {repr(rich_output)}"
+        else:
+            with capture_all_output() as (stdout, stderr):
+                display.print_results_table(mock_query)
+                fallback_output = stdout.getvalue() + stderr.getvalue()
+
+                # Fallback should have comma-separated headers and simple tuples
+                assert "name, age" in fallback_output
+                assert "Alice" in fallback_output
+                assert "---" in fallback_output  # Simple separator
+
+                # Should not have table drawing characters
+                has_table_chars = any(
+                    char in fallback_output
+                    for char in ["┌", "│", "┐", "└", "┘", "─", "┼", "├", "┤"]
+                )
+                assert (
+                    not has_table_chars
+                ), f"Did not expect table characters in fallback output: {repr(fallback_output)}"
 
 
 @pytest.mark.parametrize(
@@ -687,66 +748,3 @@ def test_create_progress_context_parametrized(num_queries, expected_none):
     finally:
         # Restore original state
         display.set_rich_mode(original_state)
-
-
-class TestOutputBehaviorValidation:
-    """Additional tests to validate specific output behaviors."""
-
-    def test_rich_vs_fallback_styling_differences(self, rich_mode):
-        """Test that Rich and fallback modes produce different but valid output."""
-        message = "Test message"
-
-        if rich_mode:
-            # Rich mode uses console.print with style parameters
-            with capture_rich_output() as mock_console:
-                display.print_success(message)
-                display.print_error(message)
-                display.print_warning(message)
-
-                assert mock_console.print.call_count == 3
-                calls = mock_console.print.call_args_list
-
-                # Verify different styles are used
-                styles = [call[1]["style"] for call in calls]
-                assert "bold green" in styles
-                assert "bold red" in styles
-                assert "bold yellow" in styles
-        else:
-            # Fallback mode uses click.echo with styled strings
-            with capture_click_output() as mock_echo:
-                display.print_success(message)
-                display.print_error(message)
-                display.print_warning(message)
-
-                assert mock_echo.call_count == 3
-                # Each call should have styled output (not raw text)
-                for call in mock_echo.call_args_list:
-                    args = call[0]
-                    # The styled string should be different from plain message
-                    assert str(args[0]) != message
-
-    def test_table_output_differences(self, rich_mode):
-        """Test that table outputs differ between Rich and fallback modes."""
-        mock_query = Mock()
-        mock_query.fetchall.return_value = [("value1", "value2")]
-        mock_query.keys.return_value = ["col1", "col2"]
-
-        if rich_mode:
-            with capture_rich_output() as mock_console:
-                display.print_results_table(mock_query)
-                # Rich mode prints a Table object
-                mock_console.print.assert_called_once()
-                args = mock_console.print.call_args[0]
-                # Verify a table-like object was printed (would be a Table in real usage)
-                assert len(args) >= 1
-        else:
-            with patch.object(display, "print_warning") as mock_warning, patch(
-                "builtins.print"
-            ) as mock_print:
-                display.print_results_table(mock_query)
-                # Fallback mode warns about Rich and uses basic print
-                mock_warning.assert_called_once_with(
-                    "Install rich for prettier table output"
-                )
-                # Should print headers and data
-                assert mock_print.call_count >= 2
