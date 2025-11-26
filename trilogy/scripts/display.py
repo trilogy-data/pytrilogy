@@ -41,8 +41,10 @@ class SetRichMode:
     """
 
     def __call__(self, enabled: bool):
+        current = is_rich_available()
+        prior = RichModeContext(enabled, current)
         self._set_mode(enabled)
-        return RichModeContext(enabled)
+        return prior
 
     def _set_mode(self, enabled: bool):
         global RICH_AVAILABLE, console
@@ -64,18 +66,15 @@ class SetRichMode:
 class RichModeContext:
     """Context manager returned by SetRichMode for 'with' statement usage."""
 
-    def __init__(self, enabled: bool):
+    def __init__(self, enabled: bool, current: bool):
         self.enabled = enabled
-        self.old_rich_available = None
+        self.old_rich_available = current
         self.old_console = None
 
     def __enter__(self):
         global RICH_AVAILABLE, console
 
-        # Store current state
-        self.old_rich_available = RICH_AVAILABLE
         self.old_console = console
-
         # The mode was already set by __call__, so we're good
         return self
 

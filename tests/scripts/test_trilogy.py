@@ -15,6 +15,8 @@ def strip_ansi(text):
 
 path = Path(__file__).parent / "test.db"
 
+bad_syntax_fmt = Path(__file__).parent / "bad_syntax_fmt.preql"
+
 
 def test_cli_string():
     with set_rich_mode(False):
@@ -28,6 +30,61 @@ def test_cli_string():
             raise result.exception
         assert result.exit_code == 0
         assert "(1,)" in result.output.strip()
+
+
+def test_exception():
+    for mode in [True, False]:
+        with set_rich_mode(mode):
+            runner = CliRunner()
+
+            result = runner.invoke(
+                cli,
+                ["run", "select 1  test;", "duckdb"],
+            )
+
+            assert result.exit_code == 1
+            assert "Syntax [201]" in result.output
+
+
+def test_exception_fmt():
+    with set_rich_mode(False):
+        runner = CliRunner()
+
+        result = runner.invoke(
+            cli,
+            ["fmt", str(bad_syntax_fmt)],
+        )
+
+        assert result.exit_code == 1
+        assert "Syntax [201]" in result.output
+    with set_rich_mode(True):
+        runner = CliRunner()
+
+        result = runner.invoke(
+            cli,
+            ["fmt", str(bad_syntax_fmt)],
+        )
+
+        assert result.exit_code == 1
+        assert "Syntax [201]" in result.output
+
+
+def test_cli_string_progress():
+    with set_rich_mode(True):
+        runner = CliRunner()
+
+        result = runner.invoke(
+            cli,
+            [
+                "run",
+                "select 1-> test; select 3 ->test2; select 4->test5;",
+                "duckdb",
+            ],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+        assert "Statements: 3" in result.output.strip()
 
 
 def test_cli_fmt_string():

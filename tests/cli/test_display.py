@@ -16,6 +16,25 @@ def strip_ansi(text):
     return ansi_escape.sub("", text)
 
 
+def test_rich_available():
+    assert display.is_rich_available() is True
+    with display.set_rich_mode(False):
+        assert display.is_rich_available() is False
+    assert display.is_rich_available() is True
+    with display.set_rich_mode(True):
+        assert display.is_rich_available() is True
+    assert display.is_rich_available() is True
+    display.RICH_AVAILABLE = False
+    assert display.is_rich_available() is False
+    with display.set_rich_mode(True):
+        assert display.is_rich_available() is True
+    assert display.is_rich_available() is False
+    with display.set_rich_mode(False):
+        assert display.is_rich_available() is False
+    assert display.is_rich_available() is False
+    display.RICH_AVAILABLE = True
+
+
 @pytest.fixture(params=[True, False], ids=["rich_enabled", "rich_disabled"])
 def rich_mode(request):
     """

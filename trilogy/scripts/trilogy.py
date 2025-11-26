@@ -4,6 +4,7 @@ from pathlib import Path as PathlibPath
 from typing import Any, Iterable, Union
 
 from click import UNPROCESSED, Path, argument, group, option, pass_context
+from click.exceptions import Exit
 
 from trilogy import Executor, parse
 from trilogy.constants import DEFAULT_NAMESPACE
@@ -111,9 +112,10 @@ def execute_single_statement(exec, query, idx, total_queries, use_progress=False
 
 
 def execute_queries_with_progress(exec, queries):
-    """Execute queries with Rich progress bar."""
+    """Execute queries with Rich progress bar. Returns True if all succeeded, False if any failed."""
     progress = create_progress_context(len(queries))
     results_to_print = []
+    any_failed = False
 
     with progress:
         task = progress.add_task("Executing statements...", total=len(queries))
@@ -127,6 +129,9 @@ def execute_queries_with_progress(exec, queries):
             success, results, duration, error = execute_single_statement(
                 exec, query, idx, len(queries), use_progress=True
             )
+
+            if not success:
+                any_failed = True
 
             # Store results for printing after progress is done
             results_to_print.append(
@@ -146,9 +151,13 @@ def execute_queries_with_progress(exec, queries):
             if results:
                 print_results_table(results)
 
+    return not any_failed
+
 
 def execute_queries_simple(exec, queries):
-    """Execute queries with simple output."""
+    """Execute queries with simple output. Returns True if all succeeded, False if any failed."""
+    any_failed = False
+
     for idx, query in enumerate(queries):
         if len(queries) > 1:
             print_info(f"Executing statement {idx+1} of {len(queries)}...")
@@ -156,8 +165,14 @@ def execute_queries_simple(exec, queries):
         success, results, duration, error = execute_single_statement(
             exec, query, idx, len(queries), use_progress=False
         )
+
+        if not success:
+            any_failed = True
+
         if results:
             print_results_table(results)
+
+    return not any_failed
 
 
 @group()
@@ -194,6 +209,7 @@ def fmt(ctx, input):
         except Exception as e:
             print_error(f"Failed to format script: {e}")
             print_error(f"Full traceback:\n{traceback.format_exc()}")
+            raise Exit(1)
 
 
 @cli.command(
@@ -238,7 +254,7 @@ def run(ctx, input, dialect: str, param, conn_args):
         show_environment_params(env_params)
     except ValueError as e:
         print_error(str(e))
-        return
+        raise Exit(1)
 
     # Parse connection arguments from remaining args
     conn_dict = extra_to_kwargs(conn_args)
@@ -275,7 +291,7 @@ def run(ctx, input, dialect: str, param, conn_args):
     except Exception as e:
         print_error(f"Failed to configure dialect: {e}")
         print_error(f"Full traceback:\n{traceback.format_exc()}")
-        return
+        raise Exit(1)
 
     # Create environment and set additional parameters if any exist
     environment = Environment(working_path=str(directory), namespace=namespace)
@@ -295,7 +311,7 @@ def run(ctx, input, dialect: str, param, conn_args):
     except Exception as e:
         print_error(f"Failed to parse script: {e}")
         print_error(f"Full traceback:\n{traceback.format_exc()}")
-        return
+        raise Exit(1)
 
     start = datetime.now()
     show_execution_start(len(queries))
@@ -303,13 +319,23 @@ def run(ctx, input, dialect: str, param, conn_args):
     # Execute with progress tracking for multiple statements or simple execution
     progress = create_progress_context(len(queries))
 
-    if progress:
-        execute_queries_with_progress(exec, queries)
-    else:
-        execute_queries_simple(exec, queries)
+    try:
+        if progress:
+            all_succeeded = execute_queries_with_progress(exec, queries)
+        else:
+            all_succeeded = execute_queries_simple(exec, queries)
 
-    total_duration = datetime.now() - start
-    show_execution_summary(len(queries), total_duration)
+        total_duration = datetime.now() - start
+        show_execution_summary(len(queries), total_duration)
+
+        # Exit with code 1 if any queries failed
+        if not all_succeeded:
+            raise Exit(1)
+
+    except Exception as e:
+        print_error(f"Unexpected error during execution: {e}")
+        print_error(f"Full traceback:\n{traceback.format_exc()}")
+        raise Exit(1)
 
 
 if __name__ == "__main__":
