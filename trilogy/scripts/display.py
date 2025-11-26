@@ -1,8 +1,6 @@
 """Display helpers for prettier CLI output with configurable Rich support."""
 
-import os
 from click import echo, style
-
 
 # Try to import Rich for enhanced output
 try:
@@ -29,16 +27,17 @@ def set_rich_mode(enabled: bool):
     """
     Dynamically enable or disable Rich mode.
     Useful for testing or runtime configuration.
-    
+
     Args:
         enabled: True to enable Rich mode, False to use fallback
     """
     global RICH_AVAILABLE, console
-    
+
     # Can only enable if Rich is actually importable
     if enabled:
         try:
             from rich.console import Console
+
             RICH_AVAILABLE = True
             console = Console()
         except ImportError:
