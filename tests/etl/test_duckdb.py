@@ -1,7 +1,7 @@
 from logging import INFO
 
 from trilogy import Executor
-from trilogy.core.enums import DatasourceStatus
+from trilogy.core.enums import DatasourceState
 from trilogy.hooks import DebuggingHook
 
 
@@ -35,7 +35,7 @@ def test_partition_persistence(executor: Executor):
     executor.execute_text(" publish datasources daily_fact;")
     assert (
         executor.environment.datasources["daily_fact"].status
-        == DatasourceStatus.PUBLISHED
+        == DatasourceState.PUBLISHED
     )
     q2 = executor.generate_sql(
         "select ride_year, ride_month, total_rides order by ride_year asc, ride_month asc;"

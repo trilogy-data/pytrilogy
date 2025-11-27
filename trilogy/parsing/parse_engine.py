@@ -30,7 +30,7 @@ from trilogy.core.enums import (
     ComparisonOperator,
     ConceptSource,
     CreateMode,
-    DatasourceStatus,
+    DatasourceState,
     DatePart,
     Derivation,
     FunctionType,
@@ -928,8 +928,8 @@ class ParseToObjects(Transformer):
     def raw_column_assignment(self, args):
         return RawColumnExpr(text=args[1])
 
-    def DATASOURCE_STATUS(self, args) -> DatasourceStatus:
-        return DatasourceStatus(args.value.lower())
+    def DATASOURCE_STATUS(self, args) -> DatasourceState:
+        return DatasourceState(args.value.lower())
 
     @v_args(meta=True)
     def datasource_status_clause(self, meta: Meta, args):
@@ -953,7 +953,7 @@ class ParseToObjects(Transformer):
         non_partial_for: Optional[WhereClause] = None
         incremental_by: List[ConceptRef] = []
         partition_by: List[ConceptRef] = []
-        datasource_status: DatasourceStatus = DatasourceStatus.PUBLISHED
+        datasource_status: DatasourceState = DatasourceState.PUBLISHED
         for val in args[1:]:
             if isinstance(val, Address):
                 address = val
@@ -965,7 +965,7 @@ class ParseToObjects(Transformer):
                 address = Address(location=f"({val.text})", is_query=True)
             elif isinstance(val, WhereClause):
                 where = val
-            elif isinstance(val, DatasourceStatus):
+            elif isinstance(val, DatasourceState):
                 datasource_status = val
             elif isinstance(val, DatasourceIncrementalClause):
                 incremental_by = val.columns

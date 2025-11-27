@@ -3,7 +3,7 @@ from enum import Enum
 InfiniteFunctionArgs = -1
 
 
-class DatasourceStatus(Enum):
+class DatasourceState(Enum):
     PUBLISHED = "published"
     UNPUBLISHED = "unpublished"
 

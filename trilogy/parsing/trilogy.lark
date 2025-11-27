@@ -80,7 +80,7 @@
     import_statement: "import" IMPORT_DOT* IDENTIFIER ("."  IDENTIFIER)* ("as" IDENTIFIER)?
 
     // persist_statement
-    PERSIST_MODE: "append"i | "overwrite"i | "persist"
+    PERSIST_MODE: "append"i | "overwrite"i | "persist"i
     persist_partition_clause: "by"i column_list
     persist_statement: PERSIST_MODE IDENTIFIER? "into"i IDENTIFIER persist_partition_clause? "from"i select_statement
 

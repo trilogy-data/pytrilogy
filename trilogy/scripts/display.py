@@ -4,6 +4,8 @@ from typing import Optional
 
 from click import echo, style
 
+from dataclasses import dataclass
+
 # Try to import Rich for enhanced output
 try:
     from rich import box
@@ -23,6 +25,11 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
     console = None
+
+@dataclass
+class ResultSet:
+    rows: list[tuple]
+    columns: list[str]
 
 
 class SetRichMode:
@@ -202,12 +209,12 @@ def print_results_table(q, headers=None):
         _print_fallback_table(q)
 
 
-def _print_rich_table(q, headers=None):
+def _print_rich_table(result, headers=None):
     """Print query results using Rich tables."""
     if console is None:
         return
 
-    result = q.fetchall()
+
     if not result:
         console.print("No results returned.", style="dim")
         return
@@ -218,7 +225,7 @@ def _print_rich_table(q, headers=None):
     )
 
     # Add columns
-    column_names = headers or q.keys()
+    column_names = headers
     for col in column_names:
         table.add_column(str(col), style="white", no_wrap=False)
 
@@ -313,21 +320,30 @@ def show_statement_result(
             print_success(f"{statement_num} completed {duration_str}")
 
 
-def show_execution_summary(num_queries: int, total_duration):
+def show_execution_summary(num_queries: int, total_duration, all_succeeded: bool):
     """Show final execution summary."""
     if RICH_AVAILABLE and console is not None:
+        if all_succeeded:
+            style = "green"
+        else:
+            style = "red"
+        state = 'Complete' if all_succeeded else 'Failed'
         summary_text = (
-            f"[bold green]Execution Complete[/bold green]\n"
+            f"[bold {style}]Execution {state}[/bold {style}]\n"
             f"Total time: [cyan]{format_duration(total_duration)}[/cyan]\n"
             f"Statements: [cyan]{num_queries}[/cyan]"
         )
-        summary = Panel.fit(summary_text, style="green", title="Summary")
+
+        summary = Panel.fit(summary_text, style=style, title="Summary")
         console.print("\n")
         console.print(summary)
     else:
-        print_success(
-            f"All {num_queries} statements completed in {format_duration(total_duration)}"
-        )
+        if not all_succeeded:
+            print_error(f"Statements failed in {format_duration(total_duration)}")
+        else:
+            print_success(
+                f"All {num_queries} statements completed in {format_duration(total_duration)}"
+            )
 
 
 def show_formatting_result(filename: str, num_queries: int, duration):

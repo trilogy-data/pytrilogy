@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, ItemsView, List, Optional, Union, ValuesView
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 from trilogy.constants import DEFAULT_NAMESPACE, logger
-from trilogy.core.enums import DatasourceStatus, Modifier
+from trilogy.core.enums import DatasourceState, Modifier
 from trilogy.core.models.author import (
     Concept,
     ConceptRef,
@@ -120,7 +120,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     )
     where: Optional[WhereClause] = None
     non_partial_for: Optional[WhereClause] = None
-    status: DatasourceStatus = Field(default=DatasourceStatus.PUBLISHED)
+    status: DatasourceState = Field(default=DatasourceState.PUBLISHED)
     incremental_by: List[ConceptRef] = Field(default_factory=list)
     partition_by: List[ConceptRef] = Field(default_factory=list)
 

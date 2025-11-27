@@ -45,6 +45,20 @@ def test_exception():
             assert result.exit_code == 1
             assert "Syntax [201]" in result.output
 
+def test_multi_exception_thrown_execution():
+    for mode in [True]:
+        with set_rich_mode(mode):
+            runner = CliRunner()
+
+            result = runner.invoke(
+                cli,
+                ["run", "select 1 as test; key x int; datasource funky_monkey (x) query '''select 'abc' as x'''; select x+1 as test2;", "duckdb", ],
+            )
+
+            assert result.exit_code == 1
+            print(result.output)
+            assert "Binder Error: No function matches the given name and argument types" in strip_ansi(result.output) or 'Execution Failed' in result.output
+
 
 def test_exception_fmt():
     with set_rich_mode(False):
@@ -79,6 +93,25 @@ def test_cli_string_progress():
                 "run",
                 "select 1-> test; select 3 ->test2; select 4->test5;",
                 "duckdb",
+            ],
+        )
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+        assert "Statements: 3" in result.output.strip()
+
+
+def test_cli_string_progress_debug():
+    with set_rich_mode(True):
+        runner = CliRunner()
+
+        result = runner.invoke(
+            cli,
+            [
+                "run",
+                "select 1-> test; select 3 ->test2; select 4->test5;",
+                "duckdb",
+                "--debug",
             ],
         )
         if result.exception:

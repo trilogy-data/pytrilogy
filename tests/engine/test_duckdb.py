@@ -151,6 +151,9 @@ def test_order_of_operations(duckdb_engine: Executor, expected_results):
     ).fetchall()
     assert results[0].a == 7.5, results[0].a
 
+def test_constant_derivation(duckdb_engine: Executor,):
+    results = duckdb_engine.execute_text("""select 1 as test; key x int; datasource funky_monkey (x) query '''select 1 as x'''; select x+1 as test2;""")
+    assert results[0].fetchall()[0].test == 2
 
 def test_constants(duckdb_engine: Executor, expected_results):
     results = duckdb_engine.execute_text(

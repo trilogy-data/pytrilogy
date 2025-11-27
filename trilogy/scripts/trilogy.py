@@ -84,7 +84,7 @@ def get_statement_type(statement) -> str:
     return type(statement).__name__
 
 
-def execute_single_statement(exec, query, idx, total_queries, use_progress=False):
+def execute_single_statement(exec, query, idx, total_queries, use_progress=False)-> tuple[bool, Any, Any, Union[Exception, None]]:
     """Execute a single statement and handle results/errors consistently."""
     # Log the statement type before execution
     statement_type = get_statement_type(query)
@@ -115,7 +115,7 @@ def execute_queries_with_progress(exec, queries):
     """Execute queries with Rich progress bar. Returns True if all succeeded, False if any failed."""
     progress = create_progress_context(len(queries))
     results_to_print = []
-    any_failed = False
+    exception = None
 
     with progress:
         task = progress.add_task("Executing statements...", total=len(queries))
@@ -131,16 +131,19 @@ def execute_queries_with_progress(exec, queries):
             )
 
             if not success:
-                any_failed = True
+                exception = error
 
             # Store results for printing after progress is done
             results_to_print.append(
                 (idx, len(queries), duration, success, results, error)
             )
             progress.advance(task)
+            if exception:
+                break
 
     # Print all results after progress bar is finished
     for idx, total_queries, duration, success, results, error in results_to_print:
+
         if error:
             show_statement_result(
                 idx, total_queries, duration, False, str(error), type(error)
@@ -148,15 +151,15 @@ def execute_queries_with_progress(exec, queries):
             print_error(f"Full traceback:\n{traceback.format_exc()}")
         else:
             show_statement_result(idx, total_queries, duration, bool(results))
-            if results:
+            if results and not error:
                 print_results_table(results)
 
-    return not any_failed
+    return exception
 
 
 def execute_queries_simple(exec, queries):
     """Execute queries with simple output. Returns True if all succeeded, False if any failed."""
-    any_failed = False
+    any_failed = None
 
     for idx, query in enumerate(queries):
         if len(queries) > 1:
@@ -167,12 +170,14 @@ def execute_queries_simple(exec, queries):
         )
 
         if not success:
-            any_failed = True
+            any_failed = error
 
-        if results:
-            print_results_table(results)
+        # if results and not error:
+        #     print_results_table(results)
+        if any_failed:
+            raise error
 
-    return not any_failed
+    return any_failed
 
 
 @group()
@@ -254,7 +259,7 @@ def run(ctx, input, dialect: str, param, conn_args):
         show_environment_params(env_params)
     except ValueError as e:
         print_error(str(e))
-        raise Exit(1)
+        raise Exit(1) from e
 
     # Parse connection arguments from remaining args
     conn_dict = extra_to_kwargs(conn_args)
@@ -291,7 +296,7 @@ def run(ctx, input, dialect: str, param, conn_args):
     except Exception as e:
         print_error(f"Failed to configure dialect: {e}")
         print_error(f"Full traceback:\n{traceback.format_exc()}")
-        raise Exit(1)
+        raise Exit(1) from e
 
     # Create environment and set additional parameters if any exist
     environment = Environment(working_path=str(directory), namespace=namespace)
@@ -311,7 +316,7 @@ def run(ctx, input, dialect: str, param, conn_args):
     except Exception as e:
         print_error(f"Failed to parse script: {e}")
         print_error(f"Full traceback:\n{traceback.format_exc()}")
-        raise Exit(1)
+        raise Exit(1) from e
 
     start = datetime.now()
     show_execution_start(len(queries))
@@ -321,21 +326,22 @@ def run(ctx, input, dialect: str, param, conn_args):
 
     try:
         if progress:
-            all_succeeded = execute_queries_with_progress(exec, queries)
+            exception = execute_queries_with_progress(exec, queries)
         else:
-            all_succeeded = execute_queries_simple(exec, queries)
+            exception = execute_queries_simple(exec, queries)
 
         total_duration = datetime.now() - start
-        show_execution_summary(len(queries), total_duration)
+        show_execution_summary(len(queries), total_duration, exception is not None)
 
         # Exit with code 1 if any queries failed
-        if not all_succeeded:
-            raise Exit(1)
-
+        if exception:
+            raise Exit(1) from exception
+    except Exit:
+        raise
     except Exception as e:
         print_error(f"Unexpected error during execution: {e}")
         print_error(f"Full traceback:\n{traceback.format_exc()}")
-        raise Exit(1)
+        raise Exit(1) from e
 
 
 if __name__ == "__main__":

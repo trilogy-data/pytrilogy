@@ -27,7 +27,7 @@ from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
     BooleanOperator,
     ComparisonOperator,
-    DatasourceStatus,
+    DatasourceState,
     DatePart,
     Derivation,
     FunctionClass,
@@ -2427,7 +2427,7 @@ class Factory:
             k,
             d,
         ) in base.datasources.items():
-            if d.status != DatasourceStatus.PUBLISHED:
+            if d.status != DatasourceState.PUBLISHED:
                 continue
             new.datasources[k] = self._build_datasource(d)
         for k, a in base.alias_origin_lookup.items():
