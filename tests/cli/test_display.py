@@ -1,3 +1,4 @@
+import importlib
 import re
 import sys
 from contextlib import contextmanager
@@ -7,7 +8,6 @@ from io import StringIO
 import pytest
 
 from trilogy.scripts import display
-import importlib
 
 RICH_AVAILABLE = False
 if importlib.util.find_spec("rich") is not None:
@@ -56,7 +56,7 @@ def rich_mode(request):
     # Skip Rich enabled tests if Rich is not available
     if request.param and not RICH_AVAILABLE:
         pytest.skip("Rich library not available, skipping rich_enabled test")
-    
+
     # Store original state
     original_state = display.is_rich_available()
 
@@ -197,8 +197,10 @@ class TestPrintFunctions:
     def test_different_styles_produce_different_output(self, rich_mode):
         """Test that different print functions produce visibly different output."""
         if not rich_mode or not RICH_AVAILABLE:
-            pytest.skip("Rich styling test only meaningful when Rich is available and enabled")
-            
+            pytest.skip(
+                "Rich styling test only meaningful when Rich is available and enabled"
+            )
+
         message = "Same message"
 
         with capture_rich_console_output() as output:
@@ -523,9 +525,7 @@ class TestResultsTable:
     """Test results table functionality."""
 
     def test_print_results_table_no_results(self, rich_mode):
-        results = display.ResultSet(
-            rows=[], columns=["col1", "col2"]
-        )
+        results = display.ResultSet(rows=[], columns=["col1", "col2"])
         if rich_mode and RICH_AVAILABLE:
             with capture_rich_console_output() as output:
                 display.print_results_table(results)
@@ -543,10 +543,11 @@ class TestResultsTable:
 
         results = display.ResultSet(
             rows=[
-            ("value1", "value2"),
-            ("value3", None),
-            ("value4", "value5"),
-        ], columns=["column1", "column2"]
+                ("value1", "value2"),
+                ("value3", None),
+                ("value4", "value5"),
+            ],
+            columns=["column1", "column2"],
         )
         if rich_mode and RICH_AVAILABLE:
             with capture_rich_console_output() as output:
@@ -576,9 +577,7 @@ class TestResultsTable:
 
         large_results = [(f"row{i}", f"data{i}") for i in range(100)]
 
-        results = display.ResultSet(
-            rows=large_results, columns=["col1", "col2"]
-        )
+        results = display.ResultSet(rows=large_results, columns=["col1", "col2"])
         if rich_mode and RICH_AVAILABLE:
             with capture_rich_console_output() as output:
                 display.print_results_table(results)
@@ -708,7 +707,9 @@ class TestActualFormattingDifferences:
     def test_table_vs_plain_list_output(self, rich_mode):
         """Test that Rich tables look different from fallback output."""
 
-        query = display.ResultSet(rows = [("Alice", 30), ("Bob", 25)], columns = ["name", "age"])
+        query = display.ResultSet(
+            rows=[("Alice", 30), ("Bob", 25)], columns=["name", "age"]
+        )
 
         if rich_mode and RICH_AVAILABLE:
             with capture_rich_console_output() as output:
