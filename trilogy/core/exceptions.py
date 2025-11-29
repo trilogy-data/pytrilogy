@@ -11,6 +11,8 @@ from trilogy.core.models.core import (
     TraitDataType,
 )
 
+class ConfigurationException(Exception):
+    pass
 
 class UndefinedConceptException(Exception):
     def __init__(self, message, suggestions: List[str]):

@@ -940,7 +940,7 @@ class ParseToObjects(Transformer):
         return DatasourcePartitionClause([ConceptRef(address=arg) for arg in args[0]])
 
     @v_args(meta=True)
-    def datasource_incremental_clause(self, meta: Meta, args):
+    def datasource_increment_clause(self, meta: Meta, args):
         return DatasourceIncrementalClause([ConceptRef(address=arg) for arg in args[0]])
 
     @v_args(meta=True)

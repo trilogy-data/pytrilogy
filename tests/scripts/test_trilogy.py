@@ -193,6 +193,8 @@ def test_parameters():
                     "string=hello",
                     "--param",
                     "date=2023-01-01",
+                    "--param",
+                    "dt=2023-01-01T12:30:00",
                 ],
             )
             if result.exception:
@@ -200,8 +202,49 @@ def test_parameters():
             assert result.exit_code == 0
             if mode is False:
                 assert (
-                    "(42, 3.14, 'hello', datetime.date(2023, 1, 1))"
+                    "(42, 3.14, 'hello', datetime.date(2023, 1, 1), datetime.datetime(2023, 1, 1, 12, 30))"
                     in result.output.strip()
                 )
             else:
                 assert "3.14" in result.output.strip()
+
+
+def test_bigquery():
+
+    runner = CliRunner()
+    results = runner.invoke(
+        cli,
+        [
+            "run",
+            "select 1 as test;",
+            "bigquery",
+        ],
+    )
+    assert 'Failed to configure dialect' not in results.stdout, results.stdout
+
+def test_snowflake():
+
+    runner = CliRunner()
+    results = runner.invoke(
+        cli,
+        [
+            "run",
+            "select 1 as test;",
+            "snowflake",
+        ],
+    )
+    assert 'Failed to configure dialect' not in results.stdout, results.stdout
+
+def test_presto():
+
+    runner = CliRunner()
+    results = runner.invoke(
+        cli,
+        [
+            "run",
+            "select 1 as test;",
+            "presto",
+        ],
+    )
+
+    assert 'Failed to configure dialect' not in results.stdout, results.stdout
