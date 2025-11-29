@@ -1,10 +1,9 @@
 """Display helpers for prettier CLI output with configurable Rich support."""
 
+from dataclasses import dataclass
 from typing import Optional
 
 from click import echo, style
-
-from dataclasses import dataclass
 
 # Try to import Rich for enhanced output
 try:
@@ -25,6 +24,9 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
     console = None
+
+FETCH_LIMIT = 51
+
 
 @dataclass
 class ResultSet:
@@ -201,19 +203,18 @@ def show_statement_type(idx: int, total: int, statement_type: str):
         echo(style(f"{statement_num} ({statement_type})", fg="cyan", bold=True))
 
 
-def print_results_table(q, headers=None):
+def print_results_table(results: ResultSet):
     """Print query results using Rich tables or fallback."""
     if RICH_AVAILABLE and console is not None:
-        _print_rich_table(q, headers)
+        _print_rich_table(results.rows, headers=results.columns)
     else:
-        _print_fallback_table(q)
+        _print_fallback_table(results.rows, results.columns)
 
 
 def _print_rich_table(result, headers=None):
     """Print query results using Rich tables."""
     if console is None:
         return
-
 
     if not result:
         console.print("No results returned.", style="dim")
@@ -230,12 +231,11 @@ def _print_rich_table(result, headers=None):
         table.add_column(str(col), style="white", no_wrap=False)
 
     # Add rows (limit to reasonable number for display)
-    display_limit = 50
     for i, row in enumerate(result):
-        if i >= display_limit:
+        if i >= FETCH_LIMIT:
             table.add_row(*["..." for _ in column_names], style="dim")
             console.print(
-                f"[dim]Showing first {display_limit} rows of {len(result)} total.[/dim]"
+                f"[dim]Showing first {FETCH_LIMIT} rows. Result set was larger.[/dim]"
             )
             break
         # Convert all values to strings and handle None
@@ -245,12 +245,11 @@ def _print_rich_table(result, headers=None):
     console.print(table)
 
 
-def _print_fallback_table(q):
+def _print_fallback_table(rows, headers: list[str]):
     """Fallback table printing when Rich is not available."""
     print_warning("Install rich for prettier table output")
-    result = q.fetchall()
-    print(", ".join(q.keys()))
-    for row in result:
+    print(", ".join(headers))
+    for row in rows:
         print(row)
     print("---")
 
@@ -325,9 +324,10 @@ def show_execution_summary(num_queries: int, total_duration, all_succeeded: bool
     if RICH_AVAILABLE and console is not None:
         if all_succeeded:
             style = "green"
+            state = "Complete"
         else:
             style = "red"
-        state = 'Complete' if all_succeeded else 'Failed'
+            state = "Failed"
         summary_text = (
             f"[bold {style}]Execution {state}[/bold {style}]\n"
             f"Total time: [cyan]{format_duration(total_duration)}[/cyan]\n"

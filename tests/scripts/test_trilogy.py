@@ -19,17 +19,19 @@ bad_syntax_fmt = Path(__file__).parent / "bad_syntax_fmt.preql"
 
 
 def test_cli_string():
-    with set_rich_mode(False):
-        runner = CliRunner()
+    for val in [True, False]:
+        with set_rich_mode(val):
+            runner = CliRunner()
 
-        result = runner.invoke(
-            cli,
-            ["run", "select 1-> test;", "duckdb"],
-        )
-        if result.exception:
-            raise result.exception
-        assert result.exit_code == 0
-        assert "(1,)" in result.output.strip()
+            result = runner.invoke(
+                cli,
+                ["run", "select 1-> test;", "duckdb"],
+            )
+            if result.exception:
+                raise result.exception
+            assert result.exit_code == 0
+            assert "test" in result.output.strip() and "1" in result.output.strip()
+            assert "Failed" not in result.output.strip(), result.output.strip()
 
 
 def test_exception():
@@ -45,19 +47,27 @@ def test_exception():
             assert result.exit_code == 1
             assert "Syntax [201]" in result.output
 
+
 def test_multi_exception_thrown_execution():
-    for mode in [True]:
+    for mode in [True, False]:
         with set_rich_mode(mode):
             runner = CliRunner()
 
             result = runner.invoke(
                 cli,
-                ["run", "select 1 as test; key x int; datasource funky_monkey (x) query '''select 'abc' as x'''; select x+1 as test2;", "duckdb", ],
+                [
+                    "run",
+                    "select 1 as test; key x int; datasource funky_monkey (x) query '''select 'abc' as x'''; select x+1 as test2;",
+                    "duckdb",
+                ],
             )
 
             assert result.exit_code == 1
             print(result.output)
-            assert "Binder Error: No function matches the given name and argument types" in strip_ansi(result.output) or 'Execution Failed' in result.output
+            assert (
+                "Binder Error: No function" in strip_ansi(result.output)
+                or "Execution Failed" in result.output
+            )
 
 
 def test_exception_fmt():

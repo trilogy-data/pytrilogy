@@ -506,3 +506,24 @@ class FunctionDeclaration(HasUUID, BaseModel):
     name: str
     args: list[ArgBinding]
     expr: Expr
+
+
+STATEMENT_TYPES = (
+    SelectStatement
+    | RawSQLStatement
+    | CopyStatement
+    | MultiSelectStatement
+    | RowsetDerivationStatement
+    | MergeStatementV2
+    | KeyMergeStatement
+    | ImportStatement
+    | PersistStatement
+    | ValidateStatement
+    | PublishStatement
+    | CreateStatement
+    | ShowStatement
+    | ConceptDeclarationStatement
+    | ConceptDerivationStatement
+    | TypeDeclaration
+    | FunctionDeclaration
+)

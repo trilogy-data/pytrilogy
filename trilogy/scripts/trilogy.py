@@ -9,11 +9,13 @@ from click.exceptions import Exit
 from trilogy import Executor, parse
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.models.environment import Environment
+from trilogy.core.statements.execute import PROCESSED_STATEMENT_TYPES
 from trilogy.dialect.enums import Dialects
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parsing.render import Renderer
-
-from .display import (
+from trilogy.scripts.display import (
+    FETCH_LIMIT,
+    ResultSet,
     create_progress_context,
     print_error,
     print_info,
@@ -52,7 +54,7 @@ def smart_convert(value: str):
         return value
 
 
-def pairwise(t):
+def pairwise(t: Iterable[Any]) -> Iterable[tuple[Any, Any]]:
     it = iter(t)
     return zip(it, it)
 
@@ -79,12 +81,18 @@ def parse_env_params(env_param_list: tuple[str]) -> dict[str, str]:
     return env_params
 
 
-def get_statement_type(statement) -> str:
+def get_statement_type(statement: PROCESSED_STATEMENT_TYPES) -> str:
     """Get the type/class name of a statement."""
     return type(statement).__name__
 
 
-def execute_single_statement(exec, query, idx, total_queries, use_progress=False)-> tuple[bool, Any, Any, Union[Exception, None]]:
+def execute_single_statement(
+    exec: Executor,
+    query: PROCESSED_STATEMENT_TYPES,
+    idx: int,
+    total_queries: int,
+    use_progress=False,
+) -> tuple[bool, ResultSet | None, Any, Union[Exception, None]]:
     """Execute a single statement and handle results/errors consistently."""
     # Log the statement type before execution
     statement_type = get_statement_type(query)
@@ -94,7 +102,14 @@ def execute_single_statement(exec, query, idx, total_queries, use_progress=False
     start_time = datetime.now()
 
     try:
-        results = exec.execute_statement(query)
+        raw_results = exec.execute_statement(query)
+        results = (
+            ResultSet(
+                rows=raw_results.fetchmany(FETCH_LIMIT + 1), columns=raw_results.keys()
+            )
+            if raw_results
+            else None
+        )
         duration = datetime.now() - start_time
 
         if not use_progress:
@@ -111,7 +126,9 @@ def execute_single_statement(exec, query, idx, total_queries, use_progress=False
         return False, None, duration, e
 
 
-def execute_queries_with_progress(exec, queries):
+def execute_queries_with_progress(
+    exec: Executor, queries: list[PROCESSED_STATEMENT_TYPES]
+) -> Exception | None:
     """Execute queries with Rich progress bar. Returns True if all succeeded, False if any failed."""
     progress = create_progress_context(len(queries))
     results_to_print = []
@@ -143,7 +160,6 @@ def execute_queries_with_progress(exec, queries):
 
     # Print all results after progress bar is finished
     for idx, total_queries, duration, success, results, error in results_to_print:
-
         if error:
             show_statement_result(
                 idx, total_queries, duration, False, str(error), type(error)
@@ -157,9 +173,11 @@ def execute_queries_with_progress(exec, queries):
     return exception
 
 
-def execute_queries_simple(exec, queries):
+def execute_queries_simple(
+    exec: Executor, queries: list[PROCESSED_STATEMENT_TYPES]
+) -> Exception | None:
     """Execute queries with simple output. Returns True if all succeeded, False if any failed."""
-    any_failed = None
+    exception = None
 
     for idx, query in enumerate(queries):
         if len(queries) > 1:
@@ -170,14 +188,12 @@ def execute_queries_simple(exec, queries):
         )
 
         if not success:
-            any_failed = error
+            exception = error
 
-        # if results and not error:
-        #     print_results_table(results)
-        if any_failed:
-            raise error
+        if results and not error:
+            print_results_table(results)
 
-    return any_failed
+    return exception
 
 
 @group()
@@ -331,7 +347,7 @@ def run(ctx, input, dialect: str, param, conn_args):
             exception = execute_queries_simple(exec, queries)
 
         total_duration = datetime.now() - start
-        show_execution_summary(len(queries), total_duration, exception is not None)
+        show_execution_summary(len(queries), total_duration, exception is None)
 
         # Exit with code 1 if any queries failed
         if exception:
