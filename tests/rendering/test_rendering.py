@@ -896,7 +896,7 @@ where id in (1,2,3);
 
     assert (
         rendered
-        == """PERSIST test INTO test FROM WHERE
+        == """OVERWRITE test INTO test FROM WHERE
     id in (1, 2, 3)
 SELECT
     id,

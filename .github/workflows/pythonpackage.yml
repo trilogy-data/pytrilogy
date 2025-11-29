@@ -53,9 +53,10 @@ jobs:
           pytest --ignore=docs_src/ --cov=./ -m "not adventureworks_execution" 
       - name: Test after installing rich
         run: |
-          # install rich to ensure tests pass with and without
+          # install rich and rerun CLI tests
           pip install rich
-          pytest --ignore=docs_src/ --cov=./ --cov-append -m "not adventureworks_execution" -k "test_trilogy" 
+          pytest --ignore=docs_src/ --cov=./ --cov-append -m "not adventureworks_execution" -k "test_trilogy"
+          pytest --ignore=docs_src/ --cov=./ --cov-append -m "not adventureworks_execution" -k "test_display"  
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}

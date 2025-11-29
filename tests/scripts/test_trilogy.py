@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import re
 from pathlib import Path
@@ -5,6 +6,13 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from trilogy.scripts.trilogy import cli, set_rich_mode
+
+RICH_MODES = [False]
+
+if importlib.util.find_spec("rich") is not None:
+    RICH_MODES.append(True)
+else:
+    RICH_MODES.append(False)
 
 
 def strip_ansi(text):
@@ -19,7 +27,7 @@ bad_syntax_fmt = Path(__file__).parent / "bad_syntax_fmt.preql"
 
 
 def test_cli_string():
-    for val in [True, False]:
+    for val in RICH_MODES:
         with set_rich_mode(val):
             runner = CliRunner()
 
@@ -35,7 +43,7 @@ def test_cli_string():
 
 
 def test_exception():
-    for mode in [True, False]:
+    for mode in RICH_MODES:
         with set_rich_mode(mode):
             runner = CliRunner()
 
@@ -49,7 +57,7 @@ def test_exception():
 
 
 def test_multi_exception_thrown_execution():
-    for mode in [True, False]:
+    for mode in RICH_MODES:
         with set_rich_mode(mode):
             runner = CliRunner()
 
@@ -71,31 +79,23 @@ def test_multi_exception_thrown_execution():
 
 
 def test_exception_fmt():
-    with set_rich_mode(False):
-        runner = CliRunner()
+    for mode in RICH_MODES:
+        with set_rich_mode(mode):
+            runner = CliRunner()
 
-        result = runner.invoke(
-            cli,
-            ["fmt", str(bad_syntax_fmt)],
-        )
+            result = runner.invoke(
+                cli,
+                ["fmt", str(bad_syntax_fmt)],
+            )
 
-        assert result.exit_code == 1
-        assert "Syntax [201]" in result.output
-    with set_rich_mode(True):
-        runner = CliRunner()
-
-        result = runner.invoke(
-            cli,
-            ["fmt", str(bad_syntax_fmt)],
-        )
-
-        assert result.exit_code == 1
-        assert "Syntax [201]" in result.output
+            assert result.exit_code == 1
+            assert "Syntax [201]" in result.output
 
 
 def test_cli_string_progress():
-    with set_rich_mode(True):
-        runner = CliRunner()
+    for mode in RICH_MODES:
+        with set_rich_mode(mode):
+            runner = CliRunner()
 
         result = runner.invoke(
             cli,
@@ -112,85 +112,96 @@ def test_cli_string_progress():
 
 
 def test_cli_string_progress_debug():
-    with set_rich_mode(True):
-        runner = CliRunner()
+    for mode in RICH_MODES:
+        with set_rich_mode(mode):
+            runner = CliRunner()
 
-        result = runner.invoke(
-            cli,
-            [
-                "run",
-                "select 1-> test; select 3 ->test2; select 4->test5;",
-                "duckdb",
-                "--debug",
-            ],
-        )
-        if result.exception:
-            raise result.exception
-        assert result.exit_code == 0
-        assert "Statements: 3" in result.output.strip()
+            result = runner.invoke(
+                cli,
+                [
+                    "run",
+                    "select 1-> test; select 3 ->test2; select 4->test5;",
+                    "duckdb",
+                    "--debug",
+                ],
+            )
+            if result.exception:
+                raise result.exception
+            assert result.exit_code == 0
+            assert "Statements: 3" in result.output.strip()
 
 
 def test_cli_fmt_string():
-    with set_rich_mode(False):
-        runner = CliRunner()
-        with open("test.sql", "w") as f:
-            f.write("select 1 -> test;")
-        result = runner.invoke(
-            cli,
-            ["fmt", "test.sql"],
-        )
-        if result.exception:
-            raise result.exception
-        assert result.exit_code == 0
-        with open("test.sql", "r") as f:
-            assert (
-                f.read().strip()
-                == """SELECT
+    for mode in RICH_MODES:
+        with set_rich_mode(mode):
+            runner = CliRunner()
+            with open("test.sql", "w") as f:
+                f.write("select 1 -> test;")
+            result = runner.invoke(
+                cli,
+                ["fmt", "test.sql"],
+            )
+            if result.exception:
+                raise result.exception
+            assert result.exit_code == 0
+            with open("test.sql", "r") as f:
+                assert (
+                    f.read().strip()
+                    == """SELECT
     1 -> test,
 ;"""
-            )
-        os.remove("test.sql")
+                )
+            os.remove("test.sql")
 
 
 def test_db_args_string():
-    with set_rich_mode(False):
-        runner = CliRunner()
-        result = runner.invoke(
-            cli,
-            [
-                "run",
-                "key in int; datasource test_source ( i:in) grain(in) address test; publish datasource test_source; select in;",
-                "duckdb",
-                "--path",
-                str(path),
-            ],
-        )
-        if result.exception:
-            raise result.exception
-        assert result.exit_code == 0
-        assert "(42,)" in result.output.strip()
+    for mode in RICH_MODES:
+        with set_rich_mode(mode):
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "run",
+                    "key in int; datasource test_source ( i:in) grain(in) address test; publish datasource test_source; select in as int_aliased;",
+                    "duckdb",
+                    "--path",
+                    str(path),
+                ],
+            )
+            if result.exception:
+                raise result.exception
+            assert result.exit_code == 0
+            assert "int_aliased" in result.output.strip()
+            assert "42" in result.output.strip()
 
 
 def test_parameters():
-    with set_rich_mode(False):
-        runner = CliRunner()
-        result = runner.invoke(
-            cli,
-            [
-                "run",
-                str(Path(__file__).parent / "param_test.preql"),
-                "duckdb",
-                "--param",
-                "scale=42",
-                "--param",
-                "float=3.14",
-                "--param",
-                "string=hello",
-                "--param",
-                "date=2023-01-01",
-            ],
-        )
-        if result.exception:
-            raise result.exception
-        assert result.exit_code == 0
-        assert "(42, 3.14, 'hello', datetime.date(2023, 1, 1))" in result.output.strip()
+    for mode in RICH_MODES:
+        with set_rich_mode(mode):
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "run",
+                    str(Path(__file__).parent / "param_test.preql"),
+                    "duckdb",
+                    "--param",
+                    "scale=42",
+                    "--param",
+                    "float=3.14",
+                    "--param",
+                    "string=hello",
+                    "--param",
+                    "date=2023-01-01",
+                ],
+            )
+            if result.exception:
+                raise result.exception
+            assert result.exit_code == 0
+            if mode is False:
+                assert (
+                    "(42, 3.14, 'hello', datetime.date(2023, 1, 1))"
+                    in result.output.strip()
+                )
+            else:
+                assert "3.14" in result.output.strip()

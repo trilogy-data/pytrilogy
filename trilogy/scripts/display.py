@@ -235,7 +235,7 @@ def _print_rich_table(result, headers=None):
         if i >= FETCH_LIMIT:
             table.add_row(*["..." for _ in column_names], style="dim")
             console.print(
-                f"[dim]Showing first {FETCH_LIMIT} rows. Result set was larger.[/dim]"
+                f"[dim]Showing first {FETCH_LIMIT-1} rows. Result set was larger.[/dim]"
             )
             break
         # Convert all values to strings and handle None
@@ -342,7 +342,7 @@ def show_execution_summary(num_queries: int, total_duration, all_succeeded: bool
             print_error(f"Statements failed in {format_duration(total_duration)}")
         else:
             print_success(
-                f"All {num_queries} statements completed in {format_duration(total_duration)}"
+                f"Statements: {num_queries} Completed in: {format_duration(total_duration)}"
             )
 
 
