@@ -454,6 +454,7 @@ class PersistStatement(HasUUID, BaseModel):
     datasource: Datasource
     select: SelectStatement
     persist_mode: PersistMode = PersistMode.OVERWRITE
+    partition_by: List[ConceptRef] = Field(default_factory=list)
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
 
     @property
@@ -505,3 +506,24 @@ class FunctionDeclaration(HasUUID, BaseModel):
     name: str
     args: list[ArgBinding]
     expr: Expr
+
+
+STATEMENT_TYPES = (
+    SelectStatement
+    | RawSQLStatement
+    | CopyStatement
+    | MultiSelectStatement
+    | RowsetDerivationStatement
+    | MergeStatementV2
+    | KeyMergeStatement
+    | ImportStatement
+    | PersistStatement
+    | ValidateStatement
+    | PublishStatement
+    | CreateStatement
+    | ShowStatement
+    | ConceptDeclarationStatement
+    | ConceptDerivationStatement
+    | TypeDeclaration
+    | FunctionDeclaration
+)

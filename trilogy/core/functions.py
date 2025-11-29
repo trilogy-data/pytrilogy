@@ -985,6 +985,18 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type=DataType.STRING,
         arg_count=2,
     ),
+    FunctionType.GEO_POINT: FunctionConfig(
+        valid_inputs={DataType.NUMERIC},
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.GEOGRAPHY,
+        arg_count=2,
+    ),
+    FunctionType.GEO_DISTANCE: FunctionConfig(
+        valid_inputs={DataType.GEOGRAPHY},
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.NUMERIC,
+        arg_count=2,
+    ),
 }
 
 EXCLUDED_FUNCTIONS = {

@@ -48,6 +48,7 @@ from trilogy.core.models.core import (
 from trilogy.core.models.datasource import Address, Datasource, DatasourceMetadata
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
+    STATEMENT_TYPES,
     ConceptDeclarationStatement,
     ConceptTransform,
     CopyStatement,
@@ -138,4 +139,5 @@ __all__ = [
     # trilogy.parsing.common
     "arbitrary_to_concept",
     "arg_to_datatype",
+    "STATEMENT_TYPES",
 ]

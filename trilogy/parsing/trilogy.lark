@@ -43,12 +43,15 @@
     prop_ident: "<" IDENTIFIER ("," IDENTIFIER )* ","? ">" "." IDENTIFIER
 
     // datasource concepts
-
     DATASOURCE_STATUS: "published"i | "unpublished"i
 
-    datasource_status_clause: "state"i DATASOURCE_STATUS
+    datasource_status_clause: /state/i DATASOURCE_STATUS
 
-    datasource: "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? whole_grain_clause? (address | query) where? datasource_status_clause?
+    datasource_increment_clause: "incremental"i "by"i column_list
+
+    datasource_partition_clause: "partition"i "by"i column_list
+
+    datasource: "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? whole_grain_clause? (address | query) where? datasource_increment_clause? datasource_partition_clause? datasource_status_clause? 
    
     whole_grain_clause: "complete" where
 
@@ -77,7 +80,7 @@
     import_statement: "import" IMPORT_DOT* IDENTIFIER ("."  IDENTIFIER)* ("as" IDENTIFIER)?
 
     // persist_statement
-    PERSIST_MODE: "append"i | "overwrite"i | "persist"
+    PERSIST_MODE: "append"i | "overwrite"i | "persist"i
     persist_partition_clause: "by"i column_list
     persist_statement: PERSIST_MODE IDENTIFIER? "into"i IDENTIFIER persist_partition_clause? "from"i select_statement
 
@@ -136,7 +139,7 @@
     type_declaration: "type" IDENTIFIER data_type ("|" data_type)* type_drop_clause? 
 
     // user_id where state = Mexico
-    _filter_alt: (IDENTIFIER | literal | "(" expr ")") "?" conditional
+    _filter_alt: (IDENTIFIER | literal | _static_functions | "(" expr ")") "?" conditional
     _filter_base: "filter"i IDENTIFIER where
     filter_item: _filter_base | _filter_alt
 
@@ -508,7 +511,7 @@
 
     !data_type:  ("string"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type) ("::" IDENTIFIER)?
     
-    PURPOSE:  "key"i | "metric"i | "parameter"i  | CONST
+    PURPOSE:  "key"i | "metric"i | "parameter"i | "param"i  | CONST
     PROPERTY: "property"i
     CONST: "const"i | "constant"i
     AUTO: "AUTO"i 

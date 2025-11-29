@@ -30,6 +30,8 @@ class PersistQueryMixin:
     output_to: MaterializedDataset
     datasource: Datasource
     persist_mode: PersistMode
+    partition_by: List[str]
+    partition_types: List[DataType]
 
 
 @dataclass

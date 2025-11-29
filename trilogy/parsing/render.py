@@ -10,9 +10,11 @@ from jinja2 import Template
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
 from trilogy.core.enums import (
     ConceptSource,
+    DatasourceState,
     DatePart,
     FunctionType,
     Modifier,
+    PersistMode,
     Purpose,
     ValidationScope,
 )
@@ -267,9 +269,16 @@ class Renderer:
 )
 {self.to_string(arg.grain) if arg.grain.components else ''}{non_partial}
 {self.to_string(arg.address)}"""
-
         if arg.where:
             base += f"\nwhere {self.to_string(arg.where)}"
+
+        if arg.incremental_by:
+            base += f"\nincremental by {','.join(self.to_string(x) for x in arg.incremental_by)}"
+
+        if arg.partition_by:
+            base += f"\npartition by {','.join(self.to_string(x) for x in arg.partition_by)}"
+        if arg.status != DatasourceState.PUBLISHED:
+            base += f"\nstate {arg.status.value.lower()}"
 
         base += ";"
         return base
@@ -441,7 +450,16 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: PersistStatement):
-        return f"PERSIST {arg.identifier} INTO {arg.address.location} FROM {self.to_string(arg.select)}"
+        if arg.persist_mode == PersistMode.APPEND:
+            keyword = "APPEND"
+        else:
+            keyword = "OVERWRITE"
+        if arg.partition_by:
+            partition_by = (
+                f"BY {', '.join(self.to_string(x) for x in arg.partition_by)}"
+            )
+            return f"{keyword} {arg.identifier} INTO {arg.address.location} {partition_by} FROM {self.to_string(arg.select)}"
+        return f"{keyword} {arg.identifier} INTO {arg.address.location} FROM {self.to_string(arg.select)}"
 
     @to_string.register
     def _(self, arg: SelectItem):

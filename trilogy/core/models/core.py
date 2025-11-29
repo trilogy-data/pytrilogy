@@ -92,6 +92,7 @@ class DataType(Enum):
     ARRAY = "array"
     DATE_PART = "date_part"
     STRUCT = "struct"
+    GEOGRAPHY = "geography"
     NULL = "null"
 
     # GRANULAR

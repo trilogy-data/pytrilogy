@@ -18,6 +18,7 @@ from trilogy.core.models.build import (
     BuildSelectLineage,
     Factory,
 )
+from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
     CTE,
@@ -499,11 +500,21 @@ def process_persist(
 
     # build our object to return
     arg_dict = {k: v for k, v in select.__dict__.items()}
+    partition_by: list[str] = []
+    partition_types: list[DataType] = []
+    for addr in statement.partition_by:
+        for c in statement.datasource.columns:
+            if c.concept.address == addr and c.is_concrete:
+                partition_by.append(c.alias)  # type: ignore
+                partition_types.append(c.concept.output_datatype)
+                break
     return ProcessedQueryPersist(
         **arg_dict,
         output_to=MaterializedDataset(address=statement.address),
         persist_mode=statement.persist_mode,
+        partition_by=partition_by,
         datasource=statement.datasource,
+        partition_types=partition_types,
     )
 
 

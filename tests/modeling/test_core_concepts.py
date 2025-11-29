@@ -1,5 +1,3 @@
-import pytest
-
 from trilogy import Executor, parse
 from trilogy.core.enums import Purpose
 from trilogy.core.env_processor import generate_graph
@@ -222,7 +220,6 @@ def test_inline_source_derivation(
         assert row.order_year == 1992
 
 
-@pytest.mark.xfail
 def test_filtered_project(test_environment: Environment, test_executor: Executor):
     test_select = """
 

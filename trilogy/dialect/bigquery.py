@@ -1,3 +1,4 @@
+import uuid
 from typing import Any, Callable, Dict, Mapping, Optional
 
 from jinja2 import Template
@@ -11,8 +12,9 @@ from trilogy.core.enums import (
 from trilogy.core.models.core import (
     DataType,
 )
-from trilogy.core.models.execute import CTE, UnionCTE
-from trilogy.dialect.base import BaseDialect
+from trilogy.core.models.execute import CTE, CompiledCTE, UnionCTE
+from trilogy.core.statements.execute import ProcessedQueryPersist
+from trilogy.dialect.base import BaseDialect, safe_quote
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
@@ -119,6 +121,72 @@ ORDER BY {% for order in order_by %}
 LIMIT {{ limit }}{% endif %}{% endif %}
 """
 )
+
+
+BQ_CREATE_TABLE_SQL_TEMPLATE = Template(
+    """
+CREATE {% if create_mode == "create_or_replace" %}OR REPLACE TABLE{% elif create_mode == "create_if_not_exists" %}TABLE IF NOT EXISTS{% else %}TABLE{% endif %} {{ name}} (
+{%- for column in columns %}
+    `{{ column.name }}` {{ type_map[column.name] }}{% if column.description %} OPTIONS(description='{{ column.description }}'){% endif %}{% if not loop.last %},{% endif %}
+{%- endfor %}
+)
+{%- if partition_by %}
+PARTITION BY {{ partition_by }}
+{%- endif %}
+{%- if cluster_by %}
+CLUSTER BY {{ cluster_by | join(', ') }}
+{%- endif %}
+{%- if table_description %}
+OPTIONS(
+    description='{{ table_description }}'
+)
+{%- endif %};
+""".strip()
+)
+
+PARTITIONED_INSERT_TEMPLATE = Template(
+    """
+-- Step 1: materialize results
+CREATE TEMP TABLE {{ tmp_table }} AS SELECT * FROM  {{ target_table }} limit 0;
+                                       
+INSERT INTO {{ tmp_table }}
+    {{ final_select }}
+;
+
+-- Step 2: extract distinct partitions and generate dynamic statements
+BEGIN
+    DECLARE partition_values ARRAY<{{ partition_type }}>;
+    DECLARE current_partition {{ partition_type }};
+    DECLARE i INT64 DEFAULT 0;
+    
+    -- Get all distinct partition values
+    SET partition_values = (
+        SELECT ARRAY_AGG(DISTINCT {{ partition_key[0] }})
+        FROM {{ tmp_table }}
+    );
+    
+    -- Loop through each partition value
+    WHILE i < ARRAY_LENGTH(partition_values) DO
+        SET current_partition = partition_values[OFFSET(i)];
+        
+        -- Delete existing records for this partition
+        EXECUTE IMMEDIATE FORMAT(
+            'DELETE FROM {{ target_table }} WHERE {{ partition_key[0] }} = "%t"',
+            current_partition
+        );
+        
+        -- Insert new records for this partition
+        EXECUTE IMMEDIATE FORMAT(
+            'INSERT INTO {{ target_table }} SELECT * FROM {{ tmp_table }} WHERE {{ partition_key[0] }} = "%t"',
+            current_partition
+        );
+        
+        SET i = i + 1;
+    END WHILE;
+END;
+"""
+)
+
 MAX_IDENTIFIER_LENGTH = 50
 
 
@@ -131,6 +199,7 @@ class BigqueryDialect(BaseDialect):
     }
     QUOTE_CHARACTER = "`"
     SQL_TEMPLATE = BQ_SQL_TEMPLATE
+    CREATE_TABLE_SQL_TEMPLATE = BQ_CREATE_TABLE_SQL_TEMPLATE
     UNNEST_MODE = UnnestMode.CROSS_JOIN_UNNEST
     DATATYPE_MAP = DATATYPE_MAP
 
@@ -144,3 +213,44 @@ class BigqueryDialect(BaseDialect):
         raise_invalid: bool = False,
     ):
         return f"{self.render_expr(left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {operator.value} unnest({self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
+
+    def generate_partitioned_insert(
+        self,
+        query: ProcessedQueryPersist,
+        recursive: bool,
+        compiled_ctes: list[CompiledCTE],
+    ) -> str:
+        tmp_table = f"tmp__{uuid.uuid4().hex}"
+        final_select = compiled_ctes[-1].statement
+        ctes = compiled_ctes[:-1]
+
+        if not query.partition_by:
+            raise ValueError("partition_by must be set for partitioned inserts.")
+
+        partition_key = query.partition_by
+        target_table = safe_quote(
+            query.output_to.address.location, self.QUOTE_CHARACTER
+        )
+
+        # render intermediate CTEs
+        ctes_sql = ""
+        if ctes:
+            rendered = []
+            for c in ctes:
+                rendered.append(f"{c.name} AS ({c.statement})")
+            ctes_sql = "WITH " + ",\n".join(rendered)
+
+        # create temp table first
+        full_select_with_ctes = (
+            final_select if not ctes_sql else f"{ctes_sql}\n{final_select}"
+        )
+
+        sql_script = PARTITIONED_INSERT_TEMPLATE.render(
+            tmp_table=tmp_table,
+            final_select=full_select_with_ctes,
+            partition_key=partition_key,
+            target_table=target_table,
+            partition_type=self.DATATYPE_MAP[query.partition_types[0]],
+        )
+
+        return sql_script

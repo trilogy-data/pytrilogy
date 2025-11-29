@@ -415,6 +415,7 @@ class BaseDialect:
     FUNCTION_GRAIN_MATCH_MAP = FUNCTION_GRAIN_MATCH_MAP
     QUOTE_CHARACTER = "`"
     SQL_TEMPLATE = GENERIC_SQL_TEMPLATE
+    CREATE_TABLE_SQL_TEMPLATE = CREATE_TABLE_SQL_TEMPLATE
     DATATYPE_MAP = DATATYPE_MAP
     COMPLEX_DATATYPE_MAP = COMPLEX_DATATYPE_MAP
     UNNEST_MODE = UnnestMode.CROSS_APPLY
@@ -1249,6 +1250,19 @@ class BaseDialect:
                 raise NotImplementedError(type(statement))
         return output
 
+    def generate_partitioned_insert(
+        self,
+        query: ProcessedQueryPersist,
+        recursive: bool,
+        compiled_ctes: list[CompiledCTE],
+    ) -> str:
+        return self.SQL_TEMPLATE.render(
+            recursive=recursive,
+            output=f"INSERT OVERWRITE {safe_quote(query.output_to.address.location, self.QUOTE_CHARACTER)}",
+            full_select=compiled_ctes[-1].statement,
+            ctes=compiled_ctes[:-1],
+        )
+
     def compile_statement(
         self,
         query: PROCESSED_STATEMENT_TYPES,
@@ -1276,9 +1290,9 @@ class BaseDialect:
                 for c in target.columns:
                     type_map[c.name] = self.render_expr(c.type)
                 text.append(
-                    CREATE_TABLE_SQL_TEMPLATE.render(
+                    self.CREATE_TABLE_SQL_TEMPLATE.render(
                         create_mode=query.create_mode.value,
-                        name=target.name,
+                        name=safe_quote(target.name, self.QUOTE_CHARACTER),
                         columns=target.columns,
                         type_map=type_map,
                         partition_keys=target.partition_keys,
@@ -1294,7 +1308,12 @@ class BaseDialect:
             if query.persist_mode == PersistMode.OVERWRITE:
                 output = f"CREATE OR REPLACE TABLE {safe_quote(query.output_to.address.location, self.QUOTE_CHARACTER)} AS "
             elif query.persist_mode == PersistMode.APPEND:
-                output = f"INSERT INTO {safe_quote(query.output_to.address.location, self.QUOTE_CHARACTER)} "
+                if query.partition_by:
+                    return self.generate_partitioned_insert(
+                        query, recursive, compiled_ctes
+                    )
+                else:
+                    output = f"INSERT INTO {safe_quote(query.output_to.address.location, self.QUOTE_CHARACTER)} "
             else:
                 raise NotImplementedError(
                     f"Persist mode {query.persist_mode} not implemented"

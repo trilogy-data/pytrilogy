@@ -82,12 +82,7 @@ property store_id.upper_store_name <- upper(store_name);
 auto upper_store_name_2 <- upper(store_name);
 
 # filter tests
-
-select
-    product_id,
-    upper(product_name) -> even_product_name
-where
-    (product_id % 2) = 0;
+auto even_product_name <- upper(product_name) ? (product_id % 2) = 0;
 
 """
     parse(test_declaration, environment=env)

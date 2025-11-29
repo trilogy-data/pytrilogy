@@ -5,10 +5,12 @@ from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX
 from trilogy.core.enums import (
     BooleanOperator,
     ComparisonOperator,
+    DatasourceState,
     FunctionType,
     IOType,
     Modifier,
     Ordering,
+    PersistMode,
     Purpose,
 )
 from trilogy.core.models.author import (
@@ -221,7 +223,50 @@ def test_persist(test_environment: Environment):
     string_query = render_query(query)
     assert (
         string_query
-        == """PERSIST test INTO tbl_test FROM SELECT
+        == """OVERWRITE test INTO tbl_test FROM SELECT
+    order_id,
+ORDER BY
+    order_id asc
+;"""
+    )
+
+    query = PersistStatement(
+        select=select,
+        datasource=select.to_datasource(
+            namespace=test_environment.namespace,
+            name="test",
+            address=Address(location="tbl_test"),
+            environment=test_environment,
+        ),
+        partition_by=[test_environment.concepts["order_id"].reference],
+    )
+
+    string_query = render_query(query)
+    assert (
+        string_query
+        == """OVERWRITE test INTO tbl_test BY order_id FROM SELECT
+    order_id,
+ORDER BY
+    order_id asc
+;"""
+    )
+
+    query = PersistStatement(
+        select=select,
+        datasource=select.to_datasource(
+            namespace=test_environment.namespace,
+            name="test",
+            address=Address(location="tbl_test"),
+            environment=test_environment,
+        ),
+        partition_by=[test_environment.concepts["order_id"].reference],
+        persist_mode=PersistMode.APPEND,
+    )
+
+    string_query = render_query(query)
+    assert (
+        string_query
+        == """APPEND test INTO tbl_test BY order_id FROM SELECT
     order_id,
 ORDER BY
     order_id asc
@@ -789,6 +834,48 @@ query '''SELECT * FROM test'''
 where user_id = 123 or user_id = 456;"""
     )
 
+    ds = Datasource(
+        name="useful_data",
+        columns=[ColumnAssignment(alias="user_id", concept=user_id)],
+        address=Address(is_query=True, location="SELECT * FROM test"),
+        grain=Grain(components=set()),
+        incremental_by=[ConceptRef(address="local.user_id")],
+        partition_by=[ConceptRef(address="local.user_id")],
+        where=WhereClause(
+            conditional=Conditional(
+                left=Comparison(
+                    left=user_id,
+                    right=123,
+                    operator=ComparisonOperator.EQ,
+                ),
+                right=Comparison(
+                    left=user_id,
+                    right=456,
+                    operator=ComparisonOperator.EQ,
+                ),
+                operator=BooleanOperator.OR,
+            ),
+        ),
+        status=DatasourceState.UNPUBLISHED,
+    )
+    ds.grain = Grain()
+    test2 = Renderer().to_string(ds)
+    assert (
+        test2
+        == """datasource useful_data (
+    user_id: user_id
+)
+
+query '''SELECT * FROM test'''
+where user_id = 123 or user_id = 456
+incremental by user_id
+partition by user_id
+state unpublished;"""
+    )
+
+    # validate round trip
+    basic.parse(test2)
+
 
 def test_circular_rendering():
     basic = Environment()
@@ -809,12 +896,14 @@ where id in (1,2,3);
 
     assert (
         rendered
-        == """PERSIST test INTO test FROM WHERE
+        == """OVERWRITE test INTO test FROM WHERE
     id in (1, 2, 3)
 SELECT
     id,
 ;"""
     ), rendered
+    # validate round trip
+    basic.parse(rendered)
 
 
 def test_render_list_type():

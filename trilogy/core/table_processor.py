@@ -19,6 +19,12 @@ def process_create_statement(
         datasource: Datasource | None = environment.datasources.get(target)
         if not datasource:
             raise ValueError(f"Datasource {target} not found in environment.")
+
+        address_field_map: dict[str, str] = {
+            column.concept.address: column.alias  # type: ignore
+            for column in datasource.columns
+            if column.is_concrete
+        }
         columns_info = [
             ColumnInfo(
                 # the is_concrete restricts this
@@ -42,7 +48,11 @@ def process_create_statement(
                     else datasource.address
                 ),
                 columns=columns_info,
-                partition_keys=[],
+                partition_keys=[
+                    address_field_map[c.address]
+                    for c in datasource.partition_by
+                    if c.address in address_field_map
+                ],
             )
         )
 

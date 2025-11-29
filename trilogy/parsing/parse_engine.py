@@ -30,7 +30,7 @@ from trilogy.core.enums import (
     ComparisonOperator,
     ConceptSource,
     CreateMode,
-    DatasourceStatus,
+    DatasourceState,
     DatePart,
     Derivation,
     FunctionType,
@@ -167,6 +167,8 @@ SELF_LABEL = "root"
 
 MAX_PARSE_DEPTH = 10
 
+SUPPORTED_INCREMENTAL_TYPES: set[DataType] = set([DataType.DATE, DataType.TIMESTAMP])
+
 STDLIB_ROOT = Path(__file__).parent.parent
 
 
@@ -188,6 +190,16 @@ class DropOn:
 @dataclass
 class AddOn:
     functions: List[FunctionType]
+
+
+@dataclass
+class DatasourcePartitionClause:
+    columns: List[ConceptRef]
+
+
+@dataclass
+class DatasourceIncrementalClause:
+    columns: List[ConceptRef]
 
 
 with open(join(dirname(__file__), "trilogy.lark"), "r") as f:
@@ -685,6 +697,7 @@ class ParseToObjects(Transformer):
         metadata = Metadata()
         modifiers = []
         purpose = args[0]
+        datatype = args[2]
         for arg in args:
             if isinstance(arg, Metadata):
                 metadata = arg
@@ -698,6 +711,28 @@ class ParseToObjects(Transformer):
                 raise MissingParameterException(
                     f'This script requires parameter "{name}" to be set in environment.'
                 )
+            if datatype == DataType.INTEGER:
+                value = int(value)
+            elif datatype == DataType.FLOAT:
+                value = float(value)
+            elif datatype == DataType.BOOL:
+                value = bool(value)
+            elif datatype == DataType.STRING:
+                value = str(value)
+            elif datatype == DataType.DATE:
+                if isinstance(value, date):
+                    value = value
+                else:
+                    value = date.fromisoformat(value)
+            elif datatype == DataType.DATETIME:
+                if isinstance(value, datetime):
+                    value = value
+                else:
+                    value = datetime.fromisoformat(value)
+            else:
+                raise ParseError(
+                    f"Unsupported datatype {datatype} for parameter {name}."
+                )
             rval = self.constant_derivation(
                 meta, [Purpose.CONSTANT, name, value, metadata]
             )
@@ -705,7 +740,7 @@ class ParseToObjects(Transformer):
 
         concept = Concept(
             name=name,
-            datatype=args[2],
+            datatype=datatype,
             purpose=purpose,
             metadata=metadata,
             namespace=namespace,
@@ -893,12 +928,20 @@ class ParseToObjects(Transformer):
     def raw_column_assignment(self, args):
         return RawColumnExpr(text=args[1])
 
-    def DATASOURCE_STATUS(self, args) -> DatasourceStatus:
-        return DatasourceStatus(args.value.lower())
+    def DATASOURCE_STATUS(self, args) -> DatasourceState:
+        return DatasourceState(args.value.lower())
 
     @v_args(meta=True)
     def datasource_status_clause(self, meta: Meta, args):
-        return args[0]
+        return args[1]
+
+    @v_args(meta=True)
+    def datasource_partition_clause(self, meta: Meta, args):
+        return DatasourcePartitionClause([ConceptRef(address=arg) for arg in args[0]])
+
+    @v_args(meta=True)
+    def datasource_increment_clause(self, meta: Meta, args):
+        return DatasourceIncrementalClause([ConceptRef(address=arg) for arg in args[0]])
 
     @v_args(meta=True)
     def datasource(self, meta: Meta, args):
@@ -908,7 +951,9 @@ class ParseToObjects(Transformer):
         address: Optional[Address] = None
         where: Optional[WhereClause] = None
         non_partial_for: Optional[WhereClause] = None
-        datasource_status: DatasourceStatus = DatasourceStatus.PUBLISHED
+        incremental_by: List[ConceptRef] = []
+        partition_by: List[ConceptRef] = []
+        datasource_status: DatasourceState = DatasourceState.PUBLISHED
         for val in args[1:]:
             if isinstance(val, Address):
                 address = val
@@ -920,12 +965,17 @@ class ParseToObjects(Transformer):
                 address = Address(location=f"({val.text})", is_query=True)
             elif isinstance(val, WhereClause):
                 where = val
-            elif isinstance(val, DatasourceStatus):
+            elif isinstance(val, DatasourceState):
                 datasource_status = val
+            elif isinstance(val, DatasourceIncrementalClause):
+                incremental_by = val.columns
+            elif isinstance(val, DatasourcePartitionClause):
+                partition_by = val.columns
         if not address:
             raise ValueError(
                 "Malformed datasource, missing address or query declaration"
             )
+
         datasource = Datasource(
             name=name,
             columns=columns,
@@ -937,6 +987,8 @@ class ParseToObjects(Transformer):
             where=where,
             non_partial_for=non_partial_for,
             status=datasource_status,
+            incremental_by=incremental_by,
+            partition_by=partition_by,
         )
         if datasource.where:
             for x in datasource.where.concept_arguments:
@@ -1317,6 +1369,7 @@ class ParseToObjects(Transformer):
                     working_path=dirname(target),
                     env_file_path=token_lookup,
                     config=self.environment.config,
+                    parameters=self.environment.parameters,
                 )
                 new_env.concepts.fail_on_missing = False
                 self.parsed[self.parse_address] = self
@@ -1364,8 +1417,8 @@ class ParseToObjects(Transformer):
         return ShowStatement(content=args[0])
 
     @v_args(meta=True)
-    def persist_partition_clause(self, meta: Meta, args) -> list[ConceptRef]:
-        return [ConceptRef(address=a) for a in args[0]]
+    def persist_partition_clause(self, meta: Meta, args) -> DatasourcePartitionClause:
+        return DatasourcePartitionClause([ConceptRef(address=a) for a in args[0]])
 
     @v_args(meta=True)
     def PERSIST_MODE(self, args) -> PersistMode:
@@ -1376,17 +1429,55 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def persist_statement(self, meta: Meta, args) -> PersistStatement | None:
+        if self.parse_pass != ParsePass.VALIDATION:
+            return None
+        partition_clause = DatasourcePartitionClause([])
         labels = [x for x in args if isinstance(x, str)]
+        for x in args:
+            if isinstance(x, DatasourcePartitionClause):
+                partition_clause = x
         if len(labels) == 2:
             identifier = labels[0]
             address = labels[1]
         else:
             identifier = labels[0]
-            address = identifier
+            address = None
+        target: Datasource | None = self.environment.datasources.get(identifier)
+
+        if not address and not target:
+            raise SyntaxError(
+                f'Append statement without concrete table address on line {meta.line} attempts to insert into datasource "{identifier}" that cannot be found in the environment. Add a physical address to create a new datasource, or check the name.'
+            )
+        elif target:
+            address = target.safe_address
+
+        assert address is not None
+
         modes = [x for x in args if isinstance(x, PersistMode)]
         mode = modes[0] if modes else PersistMode.OVERWRITE
         select: SelectStatement = [x for x in args if isinstance(x, SelectStatement)][0]
-        if self.parse_pass == ParsePass.VALIDATION:
+
+        if mode == PersistMode.APPEND:
+            if target is None:
+                raise SyntaxError(
+                    f"Cannot append to non-existent datasource {identifier} on line {meta.line}."
+                )
+            new_datasource: Datasource = target
+            if not new_datasource.partition_by == partition_clause.columns:
+                raise SyntaxError(
+                    f"Cannot append to datasource {identifier} with different partitioning scheme then insert on line {meta.line}. Datasource partitioning: {new_datasource.partition_by}, insert partitioning: {partition_clause.columns if partition_clause else '[]'}"
+                )
+            if len(partition_clause.columns) > 1:
+                raise NotImplementedError(
+                    "Incremental partition overwrites by more than 1 column are not yet supported."
+                )
+            for x in partition_clause.columns:
+                concept = self.environment.concepts[x.address]
+                if concept.output_datatype not in SUPPORTED_INCREMENTAL_TYPES:
+                    raise SyntaxError(
+                        f"Cannot incremental persist on concept {concept.address} of type {concept.output_datatype} on line {meta.line}."
+                    )
+        else:
             new_datasource = select.to_datasource(
                 namespace=(
                     self.environment.namespace
@@ -1398,13 +1489,13 @@ class ParseToObjects(Transformer):
                 grain=select.grain,
                 environment=self.environment,
             )
-            return PersistStatement(
-                select=select,
-                datasource=new_datasource,
-                persist_mode=mode,
-                meta=Metadata(line_number=meta.line),
-            )
-        return None
+        return PersistStatement(
+            select=select,
+            datasource=new_datasource,
+            persist_mode=mode,
+            partition_by=partition_clause.columns if partition_clause else [],
+            meta=Metadata(line_number=meta.line),
+        )
 
     @v_args(meta=True)
     def align_item(self, meta: Meta, args) -> AlignItem:

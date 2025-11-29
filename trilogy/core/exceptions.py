@@ -12,6 +12,10 @@ from trilogy.core.models.core import (
 )
 
 
+class ConfigurationException(Exception):
+    pass
+
+
 class UndefinedConceptException(Exception):
     def __init__(self, message, suggestions: List[str]):
         super().__init__(self, message)

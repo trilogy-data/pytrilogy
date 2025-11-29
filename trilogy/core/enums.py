@@ -3,7 +3,7 @@ from enum import Enum
 InfiniteFunctionArgs = -1
 
 
-class DatasourceStatus(Enum):
+class DatasourceState(Enum):
     PUBLISHED = "published"
     UNPUBLISHED = "unpublished"
 
@@ -54,8 +54,10 @@ class Purpose(Enum):
 
     @classmethod
     def _missing_(cls, value):
-        if value == "constant":
+        if value.lower() == "constant":
             return Purpose.CONSTANT
+        if value.lower() == "param":
+            return Purpose.PARAMETER
         return super()._missing_(value)
 
 
@@ -197,7 +199,7 @@ class FunctionType(Enum):
     SPLIT = "split"
     LENGTH = "len"
 
-    # Mathas
+    # Maths
     DIVIDE = "divide"
     MULTIPLY = "multiply"
     ADD = "add"
@@ -269,6 +271,10 @@ class FunctionType(Enum):
     DATE_SUB = "date_sub"
     DATE_DIFF = "date_diff"
     DATE_SPINE = "date_spine"
+
+    # Geography
+    GEO_POINT = "geo_point"
+    GEO_DISTANCE = "geo_distance"
 
     # UNIX
     UNIX_TO_TIMESTAMP = "unix_to_timestamp"
