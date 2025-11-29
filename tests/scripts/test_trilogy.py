@@ -3,6 +3,7 @@ import os
 import re
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from trilogy.scripts.trilogy import cli, set_rich_mode
@@ -209,22 +210,26 @@ def test_parameters():
                 assert "3.14" in result.output.strip()
 
 
-def test_bigquery():
-
+def test_snowflake():
     runner = CliRunner()
+    # Test with all required parameters
     results = runner.invoke(
         cli,
         [
             "run",
             "select 1 as test;",
-            "bigquery",
+            "snowflake",
+            "--password",
+            "mypassword",
+            "--username",
+            "myusername",
+            "--account",
+            "myaccount",
         ],
     )
-    assert 'Failed to configure dialect' not in results.stdout, results.stdout
+    assert "Failed to configure dialect" not in results.stdout, results.stdout
 
-def test_snowflake():
-
-    runner = CliRunner()
+    # Test missing required parameters
     results = runner.invoke(
         cli,
         [
@@ -233,11 +238,111 @@ def test_snowflake():
             "snowflake",
         ],
     )
-    assert 'Failed to configure dialect' not in results.stdout, results.stdout
+    assert (
+        "Failed to configure dialect: Missing required Snowflake connection parameters: "
+        in results.stdout
+    ), results.stdout
+
+
+def test_sql_server():
+    runner = CliRunner()
+    # Test with all required parameters
+    results = runner.invoke(
+        cli,
+        [
+            "run",
+            "select 1 as test;",
+            "sql_server",
+            "--host",
+            "localhost",
+            "--port",
+            "1433",
+            "--username",
+            "myusername",
+            "--password",
+            "mypassword",
+            "--database",
+            "mydatabase",
+        ],
+    )
+    assert "Failed to configure dialect" not in results.stdout, results.stdout
+
+    # Test missing required parameters
+    results = runner.invoke(
+        cli,
+        [
+            "run",
+            "select 1 as test;",
+            "sql_server",
+        ],
+    )
+    assert (
+        "Failed to configure dialect: Missing required SQL Server" in results.stdout
+    ), results.stdout
+
+
+def test_postgres():
+    runner = CliRunner()
+    # Test with all required parameters
+    results = runner.invoke(
+        cli,
+        [
+            "run",
+            "select 1 as test;",
+            "postgres",
+            "--host",
+            "localhost",
+            "--port",
+            "5432",
+            "--username",
+            "myusername",
+            "--password",
+            "mypassword",
+            "--database",
+            "mydatabase",
+        ],
+    )
+    assert "Failed to configure dialect" not in results.stdout, results.stdout
+
+    # Test missing required parameters
+    results = runner.invoke(
+        cli,
+        [
+            "run",
+            "select 1 as test;",
+            "postgres",
+        ],
+    )
+    assert (
+        "Failed to configure dialect: Missing required Postgres connection parameters: "
+        in results.stdout
+    ), results.stdout
+
 
 def test_presto():
-
     runner = CliRunner()
+    # Test with all required parameters
+    results = runner.invoke(
+        cli,
+        [
+            "run",
+            "select 1 as test;",
+            "presto",
+            "--host",
+            "localhost",
+            "--port",
+            "8080",
+            "--username",
+            "myusername",
+            "--password",
+            "mypassword",
+            "--catalog",
+            "mycatalog",
+        ],
+    )
+    assert "Failed to configure dialect" not in results.stdout, results.stdout
+
+    # Test missing required parameters
     results = runner.invoke(
         cli,
         [
@@ -246,5 +351,150 @@ def test_presto():
             "presto",
         ],
     )
+    assert (
+        "Failed to configure dialect: Missing required Presto connection parameters: "
+        in results.stdout
+    ), results.stdout
 
-    assert 'Failed to configure dialect' not in results.stdout, results.stdout
+
+def test_duck_db():
+    runner = CliRunner()
+    # Test with minimal parameters (DuckDB typically doesn't require connection params)
+    results = runner.invoke(
+        cli,
+        [
+            "run",
+            "select 1 as test;",
+            "duck_db",
+        ],
+    )
+    assert "Failed to configure dialect" not in results.stdout, results.stdout
+
+    # Test with optional parameters
+    results = runner.invoke(
+        cli,
+        [
+            "run",
+            "select 1 as test;",
+            "duck_db",
+            "--database",
+            ":memory:",
+        ],
+    )
+    assert "Failed to configure dialect" not in results.stdout, results.stdout
+
+
+def test_bigquery():
+    runner = CliRunner()
+    # Test with minimal parameters (BigQuery typically uses service account or environment auth)
+    results = runner.invoke(
+        cli,
+        [
+            "run",
+            "select 1 as test;",
+            "bigquery",
+        ],
+    )
+    assert "Failed to configure dialect" not in results.stdout, results.stdout
+
+    # Test with optional project parameter
+    results = runner.invoke(
+        cli,
+        [
+            "run",
+            "select 1 as test;",
+            "bigquery",
+            "--project",
+            "my-project-id",
+        ],
+    )
+    assert "Failed to configure dialect" not in results.stdout, results.stdout
+
+
+# Parametrized test for engines that require connection parameters
+@pytest.mark.parametrize(
+    "dialect,required_params,test_params",
+    [
+        (
+            "snowflake",
+            ["username", "password", "account"],
+            {
+                "--username": "testuser",
+                "--password": "testpass",
+                "--account": "testaccount",
+            },
+        ),
+        (
+            "sql_server",
+            ["host", "port", "username", "password", "database"],
+            {
+                "--host": "localhost",
+                "--port": "1433",
+                "--username": "testuser",
+                "--password": "testpass",
+                "--database": "testdb",
+            },
+        ),
+        (
+            "postgres",
+            ["host", "port", "username", "password", "database"],
+            {
+                "--host": "localhost",
+                "--port": "5432",
+                "--username": "testuser",
+                "--password": "testpass",
+                "--database": "testdb",
+            },
+        ),
+        (
+            "presto",
+            ["host", "port", "username", "password", "catalog"],
+            {
+                "--host": "localhost",
+                "--port": "8080",
+                "--username": "testuser",
+                "--password": "testpass",
+                "--catalog": "testcatalog",
+            },
+        ),
+    ],
+)
+def test_engine_missing_single_parameter(dialect, required_params, test_params):
+    """Test that each required parameter is properly validated."""
+    runner = CliRunner()
+
+    # Test missing each required parameter one at a time
+    for missing_param in required_params:
+        # Create args with all params except the missing one
+        args = ["run", "select 1 as test;", dialect]
+        for param_key, param_value in test_params.items():
+            param_name = param_key.lstrip("--")
+            if param_name != missing_param:
+                args.extend([param_key, param_value])
+
+        results = runner.invoke(cli, args)
+
+        # Should fail with missing parameter error
+        assert (
+            "Failed to configure dialect: Missing required" in results.stdout
+        ), f"Expected missing {missing_param} error for {dialect}, got: {results.stdout}"
+        assert (
+            missing_param in results.stdout
+        ), f"Missing parameter {missing_param} should be mentioned in error for {dialect}"
+
+
+def test_invalid_dialect():
+    """Test behavior with invalid/unsupported dialect."""
+    runner = CliRunner()
+
+    results = runner.invoke(
+        cli,
+        [
+            "run",
+            "select 1 as test;",
+            "invalid_dialect",
+        ],
+    )
+
+    # Should fail gracefully
+    assert results.exit_code != 0, "Invalid dialect should cause non-zero exit code"

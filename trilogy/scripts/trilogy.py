@@ -5,9 +5,10 @@ from typing import Any, Iterable, Union
 
 from click import UNPROCESSED, Path, argument, group, option, pass_context
 from click.exceptions import Exit
-from trilogy.core.exceptions import ConfigurationException
+
 from trilogy import Executor, parse
 from trilogy.constants import DEFAULT_NAMESPACE
+from trilogy.core.exceptions import ConfigurationException
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.execute import PROCESSED_STATEMENT_TYPES
 from trilogy.dialect.enums import Dialects
@@ -79,6 +80,31 @@ def parse_env_params(env_param_list: tuple[str]) -> dict[str, str]:
         key, value = param.split("=", 1)  # Split on first = only
         env_params[key] = smart_convert(value)
     return env_params
+
+
+def validate_required_connection_params(
+    conn_dict: dict[str, Any],
+    required_keys: list[str],
+    optional_keys: list[str],
+    dialect_name: str,
+) -> dict:
+    missing = [key for key in required_keys if key not in conn_dict]
+    extra = [
+        key
+        for key in conn_dict
+        if key not in required_keys and key not in optional_keys
+    ]
+    if missing:
+        raise ConfigurationException(
+            f"Missing required {dialect_name} connection parameters: {', '.join(missing)}"
+        )
+    if extra:
+        print(
+            f"Warning: Extra {dialect_name} connection parameters provided: {', '.join(extra)}"
+        )
+    return {
+        k: v for k, v in conn_dict.items() if k in required_keys or k in optional_keys
+    }
 
 
 def get_statement_type(statement: PROCESSED_STATEMENT_TYPES) -> str:
@@ -286,52 +312,53 @@ def run(ctx, input, dialect: str, param, conn_args):
         if edialect == Dialects.DUCK_DB:
             from trilogy.dialect.config import DuckDBConfig
 
+            conn_dict = validate_required_connection_params(
+                conn_dict, [], ["path"], "DuckDB"
+            )
             conf = DuckDBConfig(**conn_dict)
         elif edialect == Dialects.SNOWFLAKE:
             from trilogy.dialect.config import SnowflakeConfig
-            ## check that all of username, password, account are provided
-            ## raise ConfigurationException if not
-            required_keys = ["username", "password", "account"]
-            missing = [key for key in required_keys if key not in conn_dict]
-            if missing:
-                raise ConfigurationException(
-                    f"Missing required Snowflake connection parameters: {', '.join(missing)}"
-                )
+
+            conn_dict = validate_required_connection_params(
+                conn_dict, ["username", "password", "account"], [], "Snowflake"
+            )
             conf = SnowflakeConfig(**conn_dict)
         elif edialect == Dialects.SQL_SERVER:
             from trilogy.dialect.config import SQLServerConfig
-            ## check  host: str, port: int, username: str, password: str, database: str
-            required_keys = ["host", "port", "username", "password", "database"]
-            missing = [key for key in required_keys if key not in conn_dict]
-            if missing:
-                raise ConfigurationException(
-                    f"Missing required SQL Server connection parameters: {', '.join(missing)}"
-                )
 
+            conn_dict = validate_required_connection_params(
+                conn_dict,
+                ["host", "port", "username", "password", "database"],
+                [],
+                "SQL Server",
+            )
             conf = SQLServerConfig(**conn_dict)
         elif edialect == Dialects.POSTGRES:
             from trilogy.dialect.config import PostgresConfig
-            ## check host: str, port: int, username: str, password: str, database: str
-            required_keys = ["host", "port", "username", "password", "database"]
-            missing = [key for key in required_keys if key not in conn_dict]
-            if missing:
-                raise ConfigurationException(
-                    f"Missing required Postgres connection parameters: {', '.join(missing)}"
-                )
 
+            conn_dict = validate_required_connection_params(
+                conn_dict,
+                ["host", "port", "username", "password", "database"],
+                [],
+                "Postgres",
+            )
             conf = PostgresConfig(**conn_dict)
         elif edialect == Dialects.BIGQUERY:
             from trilogy.dialect.config import BigQueryConfig
 
+            conn_dict = validate_required_connection_params(
+                conn_dict, [], ["project"], "BigQuery"
+            )
             conf = BigQueryConfig(**conn_dict)
         elif edialect == Dialects.PRESTO:
             from trilogy.dialect.config import PrestoConfig
-            required_keys = ["host", "port", "username", "password", "catalog"]
-            missing = [key for key in required_keys if key not in conn_dict]
-            if missing:
-                raise ConfigurationException(
-                    f"Missing required Presto connection parameters: {', '.join(missing)}"
-                )
+
+            conn_dict = validate_required_connection_params(
+                conn_dict,
+                ["host", "port", "username", "password", "catalog"],
+                [],
+                "Presto",
+            )
             conf = PrestoConfig(**conn_dict)
         else:
             conf = None
