@@ -98,85 +98,9 @@ def validate_required_connection_params(
         k: v for k, v in conn_dict.items() if k in required_keys or k in optional_keys
     }
 
-
-@group()
-@option("--debug", default=False, help="Enable debug mode")
-@pass_context
-def cli(ctx, debug: bool):
-    """Trilogy CLI - A beautiful query execution tool."""
-    ctx.ensure_object(dict)
-    ctx.obj["DEBUG"] = debug
-
-    if debug:
-        show_debug_mode()
-
-
-@cli.command("fmt")
-@argument("input", type=Path(exists=True))
-@pass_context
-def fmt(ctx, input):
-    """Format a Trilogy script file."""
-    with with_status("Formatting script"):
-        start = datetime.now()
-        try:
-            with open(input, "r") as f:
-                script = f.read()
-            _, queries = parse(script)
-            r = Renderer()
-            with open(input, "w") as f:
-                f.write("\n".join([r.to_string(x) for x in queries]))
-            duration = datetime.now() - start
-
-            print_success("Script formatted successfully")
-            show_formatting_result(input, len(queries), duration)
-
-        except Exception as e:
-            print_error(f"Failed to format script: {e}")
-            print_error(f"Full traceback:\n{traceback.format_exc()}")
-            raise Exit(1)
-
-
-@cli.command(
-    "integration",
-    context_settings=dict(
-        ignore_unknown_options=True,
-    ),
-)
-@argument("input", type=Path())
-@argument("dialect", type=str)
-@option("--param", multiple=True, help="Environment parameters as key=value pairs")
-@argument("conn_args", nargs=-1, type=UNPROCESSED)
-@pass_context
-def integration(ctx, input, dialect: str, param, conn_args):
+def create_executor(param: tuple[str], directory: PathlibPath, conn_args: dict[str, Any], edialect:Dialects, debug:bool) -> Executor:
+     # Parse environment parameters from dedicated flag
     namespace = DEFAULT_NAMESPACE
-    text, directory, input_type, input_name = resolve_input_information(input)
-    edialect = Dialects(dialect)
-    debug = ctx.obj["DEBUG"]
-    
-
-@cli.command(
-    "run",
-    context_settings=dict(
-        ignore_unknown_options=True,
-    ),
-)
-@argument("input", type=Path())
-@argument("dialect", type=str)
-@option("--param", multiple=True, help="Environment parameters as key=value pairs")
-@argument("conn_args", nargs=-1, type=UNPROCESSED)
-@pass_context
-def run(ctx, input, dialect: str, param, conn_args):
-    """Execute a Trilogy script or query."""
-
-    namespace = DEFAULT_NAMESPACE
-    text, directory, input_type, input_name = resolve_input_information(input)
-    edialect = Dialects(dialect)
-    debug = ctx.obj["DEBUG"]
-
-    # Show execution info
-    show_execution_info(input_type, input_name, dialect, debug)
-
-    # Parse environment parameters from dedicated flag
     try:
         env_params = parse_env_params(param)
         show_environment_params(env_params)
@@ -259,7 +183,93 @@ def run(ctx, input, dialect: str, param, conn_args):
         environment=environment,
         hooks=[DebuggingHook()] if debug else [],
     )
+    return exec
 
+@group()
+@option("--debug", default=False, help="Enable debug mode")
+@pass_context
+def cli(ctx, debug: bool):
+    """Trilogy CLI - A beautiful query execution tool."""
+    ctx.ensure_object(dict)
+    ctx.obj["DEBUG"] = debug
+
+    if debug:
+        show_debug_mode()
+
+
+@cli.command("fmt")
+@argument("input", type=Path(exists=True))
+@pass_context
+def fmt(ctx, input):
+    """Format a Trilogy script file."""
+    with with_status("Formatting script"):
+        start = datetime.now()
+        try:
+            with open(input, "r") as f:
+                script = f.read()
+            _, queries = parse(script)
+            r = Renderer()
+            with open(input, "w") as f:
+                f.write("\n".join([r.to_string(x) for x in queries]))
+            duration = datetime.now() - start
+
+            print_success("Script formatted successfully")
+            show_formatting_result(input, len(queries), duration)
+
+        except Exception as e:
+            print_error(f"Failed to format script: {e}")
+            print_error(f"Full traceback:\n{traceback.format_exc()}")
+            raise Exit(1)
+
+
+@cli.command(
+    "integration",
+    context_settings=dict(
+        ignore_unknown_options=True,
+    ),
+)
+@argument("input", type=Path())
+@argument("dialect", type=str)
+@option("--param", multiple=True, help="Environment parameters as key=value pairs")
+@argument("conn_args", nargs=-1, type=UNPROCESSED)
+@pass_context
+def integration(ctx, input, dialect: str, param, conn_args):
+    text, directory, input_type, input_name = resolve_input_information(input)
+    edialect = Dialects(dialect)
+    debug = ctx.obj["DEBUG"]
+    exec = create_executor(param, directory, conn_args, edialect, debug)
+    for script in text:
+        exec.parse_text(script)
+    
+    datasources = exec.environment.datasources.keys()
+
+    exec.execute_text('validate datasources {}'.format(', '.join(datasources)))
+    # TODO: unit test
+    
+
+@cli.command(
+    "run",
+    context_settings=dict(
+        ignore_unknown_options=True,
+    ),
+)
+@argument("input", type=Path())
+@argument("dialect", type=str)
+@option("--param", multiple=True, help="Environment parameters as key=value pairs")
+@argument("conn_args", nargs=-1, type=UNPROCESSED)
+@pass_context
+def run(ctx, input, dialect: str, param, conn_args):
+    """Execute a Trilogy script or query."""
+
+    text, directory, input_type, input_name = resolve_input_information(input)
+    edialect = Dialects(dialect)
+    debug = ctx.obj["DEBUG"]
+
+    # Show execution info
+    show_execution_info(input_type, input_name, dialect, debug)
+
+   
+    exec = create_executor(param, directory, conn_args, edialect, debug)
     # Parse and execute
     queries = []
     try:
