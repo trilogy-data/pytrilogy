@@ -48,6 +48,31 @@ def resolve_input(path: PathlibPath) -> list[PathlibPath]:
 
     raise FileNotFoundError(f"Input path '{path}' does not exist.")
 
+def resolve_input_information(input:str)->tuple[list[str], PathlibPath, str, str]:
+    text: list[str] = []
+    if PathlibPath(input).exists():
+        pathlib_path = PathlibPath(input)
+        files = resolve_input(pathlib_path)
+
+        for file in files:
+            with open(file, "r") as f:
+                text.append(f.read())
+        if pathlib_path.is_dir():
+            directory = pathlib_path
+            input_type = "directory"
+        else:
+            directory = pathlib_path.parent
+            input_type = "file"
+        input_name = pathlib_path.name
+    else:
+        script = input
+
+        directory = PathlibPath.cwd()
+        input_type = "query"
+        input_name = "inline"
+        text.append(script)
+    return text, directory, input_type, input_name
+
 
 def validate_required_connection_params(
     conn_dict: dict[str, Any],
@@ -111,19 +136,23 @@ def fmt(ctx, input):
             raise Exit(1)
 
 
-# @cli.command(
-#     "integration",
-#     context_settings=dict(
-#         ignore_unknown_options=True,
-#     ),
-# )
-# @argument("input", type=Path())
-# @argument("dialect", type=str)
-# @option("--param", multiple=True, help="Environment parameters as key=value pairs")
-# @argument("conn_args", nargs=-1, type=UNPROCESSED)
-# @pass_context
-# def integration(ctx, input, dialect: str, param, conn_args):
-
+@cli.command(
+    "integration",
+    context_settings=dict(
+        ignore_unknown_options=True,
+    ),
+)
+@argument("input", type=Path())
+@argument("dialect", type=str)
+@option("--param", multiple=True, help="Environment parameters as key=value pairs")
+@argument("conn_args", nargs=-1, type=UNPROCESSED)
+@pass_context
+def integration(ctx, input, dialect: str, param, conn_args):
+    namespace = DEFAULT_NAMESPACE
+    text, directory, input_type, input_name = resolve_input_information(input)
+    edialect = Dialects(dialect)
+    debug = ctx.obj["DEBUG"]
+    
 
 @cli.command(
     "run",
@@ -139,31 +168,8 @@ def fmt(ctx, input):
 def run(ctx, input, dialect: str, param, conn_args):
     """Execute a Trilogy script or query."""
 
-    # Setup input handling
-    text: list[str] = []
-    if PathlibPath(input).exists():
-        pathlib_path = PathlibPath(input)
-        files = resolve_input(pathlib_path)
-
-        for file in files:
-            with open(file, "r") as f:
-                text.append(f.read())
-        namespace = DEFAULT_NAMESPACE
-        if pathlib_path.is_dir():
-            directory = pathlib_path
-            input_type = "directory"
-        else:
-            directory = pathlib_path.parent
-            input_type = "file"
-        input_name = pathlib_path.name
-    else:
-        script = input
-        namespace = DEFAULT_NAMESPACE
-        directory = PathlibPath.cwd()
-        input_type = "query"
-        input_name = "inline"
-        text.append(script)
-
+    namespace = DEFAULT_NAMESPACE
+    text, directory, input_type, input_name = resolve_input_information(input)
     edialect = Dialects(dialect)
     debug = ctx.obj["DEBUG"]
 
