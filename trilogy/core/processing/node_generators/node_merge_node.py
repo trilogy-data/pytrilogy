@@ -5,7 +5,7 @@ import networkx as nx
 from networkx.algorithms import approximation as ax
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, FunctionType, Purpose
+from trilogy.core.enums import Derivation, FunctionType
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
 from trilogy.core.graph_models import (
     ReferenceGraph,
@@ -407,7 +407,7 @@ def resolve_weak_components(
     reduced_concept_sets: list[set[str]] = []
 
     # prune properties
-    to_remove = []
+    # to_remove = []
     # for node in search_graph.nodes:
     #     if not node.startswith("c~"):
     #         continue
@@ -420,7 +420,6 @@ def resolve_weak_components(
     #     raise ValueError('FIX THIS TO BE MORE PRECISEj,,j')
     # for node in to_remove:
     #     search_graph.remove_node(node)
-
 
     count = 0
     node_list = sorted(
@@ -435,7 +434,7 @@ def resolve_weak_components(
         synonyms = synonyms.union(x.pseudonyms)
     # from trilogy.hooks.graph_hook import GraphHook
     # GraphHook().query_graph_built(search_graph, highlight_nodes=[concept_to_node(c.with_default_grain()) for c in all_concepts if "__preql_internal" not in c.address])
-    
+
     # loop through, removing new nodes we find
     # to ensure there are not ambiguous discovery paths
     # (if we did not care about raising ambiguity errors, we could just use the first one)

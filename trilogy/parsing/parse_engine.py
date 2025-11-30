@@ -1254,7 +1254,7 @@ class ParseToObjects(Transformer):
             select=args[-1],
         )
 
-    def resolve_import_address(self, address:str, is_stdlib: bool = False) -> str:
+    def resolve_import_address(self, address: str, is_stdlib: bool = False) -> str:
         if (
             isinstance(
                 self.environment.config.import_resolver, FileSystemImportResolver
@@ -1365,7 +1365,7 @@ class ParseToObjects(Transformer):
         else:
             perf_logger.debug(f"\tParsing new for {token_lookup}")
             root = None
-            if '.' in str(token_lookup):
+            if "." in str(token_lookup):
                 root = str(token_lookup).rsplit(".", 1)[0]
             try:
                 new_env = Environment(

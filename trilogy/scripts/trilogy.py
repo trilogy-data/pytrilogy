@@ -1,7 +1,7 @@
 import traceback
 from datetime import datetime
 from pathlib import Path as PathlibPath
-from typing import Any, Iterable, Union
+from typing import Any, Union
 
 from click import UNPROCESSED, Path, argument, group, option, pass_context
 from click.exceptions import Exit
@@ -10,17 +10,13 @@ from trilogy import Executor, parse
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.exceptions import ConfigurationException
 from trilogy.core.models.environment import Environment
-from trilogy.core.statements.execute import PROCESSED_STATEMENT_TYPES
 from trilogy.dialect.enums import Dialects
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parsing.render import Renderer
 from trilogy.scripts.display import (
-    FETCH_LIMIT,
-    ResultSet,
+    RICH_AVAILABLE,
     create_progress_context,
     print_error,
-    print_info,
-    print_results_table,
     print_success,
     set_rich_mode,
     show_debug_mode,
@@ -29,57 +25,28 @@ from trilogy.scripts.display import (
     show_execution_start,
     show_execution_summary,
     show_formatting_result,
-    show_statement_result,
-    show_statement_type,
     with_status,
+)
+from trilogy.scripts.environment import extra_to_kwargs, parse_env_params
+from trilogy.scripts.execution import (
+    execute_queries_simple,
+    execute_queries_with_progress,
 )
 
 set_rich_mode = set_rich_mode
 
 
-def smart_convert(value: str):
-    """Convert string to appropriate Python type."""
-    if not value:
-        return value
+def resolve_input(path: PathlibPath) -> list[PathlibPath]:
 
-    # Handle booleans
-    if value.lower() in ("true", "false"):
-        return value.lower() == "true"
+    # Directory
+    if path.is_dir():
+        pattern = "**/*.preql"
+        return sorted(path.glob(pattern))
+    # Single file
+    if path.exists() and path.is_file():
+        return [path]
 
-    # Try numeric conversion
-    try:
-        if "." not in value and "e" not in value.lower():
-            return int(value)
-        return float(value)
-    except ValueError:
-        return value
-
-
-def pairwise(t: Iterable[Any]) -> Iterable[tuple[Any, Any]]:
-    it = iter(t)
-    return zip(it, it)
-
-
-def extra_to_kwargs(arg_list: Iterable[str]) -> dict[str, Any]:
-    pairs = pairwise(arg_list)
-    final = {}
-    for k, v in pairs:
-        k = k.lstrip("--")
-        final[k] = smart_convert(v)
-    return final
-
-
-def parse_env_params(env_param_list: tuple[str]) -> dict[str, str]:
-    """Parse environment parameters from key=value format."""
-    env_params = {}
-    for param in env_param_list:
-        if "=" not in param:
-            raise ValueError(
-                f"Environment parameter must be in key=value format: {param}"
-            )
-        key, value = param.split("=", 1)  # Split on first = only
-        env_params[key] = smart_convert(value)
-    return env_params
+    raise FileNotFoundError(f"Input path '{path}' does not exist.")
 
 
 def validate_required_connection_params(
@@ -105,121 +72,6 @@ def validate_required_connection_params(
     return {
         k: v for k, v in conn_dict.items() if k in required_keys or k in optional_keys
     }
-
-
-def get_statement_type(statement: PROCESSED_STATEMENT_TYPES) -> str:
-    """Get the type/class name of a statement."""
-    return type(statement).__name__
-
-
-def execute_single_statement(
-    exec: Executor,
-    query: PROCESSED_STATEMENT_TYPES,
-    idx: int,
-    total_queries: int,
-    use_progress=False,
-) -> tuple[bool, ResultSet | None, Any, Union[Exception, None]]:
-    """Execute a single statement and handle results/errors consistently."""
-    # Log the statement type before execution
-    statement_type = get_statement_type(query)
-    if not use_progress:  # Only show type when not using progress bar
-        show_statement_type(idx, total_queries, statement_type)
-
-    start_time = datetime.now()
-
-    try:
-        raw_results = exec.execute_statement(query)
-        results = (
-            ResultSet(
-                rows=raw_results.fetchmany(FETCH_LIMIT + 1), columns=raw_results.keys()
-            )
-            if raw_results
-            else None
-        )
-        duration = datetime.now() - start_time
-
-        if not use_progress:
-            show_statement_result(idx, total_queries, duration, bool(results))
-
-        return True, results, duration, None
-
-    except Exception as e:
-        duration = datetime.now() - start_time
-
-        if not use_progress:
-            show_statement_result(idx, total_queries, duration, False, str(e), type(e))
-
-        return False, None, duration, e
-
-
-def execute_queries_with_progress(
-    exec: Executor, queries: list[PROCESSED_STATEMENT_TYPES]
-) -> Exception | None:
-    """Execute queries with Rich progress bar. Returns True if all succeeded, False if any failed."""
-    progress = create_progress_context(len(queries))
-    results_to_print = []
-    exception = None
-
-    with progress:
-        task = progress.add_task("Executing statements...", total=len(queries))
-
-        for idx, query in enumerate(queries):
-            statement_type = get_statement_type(query)
-            progress.update(
-                task, description=f"Statement {idx+1}/{len(queries)} ({statement_type})"
-            )
-
-            success, results, duration, error = execute_single_statement(
-                exec, query, idx, len(queries), use_progress=True
-            )
-
-            if not success:
-                exception = error
-
-            # Store results for printing after progress is done
-            results_to_print.append(
-                (idx, len(queries), duration, success, results, error)
-            )
-            progress.advance(task)
-            if exception:
-                break
-
-    # Print all results after progress bar is finished
-    for idx, total_queries, duration, success, results, error in results_to_print:
-        if error:
-            show_statement_result(
-                idx, total_queries, duration, False, str(error), type(error)
-            )
-            print_error(f"Full traceback:\n{traceback.format_exc()}")
-        else:
-            show_statement_result(idx, total_queries, duration, bool(results))
-            if results and not error:
-                print_results_table(results)
-
-    return exception
-
-
-def execute_queries_simple(
-    exec: Executor, queries: list[PROCESSED_STATEMENT_TYPES]
-) -> Exception | None:
-    """Execute queries with simple output. Returns True if all succeeded, False if any failed."""
-    exception = None
-
-    for idx, query in enumerate(queries):
-        if len(queries) > 1:
-            print_info(f"Executing statement {idx+1} of {len(queries)}...")
-
-        success, results, duration, error = execute_single_statement(
-            exec, query, idx, len(queries), use_progress=False
-        )
-
-        if not success:
-            exception = error
-
-        if results and not error:
-            print_results_table(results)
-
-    return exception
 
 
 @group()
@@ -259,6 +111,20 @@ def fmt(ctx, input):
             raise Exit(1)
 
 
+# @cli.command(
+#     "integration",
+#     context_settings=dict(
+#         ignore_unknown_options=True,
+#     ),
+# )
+# @argument("input", type=Path())
+# @argument("dialect", type=str)
+# @option("--param", multiple=True, help="Environment parameters as key=value pairs")
+# @argument("conn_args", nargs=-1, type=UNPROCESSED)
+# @pass_context
+# def integration(ctx, input, dialect: str, param, conn_args):
+
+
 @cli.command(
     "run",
     context_settings=dict(
@@ -274,20 +140,29 @@ def run(ctx, input, dialect: str, param, conn_args):
     """Execute a Trilogy script or query."""
 
     # Setup input handling
+    text: list[str] = []
     if PathlibPath(input).exists():
-        inputp = PathlibPath(input)
-        with open(input, "r") as f:
-            script = f.read()
+        pathlib_path = PathlibPath(input)
+        files = resolve_input(pathlib_path)
+
+        for file in files:
+            with open(file, "r") as f:
+                text.append(f.read())
         namespace = DEFAULT_NAMESPACE
-        directory = inputp.parent
-        input_type = "file"
-        input_name = inputp.name
+        if pathlib_path.is_dir():
+            directory = pathlib_path
+            input_type = "directory"
+        else:
+            directory = pathlib_path.parent
+            input_type = "file"
+        input_name = pathlib_path.name
     else:
         script = input
         namespace = DEFAULT_NAMESPACE
         directory = PathlibPath.cwd()
         input_type = "query"
         input_name = "inline"
+        text.append(script)
 
     edialect = Dialects(dialect)
     debug = ctx.obj["DEBUG"]
@@ -380,8 +255,10 @@ def run(ctx, input, dialect: str, param, conn_args):
     )
 
     # Parse and execute
+    queries = []
     try:
-        queries = exec.parse_text(script)
+        for script in text:
+            queries += exec.parse_text(script)
     except Exception as e:
         print_error(f"Failed to parse script: {e}")
         print_error(f"Full traceback:\n{traceback.format_exc()}")
@@ -391,8 +268,10 @@ def run(ctx, input, dialect: str, param, conn_args):
     show_execution_start(len(queries))
 
     # Execute with progress tracking for multiple statements or simple execution
-    progress = create_progress_context(len(queries))
-
+    if len(queries) > 1 and RICH_AVAILABLE:
+        progress = create_progress_context()
+    else:
+        progress = None
     try:
         if progress:
             exception = execute_queries_with_progress(exec, queries)

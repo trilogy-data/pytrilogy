@@ -175,6 +175,23 @@ def test_db_args_string():
             assert "int_aliased" in result.output.strip()
             assert "42" in result.output.strip()
 
+def test_run_folder():
+    target_path = Path(__file__).parent / "directory"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "run",
+            str(target_path),
+            "duckdb",
+        ],
+    )
+    if result.exception:
+        raise result.exception
+    assert result.exit_code == 0
+    assert "1" in result.output.strip()
+    assert "10" in result.output.strip()
+
 
 def test_parameters():
     for mode in RICH_MODES:

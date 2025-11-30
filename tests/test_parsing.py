@@ -794,8 +794,6 @@ select x % 10 -> x_mod_10;
     )
 
 
-
-
 def test_dict_resolver():
 
     env = Environment(
@@ -814,7 +812,8 @@ select 1 as y
 union all
 select 11 as y
 ''';
-""",                    "nested.nested_dep": """
+""",
+                    "nested.nested_dep": """
 key y int;
 """,
                     "test": """
@@ -851,6 +850,7 @@ select x % 10 -> x_mod_10;
             
 """
     )
+
 
 def test_is_atom():
     env = Environment()

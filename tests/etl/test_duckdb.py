@@ -13,7 +13,7 @@ def test_partition_persistence(executor: Executor):
     DebuggingHook(INFO)
     for row in years:
         executor.environment.set_parameters(load_year=row.ride_year)
-        results = executor.execute_file("daily.preql")
+        results = executor.execute_file("build_daily.preql")
 
         # count_result = executor.execute_raw_sql(
         #     """select count(*) as cnt from tbl_daily_fact where ride_year = :ride_year;""",

@@ -8,7 +8,6 @@ from trilogy.core.enums import BooleanOperator, DatasourceState, SourceType
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
-from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
@@ -20,6 +19,7 @@ from trilogy.core.models.build import (
     Factory,
 )
 from trilogy.core.models.core import DataType
+from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
     CTE,
@@ -495,7 +495,9 @@ def process_persist(
     statement: PersistStatement,
     hooks: List[BaseHook] | None = None,
 ) -> ProcessedQueryPersist:
-    ds:Datasource = environment.datasources.get(statement.datasource.identifier, statement.datasource)
+    ds: Datasource = environment.datasources.get(
+        statement.datasource.identifier, statement.datasource
+    )
     original_status = ds.status
     # set to unpublished to avoid circular refs
     try:
