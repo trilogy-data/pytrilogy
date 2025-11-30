@@ -43,3 +43,37 @@ def test_partition_persistence(executor: Executor):
     comp_results = executor.execute_raw_sql(q2).fetchall()
     assert results == comp_results
     assert "daily_fact" in q2
+
+
+def test_simple_partition_persistence(executor: Executor):
+    DebuggingHook()
+    executor.environment.set_parameters(load_year=2000)
+    executor.execute_file("implicit_build_full.preql")
+
+    results = executor.execute_raw_sql(
+        ""
+        "select ride_year, count(*) as count from tbl_daily_fact group by ride_year order by ride_year;"
+    )
+    years = 0
+    for row in results.fetchall():
+
+        assert row.count > 0
+        years += 1
+    assert years == 5
+
+
+def test_simple_incremental_partition_persistence(executor: Executor):
+    DebuggingHook()
+    executor.environment.set_parameters(load_year=2021)
+    executor.execute_file("implicit_build_partial.preql")
+
+    results = executor.execute_raw_sql(
+        ""
+        "select ride_year, count(*) as count from tbl_daily_fact group by ride_year order by ride_year;"
+    )
+    years = 0
+    for row in results.fetchall():
+
+        assert row.count > 0
+        years += 1
+    assert years == 1

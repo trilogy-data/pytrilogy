@@ -5,7 +5,7 @@ import networkx as nx
 from networkx.algorithms import approximation as ax
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, FunctionType
+from trilogy.core.enums import Derivation, FunctionType, Purpose
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
 from trilogy.core.graph_models import (
     ReferenceGraph,
@@ -338,7 +338,7 @@ def detect_ambiguity_and_raise(
     if not final_candidates:
         filtered_paths = [x.difference(common) for x in reduced_concept_sets]
         raise AmbiguousRelationshipResolutionException(
-            message=f"Multiple possible concept injections found for {[x.address for x in all_concepts]}, got {' or '.join([str(x) for x in reduced_concept_sets])}",
+            message=f"Multiple possible concept injections found to resolve {[x.address for x in all_concepts]}, have {' or '.join([str(x) for x in reduced_concept_sets])}: {filtered_paths}",
             parents=filtered_paths,
         )
 
@@ -406,9 +406,22 @@ def resolve_weak_components(
     )
     reduced_concept_sets: list[set[str]] = []
 
-    # loop through, removing new nodes we find
-    # to ensure there are not ambiguous discovery paths
-    # (if we did not care about raising ambiguity errors, we could just use the first one)
+    # prune properties
+    to_remove = []
+    # for node in search_graph.nodes:
+    #     if not node.startswith("c~"):
+    #         continue
+    #     try:
+    #         concept = extract_concept(extract_address(node), environment)
+    #         if concept.purpose == Purpose.PROPERTY and concept.address not in all_concepts:
+    #             to_remove.append(node)
+    #     except Exception as e:
+    #         logger.error(f"Error extracting concept from node {node}: {e}")
+    #     raise ValueError('FIX THIS TO BE MORE PRECISEj,,j')
+    # for node in to_remove:
+    #     search_graph.remove_node(node)
+
+
     count = 0
     node_list = sorted(
         [
@@ -422,6 +435,10 @@ def resolve_weak_components(
         synonyms = synonyms.union(x.pseudonyms)
     # from trilogy.hooks.graph_hook import GraphHook
     # GraphHook().query_graph_built(search_graph, highlight_nodes=[concept_to_node(c.with_default_grain()) for c in all_concepts if "__preql_internal" not in c.address])
+    
+    # loop through, removing new nodes we find
+    # to ensure there are not ambiguous discovery paths
+    # (if we did not care about raising ambiguity errors, we could just use the first one)
     while break_flag is not True:
         count += 1
         if count > AMBIGUITY_CHECK_LIMIT:

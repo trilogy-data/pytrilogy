@@ -1,0 +1,37 @@
+import std.geography;
+
+key id int;
+property id.first_name string;
+property id.last_name string;
+property id.email string;
+property id.age int;
+property id.gender string;
+property id.state string::us_state_short;
+property id.street_address string;
+property id.postal_code string;
+property id.city string::us_state_short;
+property id.country string::country;
+property id.latitude float::latitude;
+property id.longitude float::longitude;
+property id.traffic_source string;
+property id.created_at timestamp;
+
+datasource users (
+    id:id,
+	first_name:first_name,
+	last_name:last_name,
+	email:email,
+	age:age,
+	gender:gender,
+	state:state,
+	street_address:street_address,
+	postal_code:postal_code,
+	city:city,
+	country:country,
+	latitude:latitude,
+	longitude:longitude,
+	traffic_source:traffic_source,
+	created_at:created_at
+    ) 
+grain (id) 
+address `bigquery-public-data.thelook_ecommerce.users`;

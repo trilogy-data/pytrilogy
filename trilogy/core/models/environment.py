@@ -85,6 +85,18 @@ class EnvironmentOptions(BaseModel):
         default_factory=FileSystemImportResolver
     )
 
+    def copy_for_root(self, root: str | None) -> Self:
+        new = self.model_copy(deep=True)
+        if isinstance(new.import_resolver, DictImportResolver) and root:
+            new.import_resolver = DictImportResolver(
+                content={
+                    k[len(root) + 1 :]: v
+                    for k, v in new.import_resolver.content.items()
+                    if k.startswith(f"{root}.")
+                }
+            )
+        return new
+
 
 class EnvironmentConceptDict(dict):
     def __init__(self, *args, **kwargs) -> None:

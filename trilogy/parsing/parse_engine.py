@@ -1254,7 +1254,7 @@ class ParseToObjects(Transformer):
             select=args[-1],
         )
 
-    def resolve_import_address(self, address, is_stdlib: bool = False) -> str:
+    def resolve_import_address(self, address:str, is_stdlib: bool = False) -> str:
         if (
             isinstance(
                 self.environment.config.import_resolver, FileSystemImportResolver
@@ -1364,11 +1364,14 @@ class ParseToObjects(Transformer):
                 )
         else:
             perf_logger.debug(f"\tParsing new for {token_lookup}")
+            root = None
+            if '.' in str(token_lookup):
+                root = str(token_lookup).rsplit(".", 1)[0]
             try:
                 new_env = Environment(
                     working_path=dirname(target),
                     env_file_path=token_lookup,
-                    config=self.environment.config,
+                    config=self.environment.config.copy_for_root(root=root),
                     parameters=self.environment.parameters,
                 )
                 new_env.concepts.fail_on_missing = False
@@ -1425,10 +1428,43 @@ class ParseToObjects(Transformer):
         base = args.value.lower()
         if base == "persist":
             return PersistMode.OVERWRITE
-        return PersistMode(args.value.lower())
+        return PersistMode(base)
 
     @v_args(meta=True)
-    def persist_statement(self, meta: Meta, args) -> PersistStatement | None:
+    def auto_persist(self, meta: Meta, args) -> PersistStatement | None:
+        if self.parse_pass != ParsePass.VALIDATION:
+            return None
+        persist_mode = args[0]
+        target_name = args[1]
+        where = args[2] if len(args) > 2 else None
+
+        if target_name not in self.environment.datasources:
+            raise SyntaxError(
+                f"Auto persist target datasource {target_name} does not exist in environment on line {meta.line}. Have {list(self.environment.datasources.keys())}"
+            )
+        target = self.environment.datasources[target_name]
+        select: SelectStatement = SelectStatement.from_inputs(
+            environment=self.environment,
+            selection=[
+                SelectItem(
+                    content=ConceptRef(address=col.concept.address),
+                    modifiers=[],
+                )
+                for col in target.columns
+            ],
+            where_clause=where,
+            meta=Metadata(line_number=meta.line),
+        )
+        return PersistStatement(
+            select=select,
+            datasource=target,
+            persist_mode=persist_mode,
+            partition_by=target.incremental_by,
+            meta=Metadata(line_number=meta.line),
+        )
+
+    @v_args(meta=True)
+    def full_persist(self, meta: Meta, args) -> PersistStatement | None:
         if self.parse_pass != ParsePass.VALIDATION:
             return None
         partition_clause = DatasourcePartitionClause([])
@@ -1496,6 +1532,10 @@ class ParseToObjects(Transformer):
             partition_by=partition_clause.columns if partition_clause else [],
             meta=Metadata(line_number=meta.line),
         )
+
+    @v_args(meta=True)
+    def persist_statement(self, meta: Meta, args) -> PersistStatement:
+        return args[0]
 
     @v_args(meta=True)
     def align_item(self, meta: Meta, args) -> AlignItem:

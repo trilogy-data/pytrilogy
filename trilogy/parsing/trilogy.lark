@@ -82,7 +82,14 @@
     // persist_statement
     PERSIST_MODE: "append"i | "overwrite"i | "persist"i
     persist_partition_clause: "by"i column_list
-    persist_statement: PERSIST_MODE IDENTIFIER? "into"i IDENTIFIER persist_partition_clause? "from"i select_statement
+
+    // short persist with auto query
+    auto_persist: PERSIST_MODE IDENTIFIER where?
+
+    // full persist with query
+    full_persist: PERSIST_MODE IDENTIFIER? "into"i IDENTIFIER persist_partition_clause? "from"i select_statement
+
+    persist_statement: auto_persist | full_persist
 
     // select statement
     select_statement: where? "select"i select_list where?  having?  order_by?  limit? 
