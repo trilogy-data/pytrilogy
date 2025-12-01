@@ -142,6 +142,7 @@ from trilogy.core.statements.author import (
     ShowStatement,
     TypeDeclaration,
     ValidateStatement,
+    MockStatement,
 )
 from trilogy.parsing.common import (
     align_item_to_concept,
@@ -1183,6 +1184,10 @@ class ParseToObjects(Transformer):
             scope=scope,
             targets=targets,
         )
+    
+    @v_args(meta=True)
+    def mock_statement(self, meta:Meta, args)-> MockStatement:
+        return MockStatement(scope = args[0], targets= args[1].split(','))
 
     @v_args(meta=True)
     def merge_statement(self, meta: Meta, args) -> MergeStatementV2 | None:

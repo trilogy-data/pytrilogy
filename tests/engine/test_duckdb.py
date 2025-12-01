@@ -1954,6 +1954,29 @@ having value = 2;
     default_duckdb_engine.generate_sql(results[0])
 
 
+def test_mock_statement():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+    test = """key x int;
+key y int;
+
+datasource example (
+x, 
+y)
+grain (x,y)
+address tbl_example;
+
+mock datasource example;
+
+select x;
+"""
+
+    results = default_duckdb_engine.execute_text(test)[-1].fetchall()
+    assert len(results) == 100
+
+
 def test_group_syntax():
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
     from trilogy.hooks.query_debugger import DebuggingHook

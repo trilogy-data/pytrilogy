@@ -515,3 +515,39 @@ def test_invalid_dialect():
 
     # Should fail gracefully
     assert results.exit_code != 0, "Invalid dialect should cause non-zero exit code"
+
+
+def test_validation_failure():
+    path = Path(__file__).parent / 'validation_failure.preql'
+    runner = CliRunner()
+
+    results = runner.invoke(
+        cli,
+        [
+            "integration",
+            str(path),
+            "duckdb"
+
+        ]
+    )
+    assert results.exit_code == 1
+    # this is a hack to capture stderr
+    stdout = str(results)
+    assert 'Nullable' in stdout, stdout
+
+
+def test_unit():
+    path = Path(__file__).parent / 'directory'
+    runner = CliRunner()
+
+    results = runner.invoke(
+        cli,
+        [
+            "unit",
+            str(path),
+
+        ]
+    )
+    if results.exception:
+        raise results.exception
+    assert results.exit_code == 0

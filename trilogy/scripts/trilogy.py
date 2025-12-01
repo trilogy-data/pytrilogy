@@ -242,10 +242,37 @@ def integration(ctx, input, dialect: str, param, conn_args):
         exec.parse_text(script)
     
     datasources = exec.environment.datasources.keys()
+    if not datasources:
+        print_success("No datasources found")
+    else:
+        exec.execute_text('validate datasources {};'.format(', '.join(datasources)))
+        # TODO: unit test
 
-    exec.execute_text('validate datasources {}'.format(', '.join(datasources)))
-    # TODO: unit test
+
+@cli.command(
+    "unit",
+    context_settings=dict(
+        ignore_unknown_options=True,
+    ),
+)
+@argument("input", type=Path())
+@option("--param", multiple=True, help="Environment parameters as key=value pairs")
+@pass_context
+def unit(ctx, input, param):
+    text, directory, input_type, input_name = resolve_input_information(input)
+    edialect = Dialects.DUCK_DB
+    debug = ctx.obj["DEBUG"]
+    exec = create_executor(param, directory, [], edialect, debug)
+    for script in text:
+        exec.parse_text(script)
     
+    datasources = exec.environment.datasources.keys()
+    if not datasources:
+        print_success("No datasources found")
+    else:
+        exec.execute_text('mock datasources {};'.format(', '.join(datasources)))
+        exec.execute_text('validate datasources {};'.format(', '.join(datasources)))
+        # TODO: unit test
 
 @cli.command(
     "run",

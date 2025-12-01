@@ -13,6 +13,7 @@
     | merge_statement
     | rawsql_statement
     | validate_statement
+    | mock_statement
     | publish_statement
     | create_statement
     
@@ -115,6 +116,10 @@
     VALIDATE_SCOPE: "concepts"i | "datasources"i | "datasource"i | "concept"i
 
     validate_statement: ("validate"i "all"i) | ( "validate"i VALIDATE_SCOPE (IDENTIFIER ("," IDENTIFIER)* ","? )? )
+
+    // mock statement
+
+    mock_statement: "mock"i  VALIDATE_SCOPE (IDENTIFIER ("," IDENTIFIER)* ","? )?
     
     // publish statement
     publish_statement: "publish"i VALIDATE_SCOPE IDENTIFIER

@@ -492,3 +492,4 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
         raise ValueError(
             f"Cannot parse arg datatype for arg of raw type {type(arg)} value {arg}"
         )
+

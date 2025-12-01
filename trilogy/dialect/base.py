@@ -78,6 +78,7 @@ from trilogy.core.statements.author import (
     SelectStatement,
     ShowStatement,
     ValidateStatement,
+    MockStatement,
 )
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
@@ -90,6 +91,7 @@ from trilogy.core.statements.execute import (
     ProcessedShowStatement,
     ProcessedStaticValueOutput,
     ProcessedValidateStatement,
+    ProcessedMockStatement,
 )
 from trilogy.core.table_processor import process_create_statement
 from trilogy.core.utility import safe_quote
@@ -1139,6 +1141,7 @@ class BaseDialect:
             | ValidateStatement
             | CreateStatement
             | PublishStatement
+            | MockStatement
         ],
         hooks: Optional[List[BaseHook]] = None,
     ) -> List[PROCESSED_STATEMENT_TYPES]:
@@ -1221,6 +1224,13 @@ class BaseDialect:
             elif isinstance(statement, ValidateStatement):
                 output.append(
                     ProcessedValidateStatement(
+                        scope=statement.scope,
+                        targets=statement.targets,
+                    )
+                )
+            elif isinstance(statement, MockStatement):
+                output.append(
+                    ProcessedMockStatement(
                         scope=statement.scope,
                         targets=statement.targets,
                     )

@@ -468,7 +468,13 @@ class PersistStatement(HasUUID, BaseModel):
 
 class ValidateStatement(BaseModel):
     scope: ValidationScope
-    targets: Optional[List[str]] = None  # list of identifiers
+    targets: list[str] | None = None
+
+
+
+class MockStatement(BaseModel):
+    scope: ValidationScope
+    targets: list[str] | None = None
 
 
 class PublishStatement(BaseModel):

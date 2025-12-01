@@ -78,6 +78,10 @@ class ProcessedValidateStatement:
     scope: ValidationScope
     targets: Optional[List[str]]
 
+@dataclass
+class ProcessedMockStatement:
+    scope: ValidationScope
+    targets: list[str]
 
 @dataclass
 class ColumnInfo:
@@ -138,4 +142,5 @@ PROCESSED_STATEMENT_TYPES = (
     | ProcessedValidateStatement
     | ProcessedCreateStatement
     | ProcessedPublishStatement
+    | ProcessedMockStatement
 )
