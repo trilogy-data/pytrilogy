@@ -1962,10 +1962,21 @@ def test_mock_statement():
     DebuggingHook()
     test = """key x int;
 key y int;
+property x.name string;
+property x.value float;
+property x.created_at timestamp;
+property x.created_at_date date;
+property x.labels array<string>;
 
 datasource example (
 x, 
-y)
+y,
+name,
+value,
+created_at,
+created_at_date,
+
+)
 grain (x,y)
 address tbl_example;
 

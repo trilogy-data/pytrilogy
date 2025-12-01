@@ -1,7 +1,8 @@
 import random
+from datetime import date, datetime
 from typing import Any, Iterable
 
-import pandas as pd
+import pyarrow as pa
 
 from trilogy.core.models.author import Concept, ConceptRef
 from trilogy.core.models.core import CONCRETE_TYPES, ArrayType, DataType
@@ -32,11 +33,18 @@ def mock_datatype(
         return [random.choice([True, False]) for _ in range(scale_factor)]
     elif datatype == DataType.DATE:
         # random date in array of scale factor size
-        return [f"2023-01-{random.randint(1,28):02d}" for _ in range(scale_factor)]
-    elif datatype == DataType.DATETIME:
+        return [date(2023, 1, random.randint(1, 28)) for _ in range(scale_factor)]
+    elif datatype in (DataType.DATETIME, DataType.TIMESTAMP):
         # random datetime in array of scale factor size
         return [
-            f"2023-01-01T{random.randint(0,23):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}Z"
+            datetime(
+                2023,
+                1,
+                1,
+                random.randint(0, 23),
+                random.randint(0, 59),
+                random.randint(0, 59),
+            )
             for _ in range(scale_factor)
         ]
     elif isinstance(datatype, ArrayType):
@@ -64,12 +72,11 @@ class MockManager:
         )
         return True
 
-    def create_mock_dataframe(
+    def create_mock_table(
         self, concepts: Iterable[Concept | ConceptRef], headers: list[str]
-    ) -> pd.DataFrame:
-        data = [self.concept_mocks[x.address] for x in concepts]
-        rows = zip(*data)
-        return pd.DataFrame(rows, columns=headers)
+    ) -> pa.Table:
+        data = {h: self.concept_mocks[c.address] for h, c in zip(headers, concepts)}
+        return pa.table(data)
 
 
 def handle_processed_mock_statement(
@@ -97,15 +104,16 @@ def mock_datasource(datasource: Datasource, manager: MockManager, executor):
     concrete: list[ConceptRef] = []
     headers: list[str] = []
     for k, col in datasource.concrete_columns.items():
-
         manager.mock_concept(col.concept)
         concrete.append(col.concept)
         headers.append(k)
 
-    df = manager.create_mock_dataframe(concrete, headers)
+    table = manager.create_mock_table(concrete, headers)
 
-    # duckdb load the dataframe to a table
-    executor.execute_raw_sql("register(:name, :df)", {"name": "df", "df": df})
+    # duckdb load the pyarrow table
     executor.execute_raw_sql(
-        f"""CREATE OR REPLACE TABLE {datasource.safe_address} AS SELECT * FROM df"""
+        "register(:name, :tbl)", {"name": "mock_tbl", "tbl": table}
+    )
+    executor.execute_raw_sql(
+        f"""CREATE OR REPLACE TABLE {datasource.safe_address} AS SELECT * FROM mock_tbl"""
     )

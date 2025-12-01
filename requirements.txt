@@ -6,5 +6,6 @@ pyodbc
 pydantic
 #https://github.com/Mause/duckdb_engine/issues/1338 - remove as soon as fixed
 duckdb<1.4.0
+pyarrow
 duckdb-engine
 click
