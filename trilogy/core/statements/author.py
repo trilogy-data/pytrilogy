@@ -13,6 +13,7 @@ from trilogy.core.enums import (
     IOType,
     Modifier,
     PersistMode,
+    PublishAction,
     ShowCategory,
     ValidationScope,
 )
@@ -471,15 +472,15 @@ class ValidateStatement(BaseModel):
     targets: list[str] | None = None
 
 
-
 class MockStatement(BaseModel):
     scope: ValidationScope
-    targets: list[str] | None = None
+    targets: list[str]
 
 
 class PublishStatement(BaseModel):
     scope: ValidationScope
     targets: list[str]
+    action: PublishAction = PublishAction.PUBLISH
 
 
 class CreateStatement(BaseModel):

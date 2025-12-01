@@ -1,8 +1,6 @@
-from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Optional
 
-from trilogy.core.enums import DatasourceState
-from trilogy.core.models.author import ConceptRef
+from trilogy.core.enums import DatasourceState, PublishAction
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
@@ -18,9 +16,7 @@ from trilogy.core.statements.execute import (
 )
 from trilogy.core.validation.common import ValidationTest
 from trilogy.dialect.base import BaseDialect
-from trilogy.engine import ResultProtocol
 from trilogy.dialect.results import MockResult, generate_result_set
-
 
 
 def handle_concept_declaration(query: ConceptDeclarationStatement) -> MockResult:
@@ -72,7 +68,10 @@ def handle_publish_statement(
         datasource = environment.datasources.get(x)
         if not datasource:
             raise ValueError(f"Datasource {x} not found in environment")
-        datasource.status = DatasourceState.PUBLISHED
+        if query.action == PublishAction.UNPUBLISH:
+            datasource.status = DatasourceState.UNPUBLISHED
+        else:
+            datasource.status = DatasourceState.PUBLISHED
 
     return MockResult(
         [{"published": target} for target in query.targets],

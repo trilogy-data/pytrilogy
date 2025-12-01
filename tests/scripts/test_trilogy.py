@@ -175,6 +175,7 @@ def test_db_args_string():
             assert "int_aliased" in result.output.strip()
             assert "42" in result.output.strip()
 
+
 def test_run_folder():
     target_path = Path(__file__).parent / "directory"
     runner = CliRunner()
@@ -518,26 +519,18 @@ def test_invalid_dialect():
 
 
 def test_validation_failure():
-    path = Path(__file__).parent / 'validation_failure.preql'
+    path = Path(__file__).parent / "validation_failure.preql"
     runner = CliRunner()
 
-    results = runner.invoke(
-        cli,
-        [
-            "integration",
-            str(path),
-            "duckdb"
-
-        ]
-    )
+    results = runner.invoke(cli, ["integration", str(path), "duckdb"])
     assert results.exit_code == 1
     # this is a hack to capture stderr
     stdout = str(results)
-    assert 'Nullable' in stdout, stdout
+    assert "Nullable" in stdout, stdout
 
 
 def test_unit():
-    path = Path(__file__).parent / 'directory'
+    path = Path(__file__).parent / "directory"
     runner = CliRunner()
 
     results = runner.invoke(
@@ -545,8 +538,7 @@ def test_unit():
         [
             "unit",
             str(path),
-
-        ]
+        ],
     )
     if results.exception:
         raise results.exception

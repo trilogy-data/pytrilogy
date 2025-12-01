@@ -147,6 +147,10 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         return self.model_copy(deep=True)
 
     @property
+    def concrete_columns(self) -> dict[str, ColumnAssignment]:
+        return {c.alias: c for c in self.columns if c.is_concrete}  # type: ignore[misc]
+
+    @property
     def hidden_concepts(self) -> List[Concept]:
         return []
 

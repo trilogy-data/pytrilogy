@@ -48,7 +48,8 @@ def resolve_input(path: PathlibPath) -> list[PathlibPath]:
 
     raise FileNotFoundError(f"Input path '{path}' does not exist.")
 
-def resolve_input_information(input:str)->tuple[list[str], PathlibPath, str, str]:
+
+def resolve_input_information(input: str) -> tuple[list[str], PathlibPath, str, str]:
     text: list[str] = []
     if PathlibPath(input).exists():
         pathlib_path = PathlibPath(input)
@@ -98,8 +99,15 @@ def validate_required_connection_params(
         k: v for k, v in conn_dict.items() if k in required_keys or k in optional_keys
     }
 
-def create_executor(param: tuple[str], directory: PathlibPath, conn_args: dict[str, Any], edialect:Dialects, debug:bool) -> Executor:
-     # Parse environment parameters from dedicated flag
+
+def create_executor(
+    param: tuple[str],
+    directory: PathlibPath,
+    conn_args: dict[str, Any],
+    edialect: Dialects,
+    debug: bool,
+) -> Executor:
+    # Parse environment parameters from dedicated flag
     namespace = DEFAULT_NAMESPACE
     try:
         env_params = parse_env_params(param)
@@ -185,6 +193,7 @@ def create_executor(param: tuple[str], directory: PathlibPath, conn_args: dict[s
     )
     return exec
 
+
 @group()
 @option("--debug", default=False, help="Enable debug mode")
 @pass_context
@@ -240,12 +249,12 @@ def integration(ctx, input, dialect: str, param, conn_args):
     exec = create_executor(param, directory, conn_args, edialect, debug)
     for script in text:
         exec.parse_text(script)
-    
+
     datasources = exec.environment.datasources.keys()
     if not datasources:
         print_success("No datasources found")
     else:
-        exec.execute_text('validate datasources {};'.format(', '.join(datasources)))
+        exec.execute_text("validate datasources {};".format(", ".join(datasources)))
         # TODO: unit test
 
 
@@ -265,14 +274,15 @@ def unit(ctx, input, param):
     exec = create_executor(param, directory, [], edialect, debug)
     for script in text:
         exec.parse_text(script)
-    
+
     datasources = exec.environment.datasources.keys()
     if not datasources:
         print_success("No datasources found")
     else:
-        exec.execute_text('mock datasources {};'.format(', '.join(datasources)))
-        exec.execute_text('validate datasources {};'.format(', '.join(datasources)))
+        exec.execute_text("mock datasources {};".format(", ".join(datasources)))
+        exec.execute_text("validate datasources {};".format(", ".join(datasources)))
         # TODO: unit test
+
 
 @cli.command(
     "run",
@@ -295,7 +305,6 @@ def run(ctx, input, dialect: str, param, conn_args):
     # Show execution info
     show_execution_info(input_type, input_name, dialect, debug)
 
-   
     exec = create_executor(param, directory, conn_args, edialect, debug)
     # Parse and execute
     queries = []

@@ -20,6 +20,7 @@ from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
 from trilogy.core.statements.author import ShowStatement
+from trilogy.dialect.mock import DEFAULT_SCALE_FACTOR
 from trilogy.executor import Executor
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parser import parse_text
@@ -1974,7 +1975,7 @@ select x;
 """
 
     results = default_duckdb_engine.execute_text(test)[-1].fetchall()
-    assert len(results) == 100
+    assert len(results) == DEFAULT_SCALE_FACTOR
 
 
 def test_group_syntax():

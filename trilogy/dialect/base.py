@@ -70,6 +70,7 @@ from trilogy.core.statements.author import (
     FunctionDeclaration,
     ImportStatement,
     MergeStatementV2,
+    MockStatement,
     MultiSelectStatement,
     PersistStatement,
     PublishStatement,
@@ -78,12 +79,12 @@ from trilogy.core.statements.author import (
     SelectStatement,
     ShowStatement,
     ValidateStatement,
-    MockStatement,
 )
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
     ProcessedCopyStatement,
     ProcessedCreateStatement,
+    ProcessedMockStatement,
     ProcessedPublishStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
@@ -91,7 +92,6 @@ from trilogy.core.statements.execute import (
     ProcessedShowStatement,
     ProcessedStaticValueOutput,
     ProcessedValidateStatement,
-    ProcessedMockStatement,
 )
 from trilogy.core.table_processor import process_create_statement
 from trilogy.core.utility import safe_quote
@@ -1242,6 +1242,7 @@ class BaseDialect:
                     ProcessedPublishStatement(
                         scope=statement.scope,
                         targets=statement.targets,
+                        action=statement.action,
                     )
                 )
             elif isinstance(
@@ -1289,9 +1290,11 @@ class BaseDialect:
             return query.text
 
         elif isinstance(query, ProcessedValidateStatement):
-            return "select 1;"
+            return "--Trilogy validate statements do not have a generic SQL representation;\nselect 1;"
+        elif isinstance(query, ProcessedMockStatement):
+            return "--Trilogy mock statements do not have a generic SQL representation;\nselect 1;"
         elif isinstance(query, ProcessedPublishStatement):
-            return "select 1;"
+            return "--Trilogy publish statements do not have a generic SQL representation;\nselect 1;"
         elif isinstance(query, ProcessedCreateStatement):
 
             text = []

@@ -24,8 +24,8 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
     console = None
-    
-    Progress = lambda: None # type: ignore
+
+    Progress = lambda: None  # type: ignore  # noqa: E731
 
 FETCH_LIMIT = 51
 

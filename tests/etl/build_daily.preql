@@ -2,6 +2,8 @@ import daily;
 
 parameter load_year int; # the year of data to load into the daily fact table;
 
+unpublish datasource daily_fact;
+
 create if not exists datasources daily_fact;
 
 APPEND daily_fact  

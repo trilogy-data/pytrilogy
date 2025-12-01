@@ -39,6 +39,7 @@ from trilogy.core.enums import (
     Modifier,
     Ordering,
     PersistMode,
+    PublishAction,
     Purpose,
     ShowCategory,
     ValidationScope,
@@ -132,6 +133,7 @@ from trilogy.core.statements.author import (
     ImportStatement,
     Limit,
     MergeStatementV2,
+    MockStatement,
     MultiSelectStatement,
     PersistStatement,
     PublishStatement,
@@ -142,7 +144,6 @@ from trilogy.core.statements.author import (
     ShowStatement,
     TypeDeclaration,
     ValidateStatement,
-    MockStatement,
 )
 from trilogy.parsing.common import (
     align_item_to_concept,
@@ -1119,13 +1120,25 @@ class ParseToObjects(Transformer):
     def over_list(self, args):
         return [x for x in args]
 
+    def PUBLISH_ACTION(self, args) -> PublishAction:
+        action = args.value.lower()
+        if action == "publish":
+            return PublishAction.PUBLISH
+        elif action == "unpublish":
+            return PublishAction.UNPUBLISH
+        else:
+            raise SyntaxError(f"Unknown publish action: {action}")
+
     @v_args(meta=True)
     def publish_statement(self, meta: Meta, args) -> PublishStatement:
         targets = []
         scope = ValidationScope.DATASOURCES
+        publish_action = PublishAction.PUBLISH
         for arg in args:
             if isinstance(arg, str):
                 targets.append(arg)
+            elif isinstance(arg, PublishAction):
+                publish_action = arg
             elif isinstance(arg, ValidationScope):
                 scope = arg
                 if arg != ValidationScope.DATASOURCES:
@@ -1135,6 +1148,7 @@ class ParseToObjects(Transformer):
         return PublishStatement(
             scope=scope,
             targets=targets,
+            action=publish_action,
         )
 
     def create_modifier_clause(self, args):
@@ -1184,10 +1198,10 @@ class ParseToObjects(Transformer):
             scope=scope,
             targets=targets,
         )
-    
+
     @v_args(meta=True)
-    def mock_statement(self, meta:Meta, args)-> MockStatement:
-        return MockStatement(scope = args[0], targets= args[1].split(','))
+    def mock_statement(self, meta: Meta, args) -> MockStatement:
+        return MockStatement(scope=args[0], targets=args[1].split(","))
 
     @v_args(meta=True)
     def merge_statement(self, meta: Meta, args) -> MergeStatementV2 | None:

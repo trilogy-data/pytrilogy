@@ -23,6 +23,7 @@ from trilogy.core.statements.author import (
     CreateStatement,
     ImportStatement,
     MergeStatementV2,
+    MockStatement,
     MultiSelectStatement,
     PersistStatement,
     PublishStatement,
@@ -30,19 +31,18 @@ from trilogy.core.statements.author import (
     SelectStatement,
     ShowStatement,
     ValidateStatement,
-    MockStatement,
 )
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
     ProcessedCopyStatement,
     ProcessedCreateStatement,
+    ProcessedMockStatement,
     ProcessedPublishStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
     ProcessedRawSQLStatement,
     ProcessedShowStatement,
     ProcessedValidateStatement,
-    ProcessedMockStatement,
 )
 from trilogy.core.validation.common import (
     ValidationTest,
@@ -173,12 +173,12 @@ class Executor(object):
         return handle_processed_validate_statement(
             query, self.generator, self.validate_environment
         )
+
     @execute_query.register
     def _(self, query: ProcessedMockStatement) -> ResultProtocol | None:
 
-        return handle_processed_mock_statement(
-            query,  self.environment, self
-        )
+        return handle_processed_mock_statement(query, self.environment, self)
+
     @execute_query.register
     def _(self, query: ProcessedCreateStatement) -> ResultProtocol | None:
         sql = self.generator.compile_statement(query)
@@ -374,7 +374,7 @@ class Executor(object):
                     ValidateStatement,
                     CreateStatement,
                     PublishStatement,
-                    MockStatement
+                    MockStatement,
                 ),
             )
         ]
@@ -511,7 +511,14 @@ class Executor(object):
                 continue
             if non_interactive:
                 if not isinstance(
-                    statement, (ProcessedCopyStatement, ProcessedQueryPersist, ProcessedValidateStatement, ProcessedRawSQLStatement, ProcessedPublishStatement)
+                    statement,
+                    (
+                        ProcessedCopyStatement,
+                        ProcessedQueryPersist,
+                        ProcessedValidateStatement,
+                        ProcessedRawSQLStatement,
+                        ProcessedPublishStatement,
+                    ),
                 ):
                     continue
             result = self.execute_statement(statement)

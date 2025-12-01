@@ -168,7 +168,7 @@ class ArrayType(BaseModel):
         return DataType.ARRAY
 
     @property
-    def value(self):
+    def value(self) -> str:
         return self.data_type.value
 
     @property
@@ -492,4 +492,3 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
         raise ValueError(
             f"Cannot parse arg datatype for arg of raw type {type(arg)} value {arg}"
         )
-

@@ -31,7 +31,7 @@ def test_partition_persistence(executor: Executor):
         "select ride_year, ride_month, total_rides order by ride_year asc, ride_month asc;"
     )[0]
     results = executor.execute_raw_sql(q1).fetchall()
-    assert "daily_fact" not in q1
+    assert "daily_fact" not in q1, q1
     executor.execute_text(" publish datasources daily_fact;")
     assert (
         executor.environment.datasources["daily_fact"].status
@@ -42,7 +42,7 @@ def test_partition_persistence(executor: Executor):
     )[0]
     comp_results = executor.execute_raw_sql(q2).fetchall()
     assert results == comp_results
-    assert "daily_fact" in q2
+    assert "daily_fact" in q2, q2
 
 
 def test_simple_partition_persistence(executor: Executor):

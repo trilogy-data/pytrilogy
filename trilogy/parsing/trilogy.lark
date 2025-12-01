@@ -122,7 +122,8 @@
     mock_statement: "mock"i  VALIDATE_SCOPE (IDENTIFIER ("," IDENTIFIER)* ","? )?
     
     // publish statement
-    publish_statement: "publish"i VALIDATE_SCOPE IDENTIFIER
+    PUBLISH_ACTION : "publish"i | "unpublish"i
+    publish_statement: PUBLISH_ACTION VALIDATE_SCOPE IDENTIFIER
 
     // create_statement
     CREATE_IF_NOT_EXISTS: /if\s+not\s+exists/i
