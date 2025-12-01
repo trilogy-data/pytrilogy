@@ -1,8 +1,6 @@
 import random
 from datetime import date, datetime
-from typing import Any, Iterable
-
-import pyarrow as pa
+from typing import TYPE_CHECKING, Any, Iterable
 
 from trilogy.core.models.author import Concept, ConceptRef
 from trilogy.core.models.core import CONCRETE_TYPES, ArrayType, DataType
@@ -10,6 +8,9 @@ from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.execute import ProcessedMockStatement
 from trilogy.dialect.results import MockResult
+
+if TYPE_CHECKING:
+    from pyarrow import Table
 
 DEFAULT_SCALE_FACTOR = 100
 
@@ -74,9 +75,11 @@ class MockManager:
 
     def create_mock_table(
         self, concepts: Iterable[Concept | ConceptRef], headers: list[str]
-    ) -> pa.Table:
+    ) -> "Table":
+        from pyarrow import table
+
         data = {h: self.concept_mocks[c.address] for h, c in zip(headers, concepts)}
-        return pa.table(data)
+        return table(data)
 
 
 def handle_processed_mock_statement(
