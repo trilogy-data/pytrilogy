@@ -1,0 +1,17 @@
+
+
+key id int;
+property id.calories float;
+property id.unit_size float;
+property id.type string;
+
+
+
+datasource food_info(
+    id,
+    calories,
+    unit_size,
+    type
+)
+grain(id)
+address tbl_food_info;

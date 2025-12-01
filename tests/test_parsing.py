@@ -794,6 +794,64 @@ select x % 10 -> x_mod_10;
     )
 
 
+def test_dict_resolver():
+
+    env = Environment(
+        config=EnvironmentOptions(
+            import_resolver=DictImportResolver(
+                content={
+                    "nested.import": """
+import nested_dep as nested_dep;
+key y int;
+
+datasource nested (
+y: y)
+grain(y)
+query '''
+select 1 as y
+union all
+select 11 as y
+''';
+""",
+                    "nested.nested_dep": """
+key y int;
+""",
+                    "test": """
+import test_dep as test_dep;
+key x int;
+
+datasource test (
+x: x)
+grain(x)
+query '''
+select 1 as x
+union all
+select 11 as x
+''';
+""",
+                    "test_dep": """
+key x int;
+""",
+                }
+            )
+        )
+    )
+    assert isinstance(env.config.import_resolver, DictImportResolver)
+    env.parse(
+        """
+import std.geography;
+import test;
+import nested.import;
+
+key fun_lat float::latitude;
+               
+select x % 10 -> x_mod_10;
+               
+            
+"""
+    )
+
+
 def test_is_atom():
     env = Environment()
 

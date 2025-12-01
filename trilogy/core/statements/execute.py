@@ -1,7 +1,13 @@
 from dataclasses import dataclass, field
 from typing import List, Optional, Union
 
-from trilogy.core.enums import CreateMode, IOType, PersistMode, ValidationScope
+from trilogy.core.enums import (
+    CreateMode,
+    IOType,
+    PersistMode,
+    PublishAction,
+    ValidationScope,
+)
 from trilogy.core.models.author import ConceptRef, HavingClause, WhereClause
 from trilogy.core.models.build import (
     BuildConcept,
@@ -80,6 +86,12 @@ class ProcessedValidateStatement:
 
 
 @dataclass
+class ProcessedMockStatement:
+    scope: ValidationScope
+    targets: list[str]
+
+
+@dataclass
 class ColumnInfo:
     name: str
     type: DataType
@@ -106,6 +118,7 @@ class ProcessedCreateStatement:
 class ProcessedPublishStatement:
     scope: ValidationScope
     targets: list[str]
+    action: PublishAction
 
 
 @dataclass
@@ -138,4 +151,5 @@ PROCESSED_STATEMENT_TYPES = (
     | ProcessedValidateStatement
     | ProcessedCreateStatement
     | ProcessedPublishStatement
+    | ProcessedMockStatement
 )

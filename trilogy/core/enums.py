@@ -86,6 +86,11 @@ class PersistMode(Enum):
     APPEND = "append"
 
 
+class PublishAction(Enum):
+    PUBLISH = "publish"
+    UNPUBLISH = "unpublish"
+
+
 class Modifier(Enum):
     PARTIAL = "Partial"
     OPTIONAL = "Optional"

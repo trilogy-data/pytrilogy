@@ -3,6 +3,7 @@
 # updates one year at a time
 import root;
 
+parameter load_year int; # the year of data to load into the daily fact table;
 
 # Basic aggregation concepts
 auto total_rides <- COUNT(ride_id);
@@ -83,5 +84,17 @@ datasource daily_fact(
     had_hot_rides
     )
 grain (ride_year, ride_month)
-address tbl_daily_fact;
+address tbl_daily_fact
+;
 
+create if not exists datasources daily_fact;
+
+
+# test a full overwrite
+OVERWRITE daily_fact
+;
+
+# test an append
+APPEND daily_fact
+WHERE ride_year = load_year
+;

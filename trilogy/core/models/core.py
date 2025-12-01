@@ -168,7 +168,7 @@ class ArrayType(BaseModel):
         return DataType.ARRAY
 
     @property
-    def value(self):
+    def value(self) -> str:
         return self.data_type.value
 
     @property

@@ -379,21 +379,6 @@ class TestProgressAndExecution:
                 captured = stdout.getvalue() + stderr.getvalue()
                 assert "5 statements" in captured
 
-    def test_create_progress_context(self, rich_mode):
-        """Test create_progress_context returns appropriate objects."""
-        # Single query should always return None
-        result = display.create_progress_context(1)
-        assert result is None
-
-        # Multiple queries behavior depends on Rich availability
-        result = display.create_progress_context(5)
-        if rich_mode and RICH_AVAILABLE:
-            assert result is not None
-            # Should be a context manager
-            assert hasattr(result, "__enter__") and hasattr(result, "__exit__")
-        else:
-            assert result is None
-
     def test_show_statement_result_success_with_results(self, rich_mode):
         """Test show_statement_result for successful execution with results."""
         duration = timedelta(seconds=1.5)
@@ -744,21 +729,7 @@ class TestActualFormattingDifferences:
                 ), f"Did not expect table characters in fallback output: {repr(fallback_output)}"
 
 
-@pytest.mark.parametrize(
-    "num_queries,expected_none",
-    [
-        (1, True),  # Single query should return None
-        (
-            2,
-            False,
-        ),  # Multiple queries should return Progress object (if Rich available)
-        (
-            5,
-            False,
-        ),  # Multiple queries should return Progress object (if Rich available)
-    ],
-)
-def test_create_progress_context_parametrized(num_queries, expected_none):
+def test_create_progress_context():
     """Test create_progress_context with different query counts."""
     original_state = display.is_rich_available()
 
@@ -766,25 +737,9 @@ def test_create_progress_context_parametrized(num_queries, expected_none):
         # Test with Rich enabled (if available)
         if RICH_AVAILABLE:
             display.set_rich_mode(True)
-            result_rich = display.create_progress_context(num_queries)
-        else:
-            result_rich = None
-
-        # Test with Rich disabled
-        display.set_rich_mode(False)
-        result_fallback = display.create_progress_context(num_queries)
-
-        if expected_none:
-            if RICH_AVAILABLE:
-                assert result_rich is None
-            assert result_fallback is None
-        else:
-            # Rich mode: should return Progress object if Rich is available
-            # Fallback mode: should always return None
-            assert result_fallback is None
-            if RICH_AVAILABLE:
-                # result_rich might be None or Progress object depending on Rich availability
-                pass  # We've already tested the Rich case above
+            context = display.create_progress_context()
+            assert context is not None
+            assert hasattr(context, "__enter__") and hasattr(context, "__exit__")
     finally:
         # Restore original state
         display.set_rich_mode(original_state)

@@ -1,0 +1,31 @@
+
+import raw.order_items as order_item;
+import order_product_items;
+
+datasource sales_reporting (
+    order_creation_date:order_item.order.created_at.date,
+    user_id:order_item.user.id,
+    order_id:order_item.order.id,
+    product_id:order_item.inventory_item.product.id,
+    inventory_item_id:order_item.inventory_item.id,
+    product_distribution_name:order_item.inventory_item.product.distribution_center.name,
+    # product metrics
+    brand:order_item.inventory_item.product.brand,
+    category:order_item.inventory_item.product.category,
+    department:order_item.inventory_item.product.department,
+    # user metrics
+    traffic_source:order_item.user.traffic_source,
+    state:order_item.user.state,
+    customer_status:order_item.customer_status,
+    # financials
+    total_revenue:order_item.total_revenue,
+    total_quantity:order_item.total_quantity,
+    total_margin:order_item.total_margin,
+    total_cost:order_item.total_cost,
+    ) 
+address `preqldata.look_etl.sales_reporting`
+incremental by events.created_at.date
+partition by events.created_at.date;
+
+
+

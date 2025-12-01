@@ -20,6 +20,7 @@ from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
 from trilogy.core.statements.author import ShowStatement
+from trilogy.dialect.mock import DEFAULT_SCALE_FACTOR
 from trilogy.executor import Executor
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parser import parse_text
@@ -1952,6 +1953,40 @@ having value = 2;
     results = default_duckdb_engine.parse_text(test)
 
     default_duckdb_engine.generate_sql(results[0])
+
+
+def test_mock_statement():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+    test = """key x int;
+key y int;
+property x.name string;
+property x.value float;
+property x.created_at timestamp;
+property x.created_at_date date;
+property x.labels array<string>;
+
+datasource example (
+x, 
+y,
+name,
+value,
+created_at,
+created_at_date,
+
+)
+grain (x,y)
+address tbl_example;
+
+mock datasource example;
+
+select x;
+"""
+
+    results = default_duckdb_engine.execute_text(test)[-1].fetchall()
+    assert len(results) == DEFAULT_SCALE_FACTOR
 
 
 def test_group_syntax():

@@ -25,6 +25,8 @@ except ImportError:
     RICH_AVAILABLE = False
     console = None
 
+    Progress = lambda: None  # type: ignore  # noqa: E731
+
 FETCH_LIMIT = 51
 
 
@@ -263,18 +265,15 @@ def show_execution_start(num_queries: int):
         print_info(f"Executing {num_queries} {statement_word}...")
 
 
-def create_progress_context(num_queries: int):
-    """Create progress context for multiple statements."""
-    if RICH_AVAILABLE and console is not None and num_queries > 1:
-        return Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeElapsedColumn(),
-            console=console,
-        )
-    return None
+def create_progress_context() -> Progress:
+    return Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TimeElapsedColumn(),
+        console=console,
+    )
 
 
 def show_statement_result(

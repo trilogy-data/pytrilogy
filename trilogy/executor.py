@@ -23,6 +23,7 @@ from trilogy.core.statements.author import (
     CreateStatement,
     ImportStatement,
     MergeStatementV2,
+    MockStatement,
     MultiSelectStatement,
     PersistStatement,
     PublishStatement,
@@ -35,6 +36,7 @@ from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
     ProcessedCopyStatement,
     ProcessedCreateStatement,
+    ProcessedMockStatement,
     ProcessedPublishStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
@@ -58,6 +60,7 @@ from trilogy.dialect.metadata import (
     handle_publish_statement,
     handle_show_statement_outputs,
 )
+from trilogy.dialect.mock import handle_processed_mock_statement
 from trilogy.engine import EngineConnection, ExecutionEngine, ResultProtocol
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.parser import parse_text
@@ -170,6 +173,11 @@ class Executor(object):
         return handle_processed_validate_statement(
             query, self.generator, self.validate_environment
         )
+
+    @execute_query.register
+    def _(self, query: ProcessedMockStatement) -> ResultProtocol | None:
+
+        return handle_processed_mock_statement(query, self.environment, self)
 
     @execute_query.register
     def _(self, query: ProcessedCreateStatement) -> ResultProtocol | None:
@@ -366,6 +374,7 @@ class Executor(object):
                     ValidateStatement,
                     CreateStatement,
                     PublishStatement,
+                    MockStatement,
                 ),
             )
         ]
@@ -502,7 +511,14 @@ class Executor(object):
                 continue
             if non_interactive:
                 if not isinstance(
-                    statement, (ProcessedCopyStatement, ProcessedQueryPersist)
+                    statement,
+                    (
+                        ProcessedCopyStatement,
+                        ProcessedQueryPersist,
+                        ProcessedValidateStatement,
+                        ProcessedRawSQLStatement,
+                        ProcessedPublishStatement,
+                    ),
                 ):
                     continue
             result = self.execute_statement(statement)

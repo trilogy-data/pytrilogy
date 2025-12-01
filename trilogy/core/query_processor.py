@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 
 from trilogy.constants import CONFIG, logger
 from trilogy.core.constants import CONSTANT_DATASET
-from trilogy.core.enums import BooleanOperator, SourceType
+from trilogy.core.enums import BooleanOperator, DatasourceState, SourceType
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
@@ -19,6 +19,7 @@ from trilogy.core.models.build import (
     Factory,
 )
 from trilogy.core.models.core import DataType
+from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
     CTE,
@@ -494,9 +495,20 @@ def process_persist(
     statement: PersistStatement,
     hooks: List[BaseHook] | None = None,
 ) -> ProcessedQueryPersist:
-    select = process_query(
-        environment=environment, statement=statement.select, hooks=hooks
+    ds: Datasource = environment.datasources.get(
+        statement.datasource.identifier, statement.datasource
     )
+    original_status = ds.status
+    # set to unpublished to avoid circular refs
+    try:
+        ds.status = DatasourceState.UNPUBLISHED
+        select = process_query(
+            environment=environment, statement=statement.select, hooks=hooks
+        )
+    except:
+        raise
+    finally:
+        ds.status = original_status
 
     # build our object to return
     arg_dict = {k: v for k, v in select.__dict__.items()}

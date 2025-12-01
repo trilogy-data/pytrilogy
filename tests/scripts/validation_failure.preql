@@ -1,0 +1,27 @@
+
+
+
+key ride_id int;
+
+property ride_id.duration float;
+
+property ride_id.nullable int;
+
+datasource ride_info (
+    ride_id,
+    duration,
+    nullable
+)
+grain (ride_id)
+query '''
+select
+1 as ride_id,
+45.1 as duration,
+null as nullable
+union all
+select 
+2,
+23.4,
+1
+    '''
+;
