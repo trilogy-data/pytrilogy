@@ -545,7 +545,6 @@ def test_unit():
     assert results.exit_code == 0
 
 
-
 def test_unit_gbq():
     path = Path(__file__).parent / "gbq_syntax.preql"
     runner = CliRunner()

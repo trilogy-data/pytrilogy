@@ -77,10 +77,18 @@ class DatasourceColumnBindingData:
     actual_modifiers: List[Modifier]
 
     def format_failure(self):
-        value_mods = f"({', '.join(x.name for x in self.value_modifiers)})" if self.value_modifiers else ""
-        actual_mods = f"({', '.join(x.name for x in self.actual_modifiers)})" if self.actual_modifiers else ""
+        value_mods = (
+            f"({', '.join(x.name for x in self.value_modifiers)})"
+            if self.value_modifiers
+            else ""
+        )
+        actual_mods = (
+            f"({', '.join(x.name for x in self.actual_modifiers)})"
+            if self.actual_modifiers
+            else ""
+        )
         return f"Value '{self.value}' for concept {self.address} has inferred type {self.value_type}{value_mods} vs expected type {str(self.actual_type)}{actual_mods}"
-    
+
     def is_modifier_issue(self) -> bool:
         return len(self.value_modifiers) > 0 and any(
             [x not in self.actual_modifiers for x in self.value_modifiers]

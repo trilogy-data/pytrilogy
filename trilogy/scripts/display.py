@@ -162,12 +162,11 @@ def show_execution_info(input_type: str, input_name: str, dialect: str, debug: b
     """Display execution information in a clean format."""
     if RICH_AVAILABLE and console is not None:
         info_text = (
-            f"[bold]Execution Info[/bold]\n"
             f"Input: {input_type} ({input_name})\n"
             f"Dialect: [cyan]{dialect}[/cyan]\n"
             f"Debug: {'enabled' if debug else 'disabled'}"
         )
-        panel = Panel.fit(info_text, style="blue", title="Setup")
+        panel = Panel.fit(info_text, style="blue", title="Execution Info")
         console.print(panel)
     else:
         print_info(

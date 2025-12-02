@@ -1,0 +1,10 @@
+key creation_date date;
+
+
+datasource dates (
+    creation_date,
+)
+grain (creation_date)
+query '''
+select current_date() as creation_date;
+''';

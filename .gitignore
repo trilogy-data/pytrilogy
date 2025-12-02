@@ -49,3 +49,5 @@ debug*.log
 
 
 .env.secrets
+
+trilogy/scripts/dependency

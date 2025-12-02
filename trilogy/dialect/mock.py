@@ -2,9 +2,10 @@ import random
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Iterable
 
+from trilogy.core.enums import Purpose
 from trilogy.core.models.author import Concept, ConceptRef
 from trilogy.core.models.core import CONCRETE_TYPES, ArrayType, DataType
-from trilogy.core.models.datasource import Datasource, Address
+from trilogy.core.models.datasource import Address, Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.execute import ProcessedMockStatement
 from trilogy.dialect.results import MockResult
@@ -14,31 +15,50 @@ if TYPE_CHECKING:
 
 DEFAULT_SCALE_FACTOR = 100
 
+
 def safe_name(name: str) -> str:
     return "".join(c if c.isalnum() or c == "_" else "_" for c in name)
 
+
 def mock_datatype(
-    full_type: Any, datatype: CONCRETE_TYPES, scale_factor: int
+    full_type: Any, datatype: CONCRETE_TYPES, scale_factor: int, is_key: bool = False
 ) -> list[Any]:
     if datatype == DataType.INTEGER:
-        # random integer in array of scale factor size
+        if is_key:
+            # unique integers for keys
+            return list(range(1, scale_factor + 1))
         return [random.randint(0, 999_999) for _ in range(scale_factor)]
     elif datatype == DataType.STRING:
-        # random string in array of scale factor size
+        if is_key:
+            # unique strings for keys
+            return [f"key_{i}" for i in range(1, scale_factor + 1)]
         return [
             f"mock_string_{random.randint(0, 999_999)}" for _ in range(scale_factor)
         ]
     elif datatype == DataType.FLOAT:
-        # random float in array of scale factor size
+        if is_key:
+            # unique floats for keys
+            return [float(i) for i in range(1, scale_factor + 1)]
         return [random.uniform(0, 999_999) for _ in range(scale_factor)]
     elif datatype == DataType.BOOL:
-        # random boolean in array of scale factor size
+        # booleans can only have 2 unique values, so keys don't make sense here
         return [random.choice([True, False]) for _ in range(scale_factor)]
     elif datatype == DataType.DATE:
-        # random date in array of scale factor size
+        if is_key:
+            # unique dates for keys - spread across multiple months/years if needed
+            base_date = date(2023, 1, 1)
+            return [
+                date.fromordinal(base_date.toordinal() + i) for i in range(scale_factor)
+            ]
         return [date(2023, 1, random.randint(1, 28)) for _ in range(scale_factor)]
     elif datatype in (DataType.DATETIME, DataType.TIMESTAMP):
-        # random datetime in array of scale factor size
+        if is_key:
+            # unique datetimes for keys - increment by seconds
+            base_dt = datetime(2023, 1, 1, 0, 0, 0)
+            return [
+                datetime.fromtimestamp(base_dt.timestamp() + i)
+                for i in range(scale_factor)
+            ]
         return [
             datetime(
                 2023,
@@ -51,8 +71,14 @@ def mock_datatype(
             for _ in range(scale_factor)
         ]
     elif isinstance(datatype, ArrayType):
+        # arrays as keys don't typically make sense, but generate unique if requested
+        if is_key:
+            return [
+                [mock_datatype(datatype.type, datatype.value_data_type, 5, False)[0], i]
+                for i in range(scale_factor)
+            ]
         return [
-            [mock_datatype(datatype.type, datatype.value_data_type, 5)]
+            [mock_datatype(datatype.type, datatype.value_data_type, 5, False)]
             for _ in range(scale_factor)
         ]
     raise NotImplementedError(f"Mocking not implemented for datatype {datatype}")
@@ -70,8 +96,12 @@ class MockManager:
     def mock_concept(self, concept: Concept | ConceptRef):
         if concept.address in self.concept_mocks:
             return False
+        concrete = self.environment.concepts[concept.address]
         self.concept_mocks[concept.address] = mock_datatype(
-            concept.datatype, concept.output_datatype, self.scale_factor
+            concept.datatype,
+            concept.output_datatype,
+            self.scale_factor,
+            True if concrete.purpose == Purpose.KEY else False,
         )
         return True
 
