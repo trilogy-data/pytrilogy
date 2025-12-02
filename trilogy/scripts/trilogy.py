@@ -1,7 +1,7 @@
 import traceback
 from datetime import datetime
 from pathlib import Path as PathlibPath
-from typing import Any, Union, Iterable
+from typing import Any, Iterable, Union
 
 from click import UNPROCESSED, Path, argument, group, option, pass_context
 from click.exceptions import Exit
@@ -206,7 +206,7 @@ def get_dialect_config(edialect: Dialects, conn_dict: dict[str, Any]) -> Any:
 
 
 def create_executor(
-    param: tuple[str],
+    param: tuple[str, ...],
     directory: PathlibPath,
     conn_args: Iterable[str],
     edialect: Dialects,
@@ -248,8 +248,8 @@ def create_executor(
 
 def create_executor_for_script(
     node: ScriptNode,
-    param: tuple[str],
-    conn_args: dict[str, Any],
+    param: tuple[str, ...],
+    conn_args: Iterable[str],
     edialect: Dialects,
     debug: bool,
 ) -> Executor:
@@ -345,8 +345,8 @@ def run_single_script_execution(
     input_type: str,
     input_name: str,
     edialect: Dialects,
-    param: tuple[str],
-    conn_args: tuple[str,str],
+    param: tuple[str, ...],
+    conn_args: Iterable[str],
     debug: bool,
     execution_mode: str,
 ) -> None:
@@ -422,7 +422,7 @@ def run_single_script_execution(
 def run_parallel_execution(
     input: str,
     edialect: Dialects,
-    param: tuple[str],
+    param: tuple[str, ...],
     conn_args: Iterable[str],
     debug: bool,
     parallelism: int,
