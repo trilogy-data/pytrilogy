@@ -8,7 +8,7 @@ from click.exceptions import Exit
 
 from trilogy import Executor, parse
 from trilogy.constants import DEFAULT_NAMESPACE
-from trilogy.core.exceptions import ConfigurationException
+from trilogy.core.exceptions import ConfigurationException, ModelValidationError, DatasourceModelValidationError
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.enums import Dialects
 from trilogy.hooks.query_debugger import DebuggingHook
@@ -254,8 +254,17 @@ def integration(ctx, input, dialect: str, param, conn_args):
     if not datasources:
         print_success("No datasources found")
     else:
-        exec.execute_text("validate datasources {};".format(", ".join(datasources)))
-        # TODO: unit test
+        try:
+            exec.execute_text("validate datasources {};".format(", ".join(datasources)))
+        except ModelValidationError as e:
+            if not e.children:
+                print_error(f"Datasource validation failed: {e.message}")
+            for idx, child in enumerate(e.children or []):
+                print_error(f"Error {idx + 1}: {child.message}")
+            raise Exit(1) from e
+        except Exception as e:
+            raise Exit(1) from e
+    print_success("Integration tests passed successfully!")
 
 
 @cli.command(
@@ -280,8 +289,18 @@ def unit(ctx, input, param):
         print_success("No datasources found")
     else:
         exec.execute_text("mock datasources {};".format(", ".join(datasources)))
-        exec.execute_text("validate datasources {};".format(", ".join(datasources)))
-        # TODO: unit test
+        try:
+            exec.execute_text("validate datasources {};".format(", ".join(datasources)))
+        except ModelValidationError as e:
+            if not e.children:
+                print_error(f"Datasource validation failed: {e.message}")
+            for idx, child in enumerate(e.children or []):
+                print_error(f"Error {idx + 1}: {child.message}")
+            raise Exit(1) from e
+        except Exception as e:
+            raise Exit(1) from e
+    print_success(f"Unit tests passed successfully!")
+
 
 
 @cli.command(

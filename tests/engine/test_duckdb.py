@@ -1978,7 +1978,7 @@ created_at_date,
 
 )
 grain (x,y)
-address tbl_example;
+address `my-gbq-table.my-project.tbl_example`;
 
 mock datasource example;
 

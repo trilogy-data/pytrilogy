@@ -543,3 +543,20 @@ def test_unit():
     if results.exception:
         raise results.exception
     assert results.exit_code == 0
+
+
+
+def test_unit_gbq():
+    path = Path(__file__).parent / "gbq_syntax.preql"
+    runner = CliRunner()
+
+    results = runner.invoke(
+        cli,
+        [
+            "unit",
+            str(path),
+        ],
+    )
+    if results.exception:
+        raise results.exception
+    assert results.exit_code == 0

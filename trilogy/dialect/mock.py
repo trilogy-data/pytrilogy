@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Iterable
 
 from trilogy.core.models.author import Concept, ConceptRef
 from trilogy.core.models.core import CONCRETE_TYPES, ArrayType, DataType
-from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.datasource import Datasource, Address
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.execute import ProcessedMockStatement
 from trilogy.dialect.results import MockResult
@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 
 DEFAULT_SCALE_FACTOR = 100
 
+def safe_name(name: str) -> str:
+    return "".join(c if c.isalnum() or c == "_" else "_" for c in name)
 
 def mock_datatype(
     full_type: Any, datatype: CONCRETE_TYPES, scale_factor: int
@@ -117,6 +119,9 @@ def mock_datasource(datasource: Datasource, manager: MockManager, executor):
     executor.execute_raw_sql(
         "register(:name, :tbl)", {"name": "mock_tbl", "tbl": table}
     )
+    address = safe_name(datasource.safe_address)
     executor.execute_raw_sql(
-        f"""CREATE OR REPLACE TABLE {datasource.safe_address} AS SELECT * FROM mock_tbl"""
+        f"""CREATE OR REPLACE TABLE {address} AS SELECT * FROM mock_tbl"""
     )
+    # overwrite the address since we've mangled the name
+    datasource.address = Address(location=address)
