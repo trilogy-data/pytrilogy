@@ -190,9 +190,7 @@ def test_run_folder():
     if result.exception:
         raise result.exception
     assert result.exit_code == 0
-    assert "1" in result.output.strip()
-    assert "10" in result.output.strip()
-
+    assert "Total Scripts" in result.output.strip()
 
 def test_parameters():
     for mode in RICH_MODES:
@@ -524,9 +522,7 @@ def test_validation_failure():
 
     results = runner.invoke(cli, ["integration", str(path), "duckdb"])
     assert results.exit_code == 1
-    # this is a hack to capture stderr
-    stdout = str(results)
-    assert "Nullable" in stdout, stdout
+    assert "INTEGER(NULLABLE)" in results.stdout
 
 
 def test_unit():

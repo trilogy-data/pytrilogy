@@ -1,16 +1,21 @@
 """
 Parallel execution support for Trilogy scripts.
 
-This module provides parallel execution of Trilogy scripts while respecting
-dependency ordering determined by the dependency resolver.
+This module provides parallel execution of Trilogy scripts with eager BFS
+traversal - scripts are executed as soon as their dependencies complete,
+without waiting for entire "levels" to finish.
 """
 
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+import threading
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 
+import networkx as nx
+
+from trilogy import Executor
 from trilogy.scripts.dependency import (
     DependencyResolver,
     DependencyStrategy,
@@ -44,18 +49,343 @@ class ParallelExecutionSummary:
         return self.failed == 0
 
 
+class ExecutionStrategy(Protocol):
+    """Protocol for execution traversal strategies."""
+
+    def execute(
+        self,
+        graph: nx.DiGraph,
+        resolver: DependencyResolver,
+        max_workers: int,
+        executor_factory: Callable[[ScriptNode], Any],
+        execution_fn: Callable[[Any, ScriptNode], None],
+        on_script_start: Callable[[ScriptNode], None] | None = None,
+        on_script_complete: Callable[[ExecutionResult], None] | None = None,
+    ) -> list[ExecutionResult]:
+        """
+        Execute scripts according to the strategy.
+
+        Args:
+            graph: The dependency graph (edges point from deps to dependents).
+            resolver: The dependency resolver for graph queries.
+            max_workers: Maximum parallel workers.
+            executor_factory: Factory to create executor for each script.
+            execution_fn: Function to execute a script.
+            on_script_start: Optional callback when script starts.
+            on_script_complete: Optional callback when script completes.
+
+        Returns:
+            List of ExecutionResult for all scripts.
+        """
+        ...
+
+
+class EagerBFSStrategy:
+    """
+    Eager BFS execution strategy.
+
+    Scripts are executed as soon as all their dependencies complete.
+    This is more efficient than level-based execution because it doesn't
+    wait for all scripts at a "level" to complete before starting the next.
+
+    Uses a work queue and condition variables to coordinate workers.
+    """
+
+    def execute(
+        self,
+        graph: nx.DiGraph,
+        resolver: DependencyResolver,
+        max_workers: int,
+        executor_factory: Callable[[ScriptNode], Any],
+        execution_fn: Callable[[Any, ScriptNode], None],
+        on_script_start: Callable[[ScriptNode], None] | None = None,
+        on_script_complete: Callable[[ExecutionResult], None] | None = None,
+    ) -> list[ExecutionResult]:
+        """Execute scripts eagerly as dependencies complete."""
+        if not graph.nodes():
+            return []
+
+        # Thread-safe state
+        lock = threading.Lock()
+        work_available = threading.Condition(lock)
+
+        # Track state
+        completed: set[ScriptNode] = set()
+        failed: set[ScriptNode] = set()
+        in_progress: set[ScriptNode] = set()
+        results: list[ExecutionResult] = []
+
+        # Calculate in-degrees (number of incomplete dependencies)
+        remaining_deps: dict[ScriptNode, int] = {
+            node: graph.in_degree(node) for node in graph.nodes()
+        }
+
+        # Ready queue - nodes with all dependencies satisfied
+        ready: list[ScriptNode] = [
+            node for node in graph.nodes() if remaining_deps[node] == 0
+        ]
+
+        all_nodes = set(graph.nodes())
+        total_count = len(all_nodes)
+
+        def get_next_ready() -> ScriptNode | None:
+            """Get next ready node, or None if nothing ready."""
+            if ready:
+                return ready.pop(0)
+            return None
+
+        def mark_complete(node: ScriptNode, success: bool) -> None:
+            """Mark a node as complete and update dependents."""
+            with lock:
+                in_progress.discard(node)
+                completed.add(node)
+                if not success:
+                    failed.add(node)
+
+                # Update dependents
+                for dependent in graph.successors(node):
+                    if dependent in completed or dependent in in_progress:
+                        continue
+
+                    if success:
+                        remaining_deps[dependent] -= 1
+                        if remaining_deps[dependent] == 0:
+                            # Check if any dependency failed
+                            deps = set(graph.predecessors(dependent))
+                            if deps & failed:
+                                # Skip this node - dependency failed
+                                skip_result = ExecutionResult(
+                                    node=dependent,
+                                    success=False,
+                                    error=RuntimeError(
+                                        "Skipped due to failed dependency"
+                                    ),
+                                    duration=0.0,
+                                )
+                                results.append(skip_result)
+                                completed.add(dependent)
+                                failed.add(dependent)
+                                if on_script_complete:
+                                    on_script_complete(skip_result)
+                                # Recursively mark dependents as failed
+                                _propagate_failure(dependent)
+                            else:
+                                ready.append(dependent)
+                    else:
+                        # Dependency failed - mark this as failed too
+                        if dependent not in failed:
+                            skip_result = ExecutionResult(
+                                node=dependent,
+                                success=False,
+                                error=RuntimeError("Skipped due to failed dependency"),
+                                duration=0.0,
+                            )
+                            results.append(skip_result)
+                            completed.add(dependent)
+                            failed.add(dependent)
+                            if on_script_complete:
+                                on_script_complete(skip_result)
+                            # Recursively mark dependents as failed
+                            _propagate_failure(dependent)
+
+                work_available.notify_all()
+
+        def _propagate_failure(failed_node: ScriptNode) -> None:
+            """Recursively mark all dependents of a failed node as failed."""
+            for dependent in graph.successors(failed_node):
+                if dependent not in completed and dependent not in in_progress:
+                    skip_result = ExecutionResult(
+                        node=dependent,
+                        success=False,
+                        error=RuntimeError("Skipped due to failed dependency"),
+                        duration=0.0,
+                    )
+                    results.append(skip_result)
+                    completed.add(dependent)
+                    failed.add(dependent)
+                    if on_script_complete:
+                        on_script_complete(skip_result)
+                    _propagate_failure(dependent)
+
+        def is_done() -> bool:
+            """Check if all work is complete."""
+            return len(completed) >= total_count
+
+        def worker() -> None:
+            """Worker thread that processes ready nodes."""
+            while True:
+                node = None
+
+                with work_available:
+                    # Wait for work or completion
+                    while not ready and not is_done():
+                        work_available.wait()
+
+                    if is_done():
+                        return
+
+                    node = get_next_ready()
+                    if node is None:
+                        continue
+
+                    in_progress.add(node)
+
+                # Execute outside the lock
+                if node is not None:
+                    if on_script_start:
+                        on_script_start(node)
+
+                    result = _execute_single(node, executor_factory, execution_fn)
+
+                    with lock:
+                        results.append(result)
+
+                    if on_script_complete:
+                        on_script_complete(result)
+
+                    mark_complete(node, result.success)
+
+        # Start worker threads
+        workers = min(max_workers, total_count)
+        threads = []
+        for _ in range(workers):
+            t = threading.Thread(target=worker, daemon=True)
+            t.start()
+            threads.append(t)
+
+        # Wait for all threads to complete
+        for t in threads:
+            t.join()
+
+        return results
+
+
+class LevelBasedStrategy:
+    """
+    Level-based execution strategy (legacy behavior).
+
+    Scripts are grouped into levels based on their depth in the dependency graph.
+    All scripts in a level must complete before the next level starts.
+    """
+
+    def execute(
+        self,
+        graph: nx.DiGraph,
+        resolver: DependencyResolver,
+        max_workers: int,
+        executor_factory: Callable[[ScriptNode], Any],
+        execution_fn: Callable[[Any, ScriptNode], None],
+        on_script_start: Callable[[ScriptNode], None] | None = None,
+        on_script_complete: Callable[[ExecutionResult], None] | None = None,
+    ) -> list[ExecutionResult]:
+        """Execute scripts level by level."""
+        if not graph.nodes():
+            return []
+
+        all_results: list[ExecutionResult] = []
+        failed_scripts: set[ScriptNode] = set()
+
+        # Get levels using topological generations
+        levels = list(nx.topological_generations(graph))
+
+        for level_nodes in levels:
+            level_nodes = list(level_nodes)
+
+            # Skip scripts whose dependencies failed
+            runnable = []
+            for node in level_nodes:
+                deps = set(graph.predecessors(node))
+                if deps & failed_scripts:
+                    # Skip - dependency failed
+                    result = ExecutionResult(
+                        node=node,
+                        success=False,
+                        error=RuntimeError("Skipped due to failed dependency"),
+                        duration=0.0,
+                    )
+                    all_results.append(result)
+                    failed_scripts.add(node)
+                    if on_script_complete:
+                        on_script_complete(result)
+                else:
+                    runnable.append(node)
+
+            # Execute runnable scripts in parallel
+            if runnable:
+                with ThreadPoolExecutor(
+                    max_workers=min(max_workers, len(runnable))
+                ) as pool:
+                    futures: dict[Future, ScriptNode] = {}
+
+                    for node in runnable:
+                        if on_script_start:
+                            on_script_start(node)
+                        future = pool.submit(
+                            _execute_single, node, executor_factory, execution_fn
+                        )
+                        futures[future] = node
+
+                    for future in futures:
+                        result = future.result()
+                        all_results.append(result)
+                        if not result.success:
+                            failed_scripts.add(result.node)
+                        if on_script_complete:
+                            on_script_complete(result)
+
+        return all_results
+
+
+def _execute_single(
+    node: ScriptNode,
+    executor_factory: Callable[[ScriptNode], Executor],
+    execution_fn: Callable[[Any, ScriptNode], None],
+) -> ExecutionResult:
+    """Execute a single script and return the result."""
+    start_time = datetime.now()
+    executor = None
+    try:
+        executor = executor_factory(node)
+        execution_fn(executor, node)
+        duration = (datetime.now() - start_time).total_seconds()
+        if executor:
+            executor.close()
+        return ExecutionResult(
+            node=node,
+            success=True,
+            error=None,
+            duration=duration,
+        )
+    except Exception as e:
+        duration = (datetime.now() - start_time).total_seconds()
+        return ExecutionResult(
+            node=node,
+            success=False,
+            error=e,
+            duration=duration,
+        )
+    finally:
+        if executor:
+            try:
+                executor.close()
+            except Exception:
+                pass
+
+
 class ParallelExecutor:
     """
     Executes scripts in parallel while respecting dependencies.
 
-    Scripts are organized into levels by the dependency resolver. All scripts
-    in a level can run in parallel, but levels must be executed sequentially.
+    By default uses eager BFS traversal - scripts execute as soon as their
+    dependencies complete. Can be configured to use level-based execution
+    for backwards compatibility.
     """
 
     def __init__(
         self,
         max_workers: int = 5,
         dependency_strategy: DependencyStrategy | None = None,
+        execution_strategy: ExecutionStrategy | None = None,
     ):
         """
         Initialize the parallel executor.
@@ -64,9 +394,12 @@ class ParallelExecutor:
             max_workers: Maximum number of parallel workers. Defaults to 5.
             dependency_strategy: Strategy for resolving dependencies.
                                 Defaults to FolderDepthStrategy.
+            execution_strategy: Strategy for traversing the graph during execution.
+                               Defaults to EagerBFSStrategy.
         """
         self.max_workers = max_workers
         self.resolver = DependencyResolver(strategy=dependency_strategy)
+        self.execution_strategy = execution_strategy or EagerBFSStrategy()
 
     def execute(
         self,
@@ -89,7 +422,9 @@ class ParallelExecutor:
             on_script_start: Optional callback when a script starts.
             on_script_complete: Optional callback when a script completes.
             on_level_start: Optional callback when a level starts (level_index, nodes).
+                           Note: Only meaningful with LevelBasedStrategy.
             on_level_complete: Optional callback when a level completes.
+                              Note: Only meaningful with LevelBasedStrategy.
 
         Returns:
             ParallelExecutionSummary with all results.
@@ -108,141 +443,42 @@ class ParallelExecutor:
                 results=[],
             )
 
-        # Resolve execution levels
-        levels = self.resolver.resolve(nodes)
+        # Build dependency graph
+        graph = self.resolver.build_graph(nodes)
 
-        all_results: list[ExecutionResult] = []
-        failed_scripts: set[ScriptNode] = set()
-
-        # Execute level by level
-        for level_idx, level_nodes in enumerate(levels):
-            if on_level_start:
-                on_level_start(level_idx, level_nodes)
-
-            # Skip scripts whose dependencies failed
-            runnable = [
-                n
-                for n in level_nodes
-                if not self._has_failed_dependency(n, failed_scripts, nodes)
-            ]
-            skipped = [n for n in level_nodes if n not in runnable]
-
-            # Mark skipped scripts as failed
-            for node in skipped:
-                result = ExecutionResult(
-                    node=node,
-                    success=False,
-                    error=RuntimeError("Skipped due to failed dependency"),
-                    duration=0.0,
-                )
-                all_results.append(result)
-                failed_scripts.add(node)
-                if on_script_complete:
-                    on_script_complete(result)
-
-            # Execute runnable scripts in parallel
-            level_results = self._execute_level(
-                runnable,
-                executor_factory,
-                execution_fn,
-                on_script_start,
-                on_script_complete,
-            )
-
-            all_results.extend(level_results)
-
-            # Track failures for dependency checking in next level
-            for result in level_results:
-                if not result.success:
-                    failed_scripts.add(result.node)
-
-            if on_level_complete:
-                # Include skipped results in level completion
-                all_level_results = [r for r in all_results if r.node in level_nodes]
-                on_level_complete(level_idx, all_level_results)
+        # Execute using the configured strategy
+        results = self.execution_strategy.execute(
+            graph=graph,
+            resolver=self.resolver,
+            max_workers=self.max_workers,
+            executor_factory=executor_factory,
+            execution_fn=execution_fn,
+            on_script_start=on_script_start,
+            on_script_complete=on_script_complete,
+        )
 
         total_duration = (datetime.now() - start_time).total_seconds()
-        successful = sum(1 for r in all_results if r.success)
+        successful = sum(1 for r in results if r.success)
 
         return ParallelExecutionSummary(
             total_scripts=len(nodes),
             successful=successful,
             failed=len(nodes) - successful,
             total_duration=total_duration,
-            results=all_results,
+            results=results,
         )
 
-    def _has_failed_dependency(
-        self,
-        node: ScriptNode,
-        failed: set[ScriptNode],
-        all_nodes: list[ScriptNode],
-    ) -> bool:
-        """Check if any of node's dependencies have failed."""
-        deps = self.resolver.get_dependency_graph(all_nodes).get(node, set())
-        return bool(deps & failed)
+    def get_execution_plan(self, files: list[Path]) -> nx.DiGraph:
+        """
+        Get the execution plan (dependency graph) without executing.
 
-    def _execute_level(
-        self,
-        nodes: list[ScriptNode],
-        executor_factory: Callable[[ScriptNode], Any],
-        execution_fn: Callable[[Any, ScriptNode], None],
-        on_script_start: Callable[[ScriptNode], None] | None,
-        on_script_complete: Callable[[ExecutionResult], None] | None,
-    ) -> list[ExecutionResult]:
-        """Execute all scripts in a level in parallel."""
-        if not nodes:
-            return []
+        Useful for debugging or visualization.
 
-        results: list[ExecutionResult] = []
+        Args:
+            files: List of script file paths.
 
-        with ThreadPoolExecutor(max_workers=min(self.max_workers, len(nodes))) as pool:
-            future_to_node: dict[Future, ScriptNode] = {}
-
-            for node in nodes:
-                if on_script_start:
-                    on_script_start(node)
-
-                future = pool.submit(
-                    self._execute_single,
-                    node,
-                    executor_factory,
-                    execution_fn,
-                )
-                future_to_node[future] = node
-
-            for future in as_completed(future_to_node):
-                result = future.result()
-                results.append(result)
-                if on_script_complete:
-                    on_script_complete(result)
-
-        return results
-
-    def _execute_single(
-        self,
-        node: ScriptNode,
-        executor_factory: Callable[[ScriptNode], Any],
-        execution_fn: Callable[[Any, ScriptNode], None],
-    ) -> ExecutionResult:
-        """Execute a single script and return the result."""
-        start_time = datetime.now()
-
-        try:
-            executor = executor_factory(node)
-            execution_fn(executor, node)
-            duration = (datetime.now() - start_time).total_seconds()
-            return ExecutionResult(
-                node=node,
-                success=True,
-                error=None,
-                duration=duration,
-            )
-        except Exception as e:
-            duration = (datetime.now() - start_time).total_seconds()
-            return ExecutionResult(
-                node=node,
-                success=False,
-                error=e,
-                duration=duration,
-            )
+        Returns:
+            The dependency graph that would be used for execution.
+        """
+        nodes = create_script_nodes(files)
+        return self.resolver.build_graph(nodes)

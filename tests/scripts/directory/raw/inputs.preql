@@ -6,5 +6,5 @@ datasource dates (
 )
 grain (creation_date)
 query '''
-select current_date() as creation_date;
+select current_date() as creation_date
 ''';

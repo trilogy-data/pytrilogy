@@ -17,25 +17,34 @@ from trilogy.dialect.enums import Dialects
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parsing.render import Renderer
 from trilogy.scripts.dependency import (
-    DependencyResolver,
     FolderDepthStrategy,
     ScriptNode,
-    create_script_nodes,
 )
 from trilogy.scripts.display import (
     RICH_AVAILABLE,
+    create_progress_context,
     print_error,
     print_success,
     set_rich_mode,
     show_debug_mode,
     show_environment_params,
     show_execution_info,
+    show_execution_start,
+    show_execution_summary,
     show_formatting_result,
     with_status,
+    print_results_table,
+    ResultSet,
 )
 from trilogy.scripts.environment import extra_to_kwargs, parse_env_params
+from trilogy.scripts.execution import (
+    execute_queries_simple,
+    execute_queries_with_progress,
+)
 from trilogy.scripts.parallel import (
+    EagerBFSStrategy,
     ExecutionResult,
+    LevelBasedStrategy,
     ParallelExecutionSummary,
     ParallelExecutor,
 )
@@ -289,10 +298,14 @@ def validate_datasources(
 def execute_script_for_run(
     exec: Executor, node: ScriptNode, quiet: bool = False
 ) -> None:
-    """Execute a script for the 'run' command."""
+    """Execute a script for the 'run' command (parallel execution mode)."""
     queries = exec.parse_text(node.content)
     for query in queries:
-        exec.execute_query(query)
+        results = exec.execute_query(query)
+        if results and not quiet:
+            data = results.fetchall()
+            if not quiet:
+                print_results_table(ResultSet(rows=data, columns=results.keys()))
 
 
 def execute_script_for_integration(
@@ -312,7 +325,7 @@ def execute_script_for_unit(
 
 
 def show_parallel_execution_start(
-    num_files: int, num_levels: int, parallelism: int
+    num_files: int, num_edges: int, parallelism: int, strategy: str = "eager_bfs"
 ) -> None:
     """Display parallel execution start information."""
     if RICH_AVAILABLE:
@@ -321,13 +334,15 @@ def show_parallel_execution_start(
         console = Console()
         console.print("\n[bold blue]Starting parallel execution:[/bold blue]")
         console.print(f"  Files: {num_files}")
-        console.print(f"  Dependency levels: {num_levels}")
+        console.print(f"  Dependencies: {num_edges}")
         console.print(f"  Max parallelism: {parallelism}")
+        console.print(f"  Strategy: {strategy}")
     else:
         print("\nStarting parallel execution:")
         print(f"  Files: {num_files}")
-        print(f"  Dependency levels: {num_levels}")
+        print(f"  Dependencies: {num_edges}")
         print(f"  Max parallelism: {parallelism}")
+        print(f"  Strategy: {strategy}")
 
 
 def show_parallel_execution_summary(summary: ParallelExecutionSummary) -> None:
@@ -404,6 +419,100 @@ def show_level_start(level_idx: int, nodes: list[ScriptNode]) -> None:
         print(f"\nLevel {level_idx + 1} ({len(nodes)} scripts)")
 
 
+def get_execution_strategy(strategy_name: str):
+    """Get execution strategy by name."""
+    strategies = {
+        "eager_bfs": EagerBFSStrategy,
+        "level": LevelBasedStrategy,
+    }
+    if strategy_name not in strategies:
+        raise ValueError(
+            f"Unknown execution strategy: {strategy_name}. "
+            f"Available: {', '.join(strategies.keys())}"
+        )
+    return strategies[strategy_name]()
+
+
+def run_single_script_execution(
+    text: list[str],
+    directory: PathlibPath,
+    input_type: str,
+    input_name: str,
+    edialect: Dialects,
+    param: tuple[str],
+    conn_args: tuple[str],
+    debug: bool,
+    execution_mode: str,
+) -> None:
+    """
+    Run single script execution with polished multi-statement progress display.
+
+    Args:
+        text: List of script contents
+        directory: Working directory
+        input_type: Type of input (file, query, etc.)
+        input_name: Name of the input
+        edialect: Dialect to use
+        param: Environment parameters
+        conn_args: Connection arguments
+        debug: Debug mode flag
+        execution_mode: One of 'run', 'integration', or 'unit'
+    """
+    show_execution_info(input_type, input_name, edialect.value, debug)
+
+    exec = create_executor(param, directory, conn_args, edialect, debug)
+
+    if execution_mode == "run":
+        # Parse all scripts and collect queries
+        queries = []
+        try:
+            for script in text:
+                queries += exec.parse_text(script)
+        except Exception as e:
+            print_error(f"Failed to parse script: {e}")
+            print_error(f"Full traceback:\n{traceback.format_exc()}")
+            raise Exit(1) from e
+
+        start = datetime.now()
+        show_execution_start(len(queries))
+
+        # Execute with progress tracking for multiple statements
+        if len(queries) > 1 and RICH_AVAILABLE:
+            progress = create_progress_context()
+        else:
+            progress = None
+
+        try:
+            if progress:
+                exception = execute_queries_with_progress(exec, queries)
+            else:
+                exception = execute_queries_simple(exec, queries)
+
+            total_duration = datetime.now() - start
+            show_execution_summary(len(queries), total_duration, exception is None)
+
+            if exception:
+                raise Exit(1) from exception
+        except Exit:
+            raise
+        except Exception as e:
+            print_error(f"Unexpected error during execution: {e}")
+            print_error(f"Full traceback:\n{traceback.format_exc()}")
+            raise Exit(1) from e
+
+    elif execution_mode == "integration":
+        for script in text:
+            exec.parse_text(script)
+        validate_datasources(exec, mock=False, quiet=False)
+        print_success("Integration tests passed successfully!")
+
+    elif execution_mode == "unit":
+        for script in text:
+            exec.parse_text(script)
+        validate_datasources(exec, mock=True, quiet=False)
+        print_success("Unit tests passed successfully!")
+
+
 def run_parallel_execution(
     input: str,
     edialect: Dialects,
@@ -412,9 +521,12 @@ def run_parallel_execution(
     debug: bool,
     parallelism: int,
     execution_fn,
+    execution_strategy: str = "eager_bfs",
+    execution_mode: str = "run",
 ) -> None:
     """
-    Run parallel execution for directory inputs.
+    Run parallel execution for directory inputs, or single-script execution
+    with polished progress display for single files/inline queries.
 
     Args:
         input: Input path (file or directory)
@@ -424,63 +536,65 @@ def run_parallel_execution(
         debug: Debug mode flag
         parallelism: Maximum parallel workers
         execution_fn: Function to execute each script (exec, node, quiet) -> None
+        execution_strategy: Name of execution strategy ("eager_bfs" or "level")
+        execution_mode: One of 'run', 'integration', or 'unit'
     """
     # Check if input is a directory (parallel execution)
     pathlib_input = PathlibPath(input)
 
     if not pathlib_input.exists():
-        # Inline query - use original single-threaded logic
+        # Inline query - use polished single-script execution
         text, directory, input_type, input_name = resolve_input_information(input)
-        show_execution_info(input_type, input_name, edialect.value, debug)
-
-        exec = create_executor(param, directory, conn_args, edialect, debug)
-
-        for script in text:
-            exec.parse_text(script)
-            execution_fn(
-                exec,
-                ScriptNode(path=PathlibPath("inline"), content=script),
-                quiet=False,
-            )
-
-        print_success("Execution completed successfully!")
+        run_single_script_execution(
+            text=text,
+            directory=directory,
+            input_type=input_type,
+            input_name=input_name,
+            edialect=edialect,
+            param=param,
+            conn_args=conn_args,
+            debug=debug,
+            execution_mode=execution_mode,
+        )
         return
 
     files, directory, input_type, input_name = resolve_input_files(input)
 
     if len(files) <= 1:
-        # Single file - use original single-threaded logic
+        # Single file - use polished single-script execution
         text, directory, input_type, input_name = resolve_input_information(input)
-        show_execution_info(input_type, input_name, edialect.value, debug)
-
-        exec = create_executor(param, directory, conn_args, edialect, debug)
-
-        for script in text:
-            exec.parse_text(script)
-            if files:
-                execution_fn(
-                    exec, ScriptNode(path=files[0], content=script), quiet=False
-                )
-
-        print_success("Execution completed successfully!")
+        run_single_script_execution(
+            text=text,
+            directory=directory,
+            input_type=input_type,
+            input_name=input_name,
+            edialect=edialect,
+            param=param,
+            conn_args=conn_args,
+            debug=debug,
+            execution_mode=execution_mode,
+        )
         return
 
     # Multiple files - use parallel execution
     show_execution_info(input_type, input_name, edialect.value, debug)
 
-    # Create script nodes for dependency resolution
-    nodes = create_script_nodes(files)
-
-    # Resolve dependencies to get levels
-    resolver = DependencyResolver(strategy=FolderDepthStrategy())
-    levels = resolver.resolve(nodes)
-
-    show_parallel_execution_start(len(files), len(levels), parallelism)
+    # Get execution strategy
+    strategy = get_execution_strategy(execution_strategy)
 
     # Set up parallel executor
     parallel_exec = ParallelExecutor(
         max_workers=parallelism,
         dependency_strategy=FolderDepthStrategy(),
+        execution_strategy=strategy,
+    )
+
+    # Get execution plan for display
+    execution_plan = parallel_exec.get_execution_plan(files)
+    num_edges = execution_plan.number_of_edges()
+
+    show_parallel_execution_start(
+        len(files), num_edges, parallelism, execution_strategy
     )
 
     # Factory to create executor for each script
@@ -497,7 +611,6 @@ def run_parallel_execution(
         executor_factory=executor_factory,
         execution_fn=quiet_execution_fn,
         on_script_complete=show_script_result,
-        on_level_start=show_level_start,
     )
 
     show_parallel_execution_summary(summary)
@@ -560,9 +673,18 @@ def fmt(ctx, input):
     default=DEFAULT_PARALLELISM,
     help="Maximum parallel workers for directory execution",
 )
+@option(
+    "--strategy",
+    "-s",
+    default="eager_bfs",
+    type=str,
+    help="Execution strategy: 'eager_bfs' (default) or 'level'",
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
-def integration(ctx, input, dialect: str, param, parallelism: int, conn_args):
+def integration(
+    ctx, input, dialect: str, param, parallelism: int, strategy: str, conn_args
+):
     """Run integration tests on Trilogy scripts."""
     edialect = Dialects(dialect)
     debug = ctx.obj["DEBUG"]
@@ -576,6 +698,8 @@ def integration(ctx, input, dialect: str, param, parallelism: int, conn_args):
             debug=debug,
             parallelism=parallelism,
             execution_fn=execute_script_for_integration,
+            execution_strategy=strategy,
+            execution_mode="integration",
         )
     except Exit:
         raise
@@ -599,8 +723,15 @@ def integration(ctx, input, dialect: str, param, parallelism: int, conn_args):
     default=DEFAULT_PARALLELISM,
     help="Maximum parallel workers for directory execution",
 )
+@option(
+    "--strategy",
+    "-s",
+    default="eager_bfs",
+    type=str,
+    help="Execution strategy: 'eager_bfs' (default) or 'level'",
+)
 @pass_context
-def unit(ctx, input, param, parallelism: int):
+def unit(ctx, input, param, parallelism: int, strategy: str):
     """Run unit tests on Trilogy scripts with mocked datasources."""
     edialect = Dialects.DUCK_DB
     debug = ctx.obj["DEBUG"]
@@ -614,6 +745,8 @@ def unit(ctx, input, param, parallelism: int):
             debug=debug,
             parallelism=parallelism,
             execution_fn=execute_script_for_unit,
+            execution_strategy=strategy,
+            execution_mode="unit",
         )
     except Exit:
         raise
@@ -638,9 +771,16 @@ def unit(ctx, input, param, parallelism: int):
     default=DEFAULT_PARALLELISM,
     help="Maximum parallel workers for directory execution",
 )
+@option(
+    "--strategy",
+    "-s",
+    default="eager_bfs",
+    type=str,
+    help="Execution strategy: 'eager_bfs' (default) or 'level'",
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
-def run(ctx, input, dialect: str, param, parallelism: int, conn_args):
+def run(ctx, input, dialect: str, param, parallelism: int, strategy: str, conn_args):
     """Execute a Trilogy script or query."""
     edialect = Dialects(dialect)
     debug = ctx.obj["DEBUG"]
@@ -654,6 +794,8 @@ def run(ctx, input, dialect: str, param, parallelism: int, conn_args):
             debug=debug,
             parallelism=parallelism,
             execution_fn=execute_script_for_run,
+            execution_strategy=strategy,
+            execution_mode="run",
         )
     except Exit:
         raise
