@@ -1,0 +1,1 @@
+select 1 as test; key x int; datasource funky_monkey (x) query '''select 1 as x'''; select x+1 as test2;

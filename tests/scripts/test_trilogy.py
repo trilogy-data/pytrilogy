@@ -72,12 +72,38 @@ def test_multi_exception_thrown_execution():
             )
 
             assert result.exit_code == 1
-            print(result.output)
             assert (
                 "Binder Error: No function" in strip_ansi(result.output)
                 or "Execution Failed" in result.output
             )
 
+
+def test_multi_no_exception():
+    for mode in RICH_MODES:
+        with set_rich_mode(mode):
+            runner = CliRunner()
+
+            result = runner.invoke(
+                cli,
+                [
+                    "run",
+                    "select 1 as test; key x int; datasource funky_monkey (x) query '''select 1 as x'''; select x+1 as test2;",
+                    "duckdb",
+                ],
+            )
+
+            assert result.exit_code == 0
+
+            result = runner.invoke(
+                cli,
+                [
+                    "run",
+                    str(Path(__file__).parent / "multi_script.preql"),
+                    "duckdb",
+                ],
+            )
+
+            assert result.exit_code == 0
 
 def test_exception_fmt():
     for mode in RICH_MODES:

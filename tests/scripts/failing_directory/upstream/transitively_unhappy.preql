@@ -1,0 +1,3 @@
+import upstream_two.unhappy;
+
+select failure_reason, 'Transitive upstream failure' as context;

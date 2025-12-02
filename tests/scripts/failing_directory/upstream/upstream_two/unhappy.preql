@@ -1,0 +1,14 @@
+
+
+key failure_reason string;
+
+datasource reasons(
+    failure_reason
+)
+grain (failure_reason)
+query '''
+select 
+    'Upstream failure' as failure_reason,
+union all
+    select syntax_error
+''';
