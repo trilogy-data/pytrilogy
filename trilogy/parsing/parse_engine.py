@@ -1185,9 +1185,9 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def validate_statement(self, meta: Meta, args) -> ValidateStatement:
-        if len(args) == 2:
+        if len(args) > 1:
             scope = args[0]
-            targets = args[1].split(",")
+            targets = args[1:]
         elif len(args) == 0:
             scope = ValidationScope.ALL
             targets = None
@@ -1201,7 +1201,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def mock_statement(self, meta: Meta, args) -> MockStatement:
-        return MockStatement(scope=args[0], targets=args[1].split(","))
+        return MockStatement(scope=args[0], targets=args[1:])
 
     @v_args(meta=True)
     def merge_statement(self, meta: Meta, args) -> MergeStatementV2 | None:

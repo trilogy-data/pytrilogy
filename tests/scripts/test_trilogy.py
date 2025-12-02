@@ -192,6 +192,7 @@ def test_run_folder():
     assert result.exit_code == 0
     assert "Total Scripts" in result.output.strip()
 
+
 def test_parameters():
     for mode in RICH_MODES:
         with set_rich_mode(mode):

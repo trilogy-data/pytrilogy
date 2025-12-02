@@ -1,9 +1,13 @@
 """Display helpers for prettier CLI output with configurable Rich support."""
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from click import echo, style
+
+# Type checking imports for forward references
+if TYPE_CHECKING:
+    from trilogy.scripts.parallel import ExecutionResult, ParallelExecutionSummary
 
 # Try to import Rich for enhanced output
 try:
@@ -372,3 +376,98 @@ class _DummyContext:
 
     def __exit__(self, *args):
         pass
+
+
+def show_parallel_execution_start(
+    num_files: int, num_edges: int, parallelism: int, strategy: str = "eager_bfs"
+) -> None:
+    """Display parallel execution start information."""
+    if RICH_AVAILABLE:
+        from rich.console import Console
+
+        console = Console()
+        console.print("\n[bold blue]Starting parallel execution:[/bold blue]")
+        console.print(f"  Files: {num_files}")
+        console.print(f"  Dependencies: {num_edges}")
+        console.print(f"  Max parallelism: {parallelism}")
+        console.print(f"  Strategy: {strategy}")
+    else:
+        print("\nStarting parallel execution:")
+        print(f"  Files: {num_files}")
+        print(f"  Dependencies: {num_edges}")
+        print(f"  Max parallelism: {parallelism}")
+        print(f"  Strategy: {strategy}")
+
+
+def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None:
+    """Display parallel execution summary."""
+    if RICH_AVAILABLE:
+        from rich.console import Console
+        from rich.table import Table
+
+        console = Console()
+
+        # Summary table
+        table = Table(title="Execution Summary", show_header=False)
+        table.add_column("Metric", style="cyan")
+        table.add_column("Value", style="green")
+
+        table.add_row("Total Scripts", str(summary.total_scripts))
+        table.add_row("Successful", str(summary.successful))
+        table.add_row("Failed", str(summary.failed))
+        table.add_row("Total Duration", f"{summary.total_duration:.2f}s")
+
+        console.print(table)
+
+        # Failed scripts details
+        if summary.failed > 0:
+            console.print("\n[bold red]Failed Scripts:[/bold red]")
+            for result in summary.results:
+                if not result.success:
+                    console.print(f"  [red]✗[/red] {result.node.path}")
+                    if result.error:
+                        console.print(f"    Error: {result.error}")
+    else:
+        print("Execution Summary:")
+        print(f"  Total Scripts: {summary.total_scripts}")
+        print(f"  Successful: {summary.successful}")
+        print(f"  Failed: {summary.failed}")
+        print(f"  Total Duration: {summary.total_duration:.2f}s")
+
+        if summary.failed > 0:
+            print("\nFailed Scripts:")
+            for result in summary.results:
+                if not result.success:
+                    print(f"  ✗ {result.node.path}")
+                    if result.error:
+                        print(f"    Error: {result.error}")
+
+
+def show_script_result(result: "ExecutionResult") -> None:
+    """Display result of a single script execution."""
+    if RICH_AVAILABLE:
+        from rich.console import Console
+
+        console = Console()
+        if result.success:
+            console.print(
+                f"  [green]✓[/green] {result.node.path.name} ({result.duration:.2f}s)"
+            )
+        else:
+            console.print(f"  [red]✗[/red] {result.node.path.name} - {result.error}")
+    else:
+        if result.success:
+            print(f"  ✓ {result.node.path.name} ({result.duration:.2f}s)")
+        else:
+            print(f"  ✗ {result.node.path.name} - {result.error}")
+
+
+def show_level_start(level_idx: int, nodes: list) -> None:
+    """Display level start information."""
+    if RICH_AVAILABLE:
+        from rich.console import Console
+
+        console = Console()
+        console.print(f"\n[bold]Level {level_idx + 1}[/bold] ({len(nodes)} scripts)")
+    else:
+        print(f"\nLevel {level_idx + 1} ({len(nodes)} scripts)")

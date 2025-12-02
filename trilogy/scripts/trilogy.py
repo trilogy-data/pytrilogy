@@ -1,7 +1,7 @@
 import traceback
 from datetime import datetime
 from pathlib import Path as PathlibPath
-from typing import Any, Union
+from typing import Any, Union, Iterable
 
 from click import UNPROCESSED, Path, argument, group, option, pass_context
 from click.exceptions import Exit
@@ -22,8 +22,10 @@ from trilogy.scripts.dependency import (
 )
 from trilogy.scripts.display import (
     RICH_AVAILABLE,
+    ResultSet,
     create_progress_context,
     print_error,
+    print_results_table,
     print_success,
     set_rich_mode,
     show_debug_mode,
@@ -32,9 +34,10 @@ from trilogy.scripts.display import (
     show_execution_start,
     show_execution_summary,
     show_formatting_result,
+    show_parallel_execution_start,
+    show_parallel_execution_summary,
+    show_script_result,
     with_status,
-    print_results_table,
-    ResultSet,
 )
 from trilogy.scripts.environment import extra_to_kwargs, parse_env_params
 from trilogy.scripts.execution import (
@@ -43,9 +46,7 @@ from trilogy.scripts.execution import (
 )
 from trilogy.scripts.parallel import (
     EagerBFSStrategy,
-    ExecutionResult,
     LevelBasedStrategy,
-    ParallelExecutionSummary,
     ParallelExecutor,
 )
 
@@ -207,7 +208,7 @@ def get_dialect_config(edialect: Dialects, conn_dict: dict[str, Any]) -> Any:
 def create_executor(
     param: tuple[str],
     directory: PathlibPath,
-    conn_args: dict[str, Any],
+    conn_args: Iterable[str],
     edialect: Dialects,
     debug: bool,
 ) -> Executor:
@@ -324,101 +325,6 @@ def execute_script_for_unit(
     validate_datasources(exec, mock=True, quiet=quiet)
 
 
-def show_parallel_execution_start(
-    num_files: int, num_edges: int, parallelism: int, strategy: str = "eager_bfs"
-) -> None:
-    """Display parallel execution start information."""
-    if RICH_AVAILABLE:
-        from rich.console import Console
-
-        console = Console()
-        console.print("\n[bold blue]Starting parallel execution:[/bold blue]")
-        console.print(f"  Files: {num_files}")
-        console.print(f"  Dependencies: {num_edges}")
-        console.print(f"  Max parallelism: {parallelism}")
-        console.print(f"  Strategy: {strategy}")
-    else:
-        print("\nStarting parallel execution:")
-        print(f"  Files: {num_files}")
-        print(f"  Dependencies: {num_edges}")
-        print(f"  Max parallelism: {parallelism}")
-        print(f"  Strategy: {strategy}")
-
-
-def show_parallel_execution_summary(summary: ParallelExecutionSummary) -> None:
-    """Display parallel execution summary."""
-    if RICH_AVAILABLE:
-        from rich.console import Console
-        from rich.table import Table
-
-        console = Console()
-
-        # Summary table
-        table = Table(title="Execution Summary", show_header=False)
-        table.add_column("Metric", style="cyan")
-        table.add_column("Value", style="green")
-
-        table.add_row("Total Scripts", str(summary.total_scripts))
-        table.add_row("Successful", str(summary.successful))
-        table.add_row("Failed", str(summary.failed))
-        table.add_row("Total Duration", f"{summary.total_duration:.2f}s")
-
-        console.print(table)
-
-        # Failed scripts details
-        if summary.failed > 0:
-            console.print("\n[bold red]Failed Scripts:[/bold red]")
-            for result in summary.results:
-                if not result.success:
-                    console.print(f"  [red]✗[/red] {result.node.path}")
-                    if result.error:
-                        console.print(f"    Error: {result.error}")
-    else:
-        print("Execution Summary:")
-        print(f"  Total Scripts: {summary.total_scripts}")
-        print(f"  Successful: {summary.successful}")
-        print(f"  Failed: {summary.failed}")
-        print(f"  Total Duration: {summary.total_duration:.2f}s")
-
-        if summary.failed > 0:
-            print("\nFailed Scripts:")
-            for result in summary.results:
-                if not result.success:
-                    print(f"  ✗ {result.node.path}")
-                    if result.error:
-                        print(f"    Error: {result.error}")
-
-
-def show_script_result(result: ExecutionResult) -> None:
-    """Display result of a single script execution."""
-    if RICH_AVAILABLE:
-        from rich.console import Console
-
-        console = Console()
-        if result.success:
-            console.print(
-                f"  [green]✓[/green] {result.node.path.name} ({result.duration:.2f}s)"
-            )
-        else:
-            console.print(f"  [red]✗[/red] {result.node.path.name} - {result.error}")
-    else:
-        if result.success:
-            print(f"  ✓ {result.node.path.name} ({result.duration:.2f}s)")
-        else:
-            print(f"  ✗ {result.node.path.name} - {result.error}")
-
-
-def show_level_start(level_idx: int, nodes: list[ScriptNode]) -> None:
-    """Display level start information."""
-    if RICH_AVAILABLE:
-        from rich.console import Console
-
-        console = Console()
-        console.print(f"\n[bold]Level {level_idx + 1}[/bold] ({len(nodes)} scripts)")
-    else:
-        print(f"\nLevel {level_idx + 1} ({len(nodes)} scripts)")
-
-
 def get_execution_strategy(strategy_name: str):
     """Get execution strategy by name."""
     strategies = {
@@ -440,7 +346,7 @@ def run_single_script_execution(
     input_name: str,
     edialect: Dialects,
     param: tuple[str],
-    conn_args: tuple[str],
+    conn_args: tuple[str,str],
     debug: bool,
     execution_mode: str,
 ) -> None:
@@ -517,7 +423,7 @@ def run_parallel_execution(
     input: str,
     edialect: Dialects,
     param: tuple[str],
-    conn_args: tuple[str],
+    conn_args: Iterable[str],
     debug: bool,
     parallelism: int,
     execution_fn,
@@ -735,7 +641,6 @@ def unit(ctx, input, param, parallelism: int, strategy: str):
     """Run unit tests on Trilogy scripts with mocked datasources."""
     edialect = Dialects.DUCK_DB
     debug = ctx.obj["DEBUG"]
-
     try:
         run_parallel_execution(
             input=input,
