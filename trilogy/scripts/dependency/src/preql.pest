@@ -1,0 +1,85 @@
+// PreQL Grammar - Import Statement Parser
+// This grammar is designed to be extensible for future PreQL parsing needs
+
+// Whitespace and comments
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+COMMENT = _{ line_comment | block_comment }
+line_comment = { ("#" | "//") ~ (!NEWLINE ~ ANY)* ~ NEWLINE? }
+block_comment = { "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+NEWLINE = _{ "\n" | "\r\n" }
+
+// Entry point - a file can contain multiple statements
+file = { SOI ~ statement* ~ EOI }
+
+// Statements - import statements we care about, others we skip
+statement = { (import_statement | other_statement) ~ terminator? }
+
+terminator = { ";" }
+
+// Import statement: import path.to.module as alias
+// Supports relative imports with leading dots
+import_statement = { 
+    ^"import" ~ 
+    relative_dots? ~ 
+    import_path ~ 
+    import_alias?
+}
+
+// Any other statement - consume everything until we hit a semicolon or EOF
+// This allows us to skip over statements we don't care about
+other_statement = { other_statement_content+ }
+
+// Match any content that isn't a terminator, but handle nested structures
+other_statement_content = _{
+    nested_parens |
+    nested_braces |
+    nested_brackets |
+    multiline_string |
+    string_literal |
+    // Any character that isn't a statement terminator or structure opener
+    (!(";" | "(" | ")" | "{" | "}" | "[" | "]" | "'''" | "\"" | "'") ~ ANY)
+}
+
+// Handle nested parentheses (for function calls, grain clauses, etc.)
+nested_parens = { "(" ~ (nested_parens | nested_braces | nested_brackets | multiline_string | string_literal | (!")" ~ !"(" ~ !"{" ~ !"}" ~ !"[" ~ !"]" ~ !"'''" ~ !"\"" ~ !"'" ~ ANY) )* ~ ")" }
+
+// Handle nested braces (for map literals, etc.)
+nested_braces = { "{" ~ (nested_parens | nested_braces | nested_brackets | multiline_string | string_literal | (!"}" ~ !"{" ~ !"(" ~ !")" ~ !"[" ~ !"]" ~ !"'''" ~ !"\"" ~ !"'" ~ ANY) )* ~ "}" }
+
+// Handle nested brackets (for array literals, index access)
+nested_brackets = { "[" ~ (nested_parens | nested_braces | nested_brackets | multiline_string | string_literal | (!"]" ~ !"[" ~ !"(" ~ !")" ~ !"{" ~ !"}" ~ !"'''" ~ !"\"" ~ !"'" ~ ANY) )* ~ "]" }
+
+// Handle multiline strings (triple single quotes)
+multiline_string = { "'''" ~ (!"'''" ~ ANY)* ~ "'''" }
+
+// Handle regular string literals
+string_literal = { 
+    ("\"" ~ (!"\"" ~ !"\\" ~ ANY | "\\" ~ ANY)* ~ "\"") |
+    ("'" ~ !"''" ~ (!"'" ~ !"\\" ~ ANY | "\\" ~ ANY)* ~ "'")
+}
+
+// Relative import dots (each dot goes up one directory after the first)
+relative_dots = @{ "."+ }
+
+// Import path: identifier separated by dots
+import_path = @{ identifier ~ ("." ~ identifier)* }
+
+// Optional alias: as identifier
+import_alias = { ^"as" ~ identifier }
+
+// Basic identifier
+identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+
+// Reserved for future use - data types
+data_type = { 
+    "string" | "number" | "numeric" | "int" | "bigint" | 
+    "date" | "datetime" | "timestamp" | "float" | "bool" |
+    "list" | "array" | "map" | "any" | "struct"
+}
+
+// Reserved for future use - keywords
+keyword = {
+    ^"import" | ^"as" | ^"select" | ^"where" | ^"from" |
+    ^"key" | ^"metric" | ^"property" | ^"const" | ^"auto" |
+    ^"datasource" | ^"grain" | ^"address" | ^"query"
+}

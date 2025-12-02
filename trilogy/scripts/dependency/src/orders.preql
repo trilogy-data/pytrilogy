@@ -1,0 +1,7 @@
+// Orders model
+import ..shared.base;
+import customer;  // relative import in same directory
+
+key order_id int;
+property order_date date;
+metric order_count <- count(order_id);

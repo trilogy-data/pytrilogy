@@ -50,4 +50,4 @@ debug*.log
 
 .env.secrets
 
-trilogy/scripts/dependency
+trilogy/scripts/dependency/target
