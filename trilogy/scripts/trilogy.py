@@ -253,20 +253,24 @@ def create_executor_for_script(
     return create_executor(param, directory, conn_args, edialect, debug)
 
 
-def validate_datasources(exec: Executor, mock: bool = False) -> None:
+def validate_datasources(
+    exec: Executor, mock: bool = False, quiet: bool = False
+) -> None:
     """Validate datasources with consistent error handling.
 
     Args:
         exec: The executor instance
         mock: If True, mock datasources before validation (for unit tests)
+        quiet: If True, suppress informational messages (for parallel execution)
 
     Raises:
         Exit: If validation fails
     """
     datasources = exec.environment.datasources.keys()
     if not datasources:
-        message = "unit" if mock else "integration"
-        print_success(f"No datasources found to {message} test.")
+        if not quiet:
+            message = "unit" if mock else "integration"
+            print_success(f"No datasources found to {message} test.")
         return
 
     if mock:
@@ -282,23 +286,29 @@ def validate_datasources(exec: Executor, mock: bool = False) -> None:
         raise Exit(1) from e
 
 
-def execute_script_for_run(exec: Executor, node: ScriptNode) -> None:
+def execute_script_for_run(
+    exec: Executor, node: ScriptNode, quiet: bool = False
+) -> None:
     """Execute a script for the 'run' command."""
     queries = exec.parse_text(node.content)
     for query in queries:
         exec.execute_query(query)
 
 
-def execute_script_for_integration(exec: Executor, node: ScriptNode) -> None:
+def execute_script_for_integration(
+    exec: Executor, node: ScriptNode, quiet: bool = False
+) -> None:
     """Execute a script for the 'integration' command (parse + validate)."""
     exec.parse_text(node.content)
-    validate_datasources(exec, mock=False)
+    validate_datasources(exec, mock=False, quiet=quiet)
 
 
-def execute_script_for_unit(exec: Executor, node: ScriptNode) -> None:
+def execute_script_for_unit(
+    exec: Executor, node: ScriptNode, quiet: bool = False
+) -> None:
     """Execute a script for the 'unit' command (parse + mock validate)."""
     exec.parse_text(node.content)
-    validate_datasources(exec, mock=True)
+    validate_datasources(exec, mock=True, quiet=quiet)
 
 
 def show_parallel_execution_start(
@@ -413,7 +423,7 @@ def run_parallel_execution(
         conn_args: Connection arguments
         debug: Debug mode flag
         parallelism: Maximum parallel workers
-        execution_fn: Function to execute each script (exec, node) -> None
+        execution_fn: Function to execute each script (exec, node, quiet) -> None
     """
     # Check if input is a directory (parallel execution)
     pathlib_input = PathlibPath(input)
@@ -427,7 +437,11 @@ def run_parallel_execution(
 
         for script in text:
             exec.parse_text(script)
-            execution_fn(exec, ScriptNode(path=PathlibPath("inline"), content=script))
+            execution_fn(
+                exec,
+                ScriptNode(path=PathlibPath("inline"), content=script),
+                quiet=False,
+            )
 
         print_success("Execution completed successfully!")
         return
@@ -444,7 +458,9 @@ def run_parallel_execution(
         for script in text:
             exec.parse_text(script)
             if files:
-                execution_fn(exec, ScriptNode(path=files[0], content=script))
+                execution_fn(
+                    exec, ScriptNode(path=files[0], content=script), quiet=False
+                )
 
         print_success("Execution completed successfully!")
         return
@@ -471,11 +487,15 @@ def run_parallel_execution(
     def executor_factory(node: ScriptNode) -> Executor:
         return create_executor_for_script(node, param, conn_args, edialect, debug)
 
+    # Wrap execution_fn to pass quiet=True for parallel execution
+    def quiet_execution_fn(exec: Executor, node: ScriptNode) -> None:
+        execution_fn(exec, node, quiet=True)
+
     # Run parallel execution
     summary = parallel_exec.execute(
         files=files,
         executor_factory=executor_factory,
-        execution_fn=execution_fn,
+        execution_fn=quiet_execution_fn,
         on_script_complete=show_script_result,
         on_level_start=show_level_start,
     )
