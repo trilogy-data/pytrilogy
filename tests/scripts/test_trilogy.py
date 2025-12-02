@@ -105,6 +105,7 @@ def test_multi_no_exception():
 
             assert result.exit_code == 0
 
+
 def test_exception_fmt():
     for mode in RICH_MODES:
         with set_rich_mode(mode):
