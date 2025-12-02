@@ -1,13 +1,4 @@
-"""
-Parallel execution support for Trilogy scripts.
-
-This module provides parallel execution of Trilogy scripts with eager BFS
-traversal - scripts are executed as soon as their dependencies complete,
-without waiting for entire "levels" to finish.
-"""
-
 import threading
-from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -84,10 +75,6 @@ class EagerBFSStrategy:
     """
     Eager BFS execution strategy.
 
-    Scripts are executed as soon as all their dependencies complete.
-    This is more efficient than level-based execution because it doesn't
-    wait for all scripts at a "level" to complete before starting the next.
-
     Uses a work queue and condition variables to coordinate workers.
     """
 
@@ -104,8 +91,6 @@ class EagerBFSStrategy:
         """Execute scripts eagerly as dependencies complete."""
         if not graph.nodes():
             return []
-
-        # Thread-safe state
         lock = threading.Lock()
         work_available = threading.Condition(lock)
 
@@ -208,11 +193,9 @@ class EagerBFSStrategy:
                     _propagate_failure(dependent)
 
         def is_done() -> bool:
-            """Check if all work is complete."""
             return len(completed) >= total_count
 
         def worker() -> None:
-            """Worker thread that processes ready nodes."""
             while True:
                 node = None
 
@@ -258,82 +241,6 @@ class EagerBFSStrategy:
             t.join()
 
         return results
-
-
-class LevelBasedStrategy:
-    """
-    Level-based execution strategy (legacy behavior).
-
-    Scripts are grouped into levels based on their depth in the dependency graph.
-    All scripts in a level must complete before the next level starts.
-    """
-
-    def execute(
-        self,
-        graph: nx.DiGraph,
-        resolver: DependencyResolver,
-        max_workers: int,
-        executor_factory: Callable[[ScriptNode], Any],
-        execution_fn: Callable[[Any, ScriptNode], None],
-        on_script_start: Callable[[ScriptNode], None] | None = None,
-        on_script_complete: Callable[[ExecutionResult], None] | None = None,
-    ) -> list[ExecutionResult]:
-        """Execute scripts level by level."""
-        if not graph.nodes():
-            return []
-
-        all_results: list[ExecutionResult] = []
-        failed_scripts: set[ScriptNode] = set()
-
-        # Get levels using topological generations
-        levels = list(nx.topological_generations(graph))
-
-        for level_nodes in levels:
-            level_nodes = list(level_nodes)
-
-            # Skip scripts whose dependencies failed
-            runnable = []
-            for node in level_nodes:
-                deps = set(graph.predecessors(node))
-                if deps & failed_scripts:
-                    # Skip - dependency failed
-                    result = ExecutionResult(
-                        node=node,
-                        success=False,
-                        error=RuntimeError("Skipped due to failed dependency"),
-                        duration=0.0,
-                    )
-                    all_results.append(result)
-                    failed_scripts.add(node)
-                    if on_script_complete:
-                        on_script_complete(result)
-                else:
-                    runnable.append(node)
-
-            # Execute runnable scripts in parallel
-            if runnable:
-                with ThreadPoolExecutor(
-                    max_workers=min(max_workers, len(runnable))
-                ) as pool:
-                    futures: dict[Future, ScriptNode] = {}
-
-                    for node in runnable:
-                        if on_script_start:
-                            on_script_start(node)
-                        future = pool.submit(
-                            _execute_single, node, executor_factory, execution_fn
-                        )
-                        futures[future] = node
-
-                    for future in futures:
-                        result = future.result()
-                        all_results.append(result)
-                        if not result.success:
-                            failed_scripts.add(result.node)
-                        if on_script_complete:
-                            on_script_complete(result)
-
-        return all_results
 
 
 def _execute_single(
@@ -408,8 +315,6 @@ class ParallelExecutor:
         execution_fn: Callable[[Any, ScriptNode], None],
         on_script_start: Callable[[ScriptNode], None] | None = None,
         on_script_complete: Callable[[ExecutionResult], None] | None = None,
-        on_level_start: Callable[[int, list[ScriptNode]], None] | None = None,
-        on_level_complete: Callable[[int, list[ExecutionResult]], None] | None = None,
     ) -> ParallelExecutionSummary:
         """
         Execute scripts in parallel respecting dependencies.
@@ -421,10 +326,6 @@ class ParallelExecutor:
             execution_fn: Function that executes a script given (executor, node).
             on_script_start: Optional callback when a script starts.
             on_script_complete: Optional callback when a script completes.
-            on_level_start: Optional callback when a level starts (level_index, nodes).
-                           Note: Only meaningful with LevelBasedStrategy.
-            on_level_complete: Optional callback when a level completes.
-                              Note: Only meaningful with LevelBasedStrategy.
 
         Returns:
             ParallelExecutionSummary with all results.

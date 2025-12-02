@@ -556,3 +556,15 @@ def test_unit_gbq():
     if results.exception:
         raise results.exception
     assert results.exit_code == 0
+
+
+def test_parallel_failure():
+    path = Path(__file__).parent / "failing_directory"
+    runner = CliRunner()
+
+    results = runner.invoke(
+        cli,
+        ["run", str(path), "duckdb"],
+    )
+    assert results.exit_code == 1
+    assert '"syntax_error" not found in FROM' in results.output

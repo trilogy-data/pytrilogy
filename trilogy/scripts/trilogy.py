@@ -46,7 +46,6 @@ from trilogy.scripts.execution import (
 )
 from trilogy.scripts.parallel import (
     EagerBFSStrategy,
-    LevelBasedStrategy,
     ParallelExecutor,
 )
 
@@ -329,7 +328,6 @@ def get_execution_strategy(strategy_name: str):
     """Get execution strategy by name."""
     strategies = {
         "eager_bfs": EagerBFSStrategy,
-        "level": LevelBasedStrategy,
     }
     if strategy_name not in strategies:
         raise ValueError(

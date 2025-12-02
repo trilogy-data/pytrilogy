@@ -1,0 +1,14 @@
+
+
+key happy_reason string;
+
+datasource reasons(
+    happy_reason
+)
+grain (happy_reason)
+query '''
+select 
+    'Upstream sucesss' as happy_reason,
+union all
+    select 'All good' as happy_reason
+''';
