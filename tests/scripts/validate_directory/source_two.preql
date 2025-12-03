@@ -1,0 +1,12 @@
+import source_one;
+
+property x.extra string;
+
+datasource x_extra_source (
+   ~x,
+    extra,
+)
+grain (x)
+query '''
+select 1 as x, 'a' as extra
+''';

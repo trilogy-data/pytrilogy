@@ -576,20 +576,12 @@ def fmt(ctx, input):
     default=DEFAULT_PARALLELISM,
     help="Maximum parallel workers for directory execution",
 )
-@option(
-    "--strategy",
-    "-s",
-    default="eager_bfs",
-    type=str,
-    help="Execution strategy: 'eager_bfs' (default) or 'level'",
-)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
-def integration(
-    ctx, input, dialect: str, param, parallelism: int, strategy: str, conn_args
-):
+def integration(ctx, input, dialect: str, param, parallelism: int, conn_args):
     """Run integration tests on Trilogy scripts."""
     edialect = Dialects(dialect)
+    strategy = "eager_bfs"
     debug = ctx.obj["DEBUG"]
 
     try:
@@ -626,18 +618,17 @@ def integration(
     default=DEFAULT_PARALLELISM,
     help="Maximum parallel workers for directory execution",
 )
-@option(
-    "--strategy",
-    "-s",
-    default="eager_bfs",
-    type=str,
-    help="Execution strategy: 'eager_bfs' (default) or 'level'",
-)
 @pass_context
-def unit(ctx, input, param, parallelism: int, strategy: str):
+def unit(
+    ctx,
+    input,
+    param,
+    parallelism: int,
+):
     """Run unit tests on Trilogy scripts with mocked datasources."""
     edialect = Dialects.DUCK_DB
     debug = ctx.obj["DEBUG"]
+    strategy = "eager_bfs"
     try:
         run_parallel_execution(
             input=input,
@@ -673,20 +664,13 @@ def unit(ctx, input, param, parallelism: int, strategy: str):
     default=DEFAULT_PARALLELISM,
     help="Maximum parallel workers for directory execution",
 )
-@option(
-    "--strategy",
-    "-s",
-    default="eager_bfs",
-    type=str,
-    help="Execution strategy: 'eager_bfs' (default) or 'level'",
-)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
-def run(ctx, input, dialect: str, param, parallelism: int, strategy: str, conn_args):
+def run(ctx, input, dialect: str, param, parallelism: int, conn_args):
     """Execute a Trilogy script or query."""
     edialect = Dialects(dialect)
     debug = ctx.obj["DEBUG"]
-
+    strategy = "eager_bfs"
     try:
         run_parallel_execution(
             input=input,

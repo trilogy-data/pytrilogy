@@ -595,3 +595,32 @@ def test_parallel_failure():
     )
     assert results.exit_code == 1
     assert "Skipped due to failed dependency" in results.output
+
+
+def test_parallel_integration_unit():
+    path = Path(__file__).parent / "validate_directory"
+    runner = CliRunner()
+    for cmd in [
+        "run",
+        "integration",
+    ]:
+        results = runner.invoke(
+            cli,
+            [cmd, str(path), "duckdb"],
+        )
+        if results.exception:
+            raise ValueError(results.output)
+        assert results.exit_code == 0
+    for cmd in [
+        "unit",
+    ]:
+        results = runner.invoke(
+            cli,
+            [
+                cmd,
+                str(path),
+            ],
+        )
+        if results.exception:
+            raise ValueError(results.output)
+        assert results.exit_code == 0

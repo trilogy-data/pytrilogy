@@ -1,0 +1,13 @@
+
+
+
+key x int;
+
+
+datasource x_source (
+    x,
+)
+grain (x)
+query '''
+select 1 as x union all select 2 as x
+''';
