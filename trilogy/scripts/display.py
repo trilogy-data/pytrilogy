@@ -382,10 +382,7 @@ def show_parallel_execution_start(
     num_files: int, num_edges: int, parallelism: int, strategy: str = "eager_bfs"
 ) -> None:
     """Display parallel execution start information."""
-    if RICH_AVAILABLE:
-        from rich.console import Console
-
-        console = Console()
+    if RICH_AVAILABLE and console is not None:
         console.print("\n[bold blue]Starting parallel execution:[/bold blue]")
         console.print(f"  Files: {num_files}")
         console.print(f"  Dependencies: {num_edges}")
@@ -401,12 +398,7 @@ def show_parallel_execution_start(
 
 def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None:
     """Display parallel execution summary."""
-    if RICH_AVAILABLE:
-        from rich.console import Console
-        from rich.table import Table
-
-        console = Console()
-
+    if RICH_AVAILABLE and console is not None:
         # Summary table
         table = Table(title="Execution Summary", show_header=False)
         table.add_column("Metric", style="cyan")
@@ -445,10 +437,7 @@ def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None
 
 def show_script_result(result: "ExecutionResult") -> None:
     """Display result of a single script execution."""
-    if RICH_AVAILABLE:
-        from rich.console import Console
-
-        console = Console()
+    if RICH_AVAILABLE and console is not None:
         if result.success:
             console.print(
                 f"  [green]✓[/green] {result.node.path.name} ({result.duration:.2f}s)"
@@ -460,14 +449,3 @@ def show_script_result(result: "ExecutionResult") -> None:
             print(f"  ✓ {result.node.path.name} ({result.duration:.2f}s)")
         else:
             print(f"  ✗ {result.node.path.name} - {result.error}")
-
-
-def show_level_start(level_idx: int, nodes: list) -> None:
-    """Display level start information."""
-    if RICH_AVAILABLE:
-        from rich.console import Console
-
-        console = Console()
-        console.print(f"\n[bold]Level {level_idx + 1}[/bold] ({len(nodes)} scripts)")
-    else:
-        print(f"\nLevel {level_idx + 1} ({len(nodes)} scripts)")

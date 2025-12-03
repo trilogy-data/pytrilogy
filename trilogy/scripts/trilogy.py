@@ -465,7 +465,7 @@ def run_parallel_execution(
     files, directory, input_type, input_name = resolve_input_files(input)
 
     if len(files) <= 1:
-        # Single file - use polished single-script execution
+        # Single file - use more verbose output
         text, directory, input_type, input_name = resolve_input_information(input)
         run_single_script_execution(
             text=text,
@@ -520,6 +520,7 @@ def run_parallel_execution(
     show_parallel_execution_summary(summary)
 
     if not summary.all_succeeded:
+        print_error("Some scripts failed during execution.")
         raise Exit(1)
 
     print_success("All scripts executed successfully!")

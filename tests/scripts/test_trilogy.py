@@ -594,4 +594,4 @@ def test_parallel_failure():
         ["run", str(path), "duckdb"],
     )
     assert results.exit_code == 1
-    assert '"syntax_error" not found in FROM' in results.output
+    assert "Skipped due to failed dependency" in results.output

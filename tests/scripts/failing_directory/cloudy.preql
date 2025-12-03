@@ -1,4 +1,5 @@
 import upstream.transitively_unhappy;
 import upstream.happy;
+import upstream.unhappy;
 
 select happy_reason, failure_reason;

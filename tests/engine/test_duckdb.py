@@ -1968,6 +1968,11 @@ property x.created_at timestamp;
 property x.created_at_date date;
 property x.labels array<string>;
 
+key year date;
+key string_key string;
+key bool_key bool;
+
+
 datasource example (
 x, 
 y,
@@ -1980,13 +1985,37 @@ created_at_date,
 grain (x,y)
 address `my-gbq-table.my-project.tbl_example`;
 
-mock datasource example;
 
-select x;
+datasource enrichment (
+x,
+labels
+)
+grain (x)
+address `my-gbq-table.my-project.tbl_enrichment`;
+
+datasource years (
+    year
+)
+grain (year)
+address `my-gbq-table.my-project.tbl_years`;
+
+
+datasource keys (
+    string_key,
+    bool_key)
+grain (string_key, bool_key)
+address `my-gbq-table.my-project.tbl_keys`;
+    
+
+mock datasource example, enrichment, years, keys;
+
+select x, labels;
 """
 
     results = default_duckdb_engine.execute_text(test)[-1].fetchall()
     assert len(results) == DEFAULT_SCALE_FACTOR
+    assert isinstance(results[0].x, int)
+    assert isinstance(results[0].labels, list)
 
 
 def test_group_syntax():

@@ -41,7 +41,7 @@ def validate_query_is_resolvable(
                 else:
                     pseudonym_concept = environment.concepts[x]
                 # if it's not a root concept pseudonym,
-                # assume we can derivve it
+                # assume we can derive it
                 if pseudonym_concept.derivation != Derivation.ROOT:
                     has_source = True
                     break
@@ -50,7 +50,7 @@ def validate_query_is_resolvable(
                     break
             if not has_source:
                 raise NoDatasourceException(
-                    f"No datasource exists for root concept {validation_concept}, and no resolvable pseudonyms found from {validation_concept.pseudonyms}. This query is unresolvable from your environment. Check your datasource configuration?"
+                    f"No datasource exists for root concept {validation_concept}, and no resolvable pseudonyms found from {validation_concept.pseudonyms}. This query is unresolvable from your environment. Check your datasources and imports to make sure this concept is bound."
                 )
     return None
 

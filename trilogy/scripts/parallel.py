@@ -230,7 +230,7 @@ class EagerBFSStrategy:
 
         # Start worker threads
         workers = min(max_workers, total_count)
-        threads = []
+        threads: list[threading.Thread] = []
         for _ in range(workers):
             t = threading.Thread(target=worker, daemon=True)
             t.start()

@@ -2,7 +2,7 @@
 
 key failure_reason string;
 
-datasource reasons(
+datasource bad_reasons(
     failure_reason
 )
 grain (failure_reason)
