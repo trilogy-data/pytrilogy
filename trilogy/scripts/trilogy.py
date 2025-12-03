@@ -98,8 +98,6 @@ def resolve_input_files(input: str) -> tuple[list[PathlibPath], PathlibPath, str
     """
     Resolve input to a list of file paths (for parallel execution).
 
-    Returns:
-        Tuple of (files, directory, input_type, input_name)
     """
     if PathlibPath(input).exists():
         pathlib_path = PathlibPath(input)
@@ -115,9 +113,7 @@ def resolve_input_files(input: str) -> tuple[list[PathlibPath], PathlibPath, str
         return files, directory, input_type, input_name
     else:
         # Inline query - not applicable for parallel execution
-        raise ValueError(
-            "Parallel execution requires a file or directory path, not an inline query."
-        )
+        raise ValueError(f"Directory {input} does not exist for parallel execution.")
 
 
 def validate_required_connection_params(

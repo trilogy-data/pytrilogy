@@ -30,6 +30,8 @@ except ImportError:
     console = None
 
     Progress = lambda: None  # type: ignore  # noqa: E731
+    Table = lambda: None  # type: ignore  # noqa: E731
+    Panel = lambda: None  # type: ignore  # noqa: E731
 
 FETCH_LIMIT = 51
 
@@ -443,9 +445,13 @@ def show_script_result(result: "ExecutionResult") -> None:
                 f"  [green]✓[/green] {result.node.path.name} ({result.duration:.2f}s)"
             )
         else:
-            console.print(f"  [red]✗[/red] {result.node.path.name} - {result.error}")
+            console.print(
+                f"  [red]✗[/red] {result.node.path.name} ({result.duration:.2f}s) - {result.error}"
+            )
     else:
         if result.success:
             print(f"  ✓ {result.node.path.name} ({result.duration:.2f}s)")
         else:
-            print(f"  ✗ {result.node.path.name} - {result.error}")
+            print(
+                f"  ✗ {result.node.path.name} ({result.duration:.2f}s) - {result.error}"
+            )
