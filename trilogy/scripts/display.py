@@ -7,7 +7,10 @@ from click import echo, style
 
 # Type checking imports for forward references
 if TYPE_CHECKING:
-    from trilogy.scripts.parallel import ExecutionResult, ParallelExecutionSummary
+    from trilogy.scripts.parallel_execution import (
+        ExecutionResult,
+        ParallelExecutionSummary,
+    )
 
 # Try to import Rich for enhanced output
 try:

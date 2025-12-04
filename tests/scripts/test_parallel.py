@@ -5,7 +5,7 @@ from unittest.mock import Mock
 import networkx as nx
 import pytest
 
-from trilogy.scripts.parallel import (
+from trilogy.scripts.parallel_execution import (
     ExecutionResult,
     ScriptNode,
     _get_next_ready,

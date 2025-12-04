@@ -4,9 +4,10 @@ import re
 from pathlib import Path
 
 import pytest
+from click.exceptions import Exit
 from click.testing import CliRunner
 
-from trilogy.scripts.trilogy import cli, set_rich_mode
+from trilogy.scripts.trilogy import cli, handle_execution_exception, set_rich_mode
 
 RICH_MODES = [False]
 
@@ -215,7 +216,7 @@ def test_run_folder():
         ],
     )
     if result.exception:
-        raise result.exception
+        raise ValueError(result.output)
     assert result.exit_code == 0
     assert "Total Scripts" in result.output.strip()
 
@@ -597,6 +598,11 @@ def test_parallel_failure():
     assert "Skipped due to failed dependency" in results.output
 
 
+def test_exception_unexpected():
+    with pytest.raises(Exit):
+        handle_execution_exception(ValueError("Test exception handling"))
+
+
 def test_empty_unit():
     path = Path(__file__).parent / "validate_directory" / "empty.preql"
     runner = CliRunner()
@@ -607,6 +613,19 @@ def test_empty_unit():
             "unit",
             str(path),
         ],
+    )
+    if results.exception:
+        raise results.exception
+    assert results.exit_code == 0
+
+
+def test_empty_integration():
+    path = Path(__file__).parent / "validate_directory" / "empty.preql"
+    runner = CliRunner()
+
+    results = runner.invoke(
+        cli,
+        ["integration", str(path), "duckdb"],
     )
     if results.exception:
         raise results.exception

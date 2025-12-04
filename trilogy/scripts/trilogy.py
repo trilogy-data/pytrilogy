@@ -22,10 +22,8 @@ from trilogy.scripts.dependency import (
 )
 from trilogy.scripts.display import (
     RICH_AVAILABLE,
-    ResultSet,
     create_progress_context,
     print_error,
-    print_results_table,
     print_success,
     set_rich_mode,
     show_debug_mode,
@@ -40,13 +38,13 @@ from trilogy.scripts.display import (
     with_status,
 )
 from trilogy.scripts.environment import extra_to_kwargs, parse_env_params
-from trilogy.scripts.execution import (
-    execute_queries_simple,
-    execute_queries_with_progress,
-)
-from trilogy.scripts.parallel import (
+from trilogy.scripts.parallel_execution import (
     EagerBFSStrategy,
     ParallelExecutor,
+)
+from trilogy.scripts.single_execution import (
+    execute_queries_simple,
+    execute_queries_with_progress,
 )
 
 set_rich_mode = set_rich_mode
@@ -299,11 +297,7 @@ def execute_script_for_run(
     """Execute a script for the 'run' command (parallel execution mode)."""
     queries = exec.parse_text(node.content)
     for query in queries:
-        results = exec.execute_query(query)
-        if results and not quiet:
-            data = results.fetchall()
-            if not quiet:
-                print_results_table(ResultSet(rows=data, columns=results.keys()))
+        exec.execute_query(query)
 
 
 def execute_script_for_integration(
