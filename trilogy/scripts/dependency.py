@@ -206,36 +206,6 @@ class DependencyResolver:
         """
         return list(graph.predecessors(node))
 
-    def resolve_levels(self, nodes: list[ScriptNode]) -> list[list[ScriptNode]]:
-        """
-        Resolve execution order and return parallelizable batches (levels).
-
-        This is the legacy interface for level-based execution.
-        Uses topological generations from networkx.
-
-        Args:
-            nodes: List of script nodes to order.
-
-        Returns:
-            A list of levels, where each level is a list of nodes that can
-            be executed in parallel. Levels must be executed in order.
-
-        Raises:
-            ValueError: If there's a circular dependency.
-        """
-        if not nodes:
-            return []
-
-        graph = self.build_graph(nodes)
-
-        # Use networkx topological_generations for level-based ordering
-        return [list(gen) for gen in nx.topological_generations(graph)]
-
-    # Legacy alias
-    def resolve(self, nodes: list[ScriptNode]) -> list[list[ScriptNode]]:
-        """Legacy alias for resolve_levels."""
-        return self.resolve_levels(nodes)
-
     def get_dependency_graph(
         self, nodes: list[ScriptNode]
     ) -> dict[ScriptNode, set[ScriptNode]]:

@@ -597,6 +597,22 @@ def test_parallel_failure():
     assert "Skipped due to failed dependency" in results.output
 
 
+def test_empty_unit():
+    path = Path(__file__).parent / "validate_directory" / "empty.preql"
+    runner = CliRunner()
+
+    results = runner.invoke(
+        cli,
+        [
+            "unit",
+            str(path),
+        ],
+    )
+    if results.exception:
+        raise results.exception
+    assert results.exit_code == 0
+
+
 def test_parallel_integration_unit():
     path = Path(__file__).parent / "validate_directory"
     runner = CliRunner()

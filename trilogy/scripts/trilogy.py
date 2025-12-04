@@ -335,6 +335,12 @@ def get_execution_strategy(strategy_name: str):
     return strategies[strategy_name]()
 
 
+def handle_execution_exception(e: Exception) -> None:
+    print_error(f"Unexpected error during execution: {e}")
+    print_error(f"Full traceback:\n{traceback.format_exc()}")
+    raise Exit(1) from e
+
+
 def run_single_script_execution(
     text: list[str],
     directory: PathlibPath,
@@ -398,9 +404,7 @@ def run_single_script_execution(
         except Exit:
             raise
         except Exception as e:
-            print_error(f"Unexpected error during execution: {e}")
-            print_error(f"Full traceback:\n{traceback.format_exc()}")
-            raise Exit(1) from e
+            handle_execution_exception(e)
 
     elif execution_mode == "integration":
         for script in text:
@@ -599,9 +603,7 @@ def integration(ctx, input, dialect: str, param, parallelism: int, conn_args):
     except Exit:
         raise
     except Exception as e:
-        print_error(f"Integration test failed: {e}")
-        print_error(f"Full traceback:\n{traceback.format_exc()}")
-        raise Exit(1) from e
+        handle_execution_exception(e)
 
 
 @cli.command(
@@ -644,9 +646,7 @@ def unit(
     except Exit:
         raise
     except Exception as e:
-        print_error(f"Unit test failed: {e}")
-        print_error(f"Full traceback:\n{traceback.format_exc()}")
-        raise Exit(1) from e
+        handle_execution_exception(e)
 
 
 @cli.command(
