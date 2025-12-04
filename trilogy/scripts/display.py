@@ -1,9 +1,16 @@
 """Display helpers for prettier CLI output with configurable Rich support."""
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from click import echo, style
+
+# Type checking imports for forward references
+if TYPE_CHECKING:
+    from trilogy.scripts.parallel_execution import (
+        ExecutionResult,
+        ParallelExecutionSummary,
+    )
 
 # Try to import Rich for enhanced output
 try:
@@ -26,6 +33,8 @@ except ImportError:
     console = None
 
     Progress = lambda: None  # type: ignore  # noqa: E731
+    Table = lambda: None  # type: ignore  # noqa: E731
+    Panel = lambda: None  # type: ignore  # noqa: E731
 
 FETCH_LIMIT = 51
 
@@ -162,12 +171,11 @@ def show_execution_info(input_type: str, input_name: str, dialect: str, debug: b
     """Display execution information in a clean format."""
     if RICH_AVAILABLE and console is not None:
         info_text = (
-            f"[bold]Execution Info[/bold]\n"
             f"Input: {input_type} ({input_name})\n"
             f"Dialect: [cyan]{dialect}[/cyan]\n"
             f"Debug: {'enabled' if debug else 'disabled'}"
         )
-        panel = Panel.fit(info_text, style="blue", title="Setup")
+        panel = Panel.fit(info_text, style="blue", title="Execution Info")
         console.print(panel)
     else:
         print_info(
@@ -373,3 +381,80 @@ class _DummyContext:
 
     def __exit__(self, *args):
         pass
+
+
+def show_parallel_execution_start(
+    num_files: int, num_edges: int, parallelism: int, strategy: str = "eager_bfs"
+) -> None:
+    """Display parallel execution start information."""
+    if RICH_AVAILABLE and console is not None:
+        console.print("\n[bold blue]Starting parallel execution:[/bold blue]")
+        console.print(f"  Files: {num_files}")
+        console.print(f"  Dependencies: {num_edges}")
+        console.print(f"  Max parallelism: {parallelism}")
+        console.print(f"  Strategy: {strategy}")
+    else:
+        print("\nStarting parallel execution:")
+        print(f"  Files: {num_files}")
+        print(f"  Dependencies: {num_edges}")
+        print(f"  Max parallelism: {parallelism}")
+        print(f"  Strategy: {strategy}")
+
+
+def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None:
+    """Display parallel execution summary."""
+    if RICH_AVAILABLE and console is not None:
+        # Summary table
+        table = Table(title="Execution Summary", show_header=False)
+        table.add_column("Metric", style="cyan")
+        table.add_column("Value", style="green")
+
+        table.add_row("Total Scripts", str(summary.total_scripts))
+        table.add_row("Successful", str(summary.successful))
+        table.add_row("Failed", str(summary.failed))
+        table.add_row("Total Duration", f"{summary.total_duration:.2f}s")
+
+        console.print(table)
+
+        # Failed scripts details
+        if summary.failed > 0:
+            console.print("\n[bold red]Failed Scripts:[/bold red]")
+            for result in summary.results:
+                if not result.success:
+                    console.print(f"  [red]✗[/red] {result.node.path}")
+                    if result.error:
+                        console.print(f"    Error: {result.error}")
+    else:
+        print("Execution Summary:")
+        print(f"  Total Scripts: {summary.total_scripts}")
+        print(f"  Successful: {summary.successful}")
+        print(f"  Failed: {summary.failed}")
+        print(f"  Total Duration: {summary.total_duration:.2f}s")
+
+        if summary.failed > 0:
+            print("\nFailed Scripts:")
+            for result in summary.results:
+                if not result.success:
+                    print(f"  ✗ {result.node.path}")
+                    if result.error:
+                        print(f"    Error: {result.error}")
+
+
+def show_script_result(result: "ExecutionResult") -> None:
+    """Display result of a single script execution."""
+    if RICH_AVAILABLE and console is not None:
+        if result.success:
+            console.print(
+                f"  [green]✓[/green] {result.node.path.name} ({result.duration:.2f}s)"
+            )
+        else:
+            console.print(
+                f"  [red]✗[/red] {result.node.path.name} ({result.duration:.2f}s) - {result.error}"
+            )
+    else:
+        if result.success:
+            print(f"  ✓ {result.node.path.name} ({result.duration:.2f}s)")
+        else:
+            print(
+                f"  ✗ {result.node.path.name} ({result.duration:.2f}s) - {result.error}"
+            )

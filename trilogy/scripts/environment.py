@@ -33,7 +33,7 @@ def extra_to_kwargs(arg_list: Iterable[str]) -> dict[str, Any]:
     return final
 
 
-def parse_env_params(env_param_list: tuple[str]) -> dict[str, str]:
+def parse_env_params(env_param_list: tuple[str, ...]) -> dict[str, str]:
     """Parse environment parameters from key=value format."""
     env_params = {}
     for param in env_param_list:

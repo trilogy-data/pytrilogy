@@ -4,9 +4,10 @@ import re
 from pathlib import Path
 
 import pytest
+from click.exceptions import Exit
 from click.testing import CliRunner
 
-from trilogy.scripts.trilogy import cli, set_rich_mode
+from trilogy.scripts.trilogy import cli, handle_execution_exception, set_rich_mode
 
 RICH_MODES = [False]
 
@@ -72,11 +73,38 @@ def test_multi_exception_thrown_execution():
             )
 
             assert result.exit_code == 1
-            print(result.output)
             assert (
                 "Binder Error: No function" in strip_ansi(result.output)
                 or "Execution Failed" in result.output
             )
+
+
+def test_multi_no_exception():
+    for mode in RICH_MODES:
+        with set_rich_mode(mode):
+            runner = CliRunner()
+
+            result = runner.invoke(
+                cli,
+                [
+                    "run",
+                    "select 1 as test; key x int; datasource funky_monkey (x) query '''select 1 as x'''; select x+1 as test2;",
+                    "duckdb",
+                ],
+            )
+
+            assert result.exit_code == 0
+
+            result = runner.invoke(
+                cli,
+                [
+                    "run",
+                    str(Path(__file__).parent / "multi_script.preql"),
+                    "duckdb",
+                ],
+            )
+
+            assert result.exit_code == 0
 
 
 def test_exception_fmt():
@@ -188,10 +216,9 @@ def test_run_folder():
         ],
     )
     if result.exception:
-        raise result.exception
+        raise ValueError(result.output)
     assert result.exit_code == 0
-    assert "1" in result.output.strip()
-    assert "10" in result.output.strip()
+    assert "Total Scripts" in result.output.strip()
 
 
 def test_parameters():
@@ -524,9 +551,7 @@ def test_validation_failure():
 
     results = runner.invoke(cli, ["integration", str(path), "duckdb"])
     assert results.exit_code == 1
-    # this is a hack to capture stderr
-    stdout = str(results)
-    assert "Nullable" in stdout, stdout
+    assert "INTEGER(NULLABLE)" in results.stdout
 
 
 def test_unit():
@@ -543,3 +568,94 @@ def test_unit():
     if results.exception:
         raise results.exception
     assert results.exit_code == 0
+
+
+def test_unit_gbq():
+    path = Path(__file__).parent / "gbq_syntax.preql"
+    runner = CliRunner()
+
+    results = runner.invoke(
+        cli,
+        [
+            "unit",
+            str(path),
+        ],
+    )
+    if results.exception:
+        raise results.exception
+    assert results.exit_code == 0
+
+
+def test_parallel_failure():
+    path = Path(__file__).parent / "failing_directory"
+    runner = CliRunner()
+
+    results = runner.invoke(
+        cli,
+        ["run", str(path), "duckdb"],
+    )
+    assert results.exit_code == 1
+    assert "Skipped due to failed dependency" in results.output
+
+
+def test_exception_unexpected():
+    with pytest.raises(Exit):
+        handle_execution_exception(ValueError("Test exception handling"))
+
+
+def test_empty_unit():
+    path = Path(__file__).parent / "validate_directory" / "empty.preql"
+    runner = CliRunner()
+
+    results = runner.invoke(
+        cli,
+        [
+            "unit",
+            str(path),
+        ],
+    )
+    if results.exception:
+        raise results.exception
+    assert results.exit_code == 0
+
+
+def test_empty_integration():
+    path = Path(__file__).parent / "validate_directory" / "empty.preql"
+    runner = CliRunner()
+
+    results = runner.invoke(
+        cli,
+        ["integration", str(path), "duckdb"],
+    )
+    if results.exception:
+        raise results.exception
+    assert results.exit_code == 0
+
+
+def test_parallel_integration_unit():
+    path = Path(__file__).parent / "validate_directory"
+    runner = CliRunner()
+    for cmd in [
+        "run",
+        "integration",
+    ]:
+        results = runner.invoke(
+            cli,
+            [cmd, str(path), "duckdb"],
+        )
+        if results.exception:
+            raise ValueError(results.output)
+        assert results.exit_code == 0
+    for cmd in [
+        "unit",
+    ]:
+        results = runner.invoke(
+            cli,
+            [
+                cmd,
+                str(path),
+            ],
+        )
+        if results.exception:
+            raise ValueError(results.output)
+        assert results.exit_code == 0

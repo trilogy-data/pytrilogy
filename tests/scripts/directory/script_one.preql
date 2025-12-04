@@ -1,2 +1,3 @@
+import raw.inputs;
 
-select 1 as test;
+select 1 as test, creation_date;

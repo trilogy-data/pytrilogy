@@ -1,0 +1,3 @@
+import upstream.happy;
+
+select happy_reason, unnest([1,2,3]) as test;

@@ -77,7 +77,17 @@ class DatasourceColumnBindingData:
     actual_modifiers: List[Modifier]
 
     def format_failure(self):
-        return f"Concept {self.address} value '{self.value}' with type {self.value_type} and {self.value_modifiers} does not conform to expected type {str(self.actual_type)} with modifiers {self.actual_modifiers}"
+        value_mods = (
+            f"({', '.join(x.name for x in self.value_modifiers)})"
+            if self.value_modifiers
+            else ""
+        )
+        actual_mods = (
+            f"({', '.join(x.name for x in self.actual_modifiers)})"
+            if self.actual_modifiers
+            else ""
+        )
+        return f"Value '{self.value}' for concept {self.address} has inferred type {self.value_type}{value_mods} vs expected type {str(self.actual_type)}{actual_mods}"
 
     def is_modifier_issue(self) -> bool:
         return len(self.value_modifiers) > 0 and any(
@@ -96,7 +106,7 @@ class DatasourceColumnBindingError(DatasourceModelValidationError):
         message: str | None = None,
     ):
         if not message:
-            message = f"Datasource {address} failed validation. Found rows that do not conform to types: {[failure.format_failure() for failure in errors]}"
+            message = f"Datasource {address} failed validation. Data type mismatch: {[failure.format_failure() for failure in errors]}"
         super().__init__(message)
         self.errors = errors
         self.dataset_address = address

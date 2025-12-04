@@ -1,0 +1,8 @@
+import source_one;
+import source_two;
+
+
+select
+    x,
+    extra
+;

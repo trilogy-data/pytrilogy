@@ -1,0 +1,4 @@
+import upstream.unhappy;
+
+select 
+1 as test, failure_reason;
