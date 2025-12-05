@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 import networkx as nx
+import duckdb
 
 from trilogy import Executor
 from trilogy.scripts.dependency import (
@@ -276,6 +277,7 @@ def _execute_single(
     try:
         executor = executor_factory(node)
         execution_fn(executor, node)
+
         duration = (datetime.now() - start_time).total_seconds()
         if executor:
             executor.close()
@@ -293,12 +295,6 @@ def _execute_single(
             error=e,
             duration=duration,
         )
-    finally:
-        if executor:
-            try:
-                executor.close()
-            except Exception:
-                pass
 
 
 def _create_worker(

@@ -47,10 +47,12 @@ from trilogy.scripts.single_execution import (
     execute_queries_with_progress,
 )
 
+import numpy.core.multiarray
+
 set_rich_mode = set_rich_mode
 
 # Default parallelism level
-DEFAULT_PARALLELISM = 5
+DEFAULT_PARALLELISM = 2
 
 
 def resolve_input(path: PathlibPath) -> list[PathlibPath]:
@@ -497,10 +499,12 @@ def run_parallel_execution(
         execution_plan = parallel_exec.get_folder_execution_plan(pathlib_input)
     else:
         execution_plan = parallel_exec.get_execution_plan(files)
+    
     num_edges = execution_plan.number_of_edges()
+    num_nodes = execution_plan.number_of_nodes()
 
     show_parallel_execution_start(
-        len(files), num_edges, parallelism, execution_strategy
+        num_nodes, num_edges, parallelism, execution_strategy
     )
 
     # Factory to create executor for each script

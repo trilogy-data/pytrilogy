@@ -43,10 +43,11 @@ class BigQueryConfig(DialectConfig):
 class DuckDBConfig(DialectConfig):
     def __init__(self, path: str | None = None):
         self.path = path
+        self.guid = id(self)
 
     def connection_string(self) -> str:
         if not self.path:
-            return "duckdb:///:memory:"
+            return f"duckdb:///:memory:"
         return f"duckdb:///{self.path}"
 
 

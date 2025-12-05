@@ -90,7 +90,6 @@ class ETLDependencyStrategy:
         graph = nx.DiGraph()
         path_to_node = {}
         edges = result.get("edges", [])
-
         # Build the graph
         for node in nodes:
             normal_path = normalize_path_variants(node)
