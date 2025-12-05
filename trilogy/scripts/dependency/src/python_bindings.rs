@@ -207,8 +207,7 @@ impl PyImportResolver {
 
     /// Resolve dependencies for all files in a directory
     fn resolve_directory(&mut self, py: Python<'_>, dir_path: &str, _recursive: bool) -> PyResult<PyObject> {
-        use std::collections::{HashMap, HashSet};
-        use crate::parser::parse_file;
+        use crate::directory_resolver::{process_directory_with_imports, build_edges, EdgeReason};
         use std::fs;
 
         let dir = PathBuf::from(dir_path);
@@ -219,7 +218,7 @@ impl PyImportResolver {
         }
 
         // Collect all .preql files in the top-level directory
-        let mut files = Vec::new();
+        let mut initial_files = Vec::new();
         let read_dir = fs::read_dir(&dir)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to read directory: {}", e)))?;
 
@@ -227,144 +226,57 @@ impl PyImportResolver {
             let entry = entry.map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to read entry: {}", e)))?;
             let path = entry.path();
             if path.is_file() && path.extension().map_or(false, |ext| ext == "preql") {
-                files.push(path);
+                initial_files.push(path);
             }
         }
 
-        if files.is_empty() {
+        if initial_files.is_empty() {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 format!("No .preql files found in {}", dir_path)
             ));
         }
 
+        // Process directory with transitive import discovery
+        let graph = process_directory_with_imports(initial_files)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+
+        // Build edges
+        let edges = build_edges(&graph);
+
+        // Convert to Python objects
         let result = PyDict::new_bound(py);
         let edges_list = PyList::empty_bound(py);
         let files_list = PyList::empty_bound(py);
         let warnings_list = PyList::empty_bound(py);
 
-        let mut all_imports: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
-        let mut files_info: HashMap<PathBuf, (Vec<String>, Vec<String>)> = HashMap::new(); // (datasources, persists)
-        let mut files_to_process: Vec<PathBuf> = files.clone();
-        let mut processed_files: HashSet<PathBuf> = HashSet::new();
-
-        // Parse all files and collect info, discovering imported files as we go
-        while let Some(file) = files_to_process.pop() {
-            // Skip if already processed
-            let canonical = match fs::canonicalize(&file) {
-                Ok(c) => c,
-                Err(e) => {
-                    warnings_list.append(format!("Failed to canonicalize {}: {}", file.display(), e))?;
-                    continue;
-                }
-            };
-
-            if processed_files.contains(&canonical) {
-                continue;
-            }
-            processed_files.insert(canonical.clone());
-
-            files_list.append(canonical.to_string_lossy().to_string())?;
-
-            let content = match fs::read_to_string(&file) {
-                Ok(c) => c,
-                Err(e) => {
-                    warnings_list.append(format!("Failed to read {}: {}", file.display(), e))?;
-                    continue;
-                }
-            };
-
-            let parsed = match parse_file(&content) {
-                Ok(p) => p,
-                Err(e) => {
-                    warnings_list.append(format!("Failed to parse {}: {}", file.display(), e))?;
-                    continue;
-                }
-            };
-
-            let mut resolved_imports = Vec::new();
-            let file_dir = file.parent().unwrap_or(std::path::Path::new("."));
-
-            for import in &parsed.imports {
-                if import.is_stdlib {
-                    continue;
-                }
-                if let Some(resolved) = import.resolve(file_dir) {
-                    if resolved.exists() {
-                        if let Ok(resolved_canonical) = fs::canonicalize(&resolved) {
-                            resolved_imports.push(resolved_canonical.clone());
-                            // Add imported file to processing queue if not already processed
-                            if !processed_files.contains(&resolved_canonical) {
-                                files_to_process.push(resolved_canonical);
-                            }
-                        }
-                    }
-                }
-            }
-
-            let datasources: Vec<String> = parsed.datasources.iter().map(|d| d.name.clone()).collect();
-            let persists: Vec<String> = parsed.persists.iter().map(|p| p.target_datasource.clone()).collect();
-
-            all_imports.insert(canonical.clone(), resolved_imports);
-            files_info.insert(canonical, (datasources, persists));
+        // Add files
+        for file_info in graph.files.values() {
+            files_list.append(file_info.path.to_string_lossy().to_string())?;
         }
 
-        let known_files: HashSet<PathBuf> = files_info.keys().cloned().collect();
+        // Add edges
+        for edge in edges {
+            let edge_dict = PyDict::new_bound(py);
+            edge_dict.set_item("from", edge.from.to_string_lossy().to_string())?;
+            edge_dict.set_item("to", edge.to.to_string_lossy().to_string())?;
 
-        // Build edges based on ETL rules
-        // Rule 1: Import dependencies (imported files run before importing files)
-        for (file, imports) in &all_imports {
-            for resolved_path in imports {
-                if !known_files.contains(resolved_path) {
-                    continue;
+            let reason_dict = PyDict::new_bound(py);
+            match edge.reason {
+                EdgeReason::Import => {
+                    reason_dict.set_item("type", "import")?;
                 }
-
-                // Add import dependency edge
-                let edge_dict = PyDict::new_bound(py);
-                edge_dict.set_item("from", resolved_path.to_string_lossy().to_string())?;
-                edge_dict.set_item("to", file.to_string_lossy().to_string())?;
-
-                let reason_dict = PyDict::new_bound(py);
-                reason_dict.set_item("type", "import")?;
-                edge_dict.set_item("reason", reason_dict)?;
-
-                edges_list.append(edge_dict)?;
+                EdgeReason::PersistBeforeDeclare { datasource } => {
+                    reason_dict.set_item("type", "persist_before_declare")?;
+                    reason_dict.set_item("datasource", datasource)?;
+                }
             }
+            edge_dict.set_item("reason", reason_dict)?;
+            edges_list.append(edge_dict)?;
         }
 
-        // Rule 2: Persist-before-declare
-        // For each file that declares a datasource, check if any other file persists to it
-        for (declarer_path, (datasources, _)) in &files_info {
-            for ds_name in datasources {
-                // Find all files that persist to this datasource
-                for (updater_path, (_, persists)) in &files_info {
-                    if updater_path == declarer_path {
-                        continue; // Skip self
-                    }
-
-                    if persists.contains(ds_name) {
-                        // updater persists to a datasource that declarer declares
-                        // Check if updater imports declarer (if so, skip this edge per priority rules)
-                        let updater_imports_declarer = all_imports
-                            .get(updater_path)
-                            .map(|imports| imports.contains(declarer_path))
-                            .unwrap_or(false);
-
-                        if !updater_imports_declarer {
-                            // Add edge: updater -> declarer (updater must run before declarer)
-                            let edge_dict = PyDict::new_bound(py);
-                            edge_dict.set_item("from", updater_path.to_string_lossy().to_string())?;
-                            edge_dict.set_item("to", declarer_path.to_string_lossy().to_string())?;
-
-                            let reason_dict = PyDict::new_bound(py);
-                            reason_dict.set_item("type", "persist_before_declare")?;
-                            reason_dict.set_item("datasource", ds_name)?;
-                            edge_dict.set_item("reason", reason_dict)?;
-
-                            edges_list.append(edge_dict)?;
-                        }
-                    }
-                }
-            }
+        // Add warnings
+        for warning in graph.warnings {
+            warnings_list.append(warning)?;
         }
 
         result.set_item("directory", dir.to_string_lossy().to_string())?;
