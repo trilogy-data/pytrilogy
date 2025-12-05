@@ -121,8 +121,10 @@ pub struct ImportResolver {
     /// Cache of parsed files
     parsed_cache: HashMap<PathBuf, ParsedFile>,
     /// Track files currently being processed (for cycle detection)
+    #[allow(dead_code)]
     processing: HashSet<PathBuf>,
     /// Track fully processed files
+    #[allow(dead_code)]
     processed: HashSet<PathBuf>,
     /// Warnings accumulated during resolution
     warnings: Vec<String>,
@@ -296,7 +298,7 @@ impl ImportResolver {
     fn compute_datasource_dependencies(
         &self,
         files: &mut HashMap<PathBuf, FileNode>,
-        datasource_declarations: &HashMap<String, PathBuf>,
+        _datasource_declarations: &HashMap<String, PathBuf>,
     ) {
         // For each file, find all datasources reachable through imports
         let paths: Vec<PathBuf> = files.keys().cloned().collect();
@@ -336,11 +338,12 @@ impl ImportResolver {
     }
 
     /// Topological sort with datasource-aware dependency edges
-    /// 
+    ///
     /// The ordering rules are:
-    /// 1. Files that UPDATE a datasource (via persist) must run BEFORE files that DECLARE that datasource
-    /// 2. Files that DECLARE a datasource must run BEFORE files that IMPORT something containing that datasource
-    /// 3. Standard import dependencies (imported files run before importing files)
+    /// 1. Standard import dependencies (imported files run before importing files) - HIGHEST PRIORITY
+    /// 2. Files that UPDATE a datasource (via persist) must run BEFORE files that DECLARE that datasource
+    ///    BUT ONLY if the updater doesn't import the declarer (import takes precedence)
+    /// 3. Files that DECLARE a datasource must run BEFORE files that IMPORT something containing that datasource
     fn topological_sort_with_datasources(
         &self,
         files: &HashMap<PathBuf, FileNode>,
@@ -350,7 +353,7 @@ impl ImportResolver {
         // Build adjacency list with all dependency edges
         // Edge A -> B means A must be processed before B
         let mut edges: HashMap<PathBuf, HashSet<PathBuf>> = HashMap::new();
-        
+
         // Initialize
         for path in files.keys() {
             edges.insert(path.clone(), HashSet::new());
@@ -358,27 +361,36 @@ impl ImportResolver {
 
         // Add edges for each dependency type
         for (path, node) in files {
-            // Rule 3: Import dependencies - imported file must run before importing file
+            // Rule 1: Import dependencies - imported file must run before importing file (HIGHEST PRIORITY)
             for dep in &node.import_dependencies {
                 if files.contains_key(dep) {
                     edges.get_mut(dep).unwrap().insert(path.clone());
                 }
             }
 
-            // Rule 1: Files that UPDATE a datasource must run BEFORE files that DECLARE it
+            // Rule 2: Files that UPDATE a datasource must run BEFORE files that DECLARE it
+            // BUT ONLY if the updater doesn't import the declarer
             // If this file declares a datasource, all files that update it must run first
+            // (unless they import this file, in which case import dependency takes precedence)
             for ds_name in &node.declares_datasources {
                 if let Some(updaters) = datasource_updaters.get(ds_name) {
                     for updater_path in updaters {
                         if updater_path != path && files.contains_key(updater_path) {
-                            // updater must run before declarer
-                            edges.get_mut(updater_path).unwrap().insert(path.clone());
+                            // Check if updater imports this file (directly or transitively)
+                            let updater_node = files.get(updater_path).unwrap();
+                            let imports_declarer = updater_node.import_dependencies.contains(path);
+
+                            // Only add persist-before-declare edge if there's no import dependency
+                            if !imports_declarer {
+                                // updater must run before declarer
+                                edges.get_mut(updater_path).unwrap().insert(path.clone());
+                            }
                         }
                     }
                 }
             }
 
-            // Rule 2: Files that DECLARE a datasource must run BEFORE files that depend on it (through imports)
+            // Rule 3: Files that DECLARE a datasource must run BEFORE files that depend on it (through imports)
             // If this file depends on a datasource (through imports), the declaring file must run first
             for ds_name in &node.depends_on_datasources {
                 if let Some(declaring_path) = datasource_declarations.get(ds_name) {
@@ -576,7 +588,7 @@ mod tests {
 
         // Setup:
         // - base.preql: declares datasource "orders"
-        // - updater.preql: imports base, persists to "orders"
+        // - updater.preql: persists to "orders" (doesn't import base)
         // - consumer.preql: imports base (uses orders datasource)
         //
         // Expected order: updater -> base -> consumer
@@ -599,7 +611,6 @@ mod tests {
             root,
             "updater.preql",
             r#"
-            import base;
             persist orders where amount > 100;
         "#,
         );

@@ -17,7 +17,7 @@ from trilogy.dialect.enums import Dialects
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parsing.render import Renderer
 from trilogy.scripts.dependency import (
-    FolderDepthStrategy,
+    ETLDependencyStrategy,
     ScriptNode,
 )
 from trilogy.scripts.display import (
@@ -295,7 +295,8 @@ def execute_script_for_run(
     exec: Executor, node: ScriptNode, quiet: bool = False
 ) -> None:
     """Execute a script for the 'run' command (parallel execution mode)."""
-    queries = exec.parse_text(node.content)
+    with open(node.path, "r") as f:
+        queries = exec.parse_text(f.read())
     for query in queries:
         exec.execute_query(query)
 
@@ -304,7 +305,8 @@ def execute_script_for_integration(
     exec: Executor, node: ScriptNode, quiet: bool = False
 ) -> None:
     """Execute a script for the 'integration' command (parse + validate)."""
-    exec.parse_text(node.content)
+    with open(node.path, "r") as f:
+        exec.parse_text(f.read())
     validate_datasources(exec, mock=False, quiet=quiet)
 
 
@@ -312,7 +314,8 @@ def execute_script_for_unit(
     exec: Executor, node: ScriptNode, quiet: bool = False
 ) -> None:
     """Execute a script for the 'unit' command (parse + mock validate)."""
-    exec.parse_text(node.content)
+    with open(node.path, "r") as f:
+        exec.parse_text(f.read())
     validate_datasources(exec, mock=True, quiet=quiet)
 
 
@@ -485,12 +488,15 @@ def run_parallel_execution(
     # Set up parallel executor
     parallel_exec = ParallelExecutor(
         max_workers=parallelism,
-        dependency_strategy=FolderDepthStrategy(),
+        dependency_strategy=ETLDependencyStrategy(),
         execution_strategy=strategy,
     )
 
     # Get execution plan for display
-    execution_plan = parallel_exec.get_execution_plan(files)
+    if pathlib_input.is_dir():
+        execution_plan = parallel_exec.get_folder_execution_plan(pathlib_input)
+    else:
+        execution_plan = parallel_exec.get_execution_plan(files)
     num_edges = execution_plan.number_of_edges()
 
     show_parallel_execution_start(
@@ -507,7 +513,7 @@ def run_parallel_execution(
 
     # Run parallel execution
     summary = parallel_exec.execute(
-        files=files,
+        root = pathlib_input,
         executor_factory=executor_factory,
         execution_fn=quiet_execution_fn,
         on_script_complete=show_script_result,

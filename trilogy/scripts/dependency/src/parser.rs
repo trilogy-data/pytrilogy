@@ -352,8 +352,8 @@ mod tests {
     fn test_datasource_with_grain() {
         let content = r#"
             datasource customers (
-                id: key customer_id,
-                name: property customer_name
+                id: customer_id,
+                name: customer_name
             )
             grain (customer_id)
             address `my_db.customers`;

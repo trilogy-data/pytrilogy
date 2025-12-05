@@ -31,22 +31,22 @@ OnCompleteCallback = Any  # Callable[[ExecutionResult], None] | None
 
 @pytest.fixture
 def node_a() -> ScriptNode:
-    return ScriptNode(path=Path("/scripts/a.sql"), content="SELECT 1;")
+    return ScriptNode(path=Path("/scripts/a.sql"))
 
 
 @pytest.fixture
 def node_b() -> ScriptNode:
-    return ScriptNode(path=Path("/scripts/b.sql"), content="SELECT 2;")
+    return ScriptNode(path=Path("/scripts/b.sql"))
 
 
 @pytest.fixture
 def node_c() -> ScriptNode:
-    return ScriptNode(path=Path("/scripts/c.sql"), content="SELECT 3;")
+    return ScriptNode(path=Path("/scripts/c.sql"))
 
 
 @pytest.fixture
 def node_d() -> ScriptNode:
-    return ScriptNode(path=Path("/scripts/d.sql"), content="SELECT 4;")
+    return ScriptNode(path=Path("/scripts/d.sql"))
 
 
 @pytest.fixture

@@ -14,6 +14,7 @@ from typing import Optional
 
 # Use non-interactive backend to avoid Tk dependency
 import matplotlib
+
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
@@ -200,11 +201,11 @@ class DependencyGraph:
         for edge in self.edges:
             by_reason.setdefault(edge.reason_type, []).append(edge)
 
-        print(f"\n--- Edge reasons ---")
+        print("\n--- Edge reasons ---")
         for reason, edges in sorted(by_reason.items()):
             print(f"  {reason}: {len(edges)} edges")
 
-        print(f"\n--- Sample edges ---")
+        print("\n--- Sample edges ---")
         for edge in self.edges[:10]:
             from_name = Path(edge.from_path).stem
             to_name = Path(edge.to_path).stem
@@ -215,7 +216,7 @@ class DependencyGraph:
             print(f"  ... and {len(self.edges) - 10} more edges")
 
         if self.warnings:
-            print(f"\n--- Warnings ---")
+            print("\n--- Warnings ---")
             for warning in self.warnings:
                 print(f"  ⚠ {warning}")
 

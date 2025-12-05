@@ -5,6 +5,10 @@ edition = "2021"
 description = "A CLI tool to parse PreQL files and resolve import dependencies"
 license = "MIT"
 
+[lib]
+name = "preql_import_resolver"
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 # Parser generator
 pest = "2.7"
@@ -22,6 +26,12 @@ thiserror = "1.0"
 
 # Path manipulation
 pathdiff = "0.2"
+
+# Python bindings
+pyo3 = { version = "0.22", features = ["extension-module"] }
+
+[dev-dependencies]
+tempfile = "3.0"
 
 [profile.release]
 opt-level = 3

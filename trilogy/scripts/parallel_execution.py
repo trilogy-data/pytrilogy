@@ -354,6 +354,7 @@ def _create_worker(
 
                 node = _get_next_ready(ready)
                 if node is None:
+                    raise SyntaxError("Ready queue was empty despite work being available")
                     continue
 
                 in_progress.add(node)
@@ -362,9 +363,7 @@ def _create_worker(
             if node is not None:
                 if on_script_start:
                     on_script_start(node)
-
                 result = _execute_single(node, executor_factory, execution_fn)
-
                 with lock:
                     results.append(result)
 
@@ -399,7 +398,6 @@ class EagerBFSStrategy:
     def execute(
         self,
         graph: nx.DiGraph,
-        resolver: DependencyResolver,
         max_workers: int,
         executor_factory: Callable[[ScriptNode], Any],
         execution_fn: Callable[[Any, ScriptNode], None],
@@ -493,7 +491,7 @@ class ParallelExecutor:
 
     def execute(
         self,
-        files: list[Path],
+        root: Path,
         executor_factory: Callable[[ScriptNode], Any],
         execution_fn: Callable[[Any, ScriptNode], None],
         on_script_start: Callable[[ScriptNode], None] | None = None,
@@ -515,25 +513,17 @@ class ParallelExecutor:
         """
         start_time = datetime.now()
 
-        # Create script nodes
-        nodes = create_script_nodes(files)
-
-        if not nodes:
-            return ParallelExecutionSummary(
-                total_scripts=0,
-                successful=0,
-                failed=0,
-                total_duration=0.0,
-                results=[],
-            )
 
         # Build dependency graph
-        graph = self.resolver.build_graph(nodes)
+        if root.is_dir():
+            graph = self.resolver.build_folder_graph(root)
+            nodes = list(graph.nodes())
+        else:
+            graph = self.resolver.build_graph([ScriptNode(path=root)])
 
         # Execute using the configured strategy
         results = self.execution_strategy.execute(
             graph=graph,
-            resolver=self.resolver,
             max_workers=self.max_workers,
             executor_factory=executor_factory,
             execution_fn=execution_fn,
@@ -551,6 +541,20 @@ class ParallelExecutor:
             total_duration=total_duration,
             results=results,
         )
+    
+    def get_folder_execution_plan(self, folder: Path) -> nx.DiGraph:
+        """
+        Get the execution plan (dependency graph) for all scripts in a folder.
+
+        Useful for debugging or visualization.
+
+        Args:
+            folder: Path to the folder containing script files.
+
+        Returns:
+            The dependency graph that would be used for execution.
+        """
+        return self.resolver.build_folder_graph(folder)
 
     def get_execution_plan(self, files: list[Path]) -> nx.DiGraph:
         """

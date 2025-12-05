@@ -1,0 +1,9 @@
+key order_id int;
+property order_id.amount float;
+
+datasource orders (
+    order_id,
+    amount
+)
+grain (order_id)
+address db.orders;
