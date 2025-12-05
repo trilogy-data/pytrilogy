@@ -8,9 +8,16 @@ work with the structured JSON output.
 
 import json
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
+# Use non-interactive backend to avoid Tk dependency
+import matplotlib
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt
+import networkx as nx
 
 
 @dataclass
@@ -25,13 +32,13 @@ class ImportInfo:
 
 
 @dataclass
-class FileNode:
-    """Information about a parsed file and its dependencies."""
+class Edge:
+    """An edge in the dependency graph."""
 
-    path: Path
-    relative_path: Path
-    imports: list[ImportInfo]
-    dependencies: list[Path]
+    from_path: str
+    to_path: str
+    reason_type: str
+    reason_detail: Optional[str] = None
 
 
 @dataclass
@@ -39,9 +46,180 @@ class DependencyGraph:
     """Complete dependency graph with resolution order."""
 
     root: Path
-    order: list[Path]
-    files: dict[Path, FileNode]
-    warnings: list[str]
+    files: list[str]
+    edges: list[Edge]
+    warnings: list[str] = field(default_factory=list)
+
+    def visualize(self, output_path: Optional[str] = None, max_label_length: int = 15):
+        """
+        Visualize the dependency graph as a DAG.
+
+        Args:
+            output_path: If provided, save the figure to this path. Otherwise, display it.
+            max_label_length: Maximum characters for node labels before truncating.
+        """
+        G = nx.DiGraph()
+
+        # Add all nodes
+        for file_path in self.files:
+            G.add_node(file_path)
+
+        # Add edges: 'from' depends on 'to', so arrow goes from -> to
+        # (the dependency must be processed before the dependent)
+        for edge in self.edges:
+            G.add_edge(edge.from_path, edge.to_path)
+
+        if len(G.nodes()) == 0:
+            print("No nodes to visualize.")
+            return
+
+        # Create figure with appropriate size
+        node_count = len(G.nodes())
+        fig_width = max(14, min(24, node_count * 0.6))
+        fig_height = max(10, min(18, node_count * 0.4))
+        fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+
+        # Use hierarchical layout for DAG
+        try:
+            # Attempt topological generations for layered layout
+            generations = list(nx.topological_generations(G))
+            pos = {}
+            max_width = max(len(gen) for gen in generations) if generations else 1
+            for gen_idx, generation in enumerate(generations):
+                y = -gen_idx * 1.5  # Negative to put root at top
+                width = len(generation)
+                for node_idx, node in enumerate(sorted(generation)):
+                    # Center each generation
+                    x = (node_idx - (width - 1) / 2) * (max_width / max(width, 1)) * 1.5
+                    pos[node] = (x, y)
+        except nx.NetworkXUnfeasible:
+            # Graph has cycles, use spring layout
+            pos = nx.spring_layout(G, k=3, iterations=50, seed=42)
+
+        # Create shortened labels for readability
+        def shorten_label(path_str: str) -> str:
+            """Shorten path to just filename stem, truncate if needed."""
+            # Handle Windows extended path prefix
+            clean_path = path_str.replace("\\\\?\\", "").replace("\\?\\", "")
+            name = Path(clean_path).stem
+            if len(name) > max_label_length:
+                return name[: max_label_length - 2] + ".."
+            return name
+
+        labels = {node: shorten_label(node) for node in G.nodes()}
+
+        # Color nodes: root is highlighted, identify by checking in-degree
+        # Nodes with no incoming edges are roots/entry points
+        root_nodes = [n for n in G.nodes() if G.in_degree(n) == 0]
+        leaf_nodes = [n for n in G.nodes() if G.out_degree(n) == 0]
+
+        def get_node_color(node):
+            if node in root_nodes:
+                return "#FF6B6B"  # Red for roots
+            elif node in leaf_nodes:
+                return "#95E879"  # Green for leaves
+            else:
+                return "#4ECDC4"  # Teal for intermediate
+
+        node_colors = [get_node_color(n) for n in G.nodes()]
+
+        # Draw the graph
+        nx.draw_networkx_nodes(
+            G,
+            pos,
+            ax=ax,
+            node_color=node_colors,
+            node_size=1800,
+            alpha=0.9,
+        )
+
+        nx.draw_networkx_edges(
+            G,
+            pos,
+            ax=ax,
+            edge_color="#888888",
+            arrows=True,
+            arrowsize=15,
+            arrowstyle="-|>",
+            connectionstyle="arc3,rad=0.05",
+            alpha=0.6,
+            min_source_margin=20,
+            min_target_margin=20,
+        )
+
+        nx.draw_networkx_labels(
+            G,
+            pos,
+            labels,
+            ax=ax,
+            font_size=7,
+            font_weight="bold",
+        )
+
+        # Add title
+        root_name = shorten_label(str(self.root))
+        ax.set_title(
+            f"Dependency Graph: {root_name}\n({len(self.files)} files, {len(self.edges)} edges)",
+            fontsize=12,
+            fontweight="bold",
+            pad=20,
+        )
+
+        # Create legend
+        from matplotlib.patches import Patch
+
+        legend_elements = [
+            Patch(facecolor="#FF6B6B", label="Entry points (no deps)"),
+            Patch(facecolor="#4ECDC4", label="Intermediate"),
+            Patch(facecolor="#95E879", label="Leaf files (no dependents)"),
+        ]
+        ax.legend(handles=legend_elements, loc="upper left", fontsize=9)
+
+        ax.axis("off")
+        plt.tight_layout()
+
+        if output_path:
+            plt.savefig(output_path, dpi=150, bbox_inches="tight", facecolor="white")
+            print(f"Graph saved to: {output_path}")
+        else:
+            plt.show()
+
+        plt.close()
+
+    def print_summary(self):
+        """Print a text summary of the dependency graph."""
+        print(f"\n{'=' * 60}")
+        print("Dependency Graph Summary")
+        print(f"{'=' * 60}")
+        print(f"Root: {self.root}")
+        print(f"Total files: {len(self.files)}")
+        print(f"Total edges: {len(self.edges)}")
+
+        # Group edges by reason type
+        by_reason: dict[str, list[Edge]] = {}
+        for edge in self.edges:
+            by_reason.setdefault(edge.reason_type, []).append(edge)
+
+        print(f"\n--- Edge reasons ---")
+        for reason, edges in sorted(by_reason.items()):
+            print(f"  {reason}: {len(edges)} edges")
+
+        print(f"\n--- Sample edges ---")
+        for edge in self.edges[:10]:
+            from_name = Path(edge.from_path).stem
+            to_name = Path(edge.to_path).stem
+            detail = f" ({edge.reason_detail})" if edge.reason_detail else ""
+            print(f"  {from_name} → {to_name} [{edge.reason_type}{detail}]")
+
+        if len(self.edges) > 10:
+            print(f"  ... and {len(self.edges) - 10} more edges")
+
+        if self.warnings:
+            print(f"\n--- Warnings ---")
+            for warning in self.warnings:
+                print(f"  ⚠ {warning}")
+
+        print(f"{'=' * 60}\n")
 
 
 class PreqlImportResolver:
@@ -73,6 +251,7 @@ class PreqlImportResolver:
 
     def _run(self, *args: str) -> dict:
         """Run the CLI and return parsed JSON output."""
+        print(f"Running command: {self.binary_path} {' '.join(args)}")
         cmd = [self.binary_path, *args, "--format", "json"]
 
         result = subprocess.run(
@@ -125,33 +304,33 @@ class PreqlImportResolver:
         """
         data = self._run("resolve", str(root_file))
 
-        files = {}
-        for path_str, node_data in data["files"].items():
-            path = Path(path_str)
-            files[path] = FileNode(
-                path=path,
-                relative_path=Path(node_data["relative_path"]),
-                imports=[
-                    ImportInfo(
-                        raw_path=imp["raw_path"],
-                        alias=imp.get("alias"),
-                        is_stdlib=imp["is_stdlib"],
-                        parent_dirs=imp.get("parent_dirs", 0),
-                        resolved_path=(
-                            Path(imp["resolved_path"])
-                            if imp.get("resolved_path")
-                            else None
-                        ),
-                    )
-                    for imp in node_data["imports"]
-                ],
-                dependencies=[Path(d) for d in node_data["dependencies"]],
+        # Files is just a list of path strings
+        files = data.get("files", [])
+        for x in files:
+            print(f"File: {x}")
+
+        # Parse edges
+        edges = []
+        for edge_data in data.get("edges", []):
+            print(edge_data)
+            reason = edge_data.get("reason", {})
+            reason_type = reason.get("type", "unknown")
+            # Extract detail (e.g., datasource name)
+            reason_detail = reason.get("datasource") or reason.get("concept")
+
+            edges.append(
+                Edge(
+                    from_path=edge_data["from"],
+                    to_path=edge_data["to"],
+                    reason_type=reason_type,
+                    reason_detail=reason_detail,
+                )
             )
 
         return DependencyGraph(
-            root=Path(data["root"]),
-            order=[Path(p) for p in data["order"]],
+            root=Path(root_file),
             files=files,
+            edges=edges,
             warnings=data.get("warnings", []),
         )
 
@@ -173,128 +352,28 @@ class PreqlImportResolver:
 
 
 def main():
-    """Example usage demonstrating the Python integration."""
-    import tempfile
-
-    # Create a temporary directory with test files
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Create test PreQL files
-        models_dir = Path(tmpdir) / "models"
-        models_dir.mkdir()
-
-        # shared/utils.preql - no dependencies
-        shared_dir = Path(tmpdir) / "shared"
-        shared_dir.mkdir()
-        (shared_dir / "utils.preql").write_text(
-            """
-// Utility functions - no imports
-const MAX_LENGTH <- 100;
-        """
+    # Use the resolver
+    # Note: This assumes the binary is built and in PATH or current directory
+    binary = Path(__file__).parent / "target/release/preql-import-resolver.exe"
+    print(str(binary))
+    if not binary.exists():
+        raise ValueError(
+            "preql-import-resolver binary not found. Please build it first."
         )
 
-        # models/base.preql - depends on shared/utils
-        (models_dir / "base.preql").write_text(
-            """
-import ..shared.utils;
-// Base model definitions
-        """
-        )
+    resolver = PreqlImportResolver(str(binary))
 
-        # models/customer.preql - depends on base
-        (models_dir / "customer.preql").write_text(
-            """
-import base;
-import std.aggregates;  // stdlib - will be skipped
-// Customer model
-key customer_id int;
-        """
-        )
+    # Example: Get full dependency graph
+    print("\n=== Full dependency graph ===")
+    graph = resolver.resolve_dependencies(
+        "C:\\Users\\ethan\\coding_projects\\pytrilogy\\tests\\modeling\\tpc_ds_duckdb"
+    )
 
-        # main.preql - depends on customer
-        main_file = Path(tmpdir) / "main.preql"
-        main_file.write_text(
-            """
-import models.customer as cust;
-// Main entry point
-select customer_id;
-        """
-        )
+    # Print text summary
+    graph.print_summary()
 
-        # Use the resolver
-        # Note: This assumes the binary is built and in PATH or current directory
-        binary = "./target/release/preql-import-resolver"
-        if not Path(binary).exists():
-            binary = "./target/debug/preql-import-resolver"
-        if not Path(binary).exists():
-            print("Binary not found. Build with: cargo build --release")
-            print("\nShowing what the output would look like:\n")
-
-            # Simulate output for demonstration
-            print("=== Parsing single file ===")
-            print(
-                json.dumps(
-                    {
-                        "file": str(main_file),
-                        "imports": [
-                            {
-                                "raw_path": "models.customer",
-                                "alias": "cust",
-                                "is_stdlib": False,
-                                "parent_dirs": 0,
-                            }
-                        ],
-                    },
-                    indent=2,
-                )
-            )
-
-            print("\n=== Dependency order ===")
-            print(
-                json.dumps(
-                    [
-                        str(shared_dir / "utils.preql"),
-                        str(models_dir / "base.preql"),
-                        str(models_dir / "customer.preql"),
-                        str(main_file),
-                    ],
-                    indent=2,
-                )
-            )
-            return
-
-        resolver = PreqlImportResolver(binary)
-
-        # Example 1: Parse a single file
-        print("=== Parsing single file ===")
-        imports = resolver.parse_file(main_file)
-        for imp in imports:
-            print(f"  - {imp.raw_path}" + (f" as {imp.alias}" if imp.alias else ""))
-            if imp.is_stdlib:
-                print("    (stdlib - skipped)")
-
-        # Example 2: Get full dependency graph
-        print("\n=== Full dependency graph ===")
-        graph = resolver.resolve_dependencies(main_file)
-        print(f"Root: {graph.root}")
-        print(f"Total files: {len(graph.files)}")
-
-        if graph.warnings:
-            print("Warnings:")
-            for w in graph.warnings:
-                print(f"  - {w}")
-
-        # Example 3: Get just the dependency order
-        print("\n=== Dependency order ===")
-        order = resolver.get_dependency_order(main_file)
-        for i, path in enumerate(order, 1):
-            print(f"  {i}. {path.name}")
-
-        # Example 4: Process files in dependency order
-        print("\n=== Processing files in order ===")
-        for path in order:
-            # In a real application, you would process each file here
-            # knowing that all its dependencies have been processed
-            print(f"  Processing: {path.name}")
+    # Visualize as a DAG
+    graph.visualize(output_path="dependency_graph.png")
 
 
 if __name__ == "__main__":

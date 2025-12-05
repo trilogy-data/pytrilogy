@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(\"C:\\Users\\ethan\\coding_projects\\pytrilogy\\trilogy\\scripts\\dependency\\target\\release\\preql-import-resolver.exe\" parse \"C:\\Users\\ethan\\coding_projects\\pytrilogy\\tests\\modeling\\tpc_ds_duckdb\\store_returns.preql\" --format pretty)",
+      "Bash(\"C:\\Users\\ethan\\coding_projects\\pytrilogy\\trilogy\\scripts\\dependency\\target\\release\\preql-import-resolver.exe\" parse \"C:\\Users\\ethan\\coding_projects\\pytrilogy\\tests\\modeling\\tpc_ds_duckdb\\query01.preql\" --format pretty)",
+      "Bash(./target/release/preql-import-resolver.exe parse:*)",
+      "Bash(del:*)",
+      "Bash(\"C:\\Users\\ethan\\coding_projects\\pytrilogy\\trilogy\\scripts\\dependency\\target\\release\\preql-import-resolver.exe\" parse \"C:\\Users\\ethan\\coding_projects\\pytrilogy\\tests\\modeling\\tpc_ds_duckdb\\store_returns.preql\" --format json)",
+      "Bash(cargo build:*)",
+      "Bash(cargo test:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

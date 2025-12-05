@@ -57,7 +57,7 @@ column_assignment = {
 
 raw_column_assignment = { ^"raw" ~ "(" ~ multiline_string ~ ")" }
 
-concept_assignment = { shorthand_modifier* ~ identifier }
+concept_assignment = { shorthand_modifier* ~ dotted_identifier }
 
 shorthand_modifier = { "~" | "?" }
 

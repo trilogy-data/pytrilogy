@@ -597,28 +597,22 @@ fn handle_resolve_directory(
     #[derive(Serialize, Clone)]
     #[serde(tag = "type")]
     enum EdgeReason {
-        #[serde(rename = "import")]
-        Import { import_path: String },
-        #[serde(rename = "persist_before_declare")]
-        PersistBeforeDeclare { datasource: String },
         #[serde(rename = "declare_before_use")]
         DeclareBeforeUse { datasource: String },
+        #[serde(rename = "persist_before_declare")]
+        PersistBeforeDeclare { datasource: String },
     }
 
     #[derive(Serialize)]
     struct GraphOutput {
         directory: PathBuf,
-        files: HashMap<PathBuf, FileInfo>,
+        files: Vec<PathBuf>,
         edges: Vec<Edge>,
-        datasource_declarations: HashMap<String, PathBuf>,
-        datasource_updaters: HashMap<String, Vec<PathBuf>>,
         warnings: Vec<String>,
     }
 
     let mut files_info: HashMap<PathBuf, FileInfo> = HashMap::new();
-    let mut all_imports: HashMap<PathBuf, Vec<(PathBuf, String)>> = HashMap::new(); // (resolved_path, raw_import)
-    let mut datasource_declarations: HashMap<String, PathBuf> = HashMap::new();
-    let mut datasource_updaters: HashMap<String, Vec<PathBuf>> = HashMap::new();
+    let mut all_imports: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
     let mut warnings: Vec<String> = Vec::new();
     let mut edges: Vec<Edge> = Vec::new();
 
@@ -635,20 +629,18 @@ fn handle_resolve_directory(
         let content = std::fs::read_to_string(file)?;
         match parse_file(&content) {
             Ok(parsed) => {
-                let mut import_names: Vec<String> = Vec::new();
-                let mut resolved_imports: Vec<(PathBuf, String)> = Vec::new();
+                let mut resolved_imports: Vec<PathBuf> = Vec::new();
 
                 // Resolve imports
                 let file_dir = file.parent().unwrap_or(std::path::Path::new("."));
                 for import in &parsed.imports {
-                    import_names.push(import.raw_path.clone());
                     if import.is_stdlib {
                         continue;
                     }
                     if let Some(resolved) = import.resolve(file_dir) {
                         if resolved.exists() {
                             if let Ok(resolved_canonical) = std::fs::canonicalize(&resolved) {
-                                resolved_imports.push((resolved_canonical, import.raw_path.clone()));
+                                resolved_imports.push(resolved_canonical);
                             }
                         } else {
                             warnings.push(format!(
@@ -661,41 +653,39 @@ fn handle_resolve_directory(
                     }
                 }
 
-                // Track datasource declarations
-                let datasource_names: Vec<String> = parsed.datasources.iter().map(|d| d.name.clone()).collect();
-                for ds in &parsed.datasources {
-                    if let Some(existing) = datasource_declarations.get(&ds.name) {
-                        warnings.push(format!(
-                            "Datasource '{}' declared in multiple files: {} and {}",
-                            ds.name,
-                            existing.display(),
-                            file.display()
-                        ));
-                    } else {
-                        datasource_declarations.insert(ds.name.clone(), canonical.clone());
-                    }
-                }
+                // Collect datasource names
+                let datasource_names: Vec<String> = parsed
+                    .datasources
+                    .iter()
+                    .map(|d| d.name.clone())
+                    .collect();
 
-                // Track persist statements
-                let persist_infos: Vec<PersistInfo> = parsed.persists.iter().map(|p| PersistInfo {
-                    mode: p.mode.to_string(),
-                    target: p.target_datasource.clone(),
-                }).collect();
+                // Collect persist info
+                let persist_infos: Vec<PersistInfo> = parsed
+                    .persists
+                    .iter()
+                    .map(|p| PersistInfo {
+                        mode: p.mode.to_string(),
+                        target: p.target_datasource.clone(),
+                    })
+                    .collect();
 
-                for persist in &parsed.persists {
-                    datasource_updaters
-                        .entry(persist.target_datasource.clone())
-                        .or_default()
-                        .push(canonical.clone());
-                }
+                let import_names: Vec<String> = parsed
+                    .imports
+                    .iter()
+                    .map(|i| i.raw_path.clone())
+                    .collect();
 
                 all_imports.insert(canonical.clone(), resolved_imports);
-                files_info.insert(canonical.clone(), FileInfo {
-                    path: canonical,
-                    imports: import_names,
-                    datasources: datasource_names,
-                    persists: persist_infos,
-                });
+                files_info.insert(
+                    canonical.clone(),
+                    FileInfo {
+                        path: canonical,
+                        imports: import_names,
+                        datasources: datasource_names,
+                        persists: persist_infos,
+                    },
+                );
             }
             Err(e) => {
                 warnings.push(format!("Failed to parse {}: {}", file.display(), e));
@@ -705,77 +695,43 @@ fn handle_resolve_directory(
 
     let known_files: HashSet<PathBuf> = files_info.keys().cloned().collect();
 
-    // Compute transitive datasource dependencies (which datasources does each file depend on through imports)
-    let mut depends_on_datasources: HashMap<PathBuf, HashSet<String>> = HashMap::new();
-    for file in files_info.keys() {
-        let mut reachable: HashSet<String> = HashSet::new();
-        let mut visited: HashSet<PathBuf> = HashSet::new();
-        let mut stack: Vec<PathBuf> = vec![file.clone()];
+    // Build edges based on direct imports only
+    for (file, imports) in &all_imports {
+        // Get datasources that this file persists to
+        let persisted_datasources: HashSet<String> = files_info
+            .get(file)
+            .map(|info| info.persists.iter().map(|p| p.target.clone()).collect())
+            .unwrap_or_default();
 
-        while let Some(current) = stack.pop() {
-            if visited.contains(&current) {
+        for resolved_path in imports {
+            if !known_files.contains(resolved_path) {
                 continue;
             }
-            visited.insert(current.clone());
 
-            // Add datasources from imported files (not from the starting file itself)
-            if current != *file {
-                if let Some(info) = files_info.get(&current) {
-                    for ds in &info.datasources {
-                        reachable.insert(ds.clone());
-                    }
-                }
-            }
+            // Get datasources declared in the imported file
+            let imported_datasources: Vec<String> = files_info
+                .get(resolved_path)
+                .map(|info| info.datasources.clone())
+                .unwrap_or_default();
 
-            if let Some(imports) = all_imports.get(&current) {
-                for (dep, _) in imports {
-                    if !visited.contains(dep) {
-                        stack.push(dep.clone());
-                    }
-                }
-            }
-        }
-        depends_on_datasources.insert(file.clone(), reachable);
-    }
-
-    // Build edges
-    for (file, imports) in &all_imports {
-        // Edge type 1: Import dependencies (from imported file -> to importing file)
-        for (resolved_path, raw_import) in imports {
-            if known_files.contains(resolved_path) {
-                edges.push(Edge {
-                    from: resolved_path.clone(),
-                    to: file.clone(),
-                    reason: EdgeReason::Import { import_path: raw_import.clone() },
-                });
-            }
-        }
-    }
-
-    // Edge type 2: Persist -> Declare (updater must run before declarer)
-    for (ds_name, declaring_file) in &datasource_declarations {
-        if let Some(updaters) = datasource_updaters.get(ds_name) {
-            for updater in updaters {
-                if updater != declaring_file && known_files.contains(updater) {
+            for ds_name in imported_datasources {
+                if persisted_datasources.contains(&ds_name) {
+                    // Case 2: file imports then updates datasource
+                    // -> file must run before imported file (to update before re-declare)
                     edges.push(Edge {
-                        from: updater.clone(),
-                        to: declaring_file.clone(),
-                        reason: EdgeReason::PersistBeforeDeclare { datasource: ds_name.clone() },
+                        from: file.clone(),
+                        to: resolved_path.clone(),
+                        reason: EdgeReason::PersistBeforeDeclare {
+                            datasource: ds_name,
+                        },
                     });
-                }
-            }
-        }
-    }
-
-    // Edge type 3: Declare -> Use (declarer must run before files that depend on that datasource)
-    for (file, deps) in &depends_on_datasources {
-        for ds_name in deps {
-            if let Some(declaring_file) = datasource_declarations.get(ds_name) {
-                if declaring_file != file && known_files.contains(declaring_file) {
+                } else {
+                    // Case 1: file imports datasource (read-only)
+                    // -> imported file must run before this file
                     edges.push(Edge {
-                        from: declaring_file.clone(),
+                        from: resolved_path.clone(),
                         to: file.clone(),
-                        reason: EdgeReason::DeclareBeforeUse { datasource: ds_name.clone() },
+                        reason: EdgeReason::DeclareBeforeUse { datasource: ds_name },
                     });
                 }
             }
@@ -783,13 +739,14 @@ fn handle_resolve_directory(
     }
 
     // Deduplicate edges (same from/to/reason type)
-    edges.sort_by(|a, b| {
-        (&a.from, &a.to).cmp(&(&b.from, &b.to))
+    edges.sort_by(|a, b| (&a.from, &a.to).cmp(&(&b.from, &b.to)));
+    edges.dedup_by(|a, b| {
+        a.from == b.from
+            && a.to == b.to
+            && std::mem::discriminant(&a.reason) == std::mem::discriminant(&b.reason)
     });
-    edges.dedup_by(|a, b| a.from == b.from && a.to == b.to && std::mem::discriminant(&a.reason) == std::mem::discriminant(&b.reason));
 
     if order_only {
-        // Still provide a simple list of files for backward compatibility
         let file_list: Vec<&PathBuf> = files_info.keys().collect();
         match format {
             OutputFormat::Json => println!("{}", serde_json::to_string(&file_list)?),
@@ -798,10 +755,8 @@ fn handle_resolve_directory(
     } else {
         let output = GraphOutput {
             directory: dir.clone(),
-            files: files_info,
+            files: files_info.keys().cloned().collect(),
             edges,
-            datasource_declarations,
-            datasource_updaters,
             warnings,
         };
 

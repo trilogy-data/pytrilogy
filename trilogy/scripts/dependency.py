@@ -50,6 +50,8 @@ class DependencyStrategy(Protocol):
         """
         ...
 
+class ETLDependencyStrategy:
+    # TODO implement PyO3 calls to the rust library to determine dependencies based on ETL logic
 
 class FolderDepthStrategy:
     """

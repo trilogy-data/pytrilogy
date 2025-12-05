@@ -47,7 +47,10 @@ duckdb_temp_*
 
 debug*.log
 
-
 .env.secrets
 
 trilogy/scripts/dependency/target
+
+dependency_graph.png
+
+CLAUDE.md
