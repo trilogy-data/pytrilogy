@@ -218,7 +218,7 @@ impl PyImportResolver {
             ));
         }
 
-        // Collect all .preql files
+        // Collect all .preql files in the top-level directory
         let mut files = Vec::new();
         let read_dir = fs::read_dir(&dir)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("Failed to read directory: {}", e)))?;
@@ -244,10 +244,13 @@ impl PyImportResolver {
 
         let mut all_imports: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
         let mut files_info: HashMap<PathBuf, (Vec<String>, Vec<String>)> = HashMap::new(); // (datasources, persists)
+        let mut files_to_process: Vec<PathBuf> = files.clone();
+        let mut processed_files: HashSet<PathBuf> = HashSet::new();
 
-        // Parse all files and collect info
-        for file in &files {
-            let canonical = match fs::canonicalize(file) {
+        // Parse all files and collect info, discovering imported files as we go
+        while let Some(file) = files_to_process.pop() {
+            // Skip if already processed
+            let canonical = match fs::canonicalize(&file) {
                 Ok(c) => c,
                 Err(e) => {
                     warnings_list.append(format!("Failed to canonicalize {}: {}", file.display(), e))?;
@@ -255,9 +258,14 @@ impl PyImportResolver {
                 }
             };
 
+            if processed_files.contains(&canonical) {
+                continue;
+            }
+            processed_files.insert(canonical.clone());
+
             files_list.append(canonical.to_string_lossy().to_string())?;
 
-            let content = match fs::read_to_string(file) {
+            let content = match fs::read_to_string(&file) {
                 Ok(c) => c,
                 Err(e) => {
                     warnings_list.append(format!("Failed to read {}: {}", file.display(), e))?;
@@ -283,7 +291,11 @@ impl PyImportResolver {
                 if let Some(resolved) = import.resolve(file_dir) {
                     if resolved.exists() {
                         if let Ok(resolved_canonical) = fs::canonicalize(&resolved) {
-                            resolved_imports.push(resolved_canonical);
+                            resolved_imports.push(resolved_canonical.clone());
+                            // Add imported file to processing queue if not already processed
+                            if !processed_files.contains(&resolved_canonical) {
+                                files_to_process.push(resolved_canonical);
+                            }
                         }
                     }
                 }
