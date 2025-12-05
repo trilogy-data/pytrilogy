@@ -46,5 +46,14 @@ packages = {find = {exclude = ["dist", "build", "*.tests", "*.tests.*", "tests.*
 "*" = ["*.tf", "*.jinja", "py.typed", "*.lark", "*.preql"]
 
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+python-source = "."
+module-name = "_preql_import_resolver"
+manifest-path = "trilogy/scripts/dependency/Cargo.toml"
+features = ["pyo3/extension-module"]
+python-packages = ["trilogy", "_preql_import_resolver"]
+include = ["trilogy/**/*.preql", "trilogy/**/*.lark", "trilogy/**/*.jinja", "trilogy/**/*.tf", "trilogy/py.typed"]
+compatibility = "linux"

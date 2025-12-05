@@ -54,3 +54,4 @@ trilogy/scripts/dependency/target
 dependency_graph.png
 
 .claude
+*.pyd
