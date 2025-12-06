@@ -44,6 +44,7 @@ jobs:
 
         # Get PyPI version and check wheel availability
         SHOULD_PUBLISH=$(python -c "
+        import sys
         import requests
         from packaging import version
 
@@ -53,13 +54,13 @@ jobs:
         try:
           response = requests.get('https://pypi.org/pypi/pytrilogy/json', timeout=10)
           if response.status_code != 200:
-            print('true')  # Package doesn't exist, publish
+            print('true')
             exit(0)
 
           data = response.json()
           pypi_ver = version.parse(data['info']['version'])
 
-          print(f'PyPI version: {pypi_ver}', flush=True)
+          print(f'PyPI version: {pypi_ver}', file=sys.stderr)
 
           # If local version is newer, publish
           if local_ver > pypi_ver:
@@ -72,7 +73,7 @@ jobs:
             exit(0)
 
           # Versions match - check if all wheels exist
-          print(f'Versions match ({local_ver}), checking wheels...', flush=True)
+          print(f'Versions match ({local_ver}), checking wheels...', file=sys.stderr)
 
           # Generate expected wheel patterns from Python versions
           platforms = [
@@ -102,17 +103,17 @@ jobs:
           has_sdist = any(f.endswith('.tar.gz') for f in available_files)
 
           if missing:
-            print(f'Missing wheels: {missing}', flush=True)
+            print(f'Missing wheels: {missing}', file=sys.stderr)
             print('true')
           elif not has_sdist:
-            print('Missing sdist', flush=True)
+            print('Missing sdist', file=sys.stderr)
             print('true')
           else:
-            print('All wheels and sdist present', flush=True)
+            print('All wheels and sdist present', file=sys.stderr)
             print('false')
 
         except Exception as e:
-          print(f'Error checking PyPI: {e}', flush=True)
+          print(f'Error checking PyPI: {e}', file=sys.stderr)
           print('true')  # Publish on error to be safe
         ")
 
