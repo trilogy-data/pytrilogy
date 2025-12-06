@@ -1,16 +1,14 @@
 # PreQL Import Resolver
 
-A Rust-based CLI tool and Python library for parsing PreQL files and resolving import dependencies with ETL-aware dependency ordering.
+A Rust-based CLI tool and Python library for parsing PreQL (Trilogy) files and resolving import dependencies with ETL-aware dependency ordering.
 
 ## Features
 
 - Parse PreQL files to extract imports, datasource declarations, and persist statements
 - Resolve import dependencies transitively
 - Build dependency graphs with ETL-aware ordering:
-  - Files that persist (write) to a datasource run before files that declare it
-  - Files that declare a datasource run before files that import it
+  - Files that persist (write) to a datasource run before files that declare it, even if they import it.
   - Standard import dependencies (imported files run before importing files)
-- Comprehensive test coverage for both CLI and library functionality
 
 Exit codes:
 - `0`: Success
@@ -104,7 +102,7 @@ The binary will be at `target/release/preql-import-resolver` (or `.exe` on Windo
 
 ### Building for Python
 
-The project uses maturin to build Python wheels:
+Run maturin from the base of the pytrilogy repo. [not this directory.]
 
 ```bash
 # Development mode (installs in current Python environment)
@@ -120,25 +118,14 @@ maturin build --release
 
 The resolver implements three key dependency rules:
 
-1. **Import Dependencies** (highest priority): Imported files must run before importing files
-2. **Persist-Before-Declare**: Files that persist to a datasource must run before files that declare it
-   - Exception: If a file imports another file and also persists to a datasource declared in that file, the import dependency takes precedence
-3. **Declare-Before-Use**: Files that declare a datasource must run before files that depend on it through imports
+1. **Import Dependencies** : Imported files should run before importing files
+2. **Persist-Before-Declare**: Files that persist to a datasource must run before files that declare it, even if they import that file. 
 
 ### Edge Cases
 
-- Case 1: file a imports from file b → b must run before a for all datasources in b
-- Case 2: file a imports from file b, then updates a datasource from file b → import takes precedence, so b runs before a
-
-## CI Integration
-
-The GitHub Actions workflow automatically:
-1. Sets up Rust toolchain
-2. Installs maturin
-3. Builds the Rust extension
-4. Installs the wheel into the Python environment
-5. Runs all Python tests with the extension available
+- Case 1: file A imports from file B → B must run before A for all datasources in B
+- Case 2: file A imports from file B, then updates datasource from file B → update takes precedence, so A runs before B.
 
 ## Grammar Limitations
 
-The grammar is currently focused on dependency-relevant constructs (imports, datasources, persist statements). It does not parse the full PreQL syntax, which allows for faster parsing when only dependency information is needed. We may extend it to full compatibility in the future. 
+The grammar is currently focused on dependency-relevant constructs (imports, datasources, persist statements). It does not parse all Trilogy syntax. It can be extended in the future.

@@ -54,5 +54,5 @@ python-source = "."
 module-name = "_preql_import_resolver"
 manifest-path = "trilogy/scripts/dependency/Cargo.toml"
 features = ["pyo3/extension-module"]
-python-packages = ["trilogy", "_preql_import_resolver"]
-include = ["trilogy/**/*.preql", "trilogy/**/*.lark", "trilogy/**/*.jinja", "trilogy/**/*.tf", "trilogy/py.typed"]
+python-packages = ["trilogy"]
+include = ["trilogy/**/*.preql", "trilogy/**/*.lark", "trilogy/**/*.jinja", "trilogy/**/*.tf", "trilogy/py.typed", "_preql_import_resolver/__init__.py"]

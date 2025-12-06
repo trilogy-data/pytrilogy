@@ -80,8 +80,8 @@ class ETLDependencyStrategy:
             from _preql_import_resolver import PyImportResolver
         except ImportError:
             raise ImportError(
-                "The preql-import-resolver resolver could not be found.  If this is production, please open an issue."
-                "If developing, please build it with maturin: cd trilogy/scripts/dependency && maturin develop"
+                "The dependency resolution script could not be found. If this error occured in production, please open an issue on https://github.com/trilogy-data/pytrilogy. "
+                "If developing, please build it by running: maturin develop"
             )
         resolver = PyImportResolver()
 
