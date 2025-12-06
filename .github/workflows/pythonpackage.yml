@@ -47,9 +47,7 @@ jobs:
           cargo test --release
       - name: Build Rust extension
         run: |
-          cd trilogy/scripts/dependency
-          maturin build --release
-          pip install target/wheels/*.whl
+          maturin develop
       - name: Lint with mypy
         run: |
           # stop the build if there are Python syntax errors or undefined names
