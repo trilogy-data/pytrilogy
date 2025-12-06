@@ -55,3 +55,6 @@ dependency_graph.png
 
 .claude
 *.pyd
+
+_preql_import_resolver/
+
