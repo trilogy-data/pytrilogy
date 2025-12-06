@@ -1,0 +1,208 @@
+// PreQL Grammar - Dependency Resolution Parser
+// Parses imports, datasources, and persist statements for dependency ordering
+
+// Whitespace and comments
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+COMMENT = _{ line_comment | block_comment }
+line_comment = { ("#" | "//") ~ (!NEWLINE ~ ANY)* ~ NEWLINE? }
+block_comment = { "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+NEWLINE = _{ "\n" | "\r\n" }
+
+// Entry point - a file can contain multiple statements
+file = { SOI ~ statement* ~ EOI }
+
+// Statements we care about for dependency resolution
+statement = { (import_statement | datasource_statement | persist_statement | other_statement) ~ terminator? }
+terminator = { ";" }
+
+// =============================================================================
+// IMPORT STATEMENT
+// =============================================================================
+// import path.to.module as alias
+// Supports relative imports with leading dots
+import_statement = { 
+    ^"import" ~ 
+    relative_dots? ~ 
+    import_path ~ 
+    import_alias?
+}
+
+// Relative import dots (each dot goes up one directory after the first)
+relative_dots = @{ "."+ }
+
+// Import path: identifier separated by dots
+import_path = @{ identifier ~ ("." ~ identifier)* }
+
+// Optional alias: as identifier
+import_alias = { ^"as" ~ identifier }
+
+// =============================================================================
+// DATASOURCE STATEMENT
+// =============================================================================
+// datasource name ( column_assignments ) grain? address|query where? ...
+datasource_statement = {
+    ^"datasource" ~
+    identifier ~
+    "(" ~ column_assignment_list? ~ ")" ~
+    datasource_clauses*
+}
+
+// Column assignments inside datasource
+column_assignment_list = { column_assignment ~ ("," ~ column_assignment)* ~ ","? }
+
+column_assignment = { 
+    (raw_column_assignment | identifier | quoted_identifier | expr_content) ~ 
+    (":" ~ concept_assignment)?
+}
+
+raw_column_assignment = { ^"raw" ~ "(" ~ multiline_string ~ ")" }
+
+concept_assignment = { shorthand_modifier* ~ dotted_identifier }
+
+shorthand_modifier = { "~" | "?" }
+
+// Various clauses that can follow datasource column list
+datasource_clauses = _{
+    grain_clause |
+    complete_clause |
+    address_clause |
+    query_clause |
+    where_clause |
+    increment_clause |
+    partition_clause |
+    status_clause
+}
+
+grain_clause = { ^"grain" ~ "(" ~ identifier_list ~ ")" }
+complete_clause = { ^"complete" ~ where_clause }
+address_clause = { ^"address" ~ (quoted_address | dotted_identifier) }
+query_clause = { ^"query" ~ multiline_string }
+where_clause = { ^"where" ~ conditional_content }
+increment_clause = { ^"incremental" ~ ^"by" ~ identifier_list }
+partition_clause = { ^"partition" ~ ^"by" ~ identifier_list }
+status_clause = { ^"state" ~ (^"published" | ^"unpublished") }
+
+identifier_list = { identifier ~ ("," ~ identifier)* ~ ","? }
+
+quoted_address = { "`" ~ (!"`" ~ ANY)* ~ "`" }
+
+// =============================================================================
+// PERSIST STATEMENT
+// =============================================================================
+// Two forms:
+// 1. auto_persist: (append|overwrite|persist) identifier where?
+// 2. full_persist: (append|overwrite|persist) identifier? into identifier by? from select
+
+persist_statement = { full_persist | auto_persist }
+
+persist_mode = { ^"append" | ^"overwrite" | ^"persist" }
+
+// Short form: persist datasource_name where?
+auto_persist = { 
+    persist_mode ~ 
+    identifier ~ 
+    !^"into" ~
+    where_clause?
+}
+
+// Full form: persist into target_datasource by? from select
+full_persist = {
+    persist_mode ~
+    source_identifier? ~
+    into_keyword ~
+    target_identifier ~
+    persist_partition_clause? ~
+    ^"from" ~
+    select_content
+}
+
+into_keyword = { ^"into" }
+source_identifier = { identifier ~ &into_keyword }
+target_identifier = { identifier }
+
+persist_partition_clause = { ^"by" ~ identifier_list }
+
+// =============================================================================
+// SUPPORT RULES
+// =============================================================================
+
+// Conditional content - consume until we hit a keyword boundary
+conditional_content = { conditional_unit+ }
+conditional_unit = _{
+    nested_parens |
+    string_literal |
+    multiline_string |
+    // Stop at statement boundaries or clause keywords
+    (!(terminator | ^"grain" | ^"complete" | ^"address" | ^"query" | 
+       ^"incremental" | ^"partition" | ^"state" | ^"select" | ^"from" |
+       ^"into" | ^"order" | ^"limit" | ^"having" | ^"merge" | ^"align") ~ ANY)
+}
+
+// Select content - consume the select statement
+select_content = { select_unit+ }
+select_unit = _{
+    nested_parens |
+    nested_braces |
+    nested_brackets |
+    string_literal |
+    multiline_string |
+    (!(terminator) ~ ANY)
+}
+
+// Expression content for column assignments
+expr_content = { expr_unit+ }
+expr_unit = _{
+    nested_parens |
+    nested_braces |
+    nested_brackets |
+    string_literal |
+    multiline_string |
+    (!(":" | "," | ")" | terminator) ~ ANY)
+}
+
+// =============================================================================
+// OTHER STATEMENTS (skip)
+// =============================================================================
+other_statement = { other_statement_content+ }
+
+other_statement_content = _{
+    nested_parens |
+    nested_braces |
+    nested_brackets |
+    multiline_string |
+    string_literal |
+    (!(";" | "(" | ")" | "{" | "}" | "[" | "]" | "'''" | "\"" | "'") ~ ANY)
+}
+
+// =============================================================================
+// NESTED STRUCTURES
+// =============================================================================
+nested_parens = { "(" ~ nested_content* ~ ")" }
+nested_braces = { "{" ~ nested_content* ~ "}" }
+nested_brackets = { "[" ~ nested_content* ~ "]" }
+
+nested_content = _{
+    nested_parens | 
+    nested_braces | 
+    nested_brackets | 
+    multiline_string | 
+    string_literal | 
+    (!")" ~ !"(" ~ !"{" ~ !"}" ~ !"[" ~ !"]" ~ !"'''" ~ !"\"" ~ !"'" ~ ANY)
+}
+
+// =============================================================================
+// LITERALS AND IDENTIFIERS
+// =============================================================================
+multiline_string = { "'''" ~ (!"'''" ~ ANY)* ~ "'''" }
+
+string_literal = { 
+    ("\"" ~ (!"\"" ~ !"\\" ~ ANY | "\\" ~ ANY)* ~ "\"") |
+    ("'" ~ !"''" ~ (!"'" ~ !"\\" ~ ANY | "\\" ~ ANY)* ~ "'")
+}
+
+identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+
+// Dotted identifier for datasource addresses etc.
+dotted_identifier = @{ identifier ~ ("." ~ identifier)* }
+
+quoted_identifier = { "`" ~ (!"`" ~ ANY)* ~ "`" }

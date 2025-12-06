@@ -8,9 +8,9 @@ const zips_pre <- unnest(['24128', '76232', '65084', '87816', '83926', '77556', 
 
 property zips <- substring(CAST(zips_pre AS string),1,5);
 
-metric zip_p_count <- count(filter customer.id where customer.preferred_cust_flag = 'Y') by customer.zip;
+metric zip_p_count <- count(filter customer.id where customer.preferred_cust_flag = 'Y') by customer.address.zip;
 
-property p_cust_zip <- filter customer.zip where zip_p_count > 10;
+property p_cust_zip <- filter customer.address.zip where zip_p_count > 10;
 
 property final_zips <- substring(filter zips where zips in substring(p_cust_zip,1,5),1,2);
 
@@ -27,7 +27,7 @@ LIMIT 100
 PERSIST default.ds3d60a895d47b2d5a4b3de249fab042433012318d00218d2c1a472d0ea25e6601 INTO ds3d60a895d47b2d5a4b3de249fab042433012318d00218d2c1a472d0ea25e6601 FROM SELECT
     customer.id,
     customer.preferred_cust_flag,
-    customer.zip,
+    customer.address.zip,
 ;
 
 PERSIST default.dsb9876e7aa2cd5e1f5432e4b4d0b6add55dd9154d0e5ce4bba893a4ddc23f9d42 INTO dsb9876e7aa2cd5e1f5432e4b4d0b6add55dd9154d0e5ce4bba893a4ddc23f9d42 FROM SELECT
@@ -36,12 +36,12 @@ PERSIST default.dsb9876e7aa2cd5e1f5432e4b4d0b6add55dd9154d0e5ce4bba893a4ddc23f9d
 
 PERSIST default.dsa64ed6cb660b9991057f2b2bff5ce6d65eaa6df6d1917a13cb81be745022edcb INTO dsa64ed6cb660b9991057f2b2bff5ce6d65eaa6df6d1917a13cb81be745022edcb FROM SELECT
     zip_p_count,
-    customer.zip,
+    customer.address.zip,
 ;
 
 PERSIST default.ds3b9fb8e69758b8b30a28c4b08666f4eda66ecfef91c38b07ddc9e789fb16e893 INTO ds3b9fb8e69758b8b30a28c4b08666f4eda66ecfef91c38b07ddc9e789fb16e893 FROM SELECT
-    customer.zip,
-    customer.address_id,
+    customer.address.zip,
+    customer.address.id,
     zip_p_count,
 ;
 

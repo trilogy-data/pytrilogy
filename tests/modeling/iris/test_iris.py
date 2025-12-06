@@ -55,7 +55,7 @@ def test_join_validation_iris():
         validate_environment(env, exec=exec)
 
 
-def test_grain_iris():
+def test_bad_grain_iris():
     DebuggingHook()
     env = Environment(
         working_path=Path(__file__).parent,

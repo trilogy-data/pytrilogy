@@ -1,12 +1,3 @@
-"""
-Dependency resolution for Trilogy script execution.
-
-This module provides a pluggable dependency resolution system for determining
-execution order of Trilogy scripts. The default strategy uses folder depth
-(deeper folders run before shallower ones), but this can be easily swapped
-for more sophisticated logic (e.g., explicit imports, content analysis).
-"""
-
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -14,12 +5,24 @@ from typing import Protocol
 import networkx as nx
 
 
+def normalize_path_variants(path: str) -> Path:
+    """
+    On Windows, paths from Rust may include UNC prefixes like \\?\C:\path.
+    This function returns the path without the prefix.
+    """
+    # Handle Windows UNC prefix (\\?\)
+    if str(path).startswith("\\\\?\\"):
+        # Strip the UNC prefix
+        normal_path = str(path)[4:]
+        return Path(normal_path)
+    return Path(path)
+
+
 @dataclass(frozen=True)
 class ScriptNode:
     """Represents a script file with its path and associated data."""
 
     path: Path
-    content: str
 
     def __hash__(self):
         return hash(self.path)
@@ -48,62 +51,125 @@ class DependencyStrategy(Protocol):
             A networkx DiGraph where nodes are ScriptNode instances and
             edges point from dependencies to their dependents.
         """
-        ...
+
+    def build_folder_graph(self, folder: Path) -> nx.DiGraph: ...
 
 
-class FolderDepthStrategy:
+class ETLDependencyStrategy:
     """
-    Dependency strategy based on folder depth.
+    Dependency strategy using the Rust-based ETL logic parser.
 
-    Scripts deeper in the folder hierarchy run before scripts at shallower levels.
-    For example, abc/def/script.preql runs before abc/script.preql.
-
-    File-level dependencies are created: each file at depth N depends on ALL files
-    at depth N+1 that are in subdirectories of that file's parent directory.
-
-    This is a placeholder strategy that can be replaced with more sophisticated
-    logic (e.g., explicit dependency declarations, import analysis, etc.).
+    Uses the preql-import-resolver Rust library to parse imports, datasources,
+    and persist statements, building a dependency graph that respects:
+    1. Import dependencies (imported files run before importing files)
+    2. Persist-before-declare dependencies (files that persist to a datasource run before files that declare it)
+    3. Declare-before-use dependencies (files that declare datasources run before files that import them)
     """
+
+    def build_folder_graph(self, folder: Path) -> nx.DiGraph:
+        """
+        Build dependency graph for all script files in a folder.
+
+        Args:
+            folder: The folder containing script files.
+
+        Returns:
+            A networkx DiGraph representing dependencies.
+        """
+        try:
+            from _preql_import_resolver import PyImportResolver
+        except ImportError:
+            raise ImportError(
+                "The preql-import-resolver resolver could not be found.  If this is production, please open an issue."
+                "If developing, please build it with maturin: cd trilogy/scripts/dependency && maturin develop"
+            )
+        resolver = PyImportResolver()
+
+        result = resolver.resolve_directory(str(folder), False)
+        nodes = result.get("files", [])
+        graph = nx.DiGraph()
+        path_to_node = {}
+        edges = result.get("edges", [])
+        # Build the graph
+        for node in nodes:
+            normal_path = normalize_path_variants(node)
+            node = ScriptNode(path=normal_path)
+            path_to_node[normal_path] = node
+            graph.add_node(node)
+
+        # Build edges from the result
+        for edge in edges:
+            from_path = normalize_path_variants(edge["from"])
+            to_path = normalize_path_variants(edge["to"])
+
+            # Only add edges for files we're managing
+            if from_path in path_to_node and to_path in path_to_node:
+                graph.add_edge(path_to_node[from_path], path_to_node[to_path])
+
+        return graph
 
     def build_graph(self, nodes: list[ScriptNode]) -> nx.DiGraph:
         """
-        Build dependency graph based on folder depth.
+        Build dependency graph based on ETL semantics using Rust resolver.
 
-        Creates file-level edges where deeper scripts must complete before
-        shallower scripts that contain them in their directory tree.
+        This strategy requires all nodes to be in the same directory.
+        It uses the Rust directory resolver to analyze all files together.
 
         Returns:
             DiGraph with edges pointing from dependencies to dependents
             (i.e., edge A -> B means A must run before B).
         """
+        try:
+            from _preql_import_resolver import PyImportResolver
+        except ImportError:
+            raise ImportError(
+                "The preql-import-resolver resolver could not be found.  If this is production, please open an issue."
+                "If developing, please build it with maturin: cd trilogy/scripts/dependency && maturin develop"
+            )
+
         graph = nx.DiGraph()
 
-        # Add all nodes to the graph
+        # Add all nodes
         for node in nodes:
             graph.add_node(node)
 
-        # Create file-level dependencies based on folder depth
+        # If we only have one node, return early
+        if len(nodes) <= 1:
+            return graph
+
+        # Check that all nodes are in the same directory
+        directories = {node.path.parent.resolve() for node in nodes}
+        if len(directories) > 1:
+            raise ValueError(
+                "ETLDependencyStrategy requires all script files to be in the same directory. "
+                f"Found files in {len(directories)} different directories. {directories}"
+            )
+
+        # Build a mapping from absolute path to node
+        # We need to handle both regular paths and UNC paths from Rust
+        path_to_node = {}
         for node in nodes:
-            node_depth = len(node.path.parts)
-            node_parent = node.path.parent
+            resolved_path = str(node.path.resolve())
+            # Map all path variants to the same node
+            path_to_node[normalize_path_variants(resolved_path)] = node
 
-            for other in nodes:
-                if other == node:
-                    continue
+        # Use directory resolver to get all edges at once
+        directory = nodes[0].path.parent
+        resolver = PyImportResolver()
 
-                other_depth = len(other.path.parts)
+        result = resolver.resolve_directory(str(directory.resolve()), False)
+        edges = result.get("edges", [])
 
-                # Check if 'other' is deeper and in a subdirectory of node's parent
-                if other_depth > node_depth:
-                    try:
-                        other.path.relative_to(node_parent)
-                        # 'other' is deeper and in node's parent tree
-                        # 'other' must run before 'node'
-                        # Edge direction: other -> node (dependency -> dependent)
-                        graph.add_edge(other, node)
-                    except ValueError:
-                        # other is not in node's parent tree
-                        pass
+        # Build edges from the result
+        for edge in edges:
+            from_path = normalize_path_variants(edge["from"])
+            to_path = normalize_path_variants(edge["to"])
+
+            # Only add edges for files we're managing
+            if from_path in path_to_node and to_path in path_to_node:
+                from_node = path_to_node[from_path]
+                to_node = path_to_node[to_path]
+                graph.add_edge(from_node, to_node)
 
         return graph
 
@@ -137,9 +203,31 @@ class DependencyResolver:
 
         Args:
             strategy: The dependency resolution strategy to use.
-                      Defaults to FolderDepthStrategy.
+                      Defaults to ETLDependencyStrategy if None.
         """
-        self.strategy = strategy or FolderDepthStrategy()
+        self.strategy = strategy or ETLDependencyStrategy()
+
+    def build_folder_graph(self, folder: Path) -> nx.DiGraph:
+        """
+        Build the dependency graph for all script files in a folder.
+
+        Args:
+            folder: The folder containing script files.
+
+        Returns:
+            A networkx DiGraph representing dependencies.
+        """
+        graph = self.strategy.build_folder_graph(folder)
+
+        # Validate no cycles
+        if not nx.is_directed_acyclic_graph(graph):
+            cycles = list(nx.simple_cycles(graph))
+            cycle_info = "; ".join(
+                [" -> ".join(str(n.path.name) for n in cycle) for cycle in cycles[:3]]
+            )
+            raise ValueError(f"Circular dependencies detected: {cycle_info}")
+
+        return graph
 
     def build_graph(self, nodes: list[ScriptNode]) -> nx.DiGraph:
         """
@@ -231,7 +319,5 @@ def create_script_nodes(files: list[Path]) -> list[ScriptNode]:
     """
     nodes = []
     for file in files:
-        with open(file, "r") as f:
-            content = f.read()
-        nodes.append(ScriptNode(path=file, content=content))
+        nodes.append(ScriptNode(path=file))
     return nodes

@@ -47,7 +47,14 @@ duckdb_temp_*
 
 debug*.log
 
-
 .env.secrets
 
-trilogy/scripts/dependency
+trilogy/scripts/dependency/target
+
+dependency_graph.png
+
+.claude
+*.pyd
+
+_preql_import_resolver/
+

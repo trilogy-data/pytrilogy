@@ -1532,6 +1532,8 @@ class ParseToObjects(Transformer):
                     raise SyntaxError(
                         f"Cannot incremental persist on concept {concept.address} of type {concept.output_datatype} on line {meta.line}."
                     )
+        elif target:
+            new_datasource = target
         else:
             new_datasource = select.to_datasource(
                 namespace=(

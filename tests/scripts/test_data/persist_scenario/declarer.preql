@@ -1,0 +1,5 @@
+datasource orders (
+    order_id,
+    amount
+)
+address db.orders;

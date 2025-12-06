@@ -13,7 +13,7 @@ lint.extend-select = ["I"]
 [project]
 name = "pytrilogy"
 description = "Declarative, typed query language that compiles to SQL."
-dynamic = ["version", "dependencies"]
+dynamic = ["dependencies", "version"]
 readme = {file = "README.md", content-type = "text/markdown"}
 classifiers = [
     "Programming Language :: Python",
@@ -36,7 +36,6 @@ ai = ["httpx"]
 cli = ["rich"]
 
 [tool.setuptools.dynamic]
-version = {attr = "trilogy.__version__"}
 dependencies = {file = ["requirements.txt"]}
 
 [tool.setuptools]
@@ -46,5 +45,14 @@ packages = {find = {exclude = ["dist", "build", "*.tests", "*.tests.*", "tests.*
 "*" = ["*.tf", "*.jinja", "py.typed", "*.lark", "*.preql"]
 
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "build_backend"
+backend-path = ["."]
+
+[tool.maturin]
+python-source = "."
+module-name = "_preql_import_resolver"
+manifest-path = "trilogy/scripts/dependency/Cargo.toml"
+features = ["pyo3/extension-module"]
+python-packages = ["trilogy", "_preql_import_resolver"]
+include = ["trilogy/**/*.preql", "trilogy/**/*.lark", "trilogy/**/*.jinja", "trilogy/**/*.tf", "trilogy/py.typed"]

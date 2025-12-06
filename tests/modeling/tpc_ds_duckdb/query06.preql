@@ -13,12 +13,12 @@ WHERE
     and store_sales.item.current_price > 1.2 * avg(item.current_price) by item.category
     
 SELECT
-    store_sales.customer.state,
+    store_sales.customer.address.state,
     sum(group(1) by store_sales.ticket_number, store_sales.item.id) as customer_count
 HAVING
     customer_count>=10
     
 ORDER by
     customer_count asc nulls first,
-    store_sales.customer.state asc nulls first
+    store_sales.customer.address.state asc nulls first
 ;

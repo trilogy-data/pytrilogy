@@ -27,6 +27,10 @@ from trilogy.core.validation.common import ExpectationType, ValidationTest, easy
 from trilogy.utility import unique
 
 
+def row_to_dict(row):
+    return {key: row[key] for key in row.keys()}
+
+
 def type_check(
     input: Any,
     expected_type: (
@@ -176,7 +180,10 @@ def validate_datasource(
                 ),
             )
         )
+    if not datasource.grain.components:
+        return results
 
+    # grain validation section
     query = easy_query(
         concepts=[build_env.concepts[name] for name in datasource.grain.components]
         + [build_env.concepts["grain_check"]],
@@ -211,7 +218,7 @@ def validate_datasource(
                     check_type=ExpectationType.ROWCOUNT,
                     expected="0",
                     result=DatasourceModelValidationError(
-                        f"Datasource {datasource.name} failed validation. Found rows that do not conform to grain: {rows}"
+                        f"Datasource {datasource.name} failed validation. Found rows that do not conform to grain: {[row_to_dict(r) for r in rows]}"
                     ),
                     ran=True,
                 )

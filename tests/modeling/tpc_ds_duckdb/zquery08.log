@@ -1,44 +1,44 @@
 query_id = 8
-gen_length = 3584
+gen_length = 3704
 generated_sql = """
 
 WITH 
 questionable as (
 SELECT
-    \"customer_customer_address\".\"CA_ZIP\" as \"customer_zip\",
+    \"customer_address_customer_address\".\"CA_ZIP\" as \"customer_address_zip\",
     \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_id\",
     \"customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\"
 FROM
-    \"memory\".\"customer_address\" as \"customer_customer_address\"
-    INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_customer_address\".\"CA_ADDRESS_SK\" = \"customer_customers\".\"C_CURRENT_ADDR_SK\"),
+    \"memory\".\"customer_address\" as \"customer_address_customer_address\"
+    INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_address_customer_address\".\"CA_ADDRESS_SK\" = \"customer_customers\".\"C_CURRENT_ADDR_SK\"),
 cheerful as (
 SELECT
     unnest(:_virt_7180871482901048) as \"zips_pre\"
 ),
 abundant as (
 SELECT
-    \"questionable\".\"customer_zip\" as \"customer_zip\",
+    \"questionable\".\"customer_address_zip\" as \"customer_address_zip\",
     CASE WHEN \"questionable\".\"customer_preferred_cust_flag\" = 'Y' THEN \"questionable\".\"customer_id\" ELSE NULL END as \"_virt_filter_id_8603331542397217\"
 FROM
     \"questionable\"),
 uneven as (
 SELECT
-    \"abundant\".\"customer_zip\" as \"customer_zip\",
+    \"abundant\".\"customer_address_zip\" as \"customer_address_zip\",
     count(\"abundant\".\"_virt_filter_id_8603331542397217\") as \"zip_p_count\"
 FROM
     \"abundant\"
 GROUP BY 
-    \"abundant\".\"customer_zip\"),
+    \"abundant\".\"customer_address_zip\"),
 yummy as (
 SELECT
-    \"customer_customer_address\".\"CA_ZIP\" as \"customer_zip\",
+    \"customer_address_customer_address\".\"CA_ZIP\" as \"customer_address_zip\",
     \"uneven\".\"zip_p_count\" as \"zip_p_count\"
 FROM
     \"uneven\"
-    INNER JOIN \"memory\".\"customer_address\" as \"customer_customer_address\" on \"uneven\".\"customer_zip\" = \"customer_customer_address\".\"CA_ZIP\"),
+    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"uneven\".\"customer_address_zip\" = \"customer_address_customer_address\".\"CA_ZIP\"),
 juicy as (
 SELECT
-    CASE WHEN \"yummy\".\"zip_p_count\" > 10 THEN \"yummy\".\"customer_zip\" ELSE NULL END as \"p_cust_zip\"
+    CASE WHEN \"yummy\".\"zip_p_count\" > 10 THEN \"yummy\".\"customer_address_zip\" ELSE NULL END as \"p_cust_zip\"
 FROM
     \"yummy\"),
 vacuous as (

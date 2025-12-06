@@ -1,4 +1,5 @@
 import customer_demographic as demographics;
+import address as address;
 
 key id int;
 unique property id.text_id string;
@@ -27,22 +28,12 @@ property id.birth_date <- cast(
 
 
 
-key address_id int;
-unique property address_id.address_id_string string;
-property address_id.street string;
-property address_id.city string;
-property address_id.state string?;
-property address_id.zip string;
-property address_id.county string;
-property address_id.country string;
-
-
 datasource customers (
     C_CUSTOMER_SK: id,
     C_CUSTOMER_ID: text_id,
     C_LAST_NAME: last_name,
     C_FIRST_NAME: first_name,
-    C_CURRENT_ADDR_SK: address_id,
+    C_CURRENT_ADDR_SK: address.id,
     C_CURRENT_CDEMO_SK: demographics.id,
     C_PREFERRED_CUST_FLAG: preferred_cust_flag,
     C_BIRTH_COUNTRY: birth_country,
@@ -56,17 +47,4 @@ datasource customers (
 )
 grain (id)
 address memory.customer;
-
-
-datasource customer_address(
-    CA_ADDRESS_SK: address_id,
-    CA_STREET: street,
-    CA_CITY: city,
-    CA_STATE: state,
-    CA_ZIP: zip,
-    CA_COUNTY: county,
-    CA_COUNTRY:country,
-)
-grain (address_id)
-address memory.customer_address;
 

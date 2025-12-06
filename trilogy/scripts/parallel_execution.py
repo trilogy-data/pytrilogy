@@ -58,12 +58,9 @@ class ExecutionStrategy(Protocol):
 
         Args:
             graph: The dependency graph (edges point from deps to dependents).
-            resolver: The dependency resolver for graph queries.
             max_workers: Maximum parallel workers.
             executor_factory: Factory to create executor for each script.
             execution_fn: Function to execute a script.
-            on_script_start: Optional callback when script starts.
-            on_script_complete: Optional callback when script completes.
 
         Returns:
             List of ExecutionResult for all scripts.
@@ -91,16 +88,7 @@ def _propagate_failure(
     on_script_complete: OnCompleteCallback,
 ) -> None:
     """
-    Recursively mark all dependents of a failed node as failed.
-
-    Args:
-        failed_node: The node that failed.
-        graph: The dependency graph.
-        completed: Set of completed nodes (modified in place).
-        in_progress: Set of nodes currently being executed.
-        results: List of execution results (modified in place).
-        failed: Set of failed nodes (modified in place).
-        on_script_complete: Optional callback when script completes.
+    Recursively mark all *unstarted* dependents of a failed node as failed and skipped.
     """
     for dependent in graph.successors(failed_node):
         if dependent not in completed and dependent not in in_progress:
@@ -127,15 +115,7 @@ def _propagate_failure(
 
 
 def _get_next_ready(ready: ReadyList) -> ScriptNode | None:
-    """
-    Get next ready node from the queue.
-
-    Args:
-        ready: List of nodes ready for execution.
-
-    Returns:
-        The next ready node, or None if the queue is empty.
-    """
+    """Get next ready node from the queue."""
     if ready:
         return ready.pop(0)
     return None
@@ -154,26 +134,7 @@ def _mark_node_complete(
     on_script_complete: OnCompleteCallback,
 ) -> None:
     """
-    Mark a node as complete and update dependent nodes.
-
-    This function handles:
-    - Removing the node from in_progress
-    - Adding it to completed (and failed if unsuccessful)
-    - Decrementing dependency counts for successors
-    - Adding newly ready nodes to the ready queue
-    - Propagating failures to dependent nodes
-
-    Args:
-        node: The node that completed.
-        success: Whether execution was successful.
-        graph: The dependency graph.
-        completed: Set of completed nodes (modified in place).
-        failed: Set of failed nodes (modified in place).
-        in_progress: Set of nodes in progress (modified in place).
-        remaining_deps: Dict of remaining dependency counts (modified in place).
-        ready: List of ready nodes (modified in place).
-        results: List of execution results (modified in place).
-        on_script_complete: Optional callback when script completes.
+    Mark a node as complete, update dependent counts, and add newly ready/skipped nodes.
     """
     in_progress.discard(node)
     completed.add(node)
@@ -188,7 +149,7 @@ def _mark_node_complete(
         if success:
             remaining_deps[dependent] -= 1
             if remaining_deps[dependent] == 0:
-                # Check if any dependency failed
+                # Check if any dependency failed before running
                 deps = set(graph.predecessors(dependent))
                 if deps & failed:
                     # Skip this node - dependency failed
@@ -216,7 +177,7 @@ def _mark_node_complete(
                 else:
                     ready.append(dependent)
         else:
-            # Dependency failed - mark this as failed too
+            # Current node failed - mark this dependent as skipped
             if dependent not in failed:
                 skip_result = ExecutionResult(
                     node=dependent,
@@ -242,16 +203,7 @@ def _mark_node_complete(
 
 
 def _is_execution_done(completed: CompletedSet, total_count: int) -> bool:
-    """
-    Check if all nodes have been processed.
-
-    Args:
-        completed: Set of completed nodes.
-        total_count: Total number of nodes.
-
-    Returns:
-        True if all nodes are complete, False otherwise.
-    """
+    """Check if all nodes have been processed."""
     return len(completed) >= total_count
 
 
@@ -260,22 +212,13 @@ def _execute_single(
     executor_factory: Callable[[ScriptNode], Executor],
     execution_fn: Callable[[Any, ScriptNode], None],
 ) -> ExecutionResult:
-    """
-    Execute a single script and return the result.
-
-    Args:
-        node: The script node to execute.
-        executor_factory: Factory function to create an executor.
-        execution_fn: Function to execute the script.
-
-    Returns:
-        ExecutionResult with success status, error (if any), and duration.
-    """
+    """Execute a single script and return the result."""
     start_time = datetime.now()
     executor = None
     try:
         executor = executor_factory(node)
         execution_fn(executor, node)
+
         duration = (datetime.now() - start_time).total_seconds()
         if executor:
             executor.close()
@@ -287,18 +230,14 @@ def _execute_single(
         )
     except Exception as e:
         duration = (datetime.now() - start_time).total_seconds()
+        if executor:
+            executor.close()  # Ensure executor is closed even on failure
         return ExecutionResult(
             node=node,
             success=False,
             error=e,
             duration=duration,
         )
-    finally:
-        if executor:
-            try:
-                executor.close()
-            except Exception:
-                pass
 
 
 def _create_worker(
@@ -318,26 +257,7 @@ def _create_worker(
     on_script_complete: OnCompleteCallback,
 ) -> Callable[[], None]:
     """
-    Create a worker function for thread execution.
-
-    Args:
-        graph: The dependency graph.
-        lock: Threading lock for synchronization.
-        work_available: Condition variable for signaling work availability.
-        completed: Set of completed nodes.
-        failed: Set of failed nodes.
-        in_progress: Set of nodes in progress.
-        remaining_deps: Dict of remaining dependency counts.
-        ready: List of ready nodes.
-        results: List of execution results.
-        total_count: Total number of nodes.
-        executor_factory: Factory function to create an executor.
-        execution_fn: Function to execute the script.
-        on_script_start: Optional callback when script starts.
-        on_script_complete: Optional callback when script completes.
-
-    Returns:
-        A worker function suitable for threading.
+    Create a worker function for thread execution to process the dependency graph.
     """
 
     def worker() -> None:
@@ -345,7 +265,7 @@ def _create_worker(
             node = None
 
             with work_available:
-                # Wait for work or completion
+                # Wait for work or global completion
                 while not ready and not _is_execution_done(completed, total_count):
                     work_available.wait()
 
@@ -354,6 +274,7 @@ def _create_worker(
 
                 node = _get_next_ready(ready)
                 if node is None:
+                    # Should be impossible if total_count check is correct, but handles race condition safety
                     continue
 
                 in_progress.add(node)
@@ -362,16 +283,15 @@ def _create_worker(
             if node is not None:
                 if on_script_start:
                     on_script_start(node)
-
                 result = _execute_single(node, executor_factory, execution_fn)
 
+                # Use the lock for state updates and notification
                 with lock:
                     results.append(result)
 
-                if on_script_complete:
-                    on_script_complete(result)
+                    if on_script_complete:
+                        on_script_complete(result)
 
-                with lock:
                     _mark_node_complete(
                         node,
                         result.success,
@@ -384,16 +304,17 @@ def _create_worker(
                         results,
                         on_script_complete,
                     )
-                    work_available.notify_all()
+                    work_available.notify_all()  # Notify other workers of new ready/completed state
 
     return worker
 
 
 class EagerBFSStrategy:
     """
-    Eager BFS execution strategy.
+    Eager Breadth-First Search (BFS) execution strategy.
 
-    Uses a work queue and condition variables to coordinate workers.
+    Scripts execute as soon as all their dependencies complete, maximizing parallelism.
+    Uses a thread pool coordinated by locks and condition variables.
     """
 
     def execute(
@@ -424,7 +345,7 @@ class EagerBFSStrategy:
             node: graph.in_degree(node) for node in graph.nodes()
         }
 
-        # Ready queue - nodes with all dependencies satisfied
+        # Ready queue - nodes with all dependencies satisfied initially (in-degree 0)
         ready: ReadyList = [node for node in graph.nodes() if remaining_deps[node] == 0]
 
         total_count = len(graph.nodes())
@@ -455,6 +376,10 @@ class EagerBFSStrategy:
             t.start()
             threads.append(t)
 
+        # Wake up any waiting workers if we have initial work
+        with work_available:
+            work_available.notify_all()
+
         # Wait for all threads to complete
         for t in threads:
             t.join()
@@ -466,9 +391,8 @@ class ParallelExecutor:
     """
     Executes scripts in parallel while respecting dependencies.
 
-    By default uses eager BFS traversal - scripts execute as soon as their
-    dependencies complete. Can be configured to use level-based execution
-    for backwards compatibility.
+    Uses an Eager BFS traversal by default, running scripts as soon as their
+    dependencies complete.
     """
 
     def __init__(
@@ -481,19 +405,19 @@ class ParallelExecutor:
         Initialize the parallel executor.
 
         Args:
-            max_workers: Maximum number of parallel workers. Defaults to 5.
+            max_workers: Maximum number of parallel workers.
             dependency_strategy: Strategy for resolving dependencies.
-                                Defaults to FolderDepthStrategy.
             execution_strategy: Strategy for traversing the graph during execution.
-                               Defaults to EagerBFSStrategy.
         """
         self.max_workers = max_workers
+        # Resolver finds dependencies and builds the graph
         self.resolver = DependencyResolver(strategy=dependency_strategy)
+        # Execution strategy determines how the graph is traversed and executed
         self.execution_strategy = execution_strategy or EagerBFSStrategy()
 
     def execute(
         self,
-        files: list[Path],
+        root: Path,
         executor_factory: Callable[[ScriptNode], Any],
         execution_fn: Callable[[Any, ScriptNode], None],
         on_script_start: Callable[[ScriptNode], None] | None = None,
@@ -503,32 +427,25 @@ class ParallelExecutor:
         Execute scripts in parallel respecting dependencies.
 
         Args:
-            files: List of script file paths to execute.
-            executor_factory: Factory function that creates an executor for a script.
-                             Called once per script with the ScriptNode.
+            root: Root path (folder or single file) to find scripts.
+            executor_factory: Factory function to create an executor for a script.
             execution_fn: Function that executes a script given (executor, node).
-            on_script_start: Optional callback when a script starts.
-            on_script_complete: Optional callback when a script completes.
 
         Returns:
             ParallelExecutionSummary with all results.
         """
         start_time = datetime.now()
 
-        # Create script nodes
-        nodes = create_script_nodes(files)
-
-        if not nodes:
-            return ParallelExecutionSummary(
-                total_scripts=0,
-                successful=0,
-                failed=0,
-                total_duration=0.0,
-                results=[],
-            )
-
         # Build dependency graph
-        graph = self.resolver.build_graph(nodes)
+        if root.is_dir():
+            graph = self.resolver.build_folder_graph(root)
+            nodes = list(graph.nodes())
+        else:
+            nodes = create_script_nodes([root])
+            graph = self.resolver.build_graph(nodes)
+
+        # Total count of nodes for summary/completion check
+        total_scripts = len(nodes)
 
         # Execute using the configured strategy
         results = self.execution_strategy.execute(
@@ -545,24 +462,22 @@ class ParallelExecutor:
         successful = sum(1 for r in results if r.success)
 
         return ParallelExecutionSummary(
-            total_scripts=len(nodes),
+            total_scripts=total_scripts,
             successful=successful,
-            failed=len(nodes) - successful,
+            failed=total_scripts - successful,
             total_duration=total_duration,
             results=results,
         )
 
+    def get_folder_execution_plan(self, folder: Path) -> nx.DiGraph:
+        """
+        Get the execution plan (dependency graph) for all scripts in a folder.
+        """
+        return self.resolver.build_folder_graph(folder)
+
     def get_execution_plan(self, files: list[Path]) -> nx.DiGraph:
         """
         Get the execution plan (dependency graph) without executing.
-
-        Useful for debugging or visualization.
-
-        Args:
-            files: List of script file paths.
-
-        Returns:
-            The dependency graph that would be used for execution.
         """
         nodes = create_script_nodes(files)
         return self.resolver.build_graph(nodes)

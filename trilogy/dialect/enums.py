@@ -8,21 +8,31 @@ if TYPE_CHECKING:
     from trilogy.hooks.base_hook import BaseHook
 
 from trilogy.constants import Rendering, logger
-from trilogy.dialect.config import DialectConfig
+from trilogy.dialect.config import DialectConfig, DuckDBConfig
 
 
 def default_factory(conf: DialectConfig, config_type):
     from sqlalchemy import create_engine
+    from sqlalchemy.pool import NullPool
 
+    # the DuckDB IdentifierPreparer uses a global connection that is not thread safe
+    if isinstance(conf, DuckDBConfig):
+        # we monkey patch to parent to avoid this
+        from duckdb_engine import DuckDBIdentifierPreparer, PGIdentifierPreparer
+
+        DuckDBIdentifierPreparer.__init__ = PGIdentifierPreparer.__init__  # type: ignore
+    engine_args = {
+        "future": True,
+        "poolclass": NullPool,
+    }
     if not isinstance(conf, config_type):
         raise TypeError(
             f"Invalid dialect configuration for type {type(config_type).__name__}, is {type(conf)}"
         )
     if conf.connect_args:
-        return create_engine(
-            conf.connection_string(), future=True, connect_args=conf.connect_args
-        )
-    return create_engine(conf.connection_string(), future=True)
+        engine_args["connect_args"] = conf.connect_args
+
+    return create_engine(conf.connection_string(), **engine_args)
 
 
 class Dialects(Enum):

@@ -1,0 +1,6 @@
+// Customer model
+import ..shared.base;
+import std.display;  // stdlib import - will be skipped
+
+key customer_id int;
+property customer_name string;

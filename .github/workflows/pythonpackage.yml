@@ -24,6 +24,10 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
       - id: 'auth'
         name: 'Authenticate to Google Cloud'
         uses: 'google-github-actions/auth@v2'
@@ -33,10 +37,17 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install wheel
+          pip install wheel maturin
           pip install -r requirements.txt
           pip install -r requirements-test.txt
           pip install sqlalchemy-bigquery --ignore-requires-python
+      - name: Run Rust tests
+        run: |
+          cd trilogy/scripts/dependency
+          cargo test --release
+      - name: Build Rust extension
+        run: |
+          pip install -e .
       - name: Lint with mypy
         run: |
           # stop the build if there are Python syntax errors or undefined names

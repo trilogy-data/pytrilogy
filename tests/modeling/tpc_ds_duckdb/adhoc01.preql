@@ -4,9 +4,9 @@ import adhoc01_imports;
 
 # property zips <- substring(CAST(zips_pre AS string),1,5);
 
-metric zip_p_count <- count(filter customer.id where customer.preferred_cust_flag = 'Y') by customer.zip;
+metric zip_p_count <- count(filter customer.id where customer.preferred_cust_flag = 'Y') by customer.address.zip;
 
-property p_cust_zip <- filter customer.zip where zip_p_count > 10;
+property p_cust_zip <- filter customer.address.zip where zip_p_count > 10;
 
 property final_zips <- substring(filter zips where zips in substring(p_cust_zip,1,5),1,2);
 

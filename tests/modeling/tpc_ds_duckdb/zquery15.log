@@ -1,27 +1,27 @@
 query_id = 15
-gen_length = 1574
+gen_length = 1654
 generated_sql = """
 
 WITH 
 thoughtful as (
 SELECT
-    \"catalog_sales_bill_customer_customer_address\".\"CA_ZIP\" as \"catalog_sales_bill_customer_zip\",
+    \"catalog_sales_bill_customer_address_customer_address\".\"CA_ZIP\" as \"catalog_sales_bill_customer_address_zip\",
     \"catalog_sales_catalog_sales\".\"CS_SALES_PRICE\" as \"catalog_sales_sales_price\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"catalog_sales_bill_customer_customers\" on \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" = \"catalog_sales_bill_customer_customers\".\"C_CUSTOMER_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"catalog_sales_bill_customer_customer_address\" on \"catalog_sales_bill_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"catalog_sales_bill_customer_customer_address\".\"CA_ADDRESS_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"catalog_sales_bill_customer_address_customer_address\" on \"catalog_sales_bill_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"catalog_sales_bill_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"catalog_sales_date_date\".\"D_QOY\" = 2 and cast(\"catalog_sales_date_date\".\"D_YEAR\" as int) = 2001 and ( \"catalog_sales_bill_customer_customer_address\".\"CA_STATE\" in ('CA','WA','GA') or \"catalog_sales_catalog_sales\".\"CS_SALES_PRICE\" > 500 or SUBSTRING(\"catalog_sales_bill_customer_customer_address\".\"CA_ZIP\",1,5) in ('85669','86197','88274','83405','86475','85392','85460','80348','81792') )
+    \"catalog_sales_date_date\".\"D_QOY\" = 2 and cast(\"catalog_sales_date_date\".\"D_YEAR\" as int) = 2001 and ( \"catalog_sales_bill_customer_address_customer_address\".\"CA_STATE\" in ('CA','WA','GA') or \"catalog_sales_catalog_sales\".\"CS_SALES_PRICE\" > 500 or SUBSTRING(\"catalog_sales_bill_customer_address_customer_address\".\"CA_ZIP\",1,5) in ('85669','86197','88274','83405','86475','85392','85460','80348','81792') )
 )
 SELECT
-    \"thoughtful\".\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
+    \"thoughtful\".\"catalog_sales_bill_customer_address_zip\" as \"catalog_sales_bill_customer_address_zip\",
     sum(\"thoughtful\".\"catalog_sales_sales_price\") as \"sales\"
 FROM
     \"thoughtful\"
 GROUP BY 
-    \"thoughtful\".\"catalog_sales_bill_customer_zip\"
+    \"thoughtful\".\"catalog_sales_bill_customer_address_zip\"
 ORDER BY 
-    \"thoughtful\".\"catalog_sales_bill_customer_zip\" asc nulls first
+    \"thoughtful\".\"catalog_sales_bill_customer_address_zip\" asc nulls first
 LIMIT (100)"""
