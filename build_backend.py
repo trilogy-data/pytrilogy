@@ -17,7 +17,7 @@ def _read_dependencies():
     for line in req_file.read_text().splitlines():
         line = line.strip()
         # Skip empty lines and comments
-        if line and not line.startswith('#'):
+        if line and not line.startswith("#"):
             deps.append(line)
     return deps
 
@@ -44,14 +44,14 @@ def _patch_metadata(metadata_directory):
         return
 
     # Read the current content
-    content = metadata_file.read_text(encoding='utf-8')
+    content = metadata_file.read_text(encoding="utf-8")
 
     # Find the end of headers (blank line before body)
     # METADATA format: headers, blank line, body
     lines = content.splitlines(keepends=True)
     header_end = 0
     for i, line in enumerate(lines):
-        if line.strip() == '':
+        if line.strip() == "":
             header_end = i
             break
 
@@ -60,7 +60,7 @@ def _patch_metadata(metadata_directory):
     new_lines = lines[:header_end] + dep_lines + lines[header_end:]
 
     # Write back
-    metadata_file.write_text(''.join(new_lines), encoding='utf-8')
+    metadata_file.write_text("".join(new_lines), encoding="utf-8")
 
 
 def _sync_version():
@@ -113,7 +113,9 @@ def prepare_metadata_for_build_wheel(metadata_directory, config_settings=None):
     """PEP 517 prepare_metadata_for_build_wheel with version sync and dependency injection"""
     version = _sync_version()
     print(f"Synced version to {version}")
-    result = maturin.prepare_metadata_for_build_wheel(metadata_directory, config_settings)
+    result = maturin.prepare_metadata_for_build_wheel(
+        metadata_directory, config_settings
+    )
     # The result is the .dist-info directory name, and it's located in metadata_directory
     dist_info_path = Path(metadata_directory) / result
     _patch_metadata(dist_info_path)
