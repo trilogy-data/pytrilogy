@@ -1,5 +1,6 @@
 from enum import Enum
 from typing import TYPE_CHECKING, Callable, List, Optional
+
 from trilogy.core.models.environment import Environment
 
 if TYPE_CHECKING:
@@ -13,11 +14,12 @@ from trilogy.dialect.config import DialectConfig, DuckDBConfig
 def default_factory(conf: DialectConfig, config_type):
     from sqlalchemy import create_engine
     from sqlalchemy.pool import NullPool
+
     # the DuckDB IdentifierPreparer uses a global connection that is not threadsafe
     if isinstance(conf, DuckDBConfig):
         # we monkey patch to parent
-        from duckdb_engine import PGIdentifierPreparer, DuckDBIdentifierPreparer
-    
+        from duckdb_engine import DuckDBIdentifierPreparer, PGIdentifierPreparer
+
         DuckDBIdentifierPreparer.__init__ = PGIdentifierPreparer.__init__
     engine_args = {
         "future": True,

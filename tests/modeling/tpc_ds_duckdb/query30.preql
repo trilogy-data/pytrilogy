@@ -9,7 +9,7 @@ auto scaled_state_returns_2002 <- 1.2 * avg(customer_state_returns_2002) by web_
 
 WHERE 
     customer_state_returns_2002 > scaled_state_returns_2002 
-    and web_returns.customer.state = 'GA'
+    and web_returns.customer.address.state = 'GA'
     and web_returns.return_address.state is not null
 SELECT 
     -- web_returns.customer.id, # avoid deduplication

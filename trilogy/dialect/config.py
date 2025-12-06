@@ -47,7 +47,7 @@ class DuckDBConfig(DialectConfig):
 
     def connection_string(self) -> str:
         if not self.path:
-            return f"duckdb:///:memory:"
+            return "duckdb:///:memory:"
         return f"duckdb:///{self.path}"
 
 

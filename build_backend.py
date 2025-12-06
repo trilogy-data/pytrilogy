@@ -1,4 +1,5 @@
 """Custom build backend that syncs version before building with maturin"""
+
 import re
 from pathlib import Path
 
@@ -18,18 +19,22 @@ def _sync_version():
     version = match.group(1)
 
     # Update Cargo.toml
-    cargo_file = Path(__file__).parent / "trilogy" / "scripts" / "dependency" / "Cargo.toml"
+    cargo_file = (
+        Path(__file__).parent / "trilogy" / "scripts" / "dependency" / "Cargo.toml"
+    )
     cargo_content = cargo_file.read_text()
 
     # Replace version in Cargo.toml (handle empty string or existing version)
     if 'version = ""' in cargo_content:
-        new_cargo_content = cargo_content.replace('version = ""', f'version = "{version}"', 1)
+        new_cargo_content = cargo_content.replace(
+            'version = ""', f'version = "{version}"', 1
+        )
     else:
         new_cargo_content = re.sub(
             r'(version\s*=\s*")[^"]*(")',
-            rf'\g<1>{version}\g<2>',
+            rf"\g<1>{version}\g<2>",
             cargo_content,
-            count=1
+            count=1,
         )
 
     cargo_file.write_text(new_cargo_content)
@@ -78,7 +83,9 @@ def prepare_metadata_for_build_editable(metadata_directory, config_settings=None
     """PEP 660 prepare_metadata_for_build_editable with version sync"""
     version = _sync_version()
     print(f"Synced version to {version}")
-    return maturin.prepare_metadata_for_build_editable(metadata_directory, config_settings)
+    return maturin.prepare_metadata_for_build_editable(
+        metadata_directory, config_settings
+    )
 
 
 def build_editable(wheel_directory, config_settings=None, metadata_directory=None):

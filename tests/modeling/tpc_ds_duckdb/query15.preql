@@ -3,18 +3,18 @@ import catalog_sales as catalog_sales;
 
 
 select
-    catalog_sales.bill_customer.zip,
+    catalog_sales.bill_customer.address.zip,
     sum(catalog_sales.sales_price) -> sales
 where
     catalog_sales.date.quarter = 2 and catalog_sales.date.year = 2001
 and  (
-catalog_sales.bill_customer.state in ('CA',
+catalog_sales.bill_customer.address.state in ('CA',
                        'WA',
                        'GA')
 OR
 catalog_sales.sales_price > 500
 OR
-SUBSTRING(catalog_sales.bill_customer.zip, 1, 5) IN ('85669',
+SUBSTRING(catalog_sales.bill_customer.address.zip, 1, 5) IN ('85669',
                                 '86197',
                                 '88274',
                                 '83405',
@@ -25,5 +25,5 @@ SUBSTRING(catalog_sales.bill_customer.zip, 1, 5) IN ('85669',
                                 '81792')
                                 )
 order by
-    catalog_sales.bill_customer.zip asc NULLS    FIRST
+    catalog_sales.bill_customer.address.zip asc NULLS    FIRST
 limit 100;

@@ -93,7 +93,7 @@ class ETLDependencyStrategy:
         # Build the graph
         for node in nodes:
             normal_path = normalize_path_variants(node)
-            node = ScriptNode(path = normal_path)
+            node = ScriptNode(path=normal_path)
             path_to_node[normal_path] = node
             graph.add_node(node)
 

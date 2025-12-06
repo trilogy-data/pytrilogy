@@ -1,12 +1,12 @@
 from pathlib import Path
+
 import networkx as nx
 
 from trilogy.scripts.dependency import (
-    NoDependencyStrategy,
     ETLDependencyStrategy,
+    NoDependencyStrategy,
     ScriptNode,
     create_script_nodes,
-    normalize_path_variants,
 )
 
 TEST_NODES = [
@@ -77,9 +77,9 @@ def test_etl_dependency_with_persist():
     declarer_node = next(n for n in nodes if n.path == declarer_file)
 
     # Check if there's a path from updater to declarer (may be indirect through main)
-    assert nx.has_path(graph, updater_node, declarer_node), (
-        "updater should run before declarer (persist-before-declare rule)"
-    )
+    assert nx.has_path(
+        graph, updater_node, declarer_node
+    ), "updater should run before declarer (persist-before-declare rule)"
 
 
 def test_etl_dependency_complex_chain():
@@ -122,8 +122,10 @@ def test_etl_dependency_complex_chain():
     main_pos = order.index(main_node)
 
     # Verify ordering constraints
-    assert updater_pos < base_pos, "updater must run before base (persist-before-declare)"
+    assert (
+        updater_pos < base_pos
+    ), "updater must run before base (persist-before-declare)"
     assert base_pos < consumer_pos, "base must run before consumer (declare-before-use)"
-    assert updater_pos < main_pos and base_pos < main_pos and consumer_pos < main_pos, (
-        "main should run after all dependencies"
-    )
+    assert (
+        updater_pos < main_pos and base_pos < main_pos and consumer_pos < main_pos
+    ), "main should run after all dependencies"

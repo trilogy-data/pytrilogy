@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 import networkx as nx
-import duckdb
 
 from trilogy import Executor
 from trilogy.scripts.dependency import (
@@ -232,7 +231,7 @@ def _execute_single(
     except Exception as e:
         duration = (datetime.now() - start_time).total_seconds()
         if executor:
-            executor.close() # Ensure executor is closed even on failure
+            executor.close()  # Ensure executor is closed even on failure
         return ExecutionResult(
             node=node,
             success=False,
@@ -285,7 +284,7 @@ def _create_worker(
                 if on_script_start:
                     on_script_start(node)
                 result = _execute_single(node, executor_factory, execution_fn)
-                
+
                 # Use the lock for state updates and notification
                 with lock:
                     results.append(result)
@@ -305,7 +304,7 @@ def _create_worker(
                         results,
                         on_script_complete,
                     )
-                    work_available.notify_all() # Notify other workers of new ready/completed state
+                    work_available.notify_all()  # Notify other workers of new ready/completed state
 
     return worker
 
@@ -444,7 +443,7 @@ class ParallelExecutor:
         else:
             nodes = create_script_nodes([root])
             graph = self.resolver.build_graph(nodes)
-        
+
         # Total count of nodes for summary/completion check
         total_scripts = len(nodes)
 
@@ -469,7 +468,7 @@ class ParallelExecutor:
             total_duration=total_duration,
             results=results,
         )
-    
+
     def get_folder_execution_plan(self, folder: Path) -> nx.DiGraph:
         """
         Get the execution plan (dependency graph) for all scripts in a folder.

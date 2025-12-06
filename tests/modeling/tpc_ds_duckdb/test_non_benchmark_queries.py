@@ -23,10 +23,10 @@ import store_sales as store_sales;
 with ranked_states as
 select 
     store_sales.customer.first_name,
-    store_sales.customer.state,
+    store_sales.customer.address.state,
     rank store_sales.customer.first_name 
-        over store_sales.customer.state 
-        order by  sum(store_sales.sales_price) by store_sales.customer.first_name, store_sales.customer.state desc 
+        over store_sales.customer.address.state 
+        order by  sum(store_sales.sales_price) by store_sales.customer.first_name, store_sales.customer.address.state desc 
     -> sales_rank;
 
 select 
