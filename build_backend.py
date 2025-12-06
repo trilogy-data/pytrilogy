@@ -47,6 +47,43 @@ def _patch_metadata(metadata_directory):
             f.write(f"Requires-Dist: {dep}\n")
 
 
+def _patch_wheel(wheel_path):
+    """Patch the METADATA file inside a built wheel"""
+    import zipfile
+    import tempfile
+
+    wheel_path = Path(wheel_path)
+    if not wheel_path.exists():
+        return
+
+    deps = _read_dependencies()
+    if not deps:
+        return
+
+    # Create a temporary directory
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        # Extract wheel
+        with zipfile.ZipFile(wheel_path, 'r') as zf:
+            zf.extractall(tmpdir)
+
+        # Find and patch METADATA
+        metadata_files = list(tmpdir.glob("*.dist-info/METADATA"))
+        if metadata_files:
+            metadata_file = metadata_files[0]
+            with metadata_file.open('a', encoding='utf-8') as f:
+                for dep in deps:
+                    f.write(f"Requires-Dist: {dep}\n")
+
+            # Rebuild wheel
+            wheel_path.unlink()
+            with zipfile.ZipFile(wheel_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for file in tmpdir.rglob('*'):
+                    if file.is_file():
+                        zf.write(file, file.relative_to(tmpdir))
+
+
 def _sync_version():
     """Sync version from trilogy/__init__.py to Cargo.toml"""
     # Read version from Python
@@ -105,7 +142,13 @@ def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
     """PEP 517 build_wheel with version sync"""
     version = _sync_version()
     print(f"Synced version to {version}")
-    return maturin.build_wheel(wheel_directory, config_settings, metadata_directory)
+    result = maturin.build_wheel(wheel_directory, config_settings, metadata_directory)
+
+    # Patch the built wheel to include dependencies
+    if result:
+        _patch_wheel(Path(wheel_directory) / result)
+
+    return result
 
 
 def build_sdist(sdist_directory, config_settings=None):
@@ -136,4 +179,10 @@ def build_editable(wheel_directory, config_settings=None, metadata_directory=Non
     """PEP 660 build_editable with version sync"""
     version = _sync_version()
     print(f"Synced version to {version}")
-    return maturin.build_editable(wheel_directory, config_settings, metadata_directory)
+    result = maturin.build_editable(wheel_directory, config_settings, metadata_directory)
+
+    # Patch the built wheel to include dependencies
+    if result:
+        _patch_wheel(Path(wheel_directory) / result)
+
+    return result
