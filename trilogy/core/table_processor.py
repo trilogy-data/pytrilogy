@@ -9,6 +9,44 @@ from trilogy.core.statements.execute import (
 )
 
 
+def datasource_to_create_table_info(
+    datasource: Datasource,
+) -> CreateTableInfo:
+    address_field_map: dict[str, str] = {
+        column.concept.address: column.alias  # type: ignore
+        for column in datasource.columns
+        if column.is_concrete
+    }
+    columns_info = [
+        ColumnInfo(
+            # the is_concrete restricts this
+            name=col.alias,  # type: ignore
+            type=col.concept.output_datatype,
+            description=(
+                col.concept.metadata.description if col.concept.metadata else None
+            ),
+            nullable=Modifier.OPTIONAL in col.modifiers,
+            primary_key=col.concept.address in datasource.grain.components,
+        )
+        for col in datasource.columns
+        if col.is_concrete
+    ]
+
+    return CreateTableInfo(
+        name=(
+            datasource.address.location
+            if isinstance(datasource.address, Address)
+            else datasource.address
+        ),
+        columns=columns_info,
+        partition_keys=[
+            address_field_map[c.address]
+            for c in datasource.partition_by
+            if c.address in address_field_map
+        ],
+    )
+
+
 def process_create_statement(
     statement: CreateStatement,
     environment: Environment,
@@ -20,41 +58,8 @@ def process_create_statement(
         if not datasource:
             raise ValueError(f"Datasource {target} not found in environment.")
 
-        address_field_map: dict[str, str] = {
-            column.concept.address: column.alias  # type: ignore
-            for column in datasource.columns
-            if column.is_concrete
-        }
-        columns_info = [
-            ColumnInfo(
-                # the is_concrete restricts this
-                name=col.alias,  # type: ignore
-                type=col.concept.output_datatype,
-                description=(
-                    col.concept.metadata.description if col.concept.metadata else None
-                ),
-                nullable=Modifier.OPTIONAL in col.modifiers,
-                primary_key=col.concept.address in datasource.grain.components,
-            )
-            for col in datasource.columns
-            if col.is_concrete
-        ]
-
-        targets_info.append(
-            CreateTableInfo(
-                name=(
-                    datasource.address.location
-                    if isinstance(datasource.address, Address)
-                    else datasource.address
-                ),
-                columns=columns_info,
-                partition_keys=[
-                    address_field_map[c.address]
-                    for c in datasource.partition_by
-                    if c.address in address_field_map
-                ],
-            )
-        )
+        create_table_info = datasource_to_create_table_info(datasource)
+        targets_info.append(create_table_info)
 
     return ProcessedCreateStatement(
         scope=statement.scope, targets=targets_info, create_mode=statement.create_mode

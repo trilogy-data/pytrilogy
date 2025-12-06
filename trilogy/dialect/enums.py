@@ -20,7 +20,7 @@ def default_factory(conf: DialectConfig, config_type):
         # we monkey patch to parent to avoid this
         from duckdb_engine import DuckDBIdentifierPreparer, PGIdentifierPreparer
 
-        DuckDBIdentifierPreparer.__init__ = PGIdentifierPreparer.__init__ #type: ignore
+        DuckDBIdentifierPreparer.__init__ = PGIdentifierPreparer.__init__  # type: ignore
     engine_args = {
         "future": True,
         "poolclass": NullPool,

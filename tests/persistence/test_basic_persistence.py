@@ -1,6 +1,6 @@
-# from trilogy.compiler import compile
 import networkx as nx
 
+from trilogy import Dialects
 from trilogy.core.enums import ConceptSource, Derivation, Purpose
 from trilogy.core.env_processor import (
     concept_to_node,
@@ -308,3 +308,47 @@ def test_persist_with_where():
         # test that the rendered SQL didn't need to use a cASE
         assert "CASE" not in compiled[-1]
         assert "category_id" not in compiled[-1]
+
+
+def test_persist_overwrite():
+
+    base = """
+    key x int;
+    property x.y string;
+
+    datasource ds0 (
+    x, y)
+    grain (x)
+    query '''
+    select 
+    1 as x, 'fun' as y
+    union all 
+    select 2 as x, 'fun' as y
+    '''
+    ;
+
+    datasource ds1 (
+        fun:x,
+        fun_y: y
+    )
+    grain (x)
+    address test_table;
+
+    create or replace datasource ds1;
+
+    overwrite ds1;
+
+    validate datasource ds1;
+
+    """
+    env, parsed = parse(base)
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+
+    for statement in parsed:
+        executor.execute_statement(statement)
+
+    rows = executor.execute_raw_sql("select * from test_table;").fetchall()
+
+    assert len(rows) == 2
+    for row in rows:
+        assert row.fun_y == "fun"

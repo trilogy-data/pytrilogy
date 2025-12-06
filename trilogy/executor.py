@@ -18,6 +18,7 @@ from trilogy.core.models.core import ListWrapper, MapWrapper
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
+    STATEMENT_TYPES,
     ConceptDeclarationStatement,
     CopyStatement,
     CreateStatement,
@@ -105,8 +106,17 @@ class Executor(object):
         self,
         statement: PROCESSED_STATEMENT_TYPES,
     ) -> Optional[ResultProtocol]:
+        if isinstance(statement, STATEMENT_TYPES):
+            generate = self.generator.generate_queries(
+                self.environment, [statement], hooks=self.hooks
+            )
+            if not generate:
+                return None
+            statement = generate[0]
+
         if not isinstance(statement, PROCESSED_STATEMENT_TYPES):
             return None
+
         return self.execute_query(statement)
 
     @singledispatchmethod

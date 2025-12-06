@@ -14,6 +14,7 @@ from trilogy.constants import (
 from trilogy.core.constants import UNNEST_NAME
 from trilogy.core.enums import (
     ComparisonOperator,
+    CreateMode,
     DatePart,
     FunctionType,
     GroupMode,
@@ -93,7 +94,11 @@ from trilogy.core.statements.execute import (
     ProcessedStaticValueOutput,
     ProcessedValidateStatement,
 )
-from trilogy.core.table_processor import process_create_statement
+from trilogy.core.table_processor import (
+    CreateTableInfo,
+    datasource_to_create_table_info,
+    process_create_statement,
+)
 from trilogy.core.utility import safe_quote
 from trilogy.dialect.common import render_join, render_unnest
 from trilogy.hooks.base_hook import BaseHook
@@ -1274,6 +1279,20 @@ class BaseDialect:
             ctes=compiled_ctes[:-1],
         )
 
+    def compile_create_table_statement(
+        self, target: CreateTableInfo, create_mode: CreateMode
+    ) -> str:
+        type_map = {}
+        for c in target.columns:
+            type_map[c.name] = self.render_expr(c.type)
+        return self.CREATE_TABLE_SQL_TEMPLATE.render(
+            create_mode=create_mode.value,
+            name=safe_quote(target.name, self.QUOTE_CHARACTER),
+            columns=target.columns,
+            type_map=type_map,
+            partition_keys=target.partition_keys,
+        )
+
     def compile_statement(
         self,
         query: PROCESSED_STATEMENT_TYPES,
@@ -1299,17 +1318,8 @@ class BaseDialect:
 
             text = []
             for target in query.targets:
-                type_map = {}
-                for c in target.columns:
-                    type_map[c.name] = self.render_expr(c.type)
                 text.append(
-                    self.CREATE_TABLE_SQL_TEMPLATE.render(
-                        create_mode=query.create_mode.value,
-                        name=safe_quote(target.name, self.QUOTE_CHARACTER),
-                        columns=target.columns,
-                        type_map=type_map,
-                        partition_keys=target.partition_keys,
-                    )
+                    self.compile_create_table_statement(target, query.create_mode)
                 )
             return "\n".join(text)
 
@@ -1319,7 +1329,8 @@ class BaseDialect:
         output = None
         if isinstance(query, ProcessedQueryPersist):
             if query.persist_mode == PersistMode.OVERWRITE:
-                output = f"CREATE OR REPLACE TABLE {safe_quote(query.output_to.address.location, self.QUOTE_CHARACTER)} AS "
+                create_table_info = datasource_to_create_table_info(query.datasource)
+                output = f"{self.compile_create_table_statement(create_table_info, CreateMode.CREATE_OR_REPLACE)} INSERT INTO {safe_quote(query.output_to.address.location, self.QUOTE_CHARACTER)} "
             elif query.persist_mode == PersistMode.APPEND:
                 if query.partition_by:
                     return self.generate_partitioned_insert(
