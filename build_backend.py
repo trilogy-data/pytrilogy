@@ -146,7 +146,18 @@ def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
 
     # Patch the built wheel to include dependencies
     if result:
-        _patch_wheel(Path(wheel_directory) / result)
+        # Patch both the output wheel and maturin's target wheel
+        wheel_path = Path(wheel_directory) / result
+        print(f"Patching wheel at {wheel_path}")
+        _patch_wheel(wheel_path)
+
+        # Also patch maturin's target directory wheel if it exists
+        maturin_wheel = Path(__file__).parent / "trilogy" / "scripts" / "dependency" / "target" / "wheels" / result
+        if maturin_wheel.exists():
+            print(f"Patching maturin target wheel at {maturin_wheel}")
+            _patch_wheel(maturin_wheel)
+
+        print(f"Wheel patched with dependencies from requirements.txt")
 
     return result
 
@@ -183,6 +194,13 @@ def build_editable(wheel_directory, config_settings=None, metadata_directory=Non
 
     # Patch the built wheel to include dependencies
     if result:
-        _patch_wheel(Path(wheel_directory) / result)
+        # Patch both the output wheel and maturin's target wheel
+        wheel_path = Path(wheel_directory) / result
+        _patch_wheel(wheel_path)
+
+        # Also patch maturin's target directory wheel if it exists
+        maturin_wheel = Path(__file__).parent / "trilogy" / "scripts" / "dependency" / "target" / "wheels" / result
+        if maturin_wheel.exists():
+            _patch_wheel(maturin_wheel)
 
     return result
