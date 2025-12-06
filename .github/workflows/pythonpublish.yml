@@ -15,7 +15,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.x'
+        python-version: '3.13'
     - name: Set up Rust
       uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
