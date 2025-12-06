@@ -13,7 +13,7 @@ lint.extend-select = ["I"]
 [project]
 name = "pytrilogy"
 description = "Declarative, typed query language that compiles to SQL."
-dynamic = ["version", "dependencies"]
+dynamic = ["dependencies", "version"]
 readme = {file = "README.md", content-type = "text/markdown"}
 classifiers = [
     "Programming Language :: Python",
@@ -36,7 +36,6 @@ ai = ["httpx"]
 cli = ["rich"]
 
 [tool.setuptools.dynamic]
-version = {attr = "trilogy.__version__"}
 dependencies = {file = ["requirements.txt"]}
 
 [tool.setuptools]
@@ -47,7 +46,8 @@ packages = {find = {exclude = ["dist", "build", "*.tests", "*.tests.*", "tests.*
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]
-build-backend = "maturin"
+build-backend = "build_backend"
+backend-path = ["."]
 
 [tool.maturin]
 python-source = "."
