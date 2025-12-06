@@ -3,6 +3,8 @@ name: Push to PyPI
 on:
   push:
     branches: [main]
+env:
+  PYTHON_VERSIONS: "3.11 3.12 3.13"
 jobs:
   version-check:
     runs-on: ubuntu-latest
@@ -40,35 +42,83 @@ jobs:
 
         echo "Local version: $LOCAL_VERSION"
 
-        # Get PyPI version
-        PYPI_VERSION=$(python -c "
+        # Get PyPI version and check wheel availability
+        SHOULD_PUBLISH=$(python -c "
         import requests
-        import json
+        from packaging import version
+
+        local_ver = version.parse('$LOCAL_VERSION')
+        python_versions = '${{ env.PYTHON_VERSIONS }}'.split()
+
         try:
           response = requests.get('https://pypi.org/pypi/pytrilogy/json', timeout=10)
-          if response.status_code == 200:
-            data = response.json()
-            print(data['info']['version'])
+          if response.status_code != 200:
+            print('true')  # Package doesn't exist, publish
+            exit(0)
+
+          data = response.json()
+          pypi_ver = version.parse(data['info']['version'])
+
+          print(f'PyPI version: {pypi_ver}', flush=True)
+
+          # If local version is newer, publish
+          if local_ver > pypi_ver:
+            print('true')
+            exit(0)
+
+          # If versions don't match, don't publish
+          if local_ver != pypi_ver:
+            print('false')
+            exit(0)
+
+          # Versions match - check if all wheels exist
+          print(f'Versions match ({local_ver}), checking wheels...', flush=True)
+
+          # Generate expected wheel patterns from Python versions
+          platforms = [
+            'manylinux_2_17_x86_64',
+            'manylinux_2_17_aarch64',
+            'macosx_10_12_x86_64',
+            'macosx_11_0_arm64',
+            'win_amd64',
+          ]
+
+          expected_wheels = []
+          for py_ver in python_versions:
+            cp_ver = py_ver.replace('.', '')  # '3.11' -> '311'
+            for platform in platforms:
+              expected_wheels.append(f'cp{cp_ver}-cp{cp_ver}-{platform}')
+
+          # Get available files
+          available_files = [f['filename'] for f in data.get('urls', [])]
+
+          # Check for missing wheels
+          missing = []
+          for pattern in expected_wheels:
+            if not any(pattern in f for f in available_files):
+              missing.append(pattern)
+
+          # Check for sdist
+          has_sdist = any(f.endswith('.tar.gz') for f in available_files)
+
+          if missing:
+            print(f'Missing wheels: {missing}', flush=True)
+            print('true')
+          elif not has_sdist:
+            print('Missing sdist', flush=True)
+            print('true')
           else:
-            print('0.0.0')  # Default if package doesn't exist yet
-        except:
-          print('0.0.0')  # Default if request fails
-        " 2>/dev/null || echo "0.0.0")
+            print('All wheels and sdist present', flush=True)
+            print('false')
 
-        echo "PyPI version: $PYPI_VERSION"
-
-        # Compare versions using packaging.version
-        SHOULD_PUBLISH=$(python -c "
-        from packaging import version
-        local_ver = version.parse('$LOCAL_VERSION')
-        pypi_ver = version.parse('$PYPI_VERSION')
-        print('true' if local_ver > pypi_ver else 'false')
+        except Exception as e:
+          print(f'Error checking PyPI: {e}', flush=True)
+          print('true')  # Publish on error to be safe
         ")
 
         echo "Should publish: $SHOULD_PUBLISH"
         echo "should_publish=$SHOULD_PUBLISH" >> $GITHUB_OUTPUT
         echo "local_version=$LOCAL_VERSION" >> $GITHUB_OUTPUT
-        echo "pypi_version=$PYPI_VERSION" >> $GITHUB_OUTPUT
 
   linux:
     needs: version-check
@@ -83,7 +133,7 @@ jobs:
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --interpreter 3.11 3.12 3.13
+        args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
         manylinux: auto
     - name: Upload wheels
       uses: actions/upload-artifact@v4
@@ -104,7 +154,7 @@ jobs:
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --interpreter 3.11 3.12 3.13
+        args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
     - name: Upload wheels
       uses: actions/upload-artifact@v4
       with:
@@ -124,7 +174,7 @@ jobs:
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --interpreter 3.11 3.12 3.13
+        args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
     - name: Upload wheels
       uses: actions/upload-artifact@v4
       with:
@@ -167,6 +217,7 @@ jobs:
       uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc
       with:
         verbose: true
+        skip-existing: true
 
   skip-publish:
     needs: version-check
@@ -175,4 +226,4 @@ jobs:
     steps:
     - name: Skip publishing
       run: |
-        echo "Skipping publish: Local version (${{ needs.version-check.outputs.local_version }}) is not newer than PyPI version (${{ needs.version-check.outputs.pypi_version }})"
+        echo "Skipping publish: Local version (${{ needs.version-check.outputs.local_version }}) - all wheels and sdist already present on PyPI"
