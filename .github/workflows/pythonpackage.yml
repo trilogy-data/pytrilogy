@@ -47,7 +47,7 @@ jobs:
           cargo test --release
       - name: Build Rust extension
         run: |
-          pip install .
+          pip install -e .
       - name: Lint with mypy
         run: |
           # stop the build if there are Python syntax errors or undefined names
