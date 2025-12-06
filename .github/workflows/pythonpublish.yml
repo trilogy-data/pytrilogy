@@ -26,7 +26,7 @@ jobs:
         pip install maturin packaging requests
         pip install -r requirements.txt
     - name: Build for version check
-      run: maturin develop --release
+      run: pip install -e .
     - name: Check if version needs publishing
       id: version_check
       run: |
