@@ -15,12 +15,12 @@ def default_factory(conf: DialectConfig, config_type):
     from sqlalchemy import create_engine
     from sqlalchemy.pool import NullPool
 
-    # the DuckDB IdentifierPreparer uses a global connection that is not threadsafe
+    # the DuckDB IdentifierPreparer uses a global connection that is not thread safe
     if isinstance(conf, DuckDBConfig):
-        # we monkey patch to parent
+        # we monkey patch to parent to avoid this
         from duckdb_engine import DuckDBIdentifierPreparer, PGIdentifierPreparer
 
-        DuckDBIdentifierPreparer.__init__ = PGIdentifierPreparer.__init__
+        DuckDBIdentifierPreparer.__init__ = PGIdentifierPreparer.__init__ #type: ignore
     engine_args = {
         "future": True,
         "poolclass": NullPool,
