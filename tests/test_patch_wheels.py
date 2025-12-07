@@ -1,0 +1,289 @@
+import sys
+import zipfile
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent / ".scripts"))
+import patch_wheels
+
+
+def test_read_dependencies(tmp_path):
+    """Test reading dependencies from requirements.txt"""
+    req_file = tmp_path / "requirements.txt"
+    req_file.write_text(
+        """lark
+jinja2
+# This is a comment
+sqlalchemy<2.0.0
+
+networkx
+pyodbc
+"""
+    )
+
+    # Temporarily change the script location
+    original_file = patch_wheels.__file__
+    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
+    try:
+        deps = patch_wheels.read_dependencies()
+    finally:
+        patch_wheels.__file__ = original_file
+
+    assert deps == ["lark", "jinja2", "sqlalchemy<2.0.0", "networkx", "pyodbc"]
+
+
+def test_read_dependencies_empty(tmp_path):
+    """Test reading dependencies when requirements.txt doesn't exist"""
+    # Temporarily change the script location
+    original_file = patch_wheels.__file__
+    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
+    try:
+        deps = patch_wheels.read_dependencies()
+    finally:
+        patch_wheels.__file__ = original_file
+
+    assert deps == []
+
+
+def test_patch_metadata(tmp_path):
+    """Test patching METADATA file with dependencies"""
+    dist_info = tmp_path / "test-1.0.0.dist-info"
+    dist_info.mkdir()
+
+    metadata_file = dist_info / "METADATA"
+    metadata_file.write_text(
+        """Metadata-Version: 2.4
+Name: test
+Version: 1.0.0
+Classifier: Programming Language :: Python
+Requires-Dist: existing-dep ; extra == 'extra'
+
+This is the description.
+"""
+    )
+
+    req_file = tmp_path / "requirements.txt"
+    req_file.write_text("lark\njinja2\nsqlalchemy<2.0.0\n")
+
+    # Temporarily change the script location
+    original_file = patch_wheels.__file__
+    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
+    try:
+        patch_wheels.patch_metadata(dist_info)
+    finally:
+        patch_wheels.__file__ = original_file
+
+    content = metadata_file.read_text()
+
+    # Verify dependencies were added before the blank line
+    assert "Requires-Dist: lark\n" in content
+    assert "Requires-Dist: jinja2\n" in content
+    assert "Requires-Dist: sqlalchemy<2.0.0\n" in content
+
+    # Verify existing content is preserved
+    assert "Requires-Dist: existing-dep ; extra == 'extra'" in content
+    assert "This is the description." in content
+
+    # Verify structure: headers, deps, blank line, body
+    lines = content.splitlines()
+    blank_line_idx = None
+    for i, line in enumerate(lines):
+        if line == "":
+            blank_line_idx = i
+            break
+
+    assert blank_line_idx is not None
+    # New dependencies should be before blank line
+    dep_lines = [
+        i
+        for i, line in enumerate(lines[:blank_line_idx])
+        if "Requires-Dist: lark" in line
+    ]
+    assert len(dep_lines) == 1
+    assert dep_lines[0] < blank_line_idx
+
+
+def test_patch_metadata_no_dependencies(tmp_path):
+    """Test patching when no dependencies exist"""
+    dist_info = tmp_path / "test-1.0.0.dist-info"
+    dist_info.mkdir()
+
+    metadata_file = dist_info / "METADATA"
+    original_content = """Metadata-Version: 2.4
+Name: test
+
+Description
+"""
+    metadata_file.write_text(original_content)
+
+    # Temporarily change the script location
+    original_file = patch_wheels.__file__
+    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
+    try:
+        patch_wheels.patch_metadata(dist_info)
+    finally:
+        patch_wheels.__file__ = original_file
+
+    # Content should be unchanged when no requirements.txt
+    assert metadata_file.read_text() == original_content
+
+
+def create_test_wheel(wheel_path, metadata_content, package_name="test"):
+    """Helper to create a minimal wheel for testing"""
+    with zipfile.ZipFile(wheel_path, "w", zipfile.ZIP_DEFLATED) as whl:
+        # Add METADATA
+        dist_info = f"{package_name}-1.0.0.dist-info"
+        whl.writestr(f"{dist_info}/METADATA", metadata_content)
+        whl.writestr(f"{dist_info}/WHEEL", "Wheel-Version: 1.0\n")
+        whl.writestr(f"{dist_info}/RECORD", "")
+        # Add a dummy module
+        whl.writestr(f"{package_name}/__init__.py", "# test module\n")
+
+
+def test_patch_wheel_end_to_end(tmp_path):
+    """Test patching a complete wheel file"""
+    wheel_path = tmp_path / "test-1.0.0-py3-none-any.whl"
+
+    original_metadata = """Metadata-Version: 2.4
+Name: test
+Version: 1.0.0
+
+Test package
+"""
+    create_test_wheel(wheel_path, original_metadata)
+
+    req_file = tmp_path / "requirements.txt"
+    req_file.write_text("lark\njinja2\n")
+
+    # Temporarily change the script location
+    original_file = patch_wheels.__file__
+    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
+    try:
+        result = patch_wheels.patch_wheel(wheel_path)
+    finally:
+        patch_wheels.__file__ = original_file
+
+    assert result is True
+    assert wheel_path.exists()
+
+    # Verify the wheel was patched correctly
+    with zipfile.ZipFile(wheel_path, "r") as whl:
+        metadata = whl.read("test-1.0.0.dist-info/METADATA").decode("utf-8")
+
+    assert "Requires-Dist: lark" in metadata
+    assert "Requires-Dist: jinja2" in metadata
+    assert "Test package" in metadata
+
+
+def test_patch_wheel_preserves_structure(tmp_path):
+    """Test that patching preserves all wheel files"""
+    wheel_path = tmp_path / "test-1.0.0-py3-none-any.whl"
+
+    original_metadata = """Metadata-Version: 2.4
+Name: test
+Version: 1.0.0
+
+"""
+    with zipfile.ZipFile(wheel_path, "w", zipfile.ZIP_DEFLATED) as whl:
+        dist_info = "test-1.0.0.dist-info"
+        whl.writestr(f"{dist_info}/METADATA", original_metadata)
+        whl.writestr(f"{dist_info}/WHEEL", "Wheel-Version: 1.0\n")
+        whl.writestr(f"{dist_info}/RECORD", "file1,hash1\nfile2,hash2\n")
+        whl.writestr("test/__init__.py", "# init\n")
+        whl.writestr("test/module.py", "def func():\n    pass\n")
+
+    req_file = tmp_path / "requirements.txt"
+    req_file.write_text("lark\n")
+
+    original_file = patch_wheels.__file__
+    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
+    try:
+        patch_wheels.patch_wheel(wheel_path)
+    finally:
+        patch_wheels.__file__ = original_file
+
+    # Verify all files are preserved
+    with zipfile.ZipFile(wheel_path, "r") as whl:
+        names = set(whl.namelist())
+
+    expected_files = {
+        "test-1.0.0.dist-info/METADATA",
+        "test-1.0.0.dist-info/WHEEL",
+        "test-1.0.0.dist-info/RECORD",
+        "test/__init__.py",
+        "test/module.py",
+    }
+    assert expected_files == names
+
+
+def test_patch_wheel_nonexistent(tmp_path):
+    """Test patching a wheel that doesn't exist"""
+    wheel_path = tmp_path / "nonexistent.whl"
+
+    original_file = patch_wheels.__file__
+    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
+    try:
+        result = patch_wheels.patch_wheel(wheel_path)
+    finally:
+        patch_wheels.__file__ = original_file
+
+    assert result is False
+
+
+def test_patch_wheel_no_dist_info(tmp_path):
+    """Test patching a wheel without .dist-info directory"""
+    wheel_path = tmp_path / "test-1.0.0-py3-none-any.whl"
+
+    with zipfile.ZipFile(wheel_path, "w", zipfile.ZIP_DEFLATED) as whl:
+        whl.writestr("test/__init__.py", "# test\n")
+
+    req_file = tmp_path / "requirements.txt"
+    req_file.write_text("lark\n")
+
+    original_file = patch_wheels.__file__
+    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
+    try:
+        result = patch_wheels.patch_wheel(wheel_path)
+    finally:
+        patch_wheels.__file__ = original_file
+
+    assert result is False
+
+
+def test_patch_multiple_wheels_in_directory(tmp_path):
+    """Test patching all wheels in a directory via main"""
+    # Create multiple wheels
+    for i in range(3):
+        wheel_path = tmp_path / f"test{i}-1.0.0-py3-none-any.whl"
+        metadata = f"""Metadata-Version: 2.4
+Name: test{i}
+Version: 1.0.0
+
+Package {i}
+"""
+        create_test_wheel(wheel_path, metadata, package_name=f"test{i}")
+
+    req_file = tmp_path / "requirements.txt"
+    req_file.write_text("lark\njinja2\n")
+
+    # Change script location and run
+    original_file = patch_wheels.__file__
+    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
+    try:
+        # Simulate running the script on directory
+        wheels = list(tmp_path.glob("*.whl"))
+        success_count = 0
+        for wheel in wheels:
+            if patch_wheels.patch_wheel(wheel):
+                success_count += 1
+    finally:
+        patch_wheels.__file__ = original_file
+
+    assert success_count == 3
+
+    # Verify all wheels were patched
+    for i in range(3):
+        wheel_path = tmp_path / f"test{i}-1.0.0-py3-none-any.whl"
+        with zipfile.ZipFile(wheel_path, "r") as whl:
+            metadata = whl.read(f"test{i}-1.0.0.dist-info/METADATA").decode("utf-8")
+        assert "Requires-Dist: lark" in metadata
+        assert "Requires-Dist: jinja2" in metadata

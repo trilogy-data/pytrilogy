@@ -47,7 +47,7 @@ packages = {find = {exclude = ["dist", "build", "*.tests", "*.tests.*", "tests.*
 [build-system]
 requires = ["maturin>=1.0,<2.0"]
 build-backend = "build_backend"
-backend-path = ["."]
+backend-path = [".scripts"]
 
 [tool.maturin]
 python-source = "."

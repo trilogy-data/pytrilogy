@@ -13,5 +13,7 @@ Prefer minimal, concise code and small functions. Keep comments concise and targ
 ## Development
 Always use the local .venv
 
+## Build Backend
 
+Project uses a build_backend defined in ./build_backend.py, which mostly uses maturin. The custom wrapper exists to be able to pull in requirements from requirements.txt + version dynamically.
 
