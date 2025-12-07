@@ -6,7 +6,7 @@ import zipfile
 from pathlib import Path
 
 
-def read_dependencies():
+def read_dependencies() -> list[str]:
     """Read dependencies from requirements.txt"""
     # Get project root (parent of .scripts directory if running from .scripts)
     script_dir = Path(__file__).parent
@@ -27,7 +27,7 @@ def read_dependencies():
     return deps
 
 
-def patch_metadata(dist_info_path):
+def patch_metadata(dist_info_path: Path) -> None:
     """Patch the METADATA file to include dependencies"""
     metadata_file = dist_info_path / "METADATA"
     if not metadata_file.exists():
@@ -57,40 +57,48 @@ def patch_metadata(dist_info_path):
     print(f"Patched {metadata_file} with {len(deps)} dependencies")
 
 
-def patch_wheel(wheel_path):
+def patch_wheel(wheel_path: Path | str) -> bool:
     """Patch a wheel file to include dependencies"""
     wheel_path = Path(wheel_path)
     if not wheel_path.exists():
-        print(f"Wheel not found: {wheel_path}")
+        print(f"ERROR: Wheel file not found: {wheel_path}")
         return False
 
     print(f"Patching {wheel_path.name}")
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir_path = Path(tmpdir)
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
 
-        # Extract wheel
-        with zipfile.ZipFile(wheel_path, "r") as zip_ref:
-            zip_ref.extractall(tmpdir_path)
+            # Extract wheel
+            try:
+                with zipfile.ZipFile(wheel_path, "r") as zip_ref:
+                    zip_ref.extractall(tmpdir_path)
+            except zipfile.BadZipFile:
+                print(f"ERROR: Invalid or corrupted wheel file: {wheel_path.name}")
+                return False
 
-        # Find and patch METADATA
-        dist_info_dirs = list(tmpdir_path.glob("*.dist-info"))
-        if not dist_info_dirs:
-            print(f"No .dist-info directory found in {wheel_path.name}")
-            return False
+            # Find and patch METADATA
+            dist_info_dirs = list(tmpdir_path.glob("*.dist-info"))
+            if not dist_info_dirs:
+                print(f"ERROR: No .dist-info directory found in {wheel_path.name}")
+                return False
 
-        patch_metadata(dist_info_dirs[0])
+            patch_metadata(dist_info_dirs[0])
 
-        # Repack the wheel
-        wheel_path.unlink()
-        with zipfile.ZipFile(wheel_path, "w", zipfile.ZIP_DEFLATED) as zip_ref:
-            for file in tmpdir_path.rglob("*"):
-                if file.is_file():
-                    arcname = file.relative_to(tmpdir_path)
-                    zip_ref.write(file, arcname)
+            # Repack the wheel
+            wheel_path.unlink()
+            with zipfile.ZipFile(wheel_path, "w", zipfile.ZIP_DEFLATED) as zip_ref:
+                for file in tmpdir_path.rglob("*"):
+                    if file.is_file():
+                        arcname = file.relative_to(tmpdir_path)
+                        zip_ref.write(file, arcname)
 
-    print(f"Successfully patched {wheel_path.name}")
-    return True
+        print(f"Successfully patched {wheel_path.name}")
+        return True
+    except Exception as e:
+        print(f"ERROR: Failed to patch {wheel_path.name}: {e}")
+        return False
 
 
 if __name__ == "__main__":

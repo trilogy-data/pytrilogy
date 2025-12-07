@@ -19,7 +19,7 @@ def setup_titanic(env: Environment):
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
         keys=(id.address,),
-        grain=Grain(components=[id]),
+        grain=Grain(components=set([id.address])),
         modifiers=[Modifier.NULLABLE],
     )
 
@@ -29,7 +29,7 @@ def setup_titanic(env: Environment):
         datatype=DataType.STRING,
         purpose=Purpose.PROPERTY,
         keys=(id.address,),
-        grain=Grain(components=[id]),
+        grain=Grain(components=set([id.address])),
     )
 
     pclass = Concept(
@@ -38,7 +38,7 @@ def setup_titanic(env: Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
         keys=(id.address,),
-        grain=Grain(components=[id]),
+        grain=Grain(components=set([id.address])),
     )
     survived = Concept(
         name="survived",
@@ -46,7 +46,7 @@ def setup_titanic(env: Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
         keys=(id.address,),
-        grain=Grain(components=[id]),
+        grain=Grain(components=set([id.address])),
     )
     fare = Concept(
         name="fare",
@@ -54,7 +54,7 @@ def setup_titanic(env: Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.FLOAT,
         keys=(id.address,),
-        grain=Grain(components=[id]),
+        grain=Grain(components=set([id.address])),
     )
     embarked = Concept(
         name="embarked",
@@ -62,7 +62,7 @@ def setup_titanic(env: Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
         keys=(id.address,),
-        grain=Grain(components=[id]),
+        grain=Grain(components=set([id.address])),
     )
     cabin = Concept(
         name="cabin",
@@ -70,7 +70,7 @@ def setup_titanic(env: Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
         keys=(id.address,),
-        grain=Grain(components=[id]),
+        grain=Grain(components=set([id.address])),
     )
     ticket = Concept(
         name="ticket",
@@ -78,7 +78,7 @@ def setup_titanic(env: Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
         keys=(id.address,),
-        grain=Grain(components=[id]),
+        grain=Grain(components=set([id.address])),
     )
 
     last_name = Concept(
@@ -123,15 +123,15 @@ def setup_titanic(env: Environment):
             name="raw_data",
             address="raw_titanic",
             columns=[
-                ColumnAssignment(alias="passengerid", concept=id),
-                ColumnAssignment(alias="age", concept=age),
-                ColumnAssignment(alias="survived", concept=survived),
-                ColumnAssignment(alias="pclass", concept=pclass),
-                ColumnAssignment(alias="name", concept=name),
-                ColumnAssignment(alias="fare", concept=fare),
-                ColumnAssignment(alias="cabin", concept=cabin),
-                ColumnAssignment(alias="embarked", concept=embarked),
-                ColumnAssignment(alias="ticket", concept=ticket),
+                ColumnAssignment(alias="passengerid", concept=id.reference),
+                ColumnAssignment(alias="age", concept=age.reference),
+                ColumnAssignment(alias="survived", concept=survived.reference),
+                ColumnAssignment(alias="pclass", concept=pclass.reference),
+                ColumnAssignment(alias="name", concept=name.reference),
+                ColumnAssignment(alias="fare", concept=fare.reference),
+                ColumnAssignment(alias="cabin", concept=cabin.reference),
+                ColumnAssignment(alias="embarked", concept=embarked.reference),
+                ColumnAssignment(alias="ticket", concept=ticket.reference),
             ],
             grain=Grain(components=[id]),
         ),

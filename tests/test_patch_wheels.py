@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / ".scripts"))
 import patch_wheels
 
 
-def test_read_dependencies(tmp_path):
+def test_read_dependencies(tmp_path: Path) -> None:
     """Test reading dependencies from requirements.txt"""
     req_file = tmp_path / "requirements.txt"
     req_file.write_text(
@@ -31,7 +31,7 @@ pyodbc
     assert deps == ["lark", "jinja2", "sqlalchemy<2.0.0", "networkx", "pyodbc"]
 
 
-def test_read_dependencies_empty(tmp_path):
+def test_read_dependencies_empty(tmp_path: Path) -> None:
     """Test reading dependencies when requirements.txt doesn't exist"""
     # Temporarily change the script location
     original_file = patch_wheels.__file__
@@ -44,7 +44,7 @@ def test_read_dependencies_empty(tmp_path):
     assert deps == []
 
 
-def test_patch_metadata(tmp_path):
+def test_patch_metadata(tmp_path: Path) -> None:
     """Test patching METADATA file with dependencies"""
     dist_info = tmp_path / "test-1.0.0.dist-info"
     dist_info.mkdir()
@@ -102,7 +102,7 @@ This is the description.
     assert dep_lines[0] < blank_line_idx
 
 
-def test_patch_metadata_no_dependencies(tmp_path):
+def test_patch_metadata_no_dependencies(tmp_path: Path) -> None:
     """Test patching when no dependencies exist"""
     dist_info = tmp_path / "test-1.0.0.dist-info"
     dist_info.mkdir()
@@ -127,7 +127,9 @@ Description
     assert metadata_file.read_text() == original_content
 
 
-def create_test_wheel(wheel_path, metadata_content, package_name="test"):
+def create_test_wheel(
+    wheel_path: Path, metadata_content: str, package_name: str = "test"
+) -> None:
     """Helper to create a minimal wheel for testing"""
     with zipfile.ZipFile(wheel_path, "w", zipfile.ZIP_DEFLATED) as whl:
         # Add METADATA
@@ -139,7 +141,7 @@ def create_test_wheel(wheel_path, metadata_content, package_name="test"):
         whl.writestr(f"{package_name}/__init__.py", "# test module\n")
 
 
-def test_patch_wheel_end_to_end(tmp_path):
+def test_patch_wheel_end_to_end(tmp_path: Path) -> None:
     """Test patching a complete wheel file"""
     wheel_path = tmp_path / "test-1.0.0-py3-none-any.whl"
 
@@ -174,7 +176,7 @@ Test package
     assert "Test package" in metadata
 
 
-def test_patch_wheel_preserves_structure(tmp_path):
+def test_patch_wheel_preserves_structure(tmp_path: Path) -> None:
     """Test that patching preserves all wheel files"""
     wheel_path = tmp_path / "test-1.0.0-py3-none-any.whl"
 
@@ -215,7 +217,7 @@ Version: 1.0.0
     assert expected_files == names
 
 
-def test_patch_wheel_nonexistent(tmp_path):
+def test_patch_wheel_nonexistent(tmp_path: Path) -> None:
     """Test patching a wheel that doesn't exist"""
     wheel_path = tmp_path / "nonexistent.whl"
 
@@ -229,7 +231,7 @@ def test_patch_wheel_nonexistent(tmp_path):
     assert result is False
 
 
-def test_patch_wheel_no_dist_info(tmp_path):
+def test_patch_wheel_no_dist_info(tmp_path: Path) -> None:
     """Test patching a wheel without .dist-info directory"""
     wheel_path = tmp_path / "test-1.0.0-py3-none-any.whl"
 
@@ -249,7 +251,7 @@ def test_patch_wheel_no_dist_info(tmp_path):
     assert result is False
 
 
-def test_patch_multiple_wheels_in_directory(tmp_path):
+def test_patch_multiple_wheels_in_directory(tmp_path: Path) -> None:
     """Test patching all wheels in a directory via main"""
     # Create multiple wheels
     for i in range(3):
@@ -287,3 +289,102 @@ Package {i}
             metadata = whl.read(f"test{i}-1.0.0.dist-info/METADATA").decode("utf-8")
         assert "Requires-Dist: lark" in metadata
         assert "Requires-Dist: jinja2" in metadata
+
+
+def test_main_with_directory(tmp_path: Path) -> None:
+    """Test __main__ block with directory argument"""
+    import subprocess
+    import sys
+
+    # Create test wheels
+    for i in range(2):
+        wheel_path = tmp_path / f"pkg{i}-1.0.0-py3-none-any.whl"
+        metadata = f"Metadata-Version: 2.4\nName: pkg{i}\nVersion: 1.0.0\n\n"
+        create_test_wheel(wheel_path, metadata, package_name=f"pkg{i}")
+
+    req_file = tmp_path / "requirements.txt"
+    req_file.write_text("lark\n")
+
+    script_path = Path(__file__).parent.parent / ".scripts" / "patch_wheels.py"
+    result = subprocess.run(
+        [sys.executable, str(script_path), str(tmp_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Patched 2/2 wheels successfully" in result.stdout
+
+
+def test_main_with_single_wheel(tmp_path: Path) -> None:
+    """Test __main__ block with single wheel argument"""
+    import subprocess
+    import sys
+
+    wheel_path = tmp_path / "test-1.0.0-py3-none-any.whl"
+    metadata = "Metadata-Version: 2.4\nName: test\nVersion: 1.0.0\n\n"
+    create_test_wheel(wheel_path, metadata)
+
+    req_file = tmp_path / "requirements.txt"
+    req_file.write_text("lark\n")
+
+    script_path = Path(__file__).parent.parent / ".scripts" / "patch_wheels.py"
+    result = subprocess.run(
+        [sys.executable, str(script_path), str(wheel_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Successfully patched" in result.stdout
+
+
+def test_main_with_no_args() -> None:
+    """Test __main__ block with no arguments"""
+    import subprocess
+    import sys
+
+    script_path = Path(__file__).parent.parent / ".scripts" / "patch_wheels.py"
+    result = subprocess.run(
+        [sys.executable, str(script_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "Usage:" in result.stdout
+
+
+def test_main_with_invalid_target(tmp_path: Path) -> None:
+    """Test __main__ block with invalid target"""
+    import subprocess
+    import sys
+
+    invalid_path = tmp_path / "not_a_wheel.txt"
+    invalid_path.write_text("test")
+
+    script_path = Path(__file__).parent.parent / ".scripts" / "patch_wheels.py"
+    result = subprocess.run(
+        [sys.executable, str(script_path), str(invalid_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "Invalid target:" in result.stdout
+
+
+def test_main_with_empty_directory(tmp_path: Path) -> None:
+    """Test __main__ block with directory containing no wheels"""
+    import subprocess
+    import sys
+
+    script_path = Path(__file__).parent.parent / ".scripts" / "patch_wheels.py"
+    result = subprocess.run(
+        [sys.executable, str(script_path), str(tmp_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "No wheel files found" in result.stdout

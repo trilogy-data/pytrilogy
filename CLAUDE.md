@@ -11,9 +11,11 @@ Primarily python, with some rust in performance critical paths.
 Prefer minimal, concise code and small functions. Keep comments concise and targeted at otherwise non-intuitive code.
 
 ## Development
-Always use the local .venv
 
-## Build Backend
+- Always use a local venv.
+- Always type-hint (we use mypy)
 
-Project uses a build_backend defined in ./build_backend.py, which mostly uses maturin. The custom wrapper exists to be able to pull in requirements from requirements.txt + version dynamically.
+## Wheel Building
+
+Project uses a build_backend defined in .scripts/build_backend.py, which mostly uses maturin. The custom wrapper exists to be able to pull in requirements from requirements.txt + version dynamically.
 
