@@ -2,11 +2,38 @@ import sys
 import zipfile
 from pathlib import Path
 
+import pytest  # <-- Add pytest import for fixture
+
 sys.path.insert(0, str(Path(__file__).parent.parent / ".scripts"))
 import patch_wheels
 
 
-def test_read_dependencies(tmp_path: Path) -> None:
+# --- Pytest Fixture for Tempfile Setup ---
+@pytest.fixture
+def set_patch_wheels_location(tmp_path: Path):
+    """
+    A fixture to temporarily change the __file__ attribute of the patch_wheels module
+    to simulate a specific requirements.txt location relative to the test path.
+    The requirements.txt is expected to be next to this simulated file.
+    It yields the original __file__ path if needed, but primarily manages cleanup.
+    """
+    # Use a nested path to simulate a typical setup for tests that need it
+    simulated_path = tmp_path / "nested" / "patch_wheels.py"
+
+    original_file = patch_wheels.__file__
+    patch_wheels.__file__ = str(simulated_path)
+
+    # Yield control to the test function
+    yield original_file  # Can yield the path or just None, but original_file is handy
+
+    # Teardown: Reset the original __file__ attribute
+    patch_wheels.__file__ = original_file
+
+
+# --- End Fixture ---
+
+
+def test_read_dependencies(tmp_path: Path, set_patch_wheels_location) -> None:
     """Test reading dependencies from requirements.txt"""
     req_file = tmp_path / "requirements.txt"
     req_file.write_text(
@@ -19,32 +46,22 @@ networkx
 pyodbc
 """
     )
-
-    # Temporarily change the script location
-    original_file = patch_wheels.__file__
-    patch_wheels.__file__ = str(tmp_path / "nested" / "patch_wheels.py")
-    try:
-        deps = patch_wheels.read_dependencies()
-    finally:
-        patch_wheels.__file__ = original_file
+    # The fixture set_patch_wheels_location handles setting/resetting __file__
+    deps = patch_wheels.read_dependencies()
 
     assert deps == ["lark", "jinja2", "sqlalchemy<2.0.0", "networkx", "pyodbc"]
 
 
-def test_read_dependencies_empty(tmp_path: Path) -> None:
+def test_read_dependencies_empty(tmp_path: Path, set_patch_wheels_location) -> None:
     """Test reading dependencies when requirements.txt doesn't exist"""
-    # Temporarily change the script location
-    original_file = patch_wheels.__file__
-    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
-    try:
-        deps = patch_wheels.read_dependencies()
-    finally:
-        patch_wheels.__file__ = original_file
+    # The fixture set_patch_wheels_location handles setting/resetting __file__
+    # The simulated path in the fixture ensures requirements.txt won't be found
+    deps = patch_wheels.read_dependencies()
 
     assert deps == []
 
 
-def test_patch_metadata(tmp_path: Path) -> None:
+def test_patch_metadata(tmp_path: Path, set_patch_wheels_location) -> None:
     """Test patching METADATA file with dependencies"""
     dist_info = tmp_path / "test-1.0.0.dist-info"
     dist_info.mkdir()
@@ -64,13 +81,8 @@ This is the description.
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("lark\njinja2\nsqlalchemy<2.0.0\n")
 
-    # Temporarily change the script location
-    original_file = patch_wheels.__file__
-    patch_wheels.__file__ = str(tmp_path / "nested" / "patch_wheels.py")
-    try:
-        patch_wheels.patch_metadata(dist_info)
-    finally:
-        patch_wheels.__file__ = original_file
+    # The fixture set_patch_wheels_location handles setting/resetting __file__
+    patch_wheels.patch_metadata(dist_info)
 
     content = metadata_file.read_text()
 
@@ -102,7 +114,9 @@ This is the description.
     assert dep_lines[0] < blank_line_idx
 
 
-def test_patch_metadata_no_dependencies(tmp_path: Path) -> None:
+def test_patch_metadata_no_dependencies(
+    tmp_path: Path, set_patch_wheels_location
+) -> None:
     """Test patching when no dependencies exist"""
     dist_info = tmp_path / "test-1.0.0.dist-info"
     dist_info.mkdir()
@@ -115,18 +129,14 @@ Description
 """
     metadata_file.write_text(original_content)
 
-    # Temporarily change the script location
-    original_file = patch_wheels.__file__
-    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
-    try:
-        patch_wheels.patch_metadata(dist_info)
-    finally:
-        patch_wheels.__file__ = original_file
+    # The fixture set_patch_wheels_location handles setting/resetting __file__
+    patch_wheels.patch_metadata(dist_info)
 
     # Content should be unchanged when no requirements.txt
     assert metadata_file.read_text() == original_content
 
 
+# ... (Helper function create_test_wheel remains unchanged) ...
 def create_test_wheel(
     wheel_path: Path, metadata_content: str, package_name: str = "test"
 ) -> None:
@@ -141,7 +151,7 @@ def create_test_wheel(
         whl.writestr(f"{package_name}/__init__.py", "# test module\n")
 
 
-def test_patch_wheel_end_to_end(tmp_path: Path) -> None:
+def test_patch_wheel_end_to_end(tmp_path: Path, set_patch_wheels_location) -> None:
     """Test patching a complete wheel file"""
     wheel_path = tmp_path / "test-1.0.0-py3-none-any.whl"
 
@@ -156,13 +166,8 @@ Test package
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("lark\njinja2\n")
 
-    # Temporarily change the script location
-    original_file = patch_wheels.__file__
-    patch_wheels.__file__ = str(tmp_path / "nested" / "patch_wheels.py")
-    try:
-        result = patch_wheels.patch_wheel(wheel_path)
-    finally:
-        patch_wheels.__file__ = original_file
+    # The fixture set_patch_wheels_location handles setting/resetting __file__
+    result = patch_wheels.patch_wheel(wheel_path)
 
     assert result is True
     assert wheel_path.exists()
@@ -176,7 +181,9 @@ Test package
     assert "Test package" in metadata
 
 
-def test_patch_wheel_preserves_structure(tmp_path: Path) -> None:
+def test_patch_wheel_preserves_structure(
+    tmp_path: Path, set_patch_wheels_location
+) -> None:
     """Test that patching preserves all wheel files"""
     wheel_path = tmp_path / "test-1.0.0-py3-none-any.whl"
 
@@ -196,12 +203,8 @@ Version: 1.0.0
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("lark\n")
 
-    original_file = patch_wheels.__file__
-    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
-    try:
-        patch_wheels.patch_wheel(wheel_path)
-    finally:
-        patch_wheels.__file__ = original_file
+    # The fixture set_patch_wheels_location handles setting/resetting __file__
+    patch_wheels.patch_wheel(wheel_path)
 
     # Verify all files are preserved
     with zipfile.ZipFile(wheel_path, "r") as whl:
@@ -217,21 +220,16 @@ Version: 1.0.0
     assert expected_files == names
 
 
-def test_patch_wheel_nonexistent(tmp_path: Path) -> None:
+def test_patch_wheel_nonexistent(tmp_path: Path, set_patch_wheels_location) -> None:
     """Test patching a wheel that doesn't exist"""
     wheel_path = tmp_path / "nonexistent.whl"
 
-    original_file = patch_wheels.__file__
-    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
-    try:
-        result = patch_wheels.patch_wheel(wheel_path)
-    finally:
-        patch_wheels.__file__ = original_file
+    result = patch_wheels.patch_wheel(wheel_path)
 
     assert result is False
 
 
-def test_patch_wheel_no_dist_info(tmp_path: Path) -> None:
+def test_patch_wheel_no_dist_info(tmp_path: Path, set_patch_wheels_location) -> None:
     """Test patching a wheel without .dist-info directory"""
     wheel_path = tmp_path / "test-1.0.0-py3-none-any.whl"
 
@@ -241,17 +239,14 @@ def test_patch_wheel_no_dist_info(tmp_path: Path) -> None:
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("lark\n")
 
-    original_file = patch_wheels.__file__
-    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
-    try:
-        result = patch_wheels.patch_wheel(wheel_path)
-    finally:
-        patch_wheels.__file__ = original_file
+    result = patch_wheels.patch_wheel(wheel_path)
 
     assert result is False
 
 
-def test_patch_multiple_wheels_in_directory(tmp_path: Path) -> None:
+def test_patch_multiple_wheels_in_directory(
+    tmp_path: Path, set_patch_wheels_location
+) -> None:
     """Test patching all wheels in a directory via main"""
     # Create multiple wheels
     for i in range(3):
@@ -267,18 +262,12 @@ Package {i}
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("lark\njinja2\n")
 
-    # Change script location and run
-    original_file = patch_wheels.__file__
-    patch_wheels.__file__ = str(tmp_path / "nested" / "patch_wheels.py")
-    try:
-        # Simulate running the script on directory
-        wheels = list(tmp_path.glob("*.whl"))
-        success_count = 0
-        for wheel in wheels:
-            if patch_wheels.patch_wheel(wheel):
-                success_count += 1
-    finally:
-        patch_wheels.__file__ = original_file
+    # Simulate running the script on directory
+    wheels = list(tmp_path.glob("*.whl"))
+    success_count = 0
+    for wheel in wheels:
+        if patch_wheels.patch_wheel(wheel):
+            success_count += 1
 
     assert success_count == 3
 
@@ -291,7 +280,7 @@ Package {i}
         assert "Requires-Dist: jinja2" in metadata
 
 
-def test_main_with_directory(tmp_path: Path, capsys) -> None:
+def test_main_with_directory(tmp_path: Path, capsys, set_patch_wheels_location) -> None:
     """Test main function with directory argument"""
     # Create test wheels
     for i in range(2):
@@ -302,19 +291,17 @@ def test_main_with_directory(tmp_path: Path, capsys) -> None:
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("lark\n")
 
-    original_file = patch_wheels.__file__
-    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
-    try:
-        exit_code = patch_wheels.main([str(tmp_path)])
-    finally:
-        patch_wheels.__file__ = original_file
+    # The fixture set_patch_wheels_location handles setting/resetting __file__
+    exit_code = patch_wheels.main([str(tmp_path)])
 
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "Patched 2/2 wheels successfully" in captured.out
 
 
-def test_main_with_single_wheel(tmp_path: Path, capsys) -> None:
+def test_main_with_single_wheel(
+    tmp_path: Path, capsys, set_patch_wheels_location
+) -> None:
     """Test main function with single wheel argument"""
     wheel_path = tmp_path / "test-1.0.0-py3-none-any.whl"
     metadata = "Metadata-Version: 2.4\nName: test\nVersion: 1.0.0\n\n"
@@ -323,18 +310,15 @@ def test_main_with_single_wheel(tmp_path: Path, capsys) -> None:
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("lark\n")
 
-    original_file = patch_wheels.__file__
-    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
-    try:
-        exit_code = patch_wheels.main([str(wheel_path)])
-    finally:
-        patch_wheels.__file__ = original_file
+    # The fixture set_patch_wheels_location handles setting/resetting __file__
+    exit_code = patch_wheels.main([str(wheel_path)])
 
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "Successfully patched" in captured.out
 
 
+# Tests without the repeated setup remain the same
 def test_main_with_no_args(capsys) -> None:
     """Test main function with no arguments"""
     exit_code = patch_wheels.main([])
@@ -355,7 +339,9 @@ def test_main_with_none_args(capsys, monkeypatch) -> None:
     assert "Usage:" in captured.out
 
 
-def test_main_with_invalid_target(tmp_path: Path, capsys) -> None:
+def test_main_with_invalid_target(
+    tmp_path: Path, capsys, set_patch_wheels_location
+) -> None:
     """Test main function with invalid target"""
     invalid_path = tmp_path / "not_a_wheel.txt"
     invalid_path.write_text("test")
@@ -367,7 +353,9 @@ def test_main_with_invalid_target(tmp_path: Path, capsys) -> None:
     assert "Invalid target:" in captured.out
 
 
-def test_main_with_empty_directory(tmp_path: Path, capsys) -> None:
+def test_main_with_empty_directory(
+    tmp_path: Path, capsys, set_patch_wheels_location
+) -> None:
     """Test main function with directory containing no wheels"""
     exit_code = patch_wheels.main([str(tmp_path)])
 
