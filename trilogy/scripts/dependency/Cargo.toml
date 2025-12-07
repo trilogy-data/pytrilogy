@@ -1,6 +1,7 @@
 [package]
 name = "preql-import-resolver"
-version = "0.3.136"
+# version is synced from python __init__ in build backend/deploy flow
+version = "0.3.137"
 edition = "2021"
 description = "A CLI tool to parse Trilogy files and resolve import dependencies"
 license = "MIT"

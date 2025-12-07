@@ -7,6 +7,7 @@ from pytest import raises
 # Add .scripts to path to import build_backend
 sys.path.insert(0, str(Path(__file__).parent.parent / ".scripts"))
 import build_backend
+import sync_version
 
 
 def test_read_dependencies_success(tmp_path):
@@ -84,9 +85,7 @@ edition = "2021"
 
     fake_scripts = tmp_path / ".scripts"
     fake_scripts.mkdir()
-    with patch.object(
-        build_backend, "__file__", str(fake_scripts / "build_backend.py")
-    ):
+    with patch.object(sync_version, "__file__", str(fake_scripts / "sync_version.py")):
         version = build_backend._sync_version()
 
     assert version == "0.3.136"
@@ -114,9 +113,7 @@ edition = "2021"
 
     fake_scripts = tmp_path / ".scripts"
     fake_scripts.mkdir()
-    with patch.object(
-        build_backend, "__file__", str(fake_scripts / "build_backend.py")
-    ):
+    with patch.object(sync_version, "__file__", str(fake_scripts / "sync_version.py")):
         version = build_backend._sync_version()
 
     assert version == "1.2.3"
@@ -133,9 +130,7 @@ def test_sync_version_missing_version(tmp_path):
 
     fake_scripts = tmp_path / ".scripts"
     fake_scripts.mkdir()
-    with patch.object(
-        build_backend, "__file__", str(fake_scripts / "build_backend.py")
-    ):
+    with patch.object(sync_version, "__file__", str(fake_scripts / "sync_version.py")):
         with raises(ValueError, match="Could not find __version__"):
             build_backend._sync_version()
 

@@ -135,7 +135,7 @@ jobs:
       with:
         python-version: '3.13'
     - name: Sync version to Cargo.toml
-      run: python -c "import sys; sys.path.insert(0, '.scripts'); from build_backend import _sync_version; _sync_version()"
+      run: python .scripts/sync_version.py
     - name: Build wheels
       uses: PyO3/maturin-action@v1
       with:
@@ -185,7 +185,7 @@ jobs:
       with:
         python-version: '3.13'
     - name: Sync version to Cargo.toml
-      run: python -c "import sys; sys.path.insert(0, '.scripts'); from build_backend import _sync_version; _sync_version()"
+      run: python .scripts/sync_version.py
     - name: Build wheels
       uses: PyO3/maturin-action@v1
       with:
@@ -213,7 +213,7 @@ jobs:
       with:
         python-version: '3.13'
     - name: Sync version to Cargo.toml
-      run: python -c "import sys; sys.path.insert(0, '.scripts'); from build_backend import _sync_version; _sync_version()"
+      run: python .scripts/sync_version.py
     - name: Build wheels
       uses: PyO3/maturin-action@v1
       with:
@@ -255,7 +255,7 @@ jobs:
       with:
         python-version: '3.13'
     - name: Sync version to Cargo.toml
-      run: python -c "import sys; sys.path.insert(0, '.scripts'); from build_backend import _sync_version; _sync_version()"
+      run: python .scripts/sync_version.py
     - name: Build sdist
       uses: PyO3/maturin-action@v1
       with:

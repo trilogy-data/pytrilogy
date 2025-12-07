@@ -1,10 +1,16 @@
 """Custom build backend that syncs version before building with maturin"""
 
-import re
 from pathlib import Path
 
 # Import all maturin backend functions
 import maturin
+
+# Import version sync utility
+try:
+    from .sync_version import sync_version as _sync_version
+except ImportError:
+    # Fallback for when imported directly (e.g., in tests)
+    from sync_version import sync_version as _sync_version
 
 
 def _read_dependencies():
@@ -63,41 +69,6 @@ def _patch_metadata(metadata_directory):
 
     # Write back
     metadata_file.write_text("".join(new_lines), encoding="utf-8")
-
-
-def _sync_version():
-    """Sync version from trilogy/__init__.py to Cargo.toml"""
-    # Get project root (parent of .scripts directory)
-    project_root = Path(__file__).parent.parent
-
-    # Read version from Python
-    init_file = project_root / "trilogy" / "__init__.py"
-    content = init_file.read_text()
-    match = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', content)
-    if not match:
-        raise ValueError("Could not find __version__ in trilogy/__init__.py")
-
-    version = match.group(1)
-
-    # Update Cargo.toml
-    cargo_file = project_root / "trilogy" / "scripts" / "dependency" / "Cargo.toml"
-    cargo_content = cargo_file.read_text()
-
-    # Replace version in Cargo.toml (handle empty string or existing version)
-    if 'version = ""' in cargo_content:
-        new_cargo_content = cargo_content.replace(
-            'version = ""', f'version = "{version}"', 1
-        )
-    else:
-        new_cargo_content = re.sub(
-            r'(version\s*=\s*")[^"]*(")',
-            rf"\g<1>{version}\g<2>",
-            cargo_content,
-            count=1,
-        )
-
-    cargo_file.write_text(new_cargo_content)
-    return version
 
 
 # Expose all maturin functions with dependency injection
