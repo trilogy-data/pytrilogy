@@ -9,7 +9,9 @@ import maturin
 
 def _read_dependencies():
     """Read dependencies from requirements.txt"""
-    req_file = Path(__file__).parent / "requirements.txt"
+    # Get project root (parent of .scripts directory)
+    project_root = Path(__file__).parent.parent
+    req_file = project_root / "requirements.txt"
     if not req_file.exists():
         return []
 
@@ -65,8 +67,11 @@ def _patch_metadata(metadata_directory):
 
 def _sync_version():
     """Sync version from trilogy/__init__.py to Cargo.toml"""
+    # Get project root (parent of .scripts directory)
+    project_root = Path(__file__).parent.parent
+
     # Read version from Python
-    init_file = Path(__file__).parent / "trilogy" / "__init__.py"
+    init_file = project_root / "trilogy" / "__init__.py"
     content = init_file.read_text()
     match = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', content)
     if not match:
@@ -75,9 +80,7 @@ def _sync_version():
     version = match.group(1)
 
     # Update Cargo.toml
-    cargo_file = (
-        Path(__file__).parent / "trilogy" / "scripts" / "dependency" / "Cargo.toml"
-    )
+    cargo_file = project_root / "trilogy" / "scripts" / "dependency" / "Cargo.toml"
     cargo_content = cargo_file.read_text()
 
     # Replace version in Cargo.toml (handle empty string or existing version)

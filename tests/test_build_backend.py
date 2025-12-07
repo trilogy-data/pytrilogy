@@ -1,8 +1,11 @@
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
 from pytest import raises
 
+# Add .scripts to path to import build_backend
+sys.path.insert(0, str(Path(__file__).parent.parent / ".scripts"))
 import build_backend
 
 
@@ -19,7 +22,12 @@ networkx
 """
     )
 
-    with patch.object(Path, "parent", tmp_path):
+    # Mock __file__ to point to a fake .scripts directory
+    fake_scripts = tmp_path / ".scripts"
+    fake_scripts.mkdir()
+    with patch.object(
+        build_backend, "__file__", str(fake_scripts / "build_backend.py")
+    ):
         deps = build_backend._read_dependencies()
 
     assert deps == ["lark", "jinja2", "sqlalchemy<2.0.0", "networkx"]
@@ -27,7 +35,11 @@ networkx
 
 def test_read_dependencies_missing_file(tmp_path):
     """Test reading dependencies when requirements.txt doesn't exist"""
-    with patch.object(Path, "parent", tmp_path):
+    fake_scripts = tmp_path / ".scripts"
+    fake_scripts.mkdir()
+    with patch.object(
+        build_backend, "__file__", str(fake_scripts / "build_backend.py")
+    ):
         deps = build_backend._read_dependencies()
 
     assert deps == []
@@ -38,7 +50,11 @@ def test_read_dependencies_empty_file(tmp_path):
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("")
 
-    with patch.object(Path, "parent", tmp_path):
+    fake_scripts = tmp_path / ".scripts"
+    fake_scripts.mkdir()
+    with patch.object(
+        build_backend, "__file__", str(fake_scripts / "build_backend.py")
+    ):
         deps = build_backend._read_dependencies()
 
     assert deps == []
@@ -66,7 +82,11 @@ edition = "2021"
 """
     )
 
-    with patch.object(Path, "parent", tmp_path):
+    fake_scripts = tmp_path / ".scripts"
+    fake_scripts.mkdir()
+    with patch.object(
+        build_backend, "__file__", str(fake_scripts / "build_backend.py")
+    ):
         version = build_backend._sync_version()
 
     assert version == "0.3.136"
@@ -92,7 +112,11 @@ edition = "2021"
 """
     )
 
-    with patch.object(Path, "parent", tmp_path):
+    fake_scripts = tmp_path / ".scripts"
+    fake_scripts.mkdir()
+    with patch.object(
+        build_backend, "__file__", str(fake_scripts / "build_backend.py")
+    ):
         version = build_backend._sync_version()
 
     assert version == "1.2.3"
@@ -107,7 +131,11 @@ def test_sync_version_missing_version(tmp_path):
     init_file = trilogy_dir / "__init__.py"
     init_file.write_text("from trilogy import parse")
 
-    with patch.object(Path, "parent", tmp_path):
+    fake_scripts = tmp_path / ".scripts"
+    fake_scripts.mkdir()
+    with patch.object(
+        build_backend, "__file__", str(fake_scripts / "build_backend.py")
+    ):
         with raises(ValueError, match="Could not find __version__"):
             build_backend._sync_version()
 
@@ -124,10 +152,14 @@ This is the description.
 """
     )
 
-    req_file = tmp_path.parent / "requirements.txt"
+    req_file = tmp_path / "requirements.txt"
     req_file.write_text("lark\njinja2\n")
 
-    with patch.object(Path, "parent", tmp_path.parent):
+    fake_scripts = tmp_path / ".scripts"
+    fake_scripts.mkdir()
+    with patch.object(
+        build_backend, "__file__", str(fake_scripts / "build_backend.py")
+    ):
         build_backend._patch_metadata(tmp_path)
 
     content = metadata_file.read_text()
@@ -148,10 +180,14 @@ Name: pytrilogy
 """
     )
 
-    req_file = tmp_path.parent / "requirements.txt"
+    req_file = tmp_path / "requirements.txt"
     req_file.write_text("networkx\n")
 
-    with patch.object(Path, "parent", tmp_path.parent):
+    fake_scripts = tmp_path / ".scripts"
+    fake_scripts.mkdir()
+    with patch.object(
+        build_backend, "__file__", str(fake_scripts / "build_backend.py")
+    ):
         build_backend._patch_metadata(tmp_path)
 
     content = metadata_file.read_text()
@@ -160,8 +196,6 @@ Name: pytrilogy
 
 def test_patch_metadata_no_dependencies(tmp_path):
     """Test patching METADATA when no dependencies exist"""
-    project_dir = tmp_path / "project"
-    project_dir.mkdir()
     metadata_dir = tmp_path / "metadata"
     metadata_dir.mkdir()
 
@@ -172,7 +206,11 @@ Name: pytrilogy
 """
     metadata_file.write_text(original_content)
 
-    with patch.object(Path, "parent", project_dir):
+    fake_scripts = tmp_path / ".scripts"
+    fake_scripts.mkdir()
+    with patch.object(
+        build_backend, "__file__", str(fake_scripts / "build_backend.py")
+    ):
         build_backend._patch_metadata(metadata_dir)
 
     content = metadata_file.read_text()
@@ -181,10 +219,14 @@ Name: pytrilogy
 
 def test_patch_metadata_missing_file(tmp_path):
     """Test patching METADATA when file doesn't exist"""
-    req_file = tmp_path.parent / "requirements.txt"
+    req_file = tmp_path / "requirements.txt"
     req_file.write_text("lark\n")
 
-    with patch.object(Path, "parent", tmp_path.parent):
+    fake_scripts = tmp_path / ".scripts"
+    fake_scripts.mkdir()
+    with patch.object(
+        build_backend, "__file__", str(fake_scripts / "build_backend.py")
+    ):
         build_backend._patch_metadata(tmp_path)
     # Should not crash
 

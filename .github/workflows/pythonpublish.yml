@@ -134,8 +134,28 @@ jobs:
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
+        args: --release --out dist --find-interpreter
+        sccache: 'true'
         manylinux: auto
+        rust-toolchain: stable
+        docker-options: -e PYO3_CROSS_LIB_DIR
+    - name: Set up Python for patching
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+    - name: Patch wheels with dependencies
+      run: python .scripts/patch_wheels.py dist
+    - name: Validate patched wheels
+      run: |
+        # Test that a patched wheel installs with dependencies
+        WHEEL=$(ls dist/*.whl | head -n 1)
+        python -m venv test_venv
+        test_venv/bin/pip install --upgrade pip
+        test_venv/bin/pip install "$WHEEL"
+        # Verify trilogy CLI works (which requires dependencies)
+        test_venv/bin/trilogy --help
+        test_venv/bin/trilogy run "SELECT 1 + 1->test;" duckdb
+        rm -rf test_venv
     - name: Upload wheels
       uses: actions/upload-artifact@v4
       with:
@@ -155,7 +175,24 @@ jobs:
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
+        args: --release --out dist --find-interpreter
+    - name: Set up Python for patching
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+    - name: Patch wheels with dependencies
+      run: python .scripts/patch_wheels.py dist
+    - name: Validate patched wheels
+      run: |
+        # Test that a patched wheel installs with dependencies
+        WHEEL=$(ls dist/*.whl | head -n 1)
+        python -m venv test_venv
+        test_venv/bin/pip install --upgrade pip
+        test_venv/bin/pip install "$WHEEL"
+        # Verify trilogy CLI works (which requires dependencies)
+        test_venv/bin/trilogy --help
+        test_venv/bin/trilogy run "SELECT 1 + 1->test;" duckdb
+        rm -rf test_venv
     - name: Upload wheels
       uses: actions/upload-artifact@v4
       with:
@@ -175,7 +212,25 @@ jobs:
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
+        args: --release --out dist --find-interpreter
+    - name: Set up Python for patching
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+    - name: Patch wheels with dependencies
+      run: python .scripts/patch_wheels.py dist
+    - name: Validate patched wheels
+      shell: bash
+      run: |
+        # Test that a patched wheel installs with dependencies
+        WHEEL=$(ls dist/*.whl | head -n 1)
+        python -m venv test_venv
+        test_venv/Scripts/pip install --upgrade pip
+        test_venv/Scripts/pip install "$WHEEL"
+        # Verify trilogy CLI works (which requires dependencies)
+        test_venv/Scripts/trilogy --help
+        test_venv/Scripts/trilogy run "SELECT 1 + 1->test;" duckdb
+        rm -rf test_venv
     - name: Upload wheels
       uses: actions/upload-artifact@v4
       with:
