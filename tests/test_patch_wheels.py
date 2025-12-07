@@ -22,7 +22,7 @@ pyodbc
 
     # Temporarily change the script location
     original_file = patch_wheels.__file__
-    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
+    patch_wheels.__file__ = str(tmp_path / "nested" / "patch_wheels.py")
     try:
         deps = patch_wheels.read_dependencies()
     finally:
@@ -66,7 +66,7 @@ This is the description.
 
     # Temporarily change the script location
     original_file = patch_wheels.__file__
-    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
+    patch_wheels.__file__ = str(tmp_path / "nested" / "patch_wheels.py")
     try:
         patch_wheels.patch_metadata(dist_info)
     finally:
@@ -158,7 +158,7 @@ Test package
 
     # Temporarily change the script location
     original_file = patch_wheels.__file__
-    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
+    patch_wheels.__file__ = str(tmp_path / "nested" / "patch_wheels.py")
     try:
         result = patch_wheels.patch_wheel(wheel_path)
     finally:
@@ -269,7 +269,7 @@ Package {i}
 
     # Change script location and run
     original_file = patch_wheels.__file__
-    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
+    patch_wheels.__file__ = str(tmp_path / "nested" / "patch_wheels.py")
     try:
         # Simulate running the script on directory
         wheels = list(tmp_path.glob("*.whl"))
