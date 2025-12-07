@@ -130,6 +130,12 @@ jobs:
         target: [x86_64, aarch64]
     steps:
     - uses: actions/checkout@v3
+    - name: Set up Python for version sync
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+    - name: Sync version to Cargo.toml
+      run: python -c "import sys; sys.path.insert(0, '.scripts'); from build_backend import _sync_version; _sync_version()"
     - name: Build wheels
       uses: PyO3/maturin-action@v1
       with:
@@ -139,10 +145,6 @@ jobs:
         manylinux: auto
         rust-toolchain: stable
         docker-options: -e PYO3_CROSS_LIB_DIR
-    - name: Set up Python for patching
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.13'
     - name: Patch wheels with dependencies
       run: python .scripts/patch_wheels.py dist
     - name: Validate patched wheels
@@ -178,15 +180,17 @@ jobs:
         target: [x86_64, aarch64]
     steps:
     - uses: actions/checkout@v3
+    - name: Set up Python for version sync
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+    - name: Sync version to Cargo.toml
+      run: python -c "import sys; sys.path.insert(0, '.scripts'); from build_backend import _sync_version; _sync_version()"
     - name: Build wheels
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
         args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
-    - name: Set up Python for patching
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.13'
     - name: Patch wheels with dependencies
       run: python .scripts/patch_wheels.py dist
     - name: Upload wheels
@@ -204,15 +208,17 @@ jobs:
         target: [x64]
     steps:
     - uses: actions/checkout@v3
+    - name: Set up Python for version sync
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+    - name: Sync version to Cargo.toml
+      run: python -c "import sys; sys.path.insert(0, '.scripts'); from build_backend import _sync_version; _sync_version()"
     - name: Build wheels
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
         args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
-    - name: Set up Python for patching
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.13'
     - name: Patch wheels with dependencies
       run: python .scripts/patch_wheels.py dist
     - name: Validate patched wheels
@@ -244,6 +250,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+    - name: Set up Python for version sync
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+    - name: Sync version to Cargo.toml
+      run: python -c "import sys; sys.path.insert(0, '.scripts'); from build_backend import _sync_version; _sync_version()"
     - name: Build sdist
       uses: PyO3/maturin-action@v1
       with:
