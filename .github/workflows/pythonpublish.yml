@@ -134,7 +134,7 @@ jobs:
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --find-interpreter
+        args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
         sccache: 'true'
         manylinux: auto
         rust-toolchain: stable
@@ -212,7 +212,7 @@ jobs:
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --find-interpreter
+        args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
     - name: Set up Python for patching
       uses: actions/setup-python@v4
       with:
