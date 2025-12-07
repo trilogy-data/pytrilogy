@@ -8,8 +8,7 @@ from pathlib import Path
 
 def read_dependencies() -> list[str]:
     """Read dependencies from requirements.txt"""
-    # Get project root (parent of .scripts directory if running from .scripts)
-    project_root = Path(__file__).parent
+    project_root = Path(__file__).parent.parent
 
     req_file = project_root / "requirements.txt"
     if not req_file.exists():
