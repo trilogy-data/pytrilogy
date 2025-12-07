@@ -220,7 +220,7 @@ jobs:
       run: |
         # Test that a patched wheel installs with dependencies
         # Filter for Python 3.13 wheels for the win_amd64 platform
-        WHEEL=$(ls dist/*cp313-cp313*win_amd64*.whl | head -n 1) # <--- CHANGE IS HERE
+        WHEEL=$(ls dist/*cp313-cp313*win_amd64*.whl | head -n 1) #
         if [ -z "$WHEEL" ]; then
           echo "Error: No Python 3.13 wheel found for target win_amd64"
           exit 1
