@@ -227,7 +227,6 @@ jobs:
         fi
         echo "Testing wheel: $WHEEL"
         python -m venv test_venv
-        test_venv/Scripts/pip install --upgrade pip
         test_venv/Scripts/pip install "$WHEEL"
         # Verify trilogy CLI works (which requires dependencies)
         test_venv/Scripts/trilogy --help
