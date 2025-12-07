@@ -9,11 +9,7 @@ from pathlib import Path
 def read_dependencies() -> list[str]:
     """Read dependencies from requirements.txt"""
     # Get project root (parent of .scripts directory if running from .scripts)
-    script_dir = Path(__file__).parent
-    if script_dir.name == ".scripts":
-        project_root = script_dir.parent
-    else:
-        project_root = script_dir
+    project_root = Path(__file__).parent
 
     req_file = project_root / "requirements.txt"
     if not req_file.exists():
@@ -71,12 +67,8 @@ def patch_wheel(wheel_path: Path | str) -> bool:
             tmpdir_path = Path(tmpdir)
 
             # Extract wheel
-            try:
-                with zipfile.ZipFile(wheel_path, "r") as zip_ref:
-                    zip_ref.extractall(tmpdir_path)
-            except zipfile.BadZipFile:
-                print(f"ERROR: Invalid or corrupted wheel file: {wheel_path.name}")
-                return False
+            with zipfile.ZipFile(wheel_path, "r") as zip_ref:
+                zip_ref.extractall(tmpdir_path)
 
             # Find and patch METADATA
             dist_info_dirs = list(tmpdir_path.glob("*.dist-info"))
@@ -101,18 +93,22 @@ def patch_wheel(wheel_path: Path | str) -> bool:
         return False
 
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python patch_wheels.py <wheel_file_or_directory>")
-        sys.exit(1)
+def main(args: list[str] | None = None) -> int:
+    """Main entry point for the script"""
+    if args is None:
+        args = sys.argv[1:]
 
-    target = Path(sys.argv[1])
+    if len(args) < 1:
+        print("Usage: python patch_wheels.py <wheel_file_or_directory>")
+        return 1
+
+    target = Path(args[0])
 
     if target.is_dir():
         wheels = list(target.glob("*.whl"))
         if not wheels:
             print(f"No wheel files found in {target}")
-            sys.exit(1)
+            return 1
 
         success_count = 0
         for wheel in wheels:
@@ -120,11 +116,13 @@ if __name__ == "__main__":
                 success_count += 1
 
         print(f"\nPatched {success_count}/{len(wheels)} wheels successfully")
+        return 0
     elif target.suffix == ".whl":
-        if patch_wheel(target):
-            sys.exit(0)
-        else:
-            sys.exit(1)
+        return 0 if patch_wheel(target) else 1
     else:
         print(f"Invalid target: {target}")
-        sys.exit(1)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

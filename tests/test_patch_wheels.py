@@ -291,11 +291,8 @@ Package {i}
         assert "Requires-Dist: jinja2" in metadata
 
 
-def test_main_with_directory(tmp_path: Path) -> None:
-    """Test __main__ block with directory argument"""
-    import subprocess
-    import sys
-
+def test_main_with_directory(tmp_path: Path, capsys) -> None:
+    """Test main function with directory argument"""
     # Create test wheels
     for i in range(2):
         wheel_path = tmp_path / f"pkg{i}-1.0.0-py3-none-any.whl"
@@ -305,22 +302,20 @@ def test_main_with_directory(tmp_path: Path) -> None:
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("lark\n")
 
-    script_path = Path(__file__).parent.parent / ".scripts" / "patch_wheels.py"
-    result = subprocess.run(
-        [sys.executable, str(script_path), str(tmp_path)],
-        capture_output=True,
-        text=True,
-    )
+    original_file = patch_wheels.__file__
+    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
+    try:
+        exit_code = patch_wheels.main([str(tmp_path)])
+    finally:
+        patch_wheels.__file__ = original_file
 
-    assert result.returncode == 0
-    assert "Patched 2/2 wheels successfully" in result.stdout
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Patched 2/2 wheels successfully" in captured.out
 
 
-def test_main_with_single_wheel(tmp_path: Path) -> None:
-    """Test __main__ block with single wheel argument"""
-    import subprocess
-    import sys
-
+def test_main_with_single_wheel(tmp_path: Path, capsys) -> None:
+    """Test main function with single wheel argument"""
     wheel_path = tmp_path / "test-1.0.0-py3-none-any.whl"
     metadata = "Metadata-Version: 2.4\nName: test\nVersion: 1.0.0\n\n"
     create_test_wheel(wheel_path, metadata)
@@ -328,63 +323,54 @@ def test_main_with_single_wheel(tmp_path: Path) -> None:
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("lark\n")
 
-    script_path = Path(__file__).parent.parent / ".scripts" / "patch_wheels.py"
-    result = subprocess.run(
-        [sys.executable, str(script_path), str(wheel_path)],
-        capture_output=True,
-        text=True,
-    )
+    original_file = patch_wheels.__file__
+    patch_wheels.__file__ = str(tmp_path / "patch_wheels.py")
+    try:
+        exit_code = patch_wheels.main([str(wheel_path)])
+    finally:
+        patch_wheels.__file__ = original_file
 
-    assert result.returncode == 0
-    assert "Successfully patched" in result.stdout
-
-
-def test_main_with_no_args() -> None:
-    """Test __main__ block with no arguments"""
-    import subprocess
-    import sys
-
-    script_path = Path(__file__).parent.parent / ".scripts" / "patch_wheels.py"
-    result = subprocess.run(
-        [sys.executable, str(script_path)],
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 1
-    assert "Usage:" in result.stdout
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Successfully patched" in captured.out
 
 
-def test_main_with_invalid_target(tmp_path: Path) -> None:
-    """Test __main__ block with invalid target"""
-    import subprocess
-    import sys
+def test_main_with_no_args(capsys) -> None:
+    """Test main function with no arguments"""
+    exit_code = patch_wheels.main([])
 
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Usage:" in captured.out
+
+
+def test_main_with_none_args(capsys, monkeypatch) -> None:
+    """Test main function with None args (uses sys.argv)"""
+    # Simulate running with no command line args
+    monkeypatch.setattr("sys.argv", ["patch_wheels.py"])
+    exit_code = patch_wheels.main(None)
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Usage:" in captured.out
+
+
+def test_main_with_invalid_target(tmp_path: Path, capsys) -> None:
+    """Test main function with invalid target"""
     invalid_path = tmp_path / "not_a_wheel.txt"
     invalid_path.write_text("test")
 
-    script_path = Path(__file__).parent.parent / ".scripts" / "patch_wheels.py"
-    result = subprocess.run(
-        [sys.executable, str(script_path), str(invalid_path)],
-        capture_output=True,
-        text=True,
-    )
+    exit_code = patch_wheels.main([str(invalid_path)])
 
-    assert result.returncode == 1
-    assert "Invalid target:" in result.stdout
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Invalid target:" in captured.out
 
 
-def test_main_with_empty_directory(tmp_path: Path) -> None:
-    """Test __main__ block with directory containing no wheels"""
-    import subprocess
-    import sys
+def test_main_with_empty_directory(tmp_path: Path, capsys) -> None:
+    """Test main function with directory containing no wheels"""
+    exit_code = patch_wheels.main([str(tmp_path)])
 
-    script_path = Path(__file__).parent.parent / ".scripts" / "patch_wheels.py"
-    result = subprocess.run(
-        [sys.executable, str(script_path), str(tmp_path)],
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 1
-    assert "No wheel files found" in result.stdout
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "No wheel files found" in captured.out
