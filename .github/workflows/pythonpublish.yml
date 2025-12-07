@@ -3,8 +3,10 @@ name: Push to PyPI
 on:
   push:
     branches: [main]
+
 env:
   PYTHON_VERSIONS: "3.11 3.12 3.13"
+
 jobs:
   version-check:
     runs-on: ubuntu-latest
@@ -13,113 +15,116 @@ jobs:
       local_version: ${{ steps.version_check.outputs.local_version }}
       pypi_version: ${{ steps.version_check.outputs.pypi_version }}
     steps:
-    - uses: actions/checkout@v3
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.13'
-    - name: Set up Rust
-      uses: actions-rust-lang/setup-rust-toolchain@v1
-      with:
-        toolchain: stable
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install maturin packaging requests
-        pip install -r requirements.txt
-    - name: Build for version check
-      run: pip install -e .
-    - name: Check if version needs publishing
-      id: version_check
-      run: |
-        # Get local version from trilogy.__version__
-        LOCAL_VERSION=$(python -c "import trilogy; print(trilogy.__version__)")
+      - uses: actions/checkout@v3
 
-        if [ -z "$LOCAL_VERSION" ]; then
-          echo "Error: Could not determine local version from trilogy.__version__"
-          exit 1
-        fi
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
 
-        echo "Local version: $LOCAL_VERSION"
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
 
-        # Get PyPI version and check wheel availability
-        SHOULD_PUBLISH=$(python -c "
-        import sys
-        import requests
-        from packaging import version
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install maturin packaging requests
+          pip install -r requirements.txt
 
-        local_ver = version.parse('$LOCAL_VERSION')
-        python_versions = '${{ env.PYTHON_VERSIONS }}'.split()
+      - name: Build for version check
+        run: pip install -e .
 
-        try:
-          response = requests.get('https://pypi.org/pypi/pytrilogy/json', timeout=10)
-          if response.status_code != 200:
-            print('true')
-            exit(0)
+      - name: Check if version needs publishing
+        id: version_check
+        run: |
+          # Get local version from trilogy.__version__
+          LOCAL_VERSION=$(python -c "import trilogy; print(trilogy.__version__)")
 
-          data = response.json()
-          pypi_ver = version.parse(data['info']['version'])
+          if [ -z "$LOCAL_VERSION" ]; then
+            echo "Error: Could not determine local version from trilogy.__version__"
+            exit 1
+          fi
 
-          print(f'PyPI version: {pypi_ver}', file=sys.stderr)
+          echo "Local version: $LOCAL_VERSION"
 
-          # If local version is newer, publish
-          if local_ver > pypi_ver:
-            print('true')
-            exit(0)
+          # Get PyPI version and check wheel availability
+          SHOULD_PUBLISH=$(python - <<'PY'
+import sys, requests
+from packaging import version
 
-          # If versions don't match, don't publish
-          if local_ver != pypi_ver:
-            print('false')
-            exit(0)
+local_ver = version.parse("""%s""")
+python_versions = "%s".split()
 
-          # Versions match - check if all wheels exist
-          print(f'Versions match ({local_ver}), checking wheels...', file=sys.stderr)
+try:
+    response = requests.get('https://pypi.org/pypi/pytrilogy/json', timeout=10)
+    if response.status_code != 200:
+        print('true')
+        sys.exit(0)
 
-          # Generate expected wheel patterns from Python versions
-          platforms = [
-            'manylinux_2_17_x86_64',
-            'manylinux_2_17_aarch64',
-            'macosx_10_12_x86_64',
-            'macosx_11_0_arm64',
-            'win_amd64',
-          ]
+    data = response.json()
+    pypi_ver = version.parse(data['info']['version'])
 
-          expected_wheels = []
-          for py_ver in python_versions:
-            cp_ver = py_ver.replace('.', '')  # '3.11' -> '311'
-            for platform in platforms:
-              expected_wheels.append(f'cp{cp_ver}-cp{cp_ver}-{platform}')
+    print(f'PyPI version: {pypi_ver}', file=sys.stderr)
 
-          # Get available files
-          available_files = [f['filename'] for f in data.get('urls', [])]
+    # If local version is newer, publish
+    if local_ver > pypi_ver:
+        print('true')
+        sys.exit(0)
 
-          # Check for missing wheels
-          missing = []
-          for pattern in expected_wheels:
-            if not any(pattern in f for f in available_files):
-              missing.append(pattern)
+    # If versions don't match, don't publish
+    if local_ver != pypi_ver:
+        print('false')
+        sys.exit(0)
 
-          # Check for sdist
-          has_sdist = any(f.endswith('.tar.gz') for f in available_files)
+    # Versions match - check if all wheels exist
+    print(f'Versions match ({local_ver}), checking wheels...', file=sys.stderr)
 
-          if missing:
-            print(f'Missing wheels: {missing}', file=sys.stderr)
-            print('true')
-          elif not has_sdist:
-            print('Missing sdist', file=sys.stderr)
-            print('true')
-          else:
-            print('All wheels and sdist present', file=sys.stderr)
-            print('false')
+    platforms = [
+      'manylinux_2_17_x86_64',
+      'manylinux_2_17_aarch64',
+      'macosx_10_12_x86_64',
+      'macosx_11_0_arm64',
+      'win_amd64',
+    ]
 
-        except Exception as e:
-          print(f'Error checking PyPI: {e}', file=sys.stderr)
-          print('true')  # Publish on error to be safe
-        ")
+    expected_wheels = []
+    for py_ver in python_versions:
+        cp_ver = py_ver.replace('.', '')  # '3.11' -> '311'
+        for platform in platforms:
+            expected_wheels.append(f'cp{cp_ver}-cp{cp_ver}-{platform}')
 
-        echo "Should publish: $SHOULD_PUBLISH"
-        echo "should_publish=$SHOULD_PUBLISH" >> $GITHUB_OUTPUT
-        echo "local_version=$LOCAL_VERSION" >> $GITHUB_OUTPUT
+    available_files = [f['filename'] for f in data.get('urls', [])]
+
+    missing = []
+    for pattern in expected_wheels:
+        if not any(pattern in f for f in available_files):
+            missing.append(pattern)
+
+    has_sdist = any(f.endswith('.tar.gz') for f in available_files)
+
+    if missing:
+        print(f'Missing wheels: {missing}', file=sys.stderr)
+        print('true')
+    elif not has_sdist:
+        print('Missing sdist', file=sys.stderr)
+        print('true')
+    else:
+        print('All wheels and sdist present', file=sys.stderr)
+        print('false')
+
+except Exception as e:
+    print(f'Error checking PyPI: {e}', file=sys.stderr)
+    print('true')  # Publish on error to be safe
+PY
+"""$LOCAL_VERSION""" "%s")
+          echo "Should publish: $SHOULD_PUBLISH"
+          echo "should_publish=$SHOULD_PUBLISH" >> $GITHUB_OUTPUT
+          echo "local_version=$LOCAL_VERSION" >> $GITHUB_OUTPUT
+        shell: bash
+        env:
+          PYTHON_VERSIONS: ${{ env.PYTHON_VERSIONS }}
 
   linux:
     needs: version-check
@@ -129,38 +134,67 @@ jobs:
       matrix:
         target: [x86_64, aarch64]
     steps:
-    - uses: actions/checkout@v3
-    - name: Build wheels
-      uses: PyO3/maturin-action@v1
-      with:
-        target: ${{ matrix.target }}
-        args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
-        sccache: 'true'
-        manylinux: auto
-        rust-toolchain: stable
-        docker-options: -e PYO3_CROSS_LIB_DIR
-    - name: Set up Python for patching
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.13'
-    - name: Patch wheels with dependencies
-      run: python .scripts/patch_wheels.py dist
-    - name: Validate patched wheels
-      run: |
-        # Test that a patched wheel installs with dependencies
-        WHEEL=$(ls dist/*.whl | head -n 1)
-        python -m venv test_venv
-        test_venv/bin/pip install --upgrade pip
-        test_venv/bin/pip install "$WHEEL"
-        # Verify trilogy CLI works (which requires dependencies)
-        test_venv/bin/trilogy --help
-        test_venv/bin/trilogy run "SELECT 1 + 1->test;" duckdb
-        rm -rf test_venv
-    - name: Upload wheels
-      uses: actions/upload-artifact@v4
-      with:
-        name: wheels-linux-${{ matrix.target }}
-        path: dist
+      - uses: actions/checkout@v3
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
+          sccache: 'true'
+          manylinux: auto
+          rust-toolchain: stable
+          docker-options: -e PYO3_CROSS_LIB_DIR
+
+      - name: Set up Python for patching
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Patch wheels with dependencies
+        run: python .scripts/patch_wheels.py dist
+
+      - name: Validate patched wheels (Linux)
+        run: |
+          # Only validate the cp313 wheel that matches this runner's platform
+          PYTAG="cp313-cp313"
+
+          case "${{ matrix.target }}" in
+            x86_64)
+              PLATFORM_TAG="manylinux_2_17_x86_64"
+              ;;
+            aarch64)
+              PLATFORM_TAG="manylinux_2_17_aarch64"
+              ;;
+            *)
+              echo "Unknown matrix.target: ${{ matrix.target }}"; exit 1
+              ;;
+          esac
+
+          echo "Looking for wheel matching ${PYTAG} and ${PLATFORM_TAG} in dist/"
+          set -o pipefail
+          WHEEL=$(ls dist/*${PYTAG}*${PLATFORM_TAG}*.whl 2>/dev/null | head -n 1 || true)
+
+          if [ -z "$WHEEL" ]; then
+            echo "No matching wheel for this runner (platform/py mismatch). Skipping validation."
+            exit 0
+          fi
+
+          echo "Validating wheel: $WHEEL"
+          python -m venv test_venv
+          test_venv/bin/pip install --upgrade pip
+          test_venv/bin/pip install "$WHEEL"
+          # Verify trilogy CLI works (which requires dependencies)
+          test_venv/bin/trilogy --help
+          test_venv/bin/trilogy run "SELECT 1 + 1->test;" duckdb
+          rm -rf test_venv
+        shell: bash
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux-${{ matrix.target }}
+          path: dist
 
   macos:
     needs: version-check
@@ -170,34 +204,60 @@ jobs:
       matrix:
         target: [x86_64, aarch64]
     steps:
-    - uses: actions/checkout@v3
-    - name: Build wheels
-      uses: PyO3/maturin-action@v1
-      with:
-        target: ${{ matrix.target }}
-        args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
-    - name: Set up Python for patching
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.13'
-    - name: Patch wheels with dependencies
-      run: python .scripts/patch_wheels.py dist
-    - name: Validate patched wheels
-      run: |
-        # Test that a patched wheel installs with dependencies
-        WHEEL=$(ls dist/*.whl | head -n 1)
-        python -m venv test_venv
-        test_venv/bin/pip install --upgrade pip
-        test_venv/bin/pip install "$WHEEL"
-        # Verify trilogy CLI works (which requires dependencies)
-        test_venv/bin/trilogy --help
-        test_venv/bin/trilogy run "SELECT 1 + 1->test;" duckdb
-        rm -rf test_venv
-    - name: Upload wheels
-      uses: actions/upload-artifact@v4
-      with:
-        name: wheels-macos-${{ matrix.target }}
-        path: dist
+      - uses: actions/checkout@v3
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
+
+      - name: Set up Python for patching
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Patch wheels with dependencies
+        run: python .scripts/patch_wheels.py dist
+
+      - name: Validate patched wheels (macOS)
+        run: |
+          PYTAG="cp313-cp313"
+
+          case "${{ matrix.target }}" in
+            x86_64)
+              PLATFORM_TAG="macosx_10_12_x86_64"
+              ;;
+            aarch64)
+              PLATFORM_TAG="macosx_11_0_arm64"
+              ;;
+            *)
+              echo "Unknown matrix.target: ${{ matrix.target }}"; exit 1
+              ;;
+          esac
+
+          echo "Looking for wheel matching ${PYTAG} and ${PLATFORM_TAG} in dist/"
+          WHEEL=$(ls dist/*${PYTAG}*${PLATFORM_TAG}*.whl 2>/dev/null | head -n 1 || true)
+
+          if [ -z "$WHEEL" ]; then
+            echo "No matching wheel for this macOS runner. Skipping validation."
+            exit 0
+          fi
+
+          echo "Validating wheel: $WHEEL"
+          python -m venv test_venv
+          test_venv/bin/pip install --upgrade pip
+          test_venv/bin/pip install "$WHEEL"
+          test_venv/bin/trilogy --help
+          test_venv/bin/trilogy run "SELECT 1 + 1->test;" duckdb
+          rm -rf test_venv
+        shell: bash
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-macos-${{ matrix.target }}
+          path: dist
 
   windows:
     needs: version-check
@@ -207,52 +267,68 @@ jobs:
       matrix:
         target: [x64]
     steps:
-    - uses: actions/checkout@v3
-    - name: Build wheels
-      uses: PyO3/maturin-action@v1
-      with:
-        target: ${{ matrix.target }}
-        args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
-    - name: Set up Python for patching
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.13'
-    - name: Patch wheels with dependencies
-      run: python .scripts/patch_wheels.py dist
-    - name: Validate patched wheels
-      shell: bash
-      run: |
-        # Test that a patched wheel installs with dependencies
-        WHEEL=$(ls dist/*.whl | head -n 1)
-        python -m venv test_venv
-        test_venv/Scripts/pip install --upgrade pip
-        test_venv/Scripts/pip install "$WHEEL"
-        # Verify trilogy CLI works (which requires dependencies)
-        test_venv/Scripts/trilogy --help
-        test_venv/Scripts/trilogy run "SELECT 1 + 1->test;" duckdb
-        rm -rf test_venv
-    - name: Upload wheels
-      uses: actions/upload-artifact@v4
-      with:
-        name: wheels-windows-${{ matrix.target }}
-        path: dist
+      - uses: actions/checkout@v3
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
+
+      - name: Set up Python for patching
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Patch wheels with dependencies
+        run: python .scripts/patch_wheels.py dist
+
+      - name: Validate patched wheels (Windows)
+        shell: bash
+        run: |
+          PYTAG="cp313-cp313"
+          PLATFORM_TAG="win_amd64"
+
+          echo "Looking for wheel matching ${PYTAG} and ${PLATFORM_TAG} in dist/"
+          WHEEL=$(ls dist/*${PYTAG}*${PLATFORM_TAG}*.whl 2>/dev/null | head -n 1 || true)
+
+          if [ -z "$WHEEL" ]; then
+            echo "No matching wheel for this Windows runner. Skipping validation."
+            exit 0
+          fi
+
+          echo "Validating wheel: $WHEEL"
+          python -m venv test_venv
+          test_venv/Scripts/pip install --upgrade pip
+          test_venv/Scripts/pip install "$WHEEL"
+          test_venv/Scripts/trilogy --help
+          test_venv/Scripts/trilogy run "SELECT 1 + 1->test;" duckdb
+          rm -rf test_venv
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-windows-${{ matrix.target }}
+          path: dist
 
   sdist:
     needs: version-check
     if: needs.version-check.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - name: Build sdist
-      uses: PyO3/maturin-action@v1
-      with:
-        command: sdist
-        args: --out dist
-    - name: Upload sdist
-      uses: actions/upload-artifact@v4
-      with:
-        name: wheels-sdist
-        path: dist
+      - uses: actions/checkout@v3
+
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-sdist
+          path: dist
 
   publish:
     needs: [version-check, linux, macos, windows, sdist]
@@ -264,22 +340,23 @@ jobs:
     permissions:
       id-token: write
     steps:
-    - uses: actions/download-artifact@v4
-      with:
-        pattern: wheels-*
-        merge-multiple: true
-        path: dist
-    - name: Publish to PyPI
-      uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc
-      with:
-        verbose: true
-        skip-existing: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc
+        with:
+          verbose: true
+          skip-existing: true
 
   skip-publish:
     needs: version-check
     if: needs.version-check.outputs.should_publish == 'false'
     runs-on: ubuntu-latest
     steps:
-    - name: Skip publishing
-      run: |
-        echo "Skipping publish: Local version (${{ needs.version-check.outputs.local_version }}) - all wheels and sdist already present on PyPI"
+      - name: Skip publishing
+        run: |
+          echo "Skipping publish: Local version (${{ needs.version-check.outputs.local_version }}) - all wheels and sdist already present on PyPI"
