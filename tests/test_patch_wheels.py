@@ -46,7 +46,7 @@ networkx
 pyodbc
 """
     )
-    # The fixture set_patch_wheels_location handles setting/resetting __file__
+
     deps = patch_wheels.read_dependencies()
 
     assert deps == ["lark", "jinja2", "sqlalchemy<2.0.0", "networkx", "pyodbc"]
@@ -54,7 +54,7 @@ pyodbc
 
 def test_read_dependencies_empty(tmp_path: Path, set_patch_wheels_location) -> None:
     """Test reading dependencies when requirements.txt doesn't exist"""
-    # The fixture set_patch_wheels_location handles setting/resetting __file__
+
     # The simulated path in the fixture ensures requirements.txt won't be found
     deps = patch_wheels.read_dependencies()
 
@@ -81,7 +81,6 @@ This is the description.
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("lark\njinja2\nsqlalchemy<2.0.0\n")
 
-    # The fixture set_patch_wheels_location handles setting/resetting __file__
     patch_wheels.patch_metadata(dist_info)
 
     content = metadata_file.read_text()
@@ -129,7 +128,6 @@ Description
 """
     metadata_file.write_text(original_content)
 
-    # The fixture set_patch_wheels_location handles setting/resetting __file__
     patch_wheels.patch_metadata(dist_info)
 
     # Content should be unchanged when no requirements.txt
@@ -166,7 +164,6 @@ Test package
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("lark\njinja2\n")
 
-    # The fixture set_patch_wheels_location handles setting/resetting __file__
     result = patch_wheels.patch_wheel(wheel_path)
 
     assert result is True
@@ -203,7 +200,6 @@ Version: 1.0.0
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("lark\n")
 
-    # The fixture set_patch_wheels_location handles setting/resetting __file__
     patch_wheels.patch_wheel(wheel_path)
 
     # Verify all files are preserved
@@ -291,7 +287,6 @@ def test_main_with_directory(tmp_path: Path, capsys, set_patch_wheels_location) 
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("lark\n")
 
-    # The fixture set_patch_wheels_location handles setting/resetting __file__
     exit_code = patch_wheels.main([str(tmp_path)])
 
     captured = capsys.readouterr()
@@ -310,7 +305,6 @@ def test_main_with_single_wheel(
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("lark\n")
 
-    # The fixture set_patch_wheels_location handles setting/resetting __file__
     exit_code = patch_wheels.main([str(wheel_path)])
 
     captured = capsys.readouterr()

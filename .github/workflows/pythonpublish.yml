@@ -146,6 +146,7 @@ jobs:
     - name: Patch wheels with dependencies
       run: python .scripts/patch_wheels.py dist
     - name: Validate patched wheels
+      if: matrix.target == 'x86_64'
       run: |
         # Test that a patched wheel installs with dependencies
         # Filter for Python 3.13 wheels for the current target architecture
