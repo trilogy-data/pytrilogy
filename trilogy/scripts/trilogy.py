@@ -173,7 +173,6 @@ def resolve_input_information(
     return files, directory, input_type, input_name, config
 
 
-
 def validate_required_connection_params(
     conn_dict: dict[str, Any],
     required_keys: list[str],

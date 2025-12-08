@@ -1,5 +1,13 @@
 from .bigquery import BigqueryDialect
-from .config import BigQueryConfig, DialectConfig, DuckDBConfig, PostgresConfig, PrestoConfig, SnowflakeConfig, SQLServerConfig
+from .config import (
+    BigQueryConfig,
+    DialectConfig,
+    DuckDBConfig,
+    PostgresConfig,
+    PrestoConfig,
+    SnowflakeConfig,
+    SQLServerConfig,
+)
 from .duckdb import DuckDBDialect
 from .postgres import PostgresDialect
 from .presto import PrestoDialect
