@@ -18,6 +18,12 @@ class DialectConfig:
     def connect_args(self) -> dict:
         return {}
 
+    def merge_config(self, other: "DialectConfig") -> "DialectConfig":
+        for key, value in other.__dict__.items():
+            if value is not None:
+                setattr(self, key, value)
+        return self
+
 
 class BigQueryConfig(DialectConfig):
     def __init__(self, project: str | None = None, client: Any | None = None):

@@ -1,0 +1,19 @@
+import std.geography;
+
+key country string;
+key capital string;
+
+property <capital, country>.population int;
+property <capital, country>.latitude float::latitude;
+property <capital, country>.longitude float::longitude;
+
+
+datasource capitols (
+country,
+capital,
+population, 
+latitude,
+longitude
+)
+grain(country, capital)
+address world_capitals;

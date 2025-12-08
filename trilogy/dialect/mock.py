@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Iterable
 
 from trilogy.core.enums import Purpose
 from trilogy.core.models.author import Concept, ConceptRef
-from trilogy.core.models.core import CONCRETE_TYPES, ArrayType, DataType
+from trilogy.core.models.core import CONCRETE_TYPES, ArrayType, DataType, TraitDataType
 from trilogy.core.models.datasource import Address, Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.execute import ProcessedMockStatement
@@ -18,6 +18,25 @@ DEFAULT_SCALE_FACTOR = 100
 
 def safe_name(name: str) -> str:
     return "".join(c if c.isalnum() or c == "_" else "_" for c in name)
+
+
+def mock_email(scale_factor: int, is_key: bool = False) -> list[str]:
+    providers = ["example.com", "test.com", "mock.com", "sample.org"]
+    if is_key:
+        return [
+            f"user{i}@{providers[i % len(providers)]}"
+            for i in range(1, scale_factor + 1)
+        ]
+    return [
+        f"user{random.randint(1, 999999)}@{random.choice(providers)}"
+        for _ in range(scale_factor)
+    ]
+
+
+def mock_hex_code(scale_factor: int, is_key: bool = False) -> list[str]:
+    if is_key:
+        return [f"#{i:06x}" for i in range(1, scale_factor + 1)]
+    return [f"#{random.randint(0, 0xFFFFFF):06x}" for _ in range(scale_factor)]
 
 
 def mock_datatype(
@@ -40,6 +59,11 @@ def mock_datatype(
             # unique floats for keys
             return [float(i) for i in range(1, scale_factor + 1)]
         return [random.uniform(0, 999_999) for _ in range(scale_factor)]
+    elif datatype == DataType.NUMERIC:
+        if is_key:
+            # unique numerics for keys
+            return [float(i) for i in range(1, scale_factor + 1)]
+        return [round(random.uniform(0, 999_999), 2) for _ in range(scale_factor)]
     elif datatype == DataType.BOOL:
         # booleans can only have 2 unique values, so keys don't make sense here
         return [random.choice([True, False]) for _ in range(scale_factor)]
@@ -81,6 +105,14 @@ def mock_datatype(
             [mock_datatype(datatype.type, datatype.value_data_type, 5, False)]
             for _ in range(scale_factor)
         ]
+    elif isinstance(datatype, TraitDataType):
+        if datatype.type == DataType.STRING:
+            if datatype.traits == ["email"]:
+                # email mock function
+                return mock_email(scale_factor, is_key)
+            elif datatype.traits == ["hex"]:
+                return mock_hex_code(scale_factor, is_key)
+        return mock_datatype(datatype, datatype.type, scale_factor, is_key)
     raise NotImplementedError(f"Mocking not implemented for datatype {datatype}")
 
 

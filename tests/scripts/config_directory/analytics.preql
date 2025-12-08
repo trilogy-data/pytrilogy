@@ -1,0 +1,8 @@
+import capital;
+
+
+select 
+    country,
+    capital,
+    population
+order by population desc limit 10;

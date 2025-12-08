@@ -1960,10 +1960,15 @@ def test_mock_statement():
     from trilogy.hooks.query_debugger import DebuggingHook
 
     DebuggingHook()
-    test = """key x int;
+    test = """
+import std.metric;
+import std.color;
+
+key x int;
 key y int;
 property x.name string;
-property x.value float;
+property x.value float::kn;
+property x.numeric numeric::kn;
 property x.created_at timestamp;
 property x.created_at_date date;
 property x.labels array<string>;
@@ -1978,6 +1983,7 @@ x,
 y,
 name,
 value,
+numeric,
 created_at,
 created_at_date,
 
