@@ -1,4 +1,5 @@
 import traceback
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from io import StringIO
@@ -17,7 +18,6 @@ from trilogy.core.exceptions import (
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import RuntimeConfig, load_config_file
-from dataclasses import dataclass
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parsing.render import Renderer
 from trilogy.scripts.dependency import (
@@ -60,12 +60,21 @@ DEFAULT_PARALLELISM = 2
 
 @dataclass
 class CLIRuntimeParams:
-    """Parameters provided via CLI that can override config file settings."""
+    """Parameters provided via CLI for execution."""
+
+    input: str
     dialect: Dialects | None = None
     parallelism: int | None = None
+    param: tuple[str, ...] = ()
+    conn_args: tuple[str, ...] = ()
+    debug: bool = False
+    config_path: PathlibPath | None = None
+    execution_strategy: str = "eager_bfs"
 
 
-def merge_runtime_config(cli_params: CLIRuntimeParams, file_config: RuntimeConfig) -> tuple[Dialects, int]:
+def merge_runtime_config(
+    cli_params: CLIRuntimeParams, file_config: RuntimeConfig
+) -> tuple[Dialects, int]:
     """
     Merge CLI parameters with config file settings.
     CLI parameters take precedence over config file.
@@ -82,11 +91,17 @@ def merge_runtime_config(cli_params: CLIRuntimeParams, file_config: RuntimeConfi
     elif file_config.engine_dialect:
         dialect = file_config.engine_dialect
     else:
-        print_error(f"No dialect specified. Provide dialect as argument or set engine.dialect in config file. (got {file_config})")
+        print_error(
+            "No dialect specified. Provide dialect as argument or set engine.dialect in config file."
+        )
         raise Exit(1)
 
     # Resolve parallelism: CLI argument takes precedence over config
-    parallelism = cli_params.parallelism if cli_params.parallelism is not None else file_config.parallelism
+    parallelism = (
+        cli_params.parallelism
+        if cli_params.parallelism is not None
+        else file_config.parallelism
+    )
 
     return dialect, parallelism
 
@@ -110,7 +125,9 @@ def resolve_input(path: PathlibPath) -> list[PathlibPath]:
     raise FileNotFoundError(f"Input path '{path}' does not exist.")
 
 
-def get_runtime_config(path: PathlibPath, config_override: PathlibPath | None = None) -> RuntimeConfig:
+def get_runtime_config(
+    path: PathlibPath, config_override: PathlibPath | None = None
+) -> RuntimeConfig:
     if config_override:
         config_path = config_override
     elif path.is_dir():
@@ -498,34 +515,24 @@ def run_single_script_execution(
 
 
 def run_parallel_execution(
-    input: str,
     cli_params: CLIRuntimeParams,
-    param: tuple[str, ...],
-    conn_args: Iterable[str],
-    debug: bool,
     execution_fn,
-    execution_strategy: str = "eager_bfs",
     execution_mode: str = "run",
-    config_path: PathlibPath | None = None,
 ) -> None:
     """
     Run parallel execution for directory inputs, or single-script execution
     with polished progress display for single files/inline queries.
 
     Args:
-        input: Input path (file or directory)
-        cli_params: CLI runtime parameters (dialect, parallelism)
-        param: Environment parameters
-        conn_args: Connection arguments
-        debug: Debug mode flag
+        cli_params: CLI runtime parameters containing all execution settings
         execution_fn: Function to execute each script (exec, node, quiet) -> None
-        execution_strategy: Name of execution strategy ("eager_bfs" or "level")
         execution_mode: One of 'run', 'integration', or 'unit'
-        config_path: Optional path to config file
     """
     # Check if input is a directory (parallel execution)
-    pathlib_input = PathlibPath(input)
-    files, directory, input_type, input_name, config = resolve_input_information(input, config_path)
+    pathlib_input = PathlibPath(cli_params.input)
+    files, directory, input_type, input_name, config = resolve_input_information(
+        cli_params.input, cli_params.config_path
+    )
 
     # Merge CLI params with config file
     edialect, parallelism = merge_runtime_config(cli_params, config)
@@ -538,18 +545,18 @@ def run_parallel_execution(
             input_type=input_type,
             input_name=input_name,
             edialect=edialect,
-            param=param,
-            conn_args=conn_args,
-            debug=debug,
+            param=cli_params.param,
+            conn_args=cli_params.conn_args,
+            debug=cli_params.debug,
             execution_mode=execution_mode,
             config=config,
         )
         return
     # Multiple files - use parallel execution
-    show_execution_info(input_type, input_name, edialect.value, debug)
+    show_execution_info(input_type, input_name, edialect.value, cli_params.debug)
 
     # Get execution strategy
-    strategy = get_execution_strategy(execution_strategy)
+    strategy = get_execution_strategy(cli_params.execution_strategy)
 
     # Set up parallel executor
     parallel_exec = ParallelExecutor(
@@ -567,12 +574,19 @@ def run_parallel_execution(
     num_edges = execution_plan.number_of_edges()
     num_nodes = execution_plan.number_of_nodes()
 
-    show_parallel_execution_start(num_nodes, num_edges, parallelism, execution_strategy)
+    show_parallel_execution_start(
+        num_nodes, num_edges, parallelism, cli_params.execution_strategy
+    )
 
     # Factory to create executor for each script
     def executor_factory(node: ScriptNode) -> Executor:
         return create_executor_for_script(
-            node, param, conn_args, edialect, debug, config
+            node,
+            cli_params.param,
+            cli_params.conn_args,
+            edialect,
+            cli_params.debug,
+            config,
         )
 
     # Wrap execution_fn to pass quiet=True for parallel execution
@@ -646,37 +660,36 @@ def fmt(ctx, input):
     default=None,
     help="Maximum parallel workers for directory execution",
 )
-@option("--config", type=Path(exists=True), help="Path to trilogy.toml configuration file")
+@option(
+    "--config", type=Path(exists=True), help="Path to trilogy.toml configuration file"
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
-def integration(ctx, input, dialect: str | None, param, parallelism: int | None, config, conn_args):
+def integration(
+    ctx, input, dialect: str | None, param, parallelism: int | None, config, conn_args
+):
     """Run integration tests on Trilogy scripts."""
-    debug = ctx.obj["DEBUG"]
-    config_path = PathlibPath(config) if config else None
-    strategy = "eager_bfs"
-
-    # Build CLI runtime params
     cli_params = CLIRuntimeParams(
+        input=input,
         dialect=Dialects(dialect) if dialect else None,
         parallelism=parallelism,
+        param=param,
+        conn_args=conn_args,
+        debug=ctx.obj["DEBUG"],
+        config_path=PathlibPath(config) if config else None,
+        execution_strategy="eager_bfs",
     )
 
     try:
         run_parallel_execution(
-            input=input,
             cli_params=cli_params,
-            param=param,
-            conn_args=conn_args,
-            debug=debug,
             execution_fn=execute_script_for_integration,
-            execution_strategy=strategy,
             execution_mode="integration",
-            config_path=config_path,
         )
     except Exit:
         raise
     except Exception as e:
-        handle_execution_exception(e, debug=debug)
+        handle_execution_exception(e, debug=cli_params.debug)
 
 
 @cli.command(
@@ -693,7 +706,9 @@ def integration(ctx, input, dialect: str | None, param, parallelism: int | None,
     default=None,
     help="Maximum parallel workers for directory execution",
 )
-@option("--config", type=Path(exists=True), help="Path to trilogy.toml configuration file")
+@option(
+    "--config", type=Path(exists=True), help="Path to trilogy.toml configuration file"
+)
 @pass_context
 def unit(
     ctx,
@@ -703,32 +718,28 @@ def unit(
     config,
 ):
     """Run unit tests on Trilogy scripts with mocked datasources."""
-    debug = ctx.obj["DEBUG"]
-    strategy = "eager_bfs"
-    config_path = PathlibPath(config) if config else None
-
     # Build CLI runtime params (unit tests always use DuckDB)
     cli_params = CLIRuntimeParams(
+        input=input,
         dialect=Dialects.DUCK_DB,
         parallelism=parallelism,
+        param=param,
+        conn_args=(),
+        debug=ctx.obj["DEBUG"],
+        config_path=PathlibPath(config) if config else None,
+        execution_strategy="eager_bfs",
     )
 
     try:
         run_parallel_execution(
-            input=input,
             cli_params=cli_params,
-            param=param,
-            conn_args=(),
-            debug=debug,
             execution_fn=execute_script_for_unit,
-            execution_strategy=strategy,
             execution_mode="unit",
-            config_path=config_path,
         )
     except Exit:
         raise
     except Exception as e:
-        handle_execution_exception(e, debug=debug)
+        handle_execution_exception(e, debug=cli_params.debug)
 
 
 @cli.command(
@@ -746,37 +757,36 @@ def unit(
     default=None,
     help="Maximum parallel workers for directory execution",
 )
-@option("--config", type=Path(exists=True), help="Path to trilogy.toml configuration file")
+@option(
+    "--config", type=Path(exists=True), help="Path to trilogy.toml configuration file"
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
-def run(ctx, input, dialect: str | None, param, parallelism: int | None, config, conn_args):
+def run(
+    ctx, input, dialect: str | None, param, parallelism: int | None, config, conn_args
+):
     """Execute a Trilogy script or query."""
-    debug = ctx.obj["DEBUG"]
-    config_path = PathlibPath(config) if config else None
-    strategy = "eager_bfs"
-
-    # Build CLI runtime params
     cli_params = CLIRuntimeParams(
+        input=input,
         dialect=Dialects(dialect) if dialect else None,
         parallelism=parallelism,
+        param=param,
+        conn_args=conn_args,
+        debug=ctx.obj["DEBUG"],
+        config_path=PathlibPath(config) if config else None,
+        execution_strategy="eager_bfs",
     )
 
     try:
         run_parallel_execution(
-            input=input,
             cli_params=cli_params,
-            param=param,
-            conn_args=conn_args,
-            debug=debug,
             execution_fn=execute_script_for_run,
-            execution_strategy=strategy,
             execution_mode="run",
-            config_path=config_path,
         )
     except Exit:
         raise
     except Exception as e:
-        handle_execution_exception(e, debug=debug)
+        handle_execution_exception(e, debug=cli_params.debug)
 
 
 if __name__ == "__main__":

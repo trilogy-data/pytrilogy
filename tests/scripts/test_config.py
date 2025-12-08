@@ -1,13 +1,9 @@
 import importlib.util
-import os
-import re
 from pathlib import Path
 
-import pytest
-from click.exceptions import Exit
 from click.testing import CliRunner
 
-from trilogy.scripts.trilogy import cli, handle_execution_exception, set_rich_mode
+from trilogy.scripts.trilogy import cli
 
 RICH_MODES = [False]
 
@@ -41,10 +37,18 @@ def test_config_bootstrap():
             )
         assert result.exit_code == 0
 
-
     # test config
     for cmd in ["run", "integration"]:
-        result = runner.invoke(cli, [cmd, str(path), "duckdb", f"--config", f"{str(path / "trilogy_dev.toml")}" ])
+        result = runner.invoke(
+            cli,
+            [
+                cmd,
+                str(path),
+                "duckdb",
+                "--config",
+                f"{str(path / "trilogy_dev.toml")}",
+            ],
+        )
         if result.exception:
             raise AssertionError(
                 f"Command '{cmd}' failed:\n"
@@ -54,7 +58,9 @@ def test_config_bootstrap():
         assert result.exit_code == 0
 
     for cmd in ["unit"]:
-        result = runner.invoke(cli, [cmd, str(path), "--config", f"{str(path / "trilogy_dev.toml")}"])
+        result = runner.invoke(
+            cli, [cmd, str(path), "--config", f"{str(path / "trilogy_dev.toml")}"]
+        )
         if result.exception:
             raise AssertionError(
                 f"Command '{cmd}' failed:\n"
@@ -62,8 +68,6 @@ def test_config_bootstrap():
                 f"exc:\n{result.exception}"
             )
         assert result.exit_code == 0
-
-
 
 
 def test_config_bootstrap_dialect():
@@ -71,7 +75,13 @@ def test_config_bootstrap_dialect():
     runner = CliRunner()
 
     for cmd in ["run", "integration"]:
-        result = runner.invoke(cli, [cmd, str(path), ])
+        result = runner.invoke(
+            cli,
+            [
+                cmd,
+                str(path),
+            ],
+        )
         if result.exception:
             raise AssertionError(
                 f"Command '{cmd}' failed:\n"
@@ -80,10 +90,11 @@ def test_config_bootstrap_dialect():
             )
         assert result.exit_code == 0
 
-
     # test config
     for cmd in ["run", "integration"]:
-        result = runner.invoke(cli, [cmd, str(path),  f"--config", f"{str(path / "trilogy_dev.toml")}" ])
+        result = runner.invoke(
+            cli, [cmd, str(path), "--config", f"{str(path / "trilogy_dev.toml")}"]
+        )
         if result.exception:
             raise AssertionError(
                 f"Command '{cmd}' failed:\n"

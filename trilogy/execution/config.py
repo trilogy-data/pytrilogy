@@ -31,9 +31,9 @@ def load_config_file(path: Path) -> RuntimeConfig:
         toml_content = f.read()
     config_data = loads(toml_content)
 
-    engine_raw:dict = config_data.get("engine", {})
-    engine_config_raw = engine_raw.get('config', {})
-    engine = Dialects(engine_raw.get('dialect')) if engine_raw.get('dialect') else None
+    engine_raw: dict = config_data.get("engine", {})
+    engine_config_raw = engine_raw.get("config", {})
+    engine = Dialects(engine_raw.get("dialect")) if engine_raw.get("dialect") else None
     if engine:
         if engine == Dialects.DUCK_DB:
             engine_config = (
@@ -63,7 +63,7 @@ def load_config_file(path: Path) -> RuntimeConfig:
             engine_config = None
     else:
         engine_config = None
-    setup:dict = config_data.get("setup", {})
+    setup: dict = config_data.get("setup", {})
     return RuntimeConfig(
         startup_trilogy=[Path(p) for p in setup.get("trilogy", [])],
         startup_sql=[Path(p) for p in setup.get("sql", [])],
