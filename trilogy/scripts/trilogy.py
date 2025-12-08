@@ -508,9 +508,10 @@ def run_parallel_execution(
     """
     # Check if input is a directory (parallel execution)
     pathlib_input = PathlibPath(cli_params.input)
-    files, directory, input_type, input_name, config = resolve_input_information(
+    files_iter, directory, input_type, input_name, config = resolve_input_information(
         cli_params.input, cli_params.config_path
     )
+    files = list(files_iter)
 
     # Merge CLI params with config file
     edialect, parallelism = merge_runtime_config(cli_params, config)
