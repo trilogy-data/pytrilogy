@@ -50,7 +50,7 @@ def mock_datatype(
                 return mock_email(scale_factor, is_key)
             elif full_type.traits == ["hex"]:
                 return mock_hex_code(scale_factor, is_key)
-        return mock_datatype(datatype.type, datatype.type, scale_factor, is_key)
+        return mock_datatype(full_type.type, full_type.type, scale_factor, is_key)
     elif datatype == DataType.INTEGER:
         if is_key:
             # unique integers for keys
