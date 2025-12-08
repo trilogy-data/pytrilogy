@@ -1,2 +1,6 @@
+[engine]
+dialect = "duckdb"
+
+
 [setup]
 sql = ["setup.sql"]

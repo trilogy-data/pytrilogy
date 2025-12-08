@@ -44,7 +44,7 @@ def test_config_bootstrap():
 
     # test config
     for cmd in ["run", "integration"]:
-        result = runner.invoke(cli, [cmd, str(path), "duckdb", "--config", "trilogy_dev.toml"])
+        result = runner.invoke(cli, [cmd, str(path), "duckdb", f"--config", f"{str(path / "trilogy_dev.toml")}" ])
         if result.exception:
             raise AssertionError(
                 f"Command '{cmd}' failed:\n"
@@ -53,8 +53,8 @@ def test_config_bootstrap():
             )
         assert result.exit_code == 0
 
-    for cmd in ["unit", "--config", "trilogy_dev.toml"]:
-        result = runner.invoke(cli, [cmd, str(path)])
+    for cmd in ["unit"]:
+        result = runner.invoke(cli, [cmd, str(path), "--config", f"{str(path / "trilogy_dev.toml")}"])
         if result.exception:
             raise AssertionError(
                 f"Command '{cmd}' failed:\n"

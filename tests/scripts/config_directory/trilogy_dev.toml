@@ -1,3 +1,2 @@
 [setup]
-dev_setup.sql
-
+sql = ["dev_setup.sql"]

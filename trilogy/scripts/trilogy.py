@@ -76,8 +76,10 @@ def resolve_input(path: PathlibPath) -> list[PathlibPath]:
     raise FileNotFoundError(f"Input path '{path}' does not exist.")
 
 
-def get_runtime_config(path: PathlibPath) -> RuntimeConfig:
-    if path.is_dir():
+def get_runtime_config(path: PathlibPath, config_override: PathlibPath | None = None) -> RuntimeConfig:
+    if config_override:
+        config_path = config_override
+    elif path.is_dir():
         config_path = path / "trilogy.toml"
     else:
         config_path = path.parent / "trilogy.toml"
@@ -91,7 +93,7 @@ def get_runtime_config(path: PathlibPath) -> RuntimeConfig:
 
 
 def resolve_input_information(
-    input: str, config_path_input: str | None = None
+    input: str, config_path_input: PathlibPath | None = None
 ) -> tuple[list[str], PathlibPath, str, str, RuntimeConfig]:
     input_as_path = PathlibPath(input)
     if input_as_path.exists():
@@ -101,12 +103,12 @@ def resolve_input_information(
         if pathlib_path.is_dir():
             directory = pathlib_path
             input_type = "directory"
-            config = get_runtime_config(config_path_input or pathlib_path)
+            config = get_runtime_config(pathlib_path, config_path_input)
 
         else:
             directory = pathlib_path.parent
             input_type = "file"
-            config = get_runtime_config(config_path_input or pathlib_path)
+            config = get_runtime_config(pathlib_path, config_path_input)
 
         input_name = pathlib_path.name
     else:
@@ -471,6 +473,7 @@ def run_parallel_execution(
     execution_fn,
     execution_strategy: str = "eager_bfs",
     execution_mode: str = "run",
+    config_path: PathlibPath | None = None,
 ) -> None:
     """
     Run parallel execution for directory inputs, or single-script execution
@@ -489,7 +492,7 @@ def run_parallel_execution(
     """
     # Check if input is a directory (parallel execution)
     pathlib_input = PathlibPath(input)
-    files, directory, input_type, input_name, config = resolve_input_information(input)
+    files, directory, input_type, input_name, config = resolve_input_information(input, config_path)
     if not pathlib_input.exists() or len(files) == 1:
         # Inline query - use polished single-script execution
 
@@ -607,13 +610,15 @@ def fmt(ctx, input):
     default=DEFAULT_PARALLELISM,
     help="Maximum parallel workers for directory execution",
 )
+@option("--config", type=Path(exists=True), help="Path to trilogy.toml configuration file")
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
-def integration(ctx, input, dialect: str, param, parallelism: int, conn_args):
+def integration(ctx, input, dialect: str, param, parallelism: int, config, conn_args):
     """Run integration tests on Trilogy scripts."""
     edialect = Dialects(dialect)
     strategy = "eager_bfs"
     debug = ctx.obj["DEBUG"]
+    config_path = PathlibPath(config) if config else None
 
     try:
         run_parallel_execution(
@@ -626,6 +631,7 @@ def integration(ctx, input, dialect: str, param, parallelism: int, conn_args):
             execution_fn=execute_script_for_integration,
             execution_strategy=strategy,
             execution_mode="integration",
+            config_path=config_path,
         )
     except Exit:
         raise
@@ -647,17 +653,20 @@ def integration(ctx, input, dialect: str, param, parallelism: int, conn_args):
     default=DEFAULT_PARALLELISM,
     help="Maximum parallel workers for directory execution",
 )
+@option("--config", type=Path(exists=True), help="Path to trilogy.toml configuration file")
 @pass_context
 def unit(
     ctx,
     input,
     param,
     parallelism: int,
+    config,
 ):
     """Run unit tests on Trilogy scripts with mocked datasources."""
     edialect = Dialects.DUCK_DB
     debug = ctx.obj["DEBUG"]
     strategy = "eager_bfs"
+    config_path = PathlibPath(config) if config else None
     try:
         run_parallel_execution(
             input=input,
@@ -669,6 +678,7 @@ def unit(
             execution_fn=execute_script_for_unit,
             execution_strategy=strategy,
             execution_mode="unit",
+            config_path=config_path,
         )
     except Exit:
         raise
@@ -691,13 +701,15 @@ def unit(
     default=DEFAULT_PARALLELISM,
     help="Maximum parallel workers for directory execution",
 )
+@option("--config", type=Path(exists=True), help="Path to trilogy.toml configuration file")
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
-def run(ctx, input, dialect: str, param, parallelism: int, conn_args):
+def run(ctx, input, dialect: str, param, parallelism: int, config, conn_args):
     """Execute a Trilogy script or query."""
     edialect = Dialects(dialect)
     debug = ctx.obj["DEBUG"]
     strategy = "eager_bfs"
+    config_path = PathlibPath(config) if config else None
     try:
         run_parallel_execution(
             input=input,
@@ -709,6 +721,7 @@ def run(ctx, input, dialect: str, param, parallelism: int, conn_args):
             execution_fn=execute_script_for_run,
             execution_strategy=strategy,
             execution_mode="run",
+            config_path=config_path,
         )
     except Exit:
         raise

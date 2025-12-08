@@ -13,7 +13,7 @@ from trilogy.dialect import (
 )
 from trilogy.dialect.enums import DialectConfig, Dialects
 
-DEFAULT_PARALLELLISM = 2
+DEFAULT_PARALLELISM = 4
 
 
 @dataclass
@@ -21,22 +21,19 @@ class RuntimeConfig:
 
     startup_trilogy: list[Path]
     startup_sql: list[Path]
-    parallellism: int = DEFAULT_PARALLELLISM
-    engine: Dialects | None = None
+    parallelism: int = DEFAULT_PARALLELISM
+    engine_dialect: Dialects | None = None
     engine_config: DialectConfig | None = None
 
 
 def load_config_file(path: Path) -> RuntimeConfig:
-    """Load configuration from a file."""
-    # Placeholder implementation
-
     with open(path, "r") as f:
         toml_content = f.read()
     config_data = loads(toml_content)
 
-    engine_raw = config_data.get("engine", None)
-    engine_config_raw = config_data.get("engine_config", None)
-    engine = Dialects(engine_raw) if engine_raw else None
+    engine_raw:dict = config_data.get("engine", {})
+    engine_config_raw = engine_raw.get('config', {})
+    engine = Dialects(engine_raw.get('dialect')) if engine_raw.get('dialect') else None
     if engine:
         if engine == Dialects.DUCK_DB:
             engine_config = (
@@ -70,7 +67,7 @@ def load_config_file(path: Path) -> RuntimeConfig:
     return RuntimeConfig(
         startup_trilogy=[Path(p) for p in setup.get("trilogy", [])],
         startup_sql=[Path(p) for p in setup.get("sql", [])],
-        parallellism=config_data.get("parallellism", DEFAULT_PARALLELLISM),
-        engine=engine,
+        parallelism=config_data.get("parallelism", DEFAULT_PARALLELISM),
+        engine_dialect=engine,
         engine_config=engine_config,
     )
