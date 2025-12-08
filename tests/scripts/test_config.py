@@ -108,6 +108,47 @@ def test_config_bootstrap_dialect():
         assert result.exit_code == 0
 
 
+def test_merge_config():
+    base_config = DuckDBConfig(path="/base/path.db")
+    override_config = DuckDBConfig(path="/override/path.db")
+
+    merged = base_config.merge_config(override_config)
+
+    assert merged.path == "/override/path.db"
+    assert merged is base_config
+
+
+def test_cli_merge_config():
+    """Test that CLI conn_args merge with config file engine_config"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        config_content = """
+[engine]
+dialect = "duckdb"
+
+[engine.config]
+path = ":memory:"
+"""
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(config_content)
+
+        test_script = tmppath / "test.preql"
+        test_script.write_text("select 1 as value;")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["run", str(test_script), "duckdb", "path=/tmp/override.db"]
+        )
+
+        if result.exception:
+            raise AssertionError(
+                f"Command failed:\nstdout:\n{result.stdout}\nexc:\n{result.exception}"
+            )
+        assert result.exit_code == 0
+
+
 def test_config_types():
 
     test_cases = [
