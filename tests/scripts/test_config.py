@@ -59,7 +59,7 @@ def test_config_bootstrap():
 
     for cmd in ["unit"]:
         result = runner.invoke(
-            cli, [cmd, str(path), "--config", f"{str(path / "trilogy_dev.toml")}"]
+            cli, [cmd, str(path), "--config", str(path / "trilogy_dev.toml")]
         )
         if result.exception:
             raise AssertionError(
@@ -92,8 +92,9 @@ def test_config_bootstrap_dialect():
 
     # test config
     for cmd in ["run", "integration"]:
+
         result = runner.invoke(
-            cli, [cmd, str(path), "--config", f"{str(path / "trilogy_dev.toml")}"]
+            cli, [cmd, str(path), "--config", str(path / "trilogy_dev.toml")]
         )
         if result.exception:
             raise AssertionError(
