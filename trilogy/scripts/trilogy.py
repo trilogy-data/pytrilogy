@@ -17,6 +17,7 @@ from trilogy.core.exceptions import (
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import RuntimeConfig, load_config_file
+from dataclasses import dataclass
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parsing.render import Renderer
 from trilogy.scripts.dependency import (
@@ -55,6 +56,39 @@ set_rich_mode = set_rich_mode
 
 # Default parallelism level
 DEFAULT_PARALLELISM = 2
+
+
+@dataclass
+class CLIRuntimeParams:
+    """Parameters provided via CLI that can override config file settings."""
+    dialect: Dialects | None = None
+    parallelism: int | None = None
+
+
+def merge_runtime_config(cli_params: CLIRuntimeParams, file_config: RuntimeConfig) -> tuple[Dialects, int]:
+    """
+    Merge CLI parameters with config file settings.
+    CLI parameters take precedence over config file.
+
+    Returns:
+        tuple of (dialect, parallelism)
+
+    Raises:
+        Exit: If no dialect is specified in either CLI or config
+    """
+    # Resolve dialect: CLI argument takes precedence over config
+    if cli_params.dialect:
+        dialect = cli_params.dialect
+    elif file_config.engine_dialect:
+        dialect = file_config.engine_dialect
+    else:
+        print_error(f"No dialect specified. Provide dialect as argument or set engine.dialect in config file. (got {file_config})")
+        raise Exit(1)
+
+    # Resolve parallelism: CLI argument takes precedence over config
+    parallelism = cli_params.parallelism if cli_params.parallelism is not None else file_config.parallelism
+
+    return dialect, parallelism
 
 
 class RunMode(Enum):
@@ -465,11 +499,10 @@ def run_single_script_execution(
 
 def run_parallel_execution(
     input: str,
-    edialect: Dialects,
+    cli_params: CLIRuntimeParams,
     param: tuple[str, ...],
     conn_args: Iterable[str],
     debug: bool,
-    parallelism: int,
     execution_fn,
     execution_strategy: str = "eager_bfs",
     execution_mode: str = "run",
@@ -481,18 +514,21 @@ def run_parallel_execution(
 
     Args:
         input: Input path (file or directory)
-        edialect: Dialect to use
+        cli_params: CLI runtime parameters (dialect, parallelism)
         param: Environment parameters
         conn_args: Connection arguments
         debug: Debug mode flag
-        parallelism: Maximum parallel workers
         execution_fn: Function to execute each script (exec, node, quiet) -> None
         execution_strategy: Name of execution strategy ("eager_bfs" or "level")
         execution_mode: One of 'run', 'integration', or 'unit'
+        config_path: Optional path to config file
     """
     # Check if input is a directory (parallel execution)
     pathlib_input = PathlibPath(input)
     files, directory, input_type, input_name, config = resolve_input_information(input, config_path)
+
+    # Merge CLI params with config file
+    edialect, parallelism = merge_runtime_config(cli_params, config)
     if not pathlib_input.exists() or len(files) == 1:
         # Inline query - use polished single-script execution
 
@@ -602,32 +638,36 @@ def fmt(ctx, input):
     ),
 )
 @argument("input", type=Path())
-@argument("dialect", type=str)
+@argument("dialect", type=str, required=False)
 @option("--param", multiple=True, help="Environment parameters as key=value pairs")
 @option(
     "--parallelism",
     "-p",
-    default=DEFAULT_PARALLELISM,
+    default=None,
     help="Maximum parallel workers for directory execution",
 )
 @option("--config", type=Path(exists=True), help="Path to trilogy.toml configuration file")
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
-def integration(ctx, input, dialect: str, param, parallelism: int, config, conn_args):
+def integration(ctx, input, dialect: str | None, param, parallelism: int | None, config, conn_args):
     """Run integration tests on Trilogy scripts."""
-    edialect = Dialects(dialect)
-    strategy = "eager_bfs"
     debug = ctx.obj["DEBUG"]
     config_path = PathlibPath(config) if config else None
+    strategy = "eager_bfs"
+
+    # Build CLI runtime params
+    cli_params = CLIRuntimeParams(
+        dialect=Dialects(dialect) if dialect else None,
+        parallelism=parallelism,
+    )
 
     try:
         run_parallel_execution(
             input=input,
-            edialect=edialect,
+            cli_params=cli_params,
             param=param,
             conn_args=conn_args,
             debug=debug,
-            parallelism=parallelism,
             execution_fn=execute_script_for_integration,
             execution_strategy=strategy,
             execution_mode="integration",
@@ -650,7 +690,7 @@ def integration(ctx, input, dialect: str, param, parallelism: int, config, conn_
 @option(
     "--parallelism",
     "-p",
-    default=DEFAULT_PARALLELISM,
+    default=None,
     help="Maximum parallel workers for directory execution",
 )
 @option("--config", type=Path(exists=True), help="Path to trilogy.toml configuration file")
@@ -659,22 +699,27 @@ def unit(
     ctx,
     input,
     param,
-    parallelism: int,
+    parallelism: int | None,
     config,
 ):
     """Run unit tests on Trilogy scripts with mocked datasources."""
-    edialect = Dialects.DUCK_DB
     debug = ctx.obj["DEBUG"]
     strategy = "eager_bfs"
     config_path = PathlibPath(config) if config else None
+
+    # Build CLI runtime params (unit tests always use DuckDB)
+    cli_params = CLIRuntimeParams(
+        dialect=Dialects.DUCK_DB,
+        parallelism=parallelism,
+    )
+
     try:
         run_parallel_execution(
             input=input,
-            edialect=edialect,
+            cli_params=cli_params,
             param=param,
             conn_args=(),
             debug=debug,
-            parallelism=parallelism,
             execution_fn=execute_script_for_unit,
             execution_strategy=strategy,
             execution_mode="unit",
@@ -693,31 +738,36 @@ def unit(
     ),
 )
 @argument("input", type=Path())
-@argument("dialect", type=str)
+@argument("dialect", type=str, required=False)
 @option("--param", multiple=True, help="Environment parameters as key=value pairs")
 @option(
     "--parallelism",
     "-p",
-    default=DEFAULT_PARALLELISM,
+    default=None,
     help="Maximum parallel workers for directory execution",
 )
 @option("--config", type=Path(exists=True), help="Path to trilogy.toml configuration file")
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
-def run(ctx, input, dialect: str, param, parallelism: int, config, conn_args):
+def run(ctx, input, dialect: str | None, param, parallelism: int | None, config, conn_args):
     """Execute a Trilogy script or query."""
-    edialect = Dialects(dialect)
     debug = ctx.obj["DEBUG"]
-    strategy = "eager_bfs"
     config_path = PathlibPath(config) if config else None
+    strategy = "eager_bfs"
+
+    # Build CLI runtime params
+    cli_params = CLIRuntimeParams(
+        dialect=Dialects(dialect) if dialect else None,
+        parallelism=parallelism,
+    )
+
     try:
         run_parallel_execution(
             input=input,
-            edialect=edialect,
+            cli_params=cli_params,
             param=param,
             conn_args=conn_args,
             debug=debug,
-            parallelism=parallelism,
             execution_fn=execute_script_for_run,
             execution_strategy=strategy,
             execution_mode="run",

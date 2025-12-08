@@ -62,3 +62,32 @@ def test_config_bootstrap():
                 f"exc:\n{result.exception}"
             )
         assert result.exit_code == 0
+
+
+
+
+def test_config_bootstrap_dialect():
+    path = Path(__file__).parent / "config_directory"
+    runner = CliRunner()
+
+    for cmd in ["run", "integration"]:
+        result = runner.invoke(cli, [cmd, str(path), ])
+        if result.exception:
+            raise AssertionError(
+                f"Command '{cmd}' failed:\n"
+                f"stdout:\n{result.stdout}\n"
+                f"exc:\n{result.exception}"
+            )
+        assert result.exit_code == 0
+
+
+    # test config
+    for cmd in ["run", "integration"]:
+        result = runner.invoke(cli, [cmd, str(path),  f"--config", f"{str(path / "trilogy_dev.toml")}" ])
+        if result.exception:
+            raise AssertionError(
+                f"Command '{cmd}' failed:\n"
+                f"stdout:\n{result.stdout}\n"
+                f"exc:\n{result.exception}"
+            )
+        assert result.exit_code == 0
