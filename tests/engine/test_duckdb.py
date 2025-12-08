@@ -1967,6 +1967,7 @@ import std.net;
 
 key x int;
 key y int;
+
 property x.name string;
 property x.email string::email_address;
 property x.favorite_color string::hex;
@@ -1979,6 +1980,8 @@ property x.labels array<string>;
 key year date;
 key string_key string;
 key bool_key bool;
+key date_key date;
+key datetime_key datetime;
 
 
 datasource example (
@@ -2013,9 +2016,12 @@ address `my-gbq-table.my-project.tbl_years`;
 
 
 datasource keys (
+    datetime_key,
+    date_key,
     string_key,
-    bool_key)
-grain (string_key, bool_key)
+    bool_key,
+    date_key)
+grain (datetime_key, string_key, bool_key, date_key)
 address `my-gbq-table.my-project.tbl_keys`;
     
 
