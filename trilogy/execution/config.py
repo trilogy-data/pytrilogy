@@ -4,16 +4,15 @@ from pathlib import Path
 from tomllib import loads
 
 from trilogy.dialect import (
-    DialectConfig,
     BigQueryConfig,
+    DialectConfig,
     DuckDBConfig,
     PostgresConfig,
     PrestoConfig,
     SnowflakeConfig,
-    DialectConfig,
     SQLServerConfig,
 )
-from trilogy.dialect.enums import  Dialects
+from trilogy.dialect.enums import Dialects
 
 DEFAULT_PARALLELISM = 4
 

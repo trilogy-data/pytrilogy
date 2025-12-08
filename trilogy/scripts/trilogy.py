@@ -1,4 +1,3 @@
-from sys import path
 import traceback
 from dataclasses import dataclass
 from datetime import datetime
