@@ -1963,10 +1963,13 @@ def test_mock_statement():
     test = """
 import std.metric;
 import std.color;
+import std.net;
 
 key x int;
 key y int;
 property x.name string;
+property x.email string::email_address;
+property x.favorite_color string::hex;
 property x.value float::kn;
 property x.numeric numeric::kn;
 property x.created_at timestamp;
@@ -1982,6 +1985,7 @@ datasource example (
 x, 
 y,
 name,
+
 value,
 numeric,
 created_at,
@@ -1994,7 +1998,9 @@ address `my-gbq-table.my-project.tbl_example`;
 
 datasource enrichment (
 x,
-labels
+labels,
+email,
+favorite_color,
 )
 grain (x)
 address `my-gbq-table.my-project.tbl_enrichment`;
@@ -2015,13 +2021,14 @@ address `my-gbq-table.my-project.tbl_keys`;
 
 mock datasource example, enrichment, years, keys;
 
-select x, labels;
+select x, labels, email, favorite_color;
 """
 
     results = default_duckdb_engine.execute_text(test)[-1].fetchall()
     assert len(results) == DEFAULT_SCALE_FACTOR
     assert isinstance(results[0].x, int)
     assert isinstance(results[0].labels, list)
+    assert "@" in results[0].email
 
 
 def test_group_syntax():

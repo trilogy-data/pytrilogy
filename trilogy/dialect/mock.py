@@ -42,7 +42,16 @@ def mock_hex_code(scale_factor: int, is_key: bool = False) -> list[str]:
 def mock_datatype(
     full_type: Any, datatype: CONCRETE_TYPES, scale_factor: int, is_key: bool = False
 ) -> list[Any]:
-    if datatype == DataType.INTEGER:
+    if isinstance(full_type, TraitDataType):
+        if full_type.type == DataType.STRING:
+            # TODO: get stdlib inventory some other way?
+            if full_type.traits == ["email_address"]:
+                # email mock function
+                return mock_email(scale_factor, is_key)
+            elif full_type.traits == ["hex"]:
+                return mock_hex_code(scale_factor, is_key)
+        return mock_datatype(datatype.type, datatype.type, scale_factor, is_key)
+    elif datatype == DataType.INTEGER:
         if is_key:
             # unique integers for keys
             return list(range(1, scale_factor + 1))
@@ -105,14 +114,6 @@ def mock_datatype(
             [mock_datatype(datatype.type, datatype.value_data_type, 5, False)]
             for _ in range(scale_factor)
         ]
-    elif isinstance(datatype, TraitDataType):
-        if datatype.type == DataType.STRING:
-            if datatype.traits == ["email"]:
-                # email mock function
-                return mock_email(scale_factor, is_key)
-            elif datatype.traits == ["hex"]:
-                return mock_hex_code(scale_factor, is_key)
-        return mock_datatype(datatype, datatype.type, scale_factor, is_key)
     raise NotImplementedError(f"Mocking not implemented for datatype {datatype}")
 
 
