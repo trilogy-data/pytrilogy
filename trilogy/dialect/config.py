@@ -14,8 +14,7 @@ class DialectConfig:
     def connection_string(self) -> str:
         raise NotImplementedError
 
-    @property
-    def connect_args(self) -> dict:
+    def create_connect_args(self) -> dict:
         return {}
 
     def merge_config(self, other: "DialectConfig") -> "DialectConfig":
@@ -27,22 +26,21 @@ class DialectConfig:
 
 class BigQueryConfig(DialectConfig):
     def __init__(self, project: str | None = None, client: Any | None = None):
-        if not client:
+        self.project = project
+        self.client = client
+
+    def connection_string(self) -> str:
+        return f"bigquery://{self.project}?user_supplied_client=True"
+
+    def create_connect_args(self) -> dict:
+        if not self.client:
             from google.auth import default
             from google.cloud import bigquery
 
             credentials, project = default()
             self.client = bigquery.Client(credentials=credentials, project=project)
             self.project = project
-        else:
-            self.project = project
-            self.client = client
 
-    def connection_string(self) -> str:
-        return f"bigquery://{self.project}?user_supplied_client=True"
-
-    @property
-    def connect_args(self) -> dict:
         return {"client": self.client}
 
 
