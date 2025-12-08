@@ -1,3 +1,4 @@
+from sys import path
 import traceback
 from dataclasses import dataclass
 from datetime import datetime
@@ -145,8 +146,9 @@ def get_runtime_config(
 
 def resolve_input_information(
     input: str, config_path_input: PathlibPath | None = None
-) -> tuple[list[str], PathlibPath, str, str, RuntimeConfig]:
+) -> tuple[Iterable[PathlibPath | StringIO], PathlibPath, str, str, RuntimeConfig]:
     input_as_path = PathlibPath(input)
+    files: Iterable[StringIO | PathlibPath]
     if input_as_path.exists():
         pathlib_path = input_as_path
         files = resolve_input(pathlib_path)
@@ -168,33 +170,9 @@ def resolve_input_information(
         directory = PathlibPath.cwd()
         input_type = "query"
         input_name = "inline"
-        files.append(script)
         config = RuntimeConfig(startup_trilogy=[], startup_sql=[])
     return files, directory, input_type, input_name, config
 
-
-# def resolve_input_files(input: str) -> tuple[list[PathlibPath], PathlibPath, str, str]:
-#     """
-#     Resolve input to a list of file paths (for parallel execution).
-
-#     """
-#     if PathlibPath(input).exists():
-#         pathlib_path = PathlibPath(input)
-#         files = resolve_input(pathlib_path)
-
-#         if pathlib_path.is_dir():
-#             directory = pathlib_path
-#             input_type = "directory"
-#         else:
-#             directory = pathlib_path.parent
-#             input_type = "file"
-#         input_name = pathlib_path.name
-#         return files, directory, input_type, input_name
-#     else:
-#         # Inline query - not applicable for parallel execution
-#         raise FileNotFoundError(
-#             f"Directory {input} does not exist for parallel execution."
-#         )
 
 
 def validate_required_connection_params(
@@ -279,7 +257,7 @@ def get_dialect_config(
             "Presto",
         )
         conf = PrestoConfig(**conn_dict)
-    if runtime_config.engine_config:
+    if conf and runtime_config.engine_config:
         conf = runtime_config.engine_config.merge_config(conf)
     return conf
 
@@ -568,8 +546,10 @@ def run_parallel_execution(
     # Get execution plan for display
     if pathlib_input.is_dir():
         execution_plan = parallel_exec.get_folder_execution_plan(pathlib_input)
+    elif pathlib_input.is_file():
+        execution_plan = parallel_exec.get_execution_plan([pathlib_input])
     else:
-        execution_plan = parallel_exec.get_execution_plan(files)
+        raise FileNotFoundError(f"Input path '{pathlib_input}' does not exist.")
 
     num_edges = execution_plan.number_of_edges()
     num_nodes = execution_plan.number_of_nodes()

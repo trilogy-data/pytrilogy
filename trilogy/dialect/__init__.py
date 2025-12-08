@@ -7,6 +7,7 @@ from .config import (
     PrestoConfig,
     SnowflakeConfig,
     SQLServerConfig,
+    DialectConfig
 )
 from .duckdb import DuckDBDialect
 from .postgres import PostgresDialect
@@ -28,4 +29,5 @@ __all__ = [
     "SnowflakeConfig",
     "PrestoConfig",
     "PostgresConfig",
+    "DialectConfig",
 ]

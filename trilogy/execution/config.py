@@ -4,14 +4,16 @@ from pathlib import Path
 from tomllib import loads
 
 from trilogy.dialect import (
+    DialectConfig,
     BigQueryConfig,
     DuckDBConfig,
     PostgresConfig,
     PrestoConfig,
     SnowflakeConfig,
+    DialectConfig,
     SQLServerConfig,
 )
-from trilogy.dialect.enums import DialectConfig, Dialects
+from trilogy.dialect.enums import  Dialects
 
 DEFAULT_PARALLELISM = 4
 
@@ -34,6 +36,7 @@ def load_config_file(path: Path) -> RuntimeConfig:
     engine_raw: dict = config_data.get("engine", {})
     engine_config_raw = engine_raw.get("config", {})
     engine = Dialects(engine_raw.get("dialect")) if engine_raw.get("dialect") else None
+    engine_config: DialectConfig | None
     if engine:
         if engine == Dialects.DUCK_DB:
             engine_config = (
