@@ -46,7 +46,7 @@ def test_config_bootstrap():
                 str(path),
                 "duckdb",
                 "--config",
-                f"{str(path / "trilogy_dev.toml")}",
+                str(path / "trilogy_dev.toml"),
             ],
         )
         if result.exception:
