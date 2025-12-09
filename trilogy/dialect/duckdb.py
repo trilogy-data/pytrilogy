@@ -175,3 +175,51 @@ class DuckDBDialect(BaseDialect):
     SQL_TEMPLATE = DUCKDB_TEMPLATE
     UNNEST_MODE = UnnestMode.DIRECT
     NULL_WRAPPER = staticmethod(null_wrapper)
+
+    def get_table_schema(
+        self, executor, table_name: str, schema: str | None = None
+    ) -> list[tuple]:
+        """Query table schema from DuckDB's information_schema."""
+        # DuckDB's information_schema works slightly differently
+        column_query = """
+        SELECT
+            column_name,
+            data_type,
+            is_nullable
+        FROM information_schema.columns
+        WHERE table_name = ?
+        """
+        params = [table_name]
+
+        if schema:
+            column_query += " AND table_schema = ?"
+            params.append(schema)
+
+        column_query += " ORDER BY ordinal_position"
+
+        # DuckDB supports parameterized queries
+        rows = executor.execute_raw_sql(column_query.replace("?", "'{}'").format(*params)).fetchall()
+        return rows
+
+    def get_table_primary_keys(
+        self, executor, table_name: str, schema: str | None = None
+    ) -> list[str]:
+        """Query primary keys from DuckDB.
+        """
+        # Try standard information_schema first
+        pk_query = """
+        SELECT column_name
+        FROM information_schema.key_column_usage
+        WHERE table_name = '{}'
+        """.format(table_name)
+
+        if schema:
+            pk_query += " AND table_schema = '{}'".format(schema)
+
+        pk_query += " AND constraint_name = 'PRIMARY'"
+
+        rows = executor.execute_raw_sql(pk_query).fetchall()
+        if rows:
+            return [row[0] for row in rows]
+
+        return []

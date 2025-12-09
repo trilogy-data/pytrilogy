@@ -203,6 +203,67 @@ class BigqueryDialect(BaseDialect):
     UNNEST_MODE = UnnestMode.CROSS_JOIN_UNNEST
     DATATYPE_MAP = DATATYPE_MAP
 
+    def get_table_schema(
+        self, executor, table_name: str, schema: str | None = None
+    ) -> list[tuple]:
+        """Query table schema from BigQuery's information_schema.
+
+        BigQuery uses dataset instead of schema, and has slightly different column names.
+        """
+        # Split table_name if it contains dataset.table format
+        if '.' in table_name and not schema:
+            parts = table_name.split('.')
+            if len(parts) == 2:
+                schema = parts[0]
+                table_name = parts[1]
+            elif len(parts) == 3:
+                # project.dataset.table format
+                schema = f"{parts[0]}.{parts[1]}"
+                table_name = parts[2]
+
+        column_query = f"""
+        SELECT
+            column_name,
+            data_type,
+            is_nullable
+        FROM `{schema}.INFORMATION_SCHEMA.COLUMNS`
+        WHERE table_name = '{table_name}'
+        ORDER BY ordinal_position
+        """
+
+        rows = executor.execute_raw_sql(column_query).fetchall()
+        return rows
+
+    def get_table_primary_keys(
+        self, executor, table_name: str, schema: str | None = None
+    ) -> list[str]:
+        """Query primary keys from BigQuery.
+
+        BigQuery doesn't enforce primary keys in the traditional sense,
+        so this typically returns an empty list. Keys should be inferred
+        from data analysis instead.
+        """
+        # BigQuery doesn't have traditional PKs, but we can check table constraints
+        # if they exist (rarely used in practice)
+        if '.' in table_name and not schema:
+            parts = table_name.split('.')
+            if len(parts) == 2:
+                schema = parts[0]
+                table_name = parts[1]
+            elif len(parts) == 3:
+                schema = f"{parts[0]}.{parts[1]}"
+                table_name = parts[2]
+
+        pk_query = f"""
+        SELECT column_name
+        FROM `{schema}.INFORMATION_SCHEMA.KEY_COLUMN_USAGE`
+        WHERE table_name = '{table_name}'
+        AND constraint_name LIKE '%PRIMARY%'
+        """
+
+        rows = executor.execute_raw_sql(pk_query).fetchall()
+        return [row[0] for row in rows]
+
     def render_array_unnest(
         self,
         left,

@@ -4,7 +4,7 @@ from pathlib import Path as PathlibPath
 from click import UNPROCESSED, Path, argument, option, pass_context
 from click.exceptions import Exit
 
-from trilogy.authoring import DataType, ConceptDeclarationStatement, Address
+from trilogy.authoring import DataType, ConceptDeclarationStatement, Address, Comment
 from trilogy.core.enums import Modifier, Purpose
 from trilogy.core.models.author import Concept, Grain
 from trilogy.executor import Executor
@@ -31,13 +31,13 @@ def infer_datatype_from_sql_type(sql_type: str) -> DataType:
         for t in ["int", "integer", "smallint", "tinyint", "mediumint"]
     ):
         return DataType.INTEGER
-    if any(t in sql_type_lower for t in ["bigint", "long"]):
+    if any(t in sql_type_lower for t in ["bigint", "long", "int64"]):
         return DataType.BIGINT
 
     # Numeric/decimal types
     if any(t in sql_type_lower for t in ["numeric", "decimal", "money"]):
         return DataType.FLOAT
-    if any(t in sql_type_lower for t in ["float", "double", "real"]):
+    if any(t in sql_type_lower for t in ["float", "double", "real", "float64"]):
         return DataType.FLOAT
 
     # String types
@@ -61,98 +61,181 @@ def infer_datatype_from_sql_type(sql_type: str) -> DataType:
     return DataType.STRING
 
 
-def get_table_schema(exec, table_name: str, schema: str | None = None):
-    """Query the table schema from information_schema."""
-    # Build qualified table name
-    if schema:
-        qualified_name = f"{schema}.{table_name}"
-    else:
-        qualified_name = table_name
+def detect_unique_key_combinations(
+    column_names: list[str], sample_rows: list[tuple], max_key_size: int = 3
+) -> list[list[str]]:
+    """Detect unique key combinations from sample data.
 
-    # Query column information
-    column_query = f"""
-    SELECT
-        column_name,
-        data_type,
-        is_nullable
-    FROM information_schema.columns
-    WHERE table_name = '{table_name}'
+    Returns a list of column combinations that uniquely identify rows,
+    ordered by size (smallest first).
     """
-    if schema:
-        column_query += f" AND table_schema = '{schema}'"
-    column_query += " ORDER BY ordinal_position"
+    if not sample_rows or not column_names:
+        return []
 
-    try:
-        rows = exec.execute_raw_sql(column_query).fetchall()
-    except Exception as e:
-        print_error(f"Failed to query schema for {qualified_name}: {e}")
-        raise Exit(1) from e
+    unique_combinations = []
 
-    if not rows:
-        print_error(f"No columns found for table {qualified_name}")
-        raise Exit(1)
+    # Try single columns first
+    for i, col_name in enumerate(column_names):
+        values = set()
+        is_unique = True
+        for row in sample_rows:
+            value = row[i]
+            if value in values:
+                is_unique = False
+                break
+            values.add(value)
 
-    return rows
+        if is_unique and len(values) == len(sample_rows):
+            unique_combinations.append([col_name])
+
+    # If we found single-column keys, prefer those
+    if unique_combinations:
+        return unique_combinations
+
+    # Try combinations of 2 columns
+    if max_key_size >= 2:
+        from itertools import combinations
+        for col_combo in combinations(enumerate(column_names), 2):
+            indices = [idx for idx, _ in col_combo]
+            col_names = [name for _, name in col_combo]
+
+            values = set()
+            is_unique = True
+            for row in sample_rows:
+                value = tuple(row[idx] for idx in indices)
+                if value in values:
+                    is_unique = False
+                    break
+                values.add(value)
+
+            if is_unique and len(values) == len(sample_rows):
+                unique_combinations.append(col_names)
+
+    # Try combinations of 3 columns if needed
+    if not unique_combinations and max_key_size >= 3:
+        from itertools import combinations
+        for col_combo in combinations(enumerate(column_names), 3):
+            indices = [idx for idx, _ in col_combo]
+            col_names = [name for _, name in col_combo]
+
+            values = set()
+            is_unique = True
+            for row in sample_rows:
+                value = tuple(row[idx] for idx in indices)
+                if value in values:
+                    is_unique = False
+                    break
+                values.add(value)
+
+            if is_unique and len(values) == len(sample_rows):
+                unique_combinations.append(col_names)
+
+    return unique_combinations
 
 
-def get_table_primary_keys(exec, table_name: str, schema: str | None = None):
-    """Query primary keys from information_schema."""
-    pk_query = f"""
-    SELECT column_name
-    FROM information_schema.key_column_usage
-    WHERE table_name = '{table_name}'
+def detect_nullability_from_sample(
+    column_index: int, sample_rows: list[tuple]
+) -> bool:
+    """Detect if a column is nullable based on sample data.
+
+    Returns True if any NULL values are found in the sample.
     """
-    if schema:
-        pk_query += f" AND table_schema = '{schema}'"
-    pk_query += " AND constraint_name LIKE '%primary%' OR constraint_name = 'PRIMARY'"
+    for row in sample_rows:
+        if row[column_index] is None:
+            return True
+    return False
 
-    # TODO: fallback, investigate our row sample for suggested unique keys
-    rows = exec.execute_raw_sql(pk_query).fetchall()
-    return [row[0] for row in rows]
+
 
 
 
 def create_datasource_from_table(
     exec:Executor, table_name: str, schema: str | None = None
-) -> Datasource:
+) -> tuple[Datasource, list[Concept]]:
     """Create a Datasource object from a warehouse table."""
-    # Get table schema
-    # TODO: move these methods the Dialect on The Executor
-    columns = get_table_schema(exec, table_name, schema)
+    # Get the dialect generator (BaseDialect instance) from the executor
+    dialect = exec.generator
 
-    # Get primary keys
-    # TODO: move these methods to the DIalect on the Exeuctor
-    primary_keys = get_table_primary_keys(exec, table_name, schema)
+    # Get table schema using dialect-specific method
+    try:
+        columns = dialect.get_table_schema(exec, table_name, schema)
+    except Exception as e:
+        print_error(f"Failed to query schema for {table_name}: {e}")
+        raise Exit(1) from e
+
+    if not columns:
+        print_error(f"No columns found for table {table_name}")
+        raise Exit(1)
+
+    # Get primary keys from DB (may be empty)
+    try:
+        db_primary_keys = dialect.get_table_primary_keys(exec, table_name, schema)
+    except Exception as e:
+        print_info(f"Could not fetch primary keys from metadata: {e}")
+        db_primary_keys = []
+
+    # Get sample data to detect grain and nullability
+    try:
+        sample_rows = dialect.get_table_sample(exec, table_name, schema)
+        print_info(f"Analyzing {len(sample_rows)} sample rows for grain and nullability detection")
+    except Exception as e:
+        print_info(f"Could not fetch sample data: {e}")
+        sample_rows = []
 
     # Build qualified table name
-    # TODO: use the DDialect on the Executor to quote this appropriately
     if schema:
         qualified_name = f"{schema}.{table_name}"
     else:
         qualified_name = table_name
 
+    # Extract column names for grain detection
+    column_names = [col[0] for col in columns]
+
+    # Detect unique key combinations from sample data
+    suggested_keys = []
+    if sample_rows:
+        suggested_keys = detect_unique_key_combinations(column_names, sample_rows)
+        if suggested_keys:
+            print_info(f"Detected potential unique key combinations: {suggested_keys}")
+
+    # Determine grain: prefer DB PKs, fall back to detected keys
+    if db_primary_keys:
+        grain_components = db_primary_keys
+        print_info(f"Using database primary keys as grain: {grain_components}")
+    elif suggested_keys:
+        # Use the smallest unique key combination
+        grain_components = suggested_keys[0]
+        print_info(f"Using detected unique key as grain: {grain_components}")
+    else:
+        grain_components = []
+        print_info("No unique grain detected - table may have duplicate rows")
+
     # Create column assignments for each column
     column_assignments = []
-    grain_components = []
     concepts:list[Concept] = []
 
-    for col in columns:
+    for idx, col in enumerate(columns):
         column_name = col[0]
         data_type_str = col[1]
-        is_nullable = col[2].upper() == "YES" if len(col) > 2 else True
+        schema_is_nullable = col[2].upper() == "YES" if len(col) > 2 else True
 
         # Infer Trilogy datatype
         trilogy_type = infer_datatype_from_sql_type(data_type_str)
 
-        # Determine purpose
-        if column_name in primary_keys:
+        # Determine purpose based on grain
+        if column_name in grain_components:
             purpose = Purpose.KEY
-            grain_components.append(column_name)
         else:
             purpose = Purpose.PROPERTY
 
+        # Determine nullability: check sample data first, fall back to schema
+        if sample_rows:
+            has_nulls = detect_nullability_from_sample(idx, sample_rows)
+        else:
+            has_nulls = schema_is_nullable
+
         # Create concept
-        modifiers = [Modifier.NULLABLE] if is_nullable else []
+        modifiers = [Modifier.NULLABLE] if has_nulls else []
 
         concept = Concept(
             name=column_name,
@@ -171,7 +254,7 @@ def create_datasource_from_table(
     # Create grain
     grain = Grain(components=set(grain_components)) if grain_components else Grain()
 
-    # Build address clause - list column names
+    # Build address clause
     address = Address(location=qualified_name, quoted=True)
 
     # Create datasource
@@ -293,18 +376,23 @@ def ingest(
             else:
                 qualified_name = table_name
 
-            # Generate Trilogy script manually
-            script_lines = [
-                f"# Datasource ingested from {qualified_name}",
-                f"# Generated on {datetime.now()}",
-                "",
-            ]
+            # Generate Trilogy script
             output_file = output_dir / f"{datasource.name}.preql"
-            for line in script_lines:
-                output_file.write_text(line)
+
+            script_content = []
+            script_content.append(Comment(text=f"# Datasource ingested from {qualified_name}"))
+            script_content.append(Comment(text=f"# Generated on {datetime.now()}"))
+
+
+            # Add concept declarations
             for concept in concepts:
-                output_file.write_text(renderer.to_string(ConceptDeclarationStatement(concept=concept)))
-            output_file.write_text(renderer.to_string(datasource))
+                script_content.append(ConceptDeclarationStatement(concept=concept))
+
+            # Add datasource
+            script_content.append(datasource)
+
+            # Write the complete file
+            output_file.write_text(renderer.render_statement_string(script_content))
 
             ingested_files.append(output_file)
             print_success(f"Created {output_file}")

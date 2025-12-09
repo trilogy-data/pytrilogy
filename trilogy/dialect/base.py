@@ -435,6 +435,68 @@ class BaseDialect:
         self.rendering = rendering or CONFIG.rendering
         self.used_map: dict[str, set[str]] = defaultdict(set)
 
+    def get_table_schema(
+        self, executor, table_name: str, schema: str | None = None
+    ) -> list[tuple]:
+        """Query the table schema from information_schema.
+
+        Returns a list of tuples: (column_name, data_type, is_nullable)
+        """
+        if schema:
+            qualified_name = f"{schema}.{table_name}"
+        else:
+            qualified_name = table_name
+
+        column_query = f"""
+        SELECT
+            column_name,
+            data_type,
+            is_nullable
+        FROM information_schema.columns
+        WHERE table_name = '{table_name}'
+        """
+        if schema:
+            column_query += f" AND table_schema = '{schema}'"
+        column_query += " ORDER BY ordinal_position"
+
+        rows = executor.execute_raw_sql(column_query).fetchall()
+        return rows
+
+    def get_table_primary_keys(
+        self, executor, table_name: str, schema: str | None = None
+    ) -> list[str]:
+        """Query primary keys from information_schema.
+
+        Returns a list of column names that are part of the primary key.
+        """
+        pk_query = f"""
+        SELECT column_name
+        FROM information_schema.key_column_usage
+        WHERE table_name = '{table_name}'
+        """
+        if schema:
+            pk_query += f" AND table_schema = '{schema}'"
+        pk_query += " AND constraint_name LIKE '%primary%' OR constraint_name = 'PRIMARY'"
+
+        rows = executor.execute_raw_sql(pk_query).fetchall()
+        return [row[0] for row in rows]
+
+    def get_table_sample(
+        self, executor, table_name: str, schema: str | None = None, sample_size: int = 10000
+    ) -> list[tuple]:
+        """Get a sample of rows from a table to analyze for grain and nullability.
+
+        Returns a list of row tuples.
+        """
+        if schema:
+            qualified_name = f"{schema}.{table_name}"
+        else:
+            qualified_name = table_name
+
+        sample_query = f"SELECT * FROM {safe_quote(qualified_name, self.QUOTE_CHARACTER)} LIMIT {sample_size}"
+        rows = executor.execute_raw_sql(sample_query).fetchall()
+        return rows
+
     def render_order_item(
         self,
         order_item: BuildOrderItem,
