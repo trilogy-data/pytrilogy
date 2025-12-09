@@ -138,8 +138,7 @@ path = ":memory:"
 
         runner = CliRunner()
         result = runner.invoke(
-            cli,
-            ["run", str(test_script), "duckdb", "path=/tmp/override.db"]
+            cli, ["run", str(test_script), "duckdb", "path=/tmp/override.db"]
         )
 
         if result.exception:

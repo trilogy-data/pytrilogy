@@ -268,11 +268,10 @@ def get_upstream_concepts(base: BuildConcept, nested: bool = False) -> set[str]:
 
 def evaluate_loop_condition_pushdown(
     mandatory: list[BuildConcept],
-    remaining: list[BuildConcept],
     conditions: BuildWhereClause | None,
     depth: int,
     force_no_condition_pushdown: bool,
-    forced_pushdown: bool,
+    forced_pushdown: list[BuildConcept]
 ) -> BuildWhereClause | None:
     # filter evaluation
     # always pass the filter up when we aren't looking at all filter inputs
@@ -281,14 +280,8 @@ def evaluate_loop_condition_pushdown(
         return None
     # first, check if we *have* to push up conditions above complex derivations
     if forced_pushdown:
-        forced = [
-            x
-            for x in remaining
-            if x.address not in conditions.row_arguments
-            and x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC]
-        ]
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Force including conditions to push filtering above complex concepts {forced} that are not condition member or parent"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Force including conditions to push filtering above complex concepts {forced_pushdown} that are not condition row inputs {conditions.row_arguments} or parent"
         )
         return conditions
     # otherwise, only prevent pushdown
@@ -303,12 +296,13 @@ def evaluate_loop_condition_pushdown(
             if x.address not in conditions.row_arguments
         ]
     )
+
     if (
         force_no_condition_pushdown
         or should_evaluate_filter_on_this_level_not_push_down
     ):
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Forcing condition evaluation at this level"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Forcing condition evaluation at this level: all basic_no_agg: {should_evaluate_filter_on_this_level_not_push_down}"
         )
         return None
 
@@ -429,6 +423,15 @@ def get_priority_concept(
         f"Cannot resolve query. No remaining priority concepts, have attempted {attempted_addresses} out of {all_concepts} with found {found_concepts}"
     )
 
+def get_inputs_that_require_pushdown(conditions:BuildWhereClause | None, mandatory: list[BuildConcept]) -> list[BuildConcept]:
+    if not conditions:
+        return []
+    return [
+        x
+        for x in mandatory
+        if x.address not in conditions.row_arguments
+        and x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC, Derivation.ROWSET, Derivation.UNNEST]
+    ]
 
 def get_loop_iteration_targets(
     mandatory: list[BuildConcept],
@@ -444,20 +447,17 @@ def get_loop_iteration_targets(
     # 1. if we have complex types; push any conditions further up until we only have roots
     # 2. if we only have roots left, push all condition inputs into the candidate list
     # 3. from the final candidate list, select the highest priority concept to attempt next
-    forced_pushdown = False
-    if any(
-        conditions
-        and x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC]
-        and x.address not in conditions.row_arguments
-        for x in mandatory
-    ):
-        forced_pushdown = True
+    force_pushdown_to_complex_input = False
+
+    pushdown_targets = get_inputs_that_require_pushdown(conditions, mandatory)
+    if pushdown_targets:
+        force_pushdown_to_complex_input = True
     # a list of all non-materialized concepts, or all concepts
     # if a pushdown is required
     all_concepts_local: list[BuildConcept] = [
         x
         for x in mandatory
-        if forced_pushdown or (x.canonical_address not in materialized_canonical)
+        if force_pushdown_to_complex_input or (x.canonical_address not in materialized_canonical)
         # keep Root/Constant
         or x.derivation in (Derivation.ROOT, Derivation.CONSTANT)
     ]
@@ -474,9 +474,8 @@ def get_loop_iteration_targets(
         mandatory=all_concepts_local,
         conditions=conditions,
         depth=depth,
-        remaining=remaining,
         force_no_condition_pushdown=force_conditions,
-        forced_pushdown=forced_pushdown,
+        forced_pushdown= pushdown_targets
     )
     local_all = [*all_concepts_local]
 
@@ -497,7 +496,8 @@ def get_loop_iteration_targets(
             list(conditions.row_arguments) + remaining,
             "address",
         )
-        conditions = None
+        # if we have a forced pushdown, also push them down while keeping them at this level too
+        conditions = conditions if force_pushdown_to_complex_input else None
 
     priority_concept = get_priority_concept(
         all_concepts=local_all,

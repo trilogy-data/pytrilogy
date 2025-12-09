@@ -107,7 +107,7 @@ def gen_basic_node(
         parent_concepts + non_equivalent_optional, "address"
     )
     logger.info(
-        f"{depth_prefix}{LOGGER_PREFIX} Fetching parents {[x.address for x in all_parents]}"
+        f"{depth_prefix}{LOGGER_PREFIX} Fetching parents {[x.address for x in all_parents]} with conditions {conditions}"
     )
     if all_parents:
         parent_node: StrategyNode | None = source_concepts(
