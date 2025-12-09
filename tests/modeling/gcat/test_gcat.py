@@ -8,6 +8,7 @@ from trilogy.core.exceptions import ModelValidationError
 from trilogy.core.models.author import Grain
 from trilogy.core.models.build import BuildGrain
 from trilogy.core.models.core import DataType
+from trilogy.core.processing.discovery_utility import is_pushdown_aliased_concept
 from trilogy.core.processing.node_generators.node_merge_node import (
     determine_induced_minimal_nodes,
 )
@@ -1200,7 +1201,7 @@ def test_spacex_alias_behavior():
     """
     env.parse(queries)
     build_env = env.materialize_for_select()
-    assert build_env.concepts["local.fun"].derivation == Derivation.AGGREGATE
+    assert is_pushdown_aliased_concept(build_env.concepts["local.fun"])
 
 
 def test_spacex_aggregates(gcat_env: Executor):
@@ -1244,9 +1245,7 @@ ORDER BY local.launch_date.year ASC;"""
     results = gcat_env.execute_text(cmd)[-1].fetchall()
 
     build_env = gcat_env.environment.materialize_for_select()
-    assert (
-        build_env.concepts["local.spacex_launches"].derivation == Derivation.AGGREGATE
-    )
+    assert is_pushdown_aliased_concept(build_env.concepts["local.spacex_launches"])
 
     for row in results:
         if row.launch_date_year == 2023:
