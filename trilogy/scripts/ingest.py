@@ -1,16 +1,17 @@
 """Ingest command for Trilogy CLI - bootstraps datasources from warehouse tables."""
+
+from datetime import datetime
 from pathlib import Path as PathlibPath
 
 from click import UNPROCESSED, Path, argument, option, pass_context
 from click.exceptions import Exit
 
-from trilogy.authoring import DataType, ConceptDeclarationStatement, Address, Comment
+from trilogy.authoring import Address, Comment, ConceptDeclarationStatement, DataType
 from trilogy.core.enums import Modifier, Purpose
 from trilogy.core.models.author import Concept, Grain
-from trilogy.executor import Executor
-
 from trilogy.core.models.datasource import ColumnAssignment, Datasource
 from trilogy.dialect.enums import Dialects
+from trilogy.executor import Executor
 from trilogy.parsing.render import Renderer
 from trilogy.scripts.common import (
     create_executor,
@@ -18,8 +19,7 @@ from trilogy.scripts.common import (
     handle_execution_exception,
 )
 from trilogy.scripts.display import print_error, print_info, print_success
-from datetime import datetime
-from trilogy.parsing.render import Renderer
+
 
 def infer_datatype_from_sql_type(sql_type: str) -> DataType:
     """Infer Trilogy datatype from SQL type string."""
@@ -95,9 +95,10 @@ def detect_unique_key_combinations(
     # Try combinations of 2 columns
     if max_key_size >= 2:
         from itertools import combinations
-        for col_combo in combinations(enumerate(column_names), 2):
-            indices = [idx for idx, _ in col_combo]
-            col_names = [name for _, name in col_combo]
+
+        for double_col_key in combinations(enumerate(column_names), 2):
+            indices = [idx for idx, _ in double_col_key]
+            col_names = [name for _, name in double_col_key]
 
             values = set()
             is_unique = True
@@ -114,9 +115,10 @@ def detect_unique_key_combinations(
     # Try combinations of 3 columns if needed
     if not unique_combinations and max_key_size >= 3:
         from itertools import combinations
-        for col_combo in combinations(enumerate(column_names), 3):
-            indices = [idx for idx, _ in col_combo]
-            col_names = [name for _, name in col_combo]
+
+        for triple_col_key in combinations(enumerate(column_names), 3):
+            indices = [idx for idx, _ in triple_col_key]
+            col_names = [name for _, name in triple_col_key]
 
             values = set()
             is_unique = True
@@ -133,9 +135,7 @@ def detect_unique_key_combinations(
     return unique_combinations
 
 
-def detect_nullability_from_sample(
-    column_index: int, sample_rows: list[tuple]
-) -> bool:
+def detect_nullability_from_sample(column_index: int, sample_rows: list[tuple]) -> bool:
     """Detect if a column is nullable based on sample data.
 
     Returns True if any NULL values are found in the sample.
@@ -146,11 +146,8 @@ def detect_nullability_from_sample(
     return False
 
 
-
-
-
 def create_datasource_from_table(
-    exec:Executor, table_name: str, schema: str | None = None
+    exec: Executor, table_name: str, schema: str | None = None
 ) -> tuple[Datasource, list[Concept]]:
     """Create a Datasource object from a warehouse table."""
     # Get the dialect generator (BaseDialect instance) from the executor
@@ -177,7 +174,9 @@ def create_datasource_from_table(
     # Get sample data to detect grain and nullability
     try:
         sample_rows = dialect.get_table_sample(exec, table_name, schema)
-        print_info(f"Analyzing {len(sample_rows)} sample rows for grain and nullability detection")
+        print_info(
+            f"Analyzing {len(sample_rows)} sample rows for grain and nullability detection"
+        )
     except Exception as e:
         print_info(f"Could not fetch sample data: {e}")
         sample_rows = []
@@ -212,7 +211,7 @@ def create_datasource_from_table(
 
     # Create column assignments for each column
     column_assignments = []
-    concepts:list[Concept] = []
+    concepts: list[Concept] = []
 
     for idx, col in enumerate(columns):
         column_name = col[0]
@@ -334,7 +333,9 @@ def ingest(
 
     # Get runtime config
     runtime_config = (
-        get_runtime_config(PathlibPath(config)) if config else get_runtime_config(PathlibPath.cwd())
+        get_runtime_config(PathlibPath(config))
+        if config
+        else get_runtime_config(PathlibPath.cwd())
     )
 
     # Determine dialect
@@ -368,7 +369,9 @@ def ingest(
         print_info(f"Processing table: {table_name}")
 
         try:
-            datasource, concepts = create_datasource_from_table(exec, table_name, schema)
+            datasource, concepts = create_datasource_from_table(
+                exec, table_name, schema
+            )
 
             # Build qualified table name
             if schema:
@@ -379,10 +382,13 @@ def ingest(
             # Generate Trilogy script
             output_file = output_dir / f"{datasource.name}.preql"
 
-            script_content = []
-            script_content.append(Comment(text=f"# Datasource ingested from {qualified_name}"))
+            script_content: list[Datasource | Comment | ConceptDeclarationStatement] = (
+                []
+            )
+            script_content.append(
+                Comment(text=f"# Datasource ingested from {qualified_name}")
+            )
             script_content.append(Comment(text=f"# Generated on {datetime.now()}"))
-
 
             # Add concept declarations
             for concept in concepts:

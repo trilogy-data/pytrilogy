@@ -1,4 +1,5 @@
 """Tests for the trilogy init command."""
+
 import tempfile
 from pathlib import Path
 

@@ -13,6 +13,7 @@ from trilogy.core.models.author import (
     AggregateWrapper,
     CaseElse,
     CaseWhen,
+    Comment,
     Comparison,
     Concept,
     ConceptRef,
@@ -35,7 +36,6 @@ from trilogy.core.models.author import (
     WindowItemOver,
     WindowOrder,
     WindowType,
-    Comment
 )
 from trilogy.core.models.core import (
     ArrayType,
@@ -65,7 +65,6 @@ from trilogy.core.statements.author import (
     ShowCategory,
     ShowStatement,
     ValidateStatement,
-    
 )
 from trilogy.parsing.common import arbitrary_to_concept, arg_to_datatype
 

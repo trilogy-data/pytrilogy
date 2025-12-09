@@ -1,4 +1,5 @@
 """Run command for Trilogy CLI."""
+
 from pathlib import Path as PathlibPath
 
 from click import UNPROCESSED, Path, argument, option, pass_context

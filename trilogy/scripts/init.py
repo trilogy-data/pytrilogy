@@ -1,10 +1,10 @@
 """Init command for Trilogy CLI - creates a new default workspace."""
+
 from pathlib import Path
 
 from click import argument, pass_context
 
 from trilogy.scripts.display import print_error, print_info, print_success
-
 
 # Default hello world script content
 HELLO_WORLD_SCRIPT = """# Welcome to Trilogy!

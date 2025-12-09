@@ -197,7 +197,9 @@ class DuckDBDialect(BaseDialect):
         column_query += " ORDER BY ordinal_position"
 
         # DuckDB supports parameterized queries
-        rows = executor.execute_raw_sql(column_query.replace("?", "'{}'").format(*params)).fetchall()
+        rows = executor.execute_raw_sql(
+            column_query.replace("?", "'{}'").format(*params)
+        ).fetchall()
         return rows
 
     def get_table_primary_keys(
@@ -208,7 +210,9 @@ class DuckDBDialect(BaseDialect):
         SELECT column_name
         FROM information_schema.key_column_usage
         WHERE table_name = '{}'
-        """.format(table_name)
+        """.format(
+            table_name
+        )
 
         if schema:
             pk_query += " AND table_schema = '{}'".format(schema)

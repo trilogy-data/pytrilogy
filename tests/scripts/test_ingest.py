@@ -1,14 +1,7 @@
-import importlib.util
-import os
-import re
 from pathlib import Path
 
-import pytest
-from click.exceptions import Exit
 from click.testing import CliRunner
 
-from trilogy.scripts.common import handle_execution_exception
-from trilogy.scripts.display import set_rich_mode
 from trilogy.scripts.trilogy import cli
 
 

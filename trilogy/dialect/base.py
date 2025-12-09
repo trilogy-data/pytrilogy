@@ -439,10 +439,6 @@ class BaseDialect:
         self, executor, table_name: str, schema: str | None = None
     ) -> list[tuple]:
         """Returns a list of tuples: (column_name, data_type, is_nullable)."""
-        if schema:
-            qualified_name = f"{schema}.{table_name}"
-        else:
-            qualified_name = table_name
 
         column_query = f"""
         SELECT
@@ -470,13 +466,19 @@ class BaseDialect:
         """
         if schema:
             pk_query += f" AND table_schema = '{schema}'"
-        pk_query += " AND constraint_name LIKE '%primary%' OR constraint_name = 'PRIMARY'"
+        pk_query += (
+            " AND constraint_name LIKE '%primary%' OR constraint_name = 'PRIMARY'"
+        )
 
         rows = executor.execute_raw_sql(pk_query).fetchall()
         return [row[0] for row in rows]
 
     def get_table_sample(
-        self, executor, table_name: str, schema: str | None = None, sample_size: int = 10000
+        self,
+        executor,
+        table_name: str,
+        schema: str | None = None,
+        sample_size: int = 10000,
     ) -> list[tuple]:
         """Returns a list of row tuples for grain and nullability analysis."""
         if schema:

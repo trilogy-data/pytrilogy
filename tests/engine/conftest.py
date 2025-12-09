@@ -208,10 +208,21 @@ def postgres_engine(presto_model) -> Generator[Executor, None, None]:
 
 @fixture(scope="session")
 def fakesnow_happening():
-    import fakesnow
+    from unittest import mock
 
-    with fakesnow.patch():
+    import fakesnow
+    import snowflake.connector
+
+    # Check if fakesnow is already patched to avoid double-patching
+    already_patched = isinstance(snowflake.connector.connect, mock.MagicMock)
+
+    if already_patched:
+        # Already patched, just yield without re-patching
         yield
+    else:
+        # Not patched yet, apply the patch
+        with fakesnow.patch():
+            yield
 
 
 @fixture(scope="session")

@@ -511,7 +511,11 @@ def run_single_script_execution(
         debug: Debug mode flag
         execution_mode: One of 'run', 'integration', or 'unit'
     """
-    from trilogy.scripts.common import create_executor, handle_execution_exception, validate_datasources
+    from trilogy.scripts.common import (
+        create_executor,
+        handle_execution_exception,
+        validate_datasources,
+    )
     from trilogy.scripts.display import (
         RICH_AVAILABLE,
         create_progress_context,
@@ -610,7 +614,6 @@ def run_parallel_execution(
         execution_mode: One of 'run', 'integration', or 'unit'
     """
     from trilogy.scripts.common import (
-        CLIRuntimeParams,
         create_executor_for_script,
         merge_runtime_config,
         resolve_input_information,

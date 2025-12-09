@@ -1,4 +1,5 @@
 """Testing commands (integration and unit) for Trilogy CLI."""
+
 from pathlib import Path as PathlibPath
 
 from click import UNPROCESSED, Path, argument, option, pass_context
@@ -12,7 +13,6 @@ from trilogy.scripts.common import (
     validate_datasources,
 )
 from trilogy.scripts.dependency import ScriptNode
-from trilogy.scripts.display import print_success
 from trilogy.scripts.parallel_execution import run_parallel_execution
 
 

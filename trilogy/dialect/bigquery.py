@@ -208,8 +208,8 @@ class BigqueryDialect(BaseDialect):
     ) -> list[tuple]:
         """BigQuery uses dataset instead of schema and supports project.dataset.table format."""
         # Split table_name if it contains dataset.table format
-        if '.' in table_name and not schema:
-            parts = table_name.split('.')
+        if "." in table_name and not schema:
+            parts = table_name.split(".")
             if len(parts) == 2:
                 schema = parts[0]
                 table_name = parts[1]
@@ -235,8 +235,8 @@ class BigqueryDialect(BaseDialect):
         self, executor, table_name: str, schema: str | None = None
     ) -> list[str]:
         """BigQuery doesn't enforce primary keys; rely on data-driven grain detection."""
-        if '.' in table_name and not schema:
-            parts = table_name.split('.')
+        if "." in table_name and not schema:
+            parts = table_name.split(".")
             if len(parts) == 2:
                 schema = parts[0]
                 table_name = parts[1]

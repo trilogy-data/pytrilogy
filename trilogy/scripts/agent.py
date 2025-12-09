@@ -1,4 +1,5 @@
 """Agent command for Trilogy CLI - AI-powered orchestration tasks."""
+
 from click import argument, option, pass_context
 
 
@@ -14,7 +15,9 @@ from click import argument, option, pass_context
     "--interactive", "-i", is_flag=True, help="Run in interactive mode with feedback"
 )
 @pass_context
-def agent(ctx, command: str, context: tuple[str, ...], model: str | None, interactive: bool):
+def agent(
+    ctx, command: str, context: tuple[str, ...], model: str | None, interactive: bool
+):
     """Pass off a multi-step orchestration task to an AI agent.
 
     This command allows you to delegate complex, multi-step tasks to a configured

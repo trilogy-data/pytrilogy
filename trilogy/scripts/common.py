@@ -1,4 +1,5 @@
 """Common helper functions used across all CLI commands."""
+
 import traceback
 from dataclasses import dataclass
 from io import StringIO

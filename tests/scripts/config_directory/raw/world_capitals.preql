@@ -1,5 +1,5 @@
 # Datasource ingested from world_capitals
-# Generated on 2025-12-09 09:06:38.033678
+# Generated on 2025-12-09 09:32:52.583251
 key country string;
 property capital string;
 property population int;

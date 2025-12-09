@@ -1,4 +1,5 @@
 """Format command for Trilogy CLI."""
+
 from datetime import datetime
 
 from click import Path, argument, pass_context
