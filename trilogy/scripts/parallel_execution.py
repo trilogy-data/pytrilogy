@@ -1,10 +1,12 @@
 import threading
 from dataclasses import dataclass
 from datetime import datetime
+from io import StringIO
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
 import networkx as nx
+from click.exceptions import Exit
 
 from trilogy import Executor
 from trilogy.scripts.dependency import (
@@ -481,3 +483,228 @@ class ParallelExecutor:
         """
         nodes = create_script_nodes(files)
         return self.resolver.build_graph(nodes)
+
+
+def run_single_script_execution(
+    files: list[StringIO | Path],
+    directory: Path,
+    input_type: str,
+    input_name: str,
+    edialect,
+    param: tuple[str, ...],
+    conn_args,
+    debug: bool,
+    execution_mode: str,
+    config,
+) -> None:
+    """
+    Run single script execution with polished multi-statement progress display.
+
+    Args:
+        text: List of script contents
+        directory: Working directory
+        input_type: Type of input (file, query, etc.)
+        input_name: Name of the input
+        edialect: Dialect to use
+        param: Environment parameters
+        conn_args: Connection arguments
+        debug: Debug mode flag
+        execution_mode: One of 'run', 'integration', or 'unit'
+    """
+    from trilogy.scripts.common import create_executor, handle_execution_exception, validate_datasources
+    from trilogy.scripts.display import (
+        RICH_AVAILABLE,
+        create_progress_context,
+        print_success,
+        show_execution_info,
+        show_execution_start,
+        show_execution_summary,
+    )
+    from trilogy.scripts.single_execution import (
+        execute_queries_simple,
+        execute_queries_with_progress,
+    )
+
+    show_execution_info(input_type, input_name, edialect.value, debug)
+
+    exec = create_executor(param, directory, conn_args, edialect, debug, config)
+    base = files[0]
+    if isinstance(base, StringIO):
+        text = [base.getvalue()]
+    else:
+        with open(base, "r") as raw:
+            text = [raw.read()]
+
+    if execution_mode == "run":
+        # Parse all scripts and collect queries
+        queries = []
+        try:
+            for script in text:
+                queries += exec.parse_text(script)
+        except Exception as e:
+            handle_execution_exception(e, debug=debug)
+
+        start = datetime.now()
+        show_execution_start(len(queries))
+
+        # Execute with progress tracking for multiple statements
+        if len(queries) > 1 and RICH_AVAILABLE:
+            progress = create_progress_context()
+        else:
+            progress = None
+
+        try:
+            if progress:
+                exception = execute_queries_with_progress(exec, queries)
+            else:
+                exception = execute_queries_simple(exec, queries)
+
+            total_duration = datetime.now() - start
+            show_execution_summary(len(queries), total_duration, exception is None)
+
+            if exception:
+                raise Exit(1) from exception
+        except Exit:
+            raise
+        except Exception as e:
+            handle_execution_exception(e, debug=debug)
+
+    elif execution_mode == "integration":
+        for script in text:
+            exec.parse_text(script)
+        validate_datasources(exec, mock=False, quiet=False)
+        print_success("Integration tests passed successfully!")
+
+    elif execution_mode == "unit":
+        for script in text:
+            exec.parse_text(script)
+        validate_datasources(exec, mock=True, quiet=False)
+        print_success("Unit tests passed successfully!")
+
+
+def get_execution_strategy(strategy_name: str):
+    """Get execution strategy by name."""
+    strategies = {
+        "eager_bfs": EagerBFSStrategy,
+    }
+    if strategy_name not in strategies:
+        raise ValueError(
+            f"Unknown execution strategy: {strategy_name}. "
+            f"Available: {', '.join(strategies.keys())}"
+        )
+    return strategies[strategy_name]()
+
+
+def run_parallel_execution(
+    cli_params,
+    execution_fn,
+    execution_mode: str = "run",
+) -> None:
+    """
+    Run parallel execution for directory inputs, or single-script execution
+    with polished progress display for single files/inline queries.
+
+    Args:
+        cli_params: CLI runtime parameters containing all execution settings
+        execution_fn: Function to execute each script (exec, node, quiet) -> None
+        execution_mode: One of 'run', 'integration', or 'unit'
+    """
+    from trilogy.scripts.common import (
+        CLIRuntimeParams,
+        create_executor_for_script,
+        merge_runtime_config,
+        resolve_input_information,
+    )
+    from trilogy.scripts.dependency import ETLDependencyStrategy
+    from trilogy.scripts.display import (
+        print_error,
+        print_success,
+        show_execution_info,
+        show_parallel_execution_start,
+        show_parallel_execution_summary,
+        show_script_result,
+    )
+
+    # Check if input is a directory (parallel execution)
+    pathlib_input = Path(cli_params.input)
+    files_iter, directory, input_type, input_name, config = resolve_input_information(
+        cli_params.input, cli_params.config_path
+    )
+    files = list(files_iter)
+
+    # Merge CLI params with config file
+    edialect, parallelism = merge_runtime_config(cli_params, config)
+    if not pathlib_input.exists() or len(files) == 1:
+        # Inline query - use polished single-script execution
+
+        run_single_script_execution(
+            files=files,
+            directory=directory,
+            input_type=input_type,
+            input_name=input_name,
+            edialect=edialect,
+            param=cli_params.param,
+            conn_args=cli_params.conn_args,
+            debug=cli_params.debug,
+            execution_mode=execution_mode,
+            config=config,
+        )
+        return
+    # Multiple files - use parallel execution
+    show_execution_info(input_type, input_name, edialect.value, cli_params.debug)
+
+    # Get execution strategy
+    strategy = get_execution_strategy(cli_params.execution_strategy)
+
+    # Set up parallel executor
+    parallel_exec = ParallelExecutor(
+        max_workers=parallelism,
+        dependency_strategy=ETLDependencyStrategy(),
+        execution_strategy=strategy,
+    )
+
+    # Get execution plan for display
+    if pathlib_input.is_dir():
+        execution_plan = parallel_exec.get_folder_execution_plan(pathlib_input)
+    elif pathlib_input.is_file():
+        execution_plan = parallel_exec.get_execution_plan([pathlib_input])
+    else:
+        raise FileNotFoundError(f"Input path '{pathlib_input}' does not exist.")
+
+    num_edges = execution_plan.number_of_edges()
+    num_nodes = execution_plan.number_of_nodes()
+
+    show_parallel_execution_start(
+        num_nodes, num_edges, parallelism, cli_params.execution_strategy
+    )
+
+    # Factory to create executor for each script
+    def executor_factory(node: ScriptNode) -> Executor:
+        return create_executor_for_script(
+            node,
+            cli_params.param,
+            cli_params.conn_args,
+            edialect,
+            cli_params.debug,
+            config,
+        )
+
+    # Wrap execution_fn to pass quiet=True for parallel execution
+    def quiet_execution_fn(exec: Executor, node: ScriptNode) -> None:
+        execution_fn(exec, node, quiet=True)
+
+    # Run parallel execution
+    summary = parallel_exec.execute(
+        root=pathlib_input,
+        executor_factory=executor_factory,
+        execution_fn=quiet_execution_fn,
+        on_script_complete=show_script_result,
+    )
+
+    show_parallel_execution_summary(summary)
+
+    if not summary.all_succeeded:
+        print_error("Some scripts failed during execution.")
+        raise Exit(1)
+
+    print_success("All scripts executed successfully!")
