@@ -86,19 +86,30 @@ def resolve_input(path: PathlibPath) -> list[PathlibPath]:
 def get_runtime_config(
     path: PathlibPath, config_override: PathlibPath | None = None
 ) -> RuntimeConfig:
+    config_path: PathlibPath | None = None
+
     if config_override:
         config_path = config_override
-    elif path.is_dir():
-        config_path = path / "trilogy.toml"
     else:
-        config_path = path.parent / "trilogy.toml"
-    if config_path.exists():
-        try:
-            return load_config_file(config_path)
-        except Exception as e:
-            print_error(f"Failed to load configuration file {config_path}: {e}")
-            handle_execution_exception(e)
-    return RuntimeConfig(startup_trilogy=[], startup_sql=[])
+        # Search for trilogy.toml in path and all parent directories
+        search_path = path if path.is_dir() else path.parent
+
+        for parent in [search_path] + list(search_path.parents):
+            candidate = parent / "trilogy.toml"
+            if candidate.exists():
+                config_path = candidate
+                break
+
+    if not config_path:
+        return RuntimeConfig(startup_trilogy=[], startup_sql=[])
+
+    try:
+        return load_config_file(config_path)
+    except Exception as e:
+        print_error(f"Failed to load configuration file {config_path}: {e}")
+        handle_execution_exception(e)
+        # This won't be reached due to handle_execution_exception raising Exit
+        return RuntimeConfig(startup_trilogy=[], startup_sql=[])
 
 
 def resolve_input_information(

@@ -4,9 +4,11 @@ from pathlib import Path as PathlibPath
 from click import UNPROCESSED, Path, argument, option, pass_context
 from click.exceptions import Exit
 
-from trilogy.authoring import DataType
+from trilogy.authoring import DataType, ConceptDeclarationStatement, Address
 from trilogy.core.enums import Modifier, Purpose
 from trilogy.core.models.author import Concept, Grain
+from trilogy.executor import Executor
+
 from trilogy.core.models.datasource import ColumnAssignment, Datasource
 from trilogy.dialect.enums import Dialects
 from trilogy.parsing.render import Renderer
@@ -16,7 +18,8 @@ from trilogy.scripts.common import (
     handle_execution_exception,
 )
 from trilogy.scripts.display import print_error, print_info, print_success
-
+from datetime import datetime
+from trilogy.parsing.render import Renderer
 
 def infer_datatype_from_sql_type(sql_type: str) -> DataType:
     """Infer Trilogy datatype from SQL type string."""
@@ -103,25 +106,26 @@ def get_table_primary_keys(exec, table_name: str, schema: str | None = None):
         pk_query += f" AND table_schema = '{schema}'"
     pk_query += " AND constraint_name LIKE '%primary%' OR constraint_name = 'PRIMARY'"
 
-    try:
-        rows = exec.execute_raw_sql(pk_query).fetchall()
-        return [row[0] for row in rows]
-    except Exception:
-        # Some databases might not support this query
-        return []
+    # TODO: fallback, investigate our row sample for suggested unique keys
+    rows = exec.execute_raw_sql(pk_query).fetchall()
+    return [row[0] for row in rows]
+
 
 
 def create_datasource_from_table(
-    exec, table_name: str, schema: str | None = None
+    exec:Executor, table_name: str, schema: str | None = None
 ) -> Datasource:
     """Create a Datasource object from a warehouse table."""
     # Get table schema
+    # TODO: move these methods the Dialect on The Executor
     columns = get_table_schema(exec, table_name, schema)
 
     # Get primary keys
+    # TODO: move these methods to the DIalect on the Exeuctor
     primary_keys = get_table_primary_keys(exec, table_name, schema)
 
     # Build qualified table name
+    # TODO: use the DDialect on the Executor to quote this appropriately
     if schema:
         qualified_name = f"{schema}.{table_name}"
     else:
@@ -130,6 +134,7 @@ def create_datasource_from_table(
     # Create column assignments for each column
     column_assignments = []
     grain_components = []
+    concepts:list[Concept] = []
 
     for col in columns:
         column_name = col[0]
@@ -155,6 +160,7 @@ def create_datasource_from_table(
             purpose=purpose,
             modifiers=modifiers,
         )
+        concepts.append(concept)
 
         # Create column assignment
         column_assignment = ColumnAssignment(
@@ -166,7 +172,7 @@ def create_datasource_from_table(
     grain = Grain(components=set(grain_components)) if grain_components else Grain()
 
     # Build address clause - list column names
-    address = f"SELECT * FROM {qualified_name}"
+    address = Address(location=qualified_name, quoted=True)
 
     # Create datasource
     datasource = Datasource(
@@ -176,7 +182,7 @@ def create_datasource_from_table(
         address=address,
     )
 
-    return datasource
+    return datasource, concepts
 
 
 @argument("tables", type=str)
@@ -274,13 +280,12 @@ def ingest(
 
     # Ingest each table
     ingested_files = []
+    renderer = Renderer()
     for table_name in table_list:
         print_info(f"Processing table: {table_name}")
 
         try:
-            # Get table schema
-            columns = get_table_schema(exec, table_name, schema)
-            primary_keys = get_table_primary_keys(exec, table_name, schema)
+            datasource, concepts = create_datasource_from_table(exec, table_name, schema)
 
             # Build qualified table name
             if schema:
@@ -291,47 +296,15 @@ def ingest(
             # Generate Trilogy script manually
             script_lines = [
                 f"# Datasource ingested from {qualified_name}",
-                f"# Generated on {exec.environment.now()}",
+                f"# Generated on {datetime.now()}",
                 "",
             ]
-
-            # Define concepts
-            for col in columns:
-                column_name = col[0]
-                data_type_str = col[1]
-                is_nullable = col[2].upper() == "YES" if len(col) > 2 else True
-
-                trilogy_type = infer_datatype_from_sql_type(data_type_str)
-                purpose_str = "key" if column_name in primary_keys else "property"
-
-                # Build concept definition
-                concept_line = f"{purpose_str} {column_name} {trilogy_type.value}"
-                if not is_nullable:
-                    concept_line += " not null"
-                concept_line += ";"
-
-                script_lines.append(concept_line)
-
-            script_lines.append("")
-
-            # Define datasource
-            ds_name = table_name.replace(".", "_")
-            col_names = ", ".join([col[0] for col in columns])
-
-            script_lines.append(f"datasource {ds_name} (")
-            script_lines.append(f"    {col_names}")
-            script_lines.append(")")
-
-            if primary_keys:
-                grain_str = ", ".join(primary_keys)
-                script_lines.append(f"grain ({grain_str})")
-
-            script_lines.append(f"address {qualified_name};")
-            script_lines.append("")
-
-            # Write to file
-            output_file = output_dir / f"{ds_name}.preql"
-            output_file.write_text("\n".join(script_lines))
+            output_file = output_dir / f"{datasource.name}.preql"
+            for line in script_lines:
+                output_file.write_text(line)
+            for concept in concepts:
+                output_file.write_text(renderer.to_string(ConceptDeclarationStatement(concept=concept)))
+            output_file.write_text(renderer.to_string(datasource))
 
             ingested_files.append(output_file)
             print_success(f"Created {output_file}")

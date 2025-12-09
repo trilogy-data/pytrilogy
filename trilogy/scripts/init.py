@@ -34,18 +34,20 @@ SELECT
 
 # Default trilogy.toml content
 DEFAULT_CONFIG = """# Trilogy Configuration File
-# Learn more at: https://github.com/trilogy-data/pytrilogy
+# Learn more at: https://github.com/trilmhmogy-data/pytrilogy
 
 [engine]
 # Default dialect for execution
 # dialect = "duck_db"
 
-# Parallelism level for directory execution
-# parallelism = 2
+# Max parallelism for multi-script execution
+# parallelism = 3
 
+
+# [setup]
 # Startup scripts to run before execution
-# startup_trilogy = []
-# startup_sql = []
+# trilogy = []
+# sql = []
 """
 
 

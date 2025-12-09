@@ -1,0 +1,9 @@
+datasource world_capitals (
+    country: ?country,
+    capital: ?capital,
+    population: ?population,
+    latitude: ?latitude,
+    longitude: ?longitude
+)
+
+address world_capitals;
