@@ -89,3 +89,29 @@ class PostgresDialect(BaseDialect):
     }
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = PG_SQL_TEMPLATE
+
+    def get_table_primary_keys(
+        self, executor, table_name: str, schema: str | None = None
+    ) -> list[str]:
+        """Uses pg_catalog for more reliable constraint information than information_schema."""
+        if schema:
+            pk_query = f"""
+            SELECT a.attname
+            FROM pg_index i
+            JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+            WHERE i.indrelid = '{schema}.{table_name}'::regclass
+            AND i.indisprimary
+            ORDER BY a.attnum
+            """
+        else:
+            pk_query = f"""
+            SELECT a.attname
+            FROM pg_index i
+            JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+            WHERE i.indrelid = '{table_name}'::regclass
+            AND i.indisprimary
+            ORDER BY a.attnum
+            """
+
+        rows = executor.execute_raw_sql(pk_query).fetchall()
+        return [row[0] for row in rows]

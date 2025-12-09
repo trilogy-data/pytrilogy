@@ -179,8 +179,7 @@ class DuckDBDialect(BaseDialect):
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[tuple]:
-        """Query table schema from DuckDB's information_schema."""
-        # DuckDB's information_schema works slightly differently
+        """Returns a list of tuples: (column_name, data_type, is_nullable)."""
         column_query = """
         SELECT
             column_name,
@@ -204,9 +203,7 @@ class DuckDBDialect(BaseDialect):
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[str]:
-        """Query primary keys from DuckDB.
-        """
-        # Try standard information_schema first
+        """DuckDB doesn't always populate key_column_usage reliably."""
         pk_query = """
         SELECT column_name
         FROM information_schema.key_column_usage

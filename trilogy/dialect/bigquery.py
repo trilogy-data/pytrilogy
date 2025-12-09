@@ -206,10 +206,7 @@ class BigqueryDialect(BaseDialect):
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[tuple]:
-        """Query table schema from BigQuery's information_schema.
-
-        BigQuery uses dataset instead of schema, and has slightly different column names.
-        """
+        """BigQuery uses dataset instead of schema and supports project.dataset.table format."""
         # Split table_name if it contains dataset.table format
         if '.' in table_name and not schema:
             parts = table_name.split('.')
@@ -237,14 +234,7 @@ class BigqueryDialect(BaseDialect):
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[str]:
-        """Query primary keys from BigQuery.
-
-        BigQuery doesn't enforce primary keys in the traditional sense,
-        so this typically returns an empty list. Keys should be inferred
-        from data analysis instead.
-        """
-        # BigQuery doesn't have traditional PKs, but we can check table constraints
-        # if they exist (rarely used in practice)
+        """BigQuery doesn't enforce primary keys; rely on data-driven grain detection."""
         if '.' in table_name and not schema:
             parts = table_name.split('.')
             if len(parts) == 2:

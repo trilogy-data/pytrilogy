@@ -438,10 +438,7 @@ class BaseDialect:
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[tuple]:
-        """Query the table schema from information_schema.
-
-        Returns a list of tuples: (column_name, data_type, is_nullable)
-        """
+        """Returns a list of tuples: (column_name, data_type, is_nullable)."""
         if schema:
             qualified_name = f"{schema}.{table_name}"
         else:
@@ -465,10 +462,7 @@ class BaseDialect:
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[str]:
-        """Query primary keys from information_schema.
-
-        Returns a list of column names that are part of the primary key.
-        """
+        """Returns a list of column names that are part of the primary key."""
         pk_query = f"""
         SELECT column_name
         FROM information_schema.key_column_usage
@@ -484,10 +478,7 @@ class BaseDialect:
     def get_table_sample(
         self, executor, table_name: str, schema: str | None = None, sample_size: int = 10000
     ) -> list[tuple]:
-        """Get a sample of rows from a table to analyze for grain and nullability.
-
-        Returns a list of row tuples.
-        """
+        """Returns a list of row tuples for grain and nullability analysis."""
         if schema:
             qualified_name = f"{schema}.{table_name}"
         else:
