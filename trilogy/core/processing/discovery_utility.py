@@ -1,11 +1,18 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, Granularity, Purpose, SourceType
+from trilogy.core.enums import (
+    Derivation,
+    FunctionType,
+    Granularity,
+    Purpose,
+    SourceType,
+)
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
     BuildFilterItem,
+    BuildFunction,
     BuildGrain,
     BuildRowsetItem,
     BuildWhereClause,
@@ -20,6 +27,13 @@ from trilogy.utility import unique
 
 def depth_to_prefix(depth: int) -> str:
     return "\t" * depth
+
+
+NO_PUSHDOWN_DERIVATIONS: list[Derivation] = ROOT_DERIVATIONS + [
+    Derivation.BASIC,
+    Derivation.ROWSET,
+    Derivation.UNNEST,
+]
 
 
 LOGGER_PREFIX = "[DISCOVERY LOOP]"
@@ -271,7 +285,7 @@ def evaluate_loop_condition_pushdown(
     conditions: BuildWhereClause | None,
     depth: int,
     force_no_condition_pushdown: bool,
-    forced_pushdown: list[BuildConcept]
+    forced_pushdown: list[BuildConcept],
 ) -> BuildWhereClause | None:
     # filter evaluation
     # always pass the filter up when we aren't looking at all filter inputs
@@ -423,15 +437,31 @@ def get_priority_concept(
         f"Cannot resolve query. No remaining priority concepts, have attempted {attempted_addresses} out of {all_concepts} with found {found_concepts}"
     )
 
-def get_inputs_that_require_pushdown(conditions:BuildWhereClause | None, mandatory: list[BuildConcept]) -> list[BuildConcept]:
+
+def is_pushdown_aliased_concept(c: BuildConcept) -> bool:
+    return (
+        isinstance(c.lineage, BuildFunction)
+        and c.lineage.operator == FunctionType.ALIAS
+        and isinstance(c.lineage.arguments[0], BuildConcept)
+        and c.lineage.arguments[0].derivation not in NO_PUSHDOWN_DERIVATIONS
+    )
+
+
+def get_inputs_that_require_pushdown(
+    conditions: BuildWhereClause | None, mandatory: list[BuildConcept]
+) -> list[BuildConcept]:
     if not conditions:
         return []
     return [
         x
         for x in mandatory
         if x.address not in conditions.row_arguments
-        and x.derivation not in ROOT_DERIVATIONS + [Derivation.BASIC, Derivation.ROWSET, Derivation.UNNEST]
+        and (
+            x.derivation not in NO_PUSHDOWN_DERIVATIONS
+            or is_pushdown_aliased_concept(x)
+        )
     ]
+
 
 def get_loop_iteration_targets(
     mandatory: list[BuildConcept],
@@ -457,7 +487,8 @@ def get_loop_iteration_targets(
     all_concepts_local: list[BuildConcept] = [
         x
         for x in mandatory
-        if force_pushdown_to_complex_input or (x.canonical_address not in materialized_canonical)
+        if force_pushdown_to_complex_input
+        or (x.canonical_address not in materialized_canonical)
         # keep Root/Constant
         or x.derivation in (Derivation.ROOT, Derivation.CONSTANT)
     ]
@@ -475,7 +506,7 @@ def get_loop_iteration_targets(
         conditions=conditions,
         depth=depth,
         force_no_condition_pushdown=force_conditions,
-        forced_pushdown= pushdown_targets
+        forced_pushdown=pushdown_targets,
     )
     local_all = [*all_concepts_local]
 
