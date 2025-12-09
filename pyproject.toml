@@ -29,11 +29,13 @@ classifiers = [
 trilogy = "trilogy.scripts.trilogy:cli"
 
 [project.optional-dependencies]
+odbc = ["pyodbc"]
 postgres = ["psycopg2-binary"]
 bigquery = ["sqlalchemy-bigquery"]
 snowflake = ["snowflake-sqlalchemy"]
 ai = ["httpx"]
 cli = ["rich"]
+
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}

@@ -29,9 +29,9 @@ def default_factory(conf: DialectConfig, config_type):
         raise TypeError(
             f"Invalid dialect configuration for type {type(config_type).__name__}, is {type(conf)}"
         )
-    if conf.connect_args:
-        engine_args["connect_args"] = conf.connect_args
-
+    connect_args = conf.create_connect_args()
+    if connect_args:
+        engine_args["connect_args"] = connect_args
     return create_engine(conf.connection_string(), **engine_args)
 
 

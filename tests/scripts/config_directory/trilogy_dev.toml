@@ -1,0 +1,6 @@
+[engine]
+dialect = "duckdb"
+
+[setup]
+sql = ["dev_setup.sql"]
+trilogy = ["dev_setup.preql"]

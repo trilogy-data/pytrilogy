@@ -24,8 +24,6 @@ def mock_factory(conf: DialectConfig, config_type, **kwargs):
             f"Invalid dialect configuration for type {type(config_type).__name__}"
         )
     assert conf.connection_string()
-    if conf.connect_args:
-        return create_engine("duckdb:///:memory:", future=True)
     return create_engine("duckdb:///:memory:", future=True)
 
 

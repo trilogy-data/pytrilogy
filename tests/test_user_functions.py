@@ -239,6 +239,7 @@ key x int;
 merge test_env_functions.quad_test into x;
 
 select 
+    x,
     x as quad_test,
     @test_env_functions.quadratic(2, 3, 4) as quad_two;
 

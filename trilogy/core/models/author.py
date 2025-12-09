@@ -1263,6 +1263,15 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         elif (
             lineage
             and isinstance(lineage, (BuildFunction, Function))
+            and lineage.operator == FunctionType.ALIAS
+        ):
+            source = lineage.arguments[0].derivation
+            if source == Derivation.AGGREGATE:
+                return Derivation.AGGREGATE
+            return Derivation.BASIC
+        elif (
+            lineage
+            and isinstance(lineage, (BuildFunction, Function))
             and lineage.operator in FunctionClass.SINGLE_ROW.value
         ):
             return Derivation.CONSTANT

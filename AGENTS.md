@@ -19,3 +19,6 @@ Prefer minimal, concise code and small functions. Keep comments concise and targ
 
 Project uses a build_backend defined in .scripts/build_backend.py, which mostly uses maturin. The custom wrapper exists to be able to pull in requirements from requirements.txt + version dynamically.
 
+## CLI
+
+The trilogy/scripts/trilogy.py file is the CLI entrypoint. The CLI is used for management, interacitons and other tasks. 

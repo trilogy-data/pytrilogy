@@ -1181,3 +1181,73 @@ SELECT
     _ = gcat_env.generate_sql(queries[-1])
 
     gcat_env.environment = base_env
+
+
+def test_spacex_alias_behavior():
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+
+    env = Environment(
+        working_path=Path(__file__).parent,
+    )
+
+    queries = """key x int;
+   auto total <- count(x);
+
+   select
+    total as fun;
+    """
+    env.parse(queries)
+    build_env = env.materialize_for_select()
+    assert build_env.concepts["local.fun"].derivation == Derivation.AGGREGATE
+
+
+def test_spacex_aggregates(gcat_env: Executor):
+    from logging import INFO
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook(level=INFO)
+
+    cmd = """import launch_base;
+
+# WHERE local.launch_date.year >= 2015 
+#   AND org.name = 'SpaceX'
+# SELECT
+#     local.launch_date.year,
+#     sum(local.launch_count) as spacex_launches
+# ORDER BY local.launch_date.year ASC;
+
+WHERE local.launch_date.year >= 2015 
+  AND org.name = 'SpaceX'
+SELECT
+    local.launch_date.year,
+    local.launch_count,
+ORDER BY local.launch_date.year ASC;"""
+
+    results = gcat_env.execute_text(cmd)[-1].fetchall()
+
+    for row in results:
+        if row.launch_date_year == 2023:
+            assert row.launch_count < 100, row
+
+    cmd = """
+
+WHERE local.launch_date.year >= 2015 
+  AND org.name = 'SpaceX'
+SELECT
+    local.launch_date.year,
+    local.launch_count as spacex_launches,
+ORDER BY local.launch_date.year ASC;"""
+
+    results = gcat_env.execute_text(cmd)[-1].fetchall()
+
+    build_env = gcat_env.environment.materialize_for_select()
+    assert (
+        build_env.concepts["local.spacex_launches"].derivation == Derivation.AGGREGATE
+    )
+
+    for row in results:
+        if row.launch_date_year == 2023:
+            assert row.spacex_launches < 100, row

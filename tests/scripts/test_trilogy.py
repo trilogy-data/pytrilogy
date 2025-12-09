@@ -272,7 +272,9 @@ def test_snowflake():
             "myaccount",
         ],
     )
-    assert "Failed to configure dialect" not in results.stdout, results.stdout
+    assert (
+        "Missing required Snowflake connection parameters:" not in results.stdout
+    ), results.stdout
 
     # Test missing required parameters
     results = runner.invoke(
@@ -284,8 +286,7 @@ def test_snowflake():
         ],
     )
     assert (
-        "Failed to configure dialect: Missing required Snowflake connection parameters: "
-        in results.stdout
+        "Missing required Snowflake connection parameters:" in results.stdout
     ), results.stdout
 
 
@@ -310,7 +311,7 @@ def test_sql_server():
             "mydatabase",
         ],
     )
-    assert "Failed to configure dialect" not in results.stdout, results.stdout
+    assert "Missing required SQL Server" not in results.stdout, results.stdout
 
     # Test missing required parameters
     results = runner.invoke(
@@ -321,9 +322,7 @@ def test_sql_server():
             "sql_server",
         ],
     )
-    assert (
-        "Failed to configure dialect: Missing required SQL Server" in results.stdout
-    ), results.stdout
+    assert "Missing required SQL Server" in results.stdout, results.stdout
 
 
 def test_postgres():
@@ -347,7 +346,9 @@ def test_postgres():
             "mydatabase",
         ],
     )
-    assert "Failed to configure dialect" not in results.stdout, results.stdout
+    assert (
+        "Missing required Postgres connection parameters:" not in results.stdout
+    ), results.stdout
 
     # Test missing required parameters
     results = runner.invoke(
@@ -359,8 +360,7 @@ def test_postgres():
         ],
     )
     assert (
-        "Failed to configure dialect: Missing required Postgres connection parameters: "
-        in results.stdout
+        "Missing required Postgres connection parameters:" in results.stdout
     ), results.stdout
 
 
@@ -385,7 +385,9 @@ def test_presto():
             "mycatalog",
         ],
     )
-    assert "Failed to configure dialect" not in results.stdout, results.stdout
+    assert (
+        "Missing required Presto connection parameters:" not in results.stdout
+    ), results.stdout
 
     # Test missing required parameters
     results = runner.invoke(
@@ -397,8 +399,7 @@ def test_presto():
         ],
     )
     assert (
-        "Failed to configure dialect: Missing required Presto connection parameters: "
-        in results.stdout
+        "Missing required Presto connection parameters:" in results.stdout
     ), results.stdout
 
 
@@ -521,7 +522,7 @@ def test_engine_missing_single_parameter(dialect, required_params, test_params):
 
         # Should fail with missing parameter error
         assert (
-            "Failed to configure dialect: Missing required" in results.stdout
+            "Missing required" in results.stdout
         ), f"Expected missing {missing_param} error for {dialect}, got: {results.stdout}"
         assert (
             missing_param in results.stdout

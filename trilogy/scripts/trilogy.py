@@ -1,5 +1,8 @@
 import traceback
+from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
+from io import StringIO
 from pathlib import Path as PathlibPath
 from typing import Any, Iterable, Union
 
@@ -14,6 +17,7 @@ from trilogy.core.exceptions import (
 )
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.enums import Dialects
+from trilogy.execution.config import RuntimeConfig, load_config_file
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parsing.render import Renderer
 from trilogy.scripts.dependency import (
@@ -24,6 +28,7 @@ from trilogy.scripts.display import (
     RICH_AVAILABLE,
     create_progress_context,
     print_error,
+    print_info,
     print_success,
     set_rich_mode,
     show_debug_mode,
@@ -53,6 +58,60 @@ set_rich_mode = set_rich_mode
 DEFAULT_PARALLELISM = 2
 
 
+@dataclass
+class CLIRuntimeParams:
+    """Parameters provided via CLI for execution."""
+
+    input: str
+    dialect: Dialects | None = None
+    parallelism: int | None = None
+    param: tuple[str, ...] = ()
+    conn_args: tuple[str, ...] = ()
+    debug: bool = False
+    config_path: PathlibPath | None = None
+    execution_strategy: str = "eager_bfs"
+
+
+def merge_runtime_config(
+    cli_params: CLIRuntimeParams, file_config: RuntimeConfig
+) -> tuple[Dialects, int]:
+    """
+    Merge CLI parameters with config file settings.
+    CLI parameters take precedence over config file.
+
+    Returns:
+        tuple of (dialect, parallelism)
+
+    Raises:
+        Exit: If no dialect is specified in either CLI or config
+    """
+    # Resolve dialect: CLI argument takes precedence over config
+    if cli_params.dialect:
+        dialect = cli_params.dialect
+    elif file_config.engine_dialect:
+        dialect = file_config.engine_dialect
+    else:
+        print_error(
+            "No dialect specified. Provide dialect as argument or set engine.dialect in config file."
+        )
+        raise Exit(1)
+
+    # Resolve parallelism: CLI argument takes precedence over config
+    parallelism = (
+        cli_params.parallelism
+        if cli_params.parallelism is not None
+        else file_config.parallelism
+    )
+
+    return dialect, parallelism
+
+
+class RunMode(Enum):
+    RUN = "run"
+    INTEGRATION = "integration"
+    UNIT = "unit"
+
+
 def resolve_input(path: PathlibPath) -> list[PathlibPath]:
 
     # Directory
@@ -66,54 +125,52 @@ def resolve_input(path: PathlibPath) -> list[PathlibPath]:
     raise FileNotFoundError(f"Input path '{path}' does not exist.")
 
 
-def resolve_input_information(input: str) -> tuple[list[str], PathlibPath, str, str]:
-    text: list[str] = []
-    if PathlibPath(input).exists():
-        pathlib_path = PathlibPath(input)
+def get_runtime_config(
+    path: PathlibPath, config_override: PathlibPath | None = None
+) -> RuntimeConfig:
+    if config_override:
+        config_path = config_override
+    elif path.is_dir():
+        config_path = path / "trilogy.toml"
+    else:
+        config_path = path.parent / "trilogy.toml"
+    if config_path.exists():
+        try:
+            return load_config_file(config_path)
+        except Exception as e:
+            print_error(f"Failed to load configuration file {config_path}: {e}")
+            handle_execution_exception(e)
+    return RuntimeConfig(startup_trilogy=[], startup_sql=[])
+
+
+def resolve_input_information(
+    input: str, config_path_input: PathlibPath | None = None
+) -> tuple[Iterable[PathlibPath | StringIO], PathlibPath, str, str, RuntimeConfig]:
+    input_as_path = PathlibPath(input)
+    files: Iterable[StringIO | PathlibPath]
+    if input_as_path.exists():
+        pathlib_path = input_as_path
         files = resolve_input(pathlib_path)
 
-        for file in files:
-            with open(file, "r") as f:
-                text.append(f.read())
         if pathlib_path.is_dir():
             directory = pathlib_path
             input_type = "directory"
+            config = get_runtime_config(pathlib_path, config_path_input)
+
         else:
             directory = pathlib_path.parent
             input_type = "file"
+            config = get_runtime_config(pathlib_path, config_path_input)
+
         input_name = pathlib_path.name
     else:
         script = input
-
+        files = [StringIO(script)]
         directory = PathlibPath.cwd()
         input_type = "query"
         input_name = "inline"
-        text.append(script)
-    return text, directory, input_type, input_name
-
-
-def resolve_input_files(input: str) -> tuple[list[PathlibPath], PathlibPath, str, str]:
-    """
-    Resolve input to a list of file paths (for parallel execution).
-
-    """
-    if PathlibPath(input).exists():
-        pathlib_path = PathlibPath(input)
-        files = resolve_input(pathlib_path)
-
-        if pathlib_path.is_dir():
-            directory = pathlib_path
-            input_type = "directory"
-        else:
-            directory = pathlib_path.parent
-            input_type = "file"
-        input_name = pathlib_path.name
-        return files, directory, input_type, input_name
-    else:
-        # Inline query - not applicable for parallel execution
-        raise FileNotFoundError(
-            f"Directory {input} does not exist for parallel execution."
-        )
+        config = RuntimeConfig(startup_trilogy=[], startup_sql=[])
+    return files, directory, input_type, input_name, config
 
 
 def validate_required_connection_params(
@@ -141,7 +198,9 @@ def validate_required_connection_params(
     }
 
 
-def get_dialect_config(edialect: Dialects, conn_dict: dict[str, Any]) -> Any:
+def get_dialect_config(
+    edialect: Dialects, conn_dict: dict[str, Any], runtime_config: RuntimeConfig
+) -> Any:
     """Get dialect configuration based on dialect type."""
     conf: Union[Any, None] = None
 
@@ -196,7 +255,8 @@ def get_dialect_config(edialect: Dialects, conn_dict: dict[str, Any]) -> Any:
             "Presto",
         )
         conf = PrestoConfig(**conn_dict)
-
+    if conf and runtime_config.engine_config:
+        conf = runtime_config.engine_config.merge_config(conf)
     return conf
 
 
@@ -206,6 +266,7 @@ def create_executor(
     conn_args: Iterable[str],
     edialect: Dialects,
     debug: bool,
+    config: RuntimeConfig,
 ) -> Executor:
     # Parse environment parameters from dedicated flag
     namespace = DEFAULT_NAMESPACE
@@ -221,11 +282,9 @@ def create_executor(
 
     # Configure dialect
     try:
-        conf = get_dialect_config(edialect, conn_dict)
+        conf = get_dialect_config(edialect, conn_dict, runtime_config=config)
     except Exception as e:
-        print_error(f"Failed to configure dialect: {e}")
-        print_error(f"Full traceback:\n{traceback.format_exc()}")
-        raise Exit(1) from e
+        handle_execution_exception(e)
 
     # Create environment and set additional parameters if any exist
     environment = Environment(working_path=str(directory), namespace=namespace)
@@ -238,6 +297,14 @@ def create_executor(
         environment=environment,
         hooks=[DebuggingHook()] if debug else [],
     )
+    if config.startup_sql:
+        for script in config.startup_sql:
+            print_info(f"Executing startup SQL script: {script}")
+            exec.execute_file(script)
+    if config.startup_trilogy:
+        for script in config.startup_trilogy:
+            print_info(f"Executing startup Trilogy script: {script}")
+            exec.execute_file(script)
     return exec
 
 
@@ -247,6 +314,7 @@ def create_executor_for_script(
     conn_args: Iterable[str],
     edialect: Dialects,
     debug: bool,
+    config: RuntimeConfig,
 ) -> Executor:
     """
     Create an executor for a specific script node.
@@ -255,7 +323,7 @@ def create_executor_for_script(
     using the script's parent directory as the working path.
     """
     directory = node.path.parent
-    return create_executor(param, directory, conn_args, edialect, debug)
+    return create_executor(param, directory, conn_args, edialect, debug, config)
 
 
 def validate_datasources(
@@ -332,14 +400,15 @@ def get_execution_strategy(strategy_name: str):
     return strategies[strategy_name]()
 
 
-def handle_execution_exception(e: Exception) -> None:
-    print_error(f"Unexpected error during execution: {e}")
-    print_error(f"Full traceback:\n{traceback.format_exc()}")
+def handle_execution_exception(e: Exception, debug: bool = False) -> None:
+    print_error(f"Unexpected error: {e}")
+    if debug:
+        print_error(f"Full traceback:\n{traceback.format_exc()}")
     raise Exit(1) from e
 
 
 def run_single_script_execution(
-    text: list[str],
+    files: list[StringIO | PathlibPath],
     directory: PathlibPath,
     input_type: str,
     input_name: str,
@@ -348,6 +417,7 @@ def run_single_script_execution(
     conn_args: Iterable[str],
     debug: bool,
     execution_mode: str,
+    config: RuntimeConfig,
 ) -> None:
     """
     Run single script execution with polished multi-statement progress display.
@@ -365,7 +435,13 @@ def run_single_script_execution(
     """
     show_execution_info(input_type, input_name, edialect.value, debug)
 
-    exec = create_executor(param, directory, conn_args, edialect, debug)
+    exec = create_executor(param, directory, conn_args, edialect, debug, config)
+    base = files[0]
+    if isinstance(base, StringIO):
+        text = [base.getvalue()]
+    else:
+        with open(base, "r") as raw:
+            text = [raw.read()]
 
     if execution_mode == "run":
         # Parse all scripts and collect queries
@@ -374,9 +450,7 @@ def run_single_script_execution(
             for script in text:
                 queries += exec.parse_text(script)
         except Exception as e:
-            print_error(f"Failed to parse script: {e}")
-            print_error(f"Full traceback:\n{traceback.format_exc()}")
-            raise Exit(1) from e
+            handle_execution_exception(e, debug=debug)
 
         start = datetime.now()
         show_execution_start(len(queries))
@@ -401,7 +475,7 @@ def run_single_script_execution(
         except Exit:
             raise
         except Exception as e:
-            handle_execution_exception(e)
+            handle_execution_exception(e, debug=debug)
 
     elif execution_mode == "integration":
         for script in text:
@@ -417,14 +491,8 @@ def run_single_script_execution(
 
 
 def run_parallel_execution(
-    input: str,
-    edialect: Dialects,
-    param: tuple[str, ...],
-    conn_args: Iterable[str],
-    debug: bool,
-    parallelism: int,
+    cli_params: CLIRuntimeParams,
     execution_fn,
-    execution_strategy: str = "eager_bfs",
     execution_mode: str = "run",
 ) -> None:
     """
@@ -432,58 +500,40 @@ def run_parallel_execution(
     with polished progress display for single files/inline queries.
 
     Args:
-        input: Input path (file or directory)
-        edialect: Dialect to use
-        param: Environment parameters
-        conn_args: Connection arguments
-        debug: Debug mode flag
-        parallelism: Maximum parallel workers
+        cli_params: CLI runtime parameters containing all execution settings
         execution_fn: Function to execute each script (exec, node, quiet) -> None
-        execution_strategy: Name of execution strategy ("eager_bfs" or "level")
         execution_mode: One of 'run', 'integration', or 'unit'
     """
     # Check if input is a directory (parallel execution)
-    pathlib_input = PathlibPath(input)
+    pathlib_input = PathlibPath(cli_params.input)
+    files_iter, directory, input_type, input_name, config = resolve_input_information(
+        cli_params.input, cli_params.config_path
+    )
+    files = list(files_iter)
 
-    if not pathlib_input.exists():
+    # Merge CLI params with config file
+    edialect, parallelism = merge_runtime_config(cli_params, config)
+    if not pathlib_input.exists() or len(files) == 1:
         # Inline query - use polished single-script execution
-        text, directory, input_type, input_name = resolve_input_information(input)
+
         run_single_script_execution(
-            text=text,
+            files=files,
             directory=directory,
             input_type=input_type,
             input_name=input_name,
             edialect=edialect,
-            param=param,
-            conn_args=conn_args,
-            debug=debug,
+            param=cli_params.param,
+            conn_args=cli_params.conn_args,
+            debug=cli_params.debug,
             execution_mode=execution_mode,
+            config=config,
         )
         return
-
-    files, directory, input_type, input_name = resolve_input_files(input)
-
-    if len(files) <= 1:
-        # Single file - use more verbose output
-        text, directory, input_type, input_name = resolve_input_information(input)
-        run_single_script_execution(
-            text=text,
-            directory=directory,
-            input_type=input_type,
-            input_name=input_name,
-            edialect=edialect,
-            param=param,
-            conn_args=conn_args,
-            debug=debug,
-            execution_mode=execution_mode,
-        )
-        return
-
     # Multiple files - use parallel execution
-    show_execution_info(input_type, input_name, edialect.value, debug)
+    show_execution_info(input_type, input_name, edialect.value, cli_params.debug)
 
     # Get execution strategy
-    strategy = get_execution_strategy(execution_strategy)
+    strategy = get_execution_strategy(cli_params.execution_strategy)
 
     # Set up parallel executor
     parallel_exec = ParallelExecutor(
@@ -495,17 +545,28 @@ def run_parallel_execution(
     # Get execution plan for display
     if pathlib_input.is_dir():
         execution_plan = parallel_exec.get_folder_execution_plan(pathlib_input)
+    elif pathlib_input.is_file():
+        execution_plan = parallel_exec.get_execution_plan([pathlib_input])
     else:
-        execution_plan = parallel_exec.get_execution_plan(files)
+        raise FileNotFoundError(f"Input path '{pathlib_input}' does not exist.")
 
     num_edges = execution_plan.number_of_edges()
     num_nodes = execution_plan.number_of_nodes()
 
-    show_parallel_execution_start(num_nodes, num_edges, parallelism, execution_strategy)
+    show_parallel_execution_start(
+        num_nodes, num_edges, parallelism, cli_params.execution_strategy
+    )
 
     # Factory to create executor for each script
     def executor_factory(node: ScriptNode) -> Executor:
-        return create_executor_for_script(node, param, conn_args, edialect, debug)
+        return create_executor_for_script(
+            node,
+            cli_params.param,
+            cli_params.conn_args,
+            edialect,
+            cli_params.debug,
+            config,
+        )
 
     # Wrap execution_fn to pass quiet=True for parallel execution
     def quiet_execution_fn(exec: Executor, node: ScriptNode) -> None:
@@ -560,9 +621,7 @@ def fmt(ctx, input):
             show_formatting_result(input, len(queries), duration)
 
         except Exception as e:
-            print_error(f"Failed to format script: {e}")
-            print_error(f"Full traceback:\n{traceback.format_exc()}")
-            raise Exit(1)
+            handle_execution_exception(e, debug=ctx.obj["DEBUG"])
 
 
 @cli.command(
@@ -572,38 +631,44 @@ def fmt(ctx, input):
     ),
 )
 @argument("input", type=Path())
-@argument("dialect", type=str)
+@argument("dialect", type=str, required=False)
 @option("--param", multiple=True, help="Environment parameters as key=value pairs")
 @option(
     "--parallelism",
     "-p",
-    default=DEFAULT_PARALLELISM,
+    default=None,
     help="Maximum parallel workers for directory execution",
+)
+@option(
+    "--config", type=Path(exists=True), help="Path to trilogy.toml configuration file"
 )
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
-def integration(ctx, input, dialect: str, param, parallelism: int, conn_args):
+def integration(
+    ctx, input, dialect: str | None, param, parallelism: int | None, config, conn_args
+):
     """Run integration tests on Trilogy scripts."""
-    edialect = Dialects(dialect)
-    strategy = "eager_bfs"
-    debug = ctx.obj["DEBUG"]
+    cli_params = CLIRuntimeParams(
+        input=input,
+        dialect=Dialects(dialect) if dialect else None,
+        parallelism=parallelism,
+        param=param,
+        conn_args=conn_args,
+        debug=ctx.obj["DEBUG"],
+        config_path=PathlibPath(config) if config else None,
+        execution_strategy="eager_bfs",
+    )
 
     try:
         run_parallel_execution(
-            input=input,
-            edialect=edialect,
-            param=param,
-            conn_args=conn_args,
-            debug=debug,
-            parallelism=parallelism,
+            cli_params=cli_params,
             execution_fn=execute_script_for_integration,
-            execution_strategy=strategy,
             execution_mode="integration",
         )
     except Exit:
         raise
     except Exception as e:
-        handle_execution_exception(e)
+        handle_execution_exception(e, debug=cli_params.debug)
 
 
 @cli.command(
@@ -617,36 +682,43 @@ def integration(ctx, input, dialect: str, param, parallelism: int, conn_args):
 @option(
     "--parallelism",
     "-p",
-    default=DEFAULT_PARALLELISM,
+    default=None,
     help="Maximum parallel workers for directory execution",
+)
+@option(
+    "--config", type=Path(exists=True), help="Path to trilogy.toml configuration file"
 )
 @pass_context
 def unit(
     ctx,
     input,
     param,
-    parallelism: int,
+    parallelism: int | None,
+    config,
 ):
     """Run unit tests on Trilogy scripts with mocked datasources."""
-    edialect = Dialects.DUCK_DB
-    debug = ctx.obj["DEBUG"]
-    strategy = "eager_bfs"
+    # Build CLI runtime params (unit tests always use DuckDB)
+    cli_params = CLIRuntimeParams(
+        input=input,
+        dialect=Dialects.DUCK_DB,
+        parallelism=parallelism,
+        param=param,
+        conn_args=(),
+        debug=ctx.obj["DEBUG"],
+        config_path=PathlibPath(config) if config else None,
+        execution_strategy="eager_bfs",
+    )
+
     try:
         run_parallel_execution(
-            input=input,
-            edialect=edialect,
-            param=param,
-            conn_args=(),
-            debug=debug,
-            parallelism=parallelism,
+            cli_params=cli_params,
             execution_fn=execute_script_for_unit,
-            execution_strategy=strategy,
             execution_mode="unit",
         )
     except Exit:
         raise
     except Exception as e:
-        handle_execution_exception(e)
+        handle_execution_exception(e, debug=cli_params.debug)
 
 
 @cli.command(
@@ -656,39 +728,44 @@ def unit(
     ),
 )
 @argument("input", type=Path())
-@argument("dialect", type=str)
+@argument("dialect", type=str, required=False)
 @option("--param", multiple=True, help="Environment parameters as key=value pairs")
 @option(
     "--parallelism",
     "-p",
-    default=DEFAULT_PARALLELISM,
+    default=None,
     help="Maximum parallel workers for directory execution",
+)
+@option(
+    "--config", type=Path(exists=True), help="Path to trilogy.toml configuration file"
 )
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
-def run(ctx, input, dialect: str, param, parallelism: int, conn_args):
+def run(
+    ctx, input, dialect: str | None, param, parallelism: int | None, config, conn_args
+):
     """Execute a Trilogy script or query."""
-    edialect = Dialects(dialect)
-    debug = ctx.obj["DEBUG"]
-    strategy = "eager_bfs"
+    cli_params = CLIRuntimeParams(
+        input=input,
+        dialect=Dialects(dialect) if dialect else None,
+        parallelism=parallelism,
+        param=param,
+        conn_args=conn_args,
+        debug=ctx.obj["DEBUG"],
+        config_path=PathlibPath(config) if config else None,
+        execution_strategy="eager_bfs",
+    )
+
     try:
         run_parallel_execution(
-            input=input,
-            edialect=edialect,
-            param=param,
-            conn_args=conn_args,
-            debug=debug,
-            parallelism=parallelism,
+            cli_params=cli_params,
             execution_fn=execute_script_for_run,
-            execution_strategy=strategy,
             execution_mode="run",
         )
     except Exit:
         raise
     except Exception as e:
-        print_error(f"Execution failed: {e}")
-        print_error(f"Full traceback:\n{traceback.format_exc()}")
-        raise Exit(1) from e
+        handle_execution_exception(e, debug=cli_params.debug)
 
 
 if __name__ == "__main__":
