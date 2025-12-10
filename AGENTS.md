@@ -15,6 +15,13 @@ Prefer minimal, concise code and small functions. Keep comments concise and targ
 - Always use a local venv.
 - Always type-hint (we use mypy)
 
+After all changes are done, confirm we're good by running all of these checks:
+
+```bash
+ruff check . --fix
+mypy trilogy
+black .
+```
 ## Wheel Building
 
 Project uses a build_backend defined in .scripts/build_backend.py, which mostly uses maturin. The custom wrapper exists to be able to pull in requirements from requirements.txt + version dynamically.

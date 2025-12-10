@@ -3,6 +3,7 @@
 import re
 from datetime import datetime
 from pathlib import Path as PathlibPath
+from typing import Any
 
 from click import UNPROCESSED, Path, argument, option, pass_context
 from click.exceptions import Exit
@@ -27,6 +28,7 @@ from trilogy.scripts.common import (
     handle_execution_exception,
 )
 from trilogy.scripts.display import print_error, print_info, print_success
+from itertools import combinations
 
 
 def to_snake_case(name: str) -> str:
@@ -35,91 +37,98 @@ def to_snake_case(name: str) -> str:
     Handles CamelCase, PascalCase, and names with spaces/special chars.
     """
     # Handle spaces and special characters first
-    name = re.sub(r'[^\w\s]', '_', name)
-    name = re.sub(r'\s+', '_', name)
+    name = re.sub(r"[^\w\s]", "_", name)
+    name = re.sub(r"\s+", "_", name)
 
     # Insert underscores before uppercase letters (for CamelCase)
-    name = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
-    name = re.sub('([a-z0-9])([A-Z])', r'\1_\2', name)
+    name = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
+    name = re.sub("([a-z0-9])([A-Z])", r"\1_\2", name)
 
     # Convert to lowercase and remove duplicate underscores
     name = name.lower()
-    name = re.sub(r'_+', '_', name)
+    name = re.sub(r"_+", "_", name)
 
     # Remove leading/trailing underscores
-    return name.strip('_')
+    return name.strip("_")
 
 
 # Rich type detection mappings
-RICH_TYPE_PATTERNS = {
-    'geography': {
-        'latitude': {
-            'patterns': [r'(?:^|_)lat(?:$|_)', r'(?:^|_)latitude(?:$|_)'],
-            'import': 'std.geography',
-            'type_name': 'latitude',
-            'base_type': DataType.FLOAT,
+RICH_TYPE_PATTERNS: dict[str, dict[str, Any]] = {
+    "geography": {
+        "latitude": {
+            "patterns": [r"(?:^|_)lat(?:$|_)", r"(?:^|_)latitude(?:$|_)"],
+            "import": "std.geography",
+            "type_name": "latitude",
+            "base_type": DataType.FLOAT,
         },
-        'longitude': {
-            'patterns': [r'(?:^|_)lon(?:$|_)', r'(?:^|_)lng(?:$|_)', r'(?:^|_)long(?:$|_)', r'(?:^|_)longitude(?:$|_)'],
-            'import': 'std.geography',
-            'type_name': 'longitude',
-            'base_type': DataType.FLOAT,
+        "longitude": {
+            "patterns": [
+                r"(?:^|_)lon(?:$|_)",
+                r"(?:^|_)lng(?:$|_)",
+                r"(?:^|_)long(?:$|_)",
+                r"(?:^|_)longitude(?:$|_)",
+            ],
+            "import": "std.geography",
+            "type_name": "longitude",
+            "base_type": DataType.FLOAT,
         },
-        'city': {
-            'patterns': [r'(?:^|_)city(?:$|_)'],
-            'import': 'std.geography',
-            'type_name': 'city',
-            'base_type': DataType.STRING,
+        "city": {
+            "patterns": [r"(?:^|_)city(?:$|_)"],
+            "import": "std.geography",
+            "type_name": "city",
+            "base_type": DataType.STRING,
         },
-        'country': {
-            'patterns': [r'(?:^|_)country(?:$|_)'],
-            'import': 'std.geography',
-            'type_name': 'country',
-            'base_type': DataType.STRING,
+        "country": {
+            "patterns": [r"(?:^|_)country(?:$|_)"],
+            "import": "std.geography",
+            "type_name": "country",
+            "base_type": DataType.STRING,
         },
-        'country_code': {
-            'patterns': [r'country_code', r'countrycode'],
-            'import': 'std.geography',
-            'type_name': 'country_code',
-            'base_type': DataType.STRING,
+        "country_code": {
+            "patterns": [r"country_code", r"countrycode"],
+            "import": "std.geography",
+            "type_name": "country_code",
+            "base_type": DataType.STRING,
         },
-        'us_state': {
-            'patterns': [r'(?:^|_)state(?:$|_)', r'us_state'],
-            'import': 'std.geography',
-            'type_name': 'us_state',
-            'base_type': DataType.STRING,
+        "us_state": {
+            "patterns": [r"(?:^|_)state(?:$|_)", r"us_state"],
+            "import": "std.geography",
+            "type_name": "us_state",
+            "base_type": DataType.STRING,
         },
-        'us_zip_code': {
-            'patterns': [r'(?:^|_)zip(?:$|_)', r'zipcode', r'zip_code', r'postal_code'],
-            'import': 'std.geography',
-            'type_name': 'us_zip_code',
-            'base_type': DataType.STRING,
+        "us_zip_code": {
+            "patterns": [r"(?:^|_)zip(?:$|_)", r"zipcode", r"zip_code", r"postal_code"],
+            "import": "std.geography",
+            "type_name": "us_zip_code",
+            "base_type": DataType.STRING,
         },
     },
-    'net': {
-        'email_address': {
-            'patterns': [r'(?:^|_)email(?:$|_)', r'email_address'],
-            'import': 'std.net',
-            'type_name': 'email_address',
-            'base_type': DataType.STRING,
+    "net": {
+        "email_address": {
+            "patterns": [r"(?:^|_)email(?:$|_)", r"email_address"],
+            "import": "std.net",
+            "type_name": "email_address",
+            "base_type": DataType.STRING,
         },
-        'url': {
-            'patterns': [r'(?:^|_)url(?:$|_)', r'(?:^|_)website(?:$|_)'],
-            'import': 'std.net',
-            'type_name': 'url',
-            'base_type': DataType.STRING,
+        "url": {
+            "patterns": [r"(?:^|_)url(?:$|_)", r"(?:^|_)website(?:$|_)"],
+            "import": "std.net",
+            "type_name": "url",
+            "base_type": DataType.STRING,
         },
-        'ipv4_address': {
-            'patterns': [r'(?:^|_)ip(?:$|_)', r'(?:^|_)ipv4(?:$|_)', r'ip_address'],
-            'import': 'std.net',
-            'type_name': 'ipv4_address',
-            'base_type': DataType.STRING,
+        "ipv4_address": {
+            "patterns": [r"(?:^|_)ip(?:$|_)", r"(?:^|_)ipv4(?:$|_)", r"ip_address"],
+            "import": "std.net",
+            "type_name": "ipv4_address",
+            "base_type": DataType.STRING,
         },
     },
 }
 
 
-def detect_rich_type(column_name: str, base_datatype: DataType) -> tuple[str | None, str | None]:
+def detect_rich_type(
+    column_name: str, base_datatype: DataType
+) -> tuple[str, str] | tuple[None, None]:
     """Detect if a column name matches a rich type pattern.
 
     Returns: (import_path, type_name) or (None, None) if no match
@@ -135,22 +144,24 @@ def detect_rich_type(column_name: str, base_datatype: DataType) -> tuple[str | N
     for category, types in RICH_TYPE_PATTERNS.items():
         for type_name, config in types.items():
             # Only consider if base types match
-            if config['base_type'] != base_datatype:
+            if config["base_type"] != base_datatype:
                 continue
 
             # Check if any pattern matches
-            for pattern in config['patterns']:
+            for pattern in config["patterns"]:
                 match = re.search(pattern, column_lower)
                 if match:
                     # Store match with the length of the matched string for sorting
                     matched_length = len(match.group())
-                    matches.append((matched_length, config['import'], config['type_name']))
+                    matches.append(
+                        (matched_length, config["import"], config["type_name"])
+                    )
                     break  # Only need one match per type
 
     # Return the most specific match (longest matched string)
     if matches:
         matches.sort(reverse=True)  # Sort by matched string length descending
-        return matches[0][1], matches[0][2]
+        return str(matches[0][1]), str(matches[0][2])
 
     return None, None
 
@@ -170,7 +181,7 @@ def infer_datatype_from_sql_type(sql_type: str) -> DataType:
 
     # Numeric/decimal types
     if any(t in sql_type_lower for t in ["numeric", "decimal", "money"]):
-        return DataType.FLOAT
+        return DataType.NUMERIC
     if any(t in sql_type_lower for t in ["float", "double", "real", "float64"]):
         return DataType.FLOAT
 
@@ -186,13 +197,37 @@ def infer_datatype_from_sql_type(sql_type: str) -> DataType:
         return DataType.BOOL
 
     # Date/Time types
-    if "timestamp" in sql_type_lower or "datetime" in sql_type_lower:
+    if "timestamp" in sql_type_lower:
         return DataType.TIMESTAMP
+    if "datetime" in sql_type_lower:
+        return DataType.DATETIME
     if "date" in sql_type_lower:
         return DataType.DATE
 
     # Default to string for unknown types
     return DataType.STRING
+
+
+def _check_column_combination_uniqueness(
+    indices: list[int], sample_rows: list[tuple]
+) -> bool:
+    if not sample_rows:
+        return False
+
+    values = set()
+    for row in sample_rows:
+        # For single column, use scalar value; for multiple columns, use tuple
+        if len(indices) == 1:
+            value = row[indices[0]]
+        else:
+            value = tuple(row[idx] for idx in indices)
+
+        if value in values:
+            return False
+        values.add(value)
+
+    # Verify we have as many unique values as rows
+    return len(values) == len(sample_rows)
 
 
 def detect_unique_key_combinations(
@@ -210,61 +245,25 @@ def detect_unique_key_combinations(
 
     # Try single columns first
     for i, col_name in enumerate(column_names):
-        values = set()
-        is_unique = True
-        for row in sample_rows:
-            value = row[i]
-            if value in values:
-                is_unique = False
-                break
-            values.add(value)
-
-        if is_unique and len(values) == len(sample_rows):
+        if _check_column_combination_uniqueness([i], sample_rows):
             unique_combinations.append([col_name])
 
     # If we found single-column keys, prefer those
     if unique_combinations:
         return unique_combinations
 
-    # Try combinations of 2 columns
-    if max_key_size >= 2:
-        from itertools import combinations
+    # Try combinations of 2+ columns
+    for size in range(2, max_key_size + 1):
+        for col_combination in combinations(enumerate(column_names), size):
+            indices = [idx for idx, _ in col_combination]
+            col_names = [name for _, name in col_combination]
 
-        for double_col_key in combinations(enumerate(column_names), 2):
-            indices = [idx for idx, _ in double_col_key]
-            col_names = [name for _, name in double_col_key]
-
-            values = set()
-            is_unique = True
-            for row in sample_rows:
-                value = tuple(row[idx] for idx in indices)
-                if value in values:
-                    is_unique = False
-                    break
-                values.add(value)
-
-            if is_unique and len(values) == len(sample_rows):
+            if _check_column_combination_uniqueness(indices, sample_rows):
                 unique_combinations.append(col_names)
 
-    # Try combinations of 3 columns if needed
-    if not unique_combinations and max_key_size >= 3:
-        from itertools import combinations
-
-        for triple_col_key in combinations(enumerate(column_names), 3):
-            indices = [idx for idx, _ in triple_col_key]
-            col_names = [name for _, name in triple_col_key]
-
-            values = set()
-            is_unique = True
-            for row in sample_rows:
-                value = tuple(row[idx] for idx in indices)
-                if value in values:
-                    is_unique = False
-                    break
-                values.add(value)
-
-            if is_unique and len(values) == len(sample_rows):
-                unique_combinations.append(col_names)
+        # If we found keys of this size, return them (prefer smaller keys)
+        if unique_combinations:
+            return unique_combinations
 
     return unique_combinations
 
@@ -278,6 +277,82 @@ def detect_nullability_from_sample(column_index: int, sample_rows: list[tuple]) 
         if row[column_index] is None:
             return True
     return False
+
+
+def _process_column(
+    idx: int,
+    col: tuple,
+    grain_components: list[str],
+    sample_rows: list[tuple],
+) -> tuple[Concept, ColumnAssignment, str | None]:
+    """Process a single column and create its Concept and ColumnAssignment.
+
+    Args:
+        idx: Column index
+        col: Column metadata tuple (name, type, nullable, comment)
+        grain_components: List of grain component names
+        sample_rows: Sample data for nullability detection
+
+    Returns:
+        Tuple of (Concept, ColumnAssignment, import_path or None)
+    """
+    column_name = col[0]
+    data_type_str = col[1]
+    schema_is_nullable = col[2].upper() == "YES" if len(col) > 2 else True
+    column_comment = col[3] if len(col) > 3 else None
+
+    # Normalize to snake_case for Trilogy convention
+    concept_name = to_snake_case(column_name)
+
+    # Infer Trilogy datatype
+    trilogy_type = infer_datatype_from_sql_type(data_type_str)
+
+    # Try to detect rich type
+    trait_import, trait_type_name = detect_rich_type(concept_name, trilogy_type)
+    if trait_import and trait_type_name:
+        final_datatype : TraitDataType | DataType = TraitDataType(type=trilogy_type, traits=[trait_type_name])
+        print_info(f"Detected rich type for '{concept_name}': {trait_type_name}")
+    else:
+        final_datatype = trilogy_type
+        trait_import = None
+
+    # Determine purpose based on grain
+    if concept_name in grain_components:
+        purpose = Purpose.KEY
+    else:
+        purpose = Purpose.PROPERTY
+
+    # Determine nullability: check sample data first, fall back to schema
+    if sample_rows:
+        has_nulls = detect_nullability_from_sample(idx, sample_rows)
+    else:
+        has_nulls = schema_is_nullable
+
+    # Get description from column comment if available
+    description = column_comment if column_comment and column_comment.strip() else None
+
+    # Create concept metadata if we have a description
+    metadata = Metadata()
+    if description:
+        metadata = Metadata(description=description)
+
+    # Create concept
+    modifiers = [Modifier.NULLABLE] if has_nulls else []
+
+    concept = Concept(
+        name=concept_name,
+        datatype=final_datatype,
+        purpose=purpose,
+        modifiers=modifiers,
+        metadata=metadata,
+    )
+
+    # Create column assignment
+    column_assignment = ColumnAssignment(
+        alias=column_name, concept=concept.reference, modifiers=modifiers
+    )
+
+    return concept, column_assignment, trait_import
 
 
 def create_datasource_from_table(
@@ -354,66 +429,13 @@ def create_datasource_from_table(
     concepts: list[Concept] = []
 
     for idx, col in enumerate(columns):
-        column_name = col[0]
-        data_type_str = col[1]
-        schema_is_nullable = col[2].upper() == "YES" if len(col) > 2 else True
-        # Column comment is the 4th element (index 3) if present
-        column_comment = col[3] if len(col) > 3 else None
-
-        # Normalize to snake_case for Trilogy convention
-        concept_name = to_snake_case(column_name)
-
-        # Infer Trilogy datatype
-        trilogy_type = infer_datatype_from_sql_type(data_type_str)
-
-        # Try to detect rich type
-        rich_import, rich_type_name = detect_rich_type(concept_name, trilogy_type)
-        if rich_import and rich_type_name:
-            # Use trait datatype for rich types
-            final_datatype = TraitDataType(type=trilogy_type, traits=[rich_type_name])
-            required_imports.add(rich_import)
-            print_info(f"Detected rich type for '{concept_name}': {rich_type_name}")
-        else:
-            final_datatype = trilogy_type
-
-        # Determine purpose based on grain
-        if concept_name in grain_components:
-            purpose = Purpose.KEY
-        else:
-            purpose = Purpose.PROPERTY
-
-        # Determine nullability: check sample data first, fall back to schema
-        if sample_rows:
-            has_nulls = detect_nullability_from_sample(idx, sample_rows)
-        else:
-            has_nulls = schema_is_nullable
-
-        # Get description from column comment if available
-        description = column_comment if column_comment and column_comment.strip() else None
-
-        # Create concept metadata if we have a description
-        metadata = None
-        if description:
-            metadata = Metadata(description=description)
-
-        # Create concept
-        modifiers = [Modifier.NULLABLE] if has_nulls else []
-
-        concept = Concept(
-            name=concept_name,
-            datatype=final_datatype,
-            purpose=purpose,
-            modifiers=modifiers,
-            metadata=metadata,
+        concept, column_assignment, rich_import = _process_column(
+            idx, col, grain_components, sample_rows
         )
         concepts.append(concept)
-
-        # Create column assignment
-        # Use original column_name as alias, concept_name as the concept reference
-        column_assignment = ColumnAssignment(
-            alias=column_name, concept=concept.reference, modifiers=modifiers
-        )
         column_assignments.append(column_assignment)
+        if rich_import:
+            required_imports.add(rich_import)
 
     # Create grain
     grain = Grain(components=set(grain_components)) if grain_components else Grain()
@@ -557,21 +579,16 @@ def ingest(
 
             # Add imports for rich types if needed
             if required_imports:
-                script_content.append(Comment(text=""))  # Blank line
                 for import_path in sorted(required_imports):
-                    # Convert path like 'std.geography' to ImportStatement
-                    # The input_path is what the user types (std.geography)
-                    # The path is the actual file path
-                    from pathlib import Path as PathlibPath2
+                    # This doesn't matter, stdlib imports are resolved automatically from memory
                     file_path = import_path.replace(".", "/")
                     script_content.append(
                         ImportStatement(
                             input_path=import_path,
                             alias="",  # No alias, direct import
-                            path=PathlibPath2(file_path)
+                            path=PathlibPath(file_path),
                         )
                     )
-                script_content.append(Comment(text=""))  # Blank line
 
             # Add concept declarations
             for concept in concepts:

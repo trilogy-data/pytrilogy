@@ -1228,7 +1228,9 @@ def test_column_assignment_shorthand():
         modifiers=[Modifier.NULLABLE],
     )
     rendered = Renderer().to_string(assignment_with_modifier)
-    assert rendered == "user_id: ?user_id", f"Expected 'user_id: ?user_id', got '{rendered}'"
+    assert (
+        rendered == "user_id: ?user_id"
+    ), f"Expected 'user_id: ?user_id', got '{rendered}'"
 
     # Test full syntax: when alias differs from concept
     assignment_different = ColumnAssignment(
@@ -1259,7 +1261,9 @@ def test_column_assignment_in_datasource():
         name="users",
         columns=[
             ColumnAssignment(alias="user_id", concept=user_id.reference, modifiers=[]),
-            ColumnAssignment(alias="user_name", concept=user_name.reference, modifiers=[]),
+            ColumnAssignment(
+                alias="user_name", concept=user_name.reference, modifiers=[]
+            ),
             ColumnAssignment(alias="id_copy", concept=user_id.reference, modifiers=[]),
         ],
         address="dim_users",
