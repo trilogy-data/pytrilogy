@@ -385,9 +385,22 @@ class Renderer:
             )
         else:
             modifiers = ""
+
+        # Get concept string representation
+        concept_str = self.to_string(arg.concept)
+
+        # Get alias string representation
         if isinstance(arg.alias, str):
-            return f"{arg.alias}: {modifiers}{self.to_string(arg.concept)}"
-        return f"{self.to_string(arg.alias)}: {modifiers}{self.to_string(arg.concept)}"
+            alias_str = arg.alias
+        else:
+            alias_str = self.to_string(arg.alias)
+
+        # If alias matches concept string and no modifiers, use shorthand
+        if alias_str == concept_str and not modifiers:
+            return alias_str
+
+        # Otherwise use full syntax
+        return f"{alias_str}: {modifiers}{concept_str}"
 
     @to_string.register
     def _(self, arg: "RawColumnExpr"):

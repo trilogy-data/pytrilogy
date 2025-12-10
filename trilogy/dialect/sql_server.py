@@ -93,7 +93,8 @@ class SqlServerDialect(BaseDialect):
         SELECT
             column_name,
             data_type,
-            is_nullable
+            is_nullable,
+            '' as column_comment
         FROM information_schema.columns
         WHERE table_name = '{table_name}'
         AND table_schema = '{schema}'

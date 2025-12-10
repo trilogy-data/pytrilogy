@@ -99,7 +99,8 @@ class SnowflakeDialect(BaseDialect):
         SELECT
             column_name,
             data_type,
-            is_nullable
+            is_nullable,
+            comment as column_comment
         FROM information_schema.columns
         WHERE table_name = '{table_name_upper}'
         """

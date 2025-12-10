@@ -438,13 +438,17 @@ class BaseDialect:
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[tuple]:
-        """Returns a list of tuples: (column_name, data_type, is_nullable)."""
+        """Returns a list of tuples: (column_name, data_type, is_nullable, column_comment).
+
+        Note: column_comment may be NULL/empty if not supported by the database.
+        """
 
         column_query = f"""
         SELECT
             column_name,
             data_type,
-            is_nullable
+            is_nullable,
+            column_comment
         FROM information_schema.columns
         WHERE table_name = '{table_name}'
         """

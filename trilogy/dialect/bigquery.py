@@ -222,7 +222,8 @@ class BigqueryDialect(BaseDialect):
         SELECT
             column_name,
             data_type,
-            is_nullable
+            is_nullable,
+            '' as column_comment
         FROM `{schema}.INFORMATION_SCHEMA.COLUMNS`
         WHERE table_name = '{table_name}'
         ORDER BY ordinal_position

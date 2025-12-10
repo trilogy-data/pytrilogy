@@ -1,17 +1,21 @@
 # Datasource ingested from world_capitals
-# Generated on 2025-12-09 09:32:52.583251
-key country string;
+# Generated on 2025-12-09 20:40:47.091617
+
+import std.geography;
+
+
+key country string::country;
 property capital string;
 property population int;
-property latitude float;
-property longitude float;
+property latitude float::latitude;
+property longitude float::longitude;
 
 datasource world_capitals (
-    country: country,
-    capital: capital,
-    population: population,
-    latitude: latitude,
-    longitude: longitude
+    country,
+    capital,
+    population,
+    latitude,
+    longitude
 )
 grain (country)
 address world_capitals;

@@ -1,14 +1,22 @@
 """Ingest command for Trilogy CLI - bootstraps datasources from warehouse tables."""
 
+import re
 from datetime import datetime
 from pathlib import Path as PathlibPath
 
 from click import UNPROCESSED, Path, argument, option, pass_context
 from click.exceptions import Exit
 
-from trilogy.authoring import Address, Comment, ConceptDeclarationStatement, DataType
+from trilogy.authoring import (
+    Address,
+    Comment,
+    ConceptDeclarationStatement,
+    DataType,
+    ImportStatement,
+)
 from trilogy.core.enums import Modifier, Purpose
-from trilogy.core.models.author import Concept, Grain
+from trilogy.core.models.author import Concept, Grain, Metadata
+from trilogy.core.models.core import TraitDataType
 from trilogy.core.models.datasource import ColumnAssignment, Datasource
 from trilogy.dialect.enums import Dialects
 from trilogy.executor import Executor
@@ -19,6 +27,132 @@ from trilogy.scripts.common import (
     handle_execution_exception,
 )
 from trilogy.scripts.display import print_error, print_info, print_success
+
+
+def to_snake_case(name: str) -> str:
+    """Convert a string to snake_case.
+
+    Handles CamelCase, PascalCase, and names with spaces/special chars.
+    """
+    # Handle spaces and special characters first
+    name = re.sub(r'[^\w\s]', '_', name)
+    name = re.sub(r'\s+', '_', name)
+
+    # Insert underscores before uppercase letters (for CamelCase)
+    name = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
+    name = re.sub('([a-z0-9])([A-Z])', r'\1_\2', name)
+
+    # Convert to lowercase and remove duplicate underscores
+    name = name.lower()
+    name = re.sub(r'_+', '_', name)
+
+    # Remove leading/trailing underscores
+    return name.strip('_')
+
+
+# Rich type detection mappings
+RICH_TYPE_PATTERNS = {
+    'geography': {
+        'latitude': {
+            'patterns': [r'(?:^|_)lat(?:$|_)', r'(?:^|_)latitude(?:$|_)'],
+            'import': 'std.geography',
+            'type_name': 'latitude',
+            'base_type': DataType.FLOAT,
+        },
+        'longitude': {
+            'patterns': [r'(?:^|_)lon(?:$|_)', r'(?:^|_)lng(?:$|_)', r'(?:^|_)long(?:$|_)', r'(?:^|_)longitude(?:$|_)'],
+            'import': 'std.geography',
+            'type_name': 'longitude',
+            'base_type': DataType.FLOAT,
+        },
+        'city': {
+            'patterns': [r'(?:^|_)city(?:$|_)'],
+            'import': 'std.geography',
+            'type_name': 'city',
+            'base_type': DataType.STRING,
+        },
+        'country': {
+            'patterns': [r'(?:^|_)country(?:$|_)'],
+            'import': 'std.geography',
+            'type_name': 'country',
+            'base_type': DataType.STRING,
+        },
+        'country_code': {
+            'patterns': [r'country_code', r'countrycode'],
+            'import': 'std.geography',
+            'type_name': 'country_code',
+            'base_type': DataType.STRING,
+        },
+        'us_state': {
+            'patterns': [r'(?:^|_)state(?:$|_)', r'us_state'],
+            'import': 'std.geography',
+            'type_name': 'us_state',
+            'base_type': DataType.STRING,
+        },
+        'us_zip_code': {
+            'patterns': [r'(?:^|_)zip(?:$|_)', r'zipcode', r'zip_code', r'postal_code'],
+            'import': 'std.geography',
+            'type_name': 'us_zip_code',
+            'base_type': DataType.STRING,
+        },
+    },
+    'net': {
+        'email_address': {
+            'patterns': [r'(?:^|_)email(?:$|_)', r'email_address'],
+            'import': 'std.net',
+            'type_name': 'email_address',
+            'base_type': DataType.STRING,
+        },
+        'url': {
+            'patterns': [r'(?:^|_)url(?:$|_)', r'(?:^|_)website(?:$|_)'],
+            'import': 'std.net',
+            'type_name': 'url',
+            'base_type': DataType.STRING,
+        },
+        'ipv4_address': {
+            'patterns': [r'(?:^|_)ip(?:$|_)', r'(?:^|_)ipv4(?:$|_)', r'ip_address'],
+            'import': 'std.net',
+            'type_name': 'ipv4_address',
+            'base_type': DataType.STRING,
+        },
+    },
+}
+
+
+def detect_rich_type(column_name: str, base_datatype: DataType) -> tuple[str | None, str | None]:
+    """Detect if a column name matches a rich type pattern.
+
+    Returns: (import_path, type_name) or (None, None) if no match
+
+    Note: When multiple patterns match, the one with the longest matched
+    string is preferred to ensure more specific matches win.
+    """
+    column_lower = column_name.lower()
+
+    # Collect all matches and sort by matched string length (longest first) to prefer more specific matches
+    matches = []
+
+    for category, types in RICH_TYPE_PATTERNS.items():
+        for type_name, config in types.items():
+            # Only consider if base types match
+            if config['base_type'] != base_datatype:
+                continue
+
+            # Check if any pattern matches
+            for pattern in config['patterns']:
+                match = re.search(pattern, column_lower)
+                if match:
+                    # Store match with the length of the matched string for sorting
+                    matched_length = len(match.group())
+                    matches.append((matched_length, config['import'], config['type_name']))
+                    break  # Only need one match per type
+
+    # Return the most specific match (longest matched string)
+    if matches:
+        matches.sort(reverse=True)  # Sort by matched string length descending
+        return matches[0][1], matches[0][2]
+
+    return None, None
 
 
 def infer_datatype_from_sql_type(sql_type: str) -> DataType:
@@ -148,8 +282,11 @@ def detect_nullability_from_sample(column_index: int, sample_rows: list[tuple]) 
 
 def create_datasource_from_table(
     exec: Executor, table_name: str, schema: str | None = None
-) -> tuple[Datasource, list[Concept]]:
-    """Create a Datasource object from a warehouse table."""
+) -> tuple[Datasource, list[Concept], set[str]]:
+    """Create a Datasource object from a warehouse table.
+
+    Returns: (datasource, concepts, required_imports)
+    """
     # Get the dialect generator (BaseDialect instance) from the executor
     dialect = exec.generator
 
@@ -197,17 +334,20 @@ def create_datasource_from_table(
         if suggested_keys:
             print_info(f"Detected potential unique key combinations: {suggested_keys}")
 
-    # Determine grain: prefer DB PKs, fall back to detected keys
+    # Normalize grain components to snake_case
     if db_primary_keys:
-        grain_components = db_primary_keys
+        grain_components = [to_snake_case(pk) for pk in db_primary_keys]
         print_info(f"Using database primary keys as grain: {grain_components}")
     elif suggested_keys:
         # Use the smallest unique key combination
-        grain_components = suggested_keys[0]
+        grain_components = [to_snake_case(key) for key in suggested_keys[0]]
         print_info(f"Using detected unique key as grain: {grain_components}")
     else:
         grain_components = []
         print_info("No unique grain detected - table may have duplicate rows")
+
+    # Track required imports for rich types
+    required_imports: set[str] = set()
 
     # Create column assignments for each column
     column_assignments = []
@@ -217,12 +357,27 @@ def create_datasource_from_table(
         column_name = col[0]
         data_type_str = col[1]
         schema_is_nullable = col[2].upper() == "YES" if len(col) > 2 else True
+        # Column comment is the 4th element (index 3) if present
+        column_comment = col[3] if len(col) > 3 else None
+
+        # Normalize to snake_case for Trilogy convention
+        concept_name = to_snake_case(column_name)
 
         # Infer Trilogy datatype
         trilogy_type = infer_datatype_from_sql_type(data_type_str)
 
+        # Try to detect rich type
+        rich_import, rich_type_name = detect_rich_type(concept_name, trilogy_type)
+        if rich_import and rich_type_name:
+            # Use trait datatype for rich types
+            final_datatype = TraitDataType(type=trilogy_type, traits=[rich_type_name])
+            required_imports.add(rich_import)
+            print_info(f"Detected rich type for '{concept_name}': {rich_type_name}")
+        else:
+            final_datatype = trilogy_type
+
         # Determine purpose based on grain
-        if column_name in grain_components:
+        if concept_name in grain_components:
             purpose = Purpose.KEY
         else:
             purpose = Purpose.PROPERTY
@@ -233,18 +388,28 @@ def create_datasource_from_table(
         else:
             has_nulls = schema_is_nullable
 
+        # Get description from column comment if available
+        description = column_comment if column_comment and column_comment.strip() else None
+
+        # Create concept metadata if we have a description
+        metadata = None
+        if description:
+            metadata = Metadata(description=description)
+
         # Create concept
         modifiers = [Modifier.NULLABLE] if has_nulls else []
 
         concept = Concept(
-            name=column_name,
-            datatype=trilogy_type,
+            name=concept_name,
+            datatype=final_datatype,
             purpose=purpose,
             modifiers=modifiers,
+            metadata=metadata,
         )
         concepts.append(concept)
 
         # Create column assignment
+        # Use original column_name as alias, concept_name as the concept reference
         column_assignment = ColumnAssignment(
             alias=column_name, concept=concept.reference, modifiers=modifiers
         )
@@ -264,7 +429,7 @@ def create_datasource_from_table(
         address=address,
     )
 
-    return datasource, concepts
+    return datasource, concepts, required_imports
 
 
 @argument("tables", type=str)
@@ -369,7 +534,7 @@ def ingest(
         print_info(f"Processing table: {table_name}")
 
         try:
-            datasource, concepts = create_datasource_from_table(
+            datasource, concepts, required_imports = create_datasource_from_table(
                 exec, table_name, schema
             )
 
@@ -382,13 +547,31 @@ def ingest(
             # Generate Trilogy script
             output_file = output_dir / f"{datasource.name}.preql"
 
-            script_content: list[Datasource | Comment | ConceptDeclarationStatement] = (
-                []
-            )
+            script_content: list[
+                Datasource | Comment | ConceptDeclarationStatement | ImportStatement
+            ] = []
             script_content.append(
                 Comment(text=f"# Datasource ingested from {qualified_name}")
             )
             script_content.append(Comment(text=f"# Generated on {datetime.now()}"))
+
+            # Add imports for rich types if needed
+            if required_imports:
+                script_content.append(Comment(text=""))  # Blank line
+                for import_path in sorted(required_imports):
+                    # Convert path like 'std.geography' to ImportStatement
+                    # The input_path is what the user types (std.geography)
+                    # The path is the actual file path
+                    from pathlib import Path as PathlibPath2
+                    file_path = import_path.replace(".", "/")
+                    script_content.append(
+                        ImportStatement(
+                            input_path=import_path,
+                            alias="",  # No alias, direct import
+                            path=PathlibPath2(file_path)
+                        )
+                    )
+                script_content.append(Comment(text=""))  # Blank line
 
             # Add concept declarations
             for concept in concepts:

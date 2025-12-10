@@ -1202,3 +1202,76 @@ select x::float as x2, cast(x as float) as x3;
     for idx, cmd in enumerate(commands):
         rendered = Renderer(environment=env).to_string(cmd)
         assert rendered == expected[idx], rendered
+
+
+def test_column_assignment_shorthand():
+    """Test that ColumnAssignment renders with shorthand when alias matches concept."""
+    user_id = Concept(
+        name="user_id",
+        purpose=Purpose.KEY,
+        datatype=DataType.INTEGER,
+    )
+
+    # Test shorthand: when alias matches concept name and no modifiers
+    assignment_shorthand = ColumnAssignment(
+        alias="user_id",
+        concept=user_id.reference,
+        modifiers=[],
+    )
+    rendered = Renderer().to_string(assignment_shorthand)
+    assert rendered == "user_id", f"Expected 'user_id', got '{rendered}'"
+
+    # Test full syntax: when there are modifiers
+    assignment_with_modifier = ColumnAssignment(
+        alias="user_id",
+        concept=user_id.reference,
+        modifiers=[Modifier.NULLABLE],
+    )
+    rendered = Renderer().to_string(assignment_with_modifier)
+    assert rendered == "user_id: ?user_id", f"Expected 'user_id: ?user_id', got '{rendered}'"
+
+    # Test full syntax: when alias differs from concept
+    assignment_different = ColumnAssignment(
+        alias="id",
+        concept=user_id.reference,
+        modifiers=[],
+    )
+    rendered = Renderer().to_string(assignment_different)
+    assert rendered == "id: user_id", f"Expected 'id: user_id', got '{rendered}'"
+
+
+def test_column_assignment_in_datasource():
+    """Test that shorthand works correctly in a full datasource definition."""
+    user_id = Concept(
+        name="user_id",
+        purpose=Purpose.KEY,
+        datatype=DataType.INTEGER,
+    )
+
+    user_name = Concept(
+        name="user_name",
+        purpose=Purpose.PROPERTY,
+        datatype=DataType.STRING,
+    )
+
+    # Datasource with shorthand and full syntax mixed
+    ds = Datasource(
+        name="users",
+        columns=[
+            ColumnAssignment(alias="user_id", concept=user_id.reference, modifiers=[]),
+            ColumnAssignment(alias="user_name", concept=user_name.reference, modifiers=[]),
+            ColumnAssignment(alias="id_copy", concept=user_id.reference, modifiers=[]),
+        ],
+        address="dim_users",
+        grain=Grain(components=[user_id]),
+    )
+
+    rendered = Renderer().to_string(ds)
+    expected = """datasource users (
+    user_id,
+    user_name,
+    id_copy: user_id
+)
+grain (user_id)
+address dim_users;"""
+    assert rendered == expected, f"Got:\n{rendered}\n\nExpected:\n{expected}"
