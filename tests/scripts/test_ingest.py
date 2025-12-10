@@ -51,6 +51,48 @@ def test_ingest():
     assert "key country" in content.lower() or "country: country" in content.lower()
 
 
+def test_ingest_with_db_primary_key():
+    """Test that ingesting a table with a database-defined primary key uses it as the grain."""
+    path = Path(__file__).parent
+    runner = CliRunner()
+    config_dir = path / "config_directory"
+    args = [
+        "ingest",
+        "users_with_pk",
+        "--config",
+        str(config_dir / "trilogy.toml"),
+    ]
+    results = runner.invoke(
+        cli,
+        args,
+    )
+    print(args)
+    print(results.output)
+    if results.exception:
+        raise results.exception
+    assert results.exit_code == 0
+
+    # Check that the file was created in the raw directory
+    raw_dir = config_dir / "raw"
+    assert raw_dir.exists()
+
+    output_file = raw_dir / "users_with_pk.preql"
+    assert output_file.exists()
+
+    # Read and verify the content has the expected structure
+    content = output_file.read_text()
+    assert "user_id" in content
+    assert "username" in content
+    assert "email" in content
+
+    # The grain detection should identify user_id as the key based on the primary key
+    # Check for "key user_id" in the generated file
+    assert "key user_id" in content.lower()
+
+    # Verify that the output mentions using database primary keys
+    assert "Using database primary keys as grain" in results.output or "primary key" in results.output.lower()
+
+
 class TestSnakeCaseNormalization:
     """Test snake_case conversion for concept names."""
 
