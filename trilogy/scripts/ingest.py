@@ -320,10 +320,12 @@ def _process_column(
         trait_import = None
 
     # Determine purpose based on grain
-    if concept_name in grain_components:
+    if concept_name in grain_components or not grain_components:
         purpose = Purpose.KEY
+        keys = set()
     else:
         purpose = Purpose.PROPERTY
+        keys = set(grain_components)
 
     # Determine nullability: check sample data first, fall back to schema
     if sample_rows:
@@ -348,6 +350,7 @@ def _process_column(
         purpose=purpose,
         modifiers=modifiers,
         metadata=metadata,
+        keys=keys,
     )
 
     # Create column assignment

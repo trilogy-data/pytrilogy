@@ -100,6 +100,76 @@ def test_ingest_with_db_primary_key():
     )
 
 
+def test_ingest_heap_table_no_primary_keys():
+    """Test ingesting a heap table with no primary keys or unique columns.
+
+    This test verifies that tables with duplicates (heap tables) are handled correctly
+    by creating a datasource with no grain.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        setup_sql_file = tmppath / "setup.sql"
+        setup_sql_file.write_text(
+            """CREATE TABLE heap_table (
+                event_type VARCHAR,
+                event_value INTEGER,
+                timestamp TIMESTAMP
+            );
+            INSERT INTO heap_table VALUES ('click', 1, '2024-01-01 10:00:00');
+            INSERT INTO heap_table VALUES ('click', 1, '2024-01-01 10:00:00');
+            INSERT INTO heap_table VALUES ('view', 2, '2024-01-01 10:00:00');
+            INSERT INTO heap_table VALUES ('view', 2, '2024-01-01 10:00:00');"""
+        )
+
+        config_content = f"""[engine]
+dialect = "duckdb"
+
+[setup]
+sql = ["{setup_sql_file.as_posix()}"]
+"""
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(config_content)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                "heap_table",
+                "duckdb",
+                "--config",
+                str(config_file),
+                "--output",
+                str(tmppath / "raw"),
+            ],
+        )
+
+        print(result.output)
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+        output_file = tmppath / "raw" / "heap_table.preql"
+        assert output_file.exists()
+
+        content = output_file.read_text()
+        assert "event_type" in content
+        assert "event_value" in content
+        assert "timestamp" in content
+
+        # Verify no grain was detected
+        assert "No unique grain detected" in result.output
+
+        # The datasource should have no grain components
+        # All columns should be marked as keys (since there's no grain)
+        assert "key event_type" in content.lower()
+        assert "key event_value" in content.lower()
+        assert "key timestamp" in content.lower()
+
+
 def test_ingest_with_cli_dialect_override():
     """Test ingest with dialect specified in CLI, overriding config."""
     import tempfile
