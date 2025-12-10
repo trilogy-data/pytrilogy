@@ -17,6 +17,8 @@ Avoid defining functions inside functions where possible to make testing easier.
 ## Development
 
 - Always use a local venv for python. It should be in the base of the project.
+On windows: `.venv/Scripts/python.exe`
+On linux/Mac: `.venv/bin/python`
 - Always type-hint (we use mypy)
 
 After all changes are done, confirm we're good by running all of these checks:
