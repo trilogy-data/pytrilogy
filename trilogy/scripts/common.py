@@ -72,6 +72,27 @@ def merge_runtime_config(
     return dialect, parallelism
 
 
+def find_trilogy_config(start_path: PathlibPath | None = None) -> PathlibPath | None:
+    """
+    Search for trilogy.toml starting from the given path, walking up parent directories.
+
+    Args:
+        start_path: Starting directory for search. If None, uses current working directory.
+
+    Returns:
+        Path to trilogy.toml if found, None otherwise.
+    """
+    search_path = start_path if start_path else PathlibPath.cwd()
+    if not search_path.is_dir():
+        search_path = search_path.parent
+
+    for parent in [search_path] + list(search_path.parents):
+        candidate = parent / "trilogy.toml"
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def resolve_input(path: PathlibPath) -> list[PathlibPath]:
     # Directory
     if path.is_dir():
@@ -92,14 +113,7 @@ def get_runtime_config(
     if config_override:
         config_path = config_override
     else:
-        # Search for trilogy.toml in path and all parent directories
-        search_path = path if path.is_dir() else path.parent
-
-        for parent in [search_path] + list(search_path.parents):
-            candidate = parent / "trilogy.toml"
-            if candidate.exists():
-                config_path = candidate
-                break
+        config_path = find_trilogy_config(path)
 
     if not config_path:
         return RuntimeConfig(startup_trilogy=[], startup_sql=[])

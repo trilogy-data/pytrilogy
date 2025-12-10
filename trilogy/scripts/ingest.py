@@ -25,6 +25,7 @@ from trilogy.executor import Executor
 from trilogy.parsing.render import Renderer
 from trilogy.scripts.common import (
     create_executor,
+    find_trilogy_config,
     get_runtime_config,
     handle_execution_exception,
 )
@@ -367,11 +368,7 @@ def create_datasource_from_table(
 
     dialect = exec.generator
 
-    try:
-        columns = dialect.get_table_schema(exec, table_name, schema)
-    except Exception as e:
-        print_error(f"Failed to query schema for {table_name}: {e}")
-        raise
+    columns = dialect.get_table_schema(exec, table_name, schema)
 
     if not columns:
         print_error(f"No columns found for table {table_name}")
@@ -488,16 +485,9 @@ def ingest(
         config_path = PathlibPath(config)
         output_dir = config_path.parent / "raw"
     else:
-        # Try to find trilogy.toml in current or parent directories
-        current = PathlibPath.cwd()
-        config_path = None
-        for parent in [current] + list(current.parents):
-            if (parent / "trilogy.toml").exists():
-                config_path = parent / "trilogy.toml"
-                break
-
-        if config_path:
-            output_dir = config_path.parent / "raw"
+        found_config = find_trilogy_config()
+        if found_config:
+            output_dir = found_config.parent / "raw"
         else:
             output_dir = PathlibPath.cwd() / "raw"
 
