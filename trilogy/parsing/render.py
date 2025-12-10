@@ -110,6 +110,12 @@ class IndentationContext:
         )
 
 
+def safe_address(address: str) -> str:
+    if "." not in address:
+        address = f"{DEFAULT_NAMESPACE}.{address}"
+    return address
+
+
 class Renderer:
 
     def __init__(
@@ -420,12 +426,12 @@ class Renderer:
         if not concept.lineage:
             if concept.purpose == Purpose.PROPERTY and concept.keys:
                 if len(concept.keys) == 1:
-                    output = f"{concept.purpose.value} {self.to_string(ConceptRef(address=list(concept.keys)[0]))}.{namespace}{concept.name} {self.to_string(concept.datatype)};"
+                    output = f"{concept.purpose.value} {self.to_string(ConceptRef(address=safe_address(list(concept.keys)[0])))}.{namespace}{concept.name} {self.to_string(concept.datatype)};"
                 else:
                     keys = ",".join(
                         sorted(
                             list(
-                                self.to_string(ConceptRef(address=x))
+                                self.to_string(ConceptRef(address=safe_address(x)))
                                 for x in concept.keys
                             )
                         )

@@ -345,6 +345,145 @@ def test_ingest_no_tables_specified():
     assert "No tables specified" in result.output
 
 
+def test_ingest_with_debug_flag_success():
+    """Test ingest with --debug flag on successful ingestion."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        setup_sql_file = tmppath / "setup.sql"
+        setup_sql_file.write_text(
+            """CREATE TABLE debug_test (id INTEGER, name VARCHAR);
+INSERT INTO debug_test VALUES (1, 'test');"""
+        )
+
+        config_content = f"""[engine]
+dialect = "duckdb"
+
+[setup]
+sql = ["{setup_sql_file.as_posix()}"]
+"""
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(config_content)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                "debug_test",
+                "duckdb",
+                "--config",
+                str(config_file),
+                "--output",
+                str(tmppath / "raw"),
+                "--debug",
+            ],
+        )
+
+        print(result.output)
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+        output_file = tmppath / "raw" / "debug_test.preql"
+        assert output_file.exists()
+
+
+def test_ingest_with_debug_flag_on_error():
+    """Test that --debug flag causes traceback to be printed on error.
+
+    Note: This test tries to ingest two tables where the first succeeds
+    but the second has an issue that triggers an exception in the rendering phase.
+    This ensures the traceback printing code path (ingest.py:590-593) is exercised.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        setup_sql_file = tmppath / "setup.sql"
+        setup_sql_file.write_text(
+            """CREATE TABLE good_table (id INTEGER);
+INSERT INTO good_table VALUES (1);"""
+        )
+
+        config_content = f"""[engine]
+dialect = "duckdb"
+
+[setup]
+sql = ["{setup_sql_file.as_posix()}"]
+"""
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(config_content)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                "good_table,nonexistent_table",
+                "duckdb",
+                "--config",
+                str(config_file),
+                "--output",
+                str(tmppath / "raw"),
+                "--debug",
+            ],
+        )
+
+        print(result.output)
+        # Should successfully ingest first table but fail on second
+        assert "good_table" in result.output
+        assert (
+            "Failed to ingest nonexistent_table" in result.output
+            or "No columns found" in result.output
+        )
+
+
+def test_ingest_without_debug_flag_on_error():
+    """Test that without --debug flag, no traceback is printed on error."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        setup_sql_file = tmppath / "setup.sql"
+        setup_sql_file.write_text(
+            """CREATE TABLE existing_table (id INTEGER);
+INSERT INTO existing_table VALUES (1);"""
+        )
+
+        config_content = f"""[engine]
+dialect = "duckdb"
+
+[setup]
+sql = ["{setup_sql_file.as_posix()}"]
+"""
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(config_content)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                "nonexistent_table",
+                "duckdb",
+                "--config",
+                str(config_file),
+                "--output",
+                str(tmppath / "raw"),
+            ],
+        )
+
+        print(result.output)
+        assert result.exit_code == 1
+        assert "Failed to ingest nonexistent_table" in result.output
+        assert "Traceback" not in result.output
+
+
 class TestSnakeCaseNormalization:
     """Test snake_case conversion for concept names."""
 

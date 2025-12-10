@@ -282,7 +282,7 @@ def detect_nullability_from_sample(column_index: int, sample_rows: list[tuple]) 
 
 def _process_column(
     idx: int,
-    col: tuple,
+    col: tuple[str, str, str | None, str | None],
     grain_components: list[str],
     sample_rows: list[tuple],
 ) -> tuple[Concept, ColumnAssignment, str | None]:
@@ -299,7 +299,7 @@ def _process_column(
     """
     column_name = col[0]
     data_type_str = col[1]
-    schema_is_nullable = col[2].upper() == "YES" if len(col) > 2 else True
+    schema_is_nullable = col[2].upper() == "YES" if len(col) > 2 and col[2] else True
     column_comment = col[3] if len(col) > 3 else None
 
     # Normalize to snake_case for Trilogy convention
