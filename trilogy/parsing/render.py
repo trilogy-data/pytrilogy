@@ -110,6 +110,12 @@ class IndentationContext:
         )
 
 
+def safe_address(address: str) -> str:
+    if "." not in address:
+        address = f"{DEFAULT_NAMESPACE}.{address}"
+    return address
+
+
 class Renderer:
 
     def __init__(
@@ -385,9 +391,22 @@ class Renderer:
             )
         else:
             modifiers = ""
+
+        # Get concept string representation
+        concept_str = self.to_string(arg.concept)
+
+        # Get alias string representation
         if isinstance(arg.alias, str):
-            return f"{arg.alias}: {modifiers}{self.to_string(arg.concept)}"
-        return f"{self.to_string(arg.alias)}: {modifiers}{self.to_string(arg.concept)}"
+            alias_str = arg.alias
+        else:
+            alias_str = self.to_string(arg.alias)
+
+        # If alias matches concept string and no modifiers, use shorthand
+        if alias_str == concept_str and not modifiers:
+            return alias_str
+
+        # Otherwise use full syntax
+        return f"{alias_str}: {modifiers}{concept_str}"
 
     @to_string.register
     def _(self, arg: "RawColumnExpr"):
@@ -407,12 +426,12 @@ class Renderer:
         if not concept.lineage:
             if concept.purpose == Purpose.PROPERTY and concept.keys:
                 if len(concept.keys) == 1:
-                    output = f"{concept.purpose.value} {self.to_string(ConceptRef(address=list(concept.keys)[0]))}.{namespace}{concept.name} {self.to_string(concept.datatype)};"
+                    output = f"{concept.purpose.value} {self.to_string(ConceptRef(address=safe_address(list(concept.keys)[0])))}.{namespace}{concept.name} {self.to_string(concept.datatype)};"
                 else:
                     keys = ",".join(
                         sorted(
                             list(
-                                self.to_string(ConceptRef(address=x))
+                                self.to_string(ConceptRef(address=safe_address(x)))
                                 for x in concept.keys
                             )
                         )

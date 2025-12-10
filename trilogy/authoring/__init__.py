@@ -13,6 +13,7 @@ from trilogy.core.models.author import (
     AggregateWrapper,
     CaseElse,
     CaseWhen,
+    Comment,
     Comparison,
     Concept,
     ConceptRef,
@@ -73,6 +74,7 @@ __all__ = [
     # trilogy.core.enums
     "BooleanOperator",
     "ComparisonOperator",
+    "Comment",
     "FunctionClass",
     "FunctionType",
     "InfiniteFunctionArgs",

@@ -99,6 +99,12 @@ class PrestoDialect(BaseDialect):
         False  # some complex presto functions don't support aliasing
     )
 
+    def get_table_primary_keys(
+        self, executor, table_name: str, schema: str | None = None
+    ) -> list[str]:
+        """Presto/Trino don't enforce PKs; rely on data-driven grain detection."""
+        return []
+
 
 class TrinoDialect(PrestoDialect):
     pass

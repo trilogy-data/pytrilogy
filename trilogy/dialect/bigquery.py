@@ -190,6 +190,22 @@ END;
 MAX_IDENTIFIER_LENGTH = 50
 
 
+def parse_bigquery_table_name(
+    table_name: str, schema: str | None = None
+) -> tuple[str, str | None]:
+    """Parse BigQuery table names supporting project.dataset.table format."""
+    if "." in table_name and not schema:
+        parts = table_name.split(".")
+        if len(parts) == 2:
+            schema = parts[0]
+            table_name = parts[1]
+        elif len(parts) == 3:
+            # project.dataset.table format
+            schema = f"{parts[0]}.{parts[1]}"
+            table_name = parts[2]
+    return table_name, schema
+
+
 class BigqueryDialect(BaseDialect):
     WINDOW_FUNCTION_MAP = {**BaseDialect.WINDOW_FUNCTION_MAP, **WINDOW_FUNCTION_MAP}
     FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
@@ -202,6 +218,42 @@ class BigqueryDialect(BaseDialect):
     CREATE_TABLE_SQL_TEMPLATE = BQ_CREATE_TABLE_SQL_TEMPLATE
     UNNEST_MODE = UnnestMode.CROSS_JOIN_UNNEST
     DATATYPE_MAP = DATATYPE_MAP
+
+    def get_table_schema(
+        self, executor, table_name: str, schema: str | None = None
+    ) -> list[tuple]:
+        """BigQuery uses dataset instead of schema and supports project.dataset.table format."""
+        table_name, schema = parse_bigquery_table_name(table_name, schema)
+
+        column_query = f"""
+        SELECT
+            column_name,
+            data_type,
+            is_nullable,
+            '' as column_comment
+        FROM `{schema}.INFORMATION_SCHEMA.COLUMNS`
+        WHERE table_name = '{table_name}'
+        ORDER BY ordinal_position
+        """
+
+        rows = executor.execute_raw_sql(column_query).fetchall()
+        return rows
+
+    def get_table_primary_keys(
+        self, executor, table_name: str, schema: str | None = None
+    ) -> list[str]:
+        """BigQuery doesn't enforce primary keys; rely on data-driven grain detection."""
+        table_name, schema = parse_bigquery_table_name(table_name, schema)
+
+        pk_query = f"""
+        SELECT column_name
+        FROM `{schema}.INFORMATION_SCHEMA.KEY_COLUMN_USAGE`
+        WHERE table_name = '{table_name}'
+        AND constraint_name LIKE '%PRIMARY%'
+        """
+
+        rows = executor.execute_raw_sql(pk_query).fetchall()
+        return [row[0] for row in rows]
 
     def render_array_unnest(
         self,

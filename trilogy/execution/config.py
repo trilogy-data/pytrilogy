@@ -67,8 +67,8 @@ def load_config_file(path: Path) -> RuntimeConfig:
         engine_config = None
     setup: dict = config_data.get("setup", {})
     return RuntimeConfig(
-        startup_trilogy=[Path(p) for p in setup.get("trilogy", [])],
-        startup_sql=[Path(p) for p in setup.get("sql", [])],
+        startup_trilogy=[path.parent / p for p in setup.get("trilogy", [])],
+        startup_sql=[path.parent / p for p in setup.get("sql", [])],
         parallelism=config_data.get("parallelism", DEFAULT_PARALLELISM),
         engine_dialect=engine,
         engine_config=engine_config,

@@ -1839,7 +1839,7 @@ key x string; # guessing at type
 key y int;
 
 datasource dim_y (
-    y: y
+    y
 )
 grain (y)
 query '''

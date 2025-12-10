@@ -82,6 +82,51 @@ class SqlServerDialect(BaseDialect):
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = TSQL_TEMPLATE
 
+    def get_table_schema(
+        self, executor, table_name: str, schema: str | None = None
+    ) -> list[tuple]:
+        """Defaults to 'dbo' schema if none specified."""
+        if not schema:
+            schema = "dbo"
+
+        column_query = f"""
+        SELECT
+            column_name,
+            data_type,
+            is_nullable,
+            '' as column_comment
+        FROM information_schema.columns
+        WHERE table_name = '{table_name}'
+        AND table_schema = '{schema}'
+        ORDER BY ordinal_position
+        """
+
+        rows = executor.execute_raw_sql(column_query).fetchall()
+        return rows
+
+    def get_table_primary_keys(
+        self, executor, table_name: str, schema: str | None = None
+    ) -> list[str]:
+        """Uses sys catalog views for more reliable constraint information."""
+        if not schema:
+            schema = "dbo"
+
+        pk_query = f"""
+        SELECT c.name
+        FROM sys.indexes i
+        INNER JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+        INNER JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+        INNER JOIN sys.tables t ON i.object_id = t.object_id
+        INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
+        WHERE i.is_primary_key = 1
+        AND t.name = '{table_name}'
+        AND s.name = '{schema}'
+        ORDER BY ic.key_ordinal
+        """
+
+        rows = executor.execute_raw_sql(pk_query).fetchall()
+        return [row[0] for row in rows]
+
     def compile_statement(self, query: PROCESSED_STATEMENT_TYPES) -> str:
         base = super().compile_statement(query)
         if isinstance(query, (ProcessedQuery, ProcessedQueryPersist)):

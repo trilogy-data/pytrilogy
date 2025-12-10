@@ -7,7 +7,9 @@ import pytest
 from click.exceptions import Exit
 from click.testing import CliRunner
 
-from trilogy.scripts.trilogy import cli, handle_execution_exception, set_rich_mode
+from trilogy.scripts.common import handle_execution_exception
+from trilogy.scripts.display import set_rich_mode
+from trilogy.scripts.trilogy import cli
 
 RICH_MODES = [False]
 

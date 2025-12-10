@@ -88,3 +88,42 @@ class SnowflakeDialect(BaseDialect):
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = SNOWFLAKE_SQL_TEMPLATE
     UNNEST_MODE = UnnestMode.SNOWFLAKE
+
+    def get_table_schema(
+        self, executor, table_name: str, schema: str | None = None
+    ) -> list[tuple]:
+        """Snowflake requires uppercase identifiers unless quoted."""
+        table_name_upper = table_name.upper()
+
+        column_query = f"""
+        SELECT
+            column_name,
+            data_type,
+            is_nullable,
+            comment as column_comment
+        FROM information_schema.columns
+        WHERE table_name = '{table_name_upper}'
+        """
+        if schema:
+            schema_upper = schema.upper()
+            column_query += f" AND table_schema = '{schema_upper}'"
+        column_query += " ORDER BY ordinal_position"
+
+        rows = executor.execute_raw_sql(column_query).fetchall()
+        return rows
+
+    def get_table_primary_keys(
+        self, executor, table_name: str, schema: str | None = None
+    ) -> list[str]:
+        """Uses SHOW PRIMARY KEYS; note Snowflake PKs are not enforced."""
+        table_name_upper = table_name.upper()
+
+        # Use SHOW PRIMARY KEYS command (column_name is at index 4)
+        if schema:
+            schema_upper = schema.upper()
+            pk_query = f"SHOW PRIMARY KEYS IN {schema_upper}.{table_name_upper}"
+        else:
+            pk_query = f"SHOW PRIMARY KEYS IN {table_name_upper}"
+
+        rows = executor.execute_raw_sql(pk_query).fetchall()
+        return [row[4] for row in rows] if rows else []

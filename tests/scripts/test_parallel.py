@@ -624,6 +624,19 @@ class TestExecutionResult:
 
 
 class TestIntegration:
+    def test_get_execution_plan_single_file(self, tmp_path: Path) -> None:
+        """Test get_execution_plan with a single file."""
+        from trilogy.scripts.parallel_execution import ParallelExecutor
+
+        test_file = tmp_path / "test.sql"
+        test_file.write_text("SELECT 1;")
+
+        parallel_exec = ParallelExecutor()
+        execution_plan = parallel_exec.get_execution_plan([test_file])
+
+        assert execution_plan.number_of_nodes() == 1
+        assert execution_plan.number_of_edges() == 0
+
     def test_full_linear_execution_success(
         self,
         linear_graph: nx.DiGraph,

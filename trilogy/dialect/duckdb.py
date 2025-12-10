@@ -175,3 +175,57 @@ class DuckDBDialect(BaseDialect):
     SQL_TEMPLATE = DUCKDB_TEMPLATE
     UNNEST_MODE = UnnestMode.DIRECT
     NULL_WRAPPER = staticmethod(null_wrapper)
+
+    def get_table_schema(
+        self, executor, table_name: str, schema: str | None = None
+    ) -> list[tuple]:
+        """Returns a list of tuples: (column_name, data_type, is_nullable, column_comment)."""
+        column_query = """
+        SELECT
+            column_name,
+            data_type,
+            is_nullable,
+            column_comment
+        FROM information_schema.columns
+        WHERE table_name = ?
+        """
+        params = [table_name]
+
+        if schema:
+            column_query += " AND table_schema = ?"
+            params.append(schema)
+
+        column_query += " ORDER BY ordinal_position"
+
+        # DuckDB supports parameterized queries
+        rows = executor.execute_raw_sql(
+            column_query.replace("?", "'{}'").format(*params)
+        ).fetchall()
+        return rows
+
+    def get_table_primary_keys(
+        self, executor, table_name: str, schema: str | None = None
+    ) -> list[str]:
+        """Get primary key columns by joining key_column_usage with table_constraints."""
+        pk_query = """
+        SELECT kcu.column_name
+        FROM information_schema.key_column_usage kcu
+        JOIN information_schema.table_constraints tc
+            ON kcu.constraint_name = tc.constraint_name
+            AND kcu.table_name = tc.table_name
+        WHERE kcu.table_name = '{}'
+            AND tc.constraint_type = 'PRIMARY KEY'
+        """.format(
+            table_name
+        )
+
+        if schema:
+            pk_query += " AND kcu.table_schema = '{}'".format(schema)
+
+        pk_query += " ORDER BY kcu.ordinal_position"
+
+        rows = executor.execute_raw_sql(pk_query).fetchall()
+        if rows:
+            return [row[0] for row in rows]
+
+        return []
