@@ -2,6 +2,7 @@
 
 import re
 from datetime import datetime
+from itertools import combinations
 from pathlib import Path as PathlibPath
 from typing import Any
 
@@ -28,7 +29,6 @@ from trilogy.scripts.common import (
     handle_execution_exception,
 )
 from trilogy.scripts.display import print_error, print_info, print_success
-from itertools import combinations
 
 
 def to_snake_case(name: str) -> str:
