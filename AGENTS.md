@@ -10,9 +10,13 @@ Primarily python, with some rust in performance critical paths.
 
 Prefer minimal, concise code and small functions. Keep comments concise and targeted at otherwise non-intuitive code.
 
+Avoid comments in tests unless they substantially add code.
+
+Avoid defining functions inside functions where possible to make testing easier.
+
 ## Development
 
-- Always use a local venv.
+- Always use a local venv for python. It should be in the base of the project.
 - Always type-hint (we use mypy)
 
 After all changes are done, confirm we're good by running all of these checks:

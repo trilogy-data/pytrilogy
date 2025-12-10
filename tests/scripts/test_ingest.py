@@ -52,7 +52,11 @@ def test_ingest():
 
 
 def test_ingest_with_db_primary_key():
-    """Test that ingesting a table with a database-defined primary key uses it as the grain."""
+    """Test that ingesting a table with a database-defined primary key uses it as the grain.
+
+    This test verifies that the get_table_primary_keys method correctly detects primary keys
+    from the database schema and uses them as the grain for the ingested table.
+    """
     path = Path(__file__).parent
     runner = CliRunner()
     config_dir = path / "config_directory"
@@ -86,11 +90,14 @@ def test_ingest_with_db_primary_key():
     assert "email" in content
 
     # The grain detection should identify user_id as the key based on the primary key
-    # Check for "key user_id" in the generated file
     assert "key user_id" in content.lower()
 
-    # Verify that the output mentions using database primary keys
-    assert "Using database primary keys as grain" in results.output or "primary key" in results.output.lower()
+    # MUST verify that database primary key detection worked
+    # This is the critical assertion - we should not fall back to sample data detection
+    assert "Using database primary keys as grain" in results.output, (
+        "Primary key detection failed! Expected 'Using database primary keys as grain' "
+        f"in output, but got: {results.output}"
+    )
 
 
 class TestSnakeCaseNormalization:

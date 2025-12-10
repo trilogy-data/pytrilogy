@@ -429,13 +429,10 @@ def create_datasource_from_table(
         if rich_import:
             required_imports.add(rich_import)
 
-    # Create grain
     grain = Grain(components=set(grain_components)) if grain_components else Grain()
 
-    # Build address clause
     address = Address(location=qualified_name, quoted=True)
 
-    # Create datasource
     datasource = Datasource(
         name=table_name.replace(".", "_"),
         grain=grain,

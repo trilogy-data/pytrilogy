@@ -206,19 +206,23 @@ class DuckDBDialect(BaseDialect):
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[str]:
-        """DuckDB doesn't always populate key_column_usage reliably."""
+        """Get primary key columns by joining key_column_usage with table_constraints."""
         pk_query = """
-        SELECT column_name
-        FROM information_schema.key_column_usage
-        WHERE table_name = '{}'
+        SELECT kcu.column_name
+        FROM information_schema.key_column_usage kcu
+        JOIN information_schema.table_constraints tc
+            ON kcu.constraint_name = tc.constraint_name
+            AND kcu.table_name = tc.table_name
+        WHERE kcu.table_name = '{}'
+            AND tc.constraint_type = 'PRIMARY KEY'
         """.format(
             table_name
         )
 
         if schema:
-            pk_query += " AND table_schema = '{}'".format(schema)
+            pk_query += " AND kcu.table_schema = '{}'".format(schema)
 
-        pk_query += " AND constraint_name = 'PRIMARY'"
+        pk_query += " ORDER BY kcu.ordinal_position"
 
         rows = executor.execute_raw_sql(pk_query).fetchall()
         if rows:

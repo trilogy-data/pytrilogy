@@ -1,0 +1,17 @@
+# Datasource ingested from users_with_pk
+# Generated on 2025-12-10 08:18:51.627470
+import std.net;
+
+key user_id int;
+property username string;
+property email string::email_address;
+property created_at timestamp;
+
+datasource users_with_pk (
+    user_id,
+    username,
+    email,
+    created_at
+)
+grain (user_id)
+address users_with_pk;

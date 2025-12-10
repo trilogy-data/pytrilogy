@@ -443,39 +443,13 @@ class BaseDialect:
         Note: column_comment may be NULL/empty if not supported by the database.
         """
 
-        column_query = f"""
-        SELECT
-            column_name,
-            data_type,
-            is_nullable,
-            column_comment
-        FROM information_schema.columns
-        WHERE table_name = '{table_name}'
-        """
-        if schema:
-            column_query += f" AND table_schema = '{schema}'"
-        column_query += " ORDER BY ordinal_position"
-
-        rows = executor.execute_raw_sql(column_query).fetchall()
-        return rows
+        raise NotImplementedError
 
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[str]:
         """Returns a list of column names that are part of the primary key."""
-        pk_query = f"""
-        SELECT column_name
-        FROM information_schema.key_column_usage
-        WHERE table_name = '{table_name}'
-        """
-        if schema:
-            pk_query += f" AND table_schema = '{schema}'"
-        pk_query += (
-            " AND constraint_name LIKE '%primary%' OR constraint_name = 'PRIMARY'"
-        )
-
-        rows = executor.execute_raw_sql(pk_query).fetchall()
-        return [row[0] for row in rows]
+        raise NotImplementedError
 
     def get_table_sample(
         self,

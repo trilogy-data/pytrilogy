@@ -22,3 +22,15 @@ INSERT INTO world_capitals (country, capital, population, latitude, longitude) V
     ('Mexico',              'Mexico City',        9209944,  19.4326,  -99.1332),
     ('South Africa',        'Pretoria',           741651,   -25.7479,  28.2293),
     ('Egypt',               'Cairo',              9900000,  30.0444,   31.2357);
+
+CREATE TABLE users_with_pk (
+    user_id INTEGER PRIMARY KEY,
+    username TEXT NOT NULL,
+    email TEXT,
+    created_at TIMESTAMP
+);
+
+INSERT INTO users_with_pk (user_id, username, email, created_at) VALUES
+    (1, 'alice', 'alice@example.com', '2023-01-01 10:00:00'),
+    (2, 'bob', 'bob@example.com', '2023-01-02 11:00:00'),
+    (3, 'charlie', 'charlie@example.com', '2023-01-03 12:00:00');
