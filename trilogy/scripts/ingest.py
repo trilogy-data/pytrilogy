@@ -364,36 +364,26 @@ def create_datasource_from_table(
 
     Returns: (datasource, concepts, required_imports)
     """
-    # Get the dialect generator (BaseDialect instance) from the executor
+
     dialect = exec.generator
 
-    # Get table schema using dialect-specific method
     try:
         columns = dialect.get_table_schema(exec, table_name, schema)
     except Exception as e:
         print_error(f"Failed to query schema for {table_name}: {e}")
-        raise Exit(1) from e
+        raise
 
     if not columns:
         print_error(f"No columns found for table {table_name}")
         raise Exit(1)
 
-    # Get primary keys from DB (may be empty)
-    try:
-        db_primary_keys = dialect.get_table_primary_keys(exec, table_name, schema)
-    except Exception as e:
-        print_info(f"Could not fetch primary keys from metadata: {e}")
-        db_primary_keys = []
+    db_primary_keys = dialect.get_table_primary_keys(exec, table_name, schema)
 
     # Get sample data to detect grain and nullability
-    try:
-        sample_rows = dialect.get_table_sample(exec, table_name, schema)
-        print_info(
-            f"Analyzing {len(sample_rows)} sample rows for grain and nullability detection"
-        )
-    except Exception as e:
-        print_info(f"Could not fetch sample data: {e}")
-        sample_rows = []
+    sample_rows = dialect.get_table_sample(exec, table_name, schema)
+    print_info(
+        f"Analyzing {len(sample_rows)} sample rows for grain and nullability detection"
+    )
 
     # Build qualified table name
     if schema:
@@ -421,7 +411,7 @@ def create_datasource_from_table(
         print_info(f"Using detected unique key as grain: {grain_components}")
     else:
         grain_components = []
-        print_info("No unique grain detected - table may have duplicate rows")
+        print_info("No unique grain detected; datasource will have no grain.")
 
     # Track required imports for rich types
     required_imports: set[str] = set()
