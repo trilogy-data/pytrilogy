@@ -750,7 +750,7 @@ where user_id = 123 or user_id = 456;"""
     assert (
         test
         == """datasource useful_data (
-    user_id: user_id
+    user_id
 )
 grain (user_id)
 query '''SELECT * FROM test'''
@@ -827,7 +827,7 @@ address memory.date_dim;"""
     assert (
         test2
         == """datasource useful_data (
-    user_id: user_id
+    user_id
 )
 
 query '''SELECT * FROM test'''
@@ -863,7 +863,7 @@ where user_id = 123 or user_id = 456;"""
     assert (
         test2
         == """datasource useful_data (
-    user_id: user_id
+    user_id
 )
 
 query '''SELECT * FROM test'''

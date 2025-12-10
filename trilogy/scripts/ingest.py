@@ -310,7 +310,9 @@ def _process_column(
     # Try to detect rich type
     trait_import, trait_type_name = detect_rich_type(concept_name, trilogy_type)
     if trait_import and trait_type_name:
-        final_datatype : TraitDataType | DataType = TraitDataType(type=trilogy_type, traits=[trait_type_name])
+        final_datatype: TraitDataType | DataType = TraitDataType(
+            type=trilogy_type, traits=[trait_type_name]
+        )
         print_info(f"Detected rich type for '{concept_name}': {trait_type_name}")
     else:
         final_datatype = trilogy_type
