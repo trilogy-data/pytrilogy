@@ -100,6 +100,181 @@ def test_ingest_with_db_primary_key():
     )
 
 
+def test_ingest_with_cli_dialect_override():
+    """Test ingest with dialect specified in CLI, overriding config."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        setup_sql_file = tmppath / "setup.sql"
+        setup_sql_file.write_text(
+            """CREATE TABLE test_table (id INTEGER, name VARCHAR);
+INSERT INTO test_table VALUES (1, 'test');"""
+        )
+
+        config_content = f"""[engine]
+dialect = "bigquery"
+
+[setup]
+sql = ["{setup_sql_file.as_posix()}"]
+"""
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(config_content)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                "test_table",
+                "duckdb",
+                "--config",
+                str(config_file),
+                "--output",
+                str(tmppath / "raw"),
+            ],
+        )
+
+        print(result.output)
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+        output_file = tmppath / "raw" / "test_table.preql"
+        assert output_file.exists()
+
+
+def test_ingest_with_config_dialect_only():
+    """Test ingest with dialect from config file only (no CLI dialect)."""
+    path = Path(__file__).parent
+    runner = CliRunner()
+    config_dir = path / "config_directory"
+
+    result = runner.invoke(
+        cli,
+        [
+            "ingest",
+            "world_capitals",
+            "--config",
+            str(config_dir / "trilogy.toml"),
+        ],
+    )
+
+    print(result.output)
+    if result.exception:
+        raise result.exception
+    assert result.exit_code == 0
+
+    output_file = config_dir / "raw" / "world_capitals.preql"
+    assert output_file.exists()
+
+
+def test_ingest_no_dialect_specified():
+    """Test that ingest fails when no dialect is specified."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        config_content = """[engine]
+
+[setup]
+sql = []
+"""
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(config_content)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                "test_table",
+                "--config",
+                str(config_file),
+                "--output",
+                str(tmppath / "raw"),
+            ],
+        )
+
+        print(result.output)
+        assert result.exit_code == 1
+        assert "No dialect specified" in result.output
+
+
+def test_ingest_with_schema():
+    """Test ingest with schema parameter."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        setup_sql_file = tmppath / "setup.sql"
+        setup_sql_file.write_text(
+            """CREATE SCHEMA test_schema;
+CREATE TABLE test_schema.test_table (id INTEGER, name VARCHAR);
+INSERT INTO test_schema.test_table VALUES (1, 'test');"""
+        )
+
+        config_content = f"""[engine]
+dialect = "duckdb"
+
+[setup]
+sql = ["{setup_sql_file.as_posix()}"]
+"""
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(config_content)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "ingest",
+                "test_table",
+                "duckdb",
+                "--schema",
+                "test_schema",
+                "--config",
+                str(config_file),
+                "--output",
+                str(tmppath / "raw"),
+            ],
+        )
+
+        print(result.output)
+        if result.exception:
+            raise result.exception
+        assert result.exit_code == 0
+
+        output_file = tmppath / "raw" / "test_table.preql"
+        assert output_file.exists()
+
+        content = output_file.read_text()
+        assert "test_schema.test_table" in content
+
+
+def test_ingest_no_tables_specified():
+    """Test that ingest fails when no tables are specified."""
+    path = Path(__file__).parent
+    runner = CliRunner()
+    config_dir = path / "config_directory"
+
+    result = runner.invoke(
+        cli,
+        [
+            "ingest",
+            "",
+            "--config",
+            str(config_dir / "trilogy.toml"),
+        ],
+    )
+
+    print(result.output)
+    assert result.exit_code == 1
+    assert "No tables specified" in result.output
+
+
 class TestSnakeCaseNormalization:
     """Test snake_case conversion for concept names."""
 

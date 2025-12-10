@@ -472,7 +472,7 @@ def ingest(
         conn_args: Additional connection arguments
     """
     # Parse table names
-    table_list = [t.strip() for t in tables.split(",")]
+    table_list = [t.strip() for t in tables.split(",") if t.strip()]
 
     if not table_list:
         print_error("No tables specified")
