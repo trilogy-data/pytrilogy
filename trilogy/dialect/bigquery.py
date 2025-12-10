@@ -190,6 +190,22 @@ END;
 MAX_IDENTIFIER_LENGTH = 50
 
 
+def parse_bigquery_table_name(
+    table_name: str, schema: str | None = None
+) -> tuple[str, str | None]:
+    """Parse BigQuery table names supporting project.dataset.table format."""
+    if "." in table_name and not schema:
+        parts = table_name.split(".")
+        if len(parts) == 2:
+            schema = parts[0]
+            table_name = parts[1]
+        elif len(parts) == 3:
+            # project.dataset.table format
+            schema = f"{parts[0]}.{parts[1]}"
+            table_name = parts[2]
+    return table_name, schema
+
+
 class BigqueryDialect(BaseDialect):
     WINDOW_FUNCTION_MAP = {**BaseDialect.WINDOW_FUNCTION_MAP, **WINDOW_FUNCTION_MAP}
     FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
@@ -207,16 +223,7 @@ class BigqueryDialect(BaseDialect):
         self, executor, table_name: str, schema: str | None = None
     ) -> list[tuple]:
         """BigQuery uses dataset instead of schema and supports project.dataset.table format."""
-        # Split table_name if it contains dataset.table format
-        if "." in table_name and not schema:
-            parts = table_name.split(".")
-            if len(parts) == 2:
-                schema = parts[0]
-                table_name = parts[1]
-            elif len(parts) == 3:
-                # project.dataset.table format
-                schema = f"{parts[0]}.{parts[1]}"
-                table_name = parts[2]
+        table_name, schema = parse_bigquery_table_name(table_name, schema)
 
         column_query = f"""
         SELECT
@@ -236,14 +243,7 @@ class BigqueryDialect(BaseDialect):
         self, executor, table_name: str, schema: str | None = None
     ) -> list[str]:
         """BigQuery doesn't enforce primary keys; rely on data-driven grain detection."""
-        if "." in table_name and not schema:
-            parts = table_name.split(".")
-            if len(parts) == 2:
-                schema = parts[0]
-                table_name = parts[1]
-            elif len(parts) == 3:
-                schema = f"{parts[0]}.{parts[1]}"
-                table_name = parts[2]
+        table_name, schema = parse_bigquery_table_name(table_name, schema)
 
         pk_query = f"""
         SELECT column_name
