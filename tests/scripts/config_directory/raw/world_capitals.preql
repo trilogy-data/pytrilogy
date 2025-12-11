@@ -1,12 +1,12 @@
 # Datasource ingested from world_capitals
-# Generated on 2025-12-10 08:41:56.233568
+# Generated on 2025-12-11 08:39:48.526123
 import std.geography;
 
 key country string::country;
-property capital string;
-property population int;
-property latitude float::latitude;
-property longitude float::longitude;
+property country.capital string;
+property country.population int;
+property country.latitude float::latitude;
+property country.longitude float::longitude;
 
 datasource world_capitals (
     country,

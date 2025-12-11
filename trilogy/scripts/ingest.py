@@ -53,6 +53,85 @@ def to_snake_case(name: str) -> str:
     return name.strip("_")
 
 
+def find_common_prefix(names: list[str]) -> str:
+    """Find the common prefix shared by all names in a list.
+
+    The prefix is determined by finding the longest common substring
+    that ends with an underscore (or is followed by an underscore in all names).
+
+    Args:
+        names: List of names to analyze
+
+    Returns:
+        The common prefix (including trailing underscore), or empty string if none found
+    """
+    if not names or len(names) < 2:
+        return ""
+
+    # Normalize all to lowercase for comparison
+    normalized = [name.lower() for name in names]
+
+    # Start with the first name as potential prefix
+    prefix = normalized[0]
+
+    # Find common prefix across all names
+    for name in normalized[1:]:
+        # Find where they start to differ
+        i = 0
+        while i < len(prefix) and i < len(name) and prefix[i] == name[i]:
+            i += 1
+        prefix = prefix[:i]
+
+        if not prefix:
+            return ""
+
+    # Find the last underscore in the common prefix
+    last_underscore = prefix.rfind("_")
+
+    # Only consider it a valid prefix if:
+    # 1. There's an underscore
+    # 2. The prefix is at least 2 characters (excluding the underscore)
+    # 3. All names have content after the prefix
+    if last_underscore > 0:
+        candidate_prefix = prefix[: last_underscore + 1]
+        # Check that all names have content after this prefix
+        if all(len(name) > len(candidate_prefix) for name in normalized):
+            return candidate_prefix
+
+    return ""
+
+
+def strip_common_prefix(names: list[str]) -> dict[str, str]:
+    """Strip common prefix from a list of names.
+
+    Args:
+        names: List of names (e.g., column names)
+
+    Returns:
+        Dictionary mapping original names to stripped names
+    """
+    if not names:
+        return {}
+
+    common_prefix = find_common_prefix(names)
+
+    if not common_prefix:
+        # No common prefix, return names as-is
+        return {name: name for name in names}
+
+    # Strip the prefix and normalize to snake_case
+    result = {}
+    for name in names:
+        # Remove the prefix (case-insensitive)
+        if name.lower().startswith(common_prefix):
+            stripped = name[len(common_prefix) :]
+        else:
+            stripped = name
+        result[name] = stripped
+
+    return result
+
+
 # Rich type detection mappings
 RICH_TYPE_PATTERNS: dict[str, dict[str, Any]] = {
     "geography": {
@@ -285,6 +364,7 @@ def _process_column(
     col: tuple[str, str, str | None, str | None],
     grain_components: list[str],
     sample_rows: list[tuple],
+    prefix_mapping: dict[str, str] | None = None,
 ) -> tuple[Concept, ColumnAssignment, str | None]:
     """Process a single column and create its Concept and ColumnAssignment.
 
@@ -293,6 +373,7 @@ def _process_column(
         col: Column metadata tuple (name, type, nullable, comment)
         grain_components: List of grain component names
         sample_rows: Sample data for nullability detection
+        prefix_mapping: Optional mapping from original column names to prefix-stripped names
 
     Returns:
         Tuple of (Concept, ColumnAssignment, import_path or None)
@@ -302,8 +383,12 @@ def _process_column(
     schema_is_nullable = col[2].upper() == "YES" if len(col) > 2 and col[2] else True
     column_comment = col[3] if len(col) > 3 else None
 
-    # Normalize to snake_case for Trilogy convention
-    concept_name = to_snake_case(column_name)
+    # Apply prefix stripping if mapping provided
+    if prefix_mapping and column_name in prefix_mapping:
+        stripped_name = prefix_mapping[column_name]
+        concept_name = to_snake_case(stripped_name)
+    else:
+        concept_name = to_snake_case(column_name)
 
     # Infer Trilogy datatype
     trilogy_type = infer_datatype_from_sql_type(data_type_str)
@@ -394,6 +479,9 @@ def create_datasource_from_table(
     # Extract column names for grain detection
     column_names = [col[0] for col in columns]
 
+    # Detect and strip common prefix from all column names BEFORE grain detection
+    prefix_mapping = strip_common_prefix(column_names)
+
     # Detect unique key combinations from sample data
     suggested_keys = []
     if sample_rows:
@@ -401,13 +489,19 @@ def create_datasource_from_table(
         if suggested_keys:
             print_info(f"Detected potential unique key combinations: {suggested_keys}")
 
-    # Normalize grain components to snake_case
+    # Normalize grain components to snake_case and apply prefix stripping
     if db_primary_keys:
-        grain_components = [to_snake_case(pk) for pk in db_primary_keys]
+        grain_components = []
+        for pk in db_primary_keys:
+            stripped = prefix_mapping.get(pk, pk)
+            grain_components.append(to_snake_case(stripped))
         print_info(f"Using database primary keys as grain: {grain_components}")
     elif suggested_keys:
         # Use the smallest unique key combination
-        grain_components = [to_snake_case(key) for key in suggested_keys[0]]
+        grain_components = []
+        for key in suggested_keys[0]:
+            stripped = prefix_mapping.get(key, key)
+            grain_components.append(to_snake_case(stripped))
         print_info(f"Using detected unique key as grain: {grain_components}")
     else:
         grain_components = []
@@ -422,7 +516,7 @@ def create_datasource_from_table(
 
     for idx, col in enumerate(columns):
         concept, column_assignment, rich_import = _process_column(
-            idx, col, grain_components, sample_rows
+            idx, col, grain_components, sample_rows, prefix_mapping
         )
         concepts.append(concept)
         column_assignments.append(column_assignment)

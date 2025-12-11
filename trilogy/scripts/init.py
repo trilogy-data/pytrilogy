@@ -44,7 +44,7 @@ DEFAULT_CONFIG = """# Trilogy Configuration File
 # parallelism = 3
 
 
-# [setup]
+[setup]
 # Startup scripts to run before execution
 # trilogy = []
 # sql = []

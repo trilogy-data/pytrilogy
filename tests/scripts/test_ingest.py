@@ -10,7 +10,9 @@ from trilogy.scripts.ingest import (
     detect_nullability_from_sample,
     detect_rich_type,
     detect_unique_key_combinations,
+    find_common_prefix,
     infer_datatype_from_sql_type,
+    strip_common_prefix,
     to_snake_case,
 )
 from trilogy.scripts.trilogy import cli
@@ -1139,3 +1141,160 @@ class TestProcessColumn:
         # Should default to nullable when not specified
         assert Modifier.NULLABLE in concept.modifiers
         assert concept.metadata.description is None
+
+
+class TestFindCommonPrefix:
+    """Test finding common prefix in column names."""
+
+    def test_no_common_prefix(self):
+        """No common prefix should return empty string."""
+        assert find_common_prefix(["user_id", "email", "name"]) == ""
+        assert find_common_prefix(["foo", "bar", "baz"]) == ""
+
+    def test_all_columns_same_prefix(self):
+        """All columns with same prefix should return that prefix."""
+        assert (
+            find_common_prefix(["ss_sold_date_sk", "ss_sold_time_sk", "ss_item_sk"])
+            == "ss_"
+        )
+        assert find_common_prefix(["user_id", "user_name", "user_email"]) == "user_"
+
+    def test_partial_common_prefix(self):
+        """Partial common prefix should be detected."""
+        assert (
+            find_common_prefix(
+                ["store_sales_id", "store_sales_date", "store_sales_amount"]
+            )
+            == "store_sales_"
+        )
+
+    def test_empty_list(self):
+        """Empty list should return empty string."""
+        assert find_common_prefix([]) == ""
+
+    def test_single_item(self):
+        """Single item should return empty string."""
+        assert find_common_prefix(["user_id"]) == ""
+
+    def test_no_underscore_in_common_part(self):
+        """Common part without underscore should not be considered a prefix."""
+        assert find_common_prefix(["customer", "custom"]) == ""
+
+    def test_prefix_too_short(self):
+        """Prefix that would leave no content should not be used."""
+        names = ["s_", "s_"]
+        result = find_common_prefix(names)
+        # This should return empty because stripping would leave nothing
+        assert result == ""
+
+    def test_case_insensitive(self):
+        """Prefix detection should be case-insensitive."""
+        assert (
+            find_common_prefix(["SS_SOLD_DATE_SK", "ss_sold_time_sk", "SS_ITEM_SK"])
+            == "ss_"
+        )
+
+    def test_multiple_underscores(self):
+        """Should find the longest prefix ending with underscore."""
+        assert (
+            find_common_prefix(["tpc_ds_store_sales_id", "tpc_ds_store_sales_date"])
+            == "tpc_ds_store_sales_"
+        )
+
+
+class TestStripCommonPrefix:
+    """Test stripping common prefix from column names."""
+
+    def test_strip_simple_prefix(self):
+        """Should strip simple common prefix."""
+        names = ["ss_sold_date_sk", "ss_sold_time_sk", "ss_item_sk"]
+        result = strip_common_prefix(names)
+        assert result == {
+            "ss_sold_date_sk": "sold_date_sk",
+            "ss_sold_time_sk": "sold_time_sk",
+            "ss_item_sk": "item_sk",
+        }
+
+    def test_no_prefix_to_strip(self):
+        """When no common prefix, names should remain unchanged."""
+        names = ["user_id", "email", "name"]
+        result = strip_common_prefix(names)
+        assert result == {"user_id": "user_id", "email": "email", "name": "name"}
+
+    def test_empty_list(self):
+        """Empty list should return empty dict."""
+        assert strip_common_prefix([]) == {}
+
+    def test_single_item(self):
+        """Single item should remain unchanged."""
+        result = strip_common_prefix(["user_id"])
+        assert result == {"user_id": "user_id"}
+
+    def test_preserves_case_in_output(self):
+        """Should preserve original case in the stripped output."""
+        names = ["SS_SOLD_DATE_SK", "SS_SOLD_TIME_SK", "SS_ITEM_SK"]
+        result = strip_common_prefix(names)
+        assert result == {
+            "SS_SOLD_DATE_SK": "SOLD_DATE_SK",
+            "SS_SOLD_TIME_SK": "SOLD_TIME_SK",
+            "SS_ITEM_SK": "ITEM_SK",
+        }
+
+    def test_complex_prefix(self):
+        """Should handle complex multi-level prefixes."""
+        names = ["store_sales_id", "store_sales_date", "store_sales_amount"]
+        result = strip_common_prefix(names)
+        assert result == {
+            "store_sales_id": "id",
+            "store_sales_date": "date",
+            "store_sales_amount": "amount",
+        }
+
+
+class TestProcessColumnWithPrefixStripping:
+    """Test _process_column with prefix stripping."""
+
+    def test_column_with_prefix_mapping(self):
+        """Test that prefix mapping is applied to concept names."""
+        col = ("ss_sold_date_sk", "INTEGER", "NO", None)
+        grain_components = []
+        sample_rows = []
+        prefix_mapping = {"ss_sold_date_sk": "sold_date_sk"}
+
+        concept, column_assignment, rich_import = _process_column(
+            0, col, grain_components, sample_rows, prefix_mapping
+        )
+
+        # Concept name should have prefix stripped
+        assert concept.name == "sold_date_sk"
+        # Column assignment alias should preserve original name
+        assert column_assignment.alias == "ss_sold_date_sk"
+
+    def test_column_without_prefix_mapping(self):
+        """Test that columns work without prefix mapping."""
+        col = ("user_id", "INTEGER", "NO", None)
+        grain_components = []
+        sample_rows = []
+
+        concept, column_assignment, rich_import = _process_column(
+            0, col, grain_components, sample_rows
+        )
+
+        # Concept name should be normalized without stripping
+        assert concept.name == "user_id"
+        assert column_assignment.alias == "user_id"
+
+    def test_column_with_empty_prefix_mapping(self):
+        """Test column with empty prefix mapping dict."""
+        col = ("user_id", "INTEGER", "NO", None)
+        grain_components = []
+        sample_rows = []
+        prefix_mapping = {}
+
+        concept, column_assignment, rich_import = _process_column(
+            0, col, grain_components, sample_rows, prefix_mapping
+        )
+
+        # Should work normally
+        assert concept.name == "user_id"
+        assert column_assignment.alias == "user_id"
