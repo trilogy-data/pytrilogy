@@ -15,6 +15,7 @@ from trilogy.scripts.ingest import (
     strip_common_prefix,
     to_snake_case,
 )
+from trilogy.scripts.ingest_helpers.foreign_keys import parse_foreign_keys
 from trilogy.scripts.trilogy import cli
 
 
@@ -1298,3 +1299,31 @@ class TestProcessColumnWithPrefixStripping:
         # Should work normally
         assert concept.name == "user_id"
         assert column_assignment.alias == "user_id"
+
+
+def test_parse_foreign_keys():
+    """Test parsing of foreign key specifications."""
+    # Single FK
+    fk_str = "store_sales.ss_customer_sk:customer.c_customer_sk"
+    result = parse_foreign_keys(fk_str)
+    assert result == {
+        "store_sales": {"ss_customer_sk": "customer.c_customer_sk"}
+    }
+
+    # Multiple FKs
+    fk_str = "store_sales.ss_customer_sk:customer.c_customer_sk,store_sales.ss_item_sk:item.i_item_sk"
+    result = parse_foreign_keys(fk_str)
+    assert result == {
+        "store_sales": {
+            "ss_customer_sk": "customer.c_customer_sk",
+            "ss_item_sk": "item.i_item_sk",
+        }
+    }
+
+    # Empty string
+    result = parse_foreign_keys("")
+    assert result == {}
+
+    # None
+    result = parse_foreign_keys(None)
+    assert result == {}

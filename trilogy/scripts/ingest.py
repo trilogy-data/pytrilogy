@@ -30,6 +30,10 @@ from trilogy.scripts.common import (
     handle_execution_exception,
 )
 from trilogy.scripts.display import print_error, print_info, print_success
+from trilogy.scripts.ingest_helpers.foreign_keys import (
+    apply_foreign_key_references,
+    parse_foreign_keys,
+)
 
 
 def to_snake_case(name: str) -> str:
@@ -544,6 +548,11 @@ def create_datasource_from_table(
 @option(
     "--config", type=Path(exists=True), help="Path to trilogy.toml configuration file"
 )
+@option(
+    "--fks",
+    type=str,
+    help="Foreign key relationships in format: table.column:ref_table.column (comma-separated)",
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def ingest(
@@ -553,6 +562,7 @@ def ingest(
     output: str | None,
     schema: str | None,
     config,
+    fks: str | None,
     conn_args,
 ):
     """Bootstrap one or more datasources from tables in your warehouse.
@@ -566,6 +576,7 @@ def ingest(
         output: Output path for generated scripts
         schema: Schema/database to ingest from
         config: Path to trilogy.toml configuration file
+        fks: Foreign key relationships to establish
         conn_args: Additional connection arguments
     """
     # Parse table names
@@ -574,6 +585,9 @@ def ingest(
     if not table_list:
         print_error("No tables specified")
         raise Exit(1)
+
+    # Parse foreign keys
+    fk_map = parse_foreign_keys(fks) if fks else {}
 
     # Determine output directory
     if output:
@@ -627,7 +641,9 @@ def ingest(
 
     # Ingest each table
     ingested_files = []
+    ingested_data: dict[str, tuple[Datasource, list[Concept], set[str], list[Any]]] = {}
     renderer = Renderer()
+
     for table_name in table_list:
         print_info(f"Processing table: {table_name}")
 
@@ -642,9 +658,7 @@ def ingest(
             else:
                 qualified_name = table_name
 
-            # Generate Trilogy script
-            output_file = output_dir / f"{datasource.name}.preql"
-
+            # Generate Trilogy script content
             script_content: list[
                 Datasource | Comment | ConceptDeclarationStatement | ImportStatement
             ] = []
@@ -673,11 +687,13 @@ def ingest(
             # Add datasource
             script_content.append(datasource)
 
-            # Write the complete file
-            output_file.write_text(renderer.render_statement_string(script_content))
-
-            ingested_files.append(output_file)
-            print_success(f"Created {output_file}")
+            # Store for FK processing
+            ingested_data[table_name] = (
+                datasource,
+                concepts,
+                required_imports,
+                script_content,
+            )
 
         except Exception as e:
             print_error(f"Failed to ingest {table_name}: {e}")
@@ -686,6 +702,33 @@ def ingest(
 
                 print_error(traceback.format_exc())
             continue
+
+    # Write all ingested files, applying FK references where needed
+    if fk_map:
+        print_info("Processing foreign key relationships...")
+
+    for table_name, (
+        datasource,
+        concepts,
+        required_imports,
+        script_content,
+    ) in ingested_data.items():
+        output_file = output_dir / f"{datasource.name}.preql"
+
+        # Check if this table has FK relationships
+        if fk_map and table_name in fk_map:
+            column_mappings = fk_map[table_name]
+            modified_content = apply_foreign_key_references(
+                table_name, datasource, concepts, script_content, column_mappings
+            )
+            output_file.write_text(modified_content)
+            ingested_files.append(output_file)
+            print_success(f"Created {output_file} with FK references")
+        else:
+            # No FK references for this table, write as-is
+            output_file.write_text(renderer.render_statement_string(script_content))
+            ingested_files.append(output_file)
+            print_success(f"Created {output_file}")
 
     # Close executor
     exec.close()

@@ -115,6 +115,9 @@ def apply_fixes_to_statements(
     """Apply the generated fixes to the statement list."""
     output = []
 
+    # Track which concept addresses are being replaced by references
+    replaced_concept_addresses = {fix.column_address for fix in reference_fixes}
+
     for statement in statements:
         if isinstance(statement, Datasource):
             for col_fix in column_fixes:
@@ -135,6 +138,10 @@ def apply_fixes_to_statements(
                     )
 
         elif isinstance(statement, ConceptDeclarationStatement):
+            # Skip concept declarations that are being replaced by references
+            if statement.concept.address in replaced_concept_addresses:
+                continue
+
             for concept_fix in concept_fixes:
                 if statement.concept.address == concept_fix.concept_address:
                     statement.concept.datatype = concept_fix.new_type
