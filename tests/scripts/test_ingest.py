@@ -12,8 +12,8 @@ from trilogy.scripts.ingest import (
     detect_unique_key_combinations,
     find_common_prefix,
     infer_datatype_from_sql_type,
-    strip_common_prefix,
-    to_snake_case,
+    canonicalize_names,
+    canonicolize_name,
 )
 from trilogy.scripts.ingest_helpers.foreign_keys import parse_foreign_keys
 from trilogy.scripts.trilogy import cli
@@ -491,40 +491,40 @@ class TestSnakeCaseNormalization:
     """Test snake_case conversion for concept names."""
 
     def test_already_snake_case(self):
-        assert to_snake_case("user_id") == "user_id"
-        assert to_snake_case("first_name") == "first_name"
+        assert canonicolize_name("user_id") == "user_id"
+        assert canonicolize_name("first_name") == "first_name"
 
     def test_camel_case(self):
-        assert to_snake_case("userId") == "user_id"
-        assert to_snake_case("firstName") == "first_name"
-        assert to_snake_case("customerFirstName") == "customer_first_name"
+        assert canonicolize_name("userId") == "user_id"
+        assert canonicolize_name("firstName") == "first_name"
+        assert canonicolize_name("customerFirstName") == "customer_first_name"
 
     def test_pascal_case(self):
-        assert to_snake_case("UserId") == "user_id"
-        assert to_snake_case("FirstName") == "first_name"
-        assert to_snake_case("CustomerFirstName") == "customer_first_name"
+        assert canonicolize_name("UserId") == "user_id"
+        assert canonicolize_name("FirstName") == "first_name"
+        assert canonicolize_name("CustomerFirstName") == "customer_first_name"
 
     def test_with_spaces(self):
-        assert to_snake_case("User ID") == "user_id"
-        assert to_snake_case("First Name") == "first_name"
-        assert to_snake_case("Customer First Name") == "customer_first_name"
+        assert canonicolize_name("User ID") == "user_id"
+        assert canonicolize_name("First Name") == "first_name"
+        assert canonicolize_name("Customer First Name") == "customer_first_name"
 
     def test_with_special_chars(self):
-        assert to_snake_case("user-id") == "user_id"
-        assert to_snake_case("first.name") == "first_name"
-        assert to_snake_case("user@email") == "user_email"
+        assert canonicolize_name("user-id") == "user_id"
+        assert canonicolize_name("first.name") == "first_name"
+        assert canonicolize_name("user@email") == "user_email"
 
     def test_mixed_formats(self):
-        assert to_snake_case("UserID-2023") == "user_id_2023"
-        assert to_snake_case("First Name (Primary)") == "first_name_primary"
+        assert canonicolize_name("UserID-2023") == "user_id_2023"
+        assert canonicolize_name("First Name (Primary)") == "first_name_primary"
 
     def test_all_caps(self):
-        assert to_snake_case("ID") == "id"
-        assert to_snake_case("URL") == "url"
+        assert canonicolize_name("ID") == "id"
+        assert canonicolize_name("URL") == "url"
 
     def test_numbers(self):
-        assert to_snake_case("address1") == "address1"
-        assert to_snake_case("line2") == "line2"
+        assert canonicolize_name("address1") == "address1"
+        assert canonicolize_name("line2") == "line2"
 
 
 class TestRichTypeDetection:
@@ -1209,7 +1209,7 @@ class TestStripCommonPrefix:
     def test_strip_simple_prefix(self):
         """Should strip simple common prefix."""
         names = ["ss_sold_date_sk", "ss_sold_time_sk", "ss_item_sk"]
-        result = strip_common_prefix(names)
+        result = canonicalize_names(names)
         assert result == {
             "ss_sold_date_sk": "sold_date_sk",
             "ss_sold_time_sk": "sold_time_sk",
@@ -1219,22 +1219,22 @@ class TestStripCommonPrefix:
     def test_no_prefix_to_strip(self):
         """When no common prefix, names should remain unchanged."""
         names = ["user_id", "email", "name"]
-        result = strip_common_prefix(names)
+        result = canonicalize_names(names)
         assert result == {"user_id": "user_id", "email": "email", "name": "name"}
 
     def test_empty_list(self):
         """Empty list should return empty dict."""
-        assert strip_common_prefix([]) == {}
+        assert canonicalize_names([]) == {}
 
     def test_single_item(self):
         """Single item should remain unchanged."""
-        result = strip_common_prefix(["user_id"])
+        result = canonicalize_names(["user_id"])
         assert result == {"user_id": "user_id"}
 
     def test_preserves_case_in_output(self):
         """Should preserve original case in the stripped output."""
         names = ["SS_SOLD_DATE_SK", "SS_SOLD_TIME_SK", "SS_ITEM_SK"]
-        result = strip_common_prefix(names)
+        result = canonicalize_names(names)
         assert result == {
             "SS_SOLD_DATE_SK": "SOLD_DATE_SK",
             "SS_SOLD_TIME_SK": "SOLD_TIME_SK",
@@ -1244,7 +1244,7 @@ class TestStripCommonPrefix:
     def test_complex_prefix(self):
         """Should handle complex multi-level prefixes."""
         names = ["store_sales_id", "store_sales_date", "store_sales_amount"]
-        result = strip_common_prefix(names)
+        result = canonicalize_names(names)
         assert result == {
             "store_sales_id": "id",
             "store_sales_date": "date",
@@ -1306,9 +1306,7 @@ def test_parse_foreign_keys():
     # Single FK
     fk_str = "store_sales.ss_customer_sk:customer.c_customer_sk"
     result = parse_foreign_keys(fk_str)
-    assert result == {
-        "store_sales": {"ss_customer_sk": "customer.c_customer_sk"}
-    }
+    assert result == {"store_sales": {"ss_customer_sk": "customer.c_customer_sk"}}
 
     # Multiple FKs
     fk_str = "store_sales.ss_customer_sk:customer.c_customer_sk,store_sales.ss_item_sk:item.i_item_sk"

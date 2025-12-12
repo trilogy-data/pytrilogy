@@ -34,262 +34,14 @@ from trilogy.scripts.ingest_helpers.foreign_keys import (
     apply_foreign_key_references,
     parse_foreign_keys,
 )
-
-
-def to_snake_case(name: str) -> str:
-    """Convert a string to snake_case.
-
-    Handles CamelCase, PascalCase, and names with spaces/special chars.
-    """
-    # Handle spaces and special characters first
-    name = re.sub(r"[^\w\s]", "_", name)
-    name = re.sub(r"\s+", "_", name)
-
-    # Insert underscores before uppercase letters (for CamelCase)
-    name = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
-    name = re.sub("([a-z0-9])([A-Z])", r"\1_\2", name)
-
-    # Convert to lowercase and remove duplicate underscores
-    name = name.lower()
-    name = re.sub(r"_+", "_", name)
-
-    # Remove leading/trailing underscores
-    return name.strip("_")
-
-
-def find_common_prefix(names: list[str]) -> str:
-    """Find the common prefix shared by all names in a list.
-
-    The prefix is determined by finding the longest common substring
-    that ends with an underscore (or is followed by an underscore in all names).
-
-    Args:
-        names: List of names to analyze
-
-    Returns:
-        The common prefix (including trailing underscore), or empty string if none found
-    """
-    if not names or len(names) < 2:
-        return ""
-
-    # Normalize all to lowercase for comparison
-    normalized = [name.lower() for name in names]
-
-    # Start with the first name as potential prefix
-    prefix = normalized[0]
-
-    # Find common prefix across all names
-    for name in normalized[1:]:
-        # Find where they start to differ
-        i = 0
-        while i < len(prefix) and i < len(name) and prefix[i] == name[i]:
-            i += 1
-        prefix = prefix[:i]
-
-        if not prefix:
-            return ""
-
-    # Find the last underscore in the common prefix
-    last_underscore = prefix.rfind("_")
-
-    # Only consider it a valid prefix if:
-    # 1. There's an underscore
-    # 2. The prefix is at least 2 characters (excluding the underscore)
-    # 3. All names have content after the prefix
-    if last_underscore > 0:
-        candidate_prefix = prefix[: last_underscore + 1]
-        # Check that all names have content after this prefix
-        if all(len(name) > len(candidate_prefix) for name in normalized):
-            return candidate_prefix
-
-    return ""
-
-
-def strip_common_prefix(names: list[str]) -> dict[str, str]:
-    """Strip common prefix from a list of names.
-
-    Args:
-        names: List of names (e.g., column names)
-
-    Returns:
-        Dictionary mapping original names to stripped names
-    """
-    if not names:
-        return {}
-
-    common_prefix = find_common_prefix(names)
-
-    if not common_prefix:
-        # No common prefix, return names as-is
-        return {name: name for name in names}
-
-    # Strip the prefix and normalize to snake_case
-    result = {}
-    for name in names:
-        # Remove the prefix (case-insensitive)
-        if name.lower().startswith(common_prefix):
-            stripped = name[len(common_prefix) :]
-        else:
-            stripped = name
-        result[name] = stripped
-
-    return result
-
-
-# Rich type detection mappings
-RICH_TYPE_PATTERNS: dict[str, dict[str, Any]] = {
-    "geography": {
-        "latitude": {
-            "patterns": [r"(?:^|_)lat(?:$|_)", r"(?:^|_)latitude(?:$|_)"],
-            "import": "std.geography",
-            "type_name": "latitude",
-            "base_type": DataType.FLOAT,
-        },
-        "longitude": {
-            "patterns": [
-                r"(?:^|_)lon(?:$|_)",
-                r"(?:^|_)lng(?:$|_)",
-                r"(?:^|_)long(?:$|_)",
-                r"(?:^|_)longitude(?:$|_)",
-            ],
-            "import": "std.geography",
-            "type_name": "longitude",
-            "base_type": DataType.FLOAT,
-        },
-        "city": {
-            "patterns": [r"(?:^|_)city(?:$|_)"],
-            "import": "std.geography",
-            "type_name": "city",
-            "base_type": DataType.STRING,
-        },
-        "country": {
-            "patterns": [r"(?:^|_)country(?:$|_)"],
-            "import": "std.geography",
-            "type_name": "country",
-            "base_type": DataType.STRING,
-        },
-        "country_code": {
-            "patterns": [r"country_code", r"countrycode"],
-            "import": "std.geography",
-            "type_name": "country_code",
-            "base_type": DataType.STRING,
-        },
-        "us_state": {
-            "patterns": [r"(?:^|_)state(?:$|_)", r"us_state"],
-            "import": "std.geography",
-            "type_name": "us_state",
-            "base_type": DataType.STRING,
-        },
-        "us_zip_code": {
-            "patterns": [r"(?:^|_)zip(?:$|_)", r"zipcode", r"zip_code", r"postal_code"],
-            "import": "std.geography",
-            "type_name": "us_zip_code",
-            "base_type": DataType.STRING,
-        },
-    },
-    "net": {
-        "email_address": {
-            "patterns": [r"(?:^|_)email(?:$|_)", r"email_address"],
-            "import": "std.net",
-            "type_name": "email_address",
-            "base_type": DataType.STRING,
-        },
-        "url": {
-            "patterns": [r"(?:^|_)url(?:$|_)", r"(?:^|_)website(?:$|_)"],
-            "import": "std.net",
-            "type_name": "url",
-            "base_type": DataType.STRING,
-        },
-        "ipv4_address": {
-            "patterns": [r"(?:^|_)ip(?:$|_)", r"(?:^|_)ipv4(?:$|_)", r"ip_address"],
-            "import": "std.net",
-            "type_name": "ipv4_address",
-            "base_type": DataType.STRING,
-        },
-    },
-}
-
-
-def detect_rich_type(
-    column_name: str, base_datatype: DataType
-) -> tuple[str, str] | tuple[None, None]:
-    """Detect if a column name matches a rich type pattern.
-
-    Returns: (import_path, type_name) or (None, None) if no match
-
-    Note: When multiple patterns match, the one with the longest matched
-    string is preferred to ensure more specific matches win.
-    """
-    column_lower = column_name.lower()
-
-    # Collect all matches and sort by matched string length (longest first) to prefer more specific matches
-    matches = []
-
-    for category, types in RICH_TYPE_PATTERNS.items():
-        for type_name, config in types.items():
-            # Only consider if base types match
-            if config["base_type"] != base_datatype:
-                continue
-
-            # Check if any pattern matches
-            for pattern in config["patterns"]:
-                match = re.search(pattern, column_lower)
-                if match:
-                    # Store match with the length of the matched string for sorting
-                    matched_length = len(match.group())
-                    matches.append(
-                        (matched_length, config["import"], config["type_name"])
-                    )
-                    break  # Only need one match per type
-
-    # Return the most specific match (longest matched string)
-    if matches:
-        matches.sort(reverse=True)  # Sort by matched string length descending
-        return str(matches[0][1]), str(matches[0][2])
-
-    return None, None
-
-
-def infer_datatype_from_sql_type(sql_type: str) -> DataType:
-    """Infer Trilogy datatype from SQL type string."""
-    sql_type_lower = sql_type.lower()
-
-    # Integer types
-    if any(
-        t in sql_type_lower
-        for t in ["int", "integer", "smallint", "tinyint", "mediumint"]
-    ):
-        return DataType.INTEGER
-    if any(t in sql_type_lower for t in ["bigint", "long", "int64"]):
-        return DataType.BIGINT
-
-    # Numeric/decimal types
-    if any(t in sql_type_lower for t in ["numeric", "decimal", "money"]):
-        return DataType.NUMERIC
-    if any(t in sql_type_lower for t in ["float", "double", "real", "float64"]):
-        return DataType.FLOAT
-
-    # String types
-    if any(
-        t in sql_type_lower
-        for t in ["char", "varchar", "text", "string", "clob", "nchar", "nvarchar"]
-    ):
-        return DataType.STRING
-
-    # Boolean
-    if any(t in sql_type_lower for t in ["bool", "boolean", "bit"]):
-        return DataType.BOOL
-
-    # Date/Time types
-    if "timestamp" in sql_type_lower:
-        return DataType.TIMESTAMP
-    if "datetime" in sql_type_lower:
-        return DataType.DATETIME
-    if "date" in sql_type_lower:
-        return DataType.DATE
-
-    # Default to string for unknown types
-    return DataType.STRING
+from trilogy.scripts.ingest_helpers.formatting import (
+    canonicolize_name,
+    canonicalize_names,
+)
+from trilogy.scripts.ingest_helpers.typing import (
+    detect_rich_type,
+    infer_datatype_from_sql_type,
+)
 
 
 def _check_column_combination_uniqueness(
@@ -353,10 +105,6 @@ def detect_unique_key_combinations(
 
 
 def detect_nullability_from_sample(column_index: int, sample_rows: list[tuple]) -> bool:
-    """Detect if a column is nullable based on sample data.
-
-    Returns True if any NULL values are found in the sample.
-    """
     for row in sample_rows:
         if row[column_index] is None:
             return True
@@ -368,31 +116,15 @@ def _process_column(
     col: tuple[str, str, str | None, str | None],
     grain_components: list[str],
     sample_rows: list[tuple],
-    prefix_mapping: dict[str, str] | None = None,
+    concept_mapping: dict[str, str],
 ) -> tuple[Concept, ColumnAssignment, str | None]:
-    """Process a single column and create its Concept and ColumnAssignment.
 
-    Args:
-        idx: Column index
-        col: Column metadata tuple (name, type, nullable, comment)
-        grain_components: List of grain component names
-        sample_rows: Sample data for nullability detection
-        prefix_mapping: Optional mapping from original column names to prefix-stripped names
-
-    Returns:
-        Tuple of (Concept, ColumnAssignment, import_path or None)
-    """
     column_name = col[0]
     data_type_str = col[1]
     schema_is_nullable = col[2].upper() == "YES" if len(col) > 2 and col[2] else True
     column_comment = col[3] if len(col) > 3 else None
-
     # Apply prefix stripping if mapping provided
-    if prefix_mapping and column_name in prefix_mapping:
-        stripped_name = prefix_mapping[column_name]
-        concept_name = to_snake_case(stripped_name)
-    else:
-        concept_name = to_snake_case(column_name)
+    concept_name = concept_mapping[column_name]
 
     # Infer Trilogy datatype
     trilogy_type = infer_datatype_from_sql_type(data_type_str)
@@ -484,7 +216,8 @@ def create_datasource_from_table(
     column_names = [col[0] for col in columns]
 
     # Detect and strip common prefix from all column names BEFORE grain detection
-    prefix_mapping = strip_common_prefix(column_names)
+
+    column_concept_mapping = canonicalize_names(column_names)
 
     # Detect unique key combinations from sample data
     suggested_keys = []
@@ -494,22 +227,17 @@ def create_datasource_from_table(
             print_info(f"Detected potential unique key combinations: {suggested_keys}")
 
     # Normalize grain components to snake_case and apply prefix stripping
+    keys = db_primary_keys or (suggested_keys[0] if suggested_keys else [])
     if db_primary_keys:
-        grain_components = []
-        for pk in db_primary_keys:
-            stripped = prefix_mapping.get(pk, pk)
-            grain_components.append(to_snake_case(stripped))
-        print_info(f"Using database primary keys as grain: {grain_components}")
+        print_info(f"Using primary key from database as grain: {db_primary_keys}")
     elif suggested_keys:
-        # Use the smallest unique key combination
-        grain_components = []
-        for key in suggested_keys[0]:
-            stripped = prefix_mapping.get(key, key)
-            grain_components.append(to_snake_case(stripped))
-        print_info(f"Using detected unique key as grain: {grain_components}")
+        print_info(f"Using detected unique key as grain: {suggested_keys[0]}")
     else:
-        grain_components = []
-        print_info("No unique grain detected; datasource will have no grain.")
+        print_info("No primary key or unique key detected; defaulting to no grain")
+    grain_components = []
+    for key in keys:
+        stripped = column_concept_mapping.get(key, key)
+        grain_components.append(stripped)
 
     # Track required imports for rich types
     required_imports: set[str] = set()
@@ -517,17 +245,16 @@ def create_datasource_from_table(
     # Create column assignments for each column
     column_assignments = []
     concepts: list[Concept] = []
-
     for idx, col in enumerate(columns):
         concept, column_assignment, rich_import = _process_column(
-            idx, col, grain_components, sample_rows, prefix_mapping
+            idx, col, grain_components, sample_rows, column_concept_mapping
         )
         concepts.append(concept)
         column_assignments.append(column_assignment)
         if rich_import:
             required_imports.add(rich_import)
 
-    grain = Grain(components=set(grain_components)) if grain_components else Grain()
+    grain = Grain(components=grain_components) if grain_components else Grain()
 
     address = Address(location=qualified_name, quoted=True)
 
@@ -643,7 +370,7 @@ def ingest(
     ingested_files = []
     ingested_data: dict[str, tuple[Datasource, list[Concept], set[str], list[Any]]] = {}
     renderer = Renderer()
-
+    datasources = {}
     for table_name in table_list:
         print_info(f"Processing table: {table_name}")
 
@@ -651,6 +378,8 @@ def ingest(
             datasource, concepts, required_imports = create_datasource_from_table(
                 exec, table_name, schema
             )
+
+            datasources[table_name] = datasource
 
             # Build qualified table name
             if schema:
@@ -719,7 +448,7 @@ def ingest(
         if fk_map and table_name in fk_map:
             column_mappings = fk_map[table_name]
             modified_content = apply_foreign_key_references(
-                table_name, datasource, concepts, script_content, column_mappings
+                table_name, datasource, datasources, script_content, column_mappings
             )
             output_file.write_text(modified_content)
             ingested_files.append(output_file)

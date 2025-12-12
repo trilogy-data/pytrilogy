@@ -64,7 +64,7 @@ def parse_foreign_keys(fks_str: str | None) -> dict[str, dict[str, str]]:
 def apply_foreign_key_references(
     table_name: str,
     datasource: Datasource,
-    concepts: list[Concept],
+    datasources: dict[str, Datasource],
     script_content: list[
         Datasource | Comment | ConceptDeclarationStatement | ImportStatement
     ],
@@ -89,6 +89,15 @@ def apply_foreign_key_references(
     for source_column, target_ref in column_mappings.items():
         # Parse target reference: table.column
         target_table, _ = target_ref.rsplit(".", 1)
+        target_datasource = datasources.get(target_table)
+        target_concept = None
+        if not target_datasource:
+            continue
+        # Find the concept for the target column
+        for col_assign in target_datasource.columns:
+            if col_assign.alias == target_ref.rsplit(".", 1)[1]:
+                target_concept = col_assign.concept
+                break
 
         # Find the source column's concept address
         source_concept = None
@@ -107,8 +116,9 @@ def apply_foreign_key_references(
                 datasource_identifier=datasource.identifier,
                 column_address=source_concept,
                 column_alias=source_column,
-                reference_concept_address=target_ref,
-                import_alias=target_table,
+                reference_concept=target_concept.reference.with_namespace(
+                    target_table
+                ),
             )
         )
 
