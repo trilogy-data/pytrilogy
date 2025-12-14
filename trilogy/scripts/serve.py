@@ -26,7 +26,7 @@ def serve(ctx, directory: str, port: int, host: str):
     if not check_fastapi_available():
         print(
             "Error: FastAPI and uvicorn are required for the serve command.\n"
-            "Please install with: pip install trilogy[serve]",
+            "Please install with: pip install pytrilogy[serve]",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -35,7 +35,7 @@ def serve(ctx, directory: str, port: int, host: str):
     from fastapi import FastAPI, HTTPException
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import PlainTextResponse
-
+    from trilogy import __version__
     from trilogy.scripts.serve_helpers import (
         ModelImport,
         StoreIndex,
@@ -46,9 +46,11 @@ def serve(ctx, directory: str, port: int, host: str):
     )
 
     directory_path = PathlibPath(directory).resolve()
-    base_url = f"http://{host}:{port}"
+    # Use localhost instead of 0.0.0.0 in URLs so they resolve properly
+    url_host = "localhost" if host == "0.0.0.0" else host
+    base_url = f"http://{url_host}:{port}"
 
-    app = FastAPI(title="Trilogy Model Server", version="1.0.0")
+    app = FastAPI(title="Trilogy Model Server", version=__version__)
 
     app.add_middleware(
         CORSMiddleware,
