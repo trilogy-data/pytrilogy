@@ -13,11 +13,11 @@ from trilogy.scripts.ingest import (
     detect_unique_key_combinations,
     infer_datatype_from_sql_type,
 )
+from trilogy.scripts.ingest_helpers.foreign_keys import parse_foreign_keys
 from trilogy.scripts.ingest_helpers.formatting import (
     canonicolize_name,
     find_common_prefix,
 )
-from trilogy.scripts.ingest_helpers.foreign_keys import parse_foreign_keys
 from trilogy.scripts.trilogy import cli
 
 

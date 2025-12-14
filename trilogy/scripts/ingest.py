@@ -196,9 +196,6 @@ def create_datasource_from_table(
         print_error(f"No columns found for table {table_name}")
         raise Exit(1)
 
-    
-
-
     # Build qualified table name
     if schema:
         qualified_name = f"{schema}.{table_name}"
@@ -215,7 +212,6 @@ def create_datasource_from_table(
     # Detect unique key combinations from sample data
     suggested_keys = []
 
-
     # Normalize grain components to snake_case and apply prefix stripping
     db_primary_keys = dialect.get_table_primary_keys(exec, table_name, schema)
     # we always need sample rows for column detection, so fetch here to setup for later.
@@ -226,8 +222,8 @@ def create_datasource_from_table(
     else:
         # Get sample data to detect grain and nullability
         print_info(
-        f"Analyzing {len(sample_rows)} sample rows for grain and nullability detection"
-    )
+            f"Analyzing {len(sample_rows)} sample rows for grain and nullability detection"
+        )
         suggested_keys = detect_unique_key_combinations(column_names, sample_rows)
         if suggested_keys:
             print_info(f"Detected potential unique key combinations: {suggested_keys}")
@@ -235,7 +231,9 @@ def create_datasource_from_table(
             keys = suggested_keys[0]
         else:
             keys = []
-            print_info("No primary key or unique grain detected; defaulting to no grain")
+            print_info(
+                "No primary key or unique grain detected; defaulting to no grain"
+            )
     grain_components = []
     for key in keys:
         stripped = column_concept_mapping.get(key, key)
@@ -256,7 +254,7 @@ def create_datasource_from_table(
         if rich_import:
             required_imports.add(rich_import)
 
-    grain = Grain(components=grain_components) if grain_components else Grain()
+    grain = Grain(components=set(grain_components)) if grain_components else Grain()
 
     address = Address(location=qualified_name, quoted=True)
 

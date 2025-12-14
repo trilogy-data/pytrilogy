@@ -1,6 +1,7 @@
 """Tests for foreign key handling in ingest."""
 
-from trilogy.authoring import Comment, ConceptDeclarationStatement, Datasource
+from trilogy import Environment, EnvironmentConfig
+from trilogy.authoring import Comment, ConceptDeclarationStatement, Datasource, DictImportResolver, Renderer
 from trilogy.core.enums import Purpose
 from trilogy.core.models.author import Concept, Grain
 from trilogy.core.models.datasource import Address, ColumnAssignment
@@ -61,7 +62,6 @@ def test_apply_foreign_key_references():
         purpose=Purpose.KEY,
     )
 
-
     # Create test datasource
     column_assignments = [
         ColumnAssignment(
@@ -85,7 +85,14 @@ def test_apply_foreign_key_references():
         name="store_sales",
         columns=column_assignments,
         address=Address(location="store_sales", quoted=True),
-        grain=Grain(components={"item_sk", "ticket_number"}),
+        grain=Grain(components={"item_sk", "ticket_number", "customer_sk"}),
+    )
+
+    # Create a separate customer_sk concept for the customer table
+    customer_table_customer_sk_concept = Concept(
+        name="customer_sk",
+        datatype="int",
+        purpose=Purpose.KEY,
     )
 
     customer_datasource = Datasource(
@@ -93,7 +100,7 @@ def test_apply_foreign_key_references():
         columns=[
             ColumnAssignment(
                 alias="c_customer_sk",
-                concept=customer_sk_concept.reference,
+                concept=customer_table_customer_sk_concept.reference,
                 modifiers=[],
             )
         ],
@@ -101,7 +108,10 @@ def test_apply_foreign_key_references():
         grain=Grain(components={"customer_sk"}),
     )
 
-    datasources = {datasource.name: datasource, customer_datasource.name: customer_datasource}
+    datasources = {
+        datasource.name: datasource,
+        customer_datasource.name: customer_datasource,
+    }
 
     # Create script content
     script_content = [
@@ -112,8 +122,8 @@ def test_apply_foreign_key_references():
         datasource,
     ]
 
-    # Apply FK references
-    column_mappings = {"ss_customer_sk": "customer.customer_sk"}
+    # Apply FK references - use the actual column alias from customer datasource
+    column_mappings = {"ss_customer_sk": "customer.c_customer_sk"}
 
     result = apply_foreign_key_references(
         "store_sales", datasource, datasources, script_content, column_mappings
@@ -121,17 +131,39 @@ def test_apply_foreign_key_references():
 
     # Verify result
     assert "import customer as customer;" in result
-    assert "customer.c_customer_sk" in result
+    # References use concept name, not column alias
+    assert "customer.customer_sk" in result
     # Customer SK concept declaration should be removed
     assert "customer_sk" not in result or "import customer" in result
     # Other concept declarations should still be there
     assert "key item_sk int" in result
     assert "key ticket_number int" in result
+    customer_file = Renderer().render_statement_string(
+        [
+            ConceptDeclarationStatement(concept=customer_table_customer_sk_concept),
+            customer_datasource,
+        ]
+    )
+    parsed = Environment.from_string(
+        result,
+        config=EnvironmentConfig(
+            import_resolver=DictImportResolver(
+                content={
+                    "customer": customer_file,
+                }
+            )
+        ),
+    )
+    assert parsed.datasources["store_sales"].grain.components == {
+        "customer.customer_sk",
+        "local.item_sk",
+        "local.ticket_number",
+    }
 
 
 def test_apply_foreign_key_references_multiple_fks():
     """Test applying multiple FK references to a datasource."""
-    # Create test concepts
+    # Create test concepts for store_sales table
     customer_sk_concept = Concept(
         name="customer_sk",
         datatype="int",
@@ -150,9 +182,7 @@ def test_apply_foreign_key_references_multiple_fks():
         purpose=Purpose.KEY,
     )
 
-    concepts = [customer_sk_concept, store_sk_concept, item_sk_concept]
-
-    # Create test datasource
+    # Create test datasource for store_sales
     column_assignments = [
         ColumnAssignment(
             alias="ss_customer_sk",
@@ -178,6 +208,50 @@ def test_apply_foreign_key_references_multiple_fks():
         grain=Grain(components={"item_sk"}),
     )
 
+    # Create customer and store datasources for FK targets
+    customer_table_customer_sk = Concept(
+        name="customer_sk",
+        datatype="int",
+        purpose=Purpose.KEY,
+    )
+    customer_datasource = Datasource(
+        name="customer",
+        columns=[
+            ColumnAssignment(
+                alias="c_customer_sk",
+                concept=customer_table_customer_sk.reference,
+                modifiers=[],
+            )
+        ],
+        address=Address(location="customer", quoted=True),
+        grain=Grain(components={"customer_sk"}),
+    )
+
+    store_table_store_sk = Concept(
+        name="store_sk",
+        datatype="int",
+        purpose=Purpose.KEY,
+    )
+    store_datasource = Datasource(
+        name="store",
+        columns=[
+            ColumnAssignment(
+                alias="s_store_sk",
+                concept=store_table_store_sk.reference,
+                modifiers=[],
+            )
+        ],
+        address=Address(location="store", quoted=True),
+        grain=Grain(components={"store_sk"}),
+    )
+
+    # Create datasources dict with all tables
+    datasources = {
+        datasource.name: datasource,
+        customer_datasource.name: customer_datasource,
+        store_datasource.name: store_datasource,
+    }
+
     # Create script content
     script_content = [
         Comment(text="# Test datasource"),
@@ -194,20 +268,39 @@ def test_apply_foreign_key_references_multiple_fks():
     }
 
     result = apply_foreign_key_references(
-        "store_sales", datasource, concepts, script_content, column_mappings
+        "store_sales", datasource, datasources, script_content, column_mappings
     )
 
-    # Verify both imports are present
-    assert "import customer as customer;" in result
-    assert "import store as store;" in result
+    # Create import resolver with customer and store files
+    customer_file = Renderer().render_statement_string(
+        [
+            ConceptDeclarationStatement(concept=customer_table_customer_sk),
+            customer_datasource,
+        ]
+    )
+    store_file = Renderer().render_statement_string(
+        [
+            ConceptDeclarationStatement(concept=store_table_store_sk),
+            store_datasource,
+        ]
+    )
 
-    # Verify both references are updated
-    assert "customer.c_customer_sk" in result
-    assert "store.s_store_sk" in result
-
-    # Verify replaced concept declarations are removed
-    assert "customer_sk" not in result or "import customer" in result
-    assert "store_sk" not in result or "import store" in result
-
-    # Other concept declarations should still be there
-    assert "key item_sk int" in result
+    # Parse and validate
+    parsed = Environment.from_string(
+        result,
+        config=EnvironmentConfig(
+            import_resolver=DictImportResolver(
+                content={
+                    "customer": customer_file,
+                    "store": store_file,
+                }
+            )
+        ),
+    )
+    rewritten = parsed.datasources["store_sales"]
+    assert rewritten.grain.components == {
+        "local.item_sk",
+    }
+    output_addresses = {x.concept.address for x in rewritten.columns}
+    assert "customer.customer_sk" in output_addresses
+    assert "store.store_sk" in output_addresses

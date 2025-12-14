@@ -145,6 +145,7 @@ def apply_fixes_to_statements(
                         )
                     else:
                         new_grain.add(x)
+                statement.grain.components = new_grain
 
         elif isinstance(statement, ConceptDeclarationStatement):
             # Skip concept declarations that are being replaced by references

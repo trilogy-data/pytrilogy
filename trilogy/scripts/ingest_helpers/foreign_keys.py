@@ -82,17 +82,20 @@ def apply_foreign_key_references(
             continue
 
         # Create the reference fix
-        reference_fixes.append(
-            DatasourceReferenceFix(
-                datasource_identifier=datasource.identifier,
-                column_address=source_concept,
-                column_alias=source_column,
-                reference_concept=target_concept.reference.with_namespace(target_table),
+        if target_concept:
+            reference_fixes.append(
+                DatasourceReferenceFix(
+                    datasource_identifier=datasource.identifier,
+                    column_address=source_concept,
+                    column_alias=source_column,
+                    reference_concept=target_concept.reference.with_namespace(
+                        target_table
+                    ),
+                )
             )
-        )
 
-        fk_imports.add(target_table)
-        print_info(f"Linking {table_name}.{source_column} -> {target_ref}")
+            fk_imports.add(target_table)
+            print_info(f"Linking {table_name}.{source_column} -> {target_ref}")
 
     # Add FK imports at the beginning (after comments)
     if fk_imports:

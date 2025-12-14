@@ -79,7 +79,7 @@ class DictImportResolver(BaseImportResolver):
     content: Dict[str, str]
 
 
-class EnvironmentOptions(BaseModel):
+class EnvironmentConfig(BaseModel):
     allow_duplicate_declaration: bool = True
     import_resolver: BaseImportResolver = Field(
         default_factory=FileSystemImportResolver
@@ -236,7 +236,7 @@ class Environment(BaseModel):
     )
     namespace: str = DEFAULT_NAMESPACE
     working_path: str | Path = Field(default_factory=lambda: os.getcwd())
-    config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
+    config: EnvironmentConfig = Field(default_factory=EnvironmentConfig)
     version: str = Field(default_factory=get_version)
     cte_name_map: Dict[str, str] = Field(default_factory=dict)
     alias_origin_lookup: Dict[str, Concept] = Field(default_factory=dict)
@@ -314,8 +314,11 @@ class Environment(BaseModel):
         return Environment(working_path=path.parent, env_file_path=path).parse(read)[0]
 
     @classmethod
-    def from_string(cls, input: str) -> "Environment":
-        return Environment().parse(input)[0]
+    def from_string(
+        cls, input: str, config: EnvironmentConfig | None = None
+    ) -> "Environment":
+        config = config or EnvironmentConfig()
+        return Environment(config=config).parse(input)[0]
 
     @classmethod
     def from_cache(cls, path) -> Optional["Environment"]:
