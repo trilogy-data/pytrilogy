@@ -1,6 +1,5 @@
 """Ingest command for Trilogy CLI - bootstraps datasources from warehouse tables."""
 
-import re
 from datetime import datetime
 from itertools import combinations
 from pathlib import Path as PathlibPath
@@ -30,183 +29,17 @@ from trilogy.scripts.common import (
     handle_execution_exception,
 )
 from trilogy.scripts.display import print_error, print_info, print_success
-
-
-def to_snake_case(name: str) -> str:
-    """Convert a string to snake_case.
-
-    Handles CamelCase, PascalCase, and names with spaces/special chars.
-    """
-    # Handle spaces and special characters first
-    name = re.sub(r"[^\w\s]", "_", name)
-    name = re.sub(r"\s+", "_", name)
-
-    # Insert underscores before uppercase letters (for CamelCase)
-    name = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
-    name = re.sub("([a-z0-9])([A-Z])", r"\1_\2", name)
-
-    # Convert to lowercase and remove duplicate underscores
-    name = name.lower()
-    name = re.sub(r"_+", "_", name)
-
-    # Remove leading/trailing underscores
-    return name.strip("_")
-
-
-# Rich type detection mappings
-RICH_TYPE_PATTERNS: dict[str, dict[str, Any]] = {
-    "geography": {
-        "latitude": {
-            "patterns": [r"(?:^|_)lat(?:$|_)", r"(?:^|_)latitude(?:$|_)"],
-            "import": "std.geography",
-            "type_name": "latitude",
-            "base_type": DataType.FLOAT,
-        },
-        "longitude": {
-            "patterns": [
-                r"(?:^|_)lon(?:$|_)",
-                r"(?:^|_)lng(?:$|_)",
-                r"(?:^|_)long(?:$|_)",
-                r"(?:^|_)longitude(?:$|_)",
-            ],
-            "import": "std.geography",
-            "type_name": "longitude",
-            "base_type": DataType.FLOAT,
-        },
-        "city": {
-            "patterns": [r"(?:^|_)city(?:$|_)"],
-            "import": "std.geography",
-            "type_name": "city",
-            "base_type": DataType.STRING,
-        },
-        "country": {
-            "patterns": [r"(?:^|_)country(?:$|_)"],
-            "import": "std.geography",
-            "type_name": "country",
-            "base_type": DataType.STRING,
-        },
-        "country_code": {
-            "patterns": [r"country_code", r"countrycode"],
-            "import": "std.geography",
-            "type_name": "country_code",
-            "base_type": DataType.STRING,
-        },
-        "us_state": {
-            "patterns": [r"(?:^|_)state(?:$|_)", r"us_state"],
-            "import": "std.geography",
-            "type_name": "us_state",
-            "base_type": DataType.STRING,
-        },
-        "us_zip_code": {
-            "patterns": [r"(?:^|_)zip(?:$|_)", r"zipcode", r"zip_code", r"postal_code"],
-            "import": "std.geography",
-            "type_name": "us_zip_code",
-            "base_type": DataType.STRING,
-        },
-    },
-    "net": {
-        "email_address": {
-            "patterns": [r"(?:^|_)email(?:$|_)", r"email_address"],
-            "import": "std.net",
-            "type_name": "email_address",
-            "base_type": DataType.STRING,
-        },
-        "url": {
-            "patterns": [r"(?:^|_)url(?:$|_)", r"(?:^|_)website(?:$|_)"],
-            "import": "std.net",
-            "type_name": "url",
-            "base_type": DataType.STRING,
-        },
-        "ipv4_address": {
-            "patterns": [r"(?:^|_)ip(?:$|_)", r"(?:^|_)ipv4(?:$|_)", r"ip_address"],
-            "import": "std.net",
-            "type_name": "ipv4_address",
-            "base_type": DataType.STRING,
-        },
-    },
-}
-
-
-def detect_rich_type(
-    column_name: str, base_datatype: DataType
-) -> tuple[str, str] | tuple[None, None]:
-    """Detect if a column name matches a rich type pattern.
-
-    Returns: (import_path, type_name) or (None, None) if no match
-
-    Note: When multiple patterns match, the one with the longest matched
-    string is preferred to ensure more specific matches win.
-    """
-    column_lower = column_name.lower()
-
-    # Collect all matches and sort by matched string length (longest first) to prefer more specific matches
-    matches = []
-
-    for category, types in RICH_TYPE_PATTERNS.items():
-        for type_name, config in types.items():
-            # Only consider if base types match
-            if config["base_type"] != base_datatype:
-                continue
-
-            # Check if any pattern matches
-            for pattern in config["patterns"]:
-                match = re.search(pattern, column_lower)
-                if match:
-                    # Store match with the length of the matched string for sorting
-                    matched_length = len(match.group())
-                    matches.append(
-                        (matched_length, config["import"], config["type_name"])
-                    )
-                    break  # Only need one match per type
-
-    # Return the most specific match (longest matched string)
-    if matches:
-        matches.sort(reverse=True)  # Sort by matched string length descending
-        return str(matches[0][1]), str(matches[0][2])
-
-    return None, None
-
-
-def infer_datatype_from_sql_type(sql_type: str) -> DataType:
-    """Infer Trilogy datatype from SQL type string."""
-    sql_type_lower = sql_type.lower()
-
-    # Integer types
-    if any(
-        t in sql_type_lower
-        for t in ["int", "integer", "smallint", "tinyint", "mediumint"]
-    ):
-        return DataType.INTEGER
-    if any(t in sql_type_lower for t in ["bigint", "long", "int64"]):
-        return DataType.BIGINT
-
-    # Numeric/decimal types
-    if any(t in sql_type_lower for t in ["numeric", "decimal", "money"]):
-        return DataType.NUMERIC
-    if any(t in sql_type_lower for t in ["float", "double", "real", "float64"]):
-        return DataType.FLOAT
-
-    # String types
-    if any(
-        t in sql_type_lower
-        for t in ["char", "varchar", "text", "string", "clob", "nchar", "nvarchar"]
-    ):
-        return DataType.STRING
-
-    # Boolean
-    if any(t in sql_type_lower for t in ["bool", "boolean", "bit"]):
-        return DataType.BOOL
-
-    # Date/Time types
-    if "timestamp" in sql_type_lower:
-        return DataType.TIMESTAMP
-    if "datetime" in sql_type_lower:
-        return DataType.DATETIME
-    if "date" in sql_type_lower:
-        return DataType.DATE
-
-    # Default to string for unknown types
-    return DataType.STRING
+from trilogy.scripts.ingest_helpers.foreign_keys import (
+    apply_foreign_key_references,
+    parse_foreign_keys,
+)
+from trilogy.scripts.ingest_helpers.formatting import (
+    canonicalize_names,
+)
+from trilogy.scripts.ingest_helpers.typing import (
+    detect_rich_type,
+    infer_datatype_from_sql_type,
+)
 
 
 def _check_column_combination_uniqueness(
@@ -270,10 +103,6 @@ def detect_unique_key_combinations(
 
 
 def detect_nullability_from_sample(column_index: int, sample_rows: list[tuple]) -> bool:
-    """Detect if a column is nullable based on sample data.
-
-    Returns True if any NULL values are found in the sample.
-    """
     for row in sample_rows:
         if row[column_index] is None:
             return True
@@ -285,25 +114,15 @@ def _process_column(
     col: tuple[str, str, str | None, str | None],
     grain_components: list[str],
     sample_rows: list[tuple],
+    concept_mapping: dict[str, str],
 ) -> tuple[Concept, ColumnAssignment, str | None]:
-    """Process a single column and create its Concept and ColumnAssignment.
 
-    Args:
-        idx: Column index
-        col: Column metadata tuple (name, type, nullable, comment)
-        grain_components: List of grain component names
-        sample_rows: Sample data for nullability detection
-
-    Returns:
-        Tuple of (Concept, ColumnAssignment, import_path or None)
-    """
     column_name = col[0]
     data_type_str = col[1]
     schema_is_nullable = col[2].upper() == "YES" if len(col) > 2 and col[2] else True
     column_comment = col[3] if len(col) > 3 else None
-
-    # Normalize to snake_case for Trilogy convention
-    concept_name = to_snake_case(column_name)
+    # Apply prefix stripping if mapping provided
+    concept_name = concept_mapping[column_name]
 
     # Infer Trilogy datatype
     trilogy_type = infer_datatype_from_sql_type(data_type_str)
@@ -377,14 +196,6 @@ def create_datasource_from_table(
         print_error(f"No columns found for table {table_name}")
         raise Exit(1)
 
-    db_primary_keys = dialect.get_table_primary_keys(exec, table_name, schema)
-
-    # Get sample data to detect grain and nullability
-    sample_rows = dialect.get_table_sample(exec, table_name, schema)
-    print_info(
-        f"Analyzing {len(sample_rows)} sample rows for grain and nullability detection"
-    )
-
     # Build qualified table name
     if schema:
         qualified_name = f"{schema}.{table_name}"
@@ -394,24 +205,39 @@ def create_datasource_from_table(
     # Extract column names for grain detection
     column_names = [col[0] for col in columns]
 
+    # Detect and strip common prefix from all column names BEFORE grain detection
+
+    column_concept_mapping = canonicalize_names(column_names)
+
     # Detect unique key combinations from sample data
     suggested_keys = []
-    if sample_rows:
+
+    # Normalize grain components to snake_case and apply prefix stripping
+    db_primary_keys = dialect.get_table_primary_keys(exec, table_name, schema)
+    # we always need sample rows for column detection, so fetch here to setup for later.
+    sample_rows = dialect.get_table_sample(exec, table_name, schema)
+    if db_primary_keys:
+        keys = db_primary_keys
+        print_info(f"Using primary key from database as grain: {db_primary_keys}")
+    else:
+        # Get sample data to detect grain and nullability
+        print_info(
+            f"Analyzing {len(sample_rows)} sample rows for grain and nullability detection"
+        )
         suggested_keys = detect_unique_key_combinations(column_names, sample_rows)
         if suggested_keys:
             print_info(f"Detected potential unique key combinations: {suggested_keys}")
-
-    # Normalize grain components to snake_case
-    if db_primary_keys:
-        grain_components = [to_snake_case(pk) for pk in db_primary_keys]
-        print_info(f"Using database primary keys as grain: {grain_components}")
-    elif suggested_keys:
-        # Use the smallest unique key combination
-        grain_components = [to_snake_case(key) for key in suggested_keys[0]]
-        print_info(f"Using detected unique key as grain: {grain_components}")
-    else:
-        grain_components = []
-        print_info("No unique grain detected; datasource will have no grain.")
+            print_info(f"Using detected unique key as grain: {suggested_keys[0]}")
+            keys = suggested_keys[0]
+        else:
+            keys = []
+            print_info(
+                "No primary key or unique grain detected; defaulting to no grain"
+            )
+    grain_components = []
+    for key in keys:
+        stripped = column_concept_mapping.get(key, key)
+        grain_components.append(stripped)
 
     # Track required imports for rich types
     required_imports: set[str] = set()
@@ -419,10 +245,9 @@ def create_datasource_from_table(
     # Create column assignments for each column
     column_assignments = []
     concepts: list[Concept] = []
-
     for idx, col in enumerate(columns):
         concept, column_assignment, rich_import = _process_column(
-            idx, col, grain_components, sample_rows
+            idx, col, grain_components, sample_rows, column_concept_mapping
         )
         concepts.append(concept)
         column_assignments.append(column_assignment)
@@ -450,6 +275,11 @@ def create_datasource_from_table(
 @option(
     "--config", type=Path(exists=True), help="Path to trilogy.toml configuration file"
 )
+@option(
+    "--fks",
+    type=str,
+    help="Foreign key relationships in format: table.column:ref_table.column (comma-separated)",
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def ingest(
@@ -459,6 +289,7 @@ def ingest(
     output: str | None,
     schema: str | None,
     config,
+    fks: str | None,
     conn_args,
 ):
     """Bootstrap one or more datasources from tables in your warehouse.
@@ -472,6 +303,7 @@ def ingest(
         output: Output path for generated scripts
         schema: Schema/database to ingest from
         config: Path to trilogy.toml configuration file
+        fks: Foreign key relationships to establish
         conn_args: Additional connection arguments
     """
     # Parse table names
@@ -480,6 +312,9 @@ def ingest(
     if not table_list:
         print_error("No tables specified")
         raise Exit(1)
+
+    # Parse foreign keys
+    fk_map = parse_foreign_keys(fks) if fks else {}
 
     # Determine output directory
     if output:
@@ -533,7 +368,9 @@ def ingest(
 
     # Ingest each table
     ingested_files = []
+    ingested_data: dict[str, tuple[Datasource, list[Concept], set[str], list[Any]]] = {}
     renderer = Renderer()
+    datasources = {}
     for table_name in table_list:
         print_info(f"Processing table: {table_name}")
 
@@ -542,15 +379,15 @@ def ingest(
                 exec, table_name, schema
             )
 
+            datasources[table_name] = datasource
+
             # Build qualified table name
             if schema:
                 qualified_name = f"{schema}.{table_name}"
             else:
                 qualified_name = table_name
 
-            # Generate Trilogy script
-            output_file = output_dir / f"{datasource.name}.preql"
-
+            # Generate Trilogy script content
             script_content: list[
                 Datasource | Comment | ConceptDeclarationStatement | ImportStatement
             ] = []
@@ -579,11 +416,13 @@ def ingest(
             # Add datasource
             script_content.append(datasource)
 
-            # Write the complete file
-            output_file.write_text(renderer.render_statement_string(script_content))
-
-            ingested_files.append(output_file)
-            print_success(f"Created {output_file}")
+            # Store for FK processing
+            ingested_data[table_name] = (
+                datasource,
+                concepts,
+                required_imports,
+                script_content,
+            )
 
         except Exception as e:
             print_error(f"Failed to ingest {table_name}: {e}")
@@ -592,6 +431,33 @@ def ingest(
 
                 print_error(traceback.format_exc())
             continue
+
+    # Write all ingested files, applying FK references where needed
+    if fk_map:
+        print_info("Processing foreign key relationships...")
+
+    for table_name, (
+        datasource,
+        concepts,
+        required_imports,
+        script_content,
+    ) in ingested_data.items():
+        output_file = output_dir / f"{datasource.name}.preql"
+
+        # Check if this table has FK relationships
+        if fk_map and table_name in fk_map:
+            column_mappings = fk_map[table_name]
+            modified_content = apply_foreign_key_references(
+                table_name, datasource, datasources, script_content, column_mappings
+            )
+            output_file.write_text(modified_content)
+            ingested_files.append(output_file)
+            print_success(f"Created {output_file} with FK references")
+        else:
+            # No FK references for this table, write as-is
+            output_file.write_text(renderer.render_statement_string(script_content))
+            ingested_files.append(output_file)
+            print_success(f"Created {output_file}")
 
     # Close executor
     exec.close()

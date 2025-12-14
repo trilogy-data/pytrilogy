@@ -5,7 +5,7 @@ from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.environment import (
     DictImportResolver,
     Environment,
-    EnvironmentOptions,
+    EnvironmentConfig,
 )
 from trilogy.parsing.parse_engine import (
     NameShadowError,
@@ -16,7 +16,7 @@ from trilogy.parsing.parse_engine import (
 def test_import_shows_source():
 
     env = Environment(
-        config=EnvironmentOptions(
+        config=EnvironmentConfig(
             import_resolver=DictImportResolver(
                 content={
                     "test": """

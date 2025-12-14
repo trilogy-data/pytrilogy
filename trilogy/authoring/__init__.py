@@ -47,7 +47,7 @@ from trilogy.core.models.core import (
     TraitDataType,
 )
 from trilogy.core.models.datasource import Address, Datasource, DatasourceMetadata
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.environment import DictImportResolver, Environment
 from trilogy.core.statements.author import (
     STATEMENT_TYPES,
     ConceptDeclarationStatement,
@@ -67,6 +67,7 @@ from trilogy.core.statements.author import (
     ValidateStatement,
 )
 from trilogy.parsing.common import arbitrary_to_concept, arg_to_datatype
+from trilogy.parsing.render import Renderer
 
 __all__ = [
     # trilogy.constants
@@ -142,4 +143,6 @@ __all__ = [
     "arbitrary_to_concept",
     "arg_to_datatype",
     "STATEMENT_TYPES",
+    "DictImportResolver",
+    "Renderer",
 ]

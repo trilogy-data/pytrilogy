@@ -7,11 +7,16 @@ from trilogy.core.enums import Modifier, Purpose
 from trilogy.scripts.ingest import (
     _check_column_combination_uniqueness,
     _process_column,
+    canonicalize_names,
     detect_nullability_from_sample,
     detect_rich_type,
     detect_unique_key_combinations,
     infer_datatype_from_sql_type,
-    to_snake_case,
+)
+from trilogy.scripts.ingest_helpers.foreign_keys import parse_foreign_keys
+from trilogy.scripts.ingest_helpers.formatting import (
+    canonicolize_name,
+    find_common_prefix,
 )
 from trilogy.scripts.trilogy import cli
 
@@ -70,8 +75,6 @@ def test_ingest_with_db_primary_key():
         cli,
         args,
     )
-    print(args)
-    print(results.output)
     if results.exception:
         raise results.exception
     assert results.exit_code == 0
@@ -94,7 +97,7 @@ def test_ingest_with_db_primary_key():
 
     # MUST verify that database primary key detection worked
     # This is the critical assertion - we should not fall back to sample data detection
-    assert "Using database primary keys as grain" in results.output, (
+    assert "Using primary key from database as grain" in results.output, (
         "Primary key detection failed! Expected 'Using database primary keys as grain' "
         f"in output, but got: {results.output}"
     )
@@ -161,7 +164,7 @@ sql = ["{setup_sql_file.as_posix()}"]
         assert "timestamp" in content
 
         # Verify no grain was detected
-        assert "No unique grain detected" in result.output
+        assert "No primary key or unique grain" in result.output
 
         # The datasource should have no grain components
         # All columns should be marked as keys (since there's no grain)
@@ -488,40 +491,40 @@ class TestSnakeCaseNormalization:
     """Test snake_case conversion for concept names."""
 
     def test_already_snake_case(self):
-        assert to_snake_case("user_id") == "user_id"
-        assert to_snake_case("first_name") == "first_name"
+        assert canonicolize_name("user_id") == "user_id"
+        assert canonicolize_name("first_name") == "first_name"
 
     def test_camel_case(self):
-        assert to_snake_case("userId") == "user_id"
-        assert to_snake_case("firstName") == "first_name"
-        assert to_snake_case("customerFirstName") == "customer_first_name"
+        assert canonicolize_name("userId") == "user_id"
+        assert canonicolize_name("firstName") == "first_name"
+        assert canonicolize_name("customerFirstName") == "customer_first_name"
 
     def test_pascal_case(self):
-        assert to_snake_case("UserId") == "user_id"
-        assert to_snake_case("FirstName") == "first_name"
-        assert to_snake_case("CustomerFirstName") == "customer_first_name"
+        assert canonicolize_name("UserId") == "user_id"
+        assert canonicolize_name("FirstName") == "first_name"
+        assert canonicolize_name("CustomerFirstName") == "customer_first_name"
 
     def test_with_spaces(self):
-        assert to_snake_case("User ID") == "user_id"
-        assert to_snake_case("First Name") == "first_name"
-        assert to_snake_case("Customer First Name") == "customer_first_name"
+        assert canonicolize_name("User ID") == "user_id"
+        assert canonicolize_name("First Name") == "first_name"
+        assert canonicolize_name("Customer First Name") == "customer_first_name"
 
     def test_with_special_chars(self):
-        assert to_snake_case("user-id") == "user_id"
-        assert to_snake_case("first.name") == "first_name"
-        assert to_snake_case("user@email") == "user_email"
+        assert canonicolize_name("user-id") == "user_id"
+        assert canonicolize_name("first.name") == "first_name"
+        assert canonicolize_name("user@email") == "user_email"
 
     def test_mixed_formats(self):
-        assert to_snake_case("UserID-2023") == "user_id_2023"
-        assert to_snake_case("First Name (Primary)") == "first_name_primary"
+        assert canonicolize_name("UserID-2023") == "user_id_2023"
+        assert canonicolize_name("First Name (Primary)") == "first_name_primary"
 
     def test_all_caps(self):
-        assert to_snake_case("ID") == "id"
-        assert to_snake_case("URL") == "url"
+        assert canonicolize_name("ID") == "id"
+        assert canonicolize_name("URL") == "url"
 
     def test_numbers(self):
-        assert to_snake_case("address1") == "address1"
-        assert to_snake_case("line2") == "line2"
+        assert canonicolize_name("address1") == "address1"
+        assert canonicolize_name("line2") == "line2"
 
 
 class TestRichTypeDetection:
@@ -943,6 +946,11 @@ class TestDetectNullabilityFromSample:
         assert detect_nullability_from_sample(1, sample_rows) is False
 
 
+def _make_concept_mapping(col_names: list[str]) -> dict[str, str]:
+    """Helper to create concept mapping for tests."""
+    return canonicalize_names(col_names)
+
+
 class TestProcessColumn:
     """Test the _process_column helper function."""
 
@@ -951,9 +959,10 @@ class TestProcessColumn:
         col = ("user_id", "INTEGER", "NO", None)
         grain_components = ["user_id"]
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Check concept
@@ -976,9 +985,10 @@ class TestProcessColumn:
         col = ("first_name", "VARCHAR(100)", "YES", None)
         grain_components = ["user_id"]
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["first_name"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should be a property, not a key
@@ -990,9 +1000,10 @@ class TestProcessColumn:
         col = ("email", "VARCHAR(255)", "YES", None)
         grain_components = []
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["email"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should be nullable based on schema
@@ -1004,9 +1015,10 @@ class TestProcessColumn:
         col = ("id", "INTEGER", "NO", None)
         grain_components = []
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should not be nullable
@@ -1018,9 +1030,10 @@ class TestProcessColumn:
         col = ("name", "VARCHAR(100)", "NO", None)
         grain_components = []
         sample_rows = [("Alice",), (None,), ("Bob",)]
+        concept_mapping = _make_concept_mapping(["name"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should be nullable based on sample data, overriding schema
@@ -1031,9 +1044,10 @@ class TestProcessColumn:
         col = ("name", "VARCHAR(100)", "YES", None)
         grain_components = []
         sample_rows = [("Alice",), ("Bob",), ("Charlie",)]
+        concept_mapping = _make_concept_mapping(["name"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should not be nullable based on sample data, overriding schema
@@ -1044,9 +1058,10 @@ class TestProcessColumn:
         col = ("user_id", "INTEGER", "NO", "Unique identifier for the user")
         grain_components = []
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should have metadata with description
@@ -1058,9 +1073,10 @@ class TestProcessColumn:
         col = ("user_id", "INTEGER", "NO", "   ")
         grain_components = []
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should not have description for whitespace comment
@@ -1071,9 +1087,10 @@ class TestProcessColumn:
         col = ("user_email", "VARCHAR(255)", "YES", None)
         grain_components = []
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["user_email"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should detect email rich type
@@ -1086,9 +1103,10 @@ class TestProcessColumn:
         col = ("location_lat", "FLOAT", "YES", None)
         grain_components = []
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["location_lat"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should detect latitude rich type
@@ -1101,9 +1119,10 @@ class TestProcessColumn:
         col = ("UserFirstName", "VARCHAR(100)", "YES", None)
         grain_components = []
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["UserFirstName"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Concept name should be snake_case
@@ -1116,9 +1135,10 @@ class TestProcessColumn:
         col = ("User-ID", "INTEGER", "NO", None)
         grain_components = []
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["User-ID"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Concept name is normalized
@@ -1131,11 +1151,196 @@ class TestProcessColumn:
         col = ("id", "INT")
         grain_components = []
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should default to nullable when not specified
         assert Modifier.NULLABLE in concept.modifiers
         assert concept.metadata.description is None
+
+
+class TestFindCommonPrefix:
+    """Test finding common prefix in column names."""
+
+    def test_no_common_prefix(self):
+        """No common prefix should return empty string."""
+        assert find_common_prefix(["user_id", "email", "name"]) == ""
+        assert find_common_prefix(["foo", "bar", "baz"]) == ""
+
+    def test_all_columns_same_prefix(self):
+        """All columns with same prefix should return that prefix."""
+        assert (
+            find_common_prefix(["ss_sold_date_sk", "ss_sold_time_sk", "ss_item_sk"])
+            == "ss_"
+        )
+        assert find_common_prefix(["user_id", "user_name", "user_email"]) == "user_"
+
+    def test_partial_common_prefix(self):
+        """Partial common prefix should be detected."""
+        assert (
+            find_common_prefix(
+                ["store_sales_id", "store_sales_date", "store_sales_amount"]
+            )
+            == "store_sales_"
+        )
+
+    def test_empty_list(self):
+        """Empty list should return empty string."""
+        assert find_common_prefix([]) == ""
+
+    def test_single_item(self):
+        """Single item should return empty string."""
+        assert find_common_prefix(["user_id"]) == ""
+
+    def test_no_underscore_in_common_part(self):
+        """Common part without underscore should not be considered a prefix."""
+        assert find_common_prefix(["customer", "custom"]) == ""
+
+    def test_prefix_too_short(self):
+        """Prefix that would leave no content should not be used."""
+        names = ["s_", "s_"]
+        result = find_common_prefix(names)
+        # This should return empty because stripping would leave nothing
+        assert result == ""
+
+    def test_case_insensitive(self):
+        """Prefix detection should be case-insensitive."""
+        assert (
+            find_common_prefix(["SS_SOLD_DATE_SK", "ss_sold_time_sk", "SS_ITEM_SK"])
+            == "ss_"
+        )
+
+    def test_multiple_underscores(self):
+        """Should find the longest prefix ending with underscore."""
+        assert (
+            find_common_prefix(["tpc_ds_store_sales_id", "tpc_ds_store_sales_date"])
+            == "tpc_ds_store_sales_"
+        )
+
+
+class TestStripCommonPrefix:
+    """Test stripping common prefix from column names."""
+
+    def test_strip_simple_prefix(self):
+        """Should strip simple common prefix."""
+        names = ["ss_sold_date_sk", "ss_sold_time_sk", "ss_item_sk"]
+        result = canonicalize_names(names)
+        assert result == {
+            "ss_sold_date_sk": "sold_date_sk",
+            "ss_sold_time_sk": "sold_time_sk",
+            "ss_item_sk": "item_sk",
+        }
+
+    def test_no_prefix_to_strip(self):
+        """When no common prefix, names should remain unchanged."""
+        names = ["user_id", "email", "name"]
+        result = canonicalize_names(names)
+        assert result == {"user_id": "user_id", "email": "email", "name": "name"}
+
+    def test_empty_list(self):
+        """Empty list should return empty dict."""
+        assert canonicalize_names([]) == {}
+
+    def test_single_item(self):
+        """Single item should remain unchanged."""
+        result = canonicalize_names(["user_id"])
+        assert result == {"user_id": "user_id"}
+
+    def test_preserves_case_in_output(self):
+        """Should normalize to snake_case in the stripped output."""
+        names = ["SS_SOLD_DATE_SK", "SS_SOLD_TIME_SK", "SS_ITEM_SK"]
+        result = canonicalize_names(names)
+        assert result == {
+            "SS_SOLD_DATE_SK": "sold_date_sk",
+            "SS_SOLD_TIME_SK": "sold_time_sk",
+            "SS_ITEM_SK": "item_sk",
+        }
+
+    def test_complex_prefix(self):
+        """Should handle complex multi-level prefixes."""
+        names = ["store_sales_id", "store_sales_date", "store_sales_amount"]
+        result = canonicalize_names(names)
+        assert result == {
+            "store_sales_id": "id",
+            "store_sales_date": "date",
+            "store_sales_amount": "amount",
+        }
+
+
+class TestProcessColumnWithPrefixStripping:
+    """Test _process_column with prefix stripping."""
+
+    def test_column_with_prefix_mapping(self):
+        """Test that prefix mapping is applied to concept names."""
+        col = ("ss_sold_date_sk", "INTEGER", "NO", None)
+        grain_components = []
+        sample_rows = []
+        prefix_mapping = {"ss_sold_date_sk": "sold_date_sk"}
+
+        concept, column_assignment, rich_import = _process_column(
+            0, col, grain_components, sample_rows, prefix_mapping
+        )
+
+        # Concept name should have prefix stripped
+        assert concept.name == "sold_date_sk"
+        # Column assignment alias should preserve original name
+        assert column_assignment.alias == "ss_sold_date_sk"
+
+    def test_column_without_prefix_mapping(self):
+        """Test that columns work without prefix mapping."""
+        col = ("user_id", "INTEGER", "NO", None)
+        grain_components = []
+        sample_rows = []
+        concept_mapping = _make_concept_mapping(["user_id"])
+
+        concept, column_assignment, rich_import = _process_column(
+            0, col, grain_components, sample_rows, concept_mapping
+        )
+
+        # Concept name should be normalized without stripping
+        assert concept.name == "user_id"
+        assert column_assignment.alias == "user_id"
+
+    def test_column_with_empty_prefix_mapping(self):
+        """Test column with empty prefix mapping dict."""
+        col = ("user_id", "INTEGER", "NO", None)
+        grain_components = []
+        sample_rows = []
+        prefix_mapping = _make_concept_mapping(["user_id"])
+
+        concept, column_assignment, rich_import = _process_column(
+            0, col, grain_components, sample_rows, prefix_mapping
+        )
+
+        # Should work normally
+        assert concept.name == "user_id"
+        assert column_assignment.alias == "user_id"
+
+
+def test_parse_foreign_keys():
+    """Test parsing of foreign key specifications."""
+    # Single FK
+    fk_str = "store_sales.ss_customer_sk:customer.c_customer_sk"
+    result = parse_foreign_keys(fk_str)
+    assert result == {"store_sales": {"ss_customer_sk": "customer.c_customer_sk"}}
+
+    # Multiple FKs
+    fk_str = "store_sales.ss_customer_sk:customer.c_customer_sk,store_sales.ss_item_sk:item.i_item_sk"
+    result = parse_foreign_keys(fk_str)
+    assert result == {
+        "store_sales": {
+            "ss_customer_sk": "customer.c_customer_sk",
+            "ss_item_sk": "item.i_item_sk",
+        }
+    }
+
+    # Empty string
+    result = parse_foreign_keys("")
+    assert result == {}
+
+    # None
+    result = parse_foreign_keys(None)
+    assert result == {}

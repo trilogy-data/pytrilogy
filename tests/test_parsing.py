@@ -19,7 +19,7 @@ from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import (
     DictImportResolver,
     Environment,
-    EnvironmentOptions,
+    EnvironmentConfig,
 )
 from trilogy.core.statements.author import SelectStatement, ShowStatement
 from trilogy.core.statements.execute import ProcessedQuery
@@ -756,7 +756,7 @@ select [1,2,3,4] as int_array, 2 as scalar
 def test_non_file_imports():
 
     env = Environment(
-        config=EnvironmentOptions(
+        config=EnvironmentConfig(
             import_resolver=DictImportResolver(
                 content={
                     "test": """
@@ -797,7 +797,7 @@ select x % 10 -> x_mod_10;
 def test_dict_resolver():
 
     env = Environment(
-        config=EnvironmentOptions(
+        config=EnvironmentConfig(
             import_resolver=DictImportResolver(
                 content={
                     "nested.import": """
