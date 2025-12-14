@@ -13,8 +13,8 @@ def test_generate_model_index_empty_directory():
     """Test generating index for empty directory."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
-        result = generate_model_index(tmppath, "http://localhost:8100")
-        assert result == []
+        result = generate_model_index(tmppath, "http://localhost:8100", engine="duckdb")
+        assert len(result) == 1
 
 
 def test_generate_model_index_single_file():
@@ -24,10 +24,10 @@ def test_generate_model_index_single_file():
         test_file = tmppath / "model.preql"
         test_file.write_text("select 1;")
 
-        result = generate_model_index(tmppath, "http://localhost:8100")
+        result = generate_model_index(tmppath, "http://localhost:8100", engine="duckdb")
         assert len(result) == 1
-        assert result[0].name == "model"
-        assert result[0].url == "http://localhost:8100/models/model.json"
+        assert result[0].name == tmppath.name
+        assert result[0].url == f"http://localhost:8100/models/{tmppath.name}.json"
 
 
 def test_generate_model_index_nested_files():
@@ -43,16 +43,15 @@ def test_generate_model_index_nested_files():
         file2 = subdir / "revenue.preql"
         file2.write_text("select 2;")
 
-        result = generate_model_index(tmppath, "http://localhost:8100")
-        assert len(result) == 2
+        result = generate_model_index(tmppath, "http://localhost:8100", engine="duckdb")
+        assert len(result) == 1
 
         names = {model.name for model in result}
-        assert names == {"root", "models/revenue"}
+        assert names == {tmppath.name}
 
         urls = {model.url for model in result}
         assert urls == {
-            "http://localhost:8100/models/root.json",
-            "http://localhost:8100/models/models-revenue.json",
+            f"http://localhost:8100/models/{tmppath.name}.json",
         }
 
 
@@ -63,16 +62,18 @@ def test_generate_model_index_with_custom_base_url():
         test_file = tmppath / "model.preql"
         test_file.write_text("select 1;")
 
-        result = generate_model_index(tmppath, "https://example.com:9000")
+        result = generate_model_index(tmppath, "https://example.com:9000", "duckdb")
         assert len(result) == 1
-        assert result[0].url == "https://example.com:9000/models/model.json"
+        assert result[0].url == f"https://example.com:9000/models/{tmppath.name}.json"
 
 
 def test_find_model_by_name_not_found():
     """Test finding a model that doesn't exist."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
-        result = find_model_by_name("nonexistent", tmppath, "http://localhost:8100")
+        result = find_model_by_name(
+            "nonexistent", tmppath, "http://localhost:8100", "duckdb"
+        )
         assert result is None
 
 
@@ -83,11 +84,13 @@ def test_find_model_by_name_root_level():
         test_file = tmppath / "customer.preql"
         test_file.write_text("# Customer model\nselect 1;")
 
-        result = find_model_by_name("customer", tmppath, "http://localhost:8100")
+        result = find_model_by_name(
+            tmppath.name, tmppath, "http://localhost:8100", "duckdb"
+        )
         assert result is not None
-        assert result.name == "customer"
+        assert result.name == tmppath.name
         assert result.description == "Customer model"
-        assert result.engine == "generic"
+        assert result.engine == "duckdb"
         assert len(result.components) == 1
         assert result.components[0].url == "http://localhost:8100/files/customer.preql"
         assert result.components[0].type == "trilogy"
@@ -104,10 +107,10 @@ def test_find_model_by_name_nested():
         test_file.write_text("# Revenue report\nselect sum(revenue);")
 
         result = find_model_by_name(
-            "finance-reports-revenue", tmppath, "http://localhost:8100"
+            tmppath.name, tmppath, "http://localhost:8100", "duckdb"
         )
         assert result is not None
-        assert result.name == "finance/reports/revenue"
+        assert result.name == tmppath.name
         assert result.description == "Revenue report"
         assert (
             result.components[0].url
@@ -122,7 +125,9 @@ def test_find_model_by_name_no_comment():
         test_file = tmppath / "basic.preql"
         test_file.write_text("select 1;")
 
-        result = find_model_by_name("basic", tmppath, "http://localhost:8100")
+        result = find_model_by_name(
+            tmppath.name, tmppath, "http://localhost:8100", "duckdb"
+        )
         assert result is not None
         assert result.description == "Trilogy model: basic"
 
@@ -134,7 +139,9 @@ def test_find_model_by_name_validates_components():
         test_file = tmppath / "test.preql"
         test_file.write_text("select 1;")
 
-        result = find_model_by_name("test", tmppath, "http://localhost:8100")
+        result = find_model_by_name(
+            tmppath.name, tmppath, "http://localhost:8100", "duckdb"
+        )
         assert result is not None
 
         component = result.components[0]
@@ -162,7 +169,7 @@ def test_find_file_content_by_name_root_level():
         content = "select 1;\nselect 2;"
         test_file.write_text(content)
 
-        result = find_file_content_by_name("query", tmppath)
+        result = find_file_content_by_name("query.preql", tmppath)
         assert result == content
 
 
@@ -176,7 +183,7 @@ def test_find_file_content_by_name_nested():
         content = "# Base model\nkey id int;"
         test_file.write_text(content)
 
-        result = find_file_content_by_name("models-core-base", tmppath)
+        result = find_file_content_by_name("models/core/base.preql", tmppath)
         assert result == content
 
 
@@ -187,7 +194,7 @@ def test_find_file_content_by_name_empty_file():
         test_file = tmppath / "empty.preql"
         test_file.write_text("")
 
-        result = find_file_content_by_name("empty", tmppath)
+        result = find_file_content_by_name("empty.preql", tmppath)
         assert result == ""
 
 
@@ -199,5 +206,5 @@ def test_find_file_content_by_name_large_file():
         content = "\n".join([f"select {i};" for i in range(100)])
         test_file.write_text(content)
 
-        result = find_file_content_by_name("large", tmppath)
+        result = find_file_content_by_name("large.preql", tmppath)
         assert result == content

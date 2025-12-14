@@ -195,23 +195,12 @@ def find_model_by_name(
 
 
 def find_file_content_by_name(file_name: str, directory_path: Path) -> str | None:
-    """Find and return the content of a model file by its safe name.
 
-    Args:
-        file_name: The safe file name (with slashes replaced by hyphens, including extension)
-        directory_path: Root directory containing model files
+    target_parts = Path(file_name.replace("-", "/")).parts
 
-    Returns:
-        File content as string if found, None otherwise
-    """
-    all_files = find_all_model_files(directory_path)
-
-    for model_file in all_files:
-        file_model_name = get_relative_model_name(model_file, directory_path)
-        safe_name = get_safe_model_name(file_model_name)
-        file_ext = model_file.suffix
-
-        if f"{safe_name}{file_ext}" == file_name:
+    for model_file in find_all_model_files(directory_path):
+        relative_parts = model_file.relative_to(directory_path).parts
+        if relative_parts == target_parts:
             return read_file_content(model_file)
 
     return None

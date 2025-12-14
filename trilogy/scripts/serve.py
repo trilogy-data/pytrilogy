@@ -17,27 +17,11 @@ def check_fastapi_available() -> bool:
         return False
 
 
-@argument("directory", type=Path(exists=True, file_okay=False, dir_okay=True))
-@argument("engine", type=str, required=False, default="generic")
-@option("--port", "-p", default=8100, help="Port to run the server on")
-@option("--host", "-h", default="0.0.0.0", help="Host to bind the server to")
-@pass_context
-def serve(ctx, directory: str, engine: str, port: int, host: str):
-    """Start a FastAPI server to expose Trilogy models from a directory."""
-    if not check_fastapi_available():
-        print(
-            "Error: FastAPI and uvicorn are required for the serve command.\n"
-            "Please install with: pip install pytrilogy[serve]",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    import uvicorn
-    from fastapi import FastAPI, HTTPException
+def create_app(app, engine: str, directory_path: PathlibPath, host: str, port: int):
+    from fastapi import HTTPException
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import PlainTextResponse
 
-    from trilogy import __version__
     from trilogy.scripts.serve_helpers import (
         ModelImport,
         StoreIndex,
@@ -47,13 +31,11 @@ def serve(ctx, directory: str, engine: str, port: int, host: str):
         generate_model_index,
     )
 
-    directory_path = PathlibPath(directory).resolve()
-    # Use localhost instead of 0.0.0.0 in URLs so they resolve properly
     url_host = "localhost" if host == "0.0.0.0" else host
-    base_url = f"http://{url_host}:{port}"
-
-    app = FastAPI(title="Trilogy Model Server", version=__version__)
-
+    if port in (80, 443):
+        base_url = f"http://{url_host}"
+    else:
+        base_url = f"http://{url_host}:{port}"
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -106,5 +88,34 @@ def serve(ctx, directory: str, engine: str, port: int, host: str):
     print(
         f"Found {len(find_all_model_files(directory_path))} model files (.preql, .sql, .csv)"
     )
+    return app
+
+
+@argument("directory", type=Path(exists=True, file_okay=False, dir_okay=True))
+@argument("engine", type=str, required=False, default="generic")
+@option("--port", "-p", default=8100, help="Port to run the server on")
+@option("--host", "-h", default="0.0.0.0", help="Host to bind the server to")
+@pass_context
+def serve(ctx, directory: str, engine: str, port: int, host: str):
+    """Start a FastAPI server to expose Trilogy models from a directory."""
+    if not check_fastapi_available():
+        print(
+            "Error: FastAPI and uvicorn are required for the serve command.\n"
+            "Please install with: pip install pytrilogy[serve]",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    import uvicorn
+    from fastapi import FastAPI
+
+    from trilogy import __version__
+
+    directory_path = PathlibPath(directory).resolve()
+    # Use localhost instead of 0.0.0.0 in URLs so they resolve properly
+
+    app = FastAPI(title="Trilogy Model Server", version=__version__)
+
+    create_app(app, engine, directory_path, host, port)
 
     uvicorn.run(app, host=host, port=port)

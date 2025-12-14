@@ -8,71 +8,21 @@ import pytest
 pytest.importorskip("fastapi")
 pytest.importorskip("uvicorn")
 
-from fastapi import FastAPI, HTTPException  # noqa: E402
-from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.responses import PlainTextResponse  # noqa: E402
+from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from trilogy.scripts.serve_helpers import (  # noqa: E402
-    ModelImport,
-    StoreIndex,
-    find_all_model_files,
-    find_file_content_by_name,
-    find_model_by_name,
-    generate_model_index,
-)
+from trilogy.scripts.serve import create_app  # noqa: E402
 
 
 def create_test_app(
-    directory_path: Path, base_url: str = "http://testserver", engine: str = "generic"
+    directory_path: Path,
+    base_url: str = "testserver",
+    engine: str = "generic",
+    port: int = 80,
 ):
     """Create a test FastAPI app using the same logic as serve.py."""
     app = FastAPI(title="Trilogy Model Server", version="1.0.0")
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-    @app.get("/")
-    async def root():
-        """Root endpoint with server information."""
-        file_count = len(find_all_model_files(directory_path))
-        return {
-            "message": "Trilogy Model Server",
-            "description": f"Serving model '{directory_path.name}' with {file_count} files from {directory_path}",
-            "endpoints": {
-                "/index.json": "Get list of available models",
-                "/models/<model-name>.json": "Get specific model details",
-            },
-        }
-
-    @app.get("/index.json", response_model=StoreIndex)
-    async def get_index() -> StoreIndex:
-        """Return the store index with list of available models."""
-        return StoreIndex(
-            name=f"Trilogy Models - {directory_path.name}",
-            models=generate_model_index(directory_path, base_url, engine),
-        )
-
-    @app.get("/models/{model_name}.json", response_model=ModelImport)
-    async def get_model(model_name: str) -> ModelImport:
-        """Return a specific model by name."""
-        model = find_model_by_name(model_name, directory_path, base_url, engine)
-        if model is None:
-            raise HTTPException(status_code=404, detail="Model not found")
-        return model
-
-    @app.get("/files/{file_name}")
-    async def get_file(file_name: str):
-        """Return the raw .preql or .sql file content."""
-        content = find_file_content_by_name(file_name, directory_path)
-        if content is None:
-            raise HTTPException(status_code=404, detail="File not found")
-        return PlainTextResponse(content=content)
+    app = create_app(app, engine, directory_path, base_url, port)
 
     return app
 
@@ -125,7 +75,7 @@ def test_serve_index_endpoint_with_files():
         file2 = subdir / "model2.preql"
         file2.write_text("select 2;")
 
-        app = create_test_app(tmppath, "http://testserver")
+        app = create_test_app(tmppath, "testserver")
         client = TestClient(app)
 
         response = client.get("/index.json")
@@ -158,7 +108,7 @@ def test_serve_get_model_success():
         test_file = tmppath / "base.preql"
         test_file.write_text("# Customer data model\nkey customer_id int;")
 
-        app = create_test_app(tmppath, "http://testserver")
+        app = create_test_app(tmppath, "testserver")
         client = TestClient(app)
 
         response = client.get("/models/customer.json")
@@ -280,7 +230,7 @@ def test_serve_model_with_sql_files():
         sql_file = tmppath / "setup.sql"
         sql_file.write_text("CREATE TABLE test (id INT);")
 
-        app = create_test_app(tmppath, "http://testserver")
+        app = create_test_app(tmppath, "testserver")
         client = TestClient(app)
 
         response = client.get("/models/mymodel.json")
@@ -320,7 +270,7 @@ def test_serve_index_urls_use_base_url():
         test_file.write_text("select 1;")
 
         # Test with custom base URL
-        app = create_test_app(tmppath, "https://myserver.com:9000")
+        app = create_test_app(tmppath, "myserver.com", port=9000)
         client = TestClient(app)
 
         response = client.get("/index.json")
@@ -329,7 +279,7 @@ def test_serve_index_urls_use_base_url():
 
         assert len(data["models"]) == 1
         assert (
-            data["models"][0]["url"] == "https://myserver.com:9000/models/mymodel.json"
+            data["models"][0]["url"] == "http://myserver.com:9000/models/mymodel.json"
         )
 
 
@@ -342,7 +292,7 @@ def test_serve_model_components_use_base_url():
         test_file.write_text("select 1;")
 
         # Test with custom base URL
-        app = create_test_app(tmppath, "https://myserver.com:9000")
+        app = create_test_app(tmppath, "myserver.com", port=9000)
         client = TestClient(app)
 
         response = client.get("/models/mymodel.json")
@@ -351,8 +301,7 @@ def test_serve_model_components_use_base_url():
 
         assert len(data["components"]) == 1
         assert (
-            data["components"][0]["url"]
-            == "https://myserver.com:9000/files/model.preql"
+            data["components"][0]["url"] == "http://myserver.com:9000/files/model.preql"
         )
 
 
@@ -363,7 +312,7 @@ def test_serve_with_real_test_files():
     if not test_dir.exists():
         pytest.skip("Test modeling directory not found")
 
-    app = create_test_app(test_dir, "http://testserver")
+    app = create_test_app(test_dir, "testserver")
     client = TestClient(app)
 
     # Test root
@@ -406,9 +355,8 @@ def test_serve_localhost_url_when_host_is_0_0_0_0():
         host = "0.0.0.0"
         port = 8100
         url_host = "localhost" if host == "0.0.0.0" else host
-        base_url = f"http://{url_host}:{port}"
 
-        app = create_test_app(tmppath, base_url)
+        app = create_test_app(tmppath, url_host, port=port)
         client = TestClient(app)
 
         # Check index URLs use localhost
@@ -593,7 +541,7 @@ def test_serve_with_csv_files():
         csv_file = tmppath / "data.csv"
         csv_file.write_text("id,name\n1,Alice\n2,Bob")
 
-        app = create_test_app(tmppath, "http://testserver")
+        app = create_test_app(tmppath, "testserver")
         client = TestClient(app)
 
         response = client.get("/models/mymodel.json")
@@ -677,7 +625,7 @@ def test_serve_nested_csv_file():
         csv_file = data_dir / "sales.csv"
         csv_file.write_text("date,amount\n2024-01-01,100")
 
-        app = create_test_app(tmppath, "http://testserver")
+        app = create_test_app(tmppath, "testserver")
         client = TestClient(app)
 
         response = client.get("/models/mymodel.json")
