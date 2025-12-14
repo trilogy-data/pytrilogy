@@ -1,13 +1,8 @@
+import re
 from typing import Any
 
-import re
-
 from trilogy.authoring import (
-    Address,
-    Comment,
-    ConceptDeclarationStatement,
     DataType,
-    ImportStatement,
 )
 
 # Rich type detection mappings
@@ -99,8 +94,8 @@ def detect_rich_type(
     # Collect all matches and sort by matched string length (longest first) to prefer more specific matches
     matches = []
 
-    for category, types in RICH_TYPE_PATTERNS.items():
-        for type_name, config in types.items():
+    for _, types in RICH_TYPE_PATTERNS.items():
+        for _, config in types.items():
             # Only consider if base types match
             if config["base_type"] != base_datatype:
                 continue

@@ -1,6 +1,5 @@
 """Ingest command for Trilogy CLI - bootstraps datasources from warehouse tables."""
 
-import re
 from datetime import datetime
 from itertools import combinations
 from pathlib import Path as PathlibPath
@@ -35,7 +34,6 @@ from trilogy.scripts.ingest_helpers.foreign_keys import (
     parse_foreign_keys,
 )
 from trilogy.scripts.ingest_helpers.formatting import (
-    canonicolize_name,
     canonicalize_names,
 )
 from trilogy.scripts.ingest_helpers.typing import (
@@ -198,13 +196,8 @@ def create_datasource_from_table(
         print_error(f"No columns found for table {table_name}")
         raise Exit(1)
 
-    db_primary_keys = dialect.get_table_primary_keys(exec, table_name, schema)
+    
 
-    # Get sample data to detect grain and nullability
-    sample_rows = dialect.get_table_sample(exec, table_name, schema)
-    print_info(
-        f"Analyzing {len(sample_rows)} sample rows for grain and nullability detection"
-    )
 
     # Build qualified table name
     if schema:
@@ -221,19 +214,28 @@ def create_datasource_from_table(
 
     # Detect unique key combinations from sample data
     suggested_keys = []
-    if sample_rows:
+
+
+    # Normalize grain components to snake_case and apply prefix stripping
+    db_primary_keys = dialect.get_table_primary_keys(exec, table_name, schema)
+    
+    if db_primary_keys:
+        keys = db_primary_keys
+        print_info(f"Using primary key from database as grain: {db_primary_keys}")
+    else:
+        # Get sample data to detect grain and nullability
+        sample_rows = dialect.get_table_sample(exec, table_name, schema)
+        print_info(
+        f"Analyzing {len(sample_rows)} sample rows for grain and nullability detection"
+    )
         suggested_keys = detect_unique_key_combinations(column_names, sample_rows)
         if suggested_keys:
             print_info(f"Detected potential unique key combinations: {suggested_keys}")
-
-    # Normalize grain components to snake_case and apply prefix stripping
-    keys = db_primary_keys or (suggested_keys[0] if suggested_keys else [])
-    if db_primary_keys:
-        print_info(f"Using primary key from database as grain: {db_primary_keys}")
-    elif suggested_keys:
-        print_info(f"Using detected unique key as grain: {suggested_keys[0]}")
-    else:
-        print_info("No primary key or unique key detected; defaulting to no grain")
+            print_info(f"Using detected unique key as grain: {suggested_keys[0]}")
+            keys = suggested_keys[0]
+        else:
+            keys = []
+            print_info("No primary key or unique grain detected; defaulting to no grain")
     grain_components = []
     for key in keys:
         stripped = column_concept_mapping.get(key, key)

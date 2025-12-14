@@ -1,5 +1,3 @@
-"""Foreign key handling for ingest command."""
-
 from pathlib import Path
 
 from trilogy.authoring import (
@@ -8,7 +6,6 @@ from trilogy.authoring import (
     Datasource,
     ImportStatement,
 )
-from trilogy.core.models.author import Concept
 from trilogy.core.validation.fix import (
     DatasourceReferenceFix,
     rewrite_file_with_reference_merges,
@@ -17,19 +14,6 @@ from trilogy.scripts.display import print_error, print_info
 
 
 def parse_foreign_keys(fks_str: str | None) -> dict[str, dict[str, str]]:
-    """Parse foreign key specification string.
-
-    Args:
-        fks_str: String like "store_sales.ss_customer_sk:customer.c_customer_sk"
-
-    Returns:
-        Dictionary mapping table names to their FK mappings:
-        {
-            "store_sales": {
-                "ss_customer_sk": "customer.c_customer_sk"
-            }
-        }
-    """
     if not fks_str:
         return {}
 
@@ -70,19 +54,6 @@ def apply_foreign_key_references(
     ],
     column_mappings: dict[str, str],
 ) -> str:
-    """Apply foreign key references to a datasource.
-
-    Args:
-        table_name: Name of the source table
-        datasource: The datasource object
-        concepts: List of concepts for the datasource
-        script_content: The script content to modify
-        column_mappings: Map of source_column -> target_table.target_column
-
-    Returns:
-        Modified script content as string
-    """
-    # Track imports we need to add
     fk_imports: set[str] = set()
     reference_fixes: list[DatasourceReferenceFix] = []
 
@@ -116,9 +87,7 @@ def apply_foreign_key_references(
                 datasource_identifier=datasource.identifier,
                 column_address=source_concept,
                 column_alias=source_column,
-                reference_concept=target_concept.reference.with_namespace(
-                    target_table
-                ),
+                reference_concept=target_concept.reference.with_namespace(target_table),
             )
         )
 

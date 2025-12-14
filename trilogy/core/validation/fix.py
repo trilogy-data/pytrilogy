@@ -6,6 +6,7 @@ from trilogy import Environment, Executor
 from trilogy.authoring import ConceptDeclarationStatement, Datasource
 from trilogy.core.enums import Modifier
 from trilogy.core.exceptions import DatasourceColumnBindingError
+from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.core import (
     ArrayType,
     DataType,
@@ -17,7 +18,6 @@ from trilogy.core.models.core import (
 from trilogy.core.models.datasource import ColumnAssignment
 from trilogy.core.validation.environment import validate_environment
 from trilogy.parsing.render import Renderer, safe_address
-from trilogy.core.models.author import ConceptRef
 
 
 @dataclass
@@ -115,7 +115,9 @@ def apply_fixes_to_statements(
     output = []
 
     # Track which concept addresses are being replaced by references
-    replaced_concept_addresses = {fix.column_address: fix.reference_concept for fix in reference_fixes}
+    replaced_concept_addresses = {
+        fix.column_address: fix.reference_concept for fix in reference_fixes
+    }
 
     for statement in statements:
         if isinstance(statement, Datasource):
@@ -138,10 +140,11 @@ def apply_fixes_to_statements(
                 new_grain = set()
                 for x in statement.grain.components:
                     if safe_address(x) in replaced_concept_addresses:
-                        new_grain.add(replaced_concept_addresses[safe_address(x)].address)
+                        new_grain.add(
+                            replaced_concept_addresses[safe_address(x)].address
+                        )
                     else:
                         new_grain.add(x)
-
 
         elif isinstance(statement, ConceptDeclarationStatement):
             # Skip concept declarations that are being replaced by references
@@ -149,7 +152,7 @@ def apply_fixes_to_statements(
                 continue
             new_keys = set()
             replace_keys = False
-            
+
             for x in statement.concept.keys:
                 if safe_address(x) in replaced_concept_addresses:
                     replace_keys = True

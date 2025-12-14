@@ -1,5 +1,5 @@
 import re
-from trilogy.constants import DEFAULT_NAMESPACE
+
 
 def canonicolize_name(name: str) -> str:
     """Convert a string to snake_case.

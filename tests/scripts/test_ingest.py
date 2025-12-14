@@ -7,13 +7,15 @@ from trilogy.core.enums import Modifier, Purpose
 from trilogy.scripts.ingest import (
     _check_column_combination_uniqueness,
     _process_column,
+    canonicalize_names,
     detect_nullability_from_sample,
     detect_rich_type,
     detect_unique_key_combinations,
-    find_common_prefix,
     infer_datatype_from_sql_type,
-    canonicalize_names,
+)
+from trilogy.scripts.ingest_helpers.formatting import (
     canonicolize_name,
+    find_common_prefix,
 )
 from trilogy.scripts.ingest_helpers.foreign_keys import parse_foreign_keys
 from trilogy.scripts.trilogy import cli
@@ -73,8 +75,6 @@ def test_ingest_with_db_primary_key():
         cli,
         args,
     )
-    print(args)
-    print(results.output)
     if results.exception:
         raise results.exception
     assert results.exit_code == 0
@@ -97,7 +97,7 @@ def test_ingest_with_db_primary_key():
 
     # MUST verify that database primary key detection worked
     # This is the critical assertion - we should not fall back to sample data detection
-    assert "Using database primary keys as grain" in results.output, (
+    assert "Using primary key from database as grain" in results.output, (
         "Primary key detection failed! Expected 'Using database primary keys as grain' "
         f"in output, but got: {results.output}"
     )
@@ -164,7 +164,7 @@ sql = ["{setup_sql_file.as_posix()}"]
         assert "timestamp" in content
 
         # Verify no grain was detected
-        assert "No unique grain detected" in result.output
+        assert "No primary key or unique grain" in result.output
 
         # The datasource should have no grain components
         # All columns should be marked as keys (since there's no grain)
