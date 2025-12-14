@@ -946,6 +946,11 @@ class TestDetectNullabilityFromSample:
         assert detect_nullability_from_sample(1, sample_rows) is False
 
 
+def _make_concept_mapping(col_names: list[str]) -> dict[str, str]:
+    """Helper to create concept mapping for tests."""
+    return canonicalize_names(col_names)
+
+
 class TestProcessColumn:
     """Test the _process_column helper function."""
 
@@ -954,9 +959,10 @@ class TestProcessColumn:
         col = ("user_id", "INTEGER", "NO", None)
         grain_components = ["user_id"]
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Check concept
@@ -979,9 +985,10 @@ class TestProcessColumn:
         col = ("first_name", "VARCHAR(100)", "YES", None)
         grain_components = ["user_id"]
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["first_name"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should be a property, not a key
@@ -993,9 +1000,10 @@ class TestProcessColumn:
         col = ("email", "VARCHAR(255)", "YES", None)
         grain_components = []
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["email"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should be nullable based on schema
@@ -1007,9 +1015,10 @@ class TestProcessColumn:
         col = ("id", "INTEGER", "NO", None)
         grain_components = []
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should not be nullable
@@ -1021,9 +1030,10 @@ class TestProcessColumn:
         col = ("name", "VARCHAR(100)", "NO", None)
         grain_components = []
         sample_rows = [("Alice",), (None,), ("Bob",)]
+        concept_mapping = _make_concept_mapping(["name"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should be nullable based on sample data, overriding schema
@@ -1034,9 +1044,10 @@ class TestProcessColumn:
         col = ("name", "VARCHAR(100)", "YES", None)
         grain_components = []
         sample_rows = [("Alice",), ("Bob",), ("Charlie",)]
+        concept_mapping = _make_concept_mapping(["name"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should not be nullable based on sample data, overriding schema
@@ -1047,9 +1058,10 @@ class TestProcessColumn:
         col = ("user_id", "INTEGER", "NO", "Unique identifier for the user")
         grain_components = []
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should have metadata with description
@@ -1061,9 +1073,10 @@ class TestProcessColumn:
         col = ("user_id", "INTEGER", "NO", "   ")
         grain_components = []
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should not have description for whitespace comment
@@ -1074,9 +1087,10 @@ class TestProcessColumn:
         col = ("user_email", "VARCHAR(255)", "YES", None)
         grain_components = []
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["user_email"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should detect email rich type
@@ -1089,9 +1103,10 @@ class TestProcessColumn:
         col = ("location_lat", "FLOAT", "YES", None)
         grain_components = []
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["location_lat"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should detect latitude rich type
@@ -1104,9 +1119,10 @@ class TestProcessColumn:
         col = ("UserFirstName", "VARCHAR(100)", "YES", None)
         grain_components = []
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["UserFirstName"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Concept name should be snake_case
@@ -1119,9 +1135,10 @@ class TestProcessColumn:
         col = ("User-ID", "INTEGER", "NO", None)
         grain_components = []
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["User-ID"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Concept name is normalized
@@ -1134,9 +1151,10 @@ class TestProcessColumn:
         col = ("id", "INT")
         grain_components = []
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Should default to nullable when not specified
@@ -1232,13 +1250,13 @@ class TestStripCommonPrefix:
         assert result == {"user_id": "user_id"}
 
     def test_preserves_case_in_output(self):
-        """Should preserve original case in the stripped output."""
+        """Should normalize to snake_case in the stripped output."""
         names = ["SS_SOLD_DATE_SK", "SS_SOLD_TIME_SK", "SS_ITEM_SK"]
         result = canonicalize_names(names)
         assert result == {
-            "SS_SOLD_DATE_SK": "SOLD_DATE_SK",
-            "SS_SOLD_TIME_SK": "SOLD_TIME_SK",
-            "SS_ITEM_SK": "ITEM_SK",
+            "SS_SOLD_DATE_SK": "sold_date_sk",
+            "SS_SOLD_TIME_SK": "sold_time_sk",
+            "SS_ITEM_SK": "item_sk",
         }
 
     def test_complex_prefix(self):
@@ -1276,9 +1294,10 @@ class TestProcessColumnWithPrefixStripping:
         col = ("user_id", "INTEGER", "NO", None)
         grain_components = []
         sample_rows = []
+        concept_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
-            0, col, grain_components, sample_rows
+            0, col, grain_components, sample_rows, concept_mapping
         )
 
         # Concept name should be normalized without stripping
@@ -1290,7 +1309,7 @@ class TestProcessColumnWithPrefixStripping:
         col = ("user_id", "INTEGER", "NO", None)
         grain_components = []
         sample_rows = []
-        prefix_mapping = {}
+        prefix_mapping = _make_concept_mapping(["user_id"])
 
         concept, column_assignment, rich_import = _process_column(
             0, col, grain_components, sample_rows, prefix_mapping

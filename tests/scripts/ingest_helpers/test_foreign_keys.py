@@ -61,7 +61,6 @@ def test_apply_foreign_key_references():
         purpose=Purpose.KEY,
     )
 
-    concepts = [customer_sk_concept, item_sk_concept, ticket_number_concept]
 
     # Create test datasource
     column_assignments = [
@@ -89,6 +88,21 @@ def test_apply_foreign_key_references():
         grain=Grain(components={"item_sk", "ticket_number"}),
     )
 
+    customer_datasource = Datasource(
+        name="customer",
+        columns=[
+            ColumnAssignment(
+                alias="c_customer_sk",
+                concept=customer_sk_concept.reference,
+                modifiers=[],
+            )
+        ],
+        address=Address(location="customer", quoted=True),
+        grain=Grain(components={"customer_sk"}),
+    )
+
+    datasources = {datasource.name: datasource, customer_datasource.name: customer_datasource}
+
     # Create script content
     script_content = [
         Comment(text="# Test datasource"),
@@ -99,10 +113,10 @@ def test_apply_foreign_key_references():
     ]
 
     # Apply FK references
-    column_mappings = {"ss_customer_sk": "customer.c_customer_sk"}
+    column_mappings = {"ss_customer_sk": "customer.customer_sk"}
 
     result = apply_foreign_key_references(
-        "store_sales", datasource, concepts, script_content, column_mappings
+        "store_sales", datasource, datasources, script_content, column_mappings
     )
 
     # Verify result

@@ -153,7 +153,7 @@ def apply_fixes_to_statements(
             new_keys = set()
             replace_keys = False
 
-            for x in statement.concept.keys:
+            for x in statement.concept.keys or set():
                 if safe_address(x) in replaced_concept_addresses:
                     replace_keys = True
                     new_keys.add(replaced_concept_addresses[safe_address(x)].address)

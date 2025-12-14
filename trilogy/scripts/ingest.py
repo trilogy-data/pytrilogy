@@ -218,13 +218,13 @@ def create_datasource_from_table(
 
     # Normalize grain components to snake_case and apply prefix stripping
     db_primary_keys = dialect.get_table_primary_keys(exec, table_name, schema)
-    
+    # we always need sample rows for column detection, so fetch here to setup for later.
+    sample_rows = dialect.get_table_sample(exec, table_name, schema)
     if db_primary_keys:
         keys = db_primary_keys
         print_info(f"Using primary key from database as grain: {db_primary_keys}")
     else:
         # Get sample data to detect grain and nullability
-        sample_rows = dialect.get_table_sample(exec, table_name, schema)
         print_info(
         f"Analyzing {len(sample_rows)} sample rows for grain and nullability detection"
     )
