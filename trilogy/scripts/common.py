@@ -23,6 +23,9 @@ from trilogy.scripts.display import (
 )
 from trilogy.scripts.environment import extra_to_kwargs, parse_env_params
 
+# Configuration file name
+TRILOGY_CONFIG_NAME = "trilogy.toml"
+
 
 @dataclass
 class CLIRuntimeParams:
@@ -87,7 +90,7 @@ def find_trilogy_config(start_path: PathlibPath | None = None) -> PathlibPath | 
         search_path = search_path.parent
 
     for parent in [search_path] + list(search_path.parents):
-        candidate = parent / "trilogy.toml"
+        candidate = parent / TRILOGY_CONFIG_NAME
         if candidate.exists():
             return candidate
     return None

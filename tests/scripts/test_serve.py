@@ -16,14 +16,16 @@ from fastapi.testclient import TestClient  # noqa: E402
 from trilogy.scripts.serve_helpers import (  # noqa: E402
     ModelImport,
     StoreIndex,
+    find_all_model_files,
     find_file_content_by_name,
     find_model_by_name,
-    find_preql_files,
     generate_model_index,
 )
 
 
-def create_test_app(directory_path: Path, base_url: str = "http://testserver"):
+def create_test_app(
+    directory_path: Path, base_url: str = "http://testserver", engine: str = "generic"
+):
     """Create a test FastAPI app using the same logic as serve.py."""
     app = FastAPI(title="Trilogy Model Server", version="1.0.0")
 
@@ -38,10 +40,10 @@ def create_test_app(directory_path: Path, base_url: str = "http://testserver"):
     @app.get("/")
     async def root():
         """Root endpoint with server information."""
-        preql_count = len(find_preql_files(directory_path))
+        file_count = len(find_all_model_files(directory_path))
         return {
             "message": "Trilogy Model Server",
-            "description": f"Serving {preql_count} Trilogy models from {directory_path}",
+            "description": f"Serving model '{directory_path.name}' with {file_count} files from {directory_path}",
             "endpoints": {
                 "/index.json": "Get list of available models",
                 "/models/<model-name>.json": "Get specific model details",
@@ -53,20 +55,20 @@ def create_test_app(directory_path: Path, base_url: str = "http://testserver"):
         """Return the store index with list of available models."""
         return StoreIndex(
             name=f"Trilogy Models - {directory_path.name}",
-            models=generate_model_index(directory_path, base_url),
+            models=generate_model_index(directory_path, base_url, engine),
         )
 
     @app.get("/models/{model_name}.json", response_model=ModelImport)
     async def get_model(model_name: str) -> ModelImport:
         """Return a specific model by name."""
-        model = find_model_by_name(model_name, directory_path, base_url)
+        model = find_model_by_name(model_name, directory_path, base_url, engine)
         if model is None:
             raise HTTPException(status_code=404, detail="Model not found")
         return model
 
-    @app.get("/files/{file_name}.preql")
+    @app.get("/files/{file_name}")
     async def get_file(file_name: str):
-        """Return the raw .preql file content."""
+        """Return the raw .preql or .sql file content."""
         content = find_file_content_by_name(file_name, directory_path)
         if content is None:
             raise HTTPException(status_code=404, detail="File not found")
@@ -89,12 +91,12 @@ def test_serve_root_endpoint():
         assert response.status_code == 200
         data = response.json()
         assert data["message"] == "Trilogy Model Server"
-        assert "1 Trilogy models" in data["description"]
+        assert "with 1 files" in data["description"]
         assert "/index.json" in data["endpoints"]
 
 
 def test_serve_index_endpoint_empty():
-    """Test index endpoint with no files."""
+    """Test index endpoint with no files still shows the directory as a model."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
 
@@ -105,13 +107,15 @@ def test_serve_index_endpoint_empty():
         assert response.status_code == 200
         data = response.json()
         assert "name" in data
-        assert data["models"] == []
+        # Even with no files, we still have one model (the directory itself)
+        assert len(data["models"]) == 1
 
 
 def test_serve_index_endpoint_with_files():
-    """Test index endpoint with multiple files."""
+    """Test index endpoint with directory represented as single model."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        tmppath = Path(tmpdir)
+        tmppath = Path(tmpdir) / "my_model"
+        tmppath.mkdir()
 
         file1 = tmppath / "model1.preql"
         file1.write_text("select 1;")
@@ -128,14 +132,10 @@ def test_serve_index_endpoint_with_files():
         assert response.status_code == 200
         data = response.json()
 
-        assert len(data["models"]) == 2
-        model_names = {m["name"] for m in data["models"]}
-        assert model_names == {"model1", "nested/model2"}
-
-        # Check URLs are properly formatted
-        for model in data["models"]:
-            assert model["url"].startswith("http://testserver/models/")
-            assert model["url"].endswith(".json")
+        # Now we should only have one model (the directory)
+        assert len(data["models"]) == 1
+        assert data["models"][0]["name"] == "my_model"
+        assert data["models"][0]["url"] == "http://testserver/models/my_model.json"
 
 
 def test_serve_get_model_not_found():
@@ -151,10 +151,11 @@ def test_serve_get_model_not_found():
 
 
 def test_serve_get_model_success():
-    """Test getting a model successfully."""
+    """Test getting a model successfully - directory as model with components."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        tmppath = Path(tmpdir)
-        test_file = tmppath / "customer.preql"
+        tmppath = Path(tmpdir) / "customer"
+        tmppath.mkdir()
+        test_file = tmppath / "base.preql"
         test_file.write_text("# Customer data model\nkey customer_id int;")
 
         app = create_test_app(tmppath, "http://testserver")
@@ -168,33 +169,39 @@ def test_serve_get_model_success():
         assert data["description"] == "Customer data model"
         assert data["engine"] == "generic"
         assert len(data["components"]) == 1
-        assert data["components"][0]["url"] == "http://testserver/files/customer.preql"
+        assert data["components"][0]["url"] == "http://testserver/files/base.preql"
+        assert data["components"][0]["name"] == "base"
         assert data["components"][0]["type"] == "trilogy"
         assert data["components"][0]["purpose"] == "source"
 
 
-def test_serve_get_model_nested():
-    """Test getting a nested model."""
+def test_serve_get_model_with_multiple_components():
+    """Test getting a model with multiple component files."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        tmppath = Path(tmpdir)
-        subdir = tmppath / "finance" / "models"
-        subdir.mkdir(parents=True)
-        test_file = subdir / "revenue.preql"
-        test_file.write_text("# Revenue calculations\nselect sum(revenue);")
+        tmppath = Path(tmpdir) / "finance"
+        tmppath.mkdir()
+
+        file1 = tmppath / "aaa_revenue.preql"
+        file1.write_text("# Revenue calculations\nkey revenue_id int;")
+
+        file2 = tmppath / "expenses.preql"
+        file2.write_text("key expense_id int;")
 
         app = create_test_app(tmppath, "http://testserver")
         client = TestClient(app)
 
-        response = client.get("/models/finance-models-revenue.json")
+        response = client.get("/models/finance.json")
         assert response.status_code == 200
         data = response.json()
 
-        assert data["name"] == "finance/models/revenue"
+        assert data["name"] == "finance"
+        # Description comes from first file alphabetically (aaa_revenue)
         assert data["description"] == "Revenue calculations"
-        assert (
-            data["components"][0]["url"]
-            == "http://testserver/files/finance-models-revenue.preql"
-        )
+        assert len(data["components"]) == 2
+
+        # Check both components are included
+        component_names = {c["name"] for c in data["components"]}
+        assert component_names == {"aaa_revenue", "expenses"}
 
 
 def test_serve_get_file_not_found():
@@ -226,6 +233,23 @@ def test_serve_get_file_success():
         assert response.headers["content-type"] == "text/plain; charset=utf-8"
 
 
+def test_serve_get_sql_file_success():
+    """Test getting a SQL file successfully."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        test_file = tmppath / "setup.sql"
+        content = "CREATE TABLE customers (id INT, name VARCHAR(100));"
+        test_file.write_text(content)
+
+        app = create_test_app(tmppath)
+        client = TestClient(app)
+
+        response = client.get("/files/setup.sql")
+        assert response.status_code == 200
+        assert response.text == content
+        assert response.headers["content-type"] == "text/plain; charset=utf-8"
+
+
 def test_serve_get_file_nested():
     """Test getting a nested file."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -244,6 +268,37 @@ def test_serve_get_file_nested():
         assert response.text == content
 
 
+def test_serve_model_with_sql_files():
+    """Test that SQL files are included as components with type='sql'."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir) / "mymodel"
+        tmppath.mkdir()
+
+        preql_file = tmppath / "data.preql"
+        preql_file.write_text("key id int;")
+
+        sql_file = tmppath / "setup.sql"
+        sql_file.write_text("CREATE TABLE test (id INT);")
+
+        app = create_test_app(tmppath, "http://testserver")
+        client = TestClient(app)
+
+        response = client.get("/models/mymodel.json")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert len(data["components"]) == 2
+
+        # Check both file types are included
+        types = {c["type"] for c in data["components"]}
+        assert types == {"trilogy", "sql"}
+
+        # Verify SQL file has correct type
+        sql_component = next(c for c in data["components"] if c["name"] == "setup")
+        assert sql_component["type"] == "sql"
+        assert sql_component["url"] == "http://testserver/files/setup.sql"
+
+
 def test_serve_cors_headers():
     """Test that CORS headers are set correctly."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -259,7 +314,8 @@ def test_serve_cors_headers():
 def test_serve_index_urls_use_base_url():
     """Test that index URLs use the provided base_url correctly."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        tmppath = Path(tmpdir)
+        tmppath = Path(tmpdir) / "mymodel"
+        tmppath.mkdir()
         test_file = tmppath / "test.preql"
         test_file.write_text("select 1;")
 
@@ -272,13 +328,16 @@ def test_serve_index_urls_use_base_url():
         data = response.json()
 
         assert len(data["models"]) == 1
-        assert data["models"][0]["url"] == "https://myserver.com:9000/models/test.json"
+        assert (
+            data["models"][0]["url"] == "https://myserver.com:9000/models/mymodel.json"
+        )
 
 
 def test_serve_model_components_use_base_url():
     """Test that model components use the provided base_url correctly."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        tmppath = Path(tmpdir)
+        tmppath = Path(tmpdir) / "mymodel"
+        tmppath.mkdir()
         test_file = tmppath / "model.preql"
         test_file.write_text("select 1;")
 
@@ -286,7 +345,7 @@ def test_serve_model_components_use_base_url():
         app = create_test_app(tmppath, "https://myserver.com:9000")
         client = TestClient(app)
 
-        response = client.get("/models/model.json")
+        response = client.get("/models/mymodel.json")
         assert response.status_code == 200
         data = response.json()
 
@@ -311,20 +370,26 @@ def test_serve_with_real_test_files():
     response = client.get("/")
     assert response.status_code == 200
 
-    # Test index
+    # Test index - should have one model (the directory)
     response = client.get("/index.json")
     assert response.status_code == 200
     data = response.json()
-    assert len(data["models"]) > 0
+    assert len(data["models"]) == 1
 
-    # Test getting a specific model
+    # Test getting the model
     model_name = data["models"][0]["name"]
     safe_name = model_name.replace("/", "-")
     response = client.get(f"/models/{safe_name}.json")
     assert response.status_code == 200
+    model_data = response.json()
 
-    # Test getting the file
-    response = client.get(f"/files/{safe_name}.preql")
+    # The model should have components (the individual files)
+    assert len(model_data["components"]) > 0
+
+    # Test getting a file
+    first_component = model_data["components"][0]
+    file_url = first_component["url"].replace("http://testserver/files/", "")
+    response = client.get(f"/files/{file_url}")
     assert response.status_code == 200
     assert len(response.text) > 0
 
@@ -332,7 +397,8 @@ def test_serve_with_real_test_files():
 def test_serve_localhost_url_when_host_is_0_0_0_0():
     """Test that URLs use localhost instead of 0.0.0.0 for proper resolution."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        tmppath = Path(tmpdir)
+        tmppath = Path(tmpdir) / "testmodel"
+        tmppath.mkdir()
         test_file = tmppath / "test.preql"
         test_file.write_text("select 1;")
 
@@ -350,10 +416,280 @@ def test_serve_localhost_url_when_host_is_0_0_0_0():
         assert response.status_code == 200
         data = response.json()
         assert len(data["models"]) == 1
-        assert data["models"][0]["url"] == "http://localhost:8100/models/test.json"
+        assert data["models"][0]["url"] == "http://localhost:8100/models/testmodel.json"
 
         # Check model component URLs use localhost
-        response = client.get("/models/test.json")
+        response = client.get("/models/testmodel.json")
         assert response.status_code == 200
         data = response.json()
         assert data["components"][0]["url"] == "http://localhost:8100/files/test.preql"
+
+
+def test_serve_with_trilogy_toml_setup():
+    """Test that setup scripts from trilogy.toml are marked with purpose='setup'."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir) / "mymodel"
+        tmppath.mkdir()
+
+        # Create setup directory and script
+        setup_dir = tmppath / "setup"
+        setup_dir.mkdir()
+        setup_file = setup_dir / "init.sql"
+        setup_file.write_text("CREATE TABLE base (id INT);")
+
+        # Create regular model file
+        model_file = tmppath / "model.preql"
+        model_file.write_text("key id int;")
+
+        # Create trilogy.toml with setup script
+        toml_content = """[engine]
+dialect = "duck_db"
+
+[setup]
+sql = ['setup/init.sql']
+"""
+        toml_file = tmppath / "trilogy.toml"
+        toml_file.write_text(toml_content)
+
+        app = create_test_app(tmppath, "http://testserver", "duckdb")
+        client = TestClient(app)
+
+        response = client.get("/models/mymodel.json")
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should have 2 components
+        assert len(data["components"]) == 2
+
+        # Find setup and source components
+        setup_components = [c for c in data["components"] if c["purpose"] == "setup"]
+        source_components = [c for c in data["components"] if c["purpose"] == "source"]
+
+        assert len(setup_components) == 1
+        assert len(source_components) == 1
+
+        # Verify setup component
+        setup = setup_components[0]
+        assert setup["name"] == "setup/init"
+        assert setup["type"] == "sql"
+        assert "setup-init.sql" in setup["url"]
+
+        # Verify source component
+        source = source_components[0]
+        assert source["name"] == "model"
+        assert source["type"] == "trilogy"
+
+
+def test_serve_with_engine_parameter():
+    """Test that the engine parameter is used in the model."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir) / "duckdb_model"
+        tmppath.mkdir()
+        test_file = tmppath / "data.preql"
+        test_file.write_text("key id int;")
+
+        app = create_test_app(tmppath, "http://testserver", "duckdb")
+        client = TestClient(app)
+
+        response = client.get("/models/duckdb_model.json")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["engine"] == "duckdb"
+
+
+def test_serve_with_readme_description():
+    """Test that README.md is used for model description."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir) / "my_model"
+        tmppath.mkdir()
+
+        # Create README.md
+        readme_content = """# My Model
+
+This is a comprehensive data model for customer analytics.
+
+It includes various metrics and dimensions.
+"""
+        readme_file = tmppath / "README.md"
+        readme_file.write_text(readme_content)
+
+        # Create a model file with its own comment
+        model_file = tmppath / "model.preql"
+        model_file.write_text("# This comment should be ignored\nkey id int;")
+
+        app = create_test_app(tmppath, "http://testserver")
+        client = TestClient(app)
+
+        response = client.get("/models/my_model.json")
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should use README.md title as description
+        assert data["description"] == "My Model"
+
+
+def test_serve_readme_with_content_before_header():
+    """Test README.md with content before any headers."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir) / "my_model"
+        tmppath.mkdir()
+
+        # Create README.md with content before header
+        readme_content = """A simple model for tracking user events.
+
+# Details
+
+More information here.
+"""
+        readme_file = tmppath / "README.md"
+        readme_file.write_text(readme_content)
+
+        model_file = tmppath / "model.preql"
+        model_file.write_text("key id int;")
+
+        app = create_test_app(tmppath, "http://testserver")
+        client = TestClient(app)
+
+        response = client.get("/models/my_model.json")
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should use first non-empty line
+        assert data["description"] == "A simple model for tracking user events."
+
+
+def test_serve_fallback_to_file_comment_when_no_readme():
+    """Test that file comments are used when README.md doesn't exist."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir) / "my_model"
+        tmppath.mkdir()
+
+        model_file = tmppath / "zzz_model.preql"
+        model_file.write_text("# Customer analytics model\nkey id int;")
+
+        app = create_test_app(tmppath, "http://testserver")
+        client = TestClient(app)
+
+        response = client.get("/models/my_model.json")
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should use file comment since no README
+        assert data["description"] == "Customer analytics model"
+
+
+def test_serve_with_csv_files():
+    """Test that CSV files are included as components with purpose='data'."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir) / "mymodel"
+        tmppath.mkdir()
+
+        # Create a model file
+        preql_file = tmppath / "model.preql"
+        preql_file.write_text("key id int;")
+
+        # Create a CSV file
+        csv_file = tmppath / "data.csv"
+        csv_file.write_text("id,name\n1,Alice\n2,Bob")
+
+        app = create_test_app(tmppath, "http://testserver")
+        client = TestClient(app)
+
+        response = client.get("/models/mymodel.json")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert len(data["components"]) == 2
+
+        # Find the CSV component
+        csv_component = next(c for c in data["components"] if c["type"] == "csv")
+        assert csv_component["name"] == "data"
+        assert csv_component["alias"] == "data"
+        assert csv_component["purpose"] == "data"
+        assert csv_component["url"] == "http://testserver/files/data.csv"
+
+
+def test_serve_get_csv_file():
+    """Test getting a CSV file successfully."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        csv_file = tmppath / "customers.csv"
+        content = "id,name,email\n1,Alice,alice@example.com\n2,Bob,bob@example.com"
+        csv_file.write_text(content)
+
+        app = create_test_app(tmppath)
+        client = TestClient(app)
+
+        response = client.get("/files/customers.csv")
+        assert response.status_code == 200
+        assert response.text == content
+        assert response.headers["content-type"] == "text/plain; charset=utf-8"
+
+
+def test_serve_model_with_multiple_file_types():
+    """Test a model with preql, sql, and csv files."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir) / "full_model"
+        tmppath.mkdir()
+
+        # Create different file types
+        preql_file = tmppath / "model.preql"
+        preql_file.write_text("key id int;")
+
+        sql_file = tmppath / "setup.sql"
+        sql_file.write_text("CREATE TABLE test (id INT);")
+
+        csv_file = tmppath / "data.csv"
+        csv_file.write_text("id,value\n1,100")
+
+        app = create_test_app(tmppath, "http://testserver")
+        client = TestClient(app)
+
+        response = client.get("/models/full_model.json")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert len(data["components"]) == 3
+
+        # Check all file types are present
+        types = {c["type"] for c in data["components"]}
+        assert types == {"trilogy", "sql", "csv"}
+
+        # Check purposes
+        purposes = {c["purpose"] for c in data["components"]}
+        assert purposes == {"source", "data"}
+
+        # Verify CSV component has correct purpose
+        csv_component = next(c for c in data["components"] if c["type"] == "csv")
+        assert csv_component["purpose"] == "data"
+
+
+def test_serve_nested_csv_file():
+    """Test CSV files in subdirectories."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir) / "mymodel"
+        tmppath.mkdir()
+
+        # Create nested directory structure
+        data_dir = tmppath / "data"
+        data_dir.mkdir()
+        csv_file = data_dir / "sales.csv"
+        csv_file.write_text("date,amount\n2024-01-01,100")
+
+        app = create_test_app(tmppath, "http://testserver")
+        client = TestClient(app)
+
+        response = client.get("/models/mymodel.json")
+        assert response.status_code == 200
+        data = response.json()
+
+        # Find the nested CSV
+        csv_component = next(c for c in data["components"] if c["type"] == "csv")
+        assert csv_component["name"] == "data/sales"
+        assert csv_component["url"] == "http://testserver/files/data-sales.csv"
+
+        # Test fetching the file
+        response = client.get("/files/data-sales.csv")
+        assert response.status_code == 200
+        assert "2024-01-01,100" in response.text

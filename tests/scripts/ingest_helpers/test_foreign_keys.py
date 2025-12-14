@@ -1,7 +1,13 @@
 """Tests for foreign key handling in ingest."""
 
 from trilogy import Environment, EnvironmentConfig
-from trilogy.authoring import Comment, ConceptDeclarationStatement, Datasource, DictImportResolver, Renderer
+from trilogy.authoring import (
+    Comment,
+    ConceptDeclarationStatement,
+    Datasource,
+    DictImportResolver,
+    Renderer,
+)
 from trilogy.core.enums import Purpose
 from trilogy.core.models.author import Concept, Grain
 from trilogy.core.models.datasource import Address, ColumnAssignment

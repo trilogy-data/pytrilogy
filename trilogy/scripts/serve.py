@@ -18,10 +18,11 @@ def check_fastapi_available() -> bool:
 
 
 @argument("directory", type=Path(exists=True, file_okay=False, dir_okay=True))
+@argument("engine", type=str, required=False, default="generic")
 @option("--port", "-p", default=8100, help="Port to run the server on")
 @option("--host", "-h", default="0.0.0.0", help="Host to bind the server to")
 @pass_context
-def serve(ctx, directory: str, port: int, host: str):
+def serve(ctx, directory: str, engine: str, port: int, host: str):
     """Start a FastAPI server to expose Trilogy models from a directory."""
     if not check_fastapi_available():
         print(
@@ -35,13 +36,14 @@ def serve(ctx, directory: str, port: int, host: str):
     from fastapi import FastAPI, HTTPException
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import PlainTextResponse
+
     from trilogy import __version__
     from trilogy.scripts.serve_helpers import (
         ModelImport,
         StoreIndex,
+        find_all_model_files,
         find_file_content_by_name,
         find_model_by_name,
-        find_preql_files,
         generate_model_index,
     )
 
@@ -63,10 +65,10 @@ def serve(ctx, directory: str, port: int, host: str):
     @app.get("/")
     async def root():
         """Root endpoint with server information."""
-        preql_count = len(find_preql_files(directory_path))
+        file_count = len(find_all_model_files(directory_path))
         return {
             "message": "Trilogy Model Server",
-            "description": f"Serving {preql_count} Trilogy models from {directory_path}",
+            "description": f"Serving model '{directory_path.name}' with {file_count} files from {directory_path}",
             "endpoints": {
                 "/index.json": "Get list of available models",
                 "/models/<model-name>.json": "Get specific model details",
@@ -78,28 +80,31 @@ def serve(ctx, directory: str, port: int, host: str):
         """Return the store index with list of available models."""
         return StoreIndex(
             name=f"Trilogy Models - {directory_path.name}",
-            models=generate_model_index(directory_path, base_url),
+            models=generate_model_index(directory_path, base_url, engine),
         )
 
     @app.get("/models/{model_name}.json", response_model=ModelImport)
     async def get_model(model_name: str) -> ModelImport:
         """Return a specific model by name."""
-        model = find_model_by_name(model_name, directory_path, base_url)
+        model = find_model_by_name(model_name, directory_path, base_url, engine)
         if model is None:
             raise HTTPException(status_code=404, detail="Model not found")
         return model
 
-    @app.get("/files/{file_name}.preql")
+    @app.get("/files/{file_name}")
     async def get_file(file_name: str):
-        """Return the raw .preql file content."""
+        """Return the raw .preql or .sql file content."""
         content = find_file_content_by_name(file_name, directory_path)
         if content is None:
             raise HTTPException(status_code=404, detail="File not found")
         return PlainTextResponse(content=content)
 
     print(f"Starting Trilogy Model Server on http://{host}:{port}")
-    print(f"Serving models from: {directory_path}")
+    print(f"Serving model '{directory_path.name}' from: {directory_path}")
+    print(f"Engine: {engine}")
     print(f"Access the index at: http://{host}:{port}/index.json")
-    print(f"Found {len(find_preql_files(directory_path))} .preql files")
+    print(
+        f"Found {len(find_all_model_files(directory_path))} model files (.preql, .sql, .csv)"
+    )
 
     uvicorn.run(app, host=host, port=port)

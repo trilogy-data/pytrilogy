@@ -15,18 +15,77 @@ def find_preql_files(directory_path: Path) -> list[Path]:
     return list(directory_path.rglob("*.preql"))
 
 
-def get_relative_model_name(preql_file: Path, directory_path: Path) -> str:
-    """Get the relative model name from a preql file path.
+def find_sql_files(directory_path: Path) -> list[Path]:
+    """Find all .sql files in the directory recursively.
 
     Args:
-        preql_file: Path to the .preql file
+        directory_path: The root directory to search
+
+    Returns:
+        List of Path objects for all .sql files found
+    """
+    return list(directory_path.rglob("*.sql"))
+
+
+def find_csv_files(directory_path: Path) -> list[Path]:
+    """Find all .csv files in the directory recursively.
+
+    Args:
+        directory_path: The root directory to search
+
+    Returns:
+        List of Path objects for all .csv files found
+    """
+    return list(directory_path.rglob("*.csv"))
+
+
+def find_trilogy_files(directory_path: Path) -> list[Path]:
+    """Find all .preql and .sql files in the directory recursively.
+
+    Args:
+        directory_path: The root directory to search
+
+    Returns:
+        List of Path objects for all .preql and .sql files found, sorted by path
+    """
+    preql_files = find_preql_files(directory_path)
+    sql_files = find_sql_files(directory_path)
+    return sorted(preql_files + sql_files)
+
+
+def find_all_model_files(directory_path: Path) -> list[Path]:
+    """Find all model files (.preql, .sql, .csv) in the directory recursively.
+
+    Args:
+        directory_path: The root directory to search
+
+    Returns:
+        List of Path objects for all model files found, sorted by path
+    """
+    preql_files = find_preql_files(directory_path)
+    sql_files = find_sql_files(directory_path)
+    csv_files = find_csv_files(directory_path)
+    return sorted(preql_files + sql_files + csv_files)
+
+
+def get_relative_model_name(preql_file: Path, directory_path: Path) -> str:
+    """Get the relative model name from a model file path.
+
+    Args:
+        preql_file: Path to the .preql, .sql, or .csv file
         directory_path: Root directory path
 
     Returns:
-        Relative model name with forward slashes and no .preql extension
+        Relative model name with forward slashes and no extension
     """
     relative_path = preql_file.relative_to(directory_path)
-    return str(relative_path).replace("\\", "/").replace(".preql", "")
+    return (
+        str(relative_path)
+        .replace("\\", "/")
+        .replace(".preql", "")
+        .replace(".sql", "")
+        .replace(".csv", "")
+    )
 
 
 def get_safe_model_name(model_name: str) -> str:
@@ -42,13 +101,13 @@ def get_safe_model_name(model_name: str) -> str:
 
 
 def extract_description_from_file(file_path: Path) -> str:
-    """Extract description from a preql file's comments.
+    """Extract description from a preql or sql file's comments.
 
-    Looks for the first comment line (starting with #) in the first 5 lines
+    Looks for the first comment line (starting with # or --) in the first 5 lines
     of the file and uses it as the description.
 
     Args:
-        file_path: Path to the .preql file
+        file_path: Path to the .preql or .sql file
 
     Returns:
         Description extracted from comments or a default description
@@ -64,6 +123,8 @@ def extract_description_from_file(file_path: Path) -> str:
         stripped = line.strip()
         if stripped.startswith("#"):
             return stripped.lstrip("#").strip()
+        if stripped.startswith("--"):
+            return stripped.lstrip("-").strip()
 
     return default_description
 
