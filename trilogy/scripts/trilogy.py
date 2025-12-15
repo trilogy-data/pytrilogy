@@ -1,6 +1,7 @@
 from click import group, option, pass_context
 
 from trilogy.scripts.agent import agent
+from trilogy.scripts.agent_info import agent_info
 from trilogy.scripts.display import set_rich_mode, show_debug_mode
 from trilogy.scripts.fmt import fmt
 from trilogy.scripts.ingest import ingest
@@ -15,7 +16,14 @@ set_rich_mode = set_rich_mode
 DEFAULT_PARALLELISM = 2
 
 
-@group()
+AGENT_NOTICE = """
+NOTE FOR AI AGENTS (Claude, GPT, etc.): For comprehensive usage documentation,
+run 'trilogy agent-info' to get a detailed AGENTS.md-style guide with all
+commands, options, and usage examples.
+"""
+
+
+@group(epilog=AGENT_NOTICE)
 @option("--debug", default=False, help="Enable debug mode")
 @pass_context
 def cli(ctx, debug: bool):
@@ -50,6 +58,7 @@ cli.command(
     ),
 )(run)
 cli.command("agent")(agent)
+cli.command("agent-info")(agent_info)
 cli.command("serve")(serve)
 
 
