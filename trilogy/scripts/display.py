@@ -458,3 +458,55 @@ def show_script_result(result: "ExecutionResult") -> None:
             print(
                 f"  ✗ {result.node.path.name} ({result.duration:.2f}s) - {result.error}"
             )
+
+
+def show_execution_plan(
+    nodes: list[str], edges: list[tuple[str, str]], execution_order: list[list[str]]
+) -> None:
+    """Display execution plan in human-readable format."""
+    if RICH_AVAILABLE and console is not None:
+        # Summary panel
+        info_text = (
+            f"Scripts: [cyan]{len(nodes)}[/cyan]\n"
+            f"Dependencies: [cyan]{len(edges)}[/cyan]\n"
+            f"Execution Levels: [cyan]{len(execution_order)}[/cyan]"
+        )
+        panel = Panel.fit(info_text, style="blue", title="Execution Plan")
+        console.print(panel)
+
+        # Execution order table
+        if execution_order:
+            table = Table(
+                title="Execution Order",
+                show_header=True,
+                header_style="bold blue",
+                box=box.MINIMAL_DOUBLE_HEAD,
+            )
+            table.add_column("Level", style="cyan", no_wrap=True)
+            table.add_column("Scripts (can run in parallel)", style="white")
+
+            for level, scripts in enumerate(execution_order):
+                table.add_row(str(level + 1), ", ".join(scripts))
+
+            console.print(table)
+
+        # Dependency details
+        if edges:
+            console.print("\n[bold]Dependencies:[/bold]")
+            for from_node, to_node in edges:
+                console.print(f"  [dim]{from_node}[/dim] -> [white]{to_node}[/white]")
+    else:
+        print("Execution Plan:")
+        print(f"  Scripts: {len(nodes)}")
+        print(f"  Dependencies: {len(edges)}")
+        print(f"  Execution Levels: {len(execution_order)}")
+
+        if execution_order:
+            print("\nExecution Order:")
+            for level, scripts in enumerate(execution_order):
+                print(f"  Level {level + 1}: {', '.join(scripts)}")
+
+        if edges:
+            print("\nDependencies:")
+            for from_node, to_node in edges:
+                print(f"  {from_node} -> {to_node}")

@@ -6,6 +6,7 @@ from trilogy.scripts.display import set_rich_mode, show_debug_mode
 from trilogy.scripts.fmt import fmt
 from trilogy.scripts.ingest import ingest
 from trilogy.scripts.init import init
+from trilogy.scripts.plan import plan
 from trilogy.scripts.run import run
 from trilogy.scripts.serve import serve
 from trilogy.scripts.testing import integration, unit
@@ -59,6 +60,7 @@ cli.command(
 )(run)
 cli.command("agent")(agent)
 cli.command("agent-info")(agent_info)
+cli.command("plan")(plan)
 cli.command("serve")(serve)
 
 
