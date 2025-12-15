@@ -4,6 +4,14 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
+import json
+import socket
+import threading
+import time
+import urllib.error
+import urllib.request
+from trilogy.scripts.trilogy import cli
 
 pytest.importorskip("fastapi")
 pytest.importorskip("uvicorn")
@@ -641,3 +649,70 @@ def test_serve_nested_csv_file():
         response = client.get("/files/data-sales.csv")
         assert response.status_code == 200
         assert "2024-01-01,100" in response.text
+
+
+def test_serve_cli():
+
+    path = Path(__file__).parent
+    config_dir = path / "config_directory"
+
+    # Find an available port
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        port = s.getsockname()[1]
+
+    runner = CliRunner()
+    cli_result = None
+
+    def run_cli():
+        nonlocal cli_result
+        cli_result = runner.invoke(
+            cli,
+            [
+                "serve",
+                str(config_dir),
+                "generic",
+                "--port",
+                str(port),
+                "--host",
+                "127.0.0.1",
+                "--timeout",
+                "5",
+            ],
+        )
+
+    # Run CLI in background thread
+    thread = threading.Thread(target=run_cli, daemon=True)
+    thread.start()
+
+    # Wait for server to start
+    base_url = f"http://127.0.0.1:{port}"
+    max_wait = 3.0
+    start = time.time()
+    server_ready = False
+    while time.time() - start < max_wait:
+        try:
+            urllib.request.urlopen(f"{base_url}/", timeout=1)
+            server_ready = True
+            break
+        except (urllib.error.URLError, ConnectionRefusedError):
+            time.sleep(0.1)
+
+    assert server_ready, "Server did not start in time"
+
+    # Test root endpoint
+    with urllib.request.urlopen(f"{base_url}/") as response:
+        assert response.status == 200
+
+    # Test index endpoint
+    with urllib.request.urlopen(f"{base_url}/index.json") as response:
+        assert response.status == 200
+        data = json.loads(response.read().decode())
+        assert "models" in data
+
+    # Wait for CLI to finish (timeout should stop it)
+    thread.join(timeout=6.0)
+    assert cli_result is not None
+    if cli_result.exception:
+        raise cli_result.exception
+    assert cli_result.exit_code == 0

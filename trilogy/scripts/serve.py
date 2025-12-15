@@ -95,8 +95,11 @@ def create_app(app, engine: str, directory_path: PathlibPath, host: str, port: i
 @argument("engine", type=str, required=False, default="generic")
 @option("--port", "-p", default=8100, help="Port to run the server on")
 @option("--host", "-h", default="0.0.0.0", help="Host to bind the server to")
+@option("--timeout", "-t", default=None, type=float, help="Shutdown after N seconds")
 @pass_context
-def serve(ctx, directory: str, engine: str, port: int, host: str):
+def serve(
+    ctx, directory: str, engine: str, port: int, host: str, timeout: float | None
+):
     """Start a FastAPI server to expose Trilogy models from a directory."""
     if not check_fastapi_available():
         print(
@@ -118,4 +121,20 @@ def serve(ctx, directory: str, engine: str, port: int, host: str):
 
     create_app(app, engine, directory_path, host, port)
 
-    uvicorn.run(app, host=host, port=port)
+    if timeout is not None:
+        import threading
+
+        config = uvicorn.Config(app, host=host, port=port)
+        server = uvicorn.Server(config)
+
+        def shutdown_after_timeout():
+            import time
+
+            time.sleep(timeout)
+            server.should_exit = True
+
+        timer = threading.Thread(target=shutdown_after_timeout, daemon=True)
+        timer.start()
+        server.run()
+    else:
+        uvicorn.run(app, host=host, port=port)
