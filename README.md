@@ -311,6 +311,33 @@ trilogy fmt <path to trilogy file>
 - `--username` - Username
 - `--password` - Password
 
+## Config Files
+The CLI can pick up default configuration from a config file in the toml format. 
+Detection will be recursive form parent directories of the current working directory,
+including the current working directory.
+
+This can be used to set
+- default engine and arguments
+- parallelism for execute for the CLI
+- any startup commands to run whenever creating an executor.
+
+```toml
+# Trilogy Configuration File
+# Learn more at: https://github.com/trilogy-data/pytrilogy
+
+[engine]
+# Default dialect for execution
+dialect = "duck_db"
+
+# Parallelism level for directory execution
+# parallelism = 2
+
+# Startup scripts to run before execution
+[setup]
+# startup_trilogy = []
+sql = ['setup/setup_dev.sql']
+```
+
 ## More Resources
 
 - [Interactive demo](https://trilogydata.dev/demo/)

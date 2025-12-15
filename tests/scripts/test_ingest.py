@@ -35,8 +35,6 @@ def test_ingest():
         cli,
         args,
     )
-    print(args)
-    print(results.output)
     if results.exception:
         raise results.exception
     assert results.exit_code == 0

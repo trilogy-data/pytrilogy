@@ -35,6 +35,7 @@ bigquery = ["sqlalchemy-bigquery"]
 snowflake = ["snowflake-sqlalchemy"]
 ai = ["httpx"]
 cli = ["rich"]
+serve = ["fastapi", "uvicorn"]
 
 
 [tool.setuptools.dynamic]

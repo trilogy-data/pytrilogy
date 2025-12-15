@@ -6,6 +6,7 @@ from trilogy.scripts.fmt import fmt
 from trilogy.scripts.ingest import ingest
 from trilogy.scripts.init import init
 from trilogy.scripts.run import run
+from trilogy.scripts.serve import serve
 from trilogy.scripts.testing import integration, unit
 
 set_rich_mode = set_rich_mode
@@ -49,6 +50,7 @@ cli.command(
     ),
 )(run)
 cli.command("agent")(agent)
+cli.command("serve")(serve)
 
 
 if __name__ == "__main__":

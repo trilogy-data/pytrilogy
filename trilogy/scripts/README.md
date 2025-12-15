@@ -1,5 +1,7 @@
 # Trilogy CLI
 
+Core entrypoint for CLI functions. 
+
 ## Local Testing
 
 ```bash

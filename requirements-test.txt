@@ -16,3 +16,5 @@ tomli-w
 types-tabulate
 httpx
 maturin
+fastapi
+uvicorn
