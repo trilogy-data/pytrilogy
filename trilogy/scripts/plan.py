@@ -17,26 +17,31 @@ from trilogy.scripts.display import print_error, print_info, show_execution_plan
 from trilogy.scripts.parallel_execution import ParallelExecutor
 
 
+def safe_relative_path(path: PathlibPath, root: PathlibPath) -> str:
+    """Get path relative to root, falling back to absolute if not a subpath.
+
+    This handles the case where imports pull in files from outside the root
+    directory (e.g., `import ../shared/utils.preql`).
+    """
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
+
+
 def graph_to_json(graph: nx.DiGraph, root: PathlibPath) -> dict[str, Any]:
     """Convert dependency graph to JSON-serializable dict."""
-    nodes = []
-    for node in graph.nodes():
-        try:
-            rel_path = node.path.relative_to(root)
-        except ValueError:
-            rel_path = node.path
-        nodes.append({"id": str(rel_path), "path": str(node.path)})
-
-    edges = []
-    for from_node, to_node in graph.edges():
-        try:
-            from_rel = from_node.path.relative_to(root)
-            to_rel = to_node.path.relative_to(root)
-        except ValueError:
-            from_rel = from_node.path
-            to_rel = to_node.path
-        edges.append({"from": str(from_rel), "to": str(to_rel)})
-
+    nodes = [
+        {"id": safe_relative_path(node.path, root), "path": str(node.path)}
+        for node in graph.nodes()
+    ]
+    edges = [
+        {
+            "from": safe_relative_path(from_node.path, root),
+            "to": safe_relative_path(to_node.path, root),
+        }
+        for from_node, to_node in graph.edges()
+    ]
     return {"nodes": nodes, "edges": edges}
 
 
@@ -70,36 +75,18 @@ def format_plan_text(
     graph: nx.DiGraph, root: PathlibPath
 ) -> tuple[list[str], list[tuple[str, str]], list[list[str]]]:
     """Format plan for text display."""
-    nodes: list[str] = []
-    for node in graph.nodes():
-        try:
-            rel_path = str(node.path.relative_to(root))
-        except ValueError:
-            rel_path = str(node.path)
-        nodes.append(rel_path)
-
-    edges: list[tuple[str, str]] = []
-    for from_node, to_node in graph.edges():
-        try:
-            from_rel = str(from_node.path.relative_to(root))
-            to_rel = str(to_node.path.relative_to(root))
-        except ValueError:
-            from_rel = str(from_node.path)
-            to_rel = str(to_node.path)
-        edges.append((from_rel, to_rel))
-
+    nodes = [safe_relative_path(node.path, root) for node in graph.nodes()]
+    edges = [
+        (
+            safe_relative_path(from_node.path, root),
+            safe_relative_path(to_node.path, root),
+        )
+        for from_node, to_node in graph.edges()
+    ]
     levels = get_execution_levels(graph)
-    execution_order: list[list[str]] = []
-    for level in levels:
-        level_names = []
-        for node in level:
-            try:
-                rel_path = str(node.path.relative_to(root))
-            except ValueError:
-                rel_path = str(node.path)
-            level_names.append(rel_path)
-        execution_order.append(level_names)
-
+    execution_order = [
+        [safe_relative_path(node.path, root) for node in level] for level in levels
+    ]
     return nodes, edges, execution_order
 
 
@@ -158,14 +145,7 @@ def plan(ctx, input: str, output: str | None, json_format: bool, config: str | N
             plan_data = graph_to_json(graph, root)
             levels = get_execution_levels(graph)
             plan_data["execution_order"] = [
-                [
-                    str(
-                        node.path.relative_to(root)
-                        if node.path.is_relative_to(root)
-                        else node.path
-                    )
-                    for node in level
-                ]
+                [safe_relative_path(node.path, root) for node in level]
                 for level in levels
             ]
             json_output = json.dumps(plan_data, indent=2)

@@ -1,0 +1,5 @@
+datasource shared_config (
+    config_id,
+    value
+)
+address db.shared_config;

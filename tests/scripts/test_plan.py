@@ -11,6 +11,7 @@ from trilogy.scripts.plan import (
     format_plan_text,
     get_execution_levels,
     graph_to_json,
+    safe_relative_path,
 )
 from trilogy.scripts.trilogy import cli
 
@@ -194,3 +195,95 @@ class TestFormatPlanText:
         assert nodes == []
         assert edges == []
         assert execution_order == []
+
+
+class TestSafeRelativePath:
+    """Tests for safe_relative_path helper function."""
+
+    def test_path_inside_root(self):
+        """Test with path that is inside the root directory."""
+        root = Path("/project/etl")
+        path = Path("/project/etl/scripts/main.preql")
+        result = safe_relative_path(path, root)
+        assert result == str(Path("scripts/main.preql"))
+
+    def test_path_is_root(self):
+        """Test with path that equals the root."""
+        root = Path("/project/etl")
+        path = Path("/project/etl")
+        result = safe_relative_path(path, root)
+        assert result == "."
+
+    def test_path_outside_root(self):
+        """Test with path outside the root directory (external import)."""
+        root = Path("/project/etl")
+        path = Path("/project/shared/utils.preql")
+        result = safe_relative_path(path, root)
+        assert result == str(Path("/project/shared/utils.preql"))
+
+    def test_path_sibling_directory(self):
+        """Test with path in sibling directory (common external import case)."""
+        root = Path("/project/etl")
+        path = Path("/project/common/base.preql")
+        result = safe_relative_path(path, root)
+        assert result == str(Path("/project/common/base.preql"))
+
+    def test_path_parent_directory(self):
+        """Test with path in parent directory."""
+        root = Path("/project/etl/scripts")
+        path = Path("/project/etl/config.preql")
+        result = safe_relative_path(path, root)
+        assert result == str(Path("/project/etl/config.preql"))
+
+    def test_deeply_nested_inside(self):
+        """Test with deeply nested path inside root."""
+        root = Path("/project")
+        path = Path("/project/etl/scripts/daily/main.preql")
+        result = safe_relative_path(path, root)
+        assert result == str(Path("etl/scripts/daily/main.preql"))
+
+    def test_completely_different_tree(self):
+        """Test with path in completely different directory tree."""
+        root = Path("/project/etl")
+        path = Path("/other/location/script.preql")
+        result = safe_relative_path(path, root)
+        assert result == str(Path("/other/location/script.preql"))
+
+
+class TestPlanExternalImports:
+    """Tests for plan command with external imports (files outside root dir)."""
+
+    @pytest.fixture
+    def external_import_dir(self, test_data_dir):
+        return test_data_dir / "external_import_test"
+
+    def test_plan_with_external_import_json(self, runner, external_import_dir):
+        """Test that external imports are handled correctly in JSON output."""
+        result = runner.invoke(cli, ["plan", str(external_import_dir), "--json"])
+        assert result.exit_code == 0, f"Command failed: {result.output}"
+
+        data = json.loads(result.output)
+        node_ids = {node["id"] for node in data["nodes"]}
+
+        # main.preql should be relative to root
+        assert "main.preql" in node_ids
+
+        # shared.preql is outside the root dir, should appear as absolute path
+        external_nodes = [n for n in node_ids if "external_shared" in n]
+        assert len(external_nodes) == 1, f"Expected external node, got: {node_ids}"
+
+    def test_plan_with_external_import_text(self, runner, external_import_dir):
+        """Test that external imports are handled correctly in text output."""
+        result = runner.invoke(cli, ["plan", str(external_import_dir)])
+        assert result.exit_code == 0, f"Command failed: {result.output}"
+
+    def test_plan_external_import_edges(self, runner, external_import_dir):
+        """Test that edges involving external imports are correctly represented."""
+        result = runner.invoke(cli, ["plan", str(external_import_dir), "--json"])
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        # Should have an edge from shared.preql to main.preql (import dependency)
+        assert len(data["edges"]) >= 1
+        edge_froms = [e["from"] for e in data["edges"]]
+        assert any("external_shared" in f or "shared" in f for f in edge_froms)

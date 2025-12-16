@@ -743,3 +743,101 @@ def test_create_progress_context():
     finally:
         # Restore original state
         display.set_rich_mode(original_state)
+
+
+class TestExecutionPlan:
+    """Test show_execution_plan display function."""
+
+    def test_show_execution_plan_basic(self, rich_mode):
+        """Test show_execution_plan with basic data."""
+        nodes = ["script1.preql", "script2.preql", "script3.preql"]
+        edges = [("script1.preql", "script2.preql"), ("script2.preql", "script3.preql")]
+        execution_order = [["script1.preql"], ["script2.preql"], ["script3.preql"]]
+
+        if rich_mode and RICH_AVAILABLE:
+            with capture_rich_console_output() as output:
+                display.show_execution_plan(nodes, edges, execution_order)
+                captured = output.getvalue()
+                assert "3" in captured  # Scripts count
+                assert "2" in captured  # Dependencies count
+                assert "script1.preql" in captured
+                assert "script2.preql" in captured
+                # Rich output should have box drawing characters for panels/tables
+                assert any(
+                    char in captured
+                    for char in ["┌", "│", "┐", "└", "┘", "╭", "╮", "╯", "╰", "─"]
+                )
+        else:
+            with capture_all_output() as (stdout, stderr):
+                display.show_execution_plan(nodes, edges, execution_order)
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "Execution Plan:" in captured
+                assert "Scripts: 3" in captured
+                assert "Dependencies: 2" in captured
+                assert "Execution Levels: 3" in captured
+                assert "Level 1:" in captured
+                assert "script1.preql" in captured
+                assert "->" in captured
+
+    def test_show_execution_plan_parallel_scripts(self, rich_mode):
+        """Test show_execution_plan with scripts that can run in parallel."""
+        nodes = ["a.preql", "b.preql", "c.preql", "d.preql"]
+        edges = [("a.preql", "c.preql"), ("b.preql", "c.preql"), ("c.preql", "d.preql")]
+        execution_order = [["a.preql", "b.preql"], ["c.preql"], ["d.preql"]]
+
+        if rich_mode and RICH_AVAILABLE:
+            with capture_rich_console_output() as output:
+                display.show_execution_plan(nodes, edges, execution_order)
+                captured = output.getvalue()
+                assert "a.preql" in captured
+                assert "b.preql" in captured
+                # Both a and b should appear together at level 1
+                assert "Execution Order" in captured
+        else:
+            with capture_all_output() as (stdout, stderr):
+                display.show_execution_plan(nodes, edges, execution_order)
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "Level 1: a.preql, b.preql" in captured
+                assert "Level 2: c.preql" in captured
+                assert "Level 3: d.preql" in captured
+
+    def test_show_execution_plan_empty(self, rich_mode):
+        """Test show_execution_plan with empty data."""
+        nodes: list[str] = []
+        edges: list[tuple[str, str]] = []
+        execution_order: list[list[str]] = []
+
+        if rich_mode and RICH_AVAILABLE:
+            with capture_rich_console_output() as output:
+                display.show_execution_plan(nodes, edges, execution_order)
+                captured = output.getvalue()
+                assert "0" in captured  # Scripts count should be 0
+        else:
+            with capture_all_output() as (stdout, stderr):
+                display.show_execution_plan(nodes, edges, execution_order)
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "Scripts: 0" in captured
+                assert "Dependencies: 0" in captured
+                assert "Execution Levels: 0" in captured
+
+    def test_show_execution_plan_no_dependencies(self, rich_mode):
+        """Test show_execution_plan with nodes but no dependencies."""
+        nodes = ["standalone1.preql", "standalone2.preql"]
+        edges: list[tuple[str, str]] = []
+        execution_order = [["standalone1.preql", "standalone2.preql"]]
+
+        if rich_mode and RICH_AVAILABLE:
+            with capture_rich_console_output() as output:
+                display.show_execution_plan(nodes, edges, execution_order)
+                captured = output.getvalue()
+                assert "standalone1.preql" in captured
+                assert "standalone2.preql" in captured
+                # No dependency arrows should appear
+        else:
+            with capture_all_output() as (stdout, stderr):
+                display.show_execution_plan(nodes, edges, execution_order)
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "Scripts: 2" in captured
+                assert "Dependencies: 0" in captured
+                # Should not have Dependencies section with arrows
+                assert "->" not in captured
