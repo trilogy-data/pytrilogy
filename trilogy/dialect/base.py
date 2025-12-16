@@ -13,6 +13,7 @@ from trilogy.constants import (
 )
 from trilogy.core.constants import UNNEST_NAME
 from trilogy.core.enums import (
+    AddressType,
     ComparisonOperator,
     CreateMode,
     DatePart,
@@ -55,7 +56,7 @@ from trilogy.core.models.core import (
     TraitDataType,
     TupleWrapper,
 )
-from trilogy.core.models.datasource import Datasource, RawColumnExpr
+from trilogy.core.models.datasource import Address, Datasource, RawColumnExpr
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import CTE, CompiledCTE, RecursiveCTE, UnionCTE
 from trilogy.core.processing.utility import (
@@ -434,6 +435,15 @@ class BaseDialect:
     def __init__(self, rendering: Rendering | None = None):
         self.rendering = rendering or CONFIG.rendering
         self.used_map: dict[str, set[str]] = defaultdict(set)
+
+    def render_source(self, address: Address) -> str:
+        if address.type == AddressType.QUERY:
+            return f"({address.location})"
+        if address.is_file:
+            raise NotImplementedError(
+                f"File source type {address.type} not supported by this dialect"
+            )
+        return safe_quote(address.location, self.QUOTE_CHARACTER)
 
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
@@ -1049,10 +1059,13 @@ class BaseDialect:
             else:
                 source = None
         else:
-            if cte.quote_address:
-                source = safe_quote(cte.base_name, self.QUOTE_CHARACTER)
+            addr = cte.source_address
+            if isinstance(addr, Address):
+                source = self.render_source(addr)
+            elif cte.quote_address:
+                source = safe_quote(addr, self.QUOTE_CHARACTER)
             else:
-                source = cte.base_name
+                source = addr
             if cte.base_name != cte.base_alias:
                 source = f"{source} as {self.QUOTE_CHARACTER}{cte.base_alias}{self.QUOTE_CHARACTER}"
         if not cte.render_from_clause:

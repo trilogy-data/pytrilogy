@@ -289,20 +289,26 @@ class CTE(BaseModel):
         )
 
     @property
-    def base_name(self) -> str:
+    def source_address(self) -> Union["Address", str]:
         if self.base_name_override:
             return self.base_name_override
-        # if this cte selects from a single datasource, select right from it
         if self.is_root_datasource:
-            return self.source.datasources[0].safe_location
-
-        # if we have multiple joined CTEs, pick the base
-        # as the root
+            ds = self.source.datasources[0]
+            if isinstance(ds, BuildDatasource) and isinstance(ds.address, Address):
+                return ds.address
+            return ds.safe_location
         elif len(self.source.datasources) == 1 and len(self.parent_ctes) == 1:
             return self.parent_ctes[0].name
         elif self.relevant_base_ctes:
             return self.relevant_base_ctes[0].name
         return self.source.name
+
+    @property
+    def base_name(self) -> str:
+        addr = self.source_address
+        if isinstance(addr, Address):
+            return addr.location
+        return addr
 
     @property
     def quote_address(self) -> bool:
