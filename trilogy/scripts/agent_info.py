@@ -2,6 +2,8 @@
 
 from click import pass_context
 
+from trilogy.ai.prompts import get_trilogy_prompt
+
 AGENT_INFO_OUTPUT = """# Trilogy CLI - AI Agent Usage Guide
 
 ## Overview
@@ -283,6 +285,14 @@ trilogy --debug run query.preql duckdb
 """
 
 
+def get_agent_info_output() -> str:
+    """Build the complete agent info output with CLI docs and syntax reference."""
+    syntax_section = get_trilogy_prompt(
+        intro="## Trilogy Language Syntax\n\nTrilogy is a SQL-inspired language with a built-in semantic layer. Use the following syntax reference when writing .preql files.",
+    )
+    return AGENT_INFO_OUTPUT + "\n" + syntax_section
+
+
 @pass_context
 def agent_info(ctx):
     """Output comprehensive CLI documentation for AI agents.
@@ -290,4 +300,4 @@ def agent_info(ctx):
     Prints an AGENTS.md-style guide with all commands, options,
     and usage examples optimized for AI agent consumption.
     """
-    print(AGENT_INFO_OUTPUT)
+    print(get_agent_info_output())

@@ -11,24 +11,37 @@ from trilogy.authoring import (
 )
 from trilogy.core.models.core import DataTyped, StructComponent
 
-TRILOGY_LEAD_IN = f'''You are a world-class expert in Trilogy, a SQL inspired language with similar syntax and a built in semantic layer. Use the following syntax description to help answer whatever questions they have. Often, they will be asking you to generate a query for them.
 
-Key Trilogy Syntax Rules:
+def get_trilogy_syntax_reference() -> str:
+    return f"""Key Trilogy Syntax Rules:
 {RULE_PROMPT}
 
 Aggregate Functions:
 {AGGREGATE_FUNCTIONS}
 
-Functions:  
+Functions:
 {FUNCTIONS}
 
-Valid types:  
+Valid types:
 {[x.value for x in DataType]}
 
-Some types may have additional metadata, which will help you understand them. For example, 'latitude', 'longitude' and 'currency' are all of type 'float', but have additional meaning.
+Some types may have additional metadata, which will help you understand them. For example, 'latitude', 'longitude' and 'currency' are all of type 'float', but have additional meaning."""
 
-For any response to the user, use this format -> put your actual response within triple double quotes with thinking and justification before it, in this format (replace placeholders with relevant content): Reasoning: {{reasoning}} """{{response}}"""
-'''
+
+def get_trilogy_prompt(intro: str | None = None, outro: str | None = None) -> str:
+    parts = []
+    if intro:
+        parts.append(intro)
+    parts.append(get_trilogy_syntax_reference())
+    if outro:
+        parts.append(outro)
+    return "\n\n".join(parts)
+
+
+TRILOGY_LEAD_IN = get_trilogy_prompt(
+    intro="You are a world-class expert in Trilogy, a SQL inspired language with similar syntax and a built in semantic layer. Use the following syntax description to help answer whatever questions they have. Often, they will be asking you to generate a query for them.",
+    outro='For any response to the user, use this format -> put your actual response within triple double quotes with thinking and justification before it, in this format (replace placeholders with relevant content): Reasoning: {reasoning} """{response}"""',
+)
 
 
 def datatype_to_field_prompt(
