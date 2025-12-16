@@ -17,7 +17,7 @@ key ticket_number int;
 property <ticket_number,item.id>.quantity int;
 property <ticket_number,item.id>.sales_price float;
 property <ticket_number,item.id>.list_price float;
-property <ticket_number,item.id>.ext_sales_price float;
+property <ticket_number,item.id>.ext_sales_price numeric(15,2);
 property <ticket_number,item.id>.ext_wholesale_cost float;
 property <ticket_number,item.id>.ext_list_price float;
 property <ticket_number,item.id>.ext_discount_amount float;

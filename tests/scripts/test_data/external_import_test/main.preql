@@ -1,0 +1,7 @@
+import ..external_shared.shared;
+
+datasource local_data (
+    id,
+    name
+)
+address db.local_data;

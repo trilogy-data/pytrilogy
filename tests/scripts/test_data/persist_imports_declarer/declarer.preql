@@ -1,0 +1,5 @@
+datasource metrics (
+    date,
+    value
+)
+address db.metrics;

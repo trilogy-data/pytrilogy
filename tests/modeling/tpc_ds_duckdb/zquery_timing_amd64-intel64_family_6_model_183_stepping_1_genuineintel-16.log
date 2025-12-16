@@ -9,9 +9,9 @@ exec_time = 0.596511
 comp_time = 0.25535
 
 [query_03]
-parse_time = 0.306351
-exec_time = 0.070323
-comp_time = 0.080534
+parse_time = 0.278139
+exec_time = 0.036903
+comp_time = 0.094628
 
 [query_06]
 parse_time = 0.395689
