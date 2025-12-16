@@ -109,7 +109,10 @@ trilogy unit tests/ -p 4
 
 ### trilogy integration <input> [dialect] [options] [conn_args...]
 
-Run integration tests on Trilogy scripts with real database connections.
+Run integration tests on Trilogy scripts with real database connections. Integration tests
+run validation that all datasources are configured properly. They do not execute code.
+
+To set up new tables, run first then do integration.
 
 **Arguments:**
 - `input` (required): Path to .preql file or directory

@@ -1,0 +1,7 @@
+import ds_a;
+
+datasource datasource_b (
+    id,
+    value
+)
+address db.ds_b;
