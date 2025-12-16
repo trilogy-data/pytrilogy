@@ -54,8 +54,6 @@ from trilogy.utility import unique
 
 LOGGER_PREFIX = "[MODELS_EXECUTE]"
 
-DATASOURCE_TYPES = (BuildDatasource, BuildDatasource)
-
 
 class InlinedCTE(BaseModel):
     original_alias: str
@@ -143,7 +141,7 @@ class CTE(BaseModel):
     ) -> bool:
         qds_being_inlined = parent.source
         ds_being_inlined = qds_being_inlined.datasources[0]
-        if not isinstance(ds_being_inlined, DATASOURCE_TYPES):
+        if not isinstance(ds_being_inlined, BuildDatasource):
             return False
         if any(
             [
@@ -286,7 +284,7 @@ class CTE(BaseModel):
     def is_root_datasource(self) -> bool:
         return (
             len(self.source.datasources) == 1
-            and isinstance(self.source.datasources[0], DATASOURCE_TYPES)
+            and isinstance(self.source.datasources[0], BuildDatasource)
             and not self.source.datasources[0].name == CONSTANT_DATASET
         )
 
@@ -810,7 +808,7 @@ class QueryDatasource(BaseModel):
             # query datasources should be referenced by their alias, always
             force_alias = isinstance(x, QueryDatasource)
             #
-            use_raw_name = isinstance(x, DATASOURCE_TYPES) and not force_alias
+            use_raw_name = isinstance(x, BuildDatasource) and not force_alias
             if source and x.safe_identifier != source:
                 continue
             try:

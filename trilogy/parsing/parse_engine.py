@@ -45,6 +45,7 @@ from trilogy.core.enums import (
     ValidationScope,
     WindowOrder,
     WindowType,
+    AddressType,
 )
 from trilogy.core.exceptions import (
     InvalidSyntaxException,
@@ -115,6 +116,7 @@ from trilogy.core.models.datasource import (
     ColumnAssignment,
     Datasource,
     Query,
+    File,
     RawColumnExpr,
 )
 from trilogy.core.models.environment import (
@@ -964,7 +966,9 @@ class ParseToObjects(Transformer):
             elif isinstance(val, WholeGrainWrapper):
                 non_partial_for = val.where
             elif isinstance(val, Query):
-                address = Address(location=f"({val.text})", is_query=True)
+                address = Address(location=f"({val.text})", type = AddressType.QUERY)
+            elif isinstance(val, File):
+                address = Address(location=val.path, type = val.type)
             elif isinstance(val, WhereClause):
                 where = val
             elif isinstance(val, DatasourceState):
@@ -1726,6 +1730,29 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def query(self, meta: Meta, args):
         return Query(text=args[0])
+    
+    @v_args(meta=True)
+    def file(self, meta: Meta, args):
+        path = Path(args[0][1:-1])
+        # if it's a relative path, look it up relative to current parsing directory
+        if path.is_relative_to("."):
+            path = Path(self.environment.working_path) / path
+        if not path.exists():
+            raise FileNotFoundError(f"File path {path} does not exist on line {meta.line}")
+        base = str(path.resolve().absolute())
+        if path.suffix == '.sql':
+            return File(path=base, type=AddressType.SQL)
+        elif path.suffix == '.py':
+            return File(path=base, type=AddressType.PYTHON_SCRIPT)
+        elif path.suffix == '.csv':
+            return File(path=base, type=AddressType.CSV)
+        elif path.suffix == '.tsv':
+            return File(path=base, type=AddressType.TSV)
+        elif path.suffix == '.parquet':
+            return File(path=base, type=AddressType.PARQUET)
+        else:
+            raise ParseError(f"Unsupported file type {path.suffix} for path {path} on line {meta.line}")
+
 
     def where(self, args):
         root = args[0]

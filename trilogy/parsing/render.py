@@ -371,6 +371,8 @@ class Renderer:
             if arg.location.startswith("("):
                 return f"query '''{arg.location[1:-1]}'''"
             return f"query '''{arg.location}'''"
+        elif arg.is_file:
+            return f"file '''`{arg.location}`'''"
         return f"address {arg.location}"
 
     @to_string.register

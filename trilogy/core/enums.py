@@ -90,6 +90,14 @@ class PublishAction(Enum):
     PUBLISH = "publish"
     UNPUBLISH = "unpublish"
 
+class AddressType(Enum):
+    TABLE = "table"
+    QUERY = "query"
+    PYTHON_SCRIPT = "python_script"
+    CSV = "csv"
+    TSV = "tsv"
+    PARQUET = "parquet"
+    SQL = "sql"
 
 class Modifier(Enum):
     PARTIAL = "Partial"
