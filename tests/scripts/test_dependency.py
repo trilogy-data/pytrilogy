@@ -169,3 +169,49 @@ def test_etl_dependency_persist_imports_declarer():
         "updater must run before declarer (persist-before-declare takes precedence "
         "over import edge when updater imports the declarer)"
     )
+
+
+def test_etl_transitive_persist_order():
+    """Test transitive persist ordering between updater scripts.
+
+    When:
+    - updater_a persists to datasource_a (declared in ds_a.preql)
+    - updater_b persists to datasource_b (declared in ds_b.preql)
+    - ds_b.preql imports ds_a.preql
+
+    Then updater_a must run BEFORE updater_b.
+
+    This ensures that when datasource B depends on datasource A (through imports),
+    updates to A complete before updates to B, maintaining data consistency.
+    """
+    test_dir = Path(__file__).parent / "test_data" / "transitive_persist_order"
+    ds_a_file = test_dir / "ds_a.preql"
+    ds_b_file = test_dir / "ds_b.preql"
+    updater_a_file = test_dir / "updater_a.preql"
+    updater_b_file = test_dir / "updater_b.preql"
+
+    assert ds_a_file.exists(), f"Test file {ds_a_file} not found"
+    assert ds_b_file.exists(), f"Test file {ds_b_file} not found"
+    assert updater_a_file.exists(), f"Test file {updater_a_file} not found"
+    assert updater_b_file.exists(), f"Test file {updater_b_file} not found"
+
+    nodes = create_script_nodes([ds_a_file, ds_b_file, updater_a_file, updater_b_file])
+
+    strategy = ETLDependencyStrategy()
+    graph = strategy.build_graph(nodes)
+
+    try:
+        order = list(nx.topological_sort(graph))
+    except nx.NetworkXError:
+        raise AssertionError("Graph has cycles - dependency resolution failed")
+
+    updater_a_node = next(n for n in nodes if n.path == updater_a_file)
+    updater_b_node = next(n for n in nodes if n.path == updater_b_file)
+
+    updater_a_pos = order.index(updater_a_node)
+    updater_b_pos = order.index(updater_b_node)
+
+    assert updater_a_pos < updater_b_pos, (
+        f"updater_a must run before updater_b (transitive persist order). "
+        f"Order was: {[n.path.name for n in order]}"
+    )

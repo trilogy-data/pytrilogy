@@ -1,0 +1,3 @@
+import ds_a;
+
+persist datasource_a where id = @id;

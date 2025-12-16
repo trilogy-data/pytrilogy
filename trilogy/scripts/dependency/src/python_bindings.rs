@@ -283,6 +283,14 @@ impl PyImportResolver {
                     reason_dict.set_item("type", "persist_before_declare")?;
                     reason_dict.set_item("datasource", datasource)?;
                 }
+                EdgeReason::TransitivePersistOrder {
+                    upstream_datasource,
+                    downstream_datasource,
+                } => {
+                    reason_dict.set_item("type", "transitive_persist_order")?;
+                    reason_dict.set_item("upstream_datasource", upstream_datasource)?;
+                    reason_dict.set_item("downstream_datasource", downstream_datasource)?;
+                }
             }
             edge_dict.set_item("reason", reason_dict)?;
             edges_list.append(edge_dict)?;

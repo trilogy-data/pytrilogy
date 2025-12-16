@@ -1,0 +1,5 @@
+datasource datasource_a (
+    id,
+    value
+)
+address db.ds_a;
