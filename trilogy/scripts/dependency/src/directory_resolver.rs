@@ -130,6 +130,9 @@ pub fn build_edges(graph: &DirectoryGraph) -> Vec<Edge> {
     }
 
     // Rule 2: Persist-before-declare
+    // Files that persist to a datasource must run BEFORE files that declare that datasource.
+    // This takes precedence over import edges - if the updater imports the declarer,
+    // we need to remove that import edge and add the persist-before-declare edge instead.
     for (declarer_path, declarer_info) in &graph.files {
         for ds_name in &declarer_info.datasources {
             for (updater_path, updater_info) in &graph.files {
@@ -138,25 +141,37 @@ pub fn build_edges(graph: &DirectoryGraph) -> Vec<Edge> {
                 }
 
                 if updater_info.persists.contains(ds_name) {
-                    let updater_imports_declarer = graph
-                        .imports
-                        .get(updater_path)
-                        .map(|imports| imports.contains(declarer_path))
-                        .unwrap_or(false);
-
-                    if !updater_imports_declarer {
-                        edges.push(Edge {
-                            from: updater_path.clone(),
-                            to: declarer_path.clone(),
-                            reason: EdgeReason::PersistBeforeDeclare {
-                                datasource: ds_name.clone(),
-                            },
-                        });
-                    }
+                    edges.push(Edge {
+                        from: updater_path.clone(),
+                        to: declarer_path.clone(),
+                        reason: EdgeReason::PersistBeforeDeclare {
+                            datasource: ds_name.clone(),
+                        },
+                    });
                 }
             }
         }
     }
+
+    // Rule 3: Remove import edges that conflict with persist-before-declare
+    // If file A imports file B, but A also persists to a datasource declared by B,
+    // then the import edge (B -> A) conflicts with persist-before-declare (A -> B).
+    // In this case, persist-before-declare takes precedence.
+    let persist_edges: HashSet<(PathBuf, PathBuf)> = edges
+        .iter()
+        .filter(|e| matches!(e.reason, EdgeReason::PersistBeforeDeclare { .. }))
+        .map(|e| (e.from.clone(), e.to.clone()))
+        .collect();
+
+    edges.retain(|edge| {
+        if matches!(edge.reason, EdgeReason::Import) {
+            // Check if there's a conflicting persist-before-declare edge in the opposite direction
+            let reverse = (edge.to.clone(), edge.from.clone());
+            !persist_edges.contains(&reverse)
+        } else {
+            true
+        }
+    });
 
     edges
 }

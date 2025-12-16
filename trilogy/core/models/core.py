@@ -143,6 +143,9 @@ class NumericType(BaseModel):
     def __str__(self) -> str:
         return f"Numeric({self.precision},{self.scale})"
 
+    def __hash__(self):
+        return hash((DataType.NUMERIC, self.precision, self.scale))
+
     @property
     def data_type(self):
         return DataType.NUMERIC
@@ -191,6 +194,9 @@ class MapType(BaseModel):
     @field_validator("key_type", mode="plain")
     def validate_key_type(cls, v):
         return v
+
+    def __hash__(self):
+        return hash((DataType.MAP, self.key_type, self.value_type))
 
     @property
     def data_type(self):
@@ -397,6 +403,7 @@ def merge_datatypes(
     allowable datatype transformation matrix"""
     if len(inputs) == 1:
         return inputs[0]
+
     if set(inputs) == {DataType.INTEGER, DataType.FLOAT}:
         return DataType.FLOAT
     if set(inputs) == {DataType.INTEGER, DataType.NUMERIC}:

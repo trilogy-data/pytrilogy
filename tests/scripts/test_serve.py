@@ -1,16 +1,17 @@
 """Integration tests for the serve command."""
 
-import tempfile
-from pathlib import Path
-
-import pytest
-from click.testing import CliRunner
 import json
 import socket
+import tempfile
 import threading
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+import pytest
+from click.testing import CliRunner
+
 from trilogy.scripts.trilogy import cli
 
 pytest.importorskip("fastapi")

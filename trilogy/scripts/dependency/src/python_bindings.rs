@@ -249,10 +249,24 @@ impl PyImportResolver {
         let files_list = PyList::empty_bound(py);
         let warnings_list = PyList::empty_bound(py);
 
-        // Add files
+        // Add files with debug info
+        let files_info_dict = PyDict::new_bound(py);
         for file_info in graph.files.values() {
             files_list.append(file_info.path.to_string_lossy().to_string())?;
+            let info_dict = PyDict::new_bound(py);
+            let ds_list = PyList::empty_bound(py);
+            for ds in &file_info.datasources {
+                ds_list.append(ds)?;
+            }
+            info_dict.set_item("datasources", ds_list)?;
+            let persist_list = PyList::empty_bound(py);
+            for p in &file_info.persists {
+                persist_list.append(p)?;
+            }
+            info_dict.set_item("persists", persist_list)?;
+            files_info_dict.set_item(file_info.path.to_string_lossy().to_string(), info_dict)?;
         }
+        result.set_item("files_info", files_info_dict)?;
 
         // Add edges
         for edge in edges {

@@ -1,0 +1,3 @@
+import declarer;
+
+persist metrics where date = @load_date;

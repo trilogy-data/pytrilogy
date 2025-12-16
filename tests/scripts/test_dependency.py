@@ -129,3 +129,43 @@ def test_etl_dependency_complex_chain():
     assert (
         updater_pos < main_pos and base_pos < main_pos and consumer_pos < main_pos
     ), "main should run after all dependencies"
+
+
+def test_etl_dependency_persist_imports_declarer():
+    """Test persist-before-declare when updater imports the declarer.
+
+    This is the critical case that was previously broken: when a file both
+    imports AND persists to a datasource from another file, the persist
+    relationship must take precedence over the import relationship.
+
+    Without the fix, the import edge (declarer -> updater) would cause
+    declarer to run first. With the fix, the persist-before-declare edge
+    (updater -> declarer) takes precedence and declarer runs after updater.
+    """
+    test_dir = Path(__file__).parent / "test_data" / "persist_imports_declarer"
+    updater_file = test_dir / "updater.preql"
+    declarer_file = test_dir / "declarer.preql"
+
+    assert updater_file.exists(), f"Test file {updater_file} not found"
+    assert declarer_file.exists(), f"Test file {declarer_file} not found"
+
+    nodes = create_script_nodes([updater_file, declarer_file])
+
+    strategy = ETLDependencyStrategy()
+    graph = strategy.build_graph(nodes)
+
+    try:
+        order = list(nx.topological_sort(graph))
+    except nx.NetworkXError:
+        raise AssertionError("Graph has cycles - dependency resolution failed")
+
+    updater_node = next(n for n in nodes if n.path == updater_file)
+    declarer_node = next(n for n in nodes if n.path == declarer_file)
+
+    updater_pos = order.index(updater_node)
+    declarer_pos = order.index(declarer_node)
+
+    assert updater_pos < declarer_pos, (
+        "updater must run before declarer (persist-before-declare takes precedence "
+        "over import edge when updater imports the declarer)"
+    )
