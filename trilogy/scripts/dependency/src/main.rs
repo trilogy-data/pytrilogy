@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand, ValueEnum};
-use _preql_import_resolver::{parse_file, ImportResolver, ParsedFile};
+use preql_import_resolver::{parse_file, ImportResolver, ParsedFile};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
