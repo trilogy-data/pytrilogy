@@ -3,8 +3,15 @@ from typing import Any, Callable, Mapping
 
 from jinja2 import Template
 
-from trilogy.core.enums import FunctionType, Modifier, UnnestMode, WindowType
+from trilogy.core.enums import (
+    AddressType,
+    FunctionType,
+    Modifier,
+    UnnestMode,
+    WindowType,
+)
 from trilogy.core.models.core import DataType
+from trilogy.core.models.datasource import Address
 from trilogy.dialect.base import BaseDialect
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
@@ -127,6 +134,30 @@ FUNCTION_GRAIN_MATCH_MAP = {
 DATATYPE_MAP: dict[DataType, str] = {}
 
 
+def get_python_datasource_setup_sql(enabled: bool) -> str:
+    """Return SQL to setup the uv_run macro for Python script datasources.
+
+    Args:
+        enabled: If True, installs extensions and creates working macro.
+                 If False, creates macro that returns helpful error.
+    """
+    if enabled:
+        return """
+INSTALL shellfs FROM community;
+INSTALL arrow FROM community;
+LOAD shellfs;
+LOAD arrow;
+
+CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
+SELECT * FROM read_arrow('uv run ' || script || ' ' || args || ' |');
+"""
+    else:
+        return """
+CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
+SELECT error('Python script datasources require enable_python_datasources=True in DuckDBConfig.');
+"""
+
+
 DUCKDB_TEMPLATE = Template(
     """{%- if output %}
 {{output}}
@@ -175,6 +206,21 @@ class DuckDBDialect(BaseDialect):
     SQL_TEMPLATE = DUCKDB_TEMPLATE
     UNNEST_MODE = UnnestMode.DIRECT
     NULL_WRAPPER = staticmethod(null_wrapper)
+
+    def render_source(self, address: Address) -> str:
+        if address.type == AddressType.CSV:
+            return f"read_csv('{address.location}')"
+        if address.type == AddressType.TSV:
+            return f"read_csv('{address.location}', delim='\\t')"
+        if address.type == AddressType.PARQUET:
+            return f"read_parquet('{address.location}')"
+        if address.type == AddressType.PYTHON_SCRIPT:
+            return f"uv_run('{address.location}')"
+        if address.type == AddressType.SQL:
+            with open(address.location, "r") as f:
+                sql_content = f.read().strip()
+            return f"({sql_content})"
+        return super().render_source(address)
 
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None

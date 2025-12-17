@@ -1,9 +1,10 @@
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, ItemsView, List, Optional, Union, ValuesView
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 from trilogy.constants import DEFAULT_NAMESPACE, logger
-from trilogy.core.enums import DatasourceState, Modifier
+from trilogy.core.enums import AddressType, DatasourceState, Modifier
 from trilogy.core.models.author import (
     Concept,
     ConceptRef,
@@ -82,12 +83,33 @@ class ColumnAssignment(BaseModel):
 
 class Address(BaseModel):
     location: str
-    is_query: bool = False
     quoted: bool = False
+    type: AddressType = AddressType.TABLE
+
+    @property
+    def is_query(self):
+        return self.type == AddressType.QUERY
+
+    @property
+    def is_file(self):
+        return self.type in {
+            AddressType.PYTHON_SCRIPT,
+            AddressType.CSV,
+            AddressType.TSV,
+            AddressType.PARQUET,
+            AddressType.SQL,
+        }
 
 
-class Query(BaseModel):
+@dataclass
+class Query:
     text: str
+
+
+@dataclass
+class File:
+    path: str
+    type: AddressType
 
 
 class DatasourceMetadata(BaseModel):

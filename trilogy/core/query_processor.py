@@ -19,7 +19,7 @@ from trilogy.core.models.build import (
     Factory,
 )
 from trilogy.core.models.core import DataType
-from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.datasource import Address, Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
     CTE,
@@ -233,7 +233,7 @@ def resolve_cte_base_name_and_alias_v2(
     source: QueryDatasource,
     source_map: Dict[str, list[str]],
     raw_joins: List[Join | InstantiatedUnnestJoin],
-) -> Tuple[str | None, str | None]:
+) -> Tuple[Address | str | None, str | None]:
     if not source.datasources:
         return None, None
     if (
@@ -241,7 +241,7 @@ def resolve_cte_base_name_and_alias_v2(
         and not source.datasources[0].name == CONSTANT_DATASET
     ):
         ds = source.datasources[0]
-        return ds.safe_location, ds.safe_identifier
+        return ds.address, ds.safe_identifier
 
     joins: List[Join] = [join for join in raw_joins if isinstance(join, Join)]
     if joins and len(joins) > 0:

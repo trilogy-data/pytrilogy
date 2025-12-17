@@ -4,7 +4,8 @@ from trilogy.dialect.enums import Dialects
 
 
 def get_dialect_generator(
-    dialect: Dialects, rendering: Rendering | None = None
+    dialect: Dialects,
+    rendering: Rendering | None = None,
 ) -> BaseDialect:
     if dialect == Dialects.BIGQUERY:
         from trilogy.dialect.bigquery import BigqueryDialect

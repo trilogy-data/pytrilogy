@@ -195,7 +195,7 @@ def get_dialect_config(
         from trilogy.dialect.config import DuckDBConfig
 
         conn_dict = validate_required_connection_params(
-            conn_dict, [], ["path"], "DuckDB"
+            conn_dict, [], ["path", "enable_python_datasources"], "DuckDB"
         )
         conf = DuckDBConfig(**conn_dict)
     elif edialect == Dialects.SNOWFLAKE:
@@ -285,6 +285,7 @@ def create_executor(
         engine=edialect.default_engine(conf=conf),
         environment=environment,
         hooks=[DebuggingHook()] if debug else [],
+        config=conf,
     )
     if config.startup_sql:
         for script in config.startup_sql:

@@ -45,8 +45,11 @@ class BigQueryConfig(DialectConfig):
 
 
 class DuckDBConfig(DialectConfig):
-    def __init__(self, path: str | None = None):
+    def __init__(
+        self, path: str | None = None, enable_python_datasources: bool = False
+    ):
         self.path = path
+        self.enable_python_datasources = enable_python_datasources
         self.guid = id(self)
 
     def connection_string(self) -> str:

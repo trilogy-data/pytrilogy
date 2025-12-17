@@ -52,7 +52,7 @@
 
     datasource_partition_clause: "partition"i "by"i column_list
 
-    datasource: "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? whole_grain_clause? (address | query) where? datasource_increment_clause? datasource_partition_clause? datasource_status_clause? 
+    datasource: "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? whole_grain_clause? (address | query | file) where? datasource_increment_clause? datasource_partition_clause? datasource_status_clause? 
    
     whole_grain_clause: "complete" where
 
@@ -61,6 +61,8 @@
     address: "address" (QUOTED_ADDRESS | ADDRESS)
     
     query: "query" MULTILINE_STRING
+
+    file: "file" FILE_PATH
     
     concept_assignment: SHORTHAND_MODIFIER* IDENTIFIER 
     
@@ -481,6 +483,7 @@
     ADDRESS: IDENTIFIER
 
     MULTILINE_STRING: /\'{3}(.*?)\'{3}/s
+    FILE_PATH: /`[^`]+\.(py|csv|parquet|tsv|sql)`/i
     
     DOUBLE_STRING_CHARS: /(?:(?!\${)([^"\\]|\\.))+/+ // any character except "
     SINGLE_STRING_CHARS: /(?:(?!\${)([^'\\]|\\.))+/+ // any character except '

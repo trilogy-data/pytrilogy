@@ -136,6 +136,7 @@ class Dialects(Enum):
                 dialect=self,
                 rendering=rendering,
                 hooks=hooks,
+                config=conf,
             )
 
         return Executor(
@@ -144,4 +145,5 @@ class Dialects(Enum):
             dialect=self,
             rendering=rendering,
             hooks=hooks,
+            config=conf,
         )

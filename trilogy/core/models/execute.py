@@ -54,8 +54,6 @@ from trilogy.utility import unique
 
 LOGGER_PREFIX = "[MODELS_EXECUTE]"
 
-DATASOURCE_TYPES = (BuildDatasource, BuildDatasource)
-
 
 class InlinedCTE(BaseModel):
     original_alias: str
@@ -83,7 +81,7 @@ class CTE(BaseModel):
     hidden_concepts: set[str] = Field(default_factory=set)
     order_by: Optional[BuildOrderBy] = None
     limit: Optional[int] = None
-    base_name_override: Optional[str] = None
+    base_name_override: Optional[Union["Address", str]] = None
     base_alias_override: Optional[str] = None
     inlined_ctes: dict[str, InlinedCTE] = Field(default_factory=dict)
 
@@ -143,7 +141,7 @@ class CTE(BaseModel):
     ) -> bool:
         qds_being_inlined = parent.source
         ds_being_inlined = qds_being_inlined.datasources[0]
-        if not isinstance(ds_being_inlined, DATASOURCE_TYPES):
+        if not isinstance(ds_being_inlined, BuildDatasource):
             return False
         if any(
             [
@@ -286,25 +284,31 @@ class CTE(BaseModel):
     def is_root_datasource(self) -> bool:
         return (
             len(self.source.datasources) == 1
-            and isinstance(self.source.datasources[0], DATASOURCE_TYPES)
+            and isinstance(self.source.datasources[0], BuildDatasource)
             and not self.source.datasources[0].name == CONSTANT_DATASET
         )
 
     @property
-    def base_name(self) -> str:
+    def source_address(self) -> Union["Address", str]:
         if self.base_name_override:
             return self.base_name_override
-        # if this cte selects from a single datasource, select right from it
         if self.is_root_datasource:
-            return self.source.datasources[0].safe_location
-
-        # if we have multiple joined CTEs, pick the base
-        # as the root
+            ds = self.source.datasources[0]
+            if isinstance(ds, BuildDatasource) and isinstance(ds.address, Address):
+                return ds.address
+            return ds.safe_location
         elif len(self.source.datasources) == 1 and len(self.parent_ctes) == 1:
             return self.parent_ctes[0].name
         elif self.relevant_base_ctes:
             return self.relevant_base_ctes[0].name
         return self.source.name
+
+    @property
+    def base_name(self) -> str:
+        addr = self.source_address
+        if isinstance(addr, Address):
+            return addr.location
+        return addr
 
     @property
     def quote_address(self) -> bool:
@@ -810,7 +814,7 @@ class QueryDatasource(BaseModel):
             # query datasources should be referenced by their alias, always
             force_alias = isinstance(x, QueryDatasource)
             #
-            use_raw_name = isinstance(x, DATASOURCE_TYPES) and not force_alias
+            use_raw_name = isinstance(x, BuildDatasource) and not force_alias
             if source and x.safe_identifier != source:
                 continue
             try:

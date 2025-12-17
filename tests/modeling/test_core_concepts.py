@@ -112,6 +112,7 @@ SELECT
     count(order_id) as store_order_count_3,
     store_order_count,
     store_order_count_2
+order by store_id asc
 ;"""
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
