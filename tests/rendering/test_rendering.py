@@ -3,6 +3,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX
 from trilogy.core.enums import (
+    AddressType,
     BooleanOperator,
     ComparisonOperator,
     DatasourceState,
@@ -727,7 +728,7 @@ where user_id = 123 or user_id = 456;"""
     ds = Datasource(
         name="useful_data",
         columns=[ColumnAssignment(alias="user_id", concept=user_id)],
-        address=Address(is_query=True, location="SELECT * FROM test"),
+        address=Address(location="SELECT * FROM test", type=AddressType.QUERY),
         grain=Grain(components=[user_id]),
         where=WhereClause(
             conditional=Conditional(
@@ -804,7 +805,7 @@ address memory.date_dim;"""
     ds = Datasource(
         name="useful_data",
         columns=[ColumnAssignment(alias="user_id", concept=user_id)],
-        address=Address(is_query=True, location="SELECT * FROM test"),
+        address=Address(location="SELECT * FROM test", type=AddressType.QUERY),
         grain=Grain(components=set()),
         where=WhereClause(
             conditional=Conditional(
@@ -837,7 +838,7 @@ where user_id = 123 or user_id = 456;"""
     ds = Datasource(
         name="useful_data",
         columns=[ColumnAssignment(alias="user_id", concept=user_id)],
-        address=Address(is_query=True, location="SELECT * FROM test"),
+        address=Address(location="SELECT * FROM test", type=AddressType.QUERY),
         grain=Grain(components=set()),
         incremental_by=[ConceptRef(address="local.user_id")],
         partition_by=[ConceptRef(address="local.user_id")],

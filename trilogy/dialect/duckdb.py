@@ -134,6 +134,30 @@ FUNCTION_GRAIN_MATCH_MAP = {
 DATATYPE_MAP: dict[DataType, str] = {}
 
 
+def get_python_datasource_setup_sql(enabled: bool) -> str:
+    """Return SQL to setup the uv_run macro for Python script datasources.
+
+    Args:
+        enabled: If True, installs extensions and creates working macro.
+                 If False, creates macro that returns helpful error.
+    """
+    if enabled:
+        return """
+INSTALL shellfs FROM community;
+INSTALL arrow FROM community;
+LOAD shellfs;
+LOAD arrow;
+
+CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
+SELECT * FROM read_arrow('uv run ' || script || ' ' || args || ' |');
+"""
+    else:
+        return """
+CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
+SELECT error('Python script datasources require enable_python_datasources=True in DuckDBConfig.');
+"""
+
+
 DUCKDB_TEMPLATE = Template(
     """{%- if output %}
 {{output}}
@@ -190,6 +214,8 @@ class DuckDBDialect(BaseDialect):
             return f"read_csv('{address.location}', delim='\\t')"
         if address.type == AddressType.PARQUET:
             return f"read_parquet('{address.location}')"
+        if address.type == AddressType.PYTHON_SCRIPT:
+            return f"uv_run('{address.location}')"
         return super().render_source(address)
 
     def get_table_schema(

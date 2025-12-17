@@ -90,6 +90,7 @@ class PublishAction(Enum):
     PUBLISH = "publish"
     UNPUBLISH = "unpublish"
 
+
 class AddressType(Enum):
     TABLE = "table"
     QUERY = "query"
@@ -98,6 +99,7 @@ class AddressType(Enum):
     TSV = "tsv"
     PARQUET = "parquet"
     SQL = "sql"
+
 
 class Modifier(Enum):
     PARTIAL = "Partial"

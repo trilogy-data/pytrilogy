@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, ItemsView, List, Optional, Union, ValuesView
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 from trilogy.constants import DEFAULT_NAMESPACE, logger
-from trilogy.core.enums import DatasourceState, Modifier, AddressType
+from trilogy.core.enums import AddressType, DatasourceState, Modifier
 from trilogy.core.models.author import (
     Concept,
     ConceptRef,
@@ -89,7 +89,7 @@ class Address(BaseModel):
     @property
     def is_query(self):
         return self.type == AddressType.QUERY
-    
+
     @property
     def is_file(self):
         return self.type in {
@@ -98,16 +98,19 @@ class Address(BaseModel):
             AddressType.TSV,
             AddressType.PARQUET,
             AddressType.SQL,
-        }   
+        }
+
 
 @dataclass
-class Query():
+class Query:
     text: str
 
+
 @dataclass
-class File():
+class File:
     path: str
     type: AddressType
+
 
 class DatasourceMetadata(BaseModel):
     freshness_concept: Concept | None

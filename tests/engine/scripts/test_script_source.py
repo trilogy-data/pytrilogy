@@ -1,9 +1,13 @@
-from trilogy import Environment, Dialects
 from pathlib import Path
+
+import pytest
+
+from trilogy import Dialects, Environment
+from trilogy.execution import DuckDBConfig
 
 
 def test_arrow_source():
-    script = '''
+    script = """
 key fib_index int;
 property fib_index.value int;
 
@@ -17,11 +21,57 @@ file `./fib.py`;
 
 select
     sum(value) as total_fib;
-'''
+"""
 
     executor = Dialects.DUCK_DB.default_executor(
-        environment=Environment(working_path=Path(__file__).parent))
-    
+        environment=Environment(working_path=Path(__file__).parent),
+        conf=DuckDBConfig(enable_python_datasources=True),
+    )
+
     results = executor.execute_text(script)
 
     assert results[-1].fetchone()[0] > 100
+
+
+def test_arrow_source_not_enabled_error():
+    """Test that an error is raised when python datasources are not enabled.
+
+    When enable_python_datasources=False, the uv_run macro returns an error.
+    However, DuckDB binds column names before evaluating the macro, so the
+    error message may reference missing columns rather than the helpful message.
+    This test verifies that execution fails (not silently succeeds).
+    """
+    script = """
+key fib_index int;
+property fib_index.value int;
+
+datasource fib_numbers(
+    index:fib_index,
+    fibonacci: value
+)
+grain (fib_index)
+file `./fib.py`;
+
+
+select
+    sum(value) as total_fib;
+"""
+
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=Path(__file__).parent),
+    )
+
+    with pytest.raises(Exception):
+        executor.execute_text(script)
+
+
+def test_uv_run_macro_error_message():
+    """Test that uv_run macro gives helpful error when not configured."""
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=Path(__file__).parent),
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        executor.execute_raw_sql("SELECT * FROM uv_run('test.py')")
+
+    assert "enable_python_datasources" in str(exc_info.value)

@@ -1,9 +1,10 @@
-from trilogy import Environment, Dialects
 from pathlib import Path
+
+from trilogy import Dialects, Environment
 
 
 def test_csv_source():
-    script = '''
+    script = """
 key id int;
 property id.name string;
 
@@ -17,11 +18,12 @@ file `./test.csv`;
 
 select
     id.count as total_ids;
-'''
+"""
 
     executor = Dialects.DUCK_DB.default_executor(
-        environment=Environment(working_path=Path(__file__).parent))
-    
+        environment=Environment(working_path=Path(__file__).parent)
+    )
+
     results = executor.execute_text(script)
 
-    assert results[-1].fetchone()[0] ==4
+    assert results[-1].fetchone()[0] == 4

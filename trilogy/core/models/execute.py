@@ -81,7 +81,7 @@ class CTE(BaseModel):
     hidden_concepts: set[str] = Field(default_factory=set)
     order_by: Optional[BuildOrderBy] = None
     limit: Optional[int] = None
-    base_name_override: Optional[str] = None
+    base_name_override: Optional[Union["Address", str]] = None
     base_alias_override: Optional[str] = None
     inlined_ctes: dict[str, InlinedCTE] = Field(default_factory=dict)
 

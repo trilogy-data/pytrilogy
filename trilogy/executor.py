@@ -49,6 +49,7 @@ from trilogy.core.validation.common import (
     ValidationTest,
 )
 from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.config import DialectConfig
 from trilogy.dialect.enums import Dialects
 from trilogy.dialect.metadata import (
     generate_result_set,
@@ -76,6 +77,7 @@ class Executor(object):
         environment: Optional[Environment] = None,
         rendering: Rendering | None = None,
         hooks: List[BaseHook] | None = None,
+        config: DialectConfig | None = None,
     ):
         self.dialect: Dialects = dialect
         self.engine = engine
@@ -83,16 +85,31 @@ class Executor(object):
         self.generator: BaseDialect
         self.logger = logger
         self.hooks = hooks
+        self.config = config
         self.generator = get_dialect_generator(self.dialect, rendering)
         self.connection = self.connect()
         # TODO: make generic
         if self.dialect == Dialects.DATAFRAME:
             self.engine.setup(self.environment, self.connection)
+        # Setup Python datasources support for DuckDB
+        if self.dialect == Dialects.DUCK_DB:
+            self._setup_duckdb_python_datasources()
 
     def connect(self) -> EngineConnection:
         self.connection = self.engine.connect()
         self.connected = True
         return self.connection
+
+    def _setup_duckdb_python_datasources(self) -> None:
+        """Setup DuckDB macro for Python script datasources."""
+        from trilogy.dialect.config import DuckDBConfig
+        from trilogy.dialect.duckdb import get_python_datasource_setup_sql
+
+        enabled = (
+            isinstance(self.config, DuckDBConfig)
+            and self.config.enable_python_datasources
+        )
+        self.execute_raw_sql(get_python_datasource_setup_sql(enabled))
 
     def close(self):
         self.engine.dispose(close=True)
