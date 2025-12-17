@@ -34,13 +34,6 @@ select
 
 
 def test_arrow_source_not_enabled_error():
-    """Test that an error is raised when python datasources are not enabled.
-
-    When enable_python_datasources=False, the uv_run macro returns an error.
-    However, DuckDB binds column names before evaluating the macro, so the
-    error message may reference missing columns rather than the helpful message.
-    This test verifies that execution fails (not silently succeeds).
-    """
     script = """
 key fib_index int;
 property fib_index.value int;
