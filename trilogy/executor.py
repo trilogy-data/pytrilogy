@@ -110,6 +110,7 @@ class Executor(object):
             and self.config.enable_python_datasources
         )
         self.execute_raw_sql(get_python_datasource_setup_sql(enabled))
+        self.connection.commit()
 
     def close(self):
         self.engine.dispose(close=True)
