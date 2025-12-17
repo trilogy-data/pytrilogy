@@ -483,7 +483,7 @@
     ADDRESS: IDENTIFIER
 
     MULTILINE_STRING: /\'{3}(.*?)\'{3}/s
-    FILE_PATH: /`[^`]+\.(py|csv|parquet|tsv)`/i
+    FILE_PATH: /`[^`]+\.(py|csv|parquet|tsv|sql)`/i
     
     DOUBLE_STRING_CHARS: /(?:(?!\${)([^"\\]|\\.))+/+ // any character except "
     SINGLE_STRING_CHARS: /(?:(?!\${)([^'\\]|\\.))+/+ // any character except '

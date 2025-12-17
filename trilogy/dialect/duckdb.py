@@ -216,6 +216,10 @@ class DuckDBDialect(BaseDialect):
             return f"read_parquet('{address.location}')"
         if address.type == AddressType.PYTHON_SCRIPT:
             return f"uv_run('{address.location}')"
+        if address.type == AddressType.SQL:
+            with open(address.location, "r") as f:
+                sql_content = f.read().strip()
+            return f"({sql_content})"
         return super().render_source(address)
 
     def get_table_schema(
