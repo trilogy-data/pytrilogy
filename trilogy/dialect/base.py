@@ -448,17 +448,11 @@ class BaseDialect:
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[tuple]:
-        """Returns a list of tuples: (column_name, data_type, is_nullable, column_comment).
-
-        Note: column_comment may be NULL/empty if not supported by the database.
-        """
-
         raise NotImplementedError
 
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[str]:
-        """Returns a list of column names that are part of the primary key."""
         raise NotImplementedError
 
     def get_table_sample(
@@ -468,7 +462,6 @@ class BaseDialect:
         schema: str | None = None,
         sample_size: int = 10000,
     ) -> list[tuple]:
-        """Returns a list of row tuples for grain and nullability analysis."""
         if schema:
             qualified_name = f"{schema}.{table_name}"
         else:
@@ -477,6 +470,19 @@ class BaseDialect:
         sample_query = f"SELECT * FROM {safe_quote(qualified_name, self.QUOTE_CHARACTER)} LIMIT {sample_size}"
         rows = executor.execute_raw_sql(sample_query).fetchall()
         return rows
+
+    def get_table_last_modified(
+        self, executor, table_name: str, schema: str | None = None
+    ) -> str | None:
+        from datetime import datetime, timezone
+
+        return datetime.now(timezone.utc).isoformat()
+
+    def hash_column_value(self, column_name: str) -> str:
+        return f"md5(CAST({safe_quote(column_name, self.QUOTE_CHARACTER)} AS VARCHAR))"
+
+    def aggregate_checksum(self, hash_expr: str) -> str:
+        return f"SUM(CAST(('x' || SUBSTRING({hash_expr}, 1, 8))::bit(32)::bigint AS BIGINT))"
 
     def render_order_item(
         self,
