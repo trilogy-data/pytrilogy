@@ -120,6 +120,16 @@ class Executor(object):
             gc.collect()
         self.connected = False
 
+    def update_datasource(self, datasource: Datasource, keys:list[UpdateKeys]) -> None:
+        if keys:
+            where = #TODO generate WHere Clause
+        statement = PersistStatement(
+            datasource=datasource,
+            select= datasource.create_update_statement(self.environment, where, line_no=None),
+        )
+        self.execute_statement(statement)
+
+
     def execute_statement(
         self,
         statement: PROCESSED_STATEMENT_TYPES,

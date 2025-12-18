@@ -19,6 +19,7 @@ from trilogy.core.models.author import (
 LOGGER_PREFIX = "[MODELS_DATASOURCE]"
 
 if TYPE_CHECKING:
+    from trilogy.core.models.environment import Environment
     pass
 
 
@@ -292,6 +293,21 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             partition_by=[c.with_namespace(namespace) for c in self.partition_by],
         )
         return new
+
+    def create_update_statement(self, environment:'Environment', where:Optional[WhereClause]=None, line_no:int | None = None) -> 'SelectStatement':
+        from trilogy.core.statements.author import SelectStatement, SelectItem, Metadata
+        return SelectStatement.from_inputs(
+            environment=environment
+            selection=[
+                SelectItem(
+                    content=ConceptRef(address=col.concept.address),
+                    modifiers=[],
+                )
+                for col in self.columns
+            ],
+            where_clause=where,
+            meta=Metadata(line_number=line_no) if line_no else None,
+        )
 
     @property
     def concepts(self) -> List[ConceptRef]:

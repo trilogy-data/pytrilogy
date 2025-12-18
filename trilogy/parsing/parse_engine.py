@@ -1466,17 +1466,8 @@ class ParseToObjects(Transformer):
                 f"Auto persist target datasource {target_name} does not exist in environment on line {meta.line}. Have {list(self.environment.datasources.keys())}"
             )
         target = self.environment.datasources[target_name]
-        select: SelectStatement = SelectStatement.from_inputs(
-            environment=self.environment,
-            selection=[
-                SelectItem(
-                    content=ConceptRef(address=col.concept.address),
-                    modifiers=[],
-                )
-                for col in target.columns
-            ],
-            where_clause=where,
-            meta=Metadata(line_number=meta.line),
+        select: SelectStatement = target.create_update_statement(
+            self.environment, where, line_no=meta.line
         )
         return PersistStatement(
             select=select,

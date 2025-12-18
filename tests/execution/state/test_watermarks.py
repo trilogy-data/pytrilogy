@@ -50,14 +50,14 @@ def test_incremental_key_watermarks(duckdb_engine: Executor):
             order_date: order_date
         )
         grain (order_id)
-        incremental_by (order_date)
         query '''
         SELECT 1 as order_id, 100.0 as amount, '2024-01-01 10:00:00' as order_date
         UNION ALL
         SELECT 2 as order_id, 200.0 as amount, '2024-01-05 11:00:00' as order_date
         UNION ALL
         SELECT 3 as order_id, 150.0 as amount, '2024-01-10 12:00:00' as order_date
-        ''';
+        '''
+        incremental by order_date;
         """
     )
 
@@ -120,19 +120,19 @@ def test_base_state_store_incremental_by(duckdb_engine: Executor):
             amount: amount
         )
         grain (transaction_id)
-        incremental_by (timestamp)
         query '''
         SELECT 1 as transaction_id, '2024-01-01 10:00:00' as timestamp, 50.0 as amount
         UNION ALL
         SELECT 2 as transaction_id, '2024-01-02 11:00:00' as timestamp, 75.0 as amount
-        ''';
+        '''
+        incremental by timestamp;
         """
     )
 
     datasource = duckdb_engine.environment.datasources["transactions"]
     state_store = BaseStateStore()
 
-    watermarks = state_store.watermark_root_asset(datasource, duckdb_engine)
+    watermarks = state_store.watermark_asset(datasource, duckdb_engine)
 
     assert watermarks is not None
     assert "timestamp" in watermarks.keys
@@ -167,7 +167,7 @@ def test_base_state_store_key_hash(duckdb_engine: Executor):
     datasource = duckdb_engine.environment.datasources["customers"]
     state_store = BaseStateStore()
 
-    watermarks = state_store.watermark_root_asset(datasource, duckdb_engine)
+    watermarks = state_store.watermark_asset(datasource, duckdb_engine)
 
     assert watermarks is not None
     assert "customer_id" in watermarks.keys
@@ -175,32 +175,39 @@ def test_base_state_store_key_hash(duckdb_engine: Executor):
 
 
 def test_base_state_store_update_time(duckdb_engine: Executor):
+    # Create a physical table so we can test UPDATE_TIME watermarks
+    # UPDATE_TIME is only available for physical tables, not queries
     duckdb_engine.execute_text(
         """
-        property event_type string;
-        property event_count int;
+        key event_row int;
+        property event_row.event_type string;
+        property event_row.event_count int;
 
         datasource events (
+            event_row: event_row,
             event_type: event_type,
             event_count: event_count
         )
-        grain ()
-        query '''
-        SELECT 'login' as event_type, 100 as event_count
-        UNION ALL
-        SELECT 'logout' as event_type, 95 as event_count
-        ''';
+        grain (event_row)
+        address events_table;
+
+        CREATE IF NOT EXISTS DATASOURCE events;
+
+        RAW_SQL('''
+        INSERT INTO events_table VALUES (1, 'login', 100), (2, 'logout', 95)
+        ''');
         """
     )
 
     datasource = duckdb_engine.environment.datasources["events"]
     state_store = BaseStateStore()
 
-    watermarks = state_store.watermark_root_asset(datasource, duckdb_engine)
+    watermarks = state_store.watermark_asset(datasource, duckdb_engine)
 
+    # Since there's a key column, it will use KEY_HASH watermark type
     assert watermarks is not None
-    assert "update_time" in watermarks.keys
-    assert watermarks.keys["update_time"].type == WatermarkType.UPDATE_TIME
+    assert "event_row" in watermarks.keys
+    assert watermarks.keys["event_row"].type == WatermarkType.KEY_HASH
 
 
 def test_empty_incremental_by(duckdb_engine: Executor):
@@ -227,16 +234,18 @@ def test_empty_incremental_by(duckdb_engine: Executor):
 def test_no_key_columns(duckdb_engine: Executor):
     duckdb_engine.execute_text(
         """
-        property metric_name string;
-        property metric_value float;
+        key metric_id int;
+        property metric_id.metric_name string;
+        property metric_id.metric_value float;
 
         datasource metrics (
+            metric_id: metric_id,
             metric_name: metric_name,
             metric_value: metric_value
         )
-        grain ()
+        grain (metric_id)
         query '''
-        SELECT 'cpu_usage' as metric_name, 75.5 as metric_value
+        SELECT 1 as metric_id, 'cpu_usage' as metric_name, 75.5 as metric_value
         ''';
         """
     )
@@ -244,7 +253,9 @@ def test_no_key_columns(duckdb_engine: Executor):
     datasource = duckdb_engine.environment.datasources["metrics"]
     watermarks = get_unique_key_hash_watermarks(datasource, duckdb_engine)
 
-    assert watermarks.keys == {}
+    # Now has a key column, so we get KEY_HASH
+    assert "metric_id" in watermarks.keys
+    assert watermarks.keys["metric_id"].type == WatermarkType.KEY_HASH
 
 
 def test_multiple_incremental_keys(duckdb_engine: Executor):
@@ -260,14 +271,14 @@ def test_multiple_incremental_keys(duckdb_engine: Executor):
             version: version
         )
         grain (record_id)
-        incremental_by (updated_at, version)
         query '''
         SELECT 1 as record_id, '2024-01-01 10:00:00' as updated_at, 1 as version
         UNION ALL
         SELECT 2 as record_id, '2024-01-02 11:00:00' as updated_at, 2 as version
         UNION ALL
         SELECT 3 as record_id, '2024-01-03 12:00:00' as updated_at, 3 as version
-        ''';
+        '''
+        incremental by updated_at, version;
         """
     )
 
@@ -278,3 +289,171 @@ def test_multiple_incremental_keys(duckdb_engine: Executor):
     assert "version" in watermarks.keys
     assert watermarks.keys["updated_at"].type == WatermarkType.INCREMENTAL_KEY
     assert watermarks.keys["version"].type == WatermarkType.INCREMENTAL_KEY
+
+
+def test_watermark_all_assets(duckdb_engine: Executor):
+    duckdb_engine.execute_text(
+        """
+        key item_id int;
+        property item_id.value string;
+
+        datasource items (
+            item_id: item_id,
+            value: value
+        )
+        grain (item_id)
+        query '''
+        SELECT 1 as item_id, 'a' as value
+        ''';
+
+        datasource items_copy (
+            item_id: item_id,
+            value: value
+        )
+        grain (item_id)
+        query '''
+        SELECT 1 as item_id, 'a' as value
+        ''';
+        """
+    )
+
+    state_store = BaseStateStore()
+    watermarks = state_store.watermark_all_assets(
+        duckdb_engine.environment, duckdb_engine
+    )
+
+    assert "items" in watermarks
+    assert "items_copy" in watermarks
+
+
+def test_get_stale_assets_incremental(duckdb_engine: Executor):
+    duckdb_engine.execute_text(
+        """
+        key event_id int;
+        property event_id.event_ts datetime;
+
+        datasource source_events (
+            event_id: event_id,
+            event_ts: event_ts
+        )
+        grain (event_id)
+        query '''
+        SELECT 1 as event_id, TIMESTAMP '2024-01-10 12:00:00' as event_ts
+        UNION ALL
+        SELECT 2 as event_id, TIMESTAMP '2024-01-15 12:00:00' as event_ts
+        UNION ALL
+        SELECT 3 as event_id, TIMESTAMP '2024-01-20 12:00:00' as event_ts
+        '''
+        incremental by event_ts;
+
+        datasource target_events (
+            event_id: event_id,
+            event_ts: event_ts
+        )
+        grain (event_id)
+        address target_events_table
+        incremental by event_ts;
+
+        CREATE IF NOT EXISTS DATASOURCE target_events;
+
+        RAW_SQL('''
+        INSERT INTO target_events_table
+        SELECT 1 as event_id, TIMESTAMP '2024-01-10 12:00:00' as event_ts
+        ''');
+        """
+    )
+
+    state_store = BaseStateStore()
+    stale = state_store.get_stale_assets(
+        duckdb_engine.environment,
+        duckdb_engine,
+        root_assets={"source_events"},
+    )
+
+    assert len(stale) == 1
+    assert stale[0].datasource_id == "target_events"
+    assert "event_ts" in stale[0].reason
+    assert "behind" in stale[0].reason
+
+
+def test_get_stale_assets_up_to_date(duckdb_engine: Executor):
+    duckdb_engine.execute_text(
+        """
+        key sync_id int;
+        property sync_id.sync_ts datetime;
+
+        datasource sync_source (
+            sync_id: sync_id,
+            sync_ts: sync_ts
+        )
+        grain (sync_id)
+        query '''
+        SELECT 1 as sync_id, TIMESTAMP '2024-01-10 12:00:00' as sync_ts
+        '''
+        incremental by sync_ts;
+
+        datasource sync_target (
+            sync_id: sync_id,
+            sync_ts: sync_ts
+        )
+        grain (sync_id)
+        address sync_target_table
+        incremental by sync_ts;
+
+        CREATE IF NOT EXISTS DATASOURCE sync_target;
+
+        RAW_SQL('''
+        INSERT INTO sync_target_table
+        SELECT 1 as sync_id, TIMESTAMP '2024-01-10 12:00:00' as sync_ts
+        ''');
+        """
+    )
+
+    state_store = BaseStateStore()
+    stale = state_store.get_stale_assets(
+        duckdb_engine.environment,
+        duckdb_engine,
+        root_assets={"sync_source"},
+    )
+
+    assert len(stale) == 0
+
+
+def test_get_stale_assets_empty_target(duckdb_engine: Executor):
+    duckdb_engine.execute_text(
+        """
+        key log_id int;
+        property log_id.log_ts datetime;
+
+        datasource log_source (
+            log_id: log_id,
+            log_ts: log_ts
+        )
+        grain (log_id)
+        query '''
+        SELECT 1 as log_id, TIMESTAMP '2024-01-10 12:00:00' as log_ts
+        '''
+        incremental by log_ts;
+
+        datasource log_target (
+            log_id: log_id,
+            log_ts: log_ts
+        )
+        grain (log_id)
+        address log_target_table
+        incremental by log_ts;
+
+        CREATE IF NOT EXISTS DATASOURCE log_target;
+        """
+    )
+
+    state_store = BaseStateStore()
+    stale = state_store.get_stale_assets(
+        duckdb_engine.environment,
+        duckdb_engine,
+        root_assets={"log_source"},
+    )
+
+    assert len(stale) == 1
+    assert stale[0].datasource_id == "log_target"
+    assert stale[0].filters == {}

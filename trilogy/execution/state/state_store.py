@@ -1,9 +1,10 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 from trilogy import Executor
 from trilogy.core.enums import Purpose
 from trilogy.core.models.datasource import Address, Datasource
+from trilogy.core.models.environment import Environment
 
 
 class WatermarkType(Enum):
@@ -21,6 +22,37 @@ class WatermarkValue:
 @dataclass
 class DatasourceWatermark:
     keys: dict[str, WatermarkValue]
+
+
+@dataclass
+class StaleAsset:
+    """Represents an asset that needs to be refreshed."""
+
+    datasource_id: str
+    reason: str
+    filters: dict[str, WatermarkValue] = field(default_factory=dict)
+
+
+def _compare_watermark_values(
+    a: str | int | float, b: str | int | float
+) -> int:
+    """Compare two watermark values, returning -1, 0, or 1.
+
+    Handles type mismatches by comparing string representations.
+    """
+    if type(a) is type(b):
+        if a < b:  # type: ignore[operator]
+            return -1
+        elif a > b:  # type: ignore[operator]
+            return 1
+        return 0
+    # Different types: compare as strings
+    sa, sb = str(a), str(b)
+    if sa < sb:
+        return -1
+    elif sa > sb:
+        return 1
+    return 0
 
 
 def get_last_update_time_watermarks(
@@ -100,7 +132,7 @@ class BaseStateStore:
     def __init__(self):
         self.watermarks: dict[str, DatasourceWatermark] = {}
 
-    def watermark_root_asset(
+    def watermark_asset(
         self, datasource: Datasource, executor: Executor
     ) -> DatasourceWatermark:
         if datasource.incremental_by:
@@ -127,3 +159,85 @@ class BaseStateStore:
 
     def check_datasource_state(self, datasource: Datasource) -> bool:
         return datasource.identifier in self.watermarks
+
+    def watermark_all_assets(
+        self, env: Environment, executor: Executor
+    ) -> dict[str, DatasourceWatermark]:
+        """Watermark all datasources in the environment."""
+        for ds in env.datasources.values():
+            self.watermark_asset(ds, executor)
+        return self.watermarks
+
+    def get_stale_assets(
+        self,
+        env: Environment,
+        executor: Executor,
+        root_assets: set[str] | None = None,
+    ) -> list[StaleAsset]:
+        """Find all assets that are stale and need refresh.
+
+        Args:
+            env: The environment containing datasources
+            executor: Executor for querying current state
+            root_assets: Set of datasource identifiers that are "source of truth"
+                         and should not be marked stale. If None, defaults to empty.
+
+        Returns:
+            List of StaleAsset objects describing what needs refresh and why.
+        """
+        root_assets = root_assets or set()
+        stale: list[StaleAsset] = []
+
+        # First pass: watermark all assets to get current state
+        self.watermark_all_assets(env, executor)
+
+        # Build map of concept -> max watermark across all assets
+        concept_max_watermarks: dict[str, WatermarkValue] = {}
+        for ds_id, watermark in self.watermarks.items():
+            if ds_id in root_assets:
+                # Root assets define the "truth" for incremental keys
+                for key, val in watermark.keys.items():
+                    if (
+                        val.type == WatermarkType.INCREMENTAL_KEY
+                        and val.value is not None
+                    ):
+                        existing = concept_max_watermarks.get(key)
+                        if existing is None or (
+                            existing.value is not None
+                            and _compare_watermark_values(val.value, existing.value) > 0
+                        ):
+                            concept_max_watermarks[key] = val
+
+        # Second pass: check non-root assets against max watermarks
+        for ds_id, watermark in self.watermarks.items():
+            if ds_id in root_assets:
+                continue
+
+            for key, val in watermark.keys.items():
+                if val.type == WatermarkType.INCREMENTAL_KEY:
+                    max_val = concept_max_watermarks.get(key)
+                    if max_val and max_val.value is not None:
+                        if (
+                            val.value is None
+                            or _compare_watermark_values(val.value, max_val.value) < 0
+                        ):
+                            stale.append(
+                                StaleAsset(
+                                    datasource_id=ds_id,
+                                    reason=f"incremental key '{key}' behind: {val.value} < {max_val.value}",
+                                    filters={key: val} if val.value else {},
+                                )
+                            )
+                            break
+   # One approach: datasources defined with query blocks (not address) are inherently "external" - they pull from outside sources. The system could auto-detect these as roots since they can't be written to by PERSIST statements. The dependency graph from PERSIST statements could also explicitly track which assets update which targets.
+                elif val.type == WatermarkType.UPDATE_TIME:
+                    # For update_time, we'd need root asset update times to compare
+                    # This is tricky without explicit dependency tracking
+                    pass
+
+                elif val.type == WatermarkType.KEY_HASH:
+                    # Hash changes indicate data changed, but we need a reference
+                    # to compare against - requires dependency graph
+                    pass
+
+        return stale
