@@ -1,5 +1,7 @@
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, ItemsView, List, Optional, Union, ValuesView
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from enum import Enum
+from typing import TYPE_CHECKING, Any, ItemsView, List, Optional, Union, ValuesView
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
@@ -21,6 +23,69 @@ LOGGER_PREFIX = "[MODELS_DATASOURCE]"
 if TYPE_CHECKING:
     from trilogy.core.models.environment import Environment
     pass
+
+
+class UpdateKeyType(Enum):
+    INCREMENTAL_KEY = "incremental_key"
+    UPDATE_TIME = "update_time"
+    KEY_HASH = "key_hash"
+
+
+@dataclass
+class UpdateKey:
+    """Represents a key used to track data freshness for incremental updates."""
+
+    concept_name: str
+    type: UpdateKeyType
+    value: str | int | float | datetime | date | None
+
+    def to_comparison(
+        self, environment: "Environment"
+    ) -> "Comparison":
+        """Convert this update key to a Comparison for use in WHERE clauses."""
+        from trilogy.core.enums import ComparisonOperator
+        from trilogy.core.models.author import Comparison
+
+        concept = environment.concepts[self.concept_name]
+        return Comparison(
+            left=concept.reference,
+            right=self.value,
+            operator=ComparisonOperator.GT,
+        )
+
+
+@dataclass
+class UpdateKeys:
+    """Collection of update keys for a datasource."""
+
+    keys: dict[str, UpdateKey] = field(default_factory=dict)
+
+    def to_where_clause(
+        self, environment: "Environment"
+    ) -> WhereClause | None:
+        """Convert update keys to a WhereClause for filtering."""
+        from trilogy.core.enums import BooleanOperator
+        from trilogy.core.models.author import Conditional
+
+        comparisons = [
+            key.to_comparison(environment)
+            for key in self.keys.values()
+            if key.value is not None
+        ]
+        if not comparisons:
+            return None
+        if len(comparisons) == 1:
+            return WhereClause(conditional=comparisons[0])
+        conditional = Conditional(
+            left=comparisons[0],
+            right=comparisons[1],
+            operator=BooleanOperator.AND,
+        )
+        for comp in comparisons[2:]:
+            conditional = Conditional(
+                left=conditional, right=comp, operator=BooleanOperator.AND
+            )
+        return WhereClause(conditional=conditional)
 
 
 class RawColumnExpr(BaseModel):
@@ -294,10 +359,16 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         )
         return new
 
-    def create_update_statement(self, environment:'Environment', where:Optional[WhereClause]=None, line_no:int | None = None) -> 'SelectStatement':
-        from trilogy.core.statements.author import SelectStatement, SelectItem, Metadata
+    def create_update_statement(
+        self,
+        environment: "Environment",
+        where: Optional[WhereClause] = None,
+        line_no: int | None = None,
+    ) -> "SelectStatement":
+        from trilogy.core.statements.author import Metadata, SelectItem, SelectStatement
+
         return SelectStatement.from_inputs(
-            environment=environment
+            environment=environment,
             selection=[
                 SelectItem(
                     content=ConceptRef(address=col.concept.address),

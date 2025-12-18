@@ -15,7 +15,7 @@ from trilogy.core.enums import (
 from trilogy.core.models.author import Comment, Concept, Function
 from trilogy.core.models.build import BuildFunction
 from trilogy.core.models.core import ListWrapper, MapWrapper
-from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.datasource import Datasource, UpdateKeys
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
     STATEMENT_TYPES,
@@ -120,12 +120,22 @@ class Executor(object):
             gc.collect()
         self.connected = False
 
-    def update_datasource(self, datasource: Datasource, keys:list[UpdateKeys]) -> None:
-        if keys:
-            where = #TODO generate WHere Clause
+    def update_datasource(
+        self, datasource: Datasource, keys: UpdateKeys | None = None
+    ) -> None:
+        """Update a datasource with optional filtering based on update keys.
+
+        Args:
+            datasource: The datasource to update
+            keys: Optional UpdateKeys specifying incremental filters
+        """
+        where = keys.to_where_clause(self.environment) if keys else None
+        select_stmt = datasource.create_update_statement(
+            self.environment, where, line_no=None
+        )
         statement = PersistStatement(
             datasource=datasource,
-            select= datasource.create_update_statement(self.environment, where, line_no=None),
+            select=select_stmt,
         )
         self.execute_statement(statement)
 

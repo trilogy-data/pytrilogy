@@ -1,27 +1,20 @@
 from dataclasses import dataclass, field
-from enum import Enum
 
 from trilogy import Executor
 from trilogy.core.enums import Purpose
-from trilogy.core.models.datasource import Address, Datasource
+from trilogy.core.models.datasource import (
+    Address,
+    Datasource,
+    UpdateKey,
+    UpdateKeys,
+    UpdateKeyType,
+)
 from trilogy.core.models.environment import Environment
-
-
-class WatermarkType(Enum):
-    INCREMENTAL_KEY = "incremental_key"
-    UPDATE_TIME = "update_time"
-    KEY_HASH = "key_hash"
-
-
-@dataclass
-class WatermarkValue:
-    type: WatermarkType
-    value: str | int | float | None
 
 
 @dataclass
 class DatasourceWatermark:
-    keys: dict[str, WatermarkValue]
+    keys: dict[str, UpdateKey]
 
 
 @dataclass
@@ -30,12 +23,10 @@ class StaleAsset:
 
     datasource_id: str
     reason: str
-    filters: dict[str, WatermarkValue] = field(default_factory=dict)
+    filters: UpdateKeys = field(default_factory=UpdateKeys)
 
 
-def _compare_watermark_values(
-    a: str | int | float, b: str | int | float
-) -> int:
+def _compare_watermark_values(a: str | int | float, b: str | int | float) -> int:
     """Compare two watermark values, returning -1, 0, or 1.
 
     Handles type mismatches by comparing string representations.
@@ -63,8 +54,10 @@ def get_last_update_time_watermarks(
     )
     return DatasourceWatermark(
         keys={
-            "update_time": WatermarkValue(
-                type=WatermarkType.UPDATE_TIME, value=update_time
+            "update_time": UpdateKey(
+                concept_name="update_time",
+                type=UpdateKeyType.UPDATE_TIME,
+                value=update_time,
             )
         }
     )
@@ -95,8 +88,10 @@ def get_unique_key_hash_watermarks(
         result = executor.execute_raw_sql(query).fetchone()
 
         checksum_value = result[0] if result else None
-        watermarks[col.name] = WatermarkValue(
-            type=WatermarkType.KEY_HASH, value=checksum_value
+        watermarks[col.name] = UpdateKey(
+            concept_name=col.name,
+            type=UpdateKeyType.KEY_HASH,
+            value=checksum_value,
         )
 
     return DatasourceWatermark(keys=watermarks)
@@ -120,8 +115,10 @@ def get_incremental_key_watermarks(
         result = executor.execute_raw_sql(query).fetchone()
 
         max_value = result[0] if result else None
-        watermarks[concept.name] = WatermarkValue(
-            type=WatermarkType.INCREMENTAL_KEY, value=max_value
+        watermarks[concept.name] = UpdateKey(
+            concept_name=concept.name,
+            type=UpdateKeyType.INCREMENTAL_KEY,
+            value=max_value,
         )
 
     return DatasourceWatermark(keys=watermarks)
@@ -192,13 +189,13 @@ class BaseStateStore:
         self.watermark_all_assets(env, executor)
 
         # Build map of concept -> max watermark across all assets
-        concept_max_watermarks: dict[str, WatermarkValue] = {}
+        concept_max_watermarks: dict[str, UpdateKey] = {}
         for ds_id, watermark in self.watermarks.items():
             if ds_id in root_assets:
                 # Root assets define the "truth" for incremental keys
                 for key, val in watermark.keys.items():
                     if (
-                        val.type == WatermarkType.INCREMENTAL_KEY
+                        val.type == UpdateKeyType.INCREMENTAL_KEY
                         and val.value is not None
                     ):
                         existing = concept_max_watermarks.get(key)
@@ -214,28 +211,34 @@ class BaseStateStore:
                 continue
 
             for key, val in watermark.keys.items():
-                if val.type == WatermarkType.INCREMENTAL_KEY:
+                if val.type == UpdateKeyType.INCREMENTAL_KEY:
                     max_val = concept_max_watermarks.get(key)
                     if max_val and max_val.value is not None:
                         if (
                             val.value is None
                             or _compare_watermark_values(val.value, max_val.value) < 0
                         ):
+                            # Create UpdateKeys with the filter for incremental update
+                            filters = (
+                                UpdateKeys(keys={key: val})
+                                if val.value
+                                else UpdateKeys()
+                            )
                             stale.append(
                                 StaleAsset(
                                     datasource_id=ds_id,
                                     reason=f"incremental key '{key}' behind: {val.value} < {max_val.value}",
-                                    filters={key: val} if val.value else {},
+                                    filters=filters,
                                 )
                             )
                             break
-   # One approach: datasources defined with query blocks (not address) are inherently "external" - they pull from outside sources. The system could auto-detect these as roots since they can't be written to by PERSIST statements. The dependency graph from PERSIST statements could also explicitly track which assets update which targets.
-                elif val.type == WatermarkType.UPDATE_TIME:
+
+                elif val.type == UpdateKeyType.UPDATE_TIME:
                     # For update_time, we'd need root asset update times to compare
                     # This is tricky without explicit dependency tracking
                     pass
 
-                elif val.type == WatermarkType.KEY_HASH:
+                elif val.type == UpdateKeyType.KEY_HASH:
                     # Hash changes indicate data changed, but we need a reference
                     # to compare against - requires dependency graph
                     pass

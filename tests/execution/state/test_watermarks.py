@@ -1,7 +1,10 @@
+from datetime import datetime
+
 from trilogy import Executor
+from trilogy.core.models.datasource import UpdateKey, UpdateKeys, UpdateKeyType
 from trilogy.execution.state.state_store import (
     BaseStateStore,
-    WatermarkType,
+    UpdateKeyType,
     get_incremental_key_watermarks,
     get_last_update_time_watermarks,
     get_unique_key_hash_watermarks,
@@ -33,7 +36,7 @@ def test_last_update_time_watermarks(duckdb_engine: Executor):
     watermarks = get_last_update_time_watermarks(datasource, duckdb_engine)
 
     assert "update_time" in watermarks.keys
-    assert watermarks.keys["update_time"].type == WatermarkType.UPDATE_TIME
+    assert watermarks.keys["update_time"].type == UpdateKeyType.UPDATE_TIME
     assert watermarks.keys["update_time"].value is not None
 
 
@@ -65,7 +68,7 @@ def test_incremental_key_watermarks(duckdb_engine: Executor):
     watermarks = get_incremental_key_watermarks(datasource, duckdb_engine)
 
     assert "order_date" in watermarks.keys
-    assert watermarks.keys["order_date"].type == WatermarkType.INCREMENTAL_KEY
+    assert watermarks.keys["order_date"].type == UpdateKeyType.INCREMENTAL_KEY
     assert watermarks.keys["order_date"].value is not None
 
 
@@ -101,8 +104,8 @@ def test_unique_key_hash_watermarks(duckdb_engine: Executor):
 
     assert "product_id" in watermarks.keys
     assert "store_id" in watermarks.keys
-    assert watermarks.keys["product_id"].type == WatermarkType.KEY_HASH
-    assert watermarks.keys["store_id"].type == WatermarkType.KEY_HASH
+    assert watermarks.keys["product_id"].type == UpdateKeyType.KEY_HASH
+    assert watermarks.keys["store_id"].type == UpdateKeyType.KEY_HASH
     assert watermarks.keys["product_id"].value is not None
     assert watermarks.keys["store_id"].value is not None
 
@@ -136,7 +139,7 @@ def test_base_state_store_incremental_by(duckdb_engine: Executor):
 
     assert watermarks is not None
     assert "timestamp" in watermarks.keys
-    assert watermarks.keys["timestamp"].type == WatermarkType.INCREMENTAL_KEY
+    assert watermarks.keys["timestamp"].type == UpdateKeyType.INCREMENTAL_KEY
 
     retrieved = state_store.get_datasource_watermarks(datasource)
     assert retrieved == watermarks
@@ -171,7 +174,7 @@ def test_base_state_store_key_hash(duckdb_engine: Executor):
 
     assert watermarks is not None
     assert "customer_id" in watermarks.keys
-    assert watermarks.keys["customer_id"].type == WatermarkType.KEY_HASH
+    assert watermarks.keys["customer_id"].type == UpdateKeyType.KEY_HASH
 
 
 def test_base_state_store_update_time(duckdb_engine: Executor):
@@ -207,7 +210,7 @@ def test_base_state_store_update_time(duckdb_engine: Executor):
     # Since there's a key column, it will use KEY_HASH watermark type
     assert watermarks is not None
     assert "event_row" in watermarks.keys
-    assert watermarks.keys["event_row"].type == WatermarkType.KEY_HASH
+    assert watermarks.keys["event_row"].type == UpdateKeyType.KEY_HASH
 
 
 def test_empty_incremental_by(duckdb_engine: Executor):
@@ -255,7 +258,7 @@ def test_no_key_columns(duckdb_engine: Executor):
 
     # Now has a key column, so we get KEY_HASH
     assert "metric_id" in watermarks.keys
-    assert watermarks.keys["metric_id"].type == WatermarkType.KEY_HASH
+    assert watermarks.keys["metric_id"].type == UpdateKeyType.KEY_HASH
 
 
 def test_multiple_incremental_keys(duckdb_engine: Executor):
@@ -287,8 +290,8 @@ def test_multiple_incremental_keys(duckdb_engine: Executor):
 
     assert "updated_at" in watermarks.keys
     assert "version" in watermarks.keys
-    assert watermarks.keys["updated_at"].type == WatermarkType.INCREMENTAL_KEY
-    assert watermarks.keys["version"].type == WatermarkType.INCREMENTAL_KEY
+    assert watermarks.keys["updated_at"].type == UpdateKeyType.INCREMENTAL_KEY
+    assert watermarks.keys["version"].type == UpdateKeyType.INCREMENTAL_KEY
 
 
 def test_watermark_all_assets(duckdb_engine: Executor):
@@ -456,4 +459,246 @@ def test_get_stale_assets_empty_target(duckdb_engine: Executor):
 
     assert len(stale) == 1
     assert stale[0].datasource_id == "log_target"
-    assert stale[0].filters == {}
+    assert stale[0].filters.keys == {}
+
+
+def test_update_datasource_full_refresh(duckdb_engine: Executor):
+    """Test update_datasource with no filters (full refresh)."""
+    duckdb_engine.execute_text(
+        """
+        key item_id int;
+        property item_id.item_name string;
+
+        datasource source_items (
+            item_id: item_id,
+            item_name: item_name
+        )
+        grain (item_id)
+        query '''
+        SELECT 1 as item_id, 'Widget' as item_name
+        UNION ALL
+        SELECT 2 as item_id, 'Gadget' as item_name
+        ''';
+
+        datasource target_items (
+            item_id: item_id,
+            item_name: item_name
+        )
+        grain (item_id)
+        address target_items_table;
+
+        CREATE IF NOT EXISTS DATASOURCE target_items;
+        """
+    )
+
+    datasource = duckdb_engine.environment.datasources["target_items"]
+    duckdb_engine.update_datasource(datasource)
+
+    result = duckdb_engine.execute_raw_sql(
+        "SELECT COUNT(*) as cnt FROM target_items_table"
+    ).fetchone()
+    assert result[0] == 2
+
+
+def test_update_datasource_with_incremental_filter(duckdb_engine: Executor):
+    """Test update_datasource with UpdateKeys filter for incremental update."""
+    duckdb_engine.execute_text(
+        """
+        key record_id int;
+        property record_id.created_ts datetime;
+        property record_id.value string;
+
+        datasource source_records (
+            record_id: record_id,
+            created_ts: created_ts,
+            value: value
+        )
+        grain (record_id)
+        query '''
+        SELECT 1 as record_id, TIMESTAMP '2024-01-01 10:00:00' as created_ts, 'old' as value
+        UNION ALL
+        SELECT 2 as record_id, TIMESTAMP '2024-01-15 10:00:00' as created_ts, 'new1' as value
+        UNION ALL
+        SELECT 3 as record_id, TIMESTAMP '2024-01-20 10:00:00' as created_ts, 'new2' as value
+        '''
+        incremental by created_ts;
+
+        datasource target_records (
+            record_id: record_id,
+            created_ts: created_ts,
+            value: value
+        )
+        grain (record_id)
+        address target_records_table
+        incremental by created_ts;
+
+        CREATE IF NOT EXISTS DATASOURCE target_records;
+
+        RAW_SQL('''
+        INSERT INTO target_records_table
+        SELECT 1 as record_id, TIMESTAMP '2024-01-01 10:00:00' as created_ts, 'old' as value
+        ''');
+        """
+    )
+
+    # Create UpdateKeys with filter for records after the existing one
+    keys = UpdateKeys(
+        keys={
+            "created_ts": UpdateKey(
+                concept_name="created_ts",
+                type=UpdateKeyType.INCREMENTAL_KEY,
+                value=datetime(2024, 1, 1, 10, 0, 0),
+            )
+        }
+    )
+
+    datasource = duckdb_engine.environment.datasources["target_records"]
+    duckdb_engine.update_datasource(datasource, keys)
+
+    result = duckdb_engine.execute_raw_sql(
+        "SELECT COUNT(*) as cnt FROM target_records_table"
+    ).fetchone()
+    # Should have original 1 + 2 new records = 3
+    assert result[0] == 3
+
+
+def test_update_datasource_integration_with_stale_assets(duckdb_engine: Executor):
+    """Test full integration: detect stale, then update using filters."""
+    duckdb_engine.execute_text(
+        """
+        key event_id int;
+        property event_id.event_ts datetime;
+        property event_id.event_data string;
+
+        datasource events_source (
+            event_id: event_id,
+            event_ts: event_ts,
+            event_data: event_data
+        )
+        grain (event_id)
+        query '''
+        SELECT 1 as event_id, TIMESTAMP '2024-01-01 10:00:00' as event_ts, 'data1' as event_data
+        UNION ALL
+        SELECT 2 as event_id, TIMESTAMP '2024-01-10 10:00:00' as event_ts, 'data2' as event_data
+        UNION ALL
+        SELECT 3 as event_id, TIMESTAMP '2024-01-20 10:00:00' as event_ts, 'data3' as event_data
+        '''
+        incremental by event_ts;
+
+        datasource events_target (
+            event_id: event_id,
+            event_ts: event_ts,
+            event_data: event_data
+        )
+        grain (event_id)
+        address events_target_table
+        incremental by event_ts;
+
+        CREATE IF NOT EXISTS DATASOURCE events_target;
+
+        RAW_SQL('''
+        INSERT INTO events_target_table
+        SELECT 1 as event_id, TIMESTAMP '2024-01-01 10:00:00' as event_ts, 'data1' as event_data
+        ''');
+        """
+    )
+
+    state_store = BaseStateStore()
+    stale = state_store.get_stale_assets(
+        duckdb_engine.environment,
+        duckdb_engine,
+        root_assets={"events_source"},
+    )
+
+    assert len(stale) == 1
+    assert stale[0].datasource_id == "events_target"
+
+    # Use the stale asset's filters to do an incremental update
+    datasource = duckdb_engine.environment.datasources["events_target"]
+    duckdb_engine.update_datasource(datasource, stale[0].filters)
+
+    result = duckdb_engine.execute_raw_sql(
+        "SELECT COUNT(*) as cnt FROM events_target_table"
+    ).fetchone()
+    # Original 1 + 2 incremental = 3
+    assert result[0] == 3
+
+
+def test_update_keys_to_where_clause(duckdb_engine: Executor):
+    """Test UpdateKeys.to_where_clause conversion."""
+    duckdb_engine.execute_text(
+        """
+        key id int;
+        property id.ts datetime;
+        """
+    )
+
+    keys = UpdateKeys(
+        keys={
+            "ts": UpdateKey(
+                concept_name="ts",
+                type=UpdateKeyType.INCREMENTAL_KEY,
+                value=datetime(2024, 1, 15, 0, 0, 0),
+            )
+        }
+    )
+
+    where = keys.to_where_clause(duckdb_engine.environment)
+    assert where is not None
+    assert "ts" in str(where.conditional)
+
+
+def test_update_keys_to_where_clause_empty(duckdb_engine: Executor):
+    """Test UpdateKeys.to_where_clause with no values returns None."""
+    duckdb_engine.execute_text(
+        """
+        key id int;
+        property id.ts datetime;
+        """
+    )
+
+    keys = UpdateKeys(
+        keys={
+            "ts": UpdateKey(
+                concept_name="ts",
+                type=UpdateKeyType.INCREMENTAL_KEY,
+                value=None,
+            )
+        }
+    )
+
+    where = keys.to_where_clause(duckdb_engine.environment)
+    assert where is None
+
+
+def test_update_keys_to_where_clause_multiple(duckdb_engine: Executor):
+    """Test UpdateKeys.to_where_clause with multiple keys."""
+    duckdb_engine.execute_text(
+        """
+        key id int;
+        property id.ts datetime;
+        property id.version int;
+        """
+    )
+
+    keys = UpdateKeys(
+        keys={
+            "ts": UpdateKey(
+                concept_name="ts",
+                type=UpdateKeyType.INCREMENTAL_KEY,
+                value=datetime(2024, 1, 15, 0, 0, 0),
+            ),
+            "version": UpdateKey(
+                concept_name="version",
+                type=UpdateKeyType.INCREMENTAL_KEY,
+                value=5,
+            ),
+        }
+    )
+
+    where = keys.to_where_clause(duckdb_engine.environment)
+    assert where is not None
+    # Should contain AND for multiple conditions
+    where_str = str(where.conditional)
+    assert "ts" in where_str
+    assert "version" in where_str
