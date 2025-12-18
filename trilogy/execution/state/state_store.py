@@ -70,12 +70,10 @@ class StaleAsset:
 
     datasource_id: str
     reason: str
-    filters: dict[str, WatermarkValue] = field(default_factory=dict)
+    filters: UpdateKeys = field(default_factory=UpdateKeys)
 
 
-def _compare_watermark_values(
-    a: str | int | float, b: str | int | float
-) -> int:
+def _compare_watermark_values(a: str | int | float, b: str | int | float) -> int:
     """Compare two watermark values, returning -1, 0, or 1.
 
     Handles type mismatches by comparing string representations.
