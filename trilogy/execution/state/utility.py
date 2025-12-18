@@ -11,7 +11,7 @@ def get_assets_to_update(env:Environment, store:BaseStateStore, root_assets: set
     root_assets = root_assets or get_default_root_assets(env)
 
     for root in root_assets:
-        store.watermark_root_asset(root)
+        store.watermark_asset(root)
 
     keys_to_check = [x for x in env.datasources.keys() if x not in root_assets]
 

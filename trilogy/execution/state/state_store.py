@@ -64,6 +64,37 @@ def _compare_watermark_values(
     return 0
 
 
+@dataclass
+class StaleAsset:
+    """Represents an asset that needs to be refreshed."""
+
+    datasource_id: str
+    reason: str
+    filters: dict[str, WatermarkValue] = field(default_factory=dict)
+
+
+def _compare_watermark_values(
+    a: str | int | float, b: str | int | float
+) -> int:
+    """Compare two watermark values, returning -1, 0, or 1.
+
+    Handles type mismatches by comparing string representations.
+    """
+    if type(a) is type(b):
+        if a < b:  # type: ignore[operator]
+            return -1
+        elif a > b:  # type: ignore[operator]
+            return 1
+        return 0
+    # Different types: compare as strings
+    sa, sb = str(a), str(b)
+    if sa < sb:
+        return -1
+    elif sa > sb:
+        return 1
+    return 0
+
+
 def get_last_update_time_watermarks(
     datasource: Datasource, executor: Executor
 ) -> DatasourceWatermark:
