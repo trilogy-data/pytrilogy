@@ -3,7 +3,7 @@ from enum import Enum
 
 from trilogy import Executor
 from trilogy.core.enums import Purpose
-from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.datasource import Address, Datasource
 
 
 class WatermarkType(Enum):
@@ -50,11 +50,16 @@ def get_unique_key_hash_watermarks(
     if not key_columns:
         return DatasourceWatermark(keys={})
 
+    if isinstance(datasource.address, Address) and datasource.address.is_query:
+        table_ref = f"({datasource.safe_address})"
+    else:
+        table_ref = datasource.safe_address
+
     watermarks = {}
     for col in key_columns:
         hash_expr = executor.generator.hash_column_value(col.name)
         checksum_expr = executor.generator.aggregate_checksum(hash_expr)
-        query = f"SELECT {checksum_expr} as checksum FROM {datasource.safe_address}"
+        query = f"SELECT {checksum_expr} as checksum FROM {table_ref}"
         result = executor.execute_raw_sql(query).fetchone()
 
         checksum_value = result[0] if result else None
@@ -71,12 +76,15 @@ def get_incremental_key_watermarks(
     if not datasource.incremental_by:
         return DatasourceWatermark(keys={})
 
+    if isinstance(datasource.address, Address) and datasource.address.is_query:
+        table_ref = f"({datasource.safe_address})"
+    else:
+        table_ref = datasource.safe_address
+
     watermarks = {}
     for concept_ref in datasource.incremental_by:
         concept = executor.environment.concepts[concept_ref.address]
-        query = (
-            f"SELECT MAX({concept.name}) as max_value FROM {datasource.safe_address}"
-        )
+        query = f"SELECT MAX({concept.name}) as max_value FROM {table_ref}"
         result = executor.execute_raw_sql(query).fetchone()
 
         max_value = result[0] if result else None

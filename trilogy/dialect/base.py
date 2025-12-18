@@ -482,7 +482,7 @@ class BaseDialect:
         return f"md5(CAST({safe_quote(column_name, self.QUOTE_CHARACTER)} AS VARCHAR))"
 
     def aggregate_checksum(self, hash_expr: str) -> str:
-        return f"SUM(CAST(('x' || SUBSTRING({hash_expr}, 1, 8))::bit(32)::bigint AS BIGINT))"
+        return f"BIT_XOR(hash({hash_expr}))"
 
     def render_order_item(
         self,
