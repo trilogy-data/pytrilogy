@@ -14,6 +14,7 @@ from trilogy.core.models.datasource import (
     UpdateKey,
     UpdateKeys,
     UpdateKeyType,
+    ColumnAssignment,
 )
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import CTE
@@ -110,6 +111,7 @@ def get_last_update_time_watermarks(
     )
 
 
+
 def get_unique_key_hash_watermarks(
     datasource: Datasource, executor: Executor
 ) -> DatasourceWatermark:
@@ -175,6 +177,7 @@ def get_incremental_key_watermarks(
 
     dialect = executor.generator
     for concept_ref in datasource.incremental_by:
+        print(concept_ref)
         concept = executor.environment.concepts[concept_ref.address]
         build_concept = factory.build(concept)
         build_datasource = factory.build(datasource)
@@ -200,6 +203,7 @@ def get_incremental_key_watermarks(
             type=UpdateKeyType.INCREMENTAL_KEY,
             value=max_value,
         )
+
 
     return DatasourceWatermark(keys=watermarks)
 
