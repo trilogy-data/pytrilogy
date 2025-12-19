@@ -103,9 +103,7 @@ class UpdateKey:
     type: UpdateKeyType
     value: str | int | float | datetime | date | None
 
-    def to_comparison(
-        self, environment: "Environment"
-    ) -> "Comparison":
+    def to_comparison(self, environment: "Environment") -> "Comparison":
         """Convert this update key to a Comparison for use in WHERE clauses."""
         from trilogy.core.enums import ComparisonOperator
         from trilogy.core.models.author import Comparison
@@ -124,9 +122,7 @@ class UpdateKeys:
 
     keys: dict[str, UpdateKey] = field(default_factory=dict)
 
-    def to_where_clause(
-        self, environment: "Environment"
-    ) -> WhereClause | None:
+    def to_where_clause(self, environment: "Environment") -> WhereClause | None:
         """Convert update keys to a WhereClause for filtering."""
         from trilogy.core.enums import BooleanOperator
         from trilogy.core.models.author import Conditional
