@@ -5,7 +5,7 @@ from trilogy.core.graph_models import (
 )
 from trilogy.core.models.build import BuildConcept, BuildDatasource
 from trilogy.core.models.build_environment import BuildEnvironment
-
+from trilogy.core.enums import Derivation
 
 def add_concept(
     concept: BuildConcept,
@@ -85,7 +85,11 @@ def generate_adhoc_graph(
     for dataset in datasources:
         node = datasource_to_node(dataset)
         g.add_datasource_node(node, dataset)
-        for concept in dataset.concepts:
+        eligible = dataset.concepts
+        for concept in concepts:
+            if concept.derivation == Derivation.BASIC and all([x in eligible for x in concept.concept_arguments]):
+                eligible.append(concept)
+        for concept in eligible:
             cnode = concept_to_node(concept)
             g.concepts[cnode] = concept
             g.add_node(cnode)
