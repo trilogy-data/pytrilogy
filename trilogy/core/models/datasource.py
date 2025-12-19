@@ -5,11 +5,19 @@ from typing import TYPE_CHECKING, ItemsView, List, Optional, Union, ValuesView
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
-from trilogy.constants import DEFAULT_NAMESPACE, logger
-from trilogy.core.enums import AddressType, DatasourceState, Modifier
+from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants, logger
+from trilogy.core.enums import (
+    AddressType,
+    BooleanOperator,
+    ComparisonOperator,
+    DatasourceState,
+    Modifier,
+)
 from trilogy.core.models.author import (
+    Comparison,
     Concept,
     ConceptRef,
+    Conditional,
     Function,
     Grain,
     HasUUID,
@@ -22,8 +30,7 @@ LOGGER_PREFIX = "[MODELS_DATASOURCE]"
 
 if TYPE_CHECKING:
     from trilogy.core.models.environment import Environment
-
-    pass
+    from trilogy.core.statements.author import SelectStatement
 
 
 class UpdateKeyType(Enum):
@@ -42,13 +49,12 @@ class UpdateKey:
 
     def to_comparison(self, environment: "Environment") -> "Comparison":
         """Convert this update key to a Comparison for use in WHERE clauses."""
-        from trilogy.core.enums import ComparisonOperator
-        from trilogy.core.models.author import Comparison
 
         concept = environment.concepts[self.concept_name]
+        right_value = self.value if self.value is not None else MagicConstants.NULL
         return Comparison(
             left=concept.reference,
-            right=self.value,
+            right=right_value,
             operator=ComparisonOperator.GT,
         )
 
@@ -61,8 +67,6 @@ class UpdateKeys:
 
     def to_where_clause(self, environment: "Environment") -> WhereClause | None:
         """Convert update keys to a WhereClause for filtering."""
-        from trilogy.core.enums import BooleanOperator
-        from trilogy.core.models.author import Conditional
 
         comparisons = [
             key.to_comparison(environment)

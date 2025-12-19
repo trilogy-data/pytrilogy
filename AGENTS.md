@@ -10,6 +10,9 @@ Primarily python, with some rust in performance critical paths.
 
 Prefer minimal, concise code and small functions. Keep comments concise and targeted at otherwise non-intuitive code.
 
+Avoid function signature comments (especially not arg types, as we use mypy) unless they significantly contribute
+to function understanding. Keep a very high bar.
+
 Avoid comments in tests unless they substantially add code.
 
 Avoid defining functions inside functions where possible to make testing easier.

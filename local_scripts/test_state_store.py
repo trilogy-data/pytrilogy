@@ -70,10 +70,10 @@ stale_assets = state_store.get_stale_assets(
 print("\nStale assets:")
 for asset in stale_assets:
     print(f"  {asset.datasource_id}: {asset.reason}")
-    if asset.filters:
+    if asset.filters.keys:
         print(f"filters: {asset.filters}")
         filters = []
-        for key, filter in asset.filters.items():
+        for key, filter in asset.filters.keys.items():
             filter_string = f"{key} > {filter.value}"
             filters.append(filter_string)
         final_filter_string = " AND ".join(filters)

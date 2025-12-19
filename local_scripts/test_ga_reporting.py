@@ -1,4 +1,3 @@
-
 from trilogy import Dialects, Environment
 from trilogy.execution.state.state_store import BaseStateStore
 

@@ -4,7 +4,6 @@ from trilogy import Executor
 from trilogy.core.models.datasource import UpdateKey, UpdateKeys, UpdateKeyType
 from trilogy.execution.state.state_store import (
     BaseStateStore,
-    UpdateKeyType,
     get_incremental_key_watermarks,
     get_last_update_time_watermarks,
     get_unique_key_hash_watermarks,

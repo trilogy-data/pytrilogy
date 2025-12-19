@@ -145,7 +145,7 @@ class Executor(object):
     ) -> Optional[ResultProtocol]:
         if isinstance(statement, STATEMENT_TYPES):
             generate = self.generator.generate_queries(
-                self.environment, [statement], hooks=self.hooks
+                self.environment, [statement], hooks=self.hooks  # type: ignore[list-item]
             )
             if not generate:
                 return None

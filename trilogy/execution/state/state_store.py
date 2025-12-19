@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import date
 
 from trilogy import Executor
 from trilogy.core.enums import Purpose
@@ -7,6 +8,7 @@ from trilogy.core.models.datasource import (
     Address,
     ColumnAssignment,
     Datasource,
+    RawColumnExpr,
     UpdateKey,
     UpdateKeys,
     UpdateKeyType,
@@ -29,7 +31,9 @@ class StaleAsset:
     filters: UpdateKeys = field(default_factory=UpdateKeys)
 
 
-def _compare_watermark_values(a: str | int | float, b: str | int | float) -> int:
+def _compare_watermark_values(
+    a: str | int | float | date, b: str | int | float | date
+) -> int:
     """Compare two watermark values, returning -1, 0, or 1.
 
     Handles type mismatches by comparing string representations.
@@ -85,7 +89,14 @@ def get_unique_key_hash_watermarks(
 
     watermarks = {}
     for col in key_columns:
-        hash_expr = executor.generator.hash_column_value(col.alias)
+        if isinstance(col.alias, str):
+            column_name = col.alias
+        elif isinstance(col.alias, RawColumnExpr):
+            column_name = col.alias.text
+        else:
+            # Function - use rendered expression
+            column_name = str(col.alias)
+        hash_expr = executor.generator.hash_column_value(column_name)
         checksum_expr = executor.generator.aggregate_checksum(hash_expr)
         query = f"SELECT {checksum_expr} as checksum FROM {table_ref}"
         result = executor.execute_raw_sql(query).fetchone()
