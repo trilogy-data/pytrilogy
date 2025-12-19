@@ -1,13 +1,95 @@
-from datetime import datetime
+from datetime import date, datetime
+
+import pytest
 
 from trilogy import Dialects, Executor
 from trilogy.core.models.datasource import UpdateKey, UpdateKeys, UpdateKeyType
 from trilogy.execution.state.state_store import (
     BaseStateStore,
+    _compare_watermark_values,
     get_incremental_key_watermarks,
     get_last_update_time_watermarks,
     get_unique_key_hash_watermarks,
 )
+
+
+class TestCompareWatermarkValues:
+    """Tests for _compare_watermark_values function."""
+
+    @pytest.mark.parametrize(
+        "a,b,expected",
+        [
+            (1, 2, -1),
+            (2, 1, 1),
+            (5, 5, 0),
+            (0, 0, 0),
+            (-1, 1, -1),
+            (100, 50, 1),
+        ],
+    )
+    def test_same_type_int(self, a: int, b: int, expected: int) -> None:
+        assert _compare_watermark_values(a, b) == expected
+
+    @pytest.mark.parametrize(
+        "a,b,expected",
+        [
+            (1.0, 2.0, -1),
+            (2.5, 1.5, 1),
+            (3.14, 3.14, 0),
+            (0.0, 0.0, 0),
+            (-1.5, 1.5, -1),
+        ],
+    )
+    def test_same_type_float(self, a: float, b: float, expected: int) -> None:
+        assert _compare_watermark_values(a, b) == expected
+
+    @pytest.mark.parametrize(
+        "a,b,expected",
+        [
+            ("apple", "banana", -1),
+            ("zebra", "apple", 1),
+            ("same", "same", 0),
+            ("", "", 0),
+            ("a", "b", -1),
+        ],
+    )
+    def test_same_type_string(self, a: str, b: str, expected: int) -> None:
+        assert _compare_watermark_values(a, b) == expected
+
+    @pytest.mark.parametrize(
+        "a,b,expected",
+        [
+            (date(2024, 1, 1), date(2024, 1, 2), -1),
+            (date(2024, 12, 31), date(2024, 1, 1), 1),
+            (date(2024, 6, 15), date(2024, 6, 15), 0),
+        ],
+    )
+    def test_same_type_date(self, a: date, b: date, expected: int) -> None:
+        assert _compare_watermark_values(a, b) == expected
+
+    def test_different_types_int_string(self) -> None:
+        # "1" < "2" as strings
+        assert _compare_watermark_values(1, "2") == -1
+        assert _compare_watermark_values("1", 2) == -1
+        # "2" > "1" as strings
+        assert _compare_watermark_values(2, "1") == 1
+        assert _compare_watermark_values("2", 1) == 1
+        # "1" == "1" as strings
+        assert _compare_watermark_values(1, "1") == 0
+        assert _compare_watermark_values("1", 1) == 0
+
+    def test_different_types_int_float(self) -> None:
+        # Compare as strings: "1" vs "1.0"
+        result = _compare_watermark_values(1, 1.0)
+        # "1" < "1.0" (string comparison)
+        assert result == -1
+
+    def test_different_types_date_string(self) -> None:
+        d = date(2024, 1, 15)
+        # String representation is "2024-01-15"
+        assert _compare_watermark_values(d, "2024-01-15") == 0
+        assert _compare_watermark_values(d, "2024-01-16") == -1
+        assert _compare_watermark_values(d, "2024-01-14") == 1
 
 
 def test_last_update_time_watermarks(duckdb_engine: Executor):

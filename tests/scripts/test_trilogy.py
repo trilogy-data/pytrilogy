@@ -662,3 +662,87 @@ def test_parallel_integration_unit():
         if results.exception:
             raise ValueError(results.output)
         assert results.exit_code == 0
+
+
+def test_refresh_string():
+    for val in RICH_MODES:
+        with set_rich_mode(val):
+            runner = CliRunner()
+
+            result = runner.invoke(
+                cli,
+                ["refresh", "select 1-> test;", "duckdb"],
+            )
+            if result.exception:
+                raise result.exception
+            assert result.exit_code == 0
+
+
+def test_refresh_folder():
+    target_path = Path(__file__).parent / "validate_directory"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "refresh",
+            str(target_path),
+            "duckdb",
+        ],
+    )
+    if result.exception:
+        raise ValueError(result.output)
+    assert result.exit_code == 0
+    assert "Total Scripts" in result.output.strip()
+
+
+def test_refresh_exception():
+    for mode in RICH_MODES:
+        with set_rich_mode(mode):
+            runner = CliRunner()
+
+            result = runner.invoke(
+                cli,
+                ["refresh", "select 1  test;", "duckdb"],
+            )
+
+            assert result.exit_code == 1
+            assert "Syntax [201]" in result.output
+
+
+def test_refresh_with_parameters():
+    for mode in RICH_MODES:
+        with set_rich_mode(mode):
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "refresh",
+                    str(Path(__file__).parent / "param_test.preql"),
+                    "duckdb",
+                    "--param",
+                    "scale=42",
+                    "--param",
+                    "float=3.14",
+                    "--param",
+                    "string=hello",
+                    "--param",
+                    "date=2023-01-01",
+                    "--param",
+                    "dt=2023-01-01T12:30:00",
+                ],
+            )
+            if result.exception:
+                raise result.exception
+            assert result.exit_code == 0
+
+
+def test_refresh_parallel_failure():
+    target_path = Path(__file__).parent / "failing_directory"
+    runner = CliRunner()
+
+    results = runner.invoke(
+        cli,
+        ["refresh", str(target_path), "duckdb"],
+    )
+    assert results.exit_code == 1
+    assert "Skipped due to failed dependency" in results.output
