@@ -139,10 +139,9 @@ class Executor(object):
         )
         self.execute_statement(statement)
 
-
     def execute_statement(
         self,
-        statement: PROCESSED_STATEMENT_TYPES,
+        statement: PROCESSED_STATEMENT_TYPES | STATEMENT_TYPES,
     ) -> Optional[ResultProtocol]:
         if isinstance(statement, STATEMENT_TYPES):
             generate = self.generator.generate_queries(

@@ -1,5 +1,5 @@
-from trilogy.execution.state.state_store import BaseStateStore
 from trilogy import Dialects
+from trilogy.execution.state.state_store import BaseStateStore
 
 state_store = BaseStateStore()
 

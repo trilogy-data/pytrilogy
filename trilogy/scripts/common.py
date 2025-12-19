@@ -4,7 +4,7 @@ import traceback
 from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path as PathlibPath
-from typing import Any, Iterable, Union
+from typing import Any, Iterable, Sequence, Union
 
 from click.exceptions import Exit
 
@@ -12,6 +12,11 @@ from trilogy import Executor
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.exceptions import ConfigurationException, ModelValidationError
 from trilogy.core.models.environment import Environment
+from trilogy.core.statements.execute import (
+    PROCESSED_STATEMENT_TYPES,
+    ProcessedQueryPersist,
+    ProcessedValidateStatement,
+)
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import RuntimeConfig, load_config_file
 from trilogy.hooks.query_debugger import DebuggingHook
@@ -25,6 +30,39 @@ from trilogy.scripts.environment import extra_to_kwargs, parse_env_params
 
 # Configuration file name
 TRILOGY_CONFIG_NAME = "trilogy.toml"
+
+# Default stat types to display in output; easily configurable
+DEFAULT_STAT_TYPES: list[str] = ["persist", "validate"]
+
+
+@dataclass
+class ExecutionStats:
+    """Statistics about statements executed in a script."""
+
+    persist_count: int = 0
+    validate_count: int = 0
+
+    def __add__(self, other: "ExecutionStats") -> "ExecutionStats":
+        return ExecutionStats(
+            persist_count=self.persist_count + other.persist_count,
+            validate_count=self.validate_count + other.validate_count,
+        )
+
+
+def format_stats(stats: ExecutionStats, stat_types: list[str] | None = None) -> str:
+    """Format execution stats for display."""
+    if stat_types is None:
+        stat_types = DEFAULT_STAT_TYPES
+
+    parts = []
+    if "persist" in stat_types and stats.persist_count > 0:
+        label = "table" if stats.persist_count == 1 else "tables"
+        parts.append(f"{stats.persist_count} {label} persisted")
+    if "validate" in stat_types and stats.validate_count > 0:
+        label = "datasource" if stats.validate_count == 1 else "datasources"
+        parts.append(f"{stats.validate_count} {label} validated")
+
+    return "; ".join(parts)
 
 
 @dataclass
@@ -354,3 +392,28 @@ def handle_execution_exception(e: Exception, debug: bool = False) -> None:
     if debug:
         print_error(f"Full traceback:\n{traceback.format_exc()}")
     raise Exit(1) from e
+
+
+def count_statement_stats(
+    statements: Sequence[PROCESSED_STATEMENT_TYPES],
+) -> ExecutionStats:
+    """Count persist and validate statements in a list of processed statements."""
+    persist_count = sum(1 for s in statements if isinstance(s, ProcessedQueryPersist))
+    validate_count = sum(
+        1 for s in statements if isinstance(s, ProcessedValidateStatement)
+    )
+    return ExecutionStats(persist_count=persist_count, validate_count=validate_count)
+
+
+def execute_script_with_stats(
+    exec: Executor, script_path: PathlibPath, run_statements: bool = True
+) -> ExecutionStats:
+    """Parse and optionally execute a script, returning execution stats."""
+    with open(script_path, "r") as f:
+        queries = exec.parse_text(f.read())
+
+    if run_statements:
+        for query in queries:
+            exec.execute_query(query)
+            stats = count_statement_stats([query])
+    return stats

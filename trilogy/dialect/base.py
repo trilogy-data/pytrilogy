@@ -470,7 +470,9 @@ class BaseDialect:
         else:
             qualified_name = table_name
 
-        sample_query = f"SELECT * FROM {self.safe_quote(qualified_name)} LIMIT {sample_size}"
+        sample_query = (
+            f"SELECT * FROM {self.safe_quote(qualified_name)} LIMIT {sample_size}"
+        )
         rows = executor.execute_raw_sql(sample_query).fetchall()
         return rows
 
@@ -980,9 +982,9 @@ class BaseDialect:
 
     def safe_quote(self, name: str) -> str:
         return safe_quote(name, self.QUOTE_CHARACTER)
-    
+
     def quote(self, name: str) -> str:
-        return f'{self.QUOTE_CHARACTER}{name}{self.QUOTE_CHARACTER}'
+        return f"{self.QUOTE_CHARACTER}{name}{self.QUOTE_CHARACTER}"
 
     def render_cte(self, cte: CTE | UnionCTE, auto_sort: bool = True) -> CompiledCTE:
         if isinstance(cte, UnionCTE):

@@ -7,19 +7,21 @@ from click.exceptions import Exit
 
 from trilogy import Executor
 from trilogy.dialect.enums import Dialects
-from trilogy.scripts.common import CLIRuntimeParams, handle_execution_exception
+from trilogy.scripts.common import (
+    CLIRuntimeParams,
+    ExecutionStats,
+    execute_script_with_stats,
+    handle_execution_exception,
+)
 from trilogy.scripts.dependency import ScriptNode
 from trilogy.scripts.parallel_execution import run_parallel_execution
 
 
 def execute_script_for_run(
     exec: Executor, node: ScriptNode, quiet: bool = False
-) -> None:
+) -> ExecutionStats:
     """Execute a script for the 'run' command (parallel execution mode)."""
-    with open(node.path, "r") as f:
-        queries = exec.parse_text(f.read())
-    for query in queries:
-        exec.execute_query(query)
+    return execute_script_with_stats(exec, node.path, run_statements=True)
 
 
 @argument("input", type=Path())

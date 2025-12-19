@@ -8,19 +8,26 @@ from click.exceptions import Exit
 from trilogy import Executor
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.state.state_store import BaseStateStore
-from trilogy.scripts.common import CLIRuntimeParams, handle_execution_exception
+from trilogy.scripts.common import (
+    CLIRuntimeParams,
+    ExecutionStats,
+    count_statement_stats,
+    handle_execution_exception,
+)
 from trilogy.scripts.dependency import ScriptNode
 from trilogy.scripts.parallel_execution import run_parallel_execution
 
 
 def execute_script_for_refresh(
     exec: Executor, node: ScriptNode, quiet: bool = False
-) -> None:
+) -> ExecutionStats:
     """Execute a script for the 'refresh' command - parse and refresh stale assets."""
     from trilogy.scripts.display import print_info, print_success, print_warning
 
     with open(node.path, "r") as f:
-        exec.parse_text(f.read())
+        queries = exec.parse_text(f.read())
+
+    stats = count_statement_stats(queries)
 
     state_store = BaseStateStore()
     stale_assets = state_store.get_stale_assets(exec.environment, exec)
@@ -28,7 +35,7 @@ def execute_script_for_refresh(
     if not stale_assets:
         if not quiet:
             print_info(f"No stale assets found in {node.path.name}")
-        return
+        return stats
 
     if not quiet:
         print_warning(f"Found {len(stale_assets)} stale asset(s) in {node.path.name}")
@@ -38,9 +45,12 @@ def execute_script_for_refresh(
             print_info(f"  Refreshing {asset.datasource_id}: {asset.reason}")
         datasource = exec.environment.datasources[asset.datasource_id]
         exec.update_datasource(datasource)
+        stats.persist_count += 1
 
     if not quiet:
         print_success(f"Refreshed {len(stale_assets)} asset(s) in {node.path.name}")
+
+    return stats
 
 
 @argument("input", type=Path())

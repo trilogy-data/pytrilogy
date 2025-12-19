@@ -9,6 +9,8 @@ from trilogy import Executor
 from trilogy.dialect.enums import Dialects
 from trilogy.scripts.common import (
     CLIRuntimeParams,
+    ExecutionStats,
+    count_statement_stats,
     handle_execution_exception,
     validate_datasources,
 )
@@ -18,20 +20,28 @@ from trilogy.scripts.parallel_execution import run_parallel_execution
 
 def execute_script_for_integration(
     exec: Executor, node: ScriptNode, quiet: bool = False
-) -> None:
+) -> ExecutionStats:
     """Execute a script for the 'integration' command (parse + validate)."""
     with open(node.path, "r") as f:
-        exec.parse_text(f.read())
+        queries = exec.parse_text(f.read())
+    stats = count_statement_stats(queries)
     validate_datasources(exec, mock=False, quiet=quiet)
+    # Count datasources validated
+    stats.validate_count = len(exec.environment.datasources)
+    return stats
 
 
 def execute_script_for_unit(
     exec: Executor, node: ScriptNode, quiet: bool = False
-) -> None:
+) -> ExecutionStats:
     """Execute a script for the 'unit' command (parse + mock validate)."""
     with open(node.path, "r") as f:
-        exec.parse_text(f.read())
+        queries = exec.parse_text(f.read())
+    stats = count_statement_stats(queries)
     validate_datasources(exec, mock=True, quiet=quiet)
+    # Count datasources validated
+    stats.validate_count = len(exec.environment.datasources)
+    return stats
 
 
 @argument("input", type=Path())
