@@ -177,7 +177,6 @@ def get_incremental_key_watermarks(
 
     dialect = executor.generator
     for concept_ref in datasource.incremental_by:
-        print(concept_ref)
         concept = executor.environment.concepts[concept_ref.address]
         build_concept = factory.build(concept)
         build_datasource = factory.build(datasource)
