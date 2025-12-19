@@ -14,7 +14,6 @@ from trilogy.core.models.datasource import (
     UpdateKey,
     UpdateKeys,
     UpdateKeyType,
-    ColumnAssignment,
 )
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import CTE
@@ -111,7 +110,6 @@ def get_last_update_time_watermarks(
     )
 
 
-
 def get_unique_key_hash_watermarks(
     datasource: Datasource, executor: Executor
 ) -> DatasourceWatermark:
@@ -202,7 +200,6 @@ def get_incremental_key_watermarks(
             type=UpdateKeyType.INCREMENTAL_KEY,
             value=max_value,
         )
-
 
     return DatasourceWatermark(keys=watermarks)
 
