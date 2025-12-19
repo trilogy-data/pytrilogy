@@ -6,7 +6,7 @@ from trilogy.core.graph_models import (
 )
 from trilogy.core.models.build import BuildConcept, BuildDatasource
 from trilogy.core.models.build_environment import BuildEnvironment
-
+from trilogy.core.enums import Derivation
 
 def add_concept(
     concept: BuildConcept,
