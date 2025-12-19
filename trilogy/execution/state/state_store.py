@@ -8,9 +8,11 @@ from trilogy.core.models.datasource import (
     UpdateKey,
     UpdateKeys,
     UpdateKeyType,
+    ColumnAssignment,
 )
 from trilogy.core.models.environment import Environment
-
+from trilogy.core.models.execute import CTE
+from trilogy.core.models.build import Factory
 
 @dataclass
 class DatasourceWatermark:
@@ -63,33 +65,34 @@ def get_last_update_time_watermarks(
     )
 
 
+
 def get_unique_key_hash_watermarks(
     datasource: Datasource, executor: Executor
 ) -> DatasourceWatermark:
-    key_columns = []
+    key_columns:list[ColumnAssignment] = []
     for col_assignment in datasource.columns:
         concrete = executor.environment.concepts[col_assignment.concept.address]
         if concrete.purpose == Purpose.KEY:
-            key_columns.append(concrete)
+            key_columns.append(col_assignment)
 
     if not key_columns:
         return DatasourceWatermark(keys={})
 
-    if isinstance(datasource.address, Address) and datasource.address.is_query:
-        table_ref = f"({datasource.safe_address})"
+    if isinstance(datasource.address, Address):
+        table_ref = executor.generator.render_source(datasource.address)
     else:
         table_ref = datasource.safe_address
 
     watermarks = {}
     for col in key_columns:
-        hash_expr = executor.generator.hash_column_value(col.name)
+        hash_expr = executor.generator.hash_column_value(col.alias)
         checksum_expr = executor.generator.aggregate_checksum(hash_expr)
         query = f"SELECT {checksum_expr} as checksum FROM {table_ref}"
         result = executor.execute_raw_sql(query).fetchone()
 
         checksum_value = result[0] if result else None
-        watermarks[col.name] = UpdateKey(
-            concept_name=col.name,
+        watermarks[col.concept.address] = UpdateKey(
+            concept_name=col.concept.address,
             type=UpdateKeyType.KEY_HASH,
             value=checksum_value,
         )
@@ -103,15 +106,24 @@ def get_incremental_key_watermarks(
     if not datasource.incremental_by:
         return DatasourceWatermark(keys={})
 
-    if isinstance(datasource.address, Address) and datasource.address.is_query:
-        table_ref = f"({datasource.safe_address})"
+    if isinstance(datasource.address, Address):
+        table_ref = executor.generator.render_source(datasource.address)
     else:
         table_ref = datasource.safe_address
 
     watermarks = {}
+    factory = Factory(environment=executor.environment)
+
+
     for concept_ref in datasource.incremental_by:
+        print(concept_ref)
         concept = executor.environment.concepts[concept_ref.address]
-        query = f"SELECT MAX({concept.name}) as max_value FROM {table_ref}"
+        print(concept)
+        build_concept = factory.build(concept)
+        print(build_concept)
+        build_datasource = factory.build(datasource)
+        cte = CTE.from_datasource()
+        query = f"SELECT MAX({executor.generator.render_expr(build_concept)}) as max_value FROM {table_ref}"
         result = executor.execute_raw_sql(query).fetchone()
 
         max_value = result[0] if result else None
@@ -120,6 +132,7 @@ def get_incremental_key_watermarks(
             type=UpdateKeyType.INCREMENTAL_KEY,
             value=max_value,
         )
+
 
     return DatasourceWatermark(keys=watermarks)
 

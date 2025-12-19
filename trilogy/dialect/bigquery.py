@@ -219,6 +219,12 @@ class BigqueryDialect(BaseDialect):
     UNNEST_MODE = UnnestMode.CROSS_JOIN_UNNEST
     DATATYPE_MAP = DATATYPE_MAP
 
+    def hash_column_value(self, column_name: str) -> str:
+        return f"FARM_FINGERPRINT(CAST({safe_quote(column_name, self.QUOTE_CHARACTER)} AS STRING))"
+
+    def aggregate_checksum(self, hash_expr: str) -> str:
+        return f"BIT_XOR({hash_expr})"
+
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[tuple]:

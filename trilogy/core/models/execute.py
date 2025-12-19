@@ -85,6 +85,17 @@ class CTE(BaseModel):
     base_alias_override: Optional[str] = None
     inlined_ctes: dict[str, InlinedCTE] = Field(default_factory=dict)
 
+    @classmethod
+    def from_datasource(cls, datasource: BuildDatasource) -> CTE:
+        qds = QueryDatasource.from_datasource(datasource)
+        return cls(
+            name=datasource.name,
+            source=qds,
+            output_columns=qds.output_concepts,
+            source_map=datasource.source_map,
+            grain=datasource.grain,
+        )
+
     @field_validator("join_derived_concepts")
     def validate_join_derived_concepts(cls, v):
         if len(v) > 1:
@@ -607,6 +618,13 @@ class QueryDatasource(BaseModel):
     def __repr__(self):
         return f"{self.identifier}@<{self.grain}>"
 
+    @classmethod
+    def from_datasource(
+        cls, datasource: BuildDatasource
+    ) -> "QueryDatasource":
+        return cls(
+            
+        )
     @property
     def safe_identifier(self):
         return self.identifier.replace(".", "_")
