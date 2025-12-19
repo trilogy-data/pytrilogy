@@ -105,13 +105,12 @@ class UpdateKey:
 
     def to_comparison(self, environment: "Environment") -> "Comparison":
         """Convert this update key to a Comparison for use in WHERE clauses."""
-        from trilogy.core.enums import ComparisonOperator
-        from trilogy.core.models.author import Comparison
 
         concept = environment.concepts[self.concept_name]
+        right_value = self.value if self.value is not None else MagicConstants.NULL
         return Comparison(
             left=concept.reference,
-            right=self.value,
+            right=right_value,
             operator=ComparisonOperator.GT,
         )
 
@@ -124,8 +123,6 @@ class UpdateKeys:
 
     def to_where_clause(self, environment: "Environment") -> WhereClause | None:
         """Convert update keys to a WhereClause for filtering."""
-        from trilogy.core.enums import BooleanOperator
-        from trilogy.core.models.author import Conditional
 
         comparisons = [
             key.to_comparison(environment)
