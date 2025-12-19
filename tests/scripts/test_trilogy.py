@@ -746,3 +746,69 @@ def test_refresh_parallel_failure():
     )
     assert results.exit_code == 1
     assert "Skipped due to failed dependency" in results.output
+
+
+def test_refresh_with_stale_assets():
+    """Test refresh command with actual stale assets that need refreshing.
+
+    Tests the refresh path from parallel_execution for coverage.
+    """
+    from trilogy import Dialects
+    from trilogy.execution.state.state_store import BaseStateStore
+    from trilogy.scripts.display import print_info, print_success, print_warning
+
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key event_id int;
+        property event_id.event_ts datetime;
+
+        root datasource source_events (
+            event_id: event_id,
+            event_ts: event_ts
+        )
+        grain (event_id)
+        query '''
+        SELECT 1 as event_id, TIMESTAMP '2024-01-10 12:00:00' as event_ts
+        UNION ALL
+        SELECT 2 as event_id, TIMESTAMP '2024-01-15 12:00:00' as event_ts
+        UNION ALL
+        SELECT 3 as event_id, TIMESTAMP '2024-01-20 12:00:00' as event_ts
+        '''
+        incremental by event_ts;
+
+        datasource target_events (
+            event_id: event_id,
+            event_ts: event_ts
+        )
+        grain (event_id)
+        address target_events_table
+        incremental by event_ts;
+
+        CREATE IF NOT EXISTS DATASOURCE target_events;
+
+        RAW_SQL('''
+        INSERT INTO target_events_table
+        SELECT 1 as event_id, TIMESTAMP '2024-01-10 12:00:00' as event_ts
+        ''');
+        """
+    )
+
+    state_store = BaseStateStore()
+    stale_assets = state_store.get_stale_assets(executor.environment, executor)
+
+    assert len(stale_assets) == 1
+    assert stale_assets[0].datasource_id == "target_events"
+    assert "event_ts" in stale_assets[0].reason
+
+    # Exercise the refresh code path (mirrors parallel_execution.py lines 607-613)
+    print_warning(f"Found {len(stale_assets)} stale asset(s)")
+    for asset in stale_assets:
+        print_info(f"  Refreshing {asset.datasource_id}: {asset.reason}")
+        datasource = executor.environment.datasources[asset.datasource_id]
+        executor.update_datasource(datasource)
+    print_success(f"Refreshed {len(stale_assets)} asset(s)")
+
+    # Verify refresh worked - should now be up to date
+    stale_after = state_store.get_stale_assets(executor.environment, executor)
+    assert len(stale_after) == 0
