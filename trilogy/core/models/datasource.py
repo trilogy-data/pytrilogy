@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any, ItemsView, List, Optional, Union, ValuesView
+from typing import TYPE_CHECKING, ItemsView, List, Optional, Union, ValuesView
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
@@ -22,6 +22,7 @@ LOGGER_PREFIX = "[MODELS_DATASOURCE]"
 
 if TYPE_CHECKING:
     from trilogy.core.models.environment import Environment
+
     pass
 
 
@@ -39,9 +40,7 @@ class UpdateKey:
     type: UpdateKeyType
     value: str | int | float | datetime | date | None
 
-    def to_comparison(
-        self, environment: "Environment"
-    ) -> "Comparison":
+    def to_comparison(self, environment: "Environment") -> "Comparison":
         """Convert this update key to a Comparison for use in WHERE clauses."""
         from trilogy.core.enums import ComparisonOperator
         from trilogy.core.models.author import Comparison
@@ -60,9 +59,7 @@ class UpdateKeys:
 
     keys: dict[str, UpdateKey] = field(default_factory=dict)
 
-    def to_where_clause(
-        self, environment: "Environment"
-    ) -> WhereClause | None:
+    def to_where_clause(self, environment: "Environment") -> WhereClause | None:
         """Convert update keys to a WhereClause for filtering."""
         from trilogy.core.enums import BooleanOperator
         from trilogy.core.models.author import Conditional
@@ -211,6 +208,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     status: DatasourceState = Field(default=DatasourceState.PUBLISHED)
     incremental_by: List[ConceptRef] = Field(default_factory=list)
     partition_by: List[ConceptRef] = Field(default_factory=list)
+    is_root: bool = False
 
     @property
     def safe_address(self) -> str:
@@ -356,6 +354,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             status=self.status,
             incremental_by=[c.with_namespace(namespace) for c in self.incremental_by],
             partition_by=[c.with_namespace(namespace) for c in self.partition_by],
+            is_root=self.is_root,
         )
         return new
 

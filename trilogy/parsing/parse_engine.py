@@ -949,6 +949,10 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def datasource(self, meta: Meta, args):
+        is_root = False
+        if isinstance(args[0], Token) and args[0].lower() == "root":
+            is_root = True
+            args = args[1:]
         name = args[0]
         columns: List[ColumnAssignment] = args[1]
         grain: Optional[Grain] = None
@@ -995,6 +999,7 @@ class ParseToObjects(Transformer):
             status=datasource_status,
             incremental_by=incremental_by,
             partition_by=partition_by,
+            is_root=is_root,
         )
         if datasource.where:
             for x in datasource.where.concept_arguments:

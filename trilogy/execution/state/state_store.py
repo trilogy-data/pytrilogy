@@ -2,17 +2,18 @@ from dataclasses import dataclass, field
 
 from trilogy import Executor
 from trilogy.core.enums import Purpose
+from trilogy.core.models.build import Factory
 from trilogy.core.models.datasource import (
     Address,
+    ColumnAssignment,
     Datasource,
     UpdateKey,
     UpdateKeys,
     UpdateKeyType,
-    ColumnAssignment,
 )
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import CTE
-from trilogy.core.models.build import Factory
+
 
 @dataclass
 class DatasourceWatermark:
@@ -65,11 +66,10 @@ def get_last_update_time_watermarks(
     )
 
 
-
 def get_unique_key_hash_watermarks(
     datasource: Datasource, executor: Executor
 ) -> DatasourceWatermark:
-    key_columns:list[ColumnAssignment] = []
+    key_columns: list[ColumnAssignment] = []
     for col_assignment in datasource.columns:
         concrete = executor.environment.concepts[col_assignment.concept.address]
         if concrete.purpose == Purpose.KEY:
@@ -119,7 +119,7 @@ def get_incremental_key_watermarks(
         concept = executor.environment.concepts[concept_ref.address]
         build_concept = factory.build(concept)
         build_datasource = factory.build(datasource)
-        cte:CTE = CTE.from_datasource(build_datasource)
+        cte: CTE = CTE.from_datasource(build_datasource)
         if concept_ref in datasource.output_concepts:
             query = f"SELECT MAX({dialect.render_concept_sql(build_concept, cte=cte, alias=False)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
         else:
@@ -132,7 +132,6 @@ def get_incremental_key_watermarks(
             type=UpdateKeyType.INCREMENTAL_KEY,
             value=max_value,
         )
-
 
     return DatasourceWatermark(keys=watermarks)
 
@@ -189,13 +188,17 @@ class BaseStateStore:
         Args:
             env: The environment containing datasources
             executor: Executor for querying current state
-            root_assets: Set of datasource identifiers that are "source of truth"
-                         and should not be marked stale. If None, defaults to empty.
+            root_assets: Optional set of datasource identifiers that are "source of truth"
+                         and should not be marked stale. If None, uses datasources marked
+                         with is_root=True in the model.
 
         Returns:
             List of StaleAsset objects describing what needs refresh and why.
         """
-        root_assets = root_assets or set()
+        if root_assets is None:
+            root_assets = {
+                ds.identifier for ds in env.datasources.values() if ds.is_root
+            }
         stale: list[StaleAsset] = []
 
         # First pass: watermark all assets to get current state

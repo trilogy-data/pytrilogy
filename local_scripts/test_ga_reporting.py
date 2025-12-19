@@ -25,11 +25,10 @@ print("All watermarks:")
 for ds_id, wm in all_watermarks.items():
     print(f"  {ds_id}: {wm}")
 
-# Find stale assets - source is the root (has all 3 rows)
+# Find stale assets - uses is_root from datasource definitions
 stale_assets = state_store.get_stale_assets(
     engine.environment,
     engine,
-    root_assets={"source"},
 )
 
 print("\nStale assets:")
