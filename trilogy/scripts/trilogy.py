@@ -7,6 +7,7 @@ from trilogy.scripts.fmt import fmt
 from trilogy.scripts.ingest import ingest
 from trilogy.scripts.init import init
 from trilogy.scripts.plan import plan
+from trilogy.scripts.refresh import refresh
 from trilogy.scripts.run import run
 from trilogy.scripts.serve import serve
 from trilogy.scripts.testing import integration, unit
@@ -61,6 +62,12 @@ cli.command(
 cli.command("agent")(agent)
 cli.command("agent-info")(agent_info)
 cli.command("plan")(plan)
+cli.command(
+    "refresh",
+    context_settings=dict(
+        ignore_unknown_options=True,
+    ),
+)(refresh)
 cli.command("serve")(serve)
 
 

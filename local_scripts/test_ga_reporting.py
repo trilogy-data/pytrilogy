@@ -34,24 +34,14 @@ stale_assets = state_store.get_stale_assets(
 print("\nStale assets:")
 for asset in stale_assets:
     print(f"  {asset.datasource_id}: {asset.reason}")
-    if asset.filters:
-        print(f"filters: {asset.filters}")
-#         filters = []
-#         for key, filter in asset.filters.items():
-#             filter_string = f"{key} > {filter.value}"
-#             filters.append(filter_string)
-#         final_filter_string = " AND ".join(filters)
-#         cmd = f"APPEND {asset.datasource_id} WHERE {final_filter_string};"
-#     else:
-#         cmd = f"PERSIST {asset.datasource_id};"
-#     engine.execute_text(cmd)
+    engine.update_datasource(engine.environment.datasources[asset.datasource_id])
 
-# # Re-check for stale assets after persisting
-# stale_assets = state_store.get_stale_assets(
-#     engine.environment,
-#     engine,
-#     root_assets={"source"},
-# )
-# print("\nStale assets post refresh:")
-# for asset in stale_assets:
-#     print(f"  {asset.datasource_id}: {asset.reason}")
+# Re-check for stale assets after persisting
+stale_assets = state_store.get_stale_assets(
+    engine.environment,
+    engine,
+    root_assets={"source"},
+)
+print("\nStale assets post refresh:")
+for asset in stale_assets:
+    print(f"  {asset.datasource_id}: {asset.reason}")

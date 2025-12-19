@@ -585,6 +585,28 @@ def run_single_script_execution(
         validate_datasources(exec, mock=True, quiet=False)
         print_success("Unit tests passed successfully!")
 
+    elif execution_mode == "refresh":
+        from trilogy.execution.state.state_store import BaseStateStore
+        from trilogy.scripts.display import print_info, print_warning
+
+        for script in text:
+            exec.parse_text(script)
+
+        state_store = BaseStateStore()
+        stale_assets = state_store.get_stale_assets(exec.environment, exec)
+
+        if not stale_assets:
+            print_info("No stale assets found")
+            return
+
+        print_warning(f"Found {len(stale_assets)} stale asset(s)")
+        for asset in stale_assets:
+            print_info(f"  Refreshing {asset.datasource_id}: {asset.reason}")
+            datasource = exec.environment.datasources[asset.datasource_id]
+            exec.update_datasource(datasource)
+
+        print_success(f"Refreshed {len(stale_assets)} asset(s)")
+
 
 def get_execution_strategy(strategy_name: str):
     """Get execution strategy by name."""
