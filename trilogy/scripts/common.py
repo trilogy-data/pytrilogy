@@ -396,12 +396,17 @@ def handle_execution_exception(e: Exception, debug: bool = False) -> None:
 
 def count_statement_stats(
     statements: Sequence[PROCESSED_STATEMENT_TYPES],
+    existing_stats: ExecutionStats | None = None,
 ) -> ExecutionStats:
     """Count persist and validate statements in a list of processed statements."""
     persist_count = sum(1 for s in statements if isinstance(s, ProcessedQueryPersist))
     validate_count = sum(
         1 for s in statements if isinstance(s, ProcessedValidateStatement)
     )
+    if existing_stats:
+        existing_stats.persist_count += persist_count
+        existing_stats.validate_count += validate_count
+        return existing_stats
     return ExecutionStats(persist_count=persist_count, validate_count=validate_count)
 
 
@@ -411,9 +416,9 @@ def execute_script_with_stats(
     """Parse and optionally execute a script, returning execution stats."""
     with open(script_path, "r") as f:
         queries = exec.parse_text(f.read())
-
+    stats = ExecutionStats()
     if run_statements:
         for query in queries:
             exec.execute_query(query)
-            stats = count_statement_stats([query])
+            stats = count_statement_stats([query], stats)
     return stats

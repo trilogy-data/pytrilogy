@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from trilogy import Executor
+from trilogy import Dialects, Executor
 from trilogy.core.models.datasource import UpdateKey, UpdateKeys, UpdateKeyType
 from trilogy.execution.state.state_store import (
     BaseStateStore,
@@ -101,12 +101,12 @@ def test_unique_key_hash_watermarks(duckdb_engine: Executor):
     datasource = duckdb_engine.environment.datasources["inventory"]
     watermarks = get_unique_key_hash_watermarks(datasource, duckdb_engine)
 
-    assert "product_id" in watermarks.keys
-    assert "store_id" in watermarks.keys
-    assert watermarks.keys["product_id"].type == UpdateKeyType.KEY_HASH
-    assert watermarks.keys["store_id"].type == UpdateKeyType.KEY_HASH
-    assert watermarks.keys["product_id"].value is not None
-    assert watermarks.keys["store_id"].value is not None
+    assert "local.product_id" in watermarks.keys
+    assert "local.store_id" in watermarks.keys
+    assert watermarks.keys["local.product_id"].type == UpdateKeyType.KEY_HASH
+    assert watermarks.keys["local.store_id"].type == UpdateKeyType.KEY_HASH
+    assert watermarks.keys["local.product_id"].value is not None
+    assert watermarks.keys["local.store_id"].value is not None
 
 
 def test_base_state_store_incremental_by(duckdb_engine: Executor):
@@ -172,8 +172,8 @@ def test_base_state_store_key_hash(duckdb_engine: Executor):
     watermarks = state_store.watermark_asset(datasource, duckdb_engine)
 
     assert watermarks is not None
-    assert "customer_id" in watermarks.keys
-    assert watermarks.keys["customer_id"].type == UpdateKeyType.KEY_HASH
+    assert "local.customer_id" in watermarks.keys
+    assert watermarks.keys["local.customer_id"].type == UpdateKeyType.KEY_HASH
 
 
 def test_base_state_store_update_time(duckdb_engine: Executor):
@@ -208,8 +208,8 @@ def test_base_state_store_update_time(duckdb_engine: Executor):
 
     # Since there's a key column, it will use KEY_HASH watermark type
     assert watermarks is not None
-    assert "event_row" in watermarks.keys
-    assert watermarks.keys["event_row"].type == UpdateKeyType.KEY_HASH
+    assert "local.event_row" in watermarks.keys
+    assert watermarks.keys["local.event_row"].type == UpdateKeyType.KEY_HASH
 
 
 def test_empty_incremental_by(duckdb_engine: Executor):
@@ -256,8 +256,8 @@ def test_no_key_columns(duckdb_engine: Executor):
     watermarks = get_unique_key_hash_watermarks(datasource, duckdb_engine)
 
     # Now has a key column, so we get KEY_HASH
-    assert "metric_id" in watermarks.keys
-    assert watermarks.keys["metric_id"].type == UpdateKeyType.KEY_HASH
+    assert "local.metric_id" in watermarks.keys
+    assert watermarks.keys["local.metric_id"].type == UpdateKeyType.KEY_HASH
 
 
 def test_multiple_incremental_keys(duckdb_engine: Executor):
@@ -499,8 +499,9 @@ def test_update_datasource_full_refresh(duckdb_engine: Executor):
     assert result[0] == 2
 
 
-def test_update_datasource_with_incremental_filter(duckdb_engine: Executor):
-    """Test update_datasource with UpdateKeys filter for incremental update."""
+def test_update_datasource_with_incremental_filter():
+
+    duckdb_engine = Dialects.DUCK_DB.default_executor()
     duckdb_engine.execute_text(
         """
         key record_id int;
@@ -544,7 +545,7 @@ def test_update_datasource_with_incremental_filter(duckdb_engine: Executor):
     keys = UpdateKeys(
         keys={
             "created_ts": UpdateKey(
-                concept_name="created_ts",
+                concept_name="local.created_ts",
                 type=UpdateKeyType.INCREMENTAL_KEY,
                 value=datetime(2024, 1, 1, 10, 0, 0),
             )
@@ -561,8 +562,8 @@ def test_update_datasource_with_incremental_filter(duckdb_engine: Executor):
     assert result[0] == 3
 
 
-def test_update_datasource_integration_with_stale_assets(duckdb_engine: Executor):
-    """Test full integration: detect stale, then update using filters."""
+def test_update_datasource_integration_with_stale_assets():
+    duckdb_engine = Dialects.DUCK_DB.default_executor()
     duckdb_engine.execute_text(
         """
         key event_id int;
