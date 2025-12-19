@@ -114,16 +114,16 @@ def get_incremental_key_watermarks(
     watermarks = {}
     factory = Factory(environment=executor.environment)
 
-
+    dialect = executor.generator
     for concept_ref in datasource.incremental_by:
-        print(concept_ref)
         concept = executor.environment.concepts[concept_ref.address]
-        print(concept)
         build_concept = factory.build(concept)
-        print(build_concept)
         build_datasource = factory.build(datasource)
-        cte = CTE.from_datasource()
-        query = f"SELECT MAX({executor.generator.render_expr(build_concept)}) as max_value FROM {table_ref}"
+        cte:CTE = CTE.from_datasource(build_datasource)
+        if concept_ref in datasource.output_concepts:
+            query = f"SELECT MAX({dialect.render_concept_sql(build_concept, cte=cte, alias=False)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
+        else:
+            query = f"SELECT MAX({dialect.render_expr(build_concept.lineage, cte=cte)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
         result = executor.execute_raw_sql(query).fetchone()
 
         max_value = result[0] if result else None

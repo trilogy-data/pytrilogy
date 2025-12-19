@@ -446,7 +446,7 @@ class BaseDialect:
             raise NotImplementedError(
                 f"File source type {address.type} not supported by this dialect"
             )
-        return safe_quote(address.location, self.QUOTE_CHARACTER)
+        return self.safe_quote(address.location)
 
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
@@ -470,7 +470,7 @@ class BaseDialect:
         else:
             qualified_name = table_name
 
-        sample_query = f"SELECT * FROM {safe_quote(qualified_name, self.QUOTE_CHARACTER)} LIMIT {sample_size}"
+        sample_query = f"SELECT * FROM {self.safe_quote(qualified_name)} LIMIT {sample_size}"
         rows = executor.execute_raw_sql(sample_query).fetchall()
         return rows
 
@@ -482,7 +482,7 @@ class BaseDialect:
         return datetime.now(timezone.utc).isoformat()
 
     def hash_column_value(self, column_name: str) -> str:
-        return f"md5(CAST({safe_quote(column_name, self.QUOTE_CHARACTER)} AS VARCHAR))"
+        return f"md5(CAST({self.safe_quote(column_name)} AS VARCHAR))"
 
     def aggregate_checksum(self, hash_expr: str) -> str:
         return f"BIT_XOR(hash({hash_expr}))"
@@ -978,6 +978,12 @@ class BaseDialect:
                 )
             return final
 
+    def safe_quote(self, name: str) -> str:
+        return safe_quote(name, self.QUOTE_CHARACTER)
+    
+    def quote(self, name: str) -> str:
+        return f'{self.QUOTE_CHARACTER}{name}{self.QUOTE_CHARACTER}'
+
     def render_cte(self, cte: CTE | UnionCTE, auto_sort: bool = True) -> CompiledCTE:
         if isinstance(cte, UnionCTE):
             base_statement = f"\n{cte.operator}\n".join(
@@ -1329,7 +1335,7 @@ class BaseDialect:
     ) -> str:
         return self.SQL_TEMPLATE.render(
             recursive=recursive,
-            output=f"INSERT OVERWRITE {safe_quote(query.output_to.address.location, self.QUOTE_CHARACTER)}",
+            output=f"INSERT OVERWRITE {self.safe_quote(query.output_to.address.location)}",
             full_select=compiled_ctes[-1].statement,
             ctes=compiled_ctes[:-1],
         )
@@ -1342,7 +1348,7 @@ class BaseDialect:
             type_map[c.name] = self.render_expr(c.type)
         return self.CREATE_TABLE_SQL_TEMPLATE.render(
             create_mode=create_mode.value,
-            name=safe_quote(target.name, self.QUOTE_CHARACTER),
+            name=self.safe_quote(target.name),
             columns=target.columns,
             type_map=type_map,
             partition_keys=target.partition_keys,
@@ -1385,14 +1391,14 @@ class BaseDialect:
         if isinstance(query, ProcessedQueryPersist):
             if query.persist_mode == PersistMode.OVERWRITE:
                 create_table_info = datasource_to_create_table_info(query.datasource)
-                output = f"{self.compile_create_table_statement(create_table_info, CreateMode.CREATE_OR_REPLACE)} INSERT INTO {safe_quote(query.output_to.address.location, self.QUOTE_CHARACTER)} "
+                output = f"{self.compile_create_table_statement(create_table_info, CreateMode.CREATE_OR_REPLACE)} INSERT INTO {self.safe_quote(query.output_to.address.location)} "
             elif query.persist_mode == PersistMode.APPEND:
                 if query.partition_by:
                     return self.generate_partitioned_insert(
                         query, recursive, compiled_ctes
                     )
                 else:
-                    output = f"INSERT INTO {safe_quote(query.output_to.address.location, self.QUOTE_CHARACTER)} "
+                    output = f"INSERT INTO {self.safe_quote(query.output_to.address.location)} "
             else:
                 raise NotImplementedError(
                     f"Persist mode {query.persist_mode} not implemented"
