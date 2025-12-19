@@ -120,7 +120,9 @@ def get_incremental_key_watermarks(
         build_concept = factory.build(concept)
         build_datasource = factory.build(datasource)
         cte: CTE = CTE.from_datasource(build_datasource)
-        if concept_ref in datasource.output_concepts:
+        # Check if concept is in output_concepts by comparing addresses
+        output_addresses = {c.address for c in datasource.output_concepts}
+        if concept.address in output_addresses:
             query = f"SELECT MAX({dialect.render_concept_sql(build_concept, cte=cte, alias=False)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
         else:
             query = f"SELECT MAX({dialect.render_expr(build_concept.lineage, cte=cte)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
