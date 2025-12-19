@@ -28,9 +28,12 @@ ruff check . --fix
 mypy trilogy
 black .
 ```
+Skip docker/adventureworks tests with -m "not adventureworks_execution" 
+
 ## Wheel Building
 
 Project uses a build_backend defined in .scripts/build_backend.py, which mostly uses maturin. The custom wrapper exists to be able to pull in requirements from requirements.txt + version dynamically.
+
 
 ## CLI
 
