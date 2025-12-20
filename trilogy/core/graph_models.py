@@ -126,11 +126,12 @@ class ReferenceGraph(nx.DiGraph):
             del self.datasources[n]
         super().remove_node(n)
 
-    def add_node(self, node_for_adding, fast: bool = False, **attr):
+    def add_node(self, node_for_adding, fast: bool = True, **attr):
         if fast:
             return super().add_node(node_for_adding, **attr)
         node_name = node_for_adding
         if attr.get("datasource"):
+            raise ValueError("Use add_datasource_node to add a datasource")
             self.datasources[node_name] = attr["datasource"]
         super().add_node(node_name, **attr)
 

@@ -164,8 +164,9 @@ def create_pruned_concept_graph(
         for edge in to_remove:
             g.remove_edge(*edge)
 
+    g_edges = set(g.edges)
     for n in g.datasources:
-        if any([[n, x] in g.edges for x in relevant_concepts]):
+        if any((n, x) in g_edges for x in relevant_concepts):
             relevent_datasets.append(n)
             continue
     logger.debug(f"Relevant datasets after pruning: {relevent_datasets}")

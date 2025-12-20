@@ -23,6 +23,7 @@ def add_concept(
     seen.add(node_name)
     g.concepts[node_name] = concept
     g.add_node(node_name)
+    root_name = node_name.split("@", 1)[0]
     if concept.concept_arguments:
         for source in concept.concept_arguments:
             if not isinstance(source, BuildConcept):
@@ -45,7 +46,7 @@ def add_concept(
             pseudonym_node,
         ) in g.edges:
             continue
-        if pseudonym_node.split("@", 1)[0] == node_name.split("@", 1)[0]:
+        if pseudonym_node.split("@", 1)[0] == root_name:
             continue
         g.add_edge(pseudonym_node, node_name, fast=True)
         g.add_edge(node_name, pseudonym_node, fast=True)
