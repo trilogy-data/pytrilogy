@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from datetime import date
 
 from sqlalchemy.exc import ProgrammingError
 
@@ -31,37 +30,6 @@ def _is_table_not_found_error(exc: ProgrammingError, dialect) -> bool:
 @dataclass
 class DatasourceWatermark:
     keys: dict[str, UpdateKey]
-
-
-@dataclass
-class StaleAsset:
-    """Represents an asset that needs to be refreshed."""
-
-    datasource_id: str
-    reason: str
-    filters: UpdateKeys = field(default_factory=UpdateKeys)
-
-
-def _compare_watermark_values(
-    a: str | int | float | date, b: str | int | float | date
-) -> int:
-    """Compare two watermark values, returning -1, 0, or 1.
-
-    Handles type mismatches by comparing string representations.
-    """
-    if type(a) is type(b):
-        if a < b:  # type: ignore[operator]
-            return -1
-        elif a > b:  # type: ignore[operator]
-            return 1
-        return 0
-    # Different types: compare as strings
-    sa, sb = str(a), str(b)
-    if sa < sb:
-        return -1
-    elif sa > sb:
-        return 1
-    return 0
 
 
 @dataclass

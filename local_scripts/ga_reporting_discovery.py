@@ -3,6 +3,7 @@ from pathlib import Path
 from trilogy import Dialects, Environment
 from trilogy.execution.state.state_store import BaseStateStore
 from trilogy.hooks import DebuggingHook
+
 if __name__ == "__main__":
     target_path = (
         Path(__file__).parent.parent.parent / "ga-reporting" / "thelook_ecommerce"

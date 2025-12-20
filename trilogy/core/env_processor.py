@@ -1,3 +1,4 @@
+from trilogy.core.enums import Derivation
 from trilogy.core.graph_models import (
     ReferenceGraph,
     concept_to_node,
@@ -5,7 +6,7 @@ from trilogy.core.graph_models import (
 )
 from trilogy.core.models.build import BuildConcept, BuildDatasource
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.enums import Derivation
+
 
 def add_concept(
     concept: BuildConcept,
@@ -87,7 +88,9 @@ def generate_adhoc_graph(
         g.add_datasource_node(node, dataset)
         eligible = dataset.concepts
         for concept in concepts:
-            if concept.derivation == Derivation.BASIC and all([x in eligible for x in concept.concept_arguments]):
+            if concept.derivation == Derivation.BASIC and all(
+                [x in eligible for x in concept.concept_arguments]
+            ):
                 eligible.append(concept)
         for concept in eligible:
             cnode = concept_to_node(concept)

@@ -2,7 +2,6 @@ from pathlib import Path
 
 from trilogy import Dialects, Environment
 from trilogy.execution.state.state_store import BaseStateStore
-from pathlib import Path
 
 if __name__ == "__main__":
     target_path = (
