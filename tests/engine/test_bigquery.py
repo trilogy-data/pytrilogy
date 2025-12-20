@@ -6,6 +6,7 @@ from trilogy import Dialects
 from trilogy.constants import Rendering
 from trilogy.core.models.core import ArrayType, DataType, ListWrapper
 from trilogy.core.models.environment import Environment
+from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.hooks.query_debugger import DebuggingHook
 
 UNSUPPORTED_TUPLE = (3, 14)
@@ -475,3 +476,18 @@ def test_array_agg():
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 1
     assert results[0] == ([1, 2, 3, 3, 4, 5],)  # aggregated_values
+
+
+def test_hash_column_value():
+    dialect = BigqueryDialect()
+    result = dialect.hash_column_value("my_column")
+    assert result == "FARM_FINGERPRINT(CAST(`my_column` AS STRING))"
+
+    result_special = dialect.hash_column_value("column with spaces")
+    assert result_special == "FARM_FINGERPRINT(CAST(`column with spaces` AS STRING))"
+
+
+def test_aggregate_checksum():
+    dialect = BigqueryDialect()
+    result = dialect.aggregate_checksum("FARM_FINGERPRINT(CAST(`id` AS STRING))")
+    assert result == "BIT_XOR(FARM_FINGERPRINT(CAST(`id` AS STRING)))"
