@@ -7,6 +7,7 @@ from click.exceptions import Exit
 
 from trilogy import Executor
 from trilogy.dialect.enums import Dialects
+from trilogy.core.statements.execute import ProcessedValidateStatement
 from trilogy.execution.state.state_store import BaseStateStore
 from trilogy.scripts.common import (
     CLIRuntimeParams,
@@ -24,10 +25,15 @@ def execute_script_for_refresh(
     """Execute a script for the 'refresh' command - parse and refresh stale assets."""
     from trilogy.scripts.display import print_info, print_success, print_warning
 
+    validation = []
     with open(node.path, "r") as f:
-        queries = exec.parse_text(f.read())
+        statements = exec.parse_text(f.read())
 
-    stats = count_statement_stats(queries)
+    for x in statements:
+        if isinstance(x, ProcessedValidateStatement):
+            validation.append(x)
+
+    stats = count_statement_stats([])
 
     state_store = BaseStateStore()
     stale_assets = state_store.get_stale_assets(exec.environment, exec)
@@ -46,7 +52,9 @@ def execute_script_for_refresh(
         datasource = exec.environment.datasources[asset.datasource_id]
         exec.update_datasource(datasource)
         stats.persist_count += 1
-
+    for x in validation:
+        exec.execute_statement(x)
+        stats = count_statement_stats([x])
     if not quiet:
         print_success(f"Refreshed {len(stale_assets)} asset(s) in {node.path.name}")
 
