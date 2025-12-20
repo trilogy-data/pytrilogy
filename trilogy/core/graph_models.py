@@ -113,13 +113,10 @@ class ReferenceGraph(nx.DiGraph):
         g = ReferenceGraph()
         g.concepts = self.concepts.copy()
         g.datasources = self.datasources.copy()
-        g.pseudonyms = {*self.pseudonyms}
-        # g.add_nodes_from(self.nodes(data=True))
-        for node in self.nodes:
-            g.add_node(node, fast=True)
-        for edge in self.edges:
-            g.add_edge(edge[0], edge[1], fast=True)
-        # g.add_edges_from(self.edges(data=True))
+        g.pseudonyms = self.pseudonyms.copy()
+        g._node.update(self._node)
+        g._adj.update({k: dict(v) for k, v in self._adj.items()})
+        g._pred.update({k: dict(v) for k, v in self._pred.items()})
         return g
 
     def remove_node(self, n) -> None:

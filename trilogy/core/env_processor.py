@@ -45,7 +45,7 @@ def add_concept(
             pseudonym_node,
         ) in g.edges:
             continue
-        if pseudonym_node.split("@")[0] == node_name.split("@")[0]:
+        if pseudonym_node.split("@", 1)[0] == node_name.split("@", 1)[0]:
             continue
         g.add_edge(pseudonym_node, node_name, fast=True)
         g.add_edge(node_name, pseudonym_node, fast=True)
@@ -69,7 +69,6 @@ def generate_adhoc_graph(
     concepts: list[BuildConcept],
     datasources: list[BuildDatasource],
     default_concept_graph: dict[str, BuildConcept],
-    restrict_to_listed: bool = False,
 ) -> ReferenceGraph:
     g = ReferenceGraph()
     concept_mapping = {x.address: x for x in concepts}
@@ -104,20 +103,11 @@ def generate_adhoc_graph(
                         break_flag = False
                         seen.add(concept.canonical_address)
                         eligible.append(concept)
-                        print(
-                            "Added basic concept to datasource ",
-                            concept,
-                            dataset.name,
-                            input_set,
-                        )
 
         for concept in eligible:
             cnode = concept_to_node(concept)
             g.concepts[cnode] = concept
             g.add_node(cnode)
-            if restrict_to_listed:
-                if cnode not in g.nodes:
-                    continue
             g.add_edge(node, cnode, fast=True)
             g.add_edge(cnode, node, fast=True)
             # if there is a key on a table at a different grain
