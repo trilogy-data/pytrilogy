@@ -202,7 +202,7 @@ def test_provider_name():
   """
     )[0]
     assert "reference" not in sql.lower(), sql
-    assert sql.count("JOIN") == 3, sql
+    assert sql.count("JOIN") == 2, sql
 
 
 def test_filter():

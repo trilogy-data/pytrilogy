@@ -113,8 +113,11 @@ select
     start = datetime.now()
     dialect.parse_text(test_queries)
     end = datetime.now()
-
-    assert end - start < timedelta(seconds=4), f"Duration: {end - start}"
+    duration = end - start
+    # 509337
+    # 672679
+    # 1009825
+    assert duration < timedelta(seconds=0.1), f"Duration: {duration}"
 
 
 def test_merge_comparison(engine):

@@ -80,18 +80,37 @@ def generate_adhoc_graph(
 
     # add all parsed concepts
     for concept in concepts:
-
         add_concept(concept, g, concept_mapping, default_concept_graph, seen)
 
+    basic_map = [
+        ({c.canonical_address for c in concept.concept_arguments}, concept)
+        for concept in concepts
+        if concept.derivation == Derivation.BASIC and concept.concept_arguments
+    ]
     for dataset in datasources:
         node = datasource_to_node(dataset)
         g.add_datasource_node(node, dataset)
         eligible = dataset.concepts
-        for concept in concepts:
-            if concept.derivation == Derivation.BASIC and all(
-                [x in eligible for x in concept.concept_arguments]
-            ):
-                eligible.append(concept)
+        seen = set(x.canonical_address for x in eligible)
+        complete_contains = set(
+            [c.concept.canonical_address for c in dataset.columns if c.is_complete]
+        )
+        break_flag = False
+        while not break_flag:
+            break_flag = True
+            for input_set, concept in basic_map:
+                if input_set.issubset(complete_contains):
+                    if concept.canonical_address not in seen:
+                        break_flag = False
+                        seen.add(concept.canonical_address)
+                        eligible.append(concept)
+                        print(
+                            "Added basic concept to datasource ",
+                            concept,
+                            dataset.name,
+                            input_set,
+                        )
+
         for concept in eligible:
             cnode = concept_to_node(concept)
             g.concepts[cnode] = concept

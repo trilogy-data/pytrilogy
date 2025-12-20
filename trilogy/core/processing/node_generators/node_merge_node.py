@@ -96,9 +96,9 @@ def extract_ds_components(
 
 
 def prune_and_merge(
-    G: nx.DiGraph,
+    G: ReferenceGraph,
     keep_node_lambda: Callable[[str], bool],
-) -> nx.DiGraph:
+) -> ReferenceGraph:
     """
     Prune nodes of one type and create direct connections between remaining nodes.
 
@@ -183,6 +183,40 @@ def reinject_common_join_keys_v2(
                     f"{LOGGER_PREFIX} reinjecting common join key {cnode} to list {nodelist} between {datasource} and {neighbor}, existing {existing_addresses}"
                 )
                 injected = True
+
+    return injected
+
+
+def reinject_basic_parents(
+    G: ReferenceGraph,
+    final: nx.DiGraph,
+) -> bool:
+
+    injected = False
+
+    for concept in G.concepts:
+        if concept not in final:
+            continue
+        logger.debug(
+            f"{LOGGER_PREFIX} checking concept {concept} for basic parent reinjection"
+        )
+        node1 = G.concepts[concept]
+        if node1.derivation != Derivation.BASIC:
+            continue
+        cnode = concept_to_node(node1)
+        neighbors = nx.all_neighbors(G, concept)
+        for neighbor in neighbors:
+            node2 = G.concepts.get(neighbor)
+            if not node2:
+                continue
+            if node2.address in node1.concept_arguments:
+                cnode2 = concept_to_node(node2)
+                final.add_edge(cnode2, cnode)
+                logger.debug(
+                    f"{LOGGER_PREFIX} reinjecting upstream inputs {cnode2} to basic derivation {cnode}"
+                )
+                injected = True
+
     return injected
 
 
@@ -274,7 +308,10 @@ def determine_induced_minimal_nodes(
                     continue
             final.add_edge(*edge)
 
+    # readd concepts that need to be in the output for proper discovery
     reinject_common_join_keys_v2(G, final, nodelist, synonyms)
+
+    reinject_basic_parents(G, final)
 
     # all concept nodes must have a parent
     if not all(
@@ -338,7 +375,7 @@ def detect_ambiguity_and_raise(
     if not final_candidates:
         filtered_paths = [x.difference(common) for x in reduced_concept_sets]
         raise AmbiguousRelationshipResolutionException(
-            message=f"Multiple possible concept injections found to resolve {[x.address for x in all_concepts]}, have {' or '.join([str(x) for x in reduced_concept_sets])}: {filtered_paths}",
+            message=f"Multiple possible concept additions (intermediate join keys) found to resolve {[x.address for x in all_concepts]}, have {' or '.join([str(x) for x in reduced_concept_sets])}. Different paths are is: {filtered_paths}",
             parents=filtered_paths,
         )
 

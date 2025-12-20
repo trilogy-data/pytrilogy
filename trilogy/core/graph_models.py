@@ -82,10 +82,16 @@ def prune_sources_for_aggregates(
     return
 
 
-def concept_to_node(input: BuildConcept) -> str:
+def concept_to_node(input: BuildConcept, stash: dict[str, str] | None = None) -> str:
+    if stash and input.canonical_address in stash:
+        return stash[input.canonical_address]
     # if input.purpose == Purpose.METRIC:
     #     return f"c~{input.namespace}.{input.name}@{input.grain}"
-    return f"c~{input.canonical_address}@{input.grain.str_no_condition}"
+
+    r = f"c~{input.canonical_address}@{input.grain.str_no_condition}"
+    if stash is not None:
+        stash[input.canonical_address] = r
+    return r
 
 
 def datasource_to_node(input: BuildDatasource) -> str:
