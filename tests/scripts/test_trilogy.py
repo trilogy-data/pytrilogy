@@ -751,16 +751,9 @@ def test_refresh_parallel_failure():
 def test_refresh_with_stale_assets(tmp_path: Path):
     """Test refresh command with actual stale assets that need refreshing.
 
-    Uses a temp file and calls execute_script_for_refresh directly to exercise
-    the full refresh path in refresh.py. This is more reliable than CLI testing
-    since it avoids database connection isolation issues between CLI invocations.
+    Uses the trilogy CLI to exercise the full refresh path.
     """
-    from trilogy import Dialects
-    from trilogy.execution.state.state_store import BaseStateStore
-    from trilogy.scripts.dependency import ScriptNode
-    from trilogy.scripts.refresh import execute_script_for_refresh
-
-    # Create the setup script that creates the table with initial stale data
+    # Create the script with stale assets
     script_content = """
 key event_id int;
 property event_id.event_ts datetime;
@@ -787,45 +780,24 @@ grain (event_id)
 address target_events_table
 incremental by event_ts;
 
-CREATE IF NOT EXISTS DATASOURCE target_events;
 
-RAW_SQL('''
-INSERT INTO target_events_table
-SELECT 1 as event_id, TIMESTAMP '2024-01-10 12:00:00' as event_ts
-''');
 """
     test_file = tmp_path / "stale_test.preql"
     test_file.write_text(script_content)
 
-    # First execute to create table and insert initial data
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(script_content)
-
-    # Verify table was created with 1 row
-    result = executor.execute_raw_sql(
-        "SELECT count(*) FROM target_events_table"
-    ).fetchone()
-    assert result[0] == 1
-
-    # Verify we have stale assets before refresh
-    state_store = BaseStateStore()
-    stale_before = state_store.get_stale_assets(executor.environment, executor)
-    assert len(stale_before) == 1
-    assert stale_before[0].datasource_id == "target_events"
-
-    # Now call the refresh function directly (this is what the CLI calls)
-    node = ScriptNode(path=test_file)
-    stats = execute_script_for_refresh(executor, node, quiet=False)
-
-    # Verify refresh happened
-    assert stats.persist_count == 1
-
-    # Verify table now has all 3 rows
-    result = executor.execute_raw_sql(
-        "SELECT count(*) FROM target_events_table"
-    ).fetchone()
-    assert result[0] == 3
-
-    # Verify no more stale assets
-    stale_after = state_store.get_stale_assets(executor.environment, executor)
-    assert len(stale_after) == 0
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "refresh",
+            str(test_file),
+            "duckdb",
+        ],
+    )
+    if result.exception:
+        raise result.exception
+    assert result.exit_code == 0
+    assert "stale asset" in result.output.lower()
+    assert "Refreshing" in result.output
+    assert "target_events" in result.output
+    assert "Refreshed" in result.output

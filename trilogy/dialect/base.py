@@ -431,6 +431,7 @@ class BaseDialect:
     EXPLAIN_KEYWORD = "EXPLAIN"
     NULL_WRAPPER = staticmethod(null_wrapper)
     ALIAS_ORDER_REFERENCING_ALLOWED = True
+    TABLE_NOT_FOUND_PATTERN: str | None = None  # Dialect-specific pattern to match
 
     def __init__(self, rendering: Rendering | None = None):
         self.rendering = rendering or CONFIG.rendering

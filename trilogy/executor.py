@@ -6,6 +6,7 @@ from sqlalchemy import text
 
 from trilogy.constants import MagicConstants, Rendering, logger
 from trilogy.core.enums import (
+    CreateMode,
     FunctionType,
     Granularity,
     IOType,
@@ -130,6 +131,12 @@ class Executor(object):
             keys: Optional UpdateKeys specifying incremental filters
         """
         where = keys.to_where_clause(self.environment) if keys else None
+        create_stmt = CreateStatement(
+            scope=ValidationScope.DATASOURCES,
+            create_mode=CreateMode.CREATE_IF_NOT_EXISTS,
+            targets=[datasource.name],
+        )
+        self.execute_statement(create_stmt)
         select_stmt = datasource.create_update_statement(
             self.environment, where, line_no=None
         )

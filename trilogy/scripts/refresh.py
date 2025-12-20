@@ -6,8 +6,8 @@ from click import UNPROCESSED, Path, argument, option, pass_context
 from click.exceptions import Exit
 
 from trilogy import Executor
-from trilogy.dialect.enums import Dialects
 from trilogy.core.statements.execute import ProcessedValidateStatement
+from trilogy.dialect.enums import Dialects
 from trilogy.execution.state.state_store import BaseStateStore
 from trilogy.scripts.common import (
     CLIRuntimeParams,

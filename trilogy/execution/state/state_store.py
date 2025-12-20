@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from datetime import date
 
+from sqlalchemy.exc import ProgrammingError
+
 from trilogy import Executor
 from trilogy.core.enums import Purpose
 from trilogy.core.models.build import Factory
@@ -15,6 +17,15 @@ from trilogy.core.models.datasource import (
 )
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import CTE
+
+
+def _is_table_not_found_error(exc: ProgrammingError, dialect) -> bool:
+    """Check if exception is a table-not-found error for the given dialect."""
+    pattern = dialect.TABLE_NOT_FOUND_PATTERN
+    if pattern is None:
+        return False
+    error_msg = str(exc.orig) if exc.orig else str(exc)
+    return pattern in error_msg
 
 
 @dataclass
@@ -87,6 +98,7 @@ def get_unique_key_hash_watermarks(
     else:
         table_ref = datasource.safe_address
 
+    dialect = executor.generator
     watermarks = {}
     for col in key_columns:
         if isinstance(col.alias, str):
@@ -96,12 +108,19 @@ def get_unique_key_hash_watermarks(
         else:
             # Function - use rendered expression
             column_name = str(col.alias)
-        hash_expr = executor.generator.hash_column_value(column_name)
-        checksum_expr = executor.generator.aggregate_checksum(hash_expr)
+        hash_expr = dialect.hash_column_value(column_name)
+        checksum_expr = dialect.aggregate_checksum(hash_expr)
         query = f"SELECT {checksum_expr} as checksum FROM {table_ref}"
-        result = executor.execute_raw_sql(query).fetchone()
 
-        checksum_value = result[0] if result else None
+        try:
+            result = executor.execute_raw_sql(query).fetchone()
+            checksum_value = result[0] if result else None
+        except ProgrammingError as e:
+            if _is_table_not_found_error(e, dialect):
+                checksum_value = None
+            else:
+                raise
+
         watermarks[col.concept.address] = UpdateKey(
             concept_name=col.concept.address,
             type=UpdateKeyType.KEY_HASH,
@@ -137,9 +156,16 @@ def get_incremental_key_watermarks(
             query = f"SELECT MAX({dialect.render_concept_sql(build_concept, cte=cte, alias=False)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
         else:
             query = f"SELECT MAX({dialect.render_expr(build_concept.lineage, cte=cte)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
-        result = executor.execute_raw_sql(query).fetchone()
 
-        max_value = result[0] if result else None
+        try:
+            result = executor.execute_raw_sql(query).fetchone()
+            max_value = result[0] if result else None
+        except ProgrammingError as e:
+            if _is_table_not_found_error(e, dialect):
+                max_value = None
+            else:
+                raise
+
         watermarks[concept.name] = UpdateKey(
             concept_name=concept.name,
             type=UpdateKeyType.INCREMENTAL_KEY,

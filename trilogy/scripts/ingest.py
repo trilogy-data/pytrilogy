@@ -181,7 +181,7 @@ def _process_column(
 
 
 def create_datasource_from_table(
-    exec: Executor, table_name: str, schema: str | None = None, root:bool = False
+    exec: Executor, table_name: str, schema: str | None = None, root: bool = False
 ) -> tuple[Datasource, list[Concept], set[str]]:
     """Create a Datasource object from a warehouse table.
 
