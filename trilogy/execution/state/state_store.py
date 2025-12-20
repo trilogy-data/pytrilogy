@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import date
 
 from sqlalchemy.exc import ProgrammingError
 
@@ -41,7 +42,9 @@ class StaleAsset:
     filters: UpdateKeys = field(default_factory=UpdateKeys)
 
 
-def _compare_watermark_values(a: str | int | float, b: str | int | float) -> int:
+def _compare_watermark_values(
+    a: str | int | float | date, b: str | int | float | date
+) -> int:
     """Compare two watermark values, returning -1, 0, or 1.
 
     Handles type mismatches by comparing string representations.
