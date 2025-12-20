@@ -89,62 +89,6 @@ class UpdateKeys:
         return WhereClause(conditional=conditional)
 
 
-class UpdateKeyType(Enum):
-    INCREMENTAL_KEY = "incremental_key"
-    UPDATE_TIME = "update_time"
-    KEY_HASH = "key_hash"
-
-
-@dataclass
-class UpdateKey:
-    """Represents a key used to track data freshness for incremental updates."""
-
-    concept_name: str
-    type: UpdateKeyType
-    value: str | int | float | datetime | date | None
-
-    def to_comparison(self, environment: "Environment") -> "Comparison":
-        """Convert this update key to a Comparison for use in WHERE clauses."""
-
-        concept = environment.concepts[self.concept_name]
-        right_value = self.value if self.value is not None else MagicConstants.NULL
-        return Comparison(
-            left=concept.reference,
-            right=right_value,
-            operator=ComparisonOperator.GT,
-        )
-
-
-@dataclass
-class UpdateKeys:
-    """Collection of update keys for a datasource."""
-
-    keys: dict[str, UpdateKey] = field(default_factory=dict)
-
-    def to_where_clause(self, environment: "Environment") -> WhereClause | None:
-        """Convert update keys to a WhereClause for filtering."""
-
-        comparisons = [
-            key.to_comparison(environment)
-            for key in self.keys.values()
-            if key.value is not None
-        ]
-        if not comparisons:
-            return None
-        if len(comparisons) == 1:
-            return WhereClause(conditional=comparisons[0])
-        conditional = Conditional(
-            left=comparisons[0],
-            right=comparisons[1],
-            operator=BooleanOperator.AND,
-        )
-        for comp in comparisons[2:]:
-            conditional = Conditional(
-                left=conditional, right=comp, operator=BooleanOperator.AND
-            )
-        return WhereClause(conditional=conditional)
-
-
 class RawColumnExpr(BaseModel):
     text: str
 
