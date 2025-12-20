@@ -6,6 +6,7 @@ from sqlalchemy import text
 
 from trilogy.constants import MagicConstants, Rendering, logger
 from trilogy.core.enums import (
+    CreateMode,
     FunctionType,
     Granularity,
     IOType,
@@ -15,7 +16,7 @@ from trilogy.core.enums import (
 from trilogy.core.models.author import Comment, Concept, Function
 from trilogy.core.models.build import BuildFunction
 from trilogy.core.models.core import ListWrapper, MapWrapper
-from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.datasource import Datasource, UpdateKeys
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
     STATEMENT_TYPES,
@@ -120,13 +121,38 @@ class Executor(object):
             gc.collect()
         self.connected = False
 
+    def update_datasource(
+        self, datasource: Datasource, keys: UpdateKeys | None = None
+    ) -> None:
+        """Update a datasource with optional filtering based on update keys.
+
+        Args:
+            datasource: The datasource to update
+            keys: Optional UpdateKeys specifying incremental filters
+        """
+        where = keys.to_where_clause(self.environment) if keys else None
+        create_stmt = CreateStatement(
+            scope=ValidationScope.DATASOURCES,
+            create_mode=CreateMode.CREATE_IF_NOT_EXISTS,
+            targets=[datasource.name],
+        )
+        self.execute_statement(create_stmt)
+        select_stmt = datasource.create_update_statement(
+            self.environment, where, line_no=None
+        )
+        statement = PersistStatement(
+            datasource=datasource,
+            select=select_stmt,
+        )
+        self.execute_statement(statement)
+
     def execute_statement(
         self,
-        statement: PROCESSED_STATEMENT_TYPES,
+        statement: PROCESSED_STATEMENT_TYPES | STATEMENT_TYPES,
     ) -> Optional[ResultProtocol]:
         if isinstance(statement, STATEMENT_TYPES):
             generate = self.generator.generate_queries(
-                self.environment, [statement], hooks=self.hooks
+                self.environment, [statement], hooks=self.hooks  # type: ignore[list-item]
             )
             if not generate:
                 return None

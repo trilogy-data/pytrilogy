@@ -440,12 +440,22 @@ def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None
                         print(f"    Error: {result.error}")
 
 
-def show_script_result(result: "ExecutionResult") -> None:
+def show_script_result(
+    result: "ExecutionResult", stat_types: list[str] | None = None
+) -> None:
     """Display result of a single script execution."""
+    from trilogy.scripts.common import format_stats
+
+    stats_str = ""
+    if result.stats:
+        formatted = format_stats(result.stats, stat_types)
+        if formatted:
+            stats_str = f" [{formatted}]"
+
     if RICH_AVAILABLE and console is not None:
         if result.success:
             console.print(
-                f"  [green]✓[/green] {result.node.path.name} ({result.duration:.2f}s)"
+                f"  [green]✓[/green] {result.node.path.name} ({result.duration:.2f}s){stats_str}"
             )
         else:
             console.print(
@@ -453,7 +463,7 @@ def show_script_result(result: "ExecutionResult") -> None:
             )
     else:
         if result.success:
-            print(f"  ✓ {result.node.path.name} ({result.duration:.2f}s)")
+            print(f"  ✓ {result.node.path.name} ({result.duration:.2f}s){stats_str}")
         else:
             print(
                 f"  ✗ {result.node.path.name} ({result.duration:.2f}s) - {result.error}"

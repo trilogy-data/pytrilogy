@@ -181,7 +181,7 @@ def _process_column(
 
 
 def create_datasource_from_table(
-    exec: Executor, table_name: str, schema: str | None = None
+    exec: Executor, table_name: str, schema: str | None = None, root: bool = False
 ) -> tuple[Datasource, list[Concept], set[str]]:
     """Create a Datasource object from a warehouse table.
 
@@ -263,6 +263,7 @@ def create_datasource_from_table(
         grain=grain,
         columns=column_assignments,
         address=address,
+        is_root=root,
     )
 
     return datasource, concepts, required_imports
@@ -376,7 +377,7 @@ def ingest(
 
         try:
             datasource, concepts, required_imports = create_datasource_from_table(
-                exec, table_name, schema
+                exec, table_name, schema, root=True
             )
 
             datasources[table_name] = datasource

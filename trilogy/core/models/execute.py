@@ -85,6 +85,23 @@ class CTE(BaseModel):
     base_alias_override: Optional[str] = None
     inlined_ctes: dict[str, InlinedCTE] = Field(default_factory=dict)
 
+    @classmethod
+    def from_datasource(cls, datasource: BuildDatasource) -> "CTE":
+        qds = QueryDatasource.from_datasource(datasource)
+        return cls(
+            name=datasource.name,
+            source=qds,
+            output_columns=qds.output_concepts,
+            source_map={
+                c.address: [datasource.safe_identifier] for c in qds.output_concepts
+            },
+            grain=datasource.grain,
+            partial_concepts=datasource.partial_concepts,
+            nullable_concepts=datasource.nullable_concepts,
+            hidden_concepts={c.address for c in datasource.hidden_concepts},
+            base_alias_override=datasource.safe_identifier,
+        )
+
     @field_validator("join_derived_concepts")
     def validate_join_derived_concepts(cls, v):
         if len(v) > 1:
@@ -606,6 +623,21 @@ class QueryDatasource(BaseModel):
 
     def __repr__(self):
         return f"{self.identifier}@<{self.grain}>"
+
+    @classmethod
+    def from_datasource(cls, datasource: BuildDatasource) -> "QueryDatasource":
+        output_concepts = datasource.output_concepts
+        return cls(
+            input_concepts=output_concepts,
+            output_concepts=output_concepts,
+            datasources=[datasource],
+            source_map={c.address: {datasource} for c in output_concepts},
+            grain=datasource.grain,
+            joins=[],
+            partial_concepts=datasource.partial_concepts,
+            hidden_concepts={c.address for c in datasource.hidden_concepts},
+            nullable_concepts=datasource.nullable_concepts,
+        )
 
     @property
     def safe_identifier(self):

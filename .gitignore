@@ -32,6 +32,7 @@ AdventureWorksDW2019.bak
 .mypy_cache
 
 memory.db
+*.wal
 
 tests/modeling/tcp_ds_duckdb/memory/
 tests/modeling/tpc_ds_duckdb/memory/

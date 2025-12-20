@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import threading
 from dataclasses import dataclass
 from datetime import datetime
@@ -9,6 +11,7 @@ import networkx as nx
 from click.exceptions import Exit
 
 from trilogy import Executor
+from trilogy.scripts.common import ExecutionStats
 from trilogy.scripts.dependency import (
     DependencyResolver,
     DependencyStrategy,
@@ -25,6 +28,7 @@ class ExecutionResult:
     success: bool
     error: Exception | None = None
     duration: float = 0.0  # seconds
+    stats: ExecutionStats | None = None
 
 
 @dataclass
@@ -51,7 +55,7 @@ class ExecutionStrategy(Protocol):
         resolver: DependencyResolver,
         max_workers: int,
         executor_factory: Callable[[ScriptNode], Any],
-        execution_fn: Callable[[Any, ScriptNode], None],
+        execution_fn: Callable[[Any, ScriptNode], Any],
         on_script_start: Callable[[ScriptNode], None] | None = None,
         on_script_complete: Callable[[ExecutionResult], None] | None = None,
     ) -> list[ExecutionResult]:
@@ -212,14 +216,14 @@ def _is_execution_done(completed: CompletedSet, total_count: int) -> bool:
 def _execute_single(
     node: ScriptNode,
     executor_factory: Callable[[ScriptNode], Executor],
-    execution_fn: Callable[[Any, ScriptNode], None],
+    execution_fn: Callable[[Any, ScriptNode], ExecutionStats | None],
 ) -> ExecutionResult:
     """Execute a single script and return the result."""
     start_time = datetime.now()
     executor = None
     try:
         executor = executor_factory(node)
-        execution_fn(executor, node)
+        stats = execution_fn(executor, node)
 
         duration = (datetime.now() - start_time).total_seconds()
         if executor:
@@ -229,6 +233,7 @@ def _execute_single(
             success=True,
             error=None,
             duration=duration,
+            stats=stats if isinstance(stats, ExecutionStats) else None,
         )
     except Exception as e:
         duration = (datetime.now() - start_time).total_seconds()
@@ -254,7 +259,7 @@ def _create_worker(
     results: ResultsList,
     total_count: int,
     executor_factory: Callable[[ScriptNode], Any],
-    execution_fn: Callable[[Any, ScriptNode], None],
+    execution_fn: Callable[[Any, ScriptNode], Any],
     on_script_start: Callable[[ScriptNode], None] | None,
     on_script_complete: OnCompleteCallback,
 ) -> Callable[[], None]:
@@ -325,7 +330,7 @@ class EagerBFSStrategy:
         resolver: DependencyResolver,
         max_workers: int,
         executor_factory: Callable[[ScriptNode], Any],
-        execution_fn: Callable[[Any, ScriptNode], None],
+        execution_fn: Callable[[Any, ScriptNode], Any],
         on_script_start: Callable[[ScriptNode], None] | None = None,
         on_script_complete: Callable[[ExecutionResult], None] | None = None,
     ) -> list[ExecutionResult]:
@@ -421,7 +426,7 @@ class ParallelExecutor:
         self,
         root: Path,
         executor_factory: Callable[[ScriptNode], Any],
-        execution_fn: Callable[[Any, ScriptNode], None],
+        execution_fn: Callable[[Any, ScriptNode], Any],
         on_script_start: Callable[[ScriptNode], None] | None = None,
         on_script_complete: Callable[[ExecutionResult], None] | None = None,
     ) -> ParallelExecutionSummary:
@@ -585,6 +590,28 @@ def run_single_script_execution(
         validate_datasources(exec, mock=True, quiet=False)
         print_success("Unit tests passed successfully!")
 
+    elif execution_mode == "refresh":
+        from trilogy.execution.state.state_store import BaseStateStore
+        from trilogy.scripts.display import print_info, print_warning
+
+        for script in text:
+            exec.parse_text(script)
+
+        state_store = BaseStateStore()
+        stale_assets = state_store.get_stale_assets(exec.environment, exec)
+
+        if not stale_assets:
+            print_info("No stale assets found")
+            return
+
+        print_warning(f"Found {len(stale_assets)} stale asset(s)")
+        for asset in stale_assets:
+            print_info(f"  Refreshing {asset.datasource_id}: {asset.reason}")
+            datasource = exec.environment.datasources[asset.datasource_id]
+            exec.update_datasource(datasource)
+
+        print_success(f"Refreshed {len(stale_assets)} asset(s)")
+
 
 def get_execution_strategy(strategy_name: str):
     """Get execution strategy by name."""
@@ -692,9 +719,9 @@ def run_parallel_execution(
             config,
         )
 
-    # Wrap execution_fn to pass quiet=True for parallel execution
-    def quiet_execution_fn(exec: Executor, node: ScriptNode) -> None:
-        execution_fn(exec, node, quiet=True)
+    # Wrap execution_fn to pass quiet=True for parallel execution and return stats
+    def quiet_execution_fn(exec: Executor, node: ScriptNode) -> ExecutionStats | None:
+        return execution_fn(exec, node, quiet=True)
 
     # Run parallel execution
     summary = parallel_exec.execute(

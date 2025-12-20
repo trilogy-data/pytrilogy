@@ -1,13 +1,23 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from enum import Enum
 from typing import TYPE_CHECKING, ItemsView, List, Optional, Union, ValuesView
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
-from trilogy.constants import DEFAULT_NAMESPACE, logger
-from trilogy.core.enums import AddressType, DatasourceState, Modifier
+from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants, logger
+from trilogy.core.enums import (
+    AddressType,
+    BooleanOperator,
+    ComparisonOperator,
+    DatasourceState,
+    Modifier,
+)
 from trilogy.core.models.author import (
+    Comparison,
     Concept,
     ConceptRef,
+    Conditional,
     Function,
     Grain,
     HasUUID,
@@ -19,7 +29,64 @@ from trilogy.core.models.author import (
 LOGGER_PREFIX = "[MODELS_DATASOURCE]"
 
 if TYPE_CHECKING:
-    pass
+    from trilogy.core.models.environment import Environment
+    from trilogy.core.statements.author import SelectStatement
+
+
+class UpdateKeyType(Enum):
+    INCREMENTAL_KEY = "incremental_key"
+    UPDATE_TIME = "update_time"
+    KEY_HASH = "key_hash"
+
+
+@dataclass
+class UpdateKey:
+    """Represents a key used to track data freshness for incremental updates."""
+
+    concept_name: str
+    type: UpdateKeyType
+    value: str | int | float | datetime | date | None
+
+    def to_comparison(self, environment: "Environment") -> "Comparison":
+        """Convert this update key to a Comparison for use in WHERE clauses."""
+
+        concept = environment.concepts[self.concept_name]
+        right_value = self.value if self.value is not None else MagicConstants.NULL
+        return Comparison(
+            left=concept.reference,
+            right=right_value,
+            operator=ComparisonOperator.GT,
+        )
+
+
+@dataclass
+class UpdateKeys:
+    """Collection of update keys for a datasource."""
+
+    keys: dict[str, UpdateKey] = field(default_factory=dict)
+
+    def to_where_clause(self, environment: "Environment") -> WhereClause | None:
+        """Convert update keys to a WhereClause for filtering."""
+
+        comparisons = [
+            key.to_comparison(environment)
+            for key in self.keys.values()
+            if key.value is not None
+        ]
+        if not comparisons:
+            return None
+        if len(comparisons) == 1:
+            return WhereClause(conditional=comparisons[0])
+        conditional = Conditional(
+            left=comparisons[0],
+            right=comparisons[1],
+            operator=BooleanOperator.AND,
+        )
+        for comp in comparisons[2:]:
+            conditional = Conditional(
+                left=conditional, right=comp, operator=BooleanOperator.AND
+            )
+        return WhereClause(conditional=conditional)
 
 
 class RawColumnExpr(BaseModel):
@@ -145,6 +212,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     status: DatasourceState = Field(default=DatasourceState.PUBLISHED)
     incremental_by: List[ConceptRef] = Field(default_factory=list)
     partition_by: List[ConceptRef] = Field(default_factory=list)
+    is_root: bool = False
 
     @property
     def safe_address(self) -> str:
@@ -290,8 +358,30 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             status=self.status,
             incremental_by=[c.with_namespace(namespace) for c in self.incremental_by],
             partition_by=[c.with_namespace(namespace) for c in self.partition_by],
+            is_root=self.is_root,
         )
         return new
+
+    def create_update_statement(
+        self,
+        environment: "Environment",
+        where: Optional[WhereClause] = None,
+        line_no: int | None = None,
+    ) -> "SelectStatement":
+        from trilogy.core.statements.author import Metadata, SelectItem, SelectStatement
+
+        return SelectStatement.from_inputs(
+            environment=environment,
+            selection=[
+                SelectItem(
+                    content=ConceptRef(address=col.concept.address),
+                    modifiers=[],
+                )
+                for col in self.columns
+            ],
+            where_clause=where,
+            meta=Metadata(line_number=line_no) if line_no else None,
+        )
 
     @property
     def concepts(self) -> List[ConceptRef]:

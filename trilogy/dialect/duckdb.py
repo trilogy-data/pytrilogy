@@ -206,6 +206,7 @@ class DuckDBDialect(BaseDialect):
     SQL_TEMPLATE = DUCKDB_TEMPLATE
     UNNEST_MODE = UnnestMode.DIRECT
     NULL_WRAPPER = staticmethod(null_wrapper)
+    TABLE_NOT_FOUND_PATTERN = "Catalog Error: Table with name"
 
     def render_source(self, address: Address) -> str:
         if address.type == AddressType.CSV:

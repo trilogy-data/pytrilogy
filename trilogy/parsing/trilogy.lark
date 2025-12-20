@@ -45,6 +45,7 @@
 
     // datasource concepts
     DATASOURCE_STATUS: "published"i | "unpublished"i
+    DATASOURCE_ROOT: "root"i
 
     datasource_status_clause: /state/i DATASOURCE_STATUS
 
@@ -52,7 +53,7 @@
 
     datasource_partition_clause: "partition"i "by"i column_list
 
-    datasource: "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? whole_grain_clause? (address | query | file) where? datasource_increment_clause? datasource_partition_clause? datasource_status_clause? 
+    datasource: DATASOURCE_ROOT? "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? whole_grain_clause? (address | query | file) where? datasource_increment_clause? datasource_partition_clause? datasource_status_clause?
    
     whole_grain_clause: "complete" where
 

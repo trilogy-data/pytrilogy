@@ -10,6 +10,9 @@ Primarily python, with some rust in performance critical paths.
 
 Prefer minimal, concise code and small functions. Keep comments concise and targeted at otherwise non-intuitive code.
 
+Avoid function signature comments (especially not arg types, as we use mypy) unless they significantly contribute
+to function understanding. Keep a very high bar.
+
 Avoid comments in tests unless they substantially add code.
 
 Avoid defining functions inside functions where possible to make testing easier.
@@ -28,9 +31,12 @@ ruff check . --fix
 mypy trilogy
 black .
 ```
+Skip docker/adventureworks tests with -m "not adventureworks_execution" 
+
 ## Wheel Building
 
 Project uses a build_backend defined in .scripts/build_backend.py, which mostly uses maturin. The custom wrapper exists to be able to pull in requirements from requirements.txt + version dynamically.
+
 
 ## CLI
 
