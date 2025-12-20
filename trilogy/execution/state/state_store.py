@@ -177,7 +177,7 @@ def get_incremental_key_watermarks(
 
 class BaseStateStore:
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.watermarks: dict[str, DatasourceWatermark] = {}
 
     def watermark_asset(

@@ -801,3 +801,61 @@ incremental by event_ts;
     assert "Refreshing" in result.output
     assert "target_events" in result.output
     assert "Refreshed" in result.output
+
+
+def test_refresh_directory_with_stale_assets(tmp_path: Path):
+    """Test refresh command with actual stale assets that need refreshing.
+
+    Uses the trilogy CLI to exercise the full refresh path.
+    """
+    # Create the script with stale assets
+    script_content = """
+key event_id int;
+property event_id.event_ts datetime;
+
+root datasource source_events (
+    event_id: event_id,
+    event_ts: event_ts
+)
+grain (event_id)
+query '''
+SELECT 1 as event_id, TIMESTAMP '2024-01-10 12:00:00' as event_ts
+UNION ALL
+SELECT 2 as event_id, TIMESTAMP '2024-01-15 12:00:00' as event_ts
+UNION ALL
+SELECT 3 as event_id, TIMESTAMP '2024-01-20 12:00:00' as event_ts
+'''
+incremental by event_ts;
+"""
+
+    stale_content = """
+    import source;
+
+    datasource target_events (
+        event_id: event_id,
+        event_ts: event_ts
+    )
+    grain (event_id)
+    address target_events_table
+    incremental by event_ts;
+
+
+    """
+    source_file = tmp_path / "source.preql"
+    source_file.write_text(script_content)
+    test_file = tmp_path / "stale_test.preql"
+    test_file.write_text(stale_content)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "refresh",
+            str(tmp_path),
+            "duckdb",
+        ],
+    )
+    if result.exception:
+        raise result.exception
+    assert result.exit_code == 0
+
