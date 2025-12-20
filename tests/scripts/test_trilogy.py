@@ -858,4 +858,3 @@ incremental by event_ts;
     if result.exception:
         raise result.exception
     assert result.exit_code == 0
-
