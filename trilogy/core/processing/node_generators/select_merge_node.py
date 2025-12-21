@@ -218,7 +218,7 @@ def create_pruned_concept_graph(
     relevant = set(relevant_concepts + relevent_datasets)
     for edge in orig_g.edges():
         if edge[0] in relevant and edge[1] in relevant:
-            g.add_edge(edge[0], edge[1], fast=True)
+            g.add_edge(edge[0], edge[1])
     # if we have no ds nodes at all, for non constant, we can't find it
     if not any([n.startswith("ds~") for n in g.nodes]):
         logger.info(

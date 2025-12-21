@@ -34,7 +34,7 @@ def add_concept(
             generic_node = concept_to_node(generic)
             add_concept(generic, g, concept_mapping, default_concept_graph, seen)
 
-            g.add_edge(generic_node, node_name, fast=True)
+            g.add_edge(generic_node, node_name)
     for ps_address in concept.pseudonyms:
         if ps_address not in concept_mapping:
             raise SyntaxError(f"Concept {concept} has invalid pseudonym {ps_address}")
@@ -48,8 +48,8 @@ def add_concept(
             continue
         if pseudonym_node.split("@", 1)[0] == root_name:
             continue
-        g.add_edge(pseudonym_node, node_name, fast=True)
-        g.add_edge(node_name, pseudonym_node, fast=True)
+        g.add_edge(pseudonym_node, node_name)
+        g.add_edge(node_name, pseudonym_node)
         g.pseudonyms.add((pseudonym_node, node_name))
         g.pseudonyms.add((node_name, pseudonym_node))
         add_concept(pseudonym, g, concept_mapping, default_concept_graph, seen)
@@ -108,20 +108,22 @@ def generate_adhoc_graph(
         for concept in eligible:
             cnode = concept_to_node(concept)
             g.concepts[cnode] = concept
+
             g.add_node(cnode)
-            g.add_edge(node, cnode, fast=True)
-            g.add_edge(cnode, node, fast=True)
+            g.add_edge(node, cnode)
+            g.add_edge(cnode, node)
             # if there is a key on a table at a different grain
             # add an FK edge to the canonical source, if it exists
             # for example, order ID on order product table
             default = get_default_grain_concept(concept, default_concept_graph)
 
             if concept != default:
+
                 dcnode = concept_to_node(default)
                 g.concepts[dcnode] = default
                 g.add_node(dcnode)
-                g.add_edge(cnode, dcnode, fast=True)
-                g.add_edge(dcnode, cnode, fast=True)
+                g.add_edge(cnode, dcnode)
+                g.add_edge(dcnode, cnode)
     return g
 
 

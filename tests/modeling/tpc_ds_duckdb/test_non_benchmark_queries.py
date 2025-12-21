@@ -115,7 +115,7 @@ select
     end = datetime.now()
     duration = end - start
     # 339337
-    assert duration < timedelta(seconds=4), f"Duration: {duration}"
+    assert duration < timedelta(seconds=0.2), f"Duration: {duration}"
 
 
 def test_merge_comparison(engine):
