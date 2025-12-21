@@ -26,6 +26,7 @@ from trilogy.utility import unique
 
 LOGGER_PREFIX = "[GEN_MERGE_NODE]"
 AMBIGUITY_CHECK_LIMIT = 20
+EGO_RADIUS = 10
 
 
 def filter_pseudonyms_for_source(
@@ -76,7 +77,7 @@ def extract_ds_components(
         if node.startswith("ds~"):
             local = g.copy()
             filter_pseudonyms_for_source(local, node, pseudonyms)
-            ds_graph: nx.DiGraph = nx.ego_graph(local, node, radius=10).copy()
+            ds_graph: nx.DiGraph = nx.ego_graph(local, node, radius=EGO_RADIUS).copy()
             graphs.append(
                 [
                     extract_address(x)
@@ -96,9 +97,9 @@ def extract_ds_components(
 
 
 def prune_and_merge(
-    G: nx.DiGraph,
+    G: ReferenceGraph,
     keep_node_lambda: Callable[[str], bool],
-) -> nx.DiGraph:
+) -> ReferenceGraph:
     """
     Prune nodes of one type and create direct connections between remaining nodes.
 
@@ -183,6 +184,40 @@ def reinject_common_join_keys_v2(
                     f"{LOGGER_PREFIX} reinjecting common join key {cnode} to list {nodelist} between {datasource} and {neighbor}, existing {existing_addresses}"
                 )
                 injected = True
+
+    return injected
+
+
+def reinject_basic_parents(
+    G: ReferenceGraph,
+    final: nx.DiGraph,
+) -> bool:
+
+    injected = False
+
+    for concept in G.concepts:
+        if concept not in final:
+            continue
+        logger.debug(
+            f"{LOGGER_PREFIX} checking concept {concept} for basic parent reinjection"
+        )
+        node1 = G.concepts[concept]
+        if node1.derivation != Derivation.BASIC:
+            continue
+        cnode = concept_to_node(node1)
+        neighbors = nx.all_neighbors(G, concept)
+        for neighbor in neighbors:
+            node2 = G.concepts.get(neighbor)
+            if not node2:
+                continue
+            if node2.address in node1.concept_arguments:
+                cnode2 = concept_to_node(node2)
+                final.add_edge(cnode2, cnode)
+                logger.debug(
+                    f"{LOGGER_PREFIX} reinjecting upstream inputs {cnode2} to basic derivation {cnode}"
+                )
+                injected = True
+
     return injected
 
 
@@ -195,11 +230,13 @@ def determine_induced_minimal_nodes(
     synonyms: set[str] = set(),
 ) -> nx.DiGraph | None:
     H: nx.Graph = nx.to_undirected(G).copy()
+    nodelist_set = set(nodelist)
 
     # Add weights to edges based on target node's derivation type
+    g_concepts = G.concepts
     for edge in G.edges():
         _, target = edge
-        target_lookup = G.concepts.get(target)
+        target_lookup = g_concepts.get(target)
 
         weight = 1  # default weight
         # If either node is BASIC, set higher weight
@@ -216,18 +253,19 @@ def determine_induced_minimal_nodes(
         H.edges[edge]["weight"] = weight
 
     nodes_to_remove = []
-    for node, lookup in G.concepts.items():
+    derivations_to_remove = (
+        Derivation.CONSTANT,
+        Derivation.AGGREGATE,
+        Derivation.FILTER,
+    )
+    for node, lookup in g_concepts.items():
         # inclusion of aggregates can create ambiguous node relation chains
         # there may be a better way to handle this
         # can be revisited if we need to connect a derived synonym based on an aggregate
-        if lookup.derivation in (
-            Derivation.CONSTANT,
-            Derivation.AGGREGATE,
-            Derivation.FILTER,
-        ):
+        if lookup.derivation in derivations_to_remove:
             nodes_to_remove.append(node)
         # purge a node if we're already looking for all it's parents
-        if filter_downstream and lookup.derivation not in (Derivation.ROOT,):
+        elif filter_downstream and lookup.derivation != Derivation.ROOT:
             nodes_to_remove.append(node)
     if nodes_to_remove:
         # logger.debug(f"Removing nodes {nodes_to_remove} from graph")
@@ -237,13 +275,13 @@ def determine_induced_minimal_nodes(
         # logger.debug(f"Removing isolates {isolates} from graph")
         H.remove_nodes_from(isolates)
 
-    zero_out = list(x for x in H.nodes if G.out_degree(x) == 0 and x not in nodelist)
+    zero_out = [x for x in H.nodes if G.out_degree(x) == 0 and x not in nodelist_set]
     while zero_out:
         logger.debug(f"Removing zero out nodes {zero_out} from graph")
         H.remove_nodes_from(zero_out)
-        zero_out = list(
-            x for x in H.nodes if G.out_degree(x) == 0 and x not in nodelist
-        )
+        zero_out = [
+            x for x in H.nodes if G.out_degree(x) == 0 and x not in nodelist_set
+        ]
     try:
         # Use weight attribute for Dijkstra pathfinding
         paths = nx.multi_source_dijkstra_path(H, nodelist, weight="weight")
@@ -264,17 +302,21 @@ def determine_induced_minimal_nodes(
     logger.debug(f"Steiner tree found for nodes {nodelist} {sG.nodes}")
     final: nx.DiGraph = nx.subgraph(G, sG.nodes).copy()
 
+    final_nodes = set(final.nodes)
     for edge in G.edges:
-        if edge[1] in final.nodes and edge[0].startswith("ds~"):
-            ds_name = extract_address(edge[0])
-            ds = environment.datasources[ds_name]
+        if edge[1] in final_nodes and edge[0].startswith("ds~"):
+            ds = G.datasources[edge[0]]
             concept = environment.canonical_concepts[extract_address(edge[1])]
-            if concept.address in [x.address for x in ds.partial_concepts]:
-                if not accept_partial:
+            if not accept_partial:
+                partial_addresses = {x.address for x in ds.partial_concepts}
+                if concept.address in partial_addresses:
                     continue
             final.add_edge(*edge)
 
+    # readd concepts that need to be in the output for proper discovery
     reinject_common_join_keys_v2(G, final, nodelist, synonyms)
+
+    reinject_basic_parents(G, final)
 
     # all concept nodes must have a parent
     if not all(
@@ -338,7 +380,7 @@ def detect_ambiguity_and_raise(
     if not final_candidates:
         filtered_paths = [x.difference(common) for x in reduced_concept_sets]
         raise AmbiguousRelationshipResolutionException(
-            message=f"Multiple possible concept injections found to resolve {[x.address for x in all_concepts]}, have {' or '.join([str(x) for x in reduced_concept_sets])}: {filtered_paths}",
+            message=f"Multiple possible concept additions (intermediate join keys) found to resolve {[x.address for x in all_concepts]}, have {' or '.join([str(x) for x in reduced_concept_sets])}. Different paths are is: {filtered_paths}",
             parents=filtered_paths,
         )
 
@@ -431,7 +473,7 @@ def resolve_weak_components(
     )
     synonyms: set[str] = set()
     for x in all_concepts:
-        synonyms = synonyms.union(x.pseudonyms)
+        synonyms.update(x.pseudonyms)
     # from trilogy.hooks.graph_hook import GraphHook
     # GraphHook().query_graph_built(search_graph, highlight_nodes=[concept_to_node(c.with_default_grain()) for c in all_concepts if "__preql_internal" not in c.address])
 

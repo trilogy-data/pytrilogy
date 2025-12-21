@@ -82,10 +82,16 @@ def prune_sources_for_aggregates(
     return
 
 
-def concept_to_node(input: BuildConcept) -> str:
+def concept_to_node(input: BuildConcept, stash: dict[str, str] | None = None) -> str:
+    if stash and input.canonical_address in stash:
+        return stash[input.canonical_address]
     # if input.purpose == Purpose.METRIC:
     #     return f"c~{input.namespace}.{input.name}@{input.grain}"
-    return f"c~{input.canonical_address}@{input.grain.str_no_condition}"
+
+    r = f"c~{input.canonical_address}@{input.grain.str_no_condition}"
+    if stash is not None:
+        stash[input.canonical_address] = r
+    return r
 
 
 def datasource_to_node(input: BuildDatasource) -> str:
@@ -107,13 +113,10 @@ class ReferenceGraph(nx.DiGraph):
         g = ReferenceGraph()
         g.concepts = self.concepts.copy()
         g.datasources = self.datasources.copy()
-        g.pseudonyms = {*self.pseudonyms}
-        # g.add_nodes_from(self.nodes(data=True))
-        for node in self.nodes:
-            g.add_node(node, fast=True)
-        for edge in self.edges:
-            g.add_edge(edge[0], edge[1], fast=True)
-        # g.add_edges_from(self.edges(data=True))
+        g.pseudonyms = self.pseudonyms.copy()
+        g._node.update(self._node)
+        g._adj.update({k: dict(v) for k, v in self._adj.items()})
+        g._pred.update({k: dict(v) for k, v in self._pred.items()})
         return g
 
     def remove_node(self, n) -> None:
@@ -123,11 +126,12 @@ class ReferenceGraph(nx.DiGraph):
             del self.datasources[n]
         super().remove_node(n)
 
-    def add_node(self, node_for_adding, fast: bool = False, **attr):
+    def add_node(self, node_for_adding, fast: bool = True, **attr):
         if fast:
             return super().add_node(node_for_adding, **attr)
         node_name = node_for_adding
         if attr.get("datasource"):
+            raise ValueError("Use add_datasource_node to add a datasource")
             self.datasources[node_name] = attr["datasource"]
         super().add_node(node_name, **attr)
 

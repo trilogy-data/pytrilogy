@@ -1,3 +1,4 @@
+from trilogy.core.enums import Derivation
 from trilogy.core.graph_models import (
     ReferenceGraph,
     concept_to_node,
@@ -22,6 +23,7 @@ def add_concept(
     seen.add(node_name)
     g.concepts[node_name] = concept
     g.add_node(node_name)
+    root_name = node_name.split("@", 1)[0]
     if concept.concept_arguments:
         for source in concept.concept_arguments:
             if not isinstance(source, BuildConcept):
@@ -44,7 +46,7 @@ def add_concept(
             pseudonym_node,
         ) in g.edges:
             continue
-        if pseudonym_node.split("@")[0] == node_name.split("@")[0]:
+        if pseudonym_node.split("@", 1)[0] == root_name:
             continue
         g.add_edge(pseudonym_node, node_name, fast=True)
         g.add_edge(node_name, pseudonym_node, fast=True)
@@ -68,7 +70,6 @@ def generate_adhoc_graph(
     concepts: list[BuildConcept],
     datasources: list[BuildDatasource],
     default_concept_graph: dict[str, BuildConcept],
-    restrict_to_listed: bool = False,
 ) -> ReferenceGraph:
     g = ReferenceGraph()
     concept_mapping = {x.address: x for x in concepts}
@@ -79,19 +80,35 @@ def generate_adhoc_graph(
 
     # add all parsed concepts
     for concept in concepts:
-
         add_concept(concept, g, concept_mapping, default_concept_graph, seen)
 
+    basic_map = [
+        ({c.canonical_address for c in concept.concept_arguments}, concept)
+        for concept in concepts
+        if concept.derivation == Derivation.BASIC and concept.concept_arguments
+    ]
     for dataset in datasources:
         node = datasource_to_node(dataset)
         g.add_datasource_node(node, dataset)
-        for concept in dataset.concepts:
+        eligible = dataset.concepts
+        seen = set(x.canonical_address for x in eligible)
+        complete_contains = set(
+            [c.concept.canonical_address for c in dataset.columns if c.is_complete]
+        )
+        break_flag = False
+        while not break_flag:
+            break_flag = True
+            for input_set, concept in basic_map:
+                if input_set.issubset(complete_contains):
+                    if concept.canonical_address not in seen:
+                        break_flag = False
+                        seen.add(concept.canonical_address)
+                        eligible.append(concept)
+
+        for concept in eligible:
             cnode = concept_to_node(concept)
             g.concepts[cnode] = concept
             g.add_node(cnode)
-            if restrict_to_listed:
-                if cnode not in g.nodes:
-                    continue
             g.add_edge(node, cnode, fast=True)
             g.add_edge(cnode, node, fast=True)
             # if there is a key on a table at a different grain

@@ -129,6 +129,8 @@ def gen_property_enrichment_node(
             history=history,
             conditions=conditions,
         )
+        if not enrich_node:
+            return None
         final_nodes.append(enrich_node)
     return MergeNode(
         input_concepts=unique(

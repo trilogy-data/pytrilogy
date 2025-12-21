@@ -107,6 +107,9 @@ def get_all_parent_partial(
 def get_all_parent_nullable(
     all_concepts: List[BuildConcept], parents: List["StrategyNode"]
 ) -> List[BuildConcept]:
+    for x in parents:
+        if not x:
+            raise ValueError(parents)
     return unique(
         [
             c

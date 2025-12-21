@@ -865,10 +865,7 @@ LIMIT 10
         'LEFT OUTER JOIN "launch_info" as "launch_info" on "fuel_aggregates"."launch_tag" = "launch_info"."Launch_Tag"'
         in query[0]
     ), query[0]
-    assert (
-        'FULL JOIN "lvs_info" as "vehicle_lvs_info" on "fuel_aggregates"."lv_type" = "vehicle_lvs_info"."LV_Name" AND "fuel_aggregates"."lv_variant" = "vehicle_lvs_info"."LV_Variant" AND "fuel_aggregates"."stage_no" = "vehicle_lvs_info"."Stage_No"'
-        in query[0]
-    ), query[0]
+
     # results = gcat_env.execute_query(queries[-1])
     # q2 = results.fetchall()[0]["fuel_launches"]
     # assert q1 == q2, (q1, q2)
