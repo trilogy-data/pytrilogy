@@ -18,10 +18,6 @@ from typing import (
     Union,
 )
 
-from pydantic import (
-    ConfigDict,
-)
-
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
 from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
@@ -98,6 +94,7 @@ from trilogy.utility import string_to_hash
 if TYPE_CHECKING:
     from trilogy.core.models.build_environment import BuildEnvironment
     from trilogy.core.models.execute import CTE, UnionCTE
+
 
 LOGGER_PREFIX = "[MODELS_BUILD]"
 
@@ -473,6 +470,7 @@ class BuildGrain:
         else:
             return self.__add__(other)
 
+DEFAULT_GRAIN = BuildGrain(components=set())
 
 @dataclass
 class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs):
@@ -896,7 +894,6 @@ class BuildSubselectComparison(BuildComparison):
 
 @dataclass
 class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
-    model_config = ConfigDict(extra="forbid")
     name: str
     canonical_name: str
     datatype: DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
@@ -980,6 +977,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
         return self.name.replace(".", "_")
 
     def with_materialized_source(self) -> Self:
+        
         return self.__class__(
             name=self.name,
             canonical_name=self.canonical_name,
@@ -998,15 +996,10 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
             build_is_aggregate=self.build_is_aggregate,
         )
 
-    def with_grain(self, grain: Optional["BuildGrain" | BuildConcept] = None) -> Self:
-        if isinstance(grain, BuildConcept):
-            grain = BuildGrain(
-                components=set(
-                    [
-                        grain.address,
-                    ]
-                )
-            )
+    def with_grain(self, grain: Optional["BuildGrain"] = None) -> Self:
+        grain = grain if grain else DEFAULT_GRAIN
+        if grain == self.grain:
+            return self
         return self.__class__(
             name=self.name,
             canonical_name=self.canonical_name,
@@ -1014,7 +1007,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage,
-            grain=grain if grain else BuildGrain(components=set()),
+            grain=grain if grain else DEFAULT_GRAIN,
             namespace=self.namespace,
             keys=self.keys,
             modifiers=self.modifiers,
@@ -1042,14 +1035,16 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
                 components=set([x for x in components]),
             )  # synonym_set=generate_BuildConcept_synonyms(components))
         elif self.purpose == Purpose.METRIC:
-            grain = BuildGrain()
+            grain = DEFAULT_GRAIN
         elif self.purpose == Purpose.CONSTANT:
             if self.derivation != Derivation.CONSTANT:
                 grain = BuildGrain(components={self.address})
             else:
                 grain = self.grain
         else:
-            grain = self.grain  # type: ignore
+            grain = self.grain 
+        if grain == self.grain:
+            return self
         return self.__class__(
             name=self.name,
             canonical_name=self.canonical_name,
@@ -1526,7 +1521,7 @@ class BuildAlignItem:
 class BuildColumnAssignment:
     alias: str | RawColumnExpr | BuildFunction | BuildAggregateWrapper
     concept: BuildConcept
-    modifiers: List[Modifier] = field(default_factory=list)
+    modifiers: set[Modifier] = field(default_factory=set)
 
     @property
     def is_complete(self) -> bool:
@@ -1543,7 +1538,7 @@ class BuildDatasource:
     columns: List[BuildColumnAssignment]
     address: Union[Address, str]
     grain: BuildGrain = field(
-        default_factory=lambda: BuildGrain(components=set()),
+        default_factory=lambda: DEFAULT_GRAIN,
     )
     namespace: Optional[str] = field(default=DEFAULT_NAMESPACE)
     metadata: DatasourceMetadata = field(
@@ -1909,8 +1904,8 @@ class Factory:
         # this doesn't work for persisted addresses.
         # we need to early exit if we have it in local concepts, because in that case,
         # it is built with appropriate grain only in that dictionary
-        # if base.address in self.local_concepts:
-        #     return self.local_concepts[base.address]
+        if base.address in self.local_concepts:
+            return self.local_concepts[base.address]
         new_lineage, final_grain, _ = base.get_select_grain_and_keys(
             self.grain, self.environment
         )
@@ -1969,11 +1964,6 @@ class Factory:
             build_is_aggregate=is_aggregate,
         )
         if base.address in self.local_concepts:
-            # comp = self.local_concepts[base.address]
-            # if comp.canonical_address != rval.canonical_address:
-            #     raise ValueError(
-            #         f"Conflicting concepts for address {base.address}: {comp.canonical_address} vs {rval.canonical_address} {comp.lineage} vs {rval.lineage}"
-            #     )
             return self.local_concepts[base.address]
         self.local_concepts[base.address] = rval
         return rval
@@ -2019,7 +2009,7 @@ class Factory:
                 else base.alias
             ),
             concept=fetched,
-            modifiers=base.modifiers,
+            modifiers=set(base.modifiers),
         )
 
     @build.register

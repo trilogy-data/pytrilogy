@@ -138,43 +138,30 @@ class BuildEnvironment(BaseModel):
         non_partial_canonical_addresses = set(
             [x.canonical_address for x in non_partial_concrete_concepts]
         )
+        self.materialized_concepts = set()
+        self.materialized_canonical_concepts = set()
+        self.non_partial_materialized_canonical_concepts = set()
 
-        self.materialized_concepts = set(
-            [
-                c.address
-                for c in self.concepts.values()
-                if c.address in concrete_addresses
-            ]
-            + [
-                c.address
-                for c in self.alias_origin_lookup.values()
-                if c.address in concrete_addresses
-            ],
-        )
-        self.materialized_canonical_concepts = set(
-            [
-                c.canonical_address
-                for c in self.concepts.values()
-                if c.canonical_address in canonical_addresses
-            ]
-            + [
-                c.canonical_address
-                for c in self.alias_origin_lookup.values()
-                if c.canonical_address in canonical_addresses
-            ],
-        )
-        self.non_partial_materialized_canonical_concepts = set(
-            [
-                c.canonical_address
-                for c in self.concepts.values()
-                if c.canonical_address in non_partial_canonical_addresses
-            ]
-            + [
-                c.canonical_address
-                for c in self.alias_origin_lookup.values()
-                if c.canonical_address in non_partial_canonical_addresses
-            ],
-        )
+        for c in self.concepts.values():
+            if c.address in concrete_addresses:
+                self.materialized_concepts.add(c.address)
+            if c.canonical_address in canonical_addresses:
+                self.materialized_canonical_concepts.add(c.canonical_address)
+            if c.canonical_address in non_partial_canonical_addresses:
+                self.non_partial_materialized_canonical_concepts.add(
+                    c.canonical_address
+                )
+        for c in self.alias_origin_lookup.values():
+            if c.address in concrete_addresses:
+                self.materialized_concepts.add(c.address)
+            if c.canonical_address in canonical_addresses:
+                self.materialized_canonical_concepts.add(c.canonical_address)
+            if c.canonical_address in non_partial_canonical_addresses:
+                self.non_partial_materialized_canonical_concepts.add(
+                    c.canonical_address
+                )
+
+    
 
 
 BuildEnvironment.model_rebuild()
