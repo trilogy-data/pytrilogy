@@ -257,13 +257,16 @@ class Environment(BaseModel):
         return self
 
     def materialize_for_select(
-        self, local_concepts: dict[str, "BuildConcept"] | None = None,
-        factory: Any = None,
+        self,
+        local_concepts: dict[str, "BuildConcept"] | None = None,
+        build_cache: dict | None = None,
     ) -> "BuildEnvironment":
         """helper method"""
         from trilogy.core.models.build import Factory
-        if not factory:
-            factory:Factory = Factory(self, local_concepts=local_concepts)
+
+        factory: Factory = Factory(
+            self, local_concepts=local_concepts, build_cache=build_cache
+        )
         return factory.build(self)
 
     def add_rowset(self, name: str, lineage: SelectLineage):

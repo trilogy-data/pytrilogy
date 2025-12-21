@@ -403,13 +403,16 @@ def get_query_node(
     logger.info(
         f"{LOGGER_PREFIX} building query node for {statement.output_components} grain {statement.grain}"
     )
+    build_cache = {}
     base_factory = Factory(
         environment=environment,
+        build_cache=build_cache,
     )
     build_statement: BuildSelectLineage | BuildMultiSelectLineage = base_factory.build(statement)
-
+    
     build_environment = environment.materialize_for_select(
         build_statement.local_concepts,
+        build_cache = build_cache
         # factory=base_factory
     )
 

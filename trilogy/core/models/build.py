@@ -99,7 +99,7 @@ if TYPE_CHECKING:
 LOGGER_PREFIX = "[MODELS_BUILD]"
 
 
-def generate_concept_name(parent: Any, debug: bool = False) -> str:
+def generate_concept_name(parent: Any,  debug: bool = False) -> str:
     """Generate a name for a concept based on its parent type and content."""
     if isinstance(parent, BuildAggregateWrapper):
         if debug:
@@ -120,6 +120,8 @@ def generate_concept_name(parent: Any, debug: bool = False) -> str:
         return f"{VIRTUAL_CONCEPT_PREFIX}_paren_{string_to_hash(str(parent))}"
     elif isinstance(parent, BuildComparison):
         return f"{VIRTUAL_CONCEPT_PREFIX}_comp_{string_to_hash(str(parent))}"
+    elif isinstance(parent, BuildMultiSelectLineage):
+        return f"{VIRTUAL_CONCEPT_PREFIX}_msl_{string_to_hash(str(parent))}"
     else:  # ListWrapper, MapWrapper, or primitive types
         return f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
 
@@ -1701,6 +1703,7 @@ class Factory:
         local_concepts: dict[str, BuildConcept] | None = None,
         grain: Grain | None = None,
         pseudonym_map: dict[str, set[str]] | None = None,
+        build_cache: dict[str, BuildConcept] | None = None,
     ):
         self.grain = grain or Grain()
         self.environment = environment
@@ -1710,6 +1713,7 @@ class Factory:
         self.local_non_build_concepts: dict[str, Concept] = {}
         self.pseudonym_map = pseudonym_map or get_canonical_pseudonyms(environment)
         self.build_grain = self.build(self.grain) if self.grain else None
+        self.build_cache = build_cache or {}
 
     def instantiate_concept(
         self,
@@ -1908,15 +1912,22 @@ class Factory:
         # this doesn't work for persisted addresses.
         # we need to early exit if we have it in local concepts, because in that case,
         # it is built with appropriate grain only in that dictionary
+        
         if base.address in self.local_concepts:
             return self.local_concepts[base.address]
         new_lineage, final_grain, _ = base.get_select_grain_and_keys(
             self.grain, self.environment
         )
+        new_grain = self._build_grain(final_grain)
         if new_lineage:
             build_lineage = self.build(new_lineage)
         else:
             build_lineage = None
+        canonical_name = generate_concept_name(build_lineage) if build_lineage else base.name
+        cache_address = f"{base.namespace}.{base.name}.{canonical_name}.{str(new_grain)}"
+        if cache_address in self.build_cache:
+            return self.build_cache[cache_address]
+
         derivation = Concept.calculate_derivation(build_lineage, base.purpose)
 
         granularity = Concept.calculate_granularity(
@@ -1950,14 +1961,12 @@ class Factory:
 
         rval = BuildConcept(
             name=base.name,
-            canonical_name=(
-                generate_concept_name(build_lineage) if build_lineage else base.name
-            ),
+            canonical_name=canonical_name,
             datatype=base.datatype,
             purpose=base.purpose,
             metadata=base.metadata,
             lineage=build_lineage,
-            grain=self._build_grain(final_grain),
+            grain=new_grain,
             namespace=base.namespace,
             keys=base.keys,
             modifiers=base.modifiers,
@@ -1967,9 +1976,9 @@ class Factory:
             granularity=granularity,
             build_is_aggregate=is_aggregate,
         )
-        if base.address in self.local_concepts:
-            return self.local_concepts[base.address]
+        # fast cache
         self.local_concepts[base.address] = rval
+        self.build_cache[cache_address] = rval  
         return rval
 
     @build.register
