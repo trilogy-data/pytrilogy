@@ -1712,8 +1712,9 @@ class Factory:
         )
         self.local_non_build_concepts: dict[str, Concept] = {}
         self.pseudonym_map = pseudonym_map or get_canonical_pseudonyms(environment)
-        self.build_grain = self.build(self.grain) if self.grain else None
         self.build_cache = build_cache or {}
+        self.build_grain = self.build(self.grain) if self.grain else None
+        
 
     def instantiate_concept(
         self,
@@ -1976,7 +1977,8 @@ class Factory:
             granularity=granularity,
             build_is_aggregate=is_aggregate,
         )
-        # fast cache
+        if base.address in self.local_concepts:
+            return self.local_concepts[base.address]
         self.local_concepts[base.address] = rval
         self.build_cache[cache_address] = rval  
         return rval
@@ -2500,6 +2502,7 @@ class Factory:
             environment=self.environment,
             local_concepts=local_cache,
             pseudonym_map=self.pseudonym_map,
+            build_cache=self.build_cache,   
         )
         return BuildDatasource(
             name=base.name,
