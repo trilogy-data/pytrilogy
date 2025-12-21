@@ -83,14 +83,15 @@ def prune_sources_for_aggregates(
 
 
 def concept_to_node(input: BuildConcept, stash: dict[str, str] | None = None) -> str:
-    if stash and input.canonical_address in stash:
-        return stash[input.canonical_address]
+    lookup = input.canonical_address_grain
+    if stash and lookup in stash:
+        return stash[lookup]
     # if input.purpose == Purpose.METRIC:
     #     return f"c~{input.namespace}.{input.name}@{input.grain}"
 
     r = f"c~{input.canonical_address}@{input.grain.str_no_condition}"
     if stash is not None:
-        stash[input.canonical_address] = r
+        stash[lookup] = r
     return r
 
 
@@ -126,17 +127,11 @@ class ReferenceGraph(nx.DiGraph):
             del self.datasources[n]
         super().remove_node(n)
 
-    def add_node(self, node_for_adding, fast: bool = True, **attr):
-        if fast:
-            return super().add_node(node_for_adding, **attr)
-        node_name = node_for_adding
-        if attr.get("datasource"):
-            raise ValueError("Use add_datasource_node to add a datasource")
-            self.datasources[node_name] = attr["datasource"]
-        super().add_node(node_name, **attr)
+    def add_node(self, node_for_adding,  **attr):
+        return super().add_node(node_for_adding, **attr)
+
 
     def add_datasource_node(self, node_name, datasource) -> None:
-        self.datasources[node_name] = datasource
         super().add_node(node_name, datasource=datasource)
 
     def add_edge(self, u_of_edge, v_of_edge, **attr):

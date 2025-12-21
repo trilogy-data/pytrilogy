@@ -967,7 +967,11 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
     @cached_property
     def canonical_address(self) -> str:
         return f"{self.namespace}.{self.canonical_name}"
-
+    
+    @cached_property
+    def canonical_address_grain(self) -> str:
+        return f"{self.namespace}.{self.canonical_name}@{str(self.grain)}"
+    
     @property
     def safe_address(self) -> str:
         if self.namespace == DEFAULT_NAMESPACE:

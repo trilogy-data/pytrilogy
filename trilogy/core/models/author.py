@@ -2581,7 +2581,7 @@ class ArgBinding(Namespaced, DataTyped, BaseModel):
     ) = DataType.UNKNOWN
 
     def with_namespace(self, namespace):
-        return ArgBinding(
+        return ArgBinding.model_construct(
             name=address_with_namespace(self.name, namespace),
             default=(
                 self.default.with_namespace(namespace)

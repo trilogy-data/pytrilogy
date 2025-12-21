@@ -125,7 +125,7 @@ def create_pruned_concept_graph(
         common: set[BuildConcept] = set.intersection(
             *[set(x.output_concepts) for x in ds_list]
         )
-        g.add_datasource_node(node_address, ds_list)
+        g.datasources[node_address] = ds_list
         for c in common:
             cnode = concept_to_node(c)
             g.add_edge(node_address, cnode)
