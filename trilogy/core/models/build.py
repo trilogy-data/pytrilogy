@@ -2502,7 +2502,7 @@ class Factory:
             environment=self.environment,
             local_concepts=local_cache,
             pseudonym_map=self.pseudonym_map,
-            build_cache=self.build_cache,   
+            # build_cache=self.build_cache,   
         )
         return BuildDatasource(
             name=base.name,
