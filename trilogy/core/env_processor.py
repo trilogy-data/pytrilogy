@@ -132,7 +132,9 @@ def add_concept(
                 )
             generic = get_default_grain_concept(source, default_concept_graph)
             generic_node = concept_to_node(generic, stash=node_stash)
-            add_concept(generic, g, concept_mapping, default_concept_graph, seen, node_stash)
+            add_concept(
+                generic, g, concept_mapping, default_concept_graph, seen, node_stash
+            )
 
             g.add_edge(generic_node, node_name)
     for ps_address in concept.pseudonyms:
@@ -152,7 +154,9 @@ def add_concept(
         g.add_edge(node_name, pseudonym_node)
         g.pseudonyms.add((pseudonym_node, node_name))
         g.pseudonyms.add((node_name, pseudonym_node))
-        add_concept(pseudonym, g, concept_mapping, default_concept_graph, seen, node_stash)
+        add_concept(
+            pseudonym, g, concept_mapping, default_concept_graph, seen, node_stash
+        )
 
 
 def get_default_grain_concept(
@@ -181,7 +185,9 @@ def generate_adhoc_graph(
 
     # add all parsed concepts
     for concept in concepts:
-        add_concept(concept, g, concept_mapping, default_concept_graph, seen, node_stash)
+        add_concept(
+            concept, g, concept_mapping, default_concept_graph, seen, node_stash
+        )
 
     basic_graph = build_basic_concept_graph(concepts)
 
@@ -195,7 +201,9 @@ def generate_adhoc_graph(
             c.concept.canonical_address for c in dataset.columns if c.is_complete
         )
         # Add derived concepts in topological order
-        for derived in get_derivable_concepts(basic_graph, complete_contains, already_present):
+        for derived in get_derivable_concepts(
+            basic_graph, complete_contains, already_present
+        ):
             eligible.append(derived)
 
         for concept in eligible:

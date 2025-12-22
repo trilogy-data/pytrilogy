@@ -2,7 +2,7 @@ from pytest import raises
 
 from trilogy import Dialects
 from trilogy.core.enums import Derivation, Granularity, Purpose
-from trilogy.core.models.build import BuildWindowItem, BuildGrain
+from trilogy.core.models.build import BuildGrain, BuildWindowItem
 from trilogy.core.processing.concept_strategies_v3 import (
     History,
     generate_graph,

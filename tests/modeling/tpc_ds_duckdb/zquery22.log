@@ -1,0 +1,223 @@
+query_id = 22
+gen_length = 10947
+generated_sql = """
+
+WITH 
+questionable as (
+SELECT
+    cast(null as string) as \"null_brand\",
+    cast(null as string) as \"null_brand2\",
+    cast(null as string) as \"null_category\",
+    cast(null as string) as \"null_category2\",
+    cast(null as string) as \"null_category3\",
+    cast(null as string) as \"null_category4\",
+    cast(null as string) as \"null_class\",
+    cast(null as string) as \"null_class2\",
+    cast(null as string) as \"null_class3\",
+    cast(null as string) as \"null_name\"
+),
+abundant as (
+SELECT
+    \"inventory_date_date\".\"D_MONTH_SEQ\" as \"inventory_date_month_seq\"
+FROM
+    \"memory\".\"date_dim\" as \"inventory_date_date\"
+WHERE
+    \"inventory_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"inventory_date_date\".\"D_MONTH_SEQ\" <= 1211
+
+GROUP BY 
+    \"inventory_date_date\".\"D_MONTH_SEQ\"),
+sparkling as (
+SELECT
+    \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" as \"inventory_quantity_on_hand\"
+FROM
+    \"memory\".\"inventory\" as \"inventory_warehouse_inventory\"
+    INNER JOIN \"memory\".\"date_dim\" as \"inventory_date_date\" on \"inventory_warehouse_inventory\".\"inv_date_sk\" = \"inventory_date_date\".\"D_DATE_SK\"
+WHERE
+    \"inventory_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"inventory_date_date\".\"D_MONTH_SEQ\" <= 1211
+),
+cheerful as (
+SELECT
+    \"inventory_item_items\".\"I_BRAND\" as \"inventory_item_brand_name\",
+    \"inventory_item_items\".\"I_CATEGORY\" as \"inventory_item_category\",
+    \"inventory_item_items\".\"I_CLASS\" as \"inventory_item_class\",
+    \"inventory_item_items\".\"I_PRODUCT_NAME\" as \"inventory_item_product_name\",
+    \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" as \"inventory_quantity_on_hand\"
+FROM
+    \"memory\".\"inventory\" as \"inventory_warehouse_inventory\"
+    INNER JOIN \"memory\".\"date_dim\" as \"inventory_date_date\" on \"inventory_warehouse_inventory\".\"inv_date_sk\" = \"inventory_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"item\" as \"inventory_item_items\" on \"inventory_warehouse_inventory\".\"inv_item_sk\" = \"inventory_item_items\".\"I_ITEM_SK\"
+WHERE
+    \"inventory_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"inventory_date_date\".\"D_MONTH_SEQ\" <= 1211
+),
+macho as (
+SELECT
+    avg(\"inventory_warehouse_inventory\".\"inv_quantity_on_hand\") as \"qoh5\"
+FROM
+    \"memory\".\"inventory\" as \"inventory_warehouse_inventory\"),
+uneven as (
+SELECT
+    \"questionable\".\"null_brand\" as \"null_brand\",
+    \"questionable\".\"null_brand2\" as \"null_brand2\",
+    \"questionable\".\"null_category\" as \"null_category\",
+    \"questionable\".\"null_category2\" as \"null_category2\",
+    \"questionable\".\"null_category3\" as \"null_category3\",
+    \"questionable\".\"null_category4\" as \"null_category4\",
+    \"questionable\".\"null_class\" as \"null_class\",
+    \"questionable\".\"null_class2\" as \"null_class2\",
+    \"questionable\".\"null_class3\" as \"null_class3\",
+    \"questionable\".\"null_name\" as \"null_name\"
+FROM
+    \"abundant\"
+    FULL JOIN \"questionable\" on 1=1
+WHERE
+    \"abundant\".\"inventory_date_month_seq\" >= 1200 and \"abundant\".\"inventory_date_month_seq\" <= 1211
+),
+abhorrent as (
+SELECT
+    avg(\"sparkling\".\"inventory_quantity_on_hand\") as \"qoh5\"
+FROM
+    \"sparkling\"),
+concerned as (
+SELECT
+    \"cheerful\".\"inventory_item_product_name\" as \"inventory_item_product_name\",
+    avg(\"cheerful\".\"inventory_quantity_on_hand\") as \"qoh4\"
+FROM
+    \"cheerful\"
+GROUP BY 
+    \"cheerful\".\"inventory_item_product_name\"),
+juicy as (
+SELECT
+    \"cheerful\".\"inventory_item_brand_name\" as \"inventory_item_brand_name\",
+    \"cheerful\".\"inventory_item_product_name\" as \"inventory_item_product_name\",
+    avg(\"cheerful\".\"inventory_quantity_on_hand\") as \"qoh3\"
+FROM
+    \"cheerful\"
+GROUP BY 
+    \"cheerful\".\"inventory_item_brand_name\",
+    \"cheerful\".\"inventory_item_product_name\"),
+cooperative as (
+SELECT
+    \"cheerful\".\"inventory_item_brand_name\" as \"inventory_item_brand_name\",
+    \"cheerful\".\"inventory_item_class\" as \"inventory_item_class\",
+    \"cheerful\".\"inventory_item_product_name\" as \"inventory_item_product_name\",
+    avg(\"cheerful\".\"inventory_quantity_on_hand\") as \"qoh2\"
+FROM
+    \"cheerful\"
+GROUP BY 
+    \"cheerful\".\"inventory_item_brand_name\",
+    \"cheerful\".\"inventory_item_class\",
+    \"cheerful\".\"inventory_item_product_name\"),
+thoughtful as (
+SELECT
+    \"cheerful\".\"inventory_item_brand_name\" as \"i_brand\",
+    \"cheerful\".\"inventory_item_category\" as \"i_category\",
+    \"cheerful\".\"inventory_item_class\" as \"i_class\",
+    \"cheerful\".\"inventory_item_product_name\" as \"i_product_name\",
+    avg(\"cheerful\".\"inventory_quantity_on_hand\") as \"qoh1\"
+FROM
+    \"cheerful\"
+GROUP BY 
+    \"cheerful\".\"inventory_item_brand_name\",
+    \"cheerful\".\"inventory_item_category\",
+    \"cheerful\".\"inventory_item_class\",
+    \"cheerful\".\"inventory_item_product_name\"),
+sweltering as (
+SELECT
+    \"abhorrent\".\"qoh5\" as \"qoh5\",
+    \"uneven\".\"null_brand2\" as \"i_brand\",
+    \"uneven\".\"null_category4\" as \"i_category\",
+    \"uneven\".\"null_class3\" as \"i_class\",
+    \"uneven\".\"null_name\" as \"i_product_name\"
+FROM
+    \"uneven\"
+    FULL JOIN \"abhorrent\" on 1=1
+GROUP BY 
+    \"abhorrent\".\"qoh5\",
+    \"uneven\".\"null_brand2\",
+    \"uneven\".\"null_category4\",
+    \"uneven\".\"null_class3\",
+    \"uneven\".\"null_name\"),
+young as (
+SELECT
+    \"concerned\".\"inventory_item_product_name\" as \"i_product_name\",
+    \"concerned\".\"qoh4\" as \"qoh4\",
+    \"uneven\".\"null_brand\" as \"i_brand\",
+    \"uneven\".\"null_category3\" as \"i_category\",
+    \"uneven\".\"null_class2\" as \"i_class\"
+FROM
+    \"concerned\"
+    FULL JOIN \"uneven\" on 1=1
+GROUP BY 
+    \"concerned\".\"inventory_item_product_name\",
+    \"concerned\".\"qoh4\",
+    \"uneven\".\"null_brand\",
+    \"uneven\".\"null_category3\",
+    \"uneven\".\"null_class2\"),
+vacuous as (
+SELECT
+    \"juicy\".\"inventory_item_brand_name\" as \"i_brand\",
+    \"juicy\".\"inventory_item_product_name\" as \"i_product_name\",
+    \"juicy\".\"qoh3\" as \"qoh3\",
+    \"uneven\".\"null_category2\" as \"i_category\",
+    \"uneven\".\"null_class\" as \"i_class\"
+FROM
+    \"juicy\"
+    FULL JOIN \"uneven\" on 1=1
+GROUP BY 
+    \"juicy\".\"inventory_item_brand_name\",
+    \"juicy\".\"inventory_item_product_name\",
+    \"juicy\".\"qoh3\",
+    \"uneven\".\"null_category2\",
+    \"uneven\".\"null_class\"),
+yummy as (
+SELECT
+    \"cooperative\".\"inventory_item_brand_name\" as \"i_brand\",
+    \"cooperative\".\"inventory_item_class\" as \"i_class\",
+    \"cooperative\".\"inventory_item_product_name\" as \"i_product_name\",
+    \"cooperative\".\"qoh2\" as \"qoh2\",
+    \"uneven\".\"null_category\" as \"i_category\"
+FROM
+    \"cooperative\"
+    FULL JOIN \"uneven\" on 1=1
+GROUP BY 
+    \"cooperative\".\"inventory_item_brand_name\",
+    \"cooperative\".\"inventory_item_class\",
+    \"cooperative\".\"inventory_item_product_name\",
+    \"cooperative\".\"qoh2\",
+    \"uneven\".\"null_category\"),
+late as (
+SELECT
+    coalesce(\"sweltering\".\"i_brand\",\"thoughtful\".\"i_brand\",\"vacuous\".\"i_brand\",\"young\".\"i_brand\",\"yummy\".\"i_brand\") as \"i_brand\",
+    coalesce(\"sweltering\".\"i_category\",\"thoughtful\".\"i_category\",\"vacuous\".\"i_category\",\"young\".\"i_category\",\"yummy\".\"i_category\") as \"i_category\",
+    coalesce(\"sweltering\".\"i_class\",\"thoughtful\".\"i_class\",\"vacuous\".\"i_class\",\"young\".\"i_class\",\"yummy\".\"i_class\") as \"i_class\",
+    coalesce(\"sweltering\".\"i_product_name\",\"thoughtful\".\"i_product_name\",\"vacuous\".\"i_product_name\",\"young\".\"i_product_name\",\"yummy\".\"i_product_name\") as \"i_product_name\",
+    coalesce(\"thoughtful\".\"qoh1\",\"yummy\".\"qoh2\",\"vacuous\".\"qoh3\",\"young\".\"qoh4\",\"sweltering\".\"qoh5\") as \"qoh_all\"
+FROM
+    \"thoughtful\"
+    FULL JOIN \"yummy\" on \"thoughtful\".\"i_brand\" is not distinct from \"yummy\".\"i_brand\" AND \"thoughtful\".\"i_brand\" is not distinct from \"yummy\".\"i_brand\" AND \"thoughtful\".\"i_brand\" is not distinct from \"yummy\".\"i_brand\" AND \"thoughtful\".\"i_category\" is not distinct from \"yummy\".\"i_category\" AND \"thoughtful\".\"i_class\" is not distinct from \"yummy\".\"i_class\" AND \"thoughtful\".\"i_class\" is not distinct from \"yummy\".\"i_class\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"yummy\".\"i_product_name\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"yummy\".\"i_product_name\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"yummy\".\"i_product_name\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"yummy\".\"i_product_name\"
+    FULL JOIN \"vacuous\" on \"thoughtful\".\"i_brand\" is not distinct from \"vacuous\".\"i_brand\" AND \"thoughtful\".\"i_brand\" is not distinct from \"vacuous\".\"i_brand\" AND \"thoughtful\".\"i_brand\" is not distinct from \"vacuous\".\"i_brand\" AND \"thoughtful\".\"i_category\" is not distinct from \"vacuous\".\"i_category\" AND \"thoughtful\".\"i_class\" is not distinct from \"vacuous\".\"i_class\" AND \"thoughtful\".\"i_class\" is not distinct from \"vacuous\".\"i_class\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"vacuous\".\"i_product_name\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"vacuous\".\"i_product_name\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"vacuous\".\"i_product_name\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"vacuous\".\"i_product_name\"
+    FULL JOIN \"young\" on \"thoughtful\".\"i_brand\" is not distinct from \"young\".\"i_brand\" AND \"thoughtful\".\"i_brand\" is not distinct from \"young\".\"i_brand\" AND \"thoughtful\".\"i_brand\" is not distinct from \"young\".\"i_brand\" AND \"thoughtful\".\"i_category\" is not distinct from \"young\".\"i_category\" AND \"thoughtful\".\"i_class\" is not distinct from \"young\".\"i_class\" AND \"thoughtful\".\"i_class\" is not distinct from \"young\".\"i_class\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"young\".\"i_product_name\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"young\".\"i_product_name\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"young\".\"i_product_name\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"young\".\"i_product_name\"
+    FULL JOIN \"sweltering\" on \"thoughtful\".\"i_brand\" is not distinct from \"sweltering\".\"i_brand\" AND \"thoughtful\".\"i_brand\" is not distinct from \"sweltering\".\"i_brand\" AND \"thoughtful\".\"i_brand\" is not distinct from \"sweltering\".\"i_brand\" AND \"thoughtful\".\"i_category\" is not distinct from \"sweltering\".\"i_category\" AND \"thoughtful\".\"i_class\" is not distinct from \"sweltering\".\"i_class\" AND \"thoughtful\".\"i_class\" is not distinct from \"sweltering\".\"i_class\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"sweltering\".\"i_product_name\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"sweltering\".\"i_product_name\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"sweltering\".\"i_product_name\" AND \"thoughtful\".\"i_product_name\" is not distinct from \"sweltering\".\"i_product_name\")
+SELECT
+    \"late\".\"i_product_name\" as \"level0_i_product_name\",
+    \"late\".\"i_brand\" as \"level0_i_brand\",
+    \"late\".\"i_class\" as \"level0_i_class\",
+    \"late\".\"i_category\" as \"level0_i_category\",
+    \"late\".\"qoh_all\" as \"level0_qoh_all\"
+FROM
+    \"late\"
+    FULL JOIN \"macho\" on 1=1
+    FULL JOIN \"questionable\" on 1=1
+GROUP BY 
+    \"late\".\"i_brand\",
+    \"late\".\"i_category\",
+    \"late\".\"i_class\",
+    \"late\".\"i_product_name\",
+    \"late\".\"qoh_all\"
+ORDER BY 
+    \"level0_qoh_all\" asc nulls first,
+    \"level0_i_product_name\" asc nulls first,
+    \"level0_i_brand\" asc nulls first,
+    \"level0_i_class\" asc nulls first,
+    \"level0_i_category\" asc nulls first
+LIMIT (100)"""

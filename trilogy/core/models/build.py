@@ -99,7 +99,7 @@ if TYPE_CHECKING:
 LOGGER_PREFIX = "[MODELS_BUILD]"
 
 
-def generate_concept_name(parent: Any,  debug: bool = False) -> str:
+def generate_concept_name(parent: Any, debug: bool = False) -> str:
     """Generate a name for a concept based on its parent type and content."""
     if isinstance(parent, BuildAggregateWrapper):
         if debug:
@@ -472,7 +472,9 @@ class BuildGrain:
         else:
             return self.__add__(other)
 
+
 DEFAULT_GRAIN = BuildGrain(components=set())
+
 
 @dataclass
 class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs):
@@ -969,11 +971,11 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
     @cached_property
     def canonical_address(self) -> str:
         return f"{self.namespace}.{self.canonical_name}"
-    
+
     @cached_property
     def canonical_address_grain(self) -> str:
         return f"{self.namespace}.{self.canonical_name}@{str(self.grain)}"
-    
+
     @property
     def safe_address(self) -> str:
         if self.namespace == DEFAULT_NAMESPACE:
@@ -983,7 +985,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
         return self.name.replace(".", "_")
 
     def with_materialized_source(self) -> Self:
-        
+
         return self.__class__(
             name=self.name,
             canonical_name=self.canonical_name,
@@ -1048,7 +1050,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
             else:
                 grain = self.grain
         else:
-            grain = self.grain 
+            grain = self.grain
         if grain == self.grain:
             return self
         return self.__class__(
@@ -1714,7 +1716,6 @@ class Factory:
         self.pseudonym_map = pseudonym_map or get_canonical_pseudonyms(environment)
         self.build_cache = build_cache or {}
         self.build_grain = self.build(self.grain) if self.grain else None
-        
 
     def instantiate_concept(
         self,
@@ -1913,7 +1914,7 @@ class Factory:
         # this doesn't work for persisted addresses.
         # we need to early exit if we have it in local concepts, because in that case,
         # it is built with appropriate grain only in that dictionary
-        
+
         if base.address in self.local_concepts:
             return self.local_concepts[base.address]
         new_lineage, final_grain, _ = base.get_select_grain_and_keys(
@@ -1924,8 +1925,12 @@ class Factory:
             build_lineage = self.build(new_lineage)
         else:
             build_lineage = None
-        canonical_name = generate_concept_name(build_lineage) if build_lineage else base.name
-        cache_address = f"{base.namespace}.{base.name}.{canonical_name}.{str(new_grain)}"
+        canonical_name = (
+            generate_concept_name(build_lineage) if build_lineage else base.name
+        )
+        cache_address = (
+            f"{base.namespace}.{base.address}.{canonical_name}.{str(new_grain)}"
+        )
         if cache_address in self.build_cache:
             return self.build_cache[cache_address]
 
@@ -1977,10 +1982,16 @@ class Factory:
             granularity=granularity,
             build_is_aggregate=is_aggregate,
         )
+
+        if cache_address in self.build_cache:
+            if self.build_cache[cache_address] != rval:
+                raise ValueError(
+                    f"Build cache collision for {cache_address}: {self.build_cache[cache_address]} vs {rval}"
+                )
         if base.address in self.local_concepts:
             return self.local_concepts[base.address]
         self.local_concepts[base.address] = rval
-        self.build_cache[cache_address] = rval  
+        self.build_cache[cache_address] = rval
         return rval
 
     @build.register
@@ -2224,7 +2235,9 @@ class Factory:
     def _build_grain(self, base: Grain) -> BuildGrain:
         if base.where_clause:
             factory = Factory(
-                environment=self.environment, pseudonym_map=self.pseudonym_map
+                environment=self.environment,
+                pseudonym_map=self.pseudonym_map,
+                build_cache=self.build_cache,
             )
             where = factory._build_where_clause(base.where_clause)
         else:
@@ -2287,6 +2300,7 @@ class Factory:
             environment=self.environment,
             local_concepts=materialized,
             pseudonym_map=self.pseudonym_map,
+            build_cache=self.build_cache,
         )
         for k, v in base.local_concepts.items():
 
@@ -2296,6 +2310,7 @@ class Factory:
             environment=self.environment,
             local_concepts={},
             pseudonym_map=self.pseudonym_map,
+            build_cache=self.build_cache,
         )
         where_clause = (
             where_factory.build(base.where_clause) if base.where_clause else None
@@ -2497,12 +2512,14 @@ class Factory:
 
     def _build_datasource(self, base: Datasource):
         local_cache: dict[str, BuildConcept] = {}
+        from trilogy.constants import CONFIG
         factory = Factory(
             grain=base.grain,
             environment=self.environment,
             local_concepts=local_cache,
             pseudonym_map=self.pseudonym_map,
-            # build_cache=self.build_cache,   
+            # build_cache = self.build_cache,
+            build_cache=self.build_cache if CONFIG.generation.datasource_build_cache else None
         )
         return BuildDatasource(
             name=base.name,

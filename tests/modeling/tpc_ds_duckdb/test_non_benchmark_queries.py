@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from trilogy import Dialects, Executor
@@ -115,7 +115,7 @@ select
         dialect.parse_text(test_queries)
         end = datetime.now()
         durations.append((end - start).total_seconds())
-    #0.4639s
+    # 0.4639s
     avg_duration = sum(durations) / len(durations)
     print(f"Parse times: {durations}")
     print(f"Average parse time: {avg_duration:.4f}s")

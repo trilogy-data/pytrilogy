@@ -161,7 +161,5 @@ class BuildEnvironment(BaseModel):
                     c.canonical_address
                 )
 
-    
-
 
 BuildEnvironment.model_rebuild()

@@ -408,14 +408,15 @@ def get_query_node(
         environment=environment,
         build_cache=build_cache,
     )
-    build_statement: BuildSelectLineage | BuildMultiSelectLineage = base_factory.build(statement)
-    
-    build_environment = environment.materialize_for_select(
-        build_statement.local_concepts,
-        build_cache = build_cache
-        # factory=base_factory
+    build_statement: BuildSelectLineage | BuildMultiSelectLineage = base_factory.build(
+        statement
     )
 
+    build_environment = environment.materialize_for_select(
+        build_statement.local_concepts,
+        build_cache=build_cache,
+        # factory=base_factory
+    )
 
     graph = generate_graph(build_environment)
 

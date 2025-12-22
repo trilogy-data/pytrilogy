@@ -33,6 +33,9 @@ class Optimizations:
     direct_return: bool = True
     hide_unused_concepts: bool = True
 
+@dataclass
+class Generation:
+    datasource_build_cache: bool = False
 
 @dataclass
 class Comments:
@@ -99,6 +102,7 @@ class Config:
     optimizations: Optimizations = field(default_factory=Optimizations)
     rendering: Rendering = field(default_factory=Rendering)
     parsing: Parsing = field(default_factory=Parsing)
+    generation: Generation = field(default_factory=Generation)
 
     @property
     def show_comments(self) -> bool:
