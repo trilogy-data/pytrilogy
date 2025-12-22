@@ -200,6 +200,7 @@ def generate_adhoc_graph(
         complete_contains = set(
             c.concept.canonical_address for c in dataset.columns if c.is_complete
         )
+        raise SyntaxError('FIX TIS')
         # Add derived concepts in topological order
         # Filter by namespace to avoid adding concepts from unrelated namespaces
         # (e.g., don't add dividend.provider.name to holdings.ticker_holdings)
