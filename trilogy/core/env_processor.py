@@ -201,10 +201,34 @@ def generate_adhoc_graph(
             c.concept.canonical_address for c in dataset.columns if c.is_complete
         )
         # Add derived concepts in topological order
+        # Filter by namespace to avoid adding concepts from unrelated namespaces
+        # (e.g., don't add dividend.provider.name to holdings.ticker_holdings)
+        ds_namespace = dataset.namespace
+        ds_top_ns = ds_namespace.split(".")[0]  # e.g., "holdings" from "holdings.symbol"
+        # Get all concept addresses in this datasource for pseudonym check
+        ds_concept_addrs = {c.address for c in dataset.concepts}
         for derived in get_derivable_concepts(
             basic_graph, complete_contains, already_present
         ):
-            eligible.append(derived)
+            # Only add derived concepts if their namespace is compatible with datasource
+            # Compatible means:
+            # 1. Same top-level namespace (e.g., holdings.provider.name -> holdings.ticker_holdings)
+            # 2. Datasource has a concept that is a pseudonym of this derived concept
+            #    (e.g., provider.name has pseudonym holdings.provider.name, so add to holdings.ticker_holdings)
+            # 3. One namespace is a prefix of the other
+            derived_ns = derived.namespace
+            derived_top_ns = derived_ns.split(".")[0]
+            has_pseudonym_in_ds = any(
+                ps in ds_concept_addrs or ps.split(".")[0] == ds_top_ns
+                for ps in derived.pseudonyms
+            )
+            if (
+                derived_top_ns == ds_top_ns  # Same top-level namespace
+                or has_pseudonym_in_ds  # Datasource has a matching pseudonym
+                or ds_namespace.startswith(derived_ns)  # Datasource is more specific
+                or derived_ns.startswith(ds_namespace)  # Derived is more specific
+            ):
+                eligible.append(derived)
 
         for concept in eligible:
             cnode = concept_to_node(concept, node_stash)
