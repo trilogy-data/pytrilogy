@@ -294,6 +294,26 @@ def create_pruned_concept_graph(
 #     return deduplicated_ds_nodes + non_ds_nodes
 
 
+def filter_pseudonym_duplicates(
+    concepts: list[BuildConcept], relevant: list[BuildConcept]
+) -> list[BuildConcept]:
+    """Filter out concepts whose pseudonyms are also in the list, keeping the one in relevant."""
+    relevant_addrs = {c.address for c in relevant}
+    concept_addrs = {c.address for c in concepts}
+    to_remove: set[str] = set()
+    for c in concepts:
+        for p_addr in c.pseudonyms:
+            if p_addr in concept_addrs:
+                c_in_relevant = c.address in relevant_addrs
+                p_in_relevant = p_addr in relevant_addrs
+                if p_in_relevant and not c_in_relevant:
+                    to_remove.add(c.address)
+                    break
+                elif c_in_relevant and not p_in_relevant:
+                    to_remove.add(p_addr)
+    return [c for c in concepts if c.address not in to_remove]
+
+
 def resolve_subgraphs(
     g: ReferenceGraph,
     relevant: list[BuildConcept],
@@ -314,13 +334,21 @@ def resolve_subgraphs(
     datasources = [n for n in g.nodes if n.startswith("ds~")]
     canonical_relevant = set([c.canonical_address for c in relevant])
     canonical_map = {c.canonical_address: c.address for c in relevant}
+    concepts: dict[str, BuildConcept] = g.concepts
     subgraphs: dict[str, list[str]] = {
         ds: list(set(list(nx.all_neighbors(g, ds)))) for ds in datasources
     }
+    # filter pseudonym duplicates from each subgraph, keeping concept in relevant
+    for ds in subgraphs:
+        ds_concepts = [concepts[n] for n in subgraphs[ds] if n in concepts]
+        filtered = filter_pseudonym_duplicates(ds_concepts, relevant)
+        filtered_nodes = {concept_to_node(c) for c in filtered}
+        subgraphs[ds] = [
+            n for n in subgraphs[ds] if n not in concepts or n in filtered_nodes
+        ]
     partial_map = get_graph_partial_nodes(g, conditions)
     exact_map = get_graph_exact_match(g, accept_partial, conditions)
     grain_length = get_graph_grains(g)
-    concepts: dict[str, BuildConcept] = g.concepts
     non_partial_map = {
         ds: [
             concepts[c].canonical_address
@@ -467,8 +495,7 @@ def create_datasource_node(
     all_inputs = [c.concept for c in datasource.columns]
     canonical_all = CanonicalBuildConceptList(concepts=all_inputs)
 
-    # if we're binding a via a canonical address association
-    # we need to add it here.
+    # if we're binding via a canonical address association, add it here
     for x in all_concepts:
         if x not in all_inputs and x in canonical_all:
             all_inputs.append(x)
@@ -551,6 +578,9 @@ def create_select_node(
         for c in subgraph
         if c.startswith("c~")
     ]
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} all concepts: {all_concepts} from {subgraph}"
+    )
 
     if all([c.derivation == Derivation.CONSTANT for c in all_concepts]):
         logger.info(
@@ -625,6 +655,9 @@ def gen_select_merge_node(
 ) -> Optional[StrategyNode]:
     non_constant = [c for c in all_concepts if c.derivation != Derivation.CONSTANT]
     constants = [c for c in all_concepts if c.derivation == Derivation.CONSTANT]
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} generating select merge node for {all_concepts}"
+    )
     if not non_constant and constants:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} only constant inputs to discovery ({constants}), returning constant node directly"

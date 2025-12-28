@@ -2513,13 +2513,16 @@ class Factory:
     def _build_datasource(self, base: Datasource):
         local_cache: dict[str, BuildConcept] = {}
         from trilogy.constants import CONFIG
+
         factory = Factory(
             grain=base.grain,
             environment=self.environment,
             local_concepts=local_cache,
             pseudonym_map=self.pseudonym_map,
             # build_cache = self.build_cache,
-            build_cache=self.build_cache if CONFIG.generation.datasource_build_cache else None
+            build_cache=(
+                self.build_cache if CONFIG.generation.datasource_build_cache else None
+            ),
         )
         return BuildDatasource(
             name=base.name,

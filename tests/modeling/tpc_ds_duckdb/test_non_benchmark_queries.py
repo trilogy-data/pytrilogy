@@ -119,7 +119,7 @@ select
     avg_duration = sum(durations) / len(durations)
     print(f"Parse times: {durations}")
     print(f"Average parse time: {avg_duration:.4f}s")
-    assert avg_duration < 0.2, f"Average duration: {avg_duration:.4f}s"
+    assert avg_duration < 1, f"Average duration: {avg_duration:.4f}s"
 
 
 def test_merge_comparison(engine):

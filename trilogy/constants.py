@@ -33,9 +33,11 @@ class Optimizations:
     direct_return: bool = True
     hide_unused_concepts: bool = True
 
+
 @dataclass
 class Generation:
-    datasource_build_cache: bool = False
+    datasource_build_cache: bool = True
+
 
 @dataclass
 class Comments:
