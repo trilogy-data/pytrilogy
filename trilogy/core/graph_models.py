@@ -3,7 +3,12 @@ from typing import Union
 
 import networkx as nx
 
-from trilogy.core.models.build import BuildConcept, BuildDatasource, BuildWhereClause
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildDatasource,
+    BuildUnionDatasource,
+    BuildWhereClause,
+)
 
 
 def get_graph_exact_match(
@@ -13,7 +18,7 @@ def get_graph_exact_match(
 ) -> set[str]:
     exact: set[str] = set()
     for node, ds in g.datasources.items():
-        if isinstance(ds, list):
+        if isinstance(ds, BuildUnionDatasource):
             exact.add(node)
             continue
 
@@ -109,7 +114,7 @@ class ReferenceGraph(nx.DiGraph):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.concepts: dict[str, BuildConcept] = {}
-        self.datasources: dict[str, BuildDatasource| list[BuildDatasource]] = {}
+        self.datasources: dict[str, BuildDatasource | BuildUnionDatasource] = {}
         self.pseudonyms: set[tuple[str, str]] = set()
 
     def copy(self) -> "ReferenceGraph":

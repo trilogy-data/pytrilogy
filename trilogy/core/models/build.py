@@ -4,7 +4,7 @@ from abc import ABC
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from functools import cached_property, singledispatchmethod
+from functools import cached_property, reduce, singledispatchmethod
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -1649,6 +1649,34 @@ class BuildDatasource:
     @property
     def output_lcl(self) -> LooseBuildConceptList:
         return LooseBuildConceptList(concepts=self.output_concepts)
+
+    @property
+    def is_union(self) -> bool:
+        return False
+
+
+@dataclass
+class BuildUnionDatasource:
+    children: List[BuildDatasource]
+
+    def is_union(self) -> bool:
+        return True
+
+    @property
+    def columns(self) -> List[BuildColumnAssignment]:
+        return self.children[0].columns
+
+    @property
+    def grain(self) -> BuildGrain:
+        return reduce(lambda x, y: x.union(y.grain), self.children, BuildGrain())
+
+    @property
+    def non_partial_for(self) -> Optional[BuildWhereClause]:
+        return None
+
+    @property
+    def partial_concepts(self) -> List[BuildConcept]:
+        return []
 
 
 BuildExpr = (

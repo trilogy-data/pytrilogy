@@ -403,7 +403,7 @@ def get_query_node(
     logger.info(
         f"{LOGGER_PREFIX} building query node for {statement.output_components} grain {statement.grain}"
     )
-    build_cache:dict[str, BuildConcept] = {}
+    build_cache: dict[str, BuildConcept] = {}
     base_factory = Factory(
         environment=environment,
         build_cache=build_cache,

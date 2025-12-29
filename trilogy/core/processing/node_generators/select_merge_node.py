@@ -16,6 +16,7 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
     BuildGrain,
+    BuildUnionDatasource,
     BuildWhereClause,
     CanonicalBuildConceptList,
 )
@@ -125,7 +126,7 @@ def create_pruned_concept_graph(
         common: set[BuildConcept] = set.intersection(
             *[set(x.output_concepts) for x in ds_list]
         )
-        g.datasources[node_address] = ds_list
+        g.datasources[node_address] = BuildUnionDatasource(children=ds_list)
         for c in common:
             cnode = concept_to_node(c)
             g.add_edge(node_address, cnode)
@@ -134,7 +135,9 @@ def create_pruned_concept_graph(
     prune_sources_for_aggregates(g, all_concepts, logger)
     target_addresses = set([c.canonical_address for c in all_concepts])
     concepts: dict[str, BuildConcept] = orig_g.concepts
-    datasource_map: dict[str, BuildDatasource] = orig_g.datasources
+    datasource_map: dict[str, BuildDatasource | BuildUnionDatasource] = (
+        orig_g.datasources
+    )
     relevant_concepts_pre = {
         n: x.canonical_address
         for n in g.nodes()
@@ -525,7 +528,7 @@ def create_datasource_node(
 
 
 def create_union_datasource(
-    datasource: list[BuildDatasource],
+    datasource: BuildUnionDatasource,
     all_concepts: List[BuildConcept],
     accept_partial: bool,
     environment: BuildEnvironment,
@@ -534,12 +537,13 @@ def create_union_datasource(
 ) -> tuple["UnionNode", bool]:
     from trilogy.core.processing.nodes.union_node import UnionNode
 
+    datasources = datasource.children
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} generating union node parents with condition {conditions}"
     )
     force_group = False
     parents = []
-    for x in datasource:
+    for x in datasources:
         subnode, fg = create_datasource_node(
             x,
             all_concepts,
@@ -598,7 +602,7 @@ def create_select_node(
             preexisting_conditions=conditions.conditional if conditions else None,
         )
 
-    datasource: BuildDatasource = g.datasources[ds_name]
+    datasource: BuildDatasource | BuildUnionDatasource = g.datasources[ds_name]
 
     if isinstance(datasource, BuildDatasource):
         bcandidate, force_group = create_datasource_node(
@@ -610,7 +614,7 @@ def create_select_node(
             conditions=conditions,
         )
 
-    elif isinstance(datasource, list):
+    elif isinstance(datasource, BuildUnionDatasource):
         bcandidate, force_group = create_union_datasource(
             datasource,
             all_concepts,
