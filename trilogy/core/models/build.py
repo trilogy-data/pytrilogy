@@ -519,7 +519,7 @@ class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs):
             )
         )
 
-    @property
+    @cached_property
     def concept_arguments(self) -> List[BuildConcept]:
         return get_concept_arguments(self.content)
 
@@ -636,7 +636,7 @@ class BuildConditional(DataTyped, BuildConceptArgs, ConstantInlineable):
             operator=self.operator,
         )
 
-    @property
+    @cached_property
     def concept_arguments(self) -> List[BuildConcept]:
         """Return BuildConcepts directly referenced in where clause"""
         output = []
@@ -819,7 +819,7 @@ class BuildComparison(DataTyped, BuildConceptArgs, ConstantInlineable):
             operator=self.operator,
         )
 
-    @property
+    @cached_property
     def concept_arguments(self) -> List[BuildConcept]:
         """Return BuildConcepts directly referenced in where clause"""
         output = []
@@ -1129,7 +1129,7 @@ class BuildOrderItem(DataTyped, BuildConceptArgs):
     expr: BuildExpr
     order: Ordering
 
-    @property
+    @cached_property
     def concept_arguments(self) -> List[BuildConcept]:
         base: List[BuildConcept] = []
         x = self.expr
@@ -1170,7 +1170,7 @@ class BuildWindowItem(DataTyped, BuildConceptArgs):
     def __str__(self):
         return self.__repr__()
 
-    @property
+    @cached_property
     def concept_arguments(self) -> List[BuildConcept]:
         output = [self.content]
         for order in self.order_by:
@@ -1201,7 +1201,7 @@ class BuildCaseWhen(DataTyped, BuildConceptArgs):
     def __repr__(self):
         return f"WHEN {str(self.comparison)} THEN {str(self.expr)}"
 
-    @property
+    @cached_property
     def concept_arguments(self):
         return get_concept_arguments(self.comparison) + get_concept_arguments(self.expr)
 
@@ -1220,7 +1220,7 @@ class BuildCaseWhen(DataTyped, BuildConceptArgs):
 class BuildCaseElse(DataTyped, BuildConceptArgs):
     expr: "BuildExpr"
 
-    @property
+    @cached_property
     def concept_arguments(self):
         return get_concept_arguments(self.expr)
 
@@ -1282,7 +1282,7 @@ class BuildFunction(DataTyped, BuildConceptArgs):
     def output_datatype(self):
         return self.output_data_type
 
-    @property
+    @cached_property
     def concept_arguments(self) -> List[BuildConcept]:
         base = []
         for arg in self.arguments:
@@ -1335,7 +1335,7 @@ class BuildAggregateWrapper(BuildConceptArgs, DataTyped):
     def datatype(self):
         return self.function.datatype
 
-    @property
+    @cached_property
     def concept_arguments(self) -> List[BuildConcept]:
         return self.function.concept_arguments + self.by
 
@@ -1372,7 +1372,7 @@ class BuildFilterItem(BuildConceptArgs):
             return self.content.concept_arguments
         return []
 
-    @property
+    @cached_property
     def concept_arguments(self):
         return self.where.concept_arguments + get_concept_arguments(self.content)
 
@@ -1985,18 +1985,16 @@ class Factory:
         )
 
         def calculate_is_aggregate(lineage):
-            if lineage and isinstance(lineage, BuildFunction):
+            ltype = type(lineage)
+            if ltype is BuildFunction:
                 if lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
                     return True
-            if (
-                lineage
-                and isinstance(lineage, BuildAggregateWrapper)
-                and lineage.function.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
-            ):
-                return True
+            if ltype is BuildAggregateWrapper:
+                if lineage.function.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+                    return True
             return False
 
-        is_aggregate = calculate_is_aggregate(build_lineage)
+        is_aggregate = calculate_is_aggregate(build_lineage) if build_lineage else False
         # if this is a pseudonym, we need to look up the base address
         if base.address in self.environment.alias_origin_lookup:
             lookup_address = self.environment.concepts[base.address].address
