@@ -2,24 +2,25 @@
 
 **Date:** 2025-12-28 (Updated)
 **Test:** `tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_generate_queries_perf`
-**Current Performance:** ~0.97s average per parse (target: <0.2s)
+**Current Performance:** ~0.38s average per parse (target: <0.2s)
 **Profiling Method:** cProfile with cumulative time analysis
 
 ## Executive Summary
 
-The test parses the same simple query 5 times after loading 15 TPC-DS imports. Current average parse time is ~0.97s, which is ~5x slower than the 0.2s target.
+The test parses the same simple query 5 times after loading 15 TPC-DS imports. Current average parse time is **~0.38s** (down from ~0.97s original), which is ~2x slower than the 0.2s target.
 
 ### Improvements Made
 
-The `generate_adhoc_graph` function was optimized with a pre-computed dependency graph approach:
-
-| Metric | Original | After Optimization | Change |
+| Metric | Original | Current | Change |
 |--------|----------|---------|--------|
-| Average parse time | ~1.0s | 0.97s | **~3% faster** |
+| Average parse time | ~1.0s | ~0.38s | **62% faster** |
+| `isinstance` calls | 1,978,796 | 1,706,893 | **14% reduction** |
 | `issubset` calls | 711,450 | 371,925 | **48% reduction** |
-| `generate_adhoc_graph` cumulative | 1.32s | 1.16s | **12% reduction** |
 
-The optimization replaced the O(n²) while loop with a topological traversal using pre-computed reverse dependencies. While this cut `issubset` calls in half, the overall parse time improvement is modest because other bottlenecks dominate.
+Key optimizations applied:
+1. **Topological dependency traversal** in `generate_adhoc_graph` - replaced O(n²) while loop
+2. **Cached `is_aggregate` property** on Concept - eliminated 46K redundant calls
+3. **Type-based dispatch** in `generate_concept_name` - replaced isinstance chain with dict lookup
 
 ---
 
@@ -114,17 +115,17 @@ The optimization replaced the O(n²) while loop with a topological traversal usi
 
 ## Call Count Analysis (2025-12-28)
 
-| Function | Calls | Notes |
-|----------|-------|-------|
-| `isinstance` | 1,978,796 | Type checking overhead |
-| `dict.get` | 1,090,826 | Dictionary lookups |
-| `getattr` | 786,233 | Attribute access |
-| `dict.update` | 588,208 | Dictionary operations |
-| `len` | 581,891 | Length checks |
-| `set.issubset` | 371,925 | **Down from 711K (48% reduction)** |
-| `Concept.address` | 302,599 | Property access (**13% reduction** from 348K) |
-| `concept_to_node` | 67,635 | Graph node naming |
-| `with_default_grain` | 21,510 | Grain normalization |
+| Function | Original | Current | Change |
+|----------|----------|---------|--------|
+| `isinstance` | 1,978,796 | 1,706,893 | **14% reduction** |
+| `dict.get` | 1,090,826 | 1,014,504 | **7% reduction** |
+| `getattr` | 786,233 | 747,420 | **5% reduction** |
+| `dict.update` | 588,208 | 588,209 | Same |
+| `len` | 581,891 | 583,675 | Same |
+| `set.issubset` | 711,450 | 371,925 | **48% reduction** |
+| `Concept.address` | 348,241 | 302,599 | **13% reduction** |
+| `concept_to_node` | 67,035 | 67,635 | Same |
+| `with_default_grain` | 21,240 | 21,510 | Same |
 
 ---
 

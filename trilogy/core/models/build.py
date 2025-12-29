@@ -431,13 +431,7 @@ class BuildGrain:
             [c.endswith(ALL_ROWS_CONCEPT) for c in self.components]
         )
 
-    def __eq__(self, other: object):
-        if isinstance(other, list):
-            if all([isinstance(c, BuildConcept) for c in other]):
-                return self.components == set([c.address for c in other])
-            return False
-        if not isinstance(other, BuildGrain):
-            return False
+    def __eq__(self, other):
         if self.components == other.components:
             return True
         if self.abstract is True and other.abstract is True:
@@ -967,9 +961,8 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
         return self.datatype
 
     def __eq__(self, other: object):
-        if isinstance(other, str):
-            if self.address == other:
-                return True
+        if type(other) is str and self.address == other:
+            return True
         if not isinstance(other, (BuildConcept, Concept)):
             return False
         return (

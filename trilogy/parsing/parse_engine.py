@@ -1592,19 +1592,20 @@ class ParseToObjects(Transformer):
         having: HavingClause | None = None
         derive: DeriveClause | None = None
         for arg in args:
-            if isinstance(arg, SelectStatement):
+            atype = type(arg)
+            if atype is SelectStatement:
                 selects.append(arg)
-            elif isinstance(arg, Limit):
+            elif atype is Limit:
                 limit = arg.count
-            elif isinstance(arg, OrderBy):
+            elif atype is OrderBy:
                 order_by = arg
-            elif isinstance(arg, WhereClause):
+            elif atype is WhereClause:
                 where = arg
-            elif isinstance(arg, HavingClause):
+            elif atype is HavingClause:
                 having = arg
-            elif isinstance(arg, AlignClause):
+            elif atype is AlignClause:
                 align = arg
-            elif isinstance(arg, DeriveClause):
+            elif atype is DeriveClause:
                 derive = arg
 
         assert align
@@ -1663,24 +1664,25 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def select_statement(self, meta: Meta, args) -> SelectStatement:
         select_items: List[SelectItem] | None = None
-        limit = None
-        order_by = None
+        limit: int | None = None
+        order_by: OrderBy | None = None
         where = None
         having = None
         for arg in args:
-            if isinstance(arg, List):
+            atype = type(arg)
+            if atype is list:
                 select_items = arg
-            elif isinstance(arg, Limit):
+            elif atype is Limit:
                 limit = arg.count
-            elif isinstance(arg, OrderBy):
+            elif atype is OrderBy:
                 order_by = arg
-            elif isinstance(arg, WhereClause) and not isinstance(arg, HavingClause):
+            elif atype is WhereClause:
                 if where is not None:
                     raise ParseError(
                         "Multiple where clauses defined are not supported!"
                     )
                 where = arg
-            elif isinstance(arg, HavingClause):
+            elif atype is HavingClause:
                 having = arg
         if not select_items:
             raise ParseError("Malformed select, missing select items")
@@ -2108,7 +2110,9 @@ class ParseToObjects(Transformer):
         if isinstance(raw, WhereClause):
             where = raw
         else:
-            where = WhereClause(conditional=expr_to_boolean(raw, self.function_factory))
+            where = WhereClause.model_construct(
+                conditional=expr_to_boolean(raw, self.function_factory)
+            )
         if isinstance(expr, str):
             expr = self.environment.concepts[expr].reference
         return FilterItem(content=expr, where=where)
@@ -2403,32 +2407,36 @@ class ParseToObjects(Transformer):
     def internal_fcast(self, meta, args) -> Function:
         args = process_function_args(args, meta=meta, environment=self.environment)
 
-        if isinstance(args[0], str):
+        # Destructure for readability
+        value, dtype = args[0], args[1]
+        processed: Any
+        if isinstance(value, str):
+            match dtype:
+                case DataType.DATE:
+                    processed = date.fromisoformat(value)
+                case DataType.DATETIME | DataType.TIMESTAMP:
+                    processed = datetime.fromisoformat(value)
+                case DataType.INTEGER:
+                    processed = int(value)
+                case DataType.FLOAT:
+                    processed = float(value)
+                case DataType.BOOL:
+                    processed = value.capitalize() == "True"
+                case DataType.STRING:
+                    processed = value
+                case _:
+                    raise SyntaxError(f"Invalid cast type {dtype}")
 
-            processed: date | datetime | int | float | bool | str
-            if args[1] == DataType.DATE:
-                processed = date.fromisoformat(args[0])
-            elif args[1] == DataType.DATETIME:
-                processed = datetime.fromisoformat(args[0])
-            elif args[1] == DataType.TIMESTAMP:
-                processed = datetime.fromisoformat(args[0])
-            elif args[1] == DataType.INTEGER:
-                processed = int(args[0])
-            elif args[1] == DataType.FLOAT:
-                processed = float(args[0])
-            elif args[1] == DataType.BOOL:
-                processed = args[0].capitalize() == "True"
-            elif args[1] == DataType.STRING:
-                processed = args[0]
-            else:
-                raise SyntaxError(f"Invalid cast type {args[1]}")
-            if isinstance(args[1], TraitDataType):
+            # Determine function type and arguments
+            if isinstance(dtype, TraitDataType):
                 return self.function_factory.create_function(
-                    [processed, args[1]], FunctionType.TYPED_CONSTANT, meta
+                    [processed, dtype], FunctionType.TYPED_CONSTANT, meta
                 )
+
             return self.function_factory.create_function(
                 [processed], FunctionType.CONSTANT, meta
             )
+
         return self.function_factory.create_function(args, FunctionType.CAST, meta)
 
     @v_args(meta=True)
