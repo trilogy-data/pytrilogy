@@ -1,6 +1,6 @@
 # Performance Analysis: test_generate_queries_perf
 
-**Date:** 2025-12-21 (Updated)
+**Date:** 2025-12-28 (Updated)
 **Test:** `tests/modeling/tpc_ds_duckdb/test_non_benchmark_queries.py::test_generate_queries_perf`
 **Current Performance:** ~0.97s average per parse (target: <0.2s)
 **Profiling Method:** cProfile with cumulative time analysis
@@ -13,7 +13,7 @@ The test parses the same simple query 5 times after loading 15 TPC-DS imports. C
 
 The `generate_adhoc_graph` function was optimized with a pre-computed dependency graph approach:
 
-| Metric | Previous | Current | Change |
+| Metric | Original | After Optimization | Change |
 |--------|----------|---------|--------|
 | Average parse time | ~1.0s | 0.97s | **~3% faster** |
 | `issubset` calls | 711,450 | 371,925 | **48% reduction** |
@@ -23,20 +23,20 @@ The optimization replaced the O(n²) while loop with a topological traversal usi
 
 ---
 
-## Current Top 10 Hotspots by Total Time
+## Current Top 10 Hotspots by Total Time (2025-12-28)
 
 | Function | Total Time | Cumulative | Calls | Description |
 |----------|------------|------------|-------|-------------|
-| `build.py:1911(__build_concept)` | 0.260s | 1.00s | 42,630 | Concept building |
-| `select_merge_node.py:107(create_pruned_concept_graph)` | 0.255s | 0.77s | 30 | Concept graph pruning |
-| `graph.py:573(add_nodes_from)` | 0.218s | 0.43s | 150 | NetworkX node addition |
-| `graph.py:975(add_edges_from)` | 0.167s | 0.58s | 120 | NetworkX edge addition |
-| `main.py:303(model_construct)` | 0.166s | 0.42s | 31,422 | Pydantic model construction |
-| `env_processor.py:28(build_basic_concept_graph)` | 0.136s | 0.16s | 15 | Pre-compute dependency graph |
-| `env_processor.py:67(get_derivable_concepts)` | 0.109s | 0.19s | 6,150 | Derivable concept iteration |
-| `node_merge_node.py:224(determine_induced_minimal_nodes)` | 0.100s | 1.24s | 30 | Steiner tree calculation |
-| `copy.py:119(deepcopy)` | 0.092s | 0.20s | 77,698 | Deep copy operations |
-| `env_processor.py:169(generate_adhoc_graph)` | 0.068s | 1.16s | 15 | Graph generation |
+| `build.py:1940(__build_concept)` | 0.215s | 1.10s | 43,905 | Concept building |
+| `graph.py:573(add_nodes_from)` | 0.212s | 0.43s | 150 | NetworkX node addition |
+| `graph_models.py:118(copy)` | 0.182s | 0.20s | 165 | ReferenceGraph.copy |
+| `graph.py:975(add_edges_from)` | 0.181s | 0.62s | 120 | NetworkX edge addition |
+| `main.py:303(model_construct)` | 0.171s | 0.50s | 31,686 | Pydantic model construction |
+| `select_merge_node.py:108(create_pruned_concept_graph)` | 0.125s | 0.77s | 30 | Concept graph pruning |
+| `env_processor.py:67(get_derivable_concepts)` | 0.111s | 0.19s | 6,150 | Derivable concept iteration |
+| `node_merge_node.py:224(determine_induced_minimal_nodes)` | 0.107s | 1.29s | 30 | Steiner tree calculation |
+| `copy.py:119(deepcopy)` | 0.095s | 0.20s | 77,698 | Deep copy operations |
+| `env_processor.py:173(generate_adhoc_graph)` | 0.070s | 1.02s | 15 | Graph generation |
 
 ---
 
@@ -44,9 +44,9 @@ The optimization replaced the O(n²) while loop with a topological traversal usi
 
 ### 1. `__build_concept` - Still the #1 Hotspot
 
-**Location:** [build.py:1911](trilogy/core/models/build.py#L1911)
-**Time:** 0.260s total, 1.00s cumulative
-**Calls:** 42,630
+**Location:** [build.py:1940](trilogy/core/models/build.py#L1940)
+**Time:** 0.215s total, 1.10s cumulative
+**Calls:** 43,905
 
 **Status:** Unchanged from previous analysis. This remains the single largest hotspot.
 
@@ -61,13 +61,12 @@ The optimization replaced the O(n²) while loop with a topological traversal usi
 
 ### 2. `create_pruned_concept_graph` - Graph Operations
 
-**Location:** [select_merge_node.py:107](trilogy/core/processing/node_generators/select_merge_node.py#L107)
-**Time:** 0.255s total, 0.77s cumulative
+**Location:** [select_merge_node.py:108](trilogy/core/processing/node_generators/select_merge_node.py#L108)
+**Time:** 0.125s total, 0.77s cumulative
 **Calls:** 30
 
-**Status:** Still expensive due to:
-- `g.copy()`: 0.070s (165 calls to `ReferenceGraph.copy`)
-- `to_undirected()`: 0.181s (60 calls)
+**Status:** Improved from 0.255s to 0.125s total time (**51% faster**), still expensive due to:
+- `ReferenceGraph.copy`: 0.182s (165 calls)
 - Multiple iterations over edges/nodes
 
 **Improvement Opportunities:**
@@ -82,12 +81,12 @@ The optimization replaced the O(n²) while loop with a topological traversal usi
 ### 3. `determine_induced_minimal_nodes` - Algorithm Overhead
 
 **Location:** [node_merge_node.py:224](trilogy/core/processing/node_generators/node_merge_node.py#L224)
-**Time:** 0.100s total, 1.24s cumulative
+**Time:** 0.107s total, 1.29s cumulative
 **Calls:** 30
 
 **Status:** Steiner tree algorithm still expensive:
-- `steiner_tree`: 0.110s (30 calls)
-- `dijkstra`: 0.079s (60 calls)
+- `steiner_tree`: 0.111s (30 calls)
+- `dijkstra`: 0.061s (60 calls) - **23% faster than before**
 
 **Improvement Opportunities:**
 1. **Cache undirected graph conversion**
@@ -100,7 +99,7 @@ The optimization replaced the O(n²) while loop with a topological traversal usi
 
 ### 4. Pydantic Model Construction
 
-**Time:** 0.166s in `model_construct`, 31,422 calls
+**Time:** 0.171s in `model_construct`, 31,686 calls
 
 **Status:** Unchanged overhead from Pydantic.
 
@@ -113,20 +112,19 @@ The optimization replaced the O(n²) while loop with a topological traversal usi
 
 ---
 
-## Call Count Analysis
+## Call Count Analysis (2025-12-28)
 
 | Function | Calls | Notes |
 |----------|-------|-------|
-| `isinstance` | 1,984,290 | Type checking overhead |
-| `dict.get` | 1,152,804 | Dictionary lookups |
-| `getattr` | 784,711 | Attribute access |
+| `isinstance` | 1,978,796 | Type checking overhead |
+| `dict.get` | 1,090,826 | Dictionary lookups |
+| `getattr` | 786,233 | Attribute access |
+| `dict.update` | 588,208 | Dictionary operations |
+| `len` | 581,891 | Length checks |
 | `set.issubset` | 371,925 | **Down from 711K (48% reduction)** |
-| `dict.update` | 583,662 | Dictionary operations |
-| `len` | 581,060 | Length checks |
-| `Concept.address` | 348,241 | Property access |
-| `list.append` | 342,091 | List operations |
-| `concept_to_node` | 67,035 | Graph node naming |
-| `with_default_grain` | 21,240 | Grain normalization |
+| `Concept.address` | 302,599 | Property access (**13% reduction** from 348K) |
+| `concept_to_node` | 67,635 | Graph node naming |
+| `with_default_grain` | 21,510 | Grain normalization |
 
 ---
 
@@ -166,7 +164,7 @@ The new approach:
 
 ### Priority 1: Cache Concept Building (NEW PRIORITY)
 
-The `__build_concept` function is now the clear #1 bottleneck at 0.26s total time and 42,630 calls. Adding memoization would have the highest impact:
+The `__build_concept` function is still the clear #1 bottleneck at 0.215s total time and 43,905 calls. Adding memoization would have the highest impact:
 
 ```python
 # Example approach using address-based caching
@@ -183,10 +181,10 @@ def __build_concept(concept, grain_key, ...):
 
 ### Priority 2: Reduce Graph Copy Operations
 
-The `create_pruned_concept_graph` function copies graphs frequently. Consider:
+The `ReferenceGraph.copy` is now taking 0.182s (165 calls) - this has become more prominent. Consider:
 1. Using view-based subgraphs where possible
-2. Maintaining a cached undirected version
-3. Copy-on-write semantics
+2. Copy-on-write semantics
+3. Reducing unnecessary copies
 
 ### Priority 3: Optimize Steiner Tree Calculation
 

@@ -1948,7 +1948,7 @@ class Factory:
         new_lineage, final_grain, _ = base.get_select_grain_and_keys(
             self.grain, self.environment
         )
-        new_grain = self._build_grain(final_grain)
+        
         if new_lineage:
             build_lineage = self.build(new_lineage)
         else:
@@ -1957,10 +1957,12 @@ class Factory:
             generate_concept_name(build_lineage) if build_lineage else base.name
         )
         cache_address = (
-            f"{base.namespace}.{base.address}.{canonical_name}.{str(new_grain)}"
+            f"{base.namespace}.{base.address}.{canonical_name}.{str(final_grain)}"
         )
         if cache_address in self.build_cache:
             return self.build_cache[cache_address]
+        
+        new_grain = self._build_grain(final_grain)
 
         derivation = Concept.calculate_derivation(build_lineage, base.purpose)
 
@@ -2011,14 +2013,10 @@ class Factory:
             build_is_aggregate=is_aggregate,
         )
 
-        if cache_address in self.build_cache:
-            if self.build_cache[cache_address] != rval:
-                raise ValueError(
-                    f"Build cache collision for {cache_address}: {self.build_cache[cache_address]} vs {rval}"
-                )
         if base.address in self.local_concepts:
             return self.local_concepts[base.address]
         self.local_concepts[base.address] = rval
+        # this is a global cache that can be reused across Factory instances
         self.build_cache[cache_address] = rval
         return rval
 
