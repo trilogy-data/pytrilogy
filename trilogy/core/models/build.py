@@ -961,16 +961,18 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
         return self.datatype
 
     def __eq__(self, other: object):
-        if type(other) is str and self.address == other:
+        otype = type(other)
+        if otype is str and self.address == other:
             return True
-        if not isinstance(other, (BuildConcept, Concept)):
+        if otype is not BuildConcept:
             return False
+
         return (
-            self.name == other.name
-            and self.datatype == other.datatype
-            and self.purpose == other.purpose
-            and self.namespace == other.namespace
-            and self.grain == other.grain
+            self.name == other.name  # type: ignore
+            and self.datatype == other.datatype  # type: ignore
+            and self.purpose == other.purpose  # type: ignore
+            and self.namespace == other.namespace  # type: ignore
+            and self.grain == other.grain  # type: ignore
             # and self.keys == other.keys
         )
 
