@@ -8,6 +8,7 @@ from functools import cached_property, reduce, singledispatchmethod
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Iterable,
     List,
     Optional,
@@ -99,31 +100,51 @@ if TYPE_CHECKING:
 LOGGER_PREFIX = "[MODELS_BUILD]"
 
 
-def generate_concept_name(parent: Any, debug: bool = False) -> str:
-    """Generate a name for a concept based on its parent type and content."""
-    if isinstance(parent, BuildAggregateWrapper):
-        if debug:
-            print(parent)
-        if parent.is_abstract:
-            return f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent.with_abstract_by()))}"
-        return f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
-    elif isinstance(parent, BuildWindowItem):
-        return f"{VIRTUAL_CONCEPT_PREFIX}_window_{parent.type.value}_{string_to_hash(str(parent))}"
-    elif isinstance(parent, BuildFilterItem):
-        return f"{VIRTUAL_CONCEPT_PREFIX}_filter_{string_to_hash(str(parent))}"
-    elif isinstance(parent, BuildFunction):
-        if parent.operator == FunctionType.GROUP:
-            return f"{VIRTUAL_CONCEPT_PREFIX}_group_to_{string_to_hash(str(parent))}"
-        else:
-            return f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(str(parent))}"
-    elif isinstance(parent, BuildParenthetical):
-        return f"{VIRTUAL_CONCEPT_PREFIX}_paren_{string_to_hash(str(parent))}"
-    elif isinstance(parent, BuildComparison):
-        return f"{VIRTUAL_CONCEPT_PREFIX}_comp_{string_to_hash(str(parent))}"
-    elif isinstance(parent, BuildMultiSelectLineage):
-        return f"{VIRTUAL_CONCEPT_PREFIX}_msl_{string_to_hash(str(parent))}"
-    else:  # ListWrapper, MapWrapper, or primitive types
-        return f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
+def _gen_agg_name(parent: "BuildAggregateWrapper") -> str:
+    if parent.is_abstract:
+        return f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent.with_abstract_by()))}"
+    return f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
+
+
+def _gen_window_name(parent: "BuildWindowItem") -> str:
+    return f"{VIRTUAL_CONCEPT_PREFIX}_window_{parent.type.value}_{string_to_hash(str(parent))}"
+
+
+def _gen_filter_name(parent: "BuildFilterItem") -> str:
+    return f"{VIRTUAL_CONCEPT_PREFIX}_filter_{string_to_hash(str(parent))}"
+
+
+def _gen_function_name(parent: "BuildFunction") -> str:
+    if parent.operator == FunctionType.GROUP:
+        return f"{VIRTUAL_CONCEPT_PREFIX}_group_to_{string_to_hash(str(parent))}"
+    return f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(str(parent))}"
+
+
+def _gen_paren_name(parent: "BuildParenthetical") -> str:
+    return f"{VIRTUAL_CONCEPT_PREFIX}_paren_{string_to_hash(str(parent))}"
+
+
+def _gen_comp_name(parent: "BuildComparison") -> str:
+    return f"{VIRTUAL_CONCEPT_PREFIX}_comp_{string_to_hash(str(parent))}"
+
+
+def _gen_msl_name(parent: "BuildMultiSelectLineage") -> str:
+    return f"{VIRTUAL_CONCEPT_PREFIX}_msl_{string_to_hash(str(parent))}"
+
+
+def _gen_default_name(parent: Any) -> str:
+    return f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
+
+
+# Initialized after classes are defined
+_CONCEPT_NAME_GENERATORS: dict[type, Callable[[Any], str]] = {}
+
+
+def generate_concept_name(parent: Any) -> str:
+    generator = _CONCEPT_NAME_GENERATORS.get(type(parent))
+    if generator:
+        return generator(parent)
+    return _gen_default_name(parent)
 
 
 class BuildConceptArgs(ABC):
@@ -1948,7 +1969,7 @@ class Factory:
         new_lineage, final_grain, _ = base.get_select_grain_and_keys(
             self.grain, self.environment
         )
-        
+
         if new_lineage:
             build_lineage = self.build(new_lineage)
         else:
@@ -1961,7 +1982,7 @@ class Factory:
         )
         if cache_address in self.build_cache:
             return self.build_cache[cache_address]
-        
+
         new_grain = self._build_grain(final_grain)
 
         derivation = Concept.calculate_derivation(build_lineage, base.purpose)
@@ -2573,3 +2594,17 @@ class Factory:
         elif isinstance(base, ConceptRef):
             return self.handle_constant(self.build(base))
         return base
+
+
+# Initialize the concept name generators after classes are defined
+_CONCEPT_NAME_GENERATORS.update(
+    {
+        BuildAggregateWrapper: _gen_agg_name,
+        BuildWindowItem: _gen_window_name,
+        BuildFilterItem: _gen_filter_name,
+        BuildFunction: _gen_function_name,
+        BuildParenthetical: _gen_paren_name,
+        BuildComparison: _gen_comp_name,
+        BuildMultiSelectLineage: _gen_msl_name,
+    }
+)
