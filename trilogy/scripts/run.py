@@ -14,7 +14,7 @@ from trilogy.scripts.common import (
     handle_execution_exception,
 )
 from trilogy.scripts.dependency import ScriptNode
-from trilogy.scripts.parallel_execution import run_parallel_execution
+from trilogy.scripts.parallel_execution import ExecutionMode, run_parallel_execution
 
 
 def execute_script_for_run(
@@ -57,7 +57,7 @@ def run(
         run_parallel_execution(
             cli_params=cli_params,
             execution_fn=execute_script_for_run,
-            execution_mode="run",
+            execution_mode=ExecutionMode.RUN,
         )
     except Exit:
         raise

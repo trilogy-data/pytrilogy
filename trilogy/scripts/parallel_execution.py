@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from io import StringIO
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -11,13 +12,22 @@ import networkx as nx
 from click.exceptions import Exit
 
 from trilogy import Executor
-from trilogy.scripts.common import ExecutionStats
+from trilogy.scripts.common import CLIRuntimeParams, ExecutionStats
 from trilogy.scripts.dependency import (
     DependencyResolver,
     DependencyStrategy,
     ScriptNode,
     create_script_nodes,
 )
+
+
+class ExecutionMode(Enum):
+    """Mode of script execution."""
+
+    RUN = "run"
+    INTEGRATION = "integration"
+    UNIT = "unit"
+    REFRESH = "refresh"
 
 
 @dataclass
@@ -499,23 +509,10 @@ def run_single_script_execution(
     param: tuple[str, ...],
     conn_args,
     debug: bool,
-    execution_mode: str,
+    execution_mode: ExecutionMode,
     config,
 ) -> None:
-    """
-    Run single script execution with polished multi-statement progress display.
-
-    Args:
-        text: List of script contents
-        directory: Working directory
-        input_type: Type of input (file, query, etc.)
-        input_name: Name of the input
-        edialect: Dialect to use
-        param: Environment parameters
-        conn_args: Connection arguments
-        debug: Debug mode flag
-        execution_mode: One of 'run', 'integration', or 'unit'
-    """
+    """Run single script execution with polished multi-statement progress display."""
     from trilogy.scripts.common import (
         create_executor,
         handle_execution_exception,
@@ -544,7 +541,7 @@ def run_single_script_execution(
         with open(base, "r") as raw:
             text = [raw.read()]
 
-    if execution_mode == "run":
+    if execution_mode == ExecutionMode.RUN:
         # Parse all scripts and collect queries
         queries = []
         try:
@@ -578,19 +575,19 @@ def run_single_script_execution(
         except Exception as e:
             handle_execution_exception(e, debug=debug)
 
-    elif execution_mode == "integration":
+    elif execution_mode == ExecutionMode.INTEGRATION:
         for script in text:
             exec.parse_text(script)
         validate_datasources(exec, mock=False, quiet=False)
         print_success("Integration tests passed successfully!")
 
-    elif execution_mode == "unit":
+    elif execution_mode == ExecutionMode.UNIT:
         for script in text:
             exec.parse_text(script)
         validate_datasources(exec, mock=True, quiet=False)
         print_success("Unit tests passed successfully!")
 
-    elif execution_mode == "refresh":
+    elif execution_mode == ExecutionMode.REFRESH:
         from trilogy.execution.state.state_store import BaseStateStore
         from trilogy.scripts.display import print_info, print_warning
 
@@ -627,18 +624,13 @@ def get_execution_strategy(strategy_name: str):
 
 
 def run_parallel_execution(
-    cli_params,
-    execution_fn,
-    execution_mode: str = "run",
+    cli_params: CLIRuntimeParams,
+    execution_fn: Callable[[Executor, ScriptNode, bool], ExecutionStats],
+    execution_mode: ExecutionMode = ExecutionMode.RUN,
 ) -> None:
     """
     Run parallel execution for directory inputs, or single-script execution
     with polished progress display for single files/inline queries.
-
-    Args:
-        cli_params: CLI runtime parameters containing all execution settings
-        execution_fn: Function to execute each script (exec, node, quiet) -> None
-        execution_mode: One of 'run', 'integration', or 'unit'
     """
     from trilogy.scripts.common import (
         create_executor_for_script,
@@ -721,7 +713,7 @@ def run_parallel_execution(
 
     # Wrap execution_fn to pass quiet=True for parallel execution and return stats
     def quiet_execution_fn(exec: Executor, node: ScriptNode) -> ExecutionStats | None:
-        return execution_fn(exec, node, quiet=True)
+        return execution_fn(exec, node, True)
 
     # Run parallel execution
     summary = parallel_exec.execute(

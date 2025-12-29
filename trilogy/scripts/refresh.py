@@ -16,7 +16,7 @@ from trilogy.scripts.common import (
     handle_execution_exception,
 )
 from trilogy.scripts.dependency import ScriptNode
-from trilogy.scripts.parallel_execution import run_parallel_execution
+from trilogy.scripts.parallel_execution import ExecutionMode, run_parallel_execution
 
 
 def execute_script_for_refresh(
@@ -51,7 +51,7 @@ def execute_script_for_refresh(
             print_info(f"  Refreshing {asset.datasource_id}: {asset.reason}")
         datasource = exec.environment.datasources[asset.datasource_id]
         exec.update_datasource(datasource)
-        stats.persist_count += 1
+        stats.update_count += 1
     for x in validation:
         exec.execute_statement(x)
         stats = count_statement_stats([x])
@@ -98,7 +98,7 @@ def refresh(
         run_parallel_execution(
             cli_params=cli_params,
             execution_fn=execute_script_for_refresh,
-            execution_mode="refresh",
+            execution_mode=ExecutionMode.REFRESH,
         )
     except Exit:
         raise

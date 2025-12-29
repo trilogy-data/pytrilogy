@@ -15,7 +15,7 @@ from trilogy.scripts.common import (
     validate_datasources,
 )
 from trilogy.scripts.dependency import ScriptNode
-from trilogy.scripts.parallel_execution import run_parallel_execution
+from trilogy.scripts.parallel_execution import ExecutionMode, run_parallel_execution
 
 
 def execute_script_for_integration(
@@ -77,7 +77,7 @@ def integration(
         run_parallel_execution(
             cli_params=cli_params,
             execution_fn=execute_script_for_integration,
-            execution_mode="integration",
+            execution_mode=ExecutionMode.INTEGRATION,
         )
     except Exit:
         raise
@@ -121,7 +121,7 @@ def unit(
         run_parallel_execution(
             cli_params=cli_params,
             execution_fn=execute_script_for_unit,
-            execution_mode="unit",
+            execution_mode=ExecutionMode.UNIT,
         )
     except Exit:
         raise

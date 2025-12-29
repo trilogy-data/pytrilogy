@@ -1,3 +1,14 @@
+import warnings
+
+# Suppress pydantic warning about field shadowing property in parent class.
+# This is intentional - DataTyped ABC defines output_datatype as a property,
+# but concrete pydantic models override it with a field.
+warnings.filterwarnings(
+    "ignore",
+    message='Field name "output_datatype".*shadows an attribute',
+    category=UserWarning,
+)
+
 from trilogy.constants import CONFIG
 from trilogy.core.models.environment import Environment, EnvironmentConfig
 from trilogy.dialect.enums import Dialects

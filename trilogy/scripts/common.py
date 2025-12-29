@@ -32,7 +32,7 @@ from trilogy.scripts.environment import extra_to_kwargs, parse_env_params
 TRILOGY_CONFIG_NAME = "trilogy.toml"
 
 # Default stat types to display in output; easily configurable
-DEFAULT_STAT_TYPES: list[str] = ["persist", "validate"]
+DEFAULT_STAT_TYPES: list[str] = ["persist", "update", "validate"]
 
 
 @dataclass
@@ -40,11 +40,13 @@ class ExecutionStats:
     """Statistics about statements executed in a script."""
 
     persist_count: int = 0
+    update_count: int = 0
     validate_count: int = 0
 
     def __add__(self, other: "ExecutionStats") -> "ExecutionStats":
         return ExecutionStats(
             persist_count=self.persist_count + other.persist_count,
+            update_count=self.update_count + other.update_count,
             validate_count=self.validate_count + other.validate_count,
         )
 
@@ -58,6 +60,9 @@ def format_stats(stats: ExecutionStats, stat_types: list[str] | None = None) -> 
     if "persist" in stat_types and stats.persist_count > 0:
         label = "table" if stats.persist_count == 1 else "tables"
         parts.append(f"{stats.persist_count} {label} persisted")
+    if "update" in stat_types and stats.update_count > 0:
+        label = "datasource" if stats.update_count == 1 else "datasources"
+        parts.append(f"{stats.update_count} {label} updated")
     if "validate" in stat_types and stats.validate_count > 0:
         label = "datasource" if stats.validate_count == 1 else "datasources"
         parts.append(f"{stats.validate_count} {label} validated")
