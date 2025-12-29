@@ -127,7 +127,7 @@ def test_basic_aggregate(test_environment: Environment, test_environment_graph):
     total_revenue = test_environment.concepts["total_revenue"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
     datasource = search_concepts(
-        [total_revenue.with_grain(product), product],
+        [total_revenue.with_grain(BuildGrain(components={product.address})), product],
         history=history,
         environment=test_environment,
         g=test_environment_graph,

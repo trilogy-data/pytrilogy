@@ -223,6 +223,10 @@ def test_twenty_one(engine):
     assert len(query) < 3000, query
 
 
+def test_twenty_two(engine):
+    _ = run_query(engine, 22)
+
+
 def test_twenty_four(engine):
     _ = run_query(engine, 24)
     # size gating
@@ -233,6 +237,15 @@ def test_twenty_five(engine):
     query = run_query(engine, 25)
     # size gating
     assert len(query) < 8500, query
+
+
+def test_forty_two(engine):
+    _ = run_query(engine, 42)
+
+
+@pytest.mark.skip(reason="Still cooking")
+def test_forty_four(engine):
+    _ = run_query(engine, 44)
 
 
 def test_twenty_six(engine):

@@ -1118,38 +1118,51 @@ def create_function_derived_concept(
 
 
 def argument_to_purpose(arg) -> Purpose:
-    if isinstance(arg, UndefinedConcept):
-        return Purpose.UNKNOWN
-    if isinstance(arg, Function):
-        return arg.output_purpose
-    elif isinstance(arg, AggregateWrapper):
-        base = arg.function.output_purpose
-        if arg.by and base == Purpose.METRIC:
+    match arg:
+        case UndefinedConcept():
+            return Purpose.UNKNOWN
+
+        case Function(output_purpose=purpose):
+            return purpose
+
+        case AggregateWrapper(function=f, by=by):
+            # Guard logic for AggregateWrapper
+            if by and f.output_purpose == Purpose.METRIC:
+                return Purpose.PROPERTY
+            return f.output_purpose
+
+        case Parenthetical(content=content):
+            return argument_to_purpose(content)
+
+        case WindowItem() | Conditional():
             return Purpose.PROPERTY
-        return arg.function.output_purpose
-    elif isinstance(arg, Parenthetical):
-        return argument_to_purpose(arg.content)
-    elif isinstance(arg, WindowItem):
-        return Purpose.PROPERTY
-    elif isinstance(arg, Conditional):
-        return Purpose.PROPERTY
-    elif isinstance(arg, Concept):
-        base = arg.purpose
-        if (
-            isinstance(arg.lineage, AggregateWrapper)
-            and arg.lineage.by
-            and base == Purpose.METRIC
+
+        case Concept(purpose=base, lineage=lineage):
+            # Guard logic for Concept
+            if (
+                isinstance(lineage, AggregateWrapper)
+                and lineage.by
+                and base == Purpose.METRIC
+            ):
+                return Purpose.PROPERTY
+            return base
+
+        # Grouping all constant-like types
+        case (
+            int()
+            | float()
+            | str()
+            | bool()
+            | list()
+            | NumericType()
+            | DataType()
+            | DatePart()
+            | MagicConstants()
         ):
-            return Purpose.PROPERTY
-        return arg.purpose
-    elif isinstance(arg, (int, float, str, bool, list, NumericType, DataType)):
-        return Purpose.CONSTANT
-    elif isinstance(arg, DatePart):
-        return Purpose.CONSTANT
-    elif isinstance(arg, MagicConstants):
-        return Purpose.CONSTANT
-    else:
-        raise ValueError(f"Cannot parse arg purpose for {arg} of type {type(arg)}")
+            return Purpose.CONSTANT
+
+        case _:
+            raise ValueError(f"Cannot parse arg purpose for {arg} of type {type(arg)}")
 
 
 def function_args_to_output_purpose(args, environment: Environment) -> Purpose:

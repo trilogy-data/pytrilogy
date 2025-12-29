@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from trilogy import Dialects, Executor
@@ -93,7 +93,6 @@ import web_sales as web_sales;
 """
     )
 
-    start = datetime.now()
     dialect = Dialects.DUCK_DB.default_executor(environment=env)
     test_queries = """
 select
@@ -110,12 +109,17 @@ select
 
 
 """
-    start = datetime.now()
-    dialect.parse_text(test_queries)
-    end = datetime.now()
-    duration = end - start
-    # 339337
-    assert duration < timedelta(seconds=4), f"Duration: {duration}"
+    durations = []
+    for _ in range(5):
+        start = datetime.now()
+        dialect.parse_text(test_queries)
+        end = datetime.now()
+        durations.append((end - start).total_seconds())
+    # 0.4639s
+    avg_duration = sum(durations) / len(durations)
+    print(f"Parse times: {durations}")
+    print(f"Average parse time: {avg_duration:.4f}s")
+    assert avg_duration < 2, f"Average duration: {avg_duration:.4f}s"
 
 
 def test_merge_comparison(engine):

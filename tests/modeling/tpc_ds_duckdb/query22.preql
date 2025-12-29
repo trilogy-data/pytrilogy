@@ -1,0 +1,69 @@
+import inventory as inventory;
+
+with level0 as
+# Level 1: Full detail (name, brand, class, category)
+WHERE inventory.date.month_seq BETWEEN 1200 AND 1211
+SELECT
+    inventory.item.product_name,
+    inventory.item.brand_name,
+    inventory.item.class,
+    inventory.item.category,
+    avg(inventory.quantity_on_hand) as qoh1
+MERGE
+# Level 2: (name, brand, class) - NULL category
+WHERE inventory.date.month_seq BETWEEN 1200 AND 1211
+SELECT
+    inventory.item.product_name,
+    inventory.item.brand_name,
+    inventory.item.class,
+    cast(null as string) as null_category,
+    avg(inventory.quantity_on_hand) as qoh2
+MERGE
+# Level 3: (name, brand) - NULL class, NULL category
+WHERE inventory.date.month_seq BETWEEN 1200 AND 1211
+SELECT
+    inventory.item.product_name,
+    inventory.item.brand_name,
+    cast(null as string) as null_class,
+    cast(null as string) as null_category2,
+    avg(inventory.quantity_on_hand) as qoh3
+MERGE
+# Level 4: (name) - NULL brand, NULL class, NULL category
+WHERE inventory.date.month_seq BETWEEN 1200 AND 1211
+SELECT
+    inventory.item.product_name,
+    cast(null as string) as null_brand,
+    cast(null as string) as null_class2,
+    cast(null as string) as null_category3,
+    avg(inventory.quantity_on_hand) as qoh4
+MERGE
+# Level 5: Grand total - all NULL
+WHERE inventory.date.month_seq BETWEEN 1200 AND 1211
+SELECT
+    cast(null as string) as null_name,
+    cast(null as string) as null_brand2,
+    cast(null as string) as null_class3,
+    cast(null as string) as null_category4,
+    avg(inventory.quantity_on_hand) as qoh5
+align
+    i_product_name: inventory.item.product_name, inventory.item.product_name, inventory.item.product_name, inventory.item.product_name, null_name
+    AND i_brand: inventory.item.brand_name, inventory.item.brand_name, inventory.item.brand_name, null_brand, null_brand2
+    AND i_class: inventory.item.class, inventory.item.class, null_class, null_class2, null_class3
+    AND i_category: inventory.item.category, null_category, null_category2, null_category3, null_category4
+derive
+    coalesce(level0.qoh1, level0.qoh2, level0.qoh3, level0.qoh4, level0.qoh5) -> qoh_all
+;
+
+SELECT
+    level0.i_product_name,
+    level0.i_brand,
+    level0.i_class,
+    level0.i_category,
+    level0.qoh_all
+ORDER BY
+    level0.qoh_all ASC NULLS FIRST,
+    level0.i_product_name ASC NULLS FIRST,
+    level0.i_brand ASC NULLS FIRST,
+    level0.i_class ASC NULLS FIRST,
+    level0.i_category ASC NULLS FIRST
+LIMIT 100;

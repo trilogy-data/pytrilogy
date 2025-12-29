@@ -4,10 +4,11 @@ from abc import ABC
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from functools import cached_property, singledispatchmethod
+from functools import cached_property, reduce, singledispatchmethod
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Iterable,
     List,
     Optional,
@@ -16,10 +17,6 @@ from typing import (
     Set,
     Tuple,
     Union,
-)
-
-from pydantic import (
-    ConfigDict,
 )
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
@@ -99,32 +96,55 @@ if TYPE_CHECKING:
     from trilogy.core.models.build_environment import BuildEnvironment
     from trilogy.core.models.execute import CTE, UnionCTE
 
+
 LOGGER_PREFIX = "[MODELS_BUILD]"
 
 
-def generate_concept_name(parent: Any, debug: bool = False) -> str:
-    """Generate a name for a concept based on its parent type and content."""
-    if isinstance(parent, BuildAggregateWrapper):
-        if debug:
-            print(parent)
-        if parent.is_abstract:
-            return f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent.with_abstract_by()))}"
-        return f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
-    elif isinstance(parent, BuildWindowItem):
-        return f"{VIRTUAL_CONCEPT_PREFIX}_window_{parent.type.value}_{string_to_hash(str(parent))}"
-    elif isinstance(parent, BuildFilterItem):
-        return f"{VIRTUAL_CONCEPT_PREFIX}_filter_{string_to_hash(str(parent))}"
-    elif isinstance(parent, BuildFunction):
-        if parent.operator == FunctionType.GROUP:
-            return f"{VIRTUAL_CONCEPT_PREFIX}_group_to_{string_to_hash(str(parent))}"
-        else:
-            return f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(str(parent))}"
-    elif isinstance(parent, BuildParenthetical):
-        return f"{VIRTUAL_CONCEPT_PREFIX}_paren_{string_to_hash(str(parent))}"
-    elif isinstance(parent, BuildComparison):
-        return f"{VIRTUAL_CONCEPT_PREFIX}_comp_{string_to_hash(str(parent))}"
-    else:  # ListWrapper, MapWrapper, or primitive types
-        return f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
+def _gen_agg_name(parent: "BuildAggregateWrapper") -> str:
+    if parent.is_abstract:
+        return f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent.with_abstract_by()))}"
+    return f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
+
+
+def _gen_window_name(parent: "BuildWindowItem") -> str:
+    return f"{VIRTUAL_CONCEPT_PREFIX}_window_{parent.type.value}_{string_to_hash(str(parent))}"
+
+
+def _gen_filter_name(parent: "BuildFilterItem") -> str:
+    return f"{VIRTUAL_CONCEPT_PREFIX}_filter_{string_to_hash(str(parent))}"
+
+
+def _gen_function_name(parent: "BuildFunction") -> str:
+    if parent.operator == FunctionType.GROUP:
+        return f"{VIRTUAL_CONCEPT_PREFIX}_group_to_{string_to_hash(str(parent))}"
+    return f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(str(parent))}"
+
+
+def _gen_paren_name(parent: "BuildParenthetical") -> str:
+    return f"{VIRTUAL_CONCEPT_PREFIX}_paren_{string_to_hash(str(parent))}"
+
+
+def _gen_comp_name(parent: "BuildComparison") -> str:
+    return f"{VIRTUAL_CONCEPT_PREFIX}_comp_{string_to_hash(str(parent))}"
+
+
+def _gen_msl_name(parent: "BuildMultiSelectLineage") -> str:
+    return f"{VIRTUAL_CONCEPT_PREFIX}_msl_{string_to_hash(str(parent))}"
+
+
+def _gen_default_name(parent: Any) -> str:
+    return f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
+
+
+# Initialized after classes are defined
+_CONCEPT_NAME_GENERATORS: dict[type, Callable[[Any], str]] = {}
+
+
+def generate_concept_name(parent: Any) -> str:
+    generator = _CONCEPT_NAME_GENERATORS.get(type(parent))
+    if generator:
+        return generator(parent)
+    return _gen_default_name(parent)
 
 
 class BuildConceptArgs(ABC):
@@ -411,13 +431,7 @@ class BuildGrain:
             [c.endswith(ALL_ROWS_CONCEPT) for c in self.components]
         )
 
-    def __eq__(self, other: object):
-        if isinstance(other, list):
-            if all([isinstance(c, BuildConcept) for c in other]):
-                return self.components == set([c.address for c in other])
-            return False
-        if not isinstance(other, BuildGrain):
-            return False
+    def __eq__(self, other):
         if self.components == other.components:
             return True
         if self.abstract is True and other.abstract is True:
@@ -474,6 +488,9 @@ class BuildGrain:
             return self.__add__(other)
 
 
+DEFAULT_GRAIN = BuildGrain(components=set())
+
+
 @dataclass
 class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs):
     content: "BuildExpr"
@@ -502,7 +519,7 @@ class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs):
             )
         )
 
-    @property
+    @cached_property
     def concept_arguments(self) -> List[BuildConcept]:
         return get_concept_arguments(self.content)
 
@@ -619,7 +636,7 @@ class BuildConditional(DataTyped, BuildConceptArgs, ConstantInlineable):
             operator=self.operator,
         )
 
-    @property
+    @cached_property
     def concept_arguments(self) -> List[BuildConcept]:
         """Return BuildConcepts directly referenced in where clause"""
         output = []
@@ -802,7 +819,7 @@ class BuildComparison(DataTyped, BuildConceptArgs, ConstantInlineable):
             operator=self.operator,
         )
 
-    @property
+    @cached_property
     def concept_arguments(self) -> List[BuildConcept]:
         """Return BuildConcepts directly referenced in where clause"""
         output = []
@@ -896,7 +913,6 @@ class BuildSubselectComparison(BuildComparison):
 
 @dataclass
 class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
-    model_config = ConfigDict(extra="forbid")
     name: str
     canonical_name: str
     datatype: DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
@@ -945,17 +961,18 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
         return self.datatype
 
     def __eq__(self, other: object):
-        if isinstance(other, str):
-            if self.address == other:
-                return True
-        if not isinstance(other, (BuildConcept, Concept)):
+        otype = type(other)
+        if otype is str and self.address == other:
+            return True
+        if otype is not BuildConcept:
             return False
+
         return (
-            self.name == other.name
-            and self.datatype == other.datatype
-            and self.purpose == other.purpose
-            and self.namespace == other.namespace
-            and self.grain == other.grain
+            self.name == other.name  # type: ignore
+            and self.datatype == other.datatype  # type: ignore
+            and self.purpose == other.purpose  # type: ignore
+            and self.namespace == other.namespace  # type: ignore
+            and self.grain == other.grain  # type: ignore
             # and self.keys == other.keys
         )
 
@@ -971,6 +988,10 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
     def canonical_address(self) -> str:
         return f"{self.namespace}.{self.canonical_name}"
 
+    @cached_property
+    def canonical_address_grain(self) -> str:
+        return f"{self.namespace}.{self.canonical_name}@{str(self.grain)}"
+
     @property
     def safe_address(self) -> str:
         if self.namespace == DEFAULT_NAMESPACE:
@@ -980,6 +1001,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
         return self.name.replace(".", "_")
 
     def with_materialized_source(self) -> Self:
+
         return self.__class__(
             name=self.name,
             canonical_name=self.canonical_name,
@@ -998,15 +1020,10 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
             build_is_aggregate=self.build_is_aggregate,
         )
 
-    def with_grain(self, grain: Optional["BuildGrain" | BuildConcept] = None) -> Self:
-        if isinstance(grain, BuildConcept):
-            grain = BuildGrain(
-                components=set(
-                    [
-                        grain.address,
-                    ]
-                )
-            )
+    def with_grain(self, grain: Optional["BuildGrain"] = None) -> Self:
+        grain = grain if grain else DEFAULT_GRAIN
+        if grain == self.grain:
+            return self
         return self.__class__(
             name=self.name,
             canonical_name=self.canonical_name,
@@ -1014,7 +1031,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage,
-            grain=grain if grain else BuildGrain(components=set()),
+            grain=grain if grain else DEFAULT_GRAIN,
             namespace=self.namespace,
             keys=self.keys,
             modifiers=self.modifiers,
@@ -1042,14 +1059,16 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
                 components=set([x for x in components]),
             )  # synonym_set=generate_BuildConcept_synonyms(components))
         elif self.purpose == Purpose.METRIC:
-            grain = BuildGrain()
+            grain = DEFAULT_GRAIN
         elif self.purpose == Purpose.CONSTANT:
             if self.derivation != Derivation.CONSTANT:
                 grain = BuildGrain(components={self.address})
             else:
                 grain = self.grain
         else:
-            grain = self.grain  # type: ignore
+            grain = self.grain
+        if grain == self.grain:
+            return self
         return self.__class__(
             name=self.name,
             canonical_name=self.canonical_name,
@@ -1112,7 +1131,7 @@ class BuildOrderItem(DataTyped, BuildConceptArgs):
     expr: BuildExpr
     order: Ordering
 
-    @property
+    @cached_property
     def concept_arguments(self) -> List[BuildConcept]:
         base: List[BuildConcept] = []
         x = self.expr
@@ -1153,7 +1172,7 @@ class BuildWindowItem(DataTyped, BuildConceptArgs):
     def __str__(self):
         return self.__repr__()
 
-    @property
+    @cached_property
     def concept_arguments(self) -> List[BuildConcept]:
         output = [self.content]
         for order in self.order_by:
@@ -1184,7 +1203,7 @@ class BuildCaseWhen(DataTyped, BuildConceptArgs):
     def __repr__(self):
         return f"WHEN {str(self.comparison)} THEN {str(self.expr)}"
 
-    @property
+    @cached_property
     def concept_arguments(self):
         return get_concept_arguments(self.comparison) + get_concept_arguments(self.expr)
 
@@ -1203,7 +1222,7 @@ class BuildCaseWhen(DataTyped, BuildConceptArgs):
 class BuildCaseElse(DataTyped, BuildConceptArgs):
     expr: "BuildExpr"
 
-    @property
+    @cached_property
     def concept_arguments(self):
         return get_concept_arguments(self.expr)
 
@@ -1265,7 +1284,7 @@ class BuildFunction(DataTyped, BuildConceptArgs):
     def output_datatype(self):
         return self.output_data_type
 
-    @property
+    @cached_property
     def concept_arguments(self) -> List[BuildConcept]:
         base = []
         for arg in self.arguments:
@@ -1318,7 +1337,7 @@ class BuildAggregateWrapper(BuildConceptArgs, DataTyped):
     def datatype(self):
         return self.function.datatype
 
-    @property
+    @cached_property
     def concept_arguments(self) -> List[BuildConcept]:
         return self.function.concept_arguments + self.by
 
@@ -1355,7 +1374,7 @@ class BuildFilterItem(BuildConceptArgs):
             return self.content.concept_arguments
         return []
 
-    @property
+    @cached_property
     def concept_arguments(self):
         return self.where.concept_arguments + get_concept_arguments(self.content)
 
@@ -1526,7 +1545,7 @@ class BuildAlignItem:
 class BuildColumnAssignment:
     alias: str | RawColumnExpr | BuildFunction | BuildAggregateWrapper
     concept: BuildConcept
-    modifiers: List[Modifier] = field(default_factory=list)
+    modifiers: set[Modifier] = field(default_factory=set)
 
     @property
     def is_complete(self) -> bool:
@@ -1543,7 +1562,7 @@ class BuildDatasource:
     columns: List[BuildColumnAssignment]
     address: Union[Address, str]
     grain: BuildGrain = field(
-        default_factory=lambda: BuildGrain(components=set()),
+        default_factory=lambda: DEFAULT_GRAIN,
     )
     namespace: Optional[str] = field(default=DEFAULT_NAMESPACE)
     metadata: DatasourceMetadata = field(
@@ -1647,6 +1666,34 @@ class BuildDatasource:
     def output_lcl(self) -> LooseBuildConceptList:
         return LooseBuildConceptList(concepts=self.output_concepts)
 
+    @property
+    def is_union(self) -> bool:
+        return False
+
+
+@dataclass
+class BuildUnionDatasource:
+    children: List[BuildDatasource]
+
+    def is_union(self) -> bool:
+        return True
+
+    @property
+    def columns(self) -> List[BuildColumnAssignment]:
+        return self.children[0].columns
+
+    @property
+    def grain(self) -> BuildGrain:
+        return reduce(lambda x, y: x.union(y.grain), self.children, BuildGrain())
+
+    @property
+    def non_partial_for(self) -> Optional[BuildWhereClause]:
+        return None
+
+    @property
+    def partial_concepts(self) -> List[BuildConcept]:
+        return []
+
 
 BuildExpr = (
     BuildWindowItem
@@ -1702,6 +1749,7 @@ class Factory:
         local_concepts: dict[str, BuildConcept] | None = None,
         grain: Grain | None = None,
         pseudonym_map: dict[str, set[str]] | None = None,
+        build_cache: dict[str, BuildConcept] | None = None,
     ):
         self.grain = grain or Grain()
         self.environment = environment
@@ -1710,6 +1758,7 @@ class Factory:
         )
         self.local_non_build_concepts: dict[str, Concept] = {}
         self.pseudonym_map = pseudonym_map or get_canonical_pseudonyms(environment)
+        self.build_cache = build_cache or {}
         self.build_grain = self.build(self.grain) if self.grain else None
 
     def instantiate_concept(
@@ -1909,15 +1958,28 @@ class Factory:
         # this doesn't work for persisted addresses.
         # we need to early exit if we have it in local concepts, because in that case,
         # it is built with appropriate grain only in that dictionary
-        # if base.address in self.local_concepts:
-        #     return self.local_concepts[base.address]
+
+        if base.address in self.local_concepts:
+            return self.local_concepts[base.address]
         new_lineage, final_grain, _ = base.get_select_grain_and_keys(
             self.grain, self.environment
         )
+
         if new_lineage:
             build_lineage = self.build(new_lineage)
         else:
             build_lineage = None
+        canonical_name = (
+            generate_concept_name(build_lineage) if build_lineage else base.name
+        )
+        cache_address = (
+            f"{base.namespace}.{base.address}.{canonical_name}.{str(final_grain)}"
+        )
+        if cache_address in self.build_cache:
+            return self.build_cache[cache_address]
+
+        new_grain = self._build_grain(final_grain)
+
         derivation = Concept.calculate_derivation(build_lineage, base.purpose)
 
         granularity = Concept.calculate_granularity(
@@ -1925,18 +1987,16 @@ class Factory:
         )
 
         def calculate_is_aggregate(lineage):
-            if lineage and isinstance(lineage, BuildFunction):
+            ltype = type(lineage)
+            if ltype is BuildFunction:
                 if lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
                     return True
-            if (
-                lineage
-                and isinstance(lineage, BuildAggregateWrapper)
-                and lineage.function.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
-            ):
-                return True
+            if ltype is BuildAggregateWrapper:
+                if lineage.function.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+                    return True
             return False
 
-        is_aggregate = calculate_is_aggregate(build_lineage)
+        is_aggregate = calculate_is_aggregate(build_lineage) if build_lineage else False
         # if this is a pseudonym, we need to look up the base address
         if base.address in self.environment.alias_origin_lookup:
             lookup_address = self.environment.concepts[base.address].address
@@ -1951,14 +2011,12 @@ class Factory:
 
         rval = BuildConcept(
             name=base.name,
-            canonical_name=(
-                generate_concept_name(build_lineage) if build_lineage else base.name
-            ),
+            canonical_name=canonical_name,
             datatype=base.datatype,
             purpose=base.purpose,
             metadata=base.metadata,
             lineage=build_lineage,
-            grain=self._build_grain(final_grain),
+            grain=new_grain,
             namespace=base.namespace,
             keys=base.keys,
             modifiers=base.modifiers,
@@ -1968,14 +2026,12 @@ class Factory:
             granularity=granularity,
             build_is_aggregate=is_aggregate,
         )
+
         if base.address in self.local_concepts:
-            # comp = self.local_concepts[base.address]
-            # if comp.canonical_address != rval.canonical_address:
-            #     raise ValueError(
-            #         f"Conflicting concepts for address {base.address}: {comp.canonical_address} vs {rval.canonical_address} {comp.lineage} vs {rval.lineage}"
-            #     )
             return self.local_concepts[base.address]
         self.local_concepts[base.address] = rval
+        # this is a global cache that can be reused across Factory instances
+        self.build_cache[cache_address] = rval
         return rval
 
     @build.register
@@ -2019,7 +2075,7 @@ class Factory:
                 else base.alias
             ),
             concept=fetched,
-            modifiers=base.modifiers,
+            modifiers=set(base.modifiers),
         )
 
     @build.register
@@ -2219,7 +2275,9 @@ class Factory:
     def _build_grain(self, base: Grain) -> BuildGrain:
         if base.where_clause:
             factory = Factory(
-                environment=self.environment, pseudonym_map=self.pseudonym_map
+                environment=self.environment,
+                pseudonym_map=self.pseudonym_map,
+                build_cache=self.build_cache,
             )
             where = factory._build_where_clause(base.where_clause)
         else:
@@ -2282,6 +2340,7 @@ class Factory:
             environment=self.environment,
             local_concepts=materialized,
             pseudonym_map=self.pseudonym_map,
+            build_cache=self.build_cache,
         )
         for k, v in base.local_concepts.items():
 
@@ -2291,6 +2350,7 @@ class Factory:
             environment=self.environment,
             local_concepts={},
             pseudonym_map=self.pseudonym_map,
+            build_cache=self.build_cache,
         )
         where_clause = (
             where_factory.build(base.where_clause) if base.where_clause else None
@@ -2492,11 +2552,17 @@ class Factory:
 
     def _build_datasource(self, base: Datasource):
         local_cache: dict[str, BuildConcept] = {}
+        from trilogy.constants import CONFIG
+
         factory = Factory(
             grain=base.grain,
             environment=self.environment,
             local_concepts=local_cache,
             pseudonym_map=self.pseudonym_map,
+            # build_cache = self.build_cache,
+            build_cache=(
+                self.build_cache if CONFIG.generation.datasource_build_cache else None
+            ),
         )
         return BuildDatasource(
             name=base.name,
@@ -2521,3 +2587,17 @@ class Factory:
         elif isinstance(base, ConceptRef):
             return self.handle_constant(self.build(base))
         return base
+
+
+# Initialize the concept name generators after classes are defined
+_CONCEPT_NAME_GENERATORS.update(
+    {
+        BuildAggregateWrapper: _gen_agg_name,
+        BuildWindowItem: _gen_window_name,
+        BuildFilterItem: _gen_filter_name,
+        BuildFunction: _gen_function_name,
+        BuildParenthetical: _gen_paren_name,
+        BuildComparison: _gen_comp_name,
+        BuildMultiSelectLineage: _gen_msl_name,
+    }
+)

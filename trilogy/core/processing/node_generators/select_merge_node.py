@@ -16,6 +16,7 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
     BuildGrain,
+    BuildUnionDatasource,
     BuildWhereClause,
     CanonicalBuildConceptList,
 )
@@ -125,7 +126,7 @@ def create_pruned_concept_graph(
         common: set[BuildConcept] = set.intersection(
             *[set(x.output_concepts) for x in ds_list]
         )
-        g.add_datasource_node(node_address, ds_list)
+        g.datasources[node_address] = BuildUnionDatasource(children=ds_list)
         for c in common:
             cnode = concept_to_node(c)
             g.add_edge(node_address, cnode)
@@ -134,7 +135,9 @@ def create_pruned_concept_graph(
     prune_sources_for_aggregates(g, all_concepts, logger)
     target_addresses = set([c.canonical_address for c in all_concepts])
     concepts: dict[str, BuildConcept] = orig_g.concepts
-    datasource_map: dict[str, BuildDatasource] = orig_g.datasources
+    datasource_map: dict[str, BuildDatasource | BuildUnionDatasource] = (
+        orig_g.datasources
+    )
     relevant_concepts_pre = {
         n: x.canonical_address
         for n in g.nodes()
@@ -218,7 +221,7 @@ def create_pruned_concept_graph(
     relevant = set(relevant_concepts + relevent_datasets)
     for edge in orig_g.edges():
         if edge[0] in relevant and edge[1] in relevant:
-            g.add_edge(edge[0], edge[1], fast=True)
+            g.add_edge(edge[0], edge[1])
     # if we have no ds nodes at all, for non constant, we can't find it
     if not any([n.startswith("ds~") for n in g.nodes]):
         logger.info(
@@ -294,6 +297,26 @@ def create_pruned_concept_graph(
 #     return deduplicated_ds_nodes + non_ds_nodes
 
 
+def filter_pseudonym_duplicates(
+    concepts: list[BuildConcept], relevant: list[BuildConcept]
+) -> list[BuildConcept]:
+    """Filter out concepts whose pseudonyms are also in the list, keeping the one in relevant."""
+    relevant_addrs = {c.address for c in relevant}
+    concept_addrs = {c.address for c in concepts}
+    to_remove: set[str] = set()
+    for c in concepts:
+        for p_addr in c.pseudonyms:
+            if p_addr in concept_addrs:
+                c_in_relevant = c.address in relevant_addrs
+                p_in_relevant = p_addr in relevant_addrs
+                if p_in_relevant and not c_in_relevant:
+                    to_remove.add(c.address)
+                    break
+                elif c_in_relevant and not p_in_relevant:
+                    to_remove.add(p_addr)
+    return [c for c in concepts if c.address not in to_remove]
+
+
 def resolve_subgraphs(
     g: ReferenceGraph,
     relevant: list[BuildConcept],
@@ -314,13 +337,21 @@ def resolve_subgraphs(
     datasources = [n for n in g.nodes if n.startswith("ds~")]
     canonical_relevant = set([c.canonical_address for c in relevant])
     canonical_map = {c.canonical_address: c.address for c in relevant}
+    concepts: dict[str, BuildConcept] = g.concepts
     subgraphs: dict[str, list[str]] = {
         ds: list(set(list(nx.all_neighbors(g, ds)))) for ds in datasources
     }
+    # filter pseudonym duplicates from each subgraph, keeping concept in relevant
+    for ds in subgraphs:
+        ds_concepts = [concepts[n] for n in subgraphs[ds] if n in concepts]
+        filtered = filter_pseudonym_duplicates(ds_concepts, relevant)
+        filtered_nodes = {concept_to_node(c) for c in filtered}
+        subgraphs[ds] = [
+            n for n in subgraphs[ds] if n not in concepts or n in filtered_nodes
+        ]
     partial_map = get_graph_partial_nodes(g, conditions)
     exact_map = get_graph_exact_match(g, accept_partial, conditions)
     grain_length = get_graph_grains(g)
-    concepts: dict[str, BuildConcept] = g.concepts
     non_partial_map = {
         ds: [
             concepts[c].canonical_address
@@ -467,8 +498,7 @@ def create_datasource_node(
     all_inputs = [c.concept for c in datasource.columns]
     canonical_all = CanonicalBuildConceptList(concepts=all_inputs)
 
-    # if we're binding a via a canonical address association
-    # we need to add it here.
+    # if we're binding via a canonical address association, add it here
     for x in all_concepts:
         if x not in all_inputs and x in canonical_all:
             all_inputs.append(x)
@@ -498,7 +528,7 @@ def create_datasource_node(
 
 
 def create_union_datasource(
-    datasource: list[BuildDatasource],
+    datasource: BuildUnionDatasource,
     all_concepts: List[BuildConcept],
     accept_partial: bool,
     environment: BuildEnvironment,
@@ -507,12 +537,13 @@ def create_union_datasource(
 ) -> tuple["UnionNode", bool]:
     from trilogy.core.processing.nodes.union_node import UnionNode
 
+    datasources = datasource.children
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} generating union node parents with condition {conditions}"
     )
     force_group = False
     parents = []
-    for x in datasource:
+    for x in datasources:
         subnode, fg = create_datasource_node(
             x,
             all_concepts,
@@ -551,6 +582,9 @@ def create_select_node(
         for c in subgraph
         if c.startswith("c~")
     ]
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} all concepts: {all_concepts} from {subgraph}"
+    )
 
     if all([c.derivation == Derivation.CONSTANT for c in all_concepts]):
         logger.info(
@@ -568,7 +602,7 @@ def create_select_node(
             preexisting_conditions=conditions.conditional if conditions else None,
         )
 
-    datasource: BuildDatasource = g.datasources[ds_name]
+    datasource: BuildDatasource | BuildUnionDatasource = g.datasources[ds_name]
 
     if isinstance(datasource, BuildDatasource):
         bcandidate, force_group = create_datasource_node(
@@ -580,7 +614,7 @@ def create_select_node(
             conditions=conditions,
         )
 
-    elif isinstance(datasource, list):
+    elif isinstance(datasource, BuildUnionDatasource):
         bcandidate, force_group = create_union_datasource(
             datasource,
             all_concepts,
@@ -625,6 +659,9 @@ def gen_select_merge_node(
 ) -> Optional[StrategyNode]:
     non_constant = [c for c in all_concepts if c.derivation != Derivation.CONSTANT]
     constants = [c for c in all_concepts if c.derivation == Derivation.CONSTANT]
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} generating select merge node for {all_concepts}"
+    )
     if not non_constant and constants:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} only constant inputs to discovery ({constants}), returning constant node directly"

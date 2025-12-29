@@ -449,53 +449,58 @@ def is_compatible_datatype(left, right):
 
 
 def arg_to_datatype(arg) -> CONCRETE_TYPES:
-
-    if isinstance(arg, MagicConstants):
-        if arg == MagicConstants.NULL:
+    match arg:
+        # Exact value matching with MagicConstants
+        case MagicConstants.NULL:
             return DataType.NULL
-        raise ValueError(f"Cannot parse arg datatype for arg of type {arg}")
-    elif isinstance(arg, bool):
-        return DataType.BOOL
-    elif isinstance(arg, Ordering):
-        return DataType.STRING  # TODO: revisit
-    elif isinstance(arg, int):
-        return DataType.INTEGER
-    elif isinstance(arg, str):
-        return DataType.STRING
-    elif isinstance(arg, float):
-        return DataType.FLOAT
-    elif isinstance(arg, Decimal):
-        return DataType.NUMERIC
-    elif isinstance(arg, DataType):
-        return arg
-    elif isinstance(arg, NumericType):
-        return arg
-    elif isinstance(arg, TraitDataType):
-        return arg
-    elif isinstance(arg, ListWrapper):
-        return ArrayType(type=arg.type)
-    elif isinstance(arg, ArrayType):
-        return arg
-    elif isinstance(arg, MapType):
-        return arg
-    elif isinstance(arg, DataTyped):
-        return arg.output_datatype
-    elif isinstance(arg, TupleWrapper):
-        return ArrayType(type=arg.type)
-    elif isinstance(arg, list):
-        wrapper = list_to_wrapper(arg)
-        return ArrayType(type=wrapper.type)
-    elif isinstance(arg, MapWrapper):
-        return MapType(key_type=arg.key_type, value_type=arg.value_type)
-    elif isinstance(arg, datetime):
-        return DataType.DATETIME
-    elif isinstance(arg, date):
-        return DataType.DATE
-    elif isinstance(arg, StructComponent):
-        return arg_to_datatype(arg.type)
-    elif isinstance(arg, DatePart):
-        return DataType.DATE_PART
-    else:
-        raise ValueError(
-            f"Cannot parse arg datatype for arg of raw type {type(arg)} value {arg}"
-        )
+        case MagicConstants():
+            raise ValueError(f"Cannot parse arg datatype for arg of type {arg}")
+
+        # Type checking (replaces isinstance)
+        # Note: bool must come before int because bool is a subclass of int
+        case bool():
+            return DataType.BOOL
+        case Ordering():
+            return DataType.STRING  # TODO: revisit
+        case int():
+            return DataType.INTEGER
+        case str():
+            return DataType.STRING
+        case float():
+            return DataType.FLOAT
+        case Decimal():
+            return DataType.NUMERIC
+
+        # Direct returns for existing type definitions
+        case DataType() | NumericType() | TraitDataType() | ArrayType() | MapType():
+            return arg
+
+        # Complex wrappers and recursive calls
+        case ListWrapper(type=t) | TupleWrapper(type=t):
+            return ArrayType(type=t)
+
+        case list():
+            wrapper = list_to_wrapper(arg)
+            return ArrayType(type=wrapper.type)
+
+        case MapWrapper(key_type=kt, value_type=vt):
+            return MapType(key_type=kt, value_type=vt)
+
+        case DataTyped(output_datatype=dt):
+            return dt
+
+        case datetime():
+            return DataType.DATETIME
+        case date():
+            return DataType.DATE
+
+        case StructComponent(type=t):
+            return arg_to_datatype(t)
+
+        case DatePart():
+            return DataType.DATE_PART
+
+        case _:
+            raise ValueError(
+                f"Cannot parse arg datatype for arg of raw type {type(arg)} value {arg}"
+            )

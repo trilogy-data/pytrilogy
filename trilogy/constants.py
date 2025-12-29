@@ -35,6 +35,11 @@ class Optimizations:
 
 
 @dataclass
+class Generation:
+    datasource_build_cache: bool = True
+
+
+@dataclass
 class Comments:
     """Control what is placed in CTE comments"""
 
@@ -99,6 +104,7 @@ class Config:
     optimizations: Optimizations = field(default_factory=Optimizations)
     rendering: Rendering = field(default_factory=Rendering)
     parsing: Parsing = field(default_factory=Parsing)
+    generation: Generation = field(default_factory=Generation)
 
     @property
     def show_comments(self) -> bool:

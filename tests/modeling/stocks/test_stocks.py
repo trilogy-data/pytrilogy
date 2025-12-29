@@ -117,6 +117,29 @@ limit 10;
     )
 
 
+def test_datasource_caching():
+    from trilogy.constants import CONFIG
+
+    for config in [True, False]:
+        CONFIG.generation.datasource_build_cache = config
+        env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
+        from trilogy.hooks import DebuggingHook
+
+        DebuggingHook()
+        duckdb = Dialects.DUCK_DB.default_executor(environment=env)
+
+        sql = duckdb.generate_sql(
+            """
+    SELECT
+        holdings.provider.name,
+        count(holdings.symbol.id) as  holding_count,
+    ;
+        """
+        )[0]
+        assert "dividend" not in sql.lower(), sql
+    CONFIG.generation.datasource_build_cache = False
+
+
 def test_provider_name():
     env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
     from logging import INFO

@@ -914,13 +914,9 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             return True
         return False
 
-    @property
+    @cached_property
     def is_aggregate(self):
-        base = getattr(self, "_is_aggregate", None)
-        if base:
-            return base
-        setattr(self, "_is_aggregate", self.calculate_is_aggregate(self.lineage))
-        return self._is_aggregate
+        return self.calculate_is_aggregate(self.lineage)
 
     def with_merge(self, source: Self, target: Self, modifiers: List[Modifier]) -> Self:
         if self.address == source.address:
@@ -1087,8 +1083,10 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         new_lineage = self.lineage
         final_grain = grain if not self.grain.components else self.grain
         keys = self.keys
+        if not new_lineage:
+            return new_lineage, final_grain, keys
 
-        if self.is_aggregate and grain.components and isinstance(new_lineage, Function):
+        if grain.components and isinstance(new_lineage, Function) and self.is_aggregate:
             grain_components: list[ConceptRef | Concept] = [
                 environment.concepts[c].reference for c in grain.components
             ]
@@ -1097,12 +1095,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             )
             final_grain = grain
             keys = set(grain.components)
-        elif (
-            grain
-            and new_lineage
-            and isinstance(new_lineage, AggregateWrapper)
-            and not new_lineage.by
-        ):
+        elif isinstance(new_lineage, AggregateWrapper) and not new_lineage.by:
             grain_components = [
                 environment.concepts[c].reference for c in grain.components
             ]
@@ -2581,7 +2574,7 @@ class ArgBinding(Namespaced, DataTyped, BaseModel):
     ) = DataType.UNKNOWN
 
     def with_namespace(self, namespace):
-        return ArgBinding(
+        return ArgBinding.model_construct(
             name=address_with_namespace(self.name, namespace),
             default=(
                 self.default.with_namespace(namespace)

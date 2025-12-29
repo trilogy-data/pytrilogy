@@ -2,7 +2,7 @@ from pytest import raises
 
 from trilogy import Dialects
 from trilogy.core.enums import Derivation, Granularity, Purpose
-from trilogy.core.models.build import BuildWindowItem
+from trilogy.core.models.build import BuildGrain, BuildWindowItem
 from trilogy.core.processing.concept_strategies_v3 import (
     History,
     generate_graph,
@@ -194,7 +194,7 @@ order by x asc;"""
     }
 
     ds = search_concepts(
-        [z.with_grain(x), x],
+        [z.with_grain(BuildGrain(components={x.address})), x],
         history=history,
         environment=env,
         g=generate_graph(env),

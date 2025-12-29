@@ -1,0 +1,29 @@
+import store_sales as ss1;
+import store_sales as ss2;
+
+# Threshold: avg net_profit for store 4 where address is null
+auto threshold <- avg(ss1.net_profit ? ss1.store.id = 4 and ss1.customer_address.id is null) by ss1.store.id;
+
+# Compute avg profit and ranks for both aliases
+auto item_avg_profit1 <- avg(ss1.net_profit) by ss1.item.id;
+auto item_avg_profit2 <- avg(ss2.net_profit) by ss2.item.id;
+auto asc_rank <- rank ss1.item.id by item_avg_profit1 asc;
+auto desc_rank <- rank ss2.item.id by item_avg_profit2 desc;
+
+SELECT
+    asc_rank as rnk,
+    ss1.item.product_name as best_performing,
+    ss2.item.product_name as worst_performing,
+    item_avg_profit1,
+    item_avg_profit2
+WHERE
+    ss1.store.id = 4
+    and ss2.store.id = 4
+    and asc_rank = desc_rank
+    and asc_rank < 11
+HAVING
+    item_avg_profit1 > 0.9 * threshold
+    and item_avg_profit2 > 0.9 * threshold
+ORDER BY
+    rnk ASC
+LIMIT 100;

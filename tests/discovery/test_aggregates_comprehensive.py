@@ -379,10 +379,8 @@ SELECT
     # assert build_env.concepts['local.total_revenue'].canonical_address == build_env.concepts['customer_product_revenue'].canonical_address
 
     assert generate_concept_name(
-        build_env.concepts["local.total_revenue"].lineage, True
-    ) == generate_concept_name(
-        build_env.concepts["customer_product_revenue"].lineage, True
-    )
+        build_env.concepts["local.total_revenue"].lineage
+    ) == generate_concept_name(build_env.concepts["customer_product_revenue"].lineage)
     assert any(
         table in generated for table in ["customer_product_summary"]
     ), f"Expected appropriate table, got: {generated}"

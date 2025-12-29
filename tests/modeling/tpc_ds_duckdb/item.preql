@@ -2,10 +2,12 @@
 key id int;
 
 property id.name string;
+property id.product_name string;
 property id.brand_id int;
 property id.brand_name string;
 property id.manufacturer_id int;
 property id.category string?;
+property id.category_id int?;
 property id.current_price float?;
 property id.class string?;
 property id.desc string?;
@@ -22,12 +24,14 @@ datasource items (
     I_BRAND_ID: brand_id,
     I_MANUFACT_ID: manufacturer_id,
     I_CATEGORY: category,
+    I_CATEGORY_ID: category_id,
     I_CLASS: class,
     I_CURRENT_PRICE: current_price,
     I_COLOR: color,
     I_MANAGER_ID: manager_id,
     I_SIZE: size,
     I_UNITS: units,
+    I_PRODUCT_NAME: product_name,
 )
 grain (id)
 address memory.item;

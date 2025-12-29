@@ -86,7 +86,7 @@ def gen_multiselect_node(
                 f"{padding(depth)}{LOGGER_PREFIX} Cannot generate multiselect node for {concept}"
             )
             return None
-        merge_concepts = []
+        merge_concepts: list[BuildConcept] = []
         for x in [*snode.output_concepts]:
             merge_name = lineage.get_merge_concept(x)
             if merge_name:
@@ -96,7 +96,9 @@ def gen_multiselect_node(
         # clear cache so QPS
         snode.rebuild_cache()
         for mc in merge_concepts:
-            assert mc in snode.resolve().output_concepts
+            assert (
+                mc.address in snode.resolve().output_concepts
+            ), f"missing {mc} in {snode.resolve().output_concepts}"
         base_parents.append(snode)
         if select.where_clause:
             for item in select.output_components:

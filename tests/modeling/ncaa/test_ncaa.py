@@ -6,7 +6,7 @@ from pytest import raises
 
 from trilogy import Dialects, Executor
 from trilogy.core.exceptions import UnresolvableQueryException
-from trilogy.core.models.build import Factory
+from trilogy.core.models.build import BuildUnionDatasource, Factory
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
@@ -37,7 +37,7 @@ def test_union_node():
     build_env = factory.build(env)
 
     bcandidate, group = create_union_datasource(
-        datasource=datasource,
+        datasource=BuildUnionDatasource(children=datasource),
         all_concepts=[team_name],
         accept_partial=False,
         environment=build_env,

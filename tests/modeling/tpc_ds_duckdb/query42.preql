@@ -1,0 +1,17 @@
+import store_sales as store_sales;
+
+SELECT
+    store_sales.date.year,
+    store_sales.item.category_id,
+    store_sales.item.category,
+    sum(store_sales.ext_sales_price) as total_ext_sales_price
+WHERE
+    store_sales.item.manager_id = 1
+    AND store_sales.date.month_of_year = 11
+    AND store_sales.date.year = 2000
+ORDER BY
+    total_ext_sales_price DESC,
+    store_sales.date.year ASC,
+    store_sales.item.category_id ASC,
+    store_sales.item.category ASC
+LIMIT 100;
