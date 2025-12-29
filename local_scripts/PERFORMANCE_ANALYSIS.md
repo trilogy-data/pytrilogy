@@ -117,11 +117,11 @@ Key optimizations applied:
 
 | Function | Original | Current | Change |
 |----------|----------|---------|--------|
-| `isinstance` | 1,978,796 | 1,706,893 | **14% reduction** |
-| `dict.get` | 1,090,826 | 1,014,504 | **7% reduction** |
-| `getattr` | 786,233 | 747,420 | **5% reduction** |
-| `dict.update` | 588,208 | 588,209 | Same |
-| `len` | 581,891 | 583,675 | Same |
+| `isinstance` | 1,978,796 | 1,704,481 | **14% reduction** |
+| `dict.get` | 1,090,826 | 1,015,134 | **7% reduction** |
+| `getattr` | 786,233 | 747,761 | **5% reduction** |
+| `dict.update` | 588,208 | 588,253 | Same |
+| `len` | 581,891 | 583,718 | Same |
 | `set.issubset` | 711,450 | 371,925 | **48% reduction** |
 | `Concept.address` | 348,241 | 302,599 | **13% reduction** |
 | `concept_to_node` | 67,035 | 67,635 | Same |
