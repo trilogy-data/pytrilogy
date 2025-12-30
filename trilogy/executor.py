@@ -88,7 +88,7 @@ class Executor(object):
         self.logger = logger
         self.hooks = hooks
         self.config = config
-        self.generator = get_dialect_generator(self.dialect, rendering)
+        self.generator = get_dialect_generator(self.dialect, rendering, config)
         self.connection = self.connect()
         # TODO: make generic
         if self.dialect == Dialects.DATAFRAME:
@@ -112,7 +112,8 @@ class Executor(object):
             isinstance(self.config, DuckDBConfig)
             and self.config.enable_python_datasources
         )
-        # this we always run, because we create a mock function to error out if not enabled
+        if not enabled:
+            return
         self.execute_raw_sql(get_python_datasource_setup_sql(enabled))
         self.connection.commit()
 

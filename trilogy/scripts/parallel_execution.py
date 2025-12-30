@@ -531,7 +531,8 @@ def run_single_script_execution(
         execute_queries_with_progress,
     )
 
-    show_execution_info(input_type, input_name, edialect.value, debug)
+    config_path_str = str(config.source_path) if config.source_path else None
+    show_execution_info(input_type, input_name, edialect.value, debug, config_path_str)
 
     exec = create_executor(param, directory, conn_args, edialect, debug, config)
     base = files[0]
@@ -673,7 +674,10 @@ def run_parallel_execution(
         )
         return
     # Multiple files - use parallel execution
-    show_execution_info(input_type, input_name, edialect.value, cli_params.debug)
+    config_path_str = str(config.source_path) if config.source_path else None
+    show_execution_info(
+        input_type, input_name, edialect.value, cli_params.debug, config_path_str
+    )
 
     # Get execution strategy
     strategy = get_execution_strategy(cli_params.execution_strategy)

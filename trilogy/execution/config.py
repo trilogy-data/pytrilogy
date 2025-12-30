@@ -25,6 +25,7 @@ class RuntimeConfig:
     parallelism: int = DEFAULT_PARALLELISM
     engine_dialect: Dialects | None = None
     engine_config: DialectConfig | None = None
+    source_path: Path | None = None
 
 
 def load_config_file(path: Path) -> RuntimeConfig:
@@ -72,4 +73,5 @@ def load_config_file(path: Path) -> RuntimeConfig:
         parallelism=config_data.get("parallelism", DEFAULT_PARALLELISM),
         engine_dialect=engine,
         engine_config=engine_config,
+        source_path=path,
     )

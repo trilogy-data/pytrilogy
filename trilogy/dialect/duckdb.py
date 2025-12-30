@@ -140,7 +140,7 @@ def get_python_datasource_setup_sql(enabled: bool) -> str:
 
     Args:
         enabled: If True, installs extensions and creates working macro.
-                 If False, creates macro that returns helpful error.
+                 If False, creates macro that throws a clear error.
     """
     if enabled:
         return """
@@ -153,9 +153,16 @@ CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
 SELECT * FROM read_arrow('uv run ' || script || ' ' || args || ' |');
 """
     else:
+        # Use a subquery that throws an error when evaluated
+        # This ensures the error message is shown before column binding
         return """
 CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
-SELECT error('Python script datasources require enable_python_datasources=True in DuckDBConfig.');
+SELECT * FROM (
+    SELECT CASE
+        WHEN true THEN error('Python script datasources require enable_python_datasources=True in DuckDBConfig. '
+                            || 'Set this in your trilogy.conf under [engine.config] or pass DuckDBConfig(enable_python_datasources=True) to the executor.')
+    END as __error__
+) WHERE __error__ IS NOT NULL;
 """
 
 
@@ -252,6 +259,17 @@ class DuckDBDialect(BaseDialect):
         if address.type == AddressType.PARQUET:
             return f"read_parquet('{address.location}')"
         if address.type == AddressType.PYTHON_SCRIPT:
+            from trilogy.dialect.config import DuckDBConfig
+
+            if not (
+                isinstance(self.config, DuckDBConfig)
+                and self.config.enable_python_datasources
+            ):
+                raise ValueError(
+                    "Python script datasources require enable_python_datasources=True in DuckDBConfig. "
+                    "Set this in your trilogy.conf under [engine.config] or pass "
+                    "DuckDBConfig(enable_python_datasources=True) to the executor."
+                )
             return f"uv_run('{address.location}')"
         if address.type == AddressType.SQL:
             with open(address.location, "r") as f:

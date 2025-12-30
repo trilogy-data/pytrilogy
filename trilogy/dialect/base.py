@@ -1,6 +1,9 @@
 from collections import defaultdict
 from datetime import date, datetime
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Union
+
+if TYPE_CHECKING:
+    from trilogy.dialect.config import DialectConfig
 
 from jinja2 import Template
 
@@ -433,8 +436,13 @@ class BaseDialect:
     ALIAS_ORDER_REFERENCING_ALLOWED = True
     TABLE_NOT_FOUND_PATTERN: str | None = None  # Dialect-specific pattern to match
 
-    def __init__(self, rendering: Rendering | None = None):
+    def __init__(
+        self,
+        rendering: Rendering | None = None,
+        config: "DialectConfig | None" = None,
+    ):
         self.rendering = rendering or CONFIG.rendering
+        self.config = config
         self.used_map: dict[str, set[str]] = defaultdict(set)
 
     def render_source(self, address: Address) -> str:
