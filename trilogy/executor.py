@@ -93,9 +93,10 @@ class Executor(object):
         # TODO: make generic
         if self.dialect == Dialects.DATAFRAME:
             self.engine.setup(self.environment, self.connection)
-        # Setup Python datasources support for DuckDB
+        # Setup DuckDB extensions
         if self.dialect == Dialects.DUCK_DB:
             self._setup_duckdb_python_datasources()
+            self._setup_duckdb_gcs()
 
     def connect(self) -> EngineConnection:
         self.connection = self.engine.connect()
@@ -111,8 +112,23 @@ class Executor(object):
             isinstance(self.config, DuckDBConfig)
             and self.config.enable_python_datasources
         )
+        if not enabled:
+            return
         self.execute_raw_sql(get_python_datasource_setup_sql(enabled))
         self.connection.commit()
+
+    def _setup_duckdb_gcs(self) -> None:
+        """Setup DuckDB GCS extension with application default credentials."""
+        from trilogy.dialect.config import DuckDBConfig
+        from trilogy.dialect.duckdb import get_gcs_setup_sql
+
+        enabled = isinstance(self.config, DuckDBConfig) and self.config.enable_gcs
+        if not enabled:
+            return
+        sql = get_gcs_setup_sql(enabled)
+        if sql:
+            self.execute_raw_sql(sql)
+            self.connection.commit()
 
     def close(self):
         self.engine.dispose(close=True)

@@ -64,6 +64,9 @@ jobs:
           pip install pytest-cov
           # disable active adventureworks queries unless we get docker configured
           pytest tests/ --cov=./ -m "not adventureworks_execution" 
+        env:
+          GOOGLE_HMAC_SECRET: ${{ secrets.GOOGLE_HMAC_SECRET }}
+          GOOGLE_HMAC_KEY: ${{ secrets.GOOGLE_HMAC_KEY }}
       - name: Test after installing rich
         run: |
           # install rich and rerun CLI tests

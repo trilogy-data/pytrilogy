@@ -1,5 +1,6 @@
 from logging import INFO
 
+from tests.conftest import load_secret
 from trilogy import Dialects, Executor
 from trilogy.core.enums import DatasourceState
 from trilogy.hooks import DebuggingHook
@@ -110,8 +111,12 @@ overwrite gcs_export;
 
 
 def test_duckdb_gcs_persistence():
+    from trilogy.dialect.config import DuckDBConfig
 
-    exec = Dialects.DUCK_DB.default_executor()
+    load_secret("GOOGLE_HMAC_KEY")
+    load_secret("GOOGLE_HMAC_SECRET")
+    config = DuckDBConfig(enable_gcs=True)
+    exec = Dialects.DUCK_DB.default_executor(conf=config)
 
     text = """
 auto base <- unnest([1,2,3,4,5]);

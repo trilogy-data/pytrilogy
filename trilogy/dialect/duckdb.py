@@ -1,4 +1,5 @@
 import re
+from os import environ
 from typing import Any, Callable, Mapping
 
 from jinja2 import Template
@@ -155,6 +156,41 @@ SELECT * FROM read_arrow('uv run ' || script || ' ' || args || ' |');
         return """
 CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
 SELECT error('Python script datasources require enable_python_datasources=True in DuckDBConfig.');
+"""
+
+
+def get_gcs_setup_sql(enabled: bool) -> str:
+    """Return SQL to setup GCS extension with HMAC credentials from environment.
+
+    Args:
+        enabled: If True, installs httpfs and creates secret from env vars.
+                 If False, does nothing (GCS paths will fail naturally).
+
+    Environment variables:
+        GOOGLE_HMAC_KEY: GCS HMAC access key ID
+        GOOGLE_HMAC_SECRET: GCS HMAC secret key
+    """
+    if not enabled:
+        return ""
+
+    key_id = environ.get("GOOGLE_HMAC_KEY")
+    secret = environ.get("GOOGLE_HMAC_SECRET")
+
+    if not key_id or not secret:
+        raise ValueError(
+            "GCS support requires GOOGLE_HMAC_KEY and GOOGLE_HMAC_SECRET "
+            "environment variables to be set"
+        )
+
+    return f"""
+INSTALL httpfs;
+LOAD httpfs;
+
+CREATE OR REPLACE SECRET __trilogy_gcs_secret (
+    TYPE gcs,
+    KEY_ID '{key_id}',
+    SECRET '{secret}'
+);
 """
 
 
