@@ -137,7 +137,7 @@
     
     // copy statement
 
-    COPY_TYPE: "csv"i
+    COPY_TYPE: "csv"i | "parquet"i
 
     copy_statement: "copy"i "into"i COPY_TYPE string_lit "from"i select_statement
 

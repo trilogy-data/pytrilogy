@@ -433,6 +433,7 @@ class ShowCategory(Enum):
 
 class IOType(Enum):
     CSV = "csv"
+    PARQUET = "parquet"
 
     @classmethod
     def _missing_(cls, value):

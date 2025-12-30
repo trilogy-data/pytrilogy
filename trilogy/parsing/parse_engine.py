@@ -1735,14 +1735,19 @@ class ParseToObjects(Transformer):
         # if it's a relative path, look it up relative to current parsing directory
         if path.is_relative_to("."):
             path = Path(self.environment.working_path) / path
-        if not path.exists():
-            raise FileNotFoundError(
-                f"File path {path} does not exist on line {meta.line}"
-            )
+
         base = str(path.resolve().absolute())
         if path.suffix == ".sql":
+            if not path.exists():
+                raise FileNotFoundError(
+                    f"File path {path} does not exist on line {meta.line}"
+                )
             return File(path=base, type=AddressType.SQL)
         elif path.suffix == ".py":
+            if not path.exists():
+                raise FileNotFoundError(
+                    f"File path {path} does not exist on line {meta.line}"
+                )
             return File(path=base, type=AddressType.PYTHON_SCRIPT)
         elif path.suffix == ".csv":
             return File(path=base, type=AddressType.CSV)

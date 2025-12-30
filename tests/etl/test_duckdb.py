@@ -1,6 +1,6 @@
 from logging import INFO
 
-from trilogy import Executor
+from trilogy import Dialects, Executor
 from trilogy.core.enums import DatasourceState
 from trilogy.hooks import DebuggingHook
 
@@ -77,3 +77,51 @@ def test_simple_incremental_partition_persistence(executor: Executor):
         assert row.count > 0
         years += 1
     assert years == 1
+
+
+def test_duckdb_local_persistence():
+    from pathlib import Path
+
+    import pyarrow.parquet as pq
+
+    target = Path("./gcs_export.parquet")
+    if target.exists():
+        target.unlink()
+
+    exec = Dialects.DUCK_DB.default_executor()
+
+    text = """
+auto base <- unnest([1,2,3,4,5]);
+
+datasource gcs_export (
+base
+)
+file `./gcs_export.parquet`
+state unpublished;
+
+overwrite gcs_export;
+"""
+    exec.execute_text(text)
+
+    assert target.exists(), "parquet file was not created"
+    table = pq.read_table(target)
+    assert table.num_rows == 5
+    assert table.column("base").to_pylist() == [1, 2, 3, 4, 5]
+
+
+def test_duckdb_gcs_persistence():
+
+    exec = Dialects.DUCK_DB.default_executor()
+
+    text = """
+auto base <- unnest([1,2,3,4,5]);
+
+datasource gcs_export (
+base
+)
+file `gcs://trilogy_public_models/tests/gcs_export.parquet`
+state unpublished;
+
+overwrite gcs_export;
+"""
+    exec.execute_text(text)

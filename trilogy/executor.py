@@ -6,6 +6,7 @@ from sqlalchemy import text
 
 from trilogy.constants import MagicConstants, Rendering, logger
 from trilogy.core.enums import (
+    AddressType,
     CreateMode,
     FunctionType,
     Granularity,
@@ -261,11 +262,39 @@ class Executor(object):
         output = self.execute_raw_sql(sql, local_concepts=query.local_concepts)
         return output
 
+    def _address_type_to_io_type(self, addr_type: AddressType) -> IOType:
+        if addr_type == AddressType.PARQUET:
+            return IOType.PARQUET
+        elif addr_type == AddressType.CSV:
+            return IOType.CSV
+        raise NotImplementedError(f"File persist not supported for type {addr_type}")
+
     @execute_query.register
     def _(self, query: ProcessedQueryPersist) -> ResultProtocol | None:
-        sql = self.generator.compile_statement(query)
+        # Check if target is a file - convert to CopyStatement
+        addr = query.output_to.address
+        if addr.is_file:
+            io_type = self._address_type_to_io_type(addr.type)
+            copy_statement = ProcessedCopyStatement(
+                output_columns=query.output_columns,
+                ctes=query.ctes,
+                base=query.base,
+                hidden_columns=query.hidden_columns,
+                limit=query.limit,
+                order_by=query.order_by,
+                local_concepts=query.local_concepts,
+                locally_derived=query.locally_derived,
+                target=addr.location,
+                target_type=io_type,
+            )
+            self.execute_query(copy_statement)
+            if query.persist_mode == PersistMode.OVERWRITE:
+                self.environment.add_datasource(query.datasource)
+            return None
 
+        sql = self.generator.compile_statement(query)
         output = self.execute_raw_sql(sql, local_concepts=query.local_concepts)
+
         if query.persist_mode == PersistMode.OVERWRITE:
             self.environment.add_datasource(query.datasource)
         return output
@@ -273,20 +302,18 @@ class Executor(object):
     @execute_query.register
     def _(self, query: ProcessedCopyStatement) -> ResultProtocol | None:
         sql = self.generator.compile_statement(query)
-        output: ResultProtocol = self.execute_raw_sql(
-            sql, local_concepts=query.local_concepts
-        )
-        if query.target_type == IOType.CSV:
-            import csv
-
-            with open(query.target, "w", newline="", encoding="utf-8") as f:
-                outcsv = csv.writer(f)
-                outcsv.writerow(output.keys())
-                outcsv.writerows(output)
+        if self.dialect == Dialects.DUCK_DB:
+            if query.target_type == IOType.PARQUET:
+                copy_sql = f"COPY ({sql}) TO '{query.target}' (FORMAT PARQUET)"
+            elif query.target_type == IOType.CSV:
+                copy_sql = f"COPY ({sql}) TO '{query.target}' (FORMAT CSV, HEADER)"
+            else:
+                raise NotImplementedError(f"Unsupported IO Type {query.target_type}")
+            self.execute_raw_sql(copy_sql, local_concepts=query.local_concepts)
         else:
-            raise NotImplementedError(f"Unsupported IO Type {query.target_type}")
-        # now return the query we ran through IO
-        # TODO: instead return how many rows were written?
+            raise NotImplementedError(
+                f"COPY statement not supported for dialect {self.dialect}"
+            )
         return generate_result_set(
             query.output_columns,
             [self.generator.compile_statement(query)],
