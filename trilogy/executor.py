@@ -112,8 +112,7 @@ class Executor(object):
             isinstance(self.config, DuckDBConfig)
             and self.config.enable_python_datasources
         )
-        if not enabled:
-            return
+        # this we always run, because we create a mock function to error out if not enabled
         self.execute_raw_sql(get_python_datasource_setup_sql(enabled))
         self.connection.commit()
 
