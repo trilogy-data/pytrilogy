@@ -82,6 +82,7 @@ class CLIRuntimeParams:
     debug: bool = False
     config_path: PathlibPath | None = None
     execution_strategy: str = "eager_bfs"
+    env: tuple[str, ...] = ()
 
 
 def merge_runtime_config(

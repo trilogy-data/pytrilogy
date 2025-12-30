@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from tomllib import loads
@@ -17,6 +18,37 @@ from trilogy.dialect.enums import Dialects
 DEFAULT_PARALLELISM = 4
 
 
+def load_env_file(env_file_path: Path) -> dict[str, str]:
+    """Load environment variables from a .env file."""
+    env_vars: dict[str, str] = {}
+    if not env_file_path.exists():
+        raise FileNotFoundError(f"Environment file not found: {env_file_path}")
+
+    with open(env_file_path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip()
+            # Remove surrounding quotes if present
+            if (value.startswith('"') and value.endswith('"')) or (
+                value.startswith("'") and value.endswith("'")
+            ):
+                value = value[1:-1]
+            env_vars[key] = value
+    return env_vars
+
+
+def apply_env_vars(env_vars: dict[str, str]) -> None:
+    """Apply environment variables to os.environ."""
+    for key, value in env_vars.items():
+        os.environ[key] = value
+
+
 @dataclass
 class RuntimeConfig:
 
@@ -26,6 +58,7 @@ class RuntimeConfig:
     engine_dialect: Dialects | None = None
     engine_config: DialectConfig | None = None
     source_path: Path | None = None
+    env_files: list[Path] = field(default_factory=list)
 
 
 def load_config_file(path: Path) -> RuntimeConfig:
@@ -67,6 +100,14 @@ def load_config_file(path: Path) -> RuntimeConfig:
     else:
         engine_config = None
     setup: dict = config_data.get("setup", {})
+
+    # Parse env_file - can be a single string or list of strings
+    env_raw = engine_raw.get("env_file", [])
+    if isinstance(env_raw, str):
+        env_files = [path.parent / env_raw]
+    else:
+        env_files = [path.parent / p for p in env_raw]
+
     return RuntimeConfig(
         startup_trilogy=[path.parent / p for p in setup.get("trilogy", [])],
         startup_sql=[path.parent / p for p in setup.get("sql", [])],
@@ -74,4 +115,5 @@ def load_config_file(path: Path) -> RuntimeConfig:
         engine_dialect=engine,
         engine_config=engine_config,
         source_path=path,
+        env_files=env_files,
     )

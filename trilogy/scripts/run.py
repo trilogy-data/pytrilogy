@@ -36,10 +36,23 @@ def execute_script_for_run(
 @option(
     "--config", type=Path(exists=True), help="Path to trilogy.toml configuration file"
 )
+@option(
+    "--env",
+    "-e",
+    multiple=True,
+    help="Set environment variables as KEY=VALUE pairs",
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def run(
-    ctx, input, dialect: str | None, param, parallelism: int | None, config, conn_args
+    ctx,
+    input,
+    dialect: str | None,
+    param,
+    parallelism: int | None,
+    config,
+    env,
+    conn_args,
 ):
     """Execute a Trilogy script or query."""
     cli_params = CLIRuntimeParams(
@@ -51,6 +64,7 @@ def run(
         debug=ctx.obj["DEBUG"],
         config_path=PathlibPath(config) if config else None,
         execution_strategy="eager_bfs",
+        env=env,
     )
 
     try:
