@@ -8,7 +8,7 @@ dist/
 build/
 venv/
 .venv/
-.venv-1/
+.venv-*/
 __pycache__/
 
 .pytest_cache/
@@ -62,3 +62,5 @@ _preql_import_resolver/
 pglite_test.py
 
 # PERFORMANCE_ANALYSIS.md
+
+scratch.txt

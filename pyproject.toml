@@ -10,6 +10,10 @@ log_cli_level="INFO"
 line-length = 200
 lint.extend-select = ["I"]
 
+[tool.ruff.lint.per-file-ignores]
+# E402: Module level import not at top of file - needed for warning filter before imports
+"trilogy/__init__.py" = ["E402"]
+
 [project]
 name = "pytrilogy"
 description = "Declarative, typed query language that compiles to SQL."

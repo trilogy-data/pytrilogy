@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+
 from pytest import fixture
 
 from trilogy.core.enums import (
@@ -21,6 +24,23 @@ from trilogy.core.models.author import (
 from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import ColumnAssignment, Datasource
 from trilogy.core.models.environment import Environment
+
+
+def load_secret(key: str) -> str | None:
+    """Load a secret from .env.secrets file in the current working directory."""
+    secrets_path = Path.cwd() / ".env.secrets"
+
+    if secrets_path.exists():
+        with open(secrets_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith(f"{key}="):
+                    rval = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    os.environ[key] = rval
+                    return rval
+
+    # Fallback to environment variable
+    return os.getenv(key)
 
 
 @fixture(scope="session")

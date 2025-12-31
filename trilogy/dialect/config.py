@@ -46,11 +46,23 @@ class BigQueryConfig(DialectConfig):
 
 class DuckDBConfig(DialectConfig):
     def __init__(
-        self, path: str | None = None, enable_python_datasources: bool = False
+        self,
+        path: str | None = None,
+        enable_python_datasources: bool | None = None,
+        enable_gcs: bool | None = None,
     ):
         self.path = path
-        self.enable_python_datasources = enable_python_datasources
+        self._enable_python_datasources = enable_python_datasources
+        self._enable_gcs = enable_gcs
         self.guid = id(self)
+
+    @property
+    def enable_python_datasources(self) -> bool:
+        return self._enable_python_datasources or False
+
+    @property
+    def enable_gcs(self) -> bool:
+        return self._enable_gcs or False
 
     def connection_string(self) -> str:
         if not self.path:

@@ -10,7 +10,7 @@ pandas
 types-tabulate
 sqlalchemy-bigquery
 snowflake-sqlalchemy
-fakesnow==0.10.2
+fakesnow
 matplotlib
 tomli-w
 types-tabulate

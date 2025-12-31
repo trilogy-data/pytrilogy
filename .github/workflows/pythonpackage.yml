@@ -11,9 +11,10 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        os: [ubuntu-latest, windows-latest]
         python-version: ["3.11", "3.12", "3.13"]
     permissions:
       contents: 'read'
@@ -64,6 +65,9 @@ jobs:
           pip install pytest-cov
           # disable active adventureworks queries unless we get docker configured
           pytest tests/ --cov=./ -m "not adventureworks_execution" 
+        env:
+          GOOGLE_HMAC_SECRET: ${{ secrets.GOOGLE_HMAC_SECRET }}
+          GOOGLE_HMAC_KEY: ${{ secrets.GOOGLE_HMAC_KEY }}
       - name: Test after installing rich
         run: |
           # install rich and rerun CLI tests
@@ -77,11 +81,22 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          token: ${{ secrets.CODECOV_TOKEN }} # required
-      - name: Test package cli
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: ${{ matrix.os }}-py${{ matrix.python-version }}
+          name: ${{ matrix.os }}-py${{ matrix.python-version }}
+      - name: Test package cli (Linux)
+        if: runner.os != 'Windows'
         run: |
           python -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
           .venv/bin/python -m pip install .
           .venv/bin/trilogy --help
           .venv/bin/trilogy run "SELECT 1 + 1->test;" duckdb
+      - name: Test package cli (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          python -m venv .venv
+          .venv/Scripts/python -m pip install --upgrade pip
+          .venv/Scripts/python -m pip install .
+          .venv/Scripts/trilogy --help
+          .venv/Scripts/trilogy run "SELECT 1 + 1->test;" duckdb

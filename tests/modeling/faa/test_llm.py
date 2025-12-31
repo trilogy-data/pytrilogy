@@ -1,25 +1,10 @@
-import os
 from pathlib import Path
 
 import pytest
 
+from tests.conftest import load_secret
 from trilogy import Dialects, Environment
 from trilogy.ai import Provider, text_to_query
-
-
-def load_secret(key: str) -> str | None:
-    """Load a secret from .env.secrets file in the current working directory."""
-    secrets_path = Path.cwd() / ".env.secrets"
-
-    if secrets_path.exists():
-        with open(secrets_path, "r") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith(f"{key}="):
-                    return line.split("=", 1)[1].strip().strip('"').strip("'")
-
-    # Fallback to environment variable
-    return os.getenv(key)
 
 
 # load a model

@@ -1731,28 +1731,44 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def file(self, meta: Meta, args):
-        path = Path(args[0][1:-1])
-        # if it's a relative path, look it up relative to current parsing directory
-        if path.is_relative_to("."):
-            path = Path(self.environment.working_path) / path
-        if not path.exists():
-            raise FileNotFoundError(
-                f"File path {path} does not exist on line {meta.line}"
-            )
-        base = str(path.resolve().absolute())
-        if path.suffix == ".sql":
+        raw_path = args[0][1:-1]
+
+        # Cloud storage URLs should be used as-is without path resolution
+        cloud_prefixes = ("gcs://", "gs://", "s3://", "https://", "http://")
+        is_cloud = raw_path.startswith(cloud_prefixes)
+
+        if is_cloud:
+            base = raw_path
+            suffix = "." + raw_path.rsplit(".", 1)[-1] if "." in raw_path else ""
+        else:
+            path = Path(raw_path)
+            # if it's a relative path, look it up relative to current parsing directory
+            if path.is_relative_to("."):
+                path = Path(self.environment.working_path) / path
+            base = str(path.resolve().absolute())
+            suffix = path.suffix
+
+        def check_exists():
+            if not is_cloud and not Path(base).exists():
+                raise FileNotFoundError(
+                    f"File path {base} does not exist on line {meta.line}"
+                )
+
+        if suffix == ".sql":
+            check_exists()
             return File(path=base, type=AddressType.SQL)
-        elif path.suffix == ".py":
+        elif suffix == ".py":
+            check_exists()
             return File(path=base, type=AddressType.PYTHON_SCRIPT)
-        elif path.suffix == ".csv":
+        elif suffix == ".csv":
             return File(path=base, type=AddressType.CSV)
-        elif path.suffix == ".tsv":
+        elif suffix == ".tsv":
             return File(path=base, type=AddressType.TSV)
-        elif path.suffix == ".parquet":
+        elif suffix == ".parquet":
             return File(path=base, type=AddressType.PARQUET)
         else:
             raise ParseError(
-                f"Unsupported file type {path.suffix} for path {path} on line {meta.line}"
+                f"Unsupported file type {suffix} for path {raw_path} on line {meta.line}"
             )
 
     def where(self, args):

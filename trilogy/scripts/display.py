@@ -167,7 +167,13 @@ def format_duration(duration):
         return f"{minutes}m {seconds:.2f}s"
 
 
-def show_execution_info(input_type: str, input_name: str, dialect: str, debug: bool):
+def show_execution_info(
+    input_type: str,
+    input_name: str,
+    dialect: str,
+    debug: bool,
+    config_path: Optional[str] = None,
+):
     """Display execution information in a clean format."""
     if RICH_AVAILABLE and console is not None:
         info_text = (
@@ -175,12 +181,15 @@ def show_execution_info(input_type: str, input_name: str, dialect: str, debug: b
             f"Dialect: [cyan]{dialect}[/cyan]\n"
             f"Debug: {'enabled' if debug else 'disabled'}"
         )
+        if config_path:
+            info_text += f"\nConfig: [dim]{config_path}[/dim]"
         panel = Panel.fit(info_text, style="blue", title="Execution Info")
         console.print(panel)
     else:
-        print_info(
-            f"Executing {input_type}: {input_name} | Dialect: {dialect} | Debug: {debug}"
-        )
+        msg = f"Executing {input_type}: {input_name} | Dialect: {dialect} | Debug: {debug}"
+        if config_path:
+            msg += f" | Config: {config_path}"
+        print_info(msg)
 
 
 def show_environment_params(env_params: dict):
@@ -403,6 +412,14 @@ def show_parallel_execution_start(
 
 def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None:
     """Display parallel execution summary."""
+    from trilogy.scripts.common import ExecutionStats
+
+    # Aggregate stats from all results
+    total_stats = ExecutionStats()
+    for result in summary.results:
+        if result.stats:
+            total_stats = total_stats + result.stats
+
     if RICH_AVAILABLE and console is not None:
         # Summary table
         table = Table(title="Execution Summary", show_header=False)
@@ -413,6 +430,14 @@ def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None
         table.add_row("Successful", str(summary.successful))
         table.add_row("Failed", str(summary.failed))
         table.add_row("Total Duration", f"{summary.total_duration:.2f}s")
+
+        # Add aggregated stats
+        if total_stats.update_count > 0:
+            table.add_row("Datasources Updated", str(total_stats.update_count))
+        if total_stats.validate_count > 0:
+            table.add_row("Datasources Validated", str(total_stats.validate_count))
+        if total_stats.persist_count > 0:
+            table.add_row("Tables Persisted", str(total_stats.persist_count))
 
         console.print(table)
 
@@ -430,6 +455,14 @@ def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None
         print(f"  Successful: {summary.successful}")
         print(f"  Failed: {summary.failed}")
         print(f"  Total Duration: {summary.total_duration:.2f}s")
+
+        # Add aggregated stats
+        if total_stats.update_count > 0:
+            print(f"  Datasources Updated: {total_stats.update_count}")
+        if total_stats.validate_count > 0:
+            print(f"  Datasources Validated: {total_stats.validate_count}")
+        if total_stats.persist_count > 0:
+            print(f"  Tables Persisted: {total_stats.persist_count}")
 
         if summary.failed > 0:
             print("\nFailed Scripts:")

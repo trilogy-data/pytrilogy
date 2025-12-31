@@ -1,4 +1,6 @@
 import re
+from os import environ
+from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from jinja2 import Template
@@ -134,27 +136,112 @@ FUNCTION_GRAIN_MATCH_MAP = {
 DATATYPE_MAP: dict[DataType, str] = {}
 
 
-def get_python_datasource_setup_sql(enabled: bool) -> str:
+def get_python_datasource_setup_sql(enabled: bool, is_windows: bool = False) -> str:
     """Return SQL to setup the uv_run macro for Python script datasources.
+    Inspired by: https://sidequery.dev/blog/uv-run-duckdb
 
     Args:
         enabled: If True, installs extensions and creates working macro.
-                 If False, creates macro that returns helpful error.
+                 If False, creates macro that throws a clear error.
+        is_windows: If True, uses temp file workaround for shellfs pipe bug.
     """
     if enabled:
-        return """
+        if is_windows:
+            import atexit
+            import os
+            import tempfile
+
+            # Windows workaround: shellfs has a bug with Arrow IPC pipes on Windows.
+            # We use a temp file approach: run script to file, then read file.
+            # The read_json forces the shell command to complete before read_arrow.
+            # Using getvariable() defers file path resolution until execution.
+            # Include PID in filename to avoid conflicts between parallel processes.
+            # Use Path.resolve() to avoid 8.3 short names (e.g. RUNNER~1) on CI.
+
+            temp_file = (
+                str(Path(tempfile.gettempdir()).resolve()).replace("\\", "/")
+                + f"/trilogy_uv_run_{os.getpid()}.arrow"
+            )
+
+            def cleanup_temp_file() -> None:
+                try:
+                    os.unlink(temp_file)
+                except OSError:
+                    pass
+
+            atexit.register(cleanup_temp_file)
+            return f"""
+INSTALL shellfs FROM community;
+INSTALL arrow FROM community;
+LOAD shellfs;
+LOAD arrow;
+
+SET VARIABLE __trilogy_uv_temp_file = '{temp_file}';
+
+CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
+WITH __build AS (
+    SELECT a.name
+    FROM read_json('uv run --quiet ' || script || ' ' || args || ' > {temp_file} && echo {{"name": "done"}} |') AS a
+    LIMIT 1
+)
+SELECT * FROM read_arrow(getvariable('__trilogy_uv_temp_file'));
+"""
+        else:
+            return """
 INSTALL shellfs FROM community;
 INSTALL arrow FROM community;
 LOAD shellfs;
 LOAD arrow;
 
 CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
-SELECT * FROM read_arrow('uv run ' || script || ' ' || args || ' |');
+SELECT * FROM read_arrow('uv run --quiet ' || script || ' ' || args || ' |');
 """
     else:
+        # Use a subquery that throws an error when evaluated
+        # This ensures the error message is shown before column binding
         return """
 CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
-SELECT error('Python script datasources require enable_python_datasources=True in DuckDBConfig.');
+SELECT * FROM (
+    SELECT CASE
+        WHEN true THEN error('Python script datasources require enable_python_datasources=True in DuckDBConfig. '
+                            || 'Set this in your trilogy.conf under [engine.config] or pass DuckDBConfig(enable_python_datasources=True) to the executor.')
+    END as __error__
+) WHERE __error__ IS NOT NULL;
+"""
+
+
+def get_gcs_setup_sql(enabled: bool) -> str:
+    """Return SQL to setup GCS extension with HMAC credentials from environment.
+
+    Args:
+        enabled: If True, installs httpfs and creates secret from env vars.
+                 If False, does nothing (GCS paths will fail naturally).
+
+    Environment variables:
+        GOOGLE_HMAC_KEY: GCS HMAC access key ID
+        GOOGLE_HMAC_SECRET: GCS HMAC secret key
+    """
+    if not enabled:
+        return ""
+
+    key_id = environ.get("GOOGLE_HMAC_KEY")
+    secret = environ.get("GOOGLE_HMAC_SECRET")
+
+    if not key_id or not secret:
+        raise ValueError(
+            "GCS support requires GOOGLE_HMAC_KEY and GOOGLE_HMAC_SECRET "
+            "environment variables to be set"
+        )
+
+    return f"""
+INSTALL httpfs;
+LOAD httpfs;
+
+CREATE OR REPLACE SECRET __trilogy_gcs_secret (
+    TYPE gcs,
+    KEY_ID '{key_id}',
+    SECRET '{secret}'
+);
 """
 
 
@@ -216,6 +303,17 @@ class DuckDBDialect(BaseDialect):
         if address.type == AddressType.PARQUET:
             return f"read_parquet('{address.location}')"
         if address.type == AddressType.PYTHON_SCRIPT:
+            from trilogy.dialect.config import DuckDBConfig
+
+            if not (
+                isinstance(self.config, DuckDBConfig)
+                and self.config.enable_python_datasources
+            ):
+                raise ValueError(
+                    "Python script datasources require enable_python_datasources=True in DuckDBConfig. "
+                    "Set this in your trilogy.conf under [engine.config] or pass "
+                    "DuckDBConfig(enable_python_datasources=True) to the executor."
+                )
             return f"uv_run('{address.location}')"
         if address.type == AddressType.SQL:
             with open(address.location, "r") as f:

@@ -5,24 +5,20 @@ import networkx as nx
 
 from trilogy.hooks.base_hook import BaseHook
 
-if not environ.get("TCL_LIBRARY"):
-    minor = sys.version_info.minor
-    if minor == 13:
-        environ["TCL_LIBRARY"] = r"C:\Program Files\Python313\tcl\tcl8.6"
-    elif minor == 12:
-        environ["TCL_LIBRARY"] = r"C:\Program Files\Python312\tcl\tcl8.6"
-    else:
-        pass
-
 
 class GraphHook(BaseHook):
     def __init__(self):
         super().__init__()
-        try:
-            pass
-        except ImportError:
-            raise ImportError("GraphHook requires matplotlib and scipy to be installed")
         # https://github.com/python/cpython/issues/125235#issuecomment-2412948604
+        # Only set TCL_LIBRARY when GraphHook is instantiated (needs matplotlib/tkinter)
+        if sys.platform == "win32" and not environ.get("TCL_LIBRARY"):
+            import pathlib
+
+            # Derive TCL path from Python installation directory
+            python_dir = pathlib.Path(sys.executable).parent
+            tcl_path = python_dir / "tcl" / "tcl8.6"
+            if tcl_path.exists():
+                environ["TCL_LIBRARY"] = str(tcl_path)
 
     def query_graph_built(
         self,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from io import StringIO
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -11,13 +12,22 @@ import networkx as nx
 from click.exceptions import Exit
 
 from trilogy import Executor
-from trilogy.scripts.common import ExecutionStats
+from trilogy.scripts.common import CLIRuntimeParams, ExecutionStats
 from trilogy.scripts.dependency import (
     DependencyResolver,
     DependencyStrategy,
     ScriptNode,
     create_script_nodes,
 )
+
+
+class ExecutionMode(Enum):
+    """Mode of script execution."""
+
+    RUN = "run"
+    INTEGRATION = "integration"
+    UNIT = "unit"
+    REFRESH = "refresh"
 
 
 @dataclass
@@ -499,23 +509,10 @@ def run_single_script_execution(
     param: tuple[str, ...],
     conn_args,
     debug: bool,
-    execution_mode: str,
+    execution_mode: ExecutionMode,
     config,
 ) -> None:
-    """
-    Run single script execution with polished multi-statement progress display.
-
-    Args:
-        text: List of script contents
-        directory: Working directory
-        input_type: Type of input (file, query, etc.)
-        input_name: Name of the input
-        edialect: Dialect to use
-        param: Environment parameters
-        conn_args: Connection arguments
-        debug: Debug mode flag
-        execution_mode: One of 'run', 'integration', or 'unit'
-    """
+    """Run single script execution with polished multi-statement progress display."""
     from trilogy.scripts.common import (
         create_executor,
         handle_execution_exception,
@@ -534,7 +531,8 @@ def run_single_script_execution(
         execute_queries_with_progress,
     )
 
-    show_execution_info(input_type, input_name, edialect.value, debug)
+    config_path_str = str(config.source_path) if config.source_path else None
+    show_execution_info(input_type, input_name, edialect.value, debug, config_path_str)
 
     exec = create_executor(param, directory, conn_args, edialect, debug, config)
     base = files[0]
@@ -544,7 +542,7 @@ def run_single_script_execution(
         with open(base, "r") as raw:
             text = [raw.read()]
 
-    if execution_mode == "run":
+    if execution_mode == ExecutionMode.RUN:
         # Parse all scripts and collect queries
         queries = []
         try:
@@ -578,19 +576,19 @@ def run_single_script_execution(
         except Exception as e:
             handle_execution_exception(e, debug=debug)
 
-    elif execution_mode == "integration":
+    elif execution_mode == ExecutionMode.INTEGRATION:
         for script in text:
             exec.parse_text(script)
         validate_datasources(exec, mock=False, quiet=False)
         print_success("Integration tests passed successfully!")
 
-    elif execution_mode == "unit":
+    elif execution_mode == ExecutionMode.UNIT:
         for script in text:
             exec.parse_text(script)
         validate_datasources(exec, mock=True, quiet=False)
         print_success("Unit tests passed successfully!")
 
-    elif execution_mode == "refresh":
+    elif execution_mode == ExecutionMode.REFRESH:
         from trilogy.execution.state.state_store import BaseStateStore
         from trilogy.scripts.display import print_info, print_warning
 
@@ -627,19 +625,15 @@ def get_execution_strategy(strategy_name: str):
 
 
 def run_parallel_execution(
-    cli_params,
-    execution_fn,
-    execution_mode: str = "run",
+    cli_params: CLIRuntimeParams,
+    execution_fn: Callable[[Executor, ScriptNode, bool], ExecutionStats],
+    execution_mode: ExecutionMode = ExecutionMode.RUN,
 ) -> None:
     """
     Run parallel execution for directory inputs, or single-script execution
     with polished progress display for single files/inline queries.
-
-    Args:
-        cli_params: CLI runtime parameters containing all execution settings
-        execution_fn: Function to execute each script (exec, node, quiet) -> None
-        execution_mode: One of 'run', 'integration', or 'unit'
     """
+    from trilogy.execution.config import apply_env_vars, load_env_file
     from trilogy.scripts.common import (
         create_executor_for_script,
         merge_runtime_config,
@@ -654,6 +648,7 @@ def run_parallel_execution(
         show_parallel_execution_summary,
         show_script_result,
     )
+    from trilogy.scripts.environment import parse_env_vars
 
     # Check if input is a directory (parallel execution)
     pathlib_input = Path(cli_params.input)
@@ -661,6 +656,16 @@ def run_parallel_execution(
         cli_params.input, cli_params.config_path
     )
     files = list(files_iter)
+
+    # Load environment variables from config env_files first
+    for env_file in config.env_files:
+        env_vars = load_env_file(env_file)
+        apply_env_vars(env_vars)
+
+    # Then apply CLI --env options (these take precedence)
+    if cli_params.env:
+        cli_env_vars = parse_env_vars(cli_params.env)
+        apply_env_vars(cli_env_vars)
 
     # Merge CLI params with config file
     edialect, parallelism = merge_runtime_config(cli_params, config)
@@ -681,7 +686,10 @@ def run_parallel_execution(
         )
         return
     # Multiple files - use parallel execution
-    show_execution_info(input_type, input_name, edialect.value, cli_params.debug)
+    config_path_str = str(config.source_path) if config.source_path else None
+    show_execution_info(
+        input_type, input_name, edialect.value, cli_params.debug, config_path_str
+    )
 
     # Get execution strategy
     strategy = get_execution_strategy(cli_params.execution_strategy)
@@ -721,7 +729,7 @@ def run_parallel_execution(
 
     # Wrap execution_fn to pass quiet=True for parallel execution and return stats
     def quiet_execution_fn(exec: Executor, node: ScriptNode) -> ExecutionStats | None:
-        return execution_fn(exec, node, quiet=True)
+        return execution_fn(exec, node, True)
 
     # Run parallel execution
     summary = parallel_exec.execute(

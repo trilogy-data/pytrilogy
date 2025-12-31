@@ -1,5 +1,8 @@
+import sys
 from datetime import date, datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
+
+import pytest
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX
 from trilogy.core.enums import (
@@ -649,6 +652,10 @@ def test_render_parenthetical():
     assert test == "(user_id)"
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 12),
+    reason="PurePosixPath(WindowsPath(...)) behavior differs on 3.11 (python/cpython#103631)",
+)
 def test_render_import():
     for obj in [ImportStatement, Import]:
         base = Path("/path/to/file.preql")

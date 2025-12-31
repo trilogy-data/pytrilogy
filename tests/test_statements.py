@@ -70,6 +70,32 @@ copy into csv '{target}' from select x -> test order by test asc;
     assert target.exists(), "csv file was not created"
 
 
+def test_io_statement_parquet():
+    import pyarrow.parquet as pq
+
+    target = Path(__file__).parent / "test_io_statement.parquet"
+    if target.exists():
+        target.unlink()
+    text = f"""const array <- [1,2,3,4];
+
+auto x <- unnest(array);
+
+copy into parquet '{target}' from select x -> test order by test asc;
+"""
+    exec = Dialects.DUCK_DB.default_executor()
+    results = exec.parse_text(text)
+    assert exec.environment.concepts["x"].lineage.operator == FunctionType.UNNEST
+    assert isinstance(results[-1], ProcessedCopyStatement)
+    for z in results:
+        exec.execute_query(z)
+    assert target.exists(), "parquet file was not created"
+    # verify the parquet file contents
+    table = pq.read_table(target)
+    assert table.num_rows == 4
+    assert table.column_names == ["test"]
+    assert table.column("test").to_pylist() == [1, 2, 3, 4]
+
+
 def test_datasource_where():
     text = """key user_id int metadata(description="the description");
 property user_id.display_name string metadata(description="The display name ");
