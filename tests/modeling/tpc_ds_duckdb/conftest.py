@@ -1,9 +1,9 @@
+import os
 from logging import INFO
 from pathlib import Path
 
 import pytest
 
-from tests.modeling.tpc_ds_duckdb.analyze_test_results import analyze
 from trilogy import Dialects, Executor
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.config import DuckDBConfig
@@ -44,5 +44,8 @@ def engine():
 def my_fixture():
     # setup_stuff
     yield
-    # teardown_stuff
-    analyze()
+    # teardown_stuff - skip on CI (no display/tkinter available)
+    if not os.environ.get("CI"):
+        from tests.modeling.tpc_ds_duckdb.analyze_test_results import analyze
+
+        analyze()
