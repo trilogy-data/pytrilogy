@@ -21,12 +21,17 @@ def fibonacci(n: int) -> list[int]:
 
 
 def emit(table: pa.Table) -> None:
+
+    sys.stdout.flush()
+    sys.stderr.flush()
     with pa.ipc.new_stream(sys.stdout.buffer, table.schema) as writer:
         writer.write_table(table)
 
+    sys.stdout.buffer.flush()
+
 
 if __name__ == "__main__":
-    n = 20  # Keep small to avoid int overflow in pyarrow
+    n = 25  # Keep small to avoid int overflow in pyarrow
     fibs = fibonacci(n)
     table = pa.table({"index": list(range(1, n + 1)), "fibonacci": fibs})
     emit(table)

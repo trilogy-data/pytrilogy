@@ -141,12 +141,27 @@ def get_python_datasource_setup_sql(enabled: bool) -> str:
         enabled: If True, installs extensions and creates working macro.
                  If False, creates macro that returns helpful error.
     """
+    import os
+    import sys
+
     if enabled:
-        return """
+        if sys.platform == "win32":
+            # On Windows, observed issue where pipes
+            # are closed prematurely, causing "not enough data to deserialize" errors.
+            # We skip shellfs entirely and handle it in render_source instead.
+            return """
+INSTALL nanoarrow FROM community;
+LOAD nanoarrow;
+"""
+        else:
+            # On Unix/Linux/Mac, use direct pipe (more efficient)
+            # Opt out of Query.Farm telemetry before loading shellfs
+            os.environ["QUERY_FARM_TELEMETRY_OPTOUT"] = "1"
+            return """
 INSTALL shellfs FROM community;
-INSTALL arrow FROM community;
+INSTALL nanoarrow FROM community;
 LOAD shellfs;
-LOAD arrow;
+LOAD nanoarrow;
 
 CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
 SELECT * FROM read_arrow('uv run ' || script || ' ' || args || ' |');
@@ -216,7 +231,40 @@ class DuckDBDialect(BaseDialect):
         if address.type == AddressType.PARQUET:
             return f"read_parquet('{address.location}')"
         if address.type == AddressType.PYTHON_SCRIPT:
-            return f"uv_run('{address.location}')"
+            import sys
+
+            if sys.platform == "win32":
+                # On Windows, shellfs has a bug with Arrow IPC pipes
+                # Generate temp file, execute script to write to it, then read it
+                import subprocess
+                import tempfile
+
+                with tempfile.NamedTemporaryFile(
+                    mode="wb", suffix=".arrow", delete=False
+                ) as tmp:
+                    temp_path = tmp.name
+
+                try:
+                    # Execute the script and capture output to temp file
+                    result = subprocess.run(
+                        ["uv", "run", address.location],
+                        capture_output=True,
+                        check=True,
+                    )
+                    with open(temp_path, "wb") as f:
+                        f.write(result.stdout)
+
+                    # Return read_arrow call with the temp file path
+                    # Use forward slashes for DuckDB compatibility
+                    escaped_path = temp_path.replace("\\", "/")
+                    return f"read_arrow('{escaped_path}')"
+                except subprocess.CalledProcessError as e:
+                    raise RuntimeError(
+                        f"Failed to execute Python script {address.location}: {e.stderr.decode()}"
+                    )
+            else:
+                # On Unix/Linux/Mac, use the uv_run macro with pipes
+                return f"uv_run('{address.location}')"
         if address.type == AddressType.SQL:
             with open(address.location, "r") as f:
                 sql_content = f.read().strip()
