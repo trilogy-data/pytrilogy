@@ -1,5 +1,6 @@
 import re
 from os import environ
+from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from jinja2 import Template
@@ -156,7 +157,6 @@ def get_python_datasource_setup_sql(enabled: bool, is_windows: bool = False) -> 
             # Using getvariable() defers file path resolution until execution.
             # Include PID in filename to avoid conflicts between parallel processes.
             # Use Path.resolve() to avoid 8.3 short names (e.g. RUNNER~1) on CI.
-            from pathlib import Path
 
             temp_file = (
                 str(Path(tempfile.gettempdir()).resolve()).replace("\\", "/")
