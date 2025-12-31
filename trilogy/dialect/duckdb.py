@@ -135,22 +135,63 @@ FUNCTION_GRAIN_MATCH_MAP = {
 DATATYPE_MAP: dict[DataType, str] = {}
 
 
-def get_python_datasource_setup_sql(enabled: bool) -> str:
+def get_python_datasource_setup_sql(enabled: bool, is_windows: bool = False) -> str:
     """Return SQL to setup the uv_run macro for Python script datasources.
+    Inspired by: https://sidequery.dev/blog/uv-run-duckdb
 
     Args:
         enabled: If True, installs extensions and creates working macro.
                  If False, creates macro that throws a clear error.
+        is_windows: If True, uses temp file workaround for shellfs pipe bug.
     """
     if enabled:
-        return """
+        if is_windows:
+            import atexit
+            import os
+            import tempfile
+
+            # Windows workaround: shellfs has a bug with Arrow IPC pipes on Windows.
+            # We use a temp file approach: run script to file, then read file.
+            # The read_json forces the shell command to complete before read_arrow.
+            # Using getvariable() defers file path resolution until execution.
+            # Include PID in filename to avoid conflicts between parallel processes.
+            temp_file = (
+                tempfile.gettempdir().replace("\\", "/")
+                + f"/trilogy_uv_run_{os.getpid()}.arrow"
+            )
+
+            def cleanup_temp_file() -> None:
+                try:
+                    os.unlink(temp_file)
+                except OSError:
+                    pass
+
+            atexit.register(cleanup_temp_file)
+            return f"""
+INSTALL shellfs FROM community;
+INSTALL arrow FROM community;
+LOAD shellfs;
+LOAD arrow;
+
+SET VARIABLE __trilogy_uv_temp_file = '{temp_file}';
+
+CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
+WITH __build AS (
+    SELECT a.name
+    FROM read_json('uv run --quiet ' || script || ' ' || args || ' > {temp_file} && echo {{"name": "done"}} |') AS a
+    LIMIT 1
+)
+SELECT * FROM read_arrow(getvariable('__trilogy_uv_temp_file'));
+"""
+        else:
+            return """
 INSTALL shellfs FROM community;
 INSTALL arrow FROM community;
 LOAD shellfs;
 LOAD arrow;
 
 CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
-SELECT * FROM read_arrow('uv run ' || script || ' ' || args || ' |');
+SELECT * FROM read_arrow('uv run --quiet ' || script || ' ' || args || ' |');
 """
     else:
         # Use a subquery that throws an error when evaluated

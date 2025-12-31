@@ -105,6 +105,8 @@ class Executor(object):
 
     def _setup_duckdb_python_datasources(self) -> None:
         """Setup DuckDB macro for Python script datasources."""
+        import sys
+
         from trilogy.dialect.config import DuckDBConfig
         from trilogy.dialect.duckdb import get_python_datasource_setup_sql
 
@@ -112,9 +114,8 @@ class Executor(object):
             isinstance(self.config, DuckDBConfig)
             and self.config.enable_python_datasources
         )
-        if not enabled:
-            return
-        self.execute_raw_sql(get_python_datasource_setup_sql(enabled))
+        is_windows = sys.platform == "win32"
+        self.execute_raw_sql(get_python_datasource_setup_sql(enabled, is_windows))
         self.connection.commit()
 
     def _setup_duckdb_gcs(self) -> None:

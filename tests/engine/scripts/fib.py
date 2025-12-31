@@ -26,7 +26,7 @@ def emit(table: pa.Table) -> None:
 
 
 if __name__ == "__main__":
-    n = 20  # Keep small to avoid int overflow in pyarrow
+    n = 25  # Keep small to avoid int overflow in pyarrow
     fibs = fibonacci(n)
     table = pa.table({"index": list(range(1, n + 1)), "fibonacci": fibs})
     emit(table)
