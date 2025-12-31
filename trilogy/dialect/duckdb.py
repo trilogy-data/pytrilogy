@@ -155,8 +155,11 @@ def get_python_datasource_setup_sql(enabled: bool, is_windows: bool = False) -> 
             # The read_json forces the shell command to complete before read_arrow.
             # Using getvariable() defers file path resolution until execution.
             # Include PID in filename to avoid conflicts between parallel processes.
+            # Use Path.resolve() to avoid 8.3 short names (e.g. RUNNER~1) on CI.
+            from pathlib import Path
+
             temp_file = (
-                tempfile.gettempdir().replace("\\", "/")
+                str(Path(tempfile.gettempdir()).resolve()).replace("\\", "/")
                 + f"/trilogy_uv_run_{os.getpid()}.arrow"
             )
 
