@@ -91,16 +91,14 @@ def create_app(app, engine: str, directory_path: PathlibPath, host: str, port: i
     return app
 
 
-@argument("directory", type=Path(exists=True, file_okay=False, dir_okay=True))
+@argument("path", type=Path(exists=True, file_okay=True, dir_okay=True))
 @argument("engine", type=str, required=False, default="generic")
 @option("--port", "-p", default=8100, help="Port to run the server on")
 @option("--host", "-h", default="0.0.0.0", help="Host to bind the server to")
 @option("--timeout", "-t", default=None, type=float, help="Shutdown after N seconds")
 @pass_context
-def serve(
-    ctx, directory: str, engine: str, port: int, host: str, timeout: float | None
-):
-    """Start a FastAPI server to expose Trilogy models from a directory."""
+def serve(ctx, path: str, engine: str, port: int, host: str, timeout: float | None):
+    """Start a FastAPI server to expose Trilogy models from a directory or file."""
     if not check_fastapi_available():
         print(
             "Error: FastAPI and uvicorn are required for the serve command.\n"
@@ -114,12 +112,78 @@ def serve(
 
     from trilogy import __version__
 
-    directory_path = PathlibPath(directory).resolve()
+    path_obj = PathlibPath(path).resolve()
+
+    # Determine directory and target file
+    if path_obj.is_file():
+        directory_path = path_obj.parent
+        target_file = path_obj
+    else:
+        directory_path = path_obj
+        target_file = None
+
+    # Load trilogy.toml to get engine dialect if not explicitly provided
+    from trilogy.execution.config import load_config_file
+    from trilogy.scripts.common import find_trilogy_config
+
+    config_path = find_trilogy_config(directory_path)
+    if config_path and engine == "generic":
+        try:
+            runtime_config = load_config_file(config_path)
+            if runtime_config.engine_dialect:
+                engine = runtime_config.engine_dialect.value
+        except Exception:
+            pass
+
     # Use localhost instead of 0.0.0.0 in URLs so they resolve properly
+    from trilogy.scripts.serve_helpers import (
+        find_trilogy_files,
+        get_relative_model_name,
+        get_safe_model_name,
+    )
 
     app = FastAPI(title="Trilogy Model Server", version=__version__)
 
     create_app(app, engine, directory_path, host, port)
+
+    # Generate Trilogy Studio URL
+    url_host = "localhost" if host == "0.0.0.0" else host
+    base_url = (
+        f"http://{url_host}:{port}" if port not in (80, 443) else f"http://{url_host}"
+    )
+
+    # Find target file if not specified
+    if target_file is None:
+        trilogy_files = find_trilogy_files(directory_path)
+        if trilogy_files:
+            target_file = trilogy_files[0]
+
+    if target_file:
+        # The model URL uses the directory name (not the file name)
+        model_safe_name = get_safe_model_name(directory_path.name)
+        model_url = f"{base_url}/models/{model_safe_name}.json"
+        store_url = base_url
+
+        # The asset name is the specific file within the model
+        asset_name = get_relative_model_name(target_file, directory_path)
+
+        # URL-encode the parameters
+        from urllib.parse import quote
+
+        studio_url = (
+            f"https://trilogydata.dev/trilogy-studio-core/#"
+            f"import={quote(model_url)}&"
+            f"assetType=trilogy&"
+            f"assetName={quote(asset_name)}&"
+            f"modelName={quote(directory_path.name)}&"
+            f"connection={quote(engine)}&"
+            f"store={quote(store_url)}"
+        )
+
+        print("\n" + "=" * 80)
+        print("Trilogy Studio Link:")
+        print(studio_url)
+        print("=" * 80 + "\n")
 
     if timeout is not None:
         import threading
