@@ -2,8 +2,17 @@
 
 import sys
 from pathlib import Path as PathlibPath
+from urllib.parse import quote
 
 from click import Path, argument, option, pass_context
+
+from trilogy.execution.config import load_config_file
+from trilogy.scripts.common import find_trilogy_config
+from trilogy.scripts.serve_helpers import (
+    find_trilogy_files,
+    get_relative_model_name,
+    get_safe_model_name,
+)
 
 
 def check_fastapi_available() -> bool:
@@ -123,9 +132,6 @@ def serve(ctx, path: str, engine: str, port: int, host: str, timeout: float | No
         target_file = None
 
     # Load trilogy.toml to get engine dialect if not explicitly provided
-    from trilogy.execution.config import load_config_file
-    from trilogy.scripts.common import find_trilogy_config
-
     config_path = find_trilogy_config(directory_path)
     if config_path and engine == "generic":
         try:
@@ -136,12 +142,6 @@ def serve(ctx, path: str, engine: str, port: int, host: str, timeout: float | No
             pass
 
     # Use localhost instead of 0.0.0.0 in URLs so they resolve properly
-    from trilogy.scripts.serve_helpers import (
-        find_trilogy_files,
-        get_relative_model_name,
-        get_safe_model_name,
-    )
-
     app = FastAPI(title="Trilogy Model Server", version=__version__)
 
     create_app(app, engine, directory_path, host, port)
@@ -168,8 +168,6 @@ def serve(ctx, path: str, engine: str, port: int, host: str, timeout: float | No
         asset_name = get_relative_model_name(target_file, directory_path)
 
         # URL-encode the parameters
-        from urllib.parse import quote
-
         studio_url = (
             f"https://trilogydata.dev/trilogy-studio-core/#"
             f"import={quote(model_url)}&"
