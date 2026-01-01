@@ -325,6 +325,12 @@ class Executor(object):
     def _(self, query: ProcessedCopyStatement) -> ResultProtocol | None:
         sql = self.generator.compile_statement(query)
         if self.dialect == Dialects.DUCK_DB:
+            # Check for GCS write credentials if target is a GCS path
+            if query.target.startswith("gcs://") or query.target.startswith("gs://"):
+                from trilogy.dialect.duckdb import check_gcs_write_credentials
+
+                check_gcs_write_credentials()
+
             if query.target_type == IOType.PARQUET:
                 copy_sql = f"COPY ({sql}) TO '{query.target}' (FORMAT PARQUET)"
             elif query.target_type == IOType.CSV:
