@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, List, Optional
 import networkx as nx
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation
+from trilogy.core.enums import AddressType, Derivation
 from trilogy.core.graph_models import (
     ReferenceGraph,
     concept_to_node,
@@ -18,6 +18,7 @@ from trilogy.core.models.build import (
     BuildGrain,
     BuildUnionDatasource,
     BuildWhereClause,
+    Address,
     CanonicalBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -75,6 +76,72 @@ def get_graph_grains(g: ReferenceGraph) -> dict[str, list[str]]:
             lambda x, y: x.union(y.grain.components), flookup, base  # type: ignore
         )
     return grain_length
+
+
+def get_materialization_score(address: Address| str) -> int:
+    """Score datasource by materialization level. Lower is better (more materialized).
+
+    - 0: TABLE - fully materialized in the database
+    - 1: Static files (CSV, TSV, PARQUET) - data files that need to be read
+    - 2: Dynamic sources (QUERY, SQL) - queries that need to be executed
+    - 3: Executable scripts (PYTHON_SCRIPT) - scripts that need to run
+    """
+    if isinstance(address, str):
+        return 0
+    address_type = address.type
+    if address_type == AddressType.TABLE:
+        return 0
+    if address_type in (AddressType.CSV, AddressType.TSV, AddressType.PARQUET):
+        return 1
+    if address_type in (AddressType.QUERY, AddressType.SQL):
+        return 2
+    if address_type == AddressType.PYTHON_SCRIPT:
+        return 3
+    return 2
+
+
+def score_datasource_node(
+    node: str,
+    datasources: dict[str, "BuildDatasource | BuildUnionDatasource"],
+    grain_map: dict[str, list[str]],
+    concept_map: dict[str, list[str]],
+    exact_map: set[str],
+    subgraphs: dict[str, list[str]],
+) -> tuple[int, int, float, int, str]:
+    """Score a datasource node for selection priority. Lower score = higher priority.
+
+    Returns tuple of:
+    - materialization_score: 0 (table) to 3 (python script)
+    - grain_score: effective grain size (lower is better)
+    - exact_match_score: 0 if exact condition match, 0.5 otherwise
+    - concept_count: number of concepts (tiebreaker)
+    - node_name: alphabetic tiebreaker
+    """
+    ds = datasources.get(node)
+
+    # materialization score
+    if ds is None:
+        mat_score = 2
+    elif isinstance(ds, BuildDatasource):
+        mat_score = get_materialization_score(ds.address)
+    elif isinstance(ds, BuildUnionDatasource):
+        mat_score = max(
+            get_materialization_score(child.address) for child in ds.children
+        )
+    else:
+        mat_score = 2
+
+    # grain score
+    grain = grain_map[node]
+    grain_score = len(list(grain)) - sum([1 for x in concept_map[node] if x in grain])
+
+    # exact match
+    exact_score = 0 if node in exact_map else 0.5
+
+    # concept count
+    concept_count = len(subgraphs[node])
+
+    return (mat_score, grain_score, exact_score, concept_count, node)
 
 
 def subgraph_is_complete(
@@ -367,18 +434,8 @@ def resolve_subgraphs(
 
     def score_node(input: str):
         logger.debug(f"{padding(depth)}{LOGGER_PREFIX} scoring node {input}")
-        grain = grain_length[input]
-        # first - go for lowest grain
-        # but if the object we want is in the grain, treat that as "free"
-        # ex - pick source with grain(product_id) over grain(order_id)
-        # when going for product_id
-        score = (
-            len(list(grain)) - sum([1 for x in concept_map[input] if x in grain]),
-            # then check if it's an exact condition match
-            0 if input in exact_map else 0.5,
-            # last, number of concepts
-            len(subgraphs[input]),
-            input,
+        score = score_datasource_node(
+            input, g.datasources, grain_length, concept_map, exact_map, subgraphs
         )
         logger.debug(f"{padding(depth)}{LOGGER_PREFIX} node {input} has score {score}")
         return score
