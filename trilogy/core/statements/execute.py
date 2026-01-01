@@ -71,7 +71,7 @@ class ProcessedQueryPersist(ProcessedQuery, PersistQueryMixin):
 
 @dataclass
 class ProcessedCopyStatement(ProcessedQuery, CopyQueryMixin):
-    pass
+    column_aliases: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass

@@ -13,12 +13,12 @@ from trilogy.core.graph_models import (
     prune_sources_for_conditions,
 )
 from trilogy.core.models.build import (
+    Address,
     BuildConcept,
     BuildDatasource,
     BuildGrain,
     BuildUnionDatasource,
     BuildWhereClause,
-    Address,
     CanonicalBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -78,7 +78,7 @@ def get_graph_grains(g: ReferenceGraph) -> dict[str, list[str]]:
     return grain_length
 
 
-def get_materialization_score(address: Address| str) -> int:
+def get_materialization_score(address: Address | str) -> int:
     """Score datasource by materialization level. Lower is better (more materialized).
 
     - 0: TABLE - fully materialized in the database

@@ -101,6 +101,14 @@ class HasUUID(ABC):
         return hashlib.md5(str(self).encode()).hexdigest()
 
 
+def compute_safe_address(namespace: str, name: str) -> str:
+    if namespace == DEFAULT_NAMESPACE:
+        return name.replace(".", "_")
+    elif namespace:
+        return f"{namespace.replace('.', '_')}_{name.replace('.', '_')}"
+    return name.replace(".", "_")
+
+
 class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
     address: str
     datatype: (
@@ -140,6 +148,10 @@ class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
     @property
     def name(self):
         return self.address.rsplit(".", 1)[1]
+
+    @property
+    def safe_address(self) -> str:
+        return compute_safe_address(self.namespace, self.name)
 
     @property
     def output_datatype(self):
@@ -1032,11 +1044,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
 
     @property
     def safe_address(self) -> str:
-        if self.namespace == DEFAULT_NAMESPACE:
-            return self.name.replace(".", "_")
-        elif self.namespace:
-            return f"{self.namespace.replace('.','_')}_{self.name.replace('.','_')}"
-        return self.name.replace(".", "_")
+        return compute_safe_address(self.namespace, self.name)
 
     def with_namespace(self, namespace: str) -> Self:
         return self.__class__.model_construct(

@@ -236,13 +236,16 @@ LOAD httpfs;
 
     # If credentials are available, create a secret for authenticated access
     if key_id and secret:
-        return base_sql + f"""
+        return (
+            base_sql
+            + f"""
 CREATE OR REPLACE SECRET __trilogy_gcs_secret (
     TYPE gcs,
     KEY_ID '{key_id}',
     SECRET '{secret}'
 );
 """
+        )
     return base_sql
 
 

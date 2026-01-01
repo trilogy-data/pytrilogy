@@ -65,7 +65,14 @@ def execute_script_for_unit(
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def integration(
-    ctx, input, dialect: str | None, param, parallelism: int | None, config, env, conn_args
+    ctx,
+    input,
+    dialect: str | None,
+    param,
+    parallelism: int | None,
+    config,
+    env,
+    conn_args,
 ):
     """Run integration tests on Trilogy scripts."""
     cli_params = CLIRuntimeParams(
