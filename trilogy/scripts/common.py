@@ -333,12 +333,14 @@ def create_executor(
     )
     if config.startup_sql:
         for script in config.startup_sql:
-            print_info(f"Executing startup SQL script: {script}")
+            print_info(f"Executing startup SQL script: {script.name}...")
             exec.execute_file(script)
+            print_success(f"Completed startup SQL script: {script.name}")
     if config.startup_trilogy:
         for script in config.startup_trilogy:
-            print_info(f"Executing startup Trilogy script: {script}")
+            print_info(f"Executing startup Trilogy script: {script.name}...")
             exec.execute_file(script)
+            print_success(f"Completed startup Trilogy script: {script.name}")
     return exec
 
 

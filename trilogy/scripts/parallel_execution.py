@@ -589,8 +589,12 @@ def run_single_script_execution(
         print_success("Unit tests passed successfully!")
 
     elif execution_mode == ExecutionMode.REFRESH:
-        from trilogy.execution.state.state_store import refresh_stale_assets
+        from trilogy.execution.state.state_store import (
+            DatasourceWatermark,
+            refresh_stale_assets,
+        )
         from trilogy.scripts.display import print_info, print_warning
+        from trilogy.scripts.refresh import _format_watermarks, _print_watermarks
 
         for script in text:
             exec.parse_text(script)
@@ -606,8 +610,15 @@ def run_single_script_execution(
         def on_refresh(asset_id: str, reason: str) -> None:
             print_info(f"  Refreshing {asset_id}: {reason}")
 
+        def on_watermarks(watermarks: dict[str, DatasourceWatermark]) -> None:
+            if _print_watermarks:
+                _format_watermarks(watermarks)
+
         result = refresh_stale_assets(
-            exec, on_stale_found=on_stale_found, on_refresh=on_refresh
+            exec,
+            on_stale_found=on_stale_found,
+            on_refresh=on_refresh,
+            on_watermarks=on_watermarks,
         )
 
         if result.had_stale:

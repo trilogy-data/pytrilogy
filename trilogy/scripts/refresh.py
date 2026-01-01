@@ -8,7 +8,10 @@ from click.exceptions import Exit
 from trilogy import Executor
 from trilogy.core.statements.execute import ProcessedValidateStatement
 from trilogy.dialect.enums import Dialects
-from trilogy.execution.state.state_store import refresh_stale_assets
+from trilogy.execution.state.state_store import (
+    DatasourceWatermark,
+    refresh_stale_assets,
+)
 from trilogy.scripts.common import (
     CLIRuntimeParams,
     ExecutionStats,
@@ -17,6 +20,24 @@ from trilogy.scripts.common import (
 )
 from trilogy.scripts.dependency import ScriptNode
 from trilogy.scripts.parallel_execution import ExecutionMode, run_parallel_execution
+
+# Module-level flag for printing watermarks (set by CLI)
+_print_watermarks = False
+
+
+def _format_watermarks(watermarks: dict[str, DatasourceWatermark]) -> None:
+    """Print watermark information for all datasources."""
+    from trilogy.scripts.display import print_info
+
+    print_info("Watermarks:")
+    for ds_id, watermark in sorted(watermarks.items()):
+        if not watermark.keys:
+            print_info(f"  {ds_id}: (no watermarks)")
+            continue
+        for key_name, update_key in watermark.keys.items():
+            print_info(
+                f"  {ds_id}.{key_name}: {update_key.value} ({update_key.type.value})"
+            )
 
 
 def execute_script_for_refresh(
@@ -47,8 +68,15 @@ def execute_script_for_refresh(
         if not quiet:
             print_info(f"  Refreshing {asset_id}: {reason}")
 
+    def on_watermarks(watermarks: dict[str, DatasourceWatermark]) -> None:
+        if _print_watermarks:
+            _format_watermarks(watermarks)
+
     result = refresh_stale_assets(
-        exec, on_stale_found=on_stale_found, on_refresh=on_refresh
+        exec,
+        on_stale_found=on_stale_found,
+        on_refresh=on_refresh,
+        on_watermarks=on_watermarks,
     )
     stats.update_count = result.refreshed_count
 
@@ -76,16 +104,32 @@ def execute_script_for_refresh(
 @option(
     "--config", type=Path(exists=True), help="Path to trilogy.toml configuration file"
 )
+@option(
+    "--print-watermarks",
+    is_flag=True,
+    default=False,
+    help="Print watermark values for all datasources before refreshing",
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def refresh(
-    ctx, input, dialect: str | None, param, parallelism: int | None, config, conn_args
+    ctx,
+    input,
+    dialect: str | None,
+    param,
+    parallelism: int | None,
+    config,
+    print_watermarks,
+    conn_args,
 ):
     """Refresh stale assets in Trilogy scripts.
 
     Parses each script, identifies datasources marked as 'root' (source of truth),
     compares watermarks to find stale derived assets, and refreshes them.
     """
+    global _print_watermarks
+    _print_watermarks = print_watermarks
+
     cli_params = CLIRuntimeParams(
         input=input,
         dialect=Dialects(dialect) if dialect else None,

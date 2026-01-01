@@ -364,6 +364,7 @@ def refresh_stale_assets(
     executor: "Executor",
     on_stale_found: Callable[[int, int, int], None] | None = None,
     on_refresh: Callable[[str, str], None] | None = None,
+    on_watermarks: Callable[[dict[str, DatasourceWatermark]], None] | None = None,
 ) -> RefreshResult:
     """Find and refresh stale assets.
 
@@ -371,9 +372,13 @@ def refresh_stale_assets(
         executor: The executor with parsed environment
         on_stale_found: Optional callback(stale_count, root_assets, all_assets)
         on_refresh: Optional callback(asset_id, reason) called before each refresh
+        on_watermarks: Optional callback(watermarks_dict) called after collecting watermarks
     """
     state_store = BaseStateStore()
     stale_assets = state_store.get_stale_assets(executor.environment, executor)
+
+    if on_watermarks:
+        on_watermarks(state_store.watermarks)
     root_assets = sum(
         1 for asset in executor.environment.datasources.values() if asset.is_root
     )
