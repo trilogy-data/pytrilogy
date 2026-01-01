@@ -24,6 +24,7 @@ def default_factory(conf: DialectConfig, config_type):
     engine_args = {
         "future": True,
         "poolclass": NullPool,
+        "isolation_level": "AUTOCOMMIT",
     }
     if not isinstance(conf, config_type):
         raise TypeError(

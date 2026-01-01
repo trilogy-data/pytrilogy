@@ -17,7 +17,7 @@ from trilogy.core.enums import (
 from trilogy.core.models.author import Comment, Concept, Function
 from trilogy.core.models.build import BuildFunction
 from trilogy.core.models.core import ListWrapper, MapWrapper
-from trilogy.core.models.datasource import Datasource, UpdateKeys
+from trilogy.core.models.datasource import Address, Datasource, UpdateKeys
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
     STATEMENT_TYPES,
@@ -149,12 +149,17 @@ class Executor(object):
             keys: Optional UpdateKeys specifying incremental filters
         """
         where = keys.to_where_clause(self.environment) if keys else None
-        create_stmt = CreateStatement(
-            scope=ValidationScope.DATASOURCES,
-            create_mode=CreateMode.CREATE_IF_NOT_EXISTS,
-            targets=[datasource.name],
+        # Skip CREATE for file-backed datasources (parquet, csv, etc.) - the file is the source
+        is_file_backed = (
+            isinstance(datasource.address, Address) and datasource.address.is_file
         )
-        self.execute_statement(create_stmt)
+        if not is_file_backed:
+            create_stmt = CreateStatement(
+                scope=ValidationScope.DATASOURCES,
+                create_mode=CreateMode.CREATE_IF_NOT_EXISTS,
+                targets=[datasource.name],
+            )
+            self.execute_statement(create_stmt)
         select_stmt = datasource.create_update_statement(
             self.environment, where, line_no=None
         )
@@ -572,10 +577,11 @@ class Executor(object):
                 }
 
         if final_params:
-            return self.connection.execute(text(command), final_params)
-        return self.connection.execute(
-            text(command),
-        )
+           output = self.connection.execute(text(command), final_params)
+        else:
+            output= self.connection.execute(text(command))
+        # self.connection.commit()
+        return output
 
     def execute_text(
         self, command: str, non_interactive: bool = False

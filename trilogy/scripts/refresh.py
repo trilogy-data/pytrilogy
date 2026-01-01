@@ -110,6 +110,12 @@ def execute_script_for_refresh(
     default=False,
     help="Print watermark values for all datasources before refreshing",
 )
+@option(
+    "--env",
+    "-e",
+    multiple=True,
+    help="Set environment variables as KEY=VALUE pairs",
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def refresh(
@@ -120,6 +126,7 @@ def refresh(
     parallelism: int | None,
     config,
     print_watermarks,
+    env,
     conn_args,
 ):
     """Refresh stale assets in Trilogy scripts.
@@ -139,6 +146,7 @@ def refresh(
         debug=ctx.obj["DEBUG"],
         config_path=PathlibPath(config) if config else None,
         execution_strategy="eager_bfs",
+        env=env,
     )
 
     try:

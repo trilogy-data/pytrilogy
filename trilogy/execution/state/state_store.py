@@ -109,6 +109,7 @@ def get_unique_key_hash_watermarks(
         except Exception as e:
             if is_missing_source_error(e, dialect):
                 checksum_value = None
+                executor.connection.rollback()
             else:
                 raise
 
@@ -154,6 +155,7 @@ def get_incremental_key_watermarks(
         except Exception as e:
             if is_missing_source_error(e, dialect):
                 max_value = None
+                executor.connection.rollback()
             else:
                 raise
 
@@ -198,6 +200,7 @@ def get_freshness_watermarks(
         except Exception as e:
             if is_missing_source_error(e, dialect):
                 max_value = None
+                executor.connection.rollback()
             else:
                 raise
 
