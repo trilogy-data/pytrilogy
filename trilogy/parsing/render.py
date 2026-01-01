@@ -285,6 +285,8 @@ class Renderer:
 
         if arg.partition_by:
             base += f"\npartition by {','.join(self.to_string(x) for x in arg.partition_by)}"
+        if arg.freshness_by:
+            base += f"\nfreshness by {','.join(self.to_string(x) for x in arg.freshness_by)}"
         if arg.status != DatasourceState.PUBLISHED:
             base += f"\nstate {arg.status.value.lower()}"
 
