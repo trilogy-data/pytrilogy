@@ -294,6 +294,7 @@ class DuckDBDialect(BaseDialect):
     UNNEST_MODE = UnnestMode.DIRECT
     NULL_WRAPPER = staticmethod(null_wrapper)
     TABLE_NOT_FOUND_PATTERN = "Catalog Error: Table with name"
+    HTTP_NOT_FOUND_PATTERN = "404 (Not Found)"
 
     def render_source(self, address: Address) -> str:
         if address.type == AddressType.CSV:

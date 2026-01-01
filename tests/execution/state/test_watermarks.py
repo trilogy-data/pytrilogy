@@ -1,9 +1,11 @@
 from datetime import date, datetime
 
 import pytest
+from sqlalchemy.exc import ProgrammingError
 
 from trilogy import Dialects, Executor
 from trilogy.core.models.datasource import UpdateKey, UpdateKeys, UpdateKeyType
+from trilogy.execution.state.exceptions import is_missing_source_error
 from trilogy.execution.state.state_store import (
     BaseStateStore,
     _compare_watermark_values,
@@ -91,6 +93,45 @@ class TestCompareWatermarkValues:
         assert _compare_watermark_values(d, "2024-01-15") == 0
         assert _compare_watermark_values(d, "2024-01-16") == -1
         assert _compare_watermark_values(d, "2024-01-14") == 1
+
+
+class TestIsMissingSourceError:
+    """Tests for is_missing_source_error function."""
+
+    class MockDialect:
+        TABLE_NOT_FOUND_PATTERN = "Catalog Error: Table with name"
+        HTTP_NOT_FOUND_PATTERN = "HTTP 404"
+
+    class MockDialectNoPatterns:
+        TABLE_NOT_FOUND_PATTERN = None
+        HTTP_NOT_FOUND_PATTERN = None
+
+    def test_table_not_found_programming_error(self) -> None:
+        exc = ProgrammingError(
+            "stmt", {}, Exception("Catalog Error: Table with name foo")
+        )
+        assert is_missing_source_error(exc, self.MockDialect()) is True
+
+    def test_http_404_error(self) -> None:
+        exc = Exception("HTTP 404: Not Found")
+        assert is_missing_source_error(exc, self.MockDialect()) is True
+
+    def test_unrelated_programming_error(self) -> None:
+        exc = ProgrammingError("stmt", {}, Exception("Some other error"))
+        assert is_missing_source_error(exc, self.MockDialect()) is False
+
+    def test_unrelated_exception(self) -> None:
+        exc = Exception("Random error")
+        assert is_missing_source_error(exc, self.MockDialect()) is False
+
+    def test_no_patterns_configured(self) -> None:
+        exc = ProgrammingError(
+            "stmt", {}, Exception("Catalog Error: Table with name foo")
+        )
+        assert is_missing_source_error(exc, self.MockDialectNoPatterns()) is False
+
+        exc2 = Exception("HTTP 404: Not Found")
+        assert is_missing_source_error(exc2, self.MockDialectNoPatterns()) is False
 
 
 def test_last_update_time_watermarks(duckdb_engine: Executor):

@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import date
-
-from sqlalchemy.exc import ProgrammingError
+from typing import Callable
 
 from trilogy import Executor
 from trilogy.core.enums import Purpose
@@ -17,15 +16,7 @@ from trilogy.core.models.datasource import (
 )
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import CTE
-
-
-def _is_table_not_found_error(exc: ProgrammingError, dialect) -> bool:
-    """Check if exception is a table-not-found error for the given dialect."""
-    pattern = dialect.TABLE_NOT_FOUND_PATTERN
-    if pattern is None:
-        return False
-    error_msg = str(exc.orig) if exc.orig else str(exc)
-    return pattern in error_msg
+from trilogy.execution.state.exceptions import is_missing_source_error
 
 
 @dataclass
@@ -115,8 +106,8 @@ def get_unique_key_hash_watermarks(
         try:
             result = executor.execute_raw_sql(query).fetchone()
             checksum_value = result[0] if result else None
-        except ProgrammingError as e:
-            if _is_table_not_found_error(e, dialect):
+        except Exception as e:
+            if is_missing_source_error(e, dialect):
                 checksum_value = None
             else:
                 raise
@@ -160,8 +151,8 @@ def get_incremental_key_watermarks(
         try:
             result = executor.execute_raw_sql(query).fetchone()
             max_value = result[0] if result else None
-        except ProgrammingError as e:
-            if _is_table_not_found_error(e, dialect):
+        except Exception as e:
+            if is_missing_source_error(e, dialect):
                 max_value = None
             else:
                 raise
@@ -204,8 +195,8 @@ def get_freshness_watermarks(
         try:
             result = executor.execute_raw_sql(query).fetchone()
             max_value = result[0] if result else None
-        except ProgrammingError as e:
-            if _is_table_not_found_error(e, dialect):
+        except Exception as e:
+            if is_missing_source_error(e, dialect):
                 max_value = None
             else:
                 raise
@@ -353,3 +344,55 @@ class BaseStateStore:
                     pass
 
         return stale
+
+
+@dataclass
+class RefreshResult:
+    """Result of refreshing stale assets."""
+
+    stale_count: int
+    refreshed_count: int
+    root_assets: int
+    all_assets: int
+
+    @property
+    def had_stale(self) -> bool:
+        return self.stale_count > 0
+
+
+def refresh_stale_assets(
+    executor: "Executor",
+    on_stale_found: Callable[[int, int, int], None] | None = None,
+    on_refresh: Callable[[str, str], None] | None = None,
+) -> RefreshResult:
+    """Find and refresh stale assets.
+
+    Args:
+        executor: The executor with parsed environment
+        on_stale_found: Optional callback(stale_count, root_assets, all_assets)
+        on_refresh: Optional callback(asset_id, reason) called before each refresh
+    """
+    state_store = BaseStateStore()
+    stale_assets = state_store.get_stale_assets(executor.environment, executor)
+    root_assets = sum(
+        1 for asset in executor.environment.datasources.values() if asset.is_root
+    )
+    all_assets = len(executor.environment.datasources)
+
+    if on_stale_found:
+        on_stale_found(len(stale_assets), root_assets, all_assets)
+
+    refreshed = 0
+    for asset in stale_assets:
+        if on_refresh:
+            on_refresh(asset.datasource_id, asset.reason)
+        datasource = executor.environment.datasources[asset.datasource_id]
+        executor.update_datasource(datasource)
+        refreshed += 1
+
+    return RefreshResult(
+        stale_count=len(stale_assets),
+        refreshed_count=refreshed,
+        root_assets=root_assets,
+        all_assets=all_assets,
+    )

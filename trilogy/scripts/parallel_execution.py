@@ -589,26 +589,29 @@ def run_single_script_execution(
         print_success("Unit tests passed successfully!")
 
     elif execution_mode == ExecutionMode.REFRESH:
-        from trilogy.execution.state.state_store import BaseStateStore
+        from trilogy.execution.state.state_store import refresh_stale_assets
         from trilogy.scripts.display import print_info, print_warning
 
         for script in text:
             exec.parse_text(script)
 
-        state_store = BaseStateStore()
-        stale_assets = state_store.get_stale_assets(exec.environment, exec)
+        def on_stale_found(stale_count: int, root_assets: int, all_assets: int) -> None:
+            if stale_count == 0:
+                print_info(
+                    f"No stale assets found ({root_assets}/{all_assets} root assets)"
+                )
+            else:
+                print_warning(f"Found {stale_count} stale asset(s)")
 
-        if not stale_assets:
-            print_info("No stale assets found")
-            return
+        def on_refresh(asset_id: str, reason: str) -> None:
+            print_info(f"  Refreshing {asset_id}: {reason}")
 
-        print_warning(f"Found {len(stale_assets)} stale asset(s)")
-        for asset in stale_assets:
-            print_info(f"  Refreshing {asset.datasource_id}: {asset.reason}")
-            datasource = exec.environment.datasources[asset.datasource_id]
-            exec.update_datasource(datasource)
+        result = refresh_stale_assets(
+            exec, on_stale_found=on_stale_found, on_refresh=on_refresh
+        )
 
-        print_success(f"Refreshed {len(stale_assets)} asset(s)")
+        if result.had_stale:
+            print_success(f"Refreshed {result.refreshed_count} asset(s)")
 
 
 def get_execution_strategy(strategy_name: str):

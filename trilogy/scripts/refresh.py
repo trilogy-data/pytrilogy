@@ -8,7 +8,7 @@ from click.exceptions import Exit
 from trilogy import Executor
 from trilogy.core.statements.execute import ProcessedValidateStatement
 from trilogy.dialect.enums import Dialects
-from trilogy.execution.state.state_store import BaseStateStore
+from trilogy.execution.state.state_store import refresh_stale_assets
 from trilogy.scripts.common import (
     CLIRuntimeParams,
     ExecutionStats,
@@ -35,28 +35,31 @@ def execute_script_for_refresh(
 
     stats = count_statement_stats([])
 
-    state_store = BaseStateStore()
-    stale_assets = state_store.get_stale_assets(exec.environment, exec)
+    def on_stale_found(stale_count: int, root_assets: int, all_assets: int) -> None:
+        if stale_count == 0 and not quiet:
+            print_info(
+                f"No stale assets found in {node.path.name} ({root_assets}/{all_assets} root assets)"
+            )
+        elif not quiet:
+            print_warning(f"Found {stale_count} stale asset(s) in {node.path.name}")
 
-    if not stale_assets:
+    def on_refresh(asset_id: str, reason: str) -> None:
         if not quiet:
-            print_info(f"No stale assets found in {node.path.name}")
-        return stats
+            print_info(f"  Refreshing {asset_id}: {reason}")
 
-    if not quiet:
-        print_warning(f"Found {len(stale_assets)} stale asset(s) in {node.path.name}")
+    result = refresh_stale_assets(
+        exec, on_stale_found=on_stale_found, on_refresh=on_refresh
+    )
+    stats.update_count = result.refreshed_count
 
-    for asset in stale_assets:
-        if not quiet:
-            print_info(f"  Refreshing {asset.datasource_id}: {asset.reason}")
-        datasource = exec.environment.datasources[asset.datasource_id]
-        exec.update_datasource(datasource)
-        stats.update_count += 1
     for x in validation:
         exec.execute_statement(x)
         stats = count_statement_stats([x])
-    if not quiet:
-        print_success(f"Refreshed {len(stale_assets)} asset(s) in {node.path.name}")
+
+    if result.had_stale and not quiet:
+        print_success(
+            f"Refreshed {result.refreshed_count} asset(s) in {node.path.name}"
+        )
 
     return stats
 
