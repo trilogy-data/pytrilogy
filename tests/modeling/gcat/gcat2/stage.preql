@@ -1,0 +1,36 @@
+import std.metric;
+import std.date;
+import engine as engine;
+import etl;
+
+key name string;
+property name.family string;
+property name.stage_manufacturer string;
+property name.stage_alt_name string;
+property name.length numeric::m;
+property name.diameter numeric::m;
+property name.launch_mass numeric::tonne;
+property name.dry_mass numeric::kg;
+property name.thrust numeric::kn;
+property name.duration numeric::second;
+property name.engine_count int;
+
+
+datasource stages (
+    name,
+    family,
+    stage_manufacturer,
+    stage_alt_name,
+    ?length,
+    ?diameter,
+    ?launch_mass,
+    ?dry_mass,
+    ?thrust,
+    ?duration,
+    ~engine.name,
+    ?engine_count,
+    data_updated_through
+    )
+grain (name)
+file `gcs://trilogy_public_models/duckdb/launch_report/stages.parquet`
+freshness by data_updated_through;

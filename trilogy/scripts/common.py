@@ -79,7 +79,7 @@ class CLIRuntimeParams:
     parallelism: int | None = None
     param: tuple[str, ...] = ()
     conn_args: tuple[str, ...] = ()
-    debug: bool = False
+    debug: str | None = None
     config_path: PathlibPath | None = None
     execution_strategy: str = "eager_bfs"
     env: tuple[str, ...] = ()
@@ -296,7 +296,7 @@ def create_executor(
     directory: PathlibPath,
     conn_args: Iterable[str],
     edialect: Dialects,
-    debug: bool,
+    debug: str | None,
     config: RuntimeConfig,
 ) -> Executor:
     # Parse environment parameters from dedicated flag
@@ -328,7 +328,7 @@ def create_executor(
         dialect=edialect,
         engine=edialect.default_engine(conf=conf),
         environment=environment,
-        hooks=[DebuggingHook()] if debug else [],
+        hooks=[DebuggingHook(output_file=PathlibPath(debug))] if debug else [],
         config=conf,
     )
     if config.startup_sql:
@@ -349,7 +349,7 @@ def create_executor_for_script(
     param: tuple[str, ...],
     conn_args: Iterable[str],
     edialect: Dialects,
-    debug: bool,
+    debug: str | None,
     config: RuntimeConfig,
 ) -> Executor:
     """
@@ -395,11 +395,19 @@ def validate_datasources(
         raise Exit(1) from e
 
 
-def handle_execution_exception(e: Exception, debug: bool = False) -> None:
+def handle_execution_exception(e: Exception, debug: str | None = None) -> None:
     print_error(f"Unexpected error: {e}")
     if debug:
         print_error(f"Full traceback:\n{traceback.format_exc()}")
     raise Exit(1) from e
+
+
+def flush_debugging_hooks(exec: Executor) -> None:
+    """Flush any debugging hooks attached to the executor."""
+    for hook in exec.hooks or []:
+        if isinstance(hook, DebuggingHook):
+            hook.write()
+            print_info(f"Debug log written to: {hook.output_file}")
 
 
 def count_statement_stats(

@@ -1,0 +1,2 @@
+# shared concepts
+key data_updated_through datetime; # date when the data was last updated

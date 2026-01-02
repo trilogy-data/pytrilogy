@@ -266,6 +266,25 @@ order by item desc;
     assert '"fact_items"."item" as "item"' in results[0]["__preql_internal_query_text"]
 
 
+def test_show_persist(duckdb_engine: Executor):
+    test = """
+    
+    auto random_data <- unnest([1,2,3,4, 88, 99]);
+
+    datasource fact_random(
+      random_data)
+    grain (random_data)
+    address fct_random
+    state unpublished;
+    
+    show overwrite fact_random;"""
+
+    duckdb_engine.parse_text(test)
+
+    results = duckdb_engine.execute_text(test)[-1].fetchall()
+    assert len(results) == 1
+
+
 def test_show_concepts(duckdb_engine: Executor):
     test = """show concepts;"""
     parsed = duckdb_engine.parse_text(test)

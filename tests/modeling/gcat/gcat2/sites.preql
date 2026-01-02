@@ -1,0 +1,44 @@
+import std.geography;
+import etl;
+
+key key string;
+property key.code string;
+property key.u_code string;
+property key.type string;
+key state_code string;
+property key.t_start string;
+property key.t_stop string;
+property key.short_name string;
+property key.name string;
+property key.location string;
+property key.longitude float::longitude;
+property key.latitude float::latitude;
+property key.error float;
+property key.parent string;
+property key.e_name string;
+property key.u_name string;
+
+
+
+datasource sites (
+    key,
+    code,
+    u_code,
+    type,
+    state_code,
+    t_start,
+    t_stop,
+    short_name,
+    name,
+    location,
+    ?longitude,
+    ?latitude,
+    error,
+    parent,
+    e_name,
+    u_name,
+    data_updated_through
+    )
+grain (key)
+file `gcs://trilogy_public_models/duckdb/launch_report/sites.parquet`
+freshness by data_updated_through;

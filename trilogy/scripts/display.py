@@ -171,22 +171,23 @@ def show_execution_info(
     input_type: str,
     input_name: str,
     dialect: str,
-    debug: bool,
+    debug: str | None,
     config_path: Optional[str] = None,
 ):
     """Display execution information in a clean format."""
+    debug_str = f"enabled ({debug})" if debug else "disabled"
     if RICH_AVAILABLE and console is not None:
         info_text = (
             f"Input: {input_type} ({input_name})\n"
             f"Dialect: [cyan]{dialect}[/cyan]\n"
-            f"Debug: {'enabled' if debug else 'disabled'}"
+            f"Debug: {debug_str}"
         )
         if config_path:
             info_text += f"\nConfig: [dim]{config_path}[/dim]"
         panel = Panel.fit(info_text, style="blue", title="Execution Info")
         console.print(panel)
     else:
-        msg = f"Executing {input_type}: {input_name} | Dialect: {dialect} | Debug: {debug}"
+        msg = f"Executing {input_type}: {input_name} | Dialect: {dialect} | Debug: {debug_str}"
         if config_path:
             msg += f" | Config: {config_path}"
         print_info(msg)

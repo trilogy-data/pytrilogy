@@ -1,0 +1,100 @@
+#auto-generated datasource from table/view lv_info
+import stage as stage;
+import etl;
+
+key name string;
+key variant string;
+property <name,variant>.family string;
+property <name,variant>.manufacturer string;
+property <name,variant>.alias string;
+property <name,variant>.min_stage int;
+property <name,variant>.max_stage int;
+property <name,variant>.length float;
+property <name,variant>.lflag string;
+property <name,variant>.diameter float;
+property <name,variant>.dflag string;
+property <name,variant>.launch_mass float;
+property <name,variant>.mflag string;
+property <name,variant>.leo_capacity float;
+property <name,variant>.gto_capacity float;
+property <name,variant>.to_thrust int;
+property <name,variant>.class string;
+property <name,variant>.apogee int;
+property <name,variant>.range int;
+property class_name <- CASE
+	WHEN class = 'D' THEN 'Deep Space'
+	WHEN class = 'M' THEN 'Missile'
+	WHEN class = 'O' THEN 'Orbital'
+	WHEN class = 'R' THEN 'Research'
+	WHEN class = 'V' THEN 'Reentry Test'
+	WHEN class = 'X' THEN 'Exoatmospheric Test'
+	WHEN class = 'Y' THEN 'Exoatmospheric Weather'
+	WHEN class = 'A' THEN 'Endoatmospheric Missile'
+	WHEN class = 'C' THEN 'Cruise Missile'
+	WHEN class = 'Q' THEN 'Endoatmospheric reentry test'
+	WHEN class = 'T' THEN 'Endoatmospheric test/research'
+	WHEN class = 'W' THEN 'Endoatmospheric weather rocket'
+	ELSE 'Unknown'
+END;
+property full_name <- CASE
+	WHEN variant != '-' THEN concat(name,' ',variant)
+	ELSE name
+END;
+
+
+
+
+datasource lv_info (
+    name,
+    family,
+    manufacturer,
+    variant,
+    alias,
+    min_stage,
+    max_stage,
+    ?length,
+    ?lflag,
+    diameter,
+    ?dflag,
+    ?launch_mass,
+    ?mflag,
+    ?leo_capacity,
+    ?gto_capacity,
+    ?to_thrust,
+    class,
+    ?apogee,
+    ?range,
+    data_updated_through
+    )
+grain (name,variant)
+file `gcs://trilogy_public_models/duckdb/launch_report/lv_info.parquet`
+freshness by data_updated_through;
+
+
+key stage_no string; # (which can be -1 or 0 for strapons, and F for fairing)
+property <name,stage_no,variant>.qualifier string;
+property <name,stage_no,variant>.dummy string; # a flag to indicate a dummy stage (e.g. the Cora vehicle always carries a dummy Astris stage)
+property <name,stage_no,variant>.multiplicity int; # e.g. stage 0 of the ASLV consists of two AS-0 strapon stages, and so has multiplicity 2.
+property <name,stage_no,variant>.stage_impulse float;
+property <name,stage_no,variant>.stage_apogee int;
+property <name,stage_no,variant>.stage_perigee int;
+property <name,stage_no,variant>.perigee_qual string;
+
+
+datasource lvs_info (
+    name,
+    variant,
+    stage_no,
+    ~stage.name,
+    qualifier,
+    dummy,
+    multiplicity,
+    ?stage_impulse,
+    stage_apogee,
+    stage_perigee,
+    perigee_qual,
+    data_updated_through
+    )
+grain (name,stage_no,variant)
+file `gcs://trilogy_public_models/duckdb/launch_report/lvs_info.parquet`
+freshness by data_updated_through;

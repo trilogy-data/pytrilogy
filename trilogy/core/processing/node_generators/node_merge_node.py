@@ -73,6 +73,8 @@ def extract_ds_components(
     g: nx.DiGraph, nodelist: list[str], pseudonyms: set[tuple[str, str]]
 ) -> list[list[str]]:
     graphs = []
+    # from trilogy.hooks.graph_hook import GraphHook
+    # GraphHook().query_graph_built(g, highlight_nodes=nodelist)
     for node in g.nodes:
         if node.startswith("ds~"):
             local = g.copy()
@@ -88,6 +90,7 @@ def extract_ds_components(
     # if we had no ego graphs, return all concepts
     if not graphs:
         return [[extract_address(node) for node in nodelist]]
+    logger.info(graphs)
     graphs = filter_unique_graphs(graphs)
     for node in nodelist:
         parsed = extract_address(node)
@@ -187,40 +190,6 @@ def reinject_common_join_keys_v2(
 
     return injected
 
-
-def reinject_basic_parents(
-    G: ReferenceGraph,
-    final: nx.DiGraph,
-) -> bool:
-
-    injected = False
-
-    for concept in G.concepts:
-        if concept not in final:
-            continue
-        logger.debug(
-            f"{LOGGER_PREFIX} checking concept {concept} for basic parent reinjection"
-        )
-        node1 = G.concepts[concept]
-        if node1.derivation != Derivation.BASIC:
-            continue
-        cnode = concept_to_node(node1)
-        neighbors = nx.all_neighbors(G, concept)
-        for neighbor in neighbors:
-            node2 = G.concepts.get(neighbor)
-            if not node2:
-                continue
-            if node2.address in node1.concept_arguments:
-                cnode2 = concept_to_node(node2)
-                final.add_edge(cnode2, cnode)
-                logger.debug(
-                    f"{LOGGER_PREFIX} reinjecting upstream inputs {cnode2} to basic derivation {cnode}"
-                )
-                injected = True
-
-    return injected
-
-
 def determine_induced_minimal_nodes(
     G: ReferenceGraph,
     nodelist: list[str],
@@ -316,8 +285,6 @@ def determine_induced_minimal_nodes(
     # readd concepts that need to be in the output for proper discovery
     reinject_common_join_keys_v2(G, final, nodelist, synonyms)
 
-    reinject_basic_parents(G, final)
-
     # all concept nodes must have a parent
     if not all(
         [
@@ -407,31 +374,6 @@ def filter_relevant_subgraphs(
     ]
 
 
-# 2025-11-18 - removing this as it was causing us to drop
-# partial concept required parents
-# but leaving here for possible future use
-# def filter_duplicate_subgraphs(
-#     subgraphs: list[list[BuildConcept]], environment
-# ) -> list[list[BuildConcept]]:
-#     seen: list[set[str]] = []
-
-#     for graph in subgraphs:
-#         seen.append(
-#             canonicalize_addresses(set([x.address for x in graph]), environment)
-#         )
-#     final = []
-#     # sometimes w can get two subcomponents that are the same
-#     # due to alias resolution
-#     # if so, drop any that are strict subsets.
-#     for graph in subgraphs:
-#         logger.info(f"{LOGGER_PREFIX} Checking graph {graph} for duplicates in {seen}")
-#         set_x = canonicalize_addresses(set([x.address for x in graph]), environment)
-#         if any([set_x.issubset(y) and set_x != y for y in seen]):
-#             continue
-#         final.append(graph)
-#     return final
-
-
 def resolve_weak_components(
     all_concepts: List[BuildConcept],
     environment: BuildEnvironment,
@@ -447,21 +389,6 @@ def resolve_weak_components(
         search_graph, accept_partial, conditions=search_conditions
     )
     reduced_concept_sets: list[set[str]] = []
-
-    # prune properties
-    # to_remove = []
-    # for node in search_graph.nodes:
-    #     if not node.startswith("c~"):
-    #         continue
-    #     try:
-    #         concept = extract_concept(extract_address(node), environment)
-    #         if concept.purpose == Purpose.PROPERTY and concept.address not in all_concepts:
-    #             to_remove.append(node)
-    #     except Exception as e:
-    #         logger.error(f"Error extracting concept from node {node}: {e}")
-    #     raise ValueError('FIX THIS TO BE MORE PRECISEj,,j')
-    # for node in to_remove:
-    #     search_graph.remove_node(node)
 
     count = 0
     node_list = sorted(

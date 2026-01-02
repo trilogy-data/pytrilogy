@@ -1,5 +1,6 @@
 from enum import Enum
 from logging import DEBUG, StreamHandler
+from pathlib import Path
 from typing import Union
 from uuid import uuid4
 
@@ -13,7 +14,7 @@ from trilogy.core.models.execute import (
 from trilogy.core.processing.nodes import StrategyNode
 from trilogy.core.statements.author import SelectStatement
 from trilogy.hooks.base_hook import BaseHook
-from pathlib import Path
+
 
 class PrintMode(Enum):
     OFF = False
