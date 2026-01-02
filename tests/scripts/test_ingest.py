@@ -30,6 +30,8 @@ def test_ingest():
         "world_capitals",
         "--config",
         str(config_dir / "trilogy.toml"),
+        "--env",
+        "test=fun",
     ]
     results = runner.invoke(
         cli,

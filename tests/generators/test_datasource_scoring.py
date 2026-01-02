@@ -1,8 +1,8 @@
 from unittest.mock import MagicMock
 
 from trilogy.core.enums import AddressType
-from trilogy.core.models.datasource import Address
 from trilogy.core.models.build import BuildDatasource
+from trilogy.core.models.datasource import Address
 from trilogy.core.processing.node_generators.select_merge_node import (
     get_materialization_score,
     score_datasource_node,
