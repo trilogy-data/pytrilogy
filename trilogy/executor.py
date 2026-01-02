@@ -81,6 +81,8 @@ class Executor(object):
         hooks: List[BaseHook] | None = None,
         config: DialectConfig | None = None,
     ):
+        import uuid
+
         self.dialect: Dialects = dialect
         self.engine = engine
         self.environment = environment or Environment()
@@ -88,6 +90,7 @@ class Executor(object):
         self.logger = logger
         self.hooks = hooks
         self.config = config
+        self._instance_id = str(uuid.uuid4())
         self.generator = get_dialect_generator(self.dialect, rendering, config)
         self.connection = self.connect()
         # TODO: make generic
@@ -115,7 +118,9 @@ class Executor(object):
             and self.config.enable_python_datasources
         )
         is_windows = sys.platform == "win32"
-        self.execute_raw_sql(get_python_datasource_setup_sql(enabled, is_windows))
+        self.execute_raw_sql(
+            get_python_datasource_setup_sql(enabled, is_windows, self._instance_id)
+        )
         self.connection.commit()
 
     def _setup_duckdb_gcs(self) -> None:
@@ -359,6 +364,8 @@ class Executor(object):
                 copy_sql = f"COPY ({sql}) TO '{query.target}' (FORMAT PARQUET)"
             elif query.target_type == IOType.CSV:
                 copy_sql = f"COPY ({sql}) TO '{query.target}' (FORMAT CSV, HEADER)"
+            elif query.target_type == IOType.JSON:
+                copy_sql = f"COPY ({sql}) TO '{query.target}' (FORMAT JSON, ARRAY true)"
             else:
                 raise NotImplementedError(f"Unsupported IO Type {query.target_type}")
             self.execute_raw_sql(copy_sql, local_concepts=query.local_concepts)

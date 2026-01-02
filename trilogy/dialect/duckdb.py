@@ -136,7 +136,9 @@ FUNCTION_GRAIN_MATCH_MAP = {
 DATATYPE_MAP: dict[DataType, str] = {}
 
 
-def get_python_datasource_setup_sql(enabled: bool, is_windows: bool = False) -> str:
+def get_python_datasource_setup_sql(
+    enabled: bool, is_windows: bool = False, instance_id: str | None = None
+) -> str:
     """Return SQL to setup the uv_run macro for Python script datasources.
     Inspired by: https://sidequery.dev/blog/uv-run-duckdb
 
@@ -144,23 +146,26 @@ def get_python_datasource_setup_sql(enabled: bool, is_windows: bool = False) -> 
         enabled: If True, installs extensions and creates working macro.
                  If False, creates macro that throws a clear error.
         is_windows: If True, uses temp file workaround for shellfs pipe bug.
+        instance_id: Unique identifier for this executor instance (thread-safe).
     """
     if enabled:
         if is_windows:
             import atexit
             import os
             import tempfile
+            import uuid
 
             # Windows workaround: shellfs has a bug with Arrow IPC pipes on Windows.
             # We use a temp file approach: run script to file, then read file.
             # The read_json forces the shell command to complete before read_arrow.
             # Using getvariable() defers file path resolution until execution.
-            # Include PID in filename to avoid conflicts between parallel processes.
+            # Use UUID to ensure unique temp file per executor instance (thread-safe).
             # Use Path.resolve() to avoid 8.3 short names (e.g. RUNNER~1) on CI.
 
+            unique_id = instance_id or str(uuid.uuid4())
             temp_file = (
                 str(Path(tempfile.gettempdir()).resolve()).replace("\\", "/")
-                + f"/trilogy_uv_run_{os.getpid()}.arrow"
+                + f"/trilogy_uv_run_{unique_id}.arrow"
             )
 
             def cleanup_temp_file() -> None:

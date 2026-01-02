@@ -433,6 +433,7 @@ class ShowCategory(Enum):
 
 class IOType(Enum):
     CSV = "csv"
+    JSON = "json"
     PARQUET = "parquet"
 
     @classmethod
