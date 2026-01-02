@@ -201,8 +201,14 @@ class DatasourcePartitionClause:
     columns: List[ConceptRef]
 
 
+class DatasourceUpdateTrigger(Enum):
+    INCREMENTAL = "incremental"
+    FRESHNESS = "freshness"
+
+
 @dataclass
-class DatasourceIncrementalClause:
+class DatasourceUpdateTriggerClause:
+    trigger_type: DatasourceUpdateTrigger
     columns: List[ConceptRef]
 
 
@@ -944,8 +950,10 @@ class ParseToObjects(Transformer):
         return DatasourcePartitionClause([ConceptRef(address=arg) for arg in args[0]])
 
     @v_args(meta=True)
-    def datasource_increment_clause(self, meta: Meta, args):
-        return DatasourceIncrementalClause([ConceptRef(address=arg) for arg in args[0]])
+    def datasource_update_trigger_clause(self, meta: Meta, args):
+        trigger_type = DatasourceUpdateTrigger(args[0].lower())
+        columns = [ConceptRef(address=arg) for arg in args[1]]
+        return DatasourceUpdateTriggerClause(trigger_type=trigger_type, columns=columns)
 
     @v_args(meta=True)
     def datasource(self, meta: Meta, args):
@@ -961,6 +969,7 @@ class ParseToObjects(Transformer):
         non_partial_for: Optional[WhereClause] = None
         incremental_by: List[ConceptRef] = []
         partition_by: List[ConceptRef] = []
+        freshness_by: List[ConceptRef] = []
         datasource_status: DatasourceState = DatasourceState.PUBLISHED
         for val in args[1:]:
             if isinstance(val, Address):
@@ -977,8 +986,11 @@ class ParseToObjects(Transformer):
                 where = val
             elif isinstance(val, DatasourceState):
                 datasource_status = val
-            elif isinstance(val, DatasourceIncrementalClause):
-                incremental_by = val.columns
+            elif isinstance(val, DatasourceUpdateTriggerClause):
+                if val.trigger_type == DatasourceUpdateTrigger.INCREMENTAL:
+                    incremental_by = val.columns
+                elif val.trigger_type == DatasourceUpdateTrigger.FRESHNESS:
+                    freshness_by = val.columns
             elif isinstance(val, DatasourcePartitionClause):
                 partition_by = val.columns
         if not address:
@@ -999,6 +1011,7 @@ class ParseToObjects(Transformer):
             status=datasource_status,
             incremental_by=incremental_by,
             partition_by=partition_by,
+            freshness_by=freshness_by,
             is_root=is_root,
         )
         if datasource.where:

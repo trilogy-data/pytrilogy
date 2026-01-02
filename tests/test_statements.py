@@ -96,6 +96,90 @@ copy into parquet '{target}' from select x -> test order by test asc;
     assert table.column("test").to_pylist() == [1, 2, 3, 4]
 
 
+def test_persist_to_parquet_with_column_aliases():
+    """Test that persisting to parquet uses datasource column names, not concept addresses."""
+    import pyarrow.parquet as pq
+
+    target = Path(__file__).parent / "test_persist_column_names.parquet"
+    if target.exists():
+        target.unlink()
+    text = f"""
+key user_id int;
+property user_id.display_name string;
+
+datasource users (
+    user_id:user_id,
+    display_name:display_name
+)
+grain (user_id)
+query '''select 1 as user_id, 'Alice' as display_name''';
+
+datasource user_export (
+    id: user_id,
+    name: display_name
+)
+grain (user_id)
+file `{target}`;
+
+persist into user_export from select user_id, display_name;
+"""
+    exec = Dialects.DUCK_DB.default_executor()
+    results = exec.parse_text(text)
+    for z in results:
+        exec.execute_query(z)
+    assert target.exists(), "parquet file was not created"
+    table = pq.read_table(target)
+    assert table.num_rows == 1
+    # Verify the column names match the datasource aliases, not the concept addresses
+    assert set(table.column_names) == {"id", "name"}, f"Got {table.column_names}"
+    assert table.column("id").to_pylist() == [1]
+    assert table.column("name").to_pylist() == ["Alice"]
+    target.unlink()
+
+
+def test_persist_to_csv_with_column_aliases():
+    """Test that persisting to CSV uses datasource column names, not concept addresses."""
+    import csv
+
+    target = Path(__file__).parent / "test_persist_column_names.csv"
+    if target.exists():
+        target.unlink()
+    text = f"""
+key product_id int;
+property product_id.product_name string;
+
+datasource products (
+    product_id:product_id,
+    product_name:product_name
+)
+grain (product_id)
+query '''select 42 as product_id, 'Widget' as product_name''';
+
+datasource product_export (
+    pid: product_id,
+    pname: product_name
+)
+grain (product_id)
+file `{target}`;
+
+persist into product_export from select product_id, product_name;
+"""
+    exec = Dialects.DUCK_DB.default_executor()
+    results = exec.parse_text(text)
+    for z in results:
+        exec.execute_query(z)
+    assert target.exists(), "csv file was not created"
+    with open(target, "r") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+    assert len(rows) == 1
+    # Verify the column names match the datasource aliases
+    assert set(rows[0].keys()) == {"pid", "pname"}, f"Got {rows[0].keys()}"
+    assert rows[0]["pid"] == "42"
+    assert rows[0]["pname"] == "Widget"
+    target.unlink()
+
+
 def test_datasource_where():
     text = """key user_id int metadata(description="the description");
 property user_id.display_name string metadata(description="The display name ");

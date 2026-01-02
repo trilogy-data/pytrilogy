@@ -130,3 +130,68 @@ state unpublished;
 overwrite gcs_export;
 """
     exec.execute_text(text)
+
+
+def test_duckdb_gcs_refresh():
+    """Test refresh command with GCS-backed datasources (mimics sf_trees refresh)."""
+    from pathlib import Path
+
+    from trilogy.core.models.environment import Environment
+    from trilogy.dialect.config import DuckDBConfig
+    from trilogy.execution.state.state_store import refresh_stale_assets
+
+    load_secret("GOOGLE_HMAC_KEY")
+    load_secret("GOOGLE_HMAC_SECRET")
+
+    # Path to the sf_trees model
+    sf_trees_path = Path(
+        r"C:\Users\ethan\coding_projects\trilogy-public-models\trilogy_public_models\duckdb\sf_trees"
+    )
+    tree_info_file = sf_trees_path / "raw" / "tree_info.preql"
+
+    if not tree_info_file.exists():
+        import pytest
+
+        pytest.skip("sf_trees model not available")
+
+    # Create executor with GCS enabled and python datasources
+    config = DuckDBConfig(enable_gcs=True, enable_python_datasources=True)
+    environment = Environment(working_path=str(sf_trees_path / "raw"))
+    exec = Dialects.DUCK_DB.default_executor(environment=environment, conf=config)
+
+    # Execute startup SQL if needed
+    setup_sql = sf_trees_path / "setup" / "setup_dev.sql"
+    if setup_sql.exists():
+        exec.execute_file(setup_sql)
+
+    # Parse the tree_info file
+    with open(tree_info_file, "r") as f:
+        exec.parse_text(f.read())
+
+    # Debug: print datasources
+    print(f"Datasources: {list(exec.environment.datasources.keys())}")
+    for ds_name, ds in exec.environment.datasources.items():
+        print(f"  {ds_name}: address={ds.address}, is_root={ds.is_root}")
+
+    # Run refresh
+    def on_watermarks(wm):
+        print("Watermarks:")
+        for ds_id, watermark in sorted(wm.items()):
+            for key_name, update_key in watermark.keys.items():
+                print(
+                    f"  {ds_id}.{key_name}: {update_key.value} ({update_key.type.value})"
+                )
+
+    def on_stale_found(count, root, all_):
+        print(f"Found {count} stale assets (root: {root}, all: {all_})")
+
+    def on_refresh(asset_id, reason):
+        print(f"Refreshing {asset_id}: {reason}")
+
+    result = refresh_stale_assets(
+        exec,
+        on_stale_found=on_stale_found,
+        on_refresh=on_refresh,
+        on_watermarks=on_watermarks,
+    )
+    print(f"Refreshed {result.refreshed_count} assets")

@@ -281,6 +281,12 @@ def create_datasource_from_table(
     type=str,
     help="Foreign key relationships in format: table.column:ref_table.column (comma-separated)",
 )
+@option(
+    "--env",
+    "-e",
+    multiple=True,
+    help="Set environment variables as KEY=VALUE pairs",
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def ingest(
@@ -291,6 +297,7 @@ def ingest(
     schema: str | None,
     config,
     fks: str | None,
+    env,
     conn_args,
 ):
     """Bootstrap one or more datasources from tables in your warehouse.
@@ -353,6 +360,14 @@ def ingest(
             "No dialect specified. Provide dialect as argument or set engine.dialect in config file."
         )
         raise Exit(1)
+
+    # Apply environment variables
+    if env:
+        from trilogy.execution.config import apply_env_vars
+        from trilogy.scripts.environment import parse_env_vars
+
+        cli_env_vars = parse_env_vars(env)
+        apply_env_vars(cli_env_vars)
 
     # Create executor
     try:

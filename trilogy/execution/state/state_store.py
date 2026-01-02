@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import date
-
-from sqlalchemy.exc import ProgrammingError
+from typing import Callable
 
 from trilogy import Executor
 from trilogy.core.enums import Purpose
@@ -17,15 +16,7 @@ from trilogy.core.models.datasource import (
 )
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import CTE
-
-
-def _is_table_not_found_error(exc: ProgrammingError, dialect) -> bool:
-    """Check if exception is a table-not-found error for the given dialect."""
-    pattern = dialect.TABLE_NOT_FOUND_PATTERN
-    if pattern is None:
-        return False
-    error_msg = str(exc.orig) if exc.orig else str(exc)
-    return pattern in error_msg
+from trilogy.execution.state.exceptions import is_missing_source_error
 
 
 @dataclass
@@ -115,9 +106,10 @@ def get_unique_key_hash_watermarks(
         try:
             result = executor.execute_raw_sql(query).fetchone()
             checksum_value = result[0] if result else None
-        except ProgrammingError as e:
-            if _is_table_not_found_error(e, dialect):
+        except Exception as e:
+            if is_missing_source_error(e, dialect):
                 checksum_value = None
+                executor.connection.rollback()
             else:
                 raise
 
@@ -160,15 +152,61 @@ def get_incremental_key_watermarks(
         try:
             result = executor.execute_raw_sql(query).fetchone()
             max_value = result[0] if result else None
-        except ProgrammingError as e:
-            if _is_table_not_found_error(e, dialect):
+        except Exception as e:
+            if is_missing_source_error(e, dialect):
                 max_value = None
+                executor.connection.rollback()
             else:
                 raise
 
         watermarks[concept.name] = UpdateKey(
             concept_name=concept.name,
             type=UpdateKeyType.INCREMENTAL_KEY,
+            value=max_value,
+        )
+
+    return DatasourceWatermark(keys=watermarks)
+
+
+def get_freshness_watermarks(
+    datasource: Datasource, executor: Executor
+) -> DatasourceWatermark:
+    if not datasource.freshness_by:
+        return DatasourceWatermark(keys={})
+
+    if isinstance(datasource.address, Address):
+        table_ref = executor.generator.render_source(datasource.address)
+    else:
+        table_ref = datasource.safe_address
+
+    watermarks = {}
+    factory = Factory(environment=executor.environment)
+
+    dialect = executor.generator
+    for concept_ref in datasource.freshness_by:
+        concept = executor.environment.concepts[concept_ref.address]
+        build_concept = factory.build(concept)
+        build_datasource = factory.build(datasource)
+        cte: CTE = CTE.from_datasource(build_datasource)
+        output_addresses = {c.address for c in datasource.output_concepts}
+        if concept.address in output_addresses:
+            query = f"SELECT MAX({dialect.render_concept_sql(build_concept, cte=cte, alias=False)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
+        else:
+            query = f"SELECT MAX({dialect.render_expr(build_concept.lineage, cte=cte)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
+
+        try:
+            result = executor.execute_raw_sql(query).fetchone()
+            max_value = result[0] if result else None
+        except Exception as e:
+            if is_missing_source_error(e, dialect):
+                max_value = None
+                executor.connection.rollback()
+            else:
+                raise
+
+        watermarks[concept.name] = UpdateKey(
+            concept_name=concept.name,
+            type=UpdateKeyType.UPDATE_TIME,
             value=max_value,
         )
 
@@ -183,7 +221,9 @@ class BaseStateStore:
     def watermark_asset(
         self, datasource: Datasource, executor: Executor
     ) -> DatasourceWatermark:
-        if datasource.incremental_by:
+        if datasource.freshness_by:
+            watermarks = get_freshness_watermarks(datasource, executor)
+        elif datasource.incremental_by:
             watermarks = get_incremental_key_watermarks(datasource, executor)
         else:
             key_columns = [
@@ -243,14 +283,14 @@ class BaseStateStore:
         # First pass: watermark all assets to get current state
         self.watermark_all_assets(env, executor)
 
-        # Build map of concept -> max watermark across all assets
+        # Build map of concept -> max watermark across root assets
         concept_max_watermarks: dict[str, UpdateKey] = {}
         for ds_id, watermark in self.watermarks.items():
             if ds_id in root_assets:
-                # Root assets define the "truth" for incremental keys
                 for key, val in watermark.keys.items():
                     if (
-                        val.type == UpdateKeyType.INCREMENTAL_KEY
+                        val.type
+                        in (UpdateKeyType.INCREMENTAL_KEY, UpdateKeyType.UPDATE_TIME)
                         and val.value is not None
                     ):
                         existing = concept_max_watermarks.get(key)
@@ -273,7 +313,6 @@ class BaseStateStore:
                             val.value is None
                             or _compare_watermark_values(val.value, max_val.value) < 0
                         ):
-                            # Create UpdateKeys with the filter for incremental update
                             filters = (
                                 UpdateKeys(keys={key: val})
                                 if val.value
@@ -289,13 +328,79 @@ class BaseStateStore:
                             break
 
                 elif val.type == UpdateKeyType.UPDATE_TIME:
-                    # For update_time, we'd need root asset update times to compare
-                    # This is tricky without explicit dependency tracking
-                    pass
+                    max_val = concept_max_watermarks.get(key)
+                    if max_val and max_val.value is not None:
+                        if (
+                            val.value is None
+                            or _compare_watermark_values(val.value, max_val.value) < 0
+                        ):
+                            stale.append(
+                                StaleAsset(
+                                    datasource_id=ds_id,
+                                    reason=f"freshness '{key}' behind: {val.value} < {max_val.value}",
+                                    filters=UpdateKeys(),
+                                )
+                            )
+                            break
 
                 elif val.type == UpdateKeyType.KEY_HASH:
-                    # Hash changes indicate data changed, but we need a reference
-                    # to compare against - requires dependency graph
                     pass
 
         return stale
+
+
+@dataclass
+class RefreshResult:
+    """Result of refreshing stale assets."""
+
+    stale_count: int
+    refreshed_count: int
+    root_assets: int
+    all_assets: int
+
+    @property
+    def had_stale(self) -> bool:
+        return self.stale_count > 0
+
+
+def refresh_stale_assets(
+    executor: "Executor",
+    on_stale_found: Callable[[int, int, int], None] | None = None,
+    on_refresh: Callable[[str, str], None] | None = None,
+    on_watermarks: Callable[[dict[str, DatasourceWatermark]], None] | None = None,
+) -> RefreshResult:
+    """Find and refresh stale assets.
+
+    Args:
+        executor: The executor with parsed environment
+        on_stale_found: Optional callback(stale_count, root_assets, all_assets)
+        on_refresh: Optional callback(asset_id, reason) called before each refresh
+        on_watermarks: Optional callback(watermarks_dict) called after collecting watermarks
+    """
+    state_store = BaseStateStore()
+    stale_assets = state_store.get_stale_assets(executor.environment, executor)
+
+    if on_watermarks:
+        on_watermarks(state_store.watermarks)
+    root_assets = sum(
+        1 for asset in executor.environment.datasources.values() if asset.is_root
+    )
+    all_assets = len(executor.environment.datasources)
+
+    if on_stale_found:
+        on_stale_found(len(stale_assets), root_assets, all_assets)
+
+    refreshed = 0
+    for asset in stale_assets:
+        if on_refresh:
+            on_refresh(asset.datasource_id, asset.reason)
+        datasource = executor.environment.datasources[asset.datasource_id]
+        executor.update_datasource(datasource)
+        refreshed += 1
+
+    return RefreshResult(
+        stale_count=len(stale_assets),
+        refreshed_count=refreshed,
+        root_assets=root_assets,
+        all_assets=all_assets,
+    )

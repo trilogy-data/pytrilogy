@@ -8,7 +8,10 @@ from click.exceptions import Exit
 from trilogy import Executor
 from trilogy.core.statements.execute import ProcessedValidateStatement
 from trilogy.dialect.enums import Dialects
-from trilogy.execution.state.state_store import BaseStateStore
+from trilogy.execution.state.state_store import (
+    DatasourceWatermark,
+    refresh_stale_assets,
+)
 from trilogy.scripts.common import (
     CLIRuntimeParams,
     ExecutionStats,
@@ -17,6 +20,24 @@ from trilogy.scripts.common import (
 )
 from trilogy.scripts.dependency import ScriptNode
 from trilogy.scripts.parallel_execution import ExecutionMode, run_parallel_execution
+
+# Module-level flag for printing watermarks (set by CLI)
+_print_watermarks = False
+
+
+def _format_watermarks(watermarks: dict[str, DatasourceWatermark]) -> None:
+    """Print watermark information for all datasources."""
+    from trilogy.scripts.display import print_info
+
+    print_info("Watermarks:")
+    for ds_id, watermark in sorted(watermarks.items()):
+        if not watermark.keys:
+            print_info(f"  {ds_id}: (no watermarks)")
+            continue
+        for key_name, update_key in watermark.keys.items():
+            print_info(
+                f"  {ds_id}.{key_name}: {update_key.value} ({update_key.type.value})"
+            )
 
 
 def execute_script_for_refresh(
@@ -35,28 +56,38 @@ def execute_script_for_refresh(
 
     stats = count_statement_stats([])
 
-    state_store = BaseStateStore()
-    stale_assets = state_store.get_stale_assets(exec.environment, exec)
+    def on_stale_found(stale_count: int, root_assets: int, all_assets: int) -> None:
+        if stale_count == 0 and not quiet:
+            print_info(
+                f"No stale assets found in {node.path.name} ({root_assets}/{all_assets} root assets)"
+            )
+        elif not quiet:
+            print_warning(f"Found {stale_count} stale asset(s) in {node.path.name}")
 
-    if not stale_assets:
+    def on_refresh(asset_id: str, reason: str) -> None:
         if not quiet:
-            print_info(f"No stale assets found in {node.path.name}")
-        return stats
+            print_info(f"  Refreshing {asset_id}: {reason}")
 
-    if not quiet:
-        print_warning(f"Found {len(stale_assets)} stale asset(s) in {node.path.name}")
+    def on_watermarks(watermarks: dict[str, DatasourceWatermark]) -> None:
+        if _print_watermarks:
+            _format_watermarks(watermarks)
 
-    for asset in stale_assets:
-        if not quiet:
-            print_info(f"  Refreshing {asset.datasource_id}: {asset.reason}")
-        datasource = exec.environment.datasources[asset.datasource_id]
-        exec.update_datasource(datasource)
-        stats.update_count += 1
+    result = refresh_stale_assets(
+        exec,
+        on_stale_found=on_stale_found,
+        on_refresh=on_refresh,
+        on_watermarks=on_watermarks,
+    )
+    stats.update_count = result.refreshed_count
+
     for x in validation:
         exec.execute_statement(x)
         stats = count_statement_stats([x])
-    if not quiet:
-        print_success(f"Refreshed {len(stale_assets)} asset(s) in {node.path.name}")
+
+    if result.had_stale and not quiet:
+        print_success(
+            f"Refreshed {result.refreshed_count} asset(s) in {node.path.name}"
+        )
 
     return stats
 
@@ -73,16 +104,39 @@ def execute_script_for_refresh(
 @option(
     "--config", type=Path(exists=True), help="Path to trilogy.toml configuration file"
 )
+@option(
+    "--print-watermarks",
+    is_flag=True,
+    default=False,
+    help="Print watermark values for all datasources before refreshing",
+)
+@option(
+    "--env",
+    "-e",
+    multiple=True,
+    help="Set environment variables as KEY=VALUE pairs",
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def refresh(
-    ctx, input, dialect: str | None, param, parallelism: int | None, config, conn_args
+    ctx,
+    input,
+    dialect: str | None,
+    param,
+    parallelism: int | None,
+    config,
+    print_watermarks,
+    env,
+    conn_args,
 ):
     """Refresh stale assets in Trilogy scripts.
 
     Parses each script, identifies datasources marked as 'root' (source of truth),
     compares watermarks to find stale derived assets, and refreshes them.
     """
+    global _print_watermarks
+    _print_watermarks = print_watermarks
+
     cli_params = CLIRuntimeParams(
         input=input,
         dialect=Dialects(dialect) if dialect else None,
@@ -92,6 +146,7 @@ def refresh(
         debug=ctx.obj["DEBUG"],
         config_path=PathlibPath(config) if config else None,
         execution_strategy="eager_bfs",
+        env=env,
     )
 
     try:

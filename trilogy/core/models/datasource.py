@@ -212,6 +212,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     status: DatasourceState = Field(default=DatasourceState.PUBLISHED)
     incremental_by: List[ConceptRef] = Field(default_factory=list)
     partition_by: List[ConceptRef] = Field(default_factory=list)
+    freshness_by: List[ConceptRef] = Field(default_factory=list)
     is_root: bool = False
 
     @property
@@ -358,6 +359,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             status=self.status,
             incremental_by=[c.with_namespace(namespace) for c in self.incremental_by],
             partition_by=[c.with_namespace(namespace) for c in self.partition_by],
+            freshness_by=[c.with_namespace(namespace) for c in self.freshness_by],
             is_root=self.is_root,
         )
         return new

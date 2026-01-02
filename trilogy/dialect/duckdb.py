@@ -211,13 +211,14 @@ SELECT * FROM (
 
 
 def get_gcs_setup_sql(enabled: bool) -> str:
-    """Return SQL to setup GCS extension with HMAC credentials from environment.
+    """Return SQL to setup GCS extension with optional HMAC credentials.
 
     Args:
-        enabled: If True, installs httpfs and creates secret from env vars.
-                 If False, does nothing (GCS paths will fail naturally).
+        enabled: If True, installs httpfs. If credentials are available,
+                 also creates a secret for authenticated access.
+                 If False, does nothing.
 
-    Environment variables:
+    Environment variables (optional, required only for write access):
         GOOGLE_HMAC_KEY: GCS HMAC access key ID
         GOOGLE_HMAC_SECRET: GCS HMAC secret key
     """
@@ -227,22 +228,41 @@ def get_gcs_setup_sql(enabled: bool) -> str:
     key_id = environ.get("GOOGLE_HMAC_KEY")
     secret = environ.get("GOOGLE_HMAC_SECRET")
 
-    if not key_id or not secret:
-        raise ValueError(
-            "GCS support requires GOOGLE_HMAC_KEY and GOOGLE_HMAC_SECRET "
-            "environment variables to be set"
-        )
-
-    return f"""
+    # Always install httpfs for read access to public buckets
+    base_sql = """
 INSTALL httpfs;
 LOAD httpfs;
+"""
 
+    # If credentials are available, create a secret for authenticated access
+    if key_id and secret:
+        return (
+            base_sql
+            + f"""
 CREATE OR REPLACE SECRET __trilogy_gcs_secret (
     TYPE gcs,
     KEY_ID '{key_id}',
     SECRET '{secret}'
 );
 """
+        )
+    return base_sql
+
+
+def check_gcs_write_credentials() -> None:
+    """Validate that GCS write credentials are available.
+
+    Raises ValueError if GOOGLE_HMAC_KEY and GOOGLE_HMAC_SECRET are not set.
+    Call this before attempting to write to GCS.
+    """
+    key_id = environ.get("GOOGLE_HMAC_KEY")
+    secret = environ.get("GOOGLE_HMAC_SECRET")
+
+    if not key_id or not secret:
+        raise ValueError(
+            "Writing to GCS requires GOOGLE_HMAC_KEY and GOOGLE_HMAC_SECRET "
+            "environment variables to be set"
+        )
 
 
 DUCKDB_TEMPLATE = Template(
@@ -294,6 +314,7 @@ class DuckDBDialect(BaseDialect):
     UNNEST_MODE = UnnestMode.DIRECT
     NULL_WRAPPER = staticmethod(null_wrapper)
     TABLE_NOT_FOUND_PATTERN = "Catalog Error: Table with name"
+    HTTP_NOT_FOUND_PATTERN = "404 (Not Found)"
 
     def render_source(self, address: Address) -> str:
         if address.type == AddressType.CSV:

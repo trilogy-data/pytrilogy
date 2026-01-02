@@ -17,7 +17,7 @@ from trilogy.core.enums import (
 from trilogy.core.models.author import Comment, Concept, Function
 from trilogy.core.models.build import BuildFunction
 from trilogy.core.models.core import ListWrapper, MapWrapper
-from trilogy.core.models.datasource import Datasource, UpdateKeys
+from trilogy.core.models.datasource import Address, Datasource, UpdateKeys
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
     STATEMENT_TYPES,
@@ -149,12 +149,17 @@ class Executor(object):
             keys: Optional UpdateKeys specifying incremental filters
         """
         where = keys.to_where_clause(self.environment) if keys else None
-        create_stmt = CreateStatement(
-            scope=ValidationScope.DATASOURCES,
-            create_mode=CreateMode.CREATE_IF_NOT_EXISTS,
-            targets=[datasource.name],
+        # Skip CREATE for file-backed datasources (parquet, csv, etc.) - the file is the source
+        is_file_backed = (
+            isinstance(datasource.address, Address) and datasource.address.is_file
         )
-        self.execute_statement(create_stmt)
+        if not is_file_backed:
+            create_stmt = CreateStatement(
+                scope=ValidationScope.DATASOURCES,
+                create_mode=CreateMode.CREATE_IF_NOT_EXISTS,
+                targets=[datasource.name],
+            )
+            self.execute_statement(create_stmt)
         select_stmt = datasource.create_update_statement(
             self.environment, where, line_no=None
         )
@@ -292,6 +297,11 @@ class Executor(object):
         addr = query.output_to.address
         if addr.is_file:
             io_type = self._address_type_to_io_type(addr.type)
+            # Build column alias mapping from datasource columns
+            column_aliases: dict[str, str] = {}
+            for col in query.datasource.columns:
+                if col.is_concrete and isinstance(col.alias, str):
+                    column_aliases[col.concept.address] = col.alias
             copy_statement = ProcessedCopyStatement(
                 output_columns=query.output_columns,
                 ctes=query.ctes,
@@ -303,6 +313,7 @@ class Executor(object):
                 locally_derived=query.locally_derived,
                 target=addr.location,
                 target_type=io_type,
+                column_aliases=column_aliases,
             )
             self.execute_query(copy_statement)
             if query.persist_mode == PersistMode.OVERWRITE:
@@ -316,10 +327,34 @@ class Executor(object):
             self.environment.add_datasource(query.datasource)
         return output
 
+    def _build_aliased_copy_sql(self, query: ProcessedCopyStatement) -> str:
+        """Build SQL with column aliases for file output."""
+        base_sql = self.generator.compile_statement(query)
+        if not query.column_aliases:
+            return base_sql
+        quote = self.generator.QUOTE_CHARACTER
+        alias_clauses = []
+        for col in query.output_columns:
+            target_name = query.column_aliases.get(col.address)
+            if target_name:
+                alias_clauses.append(
+                    f"{quote}{col.safe_address}{quote} as {quote}{target_name}{quote}"
+                )
+            else:
+                alias_clauses.append(f"{quote}{col.safe_address}{quote}")
+        select_clause = ", ".join(alias_clauses)
+        return f"SELECT {select_clause} FROM ({base_sql}) as _copy_source"
+
     @execute_query.register
     def _(self, query: ProcessedCopyStatement) -> ResultProtocol | None:
-        sql = self.generator.compile_statement(query)
+        sql = self._build_aliased_copy_sql(query)
         if self.dialect == Dialects.DUCK_DB:
+            # Check for GCS write credentials if target is a GCS path
+            if query.target.startswith("gcs://") or query.target.startswith("gs://"):
+                from trilogy.dialect.duckdb import check_gcs_write_credentials
+
+                check_gcs_write_credentials()
+
             if query.target_type == IOType.PARQUET:
                 copy_sql = f"COPY ({sql}) TO '{query.target}' (FORMAT PARQUET)"
             elif query.target_type == IOType.CSV:
@@ -572,10 +607,11 @@ class Executor(object):
                 }
 
         if final_params:
-            return self.connection.execute(text(command), final_params)
-        return self.connection.execute(
-            text(command),
-        )
+            output = self.connection.execute(text(command), final_params)
+        else:
+            output = self.connection.execute(text(command))
+        # self.connection.commit()
+        return output
 
     def execute_text(
         self, command: str, non_interactive: bool = False
