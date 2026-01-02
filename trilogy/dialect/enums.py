@@ -15,17 +15,18 @@ def default_factory(conf: DialectConfig, config_type):
     from sqlalchemy import create_engine
     from sqlalchemy.pool import NullPool
 
+    engine_args = {
+        "future": True,
+        "poolclass": NullPool,
+    }
     # the DuckDB IdentifierPreparer uses a global connection that is not thread safe
     if isinstance(conf, DuckDBConfig):
         # we monkey patch to parent to avoid this
         from duckdb_engine import DuckDBIdentifierPreparer, PGIdentifierPreparer
 
         DuckDBIdentifierPreparer.__init__ = PGIdentifierPreparer.__init__  # type: ignore
-    engine_args = {
-        "future": True,
-        "poolclass": NullPool,
-        "isolation_level": "AUTOCOMMIT",
-    }
+        engine_args["isolation_level"] = "AUTOCOMMIT"
+
     if not isinstance(conf, config_type):
         raise TypeError(
             f"Invalid dialect configuration for type {type(config_type).__name__}, is {type(conf)}"

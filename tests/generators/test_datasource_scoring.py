@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 
 from trilogy.core.enums import AddressType
 from trilogy.core.models.datasource import Address
+from trilogy.core.models.build import BuildDatasource
 from trilogy.core.processing.node_generators.select_merge_node import (
     get_materialization_score,
     score_datasource_node,
@@ -33,8 +34,12 @@ class TestGetMaterializationScore:
 
 class TestScoreDatasourceNode:
     def _make_mock_ds(self, address_type: AddressType) -> MagicMock:
-        ds = MagicMock()
-        ds.address = Address(location="test", type=address_type)
+        ds = BuildDatasource(
+            name="dummy",
+            columns=[],
+            address=Address(location="test", type=address_type),
+        )
+
         return ds
 
     def test_table_preferred_over_csv(self):

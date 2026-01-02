@@ -78,7 +78,7 @@ def get_graph_grains(g: ReferenceGraph) -> dict[str, list[str]]:
     return grain_length
 
 
-def get_materialization_score(address: Address | str) -> int:
+def get_materialization_score(address: Address | AddressType | str) -> int:
     """Score datasource by materialization level. Lower is better (more materialized).
 
     - 0: TABLE - fully materialized in the database
@@ -88,7 +88,10 @@ def get_materialization_score(address: Address | str) -> int:
     """
     if isinstance(address, str):
         return 0
-    address_type = address.type
+    elif isinstance(address, AddressType):
+        address_type = address
+    else:
+        address_type = address.type
     if address_type == AddressType.TABLE:
         return 0
     if address_type in (AddressType.CSV, AddressType.TSV, AddressType.PARQUET):
