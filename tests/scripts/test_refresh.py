@@ -1,4 +1,3 @@
-
 from trilogy.core.models.datasource import UpdateKey, UpdateKeyType
 from trilogy.execution.state.state_store import DatasourceWatermark
 from trilogy.scripts.refresh import _format_watermarks

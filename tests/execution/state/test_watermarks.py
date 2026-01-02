@@ -988,3 +988,110 @@ def test_freshness_empty_target():
 
     assert len(stale) == 1
     assert stale[0].datasource_id == "target_logs"
+
+
+def test_freshness_watermarks_no_freshness_by():
+    """Test get_freshness_watermarks returns empty when datasource has no freshness_by."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key user_id int;
+        property user_id.name string;
+
+        datasource users (
+            user_id: user_id,
+            name: name
+        )
+        grain (user_id)
+        query '''
+        SELECT 1 as user_id, 'Alice' as name
+        ''';
+        """
+    )
+
+    datasource = executor.environment.datasources["users"]
+    # Datasource has no freshness_by
+    assert datasource.freshness_by is None or len(datasource.freshness_by) == 0
+
+    watermarks = get_freshness_watermarks(datasource, executor)
+    assert watermarks.keys == {}
+
+
+def test_freshness_watermarks_missing_table():
+    """Test get_freshness_watermarks handles missing table gracefully."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key record_id int;
+        property record_id.updated_at datetime;
+
+        datasource missing_records (
+            record_id: record_id,
+            updated_at: updated_at
+        )
+        grain (record_id)
+        address nonexistent_table
+        freshness by updated_at;
+        """
+    )
+
+    datasource = executor.environment.datasources["missing_records"]
+    watermarks = get_freshness_watermarks(datasource, executor)
+
+    # Should return watermark with None value instead of raising
+    assert "updated_at" in watermarks.keys
+    assert watermarks.keys["updated_at"].value is None
+    assert watermarks.keys["updated_at"].type == UpdateKeyType.UPDATE_TIME
+
+
+def test_incremental_watermarks_missing_table():
+    """Test get_incremental_key_watermarks handles missing table gracefully."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key event_id int;
+        property event_id.event_ts datetime;
+
+        datasource missing_events (
+            event_id: event_id,
+            event_ts: event_ts
+        )
+        grain (event_id)
+        address nonexistent_events_table
+        incremental by event_ts;
+        """
+    )
+
+    datasource = executor.environment.datasources["missing_events"]
+    watermarks = get_incremental_key_watermarks(datasource, executor)
+
+    # Should return watermark with None value instead of raising
+    assert "event_ts" in watermarks.keys
+    assert watermarks.keys["event_ts"].value is None
+    assert watermarks.keys["event_ts"].type == UpdateKeyType.INCREMENTAL_KEY
+
+
+def test_unique_key_hash_watermarks_missing_table():
+    """Test get_unique_key_hash_watermarks handles missing table gracefully."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key item_id int;
+        property item_id.name string;
+
+        datasource missing_items (
+            item_id: item_id,
+            name: name
+        )
+        grain (item_id)
+        address nonexistent_items_table;
+        """
+    )
+
+    datasource = executor.environment.datasources["missing_items"]
+    watermarks = get_unique_key_hash_watermarks(datasource, executor)
+
+    # Should return watermark with None value instead of raising
+    assert "local.item_id" in watermarks.keys
+    assert watermarks.keys["local.item_id"].value is None
+    assert watermarks.keys["local.item_id"].type == UpdateKeyType.KEY_HASH
