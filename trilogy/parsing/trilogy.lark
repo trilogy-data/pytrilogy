@@ -98,7 +98,9 @@
     persist_statement: auto_persist | full_persist
 
     // select statement
-    select_statement: where? "select"i select_list where?  having?  order_by?  limit? 
+    from_clause: "from"i IDENTIFIER ("," IDENTIFIER)* ","?
+
+    select_statement: from_clause? where? "select"i select_list where?  having?  order_by?  limit? 
 
     // multiple_selects
     multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause ("derive" derive_clause)?  where? order_by?  limit? 
@@ -139,9 +141,9 @@
     
     // copy statement
 
-    COPY_TYPE: "csv"i | "parquet"i
+    COPY_TYPE: "csv"i | "json"i | "parquet"i
 
-    copy_statement: "copy"i "into"i COPY_TYPE string_lit "from"i select_statement
+    copy_statement: "copy"i "into"i COPY_TYPE (FILE_PATH | string_lit) "from"i select_statement
 
     // FUNCTION blocks
     function: raw_function
@@ -486,7 +488,7 @@
     ADDRESS: IDENTIFIER
 
     MULTILINE_STRING: /\'{3}(.*?)\'{3}/s
-    FILE_PATH: /`[^`]+\.(py|csv|parquet|tsv|sql)`/i
+    FILE_PATH: /`[^`]+\.(py|csv|json|parquet|tsv|sql)`/i
     
     DOUBLE_STRING_CHARS: /(?:(?!\${)([^"\\]|\\.))+/+ // any character except "
     SINGLE_STRING_CHARS: /(?:(?!\${)([^'\\]|\\.))+/+ // any character except '

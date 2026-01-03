@@ -1,0 +1,50 @@
+import std.geography;
+import etl;
+
+key code string;
+property code.u_code string;
+property code.state_code string::country_code;
+property code.type string;
+property code.class string;
+property code.t_start string;
+property code.t_stop string;
+property code.short_name string;
+property code.name string;
+property code.location string;
+# these are all null
+# excluding from model for the moment
+# property code.longitude float::longitude;
+# property code.latitude float::latitude;
+property code.error float;
+property code.parent string;
+property code.short_e_name string;
+property code.e_name string;
+property code.v_class string;
+property code.v_class_id string;
+property code.v_id string;
+property code.u_name string;
+
+datasource platform_info (
+    code,
+    u_code,
+    state_code,
+    type,
+    class,
+    t_start,
+    t_stop,
+    short_name,
+    name,
+    location,
+    ?error,
+    parent,
+    short_e_name,
+    e_name,
+    v_class,
+    v_class_id,
+    v_id,
+    u_name,
+    data_updated_through
+    )
+grain (code)
+file `gcs://trilogy_public_models/duckdb/launch_report/platform_info.parquet`
+freshness by data_updated_through;

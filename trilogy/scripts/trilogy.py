@@ -14,10 +14,6 @@ from trilogy.scripts.testing import integration, unit
 
 set_rich_mode = set_rich_mode
 
-# Default parallelism level
-DEFAULT_PARALLELISM = 2
-
-
 AGENT_NOTICE = """
 NOTE FOR AI AGENTS (Claude, GPT, etc.): For comprehensive usage documentation,
 run 'trilogy agent-info' to get a detailed AGENTS.md-style guide with all
@@ -26,9 +22,14 @@ commands, options, and usage examples.
 
 
 @group(epilog=AGENT_NOTICE)
-@option("--debug", default=False, help="Enable debug mode")
+@option(
+    "--debug",
+    default=None,
+    required=False,
+    help="Enable debug mode with output to specified file path",
+)
 @pass_context
-def cli(ctx, debug: bool):
+def cli(ctx, debug: str | None):
     """Trilogy CLI - A beautiful data productivity tool."""
     ctx.ensure_object(dict)
     ctx.obj["DEBUG"] = debug

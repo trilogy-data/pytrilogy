@@ -167,6 +167,8 @@ def serve(ctx, path: str, engine: str, port: int, host: str, timeout: float | No
         # The asset name is the specific file within the model
         asset_name = get_relative_model_name(target_file, directory_path)
 
+        engine_url = "duckdb" if engine == "duck_db" else engine
+
         # URL-encode the parameters
         studio_url = (
             f"https://trilogydata.dev/trilogy-studio-core/#"
@@ -174,7 +176,7 @@ def serve(ctx, path: str, engine: str, port: int, host: str, timeout: float | No
             f"assetType=trilogy&"
             f"assetName={quote(asset_name)}&"
             f"modelName={quote(directory_path.name)}&"
-            f"connection={quote(engine)}&"
+            f"connection={quote(engine_url)}&"
             f"store={quote(store_url)}"
         )
 

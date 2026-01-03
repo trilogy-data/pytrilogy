@@ -131,6 +131,7 @@ from trilogy.core.statements.author import (
     ConceptTransform,
     CopyStatement,
     CreateStatement,
+    FromClause,
     FunctionDeclaration,
     ImportStatement,
     Limit,
@@ -495,6 +496,9 @@ class ParseToObjects(Transformer):
     def QUOTED_ADDRESS(self, args) -> Address:
         return Address(location=args.value[1:-1], quoted=True)
 
+    def FILE_PATH(self, args) -> str:
+        return args.value[1:-1]
+
     def STRING_CHARS(self, args) -> str:
         return args.value
 
@@ -607,9 +611,11 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def column_assignment(self, meta: Meta, args):
         modifiers = []
+        short_binding = True
         if len(args) == 2:
             alias = args[0]
             concept_list = args[1]
+            short_binding = False
         else:
             alias = args[0][-1]
             concept_list = args[0]
@@ -620,6 +626,8 @@ class ParseToObjects(Transformer):
         resolved = self.environment.concepts.__getitem__(  # type: ignore
             key=concept, line_no=meta.line, file=self.token_address
         )
+        if short_binding:
+            alias = resolved.safe_address
         return ColumnAssignment(
             alias=alias, modifiers=modifiers, concept=resolved.reference
         )
@@ -1457,7 +1465,9 @@ class ParseToObjects(Transformer):
         return ShowCategory(args[0])
 
     @v_args(meta=True)
-    def show_statement(self, meta: Meta, args) -> ShowStatement:
+    def show_statement(self, meta: Meta, args) -> ShowStatement | None:
+        if self.parse_pass != ParsePass.VALIDATION:
+            return None
         return ShowStatement(content=args[0])
 
     @v_args(meta=True)
@@ -1675,10 +1685,16 @@ class ParseToObjects(Transformer):
         return multi
 
     @v_args(meta=True)
+    def from_clause(self, meta: Meta, args) -> FromClause:
+        sources = [str(arg) for arg in args]
+        return FromClause(sources=sources)
+
+    @v_args(meta=True)
     def select_statement(self, meta: Meta, args) -> SelectStatement:
         select_items: List[SelectItem] | None = None
         limit: int | None = None
         order_by: OrderBy | None = None
+        from_clause: FromClause | None = None
         where = None
         having = None
         for arg in args:
@@ -1689,6 +1705,8 @@ class ParseToObjects(Transformer):
                 limit = arg.count
             elif atype is OrderBy:
                 order_by = arg
+            elif atype is FromClause:
+                from_clause = arg
             elif atype is WhereClause:
                 if where is not None:
                     raise ParseError(
@@ -1707,6 +1725,7 @@ class ParseToObjects(Transformer):
             where_clause=where,
             having_clause=having,
             limit=limit,
+            eligible_datasources=from_clause.sources if from_clause else None,
             meta=Metadata(line_number=meta.line),
         )
         if (
@@ -1744,7 +1763,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def file(self, meta: Meta, args):
-        raw_path = args[0][1:-1]
+        raw_path = args[0]
 
         # Cloud storage URLs should be used as-is without path resolution
         cloud_prefixes = ("gcs://", "gs://", "s3://", "https://", "http://")

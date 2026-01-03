@@ -1,5 +1,6 @@
 from enum import Enum
 from logging import DEBUG, StreamHandler
+from pathlib import Path
 from typing import Union
 from uuid import uuid4
 
@@ -30,6 +31,7 @@ class DebuggingHook(BaseHook):
         process_nodes: PrintMode | bool = True,
         process_datasources: PrintMode | bool = True,
         process_other: bool = True,
+        output_file: Path | None = None,
     ):
         if not any([isinstance(x, StreamHandler) for x in logger.handlers]):
             logger.addHandler(StreamHandler())
@@ -42,6 +44,7 @@ class DebuggingHook(BaseHook):
         self.process_other = PrintMode(process_other)
         self.messages: list[str] = []
         self.uuid = uuid4()
+        self.output_file = output_file or f"debug_{self.uuid}.log"
         from trilogy.dialect.bigquery import BigqueryDialect
 
         self.renderer = BigqueryDialect()
@@ -51,7 +54,7 @@ class DebuggingHook(BaseHook):
         self.messages.append(merged)
 
     def write(self):
-        with open(f"debug_{self.uuid}.log", "w") as f:
+        with open(self.output_file, "w") as f:
             f.write("\n".join(self.messages))
 
     def process_select_info(self, select: SelectStatement):

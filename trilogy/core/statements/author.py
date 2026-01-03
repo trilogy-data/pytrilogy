@@ -101,10 +101,15 @@ class SelectItem(BaseModel):
         return True if isinstance(self.content, UndefinedConcept) else False
 
 
+class FromClause(BaseModel):
+    sources: List[str]
+
+
 class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
     selection: List[SelectItem]
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
+    eligible_datasources: Optional[list[str]] = None
     meta: Metadata = Field(default_factory=lambda: Metadata())
     local_concepts: Annotated[
         EnvironmentConceptDict, PlainValidator(validate_concepts)
@@ -143,6 +148,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         meta: Metadata | None = None,
         where_clause: WhereClause | None = None,
         having_clause: HavingClause | None = None,
+        eligible_datasources: list[str] | None = None,
     ) -> "SelectStatement":
         output = SelectStatement(
             selection=selection,
@@ -151,6 +157,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             limit=limit,
             order_by=order_by,
             meta=meta or Metadata(),
+            eligible_datasources=eligible_datasources,
         )
 
         output.grain = output.calculate_grain(environment, output.local_concepts)

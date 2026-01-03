@@ -508,13 +508,14 @@ def run_single_script_execution(
     edialect,
     param: tuple[str, ...],
     conn_args,
-    debug: bool,
+    debug: str | None,
     execution_mode: ExecutionMode,
     config,
 ) -> None:
     """Run single script execution with polished multi-statement progress display."""
     from trilogy.scripts.common import (
         create_executor,
+        flush_debugging_hooks,
         handle_execution_exception,
         validate_datasources,
     )
@@ -623,6 +624,9 @@ def run_single_script_execution(
 
         if result.had_stale:
             print_success(f"Refreshed {result.refreshed_count} asset(s)")
+
+    if debug:
+        flush_debugging_hooks(exec)
 
 
 def get_execution_strategy(strategy_name: str):

@@ -1,0 +1,56 @@
+#auto-generated datasource from table/view engines
+import std.metric;
+import std.color;
+import etl;
+
+key name string; # name of engine
+property name.manufacturer string; # manufacturer of the engine
+property name.family string; # engine family, a loosely defined grouping
+property name.alt_name string; # alternative name of the engine
+key oxidizer string; # type of oxidizer used
+key fuel string; # type of fuel used
+property name.mass float; # mass in kg, loaded for solids only
+property name.mflag string; # mass flag for additional information
+property name.impulse int; # total impulse in kNs, mostly for solids
+property name.impflag string; # impulse flag for additional information
+property name.thrust numeric::kn; # typical thrust in kilonewtons (kN)
+property name.tflag string; # thrust flag for additional information
+property name.isp float; # typical specific impulse in seconds, vacuum Isp where available
+property name.ispflag string; # isp flag for additional information
+property name.duration float; # typical burn duration in seconds
+property name.durflag string; # duration flag for additional information
+property name.chambers int; # number of engine chambers per engine
+property name.date string; # date of first flight
+property name.usage string; # example of usage, includes stage number in brackets
+key group string; # general grouping of engines
+
+
+
+
+datasource engine (
+    name,
+    manufacturer,
+    family,
+    alt_name,
+    oxidizer,
+    fuel,
+    ?mass,
+    ?mflag,
+    ?impulse,
+    ?impflag,
+    ?thrust,
+    ?tflag,
+    ?isp,
+    ?ispflag,
+    ?duration,
+    ?durflag,
+    ?chambers,
+    date,
+    usage,
+    group,
+    data_updated_through
+    )
+grain (name)
+file `gcs://trilogy_public_models/duckdb/launch_report/engine.parquet`
+freshness by data_updated_through;
+

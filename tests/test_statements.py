@@ -70,6 +70,28 @@ copy into csv '{target}' from select x -> test order by test asc;
     assert target.exists(), "csv file was not created"
 
 
+def test_io_statement_json():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+    target = Path(__file__).parent / "test_io_statement.json"
+    if target.exists():
+        target.unlink()
+    text = f"""const array <- [1,2,3,4];
+
+auto x <- unnest(array);
+
+copy into json `{target}` from select x -> test order by test asc;
+"""
+    exec = Dialects.DUCK_DB.default_executor()
+    results = exec.parse_text(text)
+    assert exec.environment.concepts["x"].lineage.operator == FunctionType.UNNEST
+    assert isinstance(results[-1], ProcessedCopyStatement)
+    for z in results:
+        exec.execute_query(z)
+    assert target.exists(), "json file was not created"
+
+
 def test_io_statement_parquet():
     import pyarrow.parquet as pq
 
