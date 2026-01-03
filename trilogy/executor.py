@@ -54,7 +54,6 @@ from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.config import DialectConfig
 from trilogy.dialect.enums import Dialects
 from trilogy.dialect.metadata import (
-    generate_result_set,
     handle_concept_declaration,
     handle_datasource,
     handle_import_statement,
@@ -65,6 +64,7 @@ from trilogy.dialect.metadata import (
     handle_show_statement_outputs,
 )
 from trilogy.dialect.mock import handle_processed_mock_statement
+from trilogy.dialect.results import MockResult
 from trilogy.engine import EngineConnection, ExecutionEngine, ResultProtocol
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.parser import parse_text
@@ -373,9 +373,9 @@ class Executor(object):
             raise NotImplementedError(
                 f"COPY statement not supported for dialect {self.dialect}"
             )
-        return generate_result_set(
-            query.output_columns,
-            [self.generator.compile_statement(query)],
+        return MockResult(
+            [{"query": self.generator.compile_statement(query)}],
+            ["query"],
         )
 
     @singledispatchmethod

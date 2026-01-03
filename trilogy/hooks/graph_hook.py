@@ -5,6 +5,7 @@ import networkx as nx
 
 from trilogy.hooks.base_hook import BaseHook
 
+
 class GraphHook(BaseHook):
     def __init__(self):
         super().__init__()

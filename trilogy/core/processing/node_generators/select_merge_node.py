@@ -50,15 +50,10 @@ def get_graph_partial_nodes(
     partial: dict[str, list[str]] = {}
     for node, ds in g.datasources.items():
 
-        if not isinstance(ds, list):
-
-            if ds.non_partial_for and conditions == ds.non_partial_for:
-                partial[node] = []
-                continue
-            partial[node] = [concept_to_node(c) for c in ds.partial_concepts]
-        # assume union sources have no partial
-        else:
+        if ds.non_partial_for and conditions == ds.non_partial_for:
             partial[node] = []
+            continue
+        partial[node] = [concept_to_node(c) for c in ds.partial_concepts]
     return partial
 
 
@@ -484,9 +479,6 @@ def resolve_subgraphs(
         # filter out synonyms
         if (x := concepts.get(n, None)) and x.canonical_address in canonical_relevant
     }
-    logger.debug(
-        f"{padding(depth)}{LOGGER_PREFIX} Final nodes before relevance pruning: {final_nodes}"
-    )
     for node in final_nodes:
         keep = True
         if node.startswith("c~") and node not in relevant_concepts_pre:
@@ -771,7 +763,7 @@ def gen_select_merge_node(
         )
         if pruned_concept_graph:
             logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} found covering graph w/ partial flag {attempt} {list(pruned_concept_graph.nodes)}"
+                f"{padding(depth)}{LOGGER_PREFIX} found covering graph w/ partial flag {attempt}"
             )
             break
 

@@ -117,7 +117,34 @@ freshness by data_updated_through;
 
 datasource launch_info (
     launch_tag,
+    launch_jd,
+    ~vehicle.name,
+    ~vehicle.variant,
+    flight_id,
+    flight,
+    mission,
+    flight_code,
+    ~?platform.code,
+    ~?site.key,
+    launch_pad,
+    ascent_site,
+    ascent_pad,
+    apogee,
+    apo_flag,
+    range,
+    range_flag,
+    dest,
+    orb_pay,
+    orgs,
     org_code:~org.code,
+    _launch_code,
+    ?fail_code,
+    launch_date,
+    category,
+    lt_cite,
+    cite,
+    notes,
+    data_updated_through
     )
 grain (launch_tag)
 file `gcs://trilogy_public_models/duckdb/launch_report/launch.parquet`

@@ -190,6 +190,7 @@ def reinject_common_join_keys_v2(
 
     return injected
 
+
 def determine_induced_minimal_nodes(
     G: ReferenceGraph,
     nodelist: list[str],
