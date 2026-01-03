@@ -1328,16 +1328,19 @@ class ParseToObjects(Transformer):
     def IMPORT_DOT(self, args) -> str:
         return "."
 
-    def import_statement(self, args: list[str]) -> ImportStatement:
+    def import_statement(self, args: list) -> ImportStatement:
         start = datetime.now()
         is_file_resolver = isinstance(
             self.environment.config.import_resolver, FileSystemImportResolver
         )
         parent_dirs = -1
         parsed_args = []
+        filter_condition: WhereClause | None = None
         for x in args:
             if x == ".":
                 parent_dirs += 1
+            elif isinstance(x, (Comparison, Conditional, Parenthetical)):
+                filter_condition = WhereClause(conditional=x)
             else:
                 parsed_args.append(x)
         parent_dirs = max(parent_dirs, 0)
@@ -1379,7 +1382,10 @@ class ParseToObjects(Transformer):
         # we don't iterate past the max parse depth
         if len(key_path) > MAX_PARSE_DEPTH:
             return ImportStatement(
-                alias=alias, input_path=input_path, path=Path(target)
+                alias=alias,
+                input_path=input_path,
+                path=Path(target),
+                filter=filter_condition,
             )
 
         if token_lookup in self.tokens:
@@ -1443,7 +1449,12 @@ class ParseToObjects(Transformer):
                 ) from e
 
         parsed_path = Path(args[0])
-        imps = ImportStatement(alias=alias, input_path=input_path, path=parsed_path)
+        imps = ImportStatement(
+            alias=alias,
+            input_path=input_path,
+            path=parsed_path,
+            filter=filter_condition,
+        )
 
         self.environment.add_import(
             alias,
@@ -1452,6 +1463,7 @@ class ParseToObjects(Transformer):
                 alias=alias,
                 path=parsed_path,
                 input_path=Path(target) if is_file_resolver else None,
+                filter=filter_condition,
             ),
         )
         end = datetime.now()

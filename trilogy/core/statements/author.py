@@ -456,6 +456,9 @@ class ImportStatement(HasUUID, BaseModel):
     input_path: str
     # what it actually resolves to, typically a filepath
     path: Path
+    # optional filter condition for filtered imports
+    # e.g. import store ? order_id is not null as store
+    filter: Optional[WhereClause] = None
 
 
 class PersistStatement(HasUUID, BaseModel):

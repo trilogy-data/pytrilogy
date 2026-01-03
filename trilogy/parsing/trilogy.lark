@@ -82,8 +82,8 @@
     column_list : (IDENTIFIER "," )* IDENTIFIER ","?
 
     IMPORT_DOT: "."
-    
-    import_statement: "import" IMPORT_DOT* IDENTIFIER ("."  IDENTIFIER)* ("as" IDENTIFIER)?
+
+    import_statement: "import" IMPORT_DOT* IDENTIFIER ("."  IDENTIFIER)* ("?" conditional)? ("as"i IDENTIFIER)?
 
     // persist_statement
     PERSIST_MODE: "append"i | "overwrite"i | "persist"i

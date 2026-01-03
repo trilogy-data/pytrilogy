@@ -45,10 +45,12 @@ from trilogy.core.models.author import (
     ConceptRef,
     CustomFunctionFactory,
     CustomType,
+    FilterItem,
     Function,
     SelectLineage,
     UndefinedConcept,
     UndefinedConceptFull,
+    WhereClause,
     address_with_namespace,
 )
 from trilogy.core.models.core import DataType
@@ -65,6 +67,7 @@ class Import:
     input_path: Path | None = (
         None  # filepath where the text came from (path is the import path, but may be resolved from a dictionary for some resolvers)
     )
+    filter: WhereClause | None = None  # optional filter for filtered imports
 
 
 class BaseImportResolver(BaseModel):
@@ -426,6 +429,7 @@ class Environment(BaseModel):
                 exists = True
             imp_stm = Import(alias=alias, path=Path(source.working_path))
         same_namespace = alias == DEFAULT_NAMESPACE
+        import_filter = imp_stm.filter if imp_stm else None
 
         if not exists:
             self.imports[alias].append(imp_stm)
@@ -440,11 +444,53 @@ class Environment(BaseModel):
             if concept.name == WORKING_PATH_CONCEPT:
                 continue
             if same_namespace:
-                new = self.add_concept(concept, add_derived=False)
+                base_concept = concept
             else:
-                new = self.add_concept(concept.with_namespace(alias), add_derived=False)
-
+                base_concept = concept.with_namespace(alias)
                 k = address_with_namespace(k, alias)
+
+            if import_filter:
+                # add the base concept with _ prefix (hidden)
+                hidden_name = f"__{base_concept.name}"
+                hidden_concept = Concept(
+                    name=hidden_name,
+                    namespace=base_concept.namespace,
+                    datatype=base_concept.datatype,
+                    purpose=base_concept.purpose,
+                    derivation=base_concept.derivation,
+                    granularity=base_concept.granularity,
+                    metadata=base_concept.metadata,
+                    lineage=base_concept.lineage,
+                    keys=base_concept.keys,
+                    grain=base_concept.grain,
+                    modifiers=base_concept.modifiers,
+                )
+                self.add_concept(hidden_concept, add_derived=False)
+
+                # create a filtered concept wrapping the hidden base
+                # filter is NOT namespaced - it references concepts from the importing scope
+                filtered_concept = Concept(
+                    name=base_concept.name,
+                    namespace=base_concept.namespace,
+                    datatype=base_concept.datatype,
+                    purpose=base_concept.purpose,
+                    derivation=Derivation.FILTER,
+                    granularity=base_concept.granularity,
+                    metadata=base_concept.metadata,
+                    lineage=FilterItem(
+                        content=ConceptRef(
+                            address=hidden_concept.address,
+                            datatype=hidden_concept.datatype,
+                        ),
+                        where=import_filter,
+                    ),
+                    keys=base_concept.keys,
+                    grain=base_concept.grain,
+                    modifiers=base_concept.modifiers,
+                )
+                new = self.add_concept(filtered_concept, add_derived=False)
+            else:
+                new = self.add_concept(base_concept, add_derived=False)
             # set this explicitly, to handle aliasing
             self.concepts[k] = new
 

@@ -1,0 +1,13 @@
+key store_id int;
+
+datasource store (
+    store_id,
+    )
+grain (store_id)
+query '''
+select 1 as store_id
+union all
+select 2 as store_id
+union all
+select 3 as store_id
+''';

@@ -1,0 +1,17 @@
+
+key order_id int;
+
+import store ? order_id is not null as store;
+import store as store_comp;
+
+datasource orders (
+    order_id,
+    store_store_id: store.store_id,
+    store_id: ~store_comp.store_id,
+    )
+grain (order_id)
+query '''
+select 1 as order_id, 1 as store_store_id, 1 as store_id
+union all
+select 2 as order_id, 2 as store_store_id, 2 as store_id
+''';
