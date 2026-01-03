@@ -1,11 +1,14 @@
 
 import etl;
-import platform as platform;
-import vehicle as vehicle;
-import sites as site;
-import organization as org;
 
 key launch_tag string; # Each rocket launch in the database is labelled with a unique designation. For successful orbital launches, we use the International Designation (also called the COSPAR designation, after the Committee on Space Research which adopted the system.) For other launches, I use a variation on that scheme of my own design. I introduce the generalized concept of `launch designation' to include the International/COSPAR designation and other similar schemes. The term `piece designation' is also introduced to generalize the per-piece (per-cataloged-object) international designation.
+
+# restrict imports in the launch namespacespace to those that have had launches
+import platform ? launch_tag is not null as platform;
+import vehicle ? launch_tag is not null as vehicle;
+import sites ? launch_tag is not null as site;
+import organization ? launch_tag is not null as org;
+
 property launch_tag.launch_jd string; # float of launch date on julian calendar
 # property <launch_tag>.launch_date string;
 property launch_tag.flight_id string; #  an identifier for the particular launch, for example the serial number of the launch vehicle or the mission number or name assigned by the launch agency.
@@ -16,7 +19,7 @@ property launch_tag.flight_code string; #  additional identifers for the launch.
 property launch_tag.launch_pad string;
 property launch_tag.ascent_site string;
 property launch_tag.ascent_pad string;
-property launch_tag.apogee string; # the highest altitude actually reached, in km. This field may be omitted for orbital launches. In many cases for non-orbital launches the value is a guess based on known capabilities of the launch vehicle, so only values with no appended question-mark should be taken as accurate.
+property launch_tag.apogee integer; # the highest altitude actually reached, in km. This field may be omitted for orbital launches. In many cases for non-orbital launches the value is a guess based on known capabilities of the launch vehicle, so only values with no appended question-mark should be taken as accurate.
 property launch_tag.apo_flag string;
 property launch_tag.range string; # the range in km measured along the curved surface of the Earth between launch site and impact site, for a suborbital launch. I have only recently added this field and very few entries are filled in.
 property launch_tag.range_flag string;
@@ -32,7 +35,7 @@ property launch_tag.orgs string;
 property launch_tag._split_orgs <- split(orgs,'/');
 property launch_tag.first_org <- _split_orgs[1];
 
-MERGE first_org into ~org.code;
+MERGE first_org into org.code;
 
 property launch_tag.launch_date <- date_add('1900-01-01'::date,day,CAST((CAST(launch_jd AS float) - 2415021) AS int));
 property success_flag <- CASE
@@ -79,17 +82,19 @@ key orbit_code <- split(category,' ')[2]; # Orbit code definitions (3-letter cod
 # STO - Supersynchronous Transfer Orbit (apogee > 45,000 km)
 # XO  - Extraterrestrial Launch (e.g., launch from lunar surface)
 
+auto launch_org <- coalesce(CASE WHEN org.e_name = '-' then NULL else org.e_name end, org.u_name);
+
 root datasource raw_launch_info (
     Launch_Tag: launch_tag,
     Launch_JD: launch_jd,
-    LV_Type: ~vehicle.name,
-    Variant: ~vehicle.variant,
+    LV_Type: vehicle.name,
+    Variant: vehicle.variant,
     Flight_ID: flight_id,
     Flight: flight,
     Mission: mission,
     FlightCode: flight_code,
-    Platform: ~?platform.code,
-    Launch_Site: ~?site.key,
+    Platform: ?platform.code,
+    Launch_Site: ?site.key,
     Launch_Pad: launch_pad,
     Ascent_Site: ascent_site,
     Ascent_Pad: ascent_pad,
@@ -112,20 +117,18 @@ grain (launch_tag)
 file `ingest_launch.py`
 freshness by data_updated_through;
 
-
-
-
 datasource launch_info (
     launch_tag,
     launch_jd,
-    ~vehicle.name,
-    ~vehicle.variant,
+    launch_org,
+    vehicle.name,
+    vehicle.variant,
     flight_id,
     flight,
     mission,
     flight_code,
-    ~?platform.code,
-    ~?site.key,
+    ?platform.code,
+    ?site.key,
     launch_pad,
     ascent_site,
     ascent_pad,
@@ -136,7 +139,7 @@ datasource launch_info (
     dest,
     orb_pay,
     orgs,
-    org_code:~org.code,
+    org_code:org.code,
     _launch_code,
     ?fail_code,
     launch_date,
