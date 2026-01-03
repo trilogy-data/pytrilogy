@@ -1252,11 +1252,11 @@ class BaseDialect:
                     for hook in hooks:
                         hook.process_rowset_info(statement)
             elif isinstance(statement, ShowStatement):
-                target = statement.content
+        
                 if isinstance(
-                    target, (SelectStatement, MultiSelectStatement, PersistStatement)
+                    statement.content, (SelectStatement, MultiSelectStatement, PersistStatement)
                 ):
-
+                    target = statement.content
                     output.append(
                         ProcessedShowStatement(
                             output_columns=[
@@ -1264,8 +1264,8 @@ class BaseDialect:
                                     DEFAULT_CONCEPTS["query_text"].address
                                 ].reference
                             ],
-                            output_values=[
-                                self.generate_queries(
+                            output_values=[ 
+                                self.generate_queries( # type: ignore
                                     environment, [target], hooks=hooks
                                 )[-1]
                             ],

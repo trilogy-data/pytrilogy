@@ -1465,7 +1465,7 @@ class ParseToObjects(Transformer):
         return ShowCategory(args[0])
 
     @v_args(meta=True)
-    def show_statement(self, meta: Meta, args) -> ShowStatement:
+    def show_statement(self, meta: Meta, args) -> ShowStatement | None:
         if self.parse_pass != ParsePass.VALIDATION:
             return None
         return ShowStatement(content=args[0])
