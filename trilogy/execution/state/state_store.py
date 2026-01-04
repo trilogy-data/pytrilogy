@@ -393,11 +393,6 @@ def refresh_stale_assets(
 
     # Build forced assets list (skip watermarking for these)
     forced_assets: list[StaleAsset] = []
-    ds_identifiers = {ds.identifier for ds in executor.environment.datasources.values()}
-    if force_sources:
-        print(f"DEBUG: force_sources={force_sources}")
-        print(f"DEBUG: available datasources={ds_identifiers}")
-        print(f"DEBUG: matches={force_sources & ds_identifiers}")
     for ds in executor.environment.datasources.values():
         if ds.identifier in force_sources:
             forced_assets.append(
