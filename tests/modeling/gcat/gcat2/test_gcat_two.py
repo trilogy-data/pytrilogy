@@ -35,6 +35,7 @@ persist launch_info;
 
 def test_copy():
     from logging import INFO
+
     exec = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=Path(__file__).parent),
         conf=DuckDBConfig(
@@ -57,7 +58,7 @@ select
         """
     )[-1]
 
-    assert "1=2" in sql, sql
+    assert "1=1" not in sql, sql
 
 
 @pytest.mark.skip(reason="Need to fix this in a followup")

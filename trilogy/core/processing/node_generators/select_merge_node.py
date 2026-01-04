@@ -98,6 +98,74 @@ def get_materialization_score(address: Address | AddressType | str) -> int:
     return 2
 
 
+def deduplicate_datasources(
+    datasets: list[str],
+    relevant_concepts: list[str],
+    g_edges: set[tuple[str, str]],
+    datasources: dict[str, "BuildDatasource | BuildUnionDatasource"],
+    depth: int = 0,
+    partial_map: dict[str, list[str]] = {},
+) -> list[str]:
+    """Prune duplicate datasources that have identical relevant concept bindings.
+
+    When multiple datasources provide the exact same set of relevant concepts,
+    keep only the most materialized one to avoid false join key injection.
+    """
+    # Map each datasource to its set of relevant concept bindings
+    ds_to_concepts: dict[str, frozenset[str]] = {}
+    for ds in datasets:
+        ds_concepts = frozenset(
+            c for c in relevant_concepts if (ds, c) in g_edges or (c, ds) in g_edges
+        )
+        ds_to_concepts[ds] = ds_concepts
+
+    # Group datasources by their concept bindings
+    concept_to_ds: dict[frozenset[str], list[str]] = {}
+    for ds, concepts_set in ds_to_concepts.items():
+        if concepts_set not in concept_to_ds:
+            concept_to_ds[concepts_set] = []
+        concept_to_ds[concepts_set].append(ds)
+
+    # For each group of duplicates, keep only one (prefer more materialized)
+    deduplicated: list[str] = []
+    for concepts_set, ds_list in concept_to_ds.items():
+        if len(ds_list) == 1:
+            deduplicated.append(ds_list[0])
+        else:
+            # Pick the best one by materialization score
+            def get_mat_score(ds_name: str) -> tuple[int, int, str]:
+                partial_count = len(
+                    [x for x in partial_map.get(ds_name, []) if x in relevant_concepts]
+                )
+                ds = datasources.get(ds_name)
+                if ds is None:
+                    return (partial_count, 2, ds_name)
+                elif isinstance(ds, BuildDatasource):
+                    return (
+                        partial_count,
+                        get_materialization_score(ds.address),
+                        ds_name,
+                    )
+                elif isinstance(ds, BuildUnionDatasource):
+                    return (
+                        partial_count,
+                        max(
+                            get_materialization_score(child.address)
+                            for child in ds.children
+                        ),
+                        ds_name,
+                    )
+                return (partial_count, 2, ds_name)
+
+            best_ds = min(ds_list, key=get_mat_score)
+            deduplicated.append(best_ds)
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} Pruned down duplicate datasources list {ds_list}, keeping {best_ds}"
+            )
+
+    return deduplicated
+
+
 def score_datasource_node(
     node: str,
     datasources: dict[str, "BuildDatasource | BuildUnionDatasource"],
@@ -212,9 +280,8 @@ def create_pruned_concept_graph(
 
     relevant_concepts: list[str] = list(relevant_concepts_pre.keys())
     relevent_datasets: list[str] = []
+    partial = get_graph_partial_nodes(g, conditions)
     if not accept_partial:
-        partial = {}
-        partial = get_graph_partial_nodes(g, conditions)
         to_remove = []
         for edge in g.edges:
             if (
@@ -237,7 +304,13 @@ def create_pruned_concept_graph(
         if any((n, x) in g_edges for x in relevant_concepts):
             relevent_datasets.append(n)
             continue
-    logger.debug(f"Relevant datasets after pruning: {relevent_datasets}")
+    logger.info(f"Relevant datasets after pruning: {relevent_datasets}")
+
+    # Prune duplicate datasources BEFORE join concept injection
+    relevent_datasets = deduplicate_datasources(
+        relevent_datasets, relevant_concepts, g_edges, g.datasources, depth, partial
+    )
+
     # for injecting extra join concepts that are shared between datasets
     # use the original graph, pre-partial pruning
     for n in orig_g.concepts:
@@ -269,8 +342,7 @@ def create_pruned_concept_graph(
         for s in subgraphs
         if subgraph_is_complete(s, target_addresses, relevant_concepts_pre, g)
     ]
-    # from trilogy.hooks.graph_hook import GraphHook
-    # GraphHook().query_graph_built(g)
+
     if not subgraphs:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} cannot resolve root graph - no subgraphs after node prune"
@@ -293,6 +365,7 @@ def create_pruned_concept_graph(
             f"{padding(depth)}{LOGGER_PREFIX} cannot resolve root graph - No datasource nodes found"
         )
         return None
+
     return g
 
 
@@ -455,7 +528,7 @@ def resolve_subgraphs(
             ):
                 if len(value) < len(other_value):
                     is_subset = True
-                    logger.debug(
+                    logger.info(
                         f"{padding(depth)}{LOGGER_PREFIX} Dropping subgraph {key} with {value} as it is a subset of {other_key} with {other_value}"
                     )
                 elif len(value) == len(other_value) and len(all_concepts) == len(
@@ -634,7 +707,6 @@ def create_select_node(
         for c in subgraph
         if c.startswith("c~")
     ]
-
 
     if all([c.derivation == Derivation.CONSTANT for c in all_concepts]):
         logger.info(
