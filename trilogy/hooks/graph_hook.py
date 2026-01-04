@@ -15,7 +15,7 @@ class GraphHook(BaseHook):
             import pathlib
 
             # Derive TCL path from Python installation directory
-            python_dir = pathlib.Path(sys.executable).parent
+            python_dir = pathlib.Path(sys._base_executable).parent
             tcl_path = python_dir / "tcl" / "tcl8.6"
             if tcl_path.exists():
                 environ["TCL_LIBRARY"] = str(tcl_path)
