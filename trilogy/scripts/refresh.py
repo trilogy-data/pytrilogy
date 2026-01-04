@@ -15,14 +15,12 @@ from trilogy.execution.state.state_store import (
 from trilogy.scripts.common import (
     CLIRuntimeParams,
     ExecutionStats,
+    RefreshParams,
     count_statement_stats,
     handle_execution_exception,
 )
 from trilogy.scripts.dependency import ScriptNode
 from trilogy.scripts.parallel_execution import ExecutionMode, run_parallel_execution
-
-# Module-level flag for printing watermarks (set by CLI)
-_print_watermarks = False
 
 
 def _format_watermarks(watermarks: dict[str, DatasourceWatermark]) -> None:
@@ -41,7 +39,11 @@ def _format_watermarks(watermarks: dict[str, DatasourceWatermark]) -> None:
 
 
 def execute_script_for_refresh(
-    exec: Executor, node: ScriptNode, quiet: bool = False
+    exec: Executor,
+    node: ScriptNode,
+    quiet: bool = False,
+    print_watermarks: bool = False,
+    force_sources: frozenset[str] = frozenset(),
 ) -> ExecutionStats:
     """Execute a script for the 'refresh' command - parse and refresh stale assets."""
     from trilogy.scripts.display import print_info, print_success, print_warning
@@ -69,7 +71,7 @@ def execute_script_for_refresh(
             print_info(f"  Refreshing {asset_id}: {reason}")
 
     def on_watermarks(watermarks: dict[str, DatasourceWatermark]) -> None:
-        if _print_watermarks:
+        if print_watermarks:
             _format_watermarks(watermarks)
 
     result = refresh_stale_assets(
@@ -77,6 +79,7 @@ def execute_script_for_refresh(
         on_stale_found=on_stale_found,
         on_refresh=on_refresh,
         on_watermarks=on_watermarks,
+        force_sources=force_sources,
     )
     stats.update_count = result.refreshed_count
 
@@ -90,6 +93,21 @@ def execute_script_for_refresh(
         )
 
     return stats
+
+
+def make_refresh_execution_fn(
+    print_watermarks: bool, force_sources: frozenset[str]
+):
+    """Create a refresh execution function with the given parameters."""
+
+    def wrapped_execute(
+        exec: Executor, node: ScriptNode, quiet: bool = False
+    ) -> ExecutionStats:
+        return execute_script_for_refresh(
+            exec, node, quiet, print_watermarks, force_sources
+        )
+
+    return wrapped_execute
 
 
 @argument("input", type=Path())
@@ -116,6 +134,12 @@ def execute_script_for_refresh(
     multiple=True,
     help="Set environment variables as KEY=VALUE pairs",
 )
+@option(
+    "--force",
+    "-f",
+    multiple=True,
+    help="Force rebuild of specific datasources by name (skip staleness detection)",
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def refresh(
@@ -127,6 +151,7 @@ def refresh(
     config,
     print_watermarks,
     env,
+    force,
     conn_args,
 ):
     """Refresh stale assets in Trilogy scripts.
@@ -134,8 +159,10 @@ def refresh(
     Parses each script, identifies datasources marked as 'root' (source of truth),
     compares watermarks to find stale derived assets, and refreshes them.
     """
-    global _print_watermarks
-    _print_watermarks = print_watermarks
+    refresh_params = RefreshParams(
+        print_watermarks=print_watermarks,
+        force_sources=frozenset(force),
+    )
 
     cli_params = CLIRuntimeParams(
         input=input,
@@ -147,12 +174,17 @@ def refresh(
         config_path=PathlibPath(config) if config else None,
         execution_strategy="eager_bfs",
         env=env,
+        refresh_params=refresh_params,
+    )
+
+    execution_fn = make_refresh_execution_fn(
+        refresh_params.print_watermarks, refresh_params.force_sources
     )
 
     try:
         run_parallel_execution(
             cli_params=cli_params,
-            execution_fn=execute_script_for_refresh,
+            execution_fn=execution_fn,
             execution_mode=ExecutionMode.REFRESH,
         )
     except Exit:

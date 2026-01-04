@@ -249,11 +249,16 @@ class BaseStateStore:
         return datasource.identifier in self.watermarks
 
     def watermark_all_assets(
-        self, env: Environment, executor: Executor
+        self,
+        env: Environment,
+        executor: Executor,
+        skip_datasources: set[str] | None = None,
     ) -> dict[str, DatasourceWatermark]:
         """Watermark all datasources in the environment."""
+        skip_datasources = skip_datasources or set()
         for ds in env.datasources.values():
-            self.watermark_asset(ds, executor)
+            if ds.identifier not in skip_datasources:
+                self.watermark_asset(ds, executor)
         return self.watermarks
 
     def get_stale_assets(
@@ -261,6 +266,7 @@ class BaseStateStore:
         env: Environment,
         executor: Executor,
         root_assets: set[str] | None = None,
+        skip_datasources: set[str] | None = None,
     ) -> list[StaleAsset]:
         """Find all assets that are stale and need refresh.
 
@@ -270,6 +276,8 @@ class BaseStateStore:
             root_assets: Optional set of datasource identifiers that are "source of truth"
                          and should not be marked stale. If None, uses datasources marked
                          with is_root=True in the model.
+            skip_datasources: Optional set of datasource identifiers to skip entirely
+                              (won't be watermarked or checked for staleness)
 
         Returns:
             List of StaleAsset objects describing what needs refresh and why.
@@ -278,10 +286,11 @@ class BaseStateStore:
             root_assets = {
                 ds.identifier for ds in env.datasources.values() if ds.is_root
             }
+        skip_datasources = skip_datasources or set()
         stale: list[StaleAsset] = []
 
-        # First pass: watermark all assets to get current state
-        self.watermark_all_assets(env, executor)
+        # First pass: watermark all assets to get current state (except skipped ones)
+        self.watermark_all_assets(env, executor, skip_datasources=skip_datasources)
 
         # Build map of concept -> max watermark across root assets
         concept_max_watermarks: dict[str, UpdateKey] = {}
@@ -368,6 +377,7 @@ def refresh_stale_assets(
     on_stale_found: Callable[[int, int, int], None] | None = None,
     on_refresh: Callable[[str, str], None] | None = None,
     on_watermarks: Callable[[dict[str, DatasourceWatermark]], None] | None = None,
+    force_sources: set[str] | None = None,
 ) -> RefreshResult:
     """Find and refresh stale assets.
 
@@ -376,9 +386,27 @@ def refresh_stale_assets(
         on_stale_found: Optional callback(stale_count, root_assets, all_assets)
         on_refresh: Optional callback(asset_id, reason) called before each refresh
         on_watermarks: Optional callback(watermarks_dict) called after collecting watermarks
+        force_sources: Optional set of datasource names to force rebuild (skip detection)
     """
     state_store = BaseStateStore()
-    stale_assets = state_store.get_stale_assets(executor.environment, executor)
+    force_sources = force_sources or set()
+
+    # Build forced assets list (skip watermarking for these)
+    forced_assets: list[StaleAsset] = []
+    ds_identifiers = {ds.identifier for ds in executor.environment.datasources.values()}
+    if force_sources:
+        print(f"DEBUG: force_sources={force_sources}")
+        print(f"DEBUG: available datasources={ds_identifiers}")
+        print(f"DEBUG: matches={force_sources & ds_identifiers}")
+    for ds in executor.environment.datasources.values():
+        if ds.identifier in force_sources:
+            forced_assets.append(
+                StaleAsset(datasource_id=ds.identifier, reason="forced rebuild")
+            )
+
+    stale_assets = state_store.get_stale_assets(
+        executor.environment, executor, skip_datasources=force_sources
+    )
 
     if on_watermarks:
         on_watermarks(state_store.watermarks)
@@ -387,11 +415,14 @@ def refresh_stale_assets(
     )
     all_assets = len(executor.environment.datasources)
 
+    # Combine forced and stale assets
+    all_refresh_assets = forced_assets + stale_assets
+
     if on_stale_found:
-        on_stale_found(len(stale_assets), root_assets, all_assets)
+        on_stale_found(len(all_refresh_assets), root_assets, all_assets)
 
     refreshed = 0
-    for asset in stale_assets:
+    for asset in all_refresh_assets:
         if on_refresh:
             on_refresh(asset.datasource_id, asset.reason)
         datasource = executor.environment.datasources[asset.datasource_id]
@@ -399,7 +430,7 @@ def refresh_stale_assets(
         refreshed += 1
 
     return RefreshResult(
-        stale_count=len(stale_assets),
+        stale_count=len(all_refresh_assets),
         refreshed_count=refreshed,
         root_assets=root_assets,
         all_assets=all_assets,
