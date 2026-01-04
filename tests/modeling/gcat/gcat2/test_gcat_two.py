@@ -33,6 +33,34 @@ persist launch_info;
     assert "1=1" not in sql, sql
 
 
+def test_copy():
+    from logging import INFO
+
+    exec = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=Path(__file__).parent),
+        conf=DuckDBConfig(
+            enable_gcs=True,
+            enable_python_datasources=True,
+        ),
+    )
+    DebuggingHook(INFO)
+    sql = exec.generate_sql(
+        """
+import launch;
+
+show  
+select
+    flight_id,
+    launch_tag,
+
+    org.e_name
+;
+        """
+    )[-1]
+
+    assert "1=1" not in sql, sql
+
+
 @pytest.mark.skip(reason="Need to fix this in a followup")
 def test_parquet_selection():
     exec = Dialects.DUCK_DB.default_executor(

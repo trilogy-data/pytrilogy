@@ -12,7 +12,7 @@ import networkx as nx
 from click.exceptions import Exit
 
 from trilogy import Executor
-from trilogy.scripts.common import CLIRuntimeParams, ExecutionStats
+from trilogy.scripts.common import CLIRuntimeParams, ExecutionStats, RefreshParams
 from trilogy.scripts.dependency import (
     DependencyResolver,
     DependencyStrategy,
@@ -511,6 +511,7 @@ def run_single_script_execution(
     debug: str | None,
     execution_mode: ExecutionMode,
     config,
+    refresh_params: RefreshParams | None = None,
 ) -> None:
     """Run single script execution with polished multi-statement progress display."""
     from trilogy.scripts.common import (
@@ -595,7 +596,9 @@ def run_single_script_execution(
             refresh_stale_assets,
         )
         from trilogy.scripts.display import print_info, print_warning
-        from trilogy.scripts.refresh import _format_watermarks, _print_watermarks
+        from trilogy.scripts.refresh import _format_watermarks
+
+        rp = refresh_params or RefreshParams()
 
         for script in text:
             exec.parse_text(script)
@@ -612,7 +615,7 @@ def run_single_script_execution(
             print_info(f"  Refreshing {asset_id}: {reason}")
 
         def on_watermarks(watermarks: dict[str, DatasourceWatermark]) -> None:
-            if _print_watermarks:
+            if rp.print_watermarks:
                 _format_watermarks(watermarks)
 
         result = refresh_stale_assets(
@@ -620,6 +623,7 @@ def run_single_script_execution(
             on_stale_found=on_stale_found,
             on_refresh=on_refresh,
             on_watermarks=on_watermarks,
+            force_sources=set(rp.force_sources) if rp.force_sources else None,
         )
 
         if result.had_stale:
@@ -701,6 +705,7 @@ def run_parallel_execution(
             debug=cli_params.debug,
             execution_mode=execution_mode,
             config=config,
+            refresh_params=cli_params.refresh_params,
         )
         return
     # Multiple files - use parallel execution

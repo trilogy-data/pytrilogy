@@ -1,5 +1,9 @@
+from trilogy import Dialects
 from trilogy.core.models.datasource import UpdateKey, UpdateKeyType
-from trilogy.execution.state.state_store import DatasourceWatermark
+from trilogy.execution.state.state_store import (
+    DatasourceWatermark,
+    refresh_stale_assets,
+)
 from trilogy.scripts.refresh import _format_watermarks
 
 
@@ -80,3 +84,63 @@ def test_format_watermarks_sorted_output(capsys):
     beta_pos = captured.out.find("beta")
     zebra_pos = captured.out.find("zebra")
     assert alpha_pos < beta_pos < zebra_pos
+
+
+def test_refresh_stale_assets_forced():
+    """Test that force_sources forces rebuild regardless of staleness."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key item_id int;
+        property item_id.name string;
+        property item_id.updated_at datetime;
+
+        root datasource source_items (
+            item_id: item_id,
+            name: name,
+            updated_at: updated_at
+        )
+        grain (item_id)
+        query '''
+        SELECT 1 as item_id, 'Widget' as name, TIMESTAMP '2024-01-10 12:00:00' as updated_at
+        '''
+        freshness by updated_at;
+
+        datasource target_items (
+            item_id: item_id,
+            name: name,
+            updated_at: updated_at
+        )
+        grain (item_id)
+        address target_items_table
+        freshness by updated_at;
+
+        CREATE IF NOT EXISTS DATASOURCE target_items;
+
+        RAW_SQL('''
+        INSERT INTO target_items_table
+        SELECT 1 as item_id, 'Widget' as name, TIMESTAMP '2024-01-10 12:00:00' as updated_at
+        ''');
+        """
+    )
+
+    refreshed_assets: list[tuple[str, str]] = []
+
+    def track_refresh(asset_id: str, reason: str) -> None:
+        refreshed_assets.append((asset_id, reason))
+
+    # Without force, target_items should NOT be refreshed (it's up to date)
+    result = refresh_stale_assets(executor, on_refresh=track_refresh)
+    assert result.stale_count == 0
+    assert result.refreshed_count == 0
+    assert len(refreshed_assets) == 0
+
+    # With force, target_items SHOULD be refreshed
+    result = refresh_stale_assets(
+        executor, on_refresh=track_refresh, force_sources={"target_items"}
+    )
+    assert result.stale_count == 1
+    assert result.refreshed_count == 1
+    assert len(refreshed_assets) == 1
+    assert refreshed_assets[0][0] == "target_items"
+    assert refreshed_assets[0][1] == "forced rebuild"

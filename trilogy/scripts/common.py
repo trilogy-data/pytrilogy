@@ -71,6 +71,14 @@ def format_stats(stats: ExecutionStats, stat_types: list[str] | None = None) -> 
 
 
 @dataclass
+class RefreshParams:
+    """Parameters specific to the refresh command."""
+
+    print_watermarks: bool = False
+    force_sources: frozenset[str] = frozenset()
+
+
+@dataclass
 class CLIRuntimeParams:
     """Parameters provided via CLI for execution."""
 
@@ -83,6 +91,7 @@ class CLIRuntimeParams:
     config_path: PathlibPath | None = None
     execution_strategy: str = "eager_bfs"
     env: tuple[str, ...] = ()
+    refresh_params: RefreshParams | None = None
 
 
 def merge_runtime_config(

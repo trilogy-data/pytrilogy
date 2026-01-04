@@ -391,6 +391,13 @@ class Executor(object):
         output.append(compiled_sql)
         return output
 
+    @generate_sql.register  # type: ignore
+    def _(self, command: ProcessedCopyStatement) -> list[str]:
+        output = []
+        compiled_sql = self.generator.compile_statement(command)
+        output.append(compiled_sql)
+        return output
+
     @generate_sql.register
     def _(self, command: ProcessedShowStatement) -> list[str]:
         output = []
@@ -442,15 +449,21 @@ class Executor(object):
         generatable = [
             x
             for x in parsed
-            if isinstance(x, (SelectStatement, PersistStatement, MultiSelectStatement))
+            if isinstance(
+                x,
+                (
+                    SelectStatement,
+                    ShowStatement,
+                    PersistStatement,
+                    MultiSelectStatement,
+                ),
+            )
         ]
         sql = self.generator.generate_queries(
             self.environment, generatable, hooks=self.hooks
         )
         output = []
         for statement in sql:
-            if isinstance(statement, ProcessedShowStatement):
-                continue
             compiled_sql = self.generator.compile_statement(statement)
             output.append(compiled_sql)
         return output
