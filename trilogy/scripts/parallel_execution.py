@@ -623,7 +623,7 @@ def run_single_script_execution(
             on_stale_found=on_stale_found,
             on_refresh=on_refresh,
             on_watermarks=on_watermarks,
-            force_sources=rp.force_sources,
+            force_sources=set(rp.force_sources) if rp.force_sources else None,
         )
 
         if result.had_stale:

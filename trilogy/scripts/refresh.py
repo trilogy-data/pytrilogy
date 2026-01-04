@@ -79,7 +79,7 @@ def execute_script_for_refresh(
         on_stale_found=on_stale_found,
         on_refresh=on_refresh,
         on_watermarks=on_watermarks,
-        force_sources=force_sources,
+        force_sources=set(force_sources) if force_sources else None,
     )
     stats.update_count = result.refreshed_count
 
@@ -95,9 +95,7 @@ def execute_script_for_refresh(
     return stats
 
 
-def make_refresh_execution_fn(
-    print_watermarks: bool, force_sources: frozenset[str]
-):
+def make_refresh_execution_fn(print_watermarks: bool, force_sources: frozenset[str]):
     """Create a refresh execution function with the given parameters."""
 
     def wrapped_execute(
