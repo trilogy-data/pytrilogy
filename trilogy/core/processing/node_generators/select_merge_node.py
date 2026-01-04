@@ -634,9 +634,7 @@ def create_select_node(
         for c in subgraph
         if c.startswith("c~")
     ]
-    logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} all concepts: {all_concepts} from {subgraph}"
-    )
+
 
     if all([c.derivation == Derivation.CONSTANT for c in all_concepts]):
         logger.info(
