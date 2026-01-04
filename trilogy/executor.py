@@ -350,22 +350,30 @@ class Executor(object):
         select_clause = ", ".join(alias_clauses)
         return f"SELECT {select_clause} FROM ({base_sql}) as _copy_source"
 
+    def _resolve_copy_target(self, target: str) -> str:
+        """Resolve copy target path, making relative paths relative to working_path."""
+        target_path = Path(target)
+        if not target_path.is_absolute() and not target.startswith(("gcs://", "gs://")):
+            return str(self.environment.working_path / target_path)
+        return target
+
     @execute_query.register
     def _(self, query: ProcessedCopyStatement) -> ResultProtocol | None:
         sql = self._build_aliased_copy_sql(query)
+        target = self._resolve_copy_target(query.target)
         if self.dialect == Dialects.DUCK_DB:
             # Check for GCS write credentials if target is a GCS path
-            if query.target.startswith("gcs://") or query.target.startswith("gs://"):
+            if target.startswith("gcs://") or target.startswith("gs://"):
                 from trilogy.dialect.duckdb import check_gcs_write_credentials
 
                 check_gcs_write_credentials()
 
             if query.target_type == IOType.PARQUET:
-                copy_sql = f"COPY ({sql}) TO '{query.target}' (FORMAT PARQUET)"
+                copy_sql = f"COPY ({sql}) TO '{target}' (FORMAT PARQUET)"
             elif query.target_type == IOType.CSV:
-                copy_sql = f"COPY ({sql}) TO '{query.target}' (FORMAT CSV, HEADER)"
+                copy_sql = f"COPY ({sql}) TO '{target}' (FORMAT CSV, HEADER)"
             elif query.target_type == IOType.JSON:
-                copy_sql = f"COPY ({sql}) TO '{query.target}' (FORMAT JSON, ARRAY true)"
+                copy_sql = f"COPY ({sql}) TO '{target}' (FORMAT JSON, ARRAY true)"
             else:
                 raise NotImplementedError(f"Unsupported IO Type {query.target_type}")
             self.execute_raw_sql(copy_sql, local_concepts=query.local_concepts)

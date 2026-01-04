@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from trilogy import Dialects
+from trilogy import Dialects, Environment
 from trilogy.core.enums import FunctionType
 from trilogy.core.statements.execute import ProcessedCopyStatement
 from trilogy.parser import parse
@@ -67,6 +67,31 @@ copy into csv '{target}' from select x -> test order by test asc;
     assert isinstance(results[-1], ProcessedCopyStatement)
     for z in results:
         exec.execute_query(z)
+    assert target.exists(), "csv file was not created"
+
+
+def test_io_statement_relative():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+    target = Path("./test_io_statement_relative.csv")
+    if target.exists():
+        target.unlink()
+    text = f"""const array <- [1,2,3,4];
+
+auto x <- unnest(array);
+
+copy into csv '{target}' from select x -> test order by test asc;
+"""
+    exec = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=Path(__file__).parent)
+    )
+    results = exec.parse_text(text)
+    assert exec.environment.concepts["x"].lineage.operator == FunctionType.UNNEST
+    assert isinstance(results[-1], ProcessedCopyStatement)
+    for z in results:
+        exec.execute_query(z)
+    target = exec.environment.working_path / "test_io_statement_relative.csv"
     assert target.exists(), "csv file was not created"
 
 
