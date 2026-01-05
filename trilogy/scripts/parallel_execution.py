@@ -521,19 +521,13 @@ def run_single_script_execution(
         create_executor,
         flush_debugging_hooks,
         handle_execution_exception,
-        validate_datasources,
     )
-    from trilogy.scripts.display import (
-        RICH_AVAILABLE,
-        create_progress_context,
-        print_success,
-        show_execution_info,
-        show_execution_start,
-        show_execution_summary,
-    )
+    from trilogy.scripts.display import show_execution_info
     from trilogy.scripts.single_execution import (
-        execute_queries_simple,
-        execute_queries_with_progress,
+        execute_integration_mode,
+        execute_refresh_mode,
+        execute_run_mode,
+        execute_unit_mode,
     )
 
     config_path_str = str(config.source_path) if config.source_path else None
@@ -542,100 +536,38 @@ def run_single_script_execution(
     exec = create_executor(param, directory, conn_args, edialect, debug, config)
     base = files[0]
     if isinstance(base, StringIO):
-        text = [base.getvalue()]
+        text = base.getvalue()
     else:
         with open(base, "r") as raw:
-            text = [raw.read()]
+            text = raw.read()
 
-    if execution_mode == ExecutionMode.RUN:
-        # Parse all scripts and collect queries
-        queries = []
-        try:
-            for script in text:
-                queries += exec.parse_text(script)
-        except Exception as e:
-            handle_execution_exception(e, debug=debug)
-
-        start = datetime.now()
-        show_execution_start(len(queries))
-
-        # Execute with progress tracking for multiple statements
-        if len(queries) > 1 and RICH_AVAILABLE:
-            progress = create_progress_context()
+    try:
+        if execution_mode == ExecutionMode.RUN:
+            queries = exec.parse_text(text)
+            execute_run_mode(exec, queries)
+        elif execution_mode == ExecutionMode.INTEGRATION:
+            exec.parse_text(text)
+            execute_integration_mode(exec)
+        elif execution_mode == ExecutionMode.UNIT:
+            exec.parse_text(text)
+            execute_unit_mode(exec)
+        elif execution_mode == ExecutionMode.REFRESH:
+            rp = refresh_params or RefreshParams()
+            exec.parse_text(text)
+            result = execute_refresh_mode(
+                exec,
+                force_sources=set(rp.force_sources) if rp.force_sources else None,
+                print_watermarks=rp.print_watermarks,
+            )
+            if debug:
+                flush_debugging_hooks(exec)
+            return result.refreshed_count
         else:
-            progress = None
-
-        try:
-            if progress:
-                exception = execute_queries_with_progress(exec, queries)
-            else:
-                exception = execute_queries_simple(exec, queries)
-
-            total_duration = datetime.now() - start
-            show_execution_summary(len(queries), total_duration, exception is None)
-
-            if exception:
-                raise exception
-        except Exception as e:
-            handle_execution_exception(e, debug=debug)
-        return 0
-
-    elif execution_mode == ExecutionMode.INTEGRATION:
-        for script in text:
-            exec.parse_text(script)
-        validate_datasources(exec, mock=False, quiet=False)
-        print_success("Integration tests passed successfully!")
-        return 0
-
-    elif execution_mode == ExecutionMode.UNIT:
-        for script in text:
-            exec.parse_text(script)
-        validate_datasources(exec, mock=True, quiet=False)
-        print_success("Unit tests passed successfully!")
-        return 0
-
-    elif execution_mode == ExecutionMode.REFRESH:
-        from trilogy.execution.state.state_store import (
-            DatasourceWatermark,
-            refresh_stale_assets,
-        )
-        from trilogy.scripts.display import print_info, print_warning
-        from trilogy.scripts.refresh import _format_watermarks
-
-        rp = refresh_params or RefreshParams()
-
-        for script in text:
-            exec.parse_text(script)
-
-        def on_stale_found(stale_count: int, root_assets: int, all_assets: int) -> None:
-            if stale_count == 0:
-                print_info(
-                    f"No stale assets found ({root_assets}/{all_assets} root assets)"
-                )
-            else:
-                print_warning(f"Found {stale_count} stale asset(s)")
-
-        def on_refresh(asset_id: str, reason: str) -> None:
-            print_info(f"  Refreshing {asset_id}: {reason}")
-
-        def on_watermarks(watermarks: dict[str, DatasourceWatermark]) -> None:
-            if rp.print_watermarks:
-                _format_watermarks(watermarks)
-
-        result = refresh_stale_assets(
-            exec,
-            on_stale_found=on_stale_found,
-            on_refresh=on_refresh,
-            on_watermarks=on_watermarks,
-            force_sources=set(rp.force_sources) if rp.force_sources else None,
-        )
-
-        if result.had_stale:
-            print_success(f"Refreshed {result.refreshed_count} asset(s)")
-
-        if debug:
-            flush_debugging_hooks(exec)
-        return result.refreshed_count
+            raise NotImplementedError(
+                f"Execution mode '{execution_mode.value}' is not implemented."
+            )
+    except Exception as e:
+        handle_execution_exception(e, debug=debug)
 
     if debug:
         flush_debugging_hooks(exec)
