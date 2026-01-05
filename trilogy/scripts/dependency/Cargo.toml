@@ -7,7 +7,7 @@ description = "A CLI tool to parse Trilogy files and resolve import dependencies
 license = "MIT"
 
 [lib]
-name = "preql_import_resolver"
+name = "_preql_import_resolver"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]

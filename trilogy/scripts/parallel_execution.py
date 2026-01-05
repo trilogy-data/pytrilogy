@@ -47,6 +47,7 @@ class ParallelExecutionSummary:
 
     total_scripts: int
     successful: int
+    skipped: int
     failed: int
     total_duration: float
     results: list[ExecutionResult]
@@ -477,11 +478,13 @@ class ParallelExecutor:
 
         total_duration = (datetime.now() - start_time).total_seconds()
         successful = sum(1 for r in results if r.success)
+        failed = sum(1 for r in results if not r.success)
 
         return ParallelExecutionSummary(
             total_scripts=total_scripts,
             successful=successful,
-            failed=total_scripts - successful,
+            skipped=0,
+            failed=failed,
             total_duration=total_duration,
             results=results,
         )
@@ -512,25 +515,19 @@ def run_single_script_execution(
     execution_mode: ExecutionMode,
     config,
     refresh_params: RefreshParams | None = None,
-) -> None:
-    """Run single script execution with polished multi-statement progress display."""
+) -> int:
+    """Run single script execution. Returns count of assets refreshed (for refresh mode)."""
     from trilogy.scripts.common import (
         create_executor,
         flush_debugging_hooks,
         handle_execution_exception,
-        validate_datasources,
     )
-    from trilogy.scripts.display import (
-        RICH_AVAILABLE,
-        create_progress_context,
-        print_success,
-        show_execution_info,
-        show_execution_start,
-        show_execution_summary,
-    )
+    from trilogy.scripts.display import show_execution_info
     from trilogy.scripts.single_execution import (
-        execute_queries_simple,
-        execute_queries_with_progress,
+        execute_integration_mode,
+        execute_refresh_mode,
+        execute_run_mode,
+        execute_unit_mode,
     )
 
     config_path_str = str(config.source_path) if config.source_path else None
@@ -539,98 +536,42 @@ def run_single_script_execution(
     exec = create_executor(param, directory, conn_args, edialect, debug, config)
     base = files[0]
     if isinstance(base, StringIO):
-        text = [base.getvalue()]
+        text = base.getvalue()
     else:
         with open(base, "r") as raw:
-            text = [raw.read()]
+            text = raw.read()
 
-    if execution_mode == ExecutionMode.RUN:
-        # Parse all scripts and collect queries
-        queries = []
-        try:
-            for script in text:
-                queries += exec.parse_text(script)
-        except Exception as e:
-            handle_execution_exception(e, debug=debug)
-
-        start = datetime.now()
-        show_execution_start(len(queries))
-
-        # Execute with progress tracking for multiple statements
-        if len(queries) > 1 and RICH_AVAILABLE:
-            progress = create_progress_context()
+    try:
+        if execution_mode == ExecutionMode.RUN:
+            queries = exec.parse_text(text)
+            execute_run_mode(exec, queries)
+        elif execution_mode == ExecutionMode.INTEGRATION:
+            exec.parse_text(text)
+            execute_integration_mode(exec)
+        elif execution_mode == ExecutionMode.UNIT:
+            exec.parse_text(text)
+            execute_unit_mode(exec)
+        elif execution_mode == ExecutionMode.REFRESH:
+            rp = refresh_params or RefreshParams()
+            exec.parse_text(text)
+            result = execute_refresh_mode(
+                exec,
+                force_sources=set(rp.force_sources) if rp.force_sources else None,
+                print_watermarks=rp.print_watermarks,
+            )
+            if debug:
+                flush_debugging_hooks(exec)
+            return result.refreshed_count
         else:
-            progress = None
-
-        try:
-            if progress:
-                exception = execute_queries_with_progress(exec, queries)
-            else:
-                exception = execute_queries_simple(exec, queries)
-
-            total_duration = datetime.now() - start
-            show_execution_summary(len(queries), total_duration, exception is None)
-
-            if exception:
-                raise Exit(1) from exception
-        except Exit:
-            raise
-        except Exception as e:
-            handle_execution_exception(e, debug=debug)
-
-    elif execution_mode == ExecutionMode.INTEGRATION:
-        for script in text:
-            exec.parse_text(script)
-        validate_datasources(exec, mock=False, quiet=False)
-        print_success("Integration tests passed successfully!")
-
-    elif execution_mode == ExecutionMode.UNIT:
-        for script in text:
-            exec.parse_text(script)
-        validate_datasources(exec, mock=True, quiet=False)
-        print_success("Unit tests passed successfully!")
-
-    elif execution_mode == ExecutionMode.REFRESH:
-        from trilogy.execution.state.state_store import (
-            DatasourceWatermark,
-            refresh_stale_assets,
-        )
-        from trilogy.scripts.display import print_info, print_warning
-        from trilogy.scripts.refresh import _format_watermarks
-
-        rp = refresh_params or RefreshParams()
-
-        for script in text:
-            exec.parse_text(script)
-
-        def on_stale_found(stale_count: int, root_assets: int, all_assets: int) -> None:
-            if stale_count == 0:
-                print_info(
-                    f"No stale assets found ({root_assets}/{all_assets} root assets)"
-                )
-            else:
-                print_warning(f"Found {stale_count} stale asset(s)")
-
-        def on_refresh(asset_id: str, reason: str) -> None:
-            print_info(f"  Refreshing {asset_id}: {reason}")
-
-        def on_watermarks(watermarks: dict[str, DatasourceWatermark]) -> None:
-            if rp.print_watermarks:
-                _format_watermarks(watermarks)
-
-        result = refresh_stale_assets(
-            exec,
-            on_stale_found=on_stale_found,
-            on_refresh=on_refresh,
-            on_watermarks=on_watermarks,
-            force_sources=set(rp.force_sources) if rp.force_sources else None,
-        )
-
-        if result.had_stale:
-            print_success(f"Refreshed {result.refreshed_count} asset(s)")
+            raise NotImplementedError(
+                f"Execution mode '{execution_mode.value}' is not implemented."
+            )
+    except Exception as e:
+        handle_execution_exception(e, debug=debug)
 
     if debug:
         flush_debugging_hooks(exec)
+    return 0
 
 
 def get_execution_strategy(strategy_name: str):
@@ -650,7 +591,7 @@ def run_parallel_execution(
     cli_params: CLIRuntimeParams,
     execution_fn: Callable[[Executor, ScriptNode, bool], ExecutionStats],
     execution_mode: ExecutionMode = ExecutionMode.RUN,
-) -> None:
+) -> ParallelExecutionSummary:
     """
     Run parallel execution for directory inputs, or single-script execution
     with polished progress display for single files/inline queries.
@@ -694,7 +635,7 @@ def run_parallel_execution(
     if not pathlib_input.exists() or len(files) == 1:
         # Inline query - use polished single-script execution
 
-        run_single_script_execution(
+        refresh_count = run_single_script_execution(
             files=files,
             directory=directory,
             input_type=input_type,
@@ -707,7 +648,21 @@ def run_parallel_execution(
             config=config,
             refresh_params=cli_params.refresh_params,
         )
-        return
+        # For refresh mode: skipped=1 if nothing was refreshed, successful=1 otherwise
+        if execution_mode == ExecutionMode.REFRESH:
+            skipped = 1 if refresh_count == 0 else 0
+            successful = 0 if refresh_count == 0 else 1
+        else:
+            skipped = 0
+            successful = 1
+        return ParallelExecutionSummary(
+            total_scripts=1,
+            successful=successful,
+            skipped=skipped,
+            failed=0,
+            total_duration=0.0,
+            results=[],
+        )
     # Multiple files - use parallel execution
     config_path_str = str(config.source_path) if config.source_path else None
     show_execution_info(
@@ -762,6 +717,23 @@ def run_parallel_execution(
         on_script_complete=show_script_result,
     )
 
+    # For refresh mode, calculate skipped (successful but no updates)
+    if execution_mode == ExecutionMode.REFRESH:
+        skipped = sum(
+            1
+            for r in summary.results
+            if r.success and r.stats and r.stats.update_count == 0
+        )
+        # Adjust successful count to exclude skipped
+        summary = ParallelExecutionSummary(
+            total_scripts=summary.total_scripts,
+            successful=summary.successful - skipped,
+            skipped=skipped,
+            failed=summary.failed,
+            total_duration=summary.total_duration,
+            results=summary.results,
+        )
+
     show_parallel_execution_summary(summary)
 
     if not summary.all_succeeded:
@@ -769,3 +741,4 @@ def run_parallel_execution(
         raise Exit(1)
 
     print_success("All scripts executed successfully!")
+    return summary

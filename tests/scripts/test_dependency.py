@@ -1,18 +1,29 @@
+import tempfile
 from pathlib import Path
 
 import networkx as nx
+import pytest
 
+from trilogy.parsing.exceptions import ParseError
 from trilogy.scripts.dependency import (
     ETLDependencyStrategy,
     NoDependencyStrategy,
     ScriptNode,
     create_script_nodes,
+    normalize_path_variants,
 )
 
 TEST_NODES = [
     ScriptNode(path=Path("/some/path")),
     ScriptNode(path=Path("/some_other/path")),
 ]
+
+
+def test_normalize_path_variants():
+    """Test that path variants are normalized correctly"""
+    test = Path(r"\\?\C:\some\path")
+    normal = normalize_path_variants(test)
+    assert normal == Path(r"C:\some\path")
 
 
 def test_no_dependency():
@@ -215,3 +226,25 @@ def test_etl_transitive_persist_order():
         f"updater_a must run before updater_b (transitive persist order). "
         f"Order was: {[n.path.name for n in order]}"
     )
+
+
+def test_etl_dependency_parse_error_raises():
+    """Test that a parse error in a .preql file raises ParseError instead of silently skipping."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Create a valid file
+        valid_file = tmppath / "valid.preql"
+        valid_file.write_text("import std.aggregates;")
+
+        # Create a file with syntax error (# inside single-quoted string was a known issue)
+        invalid_file = tmppath / "invalid.preql"
+        invalid_file.write_text("this is not valid preql syntax {{{{")
+
+        strategy = ETLDependencyStrategy()
+
+        with pytest.raises(ParseError) as exc_info:
+            strategy.build_folder_graph(tmppath)
+
+        assert "Failed to parse" in str(exc_info.value)
+        assert "invalid.preql" in str(exc_info.value)

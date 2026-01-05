@@ -8,3 +8,4 @@ duckdb>1.4.0
 pyarrow
 duckdb-engine
 click
+pytz

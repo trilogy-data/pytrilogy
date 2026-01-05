@@ -156,6 +156,9 @@ def refresh(
 
     Parses each script, identifies datasources marked as 'root' (source of truth),
     compares watermarks to find stale derived assets, and refreshes them.
+
+    Returns 0 if any assets were refreshed, 2 if all assets were up to date,
+    and 1 on error.
     """
     refresh_params = RefreshParams(
         print_watermarks=print_watermarks,
@@ -180,11 +183,14 @@ def refresh(
     )
 
     try:
-        run_parallel_execution(
+        summary = run_parallel_execution(
             cli_params=cli_params,
             execution_fn=execution_fn,
             execution_mode=ExecutionMode.REFRESH,
         )
+        if summary.successful == 0 and summary.skipped > 0:
+            # if everything was up to date, exit with code 2
+            raise Exit(2)
     except Exit:
         raise
     except Exception as e:

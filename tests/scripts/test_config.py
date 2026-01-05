@@ -2,7 +2,9 @@ import os
 import tempfile
 from pathlib import Path
 
+from click.exceptions import Exit
 from click.testing import CliRunner
+from pytest import raises
 
 from trilogy.dialect.config import (
     BigQueryConfig,
@@ -14,7 +16,16 @@ from trilogy.dialect.config import (
 )
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import apply_env_vars, load_config_file, load_env_file
+from trilogy.scripts.common import handle_execution_exception
 from trilogy.scripts.trilogy import cli
+
+
+def test_handle_execution_exception():
+    with raises(Exit) as excinfo:
+        handle_execution_exception(Exit(3))
+    assert excinfo.value.exit_code == 3
+    with raises(Exit) as excinfo:
+        handle_execution_exception(ValueError("test error"))
 
 
 def test_config_bootstrap():
