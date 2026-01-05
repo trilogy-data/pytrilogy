@@ -41,11 +41,14 @@ import_alias = { ^"as" ~ identifier }
 // =============================================================================
 // datasource name ( column_assignments ) grain? address|query where? ...
 datasource_statement = {
+    datasource_modifier* ~
     ^"datasource" ~
     identifier ~
     "(" ~ column_assignment_list? ~ ")" ~
     datasource_clauses*
 }
+
+datasource_modifier = { ^"root" | ^"virtual" }
 
 // Column assignments inside datasource
 column_assignment_list = { column_assignment ~ ("," ~ column_assignment)* ~ ","? }
@@ -195,7 +198,7 @@ nested_content = _{
 // =============================================================================
 multiline_string = { "'''" ~ (!"'''" ~ ANY)* ~ "'''" }
 
-string_literal = { 
+string_literal = @{
     ("\"" ~ (!"\"" ~ !"\\" ~ ANY | "\\" ~ ANY)* ~ "\"") |
     ("'" ~ !"''" ~ (!"'" ~ !"\\" ~ ANY | "\\" ~ ANY)* ~ "'")
 }

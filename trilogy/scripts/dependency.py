@@ -4,9 +4,11 @@ from typing import Protocol
 
 import networkx as nx
 
+from trilogy.parsing.exceptions import ParseError
+
 
 def normalize_path_variants(path: str) -> Path:
-    """
+    r"""
     On Windows, paths from Rust may include UNC prefixes like \\?\C:\path.
     This function returns the path without the prefix.
     """
@@ -86,6 +88,13 @@ class ETLDependencyStrategy:
         resolver = PyImportResolver()
 
         result = resolver.resolve_directory(str(folder), False)
+
+        # Check for parse errors in warnings and raise ParseError
+        warnings = result.get("warnings", [])
+        parse_errors = [w for w in warnings if "Failed to parse" in w]
+        if parse_errors:
+            raise ParseError("\n".join(parse_errors))
+
         nodes = result.get("files", [])
         graph = nx.DiGraph()
         path_to_node = {}
@@ -158,6 +167,13 @@ class ETLDependencyStrategy:
         resolver = PyImportResolver()
 
         result = resolver.resolve_directory(str(directory.resolve()), False)
+
+        # Check for parse errors in warnings and raise ParseError
+        warnings = result.get("warnings", [])
+        parse_errors = [w for w in warnings if "Failed to parse" in w]
+        if parse_errors:
+            raise ParseError("\n".join(parse_errors))
+
         edges = result.get("edges", [])
 
         # Build edges from the result

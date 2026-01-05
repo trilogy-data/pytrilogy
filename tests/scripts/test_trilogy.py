@@ -673,9 +673,8 @@ def test_refresh_string():
                 cli,
                 ["refresh", "select 1-> test;", "duckdb"],
             )
-            if result.exception:
-                raise result.exception
-            assert result.exit_code == 0
+            # Exit code 2 means nothing needed to be refreshed (all up to date)
+            assert result.exit_code == 2
 
 
 def test_refresh_folder():
@@ -689,10 +688,10 @@ def test_refresh_folder():
             "duckdb",
         ],
     )
-    if result.exception:
-        raise ValueError(result.output)
-    assert result.exit_code == 0
+    # Exit code 2 means nothing needed to be refreshed (all up to date)
+    assert result.exit_code == 2
     assert "Total Scripts" in result.output.strip()
+    assert "4" in result.output.strip()
 
 
 def test_refresh_exception():
@@ -731,9 +730,8 @@ def test_refresh_with_parameters():
                     "dt=2023-01-01T12:30:00",
                 ],
             )
-            if result.exception:
-                raise result.exception
-            assert result.exit_code == 0
+            # Exit code 2 means nothing needed to be refreshed (all up to date)
+            assert result.exit_code == 2
 
 
 def test_refresh_parallel_failure():

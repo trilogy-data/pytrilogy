@@ -1,4 +1,5 @@
 import source_one;
+import source_one as alt;
 
 property x.extra string;
 
@@ -10,3 +11,10 @@ grain (x)
 query '''
 select 1 as x, 'a' as extra
 ''';
+
+datasource x_alternate_source (
+   ~alt.x,
+)
+grain(alt.x)
+address test
+state unpublished;
