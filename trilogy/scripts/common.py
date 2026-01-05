@@ -405,6 +405,8 @@ def validate_datasources(
 
 
 def handle_execution_exception(e: Exception, debug: str | None = None) -> None:
+    if isinstance(e, Exit):
+        raise e
     print_error(f"Unexpected error: {e}")
     if debug:
         print_error(f"Full traceback:\n{traceback.format_exc()}")

@@ -575,9 +575,7 @@ def run_single_script_execution(
             show_execution_summary(len(queries), total_duration, exception is None)
 
             if exception:
-                raise Exit(1) from exception
-        except Exit:
-            raise
+                raise exception
         except Exception as e:
             handle_execution_exception(e, debug=debug)
         return 0
