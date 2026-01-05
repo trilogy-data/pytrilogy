@@ -57,6 +57,26 @@ class DependencyStrategy(Protocol):
     def build_folder_graph(self, folder: Path) -> nx.DiGraph: ...
 
 
+def resolve_with_errors(folder: Path) -> dict:
+    try:
+        from _preql_import_resolver import PyImportResolver
+    except ImportError:
+        raise ImportError(
+            "The dependency resolution script could not be found. If this error occured in production, please open an issue on https://github.com/trilogy-data/pytrilogy. "
+            "If developing, please build it by running: maturin develop"
+        )
+    resolver = PyImportResolver()
+
+    result = resolver.resolve_directory(str(folder), False)
+
+    # Check for parse errors in warnings and raise ParseError
+    warnings = result.get("warnings", [])
+    parse_errors = [w for w in warnings if "Failed to parse" in w]
+    if parse_errors:
+        raise ParseError("\n".join(parse_errors))
+    return result
+
+
 class ETLDependencyStrategy:
     """
     Dependency strategy using the Rust-based ETL logic parser.
@@ -78,23 +98,8 @@ class ETLDependencyStrategy:
         Returns:
             A networkx DiGraph representing dependencies.
         """
-        try:
-            from _preql_import_resolver import PyImportResolver
-        except ImportError:
-            raise ImportError(
-                "The dependency resolution script could not be found. If this error occured in production, please open an issue on https://github.com/trilogy-data/pytrilogy. "
-                "If developing, please build it by running: maturin develop"
-            )
-        resolver = PyImportResolver()
 
-        result = resolver.resolve_directory(str(folder), False)
-
-        # Check for parse errors in warnings and raise ParseError
-        warnings = result.get("warnings", [])
-        parse_errors = [w for w in warnings if "Failed to parse" in w]
-        if parse_errors:
-            raise ParseError("\n".join(parse_errors))
-
+        result = resolve_with_errors(folder)
         nodes = result.get("files", [])
         graph = nx.DiGraph()
         path_to_node = {}
@@ -128,13 +133,6 @@ class ETLDependencyStrategy:
             DiGraph with edges pointing from dependencies to dependents
             (i.e., edge A -> B means A must run before B).
         """
-        try:
-            from _preql_import_resolver import PyImportResolver
-        except ImportError:
-            raise ImportError(
-                "The preql-import-resolver resolver could not be found.  If this is production, please open an issue."
-                "If developing, please build it with maturin: cd trilogy/scripts/dependency && maturin develop"
-            )
 
         graph = nx.DiGraph()
 
@@ -164,15 +162,8 @@ class ETLDependencyStrategy:
 
         # Use directory resolver to get all edges at once
         directory = nodes[0].path.parent
-        resolver = PyImportResolver()
 
-        result = resolver.resolve_directory(str(directory.resolve()), False)
-
-        # Check for parse errors in warnings and raise ParseError
-        warnings = result.get("warnings", [])
-        parse_errors = [w for w in warnings if "Failed to parse" in w]
-        if parse_errors:
-            raise ParseError("\n".join(parse_errors))
+        result = resolve_with_errors(directory.resolve())
 
         edges = result.get("edges", [])
 
