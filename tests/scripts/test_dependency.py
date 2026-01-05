@@ -10,12 +10,20 @@ from trilogy.scripts.dependency import (
     NoDependencyStrategy,
     ScriptNode,
     create_script_nodes,
+    normalize_path_variants,
 )
 
 TEST_NODES = [
     ScriptNode(path=Path("/some/path")),
     ScriptNode(path=Path("/some_other/path")),
 ]
+
+
+def test_normalize_path_variants():
+    """Test that path variants are normalized correctly"""
+    test = Path(r"\\?\C:\some\path")
+    normal = normalize_path_variants(test)
+    assert normal == Path(r"C:\some\path")
 
 
 def test_no_dependency():

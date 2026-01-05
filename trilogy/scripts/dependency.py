@@ -12,9 +12,8 @@ def normalize_path_variants(path: str) -> Path:
     On Windows, paths from Rust may include UNC prefixes like \\?\C:\path.
     This function returns the path without the prefix.
     """
-    # Handle Windows UNC prefix (\\?\)
+    # Strip Windows UNC prefix (\\?\)
     if str(path).startswith("\\\\?\\"):
-        # Strip the UNC prefix
         normal_path = str(path)[4:]
         return Path(normal_path)
     return Path(path)
