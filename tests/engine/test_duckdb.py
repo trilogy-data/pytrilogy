@@ -5,6 +5,7 @@ import networkx as nx
 from pytest import mark, raises
 
 from trilogy import Dialects
+from trilogy.constants import Rendering
 from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.models.author import (
@@ -24,7 +25,6 @@ from trilogy.dialect.mock import DEFAULT_SCALE_FACTOR
 from trilogy.executor import Executor
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parser import parse_text
-from trilogy.constants import Rendering
 
 
 def test_basic_query(duckdb_engine: Executor, expected_results):
