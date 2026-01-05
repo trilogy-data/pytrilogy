@@ -15,7 +15,7 @@ from trilogy.dialect.enums import Dialects
 from trilogy.executor import Executor
 from trilogy.parser import parse
 
-__version__ = "0.3.153"
+__version__ = "0.3.154"
 
 __all__ = [
     "parse",

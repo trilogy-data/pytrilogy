@@ -315,6 +315,8 @@ FUNCTION_MAP = {
     FunctionType.WEEK: lambda x, types: f"week({x[0]})",
     FunctionType.MONTH: lambda x, types: f"month({x[0]})",
     FunctionType.MONTH_NAME: lambda x, types: f"monthname({x[0]})",
+    FunctionType.FORMAT_TIME: lambda x, types: f"strftime({x[0]}, {x[1]})",
+    FunctionType.PARSE_TIME: lambda x, types: f"strptime({x[0]}, {x[1]})",
     FunctionType.QUARTER: lambda x, types: f"quarter({x[0]})",
     FunctionType.YEAR: lambda x, types: f"year({x[0]})",
     # string types

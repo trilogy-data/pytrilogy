@@ -222,7 +222,9 @@ def test_datetime_functions():
         date_part(order_timestamp, week) -> order_week_part,
         date_part(order_timestamp, day_of_week) -> order_day_of_week_part,
         month_name(order_timestamp) -> order_month_name,
-        day_name(order_timestamp) -> order_day_name
+        day_name(order_timestamp) -> order_day_name,
+        format_time(order_timestamp, '%Y-%m-%d %H:%M:%S') -> order_timestamp_strftime,
+        parse_time(format_time(order_timestamp, '%Y-%m-%d %H:%M:%S'), '%Y-%m-%d %H:%M:%S') -> order_timestamp_parse
     ;
     
     

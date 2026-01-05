@@ -2445,6 +2445,18 @@ class ParseToObjects(Transformer):
         )
 
     @v_args(meta=True)
+    def fformat_time(self, meta, args):
+        return self.function_factory.create_function(
+            args, FunctionType.FORMAT_TIME, meta
+        )
+
+    @v_args(meta=True)
+    def fparse_time(self, meta, args):
+        return self.function_factory.create_function(
+            args, FunctionType.PARSE_TIME, meta
+        )
+
+    @v_args(meta=True)
     def fquarter(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.QUARTER, meta)
 

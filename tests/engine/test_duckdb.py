@@ -24,6 +24,7 @@ from trilogy.dialect.mock import DEFAULT_SCALE_FACTOR
 from trilogy.executor import Executor
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parser import parse_text
+from trilogy.constants import Rendering
 
 
 def test_basic_query(duckdb_engine: Executor, expected_results):
@@ -2381,3 +2382,59 @@ select
 """
     )
     assert results[-1].fetchall()[0].state == "TX"
+
+
+def test_datetime_functions():
+    environment = Environment()
+    _, queries = environment.parse(
+        """
+    const order_id <- 1;
+    const order_timestamp <- current_datetime();
+    select
+        order_id,
+        order_timestamp,
+        date(order_timestamp) -> order_date,
+        datetime(order_timestamp) -> order_timestamp_datetime,
+        timestamp(order_timestamp) -> order_timestamp_dos,
+        second(order_timestamp) -> order_second,
+        minute(order_timestamp) -> order_minute,
+        hour(order_timestamp) -> order_hour,
+        day(order_timestamp) -> order_day,
+        week(order_timestamp) -> order_week,
+        month(order_timestamp) -> order_month,
+        quarter(order_timestamp) -> order_quarter,
+        year(order_timestamp) -> order_year,
+        date_trunc(order_timestamp, month) -> order_month_trunc,
+        date_add(order_timestamp, month, 1) -> one_month_post_order,
+        date_sub(order_timestamp, month, 1) -> one_month_pre_order,
+        date_trunc(order_timestamp, day) -> order_day_trunc,
+        date_trunc(order_timestamp, year) -> order_year_trunc,
+        date_trunc(order_timestamp, hour) -> order_hour_trunc,
+        date_trunc(order_timestamp, minute) -> order_minute_trunc,
+        date_trunc(order_timestamp, second) -> order_second_trunc,
+        date_trunc(order_timestamp, quarter) -> order_quarter_trunc,
+        date_trunc(order_timestamp, week) -> order_week_trunc,
+        date_part(order_timestamp, month) -> order_month_part,
+        date_part(order_timestamp, day) -> order_day_part,
+        date_part(order_timestamp, year) -> order_year_part,
+        date_part(order_timestamp, hour) -> order_hour_part,
+        date_part(order_timestamp, minute) -> order_minute_part,
+        date_part(order_timestamp, second) -> order_second_part,
+        date_part(order_timestamp, quarter) -> order_quarter_part,
+        date_part(order_timestamp, week) -> order_week_part,
+        date_part(order_timestamp, day_of_week) -> order_day_of_week_part,
+        month_name(order_timestamp) -> order_month_name,
+        day_name(order_timestamp) -> order_day_name,
+        format_time(order_timestamp, '%Y-%m-%d %H:%M:%S') -> order_timestamp_strftime,
+        parse_time(format_time(order_timestamp, '%Y-%m-%d %H:%M:%S'), '%Y-%m-%d %H:%M:%S') -> order_timestamp_parse
+    ;
+    
+    
+        """
+    )
+
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=environment, rendering=Rendering(parameters=False)
+    )
+
+    executor.execute_query(queries[-1])
