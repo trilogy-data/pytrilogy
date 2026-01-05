@@ -59,6 +59,8 @@ FUNCTION_MAP = {
     FunctionType.DATE_PART: lambda x, types: f"EXTRACT({transform_date_part(x[1])} FROM {x[0]})",
     FunctionType.MONTH_NAME: lambda x, types: f"FORMAT_DATE('%B', {x[0]})",
     FunctionType.DAY_NAME: lambda x, types: f"FORMAT_DATE('%A', {x[0]})",
+    FunctionType.FORMAT_TIME: lambda x, types: f"FORMAT_DATETIME({x[1]}, {x[0]})",
+    FunctionType.PARSE_TIME: lambda x, types: f"PARSE_DATETIME({x[1]}, {x[0]})",
     # string
     FunctionType.CONTAINS: lambda x, types: f"CONTAINS_SUBSTR({x[0]}, {x[1]})",
     FunctionType.RANDOM: lambda x, types: f"FLOOR(RAND()*{x[0]})",

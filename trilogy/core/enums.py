@@ -279,6 +279,8 @@ class FunctionType(Enum):
     YEAR = "year"
     MONTH_NAME = "month_name"
     DAY_NAME = "day_name"
+    FORMAT_TIME = "format_time"
+    PARSE_TIME = "parse_time"
 
     DATE_PART = "date_part"
     DATE_TRUNCATE = "date_truncate"

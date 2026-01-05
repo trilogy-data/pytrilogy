@@ -454,6 +454,10 @@
     fmonth: _MONTH expr ")"
     _MONTH_NAME.1: "month_name("i
     fmonth_name: _MONTH_NAME expr ")"
+    _FORMAT_TIME.1: "format_time("i
+    fformat_time: _FORMAT_TIME expr "," string_lit ")"
+    _PARSE_TIME.1: "parse_time("i
+    fparse_time: _PARSE_TIME  expr  ","  string_lit ")"
     _QUARTER.1: "quarter("i
     fquarter: _QUARTER expr ")"
     _YEAR.1: "year("i
@@ -473,7 +477,7 @@
     _DATE_SPINE.1: "date_spine("i
     fdate_spine: _DATE_SPINE expr "," expr  ")"
     
-    _date_functions: fdate | fdate_add | fdate_sub | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday |fday_name | fday_of_week | fweek | fmonth | fmonth_name | fquarter | fyear | fdate_part | fdate_trunc | fdate_spine
+    _date_functions: fdate | fdate_add | fdate_sub | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday |fday_name | fday_of_week | fweek | fmonth | fmonth_name | fformat_time | fparse_time | fquarter | fyear | fdate_part | fdate_trunc | fdate_spine
     
     _static_functions:  _string_functions | _math_functions | _array_functions | _map_functions
 

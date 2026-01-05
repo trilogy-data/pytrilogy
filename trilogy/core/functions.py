@@ -735,6 +735,28 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type=TraitDataType(type=DataType.STRING, traits=["month_name"]),
         arg_count=1,
     ),
+    FunctionType.FORMAT_TIME: FunctionConfig(
+        valid_inputs=[
+            {
+                DataType.DATE,
+                DataType.TIMESTAMP,
+                DataType.DATETIME,
+            },
+            {DataType.STRING},
+        ],
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.STRING,
+        arg_count=2,
+    ),
+    FunctionType.PARSE_TIME: FunctionConfig(
+        valid_inputs=[
+            {DataType.STRING},
+            {DataType.STRING},
+        ],
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.DATETIME,
+        arg_count=2,
+    ),
     FunctionType.QUARTER: FunctionConfig(
         valid_inputs={
             DataType.DATE,
