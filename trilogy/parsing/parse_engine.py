@@ -989,7 +989,7 @@ class ParseToObjects(Transformer):
             elif isinstance(val, Query):
                 address = Address(location=val.text, type=AddressType.QUERY)
             elif isinstance(val, File):
-                address = Address(location=val.path, type=val.type)
+                address = Address(location=val.path, write_location=val.write_path, type=val.type, exists=val.exists)
             elif isinstance(val, WhereClause):
                 where = val
             elif isinstance(val, DatasourceState):
@@ -1006,6 +1006,8 @@ class ParseToObjects(Transformer):
                 "Malformed datasource, missing address or query declaration"
             )
 
+        if address and (address.is_file and not address.exists):
+            datasource_status = DatasourceState.UNPOPULATED
         datasource = Datasource(
             name=name,
             columns=columns,
@@ -1763,44 +1765,48 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def file(self, meta: Meta, args):
-        raw_path = args[0]
-
-        # Cloud storage URLs should be used as-is without path resolution
-        cloud_prefixes = ("gcs://", "gs://", "s3://", "https://", "http://")
-        is_cloud = raw_path.startswith(cloud_prefixes)
-
-        if is_cloud:
-            base = raw_path
-            suffix = "." + raw_path.rsplit(".", 1)[-1] if "." in raw_path else ""
+        if len(args) == 2:
+            read_path, write_path = args
         else:
-            path = Path(raw_path)
-            # if it's a relative path, look it up relative to current parsing directory
-            if path.is_relative_to("."):
-                path = Path(self.environment.working_path) / path
-            base = str(path.resolve().absolute())
-            suffix = path.suffix
+            read_path = args[0]
+            write_path = None
+        exists = True
 
-        def check_exists():
-            if not is_cloud and not Path(base).exists():
-                raise FileNotFoundError(
-                    f"File path {base} does not exist on line {meta.line}"
-                )
+        def process_path(ipath:str):
+            # Cloud storage URLs should be used as-is without path resolution
+            cloud_prefixes = ("gcs://", "gs://", "s3://", "https://", "http://")
+            is_cloud = ipath.startswith(cloud_prefixes)
+
+            if is_cloud:
+                base = ipath
+                suffix = "." + ipath.rsplit(".", 1)[-1] if "." in ipath else ""
+            else:
+                path = Path(ipath)
+                # if it's a relative path, look it up relative to current parsing directory
+                if path.is_relative_to("."):
+                    path = Path(self.environment.working_path) / path
+                base = str(path.resolve().absolute())
+                suffix = path.suffix
+            exists = False if not is_cloud and not Path(base).exists() else True
+            return base, suffix, exists
+
+        read_base, suffix, exists = process_path(read_path)
+        write_base, write_suffix, _ = process_path(write_path) if write_path else (None, None, False)
+
 
         if suffix == ".sql":
-            check_exists()
-            return File(path=base, type=AddressType.SQL)
+            return File(path=read_base, write_path=write_base,  type=AddressType.SQL, exists=exists)
         elif suffix == ".py":
-            check_exists()
-            return File(path=base, type=AddressType.PYTHON_SCRIPT)
+            return File(path=read_base, write_path=write_base, type=AddressType.PYTHON_SCRIPT, exists=exists)
         elif suffix == ".csv":
-            return File(path=base, type=AddressType.CSV)
+            return File(path=read_base, write_path=write_base, type=AddressType.CSV, exists=exists)
         elif suffix == ".tsv":
-            return File(path=base, type=AddressType.TSV)
+            return File(path=read_base, write_path=write_base, type=AddressType.TSV, exists=exists)
         elif suffix == ".parquet":
-            return File(path=base, type=AddressType.PARQUET)
+            return File(path=read_base, write_path=write_base, type=AddressType.PARQUET, exists=exists)
         else:
             raise ParseError(
-                f"Unsupported file type {suffix} for path {raw_path} on line {meta.line}"
+                f"Unsupported file type {suffix} for path {read_path} on line {meta.line}"
             )
 
     def where(self, args):

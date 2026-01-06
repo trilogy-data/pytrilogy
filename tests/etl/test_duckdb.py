@@ -132,6 +132,30 @@ overwrite gcs_export;
     exec.execute_text(text)
 
 
+def test_duckdb_gcs_persistence_read_write():
+    from trilogy.dialect.config import DuckDBConfig
+
+    load_secret("GOOGLE_HMAC_KEY")
+    load_secret("GOOGLE_HMAC_SECRET")
+    config = DuckDBConfig(enable_gcs=True)
+    exec = Dialects.DUCK_DB.default_executor(conf=config)
+
+    text = """
+auto base <- unnest([1,2,3,4,5]);
+
+datasource gcs_export (
+base
+)
+file `https://storage.googleapis.com/trilogy_public_models/tests/gcs_export_rw.parquet`:`gcs://trilogy_public_models/tests/gcs_export_rw.parquet`
+state unpublished;
+
+overwrite gcs_export;
+
+select base order by base asc;
+"""
+    results = exec.execute_text(text)
+    assert results[-1].fetchall() == [(1,), (2,), (3,), (4,), (5,)]
+
 def test_duckdb_gcs_refresh():
     """Test refresh command with GCS-backed datasources (mimics sf_trees refresh)."""
     from pathlib import Path

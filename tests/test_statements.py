@@ -143,6 +143,8 @@ copy into parquet '{target}' from select x -> test order by test asc;
     assert table.column("test").to_pylist() == [1, 2, 3, 4]
 
 
+
+
 def test_persist_to_parquet_with_column_aliases():
     """Test that persisting to parquet uses datasource column names, not concept addresses."""
     import pyarrow.parquet as pq
