@@ -690,6 +690,25 @@ class Environment(BaseModel):
 
         return True
 
+    # LSP/Editor introspection helpers
+
+    def user_concepts(self) -> List[Concept]:
+        """Return all user-defined concepts, filtering out internal concepts."""
+        return [
+            c
+            for c in self.concepts.values()
+            if not c.namespace.startswith(INTERNAL_NAMESPACE)
+            and not c.name.startswith("_")
+        ]
+
+    def concepts_at_line(self, line_number: int) -> List[Concept]:
+        """Find all concepts defined on a specific line number."""
+        return [
+            c
+            for c in self.concepts.values()
+            if c.metadata and c.metadata.line_number == line_number
+        ]
+
 
 class LazyEnvironment(Environment):
     """Variant of environment to defer parsing of a path

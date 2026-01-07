@@ -2551,6 +2551,9 @@ class Metadata(BaseModel):
 
     description: Optional[str] = None
     line_number: Optional[int] = None
+    column: Optional[int] = None
+    end_line: Optional[int] = None
+    end_column: Optional[int] = None
     concept_source: ConceptSource = ConceptSource.MANUAL
 
 

@@ -161,6 +161,22 @@ from trilogy.parsing.exceptions import NameShadowError, ParseError
 perf_logger = getLogger("trilogy.parse.performance")
 
 
+def metadata_from_meta(
+    meta: Meta,
+    description: str | None = None,
+    concept_source: ConceptSource = ConceptSource.MANUAL,
+) -> Metadata:
+    """Create Metadata from a Lark Meta object, capturing full position info."""
+    return Metadata(
+        description=description,
+        line_number=meta.line,
+        column=meta.column,
+        end_line=meta.end_line,
+        end_column=meta.end_column,
+        concept_source=concept_source,
+    )
+
+
 class ParsePass(Enum):
     INITIAL = 1
     VALIDATION = 2
@@ -486,7 +502,7 @@ class ParseToObjects(Transformer):
         return ConceptRef(
             # this is load-bearing to handle pseudonyms
             address=mapping.address,
-            metadata=Metadata(line_number=meta.line),
+            metadata=metadata_from_meta(meta),
             datatype=datatype,
         )
 
@@ -768,6 +784,9 @@ class ParseToObjects(Transformer):
         )
         if concept.metadata:
             concept.metadata.line_number = meta.line
+            concept.metadata.column = meta.column
+            concept.metadata.end_line = meta.end_line
+            concept.metadata.end_column = meta.end_column
         self.environment.add_concept(concept, meta=meta)
         return ConceptDeclarationStatement(concept=concept)
 
@@ -834,6 +853,9 @@ class ParseToObjects(Transformer):
 
             if concept.metadata:
                 concept.metadata.line_number = meta.line
+                concept.metadata.column = meta.column
+                concept.metadata.end_line = meta.end_line
+                concept.metadata.end_column = meta.end_column
             self.environment.add_concept(concept, meta=meta)
             return ConceptDerivationStatement(concept=concept)
 
@@ -846,6 +868,9 @@ class ParseToObjects(Transformer):
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
+                concept.metadata.column = meta.column
+                concept.metadata.end_line = meta.end_line
+                concept.metadata.end_column = meta.end_column
             self.environment.add_concept(concept, meta=meta)
             return ConceptDerivationStatement(concept=concept)
 
@@ -868,6 +893,9 @@ class ParseToObjects(Transformer):
         for new_concept in rowset_to_concepts(output, self.environment):
             if new_concept.metadata:
                 new_concept.metadata.line_number = meta.line
+                new_concept.metadata.column = meta.column
+                new_concept.metadata.end_line = meta.end_line
+                new_concept.metadata.end_column = meta.end_column
             self.environment.add_concept(new_concept, force=True)
 
         self.environment.add_rowset(
@@ -893,7 +921,7 @@ class ParseToObjects(Transformer):
             name=name,
             datatype=arg_to_datatype(constant),
             purpose=Purpose.CONSTANT,
-            metadata=Metadata(line_number=meta.line) if not metadata else metadata,
+            metadata=metadata_from_meta(meta) if not metadata else metadata,
             lineage=Function(
                 operator=FunctionType.CONSTANT,
                 output_datatype=arg_to_datatype(constant),
@@ -906,6 +934,9 @@ class ParseToObjects(Transformer):
         )
         if concept.metadata:
             concept.metadata.line_number = meta.line
+            concept.metadata.column = meta.column
+            concept.metadata.end_line = meta.end_line
+            concept.metadata.end_column = meta.end_column
         self.environment.add_concept(concept, meta)
         return concept
 
@@ -917,6 +948,9 @@ class ParseToObjects(Transformer):
             concept = args[0].concept
         if concept.metadata:
             concept.metadata.line_number = meta.line
+            concept.metadata.column = meta.column
+            concept.metadata.end_line = meta.end_line
+            concept.metadata.end_column = meta.end_column
         return ConceptDeclarationStatement(concept=concept)
 
     def column_assignment_list(self, args):
@@ -1084,7 +1118,7 @@ class ParseToObjects(Transformer):
             output, self.environment
         )
 
-        metadata = Metadata(line_number=meta.line, concept_source=ConceptSource.SELECT)
+        metadata = metadata_from_meta(meta, concept_source=ConceptSource.SELECT)
         concept = arbitrary_to_concept(
             transformation,
             environment=self.environment,
@@ -1295,7 +1329,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def rawsql_statement(self, meta: Meta, args) -> RawSQLStatement:
-        statement = RawSQLStatement(meta=Metadata(line_number=meta.line), text=args[0])
+        statement = RawSQLStatement(meta=metadata_from_meta(meta), text=args[0])
         return statement
 
     def COPY_TYPE(self, args) -> IOType:
@@ -1306,7 +1340,7 @@ class ParseToObjects(Transformer):
         return CopyStatement(
             target=args[1],
             target_type=args[0],
-            meta=Metadata(line_number=meta.line),
+            meta=metadata_from_meta(meta),
             select=args[-1],
         )
 
@@ -1509,7 +1543,7 @@ class ParseToObjects(Transformer):
             datasource=target,
             persist_mode=persist_mode,
             partition_by=target.incremental_by,
-            meta=Metadata(line_number=meta.line),
+            meta=metadata_from_meta(meta),
         )
 
     @v_args(meta=True)
@@ -1581,7 +1615,7 @@ class ParseToObjects(Transformer):
             datasource=new_datasource,
             persist_mode=mode,
             partition_by=partition_clause.columns if partition_clause else [],
-            meta=Metadata(line_number=meta.line),
+            meta=metadata_from_meta(meta),
         )
 
     @v_args(meta=True)
@@ -1685,7 +1719,7 @@ class ParseToObjects(Transformer):
             where_clause=where,
             order_by=order_by,
             limit=limit,
-            meta=Metadata(line_number=meta.line),
+            meta=metadata_from_meta(meta),
             derived_concepts=derived_concepts,
             derive=derive,
         )
@@ -1733,7 +1767,7 @@ class ParseToObjects(Transformer):
             having_clause=having,
             limit=limit,
             eligible_datasources=from_clause.sources if from_clause else None,
-            meta=Metadata(line_number=meta.line),
+            meta=metadata_from_meta(meta),
         )
         if (
             self.parse_pass == ParsePass.INITIAL
