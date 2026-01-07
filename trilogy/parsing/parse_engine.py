@@ -989,7 +989,12 @@ class ParseToObjects(Transformer):
             elif isinstance(val, Query):
                 address = Address(location=val.text, type=AddressType.QUERY)
             elif isinstance(val, File):
-                address = Address(location=val.path, write_location=val.write_path, type=val.type, exists=val.exists)
+                address = Address(
+                    location=val.path,
+                    write_location=val.write_path,
+                    type=val.type,
+                    exists=val.exists,
+                )
             elif isinstance(val, WhereClause):
                 where = val
             elif isinstance(val, DatasourceState):
@@ -1765,6 +1770,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def file(self, meta: Meta, args):
+        write_path: str | None
         if len(args) == 2:
             read_path, write_path = args
         else:
@@ -1772,7 +1778,7 @@ class ParseToObjects(Transformer):
             write_path = None
         exists = True
 
-        def process_path(ipath:str):
+        def process_path(ipath: str) -> tuple[str, str, bool]:
             # Cloud storage URLs should be used as-is without path resolution
             cloud_prefixes = ("gcs://", "gs://", "s3://", "https://", "http://")
             is_cloud = ipath.startswith(cloud_prefixes)
@@ -1791,19 +1797,45 @@ class ParseToObjects(Transformer):
             return base, suffix, exists
 
         read_base, suffix, exists = process_path(read_path)
-        write_base, write_suffix, _ = process_path(write_path) if write_path else (None, None, False)
-
+        write_base, write_suffix, _ = (
+            process_path(write_path) if write_path else (None, None, False)
+        )
 
         if suffix == ".sql":
-            return File(path=read_base, write_path=write_base,  type=AddressType.SQL, exists=exists)
+            return File(
+                path=read_base,
+                write_path=write_base,
+                type=AddressType.SQL,
+                exists=exists,
+            )
         elif suffix == ".py":
-            return File(path=read_base, write_path=write_base, type=AddressType.PYTHON_SCRIPT, exists=exists)
+            return File(
+                path=read_base,
+                write_path=write_base,
+                type=AddressType.PYTHON_SCRIPT,
+                exists=exists,
+            )
         elif suffix == ".csv":
-            return File(path=read_base, write_path=write_base, type=AddressType.CSV, exists=exists)
+            return File(
+                path=read_base,
+                write_path=write_base,
+                type=AddressType.CSV,
+                exists=exists,
+            )
         elif suffix == ".tsv":
-            return File(path=read_base, write_path=write_base, type=AddressType.TSV, exists=exists)
+            return File(
+                path=read_base,
+                write_path=write_base,
+                type=AddressType.TSV,
+                exists=exists,
+            )
         elif suffix == ".parquet":
-            return File(path=read_base, write_path=write_base, type=AddressType.PARQUET, exists=exists)
+            return File(
+                path=read_base,
+                write_path=write_base,
+                type=AddressType.PARQUET,
+                exists=exists,
+            )
         else:
             raise ParseError(
                 f"Unsupported file type {suffix} for path {read_path} on line {meta.line}"

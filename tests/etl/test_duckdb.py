@@ -156,6 +156,7 @@ select base order by base asc;
     results = exec.execute_text(text)
     assert results[-1].fetchall() == [(1,), (2,), (3,), (4,), (5,)]
 
+
 def test_duckdb_gcs_refresh():
     """Test refresh command with GCS-backed datasources (mimics sf_trees refresh)."""
     from pathlib import Path

@@ -178,7 +178,7 @@ class Query:
 @dataclass
 class File:
     path: str
-    write_path: str
+    write_path: str | None
     type: AddressType
     exists: bool = True
 
