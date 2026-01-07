@@ -709,31 +709,6 @@ class Environment(BaseModel):
             if c.metadata and c.metadata.line_number == line_number
         ]
 
-    def resolve_concept(self, reference: str) -> Optional[Concept]:
-        """Resolve a concept reference string to its Concept object.
-
-        Handles namespace-qualified references:
-        - Simple name: "name" -> looks up as "namespace.name"
-        - Namespace qualified: "namespace.name" -> direct lookup
-
-        Args:
-            reference: The concept reference string (e.g., "order_id", "local.order_id")
-
-        Returns:
-            The resolved Concept, or None if not found
-        """
-        # Try direct lookup first
-        direct = self.concepts.get(reference)
-        if direct:
-            return direct
-
-        # Try with default namespace if no dot
-        if "." not in reference:
-            namespaced = f"{self.namespace}.{reference}"
-            return self.concepts.get(namespaced)
-
-        return None
-
 
 class LazyEnvironment(Environment):
     """Variant of environment to defer parsing of a path

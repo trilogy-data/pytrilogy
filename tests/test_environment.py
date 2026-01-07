@@ -236,29 +236,6 @@ key order_id int;
     assert any(c.name == "name" for c in concepts_line_2)
 
 
-def test_resolve_concept_simple():
-    """Test resolving simple concept references."""
-    env, _ = Environment().parse(
-        """
-key user_id int;
-key order_id int;
-"""
-    )
-    # Simple name lookup
-    concept = env.resolve_concept("user_id")
-    assert concept is not None
-    assert concept.name == "user_id"
-
-    # Fully qualified lookup
-    concept = env.resolve_concept("local.order_id")
-    assert concept is not None
-    assert concept.name == "order_id"
-
-    # Non-existent concept
-    concept = env.resolve_concept("nonexistent")
-    assert concept is None
-
-
 def test_metadata_column_positions():
     """Test that metadata captures column position information."""
     env, _ = Environment().parse(
