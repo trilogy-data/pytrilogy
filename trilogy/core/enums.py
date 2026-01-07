@@ -6,6 +6,7 @@ InfiniteFunctionArgs = -1
 class DatasourceState(Enum):
     PUBLISHED = "published"
     UNPUBLISHED = "unpublished"
+    UNPOPULATED = "unpopulated"
 
 
 class CreateMode(Enum):

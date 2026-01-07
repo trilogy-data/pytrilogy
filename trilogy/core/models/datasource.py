@@ -150,7 +150,9 @@ class ColumnAssignment(BaseModel):
 
 class Address(BaseModel):
     location: str
+    write_location: str | None = None
     quoted: bool = False
+    exists: bool = True
     type: AddressType = AddressType.TABLE
 
     @property
@@ -176,7 +178,9 @@ class Query:
 @dataclass
 class File:
     path: str
+    write_path: str | None
     type: AddressType
+    exists: bool = True
 
 
 class DatasourceMetadata(BaseModel):

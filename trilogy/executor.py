@@ -316,7 +316,7 @@ class Executor(object):
                 order_by=query.order_by,
                 local_concepts=query.local_concepts,
                 locally_derived=query.locally_derived,
-                target=addr.location,
+                target=addr.write_location or addr.location,
                 target_type=io_type,
                 column_aliases=column_aliases,
             )

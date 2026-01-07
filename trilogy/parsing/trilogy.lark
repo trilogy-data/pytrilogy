@@ -65,7 +65,7 @@
     
     query: "query" MULTILINE_STRING
 
-    file: "file" FILE_PATH
+    file: "file" ((FILE_PATH ":" FILE_PATH) | FILE_PATH)
     
     concept_assignment: SHORTHAND_MODIFIER* IDENTIFIER 
     
