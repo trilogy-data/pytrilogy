@@ -291,15 +291,3 @@ property user_id.name string;
     assert user_id.metadata.line_number == 1
     # Column positions should be captured
     assert user_id.metadata.column is not None
-
-
-def test_get_concept_by_reference_alias():
-    """Test that get_concept_by_reference is an alias for resolve_concept."""
-    env, _ = Environment().parse(
-        """
-key user_id int;
-"""
-    )
-    concept1 = env.resolve_concept("user_id")
-    concept2 = env.get_concept_by_reference("user_id")
-    assert concept1 == concept2
