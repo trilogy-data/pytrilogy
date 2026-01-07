@@ -712,64 +712,27 @@ class Environment(BaseModel):
     def resolve_concept(self, reference: str) -> Optional[Concept]:
         """Resolve a concept reference string to its Concept object.
 
-        Handles various reference formats:
-        - Simple name: "name" -> looks up in current namespace
-        - Namespace qualified: "namespace.name"
-        - Property syntax: "parent.property" -> resolves to the property concept
-
-        For property syntax like "user_id.name", this finds the concept named
-        "name" that has "user_id" in its keys/grain.
+        Handles namespace-qualified references:
+        - Simple name: "name" -> looks up as "namespace.name"
+        - Namespace qualified: "namespace.name" -> direct lookup
 
         Args:
-            reference: The concept reference string (e.g., "user_id.name", "order_id")
+            reference: The concept reference string (e.g., "order_id", "local.order_id")
 
         Returns:
             The resolved Concept, or None if not found
         """
-        # First, try direct lookup
+        # Try direct lookup first
         direct = self.concepts.get(reference)
         if direct:
             return direct
 
-        # Try with default namespace
+        # Try with default namespace if no dot
         if "." not in reference:
             namespaced = f"{self.namespace}.{reference}"
-            direct = self.concepts.get(namespaced)
-            if direct:
-                return direct
-            return None
+            return self.concepts.get(namespaced)
 
-        # Handle property syntax: parent.property
-        # Split on last dot to get potential parent and property name
-        parts = reference.rsplit(".", 1)
-        if len(parts) == 2:
-            parent_ref, prop_name = parts
-
-            # Try to resolve parent first
-            parent = self.resolve_concept(parent_ref)
-            if parent:
-                # Look for a concept with this name that has parent in its keys
-                for concept in self.concepts.values():
-                    if concept.name == prop_name and concept.keys:
-                        if parent.address in concept.keys:
-                            return concept
-                # Also check grain components
-                for concept in self.concepts.values():
-                    if (
-                        concept.name == prop_name
-                        and concept.grain
-                        and parent.address in concept.grain.components
-                    ):
-                        return concept
-
-        # Try namespace.name interpretation
-        namespace, name = parts[0], parts[1]
-        namespaced = f"{namespace}.{name}"
-        return self.concepts.get(namespaced)
-
-    def get_concept_by_reference(self, reference: str) -> Optional[Concept]:
-        """Alias for resolve_concept for backward compatibility."""
-        return self.resolve_concept(reference)
+        return None
 
 
 class LazyEnvironment(Environment):

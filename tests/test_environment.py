@@ -259,25 +259,6 @@ key order_id int;
     assert concept is None
 
 
-def test_resolve_concept_property():
-    """Test resolving property concept references."""
-    env, _ = Environment().parse(
-        """
-key user_id int;
-property user_id.name string;
-property user_id.email string;
-"""
-    )
-    # Property syntax: parent.property
-    concept = env.resolve_concept("user_id.name")
-    assert concept is not None
-    assert concept.name == "name"
-
-    concept = env.resolve_concept("user_id.email")
-    assert concept is not None
-    assert concept.name == "email"
-
-
 def test_metadata_column_positions():
     """Test that metadata captures column position information."""
     env, _ = Environment().parse(
