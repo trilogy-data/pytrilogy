@@ -194,3 +194,112 @@ select y;
     ).fetchall()
 
     assert results[0].y == 8
+
+
+def test_user_concepts():
+    """Test that user_concepts filters out internal concepts."""
+    env, _ = Environment().parse(
+        """
+key user_id int;
+property user_id.name string;
+"""
+    )
+    user_concepts = env.user_concepts()
+    addresses = [c.address for c in user_concepts]
+
+    # Should include user-defined concepts
+    assert "local.user_id" in addresses
+    assert "local.name" in addresses
+
+    # Should not include internal concepts
+    for c in user_concepts:
+        assert not c.namespace.startswith("__preql_internal")
+        assert not c.name.startswith("_")
+
+
+def test_concepts_at_line():
+    """Test finding concepts at a specific line number."""
+    env, _ = Environment().parse(
+        """key user_id int;
+property user_id.name string;
+key order_id int;
+"""
+    )
+    # Line 1 should have user_id
+    concepts_line_1 = env.concepts_at_line(1)
+    assert len(concepts_line_1) >= 1
+    assert any(c.name == "user_id" for c in concepts_line_1)
+
+    # Line 2 should have name
+    concepts_line_2 = env.concepts_at_line(2)
+    assert len(concepts_line_2) >= 1
+    assert any(c.name == "name" for c in concepts_line_2)
+
+
+def test_resolve_concept_simple():
+    """Test resolving simple concept references."""
+    env, _ = Environment().parse(
+        """
+key user_id int;
+key order_id int;
+"""
+    )
+    # Simple name lookup
+    concept = env.resolve_concept("user_id")
+    assert concept is not None
+    assert concept.name == "user_id"
+
+    # Fully qualified lookup
+    concept = env.resolve_concept("local.order_id")
+    assert concept is not None
+    assert concept.name == "order_id"
+
+    # Non-existent concept
+    concept = env.resolve_concept("nonexistent")
+    assert concept is None
+
+
+def test_resolve_concept_property():
+    """Test resolving property concept references."""
+    env, _ = Environment().parse(
+        """
+key user_id int;
+property user_id.name string;
+property user_id.email string;
+"""
+    )
+    # Property syntax: parent.property
+    concept = env.resolve_concept("user_id.name")
+    assert concept is not None
+    assert concept.name == "name"
+
+    concept = env.resolve_concept("user_id.email")
+    assert concept is not None
+    assert concept.name == "email"
+
+
+def test_metadata_column_positions():
+    """Test that metadata captures column position information."""
+    env, _ = Environment().parse(
+        """key user_id int;
+property user_id.name string;
+"""
+    )
+    user_id = env.concepts.get("local.user_id")
+    assert user_id is not None
+    assert user_id.metadata is not None
+    assert user_id.metadata.line_number == 1
+    # Column positions should be captured
+    assert user_id.metadata.column is not None
+
+
+def test_get_concept_by_reference_alias():
+    """Test that get_concept_by_reference is an alias for resolve_concept."""
+    env, _ = Environment().parse(
+        """
+key user_id int;
+"""
+    )
+    concept1 = env.resolve_concept("user_id")
+    concept2 = env.get_concept_by_reference("user_id")
+    assert concept1 == concept2

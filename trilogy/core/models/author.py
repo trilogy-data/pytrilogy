@@ -65,6 +65,8 @@ from trilogy.utility import unique
 
 # TODO: refactor to avoid these
 if TYPE_CHECKING:
+    from lark.tree import Meta
+
     from trilogy.core.models.environment import Environment
 
 
@@ -2551,7 +2553,27 @@ class Metadata(BaseModel):
 
     description: Optional[str] = None
     line_number: Optional[int] = None
+    column: Optional[int] = None
+    end_line: Optional[int] = None
+    end_column: Optional[int] = None
     concept_source: ConceptSource = ConceptSource.MANUAL
+
+    @classmethod
+    def from_lark_meta(
+        cls,
+        meta: "Meta",
+        description: Optional[str] = None,
+        concept_source: ConceptSource = ConceptSource.MANUAL,
+    ) -> "Metadata":
+        """Create Metadata from a Lark Meta object, capturing full position info."""
+        return cls(
+            description=description,
+            line_number=meta.line,
+            column=meta.column,
+            end_line=meta.end_line,
+            end_column=meta.end_column,
+            concept_source=concept_source,
+        )
 
 
 class Window(BaseModel):
