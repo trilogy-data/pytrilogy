@@ -4,6 +4,7 @@ from pathlib import Path
 
 from tomllib import loads
 
+from trilogy.constants import logger
 from trilogy.dialect import (
     BigQueryConfig,
     DialectConfig,
@@ -14,7 +15,6 @@ from trilogy.dialect import (
     SQLServerConfig,
 )
 from trilogy.dialect.enums import Dialects
-from trilogy.constants import logger
 
 DEFAULT_PARALLELISM = 4
 
