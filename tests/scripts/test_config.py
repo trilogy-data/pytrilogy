@@ -341,11 +341,9 @@ TRILOGY_TEST_VAR5=
 
 
 def test_load_env_file_not_found():
-    """Test that loading a non-existent env file raises FileNotFoundError."""
-    import pytest
-
-    with pytest.raises(FileNotFoundError):
-        load_env_file(Path("/nonexistent/.env"))
+    """Test that loading a non-existent env file returns None."""
+    result = load_env_file(Path("/nonexistent/.env"))
+    assert result is None
 
 
 def test_apply_env_vars():
@@ -534,3 +532,26 @@ env_file = ".env"
                 os.environ.pop(test_key, None)
             else:
                 os.environ[test_key] = original_value
+
+
+def test_nonexistent_file_error_before_dialect_error():
+    """Test that nonexistent file error is raised before dialect error."""
+    runner = CliRunner()
+
+    # Test with .preql extension
+    result = runner.invoke(cli, ["run", "nonexistent.preql"])
+    assert result.exit_code != 0
+    assert "does not exist" in result.output
+    assert "No dialect specified" not in result.output
+
+    # Test with path separator
+    result = runner.invoke(cli, ["run", "some/path/file"])
+    assert result.exit_code != 0
+    assert "does not exist" in result.output
+    assert "No dialect specified" not in result.output
+
+    # Test with .sql extension
+    result = runner.invoke(cli, ["run", "nonexistent.sql"])
+    assert result.exit_code != 0
+    assert "does not exist" in result.output
+    assert "No dialect specified" not in result.output

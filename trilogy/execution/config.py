@@ -4,6 +4,7 @@ from pathlib import Path
 
 from tomllib import loads
 
+from trilogy.constants import logger
 from trilogy.dialect import (
     BigQueryConfig,
     DialectConfig,
@@ -18,12 +19,12 @@ from trilogy.dialect.enums import Dialects
 DEFAULT_PARALLELISM = 4
 
 
-def load_env_file(env_file_path: Path) -> dict[str, str]:
+def load_env_file(env_file_path: Path) -> dict[str, str] | None:
     """Load environment variables from a .env file."""
     env_vars: dict[str, str] = {}
     if not env_file_path.exists():
-        raise FileNotFoundError(f"Environment file not found: {env_file_path}")
-
+        logger.info(f"Environment file not found: {env_file_path}")
+        return None
     with open(env_file_path, "r") as f:
         for line in f:
             line = line.strip()

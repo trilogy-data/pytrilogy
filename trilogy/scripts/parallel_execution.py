@@ -623,7 +623,8 @@ def run_parallel_execution(
     # Load environment variables from config env_files first
     for env_file in config.env_files:
         env_vars = load_env_file(env_file)
-        apply_env_vars(env_vars)
+        if env_vars:
+            apply_env_vars(env_vars)
 
     # Then apply CLI --env options (these take precedence)
     if cli_params.env:

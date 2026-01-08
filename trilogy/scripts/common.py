@@ -183,6 +183,17 @@ def get_runtime_config(
         return RuntimeConfig(startup_trilogy=[], startup_sql=[])
 
 
+def _looks_like_path(input: str) -> bool:
+    """Check if input looks like a file/directory path rather than inline query."""
+    # Contains path separators
+    if "/" in input or "\\" in input:
+        return True
+    # Has a file extension commonly used
+    if input.endswith((".preql", ".sql", ".toml")):
+        return True
+    return False
+
+
 def resolve_input_information(
     input: str, config_path_input: PathlibPath | None = None
 ) -> tuple[Iterable[PathlibPath | StringIO], PathlibPath, str, str, RuntimeConfig]:
@@ -204,6 +215,9 @@ def resolve_input_information(
 
         input_name = pathlib_path.name
     else:
+        # If input looks like a path but doesn't exist, raise error
+        if _looks_like_path(input):
+            raise FileNotFoundError(f"Input path '{input}' does not exist.")
         script = input
         files = [StringIO(script)]
         directory = PathlibPath.cwd()
