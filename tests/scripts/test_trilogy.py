@@ -30,6 +30,13 @@ path = Path(__file__).parent / "test.db"
 bad_syntax_fmt = Path(__file__).parent / "bad_syntax_fmt.preql"
 
 
+def test_version():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--version"])
+    assert result.exit_code == 0
+    assert result.output.startswith("v")
+
+
 def test_cli_string():
     for val in RICH_MODES:
         with set_rich_mode(val):
