@@ -23,35 +23,22 @@ from trilogy.scripts.parallel_execution import ParallelExecutor
 
 def get_all_imports(input_path: PathlibPath) -> list[PathlibPath]:
     """Get all files imported by a file (recursively) using rust resolver."""
-    try:
-        from _preql_import_resolver import PyImportResolver
-    except ImportError:
-        return []
+    from _preql_import_resolver import PyImportResolver
 
     resolver = PyImportResolver()
-    try:
-        result = resolver.resolve(str(input_path.resolve()))
-        order = result.get("order", [])
-        # order includes the root file and all imports in dependency order
-        return [normalize_path_variants(p) for p in order]
-    except Exception:
-        return []
+    result = resolver.resolve(str(input_path.resolve()))
+    order = result.get("order", [])
+    # order includes the root file and all imports in dependency order
+    return [normalize_path_variants(p) for p in order]
 
 
 def get_folder_all_imports(folder: PathlibPath) -> list[PathlibPath]:
-    """Get all files imported by files in a folder (recursively)."""
-    try:
-        from _preql_import_resolver import PyImportResolver
-    except ImportError:
-        return []
+    from _preql_import_resolver import PyImportResolver
 
     resolver = PyImportResolver()
-    try:
-        result = resolver.resolve_directory(str(folder.resolve()), False)
-        files = result.get("files", [])
-        return [normalize_path_variants(p) for p in files]
-    except Exception:
-        return []
+    result = resolver.resolve_directory(str(folder.resolve()), False)
+    files = result.get("files", [])
+    return [normalize_path_variants(p) for p in files]
 
 
 def safe_relative_path(path: PathlibPath, root: PathlibPath) -> str:
