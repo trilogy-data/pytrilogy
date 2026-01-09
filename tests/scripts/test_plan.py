@@ -9,7 +9,9 @@ from click.testing import CliRunner
 
 from trilogy.scripts.plan import (
     format_plan_text,
+    get_all_imports,
     get_execution_levels,
+    get_folder_all_imports,
     graph_to_json,
     safe_relative_path,
 )
@@ -43,9 +45,11 @@ class TestPlanJsonOutput:
         assert "nodes" in data
         assert "edges" in data
         assert "execution_order" in data
+        assert "required_files" in data
         assert isinstance(data["nodes"], list)
         assert isinstance(data["edges"], list)
         assert isinstance(data["execution_order"], list)
+        assert isinstance(data["required_files"], list)
 
     def test_plan_json_nodes(self, runner, complex_chain_dir):
         """Test that JSON output includes all nodes."""
@@ -287,3 +291,85 @@ class TestPlanExternalImports:
         assert len(data["edges"]) >= 1
         edge_froms = [e["from"] for e in data["edges"]]
         assert any("external_shared" in f or "shared" in f for f in edge_froms)
+
+
+class TestRequiredFiles:
+    """Tests for required_files output (recursive import discovery)."""
+
+    def test_required_files_folder_json(self, runner, complex_chain_dir):
+        """Test that required_files is populated for folder input."""
+        result = runner.invoke(cli, ["plan", str(complex_chain_dir), "--json"])
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert "required_files" in data
+        assert len(data["required_files"]) >= len(data["nodes"])
+
+    def test_required_files_single_file_json(self, runner, test_data_dir):
+        """Test that required_files is populated for single file input."""
+        single_file = test_data_dir / "base.preql"
+        result = runner.invoke(cli, ["plan", str(single_file), "--json"])
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        assert "required_files" in data
+        # Single file with no imports should have at least itself
+        assert len(data["required_files"]) >= 1
+
+    def test_required_files_text_output(self, runner, complex_chain_dir):
+        """Test that required files count appears in text output."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            result = runner.invoke(
+                cli, ["plan", str(complex_chain_dir), "-o", tmp_path]
+            )
+            assert result.exit_code == 0
+
+            with open(tmp_path) as f:
+                content = f.read()
+            assert "Required Files:" in content
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_required_files_with_imports(self, runner, test_data_dir):
+        """Test required_files includes transitive imports."""
+        external_import_dir = test_data_dir / "external_import_test"
+        result = runner.invoke(cli, ["plan", str(external_import_dir), "--json"])
+        assert result.exit_code == 0
+
+        data = json.loads(result.output)
+        # Should include both main.preql and the external shared file
+        assert len(data["required_files"]) >= 2
+
+
+class TestGetAllImports:
+    """Tests for get_all_imports helper function."""
+
+    def test_get_all_imports_single_file(self, test_data_dir):
+        """Test get_all_imports with a file that has no imports."""
+        single_file = test_data_dir / "base.preql"
+        result = get_all_imports(single_file)
+        # Should include at least the file itself
+        assert len(result) >= 1
+        assert any(str(single_file.name) in str(p) for p in result)
+
+    def test_get_all_imports_with_imports(self, test_data_dir):
+        """Test get_all_imports with a file that has imports."""
+        complex_chain = test_data_dir / "complex_chain"
+        main_file = complex_chain / "main.preql"
+        result = get_all_imports(main_file)
+        # main.preql imports other files, so should have multiple entries
+        assert len(result) >= 1
+
+
+class TestGetFolderAllImports:
+    """Tests for get_folder_all_imports helper function."""
+
+    def test_get_folder_all_imports(self, test_data_dir):
+        """Test get_folder_all_imports with a folder."""
+        complex_chain = test_data_dir / "complex_chain"
+        result = get_folder_all_imports(complex_chain)
+        # Should include all files in the folder
+        assert len(result) >= 1
