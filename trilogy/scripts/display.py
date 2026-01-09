@@ -505,15 +505,20 @@ def show_script_result(
 
 
 def show_execution_plan(
-    nodes: list[str], edges: list[tuple[str, str]], execution_order: list[list[str]]
+    nodes: list[str],
+    edges: list[tuple[str, str]],
+    execution_order: list[list[str]],
+    required_files: list | None = None,
 ) -> None:
     """Display execution plan in human-readable format."""
+    required_files = required_files or []
     if RICH_AVAILABLE and console is not None:
         # Summary panel
         info_text = (
             f"Scripts: [cyan]{len(nodes)}[/cyan]\n"
             f"Dependencies: [cyan]{len(edges)}[/cyan]\n"
-            f"Execution Levels: [cyan]{len(execution_order)}[/cyan]"
+            f"Execution Levels: [cyan]{len(execution_order)}[/cyan]\n"
+            f"Required Files: [cyan]{len(required_files)}[/cyan]"
         )
         panel = Panel.fit(info_text, style="blue", title="Execution Plan")
         console.print(panel)
@@ -539,11 +544,18 @@ def show_execution_plan(
             console.print("\n[bold]Dependencies:[/bold]")
             for from_node, to_node in edges:
                 console.print(f"  [dim]{from_node}[/dim] -> [white]{to_node}[/white]")
+
+        # Required files for bundling
+        if required_files:
+            console.print("\n[bold]Required Files (for bundling):[/bold]")
+            for path in required_files:
+                console.print(f"  [dim]{path}[/dim]")
     else:
         print("Execution Plan:")
         print(f"  Scripts: {len(nodes)}")
         print(f"  Dependencies: {len(edges)}")
         print(f"  Execution Levels: {len(execution_order)}")
+        print(f"  Required Files: {len(required_files)}")
 
         if execution_order:
             print("\nExecution Order:")
@@ -554,3 +566,8 @@ def show_execution_plan(
             print("\nDependencies:")
             for from_node, to_node in edges:
                 print(f"  {from_node} -> {to_node}")
+
+        if required_files:
+            print("\nRequired Files (for bundling):")
+            for path in required_files:
+                print(f"  {path}")
