@@ -19,3 +19,4 @@ maturin
 fastapi
 uvicorn
 altair
+plotext

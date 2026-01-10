@@ -2,13 +2,10 @@ import pytest
 
 from trilogy.core.enums import ChartType
 from trilogy.core.statements.author import ChartConfig
-from trilogy.rendering.terminal_renderer import PLOTEXT_AVAILABLE
+from trilogy.rendering.terminal_renderer import TerminalRenderer
 
 
-@pytest.mark.skipif(not PLOTEXT_AVAILABLE, reason="plotext not installed")
 def test_terminal_bar_chart():
-    from trilogy.rendering.terminal_renderer import TerminalRenderer
-
     config = ChartConfig(
         chart_type=ChartType.BAR,
         x_fields=["category"],
@@ -27,10 +24,7 @@ def test_terminal_bar_chart():
     assert len(output) > 0
 
 
-@pytest.mark.skipif(not PLOTEXT_AVAILABLE, reason="plotext not installed")
 def test_terminal_line_chart():
-    from trilogy.rendering.terminal_renderer import TerminalRenderer
-
     config = ChartConfig(
         chart_type=ChartType.LINE,
         x_fields=["x"],
@@ -49,10 +43,7 @@ def test_terminal_line_chart():
     assert len(output) > 0
 
 
-@pytest.mark.skipif(not PLOTEXT_AVAILABLE, reason="plotext not installed")
 def test_terminal_point_chart():
-    from trilogy.rendering.terminal_renderer import TerminalRenderer
-
     config = ChartConfig(
         chart_type=ChartType.POINT,
         x_fields=["x"],
@@ -71,10 +62,7 @@ def test_terminal_point_chart():
     assert len(output) > 0
 
 
-@pytest.mark.skipif(not PLOTEXT_AVAILABLE, reason="plotext not installed")
 def test_terminal_multiple_y_fields():
-    from trilogy.rendering.terminal_renderer import TerminalRenderer
-
     config = ChartConfig(
         chart_type=ChartType.LINE,
         x_fields=["x"],
@@ -93,10 +81,7 @@ def test_terminal_multiple_y_fields():
     assert len(output) > 0
 
 
-@pytest.mark.skipif(not PLOTEXT_AVAILABLE, reason="plotext not installed")
 def test_terminal_barh_chart():
-    from trilogy.rendering.terminal_renderer import TerminalRenderer
-
     config = ChartConfig(
         chart_type=ChartType.BARH,
         x_fields=["category"],
@@ -114,12 +99,28 @@ def test_terminal_barh_chart():
     assert len(output) > 0
 
 
-@pytest.mark.skipif(not PLOTEXT_AVAILABLE, reason="plotext not installed")
-def test_terminal_unsupported_chart_type():
-    from trilogy.rendering.terminal_renderer import TerminalRenderer
-
+def test_terminal_area_chart():
     config = ChartConfig(
-        chart_type=ChartType.HEATMAP,  # Not supported in terminal
+        chart_type=ChartType.AREA,
+        x_fields=["x"],
+        y_fields=["y"],
+    )
+    data = [
+        {"x": 1, "y": 10},
+        {"x": 2, "y": 20},
+        {"x": 3, "y": 15},
+    ]
+
+    renderer = TerminalRenderer()
+    output = renderer.render(config, data)
+
+    assert isinstance(output, str)
+    assert len(output) > 0
+
+
+def test_terminal_unsupported_chart_type():
+    config = ChartConfig(
+        chart_type=ChartType.HEATMAP,
         x_fields=["x"],
         y_fields=["y"],
     )
@@ -129,6 +130,93 @@ def test_terminal_unsupported_chart_type():
     output = renderer.render(config, data)
 
     assert "not supported" in output.lower()
+
+
+def test_terminal_to_spec():
+    config = ChartConfig(
+        chart_type=ChartType.BAR,
+        x_fields=["category"],
+        y_fields=["value"],
+    )
+    data = [{"category": "a", "value": 10}]
+
+    renderer = TerminalRenderer()
+    spec = renderer.to_spec(config, data)
+
+    assert spec["type"] == "terminal"
+    assert "output" in spec
+    assert isinstance(spec["output"], str)
+
+
+def test_terminal_bar_missing_fields():
+    config = ChartConfig(
+        chart_type=ChartType.BAR,
+        x_fields=[],
+        y_fields=[],
+    )
+    data = [{"category": "a", "value": 10}]
+
+    renderer = TerminalRenderer()
+    output = renderer.render(config, data)
+
+    # Should still return something (empty chart)
+    assert isinstance(output, str)
+
+
+def test_terminal_barh_missing_fields():
+    config = ChartConfig(
+        chart_type=ChartType.BARH,
+        x_fields=[],
+        y_fields=[],
+    )
+    data = [{"category": "a", "value": 10}]
+
+    renderer = TerminalRenderer()
+    output = renderer.render(config, data)
+
+    assert isinstance(output, str)
+
+
+def test_terminal_line_missing_fields():
+    config = ChartConfig(
+        chart_type=ChartType.LINE,
+        x_fields=[],
+        y_fields=[],
+    )
+    data = [{"x": 1, "y": 10}]
+
+    renderer = TerminalRenderer()
+    output = renderer.render(config, data)
+
+    assert isinstance(output, str)
+
+
+def test_terminal_point_missing_fields():
+    config = ChartConfig(
+        chart_type=ChartType.POINT,
+        x_fields=[],
+        y_fields=[],
+    )
+    data = [{"x": 1, "y": 10}]
+
+    renderer = TerminalRenderer()
+    output = renderer.render(config, data)
+
+    assert isinstance(output, str)
+
+
+def test_terminal_area_missing_fields():
+    config = ChartConfig(
+        chart_type=ChartType.AREA,
+        x_fields=[],
+        y_fields=[],
+    )
+    data = [{"x": 1, "y": 10}]
+
+    renderer = TerminalRenderer()
+    output = renderer.render(config, data)
+
+    assert isinstance(output, str)
 
 
 def test_plotext_not_available_raises():
