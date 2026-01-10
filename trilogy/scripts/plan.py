@@ -12,9 +12,33 @@ from trilogy.scripts.common import (
     handle_execution_exception,
     resolve_input_information,
 )
-from trilogy.scripts.dependency import ETLDependencyStrategy, ScriptNode
+from trilogy.scripts.dependency import (
+    ETLDependencyStrategy,
+    ScriptNode,
+    normalize_path_variants,
+)
 from trilogy.scripts.display import print_error, print_info, show_execution_plan
 from trilogy.scripts.parallel_execution import ParallelExecutor
+
+
+def get_all_imports(input_path: PathlibPath) -> list[PathlibPath]:
+    """Get all files imported by a file (recursively) using rust resolver."""
+    from _preql_import_resolver import PyImportResolver
+
+    resolver = PyImportResolver()
+    result = resolver.resolve(str(input_path.resolve()))
+    order = result.get("order", [])
+    # order includes the root file and all imports in dependency order
+    return [normalize_path_variants(p) for p in order]
+
+
+def get_folder_all_imports(folder: PathlibPath) -> list[PathlibPath]:
+    from _preql_import_resolver import PyImportResolver
+
+    resolver = PyImportResolver()
+    result = resolver.resolve_directory(str(folder.resolve()), False)
+    files = result.get("files", [])
+    return [normalize_path_variants(p) for p in files]
 
 
 def safe_relative_path(path: PathlibPath, root: PathlibPath) -> str:
@@ -134,9 +158,11 @@ def plan(ctx, input: str, output: str | None, json_format: bool, config: str | N
         if pathlib_input.is_dir():
             root = pathlib_input
             graph = parallel_exec.get_folder_execution_plan(pathlib_input)
+            all_imports = get_folder_all_imports(pathlib_input)
         elif pathlib_input.is_file():
             root = pathlib_input.parent
             graph = parallel_exec.get_execution_plan([pathlib_input])
+            all_imports = get_all_imports(pathlib_input)
         else:
             print_error(f"Input path '{input}' is not a file or directory.")
             raise Exit(1)
@@ -148,6 +174,8 @@ def plan(ctx, input: str, output: str | None, json_format: bool, config: str | N
                 [safe_relative_path(node.path, root) for node in level]
                 for level in levels
             ]
+            # Add all required files (full dependency tree for bundling)
+            plan_data["required_files"] = [str(p) for p in all_imports]
             json_output = json.dumps(plan_data, indent=2)
 
             if output:
@@ -166,6 +194,7 @@ def plan(ctx, input: str, output: str | None, json_format: bool, config: str | N
                 lines.append(f"Scripts: {len(nodes)}")
                 lines.append(f"Dependencies: {len(edges)}")
                 lines.append(f"Execution Levels: {len(execution_order)}")
+                lines.append(f"Required Files: {len(all_imports)}")
                 lines.append("")
                 if execution_order:
                     lines.append("Execution Order:")
@@ -178,10 +207,15 @@ def plan(ctx, input: str, output: str | None, json_format: bool, config: str | N
                     lines.append("Dependencies:")
                     for from_node, to_node in edges:
                         lines.append(f"  {from_node} -> {to_node}")
+                    lines.append("")
+                if all_imports:
+                    lines.append("Required Files:")
+                    for import_path in all_imports:
+                        lines.append(f"  {import_path}")
                 output_path.write_text("\n".join(lines))
                 print_info(f"Plan written to {output_path}")
             else:
-                show_execution_plan(nodes, edges, execution_order)
+                show_execution_plan(nodes, edges, execution_order, all_imports)
 
     except Exit:
         raise
