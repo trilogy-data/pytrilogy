@@ -21,6 +21,7 @@ from trilogy.core.models.datasource import Address, Datasource, UpdateKeys
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
     STATEMENT_TYPES,
+    ChartStatement,
     ConceptDeclarationStatement,
     CopyStatement,
     CreateStatement,
@@ -37,6 +38,7 @@ from trilogy.core.statements.author import (
 )
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
+    ProcessedChartStatement,
     ProcessedCopyStatement,
     ProcessedCreateStatement,
     ProcessedMockStatement,
@@ -64,7 +66,7 @@ from trilogy.dialect.metadata import (
     handle_show_statement_outputs,
 )
 from trilogy.dialect.mock import handle_processed_mock_statement
-from trilogy.dialect.results import MockResult
+from trilogy.dialect.results import ChartResult, MockResult
 from trilogy.engine import EngineConnection, ExecutionEngine, ResultProtocol
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.parser import parse_text
@@ -386,6 +388,25 @@ class Executor(object):
             ["query"],
         )
 
+    @execute_query.register
+    def _(self, query: ProcessedChartStatement) -> ResultProtocol | None:
+        from trilogy.rendering.altair_renderer import ALTAIR_AVAILABLE, AltairRenderer
+
+        sql = self.generator.compile_statement(query.query)
+        result = self.execute_raw_sql(sql, local_concepts=query.query.local_concepts)
+
+        if result is None:
+            return ChartResult(chart=None, data=[], config=query.config)
+
+        data = [dict(zip(result.keys(), row)) for row in result.fetchall()]
+
+        chart = None
+        if ALTAIR_AVAILABLE:
+            renderer = AltairRenderer()
+            chart = renderer.render(query.config, data)
+
+        return ChartResult(chart=chart, data=data, config=query.config)
+
     @singledispatchmethod
     def generate_sql(self, command) -> list[str]:
         raise NotImplementedError(
@@ -536,6 +557,7 @@ class Executor(object):
                     CreateStatement,
                     PublishStatement,
                     MockStatement,
+                    ChartStatement,
                 ),
             )
         ]

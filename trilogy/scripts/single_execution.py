@@ -5,11 +5,13 @@ from typing import Any, Union
 
 from trilogy import Executor
 from trilogy.core.statements.execute import PROCESSED_STATEMENT_TYPES
+from trilogy.dialect.results import ChartResult
 from trilogy.scripts.display import (
     FETCH_LIMIT,
     RICH_AVAILABLE,
     ResultSet,
     create_progress_context,
+    print_chart_terminal,
     print_error,
     print_info,
     print_results_table,
@@ -32,7 +34,7 @@ def execute_single_statement(
     idx: int,
     total_queries: int,
     use_progress=False,
-) -> tuple[bool, ResultSet | None, Any, Union[Exception, None]]:
+) -> tuple[bool, ResultSet | ChartResult | None, Any, Union[Exception, None]]:
     """Execute a single statement and handle results/errors consistently."""
     # Log the statement type before execution
     statement_type = get_statement_type(query)
@@ -43,6 +45,14 @@ def execute_single_statement(
 
     try:
         raw_results = exec.execute_statement(query)
+
+        # Handle chart results specially
+        if isinstance(raw_results, ChartResult):
+            duration = datetime.now() - start_time
+            if not use_progress:
+                show_statement_result(idx, total_queries, duration, True)
+            return True, raw_results, duration, None
+
         results = (
             ResultSet(
                 rows=raw_results.fetchmany(FETCH_LIMIT + 1), columns=raw_results.keys()
@@ -108,7 +118,10 @@ def execute_queries_with_progress(
         else:
             show_statement_result(idx, total_queries, duration, bool(results))
             if results and not error:
-                print_results_table(results)
+                if isinstance(results, ChartResult):
+                    print_chart_terminal(results.data, results.config)
+                else:
+                    print_results_table(results)
 
     return exception
 
@@ -131,7 +144,10 @@ def execute_queries_simple(
             exception = error
 
         if results and not error:
-            print_results_table(results)
+            if isinstance(results, ChartResult):
+                print_chart_terminal(results.data, results.config)
+            else:
+                print_results_table(results)
 
     return exception
 

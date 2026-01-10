@@ -1,12 +1,13 @@
 from functools import cached_property
 from pathlib import Path
-from typing import Annotated, List, Optional, Union
+from typing import Annotated, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, computed_field, field_validator
 from pydantic.functional_validators import PlainValidator
 
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
 from trilogy.core.enums import (
+    ChartType,
     ConceptSource,
     CreateMode,
     FunctionClass,
@@ -522,6 +523,29 @@ class FunctionDeclaration(HasUUID, BaseModel):
     expr: Expr
 
 
+class ChartConfig(BaseModel):
+    chart_type: ChartType
+    x_fields: list[str] = Field(default_factory=list)
+    y_fields: list[str] = Field(default_factory=list)
+    color_field: str | None = None
+    size_field: str | None = None
+    group_field: str | None = None
+    trellis_field: str | None = None
+    trellis_row_field: str | None = None
+    geo_field: str | None = None
+    annotation_field: str | None = None
+    hide_legend: bool = False
+    show_title: bool = False
+    scale_x: Literal["linear", "log", "sqrt"] | None = None
+    scale_y: Literal["linear", "log", "sqrt"] | None = None
+
+
+class ChartStatement(BaseModel):
+    config: ChartConfig
+    select: SelectStatement
+    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+
+
 STATEMENT_TYPES = (
     SelectStatement
     | RawSQLStatement
@@ -540,4 +564,5 @@ STATEMENT_TYPES = (
     | ConceptDerivationStatement
     | TypeDeclaration
     | FunctionDeclaration
+    | ChartStatement
 )
