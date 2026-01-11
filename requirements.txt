@@ -1,6 +1,6 @@
 lark
 jinja2
-sqlalchemy<2.0.0
+sqlalchemy
 networkx
 pydantic
 #https://github.com/Mause/duckdb_engine/issues/1338 - remove as soon as fixed
