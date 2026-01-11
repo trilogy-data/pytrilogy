@@ -50,4 +50,3 @@ class ExecutionEngine(Protocol):
 
     def dispose(self, close: bool = True):
         pass
-

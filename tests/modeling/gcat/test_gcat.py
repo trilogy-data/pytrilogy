@@ -741,7 +741,7 @@ SELECT
     results = gcat_env.execute_query(queries[-1])
     seen = []
     for row in results.fetchall()[0].fuel_payloads:
-        seen.append(row['fuel'])
+        seen.append(row["fuel"])
         # assert 0 <= row["success_rate"] <= 100, row
     if len(seen) != len(set(seen)):
         raise AssertionError(f"Duplicate values in {seen}")
