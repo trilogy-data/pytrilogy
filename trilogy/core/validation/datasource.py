@@ -28,7 +28,7 @@ from trilogy.utility import unique
 
 
 def row_to_dict(row):
-    return {key: row[key] for key in row.keys()}
+    return {key: val for key, val in row._mapping.items()}
 
 
 def type_check(
@@ -146,7 +146,7 @@ def validate_datasource(
             actual_address = build_env.concepts[col.concept.address].safe_address
             if actual_address in cols_with_error:
                 continue
-            rval = row[actual_address]
+            rval = getattr(row, actual_address)
             passed = type_check(rval, col.concept.datatype, col.is_nullable)
             if not passed:
                 value_type = (
