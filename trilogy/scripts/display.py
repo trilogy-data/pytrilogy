@@ -231,6 +231,26 @@ def print_results_table(results: ResultSet):
         _print_fallback_table(results.rows, results.columns)
 
 
+def print_chart_terminal(data: list[dict], config) -> bool:
+    """Render chart to terminal using plotext. Returns True if rendered."""
+    from trilogy.rendering.terminal_renderer import PLOTEXT_AVAILABLE
+
+    if not PLOTEXT_AVAILABLE:
+        print_info("Install plotext for terminal charts: pip install plotext")
+        return False
+
+    if not data:
+        print_info("Chart produced no data")
+        return True
+
+    from trilogy.rendering.terminal_renderer import TerminalRenderer
+
+    renderer = TerminalRenderer()
+    output = renderer.render(config, data)
+    echo(output)
+    return True
+
+
 def _print_rich_table(result, headers=None):
     """Print query results using Rich tables."""
     if console is None:

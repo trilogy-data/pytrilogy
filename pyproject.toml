@@ -38,8 +38,9 @@ postgres = ["psycopg2-binary"]
 bigquery = ["sqlalchemy-bigquery"]
 snowflake = ["snowflake-sqlalchemy"]
 ai = ["httpx"]
-cli = ["rich"]
+cli = ["rich", "plotext"]
 serve = ["fastapi", "uvicorn"]
+analysis = ["altair"]
 
 
 [tool.setuptools.dynamic]

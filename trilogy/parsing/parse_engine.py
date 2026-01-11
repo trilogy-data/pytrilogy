@@ -28,6 +28,7 @@ from trilogy.constants import (
 from trilogy.core.enums import (
     AddressType,
     BooleanOperator,
+    ChartType,
     ComparisonOperator,
     ConceptSource,
     CreateMode,
@@ -126,6 +127,8 @@ from trilogy.core.models.environment import (
     Import,
 )
 from trilogy.core.statements.author import (
+    ChartConfig,
+    ChartStatement,
     ConceptDeclarationStatement,
     ConceptDerivationStatement,
     ConceptTransform,
@@ -1342,6 +1345,59 @@ class ParseToObjects(Transformer):
             target_type=args[0],
             meta=metadata_from_meta(meta),
             select=args[-1],
+        )
+
+    def CHART_TYPE(self, args) -> ChartType:
+        return ChartType(args.value.lower())
+
+    def chart_field_setting(self, args) -> dict:
+        field_name = args[0].value.lower()
+        field_map = {
+            "x_axis": "x_fields",
+            "y_axis": "y_fields",
+            "color": "color_field",
+            "size": "size_field",
+            "group": "group_field",
+            "trellis": "trellis_field",
+            "trellis_row": "trellis_row_field",
+            "geo": "geo_field",
+            "annotation": "annotation_field",
+        }
+        fields = [str(arg) for arg in args[1:]]
+        key = field_map[field_name]
+        if key in ("x_fields", "y_fields"):
+            return {key: fields}
+        return {key: fields[0] if fields else None}
+
+    def chart_bool_setting(self, args) -> dict:
+        bool_map = {"hide_legend": "hide_legend", "show_title": "show_title"}
+        return {bool_map[args[0].value.lower()]: True}
+
+    def chart_scale_setting(self, args) -> dict:
+        scale_map = {"scale_x": "scale_x", "scale_y": "scale_y"}
+        return {scale_map[args[0].value.lower()]: args[1].value.lower()}
+
+    def chart_setting(self, args) -> dict:
+        return args[0]
+
+    @v_args(meta=True)
+    def chart_statement(self, meta: Meta, args) -> ChartStatement:
+        chart_type = args[0]
+        settings: dict = {"x_fields": [], "y_fields": []}
+        select = args[-1]
+
+        for arg in args[1:-1]:
+            if isinstance(arg, dict):
+                for k, v in arg.items():
+                    if k in ("x_fields", "y_fields"):
+                        settings[k].extend(v)
+                    else:
+                        settings[k] = v
+
+        return ChartStatement(
+            config=ChartConfig(chart_type=chart_type, **settings),
+            select=select,
+            meta=metadata_from_meta(meta),
         )
 
     def resolve_import_address(self, address: str, is_stdlib: bool = False) -> str:
