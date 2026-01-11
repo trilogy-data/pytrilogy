@@ -230,3 +230,57 @@ def test_plotext_not_available_raises():
             tr.TerminalRenderer()
     finally:
         tr.PLOTEXT_AVAILABLE = original
+
+
+def test_print_chart_terminal_renders_chart(capsys):
+    """Test print_chart_terminal renders a chart to terminal."""
+    from trilogy.scripts.display import print_chart_terminal
+
+    config = ChartConfig(
+        chart_type=ChartType.BAR,
+        x_fields=["category"],
+        y_fields=["value"],
+    )
+    data = [
+        {"category": "a", "value": 10},
+        {"category": "b", "value": 20},
+    ]
+
+    result = print_chart_terminal(data, config)
+    assert result is True
+
+    captured = capsys.readouterr()
+    assert len(captured.out) > 0
+
+
+def test_print_chart_terminal_empty_data(capsys):
+    """Test print_chart_terminal handles empty data."""
+    from trilogy.scripts.display import print_chart_terminal
+
+    config = ChartConfig(
+        chart_type=ChartType.BAR,
+        x_fields=["x"],
+        y_fields=["y"],
+    )
+
+    result = print_chart_terminal([], config)
+    assert result is True
+
+
+def test_print_chart_terminal_plotext_unavailable(capsys):
+    """Test print_chart_terminal when plotext is not available."""
+    import trilogy.rendering.terminal_renderer as tr
+    from trilogy.scripts.display import print_chart_terminal
+
+    original = tr.PLOTEXT_AVAILABLE
+    try:
+        tr.PLOTEXT_AVAILABLE = False
+        config = ChartConfig(
+            chart_type=ChartType.BAR,
+            x_fields=["x"],
+            y_fields=["y"],
+        )
+        result = print_chart_terminal([{"x": 1, "y": 2}], config)
+        assert result is False
+    finally:
+        tr.PLOTEXT_AVAILABLE = original
