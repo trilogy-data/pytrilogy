@@ -1,5 +1,7 @@
 from typing import Any, Generator, List, Optional, Protocol
 
+from sqlalchemy.sql.elements import TextClause
+
 from trilogy.core.models.environment import Environment
 
 
@@ -19,7 +21,9 @@ class ResultProtocol(Protocol):
 class EngineConnection(Protocol):
     pass
 
-    def execute(self, statement: str, parameters: Any | None = None) -> ResultProtocol:
+    def execute(
+        self, statement: str | TextClause, parameters: Any | None = None
+    ) -> ResultProtocol:
         pass
 
     def commit(self):
@@ -46,3 +50,4 @@ class ExecutionEngine(Protocol):
 
     def dispose(self, close: bool = True):
         pass
+

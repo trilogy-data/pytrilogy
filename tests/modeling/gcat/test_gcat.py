@@ -631,7 +631,7 @@ order by launch_count desc limit 15;
     base.generate_sql(queries[-1])
     results = base.execute_query(queries[-1])
     for row in results.fetchall():
-        assert row["launches"] == row["launch_count"], row
+        assert row.launches == row.launch_count, row
 
 
 def test_flag(gcat_env: Executor):
@@ -708,7 +708,7 @@ SELECT
     )
     results = gcat_env.execute_query(queries[-1])
     for row in results.fetchall():
-        assert 0 <= row["success_rate"] <= 1, row
+        assert 0 <= row.success_rate <= 1, row
 
 
 def test_parenthetical_basic(gcat_env: Executor):
@@ -740,8 +740,8 @@ SELECT
     )
     results = gcat_env.execute_query(queries[-1])
     seen = []
-    for row in results.fetchall()[0]["fuel_payloads"]:
-        seen.append(row["fuel"])
+    for row in results.fetchall()[0].fuel_payloads:
+        seen.append(row['fuel'])
         # assert 0 <= row["success_rate"] <= 100, row
     if len(seen) != len(set(seen)):
         raise AssertionError(f"Duplicate values in {seen}")
@@ -800,7 +800,7 @@ limit 1;
 """
     )
     results = gcat_env.execute_query(queries[-1])
-    q1 = results.fetchall()[0]["fuel_launches"]
+    q1 = results.fetchall()[0].fuel_launches
 
     queries = gcat_env.parse_text(
         """
@@ -814,7 +814,7 @@ limit 1500;
 """
     )
     results = gcat_env.execute_query(queries[-1])
-    q2 = results.fetchall()[0]["fuel_launches"]
+    q2 = results.fetchall()[0].fuel_launches
     assert q1 == q2, (q1, q2)
 
 
