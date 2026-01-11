@@ -18,3 +18,5 @@ httpx
 maturin
 fastapi
 uvicorn
+altair
+plotext

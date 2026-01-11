@@ -142,6 +142,15 @@ class ProcessedShowStatement:
     ]
 
 
+@dataclass
+class ProcessedChartStatement:
+    config: "ChartConfig"
+    query: ProcessedQuery
+
+
+# Import here to avoid circular import
+from trilogy.core.statements.author import ChartConfig  # noqa: E402
+
 PROCESSED_STATEMENT_TYPES = (
     ProcessedCopyStatement
     | ProcessedQuery
@@ -152,4 +161,5 @@ PROCESSED_STATEMENT_TYPES = (
     | ProcessedCreateStatement
     | ProcessedPublishStatement
     | ProcessedMockStatement
+    | ProcessedChartStatement
 )

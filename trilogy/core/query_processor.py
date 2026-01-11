@@ -36,6 +36,7 @@ from trilogy.core.optimization import optimize_ctes
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
 from trilogy.core.processing.nodes import History, SelectNode, StrategyNode
 from trilogy.core.statements.author import (
+    ChartStatement,
     ConceptDeclarationStatement,
     CopyStatement,
     MultiSelectStatement,
@@ -44,6 +45,7 @@ from trilogy.core.statements.author import (
 )
 from trilogy.core.statements.execute import (
     MaterializedDataset,
+    ProcessedChartStatement,
     ProcessedCopyStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
@@ -554,6 +556,34 @@ def process_copy(
         target=statement.target,
         target_type=statement.target_type,
     )
+
+
+def process_chart(
+    environment: Environment,
+    statement: ChartStatement,
+    hooks: List[BaseHook] | None = None,
+) -> ProcessedChartStatement:
+    select = process_query(
+        environment=environment, statement=statement.select, hooks=hooks
+    )
+
+    output_fields = {c.name for c in statement.select.output_components}
+    config = statement.config
+
+    for field in config.x_fields + config.y_fields:
+        if field not in output_fields:
+            raise ValueError(
+                f"Chart field '{field}' not in select output: {output_fields}"
+            )
+
+    optional_fields = [config.color_field, config.size_field, config.group_field]
+    for opt_field in optional_fields:
+        if opt_field is not None and opt_field not in output_fields:
+            raise ValueError(
+                f"Chart field '{opt_field}' not in select output: {output_fields}"
+            )
+
+    return ProcessedChartStatement(config=config, query=select)
 
 
 def process_query(

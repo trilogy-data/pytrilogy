@@ -67,8 +67,14 @@ from trilogy.core.processing.utility import (
     is_scalar_condition,
     sort_select_output,
 )
-from trilogy.core.query_processor import process_copy, process_persist, process_query
+from trilogy.core.query_processor import (
+    process_chart,
+    process_copy,
+    process_persist,
+    process_query,
+)
 from trilogy.core.statements.author import (
+    ChartStatement,
     ConceptDeclarationStatement,
     CopyStatement,
     CreateStatement,
@@ -87,6 +93,7 @@ from trilogy.core.statements.author import (
 )
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
+    ProcessedChartStatement,
     ProcessedCopyStatement,
     ProcessedCreateStatement,
     ProcessedMockStatement,
@@ -1222,6 +1229,7 @@ class BaseDialect:
             | CreateStatement
             | PublishStatement
             | MockStatement
+            | ChartStatement
         ],
         hooks: Optional[List[BaseHook]] = None,
     ) -> List[PROCESSED_STATEMENT_TYPES]:
@@ -1233,6 +1241,12 @@ class BaseDialect:
                         hook.process_persist_info(statement)
                 persist = process_persist(environment, statement, hooks=hooks)
                 output.append(persist)
+            elif isinstance(statement, ChartStatement):
+                if hooks:
+                    for hook in hooks:
+                        hook.process_select_info(statement.select)
+                chart = process_chart(environment, statement, hooks=hooks)
+                output.append(chart)
             elif isinstance(statement, CopyStatement):
                 if hooks:
                     for hook in hooks:
@@ -1400,6 +1414,9 @@ class BaseDialect:
                     self.compile_create_table_statement(target, query.create_mode)
                 )
             return "\n".join(text)
+        elif isinstance(query, ProcessedChartStatement):
+            # Chart statements compile their underlying query
+            return self.compile_statement(query.query)
 
         recursive = any(isinstance(x, RecursiveCTE) for x in query.ctes)
 

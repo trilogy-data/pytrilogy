@@ -456,3 +456,22 @@ class ValidationScope(Enum):
         if isinstance(value, str) and value.lower() != value:
             return ValidationScope(value.lower())
         return super()._missing_(value)
+
+
+class ChartType(Enum):
+    LINE = "line"
+    BAR = "bar"
+    BARH = "barh"
+    POINT = "point"
+    AREA = "area"
+    HEADLINE = "headline"
+    DONUT = "donut"
+    HEATMAP = "heatmap"
+    BOXPLOT = "boxplot"
+    TREEMAP = "treemap"
+
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str) and value.lower() != value:
+            return ChartType(value.lower())
+        return super()._missing_(value)

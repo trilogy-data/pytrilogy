@@ -16,7 +16,8 @@
     | mock_statement
     | publish_statement
     | create_statement
-    
+    | chart_statement
+
     _TERMINATOR:  ";"i
     
     PARSE_COMMENT.1:   /#.*(\n|$)/ |  /\/\/.*(\n|$)/  
@@ -144,6 +145,21 @@
     COPY_TYPE: "csv"i | "json"i | "parquet"i
 
     copy_statement: "copy"i "into"i COPY_TYPE (FILE_PATH | string_lit) "from"i select_statement
+
+    // chart statement
+    CHART_TYPE: "line"i | "bar"i | "barh"i | "point"i | "area"i | "headline"i | "donut"i | "heatmap"i | "boxplot"i | "treemap"i
+
+    chart_field_setting: "set"i CHART_FIELD_NAME ":" IDENTIFIER ("," IDENTIFIER)* ","?
+    chart_bool_setting: "set"i CHART_BOOL_FIELD
+    chart_scale_setting: "set"i CHART_SCALE_FIELD ":" SCALE_TYPE
+
+    CHART_FIELD_NAME: "x_axis"i | "y_axis"i | "color"i | "size"i | "group"i | "trellis"i | "trellis_row"i | "geo"i | "annotation"i
+    CHART_BOOL_FIELD: "hide_legend"i | "show_title"i
+    CHART_SCALE_FIELD: "scale_x"i | "scale_y"i
+    SCALE_TYPE: "linear"i | "log"i | "sqrt"i
+
+    chart_setting: chart_field_setting | chart_bool_setting | chart_scale_setting
+    chart_statement: "chart"i CHART_TYPE chart_setting* "from"i select_statement
 
     // FUNCTION blocks
     function: raw_function

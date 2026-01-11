@@ -79,6 +79,30 @@ class MockResultRow:
         return self._values.keys()
 
 
+@dataclass
+class ChartResult(ResultProtocol):
+    """Result type for chart statements that preserves data for re-rendering."""
+
+    chart: Any
+    data: list[dict]
+    config: Any  # ChartConfig
+
+    def __iter__(self):
+        yield MockResultRow({"chart": self.chart})
+
+    def fetchall(self):
+        return [MockResultRow({"chart": self.chart})]
+
+    def fetchone(self):
+        return MockResultRow({"chart": self.chart})
+
+    def fetchmany(self, size: int):
+        return [MockResultRow({"chart": self.chart})]
+
+    def keys(self):
+        return ["chart"]
+
+
 def generate_result_set(
     columns: List[ConceptRef], output_data: list[Any]
 ) -> MockResult:
