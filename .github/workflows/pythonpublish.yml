@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
 env:
-  PYTHON_VERSIONS: "3.11 3.12 3.13 3.14"
+  PYTHON_VERSIONS: "3.11 3.12 3.13"
 jobs:
   version-check:
     runs-on: ubuntu-latest
