@@ -21,7 +21,7 @@ def test_render_query(snowflake_engine_parameterized):
             ten_days_from_now,
             ten_day_diff;"""
     )[0]
-    assert "date_add(current_datetime(),day" in results2, results2
+    assert "DATEADD(day, 10, CURRENT_TIMESTAMP())" in results2, results2
 
     results3 = snowflake_engine_parameterized.execute_text("""select pi;""")[0]
     assert results3.fetchall() == [
