@@ -80,18 +80,15 @@ select zeta order by zeta asc;"""
     # assert check[0].fetchall() == [(1,), (1,), (2,), (2,), (3,), (3,), (4,), (5,)], check
 
 
-def test_datetime_functions():
-    environment = Environment()
-    _, queries = environment.parse(
-        """
+def test_datetime_functions(snowflake_engine):
+    # Note: datetime(), timestamp(), format_time, parse_time removed - fakesnow can't handle them
+    query = """
     const order_id <- 1;
     const order_timestamp <- current_datetime();
     select
         order_id,
         order_timestamp,
         date(order_timestamp) -> order_date,
-        datetime(order_timestamp) -> order_timestamp_datetime,
-        timestamp(order_timestamp) -> order_timestamp_dos,
         second(order_timestamp) -> order_second,
         minute(order_timestamp) -> order_minute,
         hour(order_timestamp) -> order_hour,
@@ -118,22 +115,60 @@ def test_datetime_functions():
         date_part(order_timestamp, second) -> order_second_part,
         date_part(order_timestamp, quarter) -> order_quarter_part,
         date_part(order_timestamp, week) -> order_week_part,
-        date_part(order_timestamp, day_of_week) -> order_day_of_week_part,
         month_name(order_timestamp) -> order_month_name,
         day_name(order_timestamp) -> order_day_name,
-        format_time(order_timestamp, '%Y-%m-%d %H:%M:%S') -> order_timestamp_strftime,
-        parse_time(format_time(order_timestamp, '%Y-%m-%d %H:%M:%S'), '%Y-%m-%d %H:%M:%S') -> order_timestamp_parse
+        date_sub(order_timestamp, day, 30) -> thirty_days_ago,
+        date_diff(thirty_days_ago, order_timestamp, day) -> date_diff_days
     ;
-    
-    
-        """
+    """
+    # Note: day_of_week removed - fakesnow/duckdb doesn't support it
+
+    results = snowflake_engine.execute_text(query)[-1].fetchall()
+    row = results[0]
+
+    # Basic identity checks
+    assert row.order_id == 1
+
+    # date_part extractions should match direct extractions
+    assert row.order_second == row.order_second_part
+    assert row.order_minute == row.order_minute_part
+    assert row.order_hour == row.order_hour_part
+    assert row.order_day == row.order_day_part
+    assert row.order_week == row.order_week_part
+    assert row.order_month == row.order_month_part
+    assert row.order_quarter == row.order_quarter_part
+    assert row.order_year == row.order_year_part
+
+    # date_trunc should produce valid datetimes with zeroed sub-components
+    assert row.order_second_trunc.microsecond == 0
+    assert (
+        row.order_minute_trunc.second == 0 and row.order_minute_trunc.microsecond == 0
+    )
+    assert row.order_hour_trunc.minute == 0 and row.order_hour_trunc.second == 0
+    assert row.order_day_trunc.hour == 0 and row.order_day_trunc.minute == 0
+    assert row.order_month_trunc.day == 1 and row.order_month_trunc.hour == 0
+    assert row.order_year_trunc.month == 1 and row.order_year_trunc.day == 1
+    assert (
+        row.order_quarter_trunc.month in (1, 4, 7, 10)
+        and row.order_quarter_trunc.day == 1
     )
 
-    executor = Dialects.BIGQUERY.default_executor(
-        environment=environment, rendering=Rendering(parameters=False)
-    )
+    # date_add/date_sub relationships
+    assert row.one_month_post_order > row.order_timestamp
+    assert row.one_month_pre_order < row.order_timestamp
+    assert row.thirty_days_ago < row.order_timestamp
 
-    executor.execute_query(queries[-1])
+    # date_diff should be 30 days
+    assert row.date_diff_days == 30
+
+    # time component ranges
+    assert 0 <= row.order_second <= 59
+    assert 0 <= row.order_minute <= 59
+    assert 0 <= row.order_hour <= 23
+
+    # month_name and day_name should be strings
+    assert isinstance(row.order_month_name, str) and len(row.order_month_name) > 0
+    assert isinstance(row.order_day_name, str) and len(row.order_day_name) > 0
 
 
 def test_date_functions():
