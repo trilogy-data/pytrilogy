@@ -1269,6 +1269,8 @@ class BuildFunction(DataTyped, BuildConceptArgs):
             List[Set[DataType]],
         ]
     ] = None
+    # For simple CASE syntax (CASE expr WHEN val THEN result END), stores built switch expr
+    simple_case_expr: Optional["BuildExpr"] = None
 
     def __repr__(self):
         return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
@@ -1891,6 +1893,10 @@ class Factory:
                     valid_inputs=base.valid_inputs,
                     arg_count=base.arg_count,
                 )
+        # Build simple_case_expr if present (for simple CASE syntax)
+        built_simple_case_expr = None
+        if base.simple_case_expr is not None:
+            built_simple_case_expr = self.build(base.simple_case_expr)
         new = BuildFunction(
             operator=base.operator,
             arguments=[self.handle_constant(self.build(c)) for c in raw_args],
@@ -1898,6 +1904,7 @@ class Factory:
             output_purpose=base.output_purpose,
             valid_inputs=base.valid_inputs,
             arg_count=base.arg_count,
+            simple_case_expr=built_simple_case_expr,
         )
         return new
 

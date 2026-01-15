@@ -650,6 +650,100 @@ select
     assert results[0] == (3,)
 
 
+def test_simple_case_duckdb():
+    """Test simple CASE syntax execution in DuckDB."""
+    executor = Dialects.DUCK_DB.default_executor()
+
+    test = """
+auto category <- unnest(['Seafood', 'Beverages', 'Meat', 'Dairy']);
+property category.bucket <- CASE category
+    WHEN 'Seafood' THEN 'sea'
+    WHEN 'Beverages' THEN 'drink'
+    ELSE 'other'
+END;
+
+select
+    category,
+    bucket
+order by category asc;
+    """
+    results = executor.execute_text(test)[0].fetchall()
+    # Results should be ordered by category: Beverages, Dairy, Meat, Seafood
+    assert len(results) == 4
+    assert results[0] == ("Beverages", "drink")
+    assert results[1] == ("Dairy", "other")
+    assert results[2] == ("Meat", "other")
+    assert results[3] == ("Seafood", "sea")
+
+
+def test_simple_case_duckdb_uses_native_syntax():
+    """Test that DuckDB uses native simple CASE syntax (not expanded)."""
+    from trilogy.core.query_processor import process_query
+    from trilogy.dialect.duckdb import DuckDBDialect
+    from trilogy.parser import parse_text
+
+    env, parsed = parse_text(
+        """
+auto category <- unnest(['Seafood', 'Beverages']);
+property category.bucket <- CASE category
+    WHEN 'Seafood' THEN 'sea'
+    WHEN 'Beverages' THEN 'drink'
+    ELSE 'other'
+END;
+
+select
+    category,
+    bucket;
+    """
+    )
+    select = parsed[-1]
+    dialect = DuckDBDialect()
+
+    processed = process_query(env, select)
+    compiled = dialect.compile_statement(processed)
+    # DuckDB should use native simple CASE syntax (CASE expr WHEN val THEN result)
+    # not searched CASE (CASE WHEN expr = val THEN result)
+    assert "CASE" in compiled
+    # Simple CASE has "WHEN 'value'" directly without "= 'value'"
+    assert "WHEN 'Seafood' THEN" in compiled
+    # Should NOT have the expanded comparison form
+    assert "= 'Seafood'" not in compiled
+
+
+def test_simple_case_bigquery_expands_syntax():
+    """Test that BigQuery expands simple CASE to searched CASE."""
+    from trilogy.core.query_processor import process_query
+    from trilogy.dialect.bigquery import BigqueryDialect
+    from trilogy.parser import parse_text
+
+    env, parsed = parse_text(
+        """
+auto category <- unnest(['Seafood', 'Beverages']);
+property category.bucket <- CASE category
+    WHEN 'Seafood' THEN 'sea'
+    WHEN 'Beverages' THEN 'drink'
+    ELSE 'other'
+END;
+
+select
+    category,
+    bucket;
+    """
+    )
+    select = parsed[-1]
+    dialect = BigqueryDialect()
+
+    processed = process_query(env, select)
+    compiled = dialect.compile_statement(processed)
+    # BigQuery should expand to searched CASE (CASE WHEN expr = val THEN result)
+    # not simple CASE (CASE expr WHEN val THEN result)
+    assert "CASE" in compiled
+    # BigQuery should use expanded form with equality comparison "= 'value'"
+    assert "= 'Seafood'" in compiled
+    # Searched CASE form should have WHEN with condition, not just value
+    assert "WHEN" in compiled
+
+
 def test_demo_filter():
     from trilogy.hooks.query_debugger import DebuggingHook
 

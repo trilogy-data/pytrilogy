@@ -274,6 +274,41 @@ class BigqueryDialect(BaseDialect):
     ):
         return f"{self.render_expr(left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {operator.value} unnest({self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
 
+    def render_simple_case(
+        self,
+        e,
+        cte=None,
+        cte_map=None,
+        raise_invalid: bool = True,
+    ) -> str:
+        """BigQuery does not support simple CASE syntax, so expand to searched CASE."""
+        when_clauses = []
+        else_clause = ""
+        from trilogy.core.models.build import BuildCaseElse, BuildCaseWhen
+
+        for arg in e.arguments:
+            if isinstance(arg, BuildCaseWhen):
+                # Render the full comparison (switch_expr = val)
+                condition = self.render_expr(
+                    arg.comparison,
+                    cte=cte,
+                    cte_map=cte_map,
+                    raise_invalid=raise_invalid,
+                )
+                result = self.render_expr(
+                    arg.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+                )
+                when_clauses.append(f"WHEN {condition} THEN {result}")
+            elif isinstance(arg, BuildCaseElse):
+                result = self.render_expr(
+                    arg.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+                )
+                else_clause = f"ELSE {result}"
+        clauses = "\n\t".join(when_clauses)
+        if else_clause:
+            clauses += f"\n\t{else_clause}"
+        return f"CASE\n\t{clauses}\n\tEND"
+
     def generate_partitioned_insert(
         self,
         query: ProcessedQueryPersist,

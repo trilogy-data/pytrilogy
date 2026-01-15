@@ -329,6 +329,9 @@
     fcase_when: "WHEN"i conditional "THEN"i expr
     fcase_else: "ELSE"i expr
     fcase: "CASE"i (fcase_when)* (fcase_else)? "END"i
+    // simple CASE syntax: CASE expr WHEN value THEN result END
+    fcase_simple_when: "WHEN"i expr "THEN"i expr
+    fcase_simple: "CASE"i expr (fcase_simple_when)+ (fcase_else)? "END"i
     len: "len"i "(" expr ")"
     fnot: "NOT"i expr
     fbool: "bool"i "(" expr ")"
@@ -336,7 +339,7 @@
     _FRECURSE_EDGE.1: "recurse_edge("i
     frecurse_edge: _FRECURSE_EDGE expr "," expr ")"
 
-    _generic_functions: fcast |  concat  | fcoalesce | fnullif | fcase  | len | fnot | fbool | frecurse_edge
+    _generic_functions: fcast |  concat  | fcoalesce | fnullif | fcase | fcase_simple | len | fnot | fbool | frecurse_edge
 
     //constant
     CURRENT_DATE.1: /current_date\(\)/

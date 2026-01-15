@@ -1696,6 +1696,8 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         ]
     ] = None
     arguments: Sequence[FuncArgs]
+    # For simple CASE syntax (CASE expr WHEN val THEN result END), stores the switch expr
+    simple_case_expr: Optional["Expr"] = None
 
     class Config:
         frozen = True
@@ -1818,6 +1820,15 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         # we need to figure out how to patch properly
         # should use function factory, but does not have environment access
         # probably move all datatype resolution to build?
+        simple_expr = None
+        if self.simple_case_expr is not None and isinstance(
+            self.simple_case_expr, Mergeable
+        ):
+            simple_expr = self.simple_case_expr.with_reference_replacement(
+                source, target
+            )
+        elif self.simple_case_expr is not None:
+            simple_expr = self.simple_case_expr
         return Function.model_construct(
             operator=self.operator,
             arguments=nargs,
@@ -1825,9 +1836,17 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
             output_purpose=self.output_purpose,
             valid_inputs=self.valid_inputs,
             arg_count=self.arg_count,
+            simple_case_expr=simple_expr,
         )
 
     def with_namespace(self, namespace: str) -> "Function":
+        simple_expr = None
+        if self.simple_case_expr is not None and isinstance(
+            self.simple_case_expr, Namespaced
+        ):
+            simple_expr = self.simple_case_expr.with_namespace(namespace)
+        elif self.simple_case_expr is not None:
+            simple_expr = self.simple_case_expr
         return Function.model_construct(
             operator=self.operator,
             arguments=[
@@ -1845,11 +1864,19 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
             output_purpose=self.output_purpose,
             valid_inputs=self.valid_inputs,
             arg_count=self.arg_count,
+            simple_case_expr=simple_expr,
         )
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "Function":
+        simple_expr = None
+        if self.simple_case_expr is not None and isinstance(
+            self.simple_case_expr, Mergeable
+        ):
+            simple_expr = self.simple_case_expr.with_merge(source, target, modifiers)
+        elif self.simple_case_expr is not None:
+            simple_expr = self.simple_case_expr
         return Function.model_construct(
             operator=self.operator,
             arguments=[
@@ -1867,6 +1894,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
             output_purpose=self.output_purpose,
             valid_inputs=self.valid_inputs,
             arg_count=self.arg_count,
+            simple_case_expr=simple_expr,
         )
 
     @property
