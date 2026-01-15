@@ -76,15 +76,12 @@ def test_concept_derivation():
         assert duckdb_engine.environment.concepts[name].address == name
         assert query[-1].output_columns[0].address == f"local.test.{truncation}_start"
         results = duckdb_engine.execute_text(test_query)[0].fetchall()
-        assert (
-            results[0][0]
-            == test_datetime.replace(
-                day=1,
-                month=1 if truncation == "year" else test_datetime.month,
-                hour=0,
-                minute=0,
-                second=0,
-            ).date()
+        assert results[0][0] == test_datetime.replace(
+            day=1,
+            month=1 if truncation == "year" else test_datetime.month,
+            hour=0,
+            minute=0,
+            second=0,
         )
 
 
