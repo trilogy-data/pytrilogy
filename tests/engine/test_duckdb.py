@@ -917,6 +917,56 @@ select reduced;
     assert len(results) == 1
 
 
+def test_cast_timestamptz_to_date():
+    """Test casting TIMESTAMP WITH TIME ZONE to DATE.
+
+    Some DuckDB versions throw "Conversion Error: Unimplemented type for cast
+    (TIMESTAMP WITH TIME ZONE -> DATE)" when attempting this cast directly.
+    This test ensures we handle this case properly by converting to UTC first.
+    """
+    from datetime import date
+
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    test = """
+key id int;
+property id.data_updated_through timestamp;
+property id.data_updated_through_no_tz datetime;
+
+datasource test_data (
+    id: id,
+    data_updated_through: data_updated_through,
+    data_updated_through_no_tz: data_updated_through_no_tz
+)
+grain (id)
+query '''
+select 1 as id, 
+'2024-01-15 10:30:00-05:00'::timestamptz as data_updated_through,
+'2024-01-15 10:30:00'::timestamp as data_updated_through_no_tz
+union all
+select 2 as id, 
+'2024-01-15 22:30:00-05:00'::timestamptz as data_updated_through,
+'2024-01-15 22:30:00'::timestamp as data_updated_through_no_tz
+''';
+
+auto update_date <- cast(data_updated_through as date);
+auto update_date_no_tz <- cast(data_updated_through_no_tz as date);
+select id, update_date, update_date_no_tz order by id asc;
+"""
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    default_duckdb_engine.hooks = [DebuggingHook()]
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 2
+    # Row 1: 10:30:00-05:00 = 15:30:00 UTC, same day (2024-01-15)
+    assert results[0].update_date == date(2024, 1, 15)
+    assert results[0].update_date_no_tz == date(2024, 1, 15)
+
+    # Row 2: 22:30:00-05:00 = 03:30:00+1 UTC, next day (2024-01-16)
+    # This tests that we properly convert to UTC before extracting date
+    assert results[1].update_date == date(2024, 1, 16)
+    assert results[1].update_date_no_tz == date(2024, 1, 15)
+
+
 def test_filter_promotion(duckdb_engine: Executor):
     from trilogy.hooks.query_debugger import DebuggingHook
 

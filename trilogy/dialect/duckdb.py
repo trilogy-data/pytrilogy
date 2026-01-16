@@ -83,6 +83,7 @@ def date_trunc(args, types):
 
 
 FUNCTION_MAP = {
+    FunctionType.CAST: handle_cast,
     FunctionType.COUNT: lambda args, types: f"count({args[0]})",
     FunctionType.SUM: lambda args, types: f"sum({args[0]})",
     FunctionType.AVG: lambda args, types: f"avg({args[0]})",
