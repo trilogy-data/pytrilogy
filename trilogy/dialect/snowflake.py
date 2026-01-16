@@ -33,6 +33,15 @@ FUNCTION_MAP = {
     FunctionType.DIVIDE: lambda x, types: f"DIV0({x[0]},{x[1]})",
     FunctionType.UNNEST: lambda x, types: f"table(flatten({x[0]}))",
     FunctionType.ARRAY: lambda x, types: f"ARRAY_CONSTRUCT({', '.join(x)})",
+    FunctionType.CURRENT_DATETIME: lambda x, types: "CURRENT_TIMESTAMP()",
+    FunctionType.CURRENT_DATE: lambda x, types: "CURRENT_DATE()",
+    FunctionType.CURRENT_TIMESTAMP: lambda x, types: "CURRENT_TIMESTAMP()",
+    # Snowflake date functions use different argument order
+    FunctionType.DATE_TRUNCATE: lambda x, types: f"DATE_TRUNC({x[1]}, {x[0]})",
+    FunctionType.DATE_PART: lambda x, types: f"DATE_PART({x[1]}, {x[0]})",
+    FunctionType.DATE_ADD: lambda x, types: f"DATEADD({x[1]}, {x[2]}, {x[0]})",
+    FunctionType.DATE_SUB: lambda x, types: f"DATEADD({x[1]}, -{x[2]}, {x[0]})",
+    FunctionType.DATE_DIFF: lambda x, types: f"DATEDIFF({x[2]}, {x[0]}, {x[1]})",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {

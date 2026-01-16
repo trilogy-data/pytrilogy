@@ -57,6 +57,7 @@ FUNCTION_MAP = {
     FunctionType.DATE_ADD: lambda x, types: f"DATE_ADD({x[0]}, INTERVAL {x[2]} {x[1]})",
     FunctionType.DATE_SUB: lambda x, types: f"DATE_SUB({x[0]}, INTERVAL {x[2]} {x[1]})",
     FunctionType.DATE_PART: lambda x, types: f"EXTRACT({transform_date_part(x[1])} FROM {x[0]})",
+    FunctionType.DATE_DIFF: lambda x, types: f"DATE_DIFF({x[1]}, {x[0]}, {x[2]})",
     FunctionType.MONTH_NAME: lambda x, types: f"FORMAT_DATE('%B', {x[0]})",
     FunctionType.DAY_NAME: lambda x, types: f"FORMAT_DATE('%A', {x[0]})",
     FunctionType.FORMAT_TIME: lambda x, types: f"FORMAT_DATETIME({x[1]}, {x[0]})",

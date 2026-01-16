@@ -75,6 +75,13 @@ def map_date_part_specifier(specifier: str) -> str:
     return mapping.get(specifier, specifier)
 
 
+def date_trunc(args, types):
+    if len(types) > 0 and types[0] == DataType.DATETIME:
+        return f"cast(date_trunc('{args[1]}', {args[0]}) as datetime)"
+    else:
+        return f"date_trunc('{args[1]}', {args[0]})"
+
+
 FUNCTION_MAP = {
     FunctionType.COUNT: lambda args, types: f"count({args[0]})",
     FunctionType.SUM: lambda args, types: f"sum({args[0]})",
@@ -105,7 +112,7 @@ FUNCTION_MAP = {
     FunctionType.DATETIME: lambda x, types: f"cast({x[0]} as datetime)",
     FunctionType.TIMESTAMP: lambda x, types: f"cast({x[0]} as timestamp)",
     FunctionType.DATE: lambda x, types: f"cast({x[0]} as date)",
-    FunctionType.DATE_TRUNCATE: lambda x, types: f"date_trunc('{x[1]}', {x[0]})",
+    FunctionType.DATE_TRUNCATE: lambda x, types: date_trunc(x, types),
     FunctionType.DATE_ADD: lambda x, types: f"date_add({x[0]}, {x[2]} * INTERVAL 1 {x[1]})",
     FunctionType.DATE_SUB: lambda x, types: f"date_add({x[0]}, -{x[2]} * INTERVAL 1 {x[1]})",
     FunctionType.DATE_PART: lambda x, types: f"date_part('{map_date_part_specifier(x[1])}', {x[0]})",

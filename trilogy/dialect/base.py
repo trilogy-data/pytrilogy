@@ -912,9 +912,13 @@ class BaseDialect:
                 return self.render_simple_case(e, cte, cte_map, raise_invalid)
 
             if cte and cte.group_to_grain:
-                return self.FUNCTION_MAP[e.operator](arguments, [])
+                return self.FUNCTION_MAP[e.operator](
+                    arguments, [arg_to_datatype(x) for x in arguments]
+                )
 
-            return self.FUNCTION_GRAIN_MATCH_MAP[e.operator](arguments, [])
+            return self.FUNCTION_GRAIN_MATCH_MAP[e.operator](
+                arguments, [arg_to_datatype(x) for x in arguments]
+            )
         elif isinstance(e, AGGREGATE_ITEMS):
             return self.render_expr(
                 e.function, cte, cte_map=cte_map, raise_invalid=raise_invalid
