@@ -1,0 +1,23 @@
+import std.money;
+import nation as nation;
+
+key id int;
+property id.name string;
+property id.address string;
+property id.phone string;
+property id.account_balance float::usd;
+property id.market_segment string; # Capitalized; one of BUILDING | FURNITURE | MACHINERY | AUTOMOBILE | HOUSEHOLD
+property id.comment string;
+
+datasource customers (
+    c_custkey:id,
+    c_name:name,
+    c_address:address,
+    c_nationkey:nation.id,
+    c_phone:phone,
+    c_acctbal:account_balance,
+    c_mktsegment:market_segment,
+    c_comment:comment
+)
+# grain (id)
+address memory.customer;

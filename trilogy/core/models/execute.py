@@ -870,7 +870,7 @@ class QueryDatasource(BaseModel):
 
     @property
     def safe_location(self):
-        return self.identifier
+        return self.datasources[0].safe_location
 
 
 class AliasedExpression(BaseModel):

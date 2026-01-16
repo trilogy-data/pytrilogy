@@ -82,6 +82,14 @@ def date_trunc(args, types):
         return f"date_trunc('{args[1]}', {args[0]})"
 
 
+def handle_cast(args, types):
+    if types[0] == DataType.TIMESTAMP and types[1] == DataType.DATE:
+        return f"cast({args[0]}  AT TIME ZONE 'UTC' as date)"
+    if types[0] == DataType.TIMESTAMP and types[1] == DataType.DATETIME:
+        return f"cast({args[0]}  AT TIME ZONE 'UTC' as datetime)"
+    return f"cast({args[0]} as {types[1]})"
+
+
 FUNCTION_MAP = {
     FunctionType.CAST: handle_cast,
     FunctionType.COUNT: lambda args, types: f"count({args[0]})",

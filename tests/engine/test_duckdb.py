@@ -918,12 +918,6 @@ select reduced;
 
 
 def test_cast_timestamptz_to_date():
-    """Test casting TIMESTAMP WITH TIME ZONE to DATE.
-
-    Some DuckDB versions throw "Conversion Error: Unimplemented type for cast
-    (TIMESTAMP WITH TIME ZONE -> DATE)" when attempting this cast directly.
-    This test ensures we handle this case properly by converting to UTC first.
-    """
     from datetime import date
 
     from trilogy.hooks.query_debugger import DebuggingHook
@@ -950,8 +944,9 @@ select 2 as id,
 ''';
 
 auto update_date <- cast(data_updated_through as date);
+auto update_datetime <- cast(data_updated_through as datetime);
 auto update_date_no_tz <- cast(data_updated_through_no_tz as date);
-select id, update_date, update_date_no_tz order by id asc;
+select id, update_date, update_date_no_tz, update_datetime order by id asc;
 """
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
     default_duckdb_engine.hooks = [DebuggingHook()]
@@ -960,6 +955,7 @@ select id, update_date, update_date_no_tz order by id asc;
     # Row 1: 10:30:00-05:00 = 15:30:00 UTC, same day (2024-01-15)
     assert results[0].update_date == date(2024, 1, 15)
     assert results[0].update_date_no_tz == date(2024, 1, 15)
+    assert results[0].update_datetime == datetime(2024, 1, 15, 15, 30)
 
     # Row 2: 22:30:00-05:00 = 03:30:00+1 UTC, next day (2024-01-16)
     # This tests that we properly convert to UTC before extracting date

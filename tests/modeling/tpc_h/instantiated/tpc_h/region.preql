@@ -1,0 +1,11 @@
+key id int;
+property id.name string; # capitalized; eg ASIA or EUROPE or MIDDLE EAST etc
+property id.comment string;
+
+datasource region (
+    r_regionkey:id,
+    r_name:name ,
+    r_comment:comment
+)
+grain(id)
+address `https://trilogy-data.github.io/trilogy-public-models/trilogy_public_models/duckdb/tpc_h/region.parquet`;
