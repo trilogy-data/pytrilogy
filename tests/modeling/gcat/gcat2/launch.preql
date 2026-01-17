@@ -38,12 +38,12 @@ property launch_tag.first_org <- _split_orgs[1];
 MERGE first_org into org.code;
 
 property launch_tag.launch_date <- date_add('1900-01-01'::date,day,CAST((CAST(launch_jd AS float) - 2415021) AS int));
-property success_flag <- CASE
+property launch_tag.success_flag <- CASE
 	WHEN _launch_code = '' THEN null
 	WHEN len(_launch_code) > 1 THEN substring(_launch_code,2,len(_launch_code) - 1)
 	ELSE null
 END; # F|E|O for most cases; F is failure. E is pad issue.
-property was_complete_success <- CASE
+property launch_tag.was_complete_success <- CASE
 	WHEN success_flag = 'S' THEN True
 	ELSE False
 END; #whether the mission was a complete sucess

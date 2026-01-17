@@ -13,6 +13,28 @@ persist launch_info;
         """
 
 
+def test_property_binding():
+    exec = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=Path(__file__).parent),
+        conf=DuckDBConfig(
+            enable_gcs=True,
+            enable_python_datasources=True,
+        ),
+    )
+    DebuggingHook()
+    exec.generate_sql(
+        """
+import launch;
+
+
+        """
+    )
+
+    assert exec.environment.concepts["was_complete_success"].keys == {
+        "local.launch_tag"
+    }, exec.environment.concepts["was_complete_success"].keys
+
+
 def test_refresh():
     exec = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=Path(__file__).parent),

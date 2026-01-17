@@ -252,6 +252,7 @@ def parse_concept_reference(
             parent, name = name.rsplit(".", 1)
             namespace = environment.concepts[parent].namespace or DEFAULT_NAMESPACE
             lookup = f"{namespace}.{name}"
+
         else:
             namespace, name = name.rsplit(".", 1)
             lookup = f"{namespace}.{name}"
@@ -808,6 +809,7 @@ class ParseToObjects(Transformer):
                 raw_name, self.environment, purpose
             )
         # <abc.def,zef.gf>.property pattern
+            keys = [self.environment.concepts[parent_concept].address] if parent_concept else []
         else:
             keys, name = raw_name
             keys = [x.address for x in keys]
@@ -853,7 +855,8 @@ class ParseToObjects(Transformer):
                 raise SyntaxError(
                     f'Concept {name} purpose {concept.purpose} does not match declared purpose {purpose}. Suggest defaulting to "auto"'
                 )
-
+            if purpose == Purpose.PROPERTY and keys:
+                concept.keys = set(keys)
             if concept.metadata:
                 concept.metadata.line_number = meta.line
                 concept.metadata.column = meta.column
