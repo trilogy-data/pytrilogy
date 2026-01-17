@@ -87,7 +87,7 @@ def handle_cast(args, types):
         return f"cast({args[0]}  AT TIME ZONE 'UTC' as date)"
     if types[0] == DataType.TIMESTAMP and types[1] == DataType.DATETIME:
         return f"cast({args[0]}  AT TIME ZONE 'UTC' as datetime)"
-    return f"cast({args[0]} as {types[1]})"
+    return f"cast({args[0]} as {args[1]})"
 
 
 FUNCTION_MAP = {
