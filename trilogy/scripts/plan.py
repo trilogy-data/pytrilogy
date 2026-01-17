@@ -114,7 +114,7 @@ def format_plan_text(
     return nodes, edges, execution_order
 
 
-@argument("input", type=Path())
+@argument("input", type=Path(), default=".")
 @option(
     "--output",
     "-o",

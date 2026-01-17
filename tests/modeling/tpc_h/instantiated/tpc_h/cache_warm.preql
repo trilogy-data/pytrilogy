@@ -1,0 +1,9 @@
+import lineitem;
+
+persist dashboard_agg_1 into dashboard_agg_1 from
+select 
+    sum(revenue) as _total_rev,
+    sum(quantity) as _total_items_sold,
+    count(order.id) as _total_orders,
+    count(order.customer.id) as _total_customers  ;
+

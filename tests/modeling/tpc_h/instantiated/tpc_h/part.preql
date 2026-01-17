@@ -1,0 +1,43 @@
+import std.money;
+
+import supplier as supplier;
+
+key id int;
+property id._name string; #internal field used to workaround issues with parquet statistics
+property id.name string;
+property id.manufacturer string;
+property id.brand string;
+property id.type string; # Capitalized; large number of values
+property id.size int; # number; 1-50
+property id.container string; # Capitalized; large number of values, ex LG DRUM | WRAP BAG
+property id.retail_price float::usd;
+property id.comment string;
+
+datasource part (
+    p_partkey:id,
+    p_name:_name,
+    UPPER(_name):name,
+    p_mfgr: manufacturer,
+    p_brand:brand,
+    p_type:type,
+    p_size:size,
+    p_container:container,
+    p_retailprice:retail_price,
+    p_comment:comment
+)
+grain(id)
+address memory.part;
+
+property <id,supplier.id>.available_quantity float;
+property <id,supplier.id>.supply_cost float::usd;
+property <id,supplier.id>.supplier_comment string;
+
+datasource partsupp (
+    ps_partkey:id,
+    ps_suppkey:supplier.id,
+    ps_availqty: available_quantity,
+    ps_supplycost:supply_cost,
+    ps_comment:supplier_comment
+)
+grain (id, supplier.id)
+address memory.partsupp;

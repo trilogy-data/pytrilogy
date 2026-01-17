@@ -24,7 +24,7 @@ def execute_script_for_run(
     return execute_script_with_stats(exec, node.path, run_statements=True)
 
 
-@argument("input", type=Path())
+@argument("input", type=Path(), default=".")
 @argument("dialect", type=str, required=False)
 @option("--param", multiple=True, help="Environment parameters as key=value pairs")
 @option(

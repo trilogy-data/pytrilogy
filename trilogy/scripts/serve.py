@@ -100,7 +100,7 @@ def create_app(app, engine: str, directory_path: PathlibPath, host: str, port: i
     return app
 
 
-@argument("path", type=Path(exists=True, file_okay=True, dir_okay=True))
+@argument("path", type=Path(exists=True, file_okay=True, dir_okay=True), default=".")
 @argument("engine", type=str, required=False, default="generic")
 @option("--port", "-p", default=8100, help="Port to run the server on")
 @option("--host", "-h", default="0.0.0.0", help="Host to bind the server to")

@@ -1,0 +1,9 @@
+import lineitem;
+where order.customer.nation.name = 'INDONESIA'
+select
+  order.id,
+  order.customer.id,
+  sum(extended_price * (1 - discount)) as order_sales
+order by
+  order_sales desc
+limit 20;

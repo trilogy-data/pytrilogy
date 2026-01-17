@@ -108,7 +108,7 @@ def make_refresh_execution_fn(print_watermarks: bool, force_sources: frozenset[s
     return wrapped_execute
 
 
-@argument("input", type=Path())
+@argument("input", type=Path(), default=".")
 @argument("dialect", type=str, required=False)
 @option("--param", multiple=True, help="Environment parameters as key=value pairs")
 @option(

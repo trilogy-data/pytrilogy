@@ -1,0 +1,46 @@
+import std.money;
+import std.display;
+import order as order;
+import supplier as supplier;
+import part as part;
+
+key line_no int; #id for a lineitem within an order. When combined with order_id, uniquely identifies an order + item.
+property <line_no,order.id>.row_key string; # a unique key for each row, a concatentation of order_id and line number
+property <line_no,order.id>.quantity float; #quantity of an part within an order
+property <line_no,order.id>.extended_price float::usd;
+property <line_no,order.id>.discount float::percent; # percent discount
+property <line_no,order.id>.tax float::percent; # tax, as percentage
+property <line_no,order.id>.return_flag string; # Capital flag, one of A | N | R
+property <line_no,order.id>.line_status string; # Capital flag, one of O | F
+property <line_no,order.id>.ship_date date;
+property <line_no,order.id>.commit_date date;
+property <line_no,order.id>.receipt_date date;
+property <line_no,order.id>.ship_instruct string; # one of DELIVER IN PERSON | COLLECT COD | NONE | TAKE BACK RETURN
+property <line_no,order.id>.ship_mode string; # capitalized; one of TRUCK | MAIL | AIR | REG AIR | FOB | RAIL | SHIP
+property <line_no,order.id>.comment string;
+property revenue <- extended_price * (1 - discount); # revenue is our price, with discount applied
+property customer_charged <- revenue * (1 + tax); # the customer is charged a total that includes tax based on the revenue
+metric total_revenue <- sum(revenue); # total revenue is an aggregated revenue suitable for use in a report
+
+# upper some fileds to fix stats issue
+datasource lineitem (
+    l_linenumber: line_no,
+    l_orderkey: order.id,
+    l_partkey: part.id,
+    l_suppkey: supplier.id,
+    concat(CAST(order.id AS string),'-',CAST(line_no AS string)): row_key,
+    l_quantity: quantity,
+    l_extendedprice: extended_price,
+    l_discount: discount,
+    l_tax: tax,
+    l_returnflag: return_flag,
+    l_linestatus: line_status,
+    l_shipdate: ship_date,
+    l_commitdate: commit_date,
+    l_receiptdate: receipt_date,
+    l_shipinstruct: ship_instruct,
+    l_shipmode: ship_mode,
+    l_comment: comment
+    )
+grain (line_no,order.id)
+address memory.lineitem;
