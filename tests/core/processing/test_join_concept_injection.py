@@ -1,29 +1,26 @@
-"""Tests for join concept injection in query graph generation.
+"""Tests for reinject_common_join_keys_v2 in common.py.
 
-This module tests the `inject_join_concepts` function which identifies concepts
-that can serve as join keys between multiple datasources.
+This module tests the function that identifies concepts shared between
+datasources and injects them as join keys into the query graph.
 """
 
-from trilogy.core.enums import ConceptSource, Purpose
-from trilogy.core.models.core import DataType
+from trilogy.core.enums import Purpose
 from trilogy.core.graph_models import (
     ReferenceGraph,
     concept_to_node,
     datasource_to_node,
 )
-from trilogy.core.models.author import Metadata
 from trilogy.core.models.build import BuildConcept, BuildDatasource, BuildGrain
-from trilogy.core.processing.node_generators.select_merge_node import (
-    inject_join_concepts,
-)
+from trilogy.core.models.core import DataType
+from trilogy.core.processing.node_generators.common import reinject_common_join_keys_v2
 
 
 def create_test_concept(
     name: str,
     namespace: str = "test",
     purpose: Purpose = Purpose.KEY,
-    concept_source: ConceptSource = ConceptSource.MANUAL,
     keys: set[str] | None = None,
+    pseudonyms: set[str] | None = None,
 ) -> BuildConcept:
     """Helper to create a BuildConcept for testing."""
     return BuildConcept(
@@ -33,9 +30,9 @@ def create_test_concept(
         purpose=purpose,
         build_is_aggregate=False,
         namespace=namespace,
-        metadata=Metadata(concept_source=concept_source),
         grain=BuildGrain(),
         keys=keys,
+        pseudonyms=pseudonyms or set(),
     )
 
 
@@ -66,13 +63,11 @@ def build_test_graph(
     """Build a ReferenceGraph from concepts and datasources for testing."""
     g = ReferenceGraph()
 
-    # Add concepts
     for concept in concepts:
         node = concept_to_node(concept)
         g.concepts[node] = concept
         g.add_node(node)
 
-    # Add datasources and edges
     for ds in datasources:
         ds_node = datasource_to_node(ds)
         g.datasources[ds_node] = ds
@@ -89,32 +84,68 @@ def build_test_graph(
     return g
 
 
-class TestInjectJoinConcepts:
-    """Tests for the inject_join_concepts function."""
+def build_working_graph(
+    datasources: list[BuildDatasource],
+    relevant_concepts: list[BuildConcept],
+) -> ReferenceGraph:
+    """Build a working graph that contains only datasources and the relevant concepts.
+
+    Datasources are connected via concept nodes. For prune_and_merge to find
+    datasource neighbors, there must be paths between them through concept nodes.
+    """
+    g = ReferenceGraph()
+
+    for ds in datasources:
+        ds_node = datasource_to_node(ds)
+        g.datasources[ds_node] = ds
+        g.add_node(ds_node)
+
+    for concept in relevant_concepts:
+        c_node = concept_to_node(concept)
+        g.concepts[c_node] = concept
+        g.add_node(c_node)
+
+    # Connect datasources to relevant concepts they provide
+    for ds in datasources:
+        ds_node = datasource_to_node(ds)
+        for concept in ds.concepts:
+            c_node = concept_to_node(concept)
+            if c_node in g.nodes:
+                g.add_edge(ds_node, c_node)
+                g.add_edge(c_node, ds_node)
+
+    return g
+
+
+class TestReinjectCommonJoinKeysV2:
+    """Tests for the reinject_common_join_keys_v2 function."""
 
     def test_no_injection_single_datasource(self):
         """With only one datasource, no join concepts should be injected."""
-        # Setup: one datasource with two concepts
         concept_a = create_test_concept("a")
         concept_b = create_test_concept("b", purpose=Purpose.PROPERTY, keys={"test.a"})
         ds1 = create_test_datasource("ds1", [concept_a, concept_b])
 
-        g = build_test_graph([concept_a, concept_b], [ds1])
+        orig_g = build_test_graph([concept_a, concept_b], [ds1])
+        working_g = build_working_graph([ds1], [concept_b])
 
-        # Query only wants concept_b
-        relevant_concepts = [concept_to_node(concept_b)]
-        relevant_datasets = [datasource_to_node(ds1)]
+        nodelist = [concept_to_node(concept_b)]
+        initial_nodes = set(working_g.nodes)
 
-        result = inject_join_concepts(g, relevant_concepts, relevant_datasets)
+        result = reinject_common_join_keys_v2(orig_g, working_g, nodelist, set())
 
-        # Should not add anything since there's only one datasource
-        assert len(result) == 1
-        assert result == relevant_concepts
+        assert result is False
+        assert set(working_g.nodes) == initial_nodes
 
     def test_injects_shared_concept_between_two_datasources(self):
-        """A concept shared between two datasources should be injected as a join key."""
-        # Setup: shared key "customer_id" between orders and customers
+        """A concept shared between two datasources should be injected as a join key.
+
+        For the function to find neighbors, there must be a path between datasources.
+        We include a shared concept in both to create that path.
+        """
         customer_id = create_test_concept("customer_id")
+        # shared_key exists in both datasources and is already in the working graph
+        shared_key = create_test_concept("shared_key")
         customer_name = create_test_concept(
             "customer_name", purpose=Purpose.PROPERTY, keys={"test.customer_id"}
         )
@@ -123,109 +154,169 @@ class TestInjectJoinConcepts:
             "order_total", purpose=Purpose.PROPERTY, keys={"test.order_id"}
         )
 
-        ds_customers = create_test_datasource("customers", [customer_id, customer_name])
+        ds_customers = create_test_datasource(
+            "customers", [customer_id, customer_name, shared_key]
+        )
         ds_orders = create_test_datasource(
-            "orders", [order_id, customer_id, order_total]
+            "orders", [order_id, customer_id, order_total, shared_key]
         )
 
-        g = build_test_graph(
-            [customer_id, customer_name, order_id, order_total],
+        orig_g = build_test_graph(
+            [customer_id, customer_name, order_id, order_total, shared_key],
             [ds_customers, ds_orders],
         )
+        # shared_key creates a path between the two datasources
+        working_g = build_working_graph(
+            [ds_customers, ds_orders], [customer_name, order_total, shared_key]
+        )
 
-        # Query wants customer_name and order_total (customer_id is the join key)
-        relevant_concepts = [
+        nodelist = [
             concept_to_node(customer_name),
             concept_to_node(order_total),
-        ]
-        relevant_datasets = [
-            datasource_to_node(ds_customers),
-            datasource_to_node(ds_orders),
+            concept_to_node(shared_key),
         ]
 
-        result = inject_join_concepts(g, relevant_concepts, relevant_datasets)
+        result = reinject_common_join_keys_v2(orig_g, working_g, nodelist, set())
 
-        # Should inject customer_id as join key
-        assert len(result) == 3
-        assert concept_to_node(customer_id) in result
+        # customer_id should be injected as an additional join key
+        # The function uses with_default_grain() when creating nodes
+        assert result is True
+        assert concept_to_node(customer_id.with_default_grain()) in working_g.nodes
 
-    def test_no_injection_when_concept_already_relevant(self):
-        """If the shared concept is already in relevant_concepts, don't duplicate it."""
+    def test_no_injection_when_concept_already_in_graph(self):
+        """If the shared concept is already in the working graph, don't inject.
+
+        The function checks using with_default_grain(), so for concepts to be
+        considered 'already present', they need to be added with that grain.
+        """
         customer_id = create_test_concept("customer_id")
         customer_name = create_test_concept(
             "customer_name", purpose=Purpose.PROPERTY, keys={"test.customer_id"}
         )
-        order_id = create_test_concept("order_id")
 
         ds_customers = create_test_datasource("customers", [customer_id, customer_name])
-        ds_orders = create_test_datasource("orders", [order_id, customer_id])
+        ds_orders = create_test_datasource("orders", [customer_id])
 
-        g = build_test_graph(
-            [customer_id, customer_name, order_id],
+        orig_g = build_test_graph(
+            [customer_id, customer_name],
             [ds_customers, ds_orders],
         )
+        # Build working graph with customer_id.with_default_grain() to match
+        # how the function checks for existing nodes
+        working_g = build_working_graph(
+            [ds_customers, ds_orders],
+            [customer_id.with_default_grain(), customer_name],
+        )
 
-        # customer_id is already in relevant concepts
-        relevant_concepts = [
-            concept_to_node(customer_id),
+        nodelist = [
+            concept_to_node(customer_id.with_default_grain()),
             concept_to_node(customer_name),
         ]
-        relevant_datasets = [
-            datasource_to_node(ds_customers),
-            datasource_to_node(ds_orders),
-        ]
+        initial_node_count = len(working_g.nodes)
 
-        result = inject_join_concepts(g, relevant_concepts, relevant_datasets)
+        reinject_common_join_keys_v2(orig_g, working_g, nodelist, set())
 
-        # Should not duplicate customer_id
-        assert len(result) == 2
-        assert result == relevant_concepts
+        # No new nodes should be added since customer_id is already present
+        assert len(working_g.nodes) == initial_node_count
 
-    def test_skips_auto_derived_concepts(self):
-        """AUTO_DERIVED concepts should not be injected as join keys."""
-        # Setup: shared datetime and auto-derived date parts
-        created_at = create_test_concept("created_at")
-        # Auto-derived concept (e.g., created_at.year)
-        created_at_year = create_test_concept(
-            "created_at.year",
-            purpose=Purpose.PROPERTY,
-            concept_source=ConceptSource.AUTO_DERIVED,
-            keys={"test.created_at"},
-        )
-        order_id = create_test_concept("order_id")
+    def test_skips_synonyms(self):
+        """Concepts in the synonyms set should not be injected.
+
+        We test that customer_id (the only shared KEY besides shared_key) is
+        skipped when it's in the synonyms set.
+        """
         customer_id = create_test_concept("customer_id")
-
-        ds_orders = create_test_datasource(
-            "orders", [order_id, created_at, created_at_year, customer_id]
+        shared_key = create_test_concept("shared_key")
+        customer_name = create_test_concept(
+            "customer_name", purpose=Purpose.PROPERTY, keys={"test.customer_id"}
         )
+        order_total = create_test_concept(
+            "order_total", purpose=Purpose.PROPERTY, keys={"test.shared_key"}
+        )
+
         ds_customers = create_test_datasource(
-            "customers", [customer_id, created_at, created_at_year]
+            "customers", [customer_id, customer_name, shared_key]
+        )
+        ds_orders = create_test_datasource(
+            "orders", [customer_id, order_total, shared_key]
         )
 
-        g = build_test_graph(
-            [created_at, created_at_year, order_id, customer_id],
-            [ds_orders, ds_customers],
+        orig_g = build_test_graph(
+            [customer_id, customer_name, order_total, shared_key],
+            [ds_customers, ds_orders],
+        )
+        # shared_key (with default grain) creates the path between datasources
+        working_g = build_working_graph(
+            [ds_customers, ds_orders],
+            [customer_name, order_total, shared_key.with_default_grain()],
         )
 
-        # Query wants order_id and customer_id
-        relevant_concepts = [
-            concept_to_node(order_id),
-            concept_to_node(customer_id),
+        nodelist = [
+            concept_to_node(customer_name),
+            concept_to_node(order_total),
+            concept_to_node(shared_key.with_default_grain()),
         ]
-        relevant_datasets = [
-            datasource_to_node(ds_orders),
-            datasource_to_node(ds_customers),
+        # Mark customer_id as a synonym to skip - shared_key is already present
+        synonyms = {customer_id.address}
+
+        result = reinject_common_join_keys_v2(orig_g, working_g, nodelist, synonyms)
+
+        # customer_id should NOT be injected because it's in synonyms
+        # shared_key is already present so won't be re-injected
+        assert result is False
+        assert concept_to_node(customer_id.with_default_grain()) not in working_g.nodes
+
+    def test_skips_pseudonym_duplicates(self):
+        """If a candidate has an existing address in its pseudonyms, skip injection.
+
+        The function checks `any(x in concrete.pseudonyms for x in existing_addresses)`.
+        So if customer_id (the candidate) has customer_key in its pseudonyms, and
+        customer_key is already in the graph, customer_id won't be injected.
+        """
+        # customer_id has customer_key as a pseudonym
+        customer_id = create_test_concept(
+            "customer_id", pseudonyms={"test.customer_key"}
+        )
+        customer_key = create_test_concept("customer_key")
+        customer_name = create_test_concept(
+            "customer_name", purpose=Purpose.PROPERTY, keys={"test.customer_id"}
+        )
+
+        ds_customers = create_test_datasource(
+            "customers", [customer_id, customer_key, customer_name]
+        )
+        ds_orders = create_test_datasource("orders", [customer_id, customer_key])
+
+        orig_g = build_test_graph(
+            [customer_id, customer_key, customer_name],
+            [ds_customers, ds_orders],
+        )
+        # customer_key (with default grain) is already in working graph
+        working_g = build_working_graph(
+            [ds_customers, ds_orders],
+            [customer_key.with_default_grain(), customer_name],
+        )
+
+        nodelist = [
+            concept_to_node(customer_key.with_default_grain()),
+            concept_to_node(customer_name),
         ]
 
-        result = inject_join_concepts(g, relevant_concepts, relevant_datasets)
+        initial_node_count = len(working_g.nodes)
+        reinject_common_join_keys_v2(orig_g, working_g, nodelist, set())
 
-        # Should inject created_at but NOT created_at_year (auto-derived)
-        assert concept_to_node(created_at) in result
-        assert concept_to_node(created_at_year) not in result
+        # customer_id should not be injected because it has customer_key
+        # (already present) in its pseudonyms
+        assert concept_to_node(customer_id.with_default_grain()) not in working_g.nodes
+        assert len(working_g.nodes) == initial_node_count
 
     def test_three_datasource_chain(self):
-        """Test join injection with three datasources in a chain: A-B-C."""
-        # Setup: orders -> line_items -> products
+        """Test join injection with three datasources in a chain: A-B-C.
+
+        For this test, we need to already have some shared concepts to create
+        paths between datasources. We'll include order_id between orders and
+        line_items, and product_id between line_items and products.
+        """
         order_id = create_test_concept("order_id")
         order_date = create_test_concept(
             "order_date", purpose=Purpose.PROPERTY, keys={"test.order_id"}
@@ -235,72 +326,141 @@ class TestInjectJoinConcepts:
         product_name = create_test_concept(
             "product_name", purpose=Purpose.PROPERTY, keys={"test.product_id"}
         )
+        # extra_key is shared between orders and line_items
+        extra_order_key = create_test_concept("extra_order_key")
+        # extra_product_key is shared between line_items and products
+        extra_product_key = create_test_concept("extra_product_key")
 
-        ds_orders = create_test_datasource("orders", [order_id, order_date])
-        ds_line_items = create_test_datasource(
-            "line_items", [line_item_id, order_id, product_id]
+        ds_orders = create_test_datasource(
+            "orders", [order_id, order_date, extra_order_key]
         )
-        ds_products = create_test_datasource("products", [product_id, product_name])
+        ds_line_items = create_test_datasource(
+            "line_items",
+            [line_item_id, order_id, product_id, extra_order_key, extra_product_key],
+        )
+        ds_products = create_test_datasource(
+            "products", [product_id, product_name, extra_product_key]
+        )
 
-        g = build_test_graph(
-            [order_id, order_date, line_item_id, product_id, product_name],
+        orig_g = build_test_graph(
+            [
+                order_id,
+                order_date,
+                line_item_id,
+                product_id,
+                product_name,
+                extra_order_key,
+                extra_product_key,
+            ],
             [ds_orders, ds_line_items, ds_products],
         )
+        # Include keys that create paths between datasources
+        working_g = build_working_graph(
+            [ds_orders, ds_line_items, ds_products],
+            [order_date, product_name, extra_order_key, extra_product_key],
+        )
 
-        # Query wants order_date and product_name
-        relevant_concepts = [
+        nodelist = [
             concept_to_node(order_date),
             concept_to_node(product_name),
-        ]
-        relevant_datasets = [
-            datasource_to_node(ds_orders),
-            datasource_to_node(ds_line_items),
-            datasource_to_node(ds_products),
+            concept_to_node(extra_order_key),
+            concept_to_node(extra_product_key),
         ]
 
-        result = inject_join_concepts(g, relevant_concepts, relevant_datasets)
+        result = reinject_common_join_keys_v2(orig_g, working_g, nodelist, set())
 
         # Should inject order_id (between orders and line_items)
         # and product_id (between line_items and products)
-        assert concept_to_node(order_id) in result
-        assert concept_to_node(product_id) in result
+        assert result is True
+        assert concept_to_node(order_id.with_default_grain()) in working_g.nodes
+        assert concept_to_node(product_id.with_default_grain()) in working_g.nodes
 
     def test_concept_on_single_datasource_not_injected(self):
         """A concept only on one datasource should not be injected."""
         customer_id = create_test_concept("customer_id")
+        shared_key = create_test_concept("shared_key")
         customer_name = create_test_concept(
             "customer_name", purpose=Purpose.PROPERTY, keys={"test.customer_id"}
         )
-        order_id = create_test_concept("order_id")
         order_total = create_test_concept(
-            "order_total", purpose=Purpose.PROPERTY, keys={"test.order_id"}
+            "order_total", purpose=Purpose.PROPERTY, keys={"test.shared_key"}
         )
         # internal_code is only on orders, not on customers
-        internal_code = create_test_concept(
-            "internal_code", purpose=Purpose.PROPERTY, keys={"test.order_id"}
-        )
+        internal_code = create_test_concept("internal_code")
 
-        ds_customers = create_test_datasource("customers", [customer_id, customer_name])
+        ds_customers = create_test_datasource(
+            "customers", [customer_id, customer_name, shared_key]
+        )
         ds_orders = create_test_datasource(
-            "orders", [order_id, customer_id, order_total, internal_code]
+            "orders", [customer_id, order_total, internal_code, shared_key]
         )
 
-        g = build_test_graph(
-            [customer_id, customer_name, order_id, order_total, internal_code],
+        orig_g = build_test_graph(
+            [customer_id, customer_name, order_total, internal_code, shared_key],
             [ds_customers, ds_orders],
         )
+        # shared_key creates the path between datasources
+        working_g = build_working_graph(
+            [ds_customers, ds_orders], [customer_name, order_total, shared_key]
+        )
 
-        relevant_concepts = [
+        nodelist = [
             concept_to_node(customer_name),
             concept_to_node(order_total),
-        ]
-        relevant_datasets = [
-            datasource_to_node(ds_customers),
-            datasource_to_node(ds_orders),
+            concept_to_node(shared_key),
         ]
 
-        result = inject_join_concepts(g, relevant_concepts, relevant_datasets)
+        result = reinject_common_join_keys_v2(orig_g, working_g, nodelist, set())
 
-        # Should inject customer_id but NOT internal_code
-        assert concept_to_node(customer_id) in result
-        assert concept_to_node(internal_code) not in result
+        # Should inject customer_id but NOT internal_code (only on one ds)
+        assert result is True
+        assert concept_to_node(customer_id.with_default_grain()) in working_g.nodes
+        assert (
+            concept_to_node(internal_code.with_default_grain()) not in working_g.nodes
+        )
+
+    def test_only_injects_grain_components(self):
+        """Only concepts that are part of the grain should be injected."""
+        customer_id = create_test_concept("customer_id")
+        shared_key = create_test_concept("shared_key")
+        # customer_status is shared but is a property, not a key
+        customer_status = create_test_concept(
+            "customer_status", purpose=Purpose.PROPERTY, keys={"test.customer_id"}
+        )
+        customer_name = create_test_concept(
+            "customer_name", purpose=Purpose.PROPERTY, keys={"test.customer_id"}
+        )
+        order_total = create_test_concept(
+            "order_total", purpose=Purpose.PROPERTY, keys={"test.shared_key"}
+        )
+
+        ds_customers = create_test_datasource(
+            "customers", [customer_id, customer_name, customer_status, shared_key]
+        )
+        ds_orders = create_test_datasource(
+            "orders", [customer_id, order_total, customer_status, shared_key]
+        )
+
+        orig_g = build_test_graph(
+            [customer_id, customer_name, order_total, customer_status, shared_key],
+            [ds_customers, ds_orders],
+        )
+        # shared_key creates the path between datasources
+        working_g = build_working_graph(
+            [ds_customers, ds_orders], [customer_name, order_total, shared_key]
+        )
+
+        nodelist = [
+            concept_to_node(customer_name),
+            concept_to_node(order_total),
+            concept_to_node(shared_key),
+        ]
+
+        reinject_common_join_keys_v2(orig_g, working_g, nodelist, set())
+
+        # customer_id should be injected (it's a key)
+        assert concept_to_node(customer_id.with_default_grain()) in working_g.nodes
+        # customer_status should NOT be injected (it's a property, not in grain)
+        assert (
+            concept_to_node(customer_status.with_default_grain()) not in working_g.nodes
+        )

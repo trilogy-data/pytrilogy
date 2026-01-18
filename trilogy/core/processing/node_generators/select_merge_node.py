@@ -1,11 +1,10 @@
-from collections import defaultdict
 from functools import reduce
 from typing import TYPE_CHECKING, List, Optional
 
 import networkx as nx
 
 from trilogy.constants import logger
-from trilogy.core.enums import AddressType, ConceptSource, Derivation
+from trilogy.core.enums import AddressType, Derivation
 from trilogy.core.graph_models import (
     ReferenceGraph,
     concept_to_node,
@@ -239,51 +238,6 @@ def subgraph_is_complete(
     return all(has_ds_edge.values())
 
 
-def inject_join_concepts(
-    orig_g: ReferenceGraph,
-    relevant_concepts: list[str],
-    relevant_datasets: list[str],
-) -> list[str]:
-    """Find concepts that are shared between multiple relevant datasets and add them as join keys.
-
-    This function identifies concepts that could serve as join keys between datasources
-    by finding concepts that are neighbors of 2+ relevant datasources. These concepts
-    may not be in the original query output but are needed to connect datasources.
-
-    Args:
-        orig_g: The original reference graph (before any pruning)
-        relevant_concepts: List of concept node names already identified as relevant
-        relevant_datasets: List of datasource node names that are relevant
-
-    Returns:
-        Updated list of relevant concepts including any injected join concepts
-    """
-    injected: list[str] = []
-    node_pairs = defaultdict(set)
-    for n in orig_g.concepts:
-        # if n in relevant_concepts:
-        #     continue
-        concept = orig_g.concepts[n]
-        # skip auto-derived concepts (e.g. date parts) as join keys
-        # if (
-        #     concept.metadata
-        #     and concept.metadata.concept_source == ConceptSource.AUTO_DERIVED
-        # ):
-        #     continue
-        n_neighbors = nx.all_neighbors(orig_g, n)
-        # check if the concept is a neighbor of 2+ relevant datasets
-        neighbors = set()
-        for neighbor in n_neighbors:
-            if neighbor in relevant_datasets:
-                neighbors.add(neighbor)
-        if len(neighbors) > 1:
-            node_pairs[tuple(sorted(neighbors))].add(n)
-    print(node_pairs)
-    # for each combination in node pairs
-    # check if this is a relevant grain
-    return relevant_concepts + injected
-
-
 def create_pruned_concept_graph(
     g: ReferenceGraph,
     all_concepts: List[BuildConcept],
@@ -358,13 +312,12 @@ def create_pruned_concept_graph(
     )
 
     # Inject extra join concepts that are shared between datasets
-    # Use the original graph (pre-partial pruning) for this analysis
-    # relevant_concepts = inject_join_concepts(
-    #     orig_g, relevant_concepts, relevent_datasets
-    # )
     from .common import reinject_common_join_keys_v2
 
-    reinject_common_join_keys_v2(orig_g, g, synonyms)
+    synonyms: set[str] = set()
+    for c in all_concepts:
+        synonyms.update(c.pseudonyms)
+    reinject_common_join_keys_v2(orig_g, g, relevant_concepts, synonyms)
 
     g.remove_nodes_from(
         [
