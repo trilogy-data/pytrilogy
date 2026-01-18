@@ -1,13 +1,19 @@
 from collections import defaultdict
+from itertools import combinations
 from typing import Callable, List, Tuple
 
+import networkx as nx
+
+from trilogy.constants import logger
 from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.graph_models import ReferenceGraph, concept_to_node
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildComparison,
     BuildConcept,
     BuildFilterItem,
     BuildFunction,
+    BuildGrain,
     BuildWhereClause,
     LooseBuildConceptList,
 )
@@ -268,3 +274,81 @@ def resolve_join_order(joins: List[NodeJoin]) -> List[NodeJoin]:
                 new_final_joins_pre.append(join)
         final_joins_pre = new_final_joins_pre
     return final_joins
+
+
+LOGGER_PREFIX = "[COMMON]"
+
+
+def prune_and_merge(
+    G: ReferenceGraph,
+    keep_node_lambda: Callable[[str], bool],
+) -> ReferenceGraph:
+    """Prune nodes of one type and create direct connections between remaining nodes."""
+    nodes_to_keep = [n for n in G.nodes if keep_node_lambda(n)]
+    new_graph = G.subgraph(nodes_to_keep).copy()
+    nodes_to_remove = [n for n in G.nodes() if n not in nodes_to_keep]
+
+    for node_pair in combinations(nodes_to_keep, 2):
+        n1, n2 = node_pair
+        try:
+            path = nx.shortest_path(G, n1, n2)
+            if len(path) > 2 or any(node in nodes_to_remove for node in path[1:-1]):
+                new_graph.add_edge(n1, n2)
+        except nx.NetworkXNoPath:
+            continue
+
+    return new_graph
+
+
+def reinject_common_join_keys_v2(
+    G: ReferenceGraph,
+    final: nx.DiGraph,
+    nodelist: list[str],
+    synonyms: set[str] = set(),
+) -> bool:
+    # when we've discovered a concept join, for each pair of ds nodes
+    # check if they have more keys in common
+    # and inject those to discovery as join conditions
+    def is_ds_node(n: str) -> bool:
+        return n.startswith("ds~")
+
+    ds_graph = prune_and_merge(final, is_ds_node)
+    injected = False
+
+    for datasource in ds_graph.nodes:
+        node1 = G.datasources[datasource]
+        neighbors = nx.all_neighbors(ds_graph, datasource)
+        for neighbor in neighbors:
+            node2 = G.datasources[neighbor]
+            common_concepts = set(
+                x.concept.address for x in node1.columns
+            ).intersection(set(x.concept.address for x in node2.columns))
+            concrete_concepts = [
+                x.concept for x in node1.columns if x.concept.address in common_concepts
+            ]
+            reduced = BuildGrain.from_concepts(concrete_concepts).components
+            existing_addresses = set()
+            for concrete in concrete_concepts:
+                cnode = concept_to_node(concrete.with_default_grain())
+                if cnode in final.nodes:
+                    existing_addresses.add(concrete.address)
+                    continue
+            for concrete in concrete_concepts:
+                if concrete.address in synonyms:
+                    continue
+                if concrete.address not in reduced:
+                    continue
+                if concrete.address in existing_addresses:
+                    continue
+                # skip anything that is already in the graph pseudonyms
+                if any(x in concrete.pseudonyms for x in existing_addresses):
+                    continue
+                cnode = concept_to_node(concrete.with_default_grain())
+                final.add_edge(datasource, cnode)
+                final.add_edge(neighbor, cnode)
+                logger.debug(
+                    f"{LOGGER_PREFIX} reinjecting common join key {cnode} to list {nodelist} between {datasource} and {neighbor}, existing {existing_addresses}"
+                )
+                injected = True
+
+    return injected
