@@ -192,7 +192,7 @@ def determine_induced_minimal_nodes(
             final.add_edge(*edge)
 
     # readd concepts that need to be in the output for proper discovery
-    reinject_common_join_keys_v2(G, final, nodelist, synonyms)
+    reinject_common_join_keys_v2(G, final, synonyms)
 
     # all concept nodes must have a parent
     if not all(

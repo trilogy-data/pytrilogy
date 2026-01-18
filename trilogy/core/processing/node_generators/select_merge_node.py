@@ -357,7 +357,7 @@ def create_pruned_concept_graph(
     synonyms: set[str] = set()
     for c in all_concepts:
         synonyms.update(c.pseudonyms)
-    reinject_common_join_keys_v2(orig_g, g, relevant_concepts, synonyms, add_joins=True)
+    reinject_common_join_keys_v2(orig_g, g, synonyms, add_joins=True)
     relevant = set(relevant_concepts + relevent_datasets)
     for edge in orig_g.edges():
         if edge[0] in relevant and edge[1] in relevant:
