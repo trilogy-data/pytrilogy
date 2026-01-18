@@ -429,9 +429,9 @@ def reinject_common_join_keys_v2(
 
         common_concepts = {addr: cols1[addr] for addr in common_addrs}
 
-        reduced = set(BuildGrain.from_concepts(common_concepts.values()).components) 
+        reduced = set(BuildGrain.from_concepts(common_concepts.values()).components)
 
-        get_node = lambda c: get_concept_node_cached(concept_node_cache, c) # noqa E731
+        get_node = lambda c: get_concept_node_cached(concept_node_cache, c)  # noqa E731
 
         existing = existing_join_addresses(
             final,
