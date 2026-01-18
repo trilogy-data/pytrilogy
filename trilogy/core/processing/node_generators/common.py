@@ -306,6 +306,7 @@ def reinject_common_join_keys_v2(
     nodelist: list[str],
     synonyms: set[str] = set(),
     add_joins: bool = False,
+    accept_partial: bool = False,
 ) -> bool:
     # when we've discovered a concept join, for each pair of ds nodes
     # check if they have more keys in common
@@ -317,7 +318,7 @@ def reinject_common_join_keys_v2(
     ds_graph = prune_and_merge(final, is_ds_node)
     injected = False
 
-    filter_partial = add_joins is True
+    filter_partial = add_joins is True and accept_partial is False
 
     for datasource in ds_graph.nodes:
         if datasource not in datasource_lookup:

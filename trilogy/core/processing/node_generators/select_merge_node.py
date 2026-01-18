@@ -57,6 +57,18 @@ def get_graph_partial_nodes(
         partial[node] = [concept_to_node(c) for c in ds.partial_concepts]
     return partial
 
+def get_graph_partial_canonical(
+    g: ReferenceGraph, conditions: BuildWhereClause | None
+) -> dict[str, set[str]]:
+    partial: dict[str, set[str]] = {}
+    for node, ds in g.datasources.items():
+
+        if ds.non_partial_for and conditions == ds.non_partial_for:
+            partial[node] = set()
+            continue
+        partial[node] = set(c.canonical_address for c in ds.partial_concepts)
+    return partial
+
 
 def get_graph_grains(g: ReferenceGraph) -> dict[str, list[str]]:
     grain_length: dict[str, list[str]] = {}
@@ -344,7 +356,7 @@ def create_pruned_concept_graph(
     synonyms: set[str] = set()
     for c in all_concepts:
         synonyms.update(c.pseudonyms)
-    reinject_common_join_keys_v2(orig_g, g, relevant_concepts, synonyms, add_joins=True)
+    reinject_common_join_keys_v2(orig_g, g, relevant_concepts, synonyms, add_joins=True, accept_partial= accept_partial)
     relevant = set(relevant_concepts + relevent_datasets)
     for edge in orig_g.edges():
         if edge[0] in relevant and edge[1] in relevant:
@@ -477,7 +489,7 @@ def resolve_subgraphs(
         subgraphs[ds] = [
             n for n in subgraphs[ds] if n not in concepts or n in filtered_nodes
         ]
-    partial_map = get_graph_partial_nodes(g, conditions)
+    partial_canonical = get_graph_partial_canonical(g, conditions)
     exact_map = get_graph_exact_match(g, accept_partial, conditions)
     grain_length = get_graph_grains(g)
     non_partial_map = {
@@ -485,7 +497,7 @@ def resolve_subgraphs(
             [
                 concepts[c].canonical_address
                 for c in subgraphs[ds]
-                if c not in partial_map[ds]
+                if concepts[c].canonical_address not in  partial_canonical[ds]
             ]
         )
         for ds in datasources
