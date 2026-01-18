@@ -312,7 +312,7 @@ def reinject_common_join_keys_v2(
     def is_ds_node(n: str) -> bool:
         return n.startswith("ds~")
 
-    datasource_lookup = {**base_graph.datasources}
+    datasource_lookup = {**base_graph.datasources, **final.datasources}
     ds_graph = prune_and_merge(final, is_ds_node)
     injected = False
 

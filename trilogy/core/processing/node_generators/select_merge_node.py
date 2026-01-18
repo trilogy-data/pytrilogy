@@ -312,12 +312,6 @@ def create_pruned_concept_graph(
         relevent_datasets, relevant_concepts, g_edges, g.datasources, depth, partial
     )
 
-    # Inject extra join concepts that are shared between datasets
-    synonyms: set[str] = set()
-    for c in all_concepts:
-        synonyms.update(c.pseudonyms)
-    reinject_common_join_keys_v2(g, g, relevant_concepts, synonyms)
-
     g.remove_nodes_from(
         [
             n
@@ -346,6 +340,11 @@ def create_pruned_concept_graph(
         )
         return None
     # add back any relevant edges that might have been partially filtered
+    # Inject extra join concepts that are shared between datasets
+    synonyms: set[str] = set()
+    for c in all_concepts:
+        synonyms.update(c.pseudonyms)
+    reinject_common_join_keys_v2(orig_g, g, relevant_concepts, synonyms)
     relevant = set(relevant_concepts + relevent_datasets)
     for edge in orig_g.edges():
         if edge[0] in relevant and edge[1] in relevant:
