@@ -22,6 +22,7 @@ from trilogy.core.models.build import (
     CanonicalBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.node_generators.common import reinject_common_join_keys_v2
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
 )
@@ -312,12 +313,10 @@ def create_pruned_concept_graph(
     )
 
     # Inject extra join concepts that are shared between datasets
-    from .common import reinject_common_join_keys_v2
-
     synonyms: set[str] = set()
     for c in all_concepts:
         synonyms.update(c.pseudonyms)
-    reinject_common_join_keys_v2(orig_g, g, relevant_concepts, synonyms)
+    reinject_common_join_keys_v2(g, g, relevant_concepts, synonyms)
 
     g.remove_nodes_from(
         [

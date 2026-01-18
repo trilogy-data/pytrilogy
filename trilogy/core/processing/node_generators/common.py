@@ -301,8 +301,8 @@ def prune_and_merge(
 
 
 def reinject_common_join_keys_v2(
-    G: ReferenceGraph,
-    final: nx.DiGraph,
+    base_graph: ReferenceGraph,
+    final: ReferenceGraph,
     nodelist: list[str],
     synonyms: set[str] = set(),
 ) -> bool:
@@ -312,14 +312,19 @@ def reinject_common_join_keys_v2(
     def is_ds_node(n: str) -> bool:
         return n.startswith("ds~")
 
+    datasource_lookup = {**base_graph.datasources}
     ds_graph = prune_and_merge(final, is_ds_node)
     injected = False
 
     for datasource in ds_graph.nodes:
-        node1 = G.datasources[datasource]
+        if datasource not in datasource_lookup:
+            continue
+        node1 = datasource_lookup[datasource]
         neighbors = nx.all_neighbors(ds_graph, datasource)
         for neighbor in neighbors:
-            node2 = G.datasources[neighbor]
+            if neighbor not in datasource_lookup:
+                continue
+            node2 = datasource_lookup[neighbor]
             common_concepts = set(
                 x.concept.address for x in node1.columns
             ).intersection(set(x.concept.address for x in node2.columns))
