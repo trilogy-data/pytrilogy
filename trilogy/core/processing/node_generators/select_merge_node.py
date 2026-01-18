@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, List, Optional
 import networkx as nx
 
 from trilogy.constants import logger
-from trilogy.core.enums import AddressType, Derivation
+from trilogy.core.enums import AddressType, ConceptSource, Derivation
 from trilogy.core.graph_models import (
     ReferenceGraph,
     concept_to_node,
@@ -317,6 +317,13 @@ def create_pruned_concept_graph(
         # readd ignoring grain
         # we want to join inclusive of all concepts
         if n not in relevant_concepts:
+            concept = orig_g.concepts[n]
+            # skip auto-derived concepts (e.g. date parts) as join keys
+            if (
+                concept.metadata
+                and concept.metadata.concept_source == ConceptSource.AUTO_DERIVED
+            ):
+                continue
             n_neighbors = nx.all_neighbors(orig_g, n)
             # check if the irrelevant concept is a join between
             # two relevant datasets
