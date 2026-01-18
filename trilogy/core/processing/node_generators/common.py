@@ -305,6 +305,7 @@ def reinject_common_join_keys_v2(
     final: ReferenceGraph,
     nodelist: list[str],
     synonyms: set[str] = set(),
+    add_joins: bool = False,
 ) -> bool:
     # when we've discovered a concept join, for each pair of ds nodes
     # check if they have more keys in common
@@ -316,6 +317,8 @@ def reinject_common_join_keys_v2(
     ds_graph = prune_and_merge(final, is_ds_node)
     injected = False
 
+    filter_partial = add_joins is True
+
     for datasource in ds_graph.nodes:
         if datasource not in datasource_lookup:
             continue
@@ -326,8 +329,22 @@ def reinject_common_join_keys_v2(
                 continue
             node2 = datasource_lookup[neighbor]
             common_concepts = set(
-                x.concept.address for x in node1.columns
-            ).intersection(set(x.concept.address for x in node2.columns))
+                x.concept.address
+                for x in node1.columns
+                if (
+                    not filter_partial
+                    or x.concept.address not in node1.partial_concepts
+                )
+            ).intersection(
+                set(
+                    x.concept.address
+                    for x in node2.columns
+                    if (
+                        not filter_partial
+                        or x.concept.address not in node2.partial_concepts
+                    )
+                )
+            )
             concrete_concepts = [
                 x.concept for x in node1.columns if x.concept.address in common_concepts
             ]
@@ -343,7 +360,9 @@ def reinject_common_join_keys_v2(
                     continue
                 if concrete.address not in reduced:
                     continue
-                if concrete.address in existing_addresses:
+                # if we've already added it in join inection, we can skip
+                # if we are merge select nodes, we need to add it
+                if concrete.address in existing_addresses and not add_joins:
                     continue
                 # skip anything that is already in the graph pseudonyms
                 if any(x in concrete.pseudonyms for x in existing_addresses):
@@ -351,9 +370,12 @@ def reinject_common_join_keys_v2(
                 cnode = concept_to_node(concrete.with_default_grain())
                 final.add_edge(datasource, cnode)
                 final.add_edge(neighbor, cnode)
-                logger.debug(
+                logger.info(
                     f"{LOGGER_PREFIX} reinjecting common join key {cnode} to list {nodelist} between {datasource} and {neighbor}, existing {existing_addresses}"
                 )
                 injected = True
+                #c~web_sales.item.id@Grain<web_sales.item.id>
+                #c~web_sales.item.id@Grain<web_sales.item.id>
+                existing_addresses.add(concrete.address)
 
     return injected

@@ -171,7 +171,7 @@ def score_datasource_node(
     node: str,
     datasources: dict[str, "BuildDatasource | BuildUnionDatasource"],
     grain_map: dict[str, list[str]],
-    concept_map: dict[str, list[str]],
+    concept_map: dict[str, set[str]],
     exact_map: set[str],
     subgraphs: dict[str, list[str]],
 ) -> tuple[int, int, float, int, str]:
@@ -344,7 +344,7 @@ def create_pruned_concept_graph(
     synonyms: set[str] = set()
     for c in all_concepts:
         synonyms.update(c.pseudonyms)
-    reinject_common_join_keys_v2(orig_g, g, relevant_concepts, synonyms)
+    reinject_common_join_keys_v2(orig_g, g, relevant_concepts, synonyms, add_joins=True)
     relevant = set(relevant_concepts + relevent_datasets)
     for edge in orig_g.edges():
         if edge[0] in relevant and edge[1] in relevant:
@@ -481,15 +481,18 @@ def resolve_subgraphs(
     exact_map = get_graph_exact_match(g, accept_partial, conditions)
     grain_length = get_graph_grains(g)
     non_partial_map = {
-        ds: [
-            concepts[c].canonical_address
-            for c in subgraphs[ds]
-            if c not in partial_map[ds]
-        ]
+        ds: set(
+            [
+                concepts[c].canonical_address
+                for c in subgraphs[ds]
+                if c not in partial_map[ds]
+            ]
+        )
         for ds in datasources
     }
     concept_map = {
-        ds: [concepts[c].canonical_address for c in subgraphs[ds]] for ds in datasources
+        ds: set([concepts[c].canonical_address for c in subgraphs[ds]])
+        for ds in datasources
     }
     pruned_subgraphs = {}
 
@@ -513,8 +516,8 @@ def resolve_subgraphs(
             # needs to be a subset of non partial and a subset of all
             if (
                 key != other_key
-                and set(value).issubset(set(other_value))
-                and set(all_concepts).issubset(set(other_all_concepts))
+                and value.issubset(other_value)
+                and all_concepts.issubset(other_all_concepts)
             ):
                 if len(value) < len(other_value):
                     is_subset = True

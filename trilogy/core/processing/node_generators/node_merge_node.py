@@ -91,7 +91,6 @@ def extract_ds_components(
     # if we had no ego graphs, return all concepts
     if not graphs:
         return [[extract_address(node) for node in nodelist]]
-    logger.info(graphs)
     graphs = filter_unique_graphs(graphs)
     for node in nodelist:
         parsed = extract_address(node)

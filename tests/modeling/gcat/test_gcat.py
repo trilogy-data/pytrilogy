@@ -6,7 +6,7 @@ from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.env_processor import concept_to_node, generate_graph
 from trilogy.core.exceptions import ModelValidationError
 from trilogy.core.models.author import Grain
-from trilogy.core.models.build import BuildGrain
+from trilogy.core.models.build import BuildDatasource, BuildGrain
 from trilogy.core.models.core import DataType
 from trilogy.core.processing.discovery_utility import is_pushdown_aliased_concept
 from trilogy.core.processing.node_generators.node_merge_node import (
@@ -285,6 +285,9 @@ def test_environment_cleanup_multiselect():
     env = Environment(
         working_path=Path(__file__).parent,
     )
+    from trilogy.hooks import INFO, DebuggingHook
+
+    DebuggingHook(INFO)
     base = Dialects.DUCK_DB.default_executor(environment=env)
     base.parse_text(
         """import satcat;
@@ -899,6 +902,11 @@ LIMIT 10
     del gcat_env.environment.datasources["launch_info"]
     # del gcat_env.environment.datasources['payload.launch.launch_info']
     query = gcat_env.generate_sql(queries[-1])
+
+    fuel_aggregates: BuildDatasource = gcat_env.environment.datasources[
+        "fuel_aggregates"
+    ]
+    assert "org.code" in fuel_aggregates.concepts
 
     assert "launch_info" not in query[0], query[0]
 

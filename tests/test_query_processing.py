@@ -11,6 +11,9 @@ from trilogy.core.statements.author import SelectStatement
 
 def test_direct_select(test_environment, test_environment_graph):
     history = History(base_environment=test_environment)
+    from trilogy.hooks import INFO, DebuggingHook
+
+    DebuggingHook(INFO)
     test_environment = test_environment.materialize_for_select()
     product = test_environment.concepts["product_id"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph

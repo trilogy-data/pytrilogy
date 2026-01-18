@@ -275,7 +275,8 @@ def test_fifty_five(engine):
 
 
 def test_ninety_five(engine):
-    _ = run_query(engine, 95)
+    query = run_query(engine, 95)
+    assert len(query) < 6000, query
 
 
 def test_ninety_seven(engine):
