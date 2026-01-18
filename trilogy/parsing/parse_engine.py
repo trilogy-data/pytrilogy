@@ -808,8 +808,12 @@ class ParseToObjects(Transformer):
             lookup, namespace, name, parent_concept = parse_concept_reference(
                 raw_name, self.environment, purpose
             )
-        # <abc.def,zef.gf>.property pattern
-            keys = [self.environment.concepts[parent_concept].address] if parent_concept else []
+            # <abc.def,zef.gf>.property pattern
+            keys = (
+                [self.environment.concepts[parent_concept].address]
+                if parent_concept
+                else []
+            )
         else:
             keys, name = raw_name
             keys = [x.address for x in keys]

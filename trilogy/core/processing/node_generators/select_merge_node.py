@@ -22,6 +22,7 @@ from trilogy.core.models.build import (
     CanonicalBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.node_generators.common import reinject_common_join_keys_v2
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
 )
@@ -311,22 +312,6 @@ def create_pruned_concept_graph(
         relevent_datasets, relevant_concepts, g_edges, g.datasources, depth, partial
     )
 
-    # for injecting extra join concepts that are shared between datasets
-    # use the original graph, pre-partial pruning
-    for n in orig_g.concepts:
-        # readd ignoring grain
-        # we want to join inclusive of all concepts
-        if n not in relevant_concepts:
-            n_neighbors = nx.all_neighbors(orig_g, n)
-            # check if the irrelevant concept is a join between
-            # two relevant datasets
-            neighbors = set()
-            for neighbor in n_neighbors:
-                if neighbor in relevent_datasets:
-                    neighbors.add(neighbor)
-                    if len(neighbors) > 1:
-                        relevant_concepts.append(n)
-                        continue
     g.remove_nodes_from(
         [
             n
@@ -355,6 +340,11 @@ def create_pruned_concept_graph(
         )
         return None
     # add back any relevant edges that might have been partially filtered
+    # Inject extra join concepts that are shared between datasets
+    synonyms: set[str] = set()
+    for c in all_concepts:
+        synonyms.update(c.pseudonyms)
+    reinject_common_join_keys_v2(orig_g, g, relevant_concepts, synonyms)
     relevant = set(relevant_concepts + relevent_datasets)
     for edge in orig_g.edges():
         if edge[0] in relevant and edge[1] in relevant:

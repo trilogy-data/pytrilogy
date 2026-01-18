@@ -90,6 +90,12 @@ def handle_cast(args, types):
     return f"cast({args[0]} as {args[1]})"
 
 
+def date_part(args, types):
+    if args[1] == "day_of_week":
+        return f"date_part('{map_date_part_specifier(args[1])}', {args[0]})+1"
+    return f"date_part('{map_date_part_specifier(args[1])}', {args[0]})"
+
+
 FUNCTION_MAP = {
     FunctionType.CAST: handle_cast,
     FunctionType.COUNT: lambda args, types: f"count({args[0]})",
@@ -124,12 +130,12 @@ FUNCTION_MAP = {
     FunctionType.DATE_TRUNCATE: lambda x, types: date_trunc(x, types),
     FunctionType.DATE_ADD: lambda x, types: f"date_add({x[0]}, {x[2]} * INTERVAL 1 {x[1]})",
     FunctionType.DATE_SUB: lambda x, types: f"date_add({x[0]}, -{x[2]} * INTERVAL 1 {x[1]})",
-    FunctionType.DATE_PART: lambda x, types: f"date_part('{map_date_part_specifier(x[1])}', {x[0]})",
+    FunctionType.DATE_PART: lambda x, types: date_part(x, types),
     FunctionType.DATE_DIFF: lambda x, types: f"date_diff('{x[2]}', {x[0]}, {x[1]})",
     FunctionType.CONCAT: lambda x, types: f"({' || '.join(x)})",
     FunctionType.DATE_LITERAL: lambda x, types: f"date '{x}'",
     FunctionType.DATETIME_LITERAL: lambda x, types: f"datetime '{x}'",
-    FunctionType.DAY_OF_WEEK: lambda x, types: f"dayofweek({x[0]})",
+    FunctionType.DAY_OF_WEEK: lambda x, types: f"dayofweek({x[0]})+1",
     # string
     FunctionType.CONTAINS: lambda x, types: f"CONTAINS(LOWER({x[0]}), LOWER({x[1]}))",
     # regexp

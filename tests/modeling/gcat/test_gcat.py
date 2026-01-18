@@ -897,6 +897,7 @@ LIMIT 10
 """
     )
     del gcat_env.environment.datasources["launch_info"]
+    # del gcat_env.environment.datasources['payload.launch.launch_info']
     query = gcat_env.generate_sql(queries[-1])
 
     assert "launch_info" not in query[0], query[0]

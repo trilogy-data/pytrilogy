@@ -8,6 +8,9 @@ import platform as platform;
 import vehicle as vehicle;
 import sites as site;
 import organization as org;
+import organization as state;
+
+merge org.state_code into state.code;
 
 property launch_tag.launch_jd float; # float of launch date on julian calendar
 # property <launch_tag>.launch_date string;
@@ -26,10 +29,10 @@ property launch_tag.range_flag string;
 property launch_tag.dest string;
 property launch_tag.orb_pay float; # payload in tonnes delivered to orbit
 key _launch_code string;
-property launch_tag.fail_code string;
-property launch_tag.category string;
-property launch_tag.lt_cite string;
-property launch_tag.cite string;
+property launch_tag.fail_code string; #The launch failure code. This field is reserved for future use. For failed launches, it will encode the nature of the failure. 
+property launch_tag.category string; # For non-orbital launches: Type of flight. Not necessarily a rigorous set of designations. For orbital launches: Launch profile code. This records what the target orbit type was, how many upper stages where left in orbit, and what kind of debris mitigation manuever was carried out for them, if any. The codes are explained in the launch profile code part of the definitions section. 
+property launch_tag.lt_cite string; #  this citation is the primary reference for the existence of the launch and for the given launch time. See the Refs file. "Wire" means that the time was taken from wire service stories, internet news sites or live launch broadcasts. I've been more careful with recording a specific source where the launch time was hard to find. 
+property launch_tag.cite string; # Additional citation of interest, for example reference for which launch pad was used, etc. 
 property launch_tag.notes string;
 property launch_tag.orgs string;
 property launch_tag._split_orgs <- split(orgs,'/');
@@ -47,11 +50,11 @@ property launch_tag.was_complete_success <- CASE
 	WHEN success_flag = 'S' THEN True
 	ELSE False
 END; #whether the mission was a complete sucess
-property launch_type_code <- CASE
+property launch_tag.launch_type_code <- CASE
 	WHEN (_launch_code is null or _launch_code = '') THEN null
 	ELSE substring(_launch_code,1,1)
-END; #O | M | T | A | S | D | H | R | X | Y - see launch_type_label for details
-property launch_type_label <- CASE
+END; # O - Orbital | M - Military Missile | T - Test Rocket | A - Atmospheric Rocket | S - Suborbital Rocket | D - Deep Space | H - High-altitude Sounding | R - Reentry Test | X - Launch from other world | Y - Suborbital Spaceplane
+property launch_tag.launch_type_label <- CASE
 	WHEN launch_type_code is null THEN null
 	WHEN launch_type_code = 'O' THEN 'Orbital'
 	WHEN launch_type_code = 'M' THEN 'Military Missile'
@@ -148,5 +151,5 @@ datasource launch_info (
     data_updated_through
     )
 grain (launch_tag)
-file `gcs://trilogy_public_models/duckdb/launch_report/launch.parquet`
+file `https://storage.googleapis.com/trilogy_public_models/duckdb/launch_report/launch.parquet`:`gcs://trilogy_public_models/duckdb/launch_report/launch.parquet`
 freshness by data_updated_through;
