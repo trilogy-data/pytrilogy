@@ -305,6 +305,8 @@ def test_string_functions(test_environment):
     property strpos_name <- strpos(category_name, 'a');
     property like_name <- like(category_name, 'a%');
     property like_alt <- category_name like 'a%';
+    property ilike_name <- ilike(category_name, 'A%');
+    property ilike_alt <- category_name ilike 'A%';
     property regex_contains <- regexp_contains(category_name, 'a');
     property regex_substring <- regexp_extract(category_name, 'a');
     property regex_replace <- regexp_replace(category_name, 'a', 'b');
@@ -318,6 +320,8 @@ def test_string_functions(test_environment):
         strpos_name,
         like_name,
         like_alt,
+        ilike_name,
+        ilike_alt,
         regex_contains,
         regex_substring,
         regex_replace,

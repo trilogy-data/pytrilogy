@@ -2136,6 +2136,10 @@ class ParseToObjects(Transformer):
                 new_result = self.function_factory.create_function(
                     [result, right], operator=FunctionType.LIKE, meta=meta
                 )
+            elif op == "ilike":
+                new_result = self.function_factory.create_function(
+                    [result, right], operator=FunctionType.ILIKE, meta=meta
+                )
             else:
                 raise ValueError(f"Unknown operator: {op}")
             result = new_result
