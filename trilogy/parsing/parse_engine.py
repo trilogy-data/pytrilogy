@@ -386,6 +386,7 @@ class ParseToObjects(Transformer):
         environment_lookup: dict[str, Environment] | None = None,
         import_keys: list[str] | None = None,
         parse_config: Parsing | None = None,
+        max_parse_depth: int = MAX_PARSE_DEPTH,
     ):
         Transformer.__init__(self, True)
         self.environment: Environment = environment
@@ -403,6 +404,8 @@ class ParseToObjects(Transformer):
         self.function_factory = FunctionFactory(self.environment)
         self.import_keys: list[str] = import_keys or ["root"]
         self.parse_config: Parsing = parse_config or CONFIG.parsing
+        self.max_parse_depth: int = max_parse_depth
+        self._pending_self_imports: list[str] = []
 
     def set_text(self, text: str):
         self.text_lookup[self.token_address] = text
@@ -418,15 +421,38 @@ class ParseToObjects(Transformer):
         for _, v in self.parsed.items():
             v.prepare_parse()
 
+    def _resolve_pending_self_imports(self):
+        """Resolve self-imports using existing import machinery."""
+        if not self._pending_self_imports:
+            return
+        pending = self._pending_self_imports
+        self._pending_self_imports = []
+        env_file_path = self.environment.env_file_path
+        if isinstance(env_file_path, str):
+            env_file_path = Path(env_file_path)
+
+        for alias in pending:
+            self.environment.add_import(
+                alias,
+                self.environment,
+                Import(
+                    alias=alias,
+                    path=env_file_path if env_file_path else Path("."),
+                    input_path=env_file_path,
+                ),
+            )
+
     def run_second_parse_pass(self, force: bool = False):
         if self.token_address not in self.tokens:
             return []
         self.parse_pass = ParsePass.VALIDATION
+
         for _, v in list(self.parsed.items()):
             if v.parse_pass == ParsePass.VALIDATION:
                 continue
             v.run_second_parse_pass()
         reparsed = self.transform(self.tokens[self.token_address])
+        self._resolve_pending_self_imports()
         self.environment.concepts.undefined = {}
         passed = False
         passes = 0
@@ -1433,7 +1459,6 @@ class ParseToObjects(Transformer):
         return "."
 
     def import_statement(self, args: list[str]) -> ImportStatement:
-        start = datetime.now()
         is_file_resolver = isinstance(
             self.environment.config.import_resolver, FileSystemImportResolver
         )
@@ -1453,8 +1478,6 @@ class ParseToObjects(Transformer):
             alias = self.environment.namespace
             cache_key = args[0]
         input_path = args[0]
-        # lstrip off '.' from parent if they exist;
-        # each one is an extra directory up after the first
 
         path = input_path.split(".")
         is_stdlib = False
@@ -1468,7 +1491,6 @@ class ParseToObjects(Transformer):
                 for _ in range(parent_dirs):
                     troot = troot.parent
             target = join(troot, *path) + ".preql"
-            # tokens + text are cached by path
             token_lookup = Path(target)
         elif isinstance(self.environment.config.import_resolver, DictImportResolver):
             target = ".".join(path)
@@ -1476,14 +1498,66 @@ class ParseToObjects(Transformer):
         else:
             raise NotImplementedError
 
-        # parser + env has to be cached by prior import path + current key
+        return self._process_import(
+            alias=alias,
+            input_path=input_path,
+            target=target,
+            token_lookup=token_lookup,
+            cache_key=cache_key,
+            is_stdlib=is_stdlib,
+        )
+
+    def self_import_statement(self, args: list[str]) -> ImportStatement:
+        alias = args[-1]
+        is_dict_resolver = isinstance(
+            self.environment.config.import_resolver, DictImportResolver
+        )
+
+        if is_dict_resolver:
+            # For DictImportResolver, self is at path '.'
+            input_path = "."
+            path = Path(".")
+        elif self.environment.env_file_path is not None:
+            env_file_path = self.environment.env_file_path
+            if isinstance(env_file_path, str):
+                env_file_path = Path(env_file_path)
+            input_path = str(env_file_path.stem)
+            path = env_file_path
+        else:
+            raise ImportError(
+                "Cannot use 'self import' without a file path context. "
+                "This typically means the environment was not loaded from a file."
+            )
+
+        # Defer self-import until after parsing is complete
+        self._pending_self_imports.append(alias)
+        return ImportStatement(
+            alias=alias,
+            input_path=input_path,
+            path=path,
+            is_self=True,
+        )
+
+    def _process_import(
+        self,
+        alias: str,
+        input_path: str,
+        target: str,
+        token_lookup: Path | str,
+        cache_key: str,
+        is_stdlib: bool = False,
+        is_self: bool = False,
+    ) -> ImportStatement:
+        start = datetime.now()
+        is_file_resolver = isinstance(
+            self.environment.config.import_resolver, FileSystemImportResolver
+        )
         key_path = self.import_keys + [cache_key]
         cache_lookup = "-".join(key_path)
 
-        # we don't iterate past the max parse depth
-        if len(key_path) > MAX_PARSE_DEPTH:
+        if len(key_path) > self.max_parse_depth:
             return ImportStatement(
-                alias=alias, input_path=input_path, path=Path(target)
+                alias=alias, input_path=input_path, path=Path(target), is_self=is_self
             )
 
         if token_lookup in self.tokens:
@@ -1508,7 +1582,6 @@ class ParseToObjects(Transformer):
             nparser = self.parsed[cache_lookup]
             new_env = nparser.environment
             if nparser.parse_pass != ParsePass.VALIDATION:
-                # nparser.transform(raw_tokens)
                 second_pass_start = datetime.now()
                 nparser.run_second_parse_pass()
                 second_pass_end = datetime.now()
@@ -1538,6 +1611,7 @@ class ParseToObjects(Transformer):
                     text_lookup=self.text_lookup,
                     import_keys=self.import_keys + [cache_key],
                     parse_config=self.parse_config,
+                    max_parse_depth=self.max_parse_depth,
                 )
                 nparser.transform(raw_tokens)
                 self.parsed[cache_lookup] = nparser
@@ -1546,8 +1620,10 @@ class ParseToObjects(Transformer):
                     f"Unable to import file {target}, parsing error: {e}"
                 ) from e
 
-        parsed_path = Path(args[0])
-        imps = ImportStatement(alias=alias, input_path=input_path, path=parsed_path)
+        parsed_path = Path(input_path)
+        imps = ImportStatement(
+            alias=alias, input_path=input_path, path=parsed_path, is_self=is_self
+        )
 
         self.environment.add_import(
             alias,

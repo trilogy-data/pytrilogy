@@ -457,6 +457,8 @@ class ImportStatement(HasUUID, BaseModel):
     input_path: str
     # what it actually resolves to, typically a filepath
     path: Path
+    # whether this is a self-import (self import as X)
+    is_self: bool = False
 
 
 class PersistStatement(HasUUID, BaseModel):

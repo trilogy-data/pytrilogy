@@ -1,0 +1,22 @@
+
+self import as parent;
+self import as child;
+
+key id int;
+property id.name string;
+
+
+datasource id_source (
+id,
+name,
+parent.id,
+child.id
+)
+grain (id)
+query '''
+select 1 as id, 'fun' as name, 0 as parent_id, 2 as child_id
+union all
+select 2 as id, 'times' as name, 1 as parent_id, null as child_id
+union all
+select 0 as id, 'greatest' as name, null as parent_id, 1 as child_id
+''';

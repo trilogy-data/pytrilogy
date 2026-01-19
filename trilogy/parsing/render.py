@@ -627,6 +627,8 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "ImportStatement"):
+        if arg.is_self:
+            return f"self import as {arg.alias};"
         path: str = str(arg.path).replace("\\", ".")
         path = path.replace("/", ".")
         if path.endswith(".preql"):
