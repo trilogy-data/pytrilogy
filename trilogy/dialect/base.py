@@ -292,6 +292,7 @@ FUNCTION_MAP = {
     FunctionType.BOOL_AND: lambda x, types: f"bool_and({x[0]})",
     # string types
     FunctionType.LIKE: lambda x, types: f" {x[0]} like {x[1]} ",
+    FunctionType.ILIKE: lambda x, types: f" {x[0]} ilike {x[1]} ",
     FunctionType.UPPER: lambda x, types: f"UPPER({x[0]}) ",
     FunctionType.LOWER: lambda x, types: f"LOWER({x[0]}) ",
     FunctionType.SUBSTRING: lambda x, types: f"SUBSTRING({x[0]},{x[1]},{x[2]})",

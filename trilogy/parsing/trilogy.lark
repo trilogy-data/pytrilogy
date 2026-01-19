@@ -270,7 +270,7 @@
     ?comparison_root: sum_chain (COMPARISON_OPERATOR sum_chain)? -> comparison
     ?between_root: sum_chain "between"i sum_chain "and"i sum_chain -> between_comparison
 
-    PLUS_OR_MINUS: ("+" | /-(?!>)/ | "||" | "like" ) 
+    PLUS_OR_MINUS: ("+" | /-(?!>)/ | "||" | "like"i | "ilike"i ) 
 
     ?sum_chain: product_chain (PLUS_OR_MINUS product_chain)* -> sum_operator
     
@@ -356,7 +356,6 @@
     like:  _LIKE expr "," string_lit ")"
     _ILIKE.1: "ilike("i
     ilike:   _ILIKE expr "," string_lit ")"
-    alt_like: expr  "like"i expr
     _UPPER.1: "upper("i
     upper: _UPPER expr ")"
     _LOWER.1: "lower("i
