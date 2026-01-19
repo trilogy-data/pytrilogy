@@ -636,7 +636,6 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
         int,
         str,
         float,
-        list,
         bool,
         datetime,
         date,
@@ -656,7 +655,6 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
         int,
         str,
         float,
-        list,
         bool,
         date,
         datetime,
@@ -670,6 +668,7 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
         MagicConstants,
         WindowItem,
         AggregateWrapper,
+        ListWrapper,
         TupleWrapper,
         FilterItem,
     ]

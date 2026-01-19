@@ -439,6 +439,7 @@ select
     assert half.granularity == Granularity.MULTI_ROW
     assert len(results) == 4
 
+
 def test_array_filtering():
     from trilogy.hooks.query_debugger import DebuggingHook
 
