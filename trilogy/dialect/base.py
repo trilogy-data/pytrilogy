@@ -849,7 +849,7 @@ class BaseDialect:
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
             elif isinstance(
                 right,
-                (ListWrapper, TupleWrapper, BuildParenthetical),
+                (ListWrapper, TupleWrapper, BuildParenthetical, list),
             ):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
 
