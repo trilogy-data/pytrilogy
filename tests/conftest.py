@@ -192,7 +192,10 @@ def test_environment():
         columns=[
             ColumnAssignment(alias="revenue", concept=revenue),
             ColumnAssignment(alias="order_id", concept=order_id),
-            ColumnAssignment(alias="product_id", concept=product_id),
+            ColumnAssignment(
+                alias="product_id",
+                concept=product_id,
+            ),
             ColumnAssignment(alias="order_timestamp", concept=order_timestamp),
         ],
         address="tblRevenue",

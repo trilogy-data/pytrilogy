@@ -1,3 +1,4 @@
+from enum import Enum
 from logging import Logger
 from typing import Union
 
@@ -11,9 +12,15 @@ from trilogy.core.models.build import (
 )
 
 
+class SearchCriteria(Enum):
+    FULL_ONLY = "full_only"
+    PARTIAL_UNSCOPED = "partial_unscoped"
+    PARTIAL_INCLUDING_SCOPED = "partial_scoped"
+
+
 def get_graph_exact_match(
     g: Union[nx.DiGraph, "ReferenceGraph"],
-    accept_partial: bool,
+    criteria: SearchCriteria,
     conditions: BuildWhereClause | None,
 ) -> set[str]:
     exact: set[str] = set()
@@ -21,11 +28,25 @@ def get_graph_exact_match(
         if isinstance(ds, BuildUnionDatasource):
             exact.add(node)
             continue
-
         if not conditions and not ds.non_partial_for:
             exact.add(node)
             continue
-        elif not conditions and accept_partial and ds.non_partial_for:
+        elif (
+            not conditions
+            and criteria == SearchCriteria.PARTIAL_INCLUDING_SCOPED
+            and ds.non_partial_for
+        ):
+            exact.add(node)
+            continue
+        elif (
+            not conditions
+            and criteria
+            in (
+                SearchCriteria.PARTIAL_UNSCOPED,
+                SearchCriteria.PARTIAL_INCLUDING_SCOPED,
+            )
+            and not ds.non_partial_for
+        ):
             exact.add(node)
             continue
         elif conditions:
@@ -42,10 +63,10 @@ def get_graph_exact_match(
 
 def prune_sources_for_conditions(
     g: "ReferenceGraph",
-    accept_partial: bool,
+    criteria: SearchCriteria,
     conditions: BuildWhereClause | None,
 ):
-    complete = get_graph_exact_match(g, accept_partial, conditions)
+    complete = get_graph_exact_match(g, criteria, conditions)
     to_remove = []
     for node in g.datasources:
         if node not in complete:

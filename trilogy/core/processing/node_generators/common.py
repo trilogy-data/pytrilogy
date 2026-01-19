@@ -1,13 +1,21 @@
 from collections import defaultdict
-from typing import Callable, List, Tuple
+from itertools import combinations
+from typing import Callable, Dict, Iterable, List, Set, Tuple
 
+import networkx as nx
+
+from trilogy.constants import logger
 from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.graph_models import ReferenceGraph, concept_to_node
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildComparison,
     BuildConcept,
+    BuildDatasource,
     BuildFilterItem,
     BuildFunction,
+    BuildGrain,
+    BuildUnionDatasource,
     BuildWhereClause,
     LooseBuildConceptList,
 )
@@ -268,3 +276,186 @@ def resolve_join_order(joins: List[NodeJoin]) -> List[NodeJoin]:
                 new_final_joins_pre.append(join)
         final_joins_pre = new_final_joins_pre
     return final_joins
+
+
+LOGGER_PREFIX = "[COMMON]"
+
+
+def prune_and_merge(
+    G: ReferenceGraph,
+    keep_node_lambda: Callable[[str], bool],
+) -> ReferenceGraph:
+    """Prune nodes of one type and create direct connections between remaining nodes."""
+    nodes_to_keep = [n for n in G.nodes if keep_node_lambda(n)]
+    new_graph = G.subgraph(nodes_to_keep).copy()
+    nodes_to_remove = [n for n in G.nodes() if n not in nodes_to_keep]
+
+    for node_pair in combinations(nodes_to_keep, 2):
+        n1, n2 = node_pair
+        try:
+            path = nx.shortest_path(G, n1, n2)
+            if len(path) > 2 or any(node in nodes_to_remove for node in path[1:-1]):
+                new_graph.add_edge(n1, n2)
+        except nx.NetworkXNoPath:
+            continue
+
+    return new_graph
+
+
+LOGGER_PREFIX = "[COMMON]"
+
+
+# -----------------------------
+# Small, testable helpers
+# -----------------------------
+
+
+def is_ds_node(n: str) -> bool:
+    return n.startswith("ds~")
+
+
+def build_ds_column_index(
+    datasource_lookup: Dict[str, BuildDatasource | BuildUnionDatasource],
+) -> Dict[str, Dict[str, BuildConcept]]:
+    """
+    ds -> { concept_address -> BuildConcept }
+    """
+    base = {
+        ds: {col.concept.address: col.concept for col in node.columns}
+        for ds, node in datasource_lookup.items()
+    }
+    return base
+
+
+def iter_unique_ds_pairs(
+    g: nx.Graph,
+) -> Iterable[Tuple[str, str]]:
+    """
+    Yield each unordered datasource pair once.
+    """
+    seen = set()
+    for ds in g.nodes:
+        for nbr in g.neighbors(ds):
+            pair = tuple(sorted((ds, nbr)))
+            if pair in seen:
+                continue
+            seen.add(pair)
+            yield pair
+
+
+def get_concept_node_cached(cache: Dict[str, str], concept: BuildConcept):
+    """
+    Memoized concept -> graph node resolution.
+    """
+    addr = concept.address
+    if addr not in cache:
+        cache[addr] = concept_to_node(concept.with_default_grain())
+    return cache[addr]
+
+
+def existing_join_addresses(
+    final: ReferenceGraph,
+    concepts: Iterable[BuildConcept],
+    get_node,
+) -> Set[str]:
+    """
+    Return addresses already present in the final graph.
+    """
+    existing = set()
+    for c in concepts:
+        if get_node(c) in final.nodes:
+            existing.add(c.address)
+    return existing
+
+
+def injectable_concepts(
+    common: dict[str, BuildConcept],
+    reduced: set[str],
+    existing: set[str],
+    synonyms: dict[str, str],
+    add_joins: bool,
+) -> Iterable[BuildConcept]:
+    """
+    Yield concepts eligible for reinjection.
+    """
+    for addr, concept in common.items():
+        if addr in synonyms:
+            continue
+        if addr not in reduced:
+            continue
+        if addr in existing and not add_joins:
+            continue
+        if any(p in existing for p in concept.pseudonyms):
+            continue
+        yield concept
+
+
+# -----------------------------
+# Main function
+# -----------------------------
+
+
+def reinject_common_join_keys_v2(
+    base_graph: ReferenceGraph,
+    final: ReferenceGraph,
+    synonyms: dict[str, str],
+    add_joins: bool = False,
+) -> bool:
+    """
+    Reinjection of inferred join keys between datasource nodes.
+    """
+    datasource_lookup = {**base_graph.datasources, **final.datasources}
+
+    ds_graph = prune_and_merge(final, is_ds_node)
+    if not ds_graph.nodes:
+        return False
+
+    # Precompute once
+    ds_columns = build_ds_column_index(datasource_lookup)
+    concept_node_cache: Dict[str, str] = {}
+
+    injected = False
+
+    for ds1, ds2 in iter_unique_ds_pairs(ds_graph):
+        if ds1 not in ds_columns or ds2 not in ds_columns:
+            continue
+
+        cols1 = ds_columns[ds1]
+        cols2 = ds_columns[ds2]
+
+        common_addrs = cols1.keys() & cols2.keys()
+        if not common_addrs:
+            continue
+
+        common_concepts = {addr: cols1[addr] for addr in common_addrs}
+
+        reduced = set(BuildGrain.from_concepts(common_concepts.values()).components)
+
+        get_node = lambda c: get_concept_node_cached(concept_node_cache, c)  # noqa E731
+
+        existing = existing_join_addresses(
+            final,
+            common_concepts.values(),
+            get_node,
+        )
+
+        for concept in injectable_concepts(
+            common_concepts,
+            reduced,
+            existing,
+            synonyms,
+            add_joins,
+        ):
+            cnode = get_node(concept)
+            final.add_edge(ds1, cnode)
+            final.add_edge(ds2, cnode)
+
+            logger.info(
+                f"{LOGGER_PREFIX} reinjecting common join key {cnode} "
+                f"between {ds1} and {ds2}, existing {existing}"
+            )
+
+            existing.add(concept.address)
+            injected = True
+
+    return injected

@@ -87,4 +87,4 @@ SELECT
     results = test_executor.execute_text(test_select)[0].fetchall()
 
     # different when we group via order
-    assert len(results) == 5
+    assert len(results) == 3
