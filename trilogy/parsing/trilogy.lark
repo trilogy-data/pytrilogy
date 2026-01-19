@@ -9,6 +9,7 @@
     | persist_statement
     | rowset_derivation_statement
     | import_statement
+    | self_import_statement
     | copy_statement
     | merge_statement
     | rawsql_statement
@@ -83,8 +84,10 @@
     column_list : (IDENTIFIER "," )* IDENTIFIER ","?
 
     IMPORT_DOT: "."
-    
+    SELF_IMPORT: "self"i
+
     import_statement: "import" IMPORT_DOT* IDENTIFIER ("."  IDENTIFIER)* ("as" IDENTIFIER)?
+    self_import_statement: SELF_IMPORT "import" "as" IDENTIFIER
 
     // persist_statement
     PERSIST_MODE: "append"i | "overwrite"i | "persist"i

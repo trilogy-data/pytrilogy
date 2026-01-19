@@ -2060,20 +2060,22 @@ class Factory:
         )
 
     @build.register
-    def _(self, base: ColumnAssignment) -> BuildColumnAssignment:
+    def _(self, base: ColumnAssignment) -> BuildColumnAssignment | None:
         return self._build_column_assignment(base)
 
-    def _build_column_assignment(self, base: ColumnAssignment) -> BuildColumnAssignment:
+    def _build_column_assignment(
+        self, base: ColumnAssignment
+    ) -> BuildColumnAssignment | None:
         address = base.concept.address
-        fetched = (
-            self._build_concept(
-                self.environment.alias_origin_lookup[address]
-            ).with_grain(self.build_grain)
-            if address in self.environment.alias_origin_lookup
-            else self._build_concept(self.environment.concepts[address]).with_grain(
-                self.build_grain
-            )
-        )
+        concept: Concept | None
+        if address in self.environment.alias_origin_lookup:
+            concept = self.environment.alias_origin_lookup[address]
+        else:
+            concept = self.environment.concepts.get(address)
+        # Skip columns referencing undefined concepts (e.g., at max import depth)
+        if concept is None:
+            return None
+        fetched = self._build_concept(concept).with_grain(self.build_grain)
 
         return BuildColumnAssignment(
             alias=(
@@ -2571,9 +2573,15 @@ class Factory:
                 self.build_cache if CONFIG.generation.datasource_build_cache else None
             ),
         )
+        # Filter out columns with undefined concepts (e.g., at max import depth)
+        columns = [
+            col
+            for c in base.columns
+            if (col := factory._build_column_assignment(c)) is not None
+        ]
         return BuildDatasource(
             name=base.name,
-            columns=[factory._build_column_assignment(c) for c in base.columns],
+            columns=columns,
             address=base.address,
             grain=factory._build_grain(base.grain),
             namespace=base.namespace,

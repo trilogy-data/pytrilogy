@@ -448,12 +448,13 @@ class Environment(BaseModel):
             # set this explicitly, to handle aliasing
             self.concepts[k] = new
 
-        for _, datasource in source.datasources.items():
+        # Copy to list to avoid mutation issues during self-import
+        for _, datasource in list(source.datasources.items()):
             if same_namespace:
                 self.add_datasource(datasource)
             else:
                 self.add_datasource(datasource.with_namespace(alias))
-        for key, val in source.alias_origin_lookup.items():
+        for key, val in list(source.alias_origin_lookup.items()):
 
             if same_namespace:
                 self.alias_origin_lookup[key] = val
@@ -462,14 +463,14 @@ class Environment(BaseModel):
                     val.with_namespace(alias)
                 )
 
-        for key, function in source.functions.items():
+        for key, function in list(source.functions.items()):
             if same_namespace:
                 self.functions[key] = function
             else:
                 self.functions[address_with_namespace(key, alias)] = (
                     function.with_namespace(alias)
                 )
-        for key, type in source.data_types.items():
+        for key, type in list(source.data_types.items()):
             if same_namespace:
                 self.data_types[key] = type
             else:
