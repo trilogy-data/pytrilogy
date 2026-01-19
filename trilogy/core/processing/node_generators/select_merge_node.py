@@ -776,7 +776,6 @@ def gen_select_merge_node(
                 f"{padding(depth)}{LOGGER_PREFIX} found covering graph w/ partial flag {attempt}"
             )
             continue
-
         sub_nodes = resolve_subgraphs(
             pruned_concept_graph,
             relevant=non_constant,
@@ -784,6 +783,7 @@ def gen_select_merge_node(
             conditions=conditions,
             depth=depth,
         )
+        break
     if not pruned_concept_graph:
         logger.info(f"{padding(depth)}{LOGGER_PREFIX} no covering graph found.")
         return None

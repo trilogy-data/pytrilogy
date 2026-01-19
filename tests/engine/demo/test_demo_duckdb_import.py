@@ -133,7 +133,7 @@ merge x2 into x;
     target_concepts = [test_env.concepts[c] for c in ["x", "y"]]
     nodelist = [concept_to_node(c) for c in target_concepts]
     final = g.subgraph(nodelist).copy()
-    reinjection = reinject_common_join_keys_v2(g, final)
+    reinjection = reinject_common_join_keys_v2(g, final, {})
     assert not reinjection, "We should not inject synonyms"
 
 

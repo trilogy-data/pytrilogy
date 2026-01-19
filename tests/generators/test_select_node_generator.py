@@ -4,6 +4,7 @@ from trilogy.core.models.build import BuildComparison, BuildWhereClause, Factory
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators import gen_select_node
 from trilogy.core.processing.node_generators.select_merge_node import (
+    SearchCriteria,
     get_graph_partial_nodes,
     resolve_subgraphs,
 )
@@ -141,7 +142,7 @@ address blended;
             build_env.concepts[x]
             for x in ["order_id", "customer_id", "customer_name", "revenue"]
         ],
-        accept_partial=False,
+        criteria=SearchCriteria.FULL_ONLY,
     )
     # we shoud resolve only the highest level source
     assert len(gnode) == 1
@@ -203,7 +204,7 @@ address blended;
             env.concepts[x]
             for x in ["order_id", "customer_id", "customer_name", "revenue"]
         ],
-        accept_partial=False,
+        criteria=SearchCriteria.FULL_ONLY,
     )
     # we shoud resolve only the highest level source
     assert len(gnode) == 1
