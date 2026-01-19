@@ -440,6 +440,30 @@ select
     assert len(results) == 4
 
 
+def test_array_filtering():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+    engine = Dialects.DUCK_DB.default_executor()
+    test = """
+key id int;
+
+datasource numbers (
+    id
+)
+grain (id)
+query '''
+select 1 as id union all select 2 union all select 3 union all select 4 union all select 5 union all select 6
+'''
+;
+where id in [1,2,3]
+select id
+;
+    """
+    results = engine.execute_text(test)[0].fetchall()
+    assert len(results) == 3
+
+
 def test_array_inclusion(default_duckdb_engine: Executor):
     from trilogy.hooks.query_debugger import DebuggingHook
 
