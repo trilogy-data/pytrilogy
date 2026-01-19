@@ -8,6 +8,7 @@ from trilogy.core.enums import Derivation, FunctionType
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
 from trilogy.core.graph_models import (
     ReferenceGraph,
+    SearchCriteria,
     concept_to_node,
     prune_sources_for_conditions,
 )
@@ -105,7 +106,7 @@ def determine_induced_minimal_nodes(
     environment: BuildEnvironment,
     filter_downstream: bool,
     accept_partial: bool = False,
-    synonyms: set[str] = set(),
+    synonyms: dict[str, str] = {},
 ) -> nx.DiGraph | None:
     H: nx.Graph = nx.to_undirected(G).copy()
     nodelist_set = set(nodelist)
@@ -295,7 +296,13 @@ def resolve_weak_components(
     found = []
     search_graph = environment_graph.copy()
     prune_sources_for_conditions(
-        search_graph, accept_partial, conditions=search_conditions
+        search_graph,
+        (
+            SearchCriteria.PARTIAL_INCLUDING_SCOPED
+            if accept_partial
+            else SearchCriteria.FULL_ONLY
+        ),
+        conditions=search_conditions,
     )
     reduced_concept_sets: list[set[str]] = []
 
@@ -307,9 +314,10 @@ def resolve_weak_components(
             if "__preql_internal" not in c.address
         ]
     )
-    synonyms: set[str] = set()
-    for x in all_concepts:
-        synonyms.update(x.pseudonyms)
+    synonyms: dict[str, str] = {}
+    for c in all_concepts:
+        for x in c.pseudonyms:
+            synonyms[x] = c.address
     # from trilogy.hooks.graph_hook import GraphHook
     # GraphHook().query_graph_built(search_graph, highlight_nodes=[concept_to_node(c.with_default_grain()) for c in all_concepts if "__preql_internal" not in c.address])
 

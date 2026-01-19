@@ -127,6 +127,10 @@ def test_merge_comparison(engine):
     x = """
 import store_sales as store_sales;
 import web_sales as web_sales;
+
+
+
+
     SELECT
     store_sales.date.year,
     count(store_sales.ticket_number) as store_order_count
@@ -150,8 +154,23 @@ ORDER BY
 import store_sales as store_sales;
 import web_sales as web_sales;
 import date as date; 
+
 MERGE store_sales.date.* into ~date.*;
 MERGE web_sales.date.* into ~date.*;
+
+datasource filtered_cache (
+    store_sales_date_month_of_year: ~store_sales.date.month_of_year,
+    store_sales_date_year: ~store_sales.date.year,
+    store_sales_ext_sales_price: ~store_sales.ext_sales_price,
+    store_sales_item_brand_id: ~store_sales.item.brand_id,
+    store_sales_item_brand_name: ~store_sales.item.brand_name,
+    store_sales_item_id: ~store_sales.item.id,
+    store_sales_item_manufacturer_id: ~store_sales.item.manufacturer_id,
+    store_sales_ticket_number: ~store_sales.ticket_number
+)
+complete where store_sales.date.month_of_year = 11 and store_sales.item.manufacturer_id = 128
+address filtered_cache;
+
 
 SELECT
     date.year,

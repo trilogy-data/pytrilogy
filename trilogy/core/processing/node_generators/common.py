@@ -320,10 +320,11 @@ def build_ds_column_index(
     """
     ds -> { concept_address -> BuildConcept }
     """
-    return {
+    base = {
         ds: {col.concept.address: col.concept for col in node.columns}
         for ds, node in datasource_lookup.items()
     }
+    return base
 
 
 def iter_unique_ds_pairs(
@@ -368,10 +369,10 @@ def existing_join_addresses(
 
 
 def injectable_concepts(
-    common: Dict[str, BuildConcept],
-    reduced: Set[str],
-    existing: Set[str],
-    synonyms: Set[str],
+    common: dict[str, BuildConcept],
+    reduced: set[str],
+    existing: set[str],
+    synonyms: dict[str, str],
     add_joins: bool,
 ) -> Iterable[BuildConcept]:
     """
@@ -397,12 +398,11 @@ def injectable_concepts(
 def reinject_common_join_keys_v2(
     base_graph: ReferenceGraph,
     final: ReferenceGraph,
-    synonyms: Set[str] = set(),
+    synonyms: dict[str, str],
     add_joins: bool = False,
 ) -> bool:
     """
     Reinjection of inferred join keys between datasource nodes.
-    Optimized for hot-path execution.
     """
     datasource_lookup = {**base_graph.datasources, **final.datasources}
 

@@ -7,6 +7,7 @@ from trilogy.constants import logger
 from trilogy.core.enums import AddressType, Derivation
 from trilogy.core.graph_models import (
     ReferenceGraph,
+    SearchCriteria,
     concept_to_node,
     get_graph_exact_match,
     prune_sources_for_aggregates,
@@ -256,7 +257,7 @@ def create_pruned_concept_graph(
     g: ReferenceGraph,
     all_concepts: List[BuildConcept],
     datasources: list[BuildDatasource],
-    accept_partial: bool = False,
+    criteria: SearchCriteria,
     conditions: BuildWhereClause | None = None,
     depth: int = 0,
 ) -> nx.DiGraph:
@@ -278,7 +279,7 @@ def create_pruned_concept_graph(
             cnode = concept_to_node(c)
             g.add_edge(node_address, cnode)
             g.add_edge(cnode, node_address)
-    prune_sources_for_conditions(g, accept_partial, conditions)
+    prune_sources_for_conditions(g, criteria, conditions)
     prune_sources_for_aggregates(g, all_concepts, logger)
     target_addresses = set([c.canonical_address for c in all_concepts])
     concepts: dict[str, BuildConcept] = orig_g.concepts
@@ -295,7 +296,7 @@ def create_pruned_concept_graph(
     relevant_concepts: list[str] = list(relevant_concepts_pre.keys())
     relevent_datasets: list[str] = []
     partial = get_graph_partial_nodes(g, conditions)
-    if not accept_partial:
+    if criteria == SearchCriteria.FULL_ONLY:
         to_remove = []
         for edge in g.edges:
             if (
@@ -332,15 +333,18 @@ def create_pruned_concept_graph(
             if n not in relevent_datasets and n not in relevant_concepts
         ]
     )
-    # from trilogy.hooks.graph_hook import GraphHook
-    # GraphHook().query_graph_built(g)
+    synonyms: dict[str, str] = {}
+    for c in all_concepts:
+        for xc in c.pseudonyms:
+            synonyms[xc] = c.address
+    reinject_common_join_keys_v2(orig_g, g, synonyms, add_joins=True)
+
     subgraphs = list(nx.connected_components(g.to_undirected()))
     subgraphs = [
         s
         for s in subgraphs
         if subgraph_is_complete(s, target_addresses, relevant_concepts_pre, g)
     ]
-
     if not subgraphs:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} cannot resolve root graph - no subgraphs after node prune"
@@ -354,10 +358,7 @@ def create_pruned_concept_graph(
         return None
     # add back any relevant edges that might have been partially filtered
     # Inject extra join concepts that are shared between datasets
-    synonyms: set[str] = set()
-    for c in all_concepts:
-        synonyms.update(c.pseudonyms)
-    reinject_common_join_keys_v2(orig_g, g, synonyms, add_joins=True)
+
     relevant = set(relevant_concepts + relevent_datasets)
     for edge in orig_g.edges():
         if edge[0] in relevant and edge[1] in relevant:
@@ -370,72 +371,6 @@ def create_pruned_concept_graph(
         return None
 
     return g
-
-
-# def deduplicate_nodes(subgraph: nx.DiGraph, nodes: list[str], partial_map: dict[str, list[str]], depth: int) -> list[str]:
-#     """
-#     Remove duplicate datasource nodes that are connected to the same concepts
-#     and have the same partial state, keeping the one with the most unique concepts.
-
-#     Args:
-#         subgraph: NetworkX DiGraph containing the nodes and edges
-#         nodes: List of node names to deduplicate
-#         partial_map: Map of datasource to partial nodes
-
-#     Returns:
-#         List of deduplicated node names
-#     """
-#     # Filter for datasource nodes only
-#     ds_nodes = [node for node in nodes if node.startswith("ds~")]
-#     non_ds_nodes = [node for node in nodes if not node.startswith("ds~")]
-
-#     if len(ds_nodes) <= 1:
-#         return nodes  # No deduplication needed
-
-#     # Build a map of each datasource to its connected concepts and partial state
-#     ds_info = {}
-
-#     for ds_node in ds_nodes:
-#         # Get connected concept nodes (nodes starting with "c~")
-#         connected_concepts = set()
-#         for neighbor in subgraph.neighbors(ds_node):
-#             if neighbor.startswith("c~"):
-#                 connected_concepts.add(neighbor)
-
-#         # Get partial state for this datasource
-#         partial_state = tuple(sorted(partial_map.get(ds_node, [])))
-
-#         ds_info[ds_node] = {
-#             'concepts': connected_concepts,
-#             'partial_state': partial_state
-#         }
-
-#     # Find datasources to remove (those that are subsets of others)
-#     nodes_to_remove = set()
-#     logger.info('LOOK HERE')
-#     logger.info(ds_info)
-#     for ds_a, info_a in ds_info.items():
-#         for ds_b, info_b in ds_info.items():
-#             if ds_a != ds_b and ds_a not in nodes_to_remove:
-#                 # Check if ds_a is a subset of ds_b (same partial state and concepts are subset)
-#                 if (info_a['partial_state'] == info_b['partial_state'] and
-#                     info_a['concepts'].issubset(info_b['concepts']) and
-#                     len(info_a['concepts']) < len(info_b['concepts'])):
-#                     # ds_a connects to fewer concepts than ds_b, so remove ds_a
-#                     nodes_to_remove.add(ds_a)
-#                 elif (info_a['partial_state'] == info_b['partial_state'] and
-#                       info_a['concepts'] == info_b['concepts']):
-#                     # Exact same concepts and partial state - keep one arbitrarily
-#                     # (keep the lexicographically smaller one for consistency)
-#                     if ds_a > ds_b:
-#                         nodes_to_remove.add(ds_a)
-
-#     # Keep datasource nodes that weren't marked for removal
-#     logger.info(f"{padding(depth)}{LOGGER_PREFIX} Removing duplicate datasource nodes: {nodes_to_remove}")
-#     deduplicated_ds_nodes = [ds for ds in ds_nodes if ds not in nodes_to_remove]
-
-#     # Return deduplicated datasource nodes plus all non-datasource nodes
-#     return deduplicated_ds_nodes + non_ds_nodes
 
 
 def filter_pseudonym_duplicates(
@@ -461,7 +396,7 @@ def filter_pseudonym_duplicates(
 def resolve_subgraphs(
     g: ReferenceGraph,
     relevant: list[BuildConcept],
-    accept_partial: bool,
+    criteria: SearchCriteria,
     conditions: BuildWhereClause | None,
     depth: int = 0,
 ) -> dict[str, list[str]]:
@@ -491,7 +426,7 @@ def resolve_subgraphs(
             n for n in subgraphs[ds] if n not in concepts or n in filtered_nodes
         ]
     partial_canonical = get_graph_partial_canonical(g, conditions)
-    exact_map = get_graph_exact_match(g, accept_partial, conditions)
+    exact_map = get_graph_exact_match(g, criteria, conditions)
     grain_length = get_graph_grains(g)
     non_partial_map = {
         ds: set(
@@ -819,11 +754,10 @@ def gen_select_merge_node(
             force_group=False,
             conditions=conditions.conditional if conditions else None,
         )
-    attempts = [
-        False,
-    ]
+    attempts = [SearchCriteria.FULL_ONLY]
     if accept_partial:
-        attempts.append(True)
+        attempts.append(SearchCriteria.PARTIAL_UNSCOPED)
+        attempts.append(SearchCriteria.PARTIAL_INCLUDING_SCOPED)
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} searching for root source graph for concepts {[c.address for c in all_concepts]} and conditions {conditions}"
     )
@@ -832,29 +766,27 @@ def gen_select_merge_node(
         pruned_concept_graph = create_pruned_concept_graph(
             g,
             non_constant,
-            accept_partial=attempt,
+            criteria=attempt,
             conditions=conditions,
             datasources=list([x for x in environment.datasources.values()]),
             depth=depth,
         )
-        if pruned_concept_graph:
+        if not pruned_concept_graph:
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} found covering graph w/ partial flag {attempt}"
             )
-            break
+            continue
 
+        sub_nodes = resolve_subgraphs(
+            pruned_concept_graph,
+            relevant=non_constant,
+            criteria=attempt,
+            conditions=conditions,
+            depth=depth,
+        )
     if not pruned_concept_graph:
         logger.info(f"{padding(depth)}{LOGGER_PREFIX} no covering graph found.")
         return None
-
-    sub_nodes = resolve_subgraphs(
-        pruned_concept_graph,
-        relevant=non_constant,
-        accept_partial=accept_partial,
-        conditions=conditions,
-        depth=depth,
-    )
-
     logger.info(f"{padding(depth)}{LOGGER_PREFIX} fetching subgraphs {sub_nodes}")
 
     parents = [
