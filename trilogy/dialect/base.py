@@ -514,6 +514,9 @@ class BaseDialect:
         order_item: BuildOrderItem,
         cte: CTE | UnionCTE,
     ) -> str:
+        # check if it's in our output select projection
+        # and we can just reference by there directly and save
+        # on re-expression (smaller output query)
         if (
             isinstance(order_item.expr, BuildConcept)
             and order_item.expr.address in cte.output_columns
@@ -524,9 +527,6 @@ class BaseDialect:
                 # if it is sourced from somewhere, we need to reference the alias directly
                 return f"{self.render_expr(order_item.expr, cte=cte, )} {order_item.order.value}"
             # otherwise we've derived it, safe to use alias
-            logger.info(
-                f"Using derived alias for {order_item.expr.address} with {cte.source_map}"
-            )
             return f"{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
         return (
             f"{self.render_expr(order_item.expr, cte=cte, )} {order_item.order.value}"
