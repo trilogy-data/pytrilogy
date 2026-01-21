@@ -19,7 +19,7 @@ def format_file(file_path: str) -> tuple[str, int, bool, str | None]:
             script = f.read()
         _, queries = parse(script)
         r = Renderer()
-        with open(file_path, "w") as f:
+        with open(file_path, "w", newline="\n") as f:
             f.write("\n".join([r.to_string(x) for x in queries]))
         return (file_path, len(queries), True, None)
     except Exception as e:
