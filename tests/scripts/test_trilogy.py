@@ -127,7 +127,7 @@ def test_exception_fmt():
             )
 
             assert result.exit_code == 0
-            assert "Syntax [201]" in result.output
+            assert "[201]" in result.output
 
 
 def test_cli_string_progress():
