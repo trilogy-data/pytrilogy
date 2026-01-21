@@ -48,3 +48,30 @@ select
         )
     assert "AS " in str(e.value)
     assert "\\n" not in e.value.args[0]
+
+
+def test_hidden_field():
+    """Make sure hidden fields are not included in select * expansions"""
+    DebuggingHook()
+    x = Environment(working_path=Path(__file__).parent)
+
+    x = Dialects.DUCK_DB.default_executor(environment=x)
+
+    sql = x.generate_sql(
+        """import flight;
+        import flight as flight;
+
+where flight.carrier.name = 'Delta Air Lines'
+select
+    flight.origin.code,
+    flight.destination.latitude,
+    flight.destination.longitude,
+    flight.destination.code,
+    flight.total_distance,
+    --flight.count as flight_count,
+    avg(flight.aircraft.aircraft_model.seats) as avg_plane_size
+order by flight_count desc
+limit 100;
+    """
+    )[-1]
+    assert '"vacuous"."flight_count" desc' in sql, sql

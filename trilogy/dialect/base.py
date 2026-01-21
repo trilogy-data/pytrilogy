@@ -514,9 +514,13 @@ class BaseDialect:
         order_item: BuildOrderItem,
         cte: CTE | UnionCTE,
     ) -> str:
+        # check if it's in our output select projection
+        # and we can just reference by there directly and save
+        # on re-expression (smaller output query)
         if (
             isinstance(order_item.expr, BuildConcept)
             and order_item.expr.address in cte.output_columns
+            and order_item.expr.address not in cte.hidden_concepts
             and self.ALIAS_ORDER_REFERENCING_ALLOWED
         ):
             if cte.source_map.get(order_item.expr.address, []):
