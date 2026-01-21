@@ -6,7 +6,7 @@ duckdb-engine
 mypy
 ruff
 black
-pandas
+pandas<3.0.0
 types-tabulate
 sqlalchemy-bigquery
 snowflake-sqlalchemy

@@ -81,6 +81,10 @@ class Dialects(Enum):
         elif self == Dialects.SNOWFLAKE:
             from trilogy.dialect.config import SnowflakeConfig
 
+            if not conf:
+                raise ValueError(
+                    "SnowflakeConfig must be provided for Snowflake dialect"
+                )
             return _engine_factory(conf, SnowflakeConfig)
         elif self == Dialects.POSTGRES:
             logger.warn(
@@ -99,10 +103,14 @@ class Dialects(Enum):
         elif self == Dialects.PRESTO:
             from trilogy.dialect.config import PrestoConfig
 
+            if not conf:
+                raise ValueError("Presto Config must be provided for Presto dialect")
             return _engine_factory(conf, PrestoConfig)
         elif self == Dialects.TRINO:
             from trilogy.dialect.config import TrinoConfig
 
+            if not conf:
+                raise ValueError("Trino Config must be provided for Trino dialect")
             return _engine_factory(conf, TrinoConfig)
         elif self == Dialects.DATAFRAME:
             from trilogy.dialect.config import DataFrameConfig

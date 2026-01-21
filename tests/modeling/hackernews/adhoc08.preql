@@ -14,7 +14,6 @@ SELECT
         descendants,
         ranking,
         deleted,
-        parent,
         direct_parent.id LIMIT 0;
 
 SELECT

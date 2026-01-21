@@ -98,7 +98,7 @@ address num1;
         """
                select
                one,
-               env2.one;"""
+               one as two;"""
     )
     queries = bd.generate_queries(environment=env1, statements=queries)
     for query in queries:
@@ -106,7 +106,7 @@ address num1;
         assert query_to_lines(compiled) == query_to_lines(
             """SELECT
              	`env2_num1`.`one` as `env2_one`,
-             	`env2_num1`.`one` as `env2_one`
+             	`env2_num1`.`one` as `two`
              FROM
              	`num1` as `env2_num1`"""
         ), compiled
