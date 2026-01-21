@@ -149,7 +149,7 @@ def test_duplicate_error():
     """
     with raises(InvalidSyntaxException) as e:
         env.parse(TEXT2)
-    assert "Duplicate select output for fun" in str(e.value), e.value
+    assert "Duplicate select output for local.fun" in str(e.value), e.value
 
     TEXT2 = """
     const a <- 1;
@@ -161,4 +161,4 @@ def test_duplicate_error():
     """
     with raises(InvalidSyntaxException) as e:
         env.parse(TEXT2)
-    assert "Duplicate select output for fun" in str(e.value), e.value
+    assert "Duplicate select output for local.fun" in str(e.value), e.value
