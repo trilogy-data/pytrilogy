@@ -162,7 +162,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         )
 
         output.grain = output.calculate_grain(environment, output.local_concepts)
-
+        output_addresses = set()
         for x in selection:
             if x.is_undefined and environment.concepts.fail_on_missing:
                 environment.concepts.raise_undefined(
@@ -185,11 +185,20 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                 )
                 # we might not need this
                 output.local_concepts[x.content.output.address] = x.content.output
-
+                if x.content.output.address in output_addresses:
+                    raise SyntaxError(
+                        f"Duplicate select output for {x.content.output.address}; Line: {meta.line_number if meta else 'unknown'}"
+                    )
+                output_addresses.add(x.content.output.address)
             elif isinstance(x.content, ConceptRef):
                 output.local_concepts[x.content.address] = environment.concepts[
                     x.content.address
                 ]
+                if x.content.address in output_addresses:
+                    raise SyntaxError(
+                        f"Duplicate select output for {x.content.address}; Line: {meta.line_number if meta else 'unknown'}"
+                    )
+                output_addresses.add(x.content.address)
         output.grain = output.calculate_grain(environment, output.local_concepts)
         output.validate_syntax(environment)
         return output

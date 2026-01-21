@@ -1039,31 +1039,30 @@ class BaseDialect:
         return f"CASE {switch_expr}\n\t{clauses}\n\tEND"
 
     def render_cte_group_by(
-        self, cte: CTE | UnionCTE, select_columns
+        self, cte: CTE | UnionCTE, select_index: dict[str, int]
     ) -> Optional[list[str]]:
 
         if not cte.group_to_grain:
             return None
-        base = set(
-            [self.render_concept_sql(c, cte, alias=False) for c in cte.group_concepts]
-        )
+
         if self.GROUP_MODE == GroupMode.AUTO:
+            base = set(
+                [
+                    self.render_concept_sql(c, cte, alias=False)
+                    for c in cte.group_concepts
+                ]
+            )
             return sorted(list(base))
 
         else:
-            # find the index of each column in the select columns
-            final = []
-            found = []
-            for idx, c in enumerate(select_columns):
-                pre_alias = c.split(" as ")[0]
-                if pre_alias in base:
-                    final.append(str(idx + 1))
-                    found.append(pre_alias)
-            if not all(c in found for c in base):
-                raise ValueError(
-                    f"Group by columns {base} not found in select columns {select_columns}"
+            return [
+                str(
+                    select_index.get(
+                        c.address, self.render_concept_sql(c, cte, alias=False)
+                    )
                 )
-            return final
+                for c in cte.group_concepts
+            ]
 
     def safe_quote(self, name: str) -> str:
         return safe_quote(name, self.QUOTE_CHARACTER)
@@ -1097,36 +1096,46 @@ class BaseDialect:
         ):
             # for a cross apply, derivation happens in the join
             # so we only use the alias to select
-            select_columns = [
-                self.render_concept_sql(c, cte)
-                for c in cte.output_columns
-                if c.address not in [y.address for y in cte.join_derived_concepts]
-                and c.address not in cte.hidden_concepts
-            ] + [
-                f"{self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
-                for c in cte.join_derived_concepts
-                if c.address not in cte.hidden_concepts
-            ]
+            select_columns = {
+                **{
+                    c.address: self.render_concept_sql(c, cte)
+                    for c in cte.output_columns
+                    if c.address not in [y.address for y in cte.join_derived_concepts]
+                    and c.address not in cte.hidden_concepts
+                },
+                **{
+                    c.address: f"{self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
+                    for c in cte.join_derived_concepts
+                    if c.address not in cte.hidden_concepts
+                },
+            }
         elif self.UNNEST_MODE in (UnnestMode.CROSS_JOIN_UNNEST, UnnestMode.PRESTO):
-            select_columns = [
-                self.render_concept_sql(c, cte)
-                for c in cte.output_columns
-                if c.address not in [y.address for y in cte.join_derived_concepts]
-                and c.address not in cte.hidden_concepts
-            ] + [
-                f"{UNNEST_NAME} as {self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
-                for c in cte.join_derived_concepts
-                if c.address not in cte.hidden_concepts
-            ]
+            select_columns = {
+                **{
+                    c.address: self.render_concept_sql(c, cte)
+                    for c in cte.output_columns
+                    if c.address not in [y.address for y in cte.join_derived_concepts]
+                    and c.address not in cte.hidden_concepts
+                },
+                **{
+                    c.address: f"{UNNEST_NAME} as {self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
+                    for c in cte.join_derived_concepts
+                    if c.address not in cte.hidden_concepts
+                },
+            }
         else:
             # otherwse, assume we are unnesting directly in the select
-            select_columns = [
-                self.render_concept_sql(c, cte)
+            select_columns = {
+                c.address: self.render_concept_sql(c, cte)
                 for c in cte.output_columns
                 if c.address not in cte.hidden_concepts
-            ]
+            }
         if auto_sort:
-            select_columns = sorted(select_columns, key=lambda x: x)
+            render_columns = sorted(select_columns.values(), key=lambda x: x)
+        else:
+            render_columns = list(select_columns.values())
+        lookups = {v: i for i, v in enumerate(render_columns)}
+        select_concept_index = {k: lookups[v] + 1 for k, v in select_columns.items()}
         source: str | None = cte.base_name
         if not cte.render_from_clause:
             if len(cte.joins) > 0:
@@ -1195,7 +1204,7 @@ class BaseDialect:
         return CompiledCTE(
             name=cte.name,
             statement=self.SQL_TEMPLATE.render(
-                select_columns=select_columns,
+                select_columns=render_columns,
                 base=f"{source}" if source else None,
                 grain=cte.grain,
                 limit=cte.limit,
@@ -1224,7 +1233,7 @@ class BaseDialect:
                     if cte.order_by
                     else None
                 ),
-                group_by=self.render_cte_group_by(cte, select_columns),
+                group_by=self.render_cte_group_by(cte, select_concept_index),
             ),
         )
 

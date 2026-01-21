@@ -135,3 +135,30 @@ def test_semicolon_error():
     with raises(InvalidSyntaxException) as e:
         env.parse(TEXT2)
     assert ERROR_CODES[202] in str(e.value), e.value
+
+
+def test_duplicate_error():
+    env = Environment()
+    TEXT2 = """
+    const a <- 1;
+
+    select
+        a as fun,
+        a as fun,
+    ;
+    """
+    with raises(InvalidSyntaxException) as e:
+        env.parse(TEXT2)
+    assert "Duplicate select output for fun" in str(e.value), e.value
+
+    TEXT2 = """
+    const a <- 1;
+
+    select
+        a+1 as fun2,
+        a+1 as fun2,
+    ;
+    """
+    with raises(InvalidSyntaxException) as e:
+        env.parse(TEXT2)
+    assert "Duplicate select output for fun" in str(e.value), e.value

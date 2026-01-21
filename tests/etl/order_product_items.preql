@@ -6,7 +6,6 @@ datasource order_product_items (
     # order_item_id: order_item.id,
     order_creation_date:order_item.created_at.date,
     user_id:order_item.user.id,
-    order_id:order_item.order.id,
     product_id:order_item.inventory_item.product.id,
     inventory_item_id:order_item.inventory_item.id,
     product_distribution_name:order_item.inventory_item.product.distribution_center.id,
