@@ -1,3 +1,4 @@
+from trilogy import Dialects
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.core import (
     ArrayType,
@@ -12,8 +13,6 @@ from trilogy.core.models.core import (
 from trilogy.parsing.parse_engine import (
     parse_text,
 )
-
-from trilogy import Dialects
 
 
 def test_numeric():

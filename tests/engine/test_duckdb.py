@@ -2695,3 +2695,30 @@ def test_datetime_functions():
 
     # format_time and parse_time round-trip
     assert row.order_timestamp_parse is not None
+
+
+def test_complex_map_struct_access():
+    environment = Environment()
+
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=environment, rendering=Rendering(parameters=False)
+    )
+
+    rows = """
+key id int;
+property id.data map<string, struct<a:int, b:int, c:int>>;
+
+datasource test_data (
+    id,
+    data
+)
+grain (id)
+query \'\'\'select 1 as id, MAP {'c': {'a': 1, 'b': 2, 'c': 3}, 'd': {'a': 4, 'b': 5, 'c': 6}} as data\'\'\';
+
+select id, data['c'].a as a_value, map_keys(data) as map_keys;
+"""
+
+    results = executor.execute_text(rows)[-1].fetchall()
+    assert len(results) == 1
+    assert results[0].a_value == 1
+    assert results[0].map_keys == ["c", "d"]
