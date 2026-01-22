@@ -2722,3 +2722,23 @@ select id, data['c'].a as a_value, map_keys(data) as map_keys;
     assert len(results) == 1
     assert results[0].a_value == 1
     assert results[0].map_keys == ["c", "d"]
+
+
+def test_inline_map_struct_access():
+    """Test chained access with inline map/struct literals."""
+    environment = Environment()
+
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=environment, rendering=Rendering(parameters=False)
+    )
+
+    rows = """
+auto map_struct <- { 'c': struct(1->a,2->b,3->c), 'd': struct(4->a,5->b,6->c) };
+
+select map_struct['c'].a as a_value, map_keys(map_struct) as map_keys;
+"""
+
+    results = executor.execute_text(rows)[-1].fetchall()
+    assert len(results) == 1
+    assert results[0].a_value == 1
+    assert results[0].map_keys == ["c", "d"]
