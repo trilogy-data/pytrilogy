@@ -13,6 +13,8 @@ from trilogy.parsing.parse_engine import (
     parse_text,
 )
 
+from trilogy import Dialects
+
 
 def test_numeric():
     env, _ = parse_text(
@@ -112,3 +114,34 @@ def test_merge_datatypes_with_trait_datatype():
     trait = TraitDataType(type=DataType.INTEGER, traits=["sortable"])
     assert merge_datatypes([trait]) == trait
     assert merge_datatypes([trait, trait]) == trait
+
+
+def test_trait_propagation():
+    engine = Dialects.DUCK_DB.default_executor()
+
+    engine.parse_text(
+        """
+                      
+type money float;
+key order_id int;
+property order_id.price float::money;
+                      
+datasource orders(
+    order_id: order_id,
+    price: price
+)
+                      
+grain (order_id)
+address orders;
+                      
+select 
+    count(order_id) as order_count,
+    sum(price) as total_revenue,
+    total_revenue/order_count as aov;
+
+"""
+    )
+
+    assert engine.environment.concepts["aov"].datatype == TraitDataType(
+        type=DataType.FLOAT, traits=["money"]
+    )
