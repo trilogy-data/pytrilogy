@@ -34,16 +34,14 @@ def test_resolution_post_materialization():
     env = Environment(working_path=Path(__file__).parent)
     executor = Dialects.BIGQUERY.default_executor(environment=env)
     DebuggingHook(INFO)
-    result = executor.generate_sql(
-        """
+    result = executor.generate_sql("""
  import sales_reporting;
  import order_product_items;
 
  create if not exists datasource order_product_items;
 
 append order_product_items where order_item.created_at.date = '2021-11-01'::date;
-    """
-    )
+    """)
     insert_query = result[-1]
     assert (
         "SELECT ARRAY_AGG(DISTINCT order_creation_date)" in insert_query

@@ -12,20 +12,17 @@ FILE = Path(__file__)
 def test_invalid_typing():
     env = Dialects.DUCK_DB.default_executor()
     with raises(ParseError):
-        env.environment.parse(
-            """
+        env.environment.parse("""
     key customer_id int;
     property customer_id.email string::email;
 
 
-    """
-        )
+    """)
 
 
 def test_typing():
     env = Dialects.DUCK_DB.default_executor()
-    env.environment.parse(
-        """
+    env.environment.parse("""
 
 type email string;
 
@@ -46,14 +43,11 @@ select 2 as id, 'funky@hotmail.com' as email
 ''';
 
 
-"""
-    )
+""")
 
-    results = env.execute_query(
-        """SELECT
+    results = env.execute_query("""SELECT
 customer_id,
-@is_valid_email(email)->valid;"""
-    )
+@is_valid_email(email)->valid;""")
 
     for row in results.fetchall():
         assert row.valid is True
@@ -66,8 +60,7 @@ customer_id,
 def test_type_import_and_cast():
     env = Dialects.DUCK_DB.default_executor()
     env.environment.add_file_import(FILE.parent / "test_env_types.preql", "dtypes")
-    env.environment.parse(
-        """
+    env.environment.parse("""
 
 type year int;
 key customer_id int;
@@ -84,14 +77,11 @@ union all
 select 2 as id, cast('2023-01-02' as date) as signup_date
 ''';
 
-"""
-    )
+""")
     assert env.environment.concepts["signup_date"].keys == {"local.customer_id"}
     assert env.environment.concepts["signup_date.year"].keys == {"local.signup_date"}
-    results = env.execute_query(
-        """SELECT
-    signup_date.year::int::year as signup_year;"""
-    )
+    results = env.execute_query("""SELECT
+    signup_date.year::int::year as signup_year;""")
 
     for row in results.fetchall():
         assert row.signup_year == 2023
@@ -100,10 +90,8 @@ select 2 as id, cast('2023-01-02' as date) as signup_date
 
     assert env.environment.concepts["signup_year"].datatype.traits == ["year"]
 
-    results = env.execute_query(
-        """SELECT
-signup_date.year::int::dtypes.year as signup_year_two;"""
-    )
+    results = env.execute_query("""SELECT
+signup_date.year::int::dtypes.year as signup_year_two;""")
 
     for row in results.fetchall():
         assert row.signup_year_two == 2023
@@ -120,8 +108,7 @@ signup_date.year::int::dtypes.year as signup_year_two;"""
 
 def test_typing_aggregate():
     env = Dialects.DUCK_DB.default_executor()
-    env.environment.parse(
-        """
+    env.environment.parse("""
 
 type money float;
 
@@ -142,15 +129,12 @@ select 10.0 as revenue, 13.1 as revenue_two, 3.0 as multiplier
 ''';
 
 
-"""
-    )
+""")
 
-    results = env.execute_query(
-        """SELECT
+    results = env.execute_query("""SELECT
 sum(revenue)->direct_total,
 sum(revenue*multiplier)->total,
-direct_total-total -> diff;"""
-    )
+direct_total-total -> diff;""")
 
     for row in results.fetchall():
         assert row.total == Decimal("40.00")
@@ -162,12 +146,10 @@ direct_total-total -> diff;"""
         "money"
     ], env.environment.concepts["diff"].datatype
 
-    results = env.execute_query(
-        """SELECT
+    results = env.execute_query("""SELECT
 revenue+revenue_two->add_total,
 revenue-revenue_two->sub_total
-;"""
-    )
+;""")
 
     assert "money" in env.environment.data_types
     assert env.environment.concepts["add_total"].datatype.traits == ["money"]
@@ -179,8 +161,7 @@ def test_custom_function_typing():
 
     DebuggingHook()
     env = Dialects.DUCK_DB.default_executor()
-    env.environment.parse(
-        """
+    env.environment.parse("""
 
 type money float;
 
@@ -202,12 +183,10 @@ select 10.0 as revenue, 13.1 as revenue_two, 3.0 as multiplier
 ''';
 
 
-"""
-    )
+""")
 
     # TIS IS FAILING BECAUSE IT ALIASES REVENUE AS REVENUE
-    _ = env.execute_query(
-        """
+    _ = env.execute_query("""
 with scaled as
 SELECT
     @revenue_times_2(revenue)->revenue
@@ -217,28 +196,23 @@ SELECT
 sum(
     round( @revenue_times_multiplier(lag 1 @revenue_times_2(scaled.revenue), 2.0), 2)
 )->total;
-"""
-    )
+""")
 
     assert env.environment.concepts["total"].datatype.traits == ["money"]
 
 
 def test_custom_trait_unnest_typing():
     env = Dialects.DUCK_DB.default_executor()
-    env.environment.parse(
-        """
+    env.environment.parse("""
 import std.geography;
 
 const array <- ['VT', 'MA', 'NY', 'CA']::array<string::us_state_short>;
 
-"""
-    )
+""")
 
-    _ = env.execute_query(
-        """
+    _ = env.execute_query("""
 SELECT
     unnest(array)->state;
-"""
-    )
+""")
 
     assert env.environment.concepts["state"].datatype.traits == ["us_state_short"]

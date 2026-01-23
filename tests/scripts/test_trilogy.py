@@ -183,12 +183,9 @@ def test_cli_fmt_string():
                 raise result.exception
             assert result.exit_code == 0
             with open("test.sql", "r") as f:
-                assert (
-                    f.read().strip()
-                    == """SELECT
+                assert f.read().strip() == """SELECT
     1 -> test,
 ;"""
-                )
             os.remove("test.sql")
 
 

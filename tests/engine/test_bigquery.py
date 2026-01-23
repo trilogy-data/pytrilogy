@@ -21,15 +21,13 @@ UNSUPPORTED_TUPLE = (3, 14)
 def test_date_diff_rendering():
     environment = Environment()
 
-    _, queries = environment.parse(
-        """
+    _, queries = environment.parse("""
 
     const today <- current_date();
 
     select today
     where date_add(current_date() , day, -30) < today;
-    """
-    )
+    """)
     executor = Dialects.BIGQUERY.default_executor(environment=environment)
     sql = executor.generate_sql(queries[-1])
 
@@ -43,8 +41,7 @@ def test_readme():
     environment = Environment()
     from trilogy.hooks.query_debugger import DebuggingHook
 
-    environment.parse(
-        """
+    environment.parse("""
 
     key name string;
     key gender string;
@@ -62,14 +59,12 @@ def test_readme():
     grain (name, year, gender, state)
     address `bigquery-public-data.usa_names.usa_1910_2013`;
 
-    """
-    )
+    """)
     executor = Dialects.BIGQUERY.default_executor(
         environment=environment, hooks=[DebuggingHook()]
     )
 
-    results = executor.execute_text(
-        """SELECT
+    results = executor.execute_text("""SELECT
         name,
        sum(yearly_name_count) -> name_count
     WHERE
@@ -77,8 +72,7 @@ def test_readme():
     ORDER BY
         name_count desc
     LIMIT 10;
-    """
-    )
+    """)
     # multiple queries can result from one text batch
     for row in results:
         # get results for first query
@@ -92,8 +86,7 @@ def test_readme():
 def test_unnest_rendering():
     environment = Environment()
     DebuggingHook()
-    _, queries = environment.parse(
-        """
+    _, queries = environment.parse("""
 key sentences string;
 
 datasource sentences(
@@ -107,8 +100,7 @@ select 'the lazy dog jumps over the quick brown fox' as sentences
 ''';
 
 select sentences, unnest(split(sentences, ' ')) as words;
-    """
-    )
+    """)
     executor = Dialects.BIGQUERY.default_executor(environment=environment)
     sql = executor.generate_sql(queries[-1])
 
@@ -120,8 +112,7 @@ select sentences, unnest(split(sentences, ' ')) as words;
 )
 def test_unnest_constant():
     environment = Environment()
-    _, queries = environment.parse(
-        """
+    _, queries = environment.parse("""
 
 
 const list <- [1,2,3,4];
@@ -132,20 +123,16 @@ auto rows <- unnest(list);
 select 
     rows;
     
-    """
-    )
+    """)
     executor = Dialects.BIGQUERY.default_executor(
         environment=environment, rendering=Rendering(parameters=False)
     )
     sql = executor.generate_sql(queries[-1])
 
-    assert (
-        sql[0].strip()
-        == """SELECT
+    assert sql[0].strip() == """SELECT
     _unnest_alias as `rows`
 FROM
-    unnest([1, 2, 3, 4]) as `_unnest_alias`"""
-    ), sql[0]
+    unnest([1, 2, 3, 4]) as `_unnest_alias`""", sql[0]
 
 
 @pytest.mark.skipif(
@@ -156,8 +143,7 @@ def test_in_with_array():
     from trilogy.hooks import DebuggingHook
 
     DebuggingHook()
-    _, queries = environment.parse(
-        """
+    _, queries = environment.parse("""
 
 
 const list <- [1,2,3,4];
@@ -168,8 +154,7 @@ where two in list
 select 
     two;
     
-    """
-    )
+    """)
     executor = Dialects.BIGQUERY.default_executor(
         environment=environment, rendering=Rendering(parameters=False)
     )
@@ -184,8 +169,7 @@ select
 
 def test_datetime_functions():
     environment = Environment()
-    _, queries = environment.parse(
-        """
+    _, queries = environment.parse("""
     const order_id <- 1;
     const order_timestamp <- current_datetime();
     select
@@ -230,8 +214,7 @@ def test_datetime_functions():
     ;
 
 
-        """
-    )
+        """)
 
     executor = Dialects.BIGQUERY.default_executor(
         environment=environment, rendering=Rendering(parameters=False)
@@ -291,8 +274,7 @@ def test_datetime_functions():
 
 def test_date_functions():
     environment = Environment()
-    _, queries = environment.parse(
-        """
+    _, queries = environment.parse("""
     const order_id <- 1;
     const order_timestamp <- current_date();
     select
@@ -326,8 +308,7 @@ def test_date_functions():
     ;
     
     
-        """
-    )
+        """)
 
     executor = Dialects.BIGQUERY.default_executor(
         environment=environment, rendering=Rendering(parameters=False)
@@ -374,8 +355,7 @@ def test_date_functions():
 
 def test_string_functions(test_environment):
     environment = Environment()
-    _, queries = environment.parse(
-        """
+    _, queries = environment.parse("""
     const category_id <- 1;  
     auto category_name <- 'apple';
     auto test_name <- concat(category_name, '_test');
@@ -405,8 +385,7 @@ def test_string_functions(test_environment):
         hash(category_name, sha1) -> hash_sha1,
         hash(category_name, sha256) -> hash_sha256,
         # hash(category_name, sha512) -> hash_sha512
-    ;"""
-    )
+    ;""")
     executor = Dialects.BIGQUERY.default_executor(
         environment=environment, rendering=Rendering(parameters=False)
     )
@@ -416,8 +395,7 @@ def test_string_functions(test_environment):
 
 def test_math_functions():
     environment = Environment()
-    _, queries = environment.parse(
-        """
+    _, queries = environment.parse("""
     const revenue <- 100.50;
     const order_id <- 1;
     
@@ -447,8 +425,7 @@ def test_math_functions():
         squared,
         random,
     ;
-        """
-    )
+        """)
 
     executor = Dialects.BIGQUERY.default_executor(
         environment=environment, rendering=Rendering(parameters=False)
@@ -467,8 +444,7 @@ def test_aggregate_functions():
     from trilogy.hooks import DebuggingHook
 
     DebuggingHook()
-    results = exec.execute_text(
-        """
+    results = exec.execute_text("""
 key order_id int;
 property order_id.revenue float;
 property order_id.quantity int;
@@ -518,8 +494,7 @@ select
     all_premium,
     revenue_array,
 ;
-"""
-    )
+""")
 
     result = list(results[-1].fetchall())[0]
 

@@ -115,8 +115,7 @@ def test_ingest_heap_table_no_primary_keys():
         tmppath = Path(tmpdir)
 
         setup_sql_file = tmppath / "setup.sql"
-        setup_sql_file.write_text(
-            """CREATE TABLE heap_table (
+        setup_sql_file.write_text("""CREATE TABLE heap_table (
                 event_type VARCHAR,
                 event_value INTEGER,
                 timestamp TIMESTAMP
@@ -124,8 +123,7 @@ def test_ingest_heap_table_no_primary_keys():
             INSERT INTO heap_table VALUES ('click', 1, '2024-01-01 10:00:00');
             INSERT INTO heap_table VALUES ('click', 1, '2024-01-01 10:00:00');
             INSERT INTO heap_table VALUES ('view', 2, '2024-01-01 10:00:00');
-            INSERT INTO heap_table VALUES ('view', 2, '2024-01-01 10:00:00');"""
-        )
+            INSERT INTO heap_table VALUES ('view', 2, '2024-01-01 10:00:00');""")
 
         config_content = f"""[engine]
 dialect = "duckdb"
@@ -181,10 +179,8 @@ def test_ingest_with_cli_dialect_override():
         tmppath = Path(tmpdir)
 
         setup_sql_file = tmppath / "setup.sql"
-        setup_sql_file.write_text(
-            """CREATE TABLE test_table (id INTEGER, name VARCHAR);
-INSERT INTO test_table VALUES (1, 'test');"""
-        )
+        setup_sql_file.write_text("""CREATE TABLE test_table (id INTEGER, name VARCHAR);
+INSERT INTO test_table VALUES (1, 'test');""")
 
         config_content = f"""[engine]
 dialect = "bigquery"
@@ -284,11 +280,9 @@ def test_ingest_with_schema():
         tmppath = Path(tmpdir)
 
         setup_sql_file = tmppath / "setup.sql"
-        setup_sql_file.write_text(
-            """CREATE SCHEMA test_schema;
+        setup_sql_file.write_text("""CREATE SCHEMA test_schema;
 CREATE TABLE test_schema.test_table (id INTEGER, name VARCHAR);
-INSERT INTO test_schema.test_table VALUES (1, 'test');"""
-        )
+INSERT INTO test_schema.test_table VALUES (1, 'test');""")
 
         config_content = f"""[engine]
 dialect = "duckdb"
@@ -356,10 +350,8 @@ def test_ingest_with_debug_flag_success():
         tmppath = Path(tmpdir)
 
         setup_sql_file = tmppath / "setup.sql"
-        setup_sql_file.write_text(
-            """CREATE TABLE debug_test (id INTEGER, name VARCHAR);
-INSERT INTO debug_test VALUES (1, 'test');"""
-        )
+        setup_sql_file.write_text("""CREATE TABLE debug_test (id INTEGER, name VARCHAR);
+INSERT INTO debug_test VALUES (1, 'test');""")
 
         config_content = f"""[engine]
 dialect = "duckdb"
@@ -407,10 +399,8 @@ def test_ingest_with_debug_flag_on_error():
         tmppath = Path(tmpdir)
 
         setup_sql_file = tmppath / "setup.sql"
-        setup_sql_file.write_text(
-            """CREATE TABLE good_table (id INTEGER);
-INSERT INTO good_table VALUES (1);"""
-        )
+        setup_sql_file.write_text("""CREATE TABLE good_table (id INTEGER);
+INSERT INTO good_table VALUES (1);""")
 
         config_content = f"""[engine]
 dialect = "duckdb"
@@ -453,10 +443,8 @@ def test_ingest_without_debug_flag_on_error():
         tmppath = Path(tmpdir)
 
         setup_sql_file = tmppath / "setup.sql"
-        setup_sql_file.write_text(
-            """CREATE TABLE existing_table (id INTEGER);
-INSERT INTO existing_table VALUES (1);"""
-        )
+        setup_sql_file.write_text("""CREATE TABLE existing_table (id INTEGER);
+INSERT INTO existing_table VALUES (1);""")
 
         config_content = f"""[engine]
 dialect = "duckdb"

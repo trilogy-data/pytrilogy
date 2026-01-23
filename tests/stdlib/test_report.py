@@ -5,8 +5,7 @@ from trilogy.hooks import DebuggingHook
 def test_top_x_by_metric():
     DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor()
-    all_results = duckdb.execute_query(
-        """
+    all_results = duckdb.execute_query("""
 import std.report;
 import std.money;
                         
@@ -38,8 +37,7 @@ SELECT
     @top_x_by_metric(order, sum(amount), 1, -1) AS top_orders, sum(amount) as total_amount,
 
     order by top_orders desc;
-"""
-    )
+""")
 
     results = all_results.fetchall()
 

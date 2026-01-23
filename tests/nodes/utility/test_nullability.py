@@ -6,8 +6,7 @@ from trilogy.core.processing.utility import find_nullable_concepts
 
 
 def test_find_nullable_concepts():
-    env, _ = parse(
-        """
+    env, _ = parse("""
 key order_id int;
 key product_id int;
 key customer_id int;
@@ -44,8 +43,7 @@ query '''
 select 1 as customer_id
             ''';
 
-          """
-    )
+          """)
     env = env.materialize_for_select()
     order_id = env.concepts["order_id"]
     product_id = env.concepts["product_id"]
@@ -120,15 +118,13 @@ select 1 as customer_id
 
 
 def test_nullable_inheritance():
-    env, _ = parse(
-        """
+    env, _ = parse("""
 key order_id int?;
 
 auto ten_x_order <- order_id *10;
 auto ten_x_order <- order_id *10;
 property order_id.ten_x<- cast(order_id / 10 as int) * 10;
-"""
-    )
+""")
 
     assert env.concepts["order_id"].modifiers == [Modifier.NULLABLE]
     assert env.concepts["ten_x_order"].modifiers == [Modifier.NULLABLE]

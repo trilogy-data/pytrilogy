@@ -134,19 +134,16 @@ def test_environment_invalid():
 
 def test_environment_merge():
     env1: Environment
-    env1, _ = Environment().parse(
-        """
+    env1, _ = Environment().parse("""
 key  order_id int;   
                                 
                                 datasource orders
                                 (order_id:order_id)
                                 grain (order_id)
                                 address orders;
-"""
-    )
+""")
 
-    env2, _ = Environment().parse(
-        """
+    env2, _ = Environment().parse("""
                                 key order_id int;
                                                                 
                                 datasource replacements
@@ -155,8 +152,7 @@ key  order_id int;
                                 address replacements;
 
                                 
-"""
-    )
+""")
 
     env1.add_import("replacements", env2)
 
@@ -183,27 +179,23 @@ key  order_id int;
 def test_environment_select_promotion():
     x = Dialects.DUCK_DB.default_executor()
 
-    results = x.execute_query(
-        """
+    results = x.execute_query("""
 const x <- 6;
 
 select x+2 as y;
 
 select y;            
-                    """
-    ).fetchall()
+                    """).fetchall()
 
     assert results[0].y == 8
 
 
 def test_user_concepts():
     """Test that user_concepts filters out internal concepts."""
-    env, _ = Environment().parse(
-        """
+    env, _ = Environment().parse("""
 key user_id int;
 property user_id.name string;
-"""
-    )
+""")
     user_concepts = env.user_concepts()
     addresses = [c.address for c in user_concepts]
 
@@ -219,12 +211,10 @@ property user_id.name string;
 
 def test_concepts_at_line():
     """Test finding concepts at a specific line number."""
-    env, _ = Environment().parse(
-        """key user_id int;
+    env, _ = Environment().parse("""key user_id int;
 property user_id.name string;
 key order_id int;
-"""
-    )
+""")
     # Line 1 should have user_id
     concepts_line_1 = env.concepts_at_line(1)
     assert len(concepts_line_1) >= 1
@@ -238,11 +228,9 @@ key order_id int;
 
 def test_metadata_column_positions():
     """Test that metadata captures column position information."""
-    env, _ = Environment().parse(
-        """key user_id int;
+    env, _ = Environment().parse("""key user_id int;
 property user_id.name string;
-"""
-    )
+""")
     user_id = env.concepts.get("local.user_id")
     assert user_id is not None
     assert user_id.metadata is not None

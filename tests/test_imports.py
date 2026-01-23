@@ -21,12 +21,10 @@ const pi <- 3.14;
         namespace="math",
     )
 
-    basic.parse(
-        """
+    basic.parse("""
                 
             select math.pi;
-                """
-    )
+                """)
 
     assert basic.concepts["math.pi"].name == "pi"
 
@@ -133,13 +131,11 @@ select 0 as id, 'greatest' as name, null as parent_id, 1 as child_id
     env.parse(self_content)
 
     exec = Dialects.DUCK_DB.default_executor(environment=env)
-    results = exec.execute_text(
-        """
+    results = exec.execute_text("""
 where id = 1
 select id, name, parent.name, child.name
 order by id asc;
-"""
-    )[-1].fetchall()
+""")[-1].fetchall()
 
     row = results[0]
     assert row[0] == 1

@@ -60,22 +60,18 @@ def test_aggregate_handling():
 
     exec.parse_text(q1)
 
-    generated = exec.generate_sql(
-        """
+    generated = exec.generate_sql("""
 SELECT
     total_val
             ;
-"""
-    )[-1]
+""")[-1]
     assert "aggregated_class" not in generated
 
-    generated = exec.generate_sql(
-        """
+    generated = exec.generate_sql("""
 SELECT
     total_val_class
             ;
-"""
-    )[-1]
+""")[-1]
     assert "aggregated_class" in generated, generated
 
 
@@ -88,14 +84,12 @@ def test_aggregate_handling_alias():
 
     exec.parse_text(q1)
 
-    generated = exec.generate_sql(
-        """
+    generated = exec.generate_sql("""
 SELECT
     id_class,
     sum(val) as total_value
             ;
-"""
-    )[-1]
+""")[-1]
     assert "aggregated_class" in generated, generated
 
 
@@ -151,11 +145,9 @@ def test_aggregate_handling_abstract():
 
     exec.parse_text(SETUP_CODE_ALL)
 
-    generated = exec.generate_sql(
-        """
+    generated = exec.generate_sql("""
 SELECT
     sum(val) by * as total_value
             ;
-"""
-    )[-1]
+""")[-1]
     assert "aggregated_all" in generated, generated

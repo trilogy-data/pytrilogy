@@ -24,12 +24,10 @@ def test_merge_concepts():
     # c = test_environment.concepts['one']
 
     bd = BaseDialect()
-    _, queries = env1.parse(
-        """
+    _, queries = env1.parse("""
                select
                one+1 as one,
-               env2.one;"""
-    )
+               env2.one;""")
     queries = bd.generate_queries(environment=env1, statements=queries)
     for query in queries:
         compiled = bd.compile_statement(query)
@@ -94,19 +92,15 @@ address num1;
         x for x in env1.datasources["num1"].concepts
     ]
     bd = BaseDialect()
-    _, queries = env1.parse(
-        """
+    _, queries = env1.parse("""
                select
                one,
-               one as two;"""
-    )
+               one as two;""")
     queries = bd.generate_queries(environment=env1, statements=queries)
     for query in queries:
         compiled = bd.compile_statement(query)
-        assert query_to_lines(compiled) == query_to_lines(
-            """SELECT
+        assert query_to_lines(compiled) == query_to_lines("""SELECT
              	`env2_num1`.`one` as `env2_one`,
              	`env2_num1`.`one` as `two`
              FROM
-             	`num1` as `env2_num1`"""
-        ), compiled
+             	`num1` as `env2_num1`"""), compiled

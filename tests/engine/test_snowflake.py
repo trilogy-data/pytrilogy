@@ -11,16 +11,14 @@ def test_render_query(snowflake_engine_parameterized):
 
     assert ":pi" in results
 
-    results2 = snowflake_engine_parameterized.generate_sql(
-        """
+    results2 = snowflake_engine_parameterized.generate_sql("""
         const today <- date_trunc(current_datetime() , day);
         const ten_days_from_now <- date_add(current_datetime() , day, 10);
         auto ten_day_diff <- date_diff(today, ten_days_from_now, day);
         select 
             today,
             ten_days_from_now,
-            ten_day_diff;"""
-    )[0]
+            ten_day_diff;""")[0]
     assert "DATEADD(day, 10, CURRENT_TIMESTAMP())" in results2, results2
 
     results3 = snowflake_engine_parameterized.execute_text("""select pi;""")[0]
@@ -173,8 +171,7 @@ def test_datetime_functions(snowflake_engine):
 
 def test_date_functions():
     environment = Environment()
-    _, queries = environment.parse(
-        """
+    _, queries = environment.parse("""
     const order_id <- 1;
     const order_timestamp <- current_date();
     select
@@ -206,8 +203,7 @@ def test_date_functions():
     ;
     
     
-        """
-    )
+        """)
 
     executor = Dialects.BIGQUERY.default_executor(
         environment=environment, rendering=Rendering(parameters=False)
@@ -218,8 +214,7 @@ def test_date_functions():
 
 def test_string_functions(test_environment):
     environment = Environment()
-    _, queries = environment.parse(
-        """
+    _, queries = environment.parse("""
     const category_id <- 1;  
     auto category_name <- 'apple';
     auto test_name <- concat(category_name, '_test');
@@ -249,8 +244,7 @@ def test_string_functions(test_environment):
         hash(category_name, sha1) -> hash_sha1,
         hash(category_name, sha256) -> hash_sha256,
         # hash(category_name, sha512) -> hash_sha512
-    ;"""
-    )
+    ;""")
     executor = Dialects.BIGQUERY.default_executor(
         environment=environment, rendering=Rendering(parameters=False)
     )
@@ -260,8 +254,7 @@ def test_string_functions(test_environment):
 
 def test_math_functions():
     environment = Environment()
-    _, queries = environment.parse(
-        """
+    _, queries = environment.parse("""
     const revenue <- 100.50;
     const order_id <- 1;
     
@@ -291,8 +284,7 @@ def test_math_functions():
         power,
         random,
     ;
-        """
-    )
+        """)
 
     executor = Dialects.BIGQUERY.default_executor(
         environment=environment, rendering=Rendering(parameters=False)

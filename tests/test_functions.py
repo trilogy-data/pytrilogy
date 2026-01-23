@@ -172,8 +172,7 @@ def test_date_functions(test_environment):
             engine = Dialects.DUCK_DB.default_executor(environment=test_environment)
         dialect.compile_statement(process_query(test_environment, select))
         if engine:
-            engine.execute_raw_sql(
-                """CREATE TABLE tblRevenue AS
+            engine.execute_raw_sql("""CREATE TABLE tblRevenue AS
 SELECT 
     100.50 as revenue,
     1 as order_id,
@@ -184,8 +183,7 @@ SELECT
     250.75 as revenue,
     2 as order_id,
     102 as product_id,
-    TIMESTAMP '2024-01-16 14:45:30' as order_timestamp;"""
-            )
+    TIMESTAMP '2024-01-16 14:45:30' as order_timestamp;""")
             results = engine.execute_query(select)
             assert results
             assert results.fetchall()
@@ -338,16 +336,14 @@ def test_string_functions(test_environment):
             engine = Dialects.DUCK_DB.default_executor(environment=test_environment)
         dialect.compile_statement(process_query(test_environment, select))
         if engine:
-            engine.execute_raw_sql(
-                """CREATE TABLE tblCategory AS
+            engine.execute_raw_sql("""CREATE TABLE tblCategory AS
 SELECT 
     2 category_id,
     'category_a' as category_name
 UNION ALL
 SELECT 
     3 category_id,
-    'category_b' as category_name;"""
-            )
+    'category_b' as category_name;""")
             results = engine.execute_query(select)
             assert results
             assert results.fetchall()
@@ -504,10 +500,8 @@ def test_unnest(test_environment):
 
 def test_validate_constant_functions():
     x = Environment()
-    env, _ = x.parse(
-        """
+    env, _ = x.parse("""
             const current_date <- current_date();
-            """
-    )
+            """)
     assert env.concepts["current_date"].purpose == Purpose.CONSTANT
     assert env.concepts["current_date"].derivation == Derivation.CONSTANT

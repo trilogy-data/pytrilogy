@@ -43,8 +43,7 @@ limit 10
 
 
 def test_copy_perf():
-    env, imports = Environment(working_path=working_path).parse(
-        """
+    env, imports = Environment(working_path=working_path).parse("""
 import call_center as call_center;
 import catalog_returns as catalog_returns;
 import catalog_sales as catalog_sales;
@@ -60,8 +59,7 @@ import time as time;
 import date as date;
 import warehouse as warehouse;
 import web_sales as web_sales;
-"""
-    )
+""")
 
     start = datetime.now()
     _ = env.duplicate()
@@ -73,8 +71,7 @@ import web_sales as web_sales;
 
 def test_generate_queries_perf():
 
-    env, imports = Environment(working_path=working_path).parse(
-        """
+    env, imports = Environment(working_path=working_path).parse("""
 import call_center as call_center;
 import catalog_returns as catalog_returns;
 import catalog_sales as catalog_sales;
@@ -90,8 +87,7 @@ import time as time;
 import date as date;
 import warehouse as warehouse;
 import web_sales as web_sales;
-"""
-    )
+""")
 
     dialect = Dialects.DUCK_DB.default_executor(environment=env)
     test_queries = """

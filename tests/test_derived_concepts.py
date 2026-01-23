@@ -22,8 +22,7 @@ def test_hour_derivation(test_environment):
 def test_filtering_where_on_derived_aggregate(test_environment):
     exception = False
     try:
-        env, _ = parse(
-            """key x int;
+        env, _ = parse("""key x int;
     property x.cost float;
 
     datasource x_source (
@@ -37,8 +36,7 @@ def test_filtering_where_on_derived_aggregate(test_environment):
         sum(cost)-> filtered_cst
     where
     x > 10 and filtered_cst >1000;
-        """
-        )
+        """)
     except Exception as e:
         exception = True
         assert (
@@ -51,8 +49,7 @@ def test_filtering_where_on_derived_aggregate(test_environment):
 def test_filtering_having_on_unincluded_value(test_environment):
     exception = False
     try:
-        env, _ = parse(
-            """key x int;
+        env, _ = parse("""key x int;
     property x.cost float;
 
     datasource x_source (
@@ -66,8 +63,7 @@ def test_filtering_having_on_unincluded_value(test_environment):
         sum(cost)-> filtered_cst
     having
     x > 10 and filtered_cst >1000;
-        """
-        )
+        """)
     except Exception as e:
         exception = True
         assert str(e).startswith(
@@ -77,8 +73,7 @@ def test_filtering_having_on_unincluded_value(test_environment):
 
 
 def test_filtering_valid(test_environment):
-    env, _ = parse(
-        """key x int;
+    env, _ = parse("""key x int;
 property x.cost float;
 
 datasource x_source (
@@ -93,5 +88,4 @@ SELECT
     sum(cost)-> filtered_cst
 having
     filtered_cst >1000;
-    """
-    )
+    """)

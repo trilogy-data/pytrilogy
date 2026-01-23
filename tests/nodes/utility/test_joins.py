@@ -16,8 +16,7 @@ from trilogy.dialect.common import render_join_concept
 
 
 def test_render_join_concept():
-    env, _ = parse(
-        """key x int;
+    env, _ = parse("""key x int;
         key y int;
     
 datasource x_source (
@@ -27,8 +26,7 @@ datasource x_source (
 address x_source;
 
         
-        """
-    )
+        """)
     x = BaseDialect()
     env = env.materialize_for_select()
     concept = env.concepts["x"]
@@ -62,8 +60,7 @@ address x_source;
 
     assert rendered == "`x_source`.`y` + 1"
 
-    env, _ = parse(
-        """key x int;
+    env, _ = parse("""key x int;
         key y int;
     
 datasource x_source (
@@ -73,8 +70,7 @@ datasource x_source (
 address x_source;
 
         
-        """
-    )
+        """)
     x = BaseDialect()
     env = env.materialize_for_select()
     concept = env.concepts["x"]
@@ -111,8 +107,7 @@ address x_source;
 
 def test_reduce_concept_pair():
     # Parse environment with datasources that have overlapping keys
-    env, _ = parse(
-        """
+    env, _ = parse("""
 key a int;
 key b int;
 key c int;
@@ -135,8 +130,7 @@ datasource join_ds_2 (
     c:c
 ) grain(b)
 address baz;
-        """
-    )
+        """)
 
     env = env.materialize_for_select()
 

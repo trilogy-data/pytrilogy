@@ -153,10 +153,8 @@ select
 """
     executor.execute_text(test)
     executor.environment.delete_datasource("raw_data")
-    executor.execute_text(
-        """ select
-    passenger.split_cabin;"""
-    )
+    executor.execute_text(""" select
+    passenger.split_cabin;""")
     # confirm we can still get results
 
 
@@ -437,9 +435,7 @@ ORDER BY
     row_results = executor.execute_text(test)[-1].fetchall()
     assert len(row_results) == 794
 
-    assert (
-        results.strip()
-        == """
+    assert results.strip() == """
 SELECT
     "raw_data"."passengerid" as "passenger_id",
     "raw_data"."passengerid" + 1 as "id_one",
@@ -451,7 +447,6 @@ WHERE
 
 ORDER BY 
     "raw_data"."name" asc""".strip()
-    )
 
 
 def test_merge_basic(engine, base_test_env: Environment):
@@ -548,9 +543,7 @@ def test_demo_brevity(base_test_env, engine: Executor):
     engine.environment = base_test_env
     sql = engine.generate_sql(query)
 
-    assert (
-        sql[-1].strip()
-        == """SELECT
+    assert sql[-1].strip() == """SELECT
     "raw_data"."survived" as "passenger_survived",
     count("raw_data"."passengerid") as "passenger_id_count",
     count("raw_data"."passengerid") as "passenger_count_alt",
@@ -560,7 +553,6 @@ FROM
 GROUP BY 
     "raw_data"."survived"
 """.strip()
-    )
 
 
 def test_demo_averages(base_test_env, engine: Executor):

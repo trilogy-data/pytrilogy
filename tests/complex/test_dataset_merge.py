@@ -80,14 +80,12 @@ class ConditionalTest:
 
 def test_conditional_merge():
     env = Environment()
-    env.parse(
-        """
+    env.parse("""
 key x int;
 key y date;
 key z float;
 key a datetime;
-"""
-    )
+""")
     env = env.materialize_for_select()
 
     test_cases = [
