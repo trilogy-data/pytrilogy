@@ -302,6 +302,8 @@ FUNCTION_MAP = {
     FunctionType.REGEXP_EXTRACT: lambda x, types: f"REGEXP_EXTRACT({x[0]},{x[1]})",
     FunctionType.REGEXP_REPLACE: lambda x, types: f"REGEXP_REPLACE({x[0]},{x[1]}, {x[2]})",
     FunctionType.TRIM: lambda x, types: f"TRIM({x[0]})",
+    FunctionType.LTRIM: lambda x, types: f"LTRIM({x[0]})",
+    FunctionType.RTRIM: lambda x, types: f"RTRIM({x[0]})",
     FunctionType.REPLACE: lambda x, types: f"REPLACE({x[0]},{x[1]},{x[2]})",
     FunctionType.HASH: lambda x, types: hash_from_args(x[0], x[1]),
     # FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
@@ -346,8 +348,7 @@ FUNCTION_GRAIN_MATCH_MAP = {
 }
 
 
-GENERIC_SQL_TEMPLATE: Template = Template(
-    """{%- if ctes %}
+GENERIC_SQL_TEMPLATE: Template = Template("""{%- if ctes %}
 WITH {% if recursive%} RECURSIVE {% endif %}{% for cte in ctes %}
 {{cte.name}} as (
 {{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
@@ -371,12 +372,10 @@ HAVING
 ORDER BY{% for order in order_by %}
 \t{{ order }}{% if not loop.last %},{% endif %}{% endfor %}
 {% endif %}{% endif %}
-"""
-)
+""")
 
 
-CREATE_TABLE_SQL_TEMPLATE = Template(
-    """
+CREATE_TABLE_SQL_TEMPLATE = Template("""
 CREATE {% if create_mode == "create_or_replace" %}OR REPLACE TABLE{% elif create_mode == "create_if_not_exists" %}TABLE IF NOT EXISTS{% else %}TABLE{% endif %} {{ name }} (
 {%- for column in columns %}
     {{ column.name }} {{ type_map[column.name] }}{% if column.comment %} COMMENT '{{ column.comment }}'{% endif %}{% if not loop.last %},{% endif %}
@@ -389,8 +388,7 @@ PARTITIONED BY (
 {%- endfor %}
 )
 {%- endif %};
-""".strip()
-)
+""".strip())
 
 
 def safe_get_cte_value(

@@ -255,6 +255,8 @@ class FunctionType(Enum):
     STRPOS = "strpos"
     CONTAINS = "contains"
     TRIM = "trim"
+    LTRIM = "ltrim"
+    RTRIM = "rtrim"
     REPLACE = "replace"
     HASH = "hash"
 
