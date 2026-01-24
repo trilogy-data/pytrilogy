@@ -43,7 +43,8 @@ FUNCTION_GRAIN_MATCH_MAP = {
     FunctionType.AVG: lambda args, types: f"{args[0]}",
 }
 
-PG_SQL_TEMPLATE = Template("""{%- if output %}
+PG_SQL_TEMPLATE = Template(
+    """{%- if output %}
 DROP TABLE IF EXISTS {{ output.address.location }};
 CREATE TABLE {{ output.address.location }} AS
 {% endif %}{%- if ctes %}
@@ -73,7 +74,8 @@ ORDER BY {% for order in order_by %}
 {% endfor %}{% endif %}
 {%- if limit is not none %}
 LIMIT {{ limit }}{% endif %}{% endif %}
-""")
+"""
+)
 
 MAX_IDENTIFIER_LENGTH = 50
 

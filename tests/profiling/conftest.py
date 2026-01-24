@@ -27,9 +27,11 @@ def engine():
     results = engine.execute_raw_sql("SHOW TABLES;").fetchall()
     tables = [r[0] for r in results]
     if "store_sales" not in tables:
-        engine.execute_raw_sql(f"""
+        engine.execute_raw_sql(
+            f"""
         INSTALL tpcds;
         LOAD tpcds;
         SELECT * FROM dsdgen(sf=1);
-        EXPORT DATABASE '{import_path}' (FORMAT PARQUET);""")
+        EXPORT DATABASE '{import_path}' (FORMAT PARQUET);"""
+        )
     yield engine

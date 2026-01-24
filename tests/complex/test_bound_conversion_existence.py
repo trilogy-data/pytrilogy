@@ -6,7 +6,8 @@ from trilogy.dialect import PrestoConfig
 def test_bound_conversion_existence() -> None:
     executor = Dialects.DUCK_DB.default_executor()
 
-    results = executor.execute_text("""
+    results = executor.execute_text(
+        """
 
 key date_string string;
 auto date_converted <- date_string::date;
@@ -42,7 +43,8 @@ select
     date_converted,
     count(id) as id_count
 ;
-""")[-1]
+"""
+    )[-1]
 
     rows = results.fetchall()[0]
     assert rows.date_converted is not None
@@ -62,7 +64,8 @@ def test_bound_conversion_existence_presto() -> None:
         _engine_factory=mock_factory,
     )
 
-    results = executor.generate_sql("""
+    results = executor.generate_sql(
+        """
 
 key date_string string;
 key date_converted <- date_string::date;
@@ -98,10 +101,14 @@ select
     date_converted,
     count(id) as id_count
 ;
-""")[-1]
+"""
+    )[-1]
 
-    assert """WHERE
+    assert (
+        """WHERE
     "quizzical"."date_converted" = "cheerful"."latest_date" and 1 = 1
 GROUP BY 
     2,
-    1)""" in results
+    1)"""
+        in results
+    )

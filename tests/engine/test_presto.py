@@ -21,9 +21,11 @@ def test_unnest_query(presto_engine):
 
     presto_engine.hooks = [DebuggingHook()]
     with CONFIG.rendering.temporary(parameters=False):
-        results = presto_engine.generate_sql("""
+        results = presto_engine.generate_sql(
+            """
     auto numbers <- unnest([1,2,3,4]);  
-    select numbers;""")[0]
+    select numbers;"""
+        )[0]
         assert 'unnest(ARRAY[1, 2, 3, 4]) as t("_unnest_alias")' in results, results
 
 
@@ -33,7 +35,8 @@ def test_unnest_query_from_table(presto_engine):
 
     presto_engine.hooks = [DebuggingHook()]
     with CONFIG.rendering.temporary(parameters=False):
-        results = presto_engine.generate_sql("""
+        results = presto_engine.generate_sql(
+            """
     key x int;
     property x.values array<int>;
 
@@ -52,7 +55,8 @@ def test_unnest_query_from_table(presto_engine):
         x,
         unnest(values) as numbers
     ;
-    """)[0]
+    """
+        )[0]
         assert re.search(
             'CROSS JOIN unnest\("[A-z0-9\_]+"."values"\) as t\("_unnest_alias"\)',
             results,
@@ -65,7 +69,8 @@ def test_group_by_index(presto_engine):
 
     presto_engine.hooks = [DebuggingHook()]
     with CONFIG.rendering.temporary(parameters=False):
-        results = presto_engine.generate_sql("""
+        results = presto_engine.generate_sql(
+            """
     key x int;
     key y int;
     property x.value int;
@@ -81,6 +86,7 @@ def test_group_by_index(presto_engine):
 
     select y, sum(value) as tot_value
     ;
-    """)[0]
+    """
+        )[0]
 
         assert re.search("GROUP BY\s+1", results), results

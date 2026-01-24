@@ -78,7 +78,8 @@ from trilogy.core.statements.author import (
     ValidateStatement,
 )
 
-QUERY_TEMPLATE = Template("""{% if where %}WHERE
+QUERY_TEMPLATE = Template(
+    """{% if where %}WHERE
 {{ where }}
 {% endif %}SELECT{%- for select in select_columns %}
 {{ select }},{% endfor %}{% if having %}
@@ -88,7 +89,8 @@ HAVING
 ORDER BY{% for order in order_by %}
 {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{%- if limit is not none %}
 LIMIT {{ limit }}{% endif %}
-;""")
+;"""
+)
 
 
 @dataclass

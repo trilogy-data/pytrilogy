@@ -89,7 +89,8 @@ def test_format_watermarks_sorted_output(capsys):
 def test_refresh_stale_assets_forced():
     """Test that force_sources forces rebuild regardless of staleness."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text("""
+    executor.execute_text(
+        """
         key item_id int;
         property item_id.name string;
         property item_id.updated_at datetime;
@@ -120,7 +121,8 @@ def test_refresh_stale_assets_forced():
         INSERT INTO target_items_table
         SELECT 1 as item_id, 'Widget' as name, TIMESTAMP '2024-01-10 12:00:00' as updated_at
         ''');
-        """)
+        """
+    )
 
     refreshed_assets: list[tuple[str, str]] = []
 

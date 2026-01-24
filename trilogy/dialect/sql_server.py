@@ -36,7 +36,8 @@ FUNCTION_GRAIN_MATCH_MAP = {
     FunctionType.AVG: lambda args, types: f"{args[0]}",
 }
 
-TSQL_TEMPLATE = Template("""{%- if ctes %}
+TSQL_TEMPLATE = Template(
+    """{%- if ctes %}
 WITH {% for cte in ctes %}
 {{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if full_select -%}{{full_select}}
@@ -65,7 +66,8 @@ HAVING
 ORDER BY {% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}
 {% endfor %}{% endif %}{% endif %}
-""")
+"""
+)
 
 MAX_IDENTIFIER_LENGTH = 128
 

@@ -19,7 +19,8 @@ def test_query():
 
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
 
-    _ = duckdb.generate_sql("""SELECT
+    _ = duckdb.generate_sql(
+        """SELECT
     symbol.sector,
     symbol.industry,
     sum(holdings.qty) as total_holding_qty,
@@ -28,7 +29,8 @@ def test_query():
 order by
     total_holding_qty desc
 ;
-    """)
+    """
+    )
 
 
 def test_import():
@@ -51,13 +53,15 @@ def test_import():
 
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
 
-    _ = duckdb.generate_sql("""SELECT
+    _ = duckdb.generate_sql(
+        """SELECT
     holdings.profitable,
     holdings.return,
 WHERE
     holdings.profitable
 ;
-    """)
+    """
+    )
 
 
 def test_query_results():
@@ -66,7 +70,8 @@ def test_query_results():
 
     DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
-    duckdb.parse_text("""import dividend as dividend;
+    duckdb.parse_text(
+        """import dividend as dividend;
 import symbol as symbol;
 import provider as provider;
 import holdings as holdings;
@@ -85,9 +90,11 @@ select
 order by
   holdings.return desc
 limit 10;
-  """)
+  """
+    )
 
-    duckdb.generate_sql("""import dividend as dividend;
+    duckdb.generate_sql(
+        """import dividend as dividend;
 import symbol as symbol;
 import provider as provider;
 import holdings as holdings;
@@ -106,7 +113,8 @@ select
 order by
   holdings.return desc
 limit 10;
-  """)
+  """
+    )
 
 
 def test_datasource_caching():
@@ -120,12 +128,14 @@ def test_datasource_caching():
         DebuggingHook()
         duckdb = Dialects.DUCK_DB.default_executor(environment=env)
 
-        sql = duckdb.generate_sql("""
+        sql = duckdb.generate_sql(
+            """
     SELECT
         holdings.provider.name,
         count(holdings.symbol.id) as  holding_count,
     ;
-        """)[0]
+        """
+        )[0]
         assert "dividend" not in sql.lower(), sql
     CONFIG.generation.datasource_build_cache = False
 
@@ -207,11 +217,13 @@ def test_provider_name():
         build_concept.canonical_address
         in build_env.non_partial_materialized_canonical_concepts
     )
-    sql = duckdb.generate_sql("""select
+    sql = duckdb.generate_sql(
+        """select
     symbol.sector,
     provider.name,
     sum(dividend.amount) as total_div;
-  """)[0]
+  """
+    )[0]
     assert "reference" not in sql.lower(), sql
     assert sql.count("JOIN") == 2, sql
 
@@ -224,13 +236,15 @@ def test_filter():
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
 
     with raises(NoDatasourceException):
-        duckdb.generate_sql("""import entrypoint;
+        duckdb.generate_sql(
+            """import entrypoint;
         where symbol.class = 'STOCK'
     and (
         symbol.industry like '%solar%'
         or symbol.sector like '%solar%'
     )
-        select 1 as test_filter;""")
+        select 1 as test_filter;"""
+        )
 
 
 def test_filter_sector():
@@ -240,7 +254,8 @@ def test_filter_sector():
     DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
 
-    sql = duckdb.generate_sql("""
+    sql = duckdb.generate_sql(
+        """
 
 where symbol.sector in ('Energy', 'Materials', 'Utilities') 
   or symbol.industry in ('Oil & Gas', 'Coal', 'Mining', 'Paper & Forest Products', 'Chemicals')
@@ -253,7 +268,8 @@ order by
     total_dividends desc
 limit 100;
 
-                              """)[0]
+                              """
+    )[0]
     assert "reference" not in sql.lower(), sql
 
 
@@ -264,7 +280,8 @@ def test_filter_sector_two():
     DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
 
-    sql = duckdb.generate_sql("""
+    sql = duckdb.generate_sql(
+        """
 where symbol.sector in ('Energy', 'Materials', 'Utilities') 
   or symbol.industry in ('Oil & Gas', 'Coal', 'Mining', 'Paper & Forest Products', 'Chemicals')
   or symbol.name like '%Oil%' 
@@ -273,7 +290,8 @@ where symbol.sector in ('Energy', 'Materials', 'Utilities')
     symbol.sector,
     provider.name,
     sum(dividend.amount) as total_div;
-    """)[0]
+    """
+    )[0]
     assert "reference" not in sql.lower(), sql
 
 
@@ -284,12 +302,14 @@ def test_bind_filter_reassignment():
     DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
 
-    sql = duckdb.generate_sql("""
+    sql = duckdb.generate_sql(
+        """
 SELECT
     holdings.provider.name,
     count(holdings.symbol.id) as  holding_count,
 ;
-    """)[0]
+    """
+    )[0]
     assert "dividend" not in sql.lower(), sql
 
 
@@ -300,13 +320,15 @@ def test_bind_filter_reassignment_two():
     DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
 
-    sql = duckdb.generate_sql("""
+    sql = duckdb.generate_sql(
+        """
 SELECT
     provider.name,
     count(holdings.symbol.id) as  holding_count,
     sum(holdings.value) as  holding_value
 ;
-    """)[0]
+    """
+    )[0]
     assert "dividend" not in sql.lower(), sql
 
 
@@ -317,7 +339,8 @@ def test_calculated_field():
     DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
 
-    sql = duckdb.generate_sql("""
+    sql = duckdb.generate_sql(
+        """
 SELECT
     --provider.id,
     provider.name,
@@ -329,7 +352,8 @@ SELECT
         sum(holdings.value) as  holding_value,
     count(holdings.symbol.id) as  holding_count,
 
-;  """)[0]
+;  """
+    )[0]
 
     # assert env.concepts['provider.name'].grain.components == {
     #     "provider.id",

@@ -14,16 +14,21 @@ def test_query_gen():
 
     x = Dialects.DUCK_DB.default_executor(environment=x)
 
-    sql = x.generate_sql("""import flight;
+    sql = x.generate_sql(
+        """import flight;
 
 where local.dep_time.month_start between '2001-12-31'::date and '2002-03-31'::date  
 select 
     count(carrier.name) as carrier_count;
-    """)[-1]
+    """
+    )[-1]
     # if we don't have this group by, we will get the wrong result
-    assert '''GROUP BY 
+    assert (
+        '''GROUP BY 
     "carrier_carrier"."code",
-    "carrier_carrier"."name"''' in sql
+    "carrier_carrier"."name"'''
+        in sql
+    )
 
 
 def test_helpful_error():
@@ -33,12 +38,14 @@ def test_helpful_error():
 
     x = Dialects.DUCK_DB.default_executor(environment=x)
     with raises(InvalidSyntaxException) as e:
-        x.generate_sql("""import flight;
+        x.generate_sql(
+            """import flight;
         
 select
     max(dep_time.year_start) as max_year,
     min(dep_time.year_start) min_year;
-    """)
+    """
+        )
     assert "AS " in str(e.value)
     assert "\\n" not in e.value.args[0]
 
@@ -50,7 +57,8 @@ def test_hidden_field():
 
     x = Dialects.DUCK_DB.default_executor(environment=x)
 
-    sql = x.generate_sql("""import flight;
+    sql = x.generate_sql(
+        """import flight;
         import flight as flight;
 
 where flight.carrier.name = 'Delta Air Lines'
@@ -64,5 +72,6 @@ select
     avg(flight.aircraft.aircraft_model.seats) as avg_plane_size
 order by flight_count desc
 limit 100;
-    """)[-1]
+    """
+    )[-1]
     assert '"vacuous"."flight_count" desc' in sql, sql

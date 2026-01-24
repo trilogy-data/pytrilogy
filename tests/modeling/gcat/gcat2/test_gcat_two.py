@@ -22,11 +22,13 @@ def test_property_binding():
         ),
     )
     DebuggingHook()
-    exec.generate_sql("""
+    exec.generate_sql(
+        """
 import launch;
 
 
-        """)
+        """
+    )
 
     assert exec.environment.concepts["was_complete_success"].keys == {
         "local.launch_tag"
@@ -90,11 +92,13 @@ def test_refresh():
         ),
     )
     DebuggingHook()
-    sql = exec.generate_sql("""
+    sql = exec.generate_sql(
+        """
 import launch;
 
 persist launch_info;
-        """)[-1]
+        """
+    )[-1]
 
     assert "1=1" not in sql, sql
 
@@ -110,7 +114,8 @@ def test_copy():
         ),
     )
     DebuggingHook(INFO)
-    sql = exec.generate_sql("""
+    sql = exec.generate_sql(
+        """
 import launch;
 
 show  
@@ -120,7 +125,8 @@ select
 
     org.e_name
 ;
-        """)[-1]
+        """
+    )[-1]
 
     assert "1=1" not in sql, sql
 
@@ -135,7 +141,8 @@ def test_parquet_selection():
         ),
     )
     DebuggingHook()
-    sql = exec.generate_sql("""
+    sql = exec.generate_sql(
+        """
 import launch;
 
 where launch_tag is not null
@@ -143,6 +150,7 @@ select
     launch_date,
     coalesce(CASE WHEN org.e_name = '-' then NULL else org.e_name end, org.u_name) as launch_org,
 ;
-        """)[-1]
+        """
+    )[-1]
 
     assert "uv_run" not in sql, sql

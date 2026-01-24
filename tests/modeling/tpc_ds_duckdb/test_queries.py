@@ -304,9 +304,11 @@ def run_adhoc(number: int, text: str | None = None):
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=env, hooks=[DebuggingHook(INFO)]
     )
-    engine.execute_raw_sql("""INSTALL tpcds;
+    engine.execute_raw_sql(
+        """INSTALL tpcds;
 LOAD tpcds;
-SELECT * FROM dsdgen(sf=1);""")
+SELECT * FROM dsdgen(sf=1);"""
+    )
     if text:
         rows = engine.execute_raw_sql(text)
         for row in rows:

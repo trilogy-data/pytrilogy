@@ -318,7 +318,8 @@ def test_load_env_file():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
         env_file = tmppath / ".env"
-        env_file.write_text("""
+        env_file.write_text(
+            """
 # Comment line
 TRILOGY_TEST_VAR1=value1
 TRILOGY_TEST_VAR2="quoted value"
@@ -327,7 +328,8 @@ TRILOGY_TEST_VAR4=value=with=equals
 
 # Empty line above
 TRILOGY_TEST_VAR5=
-""")
+"""
+        )
 
         env_vars = load_env_file(env_file)
 

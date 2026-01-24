@@ -3,7 +3,8 @@ from trilogy.executor import Executor
 
 def test_filters(duckdb_engine: Executor, expected_results):
     # generate inputs
-    duckdb_engine.execute_text(""" key x int;
+    duckdb_engine.execute_text(
+        """ key x int;
         key y int;
 property x.a int;
 property x.b int;
@@ -23,7 +24,8 @@ union all
 select 1 as x, 2 as y, 1 as a, 2 as b
 
 ''';
-""")
+"""
+    )
     # test filters
     test_two = """
 

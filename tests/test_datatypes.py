@@ -25,7 +25,8 @@ def test_numeric():
 def test_cast_error():
     found = False
     try:
-        env, _ = parse_text("""
+        env, _ = parse_text(
+            """
     const x <- 1;
     const y <- 'fun';
 
@@ -34,7 +35,8 @@ def test_cast_error():
     where 
         x = y;
 
-    """)
+    """
+        )
     except InvalidSyntaxException as e:
         assert "Cannot compare INTEGER (ref:local.x) and STRING (ref:local.y)" in str(e)
         found = True
@@ -45,7 +47,8 @@ def test_cast_error():
 def test_is_error():
     found = False
     try:
-        env, _ = parse_text("""
+        env, _ = parse_text(
+            """
     const x <- 1;
     const y <- 'fun';
 
@@ -54,7 +57,8 @@ def test_is_error():
     where
         x is [1,2];
 
-    """)
+    """
+        )
     except InvalidSyntaxException as e:
         assert "Cannot use is with non-null or boolean value [1, 2]" in str(e)
         found = True

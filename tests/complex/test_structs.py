@@ -4,7 +4,8 @@ from trilogy.core.models.core import DataType, StructType
 
 def test_anon_struct():
     executor = Dialects.DUCK_DB.default_executor()
-    executor.parse_text("""
+    executor.parse_text(
+        """
 
 key wrapper struct<a:int,b:int>;
 
@@ -16,11 +17,14 @@ query '''
 select {a: 1, b: 2} as wrapper union all select {a: 3, b: 4}
 '''
 ;
-""")
-    results = executor.execute_text("""
+"""
+    )
+    results = executor.execute_text(
+        """
 select 
     sum(wrapper.a) as a;
-""")[0].fetchall()
+"""
+    )[0].fetchall()
 
     assert len(results) == 1
     assert results[0].a == 4, results[0].a
@@ -28,7 +32,8 @@ select
 
 def test_lambda_access():
     executor = Dialects.DUCK_DB.default_executor()
-    executor.parse_text("""
+    executor.parse_text(
+        """
 
 key wrapper struct<a:int,b:int>;
 
@@ -40,12 +45,15 @@ query '''
 select {a: 1, b: 2} as wrapper union all select {a: 3, b: 4}
 '''
 ;
-""")
-    results = executor.execute_text("""
+"""
+    )
+    results = executor.execute_text(
+        """
 def get_a(x)-> x.a; 
 select 
     sum(@get_a(wrapper)) as a;
-""")[0].fetchall()
+"""
+    )[0].fetchall()
 
     assert len(results) == 1
     assert results[0].a == 4, results[0].a
@@ -53,7 +61,8 @@ select
 
 def test_array_struct_lambda():
     executor = Dialects.DUCK_DB.default_executor()
-    rows = executor.execute_text("""
+    rows = executor.execute_text(
+        """
 
 
 key array_struct list<struct<a:int,b:int>>;
@@ -77,7 +86,8 @@ SELECT
    @get_a2(struct(1->a, 2->b)) as a22
 ;
     
-  """)[-1].fetchall()
+  """
+    )[-1].fetchall()
     assert len(rows) == 1
     assert executor.environment.concepts["a2"].datatype == DataType.INTEGER
     assert executor.environment.concepts["a22"].datatype == DataType.INTEGER
@@ -86,7 +96,8 @@ SELECT
 
 def test_struct_in_array_parsing():
     executor = Dialects.DUCK_DB.default_executor()
-    results = executor.parse_text("""
+    results = executor.parse_text(
+        """
 
 key a int;
 key b int;
@@ -108,7 +119,8 @@ SELECT
     unnest_array.b,
 ;
     
-                                    """)
+                                    """
+    )
     assert isinstance(
         executor.environment.concepts["unnest_array"].datatype, StructType
     )
@@ -132,7 +144,8 @@ SELECT
 
     # for x in results[-1].output_columns:
     #     assert len(list(x.pseudonyms)) == 1, x.pseudonyms
-    results = executor.execute_text("""
+    results = executor.execute_text(
+        """
 
 key a int;
 key b int;
@@ -156,7 +169,8 @@ SELECT
 order by
     unnest_array.a asc
 ;
-                          """)
+                          """
+    )
     rows = results[-1].fetchall()
     assert len(rows) == 2, rows
     assert rows[0].b == 2
@@ -164,7 +178,8 @@ order by
 
 def test_struct_in_array_concept_parsing():
     executor = Dialects.DUCK_DB.default_executor()
-    results = executor.parse_text("""
+    results = executor.parse_text(
+        """
 
 key a int;
 key b int;
@@ -186,7 +201,8 @@ SELECT
     unnest_array
 ;
     
-                                    """)
+                                    """
+    )
     assert isinstance(
         executor.environment.concepts["unnest_array"].datatype, StructType
     )
@@ -208,7 +224,8 @@ SELECT
             ].pseudonyms
         )
 
-    results = executor.execute_text("""
+    results = executor.execute_text(
+        """
 key a int;
 key b int;
 key wrapper struct<a,b>;
@@ -228,7 +245,8 @@ select [{a: 1, b: 2}, {a: 3, b: 4}] as array_struct
 SELECT
     unnest_array
 ;
-                          """)
+                          """
+    )
     rows = results[-1].fetchall()
     assert len(rows) == 2, rows
     assert rows[0].unnest_array["b"] == 2
@@ -237,7 +255,8 @@ SELECT
 def test_struct_in_array_item_access():
     executor = Dialects.DUCK_DB.default_executor()
 
-    results = executor.execute_text("""
+    results = executor.execute_text(
+        """
 key a int;
 key b int;
 key wrapper struct<a,b>;
@@ -261,7 +280,8 @@ SELECT
 order by
     wrapper.a asc
     ;
-                          """)
+                          """
+    )
     rows = results[-1].fetchall()
     assert len(rows) == 2, rows
     assert rows[0].a == 1

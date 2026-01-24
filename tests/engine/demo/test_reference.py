@@ -7,13 +7,15 @@ def test_basic_agg():
     from trilogy.hooks.query_debugger import DebuggingHook
 
     DebuggingHook()
-    results = executor.execute_query("""const x <- unnest([1,2,2,3]);
+    results = executor.execute_query(
+        """const x <- unnest([1,2,2,3]);
 
 select 
     max(x) as max_x, 
     min(x) as min_x, 
     avg(x) as avg_x, 
-    count(x) as count_x;""").fetchall()
+    count(x) as count_x;"""
+    ).fetchall()
 
     assert results[0].max_x == 3
     assert results[0].min_x == 1
@@ -23,7 +25,8 @@ select
 def test_agg_to_grain():
     executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
 
-    results = executor.execute_query("""
+    results = executor.execute_query(
+        """
 key idx int;
 property idx.x int;
 datasource numbers(
@@ -46,6 +49,7 @@ SELECT
   count(x) as number_count
 order by
     x asc
-;""").fetchall()
+;"""
+    ).fetchall()
 
     assert results[1].number_count == 2

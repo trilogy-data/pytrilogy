@@ -41,13 +41,15 @@ key x int;
     assert isinstance(env.config.import_resolver, DictImportResolver)
 
     with raises(Exception, match="Unable to import 'test', parsing error") as e:
-        env.parse("""
+        env.parse(
+            """
         import test;
                 
     select x % 10 -> x_mod_10;
                 
                 
-    """)
+    """
+        )
         assert "TYPO" in str(e.value)
         assert 1 == 0
 

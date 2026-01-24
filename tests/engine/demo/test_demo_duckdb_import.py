@@ -100,7 +100,8 @@ def test_merge_concept_readdition():
     DebuggingHook()
     engine = Dialects.DUCK_DB.default_executor(environment=env)
 
-    engine.parse_text(""" 
+    engine.parse_text(
+        """ 
 key x int;
 key x2 int;
 
@@ -125,7 +126,8 @@ select * from (values (1, 10), (2, 20), (3, 30)) as t(x2, y);
 
 merge x2 into x;
 
-""")
+"""
+    )
     test_env = env.materialize_for_select()
     g = generate_graph(test_env)
     target_concepts = [test_env.concepts[c] for c in ["x", "y"]]

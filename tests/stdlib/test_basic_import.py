@@ -5,7 +5,8 @@ from trilogy.parsing.exceptions import ParseError
 
 
 def test_stdlib():
-    env, _ = Environment().parse("""
+    env, _ = Environment().parse(
+        """
 import std.money;
                         
 key order int;
@@ -22,7 +23,8 @@ SELECT
     select 1 as order,
     2.0 as amount
     ''';
-""")
+"""
+    )
 
     assert "usd" in env.concepts["amount"].datatype.traits, (
         "usd" in env.concepts["amount"].datatype.traits
@@ -31,7 +33,8 @@ SELECT
 
 def test_stdlib_failure():
     with raises(ParseError):
-        Environment().parse("""
+        Environment().parse(
+            """
     import std.money;
                             
     key order int;
@@ -48,4 +51,5 @@ def test_stdlib_failure():
         2.0 as amount
         ''';
 
-    """)
+    """
+        )

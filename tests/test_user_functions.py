@@ -8,13 +8,15 @@ from trilogy.hooks import DebuggingHook
 def test_user_function_def():
     x = Dialects.DUCK_DB.default_executor()
 
-    results = x.execute_query("""
+    results = x.execute_query(
+        """
 def percent_ratio(a, b, digits=3) -> round(a::float / b * 100, digits);
 
                  
 select @percent_ratio(10, 100) as ratio;
                  
-                 """)
+                 """
+    )
 
     assert results.fetchall()[0].ratio == 10.0
 
@@ -22,13 +24,15 @@ select @percent_ratio(10, 100) as ratio;
 def test_user_function_def_with_default():
     x = Dialects.DUCK_DB.default_executor()
     DebuggingHook()
-    results = x.execute_query("""
+    results = x.execute_query(
+        """
 def percent_ratio(a, b, digits=3) -> round(a / b * 100, digits);
 
 select @percent_ratio(21, 1000) as ratio,
          @percent_ratio(21, 1000, 0) as ratio_two;
                   
-                  """)
+                  """
+    )
 
     results = results.fetchall()
     assert results[0].ratio == 2.1
@@ -38,7 +42,8 @@ select @percent_ratio(21, 1000) as ratio,
 def test_user_function_aggregate():
     x = Dialects.DUCK_DB.default_executor()
 
-    results = x.execute_query("""
+    results = x.execute_query(
+        """
 key x int;
 property x.price float;
 
@@ -60,7 +65,8 @@ def sum_times(a)-> a * sum(x);
                  
 select @sum_times(10) as total;
                  
-                 """)
+                 """
+    )
 
     assert results.fetchall()[0].total == 130
 
@@ -68,7 +74,8 @@ select @sum_times(10) as total;
 def test_user_function_nested():
     x = Dialects.DUCK_DB.default_executor()
 
-    results = x.execute_query("""
+    results = x.execute_query(
+        """
 key x int;
 property x.price float;
 
@@ -90,7 +97,8 @@ def sum_times(a)-> a * sum(x + price);
                  
 select @sum_times(10) as total;
                  
-                 """)
+                 """
+    )
 
     assert results.fetchall()[0].total == 230
 
@@ -98,7 +106,8 @@ select @sum_times(10) as total;
 def test_user_function_nested_rowset():
     x = Dialects.DUCK_DB.default_executor()
 
-    results = x.execute_query("""
+    results = x.execute_query(
+        """
 key x int;
 property x.price float;
 
@@ -122,7 +131,8 @@ select @sum_times(10) as total;
 
 select rowset.total;
                  
-                 """)
+                 """
+    )
 
     assert results.fetchall()[0].rowset_total == 230
 
@@ -130,7 +140,8 @@ select rowset.total;
 def test_user_function_case():
     x = Dialects.DUCK_DB.default_executor()
 
-    results = x.execute_query("""
+    results = x.execute_query(
+        """
 key x int;
 key y int;
 property x.price float;
@@ -171,7 +182,8 @@ select
     @weekday_sales(10) -> test
 order by y asc;
                 
-""")
+"""
+    )
     results = results.fetchall()
     assert results[0].test == 8
     assert results[1].test == 15
@@ -179,7 +191,8 @@ order by y asc;
 
 def test_parsing():
     x = Dialects.DUCK_DB.default_executor()
-    x.execute_query("""
+    x.execute_query(
+        """
 key x int;
 property x.price float;
 
@@ -203,7 +216,8 @@ auto test <-SUM(CASE WHEN 10 = weekday THEN x ELSE 0 END) +
 
 
                  
-""")
+"""
+    )
     test = x.environment.concepts["test"]
     assert test.keys == set()
     assert test.purpose == Purpose.METRIC
@@ -216,7 +230,8 @@ def test_user_function_import():
     from trilogy.hooks import DebuggingHook
 
     DebuggingHook()
-    results = x.execute_query("""
+    results = x.execute_query(
+        """
 import test_env_functions as test_env_functions;
 
 key x int;
@@ -228,7 +243,8 @@ select
     x as quad_test,
     @test_env_functions.quadratic(2, 3, 4) as quad_two;
 
-""")
+"""
+    )
     results = results.fetchall()
     assert results[0].quad_test == 16.414213562373096
 
@@ -236,7 +252,8 @@ select
 def test_user_function_nesting():
     x = Dialects.DUCK_DB.default_executor()
 
-    results = x.execute_query("""
+    results = x.execute_query(
+        """
 key x int;
 key y int;
 property x.price float;
@@ -277,7 +294,8 @@ def plus_two(a) -> a + 2;
 auto random_one_f <- @weekday_sales(10) +2;
 auto random <- @plus_two(@weekday_sales(10));
                 
-""")
+"""
+    )
     # assert x.environment.concepts['random_no_f'].purpose == Purpose.METRIC, x.environment.concepts['random']
     assert (
         x.environment.concepts["random_one_f"].purpose == Purpose.METRIC
@@ -286,10 +304,12 @@ auto random <- @plus_two(@weekday_sales(10));
         x.environment.concepts["random"].purpose == Purpose.METRIC
     ), x.environment.concepts["random"]
 
-    results = x.execute_query("""select 
+    results = x.execute_query(
+        """select 
         y,
         @plus_two(@weekday_sales(10)) -> test2
-    order by y asc;""")
+    order by y asc;"""
+    )
     results = results.fetchall()
     assert results[0].test2 == 10
     assert results[1].test2 == 17
@@ -298,7 +318,8 @@ auto random <- @plus_two(@weekday_sales(10));
 def test_user_function_aggregate_two():
     x = Dialects.DUCK_DB.default_executor()
 
-    results = x.execute_query("""import std.geography;
+    results = x.execute_query(
+        """import std.geography;
 import std.display;
 
 key state string::us_state;
@@ -322,7 +343,8 @@ def avg_year_percent_of_all_avg_year(field, dim)->round((avg(sum(field) by year,
 
 select @avg_year_percent_of_all_avg_year(val, state) as p_of_whole, state
 order by p_of_whole desc;
-""")
+"""
+    )
 
     results = results.fetchall()
     assert int(results[0].p_of_whole * 100) == 68
