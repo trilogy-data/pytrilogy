@@ -1,5 +1,5 @@
-from trilogy.core.enums import Derivation, SourceType
-from trilogy.core.models.build import BuildDatasource
+from trilogy.core.enums import BooleanOperator, Derivation, SourceType
+from trilogy.core.models.build import BuildConditional, BuildDatasource
 from trilogy.core.models.execute import CTE, RecursiveCTE, UnionCTE
 from trilogy.core.optimizations.base_optimization import OptimizationRule
 
@@ -7,9 +7,14 @@ from trilogy.core.optimizations.base_optimization import OptimizationRule
 class InlineAggregateFilter(OptimizationRule):
     """Inline a parent filter CTE into a child aggregate CTE.
 
-    When aggregating over filtered columns (e.g., sum(x? y=z)), the filter
-    creates an intermediate CTE. This optimization inlines the filter CTE's
-    datasource directly into the aggregate CTE, producing a single SELECT.
+    When aggregating over filtered columns (e.g., sum(x? y=z)) or using a global
+    WHERE clause, the filter creates an intermediate CTE. This optimization inlines
+    the filter CTE's datasource directly into the aggregate CTE, producing a single
+    SELECT.
+
+    Handles two cases:
+    1. SourceType.FILTER - filtered aggregates like sum(x? y=z)
+    2. SourceType.DIRECT_SELECT with condition - global WHERE clauses
     """
 
     def __init__(self) -> None:
@@ -34,15 +39,29 @@ class InlineAggregateFilter(OptimizationRule):
         if isinstance(parent, (UnionCTE, RecursiveCTE)):
             self.debug(f"Parent {parent.name} is Union/Recursive CTE")
             return False
-        if parent.source.source_type != SourceType.FILTER:
-            self.debug(f"Parent {parent.name} is not a filter CTE")
+
+        # Check for eligible source types
+        is_filter_type = parent.source.source_type == SourceType.FILTER
+        is_direct_select_with_condition = (
+            parent.source.source_type == SourceType.DIRECT_SELECT
+            and parent.condition is not None
+        )
+
+        if not (is_filter_type or is_direct_select_with_condition):
+            self.debug(
+                f"Parent {parent.name} is not a filter or direct select with condition"
+            )
             return False
+
         if not parent.is_root_datasource:
             self.debug(f"Parent {parent.name} is not a root datasource")
             return False
-        if parent.condition:
+
+        # For FILTER type, parent should not have a condition (it's in the lineage)
+        if is_filter_type and parent.condition:
             self.debug(f"Parent {parent.name} has a condition, cannot inline")
             return False
+
         if parent.parent_ctes:
             self.debug(f"Parent {parent.name} has its own parents")
             return False
@@ -88,6 +107,9 @@ class InlineAggregateFilter(OptimizationRule):
             )
             return False
 
+        # Store parent's condition before inlining (for DIRECT_SELECT case)
+        parent_condition = parent.condition
+
         # Perform the inline
         result = cte.inline_parent_datasource(parent, force_group=True)
         if result:
@@ -96,6 +118,18 @@ class InlineAggregateFilter(OptimizationRule):
                 if output_col.derivation == Derivation.FILTER:
                     if output_col.address in cte.source_map:
                         cte.source_map[output_col.address] = []
+
+            # Transfer parent's condition to child (for DIRECT_SELECT with WHERE)
+            if parent_condition:
+                if cte.condition:
+                    cte.condition = BuildConditional(
+                        left=parent_condition,
+                        operator=BooleanOperator.AND,
+                        right=cte.condition,
+                    )
+                else:
+                    cte.condition = parent_condition
+
             self.log(
                 f"Inlined filter parent {parent.name} into aggregate CTE {cte.name}"
             )

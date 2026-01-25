@@ -227,3 +227,71 @@ select
 
     # Should work without issues
     assert "sum(" in sql.lower()
+
+
+def test_inline_global_where_clause():
+    """A global WHERE clause should be inlined to a single SELECT."""
+    query = """
+key id int;
+property id.value int;
+key category string;
+
+datasource test (
+    id: id,
+    value: value,
+    category: category
+)
+grain (id)
+address test_table;
+
+select
+    category,
+    sum(value) as total_sum
+where category = 'A'
+;
+"""
+    env, stmts = parse(query)
+    exec = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = exec.generate_sql(stmts[-1])[-1]
+
+    # Should NOT have a WITH clause (no subquery)
+    assert "WITH" not in sql, f"Expected no subquery, got: {sql}"
+    # Should have the WHERE clause
+    assert "WHERE" in sql, f"Expected WHERE clause, got: {sql}"
+    # Should have GROUP BY
+    assert "GROUP BY" in sql, f"Expected GROUP BY, got: {sql}"
+
+
+def test_inline_global_where_with_complex_condition():
+    """A global WHERE clause with complex condition should be inlined."""
+    query = """
+key id int;
+property id.value int;
+key category string;
+key region string;
+
+datasource test (
+    id: id,
+    value: value,
+    category: category,
+    region: region
+)
+grain (id)
+address test_table;
+
+select
+    category,
+    sum(value) as total_sum
+where category = 'A' and region = 'US'
+;
+"""
+    env, stmts = parse(query)
+    exec = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = exec.generate_sql(stmts[-1])[-1]
+
+    # Should NOT have a WITH clause (no subquery)
+    assert "WITH" not in sql, f"Expected no subquery, got: {sql}"
+    # Should have both conditions in WHERE
+    assert "WHERE" in sql, f"Expected WHERE clause, got: {sql}"
+    assert "'A'" in sql, f"Expected category filter, got: {sql}"
+    assert "'US'" in sql, f"Expected region filter, got: {sql}"
