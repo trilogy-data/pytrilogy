@@ -64,3 +64,5 @@ pglite_test.py
 # PERFORMANCE_ANALYSIS.md
 
 scratch.txt
+
+uv.lock
