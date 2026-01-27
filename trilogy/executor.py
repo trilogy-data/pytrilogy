@@ -1,3 +1,4 @@
+import uuid
 from functools import singledispatchmethod
 from pathlib import Path
 from typing import Any, Generator, List, Optional
@@ -53,7 +54,7 @@ from trilogy.core.validation.common import (
     ValidationTest,
 )
 from trilogy.dialect.base import BaseDialect
-from trilogy.dialect.config import DialectConfig
+from trilogy.dialect.config import DialectConfig, RetryPolicy
 from trilogy.dialect.enums import Dialects
 from trilogy.dialect.metadata import (
     handle_concept_declaration,
@@ -83,7 +84,6 @@ class Executor(object):
         hooks: List[BaseHook] | None = None,
         config: DialectConfig | None = None,
     ):
-        import uuid
 
         self.dialect: Dialects = dialect
         self.engine = engine
@@ -633,6 +633,40 @@ class Executor(object):
         concept: Concept = matched.pop()
         return self._concept_to_value(concept, local_concepts=local_concepts)
 
+    def _get_retry_policy(self, error: Exception) -> RetryPolicy | None:
+        """Get retry policy for an error if configured."""
+        if not self.config or not self.config.retry_config:
+            return None
+        return self.config.retry_config.get_policy_for_error(str(error))
+
+    def _execute_with_retry(
+        self,
+        command: str,
+        final_params: dict | None,
+    ) -> ResultProtocol:
+        """Execute SQL with retry logic based on configured retry policy."""
+        import time
+
+        attempt = 0
+
+        while True:
+            attempt += 1
+            try:
+                if final_params:
+                    return self.connection.execute(text(command), final_params)
+                else:
+                    return self.connection.execute(text(command))
+            except Exception as e:
+                policy = self._get_retry_policy(e)
+                if policy is None or attempt >= policy.max_attempts:
+                    raise
+                delay = policy.get_delay(attempt)
+                self.logger.warning(
+                    f"Query failed (attempt {attempt}/{policy.max_attempts}), "
+                    f"retrying in {delay:.1f}s: {e}"
+                )
+                time.sleep(delay)
+
     def execute_raw_sql(
         self,
         command: str | Path,
@@ -656,12 +690,7 @@ class Executor(object):
                     for x in params
                 }
 
-        if final_params:
-            output = self.connection.execute(text(command), final_params)
-        else:
-            output = self.connection.execute(text(command))
-        # self.connection.commit()
-        return output
+        return self._execute_with_retry(command, final_params)
 
     def execute_text(
         self, command: str, non_interactive: bool = False

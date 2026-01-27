@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -7,9 +8,40 @@ if TYPE_CHECKING:
         DataFrame = Any
 
 
+@dataclass
+class RetryPolicy:
+    """Defines retry behavior for matching errors."""
+
+    max_attempts: int = 3
+    base_delay_seconds: float = 1.0
+    max_delay_seconds: float = 60.0
+    exponential_base: float = 2.0
+
+    def get_delay(self, attempt: int) -> float:
+        """Calculate delay for a given attempt using exponential backoff."""
+        delay = self.base_delay_seconds * (self.exponential_base ** (attempt - 1))
+        return min(delay, self.max_delay_seconds)
+
+
+@dataclass
+class RetryConfig:
+    """Configuration for retry behavior with regex pattern matching."""
+
+    patterns: dict[str, RetryPolicy] = field(default_factory=dict)
+
+    def get_policy_for_error(self, error_message: str) -> RetryPolicy | None:
+        """Find matching retry policy for an error message."""
+        import re
+
+        for pattern, policy in self.patterns.items():
+            if re.search(pattern, error_message, re.IGNORECASE):
+                return policy
+        return None
+
+
 class DialectConfig:
-    def __init__(self):
-        pass
+    def __init__(self, retry_config: RetryConfig | None = None):
+        self.retry_config = retry_config
 
     def connection_string(self) -> str:
         raise NotImplementedError
@@ -25,7 +57,13 @@ class DialectConfig:
 
 
 class BigQueryConfig(DialectConfig):
-    def __init__(self, project: str | None = None, client: Any | None = None):
+    def __init__(
+        self,
+        project: str | None = None,
+        client: Any | None = None,
+        retry_config: RetryConfig | None = None,
+    ):
+        super().__init__(retry_config=retry_config)
         self.project = project
         self.client = client
 
@@ -50,7 +88,9 @@ class DuckDBConfig(DialectConfig):
         path: str | None = None,
         enable_python_datasources: bool | None = None,
         enable_gcs: bool | None = None,
+        retry_config: RetryConfig | None = None,
     ):
+        super().__init__(retry_config=retry_config)
         self.path = path
         self._enable_python_datasources = enable_python_datasources
         self._enable_gcs = enable_gcs
@@ -72,8 +112,15 @@ class DuckDBConfig(DialectConfig):
 
 class PostgresConfig(DialectConfig):
     def __init__(
-        self, host: str, port: int, username: str, password: str, database: str
+        self,
+        host: str,
+        port: int,
+        username: str,
+        password: str,
+        database: str,
+        retry_config: RetryConfig | None = None,
     ):
+        super().__init__(retry_config=retry_config)
         self.host = host
         self.port = port
         self.username = username
@@ -86,8 +133,15 @@ class PostgresConfig(DialectConfig):
 
 class SQLServerConfig(DialectConfig):
     def __init__(
-        self, host: str, port: int, username: str, password: str, database: str
+        self,
+        host: str,
+        port: int,
+        username: str,
+        password: str,
+        database: str,
+        retry_config: RetryConfig | None = None,
     ):
+        super().__init__(retry_config=retry_config)
         self.host = host
         self.port = port
         self.username = username
@@ -106,7 +160,9 @@ class SnowflakeConfig(DialectConfig):
         password: str,
         database: str | None = None,
         schema: str | None = None,
+        retry_config: RetryConfig | None = None,
     ):
+        super().__init__(retry_config=retry_config)
         self.account = account
         self.username = username
         self.password = password
@@ -132,7 +188,9 @@ class PrestoConfig(DialectConfig):
         password: str,
         catalog: str,
         schema: str | None = None,
+        retry_config: RetryConfig | None = None,
     ):
+        super().__init__(retry_config=retry_config)
         self.host = host
         self.port = port
         self.username = username
