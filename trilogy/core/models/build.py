@@ -1832,6 +1832,14 @@ class Factory:
         return self._build_primitive(base)
 
     def _build_primitive(self, base):
+        if isinstance(base, MapWrapper):
+            return MapWrapper(
+                {k: self.build(v) for k, v in base.items()},
+                key_type=base.key_type,
+                value_type=base.value_type,
+            )
+        if isinstance(base, ListWrapper):
+            return ListWrapper([self.build(v) for v in base], type=base.type)
         return base
 
     @build.register

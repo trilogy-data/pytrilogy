@@ -266,7 +266,10 @@
     index_access: atom "[" int_lit "]"
     map_key_access: atom "[" string_lit "]"
     _ATTR_ACCESS.1 : "getattr("i
-    attr_access: ( _ATTR_ACCESS atom "," string_lit ")") | (atom  "." string_lit)
+    ATTR_NAME: /[a-zA-Z_][a-zA-Z0-9_]*/
+    attr_access: ( _ATTR_ACCESS atom "," string_lit ")") | (atom  "." (string_lit | ATTR_NAME))
+    // chained access - allows map_struct['c'].a patterns
+    chained_access: _access_expr ( ("[" int_lit "]") | ("[" string_lit "]") | ("." (string_lit | ATTR_NAME)) )+
 
     ?expr: comparison_root | between_root
 
@@ -299,7 +302,7 @@
 
 
    # Access patterns
-   _access_expr: index_access | map_key_access | attr_access
+   _access_expr: chained_access | index_access | map_key_access | attr_access
     // functions
     
     fadd: (/add\(/ expr "," expr ")" ) 

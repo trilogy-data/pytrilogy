@@ -1,3 +1,4 @@
+from trilogy import Dialects
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.core import (
     ArrayType,
@@ -112,3 +113,34 @@ def test_merge_datatypes_with_trait_datatype():
     trait = TraitDataType(type=DataType.INTEGER, traits=["sortable"])
     assert merge_datatypes([trait]) == trait
     assert merge_datatypes([trait, trait]) == trait
+
+
+def test_trait_propagation():
+    engine = Dialects.DUCK_DB.default_executor()
+
+    engine.parse_text(
+        """
+                      
+type money float;
+key order_id int;
+property order_id.price float::money;
+                      
+datasource orders(
+    order_id: order_id,
+    price: price
+)
+                      
+grain (order_id)
+address orders;
+                      
+select 
+    count(order_id) as order_count,
+    sum(price) as total_revenue,
+    total_revenue/order_count as aov;
+
+"""
+    )
+
+    assert engine.environment.concepts["aov"].datatype == TraitDataType(
+        type=DataType.FLOAT, traits=["money"]
+    )

@@ -2431,6 +2431,32 @@ class ParseToObjects(Transformer):
         )
 
     @v_args(meta=True)
+    def chained_access(self, meta, args):
+        # First arg is the base access expression, rest are chained access operations
+        args = process_function_args(args, meta=meta, environment=self.environment)
+        base = args[0]
+        for accessor in args[1:]:
+            if isinstance(accessor, int):
+                # Index access
+                base = self.function_factory.create_function(
+                    [base, accessor], FunctionType.INDEX_ACCESS, meta
+                )
+            else:
+                # String key access (map) or attribute access
+                # If base is a map, use MAP_ACCESS; otherwise use ATTR_ACCESS
+                if hasattr(base, "datatype") and (
+                    base.datatype == DataType.MAP or isinstance(base.datatype, MapType)
+                ):
+                    base = self.function_factory.create_function(
+                        [base, accessor], FunctionType.MAP_ACCESS, meta
+                    )
+                else:
+                    base = self.function_factory.create_function(
+                        [base, accessor], FunctionType.ATTR_ACCESS, meta
+                    )
+        return base
+
+    @v_args(meta=True)
     def fcoalesce(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.COALESCE, meta)
 
