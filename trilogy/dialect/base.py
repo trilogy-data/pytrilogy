@@ -348,7 +348,8 @@ FUNCTION_GRAIN_MATCH_MAP = {
 }
 
 
-GENERIC_SQL_TEMPLATE: Template = Template("""{%- if ctes %}
+GENERIC_SQL_TEMPLATE: Template = Template(
+    """{%- if ctes %}
 WITH {% if recursive%} RECURSIVE {% endif %}{% for cte in ctes %}
 {{cte.name}} as (
 {{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
@@ -372,10 +373,12 @@ HAVING
 ORDER BY{% for order in order_by %}
 \t{{ order }}{% if not loop.last %},{% endif %}{% endfor %}
 {% endif %}{% endif %}
-""")
+"""
+)
 
 
-CREATE_TABLE_SQL_TEMPLATE = Template("""
+CREATE_TABLE_SQL_TEMPLATE = Template(
+    """
 CREATE {% if create_mode == "create_or_replace" %}OR REPLACE TABLE{% elif create_mode == "create_if_not_exists" %}TABLE IF NOT EXISTS{% else %}TABLE{% endif %} {{ name }} (
 {%- for column in columns %}
     {{ column.name }} {{ type_map[column.name] }}{% if column.comment %} COMMENT '{{ column.comment }}'{% endif %}{% if not loop.last %},{% endif %}
@@ -388,7 +391,8 @@ PARTITIONED BY (
 {%- endfor %}
 )
 {%- endif %};
-""".strip())
+""".strip()
+)
 
 
 def safe_get_cte_value(
