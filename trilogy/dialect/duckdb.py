@@ -170,61 +170,7 @@ def get_python_datasource_setup_sql(
         is_windows: If True, uses temp file workaround for shellfs pipe bug.
         instance_id: Unique identifier for this executor instance (thread-safe).
     """
-    if enabled:
-        if is_windows:
-            import atexit
-            import os
-            import tempfile
-            import uuid
-
-            # Windows workaround: shellfs has a bug with Arrow IPC pipes on Windows.
-            # We use a temp file approach: run script to file, then read file.
-            # The read_json forces the shell command to complete before read_arrow.
-            # Using getvariable() defers file path resolution until execution.
-            # Use UUID to ensure unique temp file per executor instance (thread-safe).
-            # Use Path.resolve() to avoid 8.3 short names (e.g. RUNNER~1) on CI.
-
-            unique_id = instance_id or str(uuid.uuid4())
-            temp_file = (
-                str(Path(tempfile.gettempdir()).resolve()).replace("\\", "/")
-                + f"/trilogy_uv_run_{unique_id}.arrow"
-            )
-
-            def cleanup_temp_file() -> None:
-                try:
-                    os.unlink(temp_file)
-                except OSError:
-                    pass
-
-            atexit.register(cleanup_temp_file)
-            return f"""
-INSTALL shellfs FROM community;
-INSTALL arrow FROM community;
-LOAD shellfs;
-LOAD arrow;
-
-SET VARIABLE __trilogy_uv_temp_file = '{temp_file}';
-
-CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
-WITH __build AS (
-    SELECT a.name
-    FROM read_json('uv run --quiet ' || script || ' ' || args || ' > {temp_file} && echo {{"name": "done"}} |') AS a
-    LIMIT 1
-)
-SELECT * FROM read_arrow(getvariable('__trilogy_uv_temp_file'));
-"""
-        else:
-            return """
-INSTALL shellfs FROM community;
-INSTALL arrow FROM community;
-LOAD shellfs;
-LOAD arrow;
-
-CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
-SELECT * FROM read_arrow('uv run --quiet ' || script || ' ' || args || ' |');
-"""
-    else:
-        # Use a subquery that throws an error when evaluated
+    if not enabled:  # Use a subquery that throws an error when evaluated
         # This ensures the error message is shown before column binding
         return """
 CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
@@ -234,6 +180,59 @@ SELECT * FROM (
                             || 'Set this in your trilogy.conf under [engine.config] or pass DuckDBConfig(enable_python_datasources=True) to the executor.')
     END as __error__
 ) WHERE __error__ IS NOT NULL;
+"""
+
+    if is_windows:
+        import atexit
+        import os
+        import tempfile
+        import uuid
+
+        # Windows workaround: shellfs has a bug with Arrow IPC pipes on Windows.
+        # We use a temp file approach: run script to file, then read file.
+        # The read_json forces the shell command to complete before read_arrow.
+        # Using getvariable() defers file path resolution until execution.
+        # Use UUID to ensure unique temp file per executor instance (thread-safe).
+        # Use Path.resolve() to avoid 8.3 short names (e.g. RUNNER~1) on CI.
+
+        unique_id = instance_id or str(uuid.uuid4())
+        temp_file = (
+            str(Path(tempfile.gettempdir()).resolve()).replace("\\", "/")
+            + f"/trilogy_uv_run_{unique_id}.arrow"
+        )
+
+        def cleanup_temp_file() -> None:
+            try:
+                os.unlink(temp_file)
+            except OSError:
+                pass
+
+        atexit.register(cleanup_temp_file)
+        return f"""
+INSTALL shellfs FROM community;
+INSTALL arrow FROM community;
+LOAD shellfs;
+LOAD arrow;
+
+SET VARIABLE __trilogy_uv_temp_file = '{temp_file}';
+
+CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
+WITH __build AS (
+SELECT a.name
+FROM read_json('uv run --quiet ' || script || ' ' || args || ' > {temp_file} && echo {{"name": "done"}} |') AS a
+LIMIT 1
+)
+SELECT * FROM read_arrow(getvariable('__trilogy_uv_temp_file'));
+"""
+    else:
+        return """
+INSTALL shellfs FROM community;
+INSTALL arrow FROM community;
+LOAD shellfs;
+LOAD arrow;
+
+CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
+SELECT * FROM read_arrow('uv run --quiet ' || script || ' ' || args || ' |');
 """
 
 
