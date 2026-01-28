@@ -393,8 +393,7 @@ LIMIT 15
         is False
     )
     assert (
-        """GROUP BY 
-    "usa_names"."name"
-"""
+        '''GROUP BY 
+    "usa_names"."name"'''
         in query
     ), query

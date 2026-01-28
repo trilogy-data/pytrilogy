@@ -47,6 +47,9 @@ def test_persist_in_import():
         working_path=Path(__file__).parent
     )  # .parse_file(Path(__file__).parent / "query_one.preql")
     engine = Dialects.DUCK_DB.default_executor(environment=env)
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
 
     results = engine.execute_file(Path(__file__).parent / "query_one.preql")
     rlist = results[-1].fetchall()
