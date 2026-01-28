@@ -3,7 +3,7 @@ from collections import defaultdict
 from trilogy.constants import CONFIG
 from trilogy.core.models.build import BuildDatasource
 from trilogy.core.models.execute import CTE, RecursiveCTE, UnionCTE
-from trilogy.core.optimizations.base_optimization import OptimizationRule
+from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 
 
 class InlineDatasource(OptimizationRule):
@@ -14,15 +14,16 @@ class InlineDatasource(OptimizationRule):
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
-    ) -> bool:
+    ) -> tuple[bool, MergedCTEMap | None]:
         if isinstance(cte, UnionCTE):
-            return any(
-                self.optimize(x, inverse_map=inverse_map) for x in cte.internal_ctes
+            optimized = any(
+                self.optimize(x, inverse_map=inverse_map)[0] for x in cte.internal_ctes
             )
+            return optimized, None
         if isinstance(cte, RecursiveCTE):
-            return False
+            return False, None
         if not cte.parent_ctes:
-            return False
+            return False, None
 
         self.debug(
             f"Checking {cte.name} for consolidating inline tables with {len(cte.parent_ctes)} parents"
@@ -44,6 +45,9 @@ class InlineDatasource(OptimizationRule):
                 self.debug(
                     f"Cannot inline: parent {parent_cte.name} has condition, cannot be inlined"
                 )
+                continue
+            if parent_cte.group_to_grain:
+                self.debug(f"Cannot inline: parent {parent_cte.name} is grouped")
                 continue
             raw_root = parent_cte.source.datasources[0]
             if not isinstance(raw_root, BuildDatasource):
@@ -77,7 +81,7 @@ class InlineDatasource(OptimizationRule):
             if replaceable.name not in self.candidates[cte.name]:
                 self.candidates[cte.name].add(replaceable.name)
                 self.count[replaceable.source.identifier] += 1
-                return True
+                return True, None
             if (
                 self.count[replaceable.source.identifier]
                 > CONFIG.optimizations.constant_inline_cutoff
@@ -99,4 +103,4 @@ class InlineDatasource(OptimizationRule):
                 optimized = True
             else:
                 self.log(f"Failed to inline {replaceable.name}")
-        return optimized
+        return optimized, None

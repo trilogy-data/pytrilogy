@@ -8,4 +8,5 @@ SELECT
 
 SELECT 
     gd.split,
-    gd.scalar_label,;
+    gd.scalar_label,
+order by gd.split asc;

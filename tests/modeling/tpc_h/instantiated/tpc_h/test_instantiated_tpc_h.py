@@ -15,6 +15,6 @@ def test_adhoc07():
 
     results = engine.generate_sql(text)[-1]
     assert (
-        'RIGHT OUTER JOIN "memory"."customer" as "order_customer_customers_at_abstract"'
+        'RIGHT OUTER JOIN "wakeful" on "order_orders"."o_custkey" = "wakeful"."order_customer_id"'
         in results
-    )
+    ), results

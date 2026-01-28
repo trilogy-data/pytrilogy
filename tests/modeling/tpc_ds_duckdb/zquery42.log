@@ -1,35 +1,25 @@
 query_id = 42
-gen_length = 1510
+gen_length = 1178
 generated_sql = """
-
-WITH 
-cheerful as (
 SELECT
-    \"store_sales_item_items\".\"I_CATEGORY\" as \"store_sales_item_category\",
+    cast(\"store_sales_date_date\".\"D_YEAR\" as int) as \"store_sales_date_year\",
     \"store_sales_item_items\".\"I_CATEGORY_ID\" as \"store_sales_item_category_id\",
-    \"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\" as \"store_sales_ext_sales_price\",
-    cast(\"store_sales_date_date\".\"D_YEAR\" as int) as \"store_sales_date_year\"
+    \"store_sales_item_items\".\"I_CATEGORY\" as \"store_sales_item_category\",
+    sum(\"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"total_ext_sales_price\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
     \"store_sales_item_items\".\"I_MANAGER_ID\" = 1 and \"store_sales_date_date\".\"D_MOY\" = 11 and cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 2000
-)
-SELECT
-    \"cheerful\".\"store_sales_date_year\" as \"store_sales_date_year\",
-    \"cheerful\".\"store_sales_item_category_id\" as \"store_sales_item_category_id\",
-    \"cheerful\".\"store_sales_item_category\" as \"store_sales_item_category\",
-    sum(\"cheerful\".\"store_sales_ext_sales_price\") as \"total_ext_sales_price\"
-FROM
-    \"cheerful\"
+
 GROUP BY 
-    \"cheerful\".\"store_sales_date_year\",
-    \"cheerful\".\"store_sales_item_category\",
-    \"cheerful\".\"store_sales_item_category_id\"
+    \"store_sales_item_items\".\"I_CATEGORY\",
+    \"store_sales_item_items\".\"I_CATEGORY_ID\",
+    cast(\"store_sales_date_date\".\"D_YEAR\" as int)
 ORDER BY 
     \"total_ext_sales_price\" desc,
-    \"cheerful\".\"store_sales_date_year\" asc,
-    \"cheerful\".\"store_sales_item_category_id\" asc,
-    \"cheerful\".\"store_sales_item_category\" asc
+    cast(\"store_sales_date_date\".\"D_YEAR\" as int) asc,
+    \"store_sales_item_items\".\"I_CATEGORY_ID\" asc,
+    \"store_sales_item_items\".\"I_CATEGORY\" asc
 LIMIT (100)"""

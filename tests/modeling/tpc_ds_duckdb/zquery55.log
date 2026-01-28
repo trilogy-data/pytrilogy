@@ -1,30 +1,21 @@
 query_id = 55
-gen_length = 1209
+gen_length = 920
 generated_sql = """
-
-WITH 
-cheerful as (
 SELECT
-    \"store_sales_item_items\".\"I_BRAND\" as \"store_sales_item_brand_name\",
     \"store_sales_item_items\".\"I_BRAND_ID\" as \"store_sales_item_brand_id\",
-    \"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\" as \"store_sales_ext_sales_price\"
+    \"store_sales_item_items\".\"I_BRAND\" as \"store_sales_item_brand_name\",
+    sum(\"store_sales_store_sales\".\"SS_EXT_SALES_PRICE\") as \"total_ext_sales\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
     \"store_sales_item_items\".\"I_MANAGER_ID\" = 28 and cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 1999 and \"store_sales_date_date\".\"D_MOY\" = 11
-)
-SELECT
-    \"cheerful\".\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
-    \"cheerful\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    sum(\"cheerful\".\"store_sales_ext_sales_price\") as \"total_ext_sales\"
-FROM
-    \"cheerful\"
+
 GROUP BY 
-    \"cheerful\".\"store_sales_item_brand_id\",
-    \"cheerful\".\"store_sales_item_brand_name\"
+    \"store_sales_item_items\".\"I_BRAND\",
+    \"store_sales_item_items\".\"I_BRAND_ID\"
 ORDER BY 
     \"total_ext_sales\" desc,
-    \"cheerful\".\"store_sales_item_brand_id\" asc
+    \"store_sales_item_items\".\"I_BRAND_ID\" asc
 LIMIT (100)"""

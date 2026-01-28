@@ -1,5 +1,5 @@
 query_id = 12
-gen_length = 2760
+gen_length = 2267
 generated_sql = """
 
 WITH 
@@ -10,53 +10,43 @@ SELECT
     \"web_sales_item_items\".\"I_CURRENT_PRICE\" as \"web_sales_item_current_price\",
     \"web_sales_item_items\".\"I_ITEM_DESC\" as \"web_sales_item_desc\",
     \"web_sales_item_items\".\"I_ITEM_ID\" as \"web_sales_item_name\",
-    \"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\" as \"web_sales_ext_sales_price\"
+    sum(\"web_sales_web_sales\".\"WS_EXT_SALES_PRICE\") as \"itemrevenue\"
 FROM
     \"memory\".\"web_sales\" as \"web_sales_web_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\" = \"web_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"web_sales_item_items\" on \"web_sales_web_sales\".\"WS_ITEM_SK\" = \"web_sales_item_items\".\"I_ITEM_SK\"
 WHERE
     cast(\"web_sales_date_date\".\"D_DATE\" as date) >= date '1999-02-22' and cast(\"web_sales_date_date\".\"D_DATE\" as date) <= date '1999-03-24' and \"web_sales_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home')
-),
-thoughtful as (
+
+GROUP BY 
+    \"web_sales_item_items\".\"I_CATEGORY\",
+    \"web_sales_item_items\".\"I_CLASS\",
+    \"web_sales_item_items\".\"I_CURRENT_PRICE\",
+    \"web_sales_item_items\".\"I_ITEM_DESC\",
+    \"web_sales_item_items\".\"I_ITEM_ID\"),
+cooperative as (
 SELECT
-    \"cheerful\".\"web_sales_item_category\" as \"web_sales_item_category\",
     \"cheerful\".\"web_sales_item_class\" as \"web_sales_item_class\",
-    \"cheerful\".\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    \"cheerful\".\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    \"cheerful\".\"web_sales_item_name\" as \"web_sales_item_name\",
-    sum(\"cheerful\".\"web_sales_ext_sales_price\") as \"itemrevenue\"
+    sum(\"cheerful\".\"itemrevenue\") as \"itemclassrevenue\"
 FROM
     \"cheerful\"
 GROUP BY 
-    \"cheerful\".\"web_sales_item_category\",
-    \"cheerful\".\"web_sales_item_class\",
-    \"cheerful\".\"web_sales_item_current_price\",
-    \"cheerful\".\"web_sales_item_desc\",
-    \"cheerful\".\"web_sales_item_name\"),
-cooperative as (
+    \"cheerful\".\"web_sales_item_class\")
 SELECT
-    \"thoughtful\".\"web_sales_item_class\" as \"web_sales_item_class\",
-    sum(\"thoughtful\".\"itemrevenue\") as \"itemclassrevenue\"
-FROM
-    \"thoughtful\"
-GROUP BY 
-    \"thoughtful\".\"web_sales_item_class\")
-SELECT
-    \"thoughtful\".\"web_sales_item_name\" as \"web_sales_item_name\",
-    \"thoughtful\".\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    \"thoughtful\".\"web_sales_item_category\" as \"web_sales_item_category\",
-    \"thoughtful\".\"web_sales_item_class\" as \"web_sales_item_class\",
-    \"thoughtful\".\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    \"thoughtful\".\"itemrevenue\" as \"itemrevenue\",
-    (\"thoughtful\".\"itemrevenue\" * 100.0) / \"cooperative\".\"itemclassrevenue\" as \"revenueratio\"
+    \"cheerful\".\"web_sales_item_name\" as \"web_sales_item_name\",
+    \"cheerful\".\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    \"cheerful\".\"web_sales_item_category\" as \"web_sales_item_category\",
+    \"cheerful\".\"web_sales_item_class\" as \"web_sales_item_class\",
+    \"cheerful\".\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    \"cheerful\".\"itemrevenue\" as \"itemrevenue\",
+    (\"cheerful\".\"itemrevenue\" * 100.0) / \"cooperative\".\"itemclassrevenue\" as \"revenueratio\"
 FROM
     \"cooperative\"
-    INNER JOIN \"thoughtful\" on \"cooperative\".\"web_sales_item_class\" is not distinct from \"thoughtful\".\"web_sales_item_class\"
+    INNER JOIN \"cheerful\" on \"cooperative\".\"web_sales_item_class\" is not distinct from \"cheerful\".\"web_sales_item_class\"
 ORDER BY 
-    \"thoughtful\".\"web_sales_item_category\" asc,
-    \"thoughtful\".\"web_sales_item_class\" asc,
-    \"thoughtful\".\"web_sales_item_name\" asc,
-    \"thoughtful\".\"web_sales_item_desc\" asc,
+    \"cheerful\".\"web_sales_item_category\" asc,
+    \"cheerful\".\"web_sales_item_class\" asc,
+    \"cheerful\".\"web_sales_item_name\" asc,
+    \"cheerful\".\"web_sales_item_desc\" asc,
     \"revenueratio\" asc
 LIMIT (100)"""

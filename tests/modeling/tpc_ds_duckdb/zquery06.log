@@ -1,5 +1,5 @@
 query_id = 6
-gen_length = 2844
+gen_length = 2605
 generated_sql = """
 
 WITH 
@@ -30,28 +30,21 @@ SELECT
 FROM
     \"memory\".\"item\" as \"item_items\"
 GROUP BY 
-    \"item_items\".\"I_CATEGORY\"),
-uneven as (
+    \"item_items\".\"I_CATEGORY\")
 SELECT
-    \"questionable\".\"item_id\" as \"item_id\",
     \"questionable\".\"store_sales_customer_address_state\" as \"store_sales_customer_address_state\",
-    \"questionable\".\"store_sales_ticket_number\" as \"store_sales_ticket_number\"
+    sum(1) as \"customer_count\"
 FROM
     \"questionable\"
     INNER JOIN \"abundant\" on \"questionable\".\"item_category\" is not distinct from \"abundant\".\"item_category\"
 WHERE
     \"questionable\".\"store_sales_date_year\" = 2001 and \"questionable\".\"store_sales_item_category\" is not null and \"questionable\".\"store_sales_date_month_of_year\" = 1 and \"questionable\".\"store_sales_item_current_price\" > 1.2 * \"abundant\".\"_virt_agg_avg_5942253052406187\"
-)
-SELECT
-    \"uneven\".\"store_sales_customer_address_state\" as \"store_sales_customer_address_state\",
-    sum(1) as \"customer_count\"
-FROM
-    \"uneven\"
+
 GROUP BY 
-    \"uneven\".\"store_sales_customer_address_state\"
+    \"questionable\".\"store_sales_customer_address_state\"
 HAVING
     sum(1) >= 10
 
 ORDER BY 
     \"customer_count\" asc nulls first,
-    \"uneven\".\"store_sales_customer_address_state\" asc nulls first"""
+    \"questionable\".\"store_sales_customer_address_state\" asc nulls first"""

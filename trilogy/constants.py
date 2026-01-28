@@ -32,6 +32,7 @@ class Optimizations:
     constant_inline_cutoff: int = 10
     direct_return: bool = True
     hide_unused_concepts: bool = True
+    merge_aggregate: bool = True
 
 
 @dataclass

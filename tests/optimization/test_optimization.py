@@ -171,9 +171,9 @@ def test_basic_pushdown(test_environment: Environment, test_environment_graph):
     inverse_map = {"parent": [cte2]}
     rule = PredicatePushdown()
     rule2 = PredicatePushdownRemove()
-    assert rule.optimize(cte2, inverse_map) is True
-    assert rule.optimize(cte2, inverse_map) is False
-    assert rule2.optimize(cte2, inverse_map) is True
+    assert rule.optimize(cte2, inverse_map)[0] is True
+    assert rule.optimize(cte2, inverse_map)[0] is False
+    assert rule2.optimize(cte2, inverse_map)[0] is True
     assert (
         cte2.condition is None
     ), f"{cte2.condition}, {parent.condition}, {is_child_of(cte2.condition, parent.condition)}"
@@ -238,7 +238,7 @@ def test_invalid_pushdown(test_environment: Environment, test_environment_graph)
     inverse_map = {"parent": [cte1, cte2]}
     rule = PredicatePushdown()
     # we cannot push down as not all children have the same filter
-    assert rule.optimize(cte1, inverse_map) is False
+    assert rule.optimize(cte1, inverse_map)[0] is False
     assert cte1.condition is None
     assert cte2.condition is not None
 
@@ -295,7 +295,7 @@ def test_invalid_aggregate_pushdown(
     inverse_map = {"parent": [cte2]}
     # we cannot push down as the condition is on an aggregate
     rule = PredicatePushdown()
-    assert rule.optimize(cte2, inverse_map) is False
+    assert rule.optimize(cte2, inverse_map)[0] is False
     assert parent.condition is None
     assert cte2.condition is not None
 
@@ -388,8 +388,8 @@ def test_decomposition_pushdown(test_environment: Environment, test_environment_
     assert parent2.condition is None
     rule = PredicatePushdown()
     # two to pushup, then last will fail
-    assert rule.optimize(cte1, inverse_map) is True
-    assert rule.optimize(cte1, inverse_map) is False
+    assert rule.optimize(cte1, inverse_map)[0] is True
+    assert rule.optimize(cte1, inverse_map)[0] is False
     assert parent1.condition == BuildConditional(
         left=BuildComparison(left=product_id, right=1, operator=ComparisonOperator.EQ),
         right=BuildComparison(

@@ -99,17 +99,33 @@ def test_aggregate_filter_anonymous():
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(query)[0]
 
-    pattern = r"""[a-z]+ as \(
+    # After MergeAggregate optimization, aggregate selects directly from datasource
+    pattern = r"""
+WITH\s+
+[a-z_]+\s+as\s+\(
+\s*SELECT
+\s*"[^"]+"\."name"\s+as\s+"name",
+\s*sum\(".*?"\."number"\)\s+as\s+"_virt_agg_sum_\d+",
+\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'F'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+",
+\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'M'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+"
+\s*FROM
+\s*"bigquery-public-data"\."usa_names"\."usa_1910_current"\s+as\s+"[^"]+"
+\s*GROUP\s+BY
+\s*"[^"]+"\."name"\s*\)
+.*?
+WHERE
+\s*abs\(
+\s*"[^"]+"\."_virt_agg_sum_\d+"
+\s*-\s*
+\s*"[^"]+"\."_virt_agg_sum_\d+"
+\s*\)\s*<\s*\(\s*0\.05\s*\*\s*"[^"]+"\."_virt_agg_sum_\d+"\s*\)
+.*?
 SELECT
-    (["a-z]+)\."name" as "name",
-    sum\(\1\."_virt_filter_births_\d+"\) as "_virt_agg_sum_\d+",
-    sum\(\1\."_virt_filter_births_\d+"\) as "_virt_agg_sum_\d+",
-    sum\(\1\."births"\) as "_virt_agg_sum_\d+"
-FROM
-    \1
-GROUP BY 
-    \1\."name"\)"""
-    assert re.search(pattern, sql, re.DOTALL) is not None
+\s*"[^"]+"\."state"\s+as\s+"state",
+\s*cast\(\(".*?"\s*/\s*".*?"\)\s+as\s+float\)\s+as\s+"percent_of_total"
+    """
+
+    assert re.search(pattern, sql, re.DOTALL | re.VERBOSE)
 
 
 def test_aggregate_filter():
@@ -125,17 +141,32 @@ def test_aggregate_filter():
     DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(query)[0]
-    pattern = r"""[a-z]+ as \(
+    pattern = r"""
+WITH\s+
+[a-z_]+\s+as\s+\(
+\s*SELECT
+\s*"[^"]+"\."name"\s+as\s+"name",
+\s*sum\(".*?"\."number"\)\s+as\s+"_virt_agg_sum_\d+",
+\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'F'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+",
+\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'M'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+"
+\s*FROM
+\s*"bigquery-public-data"\."usa_names"\."usa_1910_current"\s+as\s+"[^"]+"
+\s*GROUP\s+BY
+\s*"[^"]+"\."name"\s*\)
+.*?
+WHERE
+\s*abs\(
+\s*"[^"]+"\."_virt_agg_sum_\d+"
+\s*-\s*
+\s*"[^"]+"\."_virt_agg_sum_\d+"
+\s*\)\s*<\s*\(\s*0\.05\s*\*\s*"[^"]+"\."_virt_agg_sum_\d+"\s*\)
+.*?
 SELECT
-    (["a-z]+)\."name" as "name",
-    sum\(\1\."_virt_filter_births_\d+"\) as "_virt_agg_sum_\d+",
-    sum\(\1\."_virt_filter_births_\d+"\) as "_virt_agg_sum_\d+",
-    sum\(\1\."births"\) as "_virt_agg_sum_\d+"
-FROM
-    \1
-GROUP BY 
-    \1\."name"\)"""
-    assert re.search(pattern, sql, re.DOTALL) is not None
+\s*"[^"]+"\."state"\s+as\s+"state",
+\s*cast\(\(".*?"\s*/\s*".*?"\)\s+as\s+float\)\s+as\s+"percent_of_total"
+        """
+
+    assert re.search(pattern, sql, re.DOTALL | re.VERBOSE)
 
 
 def test_aggregate_filter_short_syntax():
@@ -151,17 +182,26 @@ def test_aggregate_filter_short_syntax():
     DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(query)[0]
-    pattern = r"""[a-z]+ as \(
+    # After MergeAggregate optimization, aggregate selects directly from datasource
+    pattern = r"""
+WITH\s+
+[a-z_]+\s+as\s+\(
+\s*SELECT
+\s*"[^"]+"\."name"\s+as\s+"name",
+\s*sum\(".*?"\."number"\)\s+as\s+"_virt_agg_sum_\d+",
+\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'F'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+",
+\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'M'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+"
+\s*FROM
+\s*"bigquery-public-data"\."usa_names"\."usa_1910_current"\s+as\s+"[^"]+"
+\s*GROUP\s+BY
+\s*"[^"]+"\."name"\s*\)
+.*?
 SELECT
-    (["a-z]+)\."name" as "name",
-    sum\(\1\."_virt_filter_births_\d+"\) as "_virt_agg_sum_\d+",
-    sum\(\1\."_virt_filter_births_\d+"\) as "_virt_agg_sum_\d+",
-    sum\(\1\."births"\) as "_virt_agg_sum_\d+"
-FROM
-    \1
-GROUP BY 
-    \1\."name"\)"""
-    assert re.search(pattern, sql, re.DOTALL) is not None
+\s*"[^"]+"\."state"\s+as\s+"state",
+\s*cast\(\(".*?"\s*/\s*".*?"\)\s+as\s+float\)\s+as\s+"percent_of_total"
+    """
+
+    assert re.search(pattern, sql, re.DOTALL | re.VERBOSE)
 
 
 def test_group_by_with_existing():
@@ -353,8 +393,7 @@ LIMIT 15
         is False
     )
     assert (
-        """GROUP BY 
-    "highfalutin"."name"
-"""
+        '''GROUP BY 
+    "usa_names"."name"'''
         in query
     ), query

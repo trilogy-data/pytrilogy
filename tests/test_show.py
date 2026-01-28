@@ -53,5 +53,5 @@ def test_show_bigquery():
         .fetchall()
     )
     assert (
-        'FULL JOIN "cheerful" on 1=1' in query[0]["__preql_internal_query_text"]
+        'FULL JOIN "wakeful" on 1=1' in query[0]["__preql_internal_query_text"]
     ), query[0]["__preql_internal_query_text"]

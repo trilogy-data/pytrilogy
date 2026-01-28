@@ -74,4 +74,4 @@ order by flight_count desc
 limit 100;
     """
     )[-1]
-    assert '"vacuous"."flight_count" desc' in sql, sql
+    assert '"juicy"."flight_count" desc' in sql, sql

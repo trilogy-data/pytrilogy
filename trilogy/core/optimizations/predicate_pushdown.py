@@ -11,7 +11,7 @@ from trilogy.core.models.build import (
     BuildWindowItem,
 )
 from trilogy.core.models.execute import CTE, UnionCTE
-from trilogy.core.optimizations.base_optimization import OptimizationRule
+from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.processing.utility import is_scalar_condition
 from trilogy.utility import unique
 
@@ -125,23 +125,23 @@ class PredicatePushdown(OptimizationRule):
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
-    ) -> bool:
+    ) -> tuple[bool, MergedCTEMap | None]:
         # TODO - pushdown through unions
         if isinstance(cte, UnionCTE):
-            return False
+            return False, None
         optimized = False
 
         if not cte.parent_ctes:
             self.debug(f"No parent CTEs for {cte.name}")
-            return False
+            return False, None
 
         if not cte.condition:
             self.debug(f"No CTE condition for {cte.name}")
-            return False
+            return False, None
 
         if self.complete.get(cte.name):
             self.debug("Have done this CTE before")
-            return False
+            return False, None
 
         self.debug(
             f"Checking {cte.name} for predicate pushdown with {len(cte.parent_ctes)} parents"
@@ -179,7 +179,7 @@ class PredicatePushdown(OptimizationRule):
                 )
 
         self.complete[cte.name] = True
-        return optimized
+        return optimized, None
 
 
 class PredicatePushdownRemove(OptimizationRule):
@@ -189,19 +189,19 @@ class PredicatePushdownRemove(OptimizationRule):
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
-    ) -> bool:
+    ) -> tuple[bool, MergedCTEMap | None]:
         if isinstance(cte, UnionCTE):
-            return False
+            return False, None
         optimized = False
 
         if not cte.parent_ctes:
             self.debug(f"No parent CTEs for {cte.name}")
 
-            return False
+            return False, None
 
         if not cte.condition:
             self.debug(f"No CTE condition for {cte.name}")
-            return False
+            return False, None
 
         parent_filter_status = {
             parent.name: is_child_of(cte.condition, parent.condition)
@@ -239,7 +239,7 @@ class PredicatePushdownRemove(OptimizationRule):
                 self.log(
                     f"new parents for {cte.name} are {[x.name for x in cte.parent_ctes]}, vs {original}"
                 )
-            return True
+            return True, None
 
         self.complete[cte.name] = True
-        return optimized
+        return optimized, None
