@@ -1,4 +1,6 @@
-from trilogy import Dialects
+import pytest
+
+from trilogy import Dialects, Environment
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.core import (
     ArrayType,
@@ -10,6 +12,7 @@ from trilogy.core.models.core import (
     TraitDataType,
     merge_datatypes,
 )
+from trilogy.parsing.exceptions import ParseError
 from trilogy.parsing.parse_engine import (
     parse_text,
 )
@@ -144,3 +147,16 @@ select
     assert engine.environment.concepts["aov"].datatype == TraitDataType(
         type=DataType.FLOAT, traits=["money"]
     )
+
+
+def test_error_match():
+    basic = Environment()
+    with pytest.raises(ParseError, match="Did you mean: email"):
+        basic.parse(
+            """
+    type email string;
+
+    key id string::Email;
+
+    """,
+        )

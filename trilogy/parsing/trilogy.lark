@@ -182,14 +182,32 @@
     _filter_base: "filter"i IDENTIFIER where
     filter_item: _filter_base | _filter_alt
 
-    // rank/lag/lead
-    WINDOW_TYPE: ("row_number"i|"rank"i|"lag"i|"lead"i | "sum"i | "avg"i | "max"i | "min"i | "count"i  )  /[\s]+/
+    // rank/lag/lead - supports both legacy and SQL-like syntax
+    // Legacy: row_number field over other_field order by third_field
+    // SQL-like: row_number(field) over (partition by field2 order by field3)
+    WINDOW_TYPE_LEGACY: ("row_number"i|"rank"i|"lag"i|"lead"i | "sum"i | "avg"i | "max"i | "min"i | "count"i  )  /[\s]+/
+    // Only window-only functions use SQL-like syntax; sum/avg/max/min/count remain legacy
+    // since they can be either aggregates or window functions
+    WINDOW_TYPE_SQL.2: /row_number\s*\(/i | /rank\s*\(/i | /lag\s*\(/i | /lead\s*\(/i
 
+    // Legacy over/order syntax (space-separated)
     window_item_over: ("OVER"i over_list)
-   
     window_item_order: ("ORDER"i? "BY"i order_list)
 
-    window_item: WINDOW_TYPE int_lit? expr window_item_over? window_item_order?
+    // SQL-like over clause: over (partition by x order by y)
+    _WINDOW_OVER_PAREN.2: /over\s*\(/i
+    window_sql_partition: ("PARTITION"i "BY"i over_list)
+    window_sql_order: ("ORDER"i "BY"i order_list)
+    window_sql_over: _WINDOW_OVER_PAREN window_sql_partition? window_sql_order? ")"
+
+    // Legacy window item: row_number field over other_field order by field desc
+    window_item_legacy: WINDOW_TYPE_LEGACY int_lit? expr window_item_over? window_item_order?
+
+    // SQL-like window item: row_number(field) over (partition by x order by y)
+    // Also supports lag(field, 2) and lead(field, 1) with offset inside parens
+    window_item_sql: WINDOW_TYPE_SQL expr ("," int_lit)? ")" window_sql_over?
+
+    window_item: window_item_sql | window_item_legacy
     
     select_hide_modifier: "--"
     select_partial_modifier: "~"

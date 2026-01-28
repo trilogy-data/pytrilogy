@@ -225,12 +225,13 @@ property id.name string;
 auto class_count <- count(class);
 auto name_count <- count(name) by class;
 
-auto test_ratio <- name_count / sum name_count over class;
+auto test_ratio <- name_count / sum(name_count) by class;
 
 select
     class,
-    count(class) -> name_count,
-    name_count / sum name_count over class -> name_class_ratio,
+    name_count,
+    sum(name_count) by class as test_bottom,
+    test_ratio
 ;
 """
     env, statements = env.parse(q1)
@@ -240,4 +241,12 @@ select
         "local.class",
     }
     benv = env.materialize_for_select()
-    assert benv.concepts["test_ratio"].keys == {"local.class", "local.id"}
+    assert benv.concepts["name_count"].keys == {"local.class"}, benv.concepts[
+        "name_count"
+    ].keys
+    assert benv.concepts["test_bottom"].keys == {"local.class"}, benv.concepts[
+        "test_bottom"
+    ].keys
+    assert benv.concepts["test_ratio"].keys == {"local.class"}, benv.concepts[
+        "test_ratio"
+    ].keys

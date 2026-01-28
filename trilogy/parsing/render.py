@@ -601,13 +601,26 @@ class Renderer:
     def _(self, arg: "WindowItem"):
         over = ",".join(self.to_string(c) for c in arg.over)
         order = ",".join(self.to_string(c) for c in arg.order_by)
-        if over and order:
-            return (
-                f"{arg.type.value} {self.to_string(arg.content)} by {order} over {over}"
-            )
-        elif over:
-            return f"{arg.type.value} {self.to_string(arg.content)} over {over}"
-        return f"{arg.type.value} {self.to_string(arg.content)} by {order}"
+
+        # Handle index for lag/lead
+        if arg.index is not None:
+            content = f"{self.to_string(arg.content)},{arg.index}"
+        else:
+            content = self.to_string(arg.content)
+
+        # Build over clause parts
+        over_parts = []
+        if over:
+            over_parts.append(f"partition by {over}")
+        if order:
+            over_parts.append(f"order by {order}")
+
+        if over_parts:
+            over_clause = f" over ({' '.join(over_parts)})"
+        else:
+            over_clause = ""
+
+        return f"{arg.type.value}({content}){over_clause}"
 
     @to_string.register
     def _(self, arg: "FilterItem"):
