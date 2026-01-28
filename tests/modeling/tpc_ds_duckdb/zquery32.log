@@ -1,19 +1,12 @@
 query_id = 32
-gen_length = 2117
+gen_length = 1659
 generated_sql = """
 
 WITH 
-thoughtful as (
-SELECT
-    \"catalog_sales\".\"CS_EXT_DISCOUNT_AMT\" as \"discount_amount\",
-    \"catalog_sales\".\"CS_ITEM_SK\" as \"item_id\",
-    cast(\"sold_date_date\".\"D_DATE\" as date) as \"sold_date_date\"
-FROM
-    \"memory\".\"catalog_sales\" as \"catalog_sales\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sold_date_date\" on \"catalog_sales\".\"CS_SOLD_DATE_SK\" = \"sold_date_date\".\"D_DATE_SK\"),
 cheerful as (
 SELECT
     \"catalog_sales\".\"CS_EXT_DISCOUNT_AMT\" as \"discount_amount\",
+    \"catalog_sales\".\"CS_ORDER_NUMBER\" as \"order_number\",
     \"item_items\".\"I_ITEM_SK\" as \"item_id\",
     \"item_items\".\"I_MANUFACT_ID\" as \"item_manufacturer_id\",
     cast(\"sold_date_date\".\"D_DATE\" as date) as \"sold_date_date\"
@@ -24,31 +17,24 @@ FROM
 WHERE
     \"item_items\".\"I_MANUFACT_ID\" = 977 and cast(\"sold_date_date\".\"D_DATE\" as date) >= :start_date and cast(\"sold_date_date\".\"D_DATE\" as date) <= :end_date
 ),
-cooperative as (
+thoughtful as (
 SELECT
-    \"thoughtful\".\"item_id\" as \"item_id\",
-    CASE WHEN \"thoughtful\".\"sold_date_date\" >= :start_date and \"thoughtful\".\"sold_date_date\" <= :end_date THEN \"thoughtful\".\"discount_amount\" ELSE NULL END as \"_virt_filter_discount_amount_8859191248994797\"
+    \"catalog_sales\".\"CS_ITEM_SK\" as \"item_id\",
+    avg(\"catalog_sales\".\"CS_EXT_DISCOUNT_AMT\") as \"_virt_agg_avg_721736882945984\"
 FROM
-    \"thoughtful\"),
-questionable as (
-SELECT
-    \"cooperative\".\"item_id\" as \"item_id\",
-    avg(\"cooperative\".\"_virt_filter_discount_amount_8859191248994797\") as \"_virt_agg_avg_721736882945984\"
-FROM
-    \"cooperative\"
-GROUP BY 
-    \"cooperative\".\"item_id\"),
-abundant as (
-SELECT
-    \"cheerful\".\"discount_amount\" as \"discount_amount\"
-FROM
-    \"questionable\"
-    INNER JOIN \"cheerful\" on \"questionable\".\"item_id\" = \"cheerful\".\"item_id\"
+    \"memory\".\"catalog_sales\" as \"catalog_sales\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sold_date_date\" on \"catalog_sales\".\"CS_SOLD_DATE_SK\" = \"sold_date_date\".\"D_DATE_SK\"
 WHERE
-    \"cheerful\".\"item_manufacturer_id\" = 977 and \"cheerful\".\"sold_date_date\" >= :start_date and \"cheerful\".\"sold_date_date\" <= :end_date and \"cheerful\".\"discount_amount\" > 1.3 * \"questionable\".\"_virt_agg_avg_721736882945984\"
-)
+    cast(\"sold_date_date\".\"D_DATE\" as date) >= :start_date and cast(\"sold_date_date\".\"D_DATE\" as date) <= :end_date
+
+GROUP BY 
+    \"catalog_sales\".\"CS_ITEM_SK\")
 SELECT
-    sum(\"abundant\".\"discount_amount\") as \"total_discount\"
+    sum(\"cheerful\".\"discount_amount\") as \"total_discount\"
 FROM
-    \"abundant\"
+    \"thoughtful\"
+    INNER JOIN \"cheerful\" on \"thoughtful\".\"item_id\" = \"cheerful\".\"item_id\"
+WHERE
+    \"cheerful\".\"item_manufacturer_id\" = 977 and \"cheerful\".\"sold_date_date\" >= :start_date and \"cheerful\".\"sold_date_date\" <= :end_date and \"cheerful\".\"discount_amount\" > 1.3 * \"thoughtful\".\"_virt_agg_avg_721736882945984\"
+
 LIMIT (100)"""

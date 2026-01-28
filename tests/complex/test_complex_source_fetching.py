@@ -62,7 +62,7 @@ def test_aggregate_to_grain(stackoverflow_environment: Environment):
             rendered = generator.render_concept_sql(build_avg_post_length, cte)
 
             assert re.search(
-                r'avg\(["0-9A-z\_]+\."post_length"\) as "user_avg_post_length"',
+                r'avg\(length\("posts"."text"\)\) as "user_avg_post_length"',
                 rendered,
             ), generator.compile_statement(query)
             found = True

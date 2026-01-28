@@ -1,22 +1,20 @@
-from trilogy.core.enums import BooleanOperator, Derivation, SourceType
+from trilogy.core.enums import Derivation, SourceType
 from trilogy.core.models.build import (
-    BuildConditional,
-    BuildDatasource,
     BuildWindowItem,
 )
 from trilogy.core.models.execute import (
     CTE,
-    InlinedCTE,
-    InstantiatedUnnestJoin,
+    Join,
     RecursiveCTE,
     UnionCTE,
 )
-from trilogy.core.optimizations.base_optimization import OptimizationRule
+from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 
 UNSAFE_DERIVATIONS = {
     Derivation.WINDOW,
     Derivation.UNNEST,
     Derivation.RECURSIVE,
+    Derivation.AGGREGATE,
 }
 
 
@@ -30,10 +28,11 @@ def has_unsafe_derivations(cte: CTE) -> bool:
     return False
 
 
-def replace_parent(old:CTE, new:CTE, target:CTE|UnionCTE, logger):
+def replace_parent(old: CTE, new: CTE, target: CTE | UnionCTE, logger):
     """Replace old parent with new parent in target CTE's source map."""
-    logger(target)
-    target.parent_ctes =  [x for x in target.parent_ctes if x.safe_identifier != old.safe_identifier] + [new] 
+    target.parent_ctes = [
+        x for x in target.parent_ctes if x.safe_identifier != old.safe_identifier
+    ] + [new]
     if target.base_alias_override == old.safe_identifier:
         target.base_alias_override = new.safe_identifier
     if target.base_name_override == old.safe_identifier:
@@ -48,6 +47,8 @@ def replace_parent(old:CTE, new:CTE, target:CTE|UnionCTE, logger):
                     new_sources.append(x)
             target.source_map[k] = new_sources
     for join in target.joins:
+        if not isinstance(join, Join):
+            continue
         if join.left_cte and join.left_cte.safe_identifier == old.safe_identifier:
             join.left_cte = new
         if join.joinkey_pairs:
@@ -56,7 +57,7 @@ def replace_parent(old:CTE, new:CTE, target:CTE|UnionCTE, logger):
                     pair.cte = new
         if join.right_cte.safe_identifier == old.safe_identifier:
             join.right_cte = new
-    logger(target)
+
 class MergeAggregate(OptimizationRule):
     """Merge a parent CTE into an aggregate child CTE.
 
@@ -75,35 +76,35 @@ class MergeAggregate(OptimizationRule):
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
-    ) -> bool:
+    ) -> tuple[bool, MergedCTEMap | None]:
         if isinstance(cte, (UnionCTE, RecursiveCTE)):
-            return False
+            return False, None
 
         if cte.name in self.completed:
-            return False
-        
+            return False, None
+
         if cte.joins:
-            return False
+            return False, None
 
         # Only optimize aggregate CTEs
         if not cte.group_to_grain and cte.source.source_type != SourceType.GROUP:
-            return False
+            return False, None
 
         if not cte.parent_ctes:
-            return False
+            return False, None
 
         # Only merge single-parent scenarios for simplicity
         if len(cte.parent_ctes) != 1:
             self.debug(f"CTE {cte.name} has multiple parents, skipping")
-            return False
+            return False, None
 
         parent = cte.parent_ctes[0]
         if isinstance(parent, (UnionCTE, RecursiveCTE)):
             self.debug(f"Parent {parent.name} is union/recursive, skipping")
-            return False
-        if parent.group_to_grain:
-            self.debug(f"Parent {parent.name} is aggregate, skipping")
-            return False
+            return False, None
+        if parent.group_to_grain or parent.source.source_type in (SourceType.GROUP, SourceType.WINDOW):
+            self.debug(f"Parent {parent.name} is ineligible type {parent.source.source_type}, skipping")
+            return False, None
 
         # Parent must only be used by this CTE
         parent_children = inverse_map.get(parent.name, [])
@@ -112,25 +113,28 @@ class MergeAggregate(OptimizationRule):
             self.debug(
                 f"Parent {parent.name} has multiple children: {list(unique_child_names)}"
             )
-            return False
+            return False, None
 
         # Parent must not have unsafe derivations
         if has_unsafe_derivations(parent):
             self.debug(f"Parent {parent.name} has unsafe derivations, skipping")
-            return False
+            return False, None
 
-
-        self.log(f"Merging aggregate {cte.name} into parent {parent.name}.")
+        self.log(f"Merging aggregate {cte.name} into parent {parent.name} ({parent.source.source_type}).")
 
         for x in cte.output_columns:
             if x not in parent.output_columns:
                 parent.output_columns.append(x)
 
-        parent.output_columns = [x for x in parent.output_columns if x.address in cte.output_columns]
+        parent.output_columns = [
+            x for x in parent.output_columns if x.address in cte.output_columns
+        ]
         parent.group_to_grain = True
         for k, v in inverse_map.items():
             if cte.name == k:
                 for child in v:
                     replace_parent(cte, parent, child, self.log)
                 inverse_map[parent.name] = inverse_map.get(parent.name, []) + v
-        return True
+
+        # Return merged map: old CTE name -> replacement CTE name
+        return True, {cte.name: parent.name}

@@ -316,6 +316,9 @@ auto random <- @plus_two(@weekday_sales(10));
 
 
 def test_user_function_aggregate_two():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
     x = Dialects.DUCK_DB.default_executor()
 
     results = x.execute_query(

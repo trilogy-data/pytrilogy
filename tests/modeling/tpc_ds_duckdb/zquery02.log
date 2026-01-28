@@ -1,5 +1,5 @@
 query_id = 2
-gen_length = 6283
+gen_length = 6190
 generated_sql = """
 
 WITH 
@@ -10,14 +10,9 @@ FROM
     \"memory\".\"date_dim\" as \"date_date\"
 WHERE
     cast(\"date_date\".\"D_YEAR\" as int) in (2001,2002)
-),
-uneven as (
-SELECT
-    \"abundant\".\"relevent_week_seq\" as \"relevent_week_seq\"
-FROM
-    \"abundant\"
+
 GROUP BY 
-    \"abundant\".\"relevent_week_seq\"),
+    \"date_date\".\"D_WEEK_SEQ\"),
 wakeful as (
 SELECT
     \"date_date\".\"D_WEEK_SEQ\" as \"date_week_seq\",
@@ -53,7 +48,7 @@ FROM
     \"memory\".\"date_dim\" as \"date_date\"
     LEFT OUTER JOIN \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\" on \"date_date\".\"D_DATE_SK\" = \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\"
 WHERE
-    \"date_date\".\"D_WEEK_SEQ\" in (select uneven.\"relevent_week_seq\" from uneven where uneven.\"relevent_week_seq\" is not null)
+    \"date_date\".\"D_WEEK_SEQ\" in (select abundant.\"relevent_week_seq\" from abundant where abundant.\"relevent_week_seq\" is not null)
 
 GROUP BY 
     \"date_date\".\"D_WEEK_SEQ\"),
@@ -92,7 +87,7 @@ FROM
     \"memory\".\"date_dim\" as \"date_date\"
     LEFT OUTER JOIN \"memory\".\"web_sales\" as \"web_sales_web_sales\" on \"date_date\".\"D_DATE_SK\" = \"web_sales_web_sales\".\"WS_SOLD_DATE_SK\"
 WHERE
-    \"date_date\".\"D_WEEK_SEQ\" in (select uneven.\"relevent_week_seq\" from uneven where uneven.\"relevent_week_seq\" is not null)
+    \"date_date\".\"D_WEEK_SEQ\" in (select abundant.\"relevent_week_seq\" from abundant where abundant.\"relevent_week_seq\" is not null)
 
 GROUP BY 
     \"date_date\".\"D_WEEK_SEQ\"),

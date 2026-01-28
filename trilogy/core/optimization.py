@@ -108,7 +108,9 @@ def filter_irrelevant_ctes(
             f"[Optimization][Irrelevent CTE filtering] Removing redundant CTEs {[x.name for x in filtered]}"
         )
     else:
-        logger.info(f"[Optimization][Irrelevent CTE filtering] Keeping relevant CTEs {relevant_ctes}"       )
+        logger.info(
+            f"[Optimization][Irrelevent CTE filtering] Keeping relevant CTEs {relevant_ctes}"
+        )
     if len(final) == len(input):
         return input
     return filter_irrelevant_ctes(final, root_cte)
@@ -196,6 +198,23 @@ def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     return direct_parent
 
 
+def pass_up_metadata(downstream: CTE | UnionCTE, upstream: CTE | UnionCTE):
+    upstream.order_by = downstream.order_by
+    upstream.limit = downstream.limit
+    upstream.hidden_concepts = downstream.hidden_concepts.union(
+        upstream.hidden_concepts
+    )
+    if downstream.condition:
+        if upstream.condition:
+            upstream.condition = BuildConditional(
+                left=upstream.condition,
+                operator=BooleanOperator.AND,
+                right=downstream.condition,
+            )
+        else:
+            upstream.condition = downstream.condition
+
+
 def optimize_ctes(
     input: list[CTE | UnionCTE],
     root_cte: CTE | UnionCTE,
@@ -205,20 +224,7 @@ def optimize_ctes(
     while CONFIG.optimizations.direct_return and (
         direct_parent := is_direct_return_eligible(root_cte)
     ):
-        direct_parent.order_by = root_cte.order_by
-        direct_parent.limit = root_cte.limit
-        direct_parent.hidden_concepts = root_cte.hidden_concepts.union(
-            direct_parent.hidden_concepts
-        )
-        if root_cte.condition:
-            if direct_parent.condition:
-                direct_parent.condition = BuildConditional(
-                    left=direct_parent.condition,
-                    operator=BooleanOperator.AND,
-                    right=root_cte.condition,
-                )
-            else:
-                direct_parent.condition = root_cte.condition
+        pass_up_metadata(root_cte, direct_parent)
         root_cte = direct_parent
 
         sort_select_output(root_cte, select)
@@ -235,6 +241,12 @@ def optimize_ctes(
         REGISTERED_RULES.append(PredicatePushdownRemove())
     if CONFIG.optimizations.hide_unused_concepts:
         REGISTERED_RULES.append(HideUnusedConcepts())
+
+    # Track all merged CTEs across rules: old_name -> new_name
+    all_merged: dict[str, str] = {}
+    cte_lookup: dict[str, CTE | UnionCTE] = {c.name: c for c in input}
+    cte_lookup[root_cte.name] = root_cte
+
     for rule in REGISTERED_RULES:
         loops = 0
         complete = False
@@ -244,8 +256,25 @@ def optimize_ctes(
             look_at = [root_cte, *reversed(input)]
             inverse_map = gen_inverse_map(look_at)
             for cte in look_at:
-                opt = rule.optimize(cte, inverse_map)
+                opt, merged = rule.optimize(cte, inverse_map)
                 actions_taken = actions_taken or opt
+                if merged:
+                    all_merged.update(merged)
+                    cte_lookup.update({c.name: c for c in input})
+                    cte_lookup[root_cte.name] = root_cte
+                    # Remap root_cte if it was merged
+                    if root_cte.name in merged:
+                        new_root_name = merged[root_cte.name]
+
+                        if new_root_name in cte_lookup:
+                            parent = cte_lookup[new_root_name]
+                            pass_up_metadata(root_cte, parent)
+                            root_cte = parent
+                            logger.info(
+                                f"[Optimization] Remapped root_cte to {new_root_name}"
+                            )
+                    # Filter out merged CTEs from input
+                    input = [c for c in input if c.name not in merged]
             complete = not actions_taken
             loops += 1
         input = reorder_ctes(filter_irrelevant_ctes(input, root_cte))

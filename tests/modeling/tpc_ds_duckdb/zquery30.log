@@ -1,21 +1,8 @@
 query_id = 30
-gen_length = 10163
+gen_length = 9560
 generated_sql = """
 
 WITH 
-abundant as (
-SELECT
-    \"web_returns_return_address_customer_address\".\"CA_STATE\" as \"web_returns_return_address_state\",
-    \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\" as \"web_returns_customer_id\",
-    \"web_returns_web_returns\".\"WR_RETURN_AMT\" as \"web_returns_return_amount\",
-    cast(\"web_returns_return_date_date\".\"D_YEAR\" as int) as \"web_returns_return_date_year\"
-FROM
-    \"memory\".\"web_returns\" as \"web_returns_web_returns\"
-    INNER JOIN \"memory\".\"date_dim\" as \"web_returns_return_date_date\" on \"web_returns_web_returns\".\"WR_RETURNED_DATE_SK\" = \"web_returns_return_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"web_returns_return_address_customer_address\" on \"web_returns_web_returns\".\"WR_RETURNING_ADDR_SK\" = \"web_returns_return_address_customer_address\".\"CA_ADDRESS_SK\"
-WHERE
-    \"web_returns_return_address_customer_address\".\"CA_STATE\" is not null
-),
 thoughtful as (
 SELECT
     \"web_returns_web_returns\".\"WR_RETURNING_ADDR_SK\" as \"web_returns_return_address_id\",
@@ -25,13 +12,21 @@ FROM
 GROUP BY 
     \"web_returns_web_returns\".\"WR_RETURNING_ADDR_SK\",
     \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\"),
-uneven as (
+abundant as (
 SELECT
-    \"abundant\".\"web_returns_customer_id\" as \"web_returns_customer_id\",
-    \"abundant\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
-    CASE WHEN \"abundant\".\"web_returns_return_date_year\" = 2002 THEN \"abundant\".\"web_returns_return_amount\" ELSE NULL END as \"_virt_filter_return_amount_1075768703847083\"
+    \"web_returns_return_address_customer_address\".\"CA_STATE\" as \"web_returns_return_address_state\",
+    \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\" as \"web_returns_customer_id\",
+    sum(CASE WHEN cast(\"web_returns_return_date_date\".\"D_YEAR\" as int) = 2002 THEN \"web_returns_web_returns\".\"WR_RETURN_AMT\" ELSE NULL END) as \"customer_state_returns_2002\"
 FROM
-    \"abundant\"),
+    \"memory\".\"web_returns\" as \"web_returns_web_returns\"
+    INNER JOIN \"memory\".\"date_dim\" as \"web_returns_return_date_date\" on \"web_returns_web_returns\".\"WR_RETURNED_DATE_SK\" = \"web_returns_return_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"web_returns_return_address_customer_address\" on \"web_returns_web_returns\".\"WR_RETURNING_ADDR_SK\" = \"web_returns_return_address_customer_address\".\"CA_ADDRESS_SK\"
+WHERE
+    \"web_returns_return_address_customer_address\".\"CA_STATE\" is not null
+
+GROUP BY 
+    \"web_returns_return_address_customer_address\".\"CA_STATE\",
+    \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\"),
 cooperative as (
 SELECT
     \"web_returns_customer_address_customer_address\".\"CA_STATE\" as \"web_returns_customer_address_state\",
@@ -73,26 +68,17 @@ GROUP BY
     \"web_returns_customer_customers\".\"C_PREFERRED_CUST_FLAG\",
     \"web_returns_customer_customers\".\"C_SALUTATION\",
     \"web_returns_return_address_customer_address\".\"CA_STATE\"),
-yummy as (
-SELECT
-    \"uneven\".\"web_returns_customer_id\" as \"web_returns_customer_id\",
-    \"uneven\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
-    sum(\"uneven\".\"_virt_filter_return_amount_1075768703847083\") as \"customer_state_returns_2002\"
-FROM
-    \"uneven\"
-GROUP BY 
-    \"uneven\".\"web_returns_customer_id\",
-    \"uneven\".\"web_returns_return_address_state\"),
 vacuous as (
 SELECT
-    \"yummy\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
-    avg(\"yummy\".\"customer_state_returns_2002\") as \"_virt_agg_avg_3885168128306444\"
+    \"abundant\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
+    avg(\"abundant\".\"customer_state_returns_2002\") as \"_virt_agg_avg_3885168128306444\"
 FROM
-    \"yummy\"
+    \"abundant\"
 GROUP BY 
-    \"yummy\".\"web_returns_return_address_state\"),
+    \"abundant\".\"web_returns_return_address_state\"),
 juicy as (
 SELECT
+    \"abundant\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\",
     \"cooperative\".\"web_returns_customer_address_state\" as \"web_returns_customer_address_state\",
     \"cooperative\".\"web_returns_customer_birth_country\" as \"web_returns_customer_birth_country\",
     \"cooperative\".\"web_returns_customer_birth_day\" as \"web_returns_customer_birth_day\",
@@ -107,11 +93,10 @@ SELECT
     \"cooperative\".\"web_returns_customer_preferred_cust_flag\" as \"web_returns_customer_preferred_cust_flag\",
     \"cooperative\".\"web_returns_customer_salutation\" as \"web_returns_customer_salutation\",
     \"cooperative\".\"web_returns_customer_text_id\" as \"web_returns_customer_text_id\",
-    \"cooperative\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
-    \"yummy\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
+    \"cooperative\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\"
 FROM
     \"cooperative\"
-    INNER JOIN \"yummy\" on \"cooperative\".\"web_returns_customer_id\" = \"yummy\".\"web_returns_customer_id\" AND \"cooperative\".\"web_returns_return_address_state\" is not distinct from \"yummy\".\"web_returns_return_address_state\"
+    INNER JOIN \"abundant\" on \"cooperative\".\"web_returns_customer_id\" = \"abundant\".\"web_returns_customer_id\" AND \"cooperative\".\"web_returns_return_address_state\" is not distinct from \"abundant\".\"web_returns_return_address_state\"
 WHERE
     \"cooperative\".\"web_returns_customer_address_state\" = 'GA' and \"cooperative\".\"web_returns_return_address_state\" is not null
 )

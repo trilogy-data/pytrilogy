@@ -362,5 +362,5 @@ SELECT
     assert (
         """STRING_SPLIT( "holdings_symbol_cities"."state_iso_code" , '-' )[1]""" in sql
     ), sql
-    # we should have 3 selects, because both aggregates can get merged
-    assert sql.count("SELECT") == 3, sql.count("SELECT")
+    # we should have 2 selects, because both aggregates can get merged
+    assert sql.count("SELECT") == 2, sql.count("SELECT")
