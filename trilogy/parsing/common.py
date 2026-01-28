@@ -517,7 +517,7 @@ def function_to_concept(
             key_grain += [*x.keys]
         else:
             key_grain.append(x.address)
-    keys = set(key_grain)
+    keys = Grain.from_concepts(set(key_grain), environment).components
     if is_metric:
         purpose = Purpose.METRIC
     elif not pkeys:
