@@ -2556,8 +2556,8 @@ def test_string_functions():
         upper(greeting) -> greeting_upper,
             len(greeting) -> greeting_length,
             trim(greeting) -> greeting_trimmed,
-            #ltrim(greeting) -> greeting_ltrimmed,
-            #rtrim(greeting) -> greeting_rtrimmed,
+            ltrim(greeting) -> greeting_ltrimmed,
+            rtrim(greeting) -> greeting_rtrimmed,
             substring(greeting, 3, 5) -> greeting_substring,
             replace(greeting, 'World', 'Trilogy') -> greeting_replaced,
             concat(greeting, ' Welcome to Trilogy.') -> greeting_concatenated,
@@ -2581,8 +2581,8 @@ def test_string_functions():
     assert row.greeting_upper == "  HELLO, WORLD!  "
     assert row.greeting_length == 17
     assert row.greeting_trimmed == "Hello, World!"
-    # assert row.greeting_ltrimmed == 'Hello, World!  '
-    # assert row.greeting_rtrimmed == '  Hello, World!'
+    assert row.greeting_ltrimmed == "Hello, World!  "
+    assert row.greeting_rtrimmed == "  Hello, World!"
     assert row.greeting_substring == "Hello"
     assert row.greeting_replaced == "  Hello, Trilogy!  "
     assert row.greeting_concatenated == "  Hello, World!   Welcome to Trilogy."

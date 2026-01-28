@@ -302,6 +302,8 @@ FUNCTION_MAP = {
     FunctionType.REGEXP_EXTRACT: lambda x, types: f"REGEXP_EXTRACT({x[0]},{x[1]})",
     FunctionType.REGEXP_REPLACE: lambda x, types: f"REGEXP_REPLACE({x[0]},{x[1]}, {x[2]})",
     FunctionType.TRIM: lambda x, types: f"TRIM({x[0]})",
+    FunctionType.LTRIM: lambda x, types: f"LTRIM({x[0]})",
+    FunctionType.RTRIM: lambda x, types: f"RTRIM({x[0]})",
     FunctionType.REPLACE: lambda x, types: f"REPLACE({x[0]},{x[1]},{x[2]})",
     FunctionType.HASH: lambda x, types: hash_from_args(x[0], x[1]),
     # FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",

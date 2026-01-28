@@ -2578,6 +2578,14 @@ class ParseToObjects(Transformer):
         return self.function_factory.create_function(args, FunctionType.TRIM, meta)
 
     @v_args(meta=True)
+    def fltrim(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.LTRIM, meta)
+
+    @v_args(meta=True)
+    def frtrim(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.RTRIM, meta)
+
+    @v_args(meta=True)
     def fhash(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.HASH, meta)
 
