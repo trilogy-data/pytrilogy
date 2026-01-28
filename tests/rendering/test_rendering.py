@@ -1033,11 +1033,11 @@ def test_render_trait_type():
 
     env, commands = basic.parse(
         """
-type email string;
+    type email string;
 
-key id string::email;
+    key id string::email;
 
-""",
+    """,
     )
     expectation = ["type email string;", "key id string::email;"]
     for idx, cmd in enumerate(commands):

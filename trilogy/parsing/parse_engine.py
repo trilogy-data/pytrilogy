@@ -1,3 +1,4 @@
+import difflib
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum
@@ -186,6 +187,16 @@ class ParsePass(Enum):
 
 
 CONSTANT_TYPES = (int, float, str, bool, ListWrapper, TupleWrapper, MapWrapper)
+
+# Window functions that can be converted to aggregates when no ORDER BY is specified
+WINDOW_TO_AGGREGATE_MAP = {
+    WindowType.SUM: FunctionType.SUM,
+    WindowType.AVG: FunctionType.AVG,
+    WindowType.COUNT: FunctionType.COUNT,
+    WindowType.COUNT_DISTINCT: FunctionType.COUNT_DISTINCT,
+    WindowType.MAX: FunctionType.MAX,
+    WindowType.MIN: FunctionType.MIN,
+}
 
 SELF_LABEL = "root"
 
@@ -630,13 +641,17 @@ class ParseToObjects(Transformer):
         if traits:
             for trait in traits:
                 if trait not in self.environment.data_types:
+                    similar = difflib.get_close_matches(
+                        trait, list(self.environment.data_types.keys())
+                    )
+                    hint = f" Did you mean: {', '.join(similar)}?" if similar else ""
                     raise ParseError(
-                        f"Invalid trait (type) {trait} for {base}, line {meta.line}."
+                        f"Invalid type (trait) {trait} for {base}, line {meta.line}.{hint}"
                     )
                 matched = self.environment.data_types[trait]
                 if not is_compatible_datatype(matched.type, base):
                     raise ParseError(
-                        f"Invalid trait (type) {trait} for {base}, line {meta.line}. Trait expects type {matched.type}, has {base}"
+                        f"Invalid type (trait) {trait} for {base}, line {meta.line}. Trait expects type {matched.type}, has {base}"
                     )
             return TraitDataType(type=base, traits=traits)
 
@@ -2316,15 +2331,35 @@ class ParseToObjects(Transformer):
 
         return Window(count=args[1].value, window_order=args[0])
 
-    def WINDOW_TYPE(self, args):
+    def WINDOW_TYPE_LEGACY(self, args):
         return WindowType(args.strip())
 
-    def window_item_over(self, args):
+    def WINDOW_TYPE_SQL(self, args):
+        # Parse function name from pattern like "row_number(" or "lag ("
+        name = args.strip().rstrip("(").strip()
+        return WindowType(name)
 
+    def window_item_over(self, args):
         return WindowItemOver(contents=args[0])
 
     def window_item_order(self, args):
         return WindowItemOrder(contents=args[0])
+
+    def window_sql_partition(self, args):
+        return WindowItemOver(contents=args[0])
+
+    def window_sql_order(self, args):
+        return WindowItemOrder(contents=args[0])
+
+    def window_sql_over(self, args):
+        over = []
+        order = []
+        for item in args:
+            if isinstance(item, WindowItemOver):
+                over = item.contents
+            elif isinstance(item, WindowItemOrder):
+                order = item.contents
+        return {"over": over, "order": order}
 
     def logical_operator(self, args):
         return BooleanOperator(args[0].value.lower())
@@ -2332,8 +2367,20 @@ class ParseToObjects(Transformer):
     def DATE_PART(self, args):
         return DatePart(args.value)
 
+    def window_item(self, args) -> WindowItem | AggregateWrapper:
+        # Pass through - the actual parsing happens in window_item_legacy or window_item_sql
+        item: WindowItem = args[0]
+        # Optimization: window functions without ORDER BY are equivalent to aggregates
+        # e.g., sum(x) over (partition by a) == sum(x) by a
+        if not item.order_by and item.type in WINDOW_TO_AGGREGATE_MAP:
+            func = self.function_factory.create_function(
+                [item.content], WINDOW_TO_AGGREGATE_MAP[item.type]
+            )
+            return AggregateWrapper(function=func, by=list(item.over))
+        return item
+
     @v_args(meta=True)
-    def window_item(self, meta: Meta, args) -> WindowItem:
+    def window_item_legacy(self, meta: Meta, args) -> WindowItem:
         type: WindowType = args[0]
         order_by = []
         over = []
@@ -2359,6 +2406,52 @@ class ParseToObjects(Transformer):
             raise ParseError(
                 f"Window statements must be on fields, not constants - error in: `{self.text_lookup[self.parse_address][meta.start_pos:meta.end_pos]}`"
             )
+        return WindowItem(
+            type=type,
+            content=concept.reference,
+            over=over,
+            order_by=order_by,
+            index=index,
+        )
+
+    @v_args(meta=True)
+    def window_item_sql(self, meta: Meta, args) -> WindowItem:
+        type: WindowType = args[0]
+        order_by: list = []
+        over: list = []
+        index: int | None = None
+        concept: Concept | None = None
+
+        for item in args:
+            if isinstance(item, int):
+                index = item
+            elif isinstance(item, dict):
+                # From window_sql_over
+                over = item.get("over", [])
+                order_by = item.get("order", [])
+            elif isinstance(item, str):
+                concept = self.environment.concepts[item]
+            elif isinstance(item, ConceptRef):
+                concept = self.environment.concepts[item.address]
+            elif isinstance(item, WindowType):
+                type = item
+            else:
+                concept = arbitrary_to_concept(item, environment=self.environment)
+                self.environment.add_concept(concept, meta=meta)
+
+        if not concept:
+            # Provide helpful error for common mistakes like row_number()
+            text = self.text_lookup[self.parse_address][meta.start_pos : meta.end_pos]
+            if "(" in text and ")" in text:
+                func_name = type.value
+                raise ParseError(
+                    f"Window function `{func_name}()` requires a field argument. "
+                    f"Did you mean `{func_name}(your_field)`? Error in: `{text}`"
+                )
+            raise ParseError(
+                f"Window statements must be on fields, not constants - error in: `{text}`"
+            )
+
         return WindowItem(
             type=type,
             content=concept.reference,
