@@ -148,7 +148,7 @@ def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     direct_parent = cte.parent_ctes[0]
     if isinstance(direct_parent, (UnionCTE, RecursiveCTE)):
         return None
-    
+
     if cte.group_to_grain:
         return None
 
@@ -233,7 +233,6 @@ def optimize_ctes(
         sort_select_output(root_cte, select)
 
     REGISTERED_RULES: list["OptimizationRule"] = []
-
 
     if CONFIG.optimizations.merge_aggregate:
         REGISTERED_RULES.append(MergeAggregate())

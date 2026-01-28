@@ -28,15 +28,11 @@ def has_unsafe_derivations(cte: CTE) -> bool:
     return False
 
 
-def replace_parent(old: CTE, new: CTE, target: CTE | UnionCTE, logger):
+def replace_parent(old: CTE, new: CTE, target: CTE | UnionCTE):
     """Replace old parent with new parent in target CTE's source map."""
     target.parent_ctes = [
         x for x in target.parent_ctes if x.safe_identifier != old.safe_identifier
     ] + [new]
-    if target.base_alias_override == old.safe_identifier:
-        target.base_alias_override = new.safe_identifier
-    if target.base_name_override == old.safe_identifier:
-        target.base_name_override = new.safe_identifier
     for k, v in target.source_map.items():
         if isinstance(v, list):
             new_sources = []
@@ -46,6 +42,13 @@ def replace_parent(old: CTE, new: CTE, target: CTE | UnionCTE, logger):
                 else:
                     new_sources.append(x)
             target.source_map[k] = new_sources
+    if not isinstance(target, CTE):
+        return
+    if target.base_alias_override == old.safe_identifier:
+        target.base_alias_override = new.safe_identifier
+    if target.base_name_override == old.safe_identifier:
+        target.base_name_override = new.safe_identifier
+
     for join in target.joins:
         if not isinstance(join, Join):
             continue
@@ -57,6 +60,7 @@ def replace_parent(old: CTE, new: CTE, target: CTE | UnionCTE, logger):
                     pair.cte = new
         if join.right_cte.safe_identifier == old.safe_identifier:
             join.right_cte = new
+
 
 class MergeAggregate(OptimizationRule):
     """Merge a parent CTE into an aggregate child CTE.
@@ -97,16 +101,23 @@ class MergeAggregate(OptimizationRule):
         if len(cte.parent_ctes) != 1:
             self.debug(f"CTE {cte.name} has multiple parents, skipping")
             return False, None
-        
+
         parent = cte.parent_ctes[0]
         if cte.base_alias != parent.safe_identifier:
-            self.debug(f"CTE {cte.name} base alias {cte.base_alias} does not match parent {parent.safe_identifier}, skipping")
+            self.debug(
+                f"CTE {cte.name} base alias {cte.base_alias} does not match parent {parent.safe_identifier}, skipping"
+            )
             return False, None
         if isinstance(parent, (UnionCTE, RecursiveCTE)):
             self.debug(f"Parent {parent.name} is union/recursive, skipping")
             return False, None
-        if parent.group_to_grain or parent.source.source_type in (SourceType.GROUP, SourceType.WINDOW):
-            self.debug(f"Parent {parent.name} is ineligible type {parent.source.source_type}, skipping")
+        if parent.group_to_grain or parent.source.source_type in (
+            SourceType.GROUP,
+            SourceType.WINDOW,
+        ):
+            self.debug(
+                f"Parent {parent.name} is ineligible type {parent.source.source_type}, skipping"
+            )
             return False, None
 
         # Parent must only be used by this CTE
@@ -123,10 +134,16 @@ class MergeAggregate(OptimizationRule):
             self.log(f"Parent {parent.name} has unsafe derivations, skipping")
             return False, None
         for x in parent.output_columns:
-            if x.derivation == Derivation.AGGREGATE and not parent.source_map.get(x.address):
-                self.log(f"Parent {parent.name} has aggregate derivations without source map, skipping")
+            if x.derivation == Derivation.AGGREGATE and not parent.source_map.get(
+                x.address
+            ):
+                self.log(
+                    f"Parent {parent.name} has aggregate derivations without source map, skipping"
+                )
                 return False, None
-        self.log(f"Merging aggregate {cte.name} into parent {parent.name} ({parent.source.source_type}).")
+        self.log(
+            f"Merging aggregate {cte.name} into parent {parent.name} ({parent.source.source_type})."
+        )
 
         for x in cte.output_columns:
             if x not in parent.output_columns:
@@ -140,7 +157,7 @@ class MergeAggregate(OptimizationRule):
         for k, v in inverse_map.items():
             if cte.name == k:
                 for child in v:
-                    replace_parent(cte, parent, child, self.log)
+                    replace_parent(cte, parent, child)
                 inverse_map[parent.name] = inverse_map.get(parent.name, []) + v
 
         # Return merged map: old CTE name -> replacement CTE name
