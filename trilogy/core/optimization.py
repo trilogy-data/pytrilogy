@@ -148,6 +148,9 @@ def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     direct_parent = cte.parent_ctes[0]
     if isinstance(direct_parent, (UnionCTE, RecursiveCTE)):
         return None
+    
+    if cte.group_to_grain:
+        return None
 
     output_addresses = set([x.address for x in cte.output_columns])
     parent_output_addresses = set([x.address for x in direct_parent.output_columns])
@@ -231,10 +234,11 @@ def optimize_ctes(
 
     REGISTERED_RULES: list["OptimizationRule"] = []
 
-    if CONFIG.optimizations.datasource_inlining:
-        REGISTERED_RULES.append(InlineDatasource())
+
     if CONFIG.optimizations.merge_aggregate:
         REGISTERED_RULES.append(MergeAggregate())
+    if CONFIG.optimizations.datasource_inlining:
+        REGISTERED_RULES.append(InlineDatasource())
     if CONFIG.optimizations.predicate_pushdown:
         REGISTERED_RULES.append(PredicatePushdown())
     if CONFIG.optimizations.predicate_pushdown:

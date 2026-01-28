@@ -3,17 +3,6 @@ gen_length = 3269
 generated_sql = """
 
 WITH 
-thoughtful as (
-SELECT
-    \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
-    \"returns_store_returns\".\"SR_RETURNED_DATE_SK\" as \"returns_return_date_id\",
-    \"returns_store_returns\".\"SR_STORE_SK\" as \"returns_store_id\"
-FROM
-    \"memory\".\"store_returns\" as \"returns_store_returns\"
-GROUP BY 
-    \"returns_store_returns\".\"SR_CUSTOMER_SK\",
-    \"returns_store_returns\".\"SR_RETURNED_DATE_SK\",
-    \"returns_store_returns\".\"SR_STORE_SK\"),
 questionable as (
 SELECT
     \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
@@ -29,6 +18,25 @@ WHERE
 GROUP BY 
     \"returns_store_returns\".\"SR_CUSTOMER_SK\",
     \"returns_store_store\".\"S_STORE_SK\"),
+thoughtful as (
+SELECT
+    \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
+    \"returns_store_returns\".\"SR_RETURNED_DATE_SK\" as \"returns_return_date_id\",
+    \"returns_store_returns\".\"SR_STORE_SK\" as \"returns_store_id\"
+FROM
+    \"memory\".\"store_returns\" as \"returns_store_returns\"
+GROUP BY 
+    \"returns_store_returns\".\"SR_CUSTOMER_SK\",
+    \"returns_store_returns\".\"SR_RETURNED_DATE_SK\",
+    \"returns_store_returns\".\"SR_STORE_SK\"),
+yummy as (
+SELECT
+    \"questionable\".\"returns_store_id\" as \"returns_store_id\",
+    avg(\"questionable\".\"total_returns\") as \"avg_store_returns\"
+FROM
+    \"questionable\"
+GROUP BY 
+    \"questionable\".\"returns_store_id\"),
 cooperative as (
 SELECT
     \"returns_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
@@ -46,14 +54,6 @@ GROUP BY
     \"returns_customer_customers\".\"C_CUSTOMER_ID\",
     \"returns_customer_customers\".\"C_CUSTOMER_SK\",
     \"returns_store_store\".\"S_STORE_SK\"),
-yummy as (
-SELECT
-    \"questionable\".\"returns_store_id\" as \"returns_store_id\",
-    avg(\"questionable\".\"total_returns\") as \"avg_store_returns\"
-FROM
-    \"questionable\"
-GROUP BY 
-    \"questionable\".\"returns_store_id\"),
 uneven as (
 SELECT
     \"cooperative\".\"returns_customer_text_id\" as \"returns_customer_text_id\",

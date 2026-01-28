@@ -1,5 +1,5 @@
 query_id = 8
-gen_length = 3153
+gen_length = 2926
 generated_sql = """
 
 WITH 
@@ -18,7 +18,6 @@ SELECT
 ),
 yummy as (
 SELECT
-    CASE WHEN \"questionable\".\"zip_p_count\" > 10 THEN \"customer_address_customer_address\".\"CA_ZIP\" ELSE NULL END as \"p_cust_zip\",
     SUBSTRING(CASE WHEN \"questionable\".\"zip_p_count\" > 10 THEN \"customer_address_customer_address\".\"CA_ZIP\" ELSE NULL END,1,5) as \"_virt_func_substring_4293448550966409\"
 FROM
     \"questionable\"
@@ -35,8 +34,7 @@ GROUP BY
     \"yummy\".\"_virt_func_substring_4293448550966409\"),
 young as (
 SELECT
-    SUBSTRING(SUBSTRING(cast(\"cheerful\".\"zips_pre\" as string),1,5),1,2) as \"final_zips\",
-    SUBSTRING(cast(\"cheerful\".\"zips_pre\" as string),1,5) as \"_virt_filter_zips_9007816554154539\"
+    SUBSTRING(SUBSTRING(cast(\"cheerful\".\"zips_pre\" as string),1,5),1,2) as \"final_zips\"
 FROM
     \"cheerful\"
 WHERE

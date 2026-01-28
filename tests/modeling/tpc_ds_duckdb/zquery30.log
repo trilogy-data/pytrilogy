@@ -3,15 +3,6 @@ gen_length = 9560
 generated_sql = """
 
 WITH 
-thoughtful as (
-SELECT
-    \"web_returns_web_returns\".\"WR_RETURNING_ADDR_SK\" as \"web_returns_return_address_id\",
-    \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\" as \"web_returns_customer_id\"
-FROM
-    \"memory\".\"web_returns\" as \"web_returns_web_returns\"
-GROUP BY 
-    \"web_returns_web_returns\".\"WR_RETURNING_ADDR_SK\",
-    \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\"),
 abundant as (
 SELECT
     \"web_returns_return_address_customer_address\".\"CA_STATE\" as \"web_returns_return_address_state\",
@@ -27,6 +18,23 @@ WHERE
 GROUP BY 
     \"web_returns_return_address_customer_address\".\"CA_STATE\",
     \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\"),
+thoughtful as (
+SELECT
+    \"web_returns_web_returns\".\"WR_RETURNING_ADDR_SK\" as \"web_returns_return_address_id\",
+    \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\" as \"web_returns_customer_id\"
+FROM
+    \"memory\".\"web_returns\" as \"web_returns_web_returns\"
+GROUP BY 
+    \"web_returns_web_returns\".\"WR_RETURNING_ADDR_SK\",
+    \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\"),
+vacuous as (
+SELECT
+    \"abundant\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
+    avg(\"abundant\".\"customer_state_returns_2002\") as \"_virt_agg_avg_3885168128306444\"
+FROM
+    \"abundant\"
+GROUP BY 
+    \"abundant\".\"web_returns_return_address_state\"),
 cooperative as (
 SELECT
     \"web_returns_customer_address_customer_address\".\"CA_STATE\" as \"web_returns_customer_address_state\",
@@ -68,14 +76,6 @@ GROUP BY
     \"web_returns_customer_customers\".\"C_PREFERRED_CUST_FLAG\",
     \"web_returns_customer_customers\".\"C_SALUTATION\",
     \"web_returns_return_address_customer_address\".\"CA_STATE\"),
-vacuous as (
-SELECT
-    \"abundant\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
-    avg(\"abundant\".\"customer_state_returns_2002\") as \"_virt_agg_avg_3885168128306444\"
-FROM
-    \"abundant\"
-GROUP BY 
-    \"abundant\".\"web_returns_return_address_state\"),
 juicy as (
 SELECT
     \"abundant\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\",

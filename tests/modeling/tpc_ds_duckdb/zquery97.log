@@ -1,9 +1,9 @@
 query_id = 97
-gen_length = 3864
+gen_length = 3891
 generated_sql = """
 
 WITH 
-questionable as (
+cooperative as (
 SELECT
     \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" as \"catalog_sales_bill_customer_id\",
     \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" as \"catalog_sales_item_id\",
@@ -14,7 +14,7 @@ GROUP BY
     \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\",
     \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\",
     \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\"),
-wakeful as (
+highfalutin as (
 SELECT
     \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
     \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
@@ -27,34 +27,34 @@ GROUP BY
     \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\"),
 abundant as (
 SELECT
-    \"questionable\".\"catalog_sales_bill_customer_id\" as \"catalog_sales_bill_customer_id\",
-    \"questionable\".\"catalog_sales_bill_customer_id\" as \"customer_id\",
-    \"questionable\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
-    \"questionable\".\"catalog_sales_item_id\" as \"item_id\"
+    \"cooperative\".\"catalog_sales_bill_customer_id\" as \"catalog_sales_bill_customer_id\",
+    \"cooperative\".\"catalog_sales_bill_customer_id\" as \"customer_id\",
+    \"cooperative\".\"catalog_sales_item_id\" as \"catalog_sales_item_id\",
+    \"cooperative\".\"catalog_sales_item_id\" as \"item_id\"
 FROM
-    \"questionable\"
-    INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"questionable\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
+    \"cooperative\"
+    INNER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"cooperative\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"catalog_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"catalog_sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
 
 GROUP BY 
-    \"questionable\".\"catalog_sales_bill_customer_id\",
-    \"questionable\".\"catalog_sales_item_id\"),
+    \"cooperative\".\"catalog_sales_bill_customer_id\",
+    \"cooperative\".\"catalog_sales_item_id\"),
 cheerful as (
 SELECT
-    \"wakeful\".\"store_sales_customer_id\" as \"customer_id\",
-    \"wakeful\".\"store_sales_customer_id\" as \"store_sales_customer_id\",
-    \"wakeful\".\"store_sales_item_id\" as \"item_id\",
-    \"wakeful\".\"store_sales_item_id\" as \"store_sales_item_id\"
+    \"highfalutin\".\"store_sales_customer_id\" as \"customer_id\",
+    \"highfalutin\".\"store_sales_customer_id\" as \"store_sales_customer_id\",
+    \"highfalutin\".\"store_sales_item_id\" as \"item_id\",
+    \"highfalutin\".\"store_sales_item_id\" as \"store_sales_item_id\"
 FROM
-    \"wakeful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"wakeful\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    \"highfalutin\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"highfalutin\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
 WHERE
     \"store_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"store_sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
 
 GROUP BY 
-    \"wakeful\".\"store_sales_customer_id\",
-    \"wakeful\".\"store_sales_item_id\"),
+    \"highfalutin\".\"store_sales_customer_id\",
+    \"highfalutin\".\"store_sales_item_id\"),
 uneven as (
 SELECT
     \"abundant\".\"catalog_sales_bill_customer_id\" as \"merged_catalog_sales_bill_customer_id\",

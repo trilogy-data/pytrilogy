@@ -1,13 +1,10 @@
 query_id = 24
-gen_length = 4190
+gen_length = 3968
 generated_sql = """
 
 WITH 
 cooperative as (
 SELECT
-    \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
-    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"store_sales_item_id\",
-    \"store_sales_store_store\".\"S_STORE_SK\" as \"store_sales_store_id\",
     sum(\"store_sales_store_sales\".\"SS_NET_PAID\") as \"_virt_agg_sum_1360566110228423\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"

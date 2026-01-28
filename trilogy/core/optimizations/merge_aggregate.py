@@ -14,7 +14,7 @@ UNSAFE_DERIVATIONS = {
     Derivation.WINDOW,
     Derivation.UNNEST,
     Derivation.RECURSIVE,
-    Derivation.AGGREGATE,
+    # Derivation.AGGREGATE,
 }
 
 
@@ -97,8 +97,11 @@ class MergeAggregate(OptimizationRule):
         if len(cte.parent_ctes) != 1:
             self.debug(f"CTE {cte.name} has multiple parents, skipping")
             return False, None
-
+        
         parent = cte.parent_ctes[0]
+        if cte.base_alias != parent.safe_identifier:
+            self.debug(f"CTE {cte.name} base alias {cte.base_alias} does not match parent {parent.safe_identifier}, skipping")
+            return False, None
         if isinstance(parent, (UnionCTE, RecursiveCTE)):
             self.debug(f"Parent {parent.name} is union/recursive, skipping")
             return False, None
@@ -117,9 +120,12 @@ class MergeAggregate(OptimizationRule):
 
         # Parent must not have unsafe derivations
         if has_unsafe_derivations(parent):
-            self.debug(f"Parent {parent.name} has unsafe derivations, skipping")
+            self.log(f"Parent {parent.name} has unsafe derivations, skipping")
             return False, None
-
+        for x in parent.output_columns:
+            if x.derivation == Derivation.AGGREGATE and not parent.source_map.get(x.address):
+                self.log(f"Parent {parent.name} has aggregate derivations without source map, skipping")
+                return False, None
         self.log(f"Merging aggregate {cte.name} into parent {parent.name} ({parent.source.source_type}).")
 
         for x in cte.output_columns:
@@ -129,6 +135,7 @@ class MergeAggregate(OptimizationRule):
         parent.output_columns = [
             x for x in parent.output_columns if x.address in cte.output_columns
         ]
+
         parent.group_to_grain = True
         for k, v in inverse_map.items():
             if cte.name == k:

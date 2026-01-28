@@ -14,7 +14,5 @@ def test_adhoc07():
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
 
     results = engine.generate_sql(text)[-1]
-    assert (
-        'RIGHT OUTER JOIN "memory"."customer" as "order_customer_customers_at_abstract"'
-        in results
-    )
+    assert 'RIGHT OUTER JOIN "wakeful" on "order_orders"."o_custkey" = "wakeful"."order_customer_id"' in results, results
+

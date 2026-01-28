@@ -1,12 +1,11 @@
 query_id = 32
-gen_length = 1659
+gen_length = 1602
 generated_sql = """
 
 WITH 
 cheerful as (
 SELECT
     \"catalog_sales\".\"CS_EXT_DISCOUNT_AMT\" as \"discount_amount\",
-    \"catalog_sales\".\"CS_ORDER_NUMBER\" as \"order_number\",
     \"item_items\".\"I_ITEM_SK\" as \"item_id\",
     \"item_items\".\"I_MANUFACT_ID\" as \"item_manufacturer_id\",
     cast(\"sold_date_date\".\"D_DATE\" as date) as \"sold_date_date\"

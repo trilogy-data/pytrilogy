@@ -599,7 +599,7 @@ LIMIT 1
     )
     sql = base.generate_sql(queries[-1])
     assert (
-        '"vehicle_lv_info" on "cheerful"."vehicle_name" = "vehicle_lv_info"."LV_Name" AND "cheerful"."vehicle_variant" = "vehicle_lv_info"."LV_Variant"'
+        'FULL JOIN "lv_info" as "vehicle_lv_info" on "wakeful"."vehicle_name" = "vehicle_lv_info"."LV_Name" AND "wakeful"."vehicle_variant" = "vehicle_lv_info"."LV_Variant"'
         in sql[0]
     ), sql[0]
 

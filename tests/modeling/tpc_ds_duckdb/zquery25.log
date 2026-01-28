@@ -1,15 +1,13 @@
 query_id = 25
-gen_length = 8291
+gen_length = 7991
 generated_sql = """
 
 WITH 
 vacuous as (
 SELECT
     \"catalog_sales_catalog_sales\".\"CS_NET_PROFIT\" as \"catalog_sales_net_profit\",
-    \"catalog_sales_catalog_sales\".\"CS_ORDER_NUMBER\" as \"catalog_sales_order_number\",
     \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
     \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_name\",
-    \"store_sales_item_items\".\"I_ITEM_SK\" as \"store_sales_item_id\",
     \"store_sales_store_store\".\"S_STORE_ID\" as \"store_sales_store_text_id\",
     \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\"
 FROM
@@ -61,10 +59,8 @@ yummy as (
 SELECT
     \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
     \"store_sales_item_items\".\"I_ITEM_ID\" as \"store_sales_item_name\",
-    \"store_sales_item_items\".\"I_ITEM_SK\" as \"store_sales_item_id\",
     \"store_sales_store_returns\".\"SR_NET_LOSS\" as \"store_sales_return_net_loss\",
     \"store_sales_store_sales\".\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
-    \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     \"store_sales_store_store\".\"S_STORE_ID\" as \"store_sales_store_text_id\",
     \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\"
 FROM

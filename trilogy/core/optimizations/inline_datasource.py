@@ -46,6 +46,9 @@ class InlineDatasource(OptimizationRule):
                     f"Cannot inline: parent {parent_cte.name} has condition, cannot be inlined"
                 )
                 continue
+            if parent_cte.group_to_grain:
+                self.debug(f"Cannot inline: parent {parent_cte.name} is grouped")
+                continue
             raw_root = parent_cte.source.datasources[0]
             if not isinstance(raw_root, BuildDatasource):
                 self.debug(f"Cannot inline: Parent {parent_cte.name} is not datasource")
