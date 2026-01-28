@@ -31,8 +31,8 @@ class Optimizations:
     constant_inlining: bool = True
     constant_inline_cutoff: int = 10
     direct_return: bool = True
-    hide_unused_concepts: bool = True
-    inline_aggregate_filter: bool = True
+    hide_unused_concepts: bool = False
+    merge_aggregate: bool = True
 
 
 @dataclass

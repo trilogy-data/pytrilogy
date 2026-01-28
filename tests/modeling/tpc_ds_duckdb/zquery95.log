@@ -1,5 +1,5 @@
 query_id = 95
-gen_length = 5564
+gen_length = 5398
 generated_sql = """
 
 WITH 
@@ -54,8 +54,8 @@ GROUP BY
     \"web_sales_web_sales\".\"WS_WEB_SITE_SK\"),
 yummy as (
 SELECT
-    \"web_sales_web_sales\".\"WS_EXT_SHIP_COST\" as \"web_sales_ext_ship_cost\",
-    \"web_sales_web_sales\".\"WS_NET_PROFIT\" as \"web_sales_net_profit\"
+    sum(\"web_sales_web_sales\".\"WS_EXT_SHIP_COST\") as \"total_shipping_cost\",
+    sum(\"web_sales_web_sales\".\"WS_NET_PROFIT\") as \"total_net_profit\"
 FROM
     \"memory\".\"web_sales\" as \"web_sales_web_sales\"
     INNER JOIN \"memory\".\"web_site\" as \"web_sales_web_site_web_site\" on \"web_sales_web_sales\".\"WS_WEB_SITE_SK\" = \"web_sales_web_site_web_site\".\"web_site_sk\"
@@ -77,12 +77,6 @@ WHERE
 
 GROUP BY 
     \"vacuous\".\"web_sales_order_number\"),
-juicy as (
-SELECT
-    sum(\"yummy\".\"web_sales_ext_ship_cost\") as \"total_shipping_cost\",
-    sum(\"yummy\".\"web_sales_net_profit\") as \"total_net_profit\"
-FROM
-    \"yummy\"),
 young as (
 SELECT
     count(\"concerned\".\"web_sales_order_number\") as \"order_count\"
@@ -90,10 +84,10 @@ FROM
     \"concerned\")
 SELECT
     \"young\".\"order_count\" as \"order_count\",
-    \"juicy\".\"total_shipping_cost\" as \"total_shipping_cost\",
-    \"juicy\".\"total_net_profit\" as \"total_net_profit\"
+    \"yummy\".\"total_shipping_cost\" as \"total_shipping_cost\",
+    \"yummy\".\"total_net_profit\" as \"total_net_profit\"
 FROM
-    \"juicy\"
+    \"yummy\"
     FULL JOIN \"young\" on 1=1
 ORDER BY 
     \"young\".\"order_count\" desc

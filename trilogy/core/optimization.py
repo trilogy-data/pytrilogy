@@ -6,8 +6,8 @@ from trilogy.core.models.build import (
 from trilogy.core.models.execute import CTE, RecursiveCTE, UnionCTE
 from trilogy.core.optimizations import (
     HideUnusedConcepts,
-    InlineAggregateFilter,
     InlineDatasource,
+    MergeAggregate,
     OptimizationRule,
     PredicatePushdown,
     PredicatePushdownRemove,
@@ -107,6 +107,8 @@ def filter_irrelevant_ctes(
         logger.info(
             f"[Optimization][Irrelevent CTE filtering] Removing redundant CTEs {[x.name for x in filtered]}"
         )
+    else:
+        logger.info(f"[Optimization][Irrelevent CTE filtering] Keeping relevant CTEs {relevant_ctes}"       )
     if len(final) == len(input):
         return input
     return filter_irrelevant_ctes(final, root_cte)
@@ -225,8 +227,8 @@ def optimize_ctes(
 
     if CONFIG.optimizations.datasource_inlining:
         REGISTERED_RULES.append(InlineDatasource())
-    if CONFIG.optimizations.inline_aggregate_filter:
-        REGISTERED_RULES.append(InlineAggregateFilter())
+    if CONFIG.optimizations.merge_aggregate:
+        REGISTERED_RULES.append(MergeAggregate())
     if CONFIG.optimizations.predicate_pushdown:
         REGISTERED_RULES.append(PredicatePushdown())
     if CONFIG.optimizations.predicate_pushdown:

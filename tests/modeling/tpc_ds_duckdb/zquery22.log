@@ -1,5 +1,5 @@
 query_id = 22
-gen_length = 10947
+gen_length = 10825
 generated_sql = """
 
 WITH 
@@ -26,15 +26,6 @@ WHERE
 
 GROUP BY 
     \"inventory_date_date\".\"D_MONTH_SEQ\"),
-sparkling as (
-SELECT
-    \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\" as \"inventory_quantity_on_hand\"
-FROM
-    \"memory\".\"inventory\" as \"inventory_warehouse_inventory\"
-    INNER JOIN \"memory\".\"date_dim\" as \"inventory_date_date\" on \"inventory_warehouse_inventory\".\"inv_date_sk\" = \"inventory_date_date\".\"D_DATE_SK\"
-WHERE
-    \"inventory_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"inventory_date_date\".\"D_MONTH_SEQ\" <= 1211
-),
 cheerful as (
 SELECT
     \"inventory_item_items\".\"I_BRAND\" as \"inventory_item_brand_name\",
@@ -46,6 +37,15 @@ FROM
     \"memory\".\"inventory\" as \"inventory_warehouse_inventory\"
     INNER JOIN \"memory\".\"date_dim\" as \"inventory_date_date\" on \"inventory_warehouse_inventory\".\"inv_date_sk\" = \"inventory_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"item\" as \"inventory_item_items\" on \"inventory_warehouse_inventory\".\"inv_item_sk\" = \"inventory_item_items\".\"I_ITEM_SK\"
+WHERE
+    \"inventory_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"inventory_date_date\".\"D_MONTH_SEQ\" <= 1211
+),
+sparkling as (
+SELECT
+    avg(\"inventory_warehouse_inventory\".\"inv_quantity_on_hand\") as \"qoh5\"
+FROM
+    \"memory\".\"inventory\" as \"inventory_warehouse_inventory\"
+    INNER JOIN \"memory\".\"date_dim\" as \"inventory_date_date\" on \"inventory_warehouse_inventory\".\"inv_date_sk\" = \"inventory_date_date\".\"D_DATE_SK\"
 WHERE
     \"inventory_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"inventory_date_date\".\"D_MONTH_SEQ\" <= 1211
 ),
@@ -72,11 +72,6 @@ FROM
 WHERE
     \"abundant\".\"inventory_date_month_seq\" >= 1200 and \"abundant\".\"inventory_date_month_seq\" <= 1211
 ),
-abhorrent as (
-SELECT
-    avg(\"sparkling\".\"inventory_quantity_on_hand\") as \"qoh5\"
-FROM
-    \"sparkling\"),
 concerned as (
 SELECT
     \"cheerful\".\"inventory_item_product_name\" as \"inventory_item_product_name\",
@@ -123,16 +118,16 @@ GROUP BY
     \"cheerful\".\"inventory_item_product_name\"),
 sweltering as (
 SELECT
-    \"abhorrent\".\"qoh5\" as \"qoh5\",
+    \"sparkling\".\"qoh5\" as \"qoh5\",
     \"uneven\".\"null_brand2\" as \"i_brand\",
     \"uneven\".\"null_category4\" as \"i_category\",
     \"uneven\".\"null_class3\" as \"i_class\",
     \"uneven\".\"null_name\" as \"i_product_name\"
 FROM
     \"uneven\"
-    FULL JOIN \"abhorrent\" on 1=1
+    FULL JOIN \"sparkling\" on 1=1
 GROUP BY 
-    \"abhorrent\".\"qoh5\",
+    \"sparkling\".\"qoh5\",
     \"uneven\".\"null_brand2\",
     \"uneven\".\"null_category4\",
     \"uneven\".\"null_class3\",

@@ -1,5 +1,5 @@
 query_id = 8
-gen_length = 3704
+gen_length = 3522
 generated_sql = """
 
 WITH 
@@ -78,25 +78,19 @@ SELECT
 FROM
     \"sparkling\"
 GROUP BY 
-    \"sparkling\".\"final_zips\"),
-sweltering as (
+    \"sparkling\".\"final_zips\")
 SELECT
-    \"store_sales_store_sales\".\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
-    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\"
+    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
+    sum(\"store_sales_store_sales\".\"SS_NET_PROFIT\") as \"store_net_profit\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
 WHERE
     \"store_sales_date_date\".\"D_QOY\" = 2 and cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 1998 and SUBSTRING(\"store_sales_store_store\".\"S_ZIP\",1,2) in (select abhorrent.\"final_zips\" from abhorrent where abhorrent.\"final_zips\" is not null)
-)
-SELECT
-    \"sweltering\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    sum(\"sweltering\".\"store_sales_net_profit\") as \"store_net_profit\"
-FROM
-    \"sweltering\"
+
 GROUP BY 
-    \"sweltering\".\"store_sales_store_name\"
+    \"store_sales_store_store\".\"S_STORE_NAME\"
 ORDER BY 
-    \"sweltering\".\"store_sales_store_name\" asc
+    \"store_sales_store_store\".\"S_STORE_NAME\" asc
 LIMIT (100)"""

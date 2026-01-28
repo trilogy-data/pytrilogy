@@ -1,20 +1,8 @@
 query_id = 1
-gen_length = 3473
+gen_length = 3269
 generated_sql = """
 
 WITH 
-questionable as (
-SELECT
-    \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
-    \"returns_store_returns\".\"SR_RETURN_AMT\" as \"returns_return_amount\",
-    \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_id\"
-FROM
-    \"memory\".\"store_returns\" as \"returns_store_returns\"
-    INNER JOIN \"memory\".\"store\" as \"returns_store_store\" on \"returns_store_returns\".\"SR_STORE_SK\" = \"returns_store_store\".\"S_STORE_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"returns_return_date_date\" on \"returns_store_returns\".\"SR_RETURNED_DATE_SK\" = \"returns_return_date_date\".\"D_DATE_SK\"
-WHERE
-    \"returns_store_store\".\"S_STATE\" = 'TN' and cast(\"returns_return_date_date\".\"D_YEAR\" as int) = 2000
-),
 thoughtful as (
 SELECT
     \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
@@ -26,16 +14,21 @@ GROUP BY
     \"returns_store_returns\".\"SR_CUSTOMER_SK\",
     \"returns_store_returns\".\"SR_RETURNED_DATE_SK\",
     \"returns_store_returns\".\"SR_STORE_SK\"),
-abundant as (
+questionable as (
 SELECT
-    \"questionable\".\"returns_customer_id\" as \"returns_customer_id\",
-    \"questionable\".\"returns_store_id\" as \"returns_store_id\",
-    sum(\"questionable\".\"returns_return_amount\") as \"total_returns\"
+    \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
+    \"returns_store_store\".\"S_STORE_SK\" as \"returns_store_id\",
+    sum(\"returns_store_returns\".\"SR_RETURN_AMT\") as \"total_returns\"
 FROM
-    \"questionable\"
+    \"memory\".\"store_returns\" as \"returns_store_returns\"
+    INNER JOIN \"memory\".\"store\" as \"returns_store_store\" on \"returns_store_returns\".\"SR_STORE_SK\" = \"returns_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"returns_return_date_date\" on \"returns_store_returns\".\"SR_RETURNED_DATE_SK\" = \"returns_return_date_date\".\"D_DATE_SK\"
+WHERE
+    \"returns_store_store\".\"S_STATE\" = 'TN' and cast(\"returns_return_date_date\".\"D_YEAR\" as int) = 2000
+
 GROUP BY 
-    \"questionable\".\"returns_customer_id\",
-    \"questionable\".\"returns_store_id\"),
+    \"returns_store_returns\".\"SR_CUSTOMER_SK\",
+    \"returns_store_store\".\"S_STORE_SK\"),
 cooperative as (
 SELECT
     \"returns_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
@@ -55,24 +48,24 @@ GROUP BY
     \"returns_store_store\".\"S_STORE_SK\"),
 yummy as (
 SELECT
-    \"abundant\".\"returns_store_id\" as \"returns_store_id\",
-    avg(\"abundant\".\"total_returns\") as \"avg_store_returns\"
+    \"questionable\".\"returns_store_id\" as \"returns_store_id\",
+    avg(\"questionable\".\"total_returns\") as \"avg_store_returns\"
 FROM
-    \"abundant\"
+    \"questionable\"
 GROUP BY 
-    \"abundant\".\"returns_store_id\"),
+    \"questionable\".\"returns_store_id\"),
 uneven as (
 SELECT
-    \"abundant\".\"total_returns\" as \"total_returns\",
     \"cooperative\".\"returns_customer_text_id\" as \"returns_customer_text_id\",
-    \"cooperative\".\"returns_store_id\" as \"returns_store_id\"
+    \"cooperative\".\"returns_store_id\" as \"returns_store_id\",
+    \"questionable\".\"total_returns\" as \"total_returns\"
 FROM
     \"cooperative\"
-    INNER JOIN \"abundant\" on \"cooperative\".\"returns_customer_id\" = \"abundant\".\"returns_customer_id\" AND \"cooperative\".\"returns_store_id\" = \"abundant\".\"returns_store_id\"
+    INNER JOIN \"questionable\" on \"cooperative\".\"returns_customer_id\" = \"questionable\".\"returns_customer_id\" AND \"cooperative\".\"returns_store_id\" = \"questionable\".\"returns_store_id\"
 GROUP BY 
-    \"abundant\".\"total_returns\",
     \"cooperative\".\"returns_customer_text_id\",
-    \"cooperative\".\"returns_store_id\")
+    \"cooperative\".\"returns_store_id\",
+    \"questionable\".\"total_returns\")
 SELECT
     \"uneven\".\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
