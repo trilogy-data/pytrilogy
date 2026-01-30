@@ -1305,6 +1305,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             [x.granularity == Granularity.SINGLE_ROW for x in lineage.concept_arguments]
         ):
             return Granularity.SINGLE_ROW
+
         return Granularity.MULTI_ROW
 
     # @property
@@ -2033,7 +2034,7 @@ class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel)
         )
 
 
-class FilterItem(DataTyped, Namespaced, ConceptArgs, BaseModel):
+class FilterItem(Mergeable, DataTyped, Namespaced, ConceptArgs, BaseModel):
     content: FuncArgs
     where: "WhereClause"
 
@@ -2066,6 +2067,16 @@ class FilterItem(DataTyped, Namespaced, ConceptArgs, BaseModel):
                 else self.content
             ),
             where=self.where.with_namespace(namespace),
+        )
+
+    def with_reference_replacement(self, source, target):
+        return FilterItem.model_construct(
+            content=(
+                self.content.with_reference_replacement(source, target)
+                if isinstance(self.content, Mergeable)
+                else self.content
+            ),
+            where=self.where.with_reference_replacement(source, target),
         )
 
     @property

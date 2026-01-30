@@ -165,6 +165,9 @@ class WindowOrder(Enum):
 
 
 class FunctionType(Enum):
+    # noop
+    NOOP = "noop"
+
     # custom
     CUSTOM = "custom"
 

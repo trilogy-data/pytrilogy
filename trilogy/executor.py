@@ -8,6 +8,7 @@ from sqlalchemy import text
 from trilogy.constants import MagicConstants, Rendering, logger
 from trilogy.core.enums import (
     AddressType,
+    ComparisonOperator,
     CreateMode,
     FunctionType,
     Granularity,
@@ -15,7 +16,7 @@ from trilogy.core.enums import (
     PersistMode,
     ValidationScope,
 )
-from trilogy.core.models.author import Comment, Concept, Function
+from trilogy.core.models.author import Comment, Comparison, Concept, Function
 from trilogy.core.models.build import BuildFunction
 from trilogy.core.models.core import ListWrapper, MapWrapper
 from trilogy.core.models.datasource import Address, Datasource, UpdateKeys
@@ -584,7 +585,7 @@ class Executor(object):
     ) -> Any:
         if not concept.granularity == Granularity.SINGLE_ROW:
             raise SyntaxError(
-                f"Cannot bind non-singleton concept {concept.address} ({concept.granularity}) to a parameter."
+                f"Cannot bind non-singleton concept {concept.address} ({concept.granularity}, lineage {concept.lineage}) to a parameter."
             )
         # TODO: to get rid of function here - need to figure out why it's getting passed in
         if (
@@ -605,6 +606,32 @@ class Executor(object):
             # if isinstance(rval, ConceptRef):
             #     return self._concept_to_value(self.environment.concepts[rval.address], local_concepts=local_concepts)
             return rval
+        elif isinstance(concept.lineage, Comparison):
+            # evaluate the comparison to get the value
+            left_value = self._atom_to_value(concept.lineage.left)
+            right_value = self._atom_to_value(concept.lineage.right)
+            operator = concept.lineage.operator
+            if operator == ComparisonOperator.EQ:
+                return left_value == right_value
+            elif operator == ComparisonOperator.NE:
+                return left_value != right_value
+            elif operator == ComparisonOperator.LT:
+                return left_value < right_value
+            elif operator == ComparisonOperator.LTE:
+                return left_value <= right_value
+            elif operator == ComparisonOperator.GT:
+                return left_value > right_value
+            elif operator == ComparisonOperator.GTE:
+                return left_value >= right_value
+            elif operator == ComparisonOperator.IS:
+                return left_value is right_value
+            elif operator == ComparisonOperator.IS_NOT:
+                return left_value is not right_value
+            else:
+                raise SyntaxError(
+                    f"Cannot bind comparison with operator {operator} to a parameter."
+                )
+
         else:
             results = self.execute_query(f"select {concept.name} limit 1;")
             if results:

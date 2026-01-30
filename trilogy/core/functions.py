@@ -218,6 +218,9 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.ALIAS: FunctionConfig(
         arg_count=1,
     ),
+    FunctionType.NOOP: FunctionConfig(
+        arg_count=1,
+    ),
     FunctionType.PARENTHETICAL: FunctionConfig(
         arg_count=1,
     ),

@@ -369,6 +369,10 @@ class BuildParamaterizedConceptReference(DataTyped):
     def output_datatype(self) -> DataType:
         return self.concept.output_datatype
 
+    @property
+    def value(self):
+        return self.concept.lineage.arguments[0]
+
 
 @dataclass
 class BuildGrain:
@@ -1743,6 +1747,20 @@ def requires_concept_nesting(
     return None
 
 
+def is_constant(x):
+    return isinstance(
+        x, (str, int, float, bool, MagicConstants, BuildParamaterizedConceptReference)
+    )
+
+
+def materialize_constant(x):
+    if isinstance(x, BuildParamaterizedConceptReference):
+        return x.value
+    elif x == MagicConstants.NULL:
+        return None
+    return x
+
+
 class Factory:
 
     def __init__(
@@ -1850,10 +1868,10 @@ class Factory:
         return base
 
     @build.register
-    def _(self, base: Function) -> BuildFunction | BuildAggregateWrapper:
+    def _(self, base: Function) -> Any:
         return self._build_function(base)
 
-    def _build_function(self, base: Function) -> BuildFunction | BuildAggregateWrapper:
+    def _build_function(self, base: Function) -> Any:
         raw_args: list[Concept | FuncArgs] = []
         for arg in base.arguments:
             # to do proper discovery, we need to inject virtual intermediate concepts
@@ -1901,13 +1919,28 @@ class Factory:
                     valid_inputs=base.valid_inputs,
                     arg_count=base.arg_count,
                 )
+
+        farguments: list[Any] = [self.handle_constant(self.build(c)) for c in raw_args]
+        if base.operator == FunctionType.CASE:
+            case_args: list[Any] = []
+            for arg in farguments:
+                if isinstance(arg, BuildCaseWhen):
+                    if arg.comparison is True:
+                        return arg.expr
+                    if arg.comparison is False:
+                        continue
+                case_args.append(arg)
+            if len(case_args) == 1 and isinstance(case_args[0], BuildCaseElse):
+                return case_args[0].expr
+            farguments = case_args
+
         # Build simple_case_expr if present (for simple CASE syntax)
         built_simple_case_expr = None
         if base.simple_case_expr is not None:
             built_simple_case_expr = self.build(base.simple_case_expr)
         new = BuildFunction(
             operator=base.operator,
-            arguments=[self.handle_constant(self.build(c)) for c in raw_args],
+            arguments=farguments,
             output_data_type=base.output_datatype,
             output_purpose=base.output_purpose,
             valid_inputs=base.valid_inputs,
@@ -1982,6 +2015,18 @@ class Factory:
 
         if new_lineage:
             build_lineage = self.build(new_lineage)
+            if isinstance(build_lineage, BuildConcept):
+                build_lineage.name = base.name
+                build_lineage.namespace = base.namespace
+                return build_lineage
+            elif isinstance(build_lineage, bool):
+                build_lineage = BuildFunction(
+                    operator=FunctionType.CONSTANT,
+                    arguments=[build_lineage],
+                    output_data_type=DataType.BOOL,
+                    output_purpose=Purpose.CONSTANT,
+                )
+
         else:
             build_lineage = None
         canonical_name = (
@@ -2132,7 +2177,14 @@ class Factory:
         return self._build_where_clause(base)
 
     def _build_where_clause(self, base: WhereClause) -> BuildWhereClause:
-        return BuildWhereClause(conditional=self.build(base.conditional))
+        conditional = self.build(base.conditional)
+        if isinstance(conditional, bool):
+            return BuildWhereClause(
+                conditional=BuildComparison(
+                    left=conditional, right=conditional, operator=ComparisonOperator.IS
+                )
+            )
+        return BuildWhereClause(conditional=conditional)
 
     @build.register
     def _(self, base: HavingClause) -> BuildHavingClause:
@@ -2197,10 +2249,10 @@ class Factory:
         )
 
     @build.register
-    def _(self, base: Comparison) -> BuildComparison:
+    def _(self, base: Comparison) -> BuildComparison | bool:
         return self._build_comparison(base)
 
-    def _build_comparison(self, base: Comparison) -> BuildComparison:
+    def _build_comparison(self, base: Comparison) -> BuildComparison | bool:
         left = base.left
         validation = requires_concept_nesting(base.left)
         if validation:
@@ -2211,9 +2263,31 @@ class Factory:
         if validation:
             right_c, _ = self.instantiate_concept(validation)
             right = right_c  # type: ignore
+        left = self.handle_constant(self.build(left))
+        right = self.handle_constant(self.build(right))
+        if is_constant(left) and is_constant(right):
+            lval = materialize_constant(left)
+            rval = materialize_constant(right)
+            if base.operator == ComparisonOperator.EQ:
+                return lval == rval
+            elif base.operator == ComparisonOperator.NE:
+                return lval != rval
+            elif base.operator == ComparisonOperator.LT:
+                return lval < rval
+            elif base.operator == ComparisonOperator.LTE:
+                return lval <= rval
+            elif base.operator == ComparisonOperator.GT:
+                return lval > rval
+            elif base.operator == ComparisonOperator.GTE:
+                return lval >= rval
+            elif base.operator == ComparisonOperator.IS:
+                return lval is rval
+            elif base.operator == ComparisonOperator.IS_NOT:
+                return lval is not rval
+
         return BuildComparison(
-            left=self.handle_constant(self.build(left)),
-            right=self.handle_constant(self.build(right)),
+            left=left,
+            right=right,
             operator=base.operator,
         )
 
@@ -2360,7 +2434,6 @@ class Factory:
             build_cache=self.build_cache,
         )
         for k, v in base.local_concepts.items():
-
             materialized[k] = factory.build(v)
         where_factory = Factory(
             grain=Grain(),
@@ -2606,6 +2679,8 @@ class Factory:
             and isinstance(base.lineage, BuildFunction)
             and base.lineage.operator == FunctionType.CONSTANT
         ):
+            if base.lineage.arguments[0] is bool:
+                return base.lineage.arguments[0]
             return BuildParamaterizedConceptReference(concept=base)
         elif isinstance(base, ConceptRef):
             return self.handle_constant(self.build(base))
