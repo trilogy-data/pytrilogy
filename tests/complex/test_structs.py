@@ -244,6 +244,8 @@ select [{a: 1, b: 2}, {a: 3, b: 4}] as array_struct
                           
 SELECT
     unnest_array
+order by
+    unnest_array asc
 ;
                           """
     )
