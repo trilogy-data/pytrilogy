@@ -42,6 +42,7 @@ from trilogy.core.models.author import (
     ArgBinding,
     CaseElse,
     CaseWhen,
+    CaseSimpleWhen,
     Comparison,
     Concept,
     ConceptRef,
@@ -1197,6 +1198,32 @@ class BuildWindowItem(DataTyped, BuildConceptArgs):
 
 
 @dataclass
+class BuildCaseSimpleWhen(DataTyped, BuildConceptArgs):
+    value_expr: "BuildExpr"
+    expr: "BuildExpr"
+
+    def __str__(self):
+        return self.__repr__()
+
+    def __repr__(self):
+        return f"WHEN {str(self.value_expr)} THEN {str(self.expr)}"
+
+    @cached_property
+    def concept_arguments(self):
+        return get_concept_arguments(self.value_expr) + get_concept_arguments(self.expr)
+
+    @property
+    def concept_row_arguments(self):
+        return get_concept_row_arguments(self.value_expr) + get_concept_row_arguments(
+            self.expr
+        )
+
+    @property
+    def output_datatype(self):
+        return arg_to_datatype(self.expr)
+
+
+@dataclass
 class BuildCaseWhen(DataTyped, BuildConceptArgs):
     comparison: BuildConditional | BuildSubselectComparison | BuildComparison
     expr: "BuildExpr"
@@ -1219,7 +1246,7 @@ class BuildCaseWhen(DataTyped, BuildConceptArgs):
 
     @property
     def output_datatype(self):
-        return DataType.BOOL
+        return arg_to_datatype(self.expr)
 
 
 @dataclass
@@ -1273,8 +1300,6 @@ class BuildFunction(DataTyped, BuildConceptArgs):
             List[Set[DataType]],
         ]
     ] = None
-    # For simple CASE syntax (CASE expr WHEN val THEN result END), stores built switch expr
-    simple_case_expr: Optional["BuildExpr"] = None
 
     def __repr__(self):
         return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
@@ -1934,10 +1959,6 @@ class Factory:
                 return case_args[0].expr
             farguments = case_args
 
-        # Build simple_case_expr if present (for simple CASE syntax)
-        built_simple_case_expr = None
-        if base.simple_case_expr is not None:
-            built_simple_case_expr = self.build(base.simple_case_expr)
         new = BuildFunction(
             operator=base.operator,
             arguments=farguments,
@@ -1945,7 +1966,6 @@ class Factory:
             output_purpose=base.output_purpose,
             valid_inputs=base.valid_inputs,
             arg_count=base.arg_count,
-            simple_case_expr=built_simple_case_expr,
         )
         return new
 
@@ -1975,6 +1995,20 @@ class Factory:
             expr, _ = self.instantiate_concept(validation)
         return BuildCaseWhen(
             comparison=self.build(base.comparison),
+            expr=self.build(expr),
+        )
+
+    @build.register
+    def _(self, base: CaseSimpleWhen) -> BuildCaseSimpleWhen:
+        return self._build_simple_case_when(base)
+
+    def _build_simple_case_when(self, base: CaseSimpleWhen) -> BuildCaseSimpleWhen:
+        expr: Concept | FuncArgs = base.expr
+        validation = requires_concept_nesting(expr)
+        if validation:
+            expr, _ = self.instantiate_concept(validation)
+        return BuildCaseSimpleWhen(
+            value_expr=self.build(base.value_expr),
             expr=self.build(expr),
         )
 

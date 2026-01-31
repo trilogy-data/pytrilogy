@@ -24,6 +24,7 @@ from trilogy.core.models.author import (
     AlignItem,
     CaseElse,
     CaseWhen,
+    CaseSimpleWhen,
     Comment,
     Comparison,
     Concept,
@@ -318,6 +319,10 @@ class Renderer:
         return (
             f"""WHEN {self.to_string(arg.comparison)} THEN {self.to_string(arg.expr)}"""
         )
+
+    @to_string.register
+    def _(self, arg: "CaseSimpleWhen"):
+        return f""" WHEN {self.to_string(arg.value_expr)} THEN {self.to_string(arg.expr)}"""
 
     @to_string.register
     def _(self, arg: "CaseElse"):
@@ -704,34 +709,29 @@ class Renderer:
             return f"{self.to_string(arg.arguments[0])}::{self.to_string(arg.arguments[1])}"
         if arg.operator == FunctionType.INDEX_ACCESS:
             return f"{self.to_string(arg.arguments[0])}[{self.to_string(arg.arguments[1])}]"
-
+        if arg.operator == FunctionType.SIMPLE_CASE:
+            switch_expr = self.to_string(arg.arguments[0])
+            with self.indented():
+                when_strs = [self.to_string(arg.arguments[0])]
+                for case_arg in arg.arguments[1:]:
+                    if isinstance(case_arg, CaseSimpleWhen):
+                        # Extract the right side of the comparison (the value)
+                        val = self.to_string(case_arg.value_expr)
+                        result = self.to_string(case_arg.expr)
+                        when_strs.append(self.indent_lines(f"WHEN {val} THEN {result}"))
+                    elif isinstance(case_arg, CaseElse):
+                        when_strs.append(self.indent_lines(self.to_string(case_arg)))
+            inputs = "\n".join(when_strs)
+            return (
+                f"CASE {switch_expr}\n{inputs}\n{self.indent_context.current_indent}END"
+            )
         if arg.operator == FunctionType.CASE:
-            # Check if this is a simple CASE (CASE expr WHEN val THEN result END)
-            if arg.simple_case_expr is not None:
-                switch_expr = self.to_string(arg.simple_case_expr)
-                with self.indented():
-                    when_strs = []
-                    for case_arg in arg.arguments:
-                        if isinstance(case_arg, CaseWhen):
-                            # Extract the right side of the comparison (the value)
-                            val = self.to_string(case_arg.comparison.right)
-                            result = self.to_string(case_arg.expr)
-                            when_strs.append(
-                                self.indent_lines(f"WHEN {val} THEN {result}")
-                            )
-                        elif isinstance(case_arg, CaseElse):
-                            when_strs.append(
-                                self.indent_lines(self.to_string(case_arg))
-                            )
-                inputs = "\n".join(when_strs)
-                return f"CASE {switch_expr}\n{inputs}\n{self.indent_context.current_indent}END"
-            else:
-                with self.indented():
-                    indented_args = [
-                        self.indent_lines(self.to_string(a)) for a in arg.arguments
-                    ]
-                inputs = "\n".join(indented_args)
-                return f"CASE\n{inputs}\n{self.indent_context.current_indent}END"
+            with self.indented():
+                indented_args = [
+                    self.indent_lines(self.to_string(a)) for a in arg.arguments
+                ]
+            inputs = "\n".join(indented_args)
+            return f"CASE\n{inputs}\n{self.indent_context.current_indent}END"
 
         if arg.operator == FunctionType.STRUCT:
             # zip arguments to pairs

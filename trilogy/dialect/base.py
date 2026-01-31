@@ -35,6 +35,7 @@ from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildCaseElse,
     BuildCaseWhen,
+    BuildCaseSimpleWhen,
     BuildComparison,
     BuildConcept,
     BuildConditional,
@@ -196,6 +197,16 @@ def render_case(args):
     return "CASE\n\t" + "\n\t".join(args) + "\n\tEND"
 
 
+def render_simple_case(args):
+    output_args = []
+    for arg in args[1:]:
+        if arg.strip().startswith("ELSE"):
+            output_args.append(arg)
+        else:
+            output_args.append(f"WHEN {args[0]} = {arg}")
+    return "CASE\n\t" + "\n\t".join(output_args) + "\n\tEND"
+
+
 def struct_arg(args):
     return [f"{x[1]}: {x[0]}" for x in zip(args[::2], args[1::2])]
 
@@ -225,6 +236,7 @@ FUNCTION_MAP = {
     FunctionType.NULLIF: lambda x, types: f"nullif({x[0]},{x[1]})",
     FunctionType.CAST: lambda x, types: f"cast({x[0]} as {x[1]})",
     FunctionType.CASE: lambda x, types: render_case(x),
+    FunctionType.SIMPLE_CASE: lambda x, types: render_simple_case(x),
     FunctionType.SPLIT: lambda x, types: f"split({x[0]}, {x[1]})",
     FunctionType.IS_NULL: lambda x, types: f"{x[0]} is null",
     FunctionType.BOOL: lambda x, types: f"CASE WHEN {x[0]} THEN TRUE ELSE FALSE END",
@@ -672,51 +684,39 @@ class BaseDialect:
             ):
                 rval = f":{c.safe_address}"
             else:
-                # Handle simple CASE syntax specially
-                if (
-                    isinstance(c.lineage, FUNCTION_ITEMS)
-                    and c.lineage.operator == FunctionType.CASE
-                    and c.lineage.simple_case_expr is not None
-                ):
-                    rval = self.render_simple_case(
-                        c.lineage, cte, raise_invalid=raise_invalid
-                    )
-                else:
-                    args = []
-                    types = []
-                    for arg in c.lineage.arguments:
-                        if (
-                            isinstance(arg, BuildConcept)
-                            and arg.lineage
-                            and isinstance(arg.lineage, FUNCTION_ITEMS)
-                            and arg.lineage.operator
-                            in (
-                                FunctionType.ADD,
-                                FunctionType.SUBTRACT,
-                                FunctionType.DIVIDE,
-                                FunctionType.MULTIPLY,
+                args = []
+                types = []
+                for arg in c.lineage.arguments:
+                    if (
+                        isinstance(arg, BuildConcept)
+                        and arg.lineage
+                        and isinstance(arg.lineage, FUNCTION_ITEMS)
+                        and arg.lineage.operator
+                        in (
+                            FunctionType.ADD,
+                            FunctionType.SUBTRACT,
+                            FunctionType.DIVIDE,
+                            FunctionType.MULTIPLY,
+                        )
+                    ):
+                        args.append(
+                            self.render_expr(
+                                BuildParenthetical(content=arg),
+                                cte=cte,
+                                raise_invalid=raise_invalid,
                             )
-                        ):
-                            args.append(
-                                self.render_expr(
-                                    BuildParenthetical(content=arg),
-                                    cte=cte,
-                                    raise_invalid=raise_invalid,
-                                )
-                            )
-                        else:
-                            args.append(
-                                self.render_expr(
-                                    arg, cte=cte, raise_invalid=raise_invalid
-                                )
-                            )
-                        types.append(arg_to_datatype(arg))
-
-                    if cte.group_to_grain:
-                        rval = f"{self.FUNCTION_MAP[c.lineage.operator](args, types)}"
+                        )
                     else:
+                        args.append(
+                            self.render_expr(arg, cte=cte, raise_invalid=raise_invalid)
+                        )
+                    types.append(arg_to_datatype(arg))
 
-                        rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args, types)}"
+                if cte.group_to_grain:
+                    rval = f"{self.FUNCTION_MAP[c.lineage.operator](args, types)}"
+                else:
+
+                    rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args, types)}"
         else:
             logger.debug(
                 f"{LOGGER_PREFIX} [{c.address}] Rendering basic lookup from {cte.source_map.get(c.address,None)}"
@@ -776,6 +776,7 @@ class BaseDialect:
             BuildAggregateWrapper,
             BuildComparison,
             BuildCaseWhen,
+            BuildCaseSimpleWhen,
             BuildCaseElse,
             BuildSubselectComparison,
             BuildWindowItem,
@@ -884,6 +885,8 @@ class BaseDialect:
             return f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} )"
         elif isinstance(e, CASE_WHEN_ITEMS):
             return f"WHEN {self.render_expr(e.comparison, cte=cte, cte_map=cte_map) } THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) }"
+        elif isinstance(e, BuildCaseSimpleWhen):
+            return f"{self.render_expr(e.value_expr, cte=cte, cte_map=cte_map)} THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
         elif isinstance(e, CASE_ELSE_ITEMS):
             return f"ELSE {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) }"
         elif isinstance(e, FUNCTION_ITEMS):
@@ -1000,47 +1003,6 @@ class BaseDialect:
 
         else:
             raise ValueError(f"Unable to render type {type(e)} {e}")
-
-    def render_simple_case(
-        self,
-        e: BuildFunction,
-        cte: Optional[CTE | UnionCTE] = None,
-        cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
-        raise_invalid: bool = True,
-    ) -> str:
-        """Render simple CASE syntax: CASE expr WHEN val THEN result END.
-
-        This is the default implementation that uses native simple CASE syntax.
-        Dialects that don't support simple CASE should override to expand it.
-        """
-        assert e.simple_case_expr is not None
-        switch_expr = self.render_expr(
-            e.simple_case_expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
-        )
-        when_clauses = []
-        else_clause = ""
-        for arg in e.arguments:
-            if isinstance(arg, BuildCaseWhen):
-                # Extract the right side of the comparison (the value to match)
-                val = self.render_expr(
-                    arg.comparison.right,
-                    cte=cte,
-                    cte_map=cte_map,
-                    raise_invalid=raise_invalid,
-                )
-                result = self.render_expr(
-                    arg.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
-                )
-                when_clauses.append(f"WHEN {val} THEN {result}")
-            elif isinstance(arg, BuildCaseElse):
-                result = self.render_expr(
-                    arg.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
-                )
-                else_clause = f"ELSE {result}"
-        clauses = "\n\t".join(when_clauses)
-        if else_clause:
-            clauses += f"\n\t{else_clause}"
-        return f"CASE {switch_expr}\n\t{clauses}\n\tEND"
 
     def render_cte_group_by(
         self, cte: CTE | UnionCTE, select_index: dict[str, int]

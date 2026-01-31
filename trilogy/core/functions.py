@@ -124,6 +124,25 @@ def get_output_type_at_index(args, index: int):
     return arg_to_datatype(args[index])
 
 
+def validate_simple_case_output(args: list[Any]) -> DataType:
+    datatypes = set()
+    mapz = dict()
+    for arg in args[1:]:
+
+        output_datatype = arg_to_datatype(arg.expr)
+        if output_datatype != DataType.NULL:
+            datatypes.add(output_datatype.data_type)
+        mapz[str(arg.expr)] = output_datatype
+    known = [x for x in datatypes if x != DataType.UNKNOWN]
+    if len(known) == 0:
+        return DataType.UNKNOWN
+    if not len(known) == 1:
+        raise SyntaxError(
+            f"All case expressions must have the same output datatype, got {datatypes} from {mapz}"
+        )
+    return known.pop()
+
+
 def validate_case_output(
     args: list[Any],
 ) -> DataType:
@@ -914,6 +933,11 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     ),
     FunctionType.CUSTOM: FunctionConfig(
         output_purpose=Purpose.PROPERTY,
+        arg_count=InfiniteFunctionArgs,
+    ),
+    FunctionType.SIMPLE_CASE: FunctionConfig(
+        output_purpose=Purpose.PROPERTY,
+        output_type_function=validate_simple_case_output,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.CASE: FunctionConfig(
