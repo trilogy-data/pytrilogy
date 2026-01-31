@@ -93,8 +93,22 @@ def test_boolean_derivation():
 
     results = executor.execute_text(
         """const test <- 1 is not null;
+    const nulls <- null is null;
+    const gt <- 5 > 3;
+    const lt <- 2 < 3;
+    const gte <- 3 >= 3;
+    const lte <- 2 <= 3;
+    const eq <- 4 = 4;
 
-        select test;
+
+        select test,
+    nulls,
+    gt,
+    lt,
+    gte,
+    lte,
+    eq
+     ;
     """
     )
 
