@@ -39,7 +39,14 @@ def test_typing():
 def test_negative_float_parsing(test_environment):
     declarations = """
 
-    const x <- -1.23;
+key x float;
+
+datasource test_x(
+x)
+grain (x)
+query '''
+select -1.34 as x
+''';
 
 select
 x

@@ -217,6 +217,7 @@ def hash_from_args(val, hash_type):
 FUNCTION_MAP = {
     # generic types
     FunctionType.ALIAS: lambda x, types: f"{x[0]}",
+    FunctionType.NOOP: lambda x, types: f"{x[0]}",
     FunctionType.GROUP: lambda x, types: f"{x[0]}",
     FunctionType.CONSTANT: lambda x, types: f"{x[0]}",
     FunctionType.TYPED_CONSTANT: lambda x, types: f"{x[0]}",
@@ -634,6 +635,7 @@ class BaseDialect:
                 else:
                     rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False, raise_invalid=raise_invalid)}"
             elif isinstance(c.lineage, BuildComparison):
+
                 rval = f"{self.render_expr(c.lineage.left, cte=cte, raise_invalid=raise_invalid)} {c.lineage.operator.value} {self.render_expr(c.lineage.right, cte=cte, raise_invalid=raise_invalid)}"
             elif isinstance(c.lineage, AGGREGATE_ITEMS):
                 args = [

@@ -106,9 +106,9 @@ select
 
     assert (
         """WHERE
-    "quizzical"."date_converted" = "cheerful"."latest_date" and 1 = 1
+    "quizzical"."date_converted" = "cheerful"."latest_date" and True
 GROUP BY 
     2,
     1)"""
         in results
-    )
+    ), results

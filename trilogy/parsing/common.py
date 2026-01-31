@@ -986,7 +986,9 @@ def comparison_to_concept(
             grain=grain,
             metadata=fmetadata,
             derivation=Derivation.BASIC,
-            granularity=Granularity.MULTI_ROW,
+            granularity=(
+                Granularity.MULTI_ROW if concrete_args else Granularity.SINGLE_ROW
+            ),
         )
         return r
 
