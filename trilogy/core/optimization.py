@@ -118,11 +118,7 @@ def filter_irrelevant_ctes(
 
 def gen_inverse_map(input: list[CTE | UnionCTE]) -> dict[str, list[CTE | UnionCTE]]:
     inverse_map: dict[str, list[CTE | UnionCTE]] = {}
-    print('values')
-    print(len(input))
-    print([x.name for x in input])
     for cte in input:
-        print(len(cte.parent_ctes))
         if isinstance(cte, UnionCTE):
             for internal in cte.internal_ctes:
                 if internal.name not in inverse_map:
@@ -260,7 +256,7 @@ def optimize_ctes(
         while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
             actions_taken = False
             # assume we go through all CTEs once
-            look_at = unique([root_cte, *reversed(input)], property='name')
+            look_at = unique([root_cte, *reversed(input)], property="name")
             inverse_map = gen_inverse_map(look_at)
             for cte in look_at:
                 opt, merged = rule.optimize(cte, inverse_map)

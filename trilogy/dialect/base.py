@@ -34,8 +34,8 @@ from trilogy.core.models.author import ArgBinding, arg_to_datatype
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildCaseElse,
-    BuildCaseWhen,
     BuildCaseSimpleWhen,
+    BuildCaseWhen,
     BuildComparison,
     BuildConcept,
     BuildConditional,

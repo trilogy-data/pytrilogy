@@ -126,15 +126,16 @@ def gen_multiselect_node(
         depth=depth,
         parents=base_parents,
         node_joins=node_joins,
-        grain=BuildGrain.from_concepts(
-            [
-                x
-                for y in base_parents
-                for x in y.output_concepts
-                if x.address not in y.hidden_concepts
-            ],
-            environment=environment,
-        ),
+        force_group=False,
+        # grain=BuildGrain.from_concepts(
+        #     [
+        #         x
+        #         for y in base_parents
+        #         for x in y.output_concepts
+        #         if x.address not in y.hidden_concepts
+        #     ],
+        #     environment=environment,
+        # ),
     )
 
     enrichment = set([x.address for x in local_optional])

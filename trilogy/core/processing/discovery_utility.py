@@ -200,7 +200,9 @@ def check_if_group_required(
         return GroupRequiredResponse(target_grain2, comp_grain, False)
 
     logger.info(f"{padding}{LOGGER_PREFIX} Group requirement check: group required")
-    return GroupRequiredResponse(target=target_grain, upstream=comp_grain, required=True)
+    return GroupRequiredResponse(
+        target=target_grain, upstream=comp_grain, required=True
+    )
 
 
 def group_if_required_v2(
