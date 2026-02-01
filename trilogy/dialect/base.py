@@ -918,11 +918,6 @@ class BaseDialect:
                             arg, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
                         )
                     )
-
-            # Handle simple CASE syntax specially
-            if e.operator == FunctionType.CASE and e.simple_case_expr is not None:
-                return self.render_simple_case(e, cte, cte_map, raise_invalid)
-
             if cte and cte.group_to_grain:
                 return self.FUNCTION_MAP[e.operator](
                     arguments, [arg_to_datatype(x) for x in arguments]

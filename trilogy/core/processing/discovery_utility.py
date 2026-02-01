@@ -45,6 +45,8 @@ def calculate_effective_parent_grain(
     # calculate the effective grain of the parent node
     # this is the union of all parent grains
     if isinstance(node, QueryDatasource):
+        if node.group_required:
+            return node.grain
         grain = BuildGrain()
         qds = node
         if not qds.joins:
@@ -198,7 +200,7 @@ def check_if_group_required(
         return GroupRequiredResponse(target_grain2, comp_grain, False)
 
     logger.info(f"{padding}{LOGGER_PREFIX} Group requirement check: group required")
-    return GroupRequiredResponse(target_grain, comp_grain, True)
+    return GroupRequiredResponse(target=target_grain, upstream=comp_grain, required=True)
 
 
 def group_if_required_v2(

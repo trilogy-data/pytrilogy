@@ -437,6 +437,8 @@ class BuildGrain:
         )
 
     def __eq__(self, other):
+        if other is None:
+            return False
         if self.components == other.components:
             return True
         if self.abstract is True and other.abstract is True:
