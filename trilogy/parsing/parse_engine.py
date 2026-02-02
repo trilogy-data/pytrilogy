@@ -2928,7 +2928,7 @@ class ParseToObjects(Transformer):
     def fcase_simple(self, meta, args) -> Function:
         args = process_function_args(args, meta=meta, environment=self.environment)
         switch_expr = args[0]
-        case_args: List[Union[CaseWhen, CaseElse]] = []
+        case_args: List[Union[CaseWhen, CaseSimpleWhen, CaseElse]] = []
         for arg in args[1:]:
             if isinstance(arg, CaseSimpleWhen):
                 case_args.append(arg)

@@ -1555,9 +1555,13 @@ class CaseSimpleWhen(Namespaced, ConceptArgs, DataTyped, Mergeable, BaseModel):
             self.expr
         )
 
-    def with_namespace(self, namespace: str) -> CaseWhen:
-        return CaseWhen.model_construct(
-            comparison=self.value_expr.with_namespace(namespace),
+    def with_namespace(self, namespace: str) -> CaseSimpleWhen:
+        return CaseSimpleWhen.model_construct(
+            value_expr=(
+                self.value_expr.with_namespace(namespace)
+                if isinstance(self.value_expr, Namespaced)
+                else self.value_expr
+            ),
             expr=(
                 self.expr.with_namespace(namespace)
                 if isinstance(
@@ -1570,9 +1574,13 @@ class CaseSimpleWhen(Namespaced, ConceptArgs, DataTyped, Mergeable, BaseModel):
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> CaseWhen:
-        return CaseWhen.model_construct(
-            comparison=self.value_expr.with_merge(source, target, modifiers),
+    ) -> CaseSimpleWhen:
+        return CaseSimpleWhen.model_construct(
+            value_expr=(
+                self.value_expr.with_merge(source, target, modifiers)
+                if isinstance(self.value_expr, Mergeable)
+                else self.value_expr
+            ),
             expr=(
                 self.expr.with_merge(source, target, modifiers)
                 if isinstance(self.expr, Mergeable)
@@ -1581,8 +1589,12 @@ class CaseSimpleWhen(Namespaced, ConceptArgs, DataTyped, Mergeable, BaseModel):
         )
 
     def with_reference_replacement(self, source, target):
-        return CaseWhen.model_construct(
-            comparison=self.value_expr.with_reference_replacement(source, target),
+        return CaseSimpleWhen.model_construct(
+            value_expr=(
+                self.value_expr.with_reference_replacement(source, target)
+                if isinstance(self.value_expr, Mergeable)
+                else self.value_expr
+            ),
             expr=(
                 self.expr.with_reference_replacement(source, target)
                 if isinstance(self.expr, Mergeable)
