@@ -102,7 +102,7 @@ def zip_vals(data):
 
 def generate_simple_case(args):
     output_args = []
-    for arg in args:
+    for arg in args[1:]:
         if arg.strip().startswith("ELSE"):
             output_args.append(arg)
         else:
