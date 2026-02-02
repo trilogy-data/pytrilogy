@@ -124,8 +124,6 @@ class Executor(object):
         self.execute_raw_sql(
             get_python_datasource_setup_sql(enabled, is_windows, self._instance_id)
         )
-        # TOODO: fix
-        return
         self.connection.commit()
 
     def _setup_duckdb_gcs(self) -> None:
