@@ -20,7 +20,7 @@ class AltairRenderer(BaseRenderer):
         if not ALTAIR_AVAILABLE:
             raise ImportError(
                 "Altair is required for chart rendering. "
-                "Install with: pip install altair pandas"
+                "Install `altair` via pip/uv to use."
             )
 
     def render(self, config: ChartConfig, data: list[dict]) -> Any:

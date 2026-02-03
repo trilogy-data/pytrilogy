@@ -96,6 +96,20 @@ def date_part(args, types):
     return f"date_part('{map_date_part_specifier(args[1])}', {args[0]})"
 
 
+def zip_vals(data):
+    return list(zip(data[::2], data[1::2]))
+
+
+def generate_simple_case(args):
+    output_args = []
+    for arg in args[1:]:
+        if arg.strip().startswith("ELSE"):
+            output_args.append(arg)
+        else:
+            output_args.append(f"WHEN {arg}")
+    return f"CASE\n\t{args[0]}\n\t" + "\n\t".join(output_args) + "\n\tEND"
+
+
 FUNCTION_MAP = {
     FunctionType.CAST: handle_cast,
     FunctionType.COUNT: lambda args, types: f"count({args[0]})",
@@ -141,6 +155,7 @@ FUNCTION_MAP = {
     # regexp
     FunctionType.REGEXP_CONTAINS: lambda x, types: f"REGEXP_MATCHES({x[0]},{x[1]})",
     FunctionType.REGEXP_EXTRACT: lambda x, types: generate_regex_extract(x),
+    FunctionType.SIMPLE_CASE: lambda x, types: generate_simple_case(x),
 }
 
 # if an aggregate function is called on a source that is at the same grain as the aggregate

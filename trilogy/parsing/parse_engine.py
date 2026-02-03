@@ -65,6 +65,7 @@ from trilogy.core.models.author import (
     AlignItem,
     ArgBinding,
     CaseElse,
+    CaseSimpleWhen,
     CaseWhen,
     Comment,
     Comparison,
@@ -2918,36 +2919,24 @@ class ParseToObjects(Transformer):
         return CaseElse(expr=args[0])
 
     @v_args(meta=True)
-    def fcase_simple_when(self, meta, args) -> Tuple:
+    def fcase_simple_when(self, meta, args) -> CaseSimpleWhen:
         args = process_function_args(args, meta=meta, environment=self.environment)
         # Return (value_expr, result_expr) tuple; comparison will be built in fcase_simple
-        return (args[0], args[1])
+        return CaseSimpleWhen(value_expr=args[0], expr=args[1])
 
     @v_args(meta=True)
     def fcase_simple(self, meta, args) -> Function:
         args = process_function_args(args, meta=meta, environment=self.environment)
         switch_expr = args[0]
-        case_args: List[Union[CaseWhen, CaseElse]] = []
+        case_args: List[Union[CaseWhen, CaseSimpleWhen, CaseElse]] = []
         for arg in args[1:]:
-            if isinstance(arg, tuple):
-                # Simple when: (value_expr, result_expr) -> CaseWhen with equality
-                value_expr, result_expr = arg
-                comparison = Comparison(
-                    left=switch_expr, right=value_expr, operator=ComparisonOperator.EQ
-                )
-                case_args.append(CaseWhen(comparison=comparison, expr=result_expr))
+            if isinstance(arg, CaseSimpleWhen):
+                case_args.append(arg)
             elif isinstance(arg, CaseElse):
                 case_args.append(arg)
-        func = self.function_factory.create_function(case_args, FunctionType.CASE, meta)
-        # Store the switch expression for round-trip rendering
-        return Function.model_construct(
-            operator=func.operator,
-            arguments=func.arguments,
-            output_datatype=func.output_datatype,
-            output_purpose=func.output_purpose,
-            valid_inputs=func.valid_inputs,
-            arg_count=func.arg_count,
-            simple_case_expr=switch_expr,
+
+        return self.function_factory.create_function(
+            [switch_expr] + case_args, FunctionType.SIMPLE_CASE, meta
         )
 
     @v_args(meta=True)

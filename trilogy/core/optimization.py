@@ -12,7 +12,7 @@ from trilogy.core.optimizations import (
     PredicatePushdown,
     PredicatePushdownRemove,
 )
-from trilogy.core.processing.utility import sort_select_output
+from trilogy.core.processing.utility import sort_select_output, unique
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 
 MAX_OPTIMIZATION_LOOPS = 100
@@ -256,7 +256,7 @@ def optimize_ctes(
         while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
             actions_taken = False
             # assume we go through all CTEs once
-            look_at = [root_cte, *reversed(input)]
+            look_at = unique([root_cte, *reversed(input)], property="name")
             inverse_map = gen_inverse_map(look_at)
             for cte in look_at:
                 opt, merged = rule.optimize(cte, inverse_map)

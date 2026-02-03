@@ -183,6 +183,7 @@ class FunctionType(Enum):
 
     # Generic
     CASE = "case"
+    SIMPLE_CASE = "simple_case"
     CAST = "cast"
     CONCAT = "concat"
     CONSTANT = "constant"

@@ -1525,6 +1525,84 @@ def get_basic_type(
     return type
 
 
+class CaseSimpleWhen(Namespaced, ConceptArgs, DataTyped, Mergeable, BaseModel):
+    value_expr: "Expr"
+    expr: "Expr"
+
+    @field_validator("expr", mode="before")
+    def enforce_reference(cls, v):
+        if isinstance(v, Concept):
+            return v.reference
+        return v
+
+    @property
+    def output_datatype(self):
+        return arg_to_datatype(self.expr)
+
+    def __str__(self):
+        return self.__repr__()
+
+    def __repr__(self):
+        return f"WHEN {str(self.value_expr)} {str(self.expr)}"
+
+    @property
+    def concept_arguments(self):
+        return get_concept_arguments(self.value_expr) + get_concept_arguments(self.expr)
+
+    @property
+    def concept_row_arguments(self):
+        return get_concept_row_arguments(self.value_expr) + get_concept_row_arguments(
+            self.expr
+        )
+
+    def with_namespace(self, namespace: str) -> CaseSimpleWhen:
+        return CaseSimpleWhen.model_construct(
+            value_expr=(
+                self.value_expr.with_namespace(namespace)
+                if isinstance(self.value_expr, Namespaced)
+                else self.value_expr
+            ),
+            expr=(
+                self.expr.with_namespace(namespace)
+                if isinstance(
+                    self.expr,
+                    Namespaced,
+                )
+                else self.expr
+            ),
+        )
+
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> CaseSimpleWhen:
+        return CaseSimpleWhen.model_construct(
+            value_expr=(
+                self.value_expr.with_merge(source, target, modifiers)
+                if isinstance(self.value_expr, Mergeable)
+                else self.value_expr
+            ),
+            expr=(
+                self.expr.with_merge(source, target, modifiers)
+                if isinstance(self.expr, Mergeable)
+                else self.expr
+            ),
+        )
+
+    def with_reference_replacement(self, source, target):
+        return CaseSimpleWhen.model_construct(
+            value_expr=(
+                self.value_expr.with_reference_replacement(source, target)
+                if isinstance(self.value_expr, Mergeable)
+                else self.value_expr
+            ),
+            expr=(
+                self.expr.with_reference_replacement(source, target)
+                if isinstance(self.expr, Mergeable)
+                else self.expr
+            ),
+        )
+
+
 class CaseWhen(Namespaced, DataTyped, ConceptArgs, Mergeable, BaseModel):
     comparison: Conditional | SubselectComparison | Comparison
     expr: "Expr"
@@ -1696,8 +1774,6 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         ]
     ] = None
     arguments: Sequence[FuncArgs]
-    # For simple CASE syntax (CASE expr WHEN val THEN result END), stores the switch expr
-    simple_case_expr: Optional["Expr"] = None
 
     class Config:
         frozen = True
@@ -1820,15 +1896,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         # we need to figure out how to patch properly
         # should use function factory, but does not have environment access
         # probably move all datatype resolution to build?
-        simple_expr = None
-        if self.simple_case_expr is not None and isinstance(
-            self.simple_case_expr, Mergeable
-        ):
-            simple_expr = self.simple_case_expr.with_reference_replacement(
-                source, target
-            )
-        elif self.simple_case_expr is not None:
-            simple_expr = self.simple_case_expr
+
         return Function.model_construct(
             operator=self.operator,
             arguments=nargs,
@@ -1836,17 +1904,9 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
             output_purpose=self.output_purpose,
             valid_inputs=self.valid_inputs,
             arg_count=self.arg_count,
-            simple_case_expr=simple_expr,
         )
 
     def with_namespace(self, namespace: str) -> "Function":
-        simple_expr = None
-        if self.simple_case_expr is not None and isinstance(
-            self.simple_case_expr, Namespaced
-        ):
-            simple_expr = self.simple_case_expr.with_namespace(namespace)
-        elif self.simple_case_expr is not None:
-            simple_expr = self.simple_case_expr
         return Function.model_construct(
             operator=self.operator,
             arguments=[
@@ -1864,19 +1924,12 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
             output_purpose=self.output_purpose,
             valid_inputs=self.valid_inputs,
             arg_count=self.arg_count,
-            simple_case_expr=simple_expr,
         )
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "Function":
-        simple_expr = None
-        if self.simple_case_expr is not None and isinstance(
-            self.simple_case_expr, Mergeable
-        ):
-            simple_expr = self.simple_case_expr.with_merge(source, target, modifiers)
-        elif self.simple_case_expr is not None:
-            simple_expr = self.simple_case_expr
+
         return Function.model_construct(
             operator=self.operator,
             arguments=[
@@ -1894,7 +1947,6 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
             output_purpose=self.output_purpose,
             valid_inputs=self.valid_inputs,
             arg_count=self.arg_count,
-            simple_case_expr=simple_expr,
         )
 
     @property
@@ -2684,6 +2736,7 @@ FuncArgs = (
     | Function
     | FunctionCallWrapper
     | Parenthetical
+    | CaseSimpleWhen
     | CaseWhen
     | CaseElse
     | WindowItem
