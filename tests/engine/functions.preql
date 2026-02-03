@@ -1,0 +1,4 @@
+def is_sea(x)-> CASE x
+    WHEN 'Seafood' THEN 'sea'
+    else 'not_sea'
+    END;

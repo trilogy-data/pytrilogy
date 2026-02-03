@@ -711,6 +711,30 @@ order by category asc;
     assert results[3] == ("Seafood", "sea")
 
 
+def test_simple_case_duckdb_function():
+    """Test simple CASE syntax execution in DuckDB."""
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=Path(__file__).parent)
+    )
+
+    test = """
+import functions as fun;
+auto category <- unnest(['Seafood', 'Beverages', 'Meat', 'Dairy']);
+
+
+
+
+select
+    category,
+    @fun.is_sea(category) as bucket
+order by category asc;
+    """
+    results = executor.execute_text(test)[0].fetchall()
+    # Results should be ordered by category: Beverages, Dairy, Meat, Seafood
+    assert len(results) == 4
+    assert results[3] == ("Seafood", "sea")
+
+
 def test_simple_case_duckdb_uses_native_syntax():
     """Test that DuckDB uses native simple CASE syntax (not expanded)."""
     from trilogy.core.query_processor import process_query
