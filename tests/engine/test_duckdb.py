@@ -722,8 +722,6 @@ import functions as fun;
 auto category <- unnest(['Seafood', 'Beverages', 'Meat', 'Dairy']);
 
 
-
-
 select
     category,
     @fun.is_sea(category) as bucket
