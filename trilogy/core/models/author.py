@@ -1273,7 +1273,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         ):
             return Derivation.CONSTANT
 
-        elif lineage and isinstance(lineage, (BuildFunction, Function)):
+        elif lineage and isinstance(lineage, BuildFunction):
             if not lineage.concept_arguments:
                 return Derivation.CONSTANT
             elif all(
@@ -1330,7 +1330,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             name=f"{self.name}_filter_{hash}",
             datatype=self.datatype,
             purpose=self.purpose,
-            derivation=self.calculate_derivation(new_lineage, self.purpose),
+            derivation=Derivation.FILTER,
             granularity=self.granularity,
             metadata=self.metadata,
             lineage=new_lineage,
@@ -1471,7 +1471,7 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     def with_reference_replacement(self, source, target):
         return WindowItem.model_construct(
             type=self.type,
-            content=self.content.with_reference_replacement(source, target),
+            content=self.content.with_reference_replacement(source, target) if isinstance(self.content, Mergeable) else self.content,
             over=[x.with_reference_replacement(source, target) for x in self.over],
             order_by=[
                 x.with_reference_replacement(source, target) for x in self.order_by
