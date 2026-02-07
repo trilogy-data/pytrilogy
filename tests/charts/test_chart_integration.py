@@ -34,9 +34,7 @@ def test_execute_chart_with_multiple_rows():
     """Test chart with multiple data rows using datasource."""
     exec = Executor(dialect=Dialects.DUCK_DB, engine=Dialects.DUCK_DB.default_engine())
 
-    results = list(
-        exec.execute_text(
-            """
+    results = list(exec.execute_text("""
             key category string;
             property category.value int;
 
@@ -53,9 +51,7 @@ def test_execute_chart_with_multiple_rows():
 
             chart bar set x_axis: category set y_axis: value
             from select category, value;
-            """
-        )
-    )
+            """))
 
     # Last result should be the chart
     chart_results = [r for r in results if isinstance(r, ChartResult)]

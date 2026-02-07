@@ -76,14 +76,12 @@ def test_is_child_function():
 
 def test_child_of_complex():
     #   monitor."customer_count" > 10 and monitor."store_sales_date_year" = 2001 and monitor."store_sales_date_month_of_year" = 1 and monitor."store_sales_item_current_price" > 1.2 * monitor."_virtual_6264207893106521"
-    env, _ = parse(
-        """
+    env, _ = parse("""
 key customer_count int;
 key year int;    
                    key avg_price float;
                    key current_price float;               
-"""
-    )
+""")
     env = env.materialize_for_select()
     comp = BuildConditional(
         left=BuildConditional(

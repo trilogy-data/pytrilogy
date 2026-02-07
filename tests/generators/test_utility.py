@@ -16,13 +16,11 @@ from trilogy.core.processing.utility import (
 
 
 def test_resolve_join_order():
-    env, _ = parse(
-        """
+    env, _ = parse("""
 key order_id int;
 key product_id int;
 property product_id.price float;       
-                """
-    )
+                """)
     env = env.materialize_for_select()
     test_case = []
     x = resolve_join_order(test_case)

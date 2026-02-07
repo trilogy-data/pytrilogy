@@ -53,10 +53,7 @@ having
 """
 
     query = dialect.generate_sql(query)[0]
-    assert (
-        '''GROUP BY 
+    assert '''GROUP BY 
     "data_all_112224"."class",
     "data_all_112224"."genus",
-    "data_all_112224"."length_cm"'''
-        not in query
-    ), query
+    "data_all_112224"."length_cm"''' not in query, query

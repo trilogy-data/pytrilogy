@@ -30,19 +30,16 @@ from trilogy.parsing.common import function_to_concept
 
 def create_passenger_dimension(exec: Executor, name: str):
     exec.execute_raw_sql(f"CREATE SEQUENCE seq_{name} START 1;")
-    exec.execute_raw_sql(
-        f"""create table dim_{name} as 
+    exec.execute_raw_sql(f"""create table dim_{name} as 
                          SELECT passengerid id, name, age,
                           SPLIT(name, ',')[1] last_name
                             FROM raw_data
 
-"""
-    )
+""")
 
 
 def create_arbitrary_dimension(exec: Executor, key: str, name: str):
-    exec.execute_raw_sql(
-        f"""create table dim_{name} as 
+    exec.execute_raw_sql(f"""create table dim_{name} as 
                          with tmp as 
                          (select {key}
                          from raw_data group by 1
@@ -50,8 +47,7 @@ def create_arbitrary_dimension(exec: Executor, key: str, name: str):
                          SELECT  row_number() over() as id,
                          {key} as {name}
                           FROM tmp
-"""
-    )
+""")
 
 
 def create_fact(
@@ -59,8 +55,7 @@ def create_fact(
     dims: Optional[list[str]] = None,
     include: Optional[list[str]] = None,
 ):
-    exec.execute_raw_sql(
-        """create table fact_titanic as 
+    exec.execute_raw_sql("""create table fact_titanic as 
                          SELECT 
                          row_number() OVER () as fact_key,
                          passengerid,
@@ -71,8 +66,7 @@ def create_fact(
                          cabin  
                          FROM raw_data a 
                          LEFT OUTER JOIN dim_class b on a.pclass=b.class
-                         """
-    )
+                         """)
 
 
 def setup_normalized_engine() -> Executor:

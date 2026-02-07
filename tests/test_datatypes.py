@@ -28,8 +28,7 @@ def test_numeric():
 def test_cast_error():
     found = False
     try:
-        env, _ = parse_text(
-            """
+        env, _ = parse_text("""
     const x <- 1;
     const y <- 'fun';
 
@@ -38,8 +37,7 @@ def test_cast_error():
     where 
         x = y;
 
-    """
-        )
+    """)
     except InvalidSyntaxException as e:
         assert "Cannot compare INTEGER (ref:local.x) and STRING (ref:local.y)" in str(e)
         found = True
@@ -50,8 +48,7 @@ def test_cast_error():
 def test_is_error():
     found = False
     try:
-        env, _ = parse_text(
-            """
+        env, _ = parse_text("""
     const x <- 1;
     const y <- 'fun';
 
@@ -60,8 +57,7 @@ def test_is_error():
     where
         x is [1,2];
 
-    """
-        )
+    """)
     except InvalidSyntaxException as e:
         assert "Cannot use is with non-null or boolean value [1, 2]" in str(e)
         found = True
@@ -121,8 +117,7 @@ def test_merge_datatypes_with_trait_datatype():
 def test_trait_propagation():
     engine = Dialects.DUCK_DB.default_executor()
 
-    engine.parse_text(
-        """
+    engine.parse_text("""
                       
 type money float;
 key order_id int;
@@ -141,8 +136,7 @@ select
     sum(price) as total_revenue,
     total_revenue/order_count as aov;
 
-"""
-    )
+""")
 
     assert engine.environment.concepts["aov"].datatype == TraitDataType(
         type=DataType.FLOAT, traits=["money"]

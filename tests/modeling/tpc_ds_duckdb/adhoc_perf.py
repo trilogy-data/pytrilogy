@@ -24,8 +24,7 @@ def setup_environment():
     """Setup the environment exactly as in the original test."""
     working_path = Path(__file__).parent
 
-    env, imports = Environment(working_path=working_path).parse(
-        """
+    env, imports = Environment(working_path=working_path).parse("""
 import call_center as call_center;
 import catalog_returns as catalog_returns;
 import catalog_sales as catalog_sales;
@@ -41,13 +40,11 @@ import time as time;
 import date as date;
 import warehouse as warehouse;
 import web_sales as web_sales;
-"""
-    )
+""")
 
     dialect = Dialects.DUCK_DB.default_executor(environment=env)
 
-    test_queries = (
-        """
+    test_queries = """
 
 
     import store_sales as store_sales;
@@ -477,9 +474,7 @@ import web_sales as web_sales;
     limit 100
     ;
 
-"""
-        * 3
-    )
+""" * 3
 
     return dialect, test_queries
 
