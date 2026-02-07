@@ -51,6 +51,13 @@ class SelectNode(StrategyNode):
         hidden_concepts: set[str] | None = None,
         ordering: BuildOrderBy | None = None,
     ):
+        # Derive partial/nullable from datasource columns when not explicitly provided
+        if datasource and partial_concepts is None:
+            partial_concepts = [
+                c.concept for c in datasource.columns if not c.is_complete
+            ]
+        if datasource and nullable_concepts is None:
+            nullable_concepts = [c.concept for c in datasource.columns if c.is_nullable]
         super().__init__(
             input_concepts=input_concepts,
             output_concepts=output_concepts,
