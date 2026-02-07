@@ -69,8 +69,7 @@ def test_raise_helpful_join_validation_error():
 
 def test_build_datasource_source_resolution():
     env = Environment(working_path=Path(__file__).parent)
-    env.parse(
-        """
+    env.parse("""
 key x int;
 property x.val float;
 auto _total_val <- sum(val) by *;
@@ -82,8 +81,7 @@ address abc_123l;
 
 select
     sum(val) as total_val;
-   """
-    )
+   """)
     build_env = env.materialize_for_select()
     built_ds = build_env.datasources["totals"]
     total_val = build_env.concepts["local.total_val"]

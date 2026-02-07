@@ -11,8 +11,7 @@ def test_example_model():
 
     DebuggingHook()
 
-    results = executor.execute_text(
-        """
+    results = executor.execute_text("""
 import script;
 WHERE end_station.id in (start_station.id ? daily_station_rank <= 3)
 SELECT
@@ -23,8 +22,7 @@ SELECT
 order by ride_id asc
 ;
 
-                          """
-    )
+                          """)
     rows = list(results[-1].fetchall())
     for row in rows:
         print(row)

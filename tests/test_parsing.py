@@ -191,8 +191,7 @@ def test_as_transform(test_environment):
 
 
 def test_bq_address():
-    _, parsed = parse_text(
-        """key user_pseudo_id int;
+    _, parsed = parse_text("""key user_pseudo_id int;
 key event_time int;
 property event_time.event_date string;
 
@@ -203,16 +202,14 @@ datasource fundiverse (
 )
 grain (event_time)
 address `preqldata.analytics_411641820.events_*`
-;"""
-    )
+;""")
     query = parsed[-1]
     assert query.address.quoted is True
     assert query.address.location == "preqldata.analytics_411641820.events_*"
 
 
 def test_purpose_and_keys():
-    env, parsed = parse_text(
-        """key id int;
+    env, parsed = parse_text("""key id int;
 property id.name string;
 
 auto name_alphabetical <- row_number id order by name asc;
@@ -223,8 +220,7 @@ select
     name,
     row_number id order by name asc -> name_alphabetical_2
     ;
-"""
-    )
+""")
 
     for name in [
         "name_alphabetical",
@@ -235,8 +231,7 @@ select
 
 
 def test_purpose_and_derivation():
-    env, parsed = parse_text(
-        """key id int;
+    env, parsed = parse_text("""key id int;
 key other_id int;
 property <id, other_id>.join_id <- id*10+other_id;
 
@@ -244,8 +239,7 @@ property <id, other_id>.join_id <- id*10+other_id;
 select 
     join_id
 ;
-"""
-    )
+""")
 
     for name in ["join_id"]:
         assert env.concepts[name].purpose == Purpose.PROPERTY
@@ -256,8 +250,7 @@ select
 
 
 def test_output_purpose():
-    env, parsed = parse_text(
-        """key id int;
+    env, parsed = parse_text("""key id int;
 property id.name string;
 
 auto name_alphabetical <- row_number id order by name asc;
@@ -272,8 +265,7 @@ auto test_name_count <- count(test.name);
 
 select 
     test_name_count;
-"""
-    )
+""")
     # assert output_purpose == Purpose.METRIC
     for name in ["test_name_count"]:
         assert env.concepts[name].purpose == Purpose.METRIC
@@ -302,8 +294,7 @@ def test_between():
 
 
 def test_the_comments():
-    _, parsed = parse_text(
-        """const
+    _, parsed = parse_text("""const
          # comment here?
            order_id <- 4; SELECT 
         # TOOD - add in more columns?
@@ -315,8 +306,7 @@ def test_the_comments():
           is not 
         null; # nulls are the worst
         
-        """
-    )
+        """)
     query = parsed[-1]
     right = query.where_clause.conditional.right
     assert isinstance(right, MagicConstants), type(right)
@@ -325,8 +315,7 @@ def test_the_comments():
 
 
 def test_the_comment_multiline():
-    env, parsed = parse_text(
-        """const
+    env, parsed = parse_text("""const
          # comment here?
            order_id <- 4;  # this is the order id
         # order ids are important
@@ -341,8 +330,7 @@ def test_the_comment_multiline():
           is not 
         null; # nulls are the worst
         
-        """
-    )
+        """)
     parsed[-1]
     assert env.concepts["order_id"].metadata.description is not None
     assert " this is the order id" in env.concepts["order_id"].metadata.description
@@ -351,8 +339,7 @@ def test_the_comment_multiline():
 
 def test_the_comment_multiline_enter():
     # we should not associate it as a description if there is a newline
-    env, parsed = parse_text(
-        """const
+    env, parsed = parse_text("""const
          # comment here?
            order_id <- 4;  
         # this is the order id
@@ -368,16 +355,13 @@ def test_the_comment_multiline_enter():
           is not 
         null; # nulls are the worst
         
-        """
-    )
+        """)
     assert env.concepts["order_id"].metadata.description is None
 
 
 def test_purpose_nesting():
-    env, parsed = parse_text(
-        """key year int;
-"""
-    )
+    env, parsed = parse_text("""key year int;
+""")
 
     env2: Environment = Environment()
     env2.add_import("dates", env)
@@ -402,14 +386,12 @@ CASE WHEN dates.year BETWEEN 1883 AND 1900 THEN 'Lost Generation'
 
 
 def test_rawsql():
-    env, parsed = parse_text(
-        """
+    env, parsed = parse_text("""
 raw_sql('''select 1''');
 
 select 1 as test;
 
-"""
-    )
+""")
     assert parsed[0].text == "select 1"
 
 
@@ -502,33 +484,28 @@ select composite_id;
 
 
 def test_map_definition():
-    env, parsed = parse_text(
-        """
+    env, parsed = parse_text("""
 key id int;
 property id.labels map<string, int>;
 
-"""
-    )
+""")
     assert env.concepts["labels"].datatype.key_type == DataType.STRING
     assert env.concepts["labels"].datatype.value_type == DataType.INTEGER
 
 
 def test_map_concept_definition():
-    env, parsed = parse_text(
-        """
+    env, parsed = parse_text("""
 key id int;
 property id.label string;
 key map_store map<id, string>;
 
-"""
-    )
+""")
     assert env.concepts["map_store"].datatype.key_data_type == DataType.INTEGER
     assert env.concepts["map_store"].datatype.value_data_type == DataType.STRING
 
 
 def test_map_string_access():
-    env, parsed = parse_text(
-        """
+    env, parsed = parse_text("""
 const labels <- { 'a': 1, 'b': 2, 'c': 3 };
 
 
@@ -536,20 +513,17 @@ select
     labels['a'] as label_a,
 ;
 
-"""
-    )
+""")
     assert env.concepts["labels"].datatype.key_type == DataType.STRING
     assert env.concepts["labels"].datatype.value_type == DataType.INTEGER
 
 
 def test_empty_string():
-    env, parsed = parse_text(
-        """
+    env, parsed = parse_text("""
 const labels <- '';
 
 
-"""
-    )
+""")
     assert env.concepts["labels"].datatype == DataType.STRING
 
 
@@ -780,8 +754,7 @@ key x int;
         )
     )
     assert isinstance(env.config.import_resolver, DictImportResolver)
-    env.parse(
-        """
+    env.parse("""
 import std.geography;
 import test;
 
@@ -790,8 +763,7 @@ key fun_lat float::latitude;
 select x % 10 -> x_mod_10;
                
             
-"""
-    )
+""")
 
 
 def test_dict_resolver():
@@ -837,8 +809,7 @@ key x int;
         )
     )
     assert isinstance(env.config.import_resolver, DictImportResolver)
-    env.parse(
-        """
+    env.parse("""
 import std.geography;
 import test;
 import nested.import;
@@ -848,19 +819,16 @@ key fun_lat float::latitude;
 select x % 10 -> x_mod_10;
                
             
-"""
-    )
+""")
 
 
 def test_is_atom():
     env = Environment()
 
-    env.parse(
-        """
+    env.parse("""
 key x int;
 auto x_sum <- sum(x);
-"""
-    )
+""")
 
     assert not atom_is_relevant(
         Comparison(left=env.concepts["x_sum"], right=0, operator=ComparisonOperator.GT),
@@ -896,12 +864,10 @@ auto x_sum <- sum(x);
 
 def test_params():
     with raises(MissingParameterException):
-        parse_text(
-            """
+        parse_text("""
     parameter scale int;
 
     auto numbers <- generate_array(1, scale, 1);
 
     select count(unnest(numbers)) as cnt;
-    """
-        )
+    """)

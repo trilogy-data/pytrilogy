@@ -72,20 +72,16 @@ def test_basic_query(test_environment):
     )
 
     string_query = render_query(query)
-    assert (
-        string_query
-        == """SELECT
+    assert string_query == """SELECT
     order_id,
 ORDER BY
     order_id asc
 ;"""
-    )
 
 
 def test_window_over(test_environment):
     env = Environment()
-    _, parsed = env.parse(
-        """
+    _, parsed = env.parse("""
 key order_id int;
 
 datasource orders (
@@ -96,15 +92,11 @@ address memory.orders;
 
 select max(order_id) by order_id -> test;
 
-"""
-    )
+""")
     string_query = Renderer().to_string(parsed[-1])
-    assert (
-        string_query
-        == """SELECT
+    assert string_query == """SELECT
     max(order_id) by order_id -> test,
 ;"""
-    )
 
 
 def test_multi_select(test_environment):
@@ -139,9 +131,7 @@ def test_multi_select(test_environment):
     )
 
     string_query = render_query(query)
-    assert (
-        string_query
-        == """SELECT
+    assert string_query == """SELECT
     order_id,
 MERGE
 SELECT
@@ -150,8 +140,7 @@ ALIGN
     merge:order_id
 ORDER BY
     order_id asc
-;"""
-    ), string_query
+;""", string_query
 
 
 def test_full_query(test_environment):
@@ -183,16 +172,13 @@ def test_full_query(test_environment):
     )
 
     string_query = render_query(query)
-    assert (
-        string_query
-        == """WHERE
+    assert string_query == """WHERE
     order_id = 123 or order_id = 456
 SELECT
     order_id,
 ORDER BY
     order_id asc
 ;"""
-    )
 
 
 def test_environment_rendering(test_environment):
@@ -225,14 +211,11 @@ def test_persist(test_environment: Environment):
     )
 
     string_query = render_query(query)
-    assert (
-        string_query
-        == """OVERWRITE test INTO tbl_test FROM SELECT
+    assert string_query == """OVERWRITE test INTO tbl_test FROM SELECT
     order_id,
 ORDER BY
     order_id asc
 ;"""
-    )
 
     query = PersistStatement(
         select=select,
@@ -246,14 +229,11 @@ ORDER BY
     )
 
     string_query = render_query(query)
-    assert (
-        string_query
-        == """OVERWRITE test INTO tbl_test BY order_id FROM SELECT
+    assert string_query == """OVERWRITE test INTO tbl_test BY order_id FROM SELECT
     order_id,
 ORDER BY
     order_id asc
 ;"""
-    )
 
     query = PersistStatement(
         select=select,
@@ -268,14 +248,11 @@ ORDER BY
     )
 
     string_query = render_query(query)
-    assert (
-        string_query
-        == """APPEND test INTO tbl_test BY order_id FROM SELECT
+    assert string_query == """APPEND test INTO tbl_test BY order_id FROM SELECT
     order_id,
 ORDER BY
     order_id asc
 ;"""
-    )
 
 
 def test_render_select_item(test_environment: Environment):
@@ -341,14 +318,11 @@ def test_render_rowset(test_environment: Environment):
         )
     )
 
-    assert (
-        test
-        == """rowset test <- SELECT
+    assert test == """rowset test <- SELECT
     order_id,
 ORDER BY
     order_id asc
 ;"""
-    )
 
 
 def test_render_case(test_environment: Environment):
@@ -373,40 +347,30 @@ def test_render_case(test_environment: Environment):
     test = Renderer().to_string(case_when)
     assert test == "WHEN order_id = 123 THEN order_id"
 
-    env, parsed = Environment().parse(
-        """
+    env, parsed = Environment().parse("""
 
 key x int;
-auto y <- case when x = 1 then 1 else 2 end;"""
-    )
+auto y <- case when x = 1 then 1 else 2 end;""")
 
     test = Renderer().to_string(parsed[-1])
-    assert (
-        test
-        == """property y <- CASE
+    assert test == """property y <- CASE
     WHEN x = 1 THEN 1
     ELSE 2
-END;"""
-    ), test
+END;""", test
 
     #  property test_like <- CASE WHEN category_name like '%abc%' then True else False END;
 
-    env, parsed = Environment().parse(
-        """
+    env, parsed = Environment().parse("""
 
 key category_name string;
 auto y <- CASE 
-    WHEN category_name like '%abc%' then True else False END;"""
-    )
+    WHEN category_name like '%abc%' then True else False END;""")
 
     test = Renderer().to_string(parsed[-1])
-    assert (
-        test
-        == """property y <- CASE
+    assert test == """property y <- CASE
     WHEN like(category_name,'%abc%') = True THEN True
     ELSE False
-END;"""
-    ), test
+END;""", test
 
 
 def test_render_math():
@@ -722,16 +686,13 @@ def test_render_datasource():
     )
 
     test = Renderer().to_string(ds)
-    assert (
-        test
-        == """datasource useful_data (
+    assert test == """datasource useful_data (
     user_id: ~user_id
 )
 grain (user_id)
 complete where user_id = 123
 address customers.dim_customers
 where user_id = 123 or user_id = 456;"""
-    )
     ds = Datasource(
         name="useful_data",
         columns=[ColumnAssignment(alias="user_id", concept=user_id)],
@@ -755,19 +716,15 @@ where user_id = 123 or user_id = 456;"""
     )
 
     test = Renderer().to_string(ds)
-    assert (
-        test
-        == """datasource useful_data (
+    assert test == """datasource useful_data (
     user_id
 )
 grain (user_id)
 query '''SELECT * FROM test'''
 where user_id = 123 or user_id = 456;"""
-    )
 
     basic = Environment()
-    basic.parse(
-        """key id int;
+    basic.parse("""key id int;
 property id.date_string string;
 property id.date date;
 property id.year int;
@@ -789,13 +746,10 @@ datasource date (
     raw('''cast("D_YEAR" as int)'''): year
 )
 grain (id)
-address memory.date_dim;"""
-    )
+address memory.date_dim;""")
 
     test = Renderer().to_string(basic.datasources["date"])
-    assert (
-        test
-        == """datasource date (
+    assert test == """datasource date (
     D_DATE_SK: id,
     D_DATE_ID: date_string,
     D_DATE: date,
@@ -807,8 +761,7 @@ address memory.date_dim;"""
     raw('''cast("D_YEAR" as int)'''): year
 )
 grain (id)
-address memory.date_dim;"""
-    ), test
+address memory.date_dim;""", test
     ds = Datasource(
         name="useful_data",
         columns=[ColumnAssignment(alias="user_id", concept=user_id)],
@@ -832,15 +785,12 @@ address memory.date_dim;"""
     )
     ds.grain = Grain()
     test2 = Renderer().to_string(ds)
-    assert (
-        test2
-        == """datasource useful_data (
+    assert test2 == """datasource useful_data (
     user_id
 )
 
 query '''SELECT * FROM test'''
 where user_id = 123 or user_id = 456;"""
-    )
 
     ds = Datasource(
         name="useful_data",
@@ -868,9 +818,7 @@ where user_id = 123 or user_id = 456;"""
     )
     ds.grain = Grain()
     test2 = Renderer().to_string(ds)
-    assert (
-        test2
-        == """datasource useful_data (
+    assert test2 == """datasource useful_data (
     user_id
 )
 
@@ -879,7 +827,6 @@ where user_id = 123 or user_id = 456
 incremental by user_id
 partition by user_id
 state unpublished;"""
-    )
 
     # validate round trip
     basic.parse(test2)
@@ -902,14 +849,11 @@ where id in (1,2,3);
     ), type(commands[-1].select.where_clause.conditional.right)
     rendered = Renderer().to_string(commands[-1])
 
-    assert (
-        rendered
-        == """OVERWRITE test INTO test FROM WHERE
+    assert rendered == """OVERWRITE test INTO test FROM WHERE
     id in (1, 2, 3)
 SELECT
     id,
-;"""
-    ), rendered
+;""", rendered
     # validate round trip
     basic.parse(rendered)
 
@@ -944,14 +888,11 @@ def test_render_copy_statement(test_environment):
     )
     query = CopyStatement(select=select, target_type=IOType.CSV, target="test.csv")
     string_query = render_query(query)
-    assert (
-        string_query
-        == """COPY INTO CSV 'test.csv' FROM SELECT
+    assert string_query == """COPY INTO CSV 'test.csv' FROM SELECT
     order_id,
 ORDER BY
     order_id asc
-;"""
-    ), string_query
+;""", string_query
 
 
 def test_render_substring_filter():
@@ -985,12 +926,10 @@ final_zips;
 
 def test_render_environment():
     x = Environment(working_path=Path(__file__).parent)
-    x.parse(
-        """import a;
+    x.parse("""import a;
         import b;
         
-    select a, b;"""
-    )
+    select a, b;""")
 
     rendered = Renderer().to_string(x)
 
@@ -999,16 +938,14 @@ def test_render_environment():
 
 def test_render_property(test_environment: Environment):
 
-    env = Environment.from_string(
-        """
+    env = Environment.from_string("""
 key x int;
 key y int;
 
 property x.x_name string;
 property <x,y>.correlation float;
 property y.y_name string;
-"""
-    )
+""")
     test = Renderer().to_string(
         ConceptDeclarationStatement(concept=env.concepts["x_name"])
     )
@@ -1067,11 +1004,9 @@ select
         rendered = Renderer().to_string(cmd)
         assert rendered == expected[idx], rendered
 
-    env, commands = basic.parse(
-        """
+    env, commands = basic.parse("""
     select round(@add_thrice(1),2) as test_sum;
-                """
-    )
+                """)
     expected = [
         """SELECT
     round(@add_thrice(1),2) -> test_sum,
@@ -1085,11 +1020,9 @@ select
 def test_render_map():
     basic = Environment()
 
-    env, commands = basic.parse(
-        """
+    env, commands = basic.parse("""
    const num_map <- {1: 10, 2: 20};
-   """
-    )
+   """)
     expected = [
         """const num_map <- {1: 10, 2: 20};""",
     ]
@@ -1101,15 +1034,13 @@ def test_render_map():
 def test_render_struct():
     basic = Environment()
 
-    env, commands = basic.parse(
-        """
+    env, commands = basic.parse("""
    const x <- 1;
    const y <- 2;
 
    select
    struct(x-> label, y-> field) as num_struct;
-   """
-    )
+   """)
     expected = [
         """const x <- 1;""",
         """const y <- 2;""",
@@ -1128,14 +1059,12 @@ def test_render_struct():
 def test_render_unnest_array():
     basic = Environment()
 
-    env, commands = basic.parse(
-        """
+    env, commands = basic.parse("""
 
 const zips_pre <- unnest(['24128',
                                      '35576'
         ]);
-        """
-    )
+        """)
     expected = [
         """const zips_pre <- unnest(['24128', '35576']);""",
     ]
@@ -1147,14 +1076,12 @@ const zips_pre <- unnest(['24128',
 def test_render_group_by():
     basic = Environment()
 
-    env, commands = basic.parse(
-        """
+    env, commands = basic.parse("""
 
 key x int;
 
 select group(1) by x as test, group(1) by * as all_rows;
-"""
-    )
+""")
     expected = [
         """key x int;""",
         """SELECT
@@ -1170,14 +1097,12 @@ select group(1) by x as test, group(1) by * as all_rows;
 def test_render_alias():
     basic = Environment()
 
-    env, commands = basic.parse(
-        """
+    env, commands = basic.parse("""
 
 key x int;
 
 select x as x2;
-"""
-    )
+""")
     expected = [
         """key x int;""",
         """SELECT
@@ -1192,14 +1117,12 @@ select x as x2;
 def test_render_cast():
     basic = Environment()
 
-    env, commands = basic.parse(
-        """
+    env, commands = basic.parse("""
 
 key x int;
 
 select x::float as x2, cast(x as float) as x3;
-"""
-    )
+""")
     expected = [
         """key x int;""",
         """SELECT

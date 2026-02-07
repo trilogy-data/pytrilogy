@@ -108,9 +108,20 @@ def render_join(
     right_base = join.right_ref
     base_joinkeys = []
     if join.joinkey_pairs:
-        base_joinkeys.extend(
-            [
-                null_wrapper(
+        # Group pairs by right concept address to detect coalesce scenarios.
+        # When multiple pairs share the same right concept but come from
+        # different left CTEs, use COALESCE on the left values.
+        right_groups: dict[str, list] = {}
+        for pair in join.joinkey_pairs:
+            key = pair.right.address
+            if key not in right_groups:
+                right_groups[key] = []
+            right_groups[key].append(pair)
+
+        for right_addr, pairs in right_groups.items():
+            if len(pairs) > 1:
+                # Multiple left sources for same right concept - use COALESCE
+                left_renders = [
                     render_join_concept(
                         join.get_name(pair.cte),
                         quote_character,
@@ -119,24 +130,48 @@ def render_join(
                         render_expr_func,
                         join.inlined_ctes,
                         use_map=use_map,
-                    ),
-                    render_join_concept(
-                        right_name,
-                        quote_character,
-                        join.right_cte,
-                        pair.right,
-                        render_expr_func,
-                        join.inlined_ctes,
-                        use_map=use_map,
-                    ),
-                    pair.modifiers
-                    + (pair.left.modifiers or [])
-                    + (pair.right.modifiers or [])
-                    + (join.modifiers or []),
+                    )
+                    for pair in pairs
+                ]
+                right_render = render_join_concept(
+                    right_name,
+                    quote_character,
+                    join.right_cte,
+                    pairs[0].right,
+                    render_expr_func,
+                    join.inlined_ctes,
+                    use_map=use_map,
                 )
-                for pair in join.joinkey_pairs
-            ]
-        )
+                coalesced = f"coalesce({', '.join(left_renders)})"
+                base_joinkeys.append(f"{coalesced} = {right_render}")
+            else:
+                pair = pairs[0]
+                base_joinkeys.append(
+                    null_wrapper(
+                        render_join_concept(
+                            join.get_name(pair.cte),
+                            quote_character,
+                            pair.cte,
+                            pair.left,
+                            render_expr_func,
+                            join.inlined_ctes,
+                            use_map=use_map,
+                        ),
+                        render_join_concept(
+                            right_name,
+                            quote_character,
+                            join.right_cte,
+                            pair.right,
+                            render_expr_func,
+                            join.inlined_ctes,
+                            use_map=use_map,
+                        ),
+                        pair.modifiers
+                        + (pair.left.modifiers or [])
+                        + (pair.right.modifiers or [])
+                        + (join.modifiers or []),
+                    )
+                )
     if not base_joinkeys:
         base_joinkeys = ["1=1"]
 
