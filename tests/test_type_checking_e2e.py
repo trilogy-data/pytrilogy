@@ -4,8 +4,6 @@ End-to-end tests for type checking effectiveness.
 These tests validate that the parse layer catches incorrect type comparisons,
 assignments, outputs, and function arguments. The goal is comprehensive coverage
 of type validation in the Trilogy language.
-
-Tests marked with xfail are known gaps in type checking that should be addressed.
 """
 
 import pytest
@@ -276,10 +274,9 @@ class TestInOperatorTypeChecking:
 class TestStringFunctionArgumentTypes:
     """Tests for string function argument type validation."""
 
-    @pytest.mark.xfail(reason="LEN function type checking may not validate input type")
     def test_len_with_integer_fails(self):
         """LEN function requires string or array, not integer."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 123;
                 auto y <- len(x);
@@ -304,12 +301,10 @@ class TestStringFunctionArgumentTypes:
             """)
         assert env.concepts["y"].datatype == DataType.INTEGER
 
-    @pytest.mark.xfail(
-        reason="UPPER function type checking may not validate input type"
-    )
+
     def test_upper_with_integer_fails(self):
         """UPPER function requires string, not integer."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 123;
                 auto y <- upper(x);
@@ -325,58 +320,47 @@ class TestStringFunctionArgumentTypes:
             """)
         assert env.concepts["y"].datatype == DataType.STRING
 
-    @pytest.mark.xfail(
-        reason="LOWER function type checking may not validate input type"
-    )
+
     def test_lower_with_integer_fails(self):
         """LOWER function requires string, not integer."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 123;
                 auto y <- lower(x);
                 select y;
                 """)
 
-    @pytest.mark.xfail(reason="TRIM function type checking may not validate input type")
+
     def test_trim_with_integer_fails(self):
         """TRIM function requires string, not integer."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 123;
                 auto y <- trim(x);
                 select y;
                 """)
 
-    @pytest.mark.xfail(
-        reason="SUBSTRING function type checking may not validate input type"
-    )
     def test_substring_with_integer_fails(self):
         """SUBSTRING function requires string as first argument."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 123;
                 auto y <- substring(x, 1, 2);
                 select y;
                 """)
 
-    @pytest.mark.xfail(
-        reason="CONTAINS function type checking may not validate input type"
-    )
     def test_contains_with_integer_fails(self):
         """CONTAINS function requires strings, not integers."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 123;
                 auto y <- contains(x, 'test');
                 select y;
                 """)
 
-    @pytest.mark.xfail(
-        reason="REPLACE function type checking may not validate input type"
-    )
     def test_replace_with_integer_pattern_fails(self):
         """REPLACE function requires strings."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 'hello';
                 const y <- 123;
@@ -386,7 +370,7 @@ class TestStringFunctionArgumentTypes:
 
     def test_strpos_with_integer_fails(self):
         """STRPOS with integer arguments should fail."""
-        with pytest.raises((TypeError, InvalidSyntaxException)):
+        with pytest.raises((InvalidSyntaxException)):
             parse_text("""
                 const x <- 123;
                 auto y <- strpos(x, 'test');
@@ -395,7 +379,7 @@ class TestStringFunctionArgumentTypes:
 
     def test_regexp_contains_integer_pattern_fails(self):
         """REGEXP_CONTAINS with integer pattern should fail."""
-        with pytest.raises((TypeError, InvalidSyntaxException)):
+        with pytest.raises((InvalidSyntaxException)):
             parse_text("""
                 const x <- 'hello';
                 const y <- 123;
@@ -412,78 +396,63 @@ class TestStringFunctionArgumentTypes:
 class TestNumericFunctionArgumentTypes:
     """Tests for numeric function argument type validation."""
 
-    @pytest.mark.xfail(
-        reason="SUM function type checking may not validate input type at parse time"
-    )
     def test_sum_with_string_fails(self):
         """SUM function requires numeric types, not string."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 'hello';
                 auto y <- sum(x);
                 select y;
                 """)
 
-    @pytest.mark.xfail(
-        reason="AVG function type checking may not validate input type at parse time"
-    )
     def test_avg_with_string_fails(self):
         """AVG function requires numeric types, not string."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 'hello';
                 auto y <- avg(x);
                 select y;
                 """)
 
-    @pytest.mark.xfail(reason="SQRT function type checking may not validate input type")
     def test_sqrt_with_string_fails(self):
         """SQRT function requires numeric type, not string."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 'hello';
                 auto y <- sqrt(x);
                 select y;
                 """)
 
-    @pytest.mark.xfail(reason="ABS function type checking may not validate input type")
     def test_abs_with_string_fails(self):
         """ABS function requires numeric type, not string."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 'hello';
                 auto y <- abs(x);
                 select y;
                 """)
 
-    @pytest.mark.xfail(
-        reason="ROUND function type checking may not validate input type"
-    )
     def test_round_with_string_fails(self):
         """ROUND function requires numeric type, not string."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 'hello';
                 auto y <- round(x, 2);
                 select y;
                 """)
 
-    @pytest.mark.xfail(
-        reason="FLOOR function type checking may not validate input type"
-    )
     def test_floor_with_string_fails(self):
         """FLOOR function requires numeric type, not string."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 'hello';
                 auto y <- floor(x);
                 select y;
                 """)
 
-    @pytest.mark.xfail(reason="CEIL function type checking may not validate input type")
     def test_ceil_with_string_fails(self):
         """CEIL function requires numeric type, not string."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 'hello';
                 auto y <- ceil(x);
@@ -515,30 +484,27 @@ class TestNumericFunctionArgumentTypes:
 class TestDateFunctionArgumentTypes:
     """Tests for date/time function argument type validation."""
 
-    @pytest.mark.xfail(reason="Date function type checking may not validate input type")
     def test_date_part_with_string_fails(self):
         """DATE_PART function requires date/datetime, not string."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 'hello';
                 auto y <- year(x);
                 select y;
                 """)
 
-    @pytest.mark.xfail(reason="Date function type checking may not validate input type")
     def test_date_part_with_integer_fails(self):
         """DATE_PART function requires date/datetime, not integer."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 123;
                 auto y <- year(x);
                 select y;
                 """)
 
-    @pytest.mark.xfail(reason="Date function type checking may not validate input type")
     def test_date_truncate_with_string_fails(self):
         """DATE_TRUNCATE function requires date/datetime, not string."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 'hello';
                 auto y <- date_trunc(x, month);
@@ -563,24 +529,18 @@ class TestDateFunctionArgumentTypes:
 class TestArrayFunctionArgumentTypes:
     """Tests for array function argument type validation."""
 
-    @pytest.mark.xfail(
-        reason="UNNEST function type checking may not validate input type"
-    )
     def test_unnest_with_integer_fails(self):
         """UNNEST function requires array type, not integer."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 123;
                 auto y <- unnest(x);
                 select y;
                 """)
 
-    @pytest.mark.xfail(
-        reason="UNNEST function type checking may not validate input type"
-    )
     def test_unnest_with_string_fails(self):
         """UNNEST function requires array type, not string."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 'hello';
                 auto y <- unnest(x);
@@ -596,48 +556,36 @@ class TestArrayFunctionArgumentTypes:
             """)
         assert env.concepts["y"].datatype == DataType.INTEGER
 
-    @pytest.mark.xfail(
-        reason="ARRAY_TO_STRING function type checking may not validate array element type"
-    )
     def test_array_to_string_with_integer_array_fails(self):
         """ARRAY_TO_STRING requires string array, not integer array."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- [1, 2, 3];
                 auto y <- array_to_string(x, ',');
                 select y;
                 """)
 
-    @pytest.mark.xfail(
-        reason="MAP_KEYS function type checking may not validate input type"
-    )
     def test_map_keys_with_non_map_fails(self):
         """MAP_KEYS requires map type, not integer."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 123;
                 auto y <- map_keys(x);
                 select y;
                 """)
 
-    @pytest.mark.xfail(
-        reason="MAP_VALUES function type checking may not validate input type"
-    )
     def test_map_values_with_non_map_fails(self):
         """MAP_VALUES requires map type, not integer."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 123;
                 auto y <- map_values(x);
                 select y;
                 """)
 
-    @pytest.mark.xfail(
-        reason="ARRAY_SUM function type checking may not validate array element type"
-    )
     def test_array_sum_string_array_fails(self):
         """ARRAY_SUM with string array should fail."""
-        with pytest.raises((TypeError, InvalidSyntaxException)):
+        with pytest.raises(InvalidSyntaxException):
             parse_text("""
                 const x <- ['a', 'b', 'c'];
                 auto y <- array_sum(x);
@@ -700,15 +648,6 @@ class TestCoalesceTypeChecking:
             """)
         assert env.concepts["z"].datatype == DataType.INTEGER
 
-    @pytest.mark.xfail(reason="COALESCE may not allow mixed numeric types")
-    def test_coalesce_numeric_compatible_succeeds(self):
-        """COALESCE with numeric compatible types (int, float) may succeed."""
-        env, _ = parse_text("""
-            const x <- 1;
-            const y <- 2.5;
-            auto z <- coalesce(x, y);
-            select z;
-            """)
 
 
 # =============================================================================
@@ -719,20 +658,18 @@ class TestCoalesceTypeChecking:
 class TestCaseExpressionTypeChecking:
     """Tests for CASE expression output type uniformity."""
 
-    @pytest.mark.xfail(reason="CASE expression type checking may not catch mixed types")
     def test_case_mixed_output_types_fails(self):
         """CASE expression branches must have consistent output types."""
-        with pytest.raises(SyntaxError, match="same output datatype"):
+        with pytest.raises(InvalidSyntaxException, match="same output datatype"):
             parse_text("""
                 const x <- 1;
                 auto y <- case when x = 1 then 'one' when x = 2 then 2 else 'other' end;
                 select y;
                 """)
 
-    @pytest.mark.xfail(reason="CASE expression type checking may not catch mixed types")
     def test_case_string_and_integer_fails(self):
         """CASE with string and integer outputs fails."""
-        with pytest.raises(SyntaxError, match="same output datatype"):
+        with pytest.raises(InvalidSyntaxException, match="same output datatype"):
             parse_text("""
                 const x <- 1;
                 auto y <- case when x = 1 then 'string' else 123 end;
@@ -974,20 +911,18 @@ class TestAggregateFunctionTypes:
             select y;
             """)
 
-    @pytest.mark.xfail(reason="BOOL_AND type checking may not validate input type")
     def test_bool_and_with_non_bool_fails(self):
         """BOOL_AND requires boolean argument."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 1;
                 auto y <- bool_and(x);
                 select y;
                 """)
 
-    @pytest.mark.xfail(reason="BOOL_OR type checking may not validate input type")
     def test_bool_or_with_non_bool_fails(self):
         """BOOL_OR requires boolean argument."""
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             parse_text("""
                 const x <- 1;
                 auto y <- bool_or(x);
@@ -1063,12 +998,11 @@ class TestNullHandlingTypes:
             select y;
             """)
 
-    @pytest.mark.xfail(reason="IS_NULL may not be a standalone function")
     def test_is_null_with_any_type(self):
-        """IS_NULL function works with any type."""
+        """IS NULL syntax works with any type."""
         env, _ = parse_text("""
             const x <- 'hello';
-            auto y <- is_null(x);
+            auto y <- x is null;
             select y;
             """)
         assert env.concepts["y"].datatype == DataType.BOOL
@@ -1167,13 +1101,10 @@ class TestTypeCheckingWithExecutor:
                 select id where id = name;
                 """)
 
-    @pytest.mark.xfail(
-        reason="Aggregate type checking may not be enforced at parse time"
-    )
     def test_aggregate_on_wrong_type(self):
         """Aggregate function on wrong type is caught."""
         executor = Dialects.DUCK_DB.default_executor()
-        with pytest.raises(TypeError, match="Invalid argument type"):
+        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
             executor.parse_text("""
                 key id int;
                 property id.name string;
