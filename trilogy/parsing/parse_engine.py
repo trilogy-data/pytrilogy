@@ -646,12 +646,12 @@ class ParseToObjects(Transformer):
                         trait, list(self.environment.data_types.keys())
                     )
                     hint = f" Did you mean: {', '.join(similar)}?" if similar else ""
-                    raise ParseError(
+                    raise TypeError(
                         f"Invalid type (trait) {trait} for {base}, line {meta.line}.{hint}"
                     )
                 matched = self.environment.data_types[trait]
                 if not is_compatible_datatype(matched.type, base):
-                    raise ParseError(
+                    raise TypeError(
                         f"Invalid type (trait) {trait} for {base}, line {meta.line}. Trait expects type {matched.type}, has {base}"
                     )
             return TraitDataType(type=base, traits=traits)
