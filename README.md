@@ -5,17 +5,19 @@
 [![Discord](https://img.shields.io/badge/DISCORD-CHAT-red?logo=discord)](https://discord.gg/Z4QSSuqGEd)
 [![PyPI version](https://badge.fury.io/py/pytrilogy.svg)](https://badge.fury.io/py/pytrilogy)
 
-The Trilogy language is an experiment in better SQL for analytics - a streamlined SQL that replaces tables/joins with a lightweight semantic binding layer and provides easy reuse and composability. It compiles to SQL - making it easy to debug or integrate into existing workflows - and can be run against any supported SQL backend.
+The Trilogy language is an experiment in better SQL for analytics - a streamlined version that replaces tables/joins with a lightweight semantic binding layer and provides easy reuse and composability. It compiles to SQL - making it easy to debug or integrate into existing workflows - and can be run against any supported SQL backend.
+
+It shines when used with AI agents, but is built for people first.
 
 [pytrilogy](https://github.com/trilogy-data/pytrilogy) is the reference implementation, written in Python.
 
 ## What Trilogy Gives You
 
-- **Speed** - write faster, with concise, powerful syntax
-- **Efficiency** - write less SQL, and reuse what you do
-- **Fearless refactoring** - change models without breaking queries
+- **Speed** - write less, faster. Concise but powerful syntax
+- **Efficiency** - easily reuse and compose functions and models, modeled after python
+- **Easy refactoring** - change and update tables without breaking queries, and easy testing snd static analysis
 - **Testability** - built-in testing patterns with query fixtures
-- **Easy to use** - for humans and LLMs alike
+- **Straightforward** - for humans and LLMs alike
 
 Trilogy is especially powerful for data consumption, providing a rich metadata layer that makes creating, interpreting, and visualizing queries easy and expressive.
 
