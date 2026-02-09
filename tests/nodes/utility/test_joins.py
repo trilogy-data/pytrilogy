@@ -3,16 +3,16 @@ from collections import defaultdict
 import pytest
 
 from trilogy import parse
-from trilogy.core.enums import JoinType
+from trilogy.core.enums import JoinType, Modifier
 from trilogy.core.models.build import BuildGrain
-from trilogy.core.models.execute import CTE, QueryDatasource
+from trilogy.core.models.execute import CTE, CTEConceptPair, Join, QueryDatasource
 from trilogy.core.processing.utility import (
     ConceptPair,
     get_join_type,
     reduce_concept_pairs,
 )
 from trilogy.dialect.base import BaseDialect
-from trilogy.dialect.common import render_join_concept
+from trilogy.dialect.common import render_join, render_join_concept
 
 
 def test_render_join_concept():
@@ -302,3 +302,117 @@ def test_get_join_type_multiple_connecting_keys():
 
     result = get_join_type(left, right, partials, nullables, all_connecting_keys)
     assert result == JoinType.LEFT_OUTER
+
+
+def test_render_join_coalesce():
+    """When multiple CTEConceptPairs share the same right concept,
+    render_join should produce a COALESCE on the left values."""
+    env, _ = parse("""
+key shared_id int;
+key fact1_id int;
+key fact2_id int;
+
+datasource dim (id:shared_id) grain(shared_id) address dim_table;
+datasource fact1 (id:fact1_id, sid:shared_id) grain(fact1_id) address fact1_table;
+datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_table;
+    """)
+    dialect = BaseDialect()
+    env = env.materialize_for_select()
+    shared = env.concepts["shared_id"]
+    f1_id = env.concepts["fact1_id"]
+    f2_id = env.concepts["fact2_id"]
+    ds_dim = env.datasources["dim"]
+    ds_f1 = env.datasources["fact1"]
+    ds_f2 = env.datasources["fact2"]
+
+    def make_cte(name, concepts, ds):
+        qds = QueryDatasource(
+            input_concepts=concepts,
+            output_concepts=concepts,
+            datasources=[ds],
+            grain=BuildGrain(),
+            joins=[],
+            source_map={c.address: {ds} for c in concepts},
+        )
+        return CTE(
+            name=name,
+            output_columns=concepts,
+            grain=BuildGrain(),
+            source=qds,
+            source_map={c.address: [ds.identifier] for c in concepts},
+        )
+
+    cte_f1 = make_cte("fact1_cte", [f1_id, shared], ds_f1)
+    cte_f2 = make_cte("fact2_cte", [f2_id, shared], ds_f2)
+    cte_dim = make_cte("dim_cte", [shared], ds_dim)
+
+    # Two pairs with same right concept but different left CTEs
+    join = Join(
+        right_cte=cte_dim,
+        jointype=JoinType.LEFT_OUTER,
+        joinkey_pairs=[
+            CTEConceptPair(
+                left=shared,
+                right=shared,
+                existing_datasource=ds_f1,
+                cte=cte_f1,
+            ),
+            CTEConceptPair(
+                left=shared,
+                right=shared,
+                existing_datasource=ds_f2,
+                cte=cte_f2,
+            ),
+        ],
+    )
+
+    def null_wrapper(left: str, right: str, modifiers: list[Modifier]) -> str:
+        return f"{left} = {right}"
+
+    result = render_join(
+        join=join,
+        quote_character=dialect.QUOTE_CHARACTER,
+        render_expr_func=dialect.render_expr,
+        cte=cte_f1,
+        use_map=defaultdict(set),
+        null_wrapper=null_wrapper,
+    )
+    assert result is not None
+    assert "coalesce(" in result
+    assert "fact1_cte" in result
+    assert "fact2_cte" in result
+    assert "dim_cte" in result
+
+
+def test_reduce_concept_pairs_multi_partial():
+    """When two pairs share the same right key but come from different
+    existing_datasources, reduce_concept_pairs should keep both."""
+    env, _ = parse("""
+key shared_id int;
+key fact1_id int;
+key fact2_id int;
+
+datasource dim (id:shared_id) grain(shared_id) address dim_table;
+datasource fact1 (id:fact1_id, sid:shared_id) grain(fact1_id) address fact1_table;
+datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_table;
+    """)
+    env = env.materialize_for_select()
+    shared = env.concepts["shared_id"]
+    ds_f1 = env.datasources["fact1"]
+    ds_f2 = env.datasources["fact2"]
+    ds_dim = env.datasources["dim"]
+
+    pairs = [
+        ConceptPair(left=shared, right=shared, existing_datasource=ds_f1),
+        ConceptPair(left=shared, right=shared, existing_datasource=ds_f2),
+    ]
+    result = reduce_concept_pairs(pairs, ds_dim)
+    assert len(result) == 2
+
+    # Same existing_datasource should deduplicate
+    pairs_same = [
+        ConceptPair(left=shared, right=shared, existing_datasource=ds_f1),
+        ConceptPair(left=shared, right=shared, existing_datasource=ds_f1),
+    ]
+    result_same = reduce_concept_pairs(pairs_same, ds_dim)
+    assert len(result_same) == 1
