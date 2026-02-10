@@ -133,6 +133,8 @@ def render_join(
                     )
                     for pair in pairs
                 ]
+                # Deduplicate: only COALESCE when renders are actually distinct
+                unique_renders = list(dict.fromkeys(left_renders))
                 right_render = render_join_concept(
                     right_name,
                     quote_character,
@@ -142,8 +144,20 @@ def render_join(
                     join.inlined_ctes,
                     use_map=use_map,
                 )
-                coalesced = f"coalesce({', '.join(left_renders)})"
-                base_joinkeys.append(f"{coalesced} = {right_render}")
+                if len(unique_renders) > 1:
+                    coalesced = f"coalesce({', '.join(unique_renders)})"
+                    base_joinkeys.append(f"{coalesced} = {right_render}")
+                else:
+                    base_joinkeys.append(
+                        null_wrapper(
+                            unique_renders[0],
+                            right_render,
+                            pairs[0].modifiers
+                            + (pairs[0].left.modifiers or [])
+                            + (pairs[0].right.modifiers or [])
+                            + (join.modifiers or []),
+                        )
+                    )
             else:
                 pair = pairs[0]
                 base_joinkeys.append(

@@ -495,13 +495,19 @@ def reduce_concept_pairs(
         if pair.right.purpose == Purpose.KEY:
             right_keys.add(pair.right.address)
     final: list[ConceptPair] = []
-    # Track (right_address, existing_datasource_id) to allow multiple left
-    # sources for the same right key (needed for COALESCE rendering when
-    # multiple partial fact tables share a dimension key).
     seen: set[tuple[str, str]] = set()
+    # Track which left addresses we've seen for each right address.
+    # Only allow a second pair for the same right when the left concept
+    # differs (meaningful COALESCE) rather than just a different datasource.
+    right_to_lefts: dict[str, set[str]] = {}
     for pair in input:
         dedup_key = (pair.right.address, pair.existing_datasource.identifier)
         if dedup_key in seen:
+            continue
+        if (
+            pair.right.address in right_to_lefts
+            and pair.left.address in right_to_lefts[pair.right.address]
+        ):
             continue
         if (
             pair.left.purpose == Purpose.PROPERTY
@@ -517,6 +523,7 @@ def reduce_concept_pairs(
             continue
 
         seen.add(dedup_key)
+        right_to_lefts.setdefault(pair.right.address, set()).add(pair.left.address)
         final.append(pair)
     all_keys = set([x.right.address for x in final])
     if right_source.grain.components and right_source.grain.components.issubset(
