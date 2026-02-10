@@ -16,8 +16,7 @@ from trilogy.dialect.common import render_join, render_join_concept
 
 
 def test_render_join_concept():
-    env, _ = parse(
-        """key x int;
+    env, _ = parse("""key x int;
         key y int;
     
 datasource x_source (
@@ -27,8 +26,7 @@ datasource x_source (
 address x_source;
 
         
-        """
-    )
+        """)
     x = BaseDialect()
     env = env.materialize_for_select()
     concept = env.concepts["x"]
@@ -62,8 +60,7 @@ address x_source;
 
     assert rendered == "`x_source`.`y` + 1"
 
-    env, _ = parse(
-        """key x int;
+    env, _ = parse("""key x int;
         key y int;
     
 datasource x_source (
@@ -73,8 +70,7 @@ datasource x_source (
 address x_source;
 
         
-        """
-    )
+        """)
     x = BaseDialect()
     env = env.materialize_for_select()
     concept = env.concepts["x"]
@@ -111,8 +107,7 @@ address x_source;
 
 def test_reduce_concept_pair():
     # Parse environment with datasources that have overlapping keys
-    env, _ = parse(
-        """
+    env, _ = parse("""
 key a int;
 key b int;
 key c int;
@@ -135,8 +130,7 @@ datasource join_ds_2 (
     c:c
 ) grain(b)
 address baz;
-        """
-    )
+        """)
 
     env = env.materialize_for_select()
 
@@ -385,34 +379,47 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
 
 
 def test_reduce_concept_pairs_multi_partial():
-    """When two pairs share the same right key but come from different
-    existing_datasources, reduce_concept_pairs should keep both."""
+    """When two pairs share the same right key but have different left concepts,
+    reduce_concept_pairs should keep both (for COALESCE rendering)."""
     env, _ = parse("""
 key shared_id int;
 key fact1_id int;
+property fact1_id.f1_shared int;
 key fact2_id int;
+property fact2_id.f2_shared int;
 
 datasource dim (id:shared_id) grain(shared_id) address dim_table;
-datasource fact1 (id:fact1_id, sid:shared_id) grain(fact1_id) address fact1_table;
-datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_table;
+datasource fact1 (id:fact1_id, sid:f1_shared) grain(fact1_id) address fact1_table;
+datasource fact2 (id:fact2_id, sid:f2_shared) grain(fact2_id) address fact2_table;
     """)
     env = env.materialize_for_select()
     shared = env.concepts["shared_id"]
+    f1_shared = env.concepts["f1_shared"]
+    f2_shared = env.concepts["f2_shared"]
     ds_f1 = env.datasources["fact1"]
     ds_f2 = env.datasources["fact2"]
     ds_dim = env.datasources["dim"]
 
+    # Different left concepts for same right key -> keep both
     pairs = [
-        ConceptPair(left=shared, right=shared, existing_datasource=ds_f1),
-        ConceptPair(left=shared, right=shared, existing_datasource=ds_f2),
+        ConceptPair(left=f1_shared, right=shared, existing_datasource=ds_f1),
+        ConceptPair(left=f2_shared, right=shared, existing_datasource=ds_f2),
     ]
     result = reduce_concept_pairs(pairs, ds_dim)
     assert len(result) == 2
 
-    # Same existing_datasource should deduplicate
+    # Same left concept and same existing_datasource -> deduplicate
     pairs_same = [
-        ConceptPair(left=shared, right=shared, existing_datasource=ds_f1),
-        ConceptPair(left=shared, right=shared, existing_datasource=ds_f1),
+        ConceptPair(left=f1_shared, right=shared, existing_datasource=ds_f1),
+        ConceptPair(left=f1_shared, right=shared, existing_datasource=ds_f1),
     ]
     result_same = reduce_concept_pairs(pairs_same, ds_dim)
     assert len(result_same) == 1
+
+    # Same left concept but different existing_datasource -> deduplicate
+    pairs_same_left = [
+        ConceptPair(left=shared, right=shared, existing_datasource=ds_f1),
+        ConceptPair(left=shared, right=shared, existing_datasource=ds_f2),
+    ]
+    result_same_left = reduce_concept_pairs(pairs_same_left, ds_dim)
+    assert len(result_same_left) == 1
