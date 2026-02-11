@@ -496,17 +496,20 @@ def reduce_concept_pairs(
             right_keys.add(pair.right.address)
     final: list[ConceptPair] = []
     seen: set[tuple[str, str]] = set()
-    # Track whether the first pair for each right address was partial.
-    # Only keep additional pairs for the same right when any pair is
-    # partial (FULL JOIN semantics → COALESCE needed to handle NULLs).
-    right_has_partial: dict[str, bool] = {}
+    # Track (right_addr, left_addr) combinations from different datasources.
+    # Same left concept from multiple datasources: keep only when partial
+    # (FULL JOIN → COALESCE needed). Different left concepts for the same
+    # right: always keep (they are distinct join conditions).
+    right_left_seen: dict[tuple[str, str], bool] = {}
     for pair in input:
         dedup_key = (pair.right.address, pair.existing_datasource.identifier)
         if dedup_key in seen:
             continue
-        if pair.right.address in right_has_partial:
-            if not (right_has_partial[pair.right.address] or pair.is_partial):
-                continue
+        rl_key = (pair.right.address, pair.left.address)
+        if rl_key in right_left_seen and not (
+            right_left_seen[rl_key] or pair.is_partial
+        ):
+            continue
         if (
             pair.left.purpose == Purpose.PROPERTY
             and pair.left.keys
@@ -521,8 +524,8 @@ def reduce_concept_pairs(
             continue
 
         seen.add(dedup_key)
-        right_has_partial[pair.right.address] = (
-            right_has_partial.get(pair.right.address, False) or pair.is_partial
+        right_left_seen[rl_key] = (
+            right_left_seen.get(rl_key, False) or pair.is_partial
         )
         final.append(pair)
     all_keys = set([x.right.address for x in final])

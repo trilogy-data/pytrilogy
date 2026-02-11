@@ -379,8 +379,10 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
 
 
 def test_reduce_concept_pairs_multi_partial():
-    """reduce_concept_pairs should only keep multiple pairs for the same right
-    key when they have PARTIAL modifiers (FULL JOIN semantics need COALESCE)."""
+    """reduce_concept_pairs dedup behavior:
+    - Different left concepts for same right: always keep both (distinct join keys)
+    - Same left concept from different datasources: keep both only when PARTIAL
+    """
     env, _ = parse("""
 key shared_id int;
 key fact1_id int;
@@ -400,13 +402,13 @@ datasource fact2 (id:fact2_id, sid:f2_shared) grain(fact2_id) address fact2_tabl
     ds_f2 = env.datasources["fact2"]
     ds_dim = env.datasources["dim"]
 
-    # Different left concepts, NOT partial -> deduplicate
+    # Different left concepts for same right -> keep both (distinct join keys)
     pairs = [
         ConceptPair(left=f1_shared, right=shared, existing_datasource=ds_f1),
         ConceptPair(left=f2_shared, right=shared, existing_datasource=ds_f2),
     ]
     result = reduce_concept_pairs(pairs, ds_dim)
-    assert len(result) == 1
+    assert len(result) == 2
 
     # Same left concept and same existing_datasource -> deduplicate
     pairs_same = [
