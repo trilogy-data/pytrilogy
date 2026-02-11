@@ -379,8 +379,8 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
 
 
 def test_reduce_concept_pairs_multi_partial():
-    """When two pairs share the same right key but have different left concepts,
-    reduce_concept_pairs should keep both (for COALESCE rendering)."""
+    """reduce_concept_pairs should only keep multiple pairs for the same right
+    key when they have PARTIAL modifiers (FULL JOIN semantics need COALESCE)."""
     env, _ = parse("""
 key shared_id int;
 key fact1_id int;
@@ -400,13 +400,13 @@ datasource fact2 (id:fact2_id, sid:f2_shared) grain(fact2_id) address fact2_tabl
     ds_f2 = env.datasources["fact2"]
     ds_dim = env.datasources["dim"]
 
-    # Different left concepts for same right key -> keep both
+    # Different left concepts, NOT partial -> deduplicate
     pairs = [
         ConceptPair(left=f1_shared, right=shared, existing_datasource=ds_f1),
         ConceptPair(left=f2_shared, right=shared, existing_datasource=ds_f2),
     ]
     result = reduce_concept_pairs(pairs, ds_dim)
-    assert len(result) == 2
+    assert len(result) == 1
 
     # Same left concept and same existing_datasource -> deduplicate
     pairs_same = [
@@ -416,10 +416,28 @@ datasource fact2 (id:fact2_id, sid:f2_shared) grain(fact2_id) address fact2_tabl
     result_same = reduce_concept_pairs(pairs_same, ds_dim)
     assert len(result_same) == 1
 
-    # Same left concept but different existing_datasource -> deduplicate
-    pairs_same_left = [
+    # Same left concept, different datasources, WITH PARTIAL -> keep both
+    pairs_partial = [
+        ConceptPair(
+            left=shared,
+            right=shared,
+            existing_datasource=ds_f1,
+            modifiers=[Modifier.PARTIAL],
+        ),
+        ConceptPair(
+            left=shared,
+            right=shared,
+            existing_datasource=ds_f2,
+            modifiers=[Modifier.PARTIAL],
+        ),
+    ]
+    result_partial = reduce_concept_pairs(pairs_partial, ds_dim)
+    assert len(result_partial) == 2
+
+    # Same left concept, different datasources, NO PARTIAL -> deduplicate
+    pairs_no_partial = [
         ConceptPair(left=shared, right=shared, existing_datasource=ds_f1),
         ConceptPair(left=shared, right=shared, existing_datasource=ds_f2),
     ]
-    result_same_left = reduce_concept_pairs(pairs_same_left, ds_dim)
-    assert len(result_same_left) == 1
+    result_no_partial = reduce_concept_pairs(pairs_no_partial, ds_dim)
+    assert len(result_no_partial) == 1
