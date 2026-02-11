@@ -120,21 +120,6 @@ def render_join(
 
         for right_addr, pairs in right_groups.items():
             if len(pairs) > 1:
-                # Multiple left sources for same right concept - use COALESCE
-                left_renders = [
-                    render_join_concept(
-                        join.get_name(pair.cte),
-                        quote_character,
-                        pair.cte,
-                        pair.left,
-                        render_expr_func,
-                        join.inlined_ctes,
-                        use_map=use_map,
-                    )
-                    for pair in pairs
-                ]
-                # Deduplicate: only COALESCE when renders are actually distinct
-                unique_renders = list(dict.fromkeys(left_renders))
                 right_render = render_join_concept(
                     right_name,
                     quote_character,
@@ -144,20 +129,44 @@ def render_join(
                     join.inlined_ctes,
                     use_map=use_map,
                 )
-                if len(unique_renders) > 1:
-                    coalesced = f"coalesce({', '.join(unique_renders)})"
-                    base_joinkeys.append(f"{coalesced} = {right_render}")
-                else:
-                    base_joinkeys.append(
-                        null_wrapper(
-                            unique_renders[0],
-                            right_render,
-                            pairs[0].modifiers
-                            + (pairs[0].left.modifiers or [])
-                            + (pairs[0].right.modifiers or [])
-                            + (join.modifiers or []),
-                        )
+                # Sub-group by left address: same left concept from
+                # different CTEs can be COALESCE'd when partial;
+                # different left concepts are separate AND conditions.
+                left_addr_groups: dict[str, list] = {}
+                for pair in pairs:
+                    left_addr_groups.setdefault(pair.left.address, []).append(
+                        pair
                     )
+                for left_addr, sub_pairs in left_addr_groups.items():
+                    left_renders = [
+                        render_join_concept(
+                            join.get_name(p.cte),
+                            quote_character,
+                            p.cte,
+                            p.left,
+                            render_expr_func,
+                            join.inlined_ctes,
+                            use_map=use_map,
+                        )
+                        for p in sub_pairs
+                    ]
+                    unique_renders = list(dict.fromkeys(left_renders))
+                    if len(unique_renders) > 1:
+                        coalesced = f"coalesce({', '.join(unique_renders)})"
+                        base_joinkeys.append(
+                            f"{coalesced} = {right_render}"
+                        )
+                    else:
+                        base_joinkeys.append(
+                            null_wrapper(
+                                unique_renders[0],
+                                right_render,
+                                sub_pairs[0].modifiers
+                                + (sub_pairs[0].left.modifiers or [])
+                                + (sub_pairs[0].right.modifiers or [])
+                                + (join.modifiers or []),
+                            )
+                        )
             else:
                 pair = pairs[0]
                 base_joinkeys.append(
