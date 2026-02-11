@@ -1,5 +1,5 @@
 query_id = 10
-gen_length = 5513
+gen_length = 5557
 generated_sql = """
 
 WITH 
@@ -36,12 +36,12 @@ SELECT
 FROM
     \"abundant\"
     INNER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"abundant\".\"web_sales_date_id\" = \"web_sales_date_date\".\"D_DATE_SK\"
-    RIGHT OUTER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"abundant\".\"customer_id\" = \"customer_customers\".\"C_CUSTOMER_SK\"
-    LEFT OUTER JOIN \"juicy\" on \"customer_customers\".\"C_CUSTOMER_SK\" = \"juicy\".\"customer_id\"
-    LEFT OUTER JOIN \"thoughtful\" on \"customer_customers\".\"C_CUSTOMER_SK\" = \"thoughtful\".\"customer_id\"
-    INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"thoughtful\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"juicy\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
+    FULL JOIN \"juicy\" on \"abundant\".\"customer_id\" = \"juicy\".\"customer_id\"
+    FULL JOIN \"thoughtful\" on coalesce(\"juicy\".\"customer_id\", \"abundant\".\"customer_id\") = \"thoughtful\".\"customer_id\"
+    FULL JOIN \"memory\".\"customer\" as \"customer_customers\" on coalesce(\"juicy\".\"customer_id\", \"thoughtful\".\"customer_id\", \"abundant\".\"customer_id\") = \"customer_customers\".\"C_CUSTOMER_SK\"
+    LEFT OUTER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    FULL JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"thoughtful\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    FULL JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"juicy\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
 WHERE
     cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 2002 and \"store_sales_date_date\".\"D_MOY\" in (1,2,3,4) and \"customer_address_customer_address\".\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( cast(\"web_sales_date_date\".\"D_YEAR\" as int) = 2002 and \"web_sales_date_date\".\"D_MOY\" in (1,2,3,4) ) or ( cast(\"catalog_sales_date_date\".\"D_YEAR\" as int) = 2002 and \"catalog_sales_date_date\".\"D_MOY\" in (1,2,3,4) ) )
 

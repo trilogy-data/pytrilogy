@@ -16,13 +16,11 @@ from trilogy.core.processing.utility import (
 
 
 def test_resolve_join_order():
-    env, _ = parse(
-        """
+    env, _ = parse("""
 key order_id int;
 key product_id int;
 property product_id.price float;       
-                """
-    )
+                """)
     env = env.materialize_for_select()
     test_case = []
     x = resolve_join_order(test_case)
@@ -344,3 +342,32 @@ def test_modification_continues_processing():
     assert join1.type == JoinType.LEFT_OUTER
     assert join2.type == JoinType.LEFT_OUTER
     assert join3.type == JoinType.LEFT_OUTER
+
+
+def test_resolve_join_order_v2_multi_partial():
+    """When two datasources share a concept as partial,
+    they should both be kept as left join sources for
+    a dimension table (enabling COALESCE)."""
+    g = Graph()
+    g.add_edge("ds~fact1", "c~shared_id")
+    g.add_edge("ds~fact1", "c~fact1_val")
+    g.add_edge("ds~fact2", "c~shared_id")
+    g.add_edge("ds~fact2", "c~fact2_val")
+    g.add_edge("ds~dim", "c~shared_id")
+    g.add_edge("ds~dim", "c~dim_name")
+
+    partials = {
+        "ds~fact1": ["c~shared_id"],
+        "ds~fact2": ["c~shared_id"],
+    }
+
+    output = resolve_join_order_v2(g, partials, {})
+
+    # Both fact tables should join to dim; fact tables join first
+    # because multi_partial scoring boosts them.
+    assert len(output) == 2
+    # dim should be the last join (right side)
+    assert output[-1].right == "ds~dim"
+    # The dim join should have two left sources (both facts)
+    dim_join = output[-1]
+    assert len(dim_join.keys) == 2

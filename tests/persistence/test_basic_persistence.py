@@ -127,7 +127,6 @@ def test_derivations():
             [test_concept.with_default_grain()],
             [],
             env,
-            g,
             parents=[],
         )
         resolved = test.resolve()

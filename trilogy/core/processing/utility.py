@@ -239,14 +239,26 @@ def resolve_join_order_v2(
         else:
             root = pivots.pop(0)
 
+        # Check if multiple unjoined datasources have the concept as partial.
+        # When true, partial (fact) tables should be joined together first
+        # before complete (dimension) tables.
+        unjoined_for_root = [x for x in pivot_map[root] if x not in eligible_left]
+        multi_partial = (
+            sum(1 for x in unjoined_for_root if root in partials.get(x, [])) > 1
+        )
+
         # sort so less partials is last and eligible lefts are first
         def score_key(x: str) -> tuple[int, int, str]:
             base = 1
             # if it's left, higher weight
             if x in eligible_left:
                 base += 3
-            # if it has the concept as a partial, lower weight
-            if root in partials.get(x, []):
+            is_partial = root in partials.get(x, [])
+            if multi_partial and is_partial:
+                # boost partial tables so they join together first
+                base += 2
+            elif is_partial:
+                # single partial: lower weight as before
                 base -= 1
             if root in nullables.get(x, []):
                 base -= 1
@@ -284,11 +296,23 @@ def resolve_join_order_v2(
                 if not all_connecting_keys:
                     continue
 
-                # Check if we already have this exact set of keys
+                # Check if we already have this exact set of keys from
+                # a non-partial left. If both left candidates share
+                # the same keys and are partial, keep both so the
+                # renderer can COALESCE them.
                 exists = False
-                for _, v in joinkeys.items():
+                for existing_left, v in joinkeys.items():
                     if v == all_connecting_keys:
-                        exists = True
+                        left_is_partial = any(
+                            key in partials.get(left_candidate, [])
+                            for key in all_connecting_keys
+                        )
+                        existing_is_partial = any(
+                            key in partials.get(existing_left, [])
+                            for key in all_connecting_keys
+                        )
+                        if not (left_is_partial and existing_is_partial):
+                            exists = True
                 if exists:
                     continue
 
@@ -471,9 +495,20 @@ def reduce_concept_pairs(
         if pair.right.purpose == Purpose.KEY:
             right_keys.add(pair.right.address)
     final: list[ConceptPair] = []
-    seen_right_keys = set()
+    seen: set[tuple[str, str]] = set()
+    # Track (right_addr, left_addr) combinations from different datasources.
+    # Same left concept from multiple datasources: keep only when partial
+    # (FULL JOIN → COALESCE needed). Different left concepts for the same
+    # right: always keep (they are distinct join conditions).
+    right_left_seen: dict[tuple[str, str], bool] = {}
     for pair in input:
-        if pair.right.address in seen_right_keys:
+        dedup_key = (pair.right.address, pair.existing_datasource.identifier)
+        if dedup_key in seen:
+            continue
+        rl_key = (pair.right.address, pair.left.address)
+        if rl_key in right_left_seen and not (
+            right_left_seen[rl_key] or pair.is_partial
+        ):
             continue
         if (
             pair.left.purpose == Purpose.PROPERTY
@@ -488,7 +523,10 @@ def reduce_concept_pairs(
         ):
             continue
 
-        seen_right_keys.add(pair.right.address)
+        seen.add(dedup_key)
+        right_left_seen[rl_key] = (
+            right_left_seen.get(rl_key, False) or pair.is_partial
+        )
         final.append(pair)
     all_keys = set([x.right.address for x in final])
     if right_source.grain.components and right_source.grain.components.issubset(
@@ -511,6 +549,19 @@ def get_modifiers(
     if join.left and concept in ds_node_map[join.left].nullable_concepts:
         base.append(Modifier.NULLABLE)
     return list(set(base))
+
+
+def _collect_deep_partial_addresses(
+    ds: "QueryDatasource | BuildDatasource",
+) -> set[str]:
+    """Collect partial concept addresses from a datasource and all its sub-datasources."""
+    result: set[str] = set()
+    for c in ds.partial_concepts:
+        result.add(c.address)
+    if hasattr(ds, "datasources"):
+        for sub in ds.datasources:
+            result |= _collect_deep_partial_addresses(sub)
+    return result
 
 
 def get_node_joins(
@@ -540,6 +591,34 @@ def get_node_joins(
                 environment=environment,
             )
 
+    # Propagate partial information from sub-datasources.
+    # Mark concepts as partial when any sub-datasource has them as partial,
+    # and add graph edges for partial pseudonyms to enable correct join ordering.
+    for datasource in datasources:
+        ds_node = f"ds~{datasource.identifier}"
+        deep_partials = _collect_deep_partial_addresses(datasource)
+        if not deep_partials:
+            continue
+        # Mark direct graph neighbors as partial
+        for concept_node in list(graph.neighbors(ds_node)):
+            addr = concept_node.removeprefix("c~")
+            if addr in deep_partials and concept_node not in partials[ds_node]:
+                partials[ds_node].append(concept_node)
+        # Add edges for partial pseudonyms (merge aliases)
+        for concept in datasource.output_concepts:
+            if concept.address in datasource.hidden_concepts:
+                continue
+            for pseudo_addr in concept.pseudonyms:
+                pseudo_name = f"c~{pseudo_addr}"
+                if (
+                    pseudo_name in graph.nodes
+                    and not graph.has_edge(ds_node, pseudo_name)
+                    and pseudo_addr in deep_partials
+                ):
+                    graph.add_edge(ds_node, pseudo_name)
+                    if pseudo_name not in partials[ds_node]:
+                        partials[ds_node].append(pseudo_name)
+
     joins = resolve_join_order_v2(graph, partials=partials, nullables=nullables)
     return [
         BaseJoin(
@@ -560,6 +639,9 @@ def get_node_joins(
                         existing_datasource=ds_node_map[k],
                         modifiers=get_modifiers(
                             concept_map[concept].address, j, ds_node_map
+                        )
+                        + (
+                            [Modifier.PARTIAL] if concept in partials.get(k, []) else []
                         ),
                     )
                     for k, v in j.keys.items()
