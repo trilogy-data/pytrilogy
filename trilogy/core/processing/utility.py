@@ -496,19 +496,17 @@ def reduce_concept_pairs(
             right_keys.add(pair.right.address)
     final: list[ConceptPair] = []
     seen: set[tuple[str, str]] = set()
-    # Track which left addresses we've seen for each right address.
-    # Only allow a second pair for the same right when the left concept
-    # differs (meaningful COALESCE) rather than just a different datasource.
-    right_to_lefts: dict[str, set[str]] = {}
+    # Track whether the first pair for each right address was partial.
+    # Only keep additional pairs for the same right when any pair is
+    # partial (FULL JOIN semantics → COALESCE needed to handle NULLs).
+    right_has_partial: dict[str, bool] = {}
     for pair in input:
         dedup_key = (pair.right.address, pair.existing_datasource.identifier)
         if dedup_key in seen:
             continue
-        if (
-            pair.right.address in right_to_lefts
-            and pair.left.address in right_to_lefts[pair.right.address]
-        ):
-            continue
+        if pair.right.address in right_has_partial:
+            if not (right_has_partial[pair.right.address] or pair.is_partial):
+                continue
         if (
             pair.left.purpose == Purpose.PROPERTY
             and pair.left.keys
@@ -523,7 +521,9 @@ def reduce_concept_pairs(
             continue
 
         seen.add(dedup_key)
-        right_to_lefts.setdefault(pair.right.address, set()).add(pair.left.address)
+        right_has_partial[pair.right.address] = (
+            right_has_partial.get(pair.right.address, False) or pair.is_partial
+        )
         final.append(pair)
     all_keys = set([x.right.address for x in final])
     if right_source.grain.components and right_source.grain.components.issubset(
@@ -636,6 +636,9 @@ def get_node_joins(
                         existing_datasource=ds_node_map[k],
                         modifiers=get_modifiers(
                             concept_map[concept].address, j, ds_node_map
+                        )
+                        + (
+                            [Modifier.PARTIAL] if concept in partials.get(k, []) else []
                         ),
                     )
                     for k, v in j.keys.items()
