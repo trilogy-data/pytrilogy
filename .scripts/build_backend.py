@@ -11,7 +11,17 @@ if not _init_file.exists():
     _init_file.write_text(
         "# Auto-generated stub for maturin build\n"
         "# The actual implementation comes from the compiled Rust extension\n"
-        "from ._preql_import_resolver import *  # noqa: F401, F403\n"
+        "from typing import Any\n"
+        "\n"
+        "class PyImportResolver:\n"
+        "    def __init__(self) -> None: ...\n"
+        "    def resolve(self, path: str) -> dict[str, Any]: ...\n"
+        "    def resolve_directory(self, folder: str, recursive: bool) -> dict[str, Any]: ...\n"
+        "\n"
+        "try:\n"
+        "    from ._preql_import_resolver import *  # noqa: F401, F403\n"
+        "except ImportError:\n"
+        "    pass  # Stub-only mode for type checking\n"
     )
 
 # Import all maturin backend functions
