@@ -2,8 +2,20 @@
 
 from pathlib import Path
 
+# Ensure the _preql_import_resolver module directory exists for maturin
+# This is required by newer maturin versions which check for module existence
+_module_dir = Path(__file__).parent.parent / "_preql_import_resolver"
+_module_dir.mkdir(exist_ok=True)
+_init_file = _module_dir / "__init__.py"
+if not _init_file.exists():
+    _init_file.write_text(
+        "# Auto-generated stub for maturin build\n"
+        "# The actual implementation comes from the compiled Rust extension\n"
+        "from ._preql_import_resolver import *  # noqa: F401, F403\n"
+    )
+
 # Import all maturin backend functions
-import maturin
+import maturin  # noqa: E402
 
 # Import version sync utility
 try:
