@@ -3081,7 +3081,20 @@ def unpack_visit_error(e: VisitError, text: str | None = None):
         raise e.orig_exc
     elif isinstance(e.orig_exc, InvalidSyntaxException):
         raise e.orig_exc
-    elif isinstance(e.orig_exc, (SyntaxError, TypeError)):
+    elif isinstance(e.orig_exc, TypeError):
+        if isinstance(e.obj, Tree):
+            if text:
+                extract = text[e.obj.meta.start_pos - 5 : e.obj.meta.end_pos + 5]
+                raise TypeError(
+                    str(e.orig_exc)
+                    + " Raised when parsing rule: "
+                    + str(e.rule)
+                    + f' Line: {e.obj.meta.line} "...{extract}..."'
+                )
+            raise TypeError(
+                str(e.orig_exc) + " in " + str(e.rule) + f" Line: {e.obj.meta.line}"
+            ).with_traceback(e.orig_exc.__traceback__)
+    elif isinstance(e.orig_exc, SyntaxError):
         if isinstance(e.obj, Tree):
             if text:
                 extract = text[e.obj.meta.start_pos - 5 : e.obj.meta.end_pos + 5]

@@ -47,6 +47,7 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.models.core import (
+    TYPEDEF_TYPES,
     Addressable,
     ArrayType,
     DataType,
@@ -1760,8 +1761,27 @@ def get_concept_arguments(expr) -> List["ConceptRef"]:
     return output
 
 
+def type_to_pretty(dtype: TYPEDEF_TYPES):
+    return str(dtype)
+
+
 def args_to_pretty(input: set[DataType]) -> str:
-    return ", ".join(sorted([f"'{x.value}'" for x in input if x != DataType.UNKNOWN]))
+    return ", ".join(
+        sorted([f"'{type_to_pretty(x)}'" for x in input if x != DataType.UNKNOWN])
+    )
+
+
+def _matches_valid_type(
+    datatype: DataType | ArrayType | StructType | MapType | NumericType | TraitDataType,
+    valid_types: set[DataType | ArrayType | MapType],
+) -> bool:
+    for valid_type in valid_types:
+        if isinstance(valid_type, ArrayType):
+            if isinstance(datatype, ArrayType) and datatype.type == valid_type.type:
+                return True
+        elif get_basic_type(datatype) == get_basic_type(valid_type):
+            return True
+    return False
 
 
 class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
@@ -1829,30 +1849,15 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
             if isinstance(arg, ConceptRef):
                 if arg.datatype == DataType.UNKNOWN:
                     continue
-                # Check if any valid_input matches the argument type
-                matched = False
-                for valid_type in valid_inputs[idx]:
-                    if isinstance(valid_type, ArrayType):
-                        # For ArrayType valid_inputs, check element type matches
-                        if isinstance(arg.datatype, ArrayType):
-                            if arg.datatype.type == valid_type.type:
-                                matched = True
-                                break
-                    elif get_basic_type(arg.datatype.data_type) == get_basic_type(
-                        valid_type
-                    ):
-                        matched = True
-                        break
-                if not matched:
+                if not _matches_valid_type(arg.datatype.data_type, valid_inputs[idx]):
                     raise TypeError(
                         f"Invalid argument type '{arg.datatype}' passed into {operator_name} function in position {idx+1}"
                         f" from concept: {arg.name}. Valid: {args_to_pretty(valid_inputs[idx])}."
                     )
-            if (
-                isinstance(arg, Function)
-                and get_basic_type(arg.output_datatype) not in valid_inputs[idx]
-            ):
-                if arg.output_datatype != DataType.UNKNOWN:
+            if isinstance(arg, Function):
+                if arg.output_datatype != DataType.UNKNOWN and not _matches_valid_type(
+                    arg.output_datatype, valid_inputs[idx]
+                ):
                     raise TypeError(
                         f"Invalid argument type {arg.output_datatype}' passed into"
                         f" {operator_name} function from function {arg.operator.name} in position {idx+1}. Valid: {args_to_pretty(valid_inputs[idx])}"

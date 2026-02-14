@@ -167,7 +167,7 @@ class ArrayType(BaseModel):
         return hash((DataType.ARRAY, self.type))
 
     def __str__(self) -> str:
-        return f"ListType<{self.type}>"
+        return f"ArrayType<{self.type}>"
 
     @property
     def data_type(self):
