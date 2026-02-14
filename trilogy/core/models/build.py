@@ -1298,8 +1298,8 @@ class BuildFunction(DataTyped, BuildConceptArgs):
     arg_count: int = field(default=1)
     valid_inputs: Optional[
         Union[
-            Set[DataType],
-            List[Set[DataType]],
+            Set[DataType | ArrayType | MapType],
+            List[Set[DataType | ArrayType | MapType]],
         ]
     ] = None
 

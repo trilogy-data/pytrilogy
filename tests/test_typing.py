@@ -4,14 +4,13 @@ from pathlib import Path
 from pytest import raises
 
 from trilogy import Dialects
-from trilogy.parsing.exceptions import ParseError
 
 FILE = Path(__file__)
 
 
 def test_invalid_typing():
     env = Dialects.DUCK_DB.default_executor()
-    with raises(ParseError):
+    with raises(TypeError):
         env.environment.parse(
             """
     key customer_id int;
