@@ -1471,7 +1471,11 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     def with_reference_replacement(self, source, target):
         return WindowItem.model_construct(
             type=self.type,
-            content=self.content.with_reference_replacement(source, target) if isinstance(self.content, Mergeable) else self.content,
+            content=(
+                self.content.with_reference_replacement(source, target)
+                if isinstance(self.content, Mergeable)
+                else self.content
+            ),
             over=[x.with_reference_replacement(source, target) for x in self.over],
             order_by=[
                 x.with_reference_replacement(source, target) for x in self.order_by
@@ -1769,8 +1773,8 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     output_purpose: Purpose
     valid_inputs: Optional[
         Union[
-            Set[DataType],
-            List[Set[DataType]],
+            Set[DataType | ArrayType],
+            List[Set[DataType | ArrayType]],
         ]
     ] = None
     arguments: Sequence[FuncArgs]
@@ -1822,14 +1826,26 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         elif not valid_inputs:
             return v
         for idx, arg in enumerate(v):
-            if (
-                isinstance(arg, ConceptRef)
-                and get_basic_type(arg.datatype.data_type) not in valid_inputs[idx]
-            ):
-                if arg.datatype != DataType.UNKNOWN:
-
+            if isinstance(arg, ConceptRef):
+                if arg.datatype == DataType.UNKNOWN:
+                    continue
+                # Check if any valid_input matches the argument type
+                matched = False
+                for valid_type in valid_inputs[idx]:
+                    if isinstance(valid_type, ArrayType):
+                        # For ArrayType valid_inputs, check element type matches
+                        if isinstance(arg.datatype, ArrayType):
+                            if arg.datatype.type == valid_type.type:
+                                matched = True
+                                break
+                    elif get_basic_type(arg.datatype.data_type) == get_basic_type(
+                        valid_type
+                    ):
+                        matched = True
+                        break
+                if not matched:
                     raise TypeError(
-                        f"Invalid argument type '{arg.datatype.data_type.value}' passed into {operator_name} function in position {idx+1}"
+                        f"Invalid argument type '{arg.datatype}' passed into {operator_name} function in position {idx+1}"
                         f" from concept: {arg.name}. Valid: {args_to_pretty(valid_inputs[idx])}."
                     )
             if (

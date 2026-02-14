@@ -46,10 +46,13 @@ CUSTOM_PLACEHOLDER = CustomType(
 )
 
 
+VALID_INPUT_TYPES = DataType | ArrayType | MapType
+
+
 @dataclass
 class FunctionConfig:
     arg_count: int = 1
-    valid_inputs: set[DataType] | list[set[DataType]] | None = None
+    valid_inputs: set[VALID_INPUT_TYPES] | list[set[VALID_INPUT_TYPES]] | None = None
     output_purpose: Purpose | None = None
     output_type: (
         DataType | ArrayType | MapType | StructType | NumericType | TraitDataType | None
@@ -388,17 +391,20 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         arg_count=3,
     ),
     FunctionType.ARRAY_TO_STRING: FunctionConfig(
-        valid_inputs={
-            DataType.ARRAY,
-            DataType.STRING,
-        },
+        valid_inputs=[
+            {ArrayType(type=DataType.STRING)},
+            {DataType.STRING},
+        ],
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.STRING,
         arg_count=2,
     ),
     FunctionType.ARRAY_SUM: FunctionConfig(
         valid_inputs={
-            DataType.ARRAY,
+            ArrayType(type=DataType.INTEGER),
+            ArrayType(type=DataType.FLOAT),
+            ArrayType(type=DataType.NUMBER),
+            ArrayType(type=DataType.NUMERIC),
         },
         output_purpose=Purpose.PROPERTY,
         output_type_function=get_index_output_type,
@@ -805,7 +811,6 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             DataType.DATE,
             DataType.TIMESTAMP,
             DataType.DATETIME,
-            DataType.STRING,
         },
         output_purpose=Purpose.PROPERTY,
         output_type=TraitDataType(type=DataType.INTEGER, traits=["year"]),

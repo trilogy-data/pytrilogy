@@ -163,6 +163,9 @@ class ArrayType(BaseModel):
     def validate_type(cls, v):
         return v
 
+    def __hash__(self):
+        return hash((DataType.ARRAY, self.type))
+
     def __str__(self) -> str:
         return f"ListType<{self.type}>"
 
