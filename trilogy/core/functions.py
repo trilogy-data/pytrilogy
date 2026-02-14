@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any, Callable, Optional
+from typing import Any, Callable, List, Optional, Set
 
 from lark.tree import Meta
 
@@ -46,13 +46,14 @@ CUSTOM_PLACEHOLDER = CustomType(
 )
 
 
-VALID_INPUT_TYPES = DataType | ArrayType | MapType
+VALID_INPUT_ITEM = DataType | ArrayType | MapType
+VALID_INPUTS_TYPE = Set[VALID_INPUT_ITEM] | List[Set[VALID_INPUT_ITEM]]
 
 
 @dataclass
 class FunctionConfig:
     arg_count: int = 1
-    valid_inputs: set[VALID_INPUT_TYPES] | list[set[VALID_INPUT_TYPES]] | None = None
+    valid_inputs: VALID_INPUTS_TYPE | None = None
     output_purpose: Purpose | None = None
     output_type: (
         DataType | ArrayType | MapType | StructType | NumericType | TraitDataType | None
@@ -1091,9 +1092,7 @@ class FunctionFactory:
         if operator not in FUNCTION_REGISTRY:
             raise ValueError(f"Function {operator} not in registry")
         config = FUNCTION_REGISTRY[operator]
-        valid_inputs: set[DataType] | list[set[DataType]] = config.valid_inputs or set(
-            DataType
-        )
+        valid_inputs: VALID_INPUTS_TYPE = config.valid_inputs or set(DataType)
         output_purpose = config.output_purpose
         base_output_type = config.output_type
         arg_count = config.arg_count

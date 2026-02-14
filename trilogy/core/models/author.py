@@ -1773,8 +1773,8 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     output_purpose: Purpose
     valid_inputs: Optional[
         Union[
-            Set[DataType | ArrayType],
-            List[Set[DataType | ArrayType]],
+            Set[DataType | ArrayType | MapType],
+            List[Set[DataType | ArrayType | MapType]],
         ]
     ] = None
     arguments: Sequence[FuncArgs]
