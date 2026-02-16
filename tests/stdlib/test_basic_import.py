@@ -1,7 +1,6 @@
 from pytest import raises
 
 from trilogy import Environment
-from trilogy.parsing.exceptions import ParseError
 
 
 def test_stdlib():
@@ -32,7 +31,7 @@ SELECT
 
 
 def test_stdlib_failure():
-    with raises(ParseError):
+    with raises(TypeError):
         Environment().parse(
             """
     import std.money;

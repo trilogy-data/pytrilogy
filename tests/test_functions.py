@@ -7,7 +7,6 @@ from pytest import raises
 from trilogy import Dialects
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation, Purpose
-from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.core import ArrayType, DataType
 from trilogy.core.models.environment import Environment
 from trilogy.core.query_processor import process_query
@@ -205,8 +204,8 @@ def test_bad_cast(test_environment):
         order_id,
         date(order_id) -> order_id_date,
     ;"""
-    with raises(InvalidSyntaxException):
-        env, parsed = parse(declarations, environment=test_environment)
+    with raises(TypeError):
+        parse(declarations, environment=test_environment)
 
 
 def test_explicit_cast(test_environment):

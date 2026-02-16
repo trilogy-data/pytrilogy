@@ -12,7 +12,6 @@ from trilogy.core.models.core import (
     TraitDataType,
     merge_datatypes,
 )
-from trilogy.parsing.exceptions import ParseError
 from trilogy.parsing.parse_engine import (
     parse_text,
 )
@@ -151,7 +150,7 @@ select
 
 def test_error_match():
     basic = Environment()
-    with pytest.raises(ParseError, match="Did you mean: email"):
+    with pytest.raises(TypeError, match="Did you mean: email"):
         basic.parse(
             """
     type email string;
