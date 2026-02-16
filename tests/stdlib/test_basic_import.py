@@ -1,7 +1,6 @@
 from pytest import raises
 
 from trilogy import Environment
-from trilogy.parsing.exceptions import ParseError
 
 
 def test_stdlib():

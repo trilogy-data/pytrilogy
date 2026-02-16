@@ -1515,7 +1515,15 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
 
 
 def get_basic_type(
-    type: DataType | ArrayType | StructType | MapType | NumericType | TraitDataType,
+    type: (
+        DataType
+        | ArrayType
+        | StructType
+        | MapType
+        | NumericType
+        | TraitDataType
+        | DataTyped
+    ),
 ) -> DataType:
     if isinstance(type, ArrayType):
         return DataType.ARRAY
@@ -1527,6 +1535,8 @@ def get_basic_type(
         return DataType.NUMERIC
     if isinstance(type, TraitDataType):
         return get_basic_type(type.type)
+    if isinstance(type, DataTyped):
+        return get_basic_type(type.output_datatype)
     return type
 
 

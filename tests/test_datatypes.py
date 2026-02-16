@@ -12,7 +12,6 @@ from trilogy.core.models.core import (
     TraitDataType,
     merge_datatypes,
 )
-from trilogy.parsing.exceptions import ParseError
 from trilogy.parsing.parse_engine import (
     parse_text,
 )
