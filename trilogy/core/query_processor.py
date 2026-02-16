@@ -160,13 +160,17 @@ def generate_source_map(
                 raise SyntaxError(
                     f"Missing parent CTEs for source map; expecting {names}, have {[cte.source.safe_identifier for cte in all_new_ctes]}"
                 )
+            # when multiple sources exist (full join key), include partials
+            multi_source = len(qdv) > 1
             for cte in matches:
                 output_address = [
                     x.address
                     for x in cte.output_columns
                     if x.address not in [z.address for z in cte.partial_concepts]
                 ]
-                if qdk in output_address:
+                if qdk in output_address or (
+                    multi_source and qdk in [x.address for x in cte.output_columns]
+                ):
                     source_map[qdk].append(cte.safe_identifier)
             # now do a pass that accepts partials
             for cte in matches:

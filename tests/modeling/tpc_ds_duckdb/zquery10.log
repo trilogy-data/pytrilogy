@@ -1,5 +1,5 @@
 query_id = 10
-gen_length = 5557
+gen_length = 5725
 generated_sql = """
 
 WITH 
@@ -32,7 +32,7 @@ GROUP BY
     \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\"),
 concerned as (
 SELECT
-    \"customer_customers\".\"C_CUSTOMER_SK\" as \"relevant_customers\"
+    coalesce(\"abundant\".\"customer_id\",\"customer_customers\".\"C_CUSTOMER_SK\",\"juicy\".\"customer_id\",\"thoughtful\".\"customer_id\") as \"relevant_customers\"
 FROM
     \"abundant\"
     INNER JOIN \"memory\".\"date_dim\" as \"web_sales_date_date\" on \"abundant\".\"web_sales_date_id\" = \"web_sales_date_date\".\"D_DATE_SK\"
@@ -46,7 +46,7 @@ WHERE
     cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 2002 and \"store_sales_date_date\".\"D_MOY\" in (1,2,3,4) and \"customer_address_customer_address\".\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( cast(\"web_sales_date_date\".\"D_YEAR\" as int) = 2002 and \"web_sales_date_date\".\"D_MOY\" in (1,2,3,4) ) or ( cast(\"catalog_sales_date_date\".\"D_YEAR\" as int) = 2002 and \"catalog_sales_date_date\".\"D_MOY\" in (1,2,3,4) ) )
 
 GROUP BY 
-    \"customer_customers\".\"C_CUSTOMER_SK\")
+    coalesce(\"abundant\".\"customer_id\",\"customer_customers\".\"C_CUSTOMER_SK\",\"juicy\".\"customer_id\",\"thoughtful\".\"customer_id\"))
 SELECT
     \"customer_demographics_customer_demographics\".\"CD_GENDER\" as \"customer_demographics_gender\",
     \"customer_demographics_customer_demographics\".\"CD_MARITAL_STATUS\" as \"customer_demographics_marital_status\",

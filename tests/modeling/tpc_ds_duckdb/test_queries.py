@@ -281,8 +281,12 @@ def test_ninety_five(engine):
 
 def test_ninety_seven(engine):
     query = run_query(engine, 97)
-    assert len(query) < 4000, query
+    assert len(query) < 5000, query
 
+def test_ninety_seven_alt(engine):
+    # TODO - use the alt query?
+    query = run_query(engine, 97)
+    assert len(query) < 5000, query
 
 def test_ninety_eight(engine):
     _ = run_query(engine, 98)
