@@ -205,8 +205,8 @@ def test_bad_cast(test_environment):
         order_id,
         date(order_id) -> order_id_date,
     ;"""
-    with raises(InvalidSyntaxException):
-        env, parsed = parse(declarations, environment=test_environment)
+    with raises(TypeError):
+        parse(declarations, environment=test_environment)
 
 
 def test_explicit_cast(test_environment):

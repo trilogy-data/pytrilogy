@@ -32,7 +32,7 @@ SELECT
 
 
 def test_stdlib_failure():
-    with raises(ParseError):
+    with raises(TypeError):
         Environment().parse(
             """
     import std.money;
