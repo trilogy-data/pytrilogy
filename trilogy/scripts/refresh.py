@@ -10,6 +10,7 @@ from trilogy.core.statements.execute import ProcessedValidateStatement
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.state.state_store import (
     DatasourceWatermark,
+    StaleAsset,
     refresh_stale_assets,
 )
 from trilogy.scripts.common import (
@@ -38,12 +39,26 @@ def _format_watermarks(watermarks: dict[str, DatasourceWatermark]) -> None:
             )
 
 
+def _prompt_approval(
+    stale_assets: list[StaleAsset],
+    watermarks: dict[str, DatasourceWatermark],
+) -> bool:
+    """Show refresh plan and prompt user for approval."""
+    import click
+
+    from trilogy.scripts.display import show_refresh_plan
+
+    show_refresh_plan(stale_assets, watermarks)
+    return click.confirm("\nProceed with refresh?", default=True)
+
+
 def execute_script_for_refresh(
     exec: Executor,
     node: ScriptNode,
     quiet: bool = False,
     print_watermarks: bool = False,
     force_sources: frozenset[str] = frozenset(),
+    interactive: bool = False,
 ) -> ExecutionStats:
     """Execute a script for the 'refresh' command - parse and refresh stale assets."""
     from trilogy.scripts.display import print_info, print_success, print_warning
@@ -79,6 +94,7 @@ def execute_script_for_refresh(
         on_stale_found=on_stale_found,
         on_refresh=on_refresh,
         on_watermarks=on_watermarks,
+        on_approval=_prompt_approval if interactive else None,
         force_sources=set(force_sources) if force_sources else None,
     )
     stats.update_count = result.refreshed_count
@@ -88,21 +104,26 @@ def execute_script_for_refresh(
         stats = count_statement_stats([x])
 
     if result.had_stale and not quiet:
-        print_success(
-            f"Refreshed {result.refreshed_count} asset(s) in {node.path.name}"
-        )
+        if result.refreshed_count > 0:
+            print_success(
+                f"Refreshed {result.refreshed_count} asset(s) in {node.path.name}"
+            )
+        else:
+            print_info(f"Refresh skipped by user for {node.path.name}")
 
     return stats
 
 
-def make_refresh_execution_fn(print_watermarks: bool, force_sources: frozenset[str]):
+def make_refresh_execution_fn(
+    print_watermarks: bool, force_sources: frozenset[str], interactive: bool
+):
     """Create a refresh execution function with the given parameters."""
 
     def wrapped_execute(
         exec: Executor, node: ScriptNode, quiet: bool = False
     ) -> ExecutionStats:
         return execute_script_for_refresh(
-            exec, node, quiet, print_watermarks, force_sources
+            exec, node, quiet, print_watermarks, force_sources, interactive
         )
 
     return wrapped_execute
@@ -138,6 +159,13 @@ def make_refresh_execution_fn(print_watermarks: bool, force_sources: frozenset[s
     multiple=True,
     help="Force rebuild of specific datasources by name (skip staleness detection)",
 )
+@option(
+    "--interactive",
+    "-i",
+    is_flag=True,
+    default=False,
+    help="Show refresh plan and prompt for approval before applying changes",
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def refresh(
@@ -150,6 +178,7 @@ def refresh(
     print_watermarks,
     env,
     force,
+    interactive,
     conn_args,
 ):
     """Refresh stale assets in Trilogy scripts.
@@ -163,6 +192,7 @@ def refresh(
     refresh_params = RefreshParams(
         print_watermarks=print_watermarks,
         force_sources=frozenset(force),
+        interactive=interactive,
     )
 
     cli_params = CLIRuntimeParams(
@@ -179,7 +209,9 @@ def refresh(
     )
 
     execution_fn = make_refresh_execution_fn(
-        refresh_params.print_watermarks, refresh_params.force_sources
+        refresh_params.print_watermarks,
+        refresh_params.force_sources,
+        refresh_params.interactive,
     )
 
     try:
