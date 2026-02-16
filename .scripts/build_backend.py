@@ -1,7 +1,8 @@
 """Custom build backend that syncs version before building with maturin"""
 
-# Import all maturin backend functions
-import maturin  # noqa: E402
+from pathlib import Path
+
+import maturin
 
 # Import version sync utility
 try:
