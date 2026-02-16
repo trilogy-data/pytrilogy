@@ -58,7 +58,6 @@ build-backend = "build_backend"
 backend-path = [".scripts"]
 
 [tool.maturin]
-python-source = "."
 module-name = "_preql_import_resolver"
 manifest-path = "trilogy/scripts/dependency/Cargo.toml"
 features = ["pyo3/extension-module"]
