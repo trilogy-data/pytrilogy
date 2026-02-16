@@ -22,9 +22,17 @@ fingerprint = (
 working_path = Path(__file__).parent
 
 
-def run_query(engine: Executor, idx: int, sql_override: bool = False):
+def run_query(
+    engine: Executor,
+    idx: int,
+    sql_override: bool = False,
+    preql_file: str | None = None,
+    label: str | None = None,
+):
     engine.environment = Environment(working_path=working_path)
-    with open(working_path / f"query{idx:02d}.preql") as f:
+    filename = preql_file or f"query{idx:02d}.preql"
+    query_label = label or f"{idx:02d}"
+    with open(working_path / filename) as f:
         text = f.read()
 
     # fetch our results
@@ -58,11 +66,11 @@ def run_query(engine: Executor, idx: int, sql_override: bool = False):
             row == comp_results[qidx]
         ), f"Row mismatch in row {qidx} (expected v actual): {row} != {comp_results[qidx]}"
 
-    with open(working_path / f"zquery{idx:02d}.log", "w") as f:
+    with open(working_path / f"zquery{query_label}.log", "w") as f:
         f.write(
             tomli_w.dumps(
                 {
-                    "query_id": idx,
+                    "query_id": query_label,
                     "gen_length": len(query),
                     "generated_sql": query,
                 },
@@ -82,7 +90,7 @@ def run_query(engine: Executor, idx: int, sql_override: bool = False):
         # go back to 0, as we will rewrite the whole thing
 
         # modify the current dict
-        current[f"query_{idx:02d}"] = {
+        current[f"query_{query_label}"] = {
             "parse_time": parse_time.total_seconds(),
             "exec_time": exec_time.total_seconds(),
             "comp_time": comp_time.total_seconds(),
@@ -283,10 +291,11 @@ def test_ninety_seven(engine):
     query = run_query(engine, 97)
     assert len(query) < 5000, query
 
+
 def test_ninety_seven_alt(engine):
-    # TODO - use the alt query?
-    query = run_query(engine, 97)
+    query = run_query(engine, 97, preql_file="query97-one.preql", label="97.1")
     assert len(query) < 5000, query
+
 
 def test_ninety_eight(engine):
     _ = run_query(engine, 98)

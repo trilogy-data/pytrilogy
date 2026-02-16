@@ -1,0 +1,88 @@
+query_id = "97.1"
+gen_length = 4518
+generated_sql = """
+
+WITH 
+highfalutin as (
+SELECT
+    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"customer_id\",
+    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"item_id\",
+    \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
+FROM
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+GROUP BY 
+    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\",
+    \"store_sales_store_sales\".\"SS_ITEM_SK\",
+    \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\"),
+thoughtful as (
+SELECT
+    \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" as \"customer_id\",
+    \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" as \"item_id\",
+    \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\"
+FROM
+    \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
+GROUP BY 
+    \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\",
+    \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\",
+    \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\"),
+uneven as (
+SELECT
+    \"catalog_sales_date_date\".\"D_MONTH_SEQ\" as \"catalog_sales_date_month_seq\",
+    \"store_sales_date_date\".\"D_MONTH_SEQ\" as \"store_sales_date_month_seq\",
+    ((cast(coalesce(\"customer_customers\".\"C_CUSTOMER_SK\",\"highfalutin\".\"customer_id\",\"thoughtful\".\"customer_id\") as string) || '-') || cast(coalesce(\"highfalutin\".\"item_id\",\"item_items\".\"I_ITEM_SK\",\"thoughtful\".\"item_id\") as string)) as \"customer_item\",
+    coalesce(\"customer_customers\".\"C_CUSTOMER_SK\",\"highfalutin\".\"customer_id\",\"thoughtful\".\"customer_id\") as \"customer_id\",
+    coalesce(\"highfalutin\".\"item_id\",\"item_items\".\"I_ITEM_SK\",\"thoughtful\".\"item_id\") as \"item_id\"
+FROM
+    \"highfalutin\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"highfalutin\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    RIGHT OUTER JOIN \"memory\".\"item\" as \"item_items\" on \"highfalutin\".\"item_id\" = \"item_items\".\"I_ITEM_SK\"
+    FULL JOIN \"thoughtful\" on \"highfalutin\".\"customer_id\" = \"thoughtful\".\"customer_id\" AND coalesce(\"item_items\".\"I_ITEM_SK\", \"highfalutin\".\"item_id\") = \"thoughtful\".\"item_id\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"thoughtful\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
+    FULL JOIN \"memory\".\"customer\" as \"customer_customers\" on coalesce(\"thoughtful\".\"customer_id\", \"highfalutin\".\"customer_id\") = \"customer_customers\".\"C_CUSTOMER_SK\"
+GROUP BY 
+    \"catalog_sales_date_date\".\"D_MONTH_SEQ\",
+    \"store_sales_date_date\".\"D_MONTH_SEQ\",
+    ((cast(coalesce(\"customer_customers\".\"C_CUSTOMER_SK\",\"highfalutin\".\"customer_id\",\"thoughtful\".\"customer_id\") as string) || '-') || cast(coalesce(\"highfalutin\".\"item_id\",\"item_items\".\"I_ITEM_SK\",\"thoughtful\".\"item_id\") as string)),
+    coalesce(\"customer_customers\".\"C_CUSTOMER_SK\",\"highfalutin\".\"customer_id\",\"thoughtful\".\"customer_id\"),
+    coalesce(\"highfalutin\".\"item_id\",\"item_items\".\"I_ITEM_SK\",\"thoughtful\".\"item_id\")),
+yummy as (
+SELECT
+    \"uneven\".\"catalog_sales_date_month_seq\" as \"catalog_sales_date_month_seq\",
+    \"uneven\".\"customer_id\" as \"customer_id\",
+    \"uneven\".\"customer_item\" as \"customer_item\",
+    \"uneven\".\"item_id\" as \"item_id\",
+    CASE WHEN \"uneven\".\"store_sales_date_month_seq\" >= 1200 and \"uneven\".\"store_sales_date_month_seq\" <= 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END as \"store_sales\"
+FROM
+    \"uneven\"
+GROUP BY 
+    \"uneven\".\"catalog_sales_date_month_seq\",
+    \"uneven\".\"customer_id\",
+    \"uneven\".\"customer_item\",
+    \"uneven\".\"item_id\",
+    CASE WHEN \"uneven\".\"store_sales_date_month_seq\" >= 1200 and \"uneven\".\"store_sales_date_month_seq\" <= 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END),
+vacuous as (
+SELECT
+    \"yummy\".\"store_sales\" as \"store_sales\",
+    CASE WHEN \"yummy\".\"catalog_sales_date_month_seq\" >= 1200 and \"yummy\".\"catalog_sales_date_month_seq\" <= 1200 + 11 THEN \"yummy\".\"customer_item\" ELSE NULL END as \"catalog_sales\"
+FROM
+    \"yummy\"
+GROUP BY 
+    \"yummy\".\"customer_id\",
+    \"yummy\".\"item_id\",
+    \"yummy\".\"store_sales\",
+    CASE WHEN \"yummy\".\"catalog_sales_date_month_seq\" >= 1200 and \"yummy\".\"catalog_sales_date_month_seq\" <= 1200 + 11 THEN \"yummy\".\"customer_item\" ELSE NULL END)
+SELECT
+    sum(CASE
+	WHEN \"vacuous\".\"store_sales\" is not null and \"vacuous\".\"catalog_sales\" is null THEN 1
+	ELSE 0
+	END) as \"store_sale_count\",
+    sum(CASE
+	WHEN \"vacuous\".\"store_sales\" is null and \"vacuous\".\"catalog_sales\" is not null THEN 1
+	ELSE 0
+	END) as \"catalog_sale_count\",
+    sum(CASE
+	WHEN \"vacuous\".\"store_sales\" is not null and \"vacuous\".\"catalog_sales\" is not null THEN 1
+	ELSE 0
+	END) as \"both_sale_count\"
+FROM
+    \"vacuous\""""

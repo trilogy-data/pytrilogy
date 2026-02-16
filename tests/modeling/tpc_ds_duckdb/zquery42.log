@@ -1,4 +1,4 @@
-query_id = 42
+query_id = "42"
 gen_length = 1178
 generated_sql = """
 SELECT
