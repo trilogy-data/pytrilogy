@@ -326,7 +326,7 @@ class TestStringFunctionArgumentTypes:
 
     def test_len_with_integer_fails(self):
         """LEN function requires string or array, not integer."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 123;
@@ -359,7 +359,7 @@ class TestStringFunctionArgumentTypes:
 
     def test_upper_with_integer_fails(self):
         """UPPER function requires string, not integer."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 123;
@@ -381,7 +381,7 @@ class TestStringFunctionArgumentTypes:
 
     def test_lower_with_integer_fails(self):
         """LOWER function requires string, not integer."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 123;
@@ -392,7 +392,7 @@ class TestStringFunctionArgumentTypes:
 
     def test_trim_with_integer_fails(self):
         """TRIM function requires string, not integer."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 123;
@@ -403,7 +403,7 @@ class TestStringFunctionArgumentTypes:
 
     def test_substring_with_integer_fails(self):
         """SUBSTRING function requires string as first argument."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 123;
@@ -414,7 +414,7 @@ class TestStringFunctionArgumentTypes:
 
     def test_contains_with_integer_fails(self):
         """CONTAINS function requires strings, not integers."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 123;
@@ -425,7 +425,7 @@ class TestStringFunctionArgumentTypes:
 
     def test_replace_with_integer_pattern_fails(self):
         """REPLACE function requires strings."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 'hello';
@@ -437,7 +437,7 @@ class TestStringFunctionArgumentTypes:
 
     def test_strpos_with_integer_fails(self):
         """STRPOS with integer arguments should fail."""
-        with pytest.raises((InvalidSyntaxException)):
+        with pytest.raises(TypeError):
             parse_text(
                 """
                 const x <- 123;
@@ -448,7 +448,7 @@ class TestStringFunctionArgumentTypes:
 
     def test_regexp_contains_integer_pattern_fails(self):
         """REGEXP_CONTAINS with integer pattern should fail."""
-        with pytest.raises((InvalidSyntaxException)):
+        with pytest.raises(TypeError):
             parse_text(
                 """
                 const x <- 'hello';
@@ -469,7 +469,7 @@ class TestNumericFunctionArgumentTypes:
 
     def test_sum_with_string_fails(self):
         """SUM function requires numeric types, not string."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 'hello';
@@ -480,7 +480,7 @@ class TestNumericFunctionArgumentTypes:
 
     def test_avg_with_string_fails(self):
         """AVG function requires numeric types, not string."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 'hello';
@@ -491,7 +491,7 @@ class TestNumericFunctionArgumentTypes:
 
     def test_sqrt_with_string_fails(self):
         """SQRT function requires numeric type, not string."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 'hello';
@@ -502,7 +502,7 @@ class TestNumericFunctionArgumentTypes:
 
     def test_abs_with_string_fails(self):
         """ABS function requires numeric type, not string."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 'hello';
@@ -513,7 +513,7 @@ class TestNumericFunctionArgumentTypes:
 
     def test_round_with_string_fails(self):
         """ROUND function requires numeric type, not string."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 'hello';
@@ -524,7 +524,7 @@ class TestNumericFunctionArgumentTypes:
 
     def test_floor_with_string_fails(self):
         """FLOOR function requires numeric type, not string."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 'hello';
@@ -535,7 +535,7 @@ class TestNumericFunctionArgumentTypes:
 
     def test_ceil_with_string_fails(self):
         """CEIL function requires numeric type, not string."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 'hello';
@@ -575,7 +575,7 @@ class TestDateFunctionArgumentTypes:
 
     def test_date_part_with_string_fails(self):
         """DATE_PART function requires date/datetime, not string."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 'hello';
@@ -586,7 +586,7 @@ class TestDateFunctionArgumentTypes:
 
     def test_date_part_with_integer_fails(self):
         """DATE_PART function requires date/datetime, not integer."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 123;
@@ -597,7 +597,7 @@ class TestDateFunctionArgumentTypes:
 
     def test_date_truncate_with_string_fails(self):
         """DATE_TRUNCATE function requires date/datetime, not string."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 'hello';
@@ -628,7 +628,7 @@ class TestArrayFunctionArgumentTypes:
 
     def test_unnest_with_integer_fails(self):
         """UNNEST function requires array type, not integer."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 123;
@@ -639,7 +639,7 @@ class TestArrayFunctionArgumentTypes:
 
     def test_unnest_with_string_fails(self):
         """UNNEST function requires array type, not string."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 'hello';
@@ -661,7 +661,7 @@ class TestArrayFunctionArgumentTypes:
 
     def test_array_to_string_with_integer_array_fails(self):
         """ARRAY_TO_STRING requires string array, not integer array."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- [1, 2, 3];
@@ -672,7 +672,7 @@ class TestArrayFunctionArgumentTypes:
 
     def test_map_keys_with_non_map_fails(self):
         """MAP_KEYS requires map type, not integer."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 123;
@@ -683,7 +683,7 @@ class TestArrayFunctionArgumentTypes:
 
     def test_map_values_with_non_map_fails(self):
         """MAP_VALUES requires map type, not integer."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 123;
@@ -694,7 +694,7 @@ class TestArrayFunctionArgumentTypes:
 
     def test_array_sum_string_array_fails(self):
         """ARRAY_SUM with string array should fail."""
-        with pytest.raises(InvalidSyntaxException):
+        with pytest.raises(TypeError):
             parse_text(
                 """
                 const x <- ['a', 'b', 'c'];
@@ -1008,7 +1008,7 @@ class TestCustomTypeTraitValidation:
             """
         )
         dialects = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
-        with pytest.raises(InvalidSyntaxException, match="expected traits"):
+        with pytest.raises(TypeError, match="expected traits"):
             dialects.parse_text(
                 """
                 select @add_positive(1, 2) as result;
@@ -1081,7 +1081,7 @@ class TestAggregateFunctionTypes:
 
     def test_bool_and_with_non_bool_fails(self):
         """BOOL_AND requires boolean argument."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 1;
@@ -1092,7 +1092,7 @@ class TestAggregateFunctionTypes:
 
     def test_bool_or_with_non_bool_fails(self):
         """BOOL_OR requires boolean argument."""
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text(
                 """
                 const x <- 1;
@@ -1304,7 +1304,7 @@ class TestTypeCheckingWithExecutor:
     def test_aggregate_on_wrong_type(self):
         """Aggregate function on wrong type is caught."""
         executor = Dialects.DUCK_DB.default_executor()
-        with pytest.raises(InvalidSyntaxException, match="Invalid argument type"):
+        with pytest.raises(TypeError, match="Invalid argument type"):
             executor.parse_text(
                 """
                 key id int;

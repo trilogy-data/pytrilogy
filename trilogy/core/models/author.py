@@ -1777,7 +1777,9 @@ def _matches_valid_type(
 ) -> bool:
     for valid_type in valid_types:
         if isinstance(valid_type, ArrayType):
-            if isinstance(datatype, ArrayType) and datatype.type == valid_type.type:
+            if isinstance(datatype, ArrayType) and get_basic_type(
+                datatype.type
+            ) == get_basic_type(valid_type.type):
                 return True
         elif get_basic_type(datatype) == get_basic_type(valid_type):
             return True
@@ -1849,7 +1851,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
             if isinstance(arg, ConceptRef):
                 if arg.datatype == DataType.UNKNOWN:
                     continue
-                if not _matches_valid_type(arg.datatype.data_type, valid_inputs[idx]):
+                if not _matches_valid_type(arg.datatype, valid_inputs[idx]):
                     raise TypeError(
                         f"Invalid argument type '{arg.datatype}' passed into {operator_name} function in position {idx+1}"
                         f" from concept: {arg.name}. Valid: {args_to_pretty(valid_inputs[idx])}."
