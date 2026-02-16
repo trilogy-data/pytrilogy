@@ -134,9 +134,7 @@ def render_join(
                 # different left concepts are separate AND conditions.
                 left_addr_groups: dict[str, list] = {}
                 for pair in pairs:
-                    left_addr_groups.setdefault(pair.left.address, []).append(
-                        pair
-                    )
+                    left_addr_groups.setdefault(pair.left.address, []).append(pair)
                 for left_addr, sub_pairs in left_addr_groups.items():
                     left_renders = [
                         render_join_concept(
@@ -153,9 +151,7 @@ def render_join(
                     unique_renders = list(dict.fromkeys(left_renders))
                     if len(unique_renders) > 1:
                         coalesced = f"coalesce({', '.join(unique_renders)})"
-                        base_joinkeys.append(
-                            f"{coalesced} = {right_render}"
-                        )
+                        base_joinkeys.append(f"{coalesced} = {right_render}")
                     else:
                         base_joinkeys.append(
                             null_wrapper(

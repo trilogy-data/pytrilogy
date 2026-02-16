@@ -1,3 +1,4 @@
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum
@@ -524,9 +525,7 @@ def reduce_concept_pairs(
             continue
 
         seen.add(dedup_key)
-        right_left_seen[rl_key] = (
-            right_left_seen.get(rl_key, False) or pair.is_partial
-        )
+        right_left_seen[rl_key] = right_left_seen.get(rl_key, False) or pair.is_partial
         final.append(pair)
     all_keys = set([x.right.address for x in final])
     if right_source.grain.components and right_source.grain.components.issubset(
@@ -558,7 +557,7 @@ def _collect_deep_partial_addresses(
     result: set[str] = set()
     for c in ds.partial_concepts:
         result.add(c.address)
-    if hasattr(ds, "datasources"):
+    if isinstance(ds, QueryDatasource):
         for sub in ds.datasources:
             result |= _collect_deep_partial_addresses(sub)
     return result

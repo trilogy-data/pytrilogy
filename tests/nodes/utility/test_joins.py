@@ -16,7 +16,8 @@ from trilogy.dialect.common import render_join, render_join_concept
 
 
 def test_render_join_concept():
-    env, _ = parse("""key x int;
+    env, _ = parse(
+        """key x int;
         key y int;
     
 datasource x_source (
@@ -26,7 +27,8 @@ datasource x_source (
 address x_source;
 
         
-        """)
+        """
+    )
     x = BaseDialect()
     env = env.materialize_for_select()
     concept = env.concepts["x"]
@@ -60,7 +62,8 @@ address x_source;
 
     assert rendered == "`x_source`.`y` + 1"
 
-    env, _ = parse("""key x int;
+    env, _ = parse(
+        """key x int;
         key y int;
     
 datasource x_source (
@@ -70,7 +73,8 @@ datasource x_source (
 address x_source;
 
         
-        """)
+        """
+    )
     x = BaseDialect()
     env = env.materialize_for_select()
     concept = env.concepts["x"]
@@ -107,7 +111,8 @@ address x_source;
 
 def test_reduce_concept_pair():
     # Parse environment with datasources that have overlapping keys
-    env, _ = parse("""
+    env, _ = parse(
+        """
 key a int;
 key b int;
 key c int;
@@ -130,7 +135,8 @@ datasource join_ds_2 (
     c:c
 ) grain(b)
 address baz;
-        """)
+        """
+    )
 
     env = env.materialize_for_select()
 
@@ -301,7 +307,8 @@ def test_get_join_type_multiple_connecting_keys():
 def test_render_join_coalesce():
     """When multiple CTEConceptPairs share the same right concept,
     render_join should produce a COALESCE on the left values."""
-    env, _ = parse("""
+    env, _ = parse(
+        """
 key shared_id int;
 key fact1_id int;
 key fact2_id int;
@@ -309,7 +316,8 @@ key fact2_id int;
 datasource dim (id:shared_id) grain(shared_id) address dim_table;
 datasource fact1 (id:fact1_id, sid:shared_id) grain(fact1_id) address fact1_table;
 datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_table;
-    """)
+    """
+    )
     dialect = BaseDialect()
     env = env.materialize_for_select()
     shared = env.concepts["shared_id"]
@@ -383,7 +391,8 @@ def test_reduce_concept_pairs_multi_partial():
     - Different left concepts for same right: always keep both (distinct join keys)
     - Same left concept from different datasources: keep both only when PARTIAL
     """
-    env, _ = parse("""
+    env, _ = parse(
+        """
 key shared_id int;
 key fact1_id int;
 property fact1_id.f1_shared int;
@@ -393,7 +402,8 @@ property fact2_id.f2_shared int;
 datasource dim (id:shared_id) grain(shared_id) address dim_table;
 datasource fact1 (id:fact1_id, sid:f1_shared) grain(fact1_id) address fact1_table;
 datasource fact2 (id:fact2_id, sid:f2_shared) grain(fact2_id) address fact2_table;
-    """)
+    """
+    )
     env = env.materialize_for_select()
     shared = env.concepts["shared_id"]
     f1_shared = env.concepts["f1_shared"]

@@ -53,11 +53,9 @@ class SelectNode(StrategyNode):
     ):
         # Derive partial/nullable from datasource columns when not explicitly provided
         if datasource and partial_concepts is None:
-            partial_concepts = [
-                c.concept for c in datasource.columns if not c.is_complete
-            ]
+            partial_concepts = datasource.partial_concepts
         if datasource and nullable_concepts is None:
-            nullable_concepts = [c.concept for c in datasource.columns if c.is_nullable]
+            nullable_concepts = datasource.nullable_concepts
         super().__init__(
             input_concepts=input_concepts,
             output_concepts=output_concepts,
