@@ -524,13 +524,9 @@ def show_script_result(
             )
 
 
-def show_refresh_plan(
-    stale_assets: list,
-    watermarks: dict,
-) -> None:
-    """Display refresh plan showing watermarks and stale assets for approval."""
+def show_watermarks(watermarks: dict) -> None:
+    """Display datasource watermark information."""
     if RICH_AVAILABLE and console is not None:
-        # Watermarks table
         wm_table = Table(
             title="Datasource Watermarks",
             show_header=True,
@@ -555,8 +551,21 @@ def show_refresh_plan(
                     )
 
         console.print(wm_table)
+    else:
+        print_info("Watermarks:")
+        for ds_id, watermark in sorted(watermarks.items()):
+            if not watermark.keys:
+                print_info(f"  {ds_id}: (no watermarks)")
+            else:
+                for key_name, update_key in watermark.keys.items():
+                    print_info(
+                        f"  {ds_id}.{key_name}: {update_key.value} ({update_key.type.value})"
+                    )
 
-        # Stale assets table
+
+def show_stale_assets(stale_assets: list) -> None:
+    """Display stale assets that need refresh."""
+    if RICH_AVAILABLE and console is not None:
         stale_table = Table(
             title="Stale Assets to Refresh",
             show_header=True,
@@ -571,19 +580,18 @@ def show_refresh_plan(
 
         console.print(stale_table)
     else:
-        echo(style("Datasource Watermarks:", fg="blue", bold=True))
-        for ds_id, watermark in sorted(watermarks.items()):
-            if not watermark.keys:
-                echo(f"  {ds_id}: (no watermarks)")
-            else:
-                for key_name, update_key in watermark.keys.items():
-                    echo(
-                        f"  {ds_id}.{key_name}: {update_key.value} ({update_key.type.value})"
-                    )
-
-        echo(style("\nStale Assets to Refresh:", fg="yellow", bold=True))
+        echo(style("Stale Assets to Refresh:", fg="yellow", bold=True))
         for asset in stale_assets:
             echo(f"  {asset.datasource_id}: {asset.reason}")
+
+
+def show_refresh_plan(
+    stale_assets: list,
+    watermarks: dict,
+) -> None:
+    """Display refresh plan showing watermarks and stale assets for approval."""
+    show_watermarks(watermarks)
+    show_stale_assets(stale_assets)
 
 
 def show_execution_plan(

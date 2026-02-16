@@ -24,21 +24,6 @@ from trilogy.scripts.dependency import ScriptNode
 from trilogy.scripts.parallel_execution import ExecutionMode, run_parallel_execution
 
 
-def _format_watermarks(watermarks: dict[str, DatasourceWatermark]) -> None:
-    """Print watermark information for all datasources."""
-    from trilogy.scripts.display import print_info
-
-    print_info("Watermarks:")
-    for ds_id, watermark in sorted(watermarks.items()):
-        if not watermark.keys:
-            print_info(f"  {ds_id}: (no watermarks)")
-            continue
-        for key_name, update_key in watermark.keys.items():
-            print_info(
-                f"  {ds_id}.{key_name}: {update_key.value} ({update_key.type.value})"
-            )
-
-
 def _prompt_approval(
     stale_assets: list[StaleAsset],
     watermarks: dict[str, DatasourceWatermark],
@@ -87,7 +72,9 @@ def execute_script_for_refresh(
 
     def on_watermarks(watermarks: dict[str, DatasourceWatermark]) -> None:
         if print_watermarks:
-            _format_watermarks(watermarks)
+            from trilogy.scripts.display import show_watermarks
+
+            show_watermarks(watermarks)
 
     result = refresh_stale_assets(
         exec,
