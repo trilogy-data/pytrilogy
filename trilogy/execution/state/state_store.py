@@ -377,6 +377,9 @@ def refresh_stale_assets(
     on_stale_found: Callable[[int, int, int], None] | None = None,
     on_refresh: Callable[[str, str], None] | None = None,
     on_watermarks: Callable[[dict[str, DatasourceWatermark]], None] | None = None,
+    on_approval: (
+        Callable[[list[StaleAsset], dict[str, DatasourceWatermark]], bool] | None
+    ) = None,
     force_sources: set[str] | None = None,
 ) -> RefreshResult:
     """Find and refresh stale assets.
@@ -386,6 +389,8 @@ def refresh_stale_assets(
         on_stale_found: Optional callback(stale_count, root_assets, all_assets)
         on_refresh: Optional callback(asset_id, reason) called before each refresh
         on_watermarks: Optional callback(watermarks_dict) called after collecting watermarks
+        on_approval: Optional callback(stale_assets, watermarks) called before refresh.
+                     Return True to proceed, False to skip.
         force_sources: Optional set of datasource names to force rebuild (skip detection)
     """
     state_store = BaseStateStore()
@@ -415,6 +420,16 @@ def refresh_stale_assets(
 
     if on_stale_found:
         on_stale_found(len(all_refresh_assets), root_assets, all_assets)
+
+    # If approval callback provided, ask before proceeding
+    if on_approval and all_refresh_assets:
+        if not on_approval(all_refresh_assets, state_store.watermarks):
+            return RefreshResult(
+                stale_count=len(all_refresh_assets),
+                refreshed_count=0,
+                root_assets=root_assets,
+                all_assets=all_assets,
+            )
 
     refreshed = 0
     for asset in all_refresh_assets:

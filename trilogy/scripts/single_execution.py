@@ -205,8 +205,7 @@ def execute_refresh_mode(
         DatasourceWatermark,
         refresh_stale_assets,
     )
-    from trilogy.scripts.display import print_warning
-    from trilogy.scripts.refresh import _format_watermarks
+    from trilogy.scripts.display import print_warning, show_watermarks
 
     def on_stale_found(stale_count: int, root_assets: int, all_assets: int) -> None:
         if stale_count == 0:
@@ -221,7 +220,7 @@ def execute_refresh_mode(
 
     def on_watermarks(watermarks: dict[str, DatasourceWatermark]) -> None:
         if print_watermarks:
-            _format_watermarks(watermarks)
+            show_watermarks(watermarks)
 
     result = refresh_stale_assets(
         exec,

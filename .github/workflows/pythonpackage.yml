@@ -74,6 +74,7 @@ jobs:
           pip install rich
           pytest tests/ --cov=./ --cov-append -m "not adventureworks_execution" -k "test_trilogy"
           pytest tests/ --cov=./ --cov-append -m "not adventureworks_execution" -k "test_display"
+          pytest tests/ --cov=./ --cov-append -m "not adventureworks_execution" -k "test_refresh"
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
