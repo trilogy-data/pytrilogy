@@ -838,11 +838,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def concept_derivation(self, meta: Meta, args) -> ConceptDerivationStatement:
-        #TODO - clean up duplication in this function
-        if len(args) > 3:
-            metadata = args[3]
-        else:
-            metadata = None
+        metadata = args[3] if len(args) > 3 else None
         purpose = args[0]
         raw_name = args[1]
         # abc.def.property pattern
@@ -869,6 +865,7 @@ class ParseToObjects(Transformer):
         while isinstance(source_value, Parenthetical):
             source_value = source_value.content
 
+        concept: Concept
         if isinstance(
             source_value,
             (
@@ -887,7 +884,6 @@ class ParseToObjects(Transformer):
                 environment=self.environment,
                 metadata=metadata,
             )
-
             # let constant purposes exist to support round-tripping
             # as a build concept may end up with a constant based on constant inlining happening recursively
             if purpose == Purpose.KEY and concept.purpose != Purpose.KEY:
@@ -903,14 +899,6 @@ class ParseToObjects(Transformer):
                 )
             if purpose == Purpose.PROPERTY and keys:
                 concept.keys = set(keys)
-            if concept.metadata:
-                concept.metadata.line_number = meta.line
-                concept.metadata.column = meta.column
-                concept.metadata.end_line = meta.end_line
-                concept.metadata.end_column = meta.end_column
-            self.environment.add_concept(concept, meta=meta)
-            return ConceptDerivationStatement(concept=concept)
-
         elif isinstance(source_value, CONSTANT_TYPES):
             concept = constant_to_concept(
                 source_value,
@@ -918,13 +906,6 @@ class ParseToObjects(Transformer):
                 namespace=namespace,
                 metadata=metadata,
             )
-            if concept.metadata:
-                concept.metadata.line_number = meta.line
-                concept.metadata.column = meta.column
-                concept.metadata.end_line = meta.end_line
-                concept.metadata.end_column = meta.end_column
-            self.environment.add_concept(concept, meta=meta)
-            return ConceptDerivationStatement(concept=concept)
         elif isinstance(source_value, ConceptRef):
             concept = arbitrary_to_concept(
                 self.function_factory.create_function(
@@ -935,16 +916,17 @@ class ParseToObjects(Transformer):
                 environment=self.environment,
                 metadata=metadata,
             )
-            if concept.metadata:
-                concept.metadata.line_number = meta.line
-                concept.metadata.column = meta.column
-                concept.metadata.end_line = meta.end_line
-                concept.metadata.end_column = meta.end_column
-            self.environment.add_concept(concept, meta=meta)
-            return ConceptDerivationStatement(concept=concept)
-        raise SyntaxError(
-            f"Received invalid type {type(args[2])} {args[2]} as input to concept derivation: `{self.text_lookup[self.token_address][meta.start_pos:meta.end_pos]}`"
-        )
+        else:
+            raise SyntaxError(
+                f"Received invalid type {type(args[2])} {args[2]} as input to concept derivation: `{self.text_lookup[self.token_address][meta.start_pos:meta.end_pos]}`"
+            )
+        if concept.metadata:
+            concept.metadata.line_number = meta.line
+            concept.metadata.column = meta.column
+            concept.metadata.end_line = meta.end_line
+            concept.metadata.end_column = meta.end_column
+        self.environment.add_concept(concept, meta=meta)
+        return ConceptDerivationStatement(concept=concept)
 
     @v_args(meta=True)
     def rowset_derivation_statement(

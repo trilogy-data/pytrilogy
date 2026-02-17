@@ -59,7 +59,6 @@ select
     assert results[0].a == 4, results[0].a
 
 
-
 def test_flattening():
     executor = Dialects.DUCK_DB.default_executor()
     executor.parse_text(
@@ -88,6 +87,7 @@ order by flat_a asc;
 
     assert len(results) == 2
     assert results[0].flat_a == 1, results[0].flat_a
+
 
 def test_array_struct_lambda():
     executor = Dialects.DUCK_DB.default_executor()
