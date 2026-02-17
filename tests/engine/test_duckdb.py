@@ -2159,19 +2159,20 @@ def test_geo_functions_e2e():
 
     test = """
 key id int;
-key shape geography;
+key raw_wkt string;
 
 datasource geo_shape (
     id: id,
-    shape: shape
+    raw_wkt: raw_wkt
 )
 grain (id)
 query '''
 select
     1 as id,
-    ST_GeomFromText('POLYGON((0 0, 4 0, 4 4, 0 4, 0 0))') as shape
+    'POLYGON((0 0, 4 0, 4 4, 0 4, 0 0))' as raw_wkt
 ''';
 
+auto shape <- geo_from_text(raw_wkt);
 auto centroid <- geo_centroid(shape);
 auto centroid_4326 <- geo_transform(centroid, 4326, 4326);
 auto center_x <- geo_x(centroid_4326);

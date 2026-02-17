@@ -160,6 +160,7 @@ FUNCTION_MAP = {
     FunctionType.REGEXP_CONTAINS: lambda x, types: f"REGEXP_MATCHES({x[0]},{x[1]})",
     FunctionType.REGEXP_EXTRACT: lambda x, types: generate_regex_extract(x),
     FunctionType.SIMPLE_CASE: lambda x, types: generate_simple_case(x),
+    FunctionType.GEO_FROM_TEXT: lambda x, types: f"ST_GeomFromText({x[0]})",
     FunctionType.GEO_POINT: lambda x, types: f"ST_Point({x[0]}, {x[1]})",
     FunctionType.GEO_DISTANCE: lambda x, types: f"ST_Distance({x[0]}, {x[1]})",
     FunctionType.GEO_X: lambda x, types: f"ST_X({x[0]})",

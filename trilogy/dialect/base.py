@@ -342,6 +342,7 @@ FUNCTION_MAP = {
     FunctionType.PARSE_TIME: lambda x, types: f"strptime({x[0]}, {x[1]})",
     FunctionType.QUARTER: lambda x, types: f"quarter({x[0]})",
     FunctionType.YEAR: lambda x, types: f"year({x[0]})",
+    FunctionType.GEO_FROM_TEXT: lambda x, types: f"ST_GeomFromText({x[0]})",
     FunctionType.GEO_POINT: lambda x, types: f"ST_Point({x[0]},{x[1]})",
     FunctionType.GEO_DISTANCE: lambda x, types: f"ST_Distance({x[0]},{x[1]})",
     FunctionType.GEO_X: lambda x, types: f"ST_X({x[0]})",

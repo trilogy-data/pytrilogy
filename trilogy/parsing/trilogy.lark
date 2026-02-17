@@ -524,6 +524,8 @@
     fdate_spine: _DATE_SPINE expr "," expr  ")"
 
     // geo functions
+    _GEO_FROM_TEXT.1: "geo_from_text("i
+    fgeo_from_text: _GEO_FROM_TEXT expr ")"
     _GEO_POINT.1: "geo_point("i
     fgeo_point: _GEO_POINT expr "," expr ")"
     _GEO_DISTANCE.1: "geo_distance("i
@@ -536,7 +538,7 @@
     fgeo_centroid: _GEO_CENTROID expr ")"
     _GEO_TRANSFORM.1: "geo_transform("i
     fgeo_transform: _GEO_TRANSFORM expr "," expr "," expr ")"
-    _geo_functions: fgeo_point | fgeo_distance | fgeo_x | fgeo_y | fgeo_centroid | fgeo_transform
+    _geo_functions: fgeo_from_text | fgeo_point | fgeo_distance | fgeo_x | fgeo_y | fgeo_centroid | fgeo_transform
     
     _date_functions: fdate | fdate_add | fdate_sub | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday |fday_name | fday_of_week | fweek | fmonth | fmonth_name | fformat_time | fparse_time | fquarter | fyear | fdate_part | fdate_trunc | fdate_spine
     

@@ -2847,6 +2847,12 @@ class ParseToObjects(Transformer):
         )
 
     @v_args(meta=True)
+    def fgeo_from_text(self, meta, args) -> Function:
+        return self.function_factory.create_function(
+            args, FunctionType.GEO_FROM_TEXT, meta
+        )
+
+    @v_args(meta=True)
     def fgeo_point(self, meta, args) -> Function:
         return self.function_factory.create_function(args, FunctionType.GEO_POINT, meta)
 
