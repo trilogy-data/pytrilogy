@@ -49,7 +49,12 @@ def analyze(show: bool = False):
         if "query_id" not in x:
             continue
         q_id = x["query_id"]
-        time_info = timing.get(f"query_{q_id:02d}")
+        if isinstance(q_id, int):
+            timing_key = f"query_{q_id:02d}"
+        else:
+            timing_key = f"query_{q_id}"
+
+        time_info = timing.get(timing_key)
         if not time_info:
             continue
         final_results.append({**x, **time_info})

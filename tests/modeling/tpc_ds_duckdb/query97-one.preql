@@ -1,0 +1,27 @@
+# Generate counts of promotional sales and total sales, and their ratio from the web channel for a particular item
+#category and month to customers in a given time zone
+
+import store_sales as store_sales;
+import catalog_sales as catalog_sales;
+import customer as customer;
+import item as item;
+
+merge store_sales.customer.id into ~customer.id;
+merge store_sales.item.id into ~item.id;
+merge catalog_sales.bill_customer.id into ~customer.id;
+merge catalog_sales.item.id into ~item.id;
+
+
+auto customer_item <- customer.id::string || '-' || item.id::string;
+
+auto catalog_sales <- customer_item ? catalog_sales.date.month_seq between 1200 and 1200 + 11;
+auto store_sales <- customer_item ? store_sales.date.month_seq between 1200 and 1200 + 11;
+
+
+SELECT
+    sum(CASE WHEN store_sales is not null and catalog_sales is null then 1 else 0 end) as store_sale_count,
+    sum(CASE WHEN store_sales is null and catalog_sales is not null then 1 else 0 end) as catalog_sale_count,
+    sum(CASE WHEN store_sales is not null and catalog_sales is not null then 1 else 0 end) as both_sale_count
+;
+
+

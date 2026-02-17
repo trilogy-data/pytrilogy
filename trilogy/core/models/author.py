@@ -1864,7 +1864,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
                 if not _matches_valid_type(arg.datatype, valid_inputs[idx]):
                     raise TypeError(
                         f"Invalid argument type '{arg.datatype}' passed into {operator_name} function in position {idx+1}"
-                        f" from concept: {arg.name}. Valid: {args_to_pretty(valid_inputs[idx])}."
+                        f" from concept: {arg.address}. Valid: {args_to_pretty(valid_inputs[idx])}."
                     )
             if isinstance(arg, Function):
                 if arg.output_datatype != DataType.UNKNOWN and not _matches_valid_type(

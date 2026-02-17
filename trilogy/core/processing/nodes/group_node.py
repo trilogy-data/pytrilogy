@@ -125,6 +125,20 @@ class GroupNode(StrategyNode):
         nullable_concepts = [
             x for x in self.output_concepts if x.address in nullable_addresses
         ]
+        # Merge partial concepts from parent resolved sources
+        # so partial keys from upstream datasources propagate through grouping.
+        output_addresses = {c.address for c in self.output_concepts}
+        inherited_partials = unique(
+            self.partial_concepts
+            + [
+                c
+                for ps in parent_sources
+                if isinstance(ps, QueryDatasource)
+                for c in ps.partial_concepts
+                if c.address in output_addresses
+            ],
+            "address",
+        )
         base = QueryDatasource(
             input_concepts=self.input_concepts,
             output_concepts=self.output_concepts,
@@ -133,7 +147,7 @@ class GroupNode(StrategyNode):
             source_map=source_map,
             joins=[],
             grain=target_grain,
-            partial_concepts=self.partial_concepts,
+            partial_concepts=inherited_partials,
             nullable_concepts=nullable_concepts,
             hidden_concepts=self.hidden_concepts,
             condition=self.conditions,

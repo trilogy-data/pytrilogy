@@ -1,268 +1,199 @@
-# """
-# Test join order resolution with partial keys.
+"""
+Test join order resolution with partial keys.
 
-# When two fact tables each have partial keys that merge into shared dimension keys,
-# the join generation should:
-# 1. FULL OUTER JOIN all partial-keyed fact tables together first
-# 2. Then join dimensions using COALESCE on the combined partial keys
+When two fact tables each have partial keys that merge into shared dimension keys,
+the join generation should preserve all rows from all fact tables - no INNER JOINs
+that would discard non-matching rows from partial sources.
+"""
 
-# This ensures we get the complete set from both fact tables before joining to dimensions.
-# """
+from trilogy import Dialects
+from trilogy.core.models.environment import Environment
 
-# from trilogy import Dialects
-# from trilogy.core.models.environment import Environment
+SETUP = """
+key customer_id int;
+property customer_id.customer_name string;
 
+datasource customers (
+    id:customer_id,
+    name:customer_name
+)
+grain (customer_id)
+query '''
+SELECT 1 as id, 'Alice' as name
+UNION ALL SELECT 2 as id, 'Bob' as name
+UNION ALL SELECT 3 as id, 'Charlie' as name
+''';
 
-# def test_double_partial_key_join_order():
-#     """
-#     Test case: two fact tables (fact1, fact2) with two shared dimension keys
-#     (customer_id, item_id) joined as partial keys, plus two dimensions (customer, item).
+key fact1_id int;
+property fact1_id.fact1_customer_id int;
+property fact1_id.fact1_value int;
 
-#     The expected join pattern should be:
-#     - fact1 FULL OUTER JOIN fact2 ON customer_id AND item_id
-#     - Then join customer dimension on COALESCE(fact1.customer_id, fact2.customer_id)
-#     - Then join item dimension on COALESCE(fact1.item_id, fact2.item_id)
+key fact2_id int;
+property fact2_id.fact2_customer_id int;
+property fact2_id.fact2_value int;
 
-#     The current (broken) behavior may be:
-#     - Starting from one fact table and joining dimensions before properly
-#       combining the fact tables
-#     """
-#     env = Environment()
+datasource fact1 (
+    id:fact1_id,
+    customer_id:fact1_customer_id,
+    value:fact1_value
+)
+grain (fact1_id)
+query '''
+SELECT 1 as id, 1 as customer_id, 10 as value
+UNION ALL SELECT 2 as id, 1 as customer_id, 20 as value
+UNION ALL SELECT 3 as id, 2 as customer_id, 30 as value
+''';
 
-#     env.parse(
-#         """
-# # Dimensions
-# key customer_id int;
-# property customer_id.customer_name string;
+datasource fact2 (
+    id:fact2_id,
+    customer_id:fact2_customer_id,
+    value:fact2_value
+)
+grain (fact2_id)
+query '''
+SELECT 1 as id, 2 as customer_id, 15 as value
+UNION ALL SELECT 2 as id, 3 as customer_id, 25 as value
+UNION ALL SELECT 3 as id, 3 as customer_id, 35 as value
+''';
 
-# key item_id int;
-# property item_id.item_name string;
-
-# datasource customers (
-#     id:customer_id,
-#     name:customer_name
-# )
-# grain (customer_id)
-# query '''
-# SELECT 1 as id, 'Alice' as name
-# UNION ALL SELECT 2 as id, 'Bob' as name
-# UNION ALL SELECT 3 as id, 'Charlie' as name
-# ''';
-
-# datasource items (
-#     id:item_id,
-#     name:item_name
-# )
-# grain (item_id)
-# query '''
-# SELECT 100 as id, 'Widget' as name
-# UNION ALL SELECT 200 as id, 'Gadget' as name
-# UNION ALL SELECT 300 as id, 'Gizmo' as name
-# ''';
-
-# # Fact tables with partial keys to dimensions
-# key fact1_id int;
-# property fact1_id.fact1_customer_id int;
-# property fact1_id.fact1_item_id int;
-# property fact1_id.fact1_value int;
-
-# key fact2_id int;
-# property fact2_id.fact2_customer_id int;
-# property fact2_id.fact2_item_id int;
-# property fact2_id.fact2_value int;
-
-# datasource fact1 (
-#     id:fact1_id,
-#     customer_id:fact1_customer_id,
-#     item_id:fact1_item_id,
-#     value:fact1_value
-# )
-# grain (fact1_id)
-# query '''
-# SELECT 1 as id, 1 as customer_id, 100 as item_id, 10 as value
-# UNION ALL SELECT 2 as id, 1 as customer_id, 200 as item_id, 20 as value
-# UNION ALL SELECT 3 as id, 2 as customer_id, 100 as item_id, 30 as value
-# ''';
-
-# datasource fact2 (
-#     id:fact2_id,
-#     customer_id:fact2_customer_id,
-#     item_id:fact2_item_id,
-#     value:fact2_value
-# )
-# grain (fact2_id)
-# query '''
-# SELECT 1 as id, 2 as customer_id, 200 as item_id, 15 as value
-# UNION ALL SELECT 2 as id, 3 as customer_id, 100 as item_id, 25 as value
-# UNION ALL SELECT 3 as id, 3 as customer_id, 300 as item_id, 35 as value
-# ''';
-
-# # Merge the partial keys into shared dimension keys
-# merge fact1_customer_id into customer_id;
-# merge fact2_customer_id into customer_id;
-# merge fact1_item_id into item_id;
-# merge fact2_item_id into item_id;
-# """
-#     )
-
-#     exec = Dialects.DUCK_DB.default_executor(environment=env)
-
-#     # Query that requires both facts and both dimensions
-#     # This should require proper partial key handling
-#     test_select = """
-# SELECT
-#     customer_name,
-#     item_name,
-#     sum(fact1_value) -> total_fact1_value,
-#     sum(fact2_value) -> total_fact2_value
-# ;
-# """
-
-#     sql = exec.generate_sql(test_select)
-#     compiled_sql = sql[-1]
-
-#     # Check the generated SQL structure
-#     # The key assertions are about the join pattern
-
-#     # We should see:
-#     # 1. Both fact tables being FULL OUTER JOINed first
-#     # 2. Dimensions joined with COALESCE-based keys
-
-#     # Check for FULL JOIN between facts (they should be joined together)
-#     has_full_join = "FULL" in compiled_sql.upper()
-
-#     # Check for COALESCE usage on dimension joins
-#     # This is the key indicator that partial keys are properly handled
-#     has_coalesce = "COALESCE" in compiled_sql.upper()
-
-#     print("Generated SQL:")
-#     print(compiled_sql)
-#     print()
-#     print(f"Has FULL JOIN: {has_full_join}")
-#     print(f"Has COALESCE: {has_coalesce}")
-
-#     # The test SHOULD FAIL with current implementation because:
-#     # - Dimensions are joined without COALESCE
-#     # - We don't properly combine the partial keys from both fact tables
-
-#     # This assertion checks that dimensions are joined using COALESCE
-#     # which ensures we get the full set from both fact tables
-#     assert has_coalesce, (
-#         "Expected COALESCE in dimension joins to handle partial keys from multiple "
-#         f"fact tables. Generated SQL:\n{compiled_sql}"
-#     )
+merge fact1_customer_id into ~customer_id;
+merge fact2_customer_id into ~customer_id;
+"""
 
 
-# def test_double_partial_key_results():
-#     """
-#     Test the actual results of a partial key join scenario.
+def test_double_partial_key_join_order():
+    """Two facts with partial keys should not use INNER JOIN (would lose rows)."""
+    env = Environment()
+    env.parse(SETUP)
 
-#     This tests that we get all combinations of customer/item that appear
-#     in EITHER fact table, not just the ones that appear in one or the other.
-#     """
-#     env = Environment()
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
 
-#     env.parse(
-#         """
-# # Dimensions
-# key customer_id int;
-# property customer_id.customer_name string;
+    sql = executor.generate_sql("SELECT customer_name, fact1_value, fact2_value;")
+    compiled_sql = sql[-1]
 
-# key item_id int;
-# property item_id.item_name string;
+    print("Generated SQL:")
+    print(compiled_sql)
 
-# datasource customers (
-#     id:customer_id,
-#     name:customer_name
-# )
-# grain (customer_id)
-# query '''
-# SELECT 1 as id, 'Alice' as name
-# UNION ALL SELECT 2 as id, 'Bob' as name
-# UNION ALL SELECT 3 as id, 'Charlie' as name
-# ''';
+    assert "INNER JOIN" not in compiled_sql, (
+        "INNER JOIN should not be used between partial-keyed sources. "
+        f"Generated SQL:\n{compiled_sql}"
+    )
 
-# datasource items (
-#     id:item_id,
-#     name:item_name
-# )
-# grain (item_id)
-# query '''
-# SELECT 100 as id, 'Widget' as name
-# UNION ALL SELECT 200 as id, 'Gadget' as name
-# UNION ALL SELECT 300 as id, 'Gizmo' as name
-# ''';
 
-# # Fact table 1: has customer 1 with items 100, 200
-# key fact1_id int;
-# property fact1_id.fact1_customer_id int;
-# property fact1_id.fact1_item_id int;
+def test_double_partial_key_results():
+    """Test actual results with partial key joins."""
+    env = Environment()
+    env.parse(SETUP)
 
-# datasource fact1 (
-#     id:fact1_id,
-#     customer_id:fact1_customer_id,
-#     item_id:fact1_item_id
-# )
-# grain (fact1_id)
-# query '''
-# SELECT 1 as id, 1 as customer_id, 100 as item_id
-# UNION ALL SELECT 2 as id, 1 as customer_id, 200 as item_id
-# ''';
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
 
-# # Fact table 2: has customer 3 with item 300
-# key fact2_id int;
-# property fact2_id.fact2_customer_id int;
-# property fact2_id.fact2_item_id int;
+    results = list(
+        executor.execute_text(
+            "SELECT customer_name, count(fact1_id) -> fact1_count, count(fact2_id) -> fact2_count;"
+        )[0].fetchall()
+    )
 
-# datasource fact2 (
-#     id:fact2_id,
-#     customer_id:fact2_customer_id,
-#     item_id:fact2_item_id
-# )
-# grain (fact2_id)
-# query '''
-# SELECT 1 as id, 3 as customer_id, 300 as item_id
-# ''';
+    customer_names = set(r[0] for r in results)
+    print(f"Results: {results}")
+    print(f"Customer names: {customer_names}")
 
-# # Merge the partial keys into shared dimension keys
-# merge fact1_customer_id into customer_id;
-# merge fact2_customer_id into customer_id;
-# merge fact1_item_id into item_id;
-# merge fact2_item_id into item_id;
-# """
-#     )
+    # Alice (customer_id=1) is only in fact1, Charlie (customer_id=3) is only in fact2,
+    # Bob (customer_id=2) is in both. All three should appear.
+    assert customer_names == {
+        "Alice",
+        "Bob",
+        "Charlie",
+    }, f"Expected customers from both fact tables. Got: {customer_names}"
 
-#     exec = Dialects.DUCK_DB.default_executor(environment=env)
 
-#     # Query customer names that appear in either fact table
-#     test_select = """
-# SELECT
-#     customer_name,
-#     count(fact1_id) -> fact1_count,
-#     count(fact2_id) -> fact2_count
-# ;
-# """
+MULTI_KEY_SETUP = """
+key customer_id int;
+property customer_id.customer_name string;
 
-#     sql = exec.generate_sql(test_select)
-#     compiled_sql = sql[-1]
+key product_id int;
+property product_id.product_name string;
 
-#     print("Generated SQL:")
-#     print(compiled_sql)
+datasource customers (id:customer_id, name:customer_name)
+grain (customer_id)
+query '''
+SELECT 1 as id, 'Alice' as name
+UNION ALL SELECT 2 as id, 'Bob' as name
+UNION ALL SELECT 3 as id, 'Charlie' as name
+''';
 
-#     results = list(exec.execute_text(test_select)[0].fetchall())
+datasource products (id:product_id, name:product_name)
+grain (product_id)
+query '''
+SELECT 10 as id, 'Widget' as name
+UNION ALL SELECT 20 as id, 'Gadget' as name
+UNION ALL SELECT 30 as id, 'Doohickey' as name
+''';
 
-#     # We should get customer names for all customers that appear in either fact table
-#     # fact1 has customer 1 (Alice)
-#     # fact2 has customer 3 (Charlie)
-#     # So we should get both Alice and Charlie
+key fact1_id int;
+property fact1_id.f1_cust int;
+property fact1_id.f1_prod int;
+property fact1_id.f1_value int;
 
-#     customer_names = set(r.customer_name for r in results)
-#     print(f"Results: {results}")
-#     print(f"Customer names: {customer_names}")
+key fact2_id int;
+property fact2_id.f2_cust int;
+property fact2_id.f2_prod int;
+property fact2_id.f2_value int;
 
-#     # This assertion should FAIL if partial keys aren't properly handled
-#     # because one of the fact tables' customers might be excluded
-#     assert customer_names == {"Alice", "Charlie"}, (
-#         f"Expected customers from both fact tables. Got: {customer_names}. "
-#         f"SQL:\n{compiled_sql}"
-#     )
+datasource fact1 (id:fact1_id, cid:f1_cust, pid:f1_prod, val:f1_value)
+grain (fact1_id)
+query '''
+SELECT 1 as id, 1 as cid, 10 as pid, 100 as val
+UNION ALL SELECT 2 as id, 2 as cid, 20 as pid, 200 as val
+''';
+
+datasource fact2 (id:fact2_id, cid:f2_cust, pid:f2_prod, val:f2_value)
+grain (fact2_id)
+query '''
+SELECT 1 as id, 2 as cid, 20 as pid, 150 as val
+UNION ALL SELECT 2 as id, 3 as cid, 30 as pid, 250 as val
+''';
+
+merge f1_cust into ~customer_id;
+merge f2_cust into ~customer_id;
+merge f1_prod into ~product_id;
+merge f2_prod into ~product_id;
+"""
+
+
+def test_multi_key_partial_join_order():
+    """Two facts with two partial keys each should not use INNER JOIN."""
+    env = Environment()
+    env.parse(MULTI_KEY_SETUP)
+
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = executor.generate_sql(
+        "SELECT customer_name, product_name, f1_value, f2_value;"
+    )
+    compiled_sql = sql[-1]
+
+    print("Generated SQL:")
+    print(compiled_sql)
+
+    assert (
+        "INNER JOIN" not in compiled_sql
+    ), f"INNER JOIN found in multi-key partial query:\n{compiled_sql}"
+
+
+def test_multi_key_partial_results():
+    """Customers from both facts should appear via the shared customer key."""
+    env = Environment()
+    env.parse(MULTI_KEY_SETUP)
+
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    results = list(
+        executor.execute_text("SELECT customer_name, f1_value, f2_value;")[0].fetchall()
+    )
+
+    print(f"Results: {results}")
+    customer_names = set(r[0] for r in results if r[0] is not None)
+
+    # fact1 has customers 1,2; fact2 has customers 2,3
+    # All should appear via FULL JOIN + COALESCE on customer_id
+    assert "Alice" in customer_names, f"Alice missing from {customer_names}"
+    assert "Bob" in customer_names, f"Bob missing from {customer_names}"
+    assert "Charlie" in customer_names, f"Charlie missing from {customer_names}"
