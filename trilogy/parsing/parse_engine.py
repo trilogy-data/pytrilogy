@@ -838,7 +838,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def concept_derivation(self, meta: Meta, args) -> ConceptDerivationStatement:
-
+        #TODO - clean up duplication in this function
         if len(args) > 3:
             metadata = args[3]
         else:
@@ -925,7 +925,23 @@ class ParseToObjects(Transformer):
                 concept.metadata.end_column = meta.end_column
             self.environment.add_concept(concept, meta=meta)
             return ConceptDerivationStatement(concept=concept)
-
+        elif isinstance(source_value, ConceptRef):
+            concept = arbitrary_to_concept(
+                self.function_factory.create_function(
+                    [source_value], FunctionType.ALIAS, meta=meta
+                ),
+                name=name,
+                namespace=namespace,
+                environment=self.environment,
+                metadata=metadata,
+            )
+            if concept.metadata:
+                concept.metadata.line_number = meta.line
+                concept.metadata.column = meta.column
+                concept.metadata.end_line = meta.end_line
+                concept.metadata.end_column = meta.end_column
+            self.environment.add_concept(concept, meta=meta)
+            return ConceptDerivationStatement(concept=concept)
         raise SyntaxError(
             f"Received invalid type {type(args[2])} {args[2]} as input to concept derivation: `{self.text_lookup[self.token_address][meta.start_pos:meta.end_pos]}`"
         )
