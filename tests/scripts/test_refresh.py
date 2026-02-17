@@ -9,6 +9,7 @@ from trilogy.execution.state.state_store import (
     StaleAsset,
     refresh_stale_assets,
 )
+from trilogy.scripts.dependency import ScriptNode
 from trilogy.scripts.display import (
     is_rich_available,
     set_rich_mode,
@@ -16,7 +17,8 @@ from trilogy.scripts.display import (
     show_stale_assets,
     show_watermarks,
 )
-from trilogy.scripts.refresh import _prompt_approval
+from trilogy.scripts.refresh import _prompt_approval, execute_script_for_refresh
+from trilogy.scripts.single_execution import execute_refresh_mode
 
 requires_rich = pytest.mark.skipif(
     not is_rich_available(), reason="rich is not installed"
@@ -194,7 +196,8 @@ def test_prompt_approval_declined(capsys):
 def test_refresh_stale_assets_on_approval_declined():
     """on_approval returning False should skip refresh."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text("""
+    executor.execute_text(
+        """
         key item_id int;
         property item_id.name string;
         property item_id.updated_at datetime;
@@ -220,7 +223,8 @@ def test_refresh_stale_assets_on_approval_declined():
         freshness by updated_at;
 
         CREATE IF NOT EXISTS DATASOURCE target_items;
-        """)
+        """
+    )
 
     result = refresh_stale_assets(
         executor,
@@ -234,7 +238,8 @@ def test_refresh_stale_assets_on_approval_declined():
 def test_refresh_stale_assets_on_approval_accepted():
     """on_approval returning True should proceed with refresh."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text("""
+    executor.execute_text(
+        """
         key item_id int;
         property item_id.name string;
         property item_id.updated_at datetime;
@@ -260,7 +265,8 @@ def test_refresh_stale_assets_on_approval_accepted():
         freshness by updated_at;
 
         CREATE IF NOT EXISTS DATASOURCE target_items;
-        """)
+        """
+    )
 
     result = refresh_stale_assets(
         executor,
@@ -274,7 +280,8 @@ def test_refresh_stale_assets_on_approval_accepted():
 def test_refresh_stale_assets_forced():
     """Test that force_sources forces rebuild regardless of staleness."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text("""
+    executor.execute_text(
+        """
         key item_id int;
         property item_id.name string;
         property item_id.updated_at datetime;
@@ -305,7 +312,8 @@ def test_refresh_stale_assets_forced():
         INSERT INTO target_items_table
         SELECT 1 as item_id, 'Widget' as name, TIMESTAMP '2024-01-10 12:00:00' as updated_at
         ''');
-        """)
+        """
+    )
 
     refreshed_assets: list[tuple[str, str]] = []
 
@@ -327,3 +335,90 @@ def test_refresh_stale_assets_forced():
     assert len(refreshed_assets) == 1
     assert refreshed_assets[0][0] == "target_items"
     assert refreshed_assets[0][1] == "forced rebuild"
+
+
+STALE_SCRIPT = """\
+key item_id int;
+property item_id.name string;
+property item_id.updated_at datetime;
+
+root datasource source_items (
+    item_id: item_id,
+    name: name,
+    updated_at: updated_at
+)
+grain (item_id)
+query '''
+SELECT 1 as item_id, 'Widget' as name, TIMESTAMP '2024-01-10 12:00:00' as updated_at
+'''
+freshness by updated_at;
+
+datasource target_items (
+    item_id: item_id,
+    name: name,
+    updated_at: updated_at
+)
+grain (item_id)
+address target_items_table
+freshness by updated_at;
+
+CREATE IF NOT EXISTS DATASOURCE target_items;
+"""
+
+
+def test_execute_script_for_refresh_with_watermarks(tmp_path, capsys):
+    """Cover on_watermarks callback and refreshed success path."""
+    script = tmp_path / "test.preql"
+    script.write_text(STALE_SCRIPT)
+    executor = Dialects.DUCK_DB.default_executor()
+    node = ScriptNode(path=script)
+
+    with set_rich_mode(False):
+        stats = execute_script_for_refresh(
+            executor,
+            node,
+            print_watermarks=True,
+            force_sources=frozenset({"target_items"}),
+        )
+
+    assert stats.update_count == 1
+    captured = capsys.readouterr()
+    assert "Watermarks:" in captured.out
+    assert "Refreshed 1 asset(s)" in captured.out
+
+
+def test_execute_script_for_refresh_interactive_declined(tmp_path, capsys):
+    """Cover interactive=True with user declining approval."""
+    script = tmp_path / "test.preql"
+    script.write_text(STALE_SCRIPT)
+    executor = Dialects.DUCK_DB.default_executor()
+    node = ScriptNode(path=script)
+
+    with set_rich_mode(False), patch("click.confirm", return_value=False):
+        stats = execute_script_for_refresh(
+            executor,
+            node,
+            force_sources=frozenset({"target_items"}),
+            interactive=True,
+        )
+
+    assert stats.update_count == 0
+    captured = capsys.readouterr()
+    assert "Refresh skipped by user" in captured.out
+
+
+def test_execute_refresh_mode_with_watermarks(capsys):
+    """Cover show_watermarks call in single_execution.execute_refresh_mode."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(STALE_SCRIPT)
+
+    with set_rich_mode(False):
+        result = execute_refresh_mode(
+            executor,
+            force_sources={"target_items"},
+            print_watermarks=True,
+        )
+
+    assert result.refreshed_count == 1
+    captured = capsys.readouterr()
+    assert "Watermarks:" in captured.out
