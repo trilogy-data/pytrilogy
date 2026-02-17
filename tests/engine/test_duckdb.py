@@ -2173,7 +2173,7 @@ select
 ''';
 
 auto centroid <- geo_centroid(shape);
-auto centroid_4326 <- geo_transform(centroid, 4326);
+auto centroid_4326 <- geo_transform(centroid, 4326, 4326);
 auto center_x <- geo_x(centroid_4326);
 auto center_y <- geo_y(centroid_4326);
 

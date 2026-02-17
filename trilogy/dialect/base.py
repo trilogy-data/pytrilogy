@@ -347,7 +347,7 @@ FUNCTION_MAP = {
     FunctionType.GEO_X: lambda x, types: f"ST_X({x[0]})",
     FunctionType.GEO_Y: lambda x, types: f"ST_Y({x[0]})",
     FunctionType.GEO_CENTROID: lambda x, types: f"ST_Centroid({x[0]})",
-    FunctionType.GEO_TRANSFORM: lambda x, types: f"ST_Transform({x[0]}, {x[1]})",
+    FunctionType.GEO_TRANSFORM: lambda x, types: f"ST_Transform({x[0]}, {x[1]}, {x[2]})",
     # string types
     FunctionType.CONCAT: lambda x, types: f"concat({','.join(x)})",
     # constant types

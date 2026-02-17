@@ -233,7 +233,7 @@ def test_bigquery_geo_transform_4326(test_environment):
     select ST_GEOGPOINT(1, 2) as point
     ''';
 
-    auto transformed <- geo_transform(point, 4326);
+    auto transformed <- geo_transform(point, 4326, 4326);
     select transformed;
     """
     _, parsed = parse(declarations, environment=test_environment)
@@ -253,7 +253,7 @@ def test_bigquery_geo_transform_non_4326_errors(test_environment):
     select ST_GEOGPOINT(1, 2) as point
     ''';
 
-    auto transformed <- geo_transform(point, 3857);
+    auto transformed <- geo_transform(point, 3857, 4326);
     select transformed;
     """
     _, parsed = parse(declarations, environment=test_environment)

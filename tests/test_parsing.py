@@ -910,13 +910,15 @@ def test_params():
 def test_geography_type():
     env, parsed = parse_text(
         """
-key geo geography;
+key id int;
+property id.geo geography;
 
 datasource geos (
-geo: geo)
-grain (geo)
+id,
+geo)
+grain (id)
 query '''(
-select 'POINT(1 1)'::geography as geo
+select 1 as id, 'POINT(1 1)'::geography as geo
 )''';
 """
     )

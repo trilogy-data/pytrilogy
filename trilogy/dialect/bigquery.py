@@ -34,10 +34,12 @@ def handle_length(args, types: list[DataType] | None = None) -> str:
 
 
 def render_geo_transform(args: list[str]) -> str:
-    srid = str(args[1]).strip().strip("'\"")
-    if srid != "4326":
+    source_srid = str(args[1]).strip().strip("'\"")
+    target_srid = str(args[2]).strip().strip("'\"")
+    if source_srid != "4326" or target_srid != "4326":
         raise ValueError(
-            f"BigQuery only supports geo_transform(..., 4326); got {args[1]}"
+            "BigQuery only supports geo_transform(..., 4326, 4326); "
+            f"got ({args[1]}, {args[2]})"
         )
     return f"{args[0]}"
 

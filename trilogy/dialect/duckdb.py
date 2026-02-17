@@ -111,7 +111,7 @@ def generate_simple_case(args):
 
 
 def render_geo_transform(args: list[str]) -> str:
-    return f"ST_Transform({args[0]}, CONCAT('EPSG:', CAST({args[1]} AS VARCHAR)))"
+    return f"ST_Transform({args[0]}, CONCAT('EPSG:', CAST({args[1]} AS VARCHAR)), CONCAT('EPSG:', CAST({args[2]} AS VARCHAR)))"
 
 
 FUNCTION_MAP = {

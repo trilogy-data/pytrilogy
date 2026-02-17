@@ -535,7 +535,7 @@
     _GEO_CENTROID.1: "geo_centroid("i
     fgeo_centroid: _GEO_CENTROID expr ")"
     _GEO_TRANSFORM.1: "geo_transform("i
-    fgeo_transform: _GEO_TRANSFORM expr "," expr ")"
+    fgeo_transform: _GEO_TRANSFORM expr "," expr "," expr ")"
     _geo_functions: fgeo_point | fgeo_distance | fgeo_x | fgeo_y | fgeo_centroid | fgeo_transform
     
     _date_functions: fdate | fdate_add | fdate_sub | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday |fday_name | fday_of_week | fweek | fmonth | fmonth_name | fformat_time | fparse_time | fquarter | fyear | fdate_part | fdate_trunc | fdate_spine

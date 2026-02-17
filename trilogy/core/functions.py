@@ -1084,10 +1084,11 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         valid_inputs=[
             {DataType.GEOGRAPHY},
             {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER, DataType.NUMERIC},
+            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER, DataType.NUMERIC},
         ],
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.GEOGRAPHY,
-        arg_count=2,
+        arg_count=3,
     ),
 }
 
