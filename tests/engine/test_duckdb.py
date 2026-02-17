@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import networkx as nx
+import pytest
 from pytest import mark, raises
 
 from trilogy import Dialects
@@ -2146,6 +2147,45 @@ having value = 2;
     assert len(results) == 1
     for row in results:
         assert row.ran is False or row.check_type == "logical"
+
+
+def test_geo_functions_e2e():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    try:
+        default_duckdb_engine.execute_raw_sql("INSTALL spatial;")
+        default_duckdb_engine.execute_raw_sql("LOAD spatial;")
+    except Exception as exc:
+        pytest.skip(f"DuckDB spatial extension unavailable: {exc}")
+
+    test = """
+key id int;
+key shape geography;
+
+datasource geo_shape (
+    id: id,
+    shape: shape
+)
+grain (id)
+query '''
+select
+    1 as id,
+    ST_GeomFromText('POLYGON((0 0, 4 0, 4 4, 0 4, 0 0))') as shape
+''';
+
+auto centroid <- geo_centroid(shape);
+auto centroid_4326 <- geo_transform(centroid, 4326);
+auto center_x <- geo_x(centroid_4326);
+auto center_y <- geo_y(centroid_4326);
+
+select center_x, center_y;
+"""
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+
+    assert len(results) == 1
+    assert results[0].center_x is not None
+    assert results[0].center_y is not None
+    assert round(results[0].center_x, 6) == 2.0
+    assert round(results[0].center_y, 6) == 2.0
 
 
 def test_show_validate_generation():

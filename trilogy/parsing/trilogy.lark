@@ -522,10 +522,25 @@
     fdate_diff: _DATE_DIFF expr "," expr "," DATE_PART ")"
     _DATE_SPINE.1: "date_spine("i
     fdate_spine: _DATE_SPINE expr "," expr  ")"
+
+    // geo functions
+    _GEO_POINT.1: "geo_point("i
+    fgeo_point: _GEO_POINT expr "," expr ")"
+    _GEO_DISTANCE.1: "geo_distance("i
+    fgeo_distance: _GEO_DISTANCE expr "," expr ")"
+    _GEO_X.1: "geo_x("i
+    fgeo_x: _GEO_X expr ")"
+    _GEO_Y.1: "geo_y("i
+    fgeo_y: _GEO_Y expr ")"
+    _GEO_CENTROID.1: "geo_centroid("i
+    fgeo_centroid: _GEO_CENTROID expr ")"
+    _GEO_TRANSFORM.1: "geo_transform("i
+    fgeo_transform: _GEO_TRANSFORM expr "," expr ")"
+    _geo_functions: fgeo_point | fgeo_distance | fgeo_x | fgeo_y | fgeo_centroid | fgeo_transform
     
     _date_functions: fdate | fdate_add | fdate_sub | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday |fday_name | fday_of_week | fweek | fmonth | fmonth_name | fformat_time | fparse_time | fquarter | fyear | fdate_part | fdate_trunc | fdate_spine
     
-    _static_functions:  _string_functions | _math_functions | _array_functions | _map_functions
+    _static_functions:  _string_functions | _math_functions | _array_functions | _map_functions | _geo_functions
 
     custom_function:  "@" IDENTIFIER  "(" (expr ",")* expr ")"
 
@@ -580,7 +595,7 @@
 
     map_type: "map"i "<" (data_type | IDENTIFIER) "," (data_type | IDENTIFIER) ">"
 
-    !data_type:  ("string"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type) ("::" IDENTIFIER)?
+    !data_type:  ("string"i | "geography"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type) ("::" IDENTIFIER)?
     
     PURPOSE:  "key"i | "metric"i | "parameter"i | "param"i  | CONST
     PROPERTY: "property"i

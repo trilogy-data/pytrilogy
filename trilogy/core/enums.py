@@ -299,6 +299,10 @@ class FunctionType(Enum):
     # Geography
     GEO_POINT = "geo_point"
     GEO_DISTANCE = "geo_distance"
+    GEO_X = "geo_x"
+    GEO_Y = "geo_y"
+    GEO_CENTROID = "geo_centroid"
+    GEO_TRANSFORM = "geo_transform"
 
     # UNIX
     UNIX_TO_TIMESTAMP = "unix_to_timestamp"

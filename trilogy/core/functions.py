@@ -1062,6 +1062,33 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type=DataType.NUMERIC,
         arg_count=2,
     ),
+    FunctionType.GEO_X: FunctionConfig(
+        valid_inputs={DataType.GEOGRAPHY},
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.NUMERIC,
+        arg_count=1,
+    ),
+    FunctionType.GEO_Y: FunctionConfig(
+        valid_inputs={DataType.GEOGRAPHY},
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.NUMERIC,
+        arg_count=1,
+    ),
+    FunctionType.GEO_CENTROID: FunctionConfig(
+        valid_inputs={DataType.GEOGRAPHY},
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.GEOGRAPHY,
+        arg_count=1,
+    ),
+    FunctionType.GEO_TRANSFORM: FunctionConfig(
+        valid_inputs=[
+            {DataType.GEOGRAPHY},
+            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER, DataType.NUMERIC},
+        ],
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.GEOGRAPHY,
+        arg_count=2,
+    ),
 }
 
 EXCLUDED_FUNCTIONS = {

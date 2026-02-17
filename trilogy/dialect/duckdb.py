@@ -110,6 +110,10 @@ def generate_simple_case(args):
     return f"CASE\n\t{args[0]}\n\t" + "\n\t".join(output_args) + "\n\tEND"
 
 
+def render_geo_transform(args: list[str]) -> str:
+    return f"ST_Transform({args[0]}, CONCAT('EPSG:', CAST({args[1]} AS VARCHAR)))"
+
+
 FUNCTION_MAP = {
     FunctionType.CAST: handle_cast,
     FunctionType.COUNT: lambda args, types: f"count({args[0]})",
@@ -156,6 +160,12 @@ FUNCTION_MAP = {
     FunctionType.REGEXP_CONTAINS: lambda x, types: f"REGEXP_MATCHES({x[0]},{x[1]})",
     FunctionType.REGEXP_EXTRACT: lambda x, types: generate_regex_extract(x),
     FunctionType.SIMPLE_CASE: lambda x, types: generate_simple_case(x),
+    FunctionType.GEO_POINT: lambda x, types: f"ST_Point({x[0]}, {x[1]})",
+    FunctionType.GEO_DISTANCE: lambda x, types: f"ST_Distance({x[0]}, {x[1]})",
+    FunctionType.GEO_X: lambda x, types: f"ST_X({x[0]})",
+    FunctionType.GEO_Y: lambda x, types: f"ST_Y({x[0]})",
+    FunctionType.GEO_CENTROID: lambda x, types: f"ST_Centroid({x[0]})",
+    FunctionType.GEO_TRANSFORM: lambda x, types: render_geo_transform(x),
 }
 
 # if an aggregate function is called on a source that is at the same grain as the aggregate

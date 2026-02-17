@@ -2848,6 +2848,36 @@ class ParseToObjects(Transformer):
             args, FunctionType.DATE_SPINE, meta
         )
 
+    @v_args(meta=True)
+    def fgeo_point(self, meta, args) -> Function:
+        return self.function_factory.create_function(args, FunctionType.GEO_POINT, meta)
+
+    @v_args(meta=True)
+    def fgeo_distance(self, meta, args) -> Function:
+        return self.function_factory.create_function(
+            args, FunctionType.GEO_DISTANCE, meta
+        )
+
+    @v_args(meta=True)
+    def fgeo_x(self, meta, args) -> Function:
+        return self.function_factory.create_function(args, FunctionType.GEO_X, meta)
+
+    @v_args(meta=True)
+    def fgeo_y(self, meta, args) -> Function:
+        return self.function_factory.create_function(args, FunctionType.GEO_Y, meta)
+
+    @v_args(meta=True)
+    def fgeo_centroid(self, meta, args) -> Function:
+        return self.function_factory.create_function(
+            args, FunctionType.GEO_CENTROID, meta
+        )
+
+    @v_args(meta=True)
+    def fgeo_transform(self, meta, args) -> Function:
+        return self.function_factory.create_function(
+            args, FunctionType.GEO_TRANSFORM, meta
+        )
+
     # utility functions
     @v_args(meta=True)
     def fcast(self, meta, args) -> Function:

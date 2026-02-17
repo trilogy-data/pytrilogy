@@ -171,9 +171,10 @@ dialect = "duck_db"
 
 [engine.config]
 path = "/tmp/test.db"
+enable_spatial = true
 """,
             DuckDBConfig,
-            {"path": "/tmp/test.db"},
+            {"path": "/tmp/test.db", "enable_spatial": True},
         ),
         (
             Dialects.POSTGRES,

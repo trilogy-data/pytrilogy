@@ -221,6 +221,47 @@ def test_explicit_cast(test_environment):
         dialect.compile_statement(process_query(test_environment, select))
 
 
+def test_bigquery_geo_transform_4326(test_environment):
+    declarations = """
+    key point geography;
+
+    datasource geo_source (
+        point: point
+    )
+    grain (point)
+    query '''
+    select ST_GEOGPOINT(1, 2) as point
+    ''';
+
+    auto transformed <- geo_transform(point, 4326);
+    select transformed;
+    """
+    _, parsed = parse(declarations, environment=test_environment)
+    select: SelectStatement = parsed[-1]
+    BigqueryDialect().compile_statement(process_query(test_environment, select))
+
+
+def test_bigquery_geo_transform_non_4326_errors(test_environment):
+    declarations = """
+    key point geography;
+
+    datasource geo_source (
+        point: point
+    )
+    grain (point)
+    query '''
+    select ST_GEOGPOINT(1, 2) as point
+    ''';
+
+    auto transformed <- geo_transform(point, 3857);
+    select transformed;
+    """
+    _, parsed = parse(declarations, environment=test_environment)
+    select: SelectStatement = parsed[-1]
+    with raises(ValueError, match="only supports geo_transform"):
+        BigqueryDialect().compile_statement(process_query(test_environment, select))
+
+
 def test_literal_cast(test_environment):
     declarations = """
 select

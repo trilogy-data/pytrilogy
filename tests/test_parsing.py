@@ -905,3 +905,19 @@ def test_params():
     select count(unnest(numbers)) as cnt;
     """
         )
+
+
+def test_geography_type():
+    env, parsed = parse_text(
+        """
+key geo geography;
+
+datasource geos (
+geo: geo)
+grain (geo)
+query '''(
+select 'POINT(1 1)'::geography as geo
+)''';
+"""
+    )
+    assert env.concepts["geo"].datatype == DataType.GEOGRAPHY

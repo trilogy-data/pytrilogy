@@ -33,6 +33,15 @@ def handle_length(args, types: list[DataType] | None = None) -> str:
     return f"LENGTH({arg})"
 
 
+def render_geo_transform(args: list[str]) -> str:
+    srid = str(args[1]).strip().strip("'\"")
+    if srid != "4326":
+        raise ValueError(
+            f"BigQuery only supports geo_transform(..., 4326); got {args[1]}"
+        )
+    return f"{args[0]}"
+
+
 FUNCTION_MAP = {
     FunctionType.COUNT: lambda x, types: f"count({x[0]})",
     FunctionType.SUM: lambda x, types: f"sum({x[0]})",
@@ -68,6 +77,12 @@ FUNCTION_MAP = {
     FunctionType.ARRAY_SUM: lambda x, types: f"(select sum(x) from unnest({x[0]}) as x)",
     FunctionType.ARRAY_DISTINCT: lambda x, types: f"ARRAY(SELECT DISTINCT element FROM UNNEST({x[0]}) AS element)",
     FunctionType.ARRAY_SORT: lambda x, types: f"ARRAY(SELECT element FROM UNNEST({x[0]}) AS element ORDER BY element)",
+    FunctionType.GEO_POINT: lambda x, types: f"ST_GEOGPOINT({x[0]}, {x[1]})",
+    FunctionType.GEO_DISTANCE: lambda x, types: f"ST_DISTANCE({x[0]}, {x[1]})",
+    FunctionType.GEO_X: lambda x, types: f"ST_X({x[0]})",
+    FunctionType.GEO_Y: lambda x, types: f"ST_Y({x[0]})",
+    FunctionType.GEO_CENTROID: lambda x, types: f"ST_CENTROID({x[0]})",
+    FunctionType.GEO_TRANSFORM: lambda x, types: render_geo_transform(x),
     # aggregate
     FunctionType.BOOL_AND: lambda x, types: f"LOGICAL_AND({x[0]})",
     FunctionType.BOOL_OR: lambda x, types: f"LOGICAL_OR({x[0]})",
