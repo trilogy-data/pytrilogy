@@ -88,12 +88,14 @@ class DuckDBConfig(DialectConfig):
         path: str | None = None,
         enable_python_datasources: bool | None = None,
         enable_gcs: bool | None = None,
+        enable_spatial: bool | None = None,
         retry_config: RetryConfig | None = None,
     ):
         super().__init__(retry_config=retry_config)
         self.path = path
         self._enable_python_datasources = enable_python_datasources
         self._enable_gcs = enable_gcs
+        self._enable_spatial = enable_spatial
         self.guid = id(self)
 
     @property
@@ -103,6 +105,10 @@ class DuckDBConfig(DialectConfig):
     @property
     def enable_gcs(self) -> bool:
         return self._enable_gcs or False
+
+    @property
+    def enable_spatial(self) -> bool:
+        return self._enable_spatial or False
 
     def connection_string(self) -> str:
         if not self.path:

@@ -59,6 +59,36 @@ select
     assert results[0].a == 4, results[0].a
 
 
+def test_flattening():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(
+        """
+
+key wrapper struct<a:int,b:int>;
+
+auto flat_a <- wrapper.a;
+
+datasource struct_array (
+    wrapper
+)
+grain (wrapper)
+query '''                    
+select {a: 1, b: 2} as wrapper union all select {a: 3, b: 4}
+'''
+;
+"""
+    )
+    results = executor.execute_text(
+        """
+select flat_a
+order by flat_a asc;
+"""
+    )[0].fetchall()
+
+    assert len(results) == 2
+    assert results[0].flat_a == 1, results[0].flat_a
+
+
 def test_array_struct_lambda():
     executor = Dialects.DUCK_DB.default_executor()
     rows = executor.execute_text(

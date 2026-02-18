@@ -103,6 +103,7 @@ class Executor(object):
         if self.dialect == Dialects.DUCK_DB:
             self._setup_duckdb_python_datasources()
             self._setup_duckdb_gcs()
+            self._setup_duckdb_spatial()
 
     def connect(self) -> EngineConnection:
         self.connection = self.engine.connect()
@@ -138,6 +139,17 @@ class Executor(object):
         if sql:
             self.execute_raw_sql(sql)
             self.connection.commit()
+
+    def _setup_duckdb_spatial(self) -> None:
+        """Setup DuckDB spatial extension for geospatial functions."""
+        from trilogy.dialect.config import DuckDBConfig
+
+        enabled = isinstance(self.config, DuckDBConfig) and self.config.enable_spatial
+        if not enabled:
+            return
+        self.execute_raw_sql("INSTALL spatial;")
+        self.execute_raw_sql("LOAD spatial;")
+        self.connection.commit()
 
     def close(self):
         self.engine.dispose(close=True)

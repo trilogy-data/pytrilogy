@@ -263,7 +263,10 @@ def get_dialect_config(
         from trilogy.dialect.config import DuckDBConfig
 
         conn_dict = validate_required_connection_params(
-            conn_dict, [], ["path", "enable_python_datasources", "enable_gcs"], "DuckDB"
+            conn_dict,
+            [],
+            ["path", "enable_python_datasources", "enable_gcs", "enable_spatial"],
+            "DuckDB",
         )
         conf = DuckDBConfig(**conn_dict)
     elif edialect == Dialects.SNOWFLAKE:
