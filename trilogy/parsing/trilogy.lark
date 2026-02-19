@@ -276,6 +276,13 @@
     _UNNEST.1: "UNNEST("i
     unnest: _UNNEST expr ")"
 
+    // subselect - returns an array from a subquery
+    _SUBSELECT.1: "SUBSELECT("i
+    subselect_where: "WHERE"i conditional
+    subselect_order: "ORDER"i "BY"i order_list
+    subselect_limit: "LIMIT"i /[0-9]+/
+    subselect: _SUBSELECT expr subselect_where? subselect_order? subselect_limit? ")"
+
     // union statement
     _UNION.1: "UNION("i
     union: _UNION   (expr ",")* expr ")"
@@ -313,6 +320,7 @@
      | window_item
      | unnest
      | union
+     | subselect
      | fgroup
      | filter_item
      | _access_expr

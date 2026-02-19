@@ -89,6 +89,7 @@ from trilogy.core.models.author import (
     Parenthetical,
     RowsetItem,
     SubselectComparison,
+    SubselectItem,
     UndefinedConceptFull,
     WhereClause,
     Window,
@@ -875,6 +876,7 @@ class ParseToObjects(Transformer):
                 Function,
                 FunctionCallWrapper,
                 Comparison,
+                SubselectItem,
             ),
         ):
             concept = arbitrary_to_concept(
@@ -2574,6 +2576,39 @@ class ParseToObjects(Transformer):
     def unnest(self, meta, args):
 
         return self.function_factory.create_function(args, FunctionType.UNNEST, meta)
+
+    @v_args(meta=True)
+    def subselect(self, meta: Meta, args) -> SubselectItem:
+        content = args[0]
+        if isinstance(content, Concept):
+            content = content.reference
+        where = None
+        order_by: list[OrderItem] = []
+        limit = None
+        for arg in args[1:]:
+            if isinstance(arg, WhereClause):
+                where = arg
+            elif isinstance(arg, list):
+                order_by = arg
+            elif isinstance(arg, int):
+                limit = arg
+        return SubselectItem(
+            content=content,
+            where=where,
+            order_by=order_by,
+            limit=limit,
+        )
+
+    def subselect_where(self, args):
+        root = args[0]
+        root = expr_to_boolean(root, self.function_factory)
+        return WhereClause(conditional=root)
+
+    def subselect_order(self, args) -> list[OrderItem]:
+        return args[0]
+
+    def subselect_limit(self, args) -> int:
+        return int(args[0])
 
     @v_args(meta=True)
     def count(self, meta, args):

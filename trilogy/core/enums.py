@@ -75,6 +75,7 @@ class Derivation(Enum):
     ROWSET = "rowset"
     MULTISELECT = "multiselect"
     RECURSIVE = "recursive"
+    SUBSELECT = "subselect"
 
 
 class Granularity(Enum):
@@ -438,6 +439,7 @@ class SourceType(Enum):
     BASIC = "basic"
     UNION = "union"
     RECURSIVE = "recursive"
+    SUBSELECT = "subselect"
 
 
 class ShowCategory(Enum):

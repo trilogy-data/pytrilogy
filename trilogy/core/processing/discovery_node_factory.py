@@ -20,6 +20,7 @@ from trilogy.core.processing.node_generators import (
     gen_multiselect_node,
     gen_recursive_node,
     gen_rowset_node,
+    gen_subselect_node,
     gen_synonym_node,
     gen_union_node,
     gen_unnest_node,
@@ -210,6 +211,20 @@ def _generate_aggregate_node(ctx: NodeGenerationContext) -> StrategyNode | None:
 def _generate_rowset_node(ctx: NodeGenerationContext) -> StrategyNode | None:
     ctx.log_generation("rowset")
     return gen_rowset_node(
+        ctx.concept,
+        ctx.local_optional,
+        ctx.environment,
+        ctx.g,
+        ctx.next_depth,
+        ctx.source_concepts,
+        ctx.history,
+        conditions=ctx.conditions,
+    )
+
+
+def _generate_subselect_node(ctx: NodeGenerationContext) -> StrategyNode | None:
+    ctx.log_generation("subselect")
+    return gen_subselect_node(
         ctx.concept,
         ctx.local_optional,
         ctx.environment,
@@ -437,6 +452,7 @@ def generate_node(
         Derivation.UNION: lambda: _generate_union_node(context),
         Derivation.AGGREGATE: lambda: _generate_aggregate_node(context),
         Derivation.ROWSET: lambda: _generate_rowset_node(context),
+        Derivation.SUBSELECT: lambda: _generate_subselect_node(context),
         Derivation.MULTISELECT: lambda: _generate_multiselect_node(context),
         Derivation.GROUP_TO: lambda: _generate_group_to_node(context),
         Derivation.BASIC: lambda: _generate_basic_node(context),
