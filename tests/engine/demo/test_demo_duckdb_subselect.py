@@ -53,10 +53,10 @@ union all select 4, 'b', 40
 union all select 5, 'b', 50
 ''';
 
-auto top_scores <- subselect(score where category order by score desc limit 2);
+def table top_category_scores() -> select score where category order by score desc limit 2;
 select
     category,
-    top_scores
+    @top_category_scores()
 order by
     category asc
 ;
@@ -87,8 +87,8 @@ union all select 4, 40
 union all select 5, 50
 ''';
 
-auto filtered <- subselect(val where val > 20 order by val asc limit 2);
-select filtered;
+def table filtered() -> select val where val > 20 order by val asc limit 2;
+select @filtered();
 """
     ).fetchall()
     arr = results[0].filtered
@@ -134,14 +134,14 @@ select 10 as warehouse_id, 'east' as warehouse_name, 40.1 as warehouse_lat, -74.
 union all select 20, 'west', 34.2, -118.2
 ''';
 
-table func nearest_warehouse(lat, long)-> select warehouse_name order by sqrt(
+def table close_warehouses(lat, long)-> select warehouse_name order by sqrt(
         (lat- warehouse_lat) * (lat - warehouse_lat)
         + (long - warehouse_lon) * (long - warehouse_lon)
     ) desc limit 1);
 
 select
     customer_name,
-    @nearest_warehouse(customer_lat, customer_lon) as nearest_warehouse,
+    @close_warehouses(customer_lat, customer_lon)[0].warehouse_name as nearest_warehouse,
 order by
     customer_name asc
 ;
