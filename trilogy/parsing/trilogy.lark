@@ -234,7 +234,7 @@
     
     ORDERING_DIRECTION: /ASC|DESC/i
 
-    !ordering: ORDERING_DIRECTION  ("NULLS"i /FIRST|LAST|AUTO/i )?
+    !ordering: ORDERING_DIRECTION? ("NULLS"i /FIRST|LAST|AUTO/i )?
     
     order_by: "ORDER"i "BY"i order_list
     
@@ -322,7 +322,6 @@
    # Access patterns
    _access_expr: chained_access | index_access | map_key_access | attr_access
     // functions
-    
     fadd: (/add\(/ expr "," expr ")" ) 
     fsub: ("subtract"i "(" expr "," expr ")" ) 
     fmul: ("multiply"i "(" expr "," expr ")" ) 

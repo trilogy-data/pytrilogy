@@ -82,7 +82,7 @@ def test_from_error():
     assert ERROR_CODES[101] in str(e.value), e.value
 
 
-def test_error_order_by_missing():
+def test_order_by_missing_defaults_to_asc():
     env = Environment()
     TEXT2 = """
 const a <- 1;
@@ -92,9 +92,8 @@ select
 order by a
 ;
     """
-    with raises(InvalidSyntaxException) as e:
-        env.parse(TEXT2)
-    assert ERROR_CODES[210] in str(e.value)
+    _, queries = env.parse(TEXT2)
+    assert queries[-1].order_by.items[0].order.value == "asc"
 
     env = Environment()
     TEXT2 = """
@@ -104,9 +103,8 @@ select
     a,
 order by a;
     """
-    with raises(InvalidSyntaxException) as e:
-        env.parse(TEXT2)
-    assert ERROR_CODES[210] in str(e.value)
+    _, queries = env.parse(TEXT2)
+    assert queries[-1].order_by.items[0].order.value == "asc"
 
 
 def test_alias_error():

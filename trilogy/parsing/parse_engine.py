@@ -1217,10 +1217,18 @@ class ParseToObjects(Transformer):
         return Limit(count=int(args[0].value))
 
     def ordering(self, args: list[str]):
-        base = args[0].lower()
-        if len(args) > 1:
-            null_sort = args[-1]
-            return Ordering(" ".join([base, "nulls", null_sort.lower()]))
+        base = "asc"
+        null_sort: str | None = None
+        if args:
+            first = args[0].lower()
+            if first in {"asc", "desc"}:
+                base = first
+                if len(args) > 1:
+                    null_sort = args[-1].lower()
+            else:
+                null_sort = first
+        if null_sort:
+            return Ordering(" ".join([base, "nulls", null_sort]))
         return Ordering(base)
 
     def order_list(self, args) -> List[OrderItem]:
@@ -3238,14 +3246,11 @@ def parse_text(
 
     def _handle_unexpected_token(e: UnexpectedToken, text: str) -> None:
         """Handle UnexpectedToken errors to make friendlier error messages."""
-        # Handle ordering direction error
         pos = e.pos_in_stream or 0
         if e.interactive_parser.lexer_thread.state:
             last_token = e.interactive_parser.lexer_thread.state.last_token
         else:
             last_token = None
-        if e.expected == {"ORDERING_DIRECTION"}:
-            raise _create_syntax_error(210, pos, text)
 
         # Handle FROM token error
         parsed_tokens = (
