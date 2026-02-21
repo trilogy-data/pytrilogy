@@ -5,8 +5,7 @@ from trilogy.hooks.query_debugger import DebuggingHook
 def test_subselect_non_correlated():
     """Non-correlated subselect: constant array output."""
     executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
-    results = executor.execute_query(
-        """
+    results = executor.execute_query("""
 key id int;
 property id.val int;
 auto const <- unnest([1,2]);
@@ -25,8 +24,7 @@ union all select 5, 50
 
 auto top3 <- subselect(val order by val desc limit 3);
 select const,top3;
-"""
-    ).fetchall()
+""").fetchall()
     arr = results[0].top3
     assert sorted(arr, reverse=True) == [50, 40, 30]
 
@@ -34,8 +32,7 @@ select const,top3;
 def test_subselect_correlated():
     """Correlated subselect: array per group with join key."""
     executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
-    results = executor.execute_query(
-        """
+    results = executor.execute_query("""
 key id int;
 property id.category string;
 property id.score int;
@@ -56,12 +53,11 @@ union all select 5, 'b', 50
 def table top_category_scores() -> select score where category order by score desc limit 2;
 select
     category,
-    @top_category_scores()
+    @top_category_scores() as top_scores
 order by
     category asc
 ;
-"""
-    ).fetchall()
+""").fetchall()
     assert len(results) == 2
     assert sorted(results[0].top_scores, reverse=True) == [30, 20]
     assert sorted(results[1].top_scores, reverse=True) == [50, 40]
@@ -70,8 +66,7 @@ order by
 def test_subselect_with_filter():
     """Subselect with WHERE filter, no correlation."""
     executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
-    results = executor.execute_query(
-        """
+    results = executor.execute_query("""
 key id int;
 property id.val int;
 datasource nums(
@@ -88,9 +83,8 @@ union all select 5, 50
 ''';
 
 def table filtered() -> select val where val > 20 order by val asc limit 2;
-select @filtered();
-"""
-    ).fetchall()
+select @filtered() as filtered;
+""").fetchall()
     arr = results[0].filtered
     assert sorted(arr) == [30, 40]
 
@@ -98,8 +92,7 @@ select @filtered();
 def test_subselect_closest_warehouse():
     """Correlated subselect across unconnected datasources."""
     executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
-    results = executor.execute_query(
-        """
+    results = executor.execute_query("""
 key customer_id int;
 property customer_id.customer_name string;
 property customer_id.customer_lat float;
@@ -134,18 +127,17 @@ select 10 as warehouse_id, 'east' as warehouse_name, 40.1 as warehouse_lat, -74.
 union all select 20, 'west', 34.2, -118.2
 ''';
 
-def table close_warehouses(lat, long)-> select warehouse_name order by sqrt(
-        (lat- warehouse_lat) * (lat - warehouse_lat)
+def table close_warehouses(lat, long) -> select warehouse_name order by sqrt(
+        (lat - warehouse_lat) * (lat - warehouse_lat)
         + (long - warehouse_lon) * (long - warehouse_lon)
-    ) desc limit 1);
+    ) asc limit 1;
 
 select
     customer_name,
-    @close_warehouses(customer_lat, customer_lon)[0].warehouse_name as nearest_warehouse,
+    @close_warehouses(customer_lat, customer_lon) as nearest_warehouses
 order by
     customer_name asc
 ;
-"""
-    ).fetchall()
-    by_customer = {row.customer_name: row.nearest_warehouse for row in results}
-    assert by_customer == {"alice": "east", "bob": "west"}
+""").fetchall()
+    by_customer = {row.customer_name: row.nearest_warehouses for row in results}
+    assert by_customer == {"alice": ["east"], "bob": ["west"]}

@@ -165,12 +165,14 @@
     chart_statement: "chart"i CHART_TYPE chart_setting* "from"i select_statement
 
     // FUNCTION blocks
-    function: raw_function
-    function_binding_type: ":" data_type  
+    function: raw_function | table_function
+    function_binding_type: ":" data_type
     function_binding_default: /=/ expr
     function_binding_item: IDENTIFIER function_binding_type? function_binding_default?
     function_binding_list: (function_binding_item ",")* function_binding_item ","?
     raw_function: "def"  IDENTIFIER  "("  function_binding_list ")" "->" expr
+    _DEF_TABLE.2: /def\s+table/i
+    table_function: _DEF_TABLE IDENTIFIER "(" function_binding_list? ")" "->" "select"i expr subselect_where? subselect_order? subselect_limit?
 
     // TYPE blocks
     type_drop_clause: "DROP"  IDENTIFIER ("|" IDENTIFIER)*
@@ -551,7 +553,7 @@
     
     _static_functions:  _string_functions | _math_functions | _array_functions | _map_functions | _geo_functions
 
-    custom_function:  "@" IDENTIFIER  "(" (expr ",")* expr ")"
+    custom_function:  "@" IDENTIFIER  "(" ((expr ",")* expr ","?)? ")"
 
     // base language constructs
     concept_lit:  IDENTIFIER

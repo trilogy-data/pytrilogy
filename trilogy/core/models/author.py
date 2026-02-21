@@ -2188,6 +2188,7 @@ class SubselectItem(Mergeable, DataTyped, Namespaced, ConceptArgs, BaseModel):
     where: Optional["WhereClause"] = None
     order_by: List["OrderItem"] = Field(default_factory=list)
     limit: Optional[int] = None
+    outer_arguments: List[ConceptRef] = Field(default_factory=list)
 
     def __repr__(self):
         parts = [f"subselect({self.content}"]
@@ -2222,6 +2223,9 @@ class SubselectItem(Mergeable, DataTyped, Namespaced, ConceptArgs, BaseModel):
             ),
             order_by=[x.with_merge(source, target, modifiers) for x in self.order_by],
             limit=self.limit,
+            outer_arguments=[
+                x.with_merge(source, target, modifiers) for x in self.outer_arguments
+            ],
         )
 
     def with_reference_replacement(self, source, target):
@@ -2240,6 +2244,14 @@ class SubselectItem(Mergeable, DataTyped, Namespaced, ConceptArgs, BaseModel):
                 x.with_reference_replacement(source, target) for x in self.order_by
             ],
             limit=self.limit,
+            outer_arguments=[
+                (
+                    x.with_reference_replacement(source, target)
+                    if isinstance(x, Mergeable)
+                    else x
+                )
+                for x in self.outer_arguments
+            ],
         )
 
     def with_namespace(self, namespace: str) -> "SubselectItem":
@@ -2252,6 +2264,7 @@ class SubselectItem(Mergeable, DataTyped, Namespaced, ConceptArgs, BaseModel):
             where=(self.where.with_namespace(namespace) if self.where else None),
             order_by=[x.with_namespace(namespace) for x in self.order_by],
             limit=self.limit,
+            outer_arguments=[x.with_namespace(namespace) for x in self.outer_arguments],
         )
 
     @property
@@ -2260,11 +2273,28 @@ class SubselectItem(Mergeable, DataTyped, Namespaced, ConceptArgs, BaseModel):
 
     @property
     def concept_arguments(self) -> List[ConceptRef]:
+        # When outer_arguments exist, only expose those to the main query.
+        # Inner concepts are resolved separately in gen_subselect_node.
+        if self.outer_arguments:
+            return list(self.outer_arguments)
         args: List[ConceptRef] = [self.content]
         if self.where:
             args += self.where.concept_arguments
         for item in self.order_by:
             args += get_concept_arguments(item)
+        return args
+
+    @property
+    def inner_concept_arguments(self) -> List[ConceptRef]:
+        """Inner concepts for separate resolution in subselect node."""
+        args: List[ConceptRef] = [self.content]
+        if self.where:
+            args += self.where.concept_arguments
+        for item in self.order_by:
+            args += get_concept_arguments(item)
+        if self.outer_arguments:
+            outer_addrs = {a.address for a in self.outer_arguments}
+            args = [a for a in args if a.address not in outer_addrs]
         return args
 
 
@@ -2756,6 +2786,14 @@ class CustomFunctionFactory:
                 else:
                     target = self.function_arguments[idx].name
                 nout = nout.with_reference_replacement(target, x)
+        if isinstance(nout, SubselectItem) and creation_arg_list:
+            outer: list[ConceptRef] = []
+            for x in creation_arg_list:
+                if isinstance(x, ConceptRef):
+                    outer.append(x)
+                elif isinstance(x, ConceptArgs):
+                    outer.extend(x.concept_arguments)
+            nout.outer_arguments = outer
         return nout
 
 
@@ -2843,6 +2881,7 @@ Expr = (
     | MapWrapper
     | WindowItem
     | FilterItem
+    | SubselectItem
     | ConceptRef
     | Comparison
     | Conditional
@@ -2885,4 +2924,5 @@ FuncArgs = (
     | MagicConstants
     | ArgBinding
     | Ordering
+    | SubselectItem
 )

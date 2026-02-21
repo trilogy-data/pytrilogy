@@ -38,6 +38,7 @@ from trilogy.core.models.author import (
     OrderBy,
     Parenthetical,
     SelectLineage,
+    SubselectItem,
     UndefinedConcept,
     WhereClause,
     WindowItem,
@@ -60,6 +61,7 @@ class ConceptTransform(BaseModel):
         | AggregateWrapper
         | FunctionCallWrapper
         | Parenthetical
+        | SubselectItem
     )
     output: Concept  # this has to be a full concept, as it may not exist in environment
     modifiers: List[Modifier] = Field(default_factory=list)

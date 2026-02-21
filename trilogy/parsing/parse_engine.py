@@ -309,6 +309,7 @@ def unwrap_transformation(
     | AggregateWrapper
     | FunctionCallWrapper
     | Parenthetical
+    | SubselectItem
 ):
     if isinstance(input, Function):
         return input
@@ -329,6 +330,8 @@ def unwrap_transformation(
     elif isinstance(input, FunctionCallWrapper):
         return input
     elif isinstance(input, Parenthetical):
+        return input
+    elif isinstance(input, SubselectItem):
         return input
     else:
         return Function.model_construct(
@@ -2093,11 +2096,51 @@ class ParseToObjects(Transformer):
         )
         return FunctionDeclaration(name=identity, args=function_arguments, expr=output)
 
+    @v_args(meta=True)
+    def table_function(self, meta: Meta, args) -> FunctionDeclaration:
+        identity = args[0]
+        idx = 1
+        function_arguments: list[ArgBinding] = []
+        if idx < len(args) and isinstance(args[idx], list):
+            function_arguments = args[idx]
+            idx += 1
+        content = args[idx]
+        if isinstance(content, Concept):
+            content = content.reference
+        idx += 1
+        where = None
+        order_by: list[OrderItem] = []
+        limit = None
+        for arg in args[idx:]:
+            if isinstance(arg, WhereClause):
+                where = arg
+            elif isinstance(arg, list):
+                order_by = arg
+            elif isinstance(arg, int):
+                limit = arg
+        subselect = SubselectItem(
+            content=content,
+            where=where,
+            order_by=order_by,
+            limit=limit,
+        )
+        self.environment.functions[identity] = CustomFunctionFactory(
+            function=subselect,
+            namespace=self.environment.namespace,
+            function_arguments=function_arguments,
+            name=identity,
+        )
+        return FunctionDeclaration(
+            name=identity, args=function_arguments, expr=subselect
+        )
+
     def custom_function(self, args) -> FunctionCallWrapper:
         name = args[0]
-        args = args[1:]
+        call_args = args[1:]
         remapped = FunctionCallWrapper(
-            content=self.environment.functions[name](*args), name=name, args=args
+            content=self.environment.functions[name](*call_args),
+            name=name,
+            args=call_args,
         )
 
         return remapped

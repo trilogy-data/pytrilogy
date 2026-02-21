@@ -405,6 +405,7 @@ def get_priority_concept(
         + [c for c in pass_one if c.derivation == Derivation.RECURSIVE]
         + [c for c in pass_one if c.derivation == Derivation.GROUP_TO]
         + [c for c in pass_one if c.derivation == Derivation.CONSTANT]
+        + [c for c in pass_one if c.derivation == Derivation.SUBSELECT]
         # finally our plain selects
         + [
             c for c in pass_one if c.derivation == Derivation.ROOT

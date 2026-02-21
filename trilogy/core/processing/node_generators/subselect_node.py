@@ -27,11 +27,8 @@ def resolve_subselect_parent_concepts(
     if not isinstance(concept.lineage, SUBSELECT_TYPES):
         raise ValueError
     lineage: BuildSubselectItem = concept.lineage
-    base: list[BuildConcept] = [lineage.content]
-    if lineage.where:
-        base += lineage.where.concept_arguments
-    for item in lineage.order_by:
-        base += item.concept_arguments
+    # concept_arguments returns outer args only (or all args for non-cross-datasource)
+    base: list[BuildConcept] = list(lineage.concept_arguments)
     if concept.grain:
         for gitem in concept.grain.components:
             if gitem not in [x.address for x in base]:
@@ -67,26 +64,64 @@ def gen_subselect_node(
             )
             targets.append(environment.concepts[item])
 
-    parent_node: StrategyNode = source_concepts(
-        mandatory_list=parent_concepts + targets,
-        environment=environment,
-        g=g,
-        depth=depth + 1,
-        history=history,
-        conditions=conditions,
-    )
-    if not parent_node:
+    lineage: BuildSubselectItem = concept.lineage  # type: ignore
+    # Cross-datasource: inner concepts resolved separately from outer
+    if lineage.outer_arguments:
+        inner_concepts = unique(list(lineage.inner_concept_arguments), "address")
+        outer_concepts = parent_concepts
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} subselect node parents unresolvable"
+            f"{padding(depth)}{LOGGER_PREFIX} cross-datasource: inner={[x.address for x in inner_concepts]}, outer={[x.address for x in outer_concepts]}"
         )
-        return None
-    parent_node.resolve()
+        inner_node: StrategyNode = source_concepts(
+            mandatory_list=inner_concepts,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+            history=history,
+            conditions=conditions,
+        )
+        if not inner_node:
+            logger.info(f"{padding(depth)}{LOGGER_PREFIX} inner concepts unresolvable")
+            return None
+        inner_node.resolve()
+
+        outer_node: StrategyNode = source_concepts(
+            mandatory_list=outer_concepts + targets,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+            history=history,
+            conditions=conditions,
+        )
+        if not outer_node:
+            logger.info(f"{padding(depth)}{LOGGER_PREFIX} outer concepts unresolvable")
+            return None
+        outer_node.resolve()
+        all_parent_concepts = unique(outer_concepts + inner_concepts, "address")
+        parents = [outer_node, inner_node]
+    else:
+        parent_node: StrategyNode = source_concepts(
+            mandatory_list=parent_concepts + targets,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+            history=history,
+            conditions=conditions,
+        )
+        if not parent_node:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} subselect node parents unresolvable"
+            )
+            return None
+        parent_node.resolve()
+        all_parent_concepts = parent_concepts
+        parents = [parent_node]
 
     _subselect_node = SubselectNode(
-        input_concepts=parent_concepts + targets,
-        output_concepts=[concept] + parent_concepts + targets,
+        input_concepts=all_parent_concepts + targets,
+        output_concepts=[concept] + all_parent_concepts + targets,
         environment=environment,
-        parents=[parent_node],
+        parents=parents,
         depth=depth,
         preexisting_conditions=conditions.conditional if conditions else None,
     )
@@ -103,7 +138,7 @@ def gen_subselect_node(
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no optional concepts, returning subselect node"
         )
-        _subselect_node.set_output_concepts([concept] + parent_concepts + targets)
+        _subselect_node.set_output_concepts([concept] + all_parent_concepts + targets)
         return _subselect_node
 
     missing_optional = [
@@ -127,7 +162,7 @@ def gen_subselect_node(
         join_keys=[
             environment.concepts[c]
             for c in BuildGrain.from_concepts(
-                concepts=parent_concepts + targets, environment=environment
+                concepts=all_parent_concepts + targets, environment=environment
             ).components
         ],
         local_optional=local_optional,

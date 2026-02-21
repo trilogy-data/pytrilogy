@@ -777,11 +777,13 @@ class BaseDialect:
                 f"Missing subselect source for {lineage.content.address}"
             )
         source_cte = content_sources[0]
+        # Track that the content concept is used from its source CTE
+        self.used_map[source_cte].add(lineage.content.address)
         inner_alias = f"_sq_{c.safe_address[:20]}"
         content_col = f"{inner_alias}.{q}{lineage.content.safe_address}{q}"
 
         def _to_inner(rendered: str) -> str:
-            """Replace outer CTE references with inner alias."""
+            """Replace inner CTE references with inner alias (leave outer as-is)."""
             result = rendered.replace(f"{source_cte}.", f"{inner_alias}.")
             if q:
                 result = result.replace(f"{q}{source_cte}{q}.", f"{inner_alias}.")
@@ -796,25 +798,30 @@ class BaseDialect:
         # Correlation: concepts that are in both the subselect's arguments
         # AND the CTE output columns (the outer context), excluding the
         # content concept and the subselect concept itself.
-        for col in cte.output_columns:
-            if col.address == c.address:
-                continue
-            if col.address == lineage.content.address:
-                continue
-            if col.address not in inner_addrs:
-                continue
-            if source_cte not in cte.source_map.get(col.address, []):
-                continue
-            outer_ref = f"{source_cte}.{q}{col.safe_address}{q}"
-            inner_ref = f"{inner_alias}.{q}{col.safe_address}{q}"
-            where_parts.append(f"{inner_ref} = {outer_ref}")
+        # Skip entirely for cross-datasource subselects (outer_arguments present)
+        # - correlation is handled by explicit outer refs in ORDER BY/WHERE.
+        if not lineage.outer_arguments:
+            for col in cte.output_columns:
+                if col.address == c.address:
+                    continue
+                if col.address == lineage.content.address:
+                    continue
+                if col.address not in inner_addrs:
+                    continue
+                if source_cte not in cte.source_map.get(col.address, []):
+                    continue
+                outer_ref = f"{source_cte}.{q}{col.safe_address}{q}"
+                inner_ref = f"{inner_alias}.{q}{col.safe_address}{q}"
+                where_parts.append(f"{inner_ref} = {outer_ref}")
 
         # User-specified WHERE filter
         if lineage.where:
-            rendered = self.render_expr(
-                lineage.where.conditional, cte=cte, raise_invalid=raise_invalid
-            )
-            where_parts.append(_to_inner(rendered))
+            cond = lineage.where.conditional
+            # Bare concept ref in WHERE = correlation key (e.g. "where category"),
+            # not a boolean filter — skip rendering it as a WHERE clause.
+            if not isinstance(cond, BuildConcept):
+                rendered = self.render_expr(cond, cte=cte, raise_invalid=raise_invalid)
+                where_parts.append(_to_inner(rendered))
 
         # ORDER BY
         order_parts: list[str] = []

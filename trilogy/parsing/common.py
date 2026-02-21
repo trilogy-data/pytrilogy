@@ -127,6 +127,18 @@ def process_function_arg(
             concept.metadata.line_number = meta.line
         environment.add_concept(concept, meta=meta)
         return concept.reference
+    elif isinstance(arg, FunctionCallWrapper):
+        return process_function_arg(arg.content, meta, environment)
+    elif isinstance(arg, SubselectItem):
+        id_hash = string_to_hash(str(arg))
+        name = f"{VIRTUAL_CONCEPT_PREFIX}_subselect_{arg.content.name}_{id_hash}"
+        if f"{environment.namespace}.{name}" in environment.concepts:
+            return environment.concepts[f"{environment.namespace}.{name}"]
+        concept = subselect_to_concept(arg, name, environment.namespace, environment)
+        if concept.metadata and meta:
+            concept.metadata.line_number = meta.line
+        environment.add_concept(concept, meta=meta)
+        return concept.reference
     elif isinstance(arg, Concept):
         return arg.reference
     elif isinstance(arg, ConceptRef):
@@ -921,8 +933,7 @@ def subselect_to_concept(
 ) -> Concept:
     fmetadata = metadata or Metadata()
     namespace = namespace or environment.namespace
-    ref_args = parent.concept_arguments
-    concrete_args = [environment.concepts[c.address] for c in ref_args]
+    concrete_args = [environment.concepts[c.address] for c in parent.concept_arguments]
     pkeys: list[Concept] = [
         x
         for x in concrete_args
@@ -1065,7 +1076,7 @@ def arbitrary_to_concept(
     # this is purely for the parse tree, discard from derivation
     if isinstance(parent, FunctionCallWrapper):
         return arbitrary_to_concept(
-            parent.content, environment, namespace, name, metadata  # type: ignore
+            parent.content, environment, namespace, name or parent.name, metadata  # type: ignore
         )
 
     # Generate name if not provided

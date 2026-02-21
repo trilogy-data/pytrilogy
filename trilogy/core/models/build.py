@@ -1459,6 +1459,7 @@ class BuildSubselectItem(DataTyped, BuildConceptArgs):
     where: Optional[BuildWhereClause] = None
     order_by: List[BuildOrderItem] = field(default_factory=list)
     limit: Optional[int] = None
+    outer_arguments: List[BuildConcept] = field(default_factory=list)
 
     def __repr__(self):
         return f"<Subselect: {str(self.content)}>"
@@ -1476,11 +1477,28 @@ class BuildSubselectItem(DataTyped, BuildConceptArgs):
 
     @cached_property
     def concept_arguments(self) -> List[BuildConcept]:
+        # When outer_arguments exist, only expose those to the main query.
+        # Inner concepts are resolved separately in gen_subselect_node.
+        if self.outer_arguments:
+            return list(self.outer_arguments)
         args: List[BuildConcept] = [self.content]
         if self.where:
             args += self.where.concept_arguments
         for item in self.order_by:
             args += item.concept_arguments
+        return args
+
+    @cached_property
+    def inner_concept_arguments(self) -> List[BuildConcept]:
+        """Inner concepts for separate resolution in subselect node."""
+        args: List[BuildConcept] = [self.content]
+        if self.where:
+            args += self.where.concept_arguments
+        for item in self.order_by:
+            args += item.concept_arguments
+        if self.outer_arguments:
+            outer_addrs = {a.address for a in self.outer_arguments}
+            args = [a for a in args if a.address not in outer_addrs]
         return args
 
 
@@ -2427,6 +2445,7 @@ class Factory:
             where=self.build(base.where) if base.where else None,
             order_by=[self.build(x) for x in base.order_by],
             limit=base.limit,
+            outer_arguments=[self.build(x) for x in base.outer_arguments],
         )
 
     @build.register
