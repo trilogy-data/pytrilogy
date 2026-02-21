@@ -48,8 +48,7 @@ def test_one():
         == 7
     )
 
-    sql = exec.generate_sql(
-        """import customer as customer;
+    sql = exec.generate_sql("""import customer as customer;
 import store as store;
 import store_returns as returns;
 
@@ -73,8 +72,7 @@ select
 where
     ca_2022.total_returns > (1.2*avg_store_returns)
 order by ca_2022.total_returns desc
-limit 100;"""
-    )
+limit 100;""")
     assert "SELECT" in sql[-1]
     # check that our casts returned properly
     assert "INVALID_ALIAS" not in sql[-1]
