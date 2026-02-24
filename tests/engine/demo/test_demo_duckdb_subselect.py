@@ -5,7 +5,8 @@ from trilogy.hooks.query_debugger import DebuggingHook
 def test_subselect_non_correlated():
     """Non-correlated subselect: constant array output."""
     executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
-    results = executor.execute_query("""
+    results = executor.execute_query(
+        """
 key id int;
 property id.val int;
 auto const <- unnest([1,2]);
@@ -24,7 +25,8 @@ union all select 5, 50
 
 auto top3 <- subselect(val order by val desc limit 3);
 select const,top3;
-""").fetchall()
+"""
+    ).fetchall()
     arr = results[0].top3
     assert sorted(arr, reverse=True) == [50, 40, 30]
 
@@ -32,7 +34,8 @@ select const,top3;
 def test_subselect_correlated():
     """Correlated subselect: array per group with join key."""
     executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
-    results = executor.execute_query("""
+    results = executor.execute_query(
+        """
 key id int;
 property id.category string;
 property id.score int;
@@ -57,7 +60,8 @@ select
 order by
     category asc
 ;
-""").fetchall()
+"""
+    ).fetchall()
     assert len(results) == 2
     assert sorted(results[0].top_scores, reverse=True) == [30, 20]
     assert sorted(results[1].top_scores, reverse=True) == [50, 40]
@@ -66,7 +70,8 @@ order by
 def test_subselect_with_filter():
     """Subselect with WHERE filter, no correlation."""
     executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
-    results = executor.execute_query("""
+    results = executor.execute_query(
+        """
 key id int;
 property id.val int;
 datasource nums(
@@ -84,7 +89,8 @@ union all select 5, 50
 
 def table filtered() -> select val where val > 20 order by val asc limit 2;
 select @filtered() as filtered;
-""").fetchall()
+"""
+    ).fetchall()
     arr = results[0].filtered
     assert sorted(arr) == [30, 40]
 
@@ -92,7 +98,8 @@ select @filtered() as filtered;
 def test_subselect_closest_warehouse():
     """Correlated subselect across unconnected datasources."""
     executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
-    results = executor.execute_query("""
+    results = executor.execute_query(
+        """
 key customer_id int;
 property customer_id.customer_name string;
 property customer_id.customer_lat float;
@@ -138,6 +145,7 @@ select
 order by
     customer_name asc
 ;
-""").fetchall()
+"""
+    ).fetchall()
     by_customer = {row.customer_name: row.nearest_warehouses for row in results}
     assert by_customer == {"alice": ["east"], "bob": ["west"]}

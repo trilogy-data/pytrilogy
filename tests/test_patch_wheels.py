@@ -36,14 +36,16 @@ def set_patch_wheels_location(tmp_path: Path):
 def test_read_dependencies(tmp_path: Path, set_patch_wheels_location) -> None:
     """Test reading dependencies from requirements.txt"""
     req_file = tmp_path / "requirements.txt"
-    req_file.write_text("""lark
+    req_file.write_text(
+        """lark
 jinja2
 # This is a comment
 sqlalchemy<2.0.0
 
 networkx
 pyodbc
-""")
+"""
+    )
 
     deps = patch_wheels.read_dependencies()
 
@@ -65,14 +67,16 @@ def test_patch_metadata(tmp_path: Path, set_patch_wheels_location) -> None:
     dist_info.mkdir()
 
     metadata_file = dist_info / "METADATA"
-    metadata_file.write_text("""Metadata-Version: 2.4
+    metadata_file.write_text(
+        """Metadata-Version: 2.4
 Name: test
 Version: 1.0.0
 Classifier: Programming Language :: Python
 Requires-Dist: existing-dep ; extra == 'extra'
 
 This is the description.
-""")
+"""
+    )
 
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("lark\njinja2\nsqlalchemy<2.0.0\n")

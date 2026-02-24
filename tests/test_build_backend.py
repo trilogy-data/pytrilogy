@@ -13,13 +13,15 @@ import sync_version
 def test_read_dependencies_success(tmp_path):
     """Test reading dependencies from requirements.txt"""
     req_file = tmp_path / "requirements.txt"
-    req_file.write_text("""lark
+    req_file.write_text(
+        """lark
 jinja2
 # comment line
 sqlalchemy<2.0.0
 
 networkx
-""")
+"""
+    )
 
     # Mock __file__ to point to a fake .scripts directory
     fake_scripts = tmp_path / ".scripts"
@@ -64,18 +66,22 @@ def test_sync_version_success(tmp_path):
     trilogy_dir = tmp_path / "trilogy"
     trilogy_dir.mkdir()
     init_file = trilogy_dir / "__init__.py"
-    init_file.write_text("""from trilogy.constants import CONFIG
+    init_file.write_text(
+        """from trilogy.constants import CONFIG
 __version__ = "0.3.136"
-""")
+"""
+    )
 
     cargo_dir = trilogy_dir / "scripts" / "dependency"
     cargo_dir.mkdir(parents=True)
     cargo_file = cargo_dir / "Cargo.toml"
-    cargo_file.write_text("""[package]
+    cargo_file.write_text(
+        """[package]
 name = "preql-import-resolver"
 version = ""
 edition = "2021"
-""")
+"""
+    )
 
     fake_scripts = tmp_path / ".scripts"
     fake_scripts.mkdir()
@@ -97,11 +103,13 @@ def test_sync_version_with_existing_version(tmp_path):
     cargo_dir = trilogy_dir / "scripts" / "dependency"
     cargo_dir.mkdir(parents=True)
     cargo_file = cargo_dir / "Cargo.toml"
-    cargo_file.write_text("""[package]
+    cargo_file.write_text(
+        """[package]
 name = "preql-import-resolver"
 version = "0.1.0"
 edition = "2021"
-""")
+"""
+    )
 
     fake_scripts = tmp_path / ".scripts"
     fake_scripts.mkdir()
@@ -130,12 +138,14 @@ def test_sync_version_missing_version(tmp_path):
 def test_patch_metadata_with_dependencies(tmp_path):
     """Test patching METADATA file with dependencies"""
     metadata_file = tmp_path / "METADATA"
-    metadata_file.write_text("""Metadata-Version: 2.1
+    metadata_file.write_text(
+        """Metadata-Version: 2.1
 Name: pytrilogy
 Version: 0.3.136
 
 This is the description.
-""")
+"""
+    )
 
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("lark\njinja2\n")
@@ -158,10 +168,12 @@ def test_patch_metadata_dist_info_subdirectory(tmp_path):
     dist_info = tmp_path / "pytrilogy-1.0.0.dist-info"
     dist_info.mkdir()
     metadata_file = dist_info / "METADATA"
-    metadata_file.write_text("""Metadata-Version: 2.1
+    metadata_file.write_text(
+        """Metadata-Version: 2.1
 Name: pytrilogy
 
-""")
+"""
+    )
 
     req_file = tmp_path / "requirements.txt"
     req_file.write_text("networkx\n")

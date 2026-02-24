@@ -52,8 +52,10 @@ LIMIT (100)"""
 def test_environment(gcat_env):
     DebuggingHook()
 
-    gcat_env.parse_text("""import launch;
-""")
+    gcat_env.parse_text(
+        """import launch;
+"""
+    )
     try:
         gcat_env.validate_environment()
     except ModelValidationError as e:
@@ -81,7 +83,8 @@ def test_join():
     )
     base = Dialects.DUCK_DB.default_executor(environment=env)
 
-    queries = base.parse_text("""import launch;
+    queries = base.parse_text(
+        """import launch;
 
 
 where vehicle.name like '%Falcon%'
@@ -89,7 +92,8 @@ select
 platform.class,
 # platform.name,
 vehicle.name,
-count(launch_tag) as launches;""")
+count(launch_tag) as launches;"""
+    )
 
     sql = base.generate_sql(queries[-1])
     assert "FULL JOIN" in sql[0], sql[0]
@@ -103,7 +107,8 @@ def test_date_filter():
     )
     base = Dialects.DUCK_DB.default_executor(environment=env)
 
-    queries = base.parse_text("""import launch;
+    queries = base.parse_text(
+        """import launch;
 
 where
   launch_date between date_sub( current_date(), YEAR, 100) and current_date()
@@ -123,7 +128,8 @@ select
 order by
   year asc
 limit 2000;
-""")
+"""
+    )
 
     sql = base.generate_sql(queries[-1])
     assert "date_add(current_date(), -100 * INTERVAL 1 year)" in sql[0]
@@ -136,7 +142,8 @@ def test_case_key():
     )
     base = Dialects.DUCK_DB.default_executor(environment=env)
 
-    queries = base.parse_text("""import launch;
+    queries = base.parse_text(
+        """import launch;
 
 key launch_filter <- CASE WHEN launch_type_code = 'O' then "Orbital"
 WHEN launch_type_code = 'D' then 'Deep Space'
@@ -152,7 +159,8 @@ vehicle.launch_mass, vehicle.to_thrust,
 vehicle.diameter, round(sum(orb_pay),2) as total_mass,
 array_to_string(array_agg(launch_filter), ', ') as launch_targets
 order by total_mass desc limit 1;
-""")
+"""
+    )
 
     sql = base.generate_sql(queries[-1])
     assert "_launch_code" in sql[0], sql[0]
@@ -164,7 +172,8 @@ def test_nested_calc_failure():
     )
     base = Dialects.DUCK_DB.default_executor(environment=env)
 
-    queries = base.parse_text("""import launch_dashboard;
+    queries = base.parse_text(
+        """import launch_dashboard;
 
 auto filtered_launch <- launch_tag ? success_flag = 'E';
 
@@ -177,7 +186,8 @@ count(filtered_launch) as pad_aborts,
 
  limit 1;
 
-""")
+"""
+    )
 
     sql = base.generate_sql(queries[-1])
     assert "INVALID_REFERENCE_BUG" not in sql[0], sql[0]
@@ -190,7 +200,8 @@ def test_equals_comparison():
     )
     base = Dialects.DUCK_DB.default_executor(environment=env)
 
-    queries = base.parse_text("""import launch_dashboard;
+    queries = base.parse_text(
+        """import launch_dashboard;
         where orb_pay is not null
 select
   site.state_code,
@@ -200,7 +211,8 @@ select
 order by
   log_scale_orbital_tons desc
 limit 15;
-""")
+"""
+    )
 
     sql = base.generate_sql(queries[-1])
     assert (
@@ -216,11 +228,14 @@ def test_environment_cleanup():
         working_path=Path(__file__).parent,
     )
     base = Dialects.DUCK_DB.default_executor(environment=env)
-    base.parse_text("""import launch_dashboard;
+    base.parse_text(
+        """import launch_dashboard;
 
-        """)
+        """
+    )
     pre_concepts = set(base.environment.concepts.keys())
-    queries = base.parse_text("""
+    queries = base.parse_text(
+        """
 
     key x int;
         
@@ -236,7 +251,8 @@ auto date_function <- current_date();
         date_diff(min(launch_date), current_date(), year) as launch_days, 
         struct(  min(launch_date)->first_launch,  max(launch_date)->last_launch) as launch_date_range,
         min(launch_date) as min_date;
-        """)
+        """
+    )
 
     query = queries[-1]
     assert "local.datetime_function" in query.locally_derived
@@ -253,13 +269,15 @@ auto date_function <- current_date();
         pre_concepts == post_concepts
     ), f"Environment cleanup did not remove locally derived concepts: {post_concepts - pre_concepts}"
 
-    queries = base.parse_text("""
+    queries = base.parse_text(
+        """
 
 select
 launch_filter,
 #launch_count
 order by launch_filter asc
-;""")
+;"""
+    )
 
 
 def test_environment_cleanup_multiselect():
@@ -273,7 +291,8 @@ def test_environment_cleanup_multiselect():
 
     DebuggingHook(INFO)
     base = Dialects.DUCK_DB.default_executor(environment=env)
-    base.parse_text("""import satcat;
+    base.parse_text(
+        """import satcat;
 auto launches <- count(jcat?  owner.code = 'PLAN') by launch_date;
 auto decoms <- count(jcat ? decom_date is not null and owner.code = 'PLAN' ) by decom_date;
 
@@ -282,9 +301,11 @@ key decom_spine <- date_spine(date_add(current_date(), day, -6000), current_date
 
 merge launch_date into ~launch_spine;
 merge decom_date into ~decom_spine;
-        """)
+        """
+    )
     pre_concepts = set(base.environment.concepts.keys())
-    queries = base.parse_text("""
+    queries = base.parse_text(
+        """
 select
     launch_spine,
     sum launches order by launch_spine asc as cumulative_launches,
@@ -296,7 +317,8 @@ select
     sum decoms order by decom_spine asc as cumulative_decoms,
 having cumulative_decoms >1
 align date:launch_spine,decom_spine;
-        """)
+        """
+    )
 
     query = queries[-1]
     assert "local.date" in query.locally_derived
@@ -323,10 +345,13 @@ def test_join_inclusion():
         working_path=Path(__file__).parent,
     )
     base = Dialects.DUCK_DB.default_executor(environment=env)
-    base.parse_text("""import launch_dashboard;
+    base.parse_text(
+        """import launch_dashboard;
 
-        """)
-    queries = base.parse_text("""
+        """
+    )
+    queries = base.parse_text(
+        """
 import launch_dashboard;
 where vehicle.name like '%Falcon%'
 
@@ -343,7 +368,8 @@ limit 6;
 
 
 
-        """)
+        """
+    )
 
     sql = base.generate_sql(queries[-1])
     assert (
@@ -360,8 +386,10 @@ def test_joint_join_concept_injection_components():
         working_path=Path(__file__).parent,
     )
     base = Dialects.DUCK_DB.default_executor(environment=env)
-    base.parse_text("""import launch;
-        """)
+    base.parse_text(
+        """import launch;
+        """
+    )
 
     test_env = env.materialize_for_select()
     g = generate_graph(test_env)
@@ -385,8 +413,10 @@ def test_joint_join_concept_injection_components():
         working_path=Path(__file__).parent,
     )
     base = Dialects.DUCK_DB.default_executor(environment=env)
-    base.parse_text("""import launch;
-        """)
+    base.parse_text(
+        """import launch;
+        """
+    )
 
     test_env = env.materialize_for_select()
     g = generate_graph(test_env)
@@ -417,10 +447,12 @@ def test_joint_join_concept_injection():
 
     DebuggingHook()
     base = Dialects.DUCK_DB.default_executor(environment=env)
-    queries = base.parse_text("""import launch;
+    queries = base.parse_text(
+        """import launch;
 
 select vehicle.class, launch_count;
-        """)
+        """
+    )
     sql = base.generate_sql(queries[-1])
     assert (
         'LEFT OUTER JOIN "launch_info" as "launch_info" on "vehicle_lv_info"."LV_Name" = "launch_info"."LV_Type" AND "vehicle_lv_info"."LV_Variant" = "launch_info"."Variant"'
@@ -437,7 +469,8 @@ def test_join_transform():
 
     DebuggingHook()
     base = Dialects.DUCK_DB.default_executor(environment=env)
-    queries = base.parse_text("""import launch;
+    queries = base.parse_text(
+        """import launch;
   
 
 WHERE
@@ -454,7 +487,8 @@ ORDER BY
     orbital_payload desc
 LIMIT 10
 ;
-        """)
+        """
+    )
     sql = base.generate_sql(queries[-1])
     assert '"launch_info"."FirstAgency"' in sql[0], sql[0]
     assert "BUG" not in sql[0], sql[0]
@@ -473,7 +507,8 @@ def test_full_join_issue():
         working_path=Path(__file__).parent,
     )
     base = Dialects.DUCK_DB.default_executor(environment=env)
-    queries = base.parse_text("""import launch_dashboard;
+    queries = base.parse_text(
+        """import launch_dashboard;
 
 
 select
@@ -482,7 +517,8 @@ select
 limit 50;
 
 
-        """)
+        """
+    )
     # assert env.concepts['payl']
     sql = base.generate_sql(queries[-1])
     assert "1=1" not in sql[0], sql[0]
@@ -497,7 +533,8 @@ def test_full_join_issue_2():
         working_path=Path(__file__).parent,
     )
     base = Dialects.DUCK_DB.default_executor(environment=env)
-    queries = base.parse_text("""
+    queries = base.parse_text(
+        """
 import launch_dashboard;
 
 select 
@@ -511,7 +548,8 @@ having
     vehicle_rank = 1
 limit 50;
 
-        """)
+        """
+    )
     sql = base.generate_sql(queries[-1])
     assert "1=1" not in sql[0], sql[0]
 
@@ -525,7 +563,8 @@ def test_join_discovery():
         working_path=Path(__file__).parent,
     )
     base = Dialects.DUCK_DB.default_executor(environment=env)
-    queries = base.parse_text("""import launch_dashboard;
+    queries = base.parse_text(
+        """import launch_dashboard;
 
 where
   org.flag = 'abc123'
@@ -533,7 +572,8 @@ SELECT
     count(vehicle.family) by __preql_internal.all_rows -> all_vehicles,
 LIMIT 1
 ;
-""")
+"""
+    )
     sql = base.generate_sql(queries[-1])
     assert "1=1" not in sql[0], sql[0]
 
@@ -547,7 +587,8 @@ def test_join_discovery_two():
         working_path=Path(__file__).parent,
     )
     base = Dialects.DUCK_DB.default_executor(environment=env)
-    queries = base.parse_text("""import launch_dashboard;
+    queries = base.parse_text(
+        """import launch_dashboard;
 
 SELECT
     org.flag,
@@ -556,7 +597,8 @@ SELECT
 
 LIMIT 1
 ;
-""")
+"""
+    )
     sql = base.generate_sql(queries[-1])
     assert (
         'FULL JOIN "lv_info" as "vehicle_lv_info" on "wakeful"."vehicle_name" = "vehicle_lv_info"."LV_Name" AND "wakeful"."vehicle_variant" = "vehicle_lv_info"."LV_Variant"'
@@ -571,7 +613,8 @@ def test_should_group(gcat_env: Executor):
     DebuggingHook()
 
     base = gcat_env
-    queries = base.parse_text("""import launch;
+    queries = base.parse_text(
+        """import launch;
 
 
 SELECT
@@ -582,7 +625,8 @@ SELECT
     count(group launch_tag by vehicle.stage.engine.group) as launch_count_two,
     count_distinct(launch_tag) as launches
 order by launch_count desc limit 15;
-""")
+"""
+    )
     build_env = base.environment.materialize_for_select()
     validation_components = "local.launch_tag,vehicle.name,vehicle.stage.engine.name,vehicle.stage.name,vehicle.variant".split(
         ","
@@ -600,10 +644,12 @@ def test_flag(gcat_env: Executor):
 
     DebuggingHook()
 
-    queries = gcat_env.parse_text("""import launch;
+    queries = gcat_env.parse_text(
+        """import launch;
 
         select org.flag;
-        """)
+        """
+    )
     gcat_env.generate_sql(queries[-1])
     results = gcat_env.execute_query(queries[-1])
     assert len(results.fetchall()) == 4
@@ -615,7 +661,8 @@ def test_array_agg(gcat_env: Executor):
 
     DebuggingHook()
 
-    queries = gcat_env.parse_text("""import launch;
+    queries = gcat_env.parse_text(
+        """import launch;
 
 
 SELECT
@@ -629,7 +676,8 @@ SELECT
         vehicle.stage.engine.fuel -> fuel
         )
     ) as fuel_payloads
-;""")
+;"""
+    )
 
     # gcat_env.generate_sql(queries[-1])
     # assert len(gcat_env.environment.concepts['fuel_readout'].lineage.concept_arguments) == 2, gcat_env.environment.concepts['fuel_readout'].lineage.concept_arguments
@@ -643,7 +691,8 @@ def test_parenthetical_basic_parentheses(gcat_env: Executor):
 
     DebuggingHook()
 
-    queries = gcat_env.parse_text("""
+    queries = gcat_env.parse_text(
+        """
 import fuel_dashboard;
 import std.display;
 
@@ -660,7 +709,8 @@ SELECT
         2
         ) as success_rate2
 ;
-""")
+"""
+    )
     results = gcat_env.execute_query(queries[-1])
     for row in results.fetchall():
         assert 0 <= row.success_rate <= 1, row
@@ -674,7 +724,8 @@ def test_parenthetical_basic(gcat_env: Executor):
 
     DebuggingHook(level=INFO)
 
-    queries = gcat_env.parse_text("""
+    queries = gcat_env.parse_text(
+        """
 import fuel_dashboard;
 import std.display;
 WHERE
@@ -690,7 +741,8 @@ SELECT
     ), desc) as fuel_payloads
 ;
 
-""")
+"""
+    )
     results = gcat_env.execute_query(queries[-1])
     seen = []
     for row in results.fetchall()[0].fuel_payloads:
@@ -706,7 +758,8 @@ def test_parenthetical(gcat_env: Executor):
 
     DebuggingHook()
 
-    queries = gcat_env.parse_text("""
+    queries = gcat_env.parse_text(
+        """
 import fuel_dashboard;
 import std.display;
 WHERE
@@ -729,7 +782,8 @@ SELECT
          )
     ), desc) as fuel_payloads
 ;
-""")
+"""
+    )
     results = gcat_env.execute_query(queries[-1])
     assert len(results.fetchall()) == 1
 
@@ -740,18 +794,21 @@ def test_filter_node_group_injection(gcat_env: Executor):
 
     DebuggingHook()
 
-    queries = gcat_env.parse_text("""
+    queries = gcat_env.parse_text(
+        """
 import fuel_dashboard;
 import std.display;
 select
     count(launch_tag ? vehicle.stage.engine.fuel = 'Kero' and vehicle.stage_no in ('0', '1')) as fuel_launches
 limit 1;
 
-""")
+"""
+    )
     results = gcat_env.execute_query(queries[-1])
     q1 = results.fetchall()[0].fuel_launches
 
-    queries = gcat_env.parse_text("""
+    queries = gcat_env.parse_text(
+        """
 import fuel_dashboard;
 import std.display;
 where vehicle.stage.engine.fuel = 'Kero' and vehicle.stage_no in ('0', '1')
@@ -759,7 +816,8 @@ select
     count(launch_tag) as fuel_launches
 limit 1500;
 
-""")
+"""
+    )
     results = gcat_env.execute_query(queries[-1])
     q2 = results.fetchall()[0].fuel_launches
     assert q1 == q2, (q1, q2)
@@ -772,7 +830,8 @@ def test_aggregate_optimization(gcat_env: Executor):
 
     DebuggingHook(level=INFO)
 
-    queries = gcat_env.parse_text("""
+    queries = gcat_env.parse_text(
+        """
     import fuel_dashboard;
     datasource fuel_aggregates (
   launch_tag,
@@ -803,7 +862,8 @@ ORDER BY
     orbital_payload desc
 LIMIT 10
 ;
-""")
+"""
+    )
     query = gcat_env.generate_sql(queries[-1])
 
     assert (
@@ -824,7 +884,8 @@ def test_no_duplicates(gcat_env: Executor):
 
     DebuggingHook(level=INFO)
 
-    queries = gcat_env.parse_text("""
+    queries = gcat_env.parse_text(
+        """
 import fuel_dashboard;
 WHERE
     vehicle.stage_no in ('2', '3', '4')
@@ -838,7 +899,8 @@ ORDER BY
 LIMIT 10
 ;
 
-""")
+"""
+    )
     del gcat_env.environment.datasources["launch_info"]
     # del gcat_env.environment.datasources['payload.launch.launch_info']
     query = gcat_env.generate_sql(queries[-1])
@@ -859,7 +921,8 @@ def test_big_group_by(gcat_env: Executor):
     DebuggingHook(level=INFO)
     base = gcat_env
     base.execute_raw_sql(ROOT / "setup.sql")
-    queries = base.parse_text("""import fuel_dashboard;
+    queries = base.parse_text(
+        """import fuel_dashboard;
         WHERE
         vehicle.stage_no in ('0', '1')
 
@@ -872,14 +935,18 @@ SELECT
 ORDER BY
     orbital_payload desc
 LIMIT 10
-;""")
+;"""
+    )
     sql = base.generate_sql(queries[-1])
-    assert """GROUP BY 
+    assert (
+        """GROUP BY 
     "fuel_aggregates"."launch_tag",
     "fuel_aggregates"."orb_pay",
     "fuel_aggregates"."org_hex",
     "fuel_aggregates"."org_state_code",
-    CASE""" in sql[0], sql[0]
+    CASE"""
+        in sql[0]
+    ), sql[0]
 
 
 def test_wrong_global_join_agg(gcat_env: Executor):
@@ -890,7 +957,8 @@ def test_wrong_global_join_agg(gcat_env: Executor):
     DebuggingHook(level=INFO)
 
     base = gcat_env
-    queries = base.parse_text("""import satcat;
+    queries = base.parse_text(
+        """import satcat;
 import std.color;
 
 
@@ -902,7 +970,8 @@ select
     )) as per_bus_counts,
         # count(jcat) by * as total_satellites,
 ;
-""")
+"""
+    )
     sql = base.generate_sql(queries[-1])
     # assert base.environment.concepts["per_bus_counts"].
     assert '''"highfalutin"."bus" = "quizzical"."bus"''' not in sql[0], sql[0]
@@ -915,7 +984,8 @@ def test_merge_with_filter(gcat_env: Executor):
 
     DebuggingHook(level=INFO)
     base = gcat_env
-    queries = base.parse_text("""
+    queries = base.parse_text(
+        """
 import satcat;
 where owner.code = 'PLAN'
 select
@@ -928,7 +998,8 @@ sum case when jcat is not null then 1 else 0 end order by decom_date asc as runn
 align
     display_date: launch_date,decom_date
 ;
-""")
+"""
+    )
     sql = base.generate_sql(queries[-1])
     results = base.execute_query(queries[-1])
     assert len(results.fetchall()) > 0, sql
@@ -938,7 +1009,8 @@ def test_date_spine(gcat_env: Executor):
 
     DebuggingHook(level=INFO)
     base = gcat_env
-    queries = base.parse_text("""import satcat;
+    queries = base.parse_text(
+        """import satcat;
 const target_company <- 'PLAN';
 
 auto launches <- count(jcat ? owner.code = target_company) by launch_date;
@@ -955,7 +1027,8 @@ having
     chart_spine >= date_add(current_date(), day, -60)
 order by
     chart_spine asc;
-    """)
+    """
+    )
 
     assert base.environment.concepts["chart_spine"].purpose == Purpose.KEY
     assert base.environment.concepts["chart_spine"].derivation == Derivation.UNNEST
@@ -987,7 +1060,8 @@ def test_date_spine_local_filter(gcat_env: Executor):
     DebuggingHook(level=INFO)
 
     base = gcat_env
-    queries = base.parse_text("""import satcat;   
+    queries = base.parse_text(
+        """import satcat;   
         import satcat;
 
 auto launches <- count(jcat?  owner.code = 'PLAN') by launch_date;
@@ -1002,7 +1076,8 @@ select
 having
     cumulative_launches >1
 ;
-""")
+"""
+    )
 
     sql = base.generate_sql(queries[-1])
     results = base.execute_query(queries[-1]).fetchall()
@@ -1017,7 +1092,8 @@ def test_recursion_error(gcat_env: Executor):
     DebuggingHook(level=INFO)
 
     base = gcat_env
-    queries = base.parse_text("""import satcat;
+    queries = base.parse_text(
+        """import satcat;
         def sort(x)-> x.bus_count;
 
 select
@@ -1036,7 +1112,8 @@ select
     max(launch_date)::string as last_launch
 
 ;
-""")
+"""
+    )
     headline_name = base.environment.concepts["headline_name"]
     assert headline_name.purpose == Purpose.PROPERTY
 
@@ -1053,7 +1130,8 @@ def test_extra_filter(gcat_env: Executor):
     DebuggingHook(level=INFO)
 
     base = gcat_env
-    queries = base.parse_text("""import satcat;
+    queries = base.parse_text(
+        """import satcat;
 
 
 auto launches <- count(jcat ? base_category = 'P') by launch_date;
@@ -1078,7 +1156,8 @@ select
     sum decoms order by decom_spine asc as cumulative_decoms,
 having cumulative_decoms >=1
 align date:launch_spine,decom_spine;
-""")
+"""
+    )
     sql = base.generate_sql(queries[-1])
     results = base.execute_query(queries[-1])
     assert len(results.fetchall()) > 0, sql
@@ -1097,7 +1176,8 @@ def test_extra_filter_two(gcat_env: Executor):
     # purge our aggregate to trigger conditions
     if "fuel_aggregates" in gcat_env.environment.datasources:
         del gcat_env.environment.datasources["fuel_aggregates"]
-    queries = gcat_env.parse_text("""import fuel_dashboard2;
+    queries = gcat_env.parse_text(
+        """import fuel_dashboard2;
 
 WHERE
     era = 'Apollo'
@@ -1105,7 +1185,8 @@ SELECT
     launch_date.year,
     vehicle.stage_no
 ;
-""")
+"""
+    )
     _ = gcat_env.generate_sql(queries[-1])
 
     gcat_env.environment = base_env

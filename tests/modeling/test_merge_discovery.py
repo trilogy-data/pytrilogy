@@ -29,7 +29,8 @@ def v_grain():
 
     imports = Environment()
 
-    imports.parse("""
+    imports.parse(
+        """
 key firstname string;
 key lastname string;
 
@@ -44,7 +45,8 @@ SELECT 'Jane' as firstname, 'Doe' as lastname
 UNION
 SELECT 'John' as firstname, 'Smith' as lastname
 ''';
-""")
+"""
+    )
 
     base.add_import("p1", imports)
     base.add_import("p2", imports)
@@ -98,11 +100,13 @@ SELECT 'John' as firstname, 'Smith' as lastname
     base.add_import("p2", imports)
     base.add_import("p3", imports)
     # merge p1.firstname, p3.firstname and p1.lastname, p3.lastname;
-    base.parse("""
+    base.parse(
+        """
 merge  p2.firstname into p1.firstname;
 merge p2.lastname  into p1.lastname;
 
-""")
+"""
+    )
 
     # GraphHook().query_graph_built(g)
     exec = Dialects.DUCK_DB.default_executor(environment=base, hooks=[DebuggingHook()])
@@ -158,11 +162,13 @@ SELECT 'John' as firstname, 'Smith' as lastname
     base.add_import("p3", imports)
     # merge p1.firstname, p3.firstname and p1.lastname, p3.lastname;
     c1 = base.concepts["p2.firstname"].model_copy(deep=True)
-    base.parse("""
+    base.parse(
+        """
 merge p2.firstname into p1.firstname;
 merge p2.lastname  into p1.lastname;
 
-""")
+"""
+    )
 
     c2 = base.concepts["p1.firstname"]
     assert c2.pseudonyms == {"p2.firstname"}
