@@ -127,8 +127,6 @@ def process_function_arg(
             concept.metadata.line_number = meta.line
         environment.add_concept(concept, meta=meta)
         return concept.reference
-    elif isinstance(arg, FunctionCallWrapper):
-        return process_function_arg(arg.content, meta, environment)
     elif isinstance(arg, SubselectItem):
         id_hash = string_to_hash(str(arg))
         name = f"{VIRTUAL_CONCEPT_PREFIX}_subselect_{arg.content.name}_{id_hash}"
