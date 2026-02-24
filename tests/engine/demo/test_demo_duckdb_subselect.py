@@ -1,4 +1,7 @@
+from pathlib import Path
+
 from trilogy import Dialects
+from trilogy.core.models.environment import Environment
 from trilogy.hooks.query_debugger import DebuggingHook
 
 
@@ -149,3 +152,77 @@ order by
     ).fetchall()
     by_customer = {row.customer_name: row.nearest_warehouses for row in results}
     assert by_customer == {"alice": ["east"], "bob": ["west"]}
+
+
+def test_subselect_with_merge():
+    """Subselect result merged with data from a separate datasource."""
+    executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
+    results = executor.execute_query("""
+key item_id int;
+property item_id.category string;
+property item_id.score int;
+datasource items(
+    item_id: item_id,
+    category: category,
+    score: score
+)
+grain (item_id)
+query '''
+select 1 item_id, 'a' category, 10 score
+union all select 2, 'a', 20
+union all select 3, 'b', 30
+''';
+
+key label_id int;
+property label_id.label_cat string;
+property label_id.label_text string;
+datasource labels(
+    label_id: label_id,
+    label_cat: label_cat,
+    label_text: label_text
+)
+grain (label_id)
+query '''
+select 1 label_id, 'a' label_cat, 'Alpha' label_text
+union all select 2, 'b', 'Beta'
+''';
+
+def table top_scores() -> select score where category order by score desc limit 2;
+
+SELECT
+    category,
+    @top_scores() as top_scores
+MERGE
+SELECT
+    label_cat,
+    label_text
+ALIGN merged_cat: category, label_cat
+;
+""").fetchall()
+    by_cat = {
+        row.merged_cat: (sorted(row.top_scores, reverse=True), row.label_text)
+        for row in results
+    }
+    assert by_cat["a"] == ([20, 10], "Alpha")
+    assert by_cat["b"] == ([30], "Beta")
+
+
+def test_subselect_imported_namespace():
+    """Subselect function imported from another namespace."""
+    env = Environment(working_path=Path(__file__).parent)
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=env, hooks=[DebuggingHook()]
+    )
+    results = executor.execute_query("""
+import subselect_helpers as sh;
+
+select
+    sh.category,
+    @sh.top_scores() as top_scores
+order by
+    sh.category asc
+;
+""").fetchall()
+    assert len(results) == 2
+    assert sorted(results[0].top_scores, reverse=True) == [30, 20]
+    assert sorted(results[1].top_scores, reverse=True) == [50, 40]

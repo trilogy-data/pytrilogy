@@ -845,8 +845,8 @@ class BaseDialect:
         if lineage.limit is not None:
             inner_select += f" LIMIT {lineage.limit}"
 
-        # Wrap with LIST aggregation
-        return f"(SELECT LIST(_sr.{q}{lineage.content.safe_address}{q}) FROM ({inner_select}) _sr)"
+        # Wrap with array aggregation
+        return f"(SELECT array_agg(_sr.{q}{lineage.content.safe_address}{q}) FROM ({inner_select}) _sr)"
 
     def render_array_unnest(
         self,

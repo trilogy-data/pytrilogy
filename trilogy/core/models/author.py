@@ -2284,19 +2284,6 @@ class SubselectItem(Mergeable, DataTyped, Namespaced, ConceptArgs, BaseModel):
             args += get_concept_arguments(item)
         return args
 
-    @property
-    def inner_concept_arguments(self) -> List[ConceptRef]:
-        """Inner concepts for separate resolution in subselect node."""
-        args: List[ConceptRef] = [self.content]
-        if self.where:
-            args += self.where.concept_arguments
-        for item in self.order_by:
-            args += get_concept_arguments(item)
-        if self.outer_arguments:
-            outer_addrs = {a.address for a in self.outer_arguments}
-            args = [a for a in args if a.address not in outer_addrs]
-        return args
-
 
 class RowsetLineage(Namespaced, Mergeable, BaseModel):
     name: str
