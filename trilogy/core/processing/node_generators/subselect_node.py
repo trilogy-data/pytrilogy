@@ -3,6 +3,7 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.models.build import (
     BuildConcept,
+    BuildGrain,
     BuildSubselectItem,
     BuildWhereClause,
 )
@@ -25,13 +26,15 @@ def resolve_subselect_parent_concepts(
     concept: BuildConcept, environment: BuildEnvironment, depth: int
 ) -> List[BuildConcept]:
     if not isinstance(concept.lineage, SUBSELECT_TYPES):
-        raise ValueError
+        raise ValueError(
+            f"Expected subselect lineage for {concept.address}, got {type(concept.lineage)}"
+        )
     lineage: BuildSubselectItem = concept.lineage
-    # concept_arguments returns outer args only (or all args for non-cross-datasource)
     base: list[BuildConcept] = list(lineage.concept_arguments)
     if concept.grain:
+        base_addrs = {x.address for x in base}
         for gitem in concept.grain.components:
-            if gitem not in [x.address for x in base]:
+            if gitem not in base_addrs:
                 logger.info(
                     f"{padding(depth)}{LOGGER_PREFIX} appending grain item {gitem}"
                 )
@@ -154,8 +157,6 @@ def gen_subselect_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} subselect node for {concept.address} requires enrichment, missing {missing_optional}"
     )
-
-    from trilogy.core.models.build import BuildGrain
 
     return gen_enrichment_node(
         _subselect_node,
