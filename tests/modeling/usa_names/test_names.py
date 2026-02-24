@@ -45,9 +45,7 @@ order by
     assert env.concepts["name_rank"].keys == set(["names.name"]), env.concepts[
         "name_rank"
     ].keys
-    assert (
-        sql.strip()
-        == """WITH 
+    assert sql.strip() == """WITH 
 wakeful as (
 SELECT
     "names_usa_names"."name" as "names_name",
@@ -82,7 +80,6 @@ FROM
     INNER JOIN "cheerful" on "highfalutin"."names_name" = "cheerful"."names_name"
 ORDER BY 
     "cheerful"."name_rank" asc""".strip()
-    )
 
 
 def test_aggregate_filter_anonymous():
@@ -223,13 +220,10 @@ order by
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(query)[0]
 
-    assert (
-        """FROM
+    assert """FROM
     "bigquery-public-data"."usa_names"."usa_1910_current" as "usa_names"
 GROUP BY 
-    "usa_names"."name"),"""
-        in sql
-    ), sql
+    "usa_names"."name"),""" in sql, sql
 
 
 def test_multi_window():
@@ -392,8 +386,5 @@ LIMIT 15
         )
         is False
     )
-    assert (
-        '''GROUP BY 
-    "usa_names"."name"'''
-        in query
-    ), query
+    assert '''GROUP BY 
+    "usa_names"."name"''' in query, query

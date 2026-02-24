@@ -288,16 +288,13 @@ LOAD httpfs;
 
     # If credentials are available, create a secret for authenticated access
     if key_id and secret:
-        return (
-            base_sql
-            + f"""
+        return base_sql + f"""
 CREATE OR REPLACE SECRET __trilogy_gcs_secret (
     TYPE gcs,
     KEY_ID '{key_id}',
     SECRET '{secret}'
 );
 """
-        )
     return base_sql
 
 
@@ -317,8 +314,7 @@ def check_gcs_write_credentials() -> None:
         )
 
 
-DUCKDB_TEMPLATE = Template(
-    """{%- if output %}
+DUCKDB_TEMPLATE = Template("""{%- if output %}
 {{output}}
 {% endif %}{%- if ctes %}
 WITH {% if recursive%}RECURSIVE{% endif %}{% for cte in ctes %}
@@ -349,8 +345,7 @@ ORDER BY {% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if limit is not none %}
 LIMIT ({{ limit }}){% endif %}{% endif %}
-"""
-)
+""")
 
 
 class DuckDBDialect(BaseDialect):
@@ -433,9 +428,7 @@ class DuckDBDialect(BaseDialect):
             AND kcu.table_name = tc.table_name
         WHERE kcu.table_name = '{}'
             AND tc.constraint_type = 'PRIMARY KEY'
-        """.format(
-            table_name
-        )
+        """.format(table_name)
 
         if schema:
             pk_query += " AND kcu.table_schema = '{}'".format(schema)

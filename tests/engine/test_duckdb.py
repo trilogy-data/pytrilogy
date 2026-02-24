@@ -92,8 +92,7 @@ def test_boolean_derivation():
     DebuggingHook()
     executor = Dialects.DUCK_DB.default_executor()
 
-    results = executor.execute_text(
-        """const test <- 1 is not null;
+    results = executor.execute_text("""const test <- 1 is not null;
     const nulls <- null is null;
     const gt <- 5 > 3;
     const lt <- 2 < 3;
@@ -110,20 +109,17 @@ def test_boolean_derivation():
     lte,
     eq
      ;
-    """
-    )
+    """)
 
     assert results[0].fetchall()[0][0] is True
 
-    results = executor.execute_text(
-        """ const rows <- unnest([1,2,3,4,5]);
+    results = executor.execute_text(""" const rows <- unnest([1,2,3,4,5]);
 
     auto big <- rows >3;
 
     select rows, big
     order by rows asc;
-    """
-    )
+    """)
     assert results[0].fetchall() == [
         (1, False),
         (2, False),
@@ -152,8 +148,7 @@ def test_empty_string(duckdb_engine: Executor, expected_results):
 
 
 def test_order_of_operations(duckdb_engine: Executor, expected_results):
-    results = duckdb_engine.execute_query(
-        """
+    results = duckdb_engine.execute_query("""
     const x <- 7;
     const y <- 8;
 
@@ -161,8 +156,7 @@ def test_order_of_operations(duckdb_engine: Executor, expected_results):
     auto a <- z/2;
                                           
     select a;
-"""
-    ).fetchall()
+""").fetchall()
     assert results[0].a == 7.5, results[0].a
 
 
@@ -176,14 +170,12 @@ def test_constant_derivation(
 
 
 def test_constants(duckdb_engine: Executor, expected_results):
-    results = duckdb_engine.execute_text(
-        """const usd_conversion <- 2;
+    results = duckdb_engine.execute_text("""const usd_conversion <- 2;
 
     auto converted_total_count <-  total_count * usd_conversion;
     
     select converted_total_count ;
-    """
-    )[0].fetchall()
+    """)[0].fetchall()
     # expected_results["converted_total_count"]
 
     scaled_metric = duckdb_engine.environment.concepts["converted_total_count"]
@@ -212,8 +204,7 @@ def test_constants(duckdb_engine: Executor, expected_results):
 
 
 def test_constant_typing(duckdb_engine: Executor, expected_results):
-    duckdb_engine.execute_text(
-        """import std.net;
+    duckdb_engine.execute_text("""import std.net;
 
 const image_url <- 'www.example.com'::string::url_image;
 
@@ -221,8 +212,7 @@ select
 image_url, 
 'www.example.com'::string::url_image as image_url2;
 
-    """
-    )
+    """)
     for concept_name in ["image_url", "image_url2"]:
         concept = duckdb_engine.environment.concepts[concept_name]
         assert "url_image" in concept.datatype.traits, concept.lineage
@@ -230,22 +220,18 @@ image_url,
 
 
 def test_unnest(duckdb_engine: Executor, expected_results):
-    results = duckdb_engine.execute_text(
-        """const array <- [1,2,3];
-    """
-    )
+    results = duckdb_engine.execute_text("""const array <- [1,2,3];
+    """)
     array = duckdb_engine.environment.concepts["array"]
     assert array.lineage
     assert array.lineage.arguments[0] == [1, 2, 3]
 
-    results = duckdb_engine.execute_text(
-        """const array <- [1,2,3];
+    results = duckdb_engine.execute_text("""const array <- [1,2,3];
 const unnest_array <- unnest(array);
     
     select unnest_array
     order by unnest_array asc;
-    """
-    )[0].fetchall()
+    """)[0].fetchall()
     assert [x.unnest_array for x in results] == [1, 2, 3]
 
 
@@ -740,8 +726,7 @@ def test_simple_case_duckdb_uses_native_syntax():
     from trilogy.dialect.duckdb import DuckDBDialect
     from trilogy.parser import parse_text
 
-    env, parsed = parse_text(
-        """
+    env, parsed = parse_text("""
 auto category <- unnest(['Seafood', 'Beverages']);
 property category.bucket <- CASE category
     WHEN 'Seafood' THEN 'sea'
@@ -752,8 +737,7 @@ END;
 select
     category,
     bucket;
-    """
-    )
+    """)
     select = parsed[-1]
     dialect = DuckDBDialect()
 
@@ -774,8 +758,7 @@ def test_simple_case_bigquery_expands_syntax():
     from trilogy.dialect.bigquery import BigqueryDialect
     from trilogy.parser import parse_text
 
-    env, parsed = parse_text(
-        """
+    env, parsed = parse_text("""
 auto category <- unnest(['Seafood', 'Beverages']);
 property category.bucket <- CASE category
     WHEN 'Seafood' THEN 'sea'
@@ -786,8 +769,7 @@ END;
 select
     category,
     bucket;
-    """
-    )
+    """)
     select = parsed[-1]
     dialect = BigqueryDialect()
 
@@ -1178,15 +1160,13 @@ def test_duckdb_load():
     env = Environment(working_path=Path(__file__).parent)
     exec = Dialects.DUCK_DB.default_executor(environment=env)
 
-    results = exec.execute_query(
-        r"""
+    results = exec.execute_query(r"""
         auto csv <- _env_working_path || '/test.csv';
 
         RAW_SQL('''
         CREATE TABLE ages AS FROM read_csv(:csv);
         '''
-        );"""
-    )
+        );""")
 
     results = exec.execute_raw_sql("SELECT * FROM ages;").fetchall()
 
@@ -1199,13 +1179,11 @@ def test_duckdb_string_quotes():
     DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor()
 
-    results = exec.execute_query(
-        r"""
+    results = exec.execute_query(r"""
         const csv <- '''this string has quotes ' like this''';
 
     select csv;
-        """
-    )
+        """)
 
     results = results.fetchall()
 
@@ -1252,8 +1230,7 @@ def test_union():
     DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor()
 
-    results = exec.execute_query(
-        r"""
+    results = exec.execute_query(r"""
 key space_one int;
 key space_two int;
 
@@ -1293,8 +1270,7 @@ select
 order by
     space_all asc
 limit 100;
-        """
-    )
+        """)
 
     results = list(results.fetchall())
 
@@ -1306,8 +1282,7 @@ limit 100;
 def test_multi_select_mutation():
     exec = Dialects.DUCK_DB.default_executor()
 
-    queries = exec.parse_text(
-        """
+    queries = exec.parse_text("""
 
 auto x <- 1;
                     
@@ -1317,8 +1292,7 @@ select
 select
     x + 2 -> x_next;
                     
-"""
-    )
+""")
 
     for idx, x in enumerate(queries):
         results = exec.execute_query(x).fetchall()
@@ -1344,8 +1318,7 @@ def test_parquet_format_access():
     executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
     parquet_path = Path(__file__).parent / "customer.parquet"
     nations_path = Path(__file__).parent / "nation.parquet"
-    executor.parse_text(
-        f"""
+    executor.parse_text(f"""
 
 key id int;
 property id.text_id string;
@@ -1372,8 +1345,7 @@ datasource nations (
 )
 grain(nation_id)
 address `{nations_path}`;
-"""
-    )
+""")
     _ = executor.execute_raw_sql(f'select * from "{parquet_path}" limit 1;')
     r = executor.execute_query("select count(id) as customer_count;")
 
@@ -1389,12 +1361,10 @@ address `{nations_path}`;
 def test_duckdb_date_add():
     executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
 
-    r = executor.execute_query(
-        r"""
+    r = executor.execute_query(r"""
 auto today <- date_add(current_datetime(), day, -3);
 select today;
-"""
-    )
+""")
 
     results = r.fetchall()
 
@@ -1404,12 +1374,10 @@ select today;
 def test_duckdb_alias():
     executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
 
-    r = executor.execute_query(
-        r"""
+    r = executor.execute_query(r"""
 auto today <- date_add(current_datetime(), day, -3);
 select today as tomorrow, today;
-"""
-    )
+""")
 
     results = r.fetchall()
 
@@ -1466,18 +1434,14 @@ auto max_date <- max(date) by *;
     )
     executor.parse_text(query)
 
-    results = executor.execute_text(
-        """where date = max_date and id >2
-select date, avg(score) as avg_id;"""
-    )[0].fetchall()
+    results = executor.execute_text("""where date = max_date and id >2
+select date, avg(score) as avg_id;""")[0].fetchall()
 
     assert len(results) == 1
     assert results[0].avg_id == 35.0
 
-    results = executor.execute_text(
-        """where date = max_date and id >2
-select max_date, date, avg(score) as avg_id;"""
-    )[0].fetchall()
+    results = executor.execute_text("""where date = max_date and id >2
+select max_date, date, avg(score) as avg_id;""")[0].fetchall()
 
     assert len(results) == 1
     assert results[0].avg_id == 35.0
@@ -1671,28 +1635,22 @@ def test_recursive():
         environment=Environment(working_path=Path(__file__).parent)
     )
 
-    executor.environment.parse(
-        """import recursive;
+    executor.environment.parse("""import recursive;
 # traverse parent-> id until you hit a null
-auto first_parent <- recurse_edge(id, parent);"""
-    )
+auto first_parent <- recurse_edge(id, parent);""")
 
     assert (
         executor.environment.concepts["first_parent"].derivation == Derivation.RECURSIVE
     )
-    executor.generate_sql(
-        """where
+    executor.generate_sql("""where
 first_parent = 1    
 select id, label
 order by label asc;
-"""
-    )[-1]
-    results = executor.execute_text(
-        """where
+""")[-1]
+    results = executor.execute_text("""where
 first_parent = 1
 select id, label;
-"""
-    )[0].fetchall()
+""")[0].fetchall()
     assert len(results) == 4
     assert results[0].label == "A"
 
@@ -1706,8 +1664,7 @@ def test_recursive_enrichment():
         environment=Environment(working_path=Path(__file__).parent)
     )
 
-    executor.environment.parse(
-        """
+    executor.environment.parse("""
 import recursive;
 import recursive as parent;
 # traverse parent-> id until you hit a null
@@ -1715,27 +1672,22 @@ auto first_parent <- recurse_edge(id, parent);
 
 merge first_parent into parent.id;                 
                                
-                               """
-    )
+                               """)
 
     recursive = executor.environment.alias_origin_lookup["local.first_parent"]
     assert recursive.derivation == Derivation.RECURSIVE, "recursive should be recursive"
 
-    results = executor.execute_text(
-        """where
+    results = executor.execute_text("""where
 first_parent = 1
 select id, parent.label;
-"""
-    )[0].fetchall()
+""")[0].fetchall()
     assert len(results) == 4
     assert results[-1].parent_label == "A"
 
-    results = executor.execute_text(
-        """where
+    results = executor.execute_text("""where
 parent.label = 'A'
 select count(id) as a_children;
-"""
-    )[0].fetchall()
+""")[0].fetchall()
     assert len(results) == 1
     assert results[0].a_children == 4
 
@@ -2049,9 +2001,7 @@ select 'abc' as x, 1 as y union all select null as x, null as y''';
 """
     rewritten = validate_and_rewrite(test, default_duckdb_engine)
 
-    assert (
-        rewritten.strip()
-        == """
+    assert rewritten.strip() == """
 key x string; # guessing at type
 # but who cares, right
 key y int;
@@ -2069,8 +2019,7 @@ datasource example (
 grain (x)
 query '''
 select 'abc' as x, 1 as y union all select null as x, null as y''';
-""".strip()
-    ), rewritten.strip()
+""".strip(), rewritten.strip()
 
 
 def test_validate_fix_types():
@@ -2095,9 +2044,7 @@ select 'abc' as x, 1.0 as y, 2.0 as z union all select null as x, null as y, nul
 """
     rewritten = validate_and_rewrite(test, default_duckdb_engine)
 
-    assert (
-        rewritten.strip()
-        == """import std.geography;
+    assert rewritten.strip() == """import std.geography;
 
 key x string; # guessing at type
 key y numeric::latitude;
@@ -2111,8 +2058,7 @@ datasource example (
 grain (x)
 query '''
 select 'abc' as x, 1.0 as y, 2.0 as z union all select null as x, null as y, null as z''';
-""".strip()
-    ), rewritten.strip()
+""".strip(), rewritten.strip()
 
 
 def test_show_validate():
@@ -2486,8 +2432,7 @@ def test_multi_select_derive():
     from trilogy.hooks import DebuggingHook
 
     DebuggingHook()
-    queries = exec.parse_text(
-        """
+    queries = exec.parse_text("""
 
 auto x <- 1;
                     
@@ -2502,8 +2447,7 @@ align val:x_val, y_val
 derive x_next + y_next -> total
 ;
                     
-"""
-    )
+""")
 
     for idx, x in enumerate(queries):
         print(x.output_columns)
@@ -2517,8 +2461,7 @@ def test_multi_select_derive_import():
     from trilogy.hooks import DebuggingHook
 
     DebuggingHook()
-    queries = exec.parse_text(
-        """
+    queries = exec.parse_text("""
 
 auto x <- 1;
 
@@ -2534,19 +2477,16 @@ align val:x_val, y_val
 derive x_next + y_next -> total
 ;
 
-"""
-    )
+""")
     exec2 = Dialects.DUCK_DB.default_executor()
     exec2.environment.add_import("dependent", exec.environment, None)
 
     assert exec2.environment.concepts["dependent.rows.x_next"]
-    queries = exec2.parse_text(
-        """
+    queries = exec2.parse_text("""
         select
         dependent.rows.x_next, dependent.rows.total
         ;
-        """
-    )
+        """)
 
     for idx, x in enumerate(queries):
         print(x.output_columns)
@@ -2560,8 +2500,7 @@ def test_order_by_count():
     from trilogy.hooks import DebuggingHook
 
     DebuggingHook()
-    exec.parse_text(
-        """
+    exec.parse_text("""
 key state string;
 property state.count int;
 datasource origin (
@@ -2582,8 +2521,7 @@ select
    count, 
    order by count desc;
 
-"""
-    )
+""")
 
 
 def test_existence():
@@ -2591,8 +2529,7 @@ def test_existence():
     from trilogy.hooks import DebuggingHook
 
     DebuggingHook()
-    results = exec.execute_text(
-        """
+    results = exec.execute_text("""
 key state string;
 property state.count int;
 datasource origin (
@@ -2617,15 +2554,13 @@ where state in state? count>20
 select
    state,
 ;
-"""
-    )
+""")
     assert results[-1].fetchall()[0].state == "TX"
 
 
 def test_string_functions():
     environment = Environment()
-    _, queries = environment.parse(
-        """
+    _, queries = environment.parse("""
     const greeting <- '  Hello, World!  ';
     select
         greeting,
@@ -2643,8 +2578,7 @@ def test_string_functions():
     ;
 
 
-        """
-    )
+        """)
 
     executor = Dialects.DUCK_DB.default_executor(
         environment=environment, rendering=Rendering(parameters=False)
@@ -2669,8 +2603,7 @@ def test_string_functions():
 
 def test_datetime_functions():
     environment = Environment()
-    _, queries = environment.parse(
-        """
+    _, queries = environment.parse("""
     const order_id <- 1;
     const order_timestamp <- current_datetime();
     select
@@ -2715,8 +2648,7 @@ def test_datetime_functions():
     ;
 
 
-        """
-    )
+        """)
 
     executor = Dialects.DUCK_DB.default_executor(
         environment=environment, rendering=Rendering(parameters=False)
