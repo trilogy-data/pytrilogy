@@ -161,6 +161,19 @@ def gen_property_enrichment_node(
     )
 
 
+def concepts_to_grain_concepts(
+    concepts: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> list[BuildConcept]:
+    """Resolve concepts to their grain-level keys for use as join keys."""
+    return [
+        environment.concepts[c]
+        for c in BuildGrain.from_concepts(
+            concepts=concepts, environment=environment
+        ).components
+    ]
+
+
 def gen_enrichment_node(
     base_node: StrategyNode,
     join_keys: List[BuildConcept],

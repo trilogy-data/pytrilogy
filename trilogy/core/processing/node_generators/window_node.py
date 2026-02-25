@@ -9,6 +9,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.common import (
+    concepts_to_grain_concepts,
     gen_enrichment_node,
 )
 from trilogy.core.processing.nodes import (
@@ -184,12 +185,7 @@ def gen_window_node(
 
     return gen_enrichment_node(
         window_node,
-        join_keys=[
-            environment.concepts[c]
-            for c in BuildGrain.from_concepts(
-                concepts=targets, environment=environment
-            ).components
-        ],
+        join_keys=concepts_to_grain_concepts(targets, environment),
         local_optional=local_optional,
         environment=environment,
         g=g,

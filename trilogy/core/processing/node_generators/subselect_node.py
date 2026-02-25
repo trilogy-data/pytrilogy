@@ -3,12 +3,14 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.models.build import (
     BuildConcept,
-    BuildGrain,
     BuildSubselectItem,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.node_generators.common import gen_enrichment_node
+from trilogy.core.processing.node_generators.common import (
+    concepts_to_grain_concepts,
+    gen_enrichment_node,
+)
 from trilogy.core.processing.nodes import (
     History,
     StrategyNode,
@@ -160,12 +162,9 @@ def gen_subselect_node(
 
     return gen_enrichment_node(
         _subselect_node,
-        join_keys=[
-            environment.concepts[c]
-            for c in BuildGrain.from_concepts(
-                concepts=all_parent_concepts + targets, environment=environment
-            ).components
-        ],
+        join_keys=concepts_to_grain_concepts(
+            all_parent_concepts + targets, environment
+        ),
         local_optional=local_optional,
         environment=environment,
         g=g,
