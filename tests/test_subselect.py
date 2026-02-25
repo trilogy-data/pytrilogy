@@ -3,6 +3,7 @@ import pytest
 from trilogy import parse
 from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.author import (
+    Concept,
     ConceptRef,
     DataType,
     SubselectItem,
@@ -172,5 +173,50 @@ address test_addr;
 def table top_vals() -> select val order by val desc limit 3;
 auto result <- unnest(@top_vals());
 select result;
+    """)
+    assert len(queries) > 0
+
+
+def test_subselect_item_enforce_concept_ref():
+    """Validator should convert Concept to ConceptRef."""
+    env, _ = parse("""
+key id int;
+property id.val int;
+    """)
+    concept = env.concepts["val"]
+    assert isinstance(concept, Concept)
+    item = SubselectItem(content=concept)
+    assert isinstance(item.content, ConceptRef)
+
+
+def test_inline_subselect_with_where():
+    """Parse inline SUBSELECT(...) with WHERE clause."""
+    env, queries = parse("""
+key id int;
+property id.val int;
+property id.category string;
+datasource nums(id: id, val: val, category: category)
+grain (id)
+address test_addr;
+
+auto top_items <- SUBSELECT(val WHERE category = 'a' ORDER BY val DESC LIMIT 5);
+select top_items;
+    """)
+    assert len(queries) > 0
+    top = [c for c in env.concepts.values() if c.derivation == Derivation.SUBSELECT]
+    assert len(top) > 0
+
+
+def test_inline_subselect_basic():
+    """Parse inline SUBSELECT(...) without where."""
+    env, queries = parse("""
+key id int;
+property id.val int;
+datasource nums(id: id, val: val)
+grain (id)
+address test_addr;
+
+auto top_items <- SUBSELECT(val ORDER BY val DESC LIMIT 3);
+select top_items;
     """)
     assert len(queries) > 0
