@@ -13,9 +13,11 @@ def test_base_node_copy():
 
 def test_hide():
     env = Environment()
-    env.parse("""
+    env.parse(
+        """
 key order_id int;
-property order_id.profit float;""")
+property order_id.profit float;"""
+    )
     env = env.materialize_for_select()
     x = StrategyNode(
         input_concepts=[],
@@ -31,9 +33,11 @@ property order_id.profit float;""")
 
 def test_partial():
     env = Environment()
-    env.parse("""
+    env.parse(
+        """
 key order_id int;
-property order_id.profit float;""")
+property order_id.profit float;"""
+    )
     env = env.materialize_for_select()
     x = StrategyNode(
         input_concepts=[],
@@ -47,13 +51,15 @@ property order_id.profit float;""")
 
 def test_get_parent_partial():
     env = Environment()
-    env.parse("""
+    env.parse(
+        """
 key order_id int;
 property order_id.profit float;
               
 key product_id int;
 property product_id.price float;
-              """)
+              """
+    )
     env = env.materialize_for_select()
     x = StrategyNode(
         input_concepts=[],

@@ -5,7 +5,8 @@ from trilogy.hooks import DebuggingHook
 def test_ranking_import():
     DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor()
-    all_results = duckdb.execute_query("""
+    all_results = duckdb.execute_query(
+        """
 import std.ranking;
 import std.money;
 
@@ -39,7 +40,8 @@ SELECT
     --order_score
 
 order by order_score desc;
-""")
+"""
+    )
 
     results = all_results.fetchall()
 

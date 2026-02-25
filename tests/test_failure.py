@@ -8,7 +8,8 @@ def test_cannot_find():
     x = Dialects.DUCK_DB.default_executor()
 
     with raises(UnresolvableQueryException):
-        x.generate_sql("""
+        x.generate_sql(
+            """
     key x int;
     key y int;
 
@@ -20,13 +21,15 @@ def test_cannot_find():
 
     select x;
 
-    """)
+    """
+        )
 
 
 def test_cannot_find_complex():
     x = Dialects.DUCK_DB.default_executor()
     with raises(UnresolvableQueryException):
-        x.generate_sql("""
+        x.generate_sql(
+            """
     key x int;
     key y int;
 
@@ -40,4 +43,5 @@ def test_cannot_find_complex():
 
     select sum(y) by x as fun;
 
-    """)
+    """
+        )

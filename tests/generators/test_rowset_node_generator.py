@@ -8,14 +8,16 @@ def test_gen_rowset_node_with_filter(
     test_environment: Environment, test_environment_graph
 ):
 
-    test_environment.parse("""
+    test_environment.parse(
+        """
                            
 auto rev_sum <-sum(revenue);
                            
 with p1 as 
 select product_id
 where rev_sum>5;
-                           """)
+                           """
+    )
     orig_env = test_environment
     test_environment = test_environment.materialize_for_select()
     node = gen_rowset_node(
@@ -40,7 +42,8 @@ def test_gen_rowset_node_group_parent(
     test_environment: Environment, test_environment_graph
 ):
 
-    test_environment.parse("""
+    test_environment.parse(
+        """
                            
 auto rev_sum <-sum(revenue) by product_id;
                            
@@ -51,7 +54,8 @@ where rev_sum>5;
 with p2 as 
 select product_id
 where rev_sum>2;
-                           """)
+                           """
+    )
     orig_env = test_environment
     test_environment = test_environment.materialize_for_select()
     _ = gen_rowset_node(
@@ -71,7 +75,8 @@ def test_gen_rowset_node_merge_parent(
     test_environment: Environment, test_environment_graph
 ):
 
-    test_environment.parse("""
+    test_environment.parse(
+        """
                            
 auto rev_sum <-sum(revenue);
                            
@@ -82,7 +87,8 @@ where rev_sum>5;
 with p2 as 
 select product_id
 where rev_sum>2;
-                           """)
+                           """
+    )
     orig_env = test_environment
     test_environment = test_environment.materialize_for_select()
     _ = gen_rowset_node(

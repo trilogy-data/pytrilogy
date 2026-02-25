@@ -196,7 +196,8 @@ def test_prompt_approval_declined(capsys):
 def test_refresh_stale_assets_on_approval_declined():
     """on_approval returning False should skip refresh."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text("""
+    executor.execute_text(
+        """
         key item_id int;
         property item_id.name string;
         property item_id.updated_at datetime;
@@ -222,7 +223,8 @@ def test_refresh_stale_assets_on_approval_declined():
         freshness by updated_at;
 
         CREATE IF NOT EXISTS DATASOURCE target_items;
-        """)
+        """
+    )
 
     result = refresh_stale_assets(
         executor,
@@ -236,7 +238,8 @@ def test_refresh_stale_assets_on_approval_declined():
 def test_refresh_stale_assets_on_approval_accepted():
     """on_approval returning True should proceed with refresh."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text("""
+    executor.execute_text(
+        """
         key item_id int;
         property item_id.name string;
         property item_id.updated_at datetime;
@@ -262,7 +265,8 @@ def test_refresh_stale_assets_on_approval_accepted():
         freshness by updated_at;
 
         CREATE IF NOT EXISTS DATASOURCE target_items;
-        """)
+        """
+    )
 
     result = refresh_stale_assets(
         executor,
@@ -276,7 +280,8 @@ def test_refresh_stale_assets_on_approval_accepted():
 def test_refresh_stale_assets_forced():
     """Test that force_sources forces rebuild regardless of staleness."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text("""
+    executor.execute_text(
+        """
         key item_id int;
         property item_id.name string;
         property item_id.updated_at datetime;
@@ -307,7 +312,8 @@ def test_refresh_stale_assets_forced():
         INSERT INTO target_items_table
         SELECT 1 as item_id, 'Widget' as name, TIMESTAMP '2024-01-10 12:00:00' as updated_at
         ''');
-        """)
+        """
+    )
 
     refreshed_assets: list[tuple[str, str]] = []
 
