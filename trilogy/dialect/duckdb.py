@@ -1,7 +1,11 @@
+from __future__ import annotations
+
 import re
 from os import environ
-from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping
+
+if TYPE_CHECKING:
+    from trilogy.staging import StagingConfig
 
 from jinja2 import Template
 
@@ -185,7 +189,10 @@ DATATYPE_MAP: dict[DataType, str] = {}
 
 
 def get_python_datasource_setup_sql(
-    enabled: bool, is_windows: bool = False, instance_id: str | None = None
+    enabled: bool,
+    is_windows: bool = False,
+    instance_id: str | None = None,
+    staging: "StagingConfig | None" = None,
 ) -> str:
     """Return SQL to setup the uv_run macro for Python script datasources.
     Inspired by: https://sidequery.dev/blog/uv-run-duckdb
@@ -195,6 +202,7 @@ def get_python_datasource_setup_sql(
                  If False, creates macro that throws a clear error.
         is_windows: If True, uses temp file workaround for shellfs pipe bug.
         instance_id: Unique identifier for this executor instance (thread-safe).
+        staging: Staging config for temp file location. Defaults to system tempdir.
     """
     if not enabled:  # Use a subquery that throws an error when evaluated
         # This ensures the error message is shown before column binding
@@ -211,21 +219,19 @@ SELECT * FROM (
     if is_windows:
         import atexit
         import os
-        import tempfile
         import uuid
+
+        from trilogy.staging import StagingConfig
 
         # Windows workaround: shellfs has a bug with Arrow IPC pipes on Windows.
         # We use a temp file approach: run script to file, then read file.
         # The read_json forces the shell command to complete before read_arrow.
         # Using getvariable() defers file path resolution until execution.
         # Use UUID to ensure unique temp file per executor instance (thread-safe).
-        # Use Path.resolve() to avoid 8.3 short names (e.g. RUNNER~1) on CI.
 
         unique_id = instance_id or str(uuid.uuid4())
-        temp_file = (
-            str(Path(tempfile.gettempdir()).resolve()).replace("\\", "/")
-            + f"/trilogy_uv_run_{unique_id}.arrow"
-        )
+        staging = staging or StagingConfig()
+        temp_file = staging.get_file_path(f"trilogy_uv_run_{unique_id}.arrow")
 
         def cleanup_temp_file() -> None:
             try:
@@ -288,16 +294,13 @@ LOAD httpfs;
 
     # If credentials are available, create a secret for authenticated access
     if key_id and secret:
-        return (
-            base_sql
-            + f"""
+        return base_sql + f"""
 CREATE OR REPLACE SECRET __trilogy_gcs_secret (
     TYPE gcs,
     KEY_ID '{key_id}',
     SECRET '{secret}'
 );
 """
-        )
     return base_sql
 
 
@@ -317,8 +320,7 @@ def check_gcs_write_credentials() -> None:
         )
 
 
-DUCKDB_TEMPLATE = Template(
-    """{%- if output %}
+DUCKDB_TEMPLATE = Template("""{%- if output %}
 {{output}}
 {% endif %}{%- if ctes %}
 WITH {% if recursive%}RECURSIVE{% endif %}{% for cte in ctes %}
@@ -349,8 +351,7 @@ ORDER BY {% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if limit is not none %}
 LIMIT ({{ limit }}){% endif %}{% endif %}
-"""
-)
+""")
 
 
 class DuckDBDialect(BaseDialect):
@@ -433,9 +434,7 @@ class DuckDBDialect(BaseDialect):
             AND kcu.table_name = tc.table_name
         WHERE kcu.table_name = '{}'
             AND tc.constraint_type = 'PRIMARY KEY'
-        """.format(
-            table_name
-        )
+        """.format(table_name)
 
         if schema:
             pk_query += " AND kcu.table_schema = '{}'".format(schema)

@@ -357,6 +357,7 @@ def create_executor(
         environment=environment,
         hooks=[DebuggingHook(output_file=PathlibPath(debug))] if debug else [],
         config=conf,
+        staging=config.staging,
     )
     if config.startup_sql:
         for script in config.startup_sql:

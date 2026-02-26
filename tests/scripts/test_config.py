@@ -160,6 +160,56 @@ path = ":memory:"
         assert result.exit_code == 0
 
 
+def test_config_staging_default():
+    """Test that staging defaults to None path when not in config."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text('[engine]\ndialect = "duckdb"\n')
+
+        config = load_config_file(config_file)
+        assert config.staging.path is None
+
+
+def test_config_staging_local():
+    """Test parsing local staging path from config."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(
+            '[engine]\ndialect = "duckdb"\n\n[staging]\npath = "/tmp/my-staging"\n'
+        )
+
+        config = load_config_file(config_file)
+        assert config.staging.path == "/tmp/my-staging"
+
+
+def test_config_staging_gcs():
+    """Test parsing GCS staging path from config."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(
+            '[engine]\ndialect = "duckdb"\n\n[staging]\npath = "gs://bucket/prefix"\n'
+        )
+
+        config = load_config_file(config_file)
+        assert config.staging.path == "gs://bucket/prefix"
+
+
+def test_config_staging_s3():
+    """Test parsing S3 staging path from config."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(
+            '[engine]\ndialect = "duckdb"\n\n[staging]\npath = "s3://bucket/prefix"\n'
+        )
+
+        config = load_config_file(config_file)
+        assert config.staging.path == "s3://bucket/prefix"
+
+
 def test_config_types():
 
     test_cases = [
@@ -319,8 +369,7 @@ def test_load_env_file():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
         env_file = tmppath / ".env"
-        env_file.write_text(
-            """
+        env_file.write_text("""
 # Comment line
 TRILOGY_TEST_VAR1=value1
 TRILOGY_TEST_VAR2="quoted value"
@@ -329,8 +378,7 @@ TRILOGY_TEST_VAR4=value=with=equals
 
 # Empty line above
 TRILOGY_TEST_VAR5=
-"""
-        )
+""")
 
         env_vars = load_env_file(env_file)
 
