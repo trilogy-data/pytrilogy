@@ -875,6 +875,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             FilterItem,
             AggregateWrapper,
             RowsetItem,
+            SubselectItem,
             MultiSelectLineage,
             Comparison,
         ]
@@ -1082,6 +1083,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         | FilterItem
         | AggregateWrapper
         | RowsetItem
+        | SubselectItem
         | MultiSelectLineage
         | Comparison
         | None,
@@ -1179,6 +1181,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
                     FilterItem,
                     AggregateWrapper,
                     RowsetItem,
+                    SubselectItem,
                     MultiSelectLineage,
                     Comparison,
                 ],
@@ -1212,6 +1215,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             BuildFunction,
             BuildMultiSelectLineage,
             BuildRowsetItem,
+            BuildSubselectItem,
             BuildWindowItem,
         )
 
@@ -1225,6 +1229,8 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         #     return Derivation.PARENTHETICAL
         elif lineage and isinstance(lineage, (BuildRowsetItem, RowsetItem)):
             return Derivation.ROWSET
+        elif lineage and isinstance(lineage, (BuildSubselectItem, SubselectItem)):
+            return Derivation.SUBSELECT
         elif lineage and isinstance(lineage, BuildComparison):
             return Derivation.BASIC
         elif lineage and isinstance(
@@ -2177,6 +2183,108 @@ class FilterItem(Mergeable, DataTyped, Namespaced, ConceptArgs, BaseModel):
         return self.where.concept_arguments
 
 
+class SubselectItem(Mergeable, DataTyped, Namespaced, ConceptArgs, BaseModel):
+    content: ConceptRef
+    where: Optional["WhereClause"] = None
+    order_by: List["OrderItem"] = Field(default_factory=list)
+    limit: Optional[int] = None
+    outer_arguments: List[ConceptRef] = Field(default_factory=list)
+
+    def __repr__(self):
+        parts = [f"subselect({self.content}"]
+        if self.where:
+            parts.append(f" where {self.where}")
+        if self.order_by:
+            parts.append(f" order by {self.order_by}")
+        if self.limit:
+            parts.append(f" limit {self.limit}")
+        return "".join(parts) + ")"
+
+    def __str__(self):
+        return self.__repr__()
+
+    @field_validator("content", mode="before")
+    def enforce_concept_ref(cls, v):
+        if isinstance(v, Concept):
+            return ConceptRef(address=v.address, datatype=v.datatype)
+        return v
+
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> "SubselectItem":
+        return SubselectItem.model_construct(
+            content=(
+                self.content.with_merge(source, target, modifiers)
+                if isinstance(self.content, Mergeable)
+                else self.content
+            ),
+            where=(
+                self.where.with_merge(source, target, modifiers) if self.where else None
+            ),
+            order_by=[x.with_merge(source, target, modifiers) for x in self.order_by],
+            limit=self.limit,
+            outer_arguments=[
+                x.with_merge(source, target, modifiers) for x in self.outer_arguments
+            ],
+        )
+
+    def with_reference_replacement(self, source, target):
+        return SubselectItem.model_construct(
+            content=(
+                self.content.with_reference_replacement(source, target)
+                if isinstance(self.content, Mergeable)
+                else self.content
+            ),
+            where=(
+                self.where.with_reference_replacement(source, target)
+                if self.where
+                else None
+            ),
+            order_by=[
+                x.with_reference_replacement(source, target) for x in self.order_by
+            ],
+            limit=self.limit,
+            outer_arguments=[
+                (
+                    x.with_reference_replacement(source, target)
+                    if isinstance(x, Mergeable)
+                    else x
+                )
+                for x in self.outer_arguments
+            ],
+        )
+
+    def with_namespace(self, namespace: str) -> "SubselectItem":
+        return SubselectItem.model_construct(
+            content=(
+                self.content.with_namespace(namespace)
+                if isinstance(self.content, Namespaced)
+                else self.content
+            ),
+            where=(self.where.with_namespace(namespace) if self.where else None),
+            order_by=[x.with_namespace(namespace) for x in self.order_by],
+            limit=self.limit,
+            outer_arguments=[x.with_namespace(namespace) for x in self.outer_arguments],
+        )
+
+    @property
+    def output_datatype(self):
+        return ArrayType(type=self.content.datatype)
+
+    @property
+    def concept_arguments(self) -> List[ConceptRef]:
+        # When outer_arguments exist, only expose those to the main query.
+        # Inner concepts are resolved separately in gen_subselect_node.
+        if self.outer_arguments:
+            return list(self.outer_arguments)
+        args: List[ConceptRef] = [self.content]
+        if self.where:
+            args += self.where.concept_arguments
+        for item in self.order_by:
+            args += get_concept_arguments(item)
+        return args
+
+
 class RowsetLineage(Namespaced, Mergeable, BaseModel):
     name: str
     derived_concepts: List[ConceptRef]
@@ -2665,6 +2773,14 @@ class CustomFunctionFactory:
                 else:
                     target = self.function_arguments[idx].name
                 nout = nout.with_reference_replacement(target, x)
+        if isinstance(nout, SubselectItem) and creation_arg_list:
+            outer: list[ConceptRef] = []
+            for x in creation_arg_list:
+                if isinstance(x, ConceptRef):
+                    outer.append(x)
+                elif isinstance(x, ConceptArgs):
+                    outer.extend(x.concept_arguments)
+            nout.outer_arguments = outer
         return nout
 
 
@@ -2752,6 +2868,7 @@ Expr = (
     | MapWrapper
     | WindowItem
     | FilterItem
+    | SubselectItem
     | ConceptRef
     | Comparison
     | Conditional
@@ -2794,4 +2911,5 @@ FuncArgs = (
     | MagicConstants
     | ArgBinding
     | Ordering
+    | SubselectItem
 )

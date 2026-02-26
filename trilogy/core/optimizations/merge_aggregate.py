@@ -114,6 +114,7 @@ class MergeAggregate(OptimizationRule):
         if parent.group_to_grain or parent.source.source_type in (
             SourceType.GROUP,
             SourceType.WINDOW,
+            SourceType.SUBSELECT,
         ):
             self.debug(
                 f"Parent {parent.name} is ineligible type {parent.source.source_type}, skipping"

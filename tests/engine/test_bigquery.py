@@ -569,6 +569,35 @@ def test_array_agg():
     assert results[0] == ([1, 2, 3, 3, 4, 5],)  # aggregated_values
 
 
+@pytest.mark.skipif(
+    sys.version_info >= UNSUPPORTED_TUPLE, reason="BigQuery not supported on 3.13"
+)
+def test_subselect_rendering():
+    from trilogy.render import get_dialect_generator
+
+    environment = Environment()
+    environment.parse(
+        """
+key id int;
+property id.val int;
+datasource nums(
+    id: id,
+    val: val
+)
+grain (id)
+address `project.dataset.nums`;
+
+def table top_vals() -> select val order by val desc limit 3;
+"""
+    )
+    generator = get_dialect_generator(Dialects.BIGQUERY)
+    _, queries = environment.parse("""select @top_vals() as top;""")
+    processed = generator.generate_queries(environment, queries)
+    sql = generator.compile_statement(processed[0])
+    assert "array_agg" in sql.lower()
+    assert "LIST(" not in sql
+
+
 def test_hash_column_value():
     dialect = BigqueryDialect()
     result = dialect.hash_column_value("my_column")

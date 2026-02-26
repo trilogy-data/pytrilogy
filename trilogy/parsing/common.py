@@ -41,6 +41,7 @@ from trilogy.core.models.author import (
     RowsetItem,
     RowsetLineage,
     SubselectComparison,
+    SubselectItem,
     TraitDataType,
     TupleWrapper,
     UndefinedConcept,
@@ -58,6 +59,7 @@ ARBITRARY_INPUTS = (
     | FunctionCallWrapper
     | WindowItem
     | FilterItem
+    | SubselectItem
     | Function
     | Parenthetical
     | ListWrapper
@@ -121,6 +123,16 @@ def process_function_arg(
             name=name,
             environment=environment,
         )
+        if concept.metadata and meta:
+            concept.metadata.line_number = meta.line
+        environment.add_concept(concept, meta=meta)
+        return concept.reference
+    elif isinstance(arg, SubselectItem):
+        id_hash = string_to_hash(str(arg))
+        name = f"{VIRTUAL_CONCEPT_PREFIX}_subselect_{arg.content.name}_{id_hash}"
+        if f"{environment.namespace}.{name}" in environment.concepts:
+            return environment.concepts[f"{environment.namespace}.{name}"]
+        concept = subselect_to_concept(arg, name, environment.namespace, environment)
         if concept.metadata and meta:
             concept.metadata.line_number = meta.line
         environment.add_concept(concept, meta=meta)
@@ -902,10 +914,54 @@ def generate_concept_name(
         return f"{VIRTUAL_CONCEPT_PREFIX}_paren_{string_to_hash(str(parent))}"
     elif isinstance(parent, FunctionCallWrapper):
         return f"{VIRTUAL_CONCEPT_PREFIX}_{parent.name}_{string_to_hash(str(parent))}"
+    elif isinstance(parent, SubselectItem):
+        return f"{VIRTUAL_CONCEPT_PREFIX}_subselect_{parent.content.name}_{string_to_hash(str(parent))}"
     elif isinstance(parent, Comparison):
         return f"{VIRTUAL_CONCEPT_PREFIX}_comp_{string_to_hash(str(parent))}"
     else:  # ListWrapper, MapWrapper, or primitive types
         return f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
+
+
+def subselect_to_concept(
+    parent: SubselectItem,
+    name: str,
+    namespace: str,
+    environment: Environment,
+    metadata: Metadata | None = None,
+) -> Concept:
+    fmetadata = metadata or Metadata()
+    namespace = namespace or environment.namespace
+    concrete_args = [environment.concepts[c.address] for c in parent.concept_arguments]
+    pkeys: list[Concept] = [
+        x
+        for x in concrete_args
+        if x.derivation != Derivation.CONSTANT
+        and not (x.derivation == Derivation.AGGREGATE and not x.grain.components)
+    ]
+    grain: Grain = Grain()
+    for x in pkeys:
+        grain += x.grain
+    modifiers = get_upstream_modifiers(pkeys, environment)
+    key_grain: list[str] = []
+    for x in pkeys:
+        if x.keys:
+            key_grain += [*x.keys]
+        else:
+            key_grain.append(x.address)
+    keys = Grain.from_concepts(set(key_grain), environment).components
+    return Concept(
+        name=name,
+        datatype=parent.output_datatype,
+        purpose=Purpose.PROPERTY,
+        derivation=Derivation.SUBSELECT,
+        lineage=parent,
+        namespace=namespace,
+        keys=keys,
+        modifiers=modifiers,
+        grain=grain,
+        metadata=fmetadata,
+        granularity=Granularity.MULTI_ROW,
+    )
 
 
 def parenthetical_to_concept(
@@ -1018,7 +1074,7 @@ def arbitrary_to_concept(
     # this is purely for the parse tree, discard from derivation
     if isinstance(parent, FunctionCallWrapper):
         return arbitrary_to_concept(
-            parent.content, environment, namespace, name, metadata  # type: ignore
+            parent.content, environment, namespace, name or parent.name, metadata  # type: ignore
         )
 
     # Generate name if not provided
@@ -1061,6 +1117,8 @@ def arbitrary_to_concept(
             environment=environment,
             namespace=namespace,
         )
+    elif isinstance(parent, SubselectItem):
+        return subselect_to_concept(parent, name, namespace, environment, metadata)
     elif isinstance(parent, ListWrapper):
         return constant_to_concept(parent, name, namespace, metadata)
     elif isinstance(parent, Parenthetical):

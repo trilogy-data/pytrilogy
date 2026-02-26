@@ -47,6 +47,7 @@ from trilogy.core.models.build import (
     BuildParenthetical,
     BuildRowsetItem,
     BuildSubselectComparison,
+    BuildSubselectItem,
     BuildWindowItem,
 )
 from trilogy.core.models.core import (
@@ -133,6 +134,7 @@ PARENTHETICAL_ITEMS = (BuildParenthetical,)
 CASE_WHEN_ITEMS = (BuildCaseWhen,)
 CASE_ELSE_ITEMS = (BuildCaseElse,)
 SUBSELECT_COMPARISON_ITEMS = (BuildSubselectComparison,)
+SUBSELECT_ITEMS = (BuildSubselectItem,)
 COMPARISON_ITEMS = (BuildComparison,)
 CONDITIONAL_ITEMS = (BuildConditional,)
 
@@ -640,6 +642,8 @@ class BaseDialect:
                     rval = f"CASE WHEN {self.render_expr(c.lineage.where.conditional, cte=cte)} THEN {self.render_expr(c.lineage.content, cte=cte, raise_invalid=raise_invalid)} ELSE NULL END"
             elif isinstance(c.lineage, BuildRowsetItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False, raise_invalid=raise_invalid)}"
+            elif isinstance(c.lineage, SUBSELECT_ITEMS):
+                rval = self._render_subselect(c, cte, raise_invalid=raise_invalid)
             elif isinstance(c.lineage, BuildMultiSelectLineage):
                 if c.address in c.lineage.calculated_derivations:
                     assert c.lineage.derive is not None
@@ -763,6 +767,87 @@ class BaseDialect:
                         )
         return rval
 
+    def _render_subselect(
+        self,
+        c: BuildConcept,
+        cte: CTE | UnionCTE,
+        raise_invalid: bool = False,
+    ) -> str:
+        lineage: BuildSubselectItem = c.lineage  # type: ignore
+        q = self.QUOTE_CHARACTER
+        content_sources = cte.source_map.get(lineage.content.address, [])
+        if not content_sources:
+            return INVALID_REFERENCE_STRING(
+                f"Missing subselect source for {lineage.content.address}"
+            )
+        source_cte = content_sources[0]
+        # Track that the content concept is used from its source CTE
+        self.used_map[source_cte].add(lineage.content.address)
+        inner_alias = f"_sq_{c.safe_address[:20]}"
+        content_col = f"{inner_alias}.{q}{lineage.content.safe_address}{q}"
+
+        def _to_inner(rendered: str) -> str:
+            """Replace inner CTE references with inner alias (leave outer as-is)."""
+            result = rendered.replace(f"{source_cte}.", f"{inner_alias}.")
+            if q:
+                result = result.replace(f"{q}{source_cte}{q}.", f"{inner_alias}.")
+            return result
+
+        # Concepts referenced by the subselect (content, where, order_by)
+        inner_addrs = {a.address for a in lineage.concept_arguments}
+
+        # Build inner WHERE parts
+        where_parts: list[str] = []
+
+        # Correlation: concepts that are in both the subselect's arguments
+        # AND the CTE output columns (the outer context), excluding the
+        # content concept and the subselect concept itself.
+        # Skip entirely for cross-datasource subselects (outer_arguments present)
+        # - correlation is handled by explicit outer refs in ORDER BY/WHERE.
+        if not lineage.outer_arguments:
+            for col in cte.output_columns:
+                if col.address == c.address:
+                    continue
+                if col.address == lineage.content.address:
+                    continue
+                if col.address not in inner_addrs:
+                    continue
+                if source_cte not in cte.source_map.get(col.address, []):
+                    continue
+                outer_ref = f"{source_cte}.{q}{col.safe_address}{q}"
+                inner_ref = f"{inner_alias}.{q}{col.safe_address}{q}"
+                where_parts.append(f"{inner_ref} = {outer_ref}")
+
+        # User-specified WHERE filter
+        if lineage.where:
+            cond = lineage.where.conditional
+            # Bare concept ref in WHERE = correlation key (e.g. "where category"),
+            # not a boolean filter — skip rendering it as a WHERE clause.
+            if not isinstance(cond, BuildConcept):
+                rendered = self.render_expr(cond, cte=cte, raise_invalid=raise_invalid)
+                where_parts.append(_to_inner(rendered))
+
+        # ORDER BY
+        order_parts: list[str] = []
+        if lineage.order_by:
+            for oi in lineage.order_by:
+                rendered = self.render_expr(
+                    oi.expr, cte=cte, raise_invalid=raise_invalid
+                )
+                order_parts.append(f"{_to_inner(rendered)} {oi.order.value}")
+
+        # Build inner subquery (handles ORDER BY + LIMIT)
+        inner_select = f"SELECT {content_col} FROM {source_cte} AS {inner_alias}"
+        if where_parts:
+            inner_select += f" WHERE {' AND '.join(where_parts)}"
+        if order_parts:
+            inner_select += f" ORDER BY {', '.join(order_parts)}"
+        if lineage.limit is not None:
+            inner_select += f" LIMIT {lineage.limit}"
+
+        # Wrap with array aggregation
+        return f"(SELECT array_agg(_sr.{q}{lineage.content.safe_address}{q}) FROM ({inner_select}) _sr)"
+
     def render_array_unnest(
         self,
         left,
@@ -786,6 +871,7 @@ class BaseDialect:
             BuildCaseSimpleWhen,
             BuildCaseElse,
             BuildSubselectComparison,
+            BuildSubselectItem,
             BuildWindowItem,
             BuildFilterItem,
             BuildParenthetical,

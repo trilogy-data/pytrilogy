@@ -64,6 +64,7 @@ from trilogy.core.models.author import (
     RowsetLineage,
     SelectLineage,
     SubselectComparison,
+    SubselectItem,
     UndefinedConcept,
     WhereClause,
     WindowItem,
@@ -938,6 +939,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
             BuildFilterItem,
             BuildAggregateWrapper,
             BuildRowsetItem,
+            BuildSubselectItem,
             BuildMultiSelectLineage,
         ]
     ] = None
@@ -1109,6 +1111,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
                     BuildFilterItem,
                     BuildAggregateWrapper,
                     BuildRowsetItem,
+                    BuildSubselectItem,
                     BuildMultiSelectLineage,
                 ],
                 output: List[BuildConcept],
@@ -1448,6 +1451,55 @@ class BuildRowsetItem(DataTyped, BuildConceptArgs):
     @property
     def concept_arguments(self):
         return [self.content]
+
+
+@dataclass
+class BuildSubselectItem(DataTyped, BuildConceptArgs):
+    content: BuildConcept
+    where: Optional[BuildWhereClause] = None
+    order_by: List[BuildOrderItem] = field(default_factory=list)
+    limit: Optional[int] = None
+    outer_arguments: List[BuildConcept] = field(default_factory=list)
+
+    def __repr__(self):
+        return f"<Subselect: {str(self.content)}>"
+
+    def __str__(self):
+        return self.__repr__()
+
+    @property
+    def output_datatype(self):
+        return ArrayType(type=self.content.datatype)
+
+    @property
+    def output_purpose(self):
+        return Purpose.PROPERTY
+
+    @cached_property
+    def concept_arguments(self) -> List[BuildConcept]:
+        # When outer_arguments exist, only expose those to the main query.
+        # Inner concepts are resolved separately in gen_subselect_node.
+        if self.outer_arguments:
+            return list(self.outer_arguments)
+        args: List[BuildConcept] = [self.content]
+        if self.where:
+            args += self.where.concept_arguments
+        for item in self.order_by:
+            args += item.concept_arguments
+        return args
+
+    @cached_property
+    def inner_concept_arguments(self) -> List[BuildConcept]:
+        """Inner concepts for separate resolution in subselect node."""
+        args: List[BuildConcept] = [self.content]
+        if self.where:
+            args += self.where.concept_arguments
+        for item in self.order_by:
+            args += item.concept_arguments
+        if self.outer_arguments:
+            outer_addrs = {a.address for a in self.outer_arguments}
+            args = [a for a in args if a.address not in outer_addrs]
+        return args
 
 
 @dataclass
@@ -2381,6 +2433,19 @@ class Factory:
         return BuildRowsetItem(
             content=factory._build_concept_ref(base.content),
             rowset=factory._build_rowset_lineage(base.rowset),
+        )
+
+    @build.register
+    def _(self, base: SubselectItem) -> BuildSubselectItem:
+        return self._build_subselect_item(base)
+
+    def _build_subselect_item(self, base: SubselectItem) -> BuildSubselectItem:
+        return BuildSubselectItem(
+            content=self.build(base.content),
+            where=self.build(base.where) if base.where else None,
+            order_by=[self.build(x) for x in base.order_by],
+            limit=base.limit,
+            outer_arguments=[self.build(x) for x in base.outer_arguments],
         )
 
     @build.register

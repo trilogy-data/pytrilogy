@@ -1,0 +1,18 @@
+key id int;
+property id.category string;
+property id.score int;
+datasource items(
+    id: id,
+    category: category,
+    score: score
+)
+grain (id)
+query '''
+select 1 id, 'a' category, 10 score
+union all select 2, 'a', 20
+union all select 3, 'a', 30
+union all select 4, 'b', 40
+union all select 5, 'b', 50
+''';
+
+def table top_scores() -> select score where category order by score desc limit 2;

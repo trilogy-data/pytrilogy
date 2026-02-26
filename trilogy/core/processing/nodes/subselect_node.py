@@ -1,0 +1,56 @@
+from typing import List
+
+from trilogy.core.enums import SourceType
+from trilogy.core.models.build import (
+    BuildComparison,
+    BuildConcept,
+    BuildConditional,
+    BuildOrderBy,
+    BuildParenthetical,
+)
+from trilogy.core.models.execute import QueryDatasource
+from trilogy.core.processing.nodes.base_node import StrategyNode
+
+
+class SubselectNode(StrategyNode):
+    source_type = SourceType.SUBSELECT
+
+    def __init__(
+        self,
+        input_concepts: List[BuildConcept],
+        output_concepts: List[BuildConcept],
+        environment,
+        whole_grain: bool = False,
+        parents: List["StrategyNode"] | None = None,
+        depth: int = 0,
+        ordering: BuildOrderBy | None = None,
+        preexisting_conditions: (
+            BuildConditional | BuildComparison | BuildParenthetical | None
+        ) = None,
+    ):
+        super().__init__(
+            input_concepts=input_concepts,
+            output_concepts=output_concepts,
+            environment=environment,
+            whole_grain=whole_grain,
+            parents=parents,
+            depth=depth,
+            ordering=ordering,
+            preexisting_conditions=preexisting_conditions,
+        )
+
+    def _resolve(self) -> QueryDatasource:
+        base = super()._resolve()
+        return base
+
+    def copy(self) -> "SubselectNode":
+        return SubselectNode(
+            input_concepts=list(self.input_concepts),
+            output_concepts=list(self.output_concepts),
+            environment=self.environment,
+            whole_grain=self.whole_grain,
+            parents=self.parents,
+            depth=self.depth,
+            ordering=self.ordering,
+            preexisting_conditions=self.preexisting_conditions,
+        )

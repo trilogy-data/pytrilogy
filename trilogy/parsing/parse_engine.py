@@ -89,6 +89,7 @@ from trilogy.core.models.author import (
     Parenthetical,
     RowsetItem,
     SubselectComparison,
+    SubselectItem,
     UndefinedConceptFull,
     WhereClause,
     Window,
@@ -308,6 +309,7 @@ def unwrap_transformation(
     | AggregateWrapper
     | FunctionCallWrapper
     | Parenthetical
+    | SubselectItem
 ):
     if isinstance(input, Function):
         return input
@@ -328,6 +330,8 @@ def unwrap_transformation(
     elif isinstance(input, FunctionCallWrapper):
         return input
     elif isinstance(input, Parenthetical):
+        return input
+    elif isinstance(input, SubselectItem):
         return input
     else:
         return Function.model_construct(
@@ -875,6 +879,7 @@ class ParseToObjects(Transformer):
                 Function,
                 FunctionCallWrapper,
                 Comparison,
+                SubselectItem,
             ),
         ):
             concept = arbitrary_to_concept(
@@ -2091,11 +2096,51 @@ class ParseToObjects(Transformer):
         )
         return FunctionDeclaration(name=identity, args=function_arguments, expr=output)
 
+    @v_args(meta=True)
+    def table_function(self, meta: Meta, args) -> FunctionDeclaration:
+        identity = args[0]
+        idx = 1
+        function_arguments: list[ArgBinding] = []
+        if idx < len(args) and isinstance(args[idx], list):
+            function_arguments = args[idx]
+            idx += 1
+        content = args[idx]
+        if isinstance(content, Concept):
+            content = content.reference
+        idx += 1
+        where = None
+        order_by: list[OrderItem] = []
+        limit = None
+        for arg in args[idx:]:
+            if isinstance(arg, WhereClause):
+                where = arg
+            elif isinstance(arg, list):
+                order_by = arg
+            elif isinstance(arg, int):
+                limit = arg
+        subselect = SubselectItem(
+            content=content,
+            where=where,
+            order_by=order_by,
+            limit=limit,
+        )
+        self.environment.functions[identity] = CustomFunctionFactory(
+            function=subselect,
+            namespace=self.environment.namespace,
+            function_arguments=function_arguments,
+            name=identity,
+        )
+        return FunctionDeclaration(
+            name=identity, args=function_arguments, expr=subselect
+        )
+
     def custom_function(self, args) -> FunctionCallWrapper:
         name = args[0]
-        args = args[1:]
+        call_args = args[1:]
         remapped = FunctionCallWrapper(
-            content=self.environment.functions[name](*args), name=name, args=args
+            content=self.environment.functions[name](*call_args),
+            name=name,
+            args=call_args,
         )
 
         return remapped
@@ -2574,6 +2619,39 @@ class ParseToObjects(Transformer):
     def unnest(self, meta, args):
 
         return self.function_factory.create_function(args, FunctionType.UNNEST, meta)
+
+    @v_args(meta=True)
+    def subselect(self, meta: Meta, args) -> SubselectItem:
+        content = args[0]
+        if isinstance(content, Concept):
+            content = content.reference
+        where = None
+        order_by: list[OrderItem] = []
+        limit = None
+        for arg in args[1:]:
+            if isinstance(arg, WhereClause):
+                where = arg
+            elif isinstance(arg, list):
+                order_by = arg
+            elif isinstance(arg, int):
+                limit = arg
+        return SubselectItem(
+            content=content,
+            where=where,
+            order_by=order_by,
+            limit=limit,
+        )
+
+    def subselect_where(self, args):
+        root = args[0]
+        root = expr_to_boolean(root, self.function_factory)
+        return WhereClause(conditional=root)
+
+    def subselect_order(self, args) -> list[OrderItem]:
+        return args[0]
+
+    def subselect_limit(self, args) -> int:
+        return int(args[0])
 
     @v_args(meta=True)
     def count(self, meta, args):

@@ -6,6 +6,7 @@ from trilogy.core.processing.node_generators.common import (
     # resolve_join_order_v2,
     NodeJoin,
     StrategyNode,
+    concepts_to_grain_concepts,
     resolve_join_order,
 )
 from trilogy.core.processing.utility import (
@@ -13,6 +14,32 @@ from trilogy.core.processing.utility import (
     ensure_content_preservation,
     resolve_join_order_v2,
 )
+
+
+def test_concepts_to_grain_concepts():
+    env, _ = parse(
+        """
+key order_id int;
+key product_id int;
+property product_id.price float;
+property product_id.name string;
+                """
+    )
+    env = env.materialize_for_select()
+    product = env.concepts["product_id"]
+    price = env.concepts["price"]
+    name = env.concepts["name"]
+
+    # price and name both belong to product_id grain
+    result = concepts_to_grain_concepts([product, price, name], env)
+    result_addrs = [c.address for c in result]
+    assert result_addrs == ["local.product_id"]
+
+    # order_id is its own grain key
+    order = env.concepts["order_id"]
+    result = concepts_to_grain_concepts([order, product, price], env)
+    result_addrs = sorted([c.address for c in result])
+    assert result_addrs == ["local.order_id", "local.product_id"]
 
 
 def test_resolve_join_order():
