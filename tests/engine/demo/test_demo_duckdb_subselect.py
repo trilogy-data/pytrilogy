@@ -157,7 +157,8 @@ order by
 def test_subselect_with_merge():
     """Subselect result merged with data from a separate datasource."""
     executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
-    results = executor.execute_query("""
+    results = executor.execute_query(
+        """
 key item_id int;
 property item_id.category string;
 property item_id.score int;
@@ -198,7 +199,8 @@ SELECT
     label_text
 ALIGN merged_cat: category, label_cat
 ;
-""").fetchall()
+"""
+    ).fetchall()
     by_cat = {
         row.merged_cat: (sorted(row.top_scores, reverse=True), row.label_text)
         for row in results
@@ -213,7 +215,8 @@ def test_subselect_imported_namespace():
     executor = Dialects.DUCK_DB.default_executor(
         environment=env, hooks=[DebuggingHook()]
     )
-    results = executor.execute_query("""
+    results = executor.execute_query(
+        """
 import subselect_helpers as sh;
 
 select
@@ -222,7 +225,8 @@ select
 order by
     sh.category asc
 ;
-""").fetchall()
+"""
+    ).fetchall()
     assert len(results) == 2
     assert sorted(results[0].top_scores, reverse=True) == [30, 20]
     assert sorted(results[1].top_scores, reverse=True) == [50, 40]

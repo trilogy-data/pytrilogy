@@ -576,7 +576,8 @@ def test_subselect_rendering():
     from trilogy.render import get_dialect_generator
 
     environment = Environment()
-    environment.parse("""
+    environment.parse(
+        """
 key id int;
 property id.val int;
 datasource nums(
@@ -587,7 +588,8 @@ grain (id)
 address `project.dataset.nums`;
 
 def table top_vals() -> select val order by val desc limit 3;
-""")
+"""
+    )
     generator = get_dialect_generator(Dialects.BIGQUERY)
     _, queries = environment.parse("""select @top_vals() as top;""")
     processed = generator.generate_queries(environment, queries)

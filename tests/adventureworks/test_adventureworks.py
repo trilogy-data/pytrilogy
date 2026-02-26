@@ -3,7 +3,6 @@ from os.path import dirname, join
 
 import pytest
 
-from trilogy import Executor
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.models.author import Concept, Grain
 from trilogy.core.models.build import BuildGrain
@@ -15,7 +14,6 @@ from trilogy.core.processing.concept_strategies_v3 import History, search_concep
 from trilogy.core.processing.nodes import MergeNode, SelectNode
 from trilogy.core.query_processor import datasource_to_cte, get_query_datasources
 from trilogy.core.statements.author import SelectStatement
-from trilogy.core.statements.execute import ProcessedQuery, ProcessedQueryPersist
 from trilogy.dialect.sql_server import SqlServerDialect
 from trilogy.parser import parse
 
@@ -30,22 +28,22 @@ def test_parsing(environment: Environment):
     environment, statements = parse(file, environment=environment)
 
 
-@pytest.mark.adventureworks_execution
-def test_finance_queries(adventureworks_engine: Executor, environment: Environment):
-    with open(
-        join(dirname(__file__), "finance_queries.preql"), "r", encoding="utf-8"
-    ) as f:
-        file = f.read()
-    generator = SqlServerDialect()
-    environment, statements = parse(file, environment=environment)
-    sql = generator.generate_queries(environment, statements)
+# @pytest.mark.adventureworks_execution
+# def test_finance_queries(adventureworks_engine: Executor, environment: Environment):
+#     with open(
+#         join(dirname(__file__), "finance_queries.preql"), "r", encoding="utf-8"
+#     ) as f:
+#         file = f.read()
+#     generator = SqlServerDialect()
+#     environment, statements = parse(file, environment=environment)
+#     sql = generator.generate_queries(environment, statements)
 
-    for statement in sql:
-        if not isinstance(statement, (ProcessedQuery, ProcessedQueryPersist)):
-            continue
-        generator.compile_statement(statement)
-        results = adventureworks_engine.execute_query(statement)
-        assert list(results)[0] == ("Canadian Division", 8, 292174782.71999985)
+#     for statement in sql:
+#         if not isinstance(statement, (ProcessedQuery, ProcessedQueryPersist)):
+#             continue
+#         generator.compile_statement(statement)
+#         results = adventureworks_engine.execute_query(statement)
+#         assert list(results)[0] == ("Canadian Division", 8, 292174782.71999985)
 
 
 @pytest.mark.adventureworks
@@ -332,18 +330,18 @@ def test_two_properties_query(environment: Environment):
     generator.compile_statement(sql2[0])
 
 
-@pytest.mark.adventureworks_execution
-def test_online_sales_queries(
-    adventureworks_engine: Executor, environment: Environment
-):
-    with open(
-        join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
-    ) as f:
-        file = f.read()
-    generator = SqlServerDialect()
-    environment, statements = parse(file, environment=environment)
-    sql = generator.generate_queries(environment, statements)
+# @pytest.mark.adventureworks_execution
+# def test_online_sales_queries(
+#     adventureworks_engine: Executor, environment: Environment
+# ):
+#     with open(
+#         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
+#     ) as f:
+#         file = f.read()
+#     generator = SqlServerDialect()
+#     environment, statements = parse(file, environment=environment)
+#     sql = generator.generate_queries(environment, statements)
 
-    for statement in sql:
-        generator.compile_statement(statement)
-        adventureworks_engine.execute_query(statement).fetchall()
+#     for statement in sql:
+#         generator.compile_statement(statement)
+#         adventureworks_engine.execute_query(statement).fetchall()

@@ -60,10 +60,12 @@ def test_subselect_item_with_namespace():
 
 
 def test_subselect_item_with_merge():
-    env, _ = parse("""
+    env, _ = parse(
+        """
 key id int;
 property id.val int;
-    """)
+    """
+    )
     source = env.concepts["val"]
     target = env.concepts["val"]
     ref = ConceptRef(address="local.val", datatype=DataType.INTEGER)
@@ -81,10 +83,12 @@ def test_subselect_item_with_reference_replacement():
 
 
 def test_resolve_subselect_parent_concepts_wrong_lineage():
-    env, _ = parse("""
+    env, _ = parse(
+        """
 key id int;
 property id.val int;
-    """)
+    """
+    )
     env = env.materialize_for_select()
     concept = env.concepts["val"]
     with pytest.raises(ValueError, match="Expected subselect lineage"):
@@ -92,7 +96,8 @@ property id.val int;
 
 
 def test_parse_def_table_basic():
-    env, _ = parse("""
+    env, _ = parse(
+        """
 key id int;
 property id.val int;
 datasource nums(id: id, val: val)
@@ -100,12 +105,14 @@ grain (id)
 address test_addr;
 
 def table top_vals() -> select val order by val desc limit 3;
-    """)
+    """
+    )
     assert "top_vals" in env.functions
 
 
 def test_parse_def_table_with_args():
-    env, _ = parse("""
+    env, _ = parse(
+        """
 key id int;
 property id.val int;
 property id.lat float;
@@ -114,12 +121,14 @@ grain (id)
 address test_addr;
 
 def table nearby(x) -> select val order by val desc limit 2;
-    """)
+    """
+    )
     assert "nearby" in env.functions
 
 
 def test_parse_def_table_with_where():
-    env, _ = parse("""
+    env, _ = parse(
+        """
 key id int;
 property id.val int;
 property id.category string;
@@ -128,12 +137,14 @@ grain (id)
 address test_addr;
 
 def table top_by_cat() -> select val where category order by val desc limit 2;
-    """)
+    """
+    )
     assert "top_by_cat" in env.functions
 
 
 def test_parse_def_table_with_filter_where():
-    env, _ = parse("""
+    env, _ = parse(
+        """
 key id int;
 property id.val int;
 datasource nums(id: id, val: val)
@@ -141,12 +152,14 @@ grain (id)
 address test_addr;
 
 def table filtered() -> select val where val > 20 order by val asc limit 2;
-    """)
+    """
+    )
     assert "filtered" in env.functions
 
 
 def test_subselect_concept_derivation():
-    env, queries = parse("""
+    env, queries = parse(
+        """
 key id int;
 property id.val int;
 datasource nums(id: id, val: val)
@@ -155,7 +168,8 @@ address test_addr;
 
 def table top_vals() -> select val order by val desc limit 3;
 select @top_vals() as top;
-    """)
+    """
+    )
     top = [c for c in env.concepts.values() if c.derivation == Derivation.SUBSELECT]
     assert len(top) > 0
     assert top[0].purpose == Purpose.PROPERTY
@@ -163,7 +177,8 @@ select @top_vals() as top;
 
 def test_subselect_nested_in_function():
     """Verify subselect works as argument to built-in function."""
-    env, queries = parse("""
+    env, queries = parse(
+        """
 key id int;
 property id.val int;
 datasource nums(id: id, val: val)
@@ -173,16 +188,19 @@ address test_addr;
 def table top_vals() -> select val order by val desc limit 3;
 auto result <- unnest(@top_vals());
 select result;
-    """)
+    """
+    )
     assert len(queries) > 0
 
 
 def test_subselect_item_enforce_concept_ref():
     """Validator should convert Concept to ConceptRef."""
-    env, _ = parse("""
+    env, _ = parse(
+        """
 key id int;
 property id.val int;
-    """)
+    """
+    )
     concept = env.concepts["val"]
     assert isinstance(concept, Concept)
     item = SubselectItem(content=concept)
@@ -191,7 +209,8 @@ property id.val int;
 
 def test_inline_subselect_with_where():
     """Parse inline SUBSELECT(...) with WHERE clause."""
-    env, queries = parse("""
+    env, queries = parse(
+        """
 key id int;
 property id.val int;
 property id.category string;
@@ -201,7 +220,8 @@ address test_addr;
 
 auto top_items <- SUBSELECT(val WHERE category = 'a' ORDER BY val DESC LIMIT 5);
 select top_items;
-    """)
+    """
+    )
     assert len(queries) > 0
     top = [c for c in env.concepts.values() if c.derivation == Derivation.SUBSELECT]
     assert len(top) > 0
@@ -209,7 +229,8 @@ select top_items;
 
 def test_inline_subselect_basic():
     """Parse inline SUBSELECT(...) without where."""
-    env, queries = parse("""
+    env, queries = parse(
+        """
 key id int;
 property id.val int;
 datasource nums(id: id, val: val)
@@ -218,5 +239,6 @@ address test_addr;
 
 auto top_items <- SUBSELECT(val ORDER BY val DESC LIMIT 3);
 select top_items;
-    """)
+    """
+    )
     assert len(queries) > 0
