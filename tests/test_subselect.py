@@ -1,6 +1,8 @@
 import pytest
+from lark.tree import Meta
 
 from trilogy import parse
+from trilogy.constants import VIRTUAL_CONCEPT_PREFIX
 from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.author import (
     Concept,
@@ -8,9 +10,12 @@ from trilogy.core.models.author import (
     DataType,
     SubselectItem,
 )
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.subselect_node import (
     resolve_subselect_parent_concepts,
 )
+from trilogy.parsing.common import process_function_arg
+from trilogy.utility import string_to_hash
 
 
 def test_subselect_item_repr():
@@ -242,3 +247,49 @@ select top_items;
     """
     )
     assert len(queries) > 0
+
+
+def _make_env_with_val() -> tuple[Environment, ConceptRef]:
+    env, _ = parse(
+        """
+key id int;
+property id.val int;
+    """
+    )
+    ref = ConceptRef(address="local.val", datatype=DataType.INTEGER)
+    return env, ref
+
+
+def test_process_function_arg_subselect_creates_concept():
+    env, ref = _make_env_with_val()
+    item = SubselectItem(content=ref, limit=3)
+    result = process_function_arg(item, None, env)
+    assert isinstance(result, ConceptRef)
+    id_hash = string_to_hash(str(item))
+    expected_name = f"{VIRTUAL_CONCEPT_PREFIX}_subselect_val_{id_hash}"
+    assert f"local.{expected_name}" in env.concepts
+
+
+def test_process_function_arg_subselect_cached():
+    env, ref = _make_env_with_val()
+    item = SubselectItem(content=ref, limit=3)
+    process_function_arg(item, None, env)
+    id_hash = string_to_hash(str(item))
+    expected_name = f"{VIRTUAL_CONCEPT_PREFIX}_subselect_val_{id_hash}"
+    cached_concept = env.concepts[f"local.{expected_name}"]
+    result_second = process_function_arg(item, None, env)
+    assert result_second is cached_concept
+
+
+def test_process_function_arg_subselect_sets_line_number():
+    env, ref = _make_env_with_val()
+    item = SubselectItem(content=ref, limit=3)
+    meta = Meta()
+    meta.line = 42
+    result = process_function_arg(item, meta, env)
+    assert isinstance(result, ConceptRef)
+    id_hash = string_to_hash(str(item))
+    expected_name = f"{VIRTUAL_CONCEPT_PREFIX}_subselect_val_{id_hash}"
+    concept = env.concepts[f"local.{expected_name}"]
+    assert concept.metadata is not None
+    assert concept.metadata.line_number == 42
