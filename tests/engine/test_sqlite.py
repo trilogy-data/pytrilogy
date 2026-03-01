@@ -1,7 +1,12 @@
+import pytest
 from pathlib import Path
 
 from trilogy import Dialects, Environment
+from trilogy.core.enums import CreateMode
+from trilogy.core.models.core import DataType
+from trilogy.core.statements.execute import ColumnInfo, CreateTableInfo
 from trilogy.dialect.config import SQLiteConfig
+from trilogy.dialect.sqlite import SQLiteDialect, date_part, date_truncate
 
 
 def test_sqlite_default_engine_in_memory():
@@ -167,6 +172,114 @@ def test_date_functions():
     assert isinstance(row.order_month_name, str) and len(row.order_month_name) > 0
     assert isinstance(row.order_day_name, str) and len(row.order_day_name) > 0
     assert row.order_timestamp_parse is not None
+
+
+def test_date_part_quarter():
+    environment = Environment()
+    _, queries = environment.parse(
+        """
+    const ts <- current_datetime();
+    select date_part(ts, quarter) -> q;
+    """
+    )
+    executor = Dialects.SQLITE.default_executor(environment=environment)
+    row = executor.execute_query(queries[-1]).fetchall()[0]
+    assert 1 <= row.q <= 4
+
+
+def test_date_part_unsupported():
+    with pytest.raises(ValueError, match="Unsupported date part for sqlite"):
+        date_part("ts", "invalid_part")
+
+
+def test_date_truncate_parts():
+    environment = Environment()
+    _, queries = environment.parse(
+        """
+    const ts <- current_datetime();
+    select
+        date_trunc(ts, day) -> trunc_day,
+        date_trunc(ts, year) -> trunc_year,
+        date_trunc(ts, hour) -> trunc_hour,
+        date_trunc(ts, minute) -> trunc_minute,
+        date_trunc(ts, second) -> trunc_second,
+        date_trunc(ts, week) -> trunc_week,
+        date_trunc(ts, quarter) -> trunc_quarter
+    ;
+    """
+    )
+    executor = Dialects.SQLITE.default_executor(environment=environment)
+    row = executor.execute_query(queries[-1]).fetchall()[0]
+    assert row.trunc_day is not None
+    assert row.trunc_year is not None
+    assert row.trunc_hour is not None
+    assert row.trunc_minute is not None
+    assert row.trunc_second is not None
+    assert row.trunc_week is not None
+    assert row.trunc_quarter is not None
+
+
+def test_date_truncate_unsupported():
+    with pytest.raises(ValueError, match="Unsupported date truncation for sqlite"):
+        date_truncate("ts", "invalid_part")
+
+
+def test_compile_create_table_create_or_replace():
+    dialect = SQLiteDialect()
+    table_info = CreateTableInfo(
+        name="test_table",
+        columns=[
+            ColumnInfo(name="id", type=DataType.INTEGER),
+            ColumnInfo(name="name", type=DataType.STRING),
+        ],
+    )
+    sql = dialect.compile_create_table_statement(table_info, CreateMode.CREATE_OR_REPLACE)
+    assert sql.startswith('DROP TABLE IF EXISTS')
+    assert 'CREATE TABLE' in sql
+
+
+def test_compile_create_table_normal():
+    dialect = SQLiteDialect()
+    table_info = CreateTableInfo(
+        name="test_table",
+        columns=[ColumnInfo(name="id", type=DataType.INTEGER)],
+    )
+    sql = dialect.compile_create_table_statement(table_info, CreateMode.CREATE)
+    assert sql.startswith('CREATE TABLE')
+    assert 'DROP TABLE' not in sql
+
+
+def test_get_table_schema():
+    executor = Dialects.SQLITE.default_executor()
+    executor.execute_raw_sql(
+        "CREATE TABLE schema_test(id INTEGER NOT NULL, name TEXT, value REAL)"
+    )
+    schema = executor.generator.get_table_schema(executor, "schema_test")
+    assert len(schema) == 3
+    names = [row[0] for row in schema]
+    assert "id" in names
+    assert "name" in names
+    assert "value" in names
+    id_row = next(r for r in schema if r[0] == "id")
+    assert id_row[2] == "NO"
+    name_row = next(r for r in schema if r[0] == "name")
+    assert name_row[2] == "YES"
+
+
+def test_get_table_primary_keys():
+    executor = Dialects.SQLITE.default_executor()
+    executor.execute_raw_sql(
+        "CREATE TABLE pk_test(id INTEGER PRIMARY KEY, name TEXT)"
+    )
+    pks = executor.generator.get_table_primary_keys(executor, "pk_test")
+    assert pks == ["id"]
+
+
+def test_get_table_primary_keys_none():
+    executor = Dialects.SQLITE.default_executor()
+    executor.execute_raw_sql("CREATE TABLE nopk_test(id INTEGER, name TEXT)")
+    pks = executor.generator.get_table_primary_keys(executor, "nopk_test")
+    assert pks == []
 
 
 def test_aggregate_functions():

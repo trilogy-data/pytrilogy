@@ -61,7 +61,7 @@ def date_part(expr: str, part: str) -> str:
         "day_of_week": "(CAST(strftime('%w', {expr}) AS INTEGER) + 1)",
     }
     if part_lower == "quarter":
-        return "(((CAST(strftime('%m', {expr}) AS INTEGER)-1)/3)+1)"
+        return "(((CAST(strftime('%m', {expr}) AS INTEGER)-1)/3)+1)".format(expr=expr)
     if part_lower not in mapping:
         raise ValueError(f"Unsupported date part for sqlite: {part}")
     return mapping[part_lower].format(expr=expr)
