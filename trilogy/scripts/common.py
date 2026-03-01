@@ -269,6 +269,16 @@ def get_dialect_config(
             "DuckDB",
         )
         conf = DuckDBConfig(**conn_dict)
+    elif edialect == Dialects.SQLITE:
+        from trilogy.dialect.config import SQLiteConfig
+
+        conn_dict = validate_required_connection_params(
+            conn_dict,
+            [],
+            ["path"],
+            "SQLite",
+        )
+        conf = SQLiteConfig(**conn_dict)
     elif edialect == Dialects.SNOWFLAKE:
         from trilogy.dialect.config import SnowflakeConfig
 

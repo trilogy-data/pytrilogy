@@ -12,6 +12,7 @@ from trilogy.dialect.config import (
     PostgresConfig,
     PrestoConfig,
     SnowflakeConfig,
+    SQLiteConfig,
     SQLServerConfig,
 )
 from trilogy.dialect.enums import Dialects
@@ -327,6 +328,18 @@ project = "test-project"
 """,
             BigQueryConfig,
             {"project": "test-project", "client": None},
+        ),
+        (
+            Dialects.SQLITE,
+            """
+[engine]
+dialect = "sqlite"
+
+[engine.config]
+path = "/tmp/test.sqlite"
+""",
+            SQLiteConfig,
+            {"path": "/tmp/test.sqlite"},
         ),
     ]
 

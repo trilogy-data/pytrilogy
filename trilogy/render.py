@@ -21,6 +21,10 @@ def get_dialect_generator(
         from trilogy.dialect.duckdb import DuckDBDialect
 
         return DuckDBDialect(rendering=rendering, config=config)
+    elif dialect == Dialects.SQLITE:
+        from trilogy.dialect.sqlite import SQLiteDialect
+
+        return SQLiteDialect(rendering=rendering, config=config)
     elif dialect == Dialects.PRESTO:
         from trilogy.dialect.presto import PrestoDialect
 
