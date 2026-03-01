@@ -12,6 +12,7 @@ from trilogy.dialect import (
     PostgresConfig,
     PrestoConfig,
     SnowflakeConfig,
+    SQLiteConfig,
     SQLServerConfig,
 )
 from trilogy.dialect.enums import Dialects
@@ -77,6 +78,10 @@ def load_config_file(path: Path) -> RuntimeConfig:
         if engine == Dialects.DUCK_DB:
             engine_config = (
                 DuckDBConfig(**engine_config_raw) if engine_config_raw else None
+            )
+        elif engine == Dialects.SQLITE:
+            engine_config = (
+                SQLiteConfig(**engine_config_raw) if engine_config_raw else None
             )
         elif engine == Dialects.POSTGRES:
             engine_config = (

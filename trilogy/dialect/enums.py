@@ -39,6 +39,7 @@ class Dialects(Enum):
     BIGQUERY = "bigquery"
     SQL_SERVER = "sql_server"
     DUCK_DB = "duck_db"
+    SQLITE = "sqlite"
     PRESTO = "presto"
     TRINO = "trino"
     POSTGRES = "postgres"
@@ -49,6 +50,8 @@ class Dialects(Enum):
     def _missing_(cls, value):
         if value == "duckdb":
             return cls.DUCK_DB
+        if value == "sqlite3" or value == "sqllite":
+            return cls.SQLITE
         return super()._missing_(value)
 
     def default_renderer(self, conf=None, _engine_factory: Callable = default_factory):
@@ -78,6 +81,12 @@ class Dialects(Enum):
             if not conf:
                 conf = DuckDBConfig()
             return _engine_factory(conf, DuckDBConfig)
+        elif self == Dialects.SQLITE:
+            from trilogy.dialect.config import SQLiteConfig
+
+            if not conf:
+                conf = SQLiteConfig()
+            return _engine_factory(conf, SQLiteConfig)
         elif self == Dialects.SNOWFLAKE:
             from trilogy.dialect.config import SnowflakeConfig
 

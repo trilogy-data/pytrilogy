@@ -116,6 +116,21 @@ class DuckDBConfig(DialectConfig):
         return f"duckdb:///{self.path}"
 
 
+class SQLiteConfig(DialectConfig):
+    def __init__(
+        self,
+        path: str | None = None,
+        retry_config: RetryConfig | None = None,
+    ):
+        super().__init__(retry_config=retry_config)
+        self.path = path
+
+    def connection_string(self) -> str:
+        if not self.path:
+            return "sqlite:///:memory:"
+        return f"sqlite:///{self.path}"
+
+
 class PostgresConfig(DialectConfig):
     def __init__(
         self,

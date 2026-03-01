@@ -236,6 +236,7 @@ sql = ["init.sql"]
 ## Supported Dialects
 
 - `duckdb` / `duck_db` - DuckDB (default for unit tests)
+- `sqlite` / `sqlite3` - SQLite
 - `postgres` / `postgresql` - PostgreSQL
 - `bigquery` - Google BigQuery
 - `snowflake` - Snowflake
