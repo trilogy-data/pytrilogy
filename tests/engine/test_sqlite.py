@@ -234,9 +234,11 @@ def test_compile_create_table_create_or_replace():
             ColumnInfo(name="name", type=DataType.STRING),
         ],
     )
-    sql = dialect.compile_create_table_statement(table_info, CreateMode.CREATE_OR_REPLACE)
-    assert sql.startswith('DROP TABLE IF EXISTS')
-    assert 'CREATE TABLE' in sql
+    sql = dialect.compile_create_table_statement(
+        table_info, CreateMode.CREATE_OR_REPLACE
+    )
+    assert sql.startswith("DROP TABLE IF EXISTS")
+    assert "CREATE TABLE" in sql
 
 
 def test_compile_create_table_normal():
@@ -246,8 +248,8 @@ def test_compile_create_table_normal():
         columns=[ColumnInfo(name="id", type=DataType.INTEGER)],
     )
     sql = dialect.compile_create_table_statement(table_info, CreateMode.CREATE)
-    assert sql.startswith('CREATE TABLE')
-    assert 'DROP TABLE' not in sql
+    assert sql.startswith("CREATE TABLE")
+    assert "DROP TABLE" not in sql
 
 
 def test_get_table_schema():
@@ -269,9 +271,7 @@ def test_get_table_schema():
 
 def test_get_table_primary_keys():
     executor = Dialects.SQLITE.default_executor()
-    executor.execute_raw_sql(
-        "CREATE TABLE pk_test(id INTEGER PRIMARY KEY, name TEXT)"
-    )
+    executor.execute_raw_sql("CREATE TABLE pk_test(id INTEGER PRIMARY KEY, name TEXT)")
     pks = executor.generator.get_table_primary_keys(executor, "pk_test")
     assert pks == ["id"]
 
