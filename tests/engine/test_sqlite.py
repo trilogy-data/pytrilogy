@@ -1,5 +1,6 @@
-import pytest
 from pathlib import Path
+
+import pytest
 
 from trilogy import Dialects, Environment
 from trilogy.core.enums import CreateMode
