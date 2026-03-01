@@ -1,6 +1,7 @@
 import re
 
 from trilogy.dialect.duckdb import get_python_datasource_setup_sql
+from trilogy.staging import StagingConfig
 
 
 def test_python_datasource_disabled_sql():
@@ -55,3 +56,30 @@ def test_python_datasource_windows_structure():
     assert "read_json" in sql
     assert "read_arrow" in sql
     assert "getvariable" in sql
+
+
+def test_python_datasource_windows_custom_staging():
+    """Test that Windows mode uses the staging config path."""
+    staging = StagingConfig(path="/custom/staging")
+    sql = get_python_datasource_setup_sql(
+        enabled=True, is_windows=True, instance_id="test", staging=staging
+    )
+    assert "/custom/staging/trilogy_uv_run_test.arrow" in sql
+
+
+def test_python_datasource_windows_gcs_staging():
+    """Test that Windows mode supports GCS staging URIs."""
+    staging = StagingConfig(path="gs://my-bucket/staging")
+    sql = get_python_datasource_setup_sql(
+        enabled=True, is_windows=True, instance_id="test", staging=staging
+    )
+    assert "gs://my-bucket/staging/trilogy_uv_run_test.arrow" in sql
+
+
+def test_python_datasource_windows_s3_staging():
+    """Test that Windows mode supports S3 staging URIs."""
+    staging = StagingConfig(path="s3://my-bucket/staging")
+    sql = get_python_datasource_setup_sql(
+        enabled=True, is_windows=True, instance_id="test", staging=staging
+    )
+    assert "s3://my-bucket/staging/trilogy_uv_run_test.arrow" in sql

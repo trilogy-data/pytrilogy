@@ -138,7 +138,7 @@ def make_refresh_execution_fn(
     "--env",
     "-e",
     multiple=True,
-    help="Set environment variables as KEY=VALUE pairs",
+    help="Set env vars as KEY=VALUE or pass an env file path",
 )
 @option(
     "--force",

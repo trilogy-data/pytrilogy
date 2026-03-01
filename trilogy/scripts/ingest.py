@@ -285,7 +285,7 @@ def create_datasource_from_table(
     "--env",
     "-e",
     multiple=True,
-    help="Set environment variables as KEY=VALUE pairs",
+    help="Set env vars as KEY=VALUE or pass an env file path",
 )
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
@@ -366,7 +366,11 @@ def ingest(
         from trilogy.execution.config import apply_env_vars
         from trilogy.scripts.environment import parse_env_vars
 
-        cli_env_vars = parse_env_vars(env)
+        try:
+            cli_env_vars = parse_env_vars(env)
+        except ValueError as e:
+            print_error(str(e))
+            raise Exit(1) from e
         apply_env_vars(cli_env_vars)
 
     # Create executor

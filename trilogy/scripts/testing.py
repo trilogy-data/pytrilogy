@@ -60,7 +60,7 @@ def execute_script_for_unit(
     "--env",
     "-e",
     multiple=True,
-    help="Set environment variables as KEY=VALUE pairs",
+    help="Set env vars as KEY=VALUE or pass an env file path",
 )
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context

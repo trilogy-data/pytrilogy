@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any, Iterable
 
 
@@ -47,13 +48,31 @@ def parse_env_params(env_param_list: tuple[str, ...]) -> dict[str, Any]:
 
 
 def parse_env_vars(env_var_list: tuple[str, ...]) -> dict[str, str]:
-    """Parse environment variables from KEY=VALUE format (keeps values as strings)."""
+    """Parse env values from KEY=VALUE entries or env-file paths."""
+    from trilogy.execution.config import load_env_file
+
     env_vars: dict[str, str] = {}
     for param in env_var_list:
-        if "=" not in param:
+        if "=" in param:
+            key, value = param.split("=", 1)
+            env_vars[key] = value
+            continue
+
+        env_file = Path(param)
+        if not env_file.exists():
             raise ValueError(
-                f"Environment variable must be in KEY=VALUE format: {param}"
+                "Environment variable must be in KEY=VALUE format or be a path "
+                f"to an existing env file: {param}"
             )
-        key, value = param.split("=", 1)
-        env_vars[key] = value
+
+        if not env_file.is_file():
+            raise ValueError(
+                "Environment variable path must point to a file when using "
+                f"--env FILE: {param}"
+            )
+
+        file_vars = load_env_file(env_file)
+        if file_vars:
+            env_vars.update(file_vars)
+
     return env_vars

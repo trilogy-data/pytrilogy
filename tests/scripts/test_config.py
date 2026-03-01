@@ -160,6 +160,56 @@ path = ":memory:"
         assert result.exit_code == 0
 
 
+def test_config_staging_default():
+    """Test that staging defaults to None path when not in config."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text('[engine]\ndialect = "duckdb"\n')
+
+        config = load_config_file(config_file)
+        assert config.staging.path is None
+
+
+def test_config_staging_local():
+    """Test parsing local staging path from config."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(
+            '[engine]\ndialect = "duckdb"\n\n[staging]\npath = "/tmp/my-staging"\n'
+        )
+
+        config = load_config_file(config_file)
+        assert config.staging.path == "/tmp/my-staging"
+
+
+def test_config_staging_gcs():
+    """Test parsing GCS staging path from config."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(
+            '[engine]\ndialect = "duckdb"\n\n[staging]\npath = "gs://bucket/prefix"\n'
+        )
+
+        config = load_config_file(config_file)
+        assert config.staging.path == "gs://bucket/prefix"
+
+
+def test_config_staging_s3():
+    """Test parsing S3 staging path from config."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(
+            '[engine]\ndialect = "duckdb"\n\n[staging]\npath = "s3://bucket/prefix"\n'
+        )
+
+        config = load_config_file(config_file)
+        assert config.staging.path == "s3://bucket/prefix"
+
+
 def test_config_types():
 
     test_cases = [
@@ -482,6 +532,111 @@ def test_cli_env_multiple_options():
                     os.environ.pop(key, None)
                 else:
                     os.environ[key] = original_values[key]
+
+
+def test_cli_env_file_option():
+    """Test --env supports loading variables from a file path."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        test_script = tmppath / "test.preql"
+        test_script.write_text("select 1 as value;")
+
+        env_file = tmppath / ".env.runtime"
+        test_key = "TRILOGY_CLI_ENV_FILE_TEST"
+        env_file.write_text(f"{test_key}=from_file\n")
+
+        original_value = os.environ.get(test_key)
+        try:
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "run",
+                    str(test_script),
+                    "duckdb",
+                    "--env",
+                    str(env_file),
+                ],
+            )
+
+            if result.exception:
+                raise AssertionError(
+                    f"Command failed:\nstdout:\n{result.stdout}\nexc:\n{result.exception}"
+                )
+            assert result.exit_code == 0
+            assert os.environ.get(test_key) == "from_file"
+        finally:
+            if original_value is None:
+                os.environ.pop(test_key, None)
+            else:
+                os.environ[test_key] = original_value
+
+
+def test_cli_env_file_and_kv_order_precedence():
+    """Test --env entries apply in order when mixing file paths and KEY=VALUE."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        test_script = tmppath / "test.preql"
+        test_script.write_text("select 1 as value;")
+
+        env_file = tmppath / ".env.runtime"
+        test_key = "TRILOGY_CLI_ENV_MIXED_TEST"
+        env_file.write_text(f"{test_key}=from_file\n")
+
+        original_value = os.environ.get(test_key)
+        try:
+            runner = CliRunner()
+            result = runner.invoke(
+                cli,
+                [
+                    "run",
+                    str(test_script),
+                    "duckdb",
+                    "--env",
+                    str(env_file),
+                    "--env",
+                    f"{test_key}=from_kv",
+                ],
+            )
+
+            if result.exception:
+                raise AssertionError(
+                    f"Command failed:\nstdout:\n{result.stdout}\nexc:\n{result.exception}"
+                )
+            assert result.exit_code == 0
+            assert os.environ.get(test_key) == "from_kv"
+        finally:
+            if original_value is None:
+                os.environ.pop(test_key, None)
+            else:
+                os.environ[test_key] = original_value
+
+
+def test_cli_env_invalid_non_kv_and_missing_file():
+    """Test --env error for values that are neither KEY=VALUE nor existing files."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        test_script = tmppath / "test.preql"
+        test_script.write_text("select 1 as value;")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "run",
+                str(test_script),
+                "duckdb",
+                "--env",
+                "not-a-kv-or-existing-file",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "KEY=VALUE format" in result.output
+        assert "path to an existing env file" in result.output
 
 
 def test_env_file_and_cli_precedence():

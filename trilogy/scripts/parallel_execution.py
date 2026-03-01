@@ -628,7 +628,11 @@ def run_parallel_execution(
 
     # Then apply CLI --env options (these take precedence)
     if cli_params.env:
-        cli_env_vars = parse_env_vars(cli_params.env)
+        try:
+            cli_env_vars = parse_env_vars(cli_params.env)
+        except ValueError as e:
+            print_error(str(e))
+            raise Exit(1) from e
         apply_env_vars(cli_env_vars)
 
     # Merge CLI params with config file

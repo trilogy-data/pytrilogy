@@ -73,6 +73,7 @@ from trilogy.engine import EngineConnection, ExecutionEngine, ResultProtocol
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.parser import parse_text
 from trilogy.render import get_dialect_generator
+from trilogy.staging import StagingConfig
 
 
 class Executor(object):
@@ -84,6 +85,7 @@ class Executor(object):
         rendering: Rendering | None = None,
         hooks: List[BaseHook] | None = None,
         config: DialectConfig | None = None,
+        staging: StagingConfig | None = None,
     ):
 
         self.dialect: Dialects = dialect
@@ -93,6 +95,7 @@ class Executor(object):
         self.logger = logger
         self.hooks = hooks
         self.config = config
+        self.staging = staging or StagingConfig()
         self._instance_id = str(uuid.uuid4())
         self.generator = get_dialect_generator(self.dialect, rendering, config)
         self.connection = self.connect()
@@ -123,7 +126,9 @@ class Executor(object):
         )
         is_windows = sys.platform == "win32"
         self.execute_raw_sql(
-            get_python_datasource_setup_sql(enabled, is_windows, self._instance_id)
+            get_python_datasource_setup_sql(
+                enabled, is_windows, self._instance_id, self.staging
+            )
         )
         self.connection.commit()
 

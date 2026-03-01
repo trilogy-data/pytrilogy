@@ -15,6 +15,7 @@ from trilogy.dialect import (
     SQLServerConfig,
 )
 from trilogy.dialect.enums import Dialects
+from trilogy.staging import StagingConfig
 
 DEFAULT_PARALLELISM = 4
 
@@ -60,6 +61,7 @@ class RuntimeConfig:
     engine_config: DialectConfig | None = None
     source_path: Path | None = None
     env_files: list[Path] = field(default_factory=list)
+    staging: StagingConfig = field(default_factory=StagingConfig)
 
 
 def load_config_file(path: Path) -> RuntimeConfig:
@@ -109,6 +111,9 @@ def load_config_file(path: Path) -> RuntimeConfig:
     else:
         env_files = [path.parent / p for p in env_raw]
 
+    staging_raw: dict = config_data.get("staging", {})
+    staging = StagingConfig(path=staging_raw.get("path"))
+
     return RuntimeConfig(
         startup_trilogy=[path.parent / p for p in setup.get("trilogy", [])],
         startup_sql=[path.parent / p for p in setup.get("sql", [])],
@@ -117,4 +122,5 @@ def load_config_file(path: Path) -> RuntimeConfig:
         engine_config=engine_config,
         source_path=path,
         env_files=env_files,
+        staging=staging,
     )
