@@ -53,7 +53,7 @@
 
     DATASOURCE_UPDATE_TRIGGER.2: "incremental"i | "freshness"i
 
-    datasource_update_trigger_clause: DATASOURCE_UPDATE_TRIGGER "by"i column_list
+    datasource_update_trigger_clause: DATASOURCE_UPDATE_TRIGGER "by"i (column_list | FILE_PATH)
 
     datasource_partition_clause: "partition"i "by"i column_list
 

@@ -1,3 +1,4 @@
+import subprocess
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Callable
@@ -168,6 +169,24 @@ def get_incremental_key_watermarks(
     return DatasourceWatermark(keys=watermarks)
 
 
+def run_freshness_probe(probe_path: str) -> bool:
+    """Run a probe script to check datasource freshness.
+
+    The script should exit 0 and print a truthy value (true/1/yes) if up-to-date,
+    or a falsy value (false/0/no) if stale. A non-zero exit code raises RuntimeError.
+    """
+    result = subprocess.run(
+        ["uv", "run", "--quiet", probe_path],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Freshness probe '{probe_path}' failed (exit {result.returncode}): {result.stderr.strip()}"
+        )
+    return result.stdout.strip().lower() in ("true", "1", "yes")
+
+
 def get_freshness_watermarks(
     datasource: Datasource, executor: Executor
 ) -> DatasourceWatermark:
@@ -291,6 +310,22 @@ class BaseStateStore:
 
         # First pass: watermark all assets to get current state (except skipped ones)
         self.watermark_all_assets(env, executor, skip_datasources=skip_datasources)
+
+        # Check probe-based freshness (independent of watermark comparison)
+        for ds in env.datasources.values():
+            if (
+                ds.freshness_probe
+                and ds.identifier not in root_assets
+                and ds.identifier not in skip_datasources
+            ):
+                if not run_freshness_probe(ds.freshness_probe):
+                    stale.append(
+                        StaleAsset(
+                            datasource_id=ds.identifier,
+                            reason=f"freshness probe '{ds.freshness_probe}' returned false",
+                            filters=UpdateKeys(),
+                        )
+                    )
 
         # Build map of concept -> max watermark across root assets
         concept_max_watermarks: dict[str, UpdateKey] = {}

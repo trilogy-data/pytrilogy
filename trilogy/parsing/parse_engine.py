@@ -245,6 +245,11 @@ class DatasourceUpdateTriggerClause:
     columns: List[ConceptRef]
 
 
+@dataclass
+class DatasourceFreshnessProbeClause:
+    path: str
+
+
 with open(join(dirname(__file__), "trilogy.lark"), "r") as f:
     PARSER = Lark(
         f.read(),
@@ -1049,6 +1054,13 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def datasource_update_trigger_clause(self, meta: Meta, args):
         trigger_type = DatasourceUpdateTrigger(args[0].lower())
+        if isinstance(args[1], str):
+            path = str(args[1]).strip("`")
+            if trigger_type != DatasourceUpdateTrigger.FRESHNESS:
+                raise ValueError(
+                    f"Probe scripts are only supported for freshness triggers, not {trigger_type.value}"
+                )
+            return DatasourceFreshnessProbeClause(path=path)
         columns = [ConceptRef(address=arg) for arg in args[1]]
         return DatasourceUpdateTriggerClause(trigger_type=trigger_type, columns=columns)
 
@@ -1067,6 +1079,7 @@ class ParseToObjects(Transformer):
         incremental_by: List[ConceptRef] = []
         partition_by: List[ConceptRef] = []
         freshness_by: List[ConceptRef] = []
+        freshness_probe: Optional[str] = None
         datasource_status: DatasourceState = DatasourceState.PUBLISHED
         for val in args[1:]:
             if isinstance(val, Address):
@@ -1088,6 +1101,8 @@ class ParseToObjects(Transformer):
                 where = val
             elif isinstance(val, DatasourceState):
                 datasource_status = val
+            elif isinstance(val, DatasourceFreshnessProbeClause):
+                freshness_probe = val.path
             elif isinstance(val, DatasourceUpdateTriggerClause):
                 if val.trigger_type == DatasourceUpdateTrigger.INCREMENTAL:
                     incremental_by = val.columns
@@ -1116,6 +1131,7 @@ class ParseToObjects(Transformer):
             incremental_by=incremental_by,
             partition_by=partition_by,
             freshness_by=freshness_by,
+            freshness_probe=freshness_probe,
             is_root=is_root,
         )
         if datasource.where:
