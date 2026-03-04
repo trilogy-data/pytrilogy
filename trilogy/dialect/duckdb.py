@@ -251,7 +251,7 @@ SET VARIABLE __trilogy_uv_temp_file = '{temp_file}';
 CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
 WITH __build AS (
 SELECT a.name
-FROM read_json('uv run --quiet ' || script || ' ' || args || ' > {temp_file} && echo {{"name": "done"}} |') AS a
+FROM read_json('uv run --no-project --quiet ' || script || ' ' || args || ' > {temp_file} && echo {{"name": "done"}} |') AS a
 LIMIT 1
 )
 SELECT * FROM read_arrow(getvariable('__trilogy_uv_temp_file'));
@@ -264,7 +264,7 @@ LOAD shellfs;
 LOAD arrow;
 
 CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
-SELECT * FROM read_arrow('uv run --quiet ' || script || ' ' || args || ' |');
+    SELECT * FROM read_arrow('uv run --no-project --quiet ' || script || ' ' || args || ' |');
 """
 
 

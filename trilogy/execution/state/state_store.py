@@ -1,9 +1,11 @@
+import subprocess
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Callable
 
 from trilogy import Executor
 from trilogy.core.enums import Purpose
+from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.build import Factory
 from trilogy.core.models.datasource import (
     Address,
@@ -168,6 +170,24 @@ def get_incremental_key_watermarks(
     return DatasourceWatermark(keys=watermarks)
 
 
+def run_freshness_probe(probe_path: str) -> bool:
+    """Run a probe script to check datasource freshness.
+
+    The script should exit 0 and print a truthy value (true/1/yes) if up-to-date,
+    or a falsy value (false/0/no) if stale. A non-zero exit code raises RuntimeError.
+    """
+    result = subprocess.run(
+        ["uv", "run", "--no-project", "--quiet", probe_path],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Freshness probe '{probe_path}' failed (exit {result.returncode}): {result.stderr.strip()}"
+        )
+    return result.stdout.strip().lower() in ("true", "1", "yes")
+
+
 def get_freshness_watermarks(
     datasource: Datasource, executor: Executor
 ) -> DatasourceWatermark:
@@ -207,6 +227,54 @@ def get_freshness_watermarks(
         watermarks[concept.name] = UpdateKey(
             concept_name=concept.name,
             type=UpdateKeyType.UPDATE_TIME,
+            value=max_value,
+        )
+
+    return DatasourceWatermark(keys=watermarks)
+
+
+def get_concept_max_watermarks(
+    datasource: Datasource,
+    concept_refs: list[ConceptRef],
+    executor: Executor,
+) -> DatasourceWatermark:
+    """Fetch MAX watermarks for the given concept refs from a root datasource.
+
+    Used to auto-watermark roots when non-root datasources reference those concepts
+    in their freshness_by/incremental_by without requiring explicit root declarations.
+    """
+    if isinstance(datasource.address, Address):
+        table_ref = executor.generator.render_source(datasource.address)
+    else:
+        table_ref = datasource.safe_address
+
+    output_addresses = {c.address for c in datasource.output_concepts}
+    factory = Factory(environment=executor.environment)
+    dialect = executor.generator
+    watermarks = {}
+
+    for concept_ref in concept_refs:
+        if concept_ref.address not in output_addresses:
+            continue
+        concept = executor.environment.concepts[concept_ref.address]
+        build_concept = factory.build(concept)
+        build_datasource = factory.build(datasource)
+        cte: CTE = CTE.from_datasource(build_datasource)
+        query = f"SELECT MAX({dialect.render_concept_sql(build_concept, cte=cte, alias=False)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
+
+        try:
+            result = executor.execute_raw_sql(query).fetchone()
+            max_value = result[0] if result else None
+        except Exception as e:
+            if is_missing_source_error(e, dialect):
+                max_value = None
+                executor.connection.rollback()
+            else:
+                raise
+
+        watermarks[concept.name] = UpdateKey(
+            concept_name=concept.name,
+            type=UpdateKeyType.INCREMENTAL_KEY,
             value=max_value,
         )
 
@@ -256,8 +324,37 @@ class BaseStateStore:
     ) -> dict[str, DatasourceWatermark]:
         """Watermark all datasources in the environment."""
         skip_datasources = skip_datasources or set()
+
+        # Collect concepts that non-root datasources need for staleness detection.
+        # Resolve through env.concepts to get canonical namespaced addresses.
+        needed_concepts: set[str] = set()
         for ds in env.datasources.values():
-            if ds.identifier not in skip_datasources:
+            if not ds.is_root and ds.identifier not in skip_datasources:
+                for ref in ds.freshness_by:
+                    needed_concepts.add(env.concepts[ref.address].address)
+                for ref in ds.incremental_by:
+                    needed_concepts.add(env.concepts[ref.address].address)
+
+        for ds in env.datasources.values():
+            if ds.identifier in skip_datasources:
+                continue
+            if ds.is_root:
+                if ds.freshness_by or ds.incremental_by:
+                    self.watermark_asset(ds, executor)
+                elif needed_concepts:
+                    # Auto-watermark this root for any concepts consumers need
+                    target_refs = [
+                        ref
+                        for ref in ds.output_concepts
+                        if ref.address in needed_concepts
+                    ]
+                    if target_refs:
+                        watermark = get_concept_max_watermarks(
+                            ds, target_refs, executor
+                        )
+                        if watermark.keys:
+                            self.watermarks[ds.identifier] = watermark
+            else:
                 self.watermark_asset(ds, executor)
         return self.watermarks
 
@@ -291,6 +388,22 @@ class BaseStateStore:
 
         # First pass: watermark all assets to get current state (except skipped ones)
         self.watermark_all_assets(env, executor, skip_datasources=skip_datasources)
+
+        # Check probe-based freshness (independent of watermark comparison)
+        for ds in env.datasources.values():
+            if (
+                ds.freshness_probe
+                and ds.identifier not in root_assets
+                and ds.identifier not in skip_datasources
+            ):
+                if not run_freshness_probe(ds.freshness_probe):
+                    stale.append(
+                        StaleAsset(
+                            datasource_id=ds.identifier,
+                            reason=f"freshness probe '{ds.freshness_probe}' returned false",
+                            filters=UpdateKeys(),
+                        )
+                    )
 
         # Build map of concept -> max watermark across root assets
         concept_max_watermarks: dict[str, UpdateKey] = {}

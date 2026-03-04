@@ -217,6 +217,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     incremental_by: List[ConceptRef] = Field(default_factory=list)
     partition_by: List[ConceptRef] = Field(default_factory=list)
     freshness_by: List[ConceptRef] = Field(default_factory=list)
+    freshness_probe: Optional[str] = None
     is_root: bool = False
 
     @property

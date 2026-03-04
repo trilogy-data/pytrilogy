@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy.exc import ProgrammingError
@@ -9,10 +10,12 @@ from trilogy.execution.state.exceptions import is_missing_source_error
 from trilogy.execution.state.state_store import (
     BaseStateStore,
     _compare_watermark_values,
+    get_concept_max_watermarks,
     get_freshness_watermarks,
     get_incremental_key_watermarks,
     get_last_update_time_watermarks,
     get_unique_key_hash_watermarks,
+    run_freshness_probe,
 )
 
 
@@ -1095,3 +1098,238 @@ def test_unique_key_hash_watermarks_missing_table():
     assert "local.item_id" in watermarks.keys
     assert watermarks.keys["local.item_id"].value is None
     assert watermarks.keys["local.item_id"].type == UpdateKeyType.KEY_HASH
+
+
+def test_get_concept_max_watermarks():
+    """get_concept_max_watermarks fetches MAX for given concept refs from a datasource."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key gcm_id int;
+        property gcm_id.gcm_ts datetime;
+
+        root datasource gcm_source (
+            gcm_id: gcm_id,
+            gcm_ts: gcm_ts
+        )
+        grain (gcm_id)
+        query '''
+        SELECT 1 as gcm_id, TIMESTAMP '2024-01-10 12:00:00' as gcm_ts
+        UNION ALL
+        SELECT 2 as gcm_id, TIMESTAMP '2024-01-20 12:00:00' as gcm_ts
+        ''';
+        """
+    )
+
+    datasource = executor.environment.datasources["gcm_source"]
+    watermarks = get_concept_max_watermarks(
+        datasource, list(datasource.output_concepts), executor
+    )
+
+    assert "gcm_ts" in watermarks.keys
+    assert watermarks.keys["gcm_ts"].type == UpdateKeyType.INCREMENTAL_KEY
+    assert watermarks.keys["gcm_ts"].value is not None
+
+
+def test_root_auto_watermark_stale():
+    """Root without freshness_by/incremental_by is auto-watermarked for consumer concepts."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key raw_id int;
+        property raw_id.raw_ts datetime;
+        property raw_id.raw_data string;
+
+        root datasource raw_source (
+            raw_id: raw_id,
+            raw_ts: raw_ts,
+            raw_data: raw_data
+        )
+        grain (raw_id)
+        query '''
+        SELECT 1 as raw_id, TIMESTAMP '2024-01-10 12:00:00' as raw_ts, 'a' as raw_data
+        UNION ALL
+        SELECT 2 as raw_id, TIMESTAMP '2024-01-20 12:00:00' as raw_ts, 'b' as raw_data
+        ''';
+
+        datasource raw_target (
+            raw_id: raw_id,
+            raw_ts: raw_ts,
+            raw_data: raw_data
+        )
+        grain (raw_id)
+        address raw_target_table
+        incremental by raw_ts;
+
+        CREATE IF NOT EXISTS DATASOURCE raw_target;
+
+        RAW_SQL('''
+        INSERT INTO raw_target_table
+        SELECT 1 as raw_id, TIMESTAMP '2024-01-10 12:00:00' as raw_ts, 'a' as raw_data
+        ''');
+        """
+    )
+
+    state_store = BaseStateStore()
+    stale = state_store.get_stale_assets(executor.environment, executor)
+
+    assert len(stale) == 1
+    assert stale[0].datasource_id == "raw_target"
+    assert "raw_ts" in stale[0].reason
+    assert "behind" in stale[0].reason
+
+
+def test_root_auto_watermark_up_to_date():
+    """Root without freshness_by/incremental_by is auto-watermarked; up-to-date target is not flagged."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key rau_id int;
+        property rau_id.rau_ts datetime;
+
+        root datasource rau_source (
+            rau_id: rau_id,
+            rau_ts: rau_ts
+        )
+        grain (rau_id)
+        query '''
+        SELECT 1 as rau_id, TIMESTAMP '2024-01-10 12:00:00' as rau_ts
+        ''';
+
+        datasource rau_target (
+            rau_id: rau_id,
+            rau_ts: rau_ts
+        )
+        grain (rau_id)
+        address rau_target_table
+        incremental by rau_ts;
+
+        CREATE IF NOT EXISTS DATASOURCE rau_target;
+
+        RAW_SQL('''
+        INSERT INTO rau_target_table
+        SELECT 1 as rau_id, TIMESTAMP '2024-01-10 12:00:00' as rau_ts
+        ''');
+        """
+    )
+
+    state_store = BaseStateStore()
+    stale = state_store.get_stale_assets(executor.environment, executor)
+
+    assert len(stale) == 0
+
+
+# --- run_freshness_probe unit tests ---
+
+
+@pytest.mark.parametrize("output", ["true", "1", "yes", "TRUE", "YES"])
+def test_run_freshness_probe_truthy(tmp_path, output):
+    probe = tmp_path / f"probe_{output}.py"
+    probe.write_text(f'print("{output}")')
+    assert run_freshness_probe(str(probe)) is True
+
+
+@pytest.mark.parametrize("output", ["false", "0", "no", "FALSE", "maybe"])
+def test_run_freshness_probe_falsy(tmp_path, output):
+    probe = tmp_path / f"probe_{output}.py"
+    probe.write_text(f'print("{output}")')
+    assert run_freshness_probe(str(probe)) is False
+
+
+def test_run_freshness_probe_nonzero_exit(tmp_path):
+    probe = tmp_path / "probe_fail.py"
+    probe.write_text("import sys; sys.exit(1)")
+    with pytest.raises(RuntimeError, match="exit 1"):
+        run_freshness_probe(str(probe))
+
+
+def test_run_freshness_probe_nonzero_exit_message(tmp_path):
+    probe = tmp_path / "probe_fail_msg.py"
+    probe.write_text("import sys; print('bad', file=sys.stderr); sys.exit(2)")
+    with pytest.raises(RuntimeError, match="bad"):
+        run_freshness_probe(str(probe))
+
+
+# --- get_stale_assets probe integration tests ---
+
+
+def test_get_stale_assets_probe_stale():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key pb_id int;
+
+        datasource pb_source (pb_id: pb_id)
+        grain (pb_id)
+        address pb_source_table;
+
+        CREATE IF NOT EXISTS DATASOURCE pb_source;
+        """
+    )
+
+    ds = executor.environment.datasources["pb_source"]
+    executor.environment.datasources["pb_source"] = ds.model_copy(
+        update={"freshness_probe": "/fake/probe.py"}
+    )
+
+    with patch("trilogy.execution.state.state_store.run_freshness_probe") as mock_probe:
+        mock_probe.return_value = False
+        state_store = BaseStateStore()
+        stale = state_store.get_stale_assets(executor.environment, executor)
+        mock_probe.assert_called_once_with("/fake/probe.py")
+
+    assert len(stale) == 1
+    assert stale[0].datasource_id == "pb_source"
+    assert "freshness probe" in stale[0].reason
+    assert stale[0].filters.keys == {}
+
+
+def test_get_stale_assets_probe_up_to_date():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key pb2_id int;
+
+        datasource pb2_source (pb2_id: pb2_id)
+        grain (pb2_id)
+        address pb2_source_table;
+
+        CREATE IF NOT EXISTS DATASOURCE pb2_source;
+        """
+    )
+
+    ds = executor.environment.datasources["pb2_source"]
+    executor.environment.datasources["pb2_source"] = ds.model_copy(
+        update={"freshness_probe": "/fake/probe2.py"}
+    )
+
+    with patch("trilogy.execution.state.state_store.run_freshness_probe") as mock_probe:
+        mock_probe.return_value = True
+        state_store = BaseStateStore()
+        stale = state_store.get_stale_assets(executor.environment, executor)
+
+    assert len(stale) == 0
+
+
+def test_get_stale_assets_probe_skipped_for_root():
+    """Probe is not run for root datasources."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key pb3_id int;
+
+        root datasource pb3_source (pb3_id: pb3_id)
+        grain (pb3_id)
+        query '''SELECT 1 as pb3_id''';
+        """
+    )
+
+    ds = executor.environment.datasources["pb3_source"]
+    executor.environment.datasources["pb3_source"] = ds.model_copy(
+        update={"freshness_probe": "/fake/probe3.py"}
+    )
+
+    with patch("trilogy.execution.state.state_store.run_freshness_probe") as mock_probe:
+        state_store = BaseStateStore()
+        state_store.get_stale_assets(executor.environment, executor)
+        mock_probe.assert_not_called()
