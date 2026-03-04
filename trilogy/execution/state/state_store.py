@@ -5,6 +5,7 @@ from typing import Callable
 
 from trilogy import Executor
 from trilogy.core.enums import Purpose
+from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.build import Factory
 from trilogy.core.models.datasource import (
     Address,
@@ -232,6 +233,54 @@ def get_freshness_watermarks(
     return DatasourceWatermark(keys=watermarks)
 
 
+def get_concept_max_watermarks(
+    datasource: Datasource,
+    concept_refs: list[ConceptRef],
+    executor: Executor,
+) -> DatasourceWatermark:
+    """Fetch MAX watermarks for the given concept refs from a root datasource.
+
+    Used to auto-watermark roots when non-root datasources reference those concepts
+    in their freshness_by/incremental_by without requiring explicit root declarations.
+    """
+    if isinstance(datasource.address, Address):
+        table_ref = executor.generator.render_source(datasource.address)
+    else:
+        table_ref = datasource.safe_address
+
+    output_addresses = {c.address for c in datasource.output_concepts}
+    factory = Factory(environment=executor.environment)
+    dialect = executor.generator
+    watermarks = {}
+
+    for concept_ref in concept_refs:
+        if concept_ref.address not in output_addresses:
+            continue
+        concept = executor.environment.concepts[concept_ref.address]
+        build_concept = factory.build(concept)
+        build_datasource = factory.build(datasource)
+        cte: CTE = CTE.from_datasource(build_datasource)
+        query = f"SELECT MAX({dialect.render_concept_sql(build_concept, cte=cte, alias=False)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
+
+        try:
+            result = executor.execute_raw_sql(query).fetchone()
+            max_value = result[0] if result else None
+        except Exception as e:
+            if is_missing_source_error(e, dialect):
+                max_value = None
+                executor.connection.rollback()
+            else:
+                raise
+
+        watermarks[concept.name] = UpdateKey(
+            concept_name=concept.name,
+            type=UpdateKeyType.INCREMENTAL_KEY,
+            value=max_value,
+        )
+
+    return DatasourceWatermark(keys=watermarks)
+
+
 class BaseStateStore:
 
     def __init__(self) -> None:
@@ -275,8 +324,34 @@ class BaseStateStore:
     ) -> dict[str, DatasourceWatermark]:
         """Watermark all datasources in the environment."""
         skip_datasources = skip_datasources or set()
+
+        # Collect concepts that non-root datasources need for staleness detection.
+        # Resolve through env.concepts to get canonical namespaced addresses.
+        needed_concepts: set[str] = set()
         for ds in env.datasources.values():
-            if ds.identifier not in skip_datasources:
+            if not ds.is_root and ds.identifier not in skip_datasources:
+                for ref in ds.freshness_by:
+                    needed_concepts.add(env.concepts[ref.address].address)
+                for ref in ds.incremental_by:
+                    needed_concepts.add(env.concepts[ref.address].address)
+
+        for ds in env.datasources.values():
+            if ds.identifier in skip_datasources:
+                continue
+            if ds.is_root:
+                if ds.freshness_by or ds.incremental_by:
+                    self.watermark_asset(ds, executor)
+                elif needed_concepts:
+                    # Auto-watermark this root for any concepts consumers need
+                    target_refs = [
+                        ref for ref in ds.output_concepts
+                        if ref.address in needed_concepts
+                    ]
+                    if target_refs:
+                        watermark = get_concept_max_watermarks(ds, target_refs, executor)
+                        if watermark.keys:
+                            self.watermarks[ds.identifier] = watermark
+            else:
                 self.watermark_asset(ds, executor)
         return self.watermarks
 

@@ -1055,12 +1055,14 @@ class ParseToObjects(Transformer):
     def datasource_update_trigger_clause(self, meta: Meta, args):
         trigger_type = DatasourceUpdateTrigger(args[0].lower())
         if isinstance(args[1], str):
-            path = str(args[1]).strip("`")
             if trigger_type != DatasourceUpdateTrigger.FRESHNESS:
                 raise ValueError(
                     f"Probe scripts are only supported for freshness triggers, not {trigger_type.value}"
                 )
-            return DatasourceFreshnessProbeClause(path=path)
+            p = Path(args[1])
+            if not p.is_absolute():
+                p = (Path(self.environment.working_path) / p).resolve()
+            return DatasourceFreshnessProbeClause(path=str(p))
         columns = [ConceptRef(address=arg) for arg in args[1]]
         return DatasourceUpdateTriggerClause(trigger_type=trigger_type, columns=columns)
 

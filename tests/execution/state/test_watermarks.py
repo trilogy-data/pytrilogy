@@ -9,6 +9,7 @@ from trilogy.execution.state.exceptions import is_missing_source_error
 from trilogy.execution.state.state_store import (
     BaseStateStore,
     _compare_watermark_values,
+    get_concept_max_watermarks,
     get_freshness_watermarks,
     get_incremental_key_watermarks,
     get_last_update_time_watermarks,
@@ -1095,3 +1096,122 @@ def test_unique_key_hash_watermarks_missing_table():
     assert "local.item_id" in watermarks.keys
     assert watermarks.keys["local.item_id"].value is None
     assert watermarks.keys["local.item_id"].type == UpdateKeyType.KEY_HASH
+
+
+def test_get_concept_max_watermarks():
+    """get_concept_max_watermarks fetches MAX for given concept refs from a datasource."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key gcm_id int;
+        property gcm_id.gcm_ts datetime;
+
+        root datasource gcm_source (
+            gcm_id: gcm_id,
+            gcm_ts: gcm_ts
+        )
+        grain (gcm_id)
+        query '''
+        SELECT 1 as gcm_id, TIMESTAMP '2024-01-10 12:00:00' as gcm_ts
+        UNION ALL
+        SELECT 2 as gcm_id, TIMESTAMP '2024-01-20 12:00:00' as gcm_ts
+        ''';
+        """
+    )
+
+    datasource = executor.environment.datasources["gcm_source"]
+    watermarks = get_concept_max_watermarks(
+        datasource, list(datasource.output_concepts), executor
+    )
+
+    assert "gcm_ts" in watermarks.keys
+    assert watermarks.keys["gcm_ts"].type == UpdateKeyType.INCREMENTAL_KEY
+    assert watermarks.keys["gcm_ts"].value is not None
+
+
+def test_root_auto_watermark_stale():
+    """Root without freshness_by/incremental_by is auto-watermarked for consumer concepts."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key raw_id int;
+        property raw_id.raw_ts datetime;
+        property raw_id.raw_data string;
+
+        root datasource raw_source (
+            raw_id: raw_id,
+            raw_ts: raw_ts,
+            raw_data: raw_data
+        )
+        grain (raw_id)
+        query '''
+        SELECT 1 as raw_id, TIMESTAMP '2024-01-10 12:00:00' as raw_ts, 'a' as raw_data
+        UNION ALL
+        SELECT 2 as raw_id, TIMESTAMP '2024-01-20 12:00:00' as raw_ts, 'b' as raw_data
+        ''';
+
+        datasource raw_target (
+            raw_id: raw_id,
+            raw_ts: raw_ts,
+            raw_data: raw_data
+        )
+        grain (raw_id)
+        address raw_target_table
+        incremental by raw_ts;
+
+        CREATE IF NOT EXISTS DATASOURCE raw_target;
+
+        RAW_SQL('''
+        INSERT INTO raw_target_table
+        SELECT 1 as raw_id, TIMESTAMP '2024-01-10 12:00:00' as raw_ts, 'a' as raw_data
+        ''');
+        """
+    )
+
+    state_store = BaseStateStore()
+    stale = state_store.get_stale_assets(executor.environment, executor)
+
+    assert len(stale) == 1
+    assert stale[0].datasource_id == "raw_target"
+    assert "raw_ts" in stale[0].reason
+    assert "behind" in stale[0].reason
+
+
+def test_root_auto_watermark_up_to_date():
+    """Root without freshness_by/incremental_by is auto-watermarked; up-to-date target is not flagged."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key rau_id int;
+        property rau_id.rau_ts datetime;
+
+        root datasource rau_source (
+            rau_id: rau_id,
+            rau_ts: rau_ts
+        )
+        grain (rau_id)
+        query '''
+        SELECT 1 as rau_id, TIMESTAMP '2024-01-10 12:00:00' as rau_ts
+        ''';
+
+        datasource rau_target (
+            rau_id: rau_id,
+            rau_ts: rau_ts
+        )
+        grain (rau_id)
+        address rau_target_table
+        incremental by rau_ts;
+
+        CREATE IF NOT EXISTS DATASOURCE rau_target;
+
+        RAW_SQL('''
+        INSERT INTO rau_target_table
+        SELECT 1 as rau_id, TIMESTAMP '2024-01-10 12:00:00' as rau_ts
+        ''');
+        """
+    )
+
+    state_store = BaseStateStore()
+    stale = state_store.get_stale_assets(executor.environment, executor)
+
+    assert len(stale) == 0
