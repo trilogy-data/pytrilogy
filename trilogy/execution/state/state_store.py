@@ -177,7 +177,7 @@ def run_freshness_probe(probe_path: str) -> bool:
     or a falsy value (false/0/no) if stale. A non-zero exit code raises RuntimeError.
     """
     result = subprocess.run(
-        ["uv", "run", "--quiet", probe_path],
+        ["uv", "run", "--no-project", "--quiet", probe_path],
         capture_output=True,
         text=True,
     )
