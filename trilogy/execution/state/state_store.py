@@ -344,11 +344,14 @@ class BaseStateStore:
                 elif needed_concepts:
                     # Auto-watermark this root for any concepts consumers need
                     target_refs = [
-                        ref for ref in ds.output_concepts
+                        ref
+                        for ref in ds.output_concepts
                         if ref.address in needed_concepts
                     ]
                     if target_refs:
-                        watermark = get_concept_max_watermarks(ds, target_refs, executor)
+                        watermark = get_concept_max_watermarks(
+                            ds, target_refs, executor
+                        )
                         if watermark.keys:
                             self.watermarks[ds.identifier] = watermark
             else:

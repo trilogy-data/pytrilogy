@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy.exc import ProgrammingError
@@ -14,6 +15,7 @@ from trilogy.execution.state.state_store import (
     get_incremental_key_watermarks,
     get_last_update_time_watermarks,
     get_unique_key_hash_watermarks,
+    run_freshness_probe,
 )
 
 
@@ -1215,3 +1217,119 @@ def test_root_auto_watermark_up_to_date():
     stale = state_store.get_stale_assets(executor.environment, executor)
 
     assert len(stale) == 0
+
+
+# --- run_freshness_probe unit tests ---
+
+
+@pytest.mark.parametrize("output", ["true", "1", "yes", "TRUE", "YES"])
+def test_run_freshness_probe_truthy(tmp_path, output):
+    probe = tmp_path / f"probe_{output}.py"
+    probe.write_text(f'print("{output}")')
+    assert run_freshness_probe(str(probe)) is True
+
+
+@pytest.mark.parametrize("output", ["false", "0", "no", "FALSE", "maybe"])
+def test_run_freshness_probe_falsy(tmp_path, output):
+    probe = tmp_path / f"probe_{output}.py"
+    probe.write_text(f'print("{output}")')
+    assert run_freshness_probe(str(probe)) is False
+
+
+def test_run_freshness_probe_nonzero_exit(tmp_path):
+    probe = tmp_path / "probe_fail.py"
+    probe.write_text("import sys; sys.exit(1)")
+    with pytest.raises(RuntimeError, match="exit 1"):
+        run_freshness_probe(str(probe))
+
+
+def test_run_freshness_probe_nonzero_exit_message(tmp_path):
+    probe = tmp_path / "probe_fail_msg.py"
+    probe.write_text("import sys; print('bad', file=sys.stderr); sys.exit(2)")
+    with pytest.raises(RuntimeError, match="bad"):
+        run_freshness_probe(str(probe))
+
+
+# --- get_stale_assets probe integration tests ---
+
+
+def test_get_stale_assets_probe_stale():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key pb_id int;
+
+        datasource pb_source (pb_id: pb_id)
+        grain (pb_id)
+        address pb_source_table;
+
+        CREATE IF NOT EXISTS DATASOURCE pb_source;
+        """
+    )
+
+    ds = executor.environment.datasources["pb_source"]
+    executor.environment.datasources["pb_source"] = ds.model_copy(
+        update={"freshness_probe": "/fake/probe.py"}
+    )
+
+    with patch("trilogy.execution.state.state_store.run_freshness_probe") as mock_probe:
+        mock_probe.return_value = False
+        state_store = BaseStateStore()
+        stale = state_store.get_stale_assets(executor.environment, executor)
+        mock_probe.assert_called_once_with("/fake/probe.py")
+
+    assert len(stale) == 1
+    assert stale[0].datasource_id == "pb_source"
+    assert "freshness probe" in stale[0].reason
+    assert stale[0].filters.keys == {}
+
+
+def test_get_stale_assets_probe_up_to_date():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key pb2_id int;
+
+        datasource pb2_source (pb2_id: pb2_id)
+        grain (pb2_id)
+        address pb2_source_table;
+
+        CREATE IF NOT EXISTS DATASOURCE pb2_source;
+        """
+    )
+
+    ds = executor.environment.datasources["pb2_source"]
+    executor.environment.datasources["pb2_source"] = ds.model_copy(
+        update={"freshness_probe": "/fake/probe2.py"}
+    )
+
+    with patch("trilogy.execution.state.state_store.run_freshness_probe") as mock_probe:
+        mock_probe.return_value = True
+        state_store = BaseStateStore()
+        stale = state_store.get_stale_assets(executor.environment, executor)
+
+    assert len(stale) == 0
+
+
+def test_get_stale_assets_probe_skipped_for_root():
+    """Probe is not run for root datasources."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key pb3_id int;
+
+        root datasource pb3_source (pb3_id: pb3_id)
+        grain (pb3_id)
+        query '''SELECT 1 as pb3_id''';
+        """
+    )
+
+    ds = executor.environment.datasources["pb3_source"]
+    executor.environment.datasources["pb3_source"] = ds.model_copy(
+        update={"freshness_probe": "/fake/probe3.py"}
+    )
+
+    with patch("trilogy.execution.state.state_store.run_freshness_probe") as mock_probe:
+        state_store = BaseStateStore()
+        state_store.get_stale_assets(executor.environment, executor)
+        mock_probe.assert_not_called()
