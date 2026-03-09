@@ -1333,3 +1333,65 @@ def test_get_stale_assets_probe_skipped_for_root():
         state_store = BaseStateStore()
         state_store.get_stale_assets(executor.environment, executor)
         mock_probe.assert_not_called()
+
+
+# --- timezone mismatch tests ---
+
+
+def test_compare_watermark_values_tz_mismatch():
+    """Comparing offset-naive and offset-aware datetimes raises TypeError with clear message."""
+    from datetime import datetime, timezone
+
+    aware = datetime(2024, 1, 20, 12, 0, 0, tzinfo=timezone.utc)
+    naive = datetime(2024, 1, 10, 12, 0, 0)
+
+    with pytest.raises(TypeError, match="offset-naive and offset-aware datetimes"):
+        _compare_watermark_values(aware, naive)
+
+    with pytest.raises(TypeError, match="offset-naive and offset-aware datetimes"):
+        _compare_watermark_values(naive, aware)
+
+
+def test_get_stale_assets_timezone_mismatch_incremental():
+    """get_stale_assets raises TypeError with field and datasource when tz types are mixed."""
+    from datetime import datetime, timezone
+    from unittest.mock import MagicMock, patch
+
+    from trilogy.execution.state.state_store import DatasourceWatermark
+
+    state_store = BaseStateStore()
+    state_store.watermarks = {
+        "tz_source": DatasourceWatermark(
+            keys={
+                "synced_at": UpdateKey(
+                    concept_name="synced_at",
+                    type=UpdateKeyType.INCREMENTAL_KEY,
+                    value=datetime(2024, 1, 20, 12, 0, 0, tzinfo=timezone.utc),
+                )
+            }
+        ),
+        "tz_target": DatasourceWatermark(
+            keys={
+                "synced_at": UpdateKey(
+                    concept_name="synced_at",
+                    type=UpdateKeyType.INCREMENTAL_KEY,
+                    value=datetime(2024, 1, 10, 12, 0, 0),
+                )
+            }
+        ),
+    }
+
+    mock_env = MagicMock()
+    mock_env.datasources.values.return_value = []
+
+    with patch.object(state_store, "watermark_all_assets"):
+        with pytest.raises(TypeError) as exc_info:
+            state_store.get_stale_assets(
+                mock_env,
+                MagicMock(),
+                root_assets={"tz_source"},
+            )
+
+    msg = str(exc_info.value)
+    assert "synced_at" in msg
+    assert "tz_target" in msg

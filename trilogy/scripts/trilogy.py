@@ -47,17 +47,24 @@ LAZY_SUBCOMMANDS: dict[str, tuple[str, str, dict | None]] = {
 )
 @click.option(
     "--debug",
+    is_flag=True,
+    default=False,
+    help="Enable debug mode (show tracebacks on errors)",
+)
+@click.option(
+    "--debug-file",
     default=None,
     required=False,
-    help="Enable debug mode with output to specified file path",
+    help="Write SQL debug output to the specified file path",
 )
 @click.pass_context
-def cli(ctx: click.Context, debug: str | None):
+def cli(ctx: click.Context, debug: bool, debug_file: str | None):
     """Trilogy CLI - A beautiful data productivity tool."""
     ctx.ensure_object(dict)
-    ctx.obj["DEBUG"] = debug
+    ctx.obj["DEBUG"] = debug or bool(debug_file)
+    ctx.obj["DEBUG_FILE"] = debug_file
 
-    if debug:
+    if ctx.obj["DEBUG"]:
         from trilogy.scripts.display import show_debug_mode
 
         show_debug_mode()

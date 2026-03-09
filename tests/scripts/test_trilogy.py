@@ -863,3 +863,28 @@ incremental by event_ts;
     if result.exception:
         raise result.exception
     assert result.exit_code == 0
+
+
+@pytest.mark.parametrize(
+    "cmd,args",
+    [
+        ("run", ["select 1-> test;", "duckdb"]),
+        ("refresh", ["select 1-> test;", "duckdb"]),
+        ("fmt", ["select 1-> test;"]),
+        ("unit", [str(Path(__file__).parent / "validate_directory" / "empty.preql")]),
+        (
+            "integration",
+            [
+                str(Path(__file__).parent / "validate_directory" / "empty.preql"),
+                "duckdb",
+            ],
+        ),
+    ],
+)
+def test_debug_flag_before_subcommand(cmd, args):
+    """--debug must be placed before the subcommand name as a top-level flag."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--debug", cmd] + args)
+    assert "No such command" not in result.output, result.output
+    assert "is not a valid Dialects" not in result.output, result.output
+    assert "Debug mode enabled" in result.output

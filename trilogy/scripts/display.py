@@ -171,11 +171,17 @@ def show_execution_info(
     input_type: str,
     input_name: str,
     dialect: str,
-    debug: str | None,
+    debug: bool,
     config_path: Optional[str] = None,
+    debug_file: str | None = None,
 ):
     """Display execution information in a clean format."""
-    debug_str = f"enabled ({debug})" if debug else "disabled"
+    if debug and debug_file:
+        debug_str = f"enabled (file: {debug_file})"
+    elif debug:
+        debug_str = "enabled"
+    else:
+        debug_str = "disabled"
     if RICH_AVAILABLE and console is not None:
         info_text = (
             f"Input: {input_type} ({input_name})\n"
@@ -207,6 +213,8 @@ def show_debug_mode():
     if RICH_AVAILABLE and console is not None:
         panel = Panel.fit("Debug mode enabled", style="yellow", title="Debug")
         console.print(panel)
+    else:
+        echo(style("Debug mode enabled", fg="yellow"))
 
 
 def show_statement_type(idx: int, total: int, statement_type: str):

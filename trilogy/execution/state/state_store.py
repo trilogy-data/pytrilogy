@@ -1,6 +1,6 @@
 import subprocess
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from typing import Callable
 
 from trilogy import Executor
@@ -43,6 +43,13 @@ def _compare_watermark_values(
     Handles type mismatches by comparing string representations.
     """
     if type(a) is type(b):
+        if isinstance(a, datetime):
+            a_aware = a.tzinfo is not None
+            b_aware = b.tzinfo is not None  # type: ignore[union-attr]
+            if a_aware != b_aware:
+                raise TypeError(
+                    f"offset-naive and offset-aware datetimes: {a!r} vs {b!r}"
+                )
         if a < b:  # type: ignore[operator]
             return -1
         elif a > b:  # type: ignore[operator]
@@ -148,6 +155,13 @@ def get_incremental_key_watermarks(
         output_addresses = {c.address for c in datasource.output_concepts}
         if concept.address in output_addresses:
             query = f"SELECT MAX({dialect.render_concept_sql(build_concept, cte=cte, alias=False)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
+        elif build_concept.lineage is None:
+            raise ValueError(
+                f"Concept '{concept.address}' is set as a freshness field but does not"
+                f" exist on datasource '{datasource.identifier}' and cannot be derived"
+                f" from other datasource fields. Add it to the datasource column list"
+                f" or change the freshness field."
+            )
         else:
             query = f"SELECT MAX({dialect.render_expr(build_concept.lineage, cte=cte)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
 
@@ -211,6 +225,13 @@ def get_freshness_watermarks(
         output_addresses = {c.address for c in datasource.output_concepts}
         if concept.address in output_addresses:
             query = f"SELECT MAX({dialect.render_concept_sql(build_concept, cte=cte, alias=False)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
+        elif build_concept.lineage is None:
+            raise ValueError(
+                f"Concept '{concept.address}' is set as a freshness field but does not"
+                f" exist on datasource '{datasource.identifier}' and cannot be derived"
+                f" from other datasource fields. Add it to the datasource column list"
+                f" or change the freshness field."
+            )
         else:
             query = f"SELECT MAX({dialect.render_expr(build_concept.lineage, cte=cte)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
 
@@ -416,11 +437,21 @@ class BaseStateStore:
                         and val.value is not None
                     ):
                         existing = concept_max_watermarks.get(key)
-                        if existing is None or (
-                            existing.value is not None
-                            and _compare_watermark_values(val.value, existing.value) > 0
-                        ):
+                        if existing is None or existing.value is None:
                             concept_max_watermarks[key] = val
+                        else:
+                            try:
+                                is_newer = (
+                                    _compare_watermark_values(val.value, existing.value)
+                                    > 0
+                                )
+                            except TypeError as e:
+                                raise TypeError(
+                                    f"Cannot compare watermarks for field '{key}' across root datasources"
+                                    f" (datasource '{ds_id}'): {e}"
+                                ) from e
+                            if is_newer:
+                                concept_max_watermarks[key] = val
 
         # Second pass: check non-root assets against max watermarks
         for ds_id, watermark in self.watermarks.items():
@@ -431,10 +462,16 @@ class BaseStateStore:
                 if val.type == UpdateKeyType.INCREMENTAL_KEY:
                     max_val = concept_max_watermarks.get(key)
                     if max_val and max_val.value is not None:
-                        if (
-                            val.value is None
-                            or _compare_watermark_values(val.value, max_val.value) < 0
-                        ):
+                        try:
+                            is_behind = val.value is None or (
+                                _compare_watermark_values(val.value, max_val.value) < 0
+                            )
+                        except TypeError as e:
+                            raise TypeError(
+                                f"Cannot compare watermarks for field '{key}'"
+                                f" in datasource '{ds_id}': {e}"
+                            ) from e
+                        if is_behind:
                             filters = (
                                 UpdateKeys(keys={key: val})
                                 if val.value
@@ -452,10 +489,16 @@ class BaseStateStore:
                 elif val.type == UpdateKeyType.UPDATE_TIME:
                     max_val = concept_max_watermarks.get(key)
                     if max_val and max_val.value is not None:
-                        if (
-                            val.value is None
-                            or _compare_watermark_values(val.value, max_val.value) < 0
-                        ):
+                        try:
+                            is_behind = val.value is None or (
+                                _compare_watermark_values(val.value, max_val.value) < 0
+                            )
+                        except TypeError as e:
+                            raise TypeError(
+                                f"Cannot compare watermarks for field '{key}'"
+                                f" in datasource '{ds_id}': {e}"
+                            ) from e
+                        if is_behind:
                             stale.append(
                                 StaleAsset(
                                     datasource_id=ds_id,
@@ -545,12 +588,27 @@ def refresh_stale_assets(
             )
 
     refreshed = 0
+    # Track which stale assets haven't been refreshed yet so the query planner
+    # can't route through them (e.g. a stale merged datasource shouldn't be used
+    # to populate a stale dependent datasource).
+    remaining_stale = {a.datasource_id for a in all_refresh_assets}
     for asset in all_refresh_assets:
-        if on_refresh:
-            on_refresh(asset.datasource_id, asset.reason)
-        datasource = executor.environment.datasources[asset.datasource_id]
-        executor.update_datasource(datasource)
-        refreshed += 1
+        remaining_stale.discard(asset.datasource_id)
+        # Temporarily hide other still-stale datasources from the environment
+        # so the planner is forced to use root/fresh sources instead.
+        hidden = {
+            ds_id: executor.environment.datasources.pop(ds_id)
+            for ds_id in remaining_stale
+            if ds_id in executor.environment.datasources
+        }
+        try:
+            if on_refresh:
+                on_refresh(asset.datasource_id, asset.reason)
+            datasource = executor.environment.datasources[asset.datasource_id]
+            executor.update_datasource(datasource)
+            refreshed += 1
+        finally:
+            executor.environment.datasources.update(hidden)
 
     return RefreshResult(
         stale_count=len(all_refresh_assets),
