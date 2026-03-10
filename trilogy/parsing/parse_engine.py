@@ -739,7 +739,9 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def prop_ident_wildcard(self, meta: Meta, args) -> Tuple[List[Concept], str]:
-        return [self.environment.concepts[f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"]], str(args[0])
+        return [
+            self.environment.concepts[f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"]
+        ], str(args[0])
 
     @v_args(meta=True)
     def concept_property_declaration(self, meta: Meta, args) -> Concept:
@@ -783,7 +785,9 @@ class ParseToObjects(Transformer):
             namespace=namespace,
             keys=grain_components,
             modifiers=modifiers,
-            granularity=Granularity.SINGLE_ROW if is_abstract_grain else Granularity.MULTI_ROW,
+            granularity=(
+                Granularity.SINGLE_ROW if is_abstract_grain else Granularity.MULTI_ROW
+            ),
         )
 
         self.environment.add_concept(concept, meta)

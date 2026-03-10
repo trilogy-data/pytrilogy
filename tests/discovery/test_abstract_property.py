@@ -45,11 +45,14 @@ def test_abstract_property_sql_generation():
     exec = Dialects.DUCK_DB.default_executor()
     exec.parse_text(SETUP)
     from trilogy.hooks import DebuggingHook
+
     DebuggingHook()
     built = exec.environment.materialize_for_select()
-    assert 'local.last_updated' in built.materialized_concepts
-    materialized = built.concepts['local.last_updated']
-    assert materialized.keys == {f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}",}, materialized.keys
+    assert "local.last_updated" in built.materialized_concepts
+    materialized = built.concepts["local.last_updated"]
+    assert materialized.keys == {
+        f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}",
+    }, materialized.keys
     assert materialized.grain.abstract, materialized
     assert materialized.granularity == Granularity.SINGLE_ROW, materialized
 

@@ -214,7 +214,6 @@ def test_adhoc10():
     engine.generate_sql(text)[0]
 
 
-
 def test_adhoc11():
     DebuggingHook(INFO)
     env = Environment(working_path=working_path)

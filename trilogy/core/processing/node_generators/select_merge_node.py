@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, List, Optional
 import networkx as nx
 
 from trilogy.constants import logger
-from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.enums import AddressType, Derivation, Granularity, Purpose
 from trilogy.core.graph_models import (
     ReferenceGraph,
