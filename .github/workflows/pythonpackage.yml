@@ -44,6 +44,9 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-test.txt
           pip install sqlalchemy-bigquery --ignore-requires-python
+      - name: Pin duckdb for Python 3.11
+        if: matrix.python-version == '3.11'
+        run: pip install "duckdb<1.5.0"
       - name: Run Rust tests
         run: |
           cd trilogy/scripts/dependency
