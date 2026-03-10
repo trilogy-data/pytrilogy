@@ -20,7 +20,7 @@ from typing import (
 )
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
-from trilogy.core.constants import ALL_ROWS_CONCEPT
+from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.enums import (
     BooleanOperator,
     ComparisonOperator,
@@ -2129,10 +2129,20 @@ class Factory:
         new_grain = self._build_grain(final_grain)
 
         derivation = Concept.calculate_derivation(build_lineage, base.purpose)
-        
-        granularity = Granularity.SINGLE_ROW if (base.granularity == Granularity.SINGLE_ROW and base.purpose == Purpose.PROPERTY) else Concept.calculate_granularity(
+
+        granularity = Concept.calculate_granularity(
             derivation, final_grain, build_lineage
         )
+
+        if (
+            base.granularity == Granularity.SINGLE_ROW
+            and base.purpose == Purpose.PROPERTY
+            and base.keys
+            == {
+                f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}",
+            }
+        ):
+            raise SyntaxError(base)
 
         def calculate_is_aggregate(lineage):
             ltype = type(lineage)

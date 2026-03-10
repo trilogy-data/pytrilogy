@@ -1314,7 +1314,6 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             return Granularity.SINGLE_ROW
         elif grain.components == {ALL_ROWS_CONCEPT}:
             return Granularity.SINGLE_ROW
-        print(derivation, grain, lineage)
         return Granularity.MULTI_ROW
 
     # @property
