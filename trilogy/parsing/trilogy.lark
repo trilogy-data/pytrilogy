@@ -31,9 +31,9 @@
     //customer_id.property first_name STRING;
     //<customer_id,country>.property local_alias STRING
     UNIQUE: "UNIQUE"i
-    concept_property_declaration: UNIQUE? PROPERTY (prop_ident | IDENTIFIER) data_type concept_nullable_modifier? metadata?
+    concept_property_declaration: UNIQUE? PROPERTY (prop_ident | prop_ident_wildcard | IDENTIFIER) data_type concept_nullable_modifier? metadata?
     //metric post_length <- len(post_text);
-    concept_derivation:  (PURPOSE | AUTO | PROPERTY ) (prop_ident | IDENTIFIER) "<-" expr
+    concept_derivation:  (PURPOSE | AUTO | PROPERTY ) (prop_ident | prop_ident_wildcard | IDENTIFIER) "<-" expr
 
     rowset_derivation_statement: ("rowset"i IDENTIFIER "<-" (multi_select_statement | select_statement)) | ("with"i IDENTIFIER "as"i (multi_select_statement | select_statement))
     
@@ -44,6 +44,7 @@
     
     //concept property
     prop_ident: "<" IDENTIFIER ("," IDENTIFIER )* ","? ">" "." IDENTIFIER
+    prop_ident_wildcard: "<" "*" ">" "." IDENTIFIER
 
     // datasource concepts
     DATASOURCE_STATUS: "published"i | "unpublished"i
@@ -359,6 +360,8 @@
     fcast: _fcast_primary | _fcast_alt
     concat: ("concat"i "(" (expr ",")* expr ")") 
     fcoalesce: "coalesce"i "(" (expr ",")* expr ")"
+    fgreatest: "greatest"i "(" (expr ",")* expr ")"
+    fleast: "least"i "(" (expr ",")* expr ")"
     fcase_when: "WHEN"i conditional "THEN"i expr
     fcase_else: "ELSE"i expr
     fcase: "CASE"i (fcase_when)* (fcase_else)? "END"i
@@ -372,7 +375,7 @@
     _FRECURSE_EDGE.1: "recurse_edge("i
     frecurse_edge: _FRECURSE_EDGE expr "," expr ")"
 
-    _generic_functions: fcast |  concat  | fcoalesce | fnullif | fcase | fcase_simple | len | fnot | fbool | frecurse_edge
+    _generic_functions: fcast |  concat  | fcoalesce | fgreatest | fleast | fnullif | fcase | fcase_simple | len | fnot | fbool | frecurse_edge
 
     //constant
     CURRENT_DATE.1: /current_date\(\)/

@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, List, Optional
 import networkx as nx
 
 from trilogy.constants import logger
-from trilogy.core.enums import AddressType, Derivation
+from trilogy.core.enums import AddressType, Derivation, Granularity
 from trilogy.core.graph_models import (
     ReferenceGraph,
     SearchCriteria,
@@ -720,12 +720,56 @@ def gen_select_merge_node(
     accept_partial: bool = False,
     conditions: BuildWhereClause | None = None,
 ) -> Optional[StrategyNode]:
-    non_constant = [c for c in all_concepts if c.derivation != Derivation.CONSTANT]
+    abstract_props = [
+        c
+        for c in all_concepts
+        if c.grain.abstract
+        and c.derivation == Derivation.ROOT
+        and c.granularity == Granularity.SINGLE_ROW
+    ]
     constants = [c for c in all_concepts if c.derivation == Derivation.CONSTANT]
+    normals = [
+        c
+        for c in all_concepts
+        if c.address
+        not in {c.address for c in abstract_props}.union({c.address for c in constants})
+    ]
+
+    # abstract-grain ROOT properties (property <*>.field) must be sourced independently
+
+    normals = [
+        c for c in normals if c.address not in {p.address for p in abstract_props}
+    ]
     logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} generating select merge node for {all_concepts}"
+        f"{padding(depth)}{LOGGER_PREFIX} generating select merge node for normals: {normals}, abstract_props: {abstract_props}, constants: {constants}, conditions: {conditions}"
     )
-    if not non_constant and constants:
+    only_abstract = not normals and not constants and abstract_props
+    only_constant = not normals and not abstract_props and constants
+    if only_abstract:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} only abstract-grain property inputs ({abstract_props}), sourcing each independently"
+        )
+        abstract_nodes = [
+            gen_select_merge_node(
+                [p], g, environment, depth + 1, accept_partial, conditions
+            )
+            for p in abstract_props
+        ]
+        abstract_nodes = [n for n in abstract_nodes if n is not None]
+        if not abstract_nodes:
+            return None
+        if len(abstract_nodes) == 1:
+            return abstract_nodes[0]
+        return MergeNode(
+            output_concepts=abstract_props,
+            input_concepts=abstract_props,
+            environment=environment,
+            depth=depth,
+            parents=abstract_nodes,
+            preexisting_conditions=None,
+        )
+
+    elif only_constant:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} only constant inputs to discovery ({constants}), returning constant node directly"
         )
@@ -765,7 +809,7 @@ def gen_select_merge_node(
     for attempt in attempts:
         pruned_concept_graph = create_pruned_concept_graph(
             g,
-            non_constant,
+            normals,
             criteria=attempt,
             conditions=conditions,
             datasources=list([x for x in environment.datasources.values()]),
@@ -778,7 +822,7 @@ def gen_select_merge_node(
             continue
         sub_nodes = resolve_subgraphs(
             pruned_concept_graph,
-            relevant=non_constant,
+            relevant=normals,
             criteria=attempt,
             conditions=conditions,
             depth=depth,
@@ -818,6 +862,13 @@ def gen_select_merge_node(
             )
         )
 
+    for p in abstract_props:
+        abstract_node = gen_select_merge_node(
+            [p], g, environment, depth + 1, accept_partial, conditions
+        )
+        if abstract_node:
+            parents.append(abstract_node)
+
     if len(parents) == 1:
         return parents[0]
     logger.info(
@@ -836,7 +887,7 @@ def gen_select_merge_node(
 
     base = MergeNode(
         output_concepts=all_concepts,
-        input_concepts=non_constant,
+        input_concepts=normals,
         environment=environment,
         depth=depth,
         parents=parents,

@@ -235,6 +235,8 @@ FUNCTION_MAP = {
     FunctionType.CONSTANT: lambda x, types: f"{x[0]}",
     FunctionType.TYPED_CONSTANT: lambda x, types: f"{x[0]}",
     FunctionType.COALESCE: lambda x, types: f"coalesce({','.join(x)})",
+    FunctionType.GREATEST: lambda x, types: f"greatest({','.join(x)})",
+    FunctionType.LEAST: lambda x, types: f"least({','.join(x)})",
     FunctionType.NULLIF: lambda x, types: f"nullif({x[0]},{x[1]})",
     FunctionType.CAST: lambda x, types: f"cast({x[0]} as {x[1]})",
     FunctionType.CASE: lambda x, types: render_case(x),

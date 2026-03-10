@@ -2129,8 +2129,8 @@ class Factory:
         new_grain = self._build_grain(final_grain)
 
         derivation = Concept.calculate_derivation(build_lineage, base.purpose)
-
-        granularity = Concept.calculate_granularity(
+        
+        granularity = Granularity.SINGLE_ROW if (base.granularity == Granularity.SINGLE_ROW and base.purpose == Purpose.PROPERTY) else Concept.calculate_granularity(
             derivation, final_grain, build_lineage
         )
 

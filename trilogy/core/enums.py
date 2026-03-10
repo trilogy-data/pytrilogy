@@ -190,6 +190,8 @@ class FunctionType(Enum):
     CONSTANT = "constant"
     TYPED_CONSTANT = "typed_constant"
     COALESCE = "coalesce"
+    GREATEST = "greatest"
+    LEAST = "least"
     IS_NULL = "isnull"
     NULLIF = "nullif"
     BOOL = "bool"
