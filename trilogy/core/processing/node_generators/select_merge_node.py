@@ -839,15 +839,17 @@ def gen_select_merge_node(
             force_group=False,
             conditions=conditions.conditional if conditions else None,
         )
-    logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} searching for root source graph for concepts {[c.address for c in all_concepts]} and conditions {conditions}"
-    )
-    parents = _source_concepts_via_graph(
-        normals, g, environment, depth, accept_partial, conditions
-    )
-    if not parents:
-        logger.info(f"{padding(depth)}{LOGGER_PREFIX} no covering graph found.")
-        return None
+    parents = []
+    if normals:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} searching for root source graph for concepts {[c.address for c in all_concepts]} and conditions {conditions}"
+        )
+        parents = _source_concepts_via_graph(
+            normals, g, environment, depth, accept_partial, conditions
+        )
+        if not parents:
+            logger.info(f"{padding(depth)}{LOGGER_PREFIX} no covering graph found.")
+            return None
 
     if constants:
         parents.append(

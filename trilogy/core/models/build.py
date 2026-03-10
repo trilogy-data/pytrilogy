@@ -2142,7 +2142,7 @@ class Factory:
                 f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}",
             }
         ):
-            raise SyntaxError(base)
+            granularity = Granularity.SINGLE_ROW
 
         def calculate_is_aggregate(lineage):
             ltype = type(lineage)

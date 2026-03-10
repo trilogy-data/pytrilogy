@@ -286,7 +286,7 @@ class TestDisplayFunctions:
                 captured = stdout.getvalue() + stderr.getvalue()
                 assert "test.sql" in captured
                 assert "postgresql" in captured
-                assert "True" in captured
+                assert "Debug" in captured
 
     def test_show_environment_params_with_params(self, rich_mode):
         """Test show_environment_params with parameters."""
