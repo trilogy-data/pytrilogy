@@ -61,6 +61,23 @@ def _compare_watermark_values(
     return 0
 
 
+def _execute_raw_sql_scalar(query: str, executor: Executor) -> object:
+    """Execute a raw SQL query and return the first column of the first row.
+
+    Returns None if the source is missing; rolls back and suppresses the error.
+    Re-raises all other exceptions.
+    """
+    dialect = executor.generator
+    try:
+        result = executor.execute_raw_sql(query).fetchone()
+        return result[0] if result else None
+    except Exception as e:
+        if is_missing_source_error(e, dialect):
+            executor.connection.rollback()
+            return None
+        raise
+
+
 def _resolve_table_ref(datasource: Datasource, executor: Executor) -> str:
     if isinstance(datasource.address, Address):
         return executor.generator.render_source(datasource.address)
@@ -110,16 +127,7 @@ def get_unique_key_hash_watermarks(
         hash_expr = dialect.hash_column_value(column_name)
         checksum_expr = dialect.aggregate_checksum(hash_expr)
         query = f"SELECT {checksum_expr} as checksum FROM {table_ref}"
-
-        try:
-            result = executor.execute_raw_sql(query).fetchone()
-            checksum_value = result[0] if result else None
-        except Exception as e:
-            if is_missing_source_error(e, dialect):
-                checksum_value = None
-                executor.connection.rollback()
-            else:
-                raise
+        checksum_value = _execute_raw_sql_scalar(query, executor)
 
         watermarks[col.concept.address] = UpdateKey(
             concept_name=col.concept.address,
@@ -164,15 +172,7 @@ def _get_max_watermarks(
         else:
             query = f"SELECT MAX({dialect.render_expr(build_concept.lineage, cte=cte)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
 
-        try:
-            result = executor.execute_raw_sql(query).fetchone()
-            max_value = result[0] if result else None
-        except Exception as e:
-            if is_missing_source_error(e, dialect):
-                max_value = None
-                executor.connection.rollback()
-            else:
-                raise
+        max_value = _execute_raw_sql_scalar(query, executor)
 
         watermarks[concept.name] = UpdateKey(
             concept_name=concept.name,
@@ -254,15 +254,7 @@ def get_concept_max_watermarks(
         cte: CTE = CTE.from_datasource(build_datasource)
         query = f"SELECT MAX({dialect.render_concept_sql(build_concept, cte=cte, alias=False)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
 
-        try:
-            result = executor.execute_raw_sql(query).fetchone()
-            max_value = result[0] if result else None
-        except Exception as e:
-            if is_missing_source_error(e, dialect):
-                max_value = None
-                executor.connection.rollback()
-            else:
-                raise
+        max_value = _execute_raw_sql_scalar(query, executor)
 
         watermarks[concept.name] = UpdateKey(
             concept_name=concept.name,

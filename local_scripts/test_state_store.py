@@ -1,5 +1,5 @@
 from trilogy import Dialects
-from trilogy.execution.state.state_store import BaseStateStore
+from trilogy.execution.state import BaseStateStore
 
 if __name__ == "__main__":
     state_store = BaseStateStore()
