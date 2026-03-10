@@ -198,6 +198,7 @@ def get_freshness_watermarks(
         datasource.freshness_by, datasource, executor, UpdateKeyType.UPDATE_TIME
     )
 
+
 def get_concept_max_watermark_abstract(
     concept_address: str,
     executor: Executor,
@@ -226,6 +227,7 @@ def get_concept_max_watermark_abstract(
         type=UpdateKeyType.INCREMENTAL_KEY,
         value=value,
     )
+
 
 def get_concept_max_watermarks(
     datasource: Datasource,

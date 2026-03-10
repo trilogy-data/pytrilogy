@@ -6,8 +6,8 @@ from sqlalchemy.exc import ProgrammingError
 
 from trilogy import Dialects, Executor
 from trilogy.core.models.datasource import UpdateKey, UpdateKeys, UpdateKeyType
+from trilogy.execution.state import BaseStateStore
 from trilogy.execution.state.exceptions import is_missing_source_error
-from trilogy.execution.state.state_store import BaseStateStore
 from trilogy.execution.state.watermarks import (
     _compare_watermark_values,
     get_concept_max_watermarks,
@@ -1395,6 +1395,7 @@ def test_get_stale_assets_timezone_mismatch_incremental():
     msg = str(exc_info.value)
     assert "synced_at" in msg
     assert "tz_target" in msg
+
 
 # --- derived concept watermark tests ---
 

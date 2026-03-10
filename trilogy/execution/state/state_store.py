@@ -3,7 +3,7 @@ from typing import Callable
 
 from trilogy import Executor
 from trilogy.core.enums import Purpose
-from trilogy.core.models.datasource import UpdateKey, UpdateKeyType, UpdateKeys
+from trilogy.core.models.datasource import UpdateKey, UpdateKeys, UpdateKeyType
 from trilogy.core.models.environment import Environment
 from trilogy.execution.state.watermarks import (
     DatasourceWatermark,
@@ -18,31 +18,13 @@ from trilogy.execution.state.watermarks import (
     run_freshness_probe,
 )
 
-__all__ = [
-    "BaseStateStore",
-    "RefreshResult",
-    "refresh_stale_assets",
-    "DatasourceWatermark",
-    "StaleAsset",
-    "_compare_watermark_values",
-    "get_concept_max_watermark_abstract",
-    "get_concept_max_watermarks",
-    "get_freshness_watermarks",
-    "get_incremental_key_watermarks",
-    "get_last_update_time_watermarks",
-    "get_unique_key_hash_watermarks",
-    "run_freshness_probe",
-]
-
 
 class BaseStateStore:
 
     def __init__(self) -> None:
         self.watermarks: dict[str, DatasourceWatermark] = {}
 
-    def watermark_asset(
-        self, datasource, executor: Executor
-    ) -> DatasourceWatermark:
+    def watermark_asset(self, datasource, executor: Executor) -> DatasourceWatermark:
         if datasource.freshness_by:
             watermarks = get_freshness_watermarks(datasource, executor)
         elif datasource.incremental_by:
@@ -62,9 +44,7 @@ class BaseStateStore:
         self.watermarks[datasource.identifier] = watermarks
         return watermarks
 
-    def get_datasource_watermarks(
-        self, datasource
-    ) -> DatasourceWatermark | None:
+    def get_datasource_watermarks(self, datasource) -> DatasourceWatermark | None:
         return self.watermarks.get(datasource.identifier)
 
     def check_datasource_state(self, datasource) -> bool:
@@ -188,7 +168,8 @@ class BaseStateStore:
                 continue
             for key, val in watermark.keys.items():
                 if (
-                    val.type in (UpdateKeyType.INCREMENTAL_KEY, UpdateKeyType.UPDATE_TIME)
+                    val.type
+                    in (UpdateKeyType.INCREMENTAL_KEY, UpdateKeyType.UPDATE_TIME)
                     and key not in concept_max_watermarks
                     and key not in missing_derived
                 ):
@@ -199,7 +180,9 @@ class BaseStateStore:
                         missing_derived[key] = concept.address
 
         for key, concept_address in missing_derived.items():
-            wm = get_concept_max_watermark_abstract(concept_address, executor, root_assets)
+            wm = get_concept_max_watermark_abstract(
+                concept_address, executor, root_assets
+            )
             if wm.value is not None:
                 concept_max_watermarks[key] = wm
 

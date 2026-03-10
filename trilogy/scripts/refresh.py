@@ -8,7 +8,7 @@ from click.exceptions import Exit
 from trilogy import Executor
 from trilogy.core.statements.execute import ProcessedValidateStatement
 from trilogy.dialect.enums import Dialects
-from trilogy.execution.state.state_store import (
+from trilogy.execution.state import (
     DatasourceWatermark,
     StaleAsset,
     refresh_stale_assets,
