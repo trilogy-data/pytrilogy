@@ -738,6 +738,12 @@ class ParseToObjects(Transformer):
         return [self.environment.concepts[grain] for grain in args[:-1]], args[-1]
 
     @v_args(meta=True)
+    def prop_ident_wildcard(self, meta: Meta, args) -> Tuple[List[Concept], str]:
+        return [
+            self.environment.concepts[f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"]
+        ], str(args[0])
+
+    @v_args(meta=True)
     def concept_property_declaration(self, meta: Meta, args) -> Concept:
         unique = False
         if not args[0] == Purpose.PROPERTY:
@@ -767,15 +773,21 @@ class ParseToObjects(Transformer):
             parent = self.environment.concepts[grain]
             parents = [parent]
             namespace = parent.namespace
+        grain_components = {x.address for x in parents}
+        all_rows_addr = f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"
+        is_abstract_grain = grain_components == {all_rows_addr}
         concept = Concept(
             name=name,
             datatype=args[2],
             purpose=Purpose.PROPERTY if not unique else Purpose.UNIQUE_PROPERTY,
             metadata=metadata,
-            grain=Grain(components={x.address for x in parents}),
+            grain=Grain(components=grain_components),
             namespace=namespace,
-            keys=set([x.address for x in parents]),
+            keys=grain_components,
             modifiers=modifiers,
+            granularity=(
+                Granularity.SINGLE_ROW if is_abstract_grain else Granularity.MULTI_ROW
+            ),
         )
 
         self.environment.add_concept(concept, meta)
@@ -2622,6 +2634,14 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fcoalesce(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.COALESCE, meta)
+
+    @v_args(meta=True)
+    def fgreatest(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.GREATEST, meta)
+
+    @v_args(meta=True)
+    def fleast(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.LEAST, meta)
 
     @v_args(meta=True)
     def fnullif(self, meta, args):

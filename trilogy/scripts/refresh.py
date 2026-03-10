@@ -189,6 +189,7 @@ def refresh(
         param=param,
         conn_args=conn_args,
         debug=ctx.obj["DEBUG"],
+        debug_file=ctx.obj.get("DEBUG_FILE"),
         config_path=PathlibPath(config) if config else None,
         execution_strategy="eager_bfs",
         env=env,

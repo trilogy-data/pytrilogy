@@ -511,10 +511,11 @@ def run_single_script_execution(
     edialect,
     param: tuple[str, ...],
     conn_args,
-    debug: str | None,
+    debug: bool,
     execution_mode: ExecutionMode,
     config,
     refresh_params: RefreshParams | None = None,
+    debug_file: str | None = None,
 ) -> int:
     """Run single script execution. Returns count of assets refreshed (for refresh mode)."""
     from trilogy.scripts.common import (
@@ -531,9 +532,13 @@ def run_single_script_execution(
     )
 
     config_path_str = str(config.source_path) if config.source_path else None
-    show_execution_info(input_type, input_name, edialect.value, debug, config_path_str)
+    show_execution_info(
+        input_type, input_name, edialect.value, debug, config_path_str, debug_file
+    )
 
-    exec = create_executor(param, directory, conn_args, edialect, debug, config)
+    exec = create_executor(
+        param, directory, conn_args, edialect, debug, config, debug_file
+    )
     base = files[0]
     if isinstance(base, StringIO):
         text = base.getvalue()
@@ -652,6 +657,7 @@ def run_parallel_execution(
             execution_mode=execution_mode,
             config=config,
             refresh_params=cli_params.refresh_params,
+            debug_file=cli_params.debug_file,
         )
         # For refresh mode: skipped=1 if nothing was refreshed, successful=1 otherwise
         if execution_mode == ExecutionMode.REFRESH:
@@ -708,6 +714,7 @@ def run_parallel_execution(
             edialect,
             cli_params.debug,
             config,
+            cli_params.debug_file,
         )
 
     # Wrap execution_fn to pass quiet=True for parallel execution and return stats

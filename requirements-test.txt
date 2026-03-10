@@ -9,7 +9,8 @@ black
 pandas<3.0.0
 types-tabulate
 sqlalchemy-bigquery
-snowflake-sqlalchemy
+#fakesnow needs an upgrade to support 1.9; it calls CURRENT_VERSION which isn't mocked and hits duckdb
+snowflake-sqlalchemy<1.9.0
 fakesnow
 matplotlib
 tomli-w

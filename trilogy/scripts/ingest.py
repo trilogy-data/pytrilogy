@@ -382,6 +382,7 @@ def ingest(
             edialect=edialect,
             debug=ctx.obj["DEBUG"],
             config=runtime_config,
+            debug_file=ctx.obj.get("DEBUG_FILE"),
         )
     except Exception as e:
         handle_execution_exception(e, debug=ctx.obj["DEBUG"])

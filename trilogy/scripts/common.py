@@ -88,7 +88,8 @@ class CLIRuntimeParams:
     parallelism: int | None = None
     param: tuple[str, ...] = ()
     conn_args: tuple[str, ...] = ()
-    debug: str | None = None
+    debug: bool = False
+    debug_file: str | None = None
     config_path: PathlibPath | None = None
     execution_strategy: str = "eager_bfs"
     env: tuple[str, ...] = ()
@@ -333,8 +334,9 @@ def create_executor(
     directory: PathlibPath,
     conn_args: Iterable[str],
     edialect: Dialects,
-    debug: str | None,
+    debug: bool,
     config: RuntimeConfig,
+    debug_file: str | None = None,
 ) -> Executor:
     # Parse environment parameters from dedicated flag
     namespace = DEFAULT_NAMESPACE
@@ -365,7 +367,9 @@ def create_executor(
         dialect=edialect,
         engine=edialect.default_engine(conf=conf),
         environment=environment,
-        hooks=[DebuggingHook(output_file=PathlibPath(debug))] if debug else [],
+        hooks=(
+            [DebuggingHook(output_file=PathlibPath(debug_file))] if debug_file else []
+        ),
         config=conf,
         staging=config.staging,
     )
@@ -387,8 +391,9 @@ def create_executor_for_script(
     param: tuple[str, ...],
     conn_args: Iterable[str],
     edialect: Dialects,
-    debug: str | None,
+    debug: bool,
     config: RuntimeConfig,
+    debug_file: str | None = None,
 ) -> Executor:
     """
     Create an executor for a specific script node.
@@ -397,7 +402,9 @@ def create_executor_for_script(
     using the script's parent directory as the working path.
     """
     directory = node.path.parent
-    return create_executor(param, directory, conn_args, edialect, debug, config)
+    return create_executor(
+        param, directory, conn_args, edialect, debug, config, debug_file
+    )
 
 
 def validate_datasources(
@@ -433,7 +440,7 @@ def validate_datasources(
         raise Exit(1) from e
 
 
-def handle_execution_exception(e: Exception, debug: str | None = None) -> None:
+def handle_execution_exception(e: Exception, debug: bool = False) -> None:
     if isinstance(e, Exit):
         raise e
     print_error(f"Unexpected error: {e}")

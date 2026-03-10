@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, List, Optional
 import networkx as nx
 
 from trilogy.constants import logger
-from trilogy.core.enums import AddressType, Derivation
+from trilogy.core.enums import AddressType, Derivation, Granularity, Purpose
 from trilogy.core.graph_models import (
     ReferenceGraph,
     SearchCriteria,
@@ -712,6 +712,56 @@ def create_select_node(
     return candidate
 
 
+def _source_concepts_via_graph(
+    concepts: List[BuildConcept],
+    g: nx.DiGraph,
+    environment: BuildEnvironment,
+    depth: int,
+    accept_partial: bool = False,
+    conditions: BuildWhereClause | None = None,
+) -> List[StrategyNode]:
+    """Run the pruned-graph → subgraph → SelectNode pipeline for a list of concepts."""
+    attempts = [SearchCriteria.FULL_ONLY]
+    if accept_partial:
+        attempts.append(SearchCriteria.PARTIAL_UNSCOPED)
+        attempts.append(SearchCriteria.PARTIAL_INCLUDING_SCOPED)
+    pruned = None
+    sub_nodes: dict = {}
+    for attempt in attempts:
+        pruned = create_pruned_concept_graph(
+            g,
+            concepts,
+            criteria=attempt,
+            conditions=conditions,
+            datasources=list(environment.datasources.values()),
+            depth=depth,
+        )
+        if not pruned:
+            continue
+        sub_nodes = resolve_subgraphs(
+            pruned,
+            relevant=concepts,
+            criteria=attempt,
+            conditions=conditions,
+            depth=depth,
+        )
+        break
+    if not pruned:
+        return []
+    return [
+        create_select_node(
+            k,
+            subgraph,
+            g=pruned,
+            accept_partial=accept_partial,
+            environment=environment,
+            depth=depth,
+            conditions=conditions,
+        )
+        for k, subgraph in sub_nodes.items()
+    ]
+
+
 def gen_select_merge_node(
     all_concepts: List[BuildConcept],
     g: nx.DiGraph,
@@ -720,12 +770,46 @@ def gen_select_merge_node(
     accept_partial: bool = False,
     conditions: BuildWhereClause | None = None,
 ) -> Optional[StrategyNode]:
-    non_constant = [c for c in all_concepts if c.derivation != Derivation.CONSTANT]
+    abstract_props = [
+        c
+        for c in all_concepts
+        if c.grain.abstract
+        and c.purpose == Purpose.PROPERTY
+        and c.granularity == Granularity.SINGLE_ROW
+    ]
     constants = [c for c in all_concepts if c.derivation == Derivation.CONSTANT]
+    excluded = {c.address for c in abstract_props} | {c.address for c in constants}
+    normals = [c for c in all_concepts if c.address not in excluded]
     logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} generating select merge node for {all_concepts}"
+        f"{padding(depth)}{LOGGER_PREFIX} generating select merge node for normals: {normals}, abstract_props: {abstract_props}, constants: {constants}, conditions: {conditions}"
     )
-    if not non_constant and constants:
+    only_abstract = not normals and not constants and abstract_props
+    only_constant = not normals and not abstract_props and constants
+    if only_abstract:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} only abstract-grain property inputs ({abstract_props}), sourcing each independently"
+        )
+        abstract_nodes = [
+            n
+            for p in abstract_props
+            for n in _source_concepts_via_graph(
+                [p], g, environment, depth + 1, accept_partial, conditions
+            )
+        ]
+        if not abstract_nodes:
+            return None
+        if len(abstract_nodes) == 1:
+            return abstract_nodes[0]
+        return MergeNode(
+            output_concepts=abstract_props,
+            input_concepts=abstract_props,
+            environment=environment,
+            depth=depth,
+            parents=abstract_nodes,
+            preexisting_conditions=None,
+        )
+
+    elif only_constant:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} only constant inputs to discovery ({constants}), returning constant node directly"
         )
@@ -754,55 +838,17 @@ def gen_select_merge_node(
             force_group=False,
             conditions=conditions.conditional if conditions else None,
         )
-    attempts = [SearchCriteria.FULL_ONLY]
-    if accept_partial:
-        attempts.append(SearchCriteria.PARTIAL_UNSCOPED)
-        attempts.append(SearchCriteria.PARTIAL_INCLUDING_SCOPED)
-    logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} searching for root source graph for concepts {[c.address for c in all_concepts]} and conditions {conditions}"
-    )
-    pruned_concept_graph = None
-    for attempt in attempts:
-        pruned_concept_graph = create_pruned_concept_graph(
-            g,
-            non_constant,
-            criteria=attempt,
-            conditions=conditions,
-            datasources=list([x for x in environment.datasources.values()]),
-            depth=depth,
+    parents = []
+    if normals:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} searching for root source graph for concepts {[c.address for c in all_concepts]} and conditions {conditions}"
         )
-        if not pruned_concept_graph:
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} found covering graph w/ partial flag {attempt}"
-            )
-            continue
-        sub_nodes = resolve_subgraphs(
-            pruned_concept_graph,
-            relevant=non_constant,
-            criteria=attempt,
-            conditions=conditions,
-            depth=depth,
+        parents = _source_concepts_via_graph(
+            normals, g, environment, depth, accept_partial, conditions
         )
-        break
-    if not pruned_concept_graph:
-        logger.info(f"{padding(depth)}{LOGGER_PREFIX} no covering graph found.")
-        return None
-    logger.info(f"{padding(depth)}{LOGGER_PREFIX} fetching subgraphs {sub_nodes}")
-
-    parents = [
-        create_select_node(
-            k,
-            subgraph,
-            g=pruned_concept_graph,
-            accept_partial=accept_partial,
-            environment=environment,
-            depth=depth,
-            conditions=conditions,
-        )
-        for k, subgraph in sub_nodes.items()
-    ]
-    if not parents:
-        return None
+        if not parents:
+            logger.info(f"{padding(depth)}{LOGGER_PREFIX} no covering graph found.")
+            return None
 
     if constants:
         parents.append(
@@ -817,6 +863,12 @@ def gen_select_merge_node(
                 preexisting_conditions=conditions.conditional if conditions else None,
             )
         )
+
+    for p in abstract_props:
+        abstract_nodes = _source_concepts_via_graph(
+            [p], g, environment, depth + 1, accept_partial, conditions
+        )
+        parents.extend(abstract_nodes)
 
     if len(parents) == 1:
         return parents[0]
@@ -836,7 +888,7 @@ def gen_select_merge_node(
 
     base = MergeNode(
         output_concepts=all_concepts,
-        input_concepts=non_constant,
+        input_concepts=normals + abstract_props,
         environment=environment,
         depth=depth,
         parents=parents,

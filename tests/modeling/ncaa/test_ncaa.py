@@ -212,3 +212,15 @@ def test_adhoc10():
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
     env, queries = env.parse(text)
     engine.generate_sql(text)[0]
+
+
+def test_adhoc11():
+    DebuggingHook(INFO)
+    env = Environment(working_path=working_path)
+    with open(working_path / "adhoc11.preql") as f:
+        text = f.read()
+    engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
+    env, queries = env.parse(text)
+    generated = engine.generate_sql(text)[0]
+
+    assert "UNION ALL" in generated, generated

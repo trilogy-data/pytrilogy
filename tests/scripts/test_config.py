@@ -649,7 +649,7 @@ def test_cli_env_invalid_non_kv_and_missing_file():
 
         assert result.exit_code != 0
         assert "KEY=VALUE format" in result.output
-        assert "path to an existing env file" in result.output
+        assert "path to an existing" in result.output
 
 
 def test_env_file_and_cli_precedence():

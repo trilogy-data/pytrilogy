@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Union
 
 from pydantic import (
@@ -38,7 +39,6 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
     BuildDatasource,
-    BuildExpr,
     BuildFunction,
     BuildGrain,
     BuildOrderBy,
@@ -476,12 +476,14 @@ class CTEConceptPair(ConceptPair):
     cte: CTE | UnionCTE
 
 
-class InstantiatedUnnestJoin(BaseModel):
+@dataclass
+class InstantiatedUnnestJoin:
     object_to_unnest: BuildConcept | BuildParamaterizedConceptReference | BuildFunction
     alias: str = "unnest"
 
 
-class UnnestJoin(BaseModel):
+@dataclass
+class UnnestJoin:
     concepts: list[BuildConcept]
     parent: BuildFunction
     alias: str = "unnest"
@@ -873,11 +875,6 @@ class QueryDatasource(BaseModel):
         return self.datasources[0].safe_location
 
 
-class AliasedExpression(BaseModel):
-    expr: BuildExpr
-    alias: str
-
-
 class RecursiveCTE(CTE):
 
     def generate_loop_functions(
@@ -1139,15 +1136,16 @@ class UnionCTE(BaseModel):
         return self
 
 
-class Join(BaseModel):
+@dataclass
+class Join:
     right_cte: CTE | UnionCTE
     jointype: JoinType
     left_cte: CTE | UnionCTE | None = None
     joinkey_pairs: List[CTEConceptPair] | None = None
-    inlined_ctes: set[str] = Field(default_factory=set)
+    inlined_ctes: set[str] = field(default_factory=set)
     quote: str | None = None
     condition: BuildConditional | BuildComparison | BuildParenthetical | None = None
-    modifiers: List[Modifier] = Field(default_factory=list)
+    modifiers: List[Modifier] = field(default_factory=list)
 
     def inline_cte(self, cte: CTE):
         self.inlined_ctes.add(cte.name)

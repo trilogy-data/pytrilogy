@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC
 from collections import UserDict, UserList
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
@@ -136,7 +137,8 @@ class TraitDataType(BaseModel):
         return self.data_type.value
 
 
-class NumericType(BaseModel):
+@dataclass
+class NumericType:
     precision: int = 20
     scale: int = 5
 

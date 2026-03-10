@@ -93,6 +93,9 @@ def test_transform():
 
 def test_generate_array():
     test_executor = Dialects.DUCK_DB.default_executor()
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
     test_select = """
     const num_list <- generate_array(1,5,1);
 

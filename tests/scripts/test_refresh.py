@@ -422,3 +422,74 @@ def test_execute_refresh_mode_with_watermarks(capsys):
     assert result.refreshed_count == 1
     captured = capsys.readouterr()
     assert "Watermarks:" in captured.out
+
+
+def test_refresh_stale_assets_excludes_peer_stale_from_planner():
+    """When multiple datasources are stale, each refresh hides the not-yet-refreshed
+    peers from the query planner so it cannot route through stale/missing sources."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key rec_id int;
+        property rec_id.rec_ts datetime;
+
+        root datasource rec_root (
+            rec_id: rec_id,
+            rec_ts: rec_ts
+        )
+        grain (rec_id)
+        query '''SELECT 1 as rec_id, TIMESTAMP '2024-01-20' as rec_ts'''
+        incremental by rec_ts;
+
+        datasource rec_stage (
+            rec_id: rec_id,
+            rec_ts: rec_ts
+        )
+        grain (rec_id)
+        address rec_stage_table
+        incremental by rec_ts;
+
+        datasource rec_final (
+            rec_id: rec_id,
+            rec_ts: rec_ts
+        )
+        grain (rec_id)
+        address rec_final_table
+        incremental by rec_ts;
+        """
+    )
+
+    # Snapshot which datasources are visible in the environment at each update call.
+    env_at_each_refresh: list[set[str]] = []
+    original_update = executor.update_datasource
+
+    def tracking_update(datasource, keys=None):
+        env_at_each_refresh.append(set(executor.environment.datasources.keys()))
+        return original_update(datasource, keys)
+
+    executor.update_datasource = tracking_update  # type: ignore[method-assign]
+
+    result = refresh_stale_assets(executor)
+
+    assert result.refreshed_count == 2
+    assert len(env_at_each_refresh) == 2
+
+    first_visible = env_at_each_refresh[0]
+    second_visible = env_at_each_refresh[1]
+
+    assert "rec_root" in first_visible
+    assert "rec_root" in second_visible
+
+    # During the first refresh, exactly one of the two stale peers is visible
+    # (the other is hidden to prevent the planner routing through it).
+    stale_visible_first = first_visible & {"rec_stage", "rec_final"}
+    assert (
+        len(stale_visible_first) == 1
+    ), f"Expected one stale datasource visible during first refresh, got: {stale_visible_first}"
+
+    # During the second refresh the first peer has been refreshed and is restored,
+    # so both stale datasources are present again.
+    stale_visible_second = second_visible & {"rec_stage", "rec_final"}
+    assert (
+        len(stale_visible_second) == 2
+    ), f"Expected both stale datasources visible during second refresh, got: {stale_visible_second}"
