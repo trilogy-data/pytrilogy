@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
 from typing import Annotated, List, Literal, Optional, Union
@@ -53,7 +54,8 @@ from trilogy.core.statements.common import SelectTypeMixin
 from trilogy.utility import unique
 
 
-class ConceptTransform(BaseModel):
+@dataclass
+class ConceptTransform:
     function: (
         Function
         | FilterItem
@@ -64,7 +66,7 @@ class ConceptTransform(BaseModel):
         | SubselectItem
     )
     output: Concept  # this has to be a full concept, as it may not exist in environment
-    modifiers: List[Modifier] = Field(default_factory=list)
+    modifiers: List[Modifier] = field(default_factory=list)
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         return ConceptTransform(
@@ -447,12 +449,13 @@ class RowsetDerivationStatement(HasUUID, BaseModel):
         return self.__repr__()
 
 
-class MergeStatementV2(HasUUID, BaseModel):
+@dataclass
+class MergeStatementV2(HasUUID):
     sources: list[Concept]
     targets: dict[str, Concept]
     source_wildcard: str | None = None
     target_wildcard: str | None = None
-    modifiers: List[Modifier] = Field(default_factory=list)
+    modifiers: List[Modifier] = field(default_factory=list)
 
 
 class KeyMergeStatement(HasUUID, BaseModel):
@@ -518,11 +521,13 @@ class Limit(BaseModel):
     count: int
 
 
-class ConceptDeclarationStatement(HasUUID, BaseModel):
+@dataclass
+class ConceptDeclarationStatement(HasUUID):
     concept: Concept
 
 
-class ConceptDerivationStatement(BaseModel):
+@dataclass
+class ConceptDerivationStatement:
     concept: Concept
 
 
@@ -530,7 +535,8 @@ class TypeDeclaration(BaseModel):
     type: CustomType
 
 
-class FunctionDeclaration(HasUUID, BaseModel):
+@dataclass
+class FunctionDeclaration(HasUUID):
     name: str
     args: list[ArgBinding]
     expr: Expr

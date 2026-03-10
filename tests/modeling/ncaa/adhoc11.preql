@@ -1,5 +1,7 @@
 import game_tall as game_tall;
 
+
+
 SELECT
   game_tall.team_name,
   abs(

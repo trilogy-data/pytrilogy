@@ -223,4 +223,4 @@ def test_adhoc11():
     env, queries = env.parse(text)
     generated = engine.generate_sql(text)[0]
 
-    assert '"union' in generated, generated
+    assert "UNION ALL" in generated, generated
