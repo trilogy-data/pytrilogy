@@ -61,7 +61,9 @@ def _compare_watermark_values(
     return 0
 
 
-def _execute_raw_sql_scalar(query: str, executor: Executor) -> object:
+def _execute_raw_sql_scalar(
+    query: str, executor: Executor
+) -> str | int | float | datetime | date | None:
     """Execute a raw SQL query and return the first column of the first row.
 
     Returns None if the source is missing; rolls back and suppresses the error.
