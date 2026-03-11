@@ -1218,9 +1218,7 @@ def create_function_derived_concept(
     operator: FunctionType,
     arguments: list[Concept],
     environment: Environment,
-    output_type: Optional[
-        DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
-    ] = None,
+    output_type: Optional[CONCRETE_TYPES] = None,
     output_purpose: Optional[Purpose] = None,
 ) -> Concept:
     purpose = (

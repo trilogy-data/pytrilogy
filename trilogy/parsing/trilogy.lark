@@ -603,13 +603,15 @@
     struct_component: IDENTIFIER ":" data_type concept_nullable_modifier? metadata?
     struct_type: "struct"i "<" ((struct_component | IDENTIFIER) ",")* (struct_component | IDENTIFIER) ","? ">" 
 
-    list_type: ("list"i | "array"i) "<" (data_type | IDENTIFIER) ">" 
+    list_type: ("list"i | "array"i) "<" (data_type | IDENTIFIER) ">"
 
     numeric_type: "numeric"i "(" int_lit "," int_lit ")"
 
     map_type: "map"i "<" (data_type | IDENTIFIER) "," (data_type | IDENTIFIER) ">"
 
-    !data_type:  ("string"i | "geography"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type) ("::" IDENTIFIER)?
+    enum_type: "enum"i "<" (string_lit | int_lit) ("," (string_lit | int_lit))* ","? ">"
+
+    !data_type:  ("string"i | "geography"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type | enum_type) ("::" IDENTIFIER)?
     
     PURPOSE:  "key"i | "metric"i | "parameter"i | "param"i  | CONST
     PROPERTY: "property"i

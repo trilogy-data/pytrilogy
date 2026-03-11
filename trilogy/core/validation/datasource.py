@@ -23,6 +23,7 @@ from trilogy.core.models.build import (
     BuildDatasource,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.core import CONCRETE_TYPES
 from trilogy.core.validation.common import ExpectationType, ValidationTest, easy_query
 from trilogy.utility import unique
 
@@ -33,9 +34,7 @@ def row_to_dict(row):
 
 def type_check(
     input: Any,
-    expected_type: (
-        DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
-    ),
+    expected_type: CONCRETE_TYPES,  # type: ignore[valid-type]
     nullable: bool = True,
 ) -> bool:
     if input is None and nullable:

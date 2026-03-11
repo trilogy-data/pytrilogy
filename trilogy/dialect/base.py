@@ -53,6 +53,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.core import (
     ArrayType,
     DataType,
+    EnumType,
     ListWrapper,
     MapType,
     MapWrapper,
@@ -1072,14 +1073,16 @@ class BaseDialect:
             return self.FUNCTION_MAP[FunctionType.DATE_LITERAL](e, [])
         elif isinstance(e, datetime):
             return self.FUNCTION_MAP[FunctionType.DATETIME_LITERAL](e, [])
+        elif isinstance(e, EnumType):
+            return self.render_expr(e.data_type, cte=cte, cte_map=cte_map)  # type: ignore[arg-type]
         elif isinstance(e, TraitDataType):
-            return self.render_expr(e.type, cte=cte, cte_map=cte_map)
+            return self.render_expr(e.type, cte=cte, cte_map=cte_map)  # type: ignore[arg-type]
         elif isinstance(e, ArgBinding):
             return e.name
         elif isinstance(e, Ordering):
             return str(e.value)
         elif isinstance(e, ArrayType):
-            return f"{self.COMPLEX_DATATYPE_MAP[DataType.ARRAY](self.render_expr(e.value_data_type, cte=cte, cte_map=cte_map))}"
+            return f"{self.COMPLEX_DATATYPE_MAP[DataType.ARRAY](self.render_expr(e.value_data_type, cte=cte, cte_map=cte_map))}"  # type: ignore[arg-type]
         elif isinstance(e, list):
             return f"{self.FUNCTION_MAP[FunctionType.ARRAY]([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e], [])}"
         elif isinstance(e, BuildParamaterizedConceptReference):

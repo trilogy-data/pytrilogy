@@ -47,11 +47,13 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.models.core import (
+    CONCRETE_TYPES,
     TYPEDEF_TYPES,
     Addressable,
     ArrayType,
     DataType,
     DataTyped,
+    EnumType,
     ListWrapper,
     MapType,
     MapWrapper,
@@ -113,7 +115,7 @@ def compute_safe_address(namespace: str, name: str) -> str:
 class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
     address: str
     datatype: (
-        DataType | TraitDataType | ArrayType | StructType | MapType | NumericType
+        DataType | TraitDataType | ArrayType | StructType | MapType | NumericType | EnumType
     ) = DataType.UNKNOWN
     metadata: Optional["Metadata"] = None
 
@@ -860,7 +862,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         extra="forbid",
     )
     name: str
-    datatype: DataType | TraitDataType | ArrayType | StructType | MapType | NumericType
+    datatype: DataType | TraitDataType | ArrayType | StructType | MapType | NumericType | EnumType
     purpose: Purpose
     derivation: Derivation = Derivation.ROOT
     granularity: Granularity = Granularity.MULTI_ROW
@@ -1358,7 +1360,7 @@ class UndefinedConceptFull(Concept, Mergeable, Namespaced):
     name: str
     line_no: int | None = None
     datatype: (
-        DataType | TraitDataType | ArrayType | StructType | MapType | NumericType
+        DataType | TraitDataType | ArrayType | StructType | MapType | NumericType | EnumType
     ) = DataType.UNKNOWN
     purpose: Purpose = Purpose.UNKNOWN
 
@@ -1522,15 +1524,7 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
 
 
 def get_basic_type(
-    type: (
-        DataType
-        | ArrayType
-        | StructType
-        | MapType
-        | NumericType
-        | TraitDataType
-        | DataTyped
-    ),
+    type: CONCRETE_TYPES | DataTyped,
 ) -> DataType:
     if isinstance(type, ArrayType):
         return DataType.ARRAY
@@ -1540,6 +1534,8 @@ def get_basic_type(
         return DataType.MAP
     if isinstance(type, NumericType):
         return DataType.NUMERIC
+    if isinstance(type, EnumType):
+        return get_basic_type(type.data_type)
     if isinstance(type, TraitDataType):
         return get_basic_type(type.type)
     if isinstance(type, DataTyped):
@@ -1789,7 +1785,7 @@ def args_to_pretty(input: set[DataType]) -> str:
 
 
 def _matches_valid_type(
-    datatype: DataType | ArrayType | StructType | MapType | NumericType | TraitDataType,
+    datatype: CONCRETE_TYPES,
     valid_types: set[DataType | ArrayType | MapType],
 ) -> bool:
     for valid_type in valid_types:
@@ -1807,7 +1803,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
     output_datatype: (
-        DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
+        DataType | ArrayType | StructType | MapType | NumericType | TraitDataType | EnumType
     )
     output_purpose: Purpose
     valid_inputs: Optional[
@@ -2821,7 +2817,7 @@ class ArgBinding(Namespaced, DataTyped, BaseModel):
     name: str
     default: Expr | None = None
     datatype: (
-        DataType | MapType | ArrayType | NumericType | StructType | TraitDataType
+        DataType | MapType | ArrayType | NumericType | StructType | TraitDataType | EnumType
     ) = DataType.UNKNOWN
 
     def with_namespace(self, namespace):

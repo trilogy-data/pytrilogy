@@ -1,15 +1,9 @@
+
 from dataclasses import dataclass
 from typing import Any, List, Sequence
 
 from trilogy.core.enums import Modifier
-from trilogy.core.models.core import (
-    ArrayType,
-    DataType,
-    MapType,
-    NumericType,
-    StructType,
-    TraitDataType,
-)
+from trilogy.core.models.core import CONCRETE_TYPES
 
 
 class ConfigurationException(Exception):
@@ -67,13 +61,9 @@ class DatasourceGrainValidationError(DatasourceModelValidationError):
 class DatasourceColumnBindingData:
     address: str
     value: Any
-    value_type: (
-        DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
-    )
+    value_type: CONCRETE_TYPES
     value_modifiers: List[Modifier]
-    actual_type: (
-        DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
-    )
+    actual_type: CONCRETE_TYPES
     actual_modifiers: List[Modifier]
 
     def format_failure(self):

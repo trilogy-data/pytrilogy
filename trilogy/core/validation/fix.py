@@ -10,6 +10,7 @@ from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.core import (
     ArrayType,
     DataType,
+    EnumType,
     MapType,
     NumericType,
     StructType,
@@ -44,7 +45,7 @@ class ConceptTypeFix:
     """Represents a fix to update a concept's data type."""
 
     concept_address: str
-    new_type: DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
+    new_type: DataType | ArrayType | StructType | MapType | NumericType | TraitDataType | EnumType
 
 
 def update_datasource_column_modifiers(

@@ -37,7 +37,7 @@ class DataTyped(ABC):
     # this is not abstract
     # only because when it's a pydantic property, it fails validation
     @property
-    def output_datatype(self) -> CONCRETE_TYPES:  # type: ignore
+    def output_datatype(self) -> CONCRETE_TYPES:  
         """
         This is a huge hack to get property vs pydantic attribute inheritance to work.
         """
@@ -61,6 +61,7 @@ TYPEDEF_TYPES = Union[
     "StructType",
     "DataTyped",
     "TraitDataType",
+    "EnumType",
 ]
 
 CONCRETE_TYPES = Union[
@@ -70,6 +71,7 @@ CONCRETE_TYPES = Union[
     "NumericType",
     "StructType",
     "TraitDataType",
+    "EnumType",
 ]
 
 KT = TypeVar("KT")
@@ -112,7 +114,7 @@ class DataType(Enum):
 
 
 class TraitDataType(BaseModel):
-    type: DataType | NumericType | StructType | ArrayType | MapType
+    type: CONCRETE_TYPES
     traits: list[str]
 
     def __hash__(self):
@@ -126,6 +128,8 @@ class TraitDataType(BaseModel):
             return self.type == other
         elif isinstance(other, TraitDataType):
             return self.type == other.type and self.traits == other.traits
+        elif isinstance(other, EnumType):
+            return self.type == other.type
         return False
 
     @property
@@ -155,6 +159,37 @@ class NumericType:
     @property
     def value(self):
         return self.data_type.value
+
+
+@dataclass
+class EnumType:
+    type: DataType
+    values: list[Any]
+
+    def __hash__(self):
+        return hash((self.type, tuple(self.values)))
+
+    def __str__(self) -> str:
+        return f"enum<{', '.join(repr(v) for v in self.values)}>"
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, DataType):
+            return self.type == other
+        if isinstance(other, EnumType):
+            return self.type == other.type and self.values == other.values
+        if isinstance(other, TraitDataType):
+            return self.type == other.type
+        return False
+    
+
+
+    @property
+    def data_type(self) -> DataType:
+        return self.type
+
+    @property
+    def value(self) -> str:
+        return self.type.value
 
 
 class ArrayType(BaseModel):
@@ -400,10 +435,8 @@ def dict_to_map_wrapper(arg):
 
 
 def merge_datatypes(
-    inputs: list[
-        DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
-    ],
-) -> DataType | ArrayType | StructType | MapType | NumericType | TraitDataType:
+    inputs: list[CONCRETE_TYPES],
+) -> CONCRETE_TYPES:
     """This is a temporary hack for doing between
     allowable datatype transformation matrix"""
     if len(inputs) == 1:
@@ -461,7 +494,6 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
         case MagicConstants():
             raise ValueError(f"Cannot parse arg datatype for arg of type {arg}")
 
-        # Type checking (replaces isinstance)
         # Note: bool must come before int because bool is a subclass of int
         case bool():
             return DataType.BOOL
@@ -477,7 +509,7 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
             return DataType.NUMERIC
 
         # Direct returns for existing type definitions
-        case DataType() | NumericType() | TraitDataType() | ArrayType() | MapType():
+        case DataType() | NumericType() | TraitDataType() | ArrayType() | MapType() | EnumType() | StructType():
             return arg
 
         # Complex wrappers and recursive calls

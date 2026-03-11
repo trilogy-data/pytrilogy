@@ -70,6 +70,7 @@ from trilogy.core.models.author import (
     WindowItem,
 )
 from trilogy.core.models.core import (
+    CONCRETE_TYPES,
     Addressable,
     ArrayType,
     DataType,
@@ -82,6 +83,7 @@ from trilogy.core.models.core import (
     TraitDataType,
     TupleWrapper,
     arg_to_datatype,
+    EnumType,
 )
 from trilogy.core.models.datasource import (
     Address,
@@ -923,7 +925,7 @@ class BuildSubselectComparison(BuildComparison):
 class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
     name: str
     canonical_name: str
-    datatype: DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
+    datatype: CONCRETE_TYPES
     purpose: Purpose
     build_is_aggregate: bool
     derivation: Derivation = Derivation.ROOT
@@ -1294,9 +1296,7 @@ class BuildFunction(DataTyped, BuildConceptArgs):
             ListWrapper[Any],
         ]
     ]
-    output_data_type: (
-        DataType | ArrayType | StructType | MapType | NumericType | TraitDataType
-    )
+    output_data_type: CONCRETE_TYPES
     output_purpose: Purpose = field(default=Purpose.KEY)
     arg_count: int = field(default=1)
     valid_inputs: Optional[
