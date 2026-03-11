@@ -1,7 +1,7 @@
 
 # source freshness watermarks - batch version per source
-key increment_a int;
-key increment_b int;
+property <*>.increment_a int;
+property <*>.increment_b int;
 auto latest_fresh <- greatest(increment_a, increment_b);
 
 # actual row data
@@ -25,7 +25,6 @@ select 3 as increment_b
 ''';
 
 root datasource a_raw (
-    increment_a,
     id,
     value,
     source
@@ -47,7 +46,6 @@ incremental by increment_a;
 
 
 root datasource b_raw (
-    increment_b,
     id,
     value,
     source
