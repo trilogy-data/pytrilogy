@@ -742,6 +742,9 @@ class ParseToObjects(Transformer):
     def SHORTHAND_MODIFIER(self, args) -> Modifier:
         return Modifier(args.value)
 
+    def DATASOURCE_PARTIAL(self, args) -> Modifier:
+        return Modifier.PARTIAL
+
     def PURPOSE(self, args) -> Purpose:
         return Purpose(args.value)
 
@@ -1108,8 +1111,12 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def datasource(self, meta: Meta, args):
         is_root = False
+        is_partial = False
         if isinstance(args[0], Token) and args[0].lower() == "root":
             is_root = True
+            args = args[1:]
+        if isinstance(args[0], Modifier) and args[0] == Modifier.PARTIAL:
+            is_partial = True
             args = args[1:]
         name = args[0]
         columns: List[ColumnAssignment] = args[1]
@@ -1158,6 +1165,11 @@ class ParseToObjects(Transformer):
 
         if address and (address.is_file and not address.exists):
             datasource_status = DatasourceState.UNPOPULATED
+        if is_partial:
+            for pc in columns:
+                if Modifier.PARTIAL not in pc.modifiers:
+                    pc.modifiers.append(Modifier.PARTIAL)
+
         datasource = Datasource(
             name=name,
             columns=columns,
@@ -1174,6 +1186,7 @@ class ParseToObjects(Transformer):
             freshness_by=freshness_by,
             freshness_probe=freshness_probe,
             is_root=is_root,
+            is_partial=is_partial,
         )
         if datasource.where:
             for x in datasource.where.concept_arguments:

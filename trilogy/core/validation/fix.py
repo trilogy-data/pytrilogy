@@ -7,9 +7,7 @@ from trilogy.authoring import ConceptDeclarationStatement, Datasource
 from trilogy.core.enums import Modifier
 from trilogy.core.exceptions import DatasourceColumnBindingError
 from trilogy.core.models.author import ConceptRef
-from trilogy.core.models.core import (
-    CONCRETE_TYPES
-)
+from trilogy.core.models.core import CONCRETE_TYPES
 from trilogy.core.models.datasource import ColumnAssignment
 from trilogy.core.validation.environment import validate_environment
 from trilogy.parsing.render import Renderer, safe_address

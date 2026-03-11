@@ -1,3 +1,7 @@
+## Interaction Rules
+
+If the user says to stop, says they will look, or otherwise indicates they want to pause — make NO further changes (no edits, no tool calls, no code) until explicitly told to continue.
+
 ## Context
 
 Python project for semantic ETL and reporting.

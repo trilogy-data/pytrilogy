@@ -1,5 +1,7 @@
-import pyarrow as pa
 import sys
+from typing import Iterator
+
+import pyarrow as pa
 
 
 def emit_arrow(table: pa.Table) -> None:

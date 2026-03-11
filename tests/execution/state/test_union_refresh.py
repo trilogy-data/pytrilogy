@@ -1,7 +1,5 @@
 from pathlib import Path
 
-from sqlalchemy import text
-
 from trilogy import Dialects
 from trilogy.dialect.config import DuckDBConfig
 from trilogy.scripts.dependency import ScriptNode
@@ -23,4 +21,4 @@ def test_union_refresh_produces_twenty_rows():
 
     results = executor.execute_text("select count(id) as results;")[-1].fetchone()
 
-    assert results == 20, results
+    assert results.results == 20, results

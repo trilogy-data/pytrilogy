@@ -1,8 +1,10 @@
 import inspect
 from collections.abc import Iterator
 from typing import Callable, get_type_hints
-from trilogy.io.arrow import emit_arrow, emit_arrow_batches
+
 import pyarrow as pa
+
+from trilogy.io.arrow import emit_arrow, emit_arrow_batches
 
 
 def emit(fn: Callable) -> None:

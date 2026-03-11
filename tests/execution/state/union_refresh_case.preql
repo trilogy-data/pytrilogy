@@ -24,16 +24,16 @@ query '''
 select 3 as increment_b
 ''';
 
-root datasource a_raw (
-    id,
-    value,
-    source
+root partial datasource a_raw (
+    ~id,
+    ~value,
+    ~source
 )
 grain (id)
 complete where source = 'a'
 file `./a_raw_source.py`;
 
-datasource a_full (
+partial datasource a_full (
     increment_a,
     id,
     value,
@@ -45,7 +45,7 @@ address a_full_data
 incremental by increment_a;
 
 
-root datasource b_raw (
+root partial datasource b_raw (
     id,
     value,
     source
@@ -54,7 +54,7 @@ grain (id)
 complete where source = 'b'
 file `./b_raw_source.py`;
 
-datasource b_full (
+partial datasource b_full (
     increment_b,
     id,
     value,

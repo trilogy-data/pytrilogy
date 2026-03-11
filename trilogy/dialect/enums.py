@@ -1,6 +1,7 @@
 from enum import Enum
-from typing import TYPE_CHECKING, Callable, List, Optional
 from pathlib import Path
+from typing import TYPE_CHECKING, Callable, List, Optional
+
 from trilogy.core.models.environment import Environment
 
 if TYPE_CHECKING:
@@ -146,7 +147,8 @@ class Dialects(Enum):
         _engine_factory: Callable | None = None,
     ) -> "Executor":
         from trilogy import Executor
-        environment = environment or Environment(working_path=working_path)
+
+        environment = environment or Environment()
         if working_path:
             environment.working_path = working_path
         if _engine_factory is not None:

@@ -5,6 +5,7 @@
 # ///
 
 import sys
+
 import pyarrow as pa
 
 
@@ -17,7 +18,9 @@ if __name__ == "__main__":
     table = pa.table(
         {
             "id": pa.array(list(range(11, 21)), type=pa.int64()),
-            "value": pa.array([f"b_value_{i}" for i in range(11, 21)], type=pa.string()),
+            "value": pa.array(
+                [f"b_value_{i}" for i in range(11, 21)], type=pa.string()
+            ),
             "source": pa.array(["b"] * 10, type=pa.string()),
         }
     )
