@@ -3,9 +3,8 @@ import pytest
 from trilogy import Dialects
 from trilogy.core.models.core import EnumType
 
-
 PREQL = """
-key category enum<'A', 'B'>;
+key category enum<string>['A', 'B'];
 property <category>.sales int;
 
 datasource ds_a (
@@ -56,9 +55,9 @@ def test_enum_union_injection():
 def test_enum_union_by_category():
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(PREQL)
-    results = executor.execute_text(
-        "select category, sales order by category asc;"
-    )[-1].fetchall()
+    results = executor.execute_text("select category, sales order by category asc;")[
+        -1
+    ].fetchall()
     assert len(results) == 2
     assert results[0].category == "A"
     assert results[0].sales == 10

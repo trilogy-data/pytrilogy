@@ -633,13 +633,12 @@ class ParseToObjects(Transformer):
         return MapType(key_type=key, value_type=value)
 
     def enum_type(self, args) -> EnumType:
-        values = list(args)
-        base_type = (
-            DataType.INTEGER
-            if all(isinstance(v, int) for v in values)
-            else DataType.STRING
-        )
-        return EnumType(type=base_type, values=values)
+        base_type = args[0]
+        if not isinstance(base_type, DataType):
+            raise TypeError(
+                f"enum base type must be a primitive DataType, got {base_type}"
+            )
+        return EnumType(type=base_type, values=list(args[1:]))
 
     @v_args(meta=True)
     def data_type(

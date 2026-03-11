@@ -75,6 +75,7 @@ from trilogy.core.models.core import (
     ArrayType,
     DataType,
     DataTyped,
+    EnumType,
     ListWrapper,
     MapType,
     MapWrapper,
@@ -83,7 +84,6 @@ from trilogy.core.models.core import (
     TraitDataType,
     TupleWrapper,
     arg_to_datatype,
-    EnumType,
 )
 from trilogy.core.models.datasource import (
     Address,
@@ -2710,6 +2710,13 @@ class Factory:
         return self._build_trait_data_type(base)
 
     def _build_trait_data_type(self, base: TraitDataType):
+        return base
+
+    @build.register
+    def _(self, base: EnumType):
+        return self._build_enum_data_type(base)
+
+    def _build_enum_data_type(self, base: EnumType):
         return base
 
     @build.register

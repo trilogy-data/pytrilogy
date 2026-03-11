@@ -609,7 +609,7 @@
 
     map_type: "map"i "<" (data_type | IDENTIFIER) "," (data_type | IDENTIFIER) ">"
 
-    enum_type: "enum"i "<" (string_lit | int_lit) ("," (string_lit | int_lit))* ","? ">"
+    enum_type: "enum"i "<" data_type ">" "[" (string_lit | int_lit) ("," (string_lit | int_lit))* ","? "]"
 
     !data_type:  ("string"i | "geography"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type | enum_type) ("::" IDENTIFIER)?
     

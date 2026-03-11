@@ -34,7 +34,7 @@ def row_to_dict(row):
 
 def type_check(
     input: Any,
-    expected_type: CONCRETE_TYPES,  # type: ignore[valid-type]
+    expected_type: CONCRETE_TYPES,
     nullable: bool = True,
 ) -> bool:
     if input is None and nullable:

@@ -37,7 +37,7 @@ class DataTyped(ABC):
     # this is not abstract
     # only because when it's a pydantic property, it fails validation
     @property
-    def output_datatype(self) -> CONCRETE_TYPES:  
+    def output_datatype(self) -> CONCRETE_TYPES:
         """
         This is a huge hack to get property vs pydantic attribute inheritance to work.
         """
@@ -180,8 +180,6 @@ class EnumType:
         if isinstance(other, TraitDataType):
             return self.type == other.type
         return False
-    
-
 
     @property
     def data_type(self) -> DataType:
@@ -509,7 +507,15 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
             return DataType.NUMERIC
 
         # Direct returns for existing type definitions
-        case DataType() | NumericType() | TraitDataType() | ArrayType() | MapType() | EnumType() | StructType():
+        case (
+            DataType()
+            | NumericType()
+            | TraitDataType()
+            | ArrayType()
+            | MapType()
+            | EnumType()
+            | StructType()
+        ):
             return arg
 
         # Complex wrappers and recursive calls

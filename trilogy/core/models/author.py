@@ -114,9 +114,7 @@ def compute_safe_address(namespace: str, name: str) -> str:
 
 class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
     address: str
-    datatype: (
-        DataType | TraitDataType | ArrayType | StructType | MapType | NumericType | EnumType
-    ) = DataType.UNKNOWN
+    datatype: CONCRETE_TYPES = DataType.UNKNOWN
     metadata: Optional["Metadata"] = None
 
     @property
@@ -862,7 +860,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         extra="forbid",
     )
     name: str
-    datatype: DataType | TraitDataType | ArrayType | StructType | MapType | NumericType | EnumType
+    datatype: CONCRETE_TYPES
     purpose: Purpose
     derivation: Derivation = Derivation.ROOT
     granularity: Granularity = Granularity.MULTI_ROW
@@ -1359,9 +1357,7 @@ class UndefinedConceptFull(Concept, Mergeable, Namespaced):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     name: str
     line_no: int | None = None
-    datatype: (
-        DataType | TraitDataType | ArrayType | StructType | MapType | NumericType | EnumType
-    ) = DataType.UNKNOWN
+    datatype: CONCRETE_TYPES = DataType.UNKNOWN
     purpose: Purpose = Purpose.UNKNOWN
 
     @property
@@ -1535,7 +1531,7 @@ def get_basic_type(
     if isinstance(type, NumericType):
         return DataType.NUMERIC
     if isinstance(type, EnumType):
-        return get_basic_type(type.data_type)
+        return get_basic_type(type.type)
     if isinstance(type, TraitDataType):
         return get_basic_type(type.type)
     if isinstance(type, DataTyped):
@@ -1802,9 +1798,7 @@ def _matches_valid_type(
 class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
-    output_datatype: (
-        DataType | ArrayType | StructType | MapType | NumericType | TraitDataType | EnumType
-    )
+    output_datatype: CONCRETE_TYPES
     output_purpose: Purpose
     valid_inputs: Optional[
         Union[
@@ -2816,9 +2810,7 @@ class Comment(BaseModel):
 class ArgBinding(Namespaced, DataTyped, BaseModel):
     name: str
     default: Expr | None = None
-    datatype: (
-        DataType | MapType | ArrayType | NumericType | StructType | TraitDataType | EnumType
-    ) = DataType.UNKNOWN
+    datatype: CONCRETE_TYPES = DataType.UNKNOWN
 
     def with_namespace(self, namespace):
         return ArgBinding.model_construct(

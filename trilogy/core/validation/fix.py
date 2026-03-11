@@ -8,13 +8,7 @@ from trilogy.core.enums import Modifier
 from trilogy.core.exceptions import DatasourceColumnBindingError
 from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.core import (
-    ArrayType,
-    DataType,
-    EnumType,
-    MapType,
-    NumericType,
-    StructType,
-    TraitDataType,
+    CONCRETE_TYPES
 )
 from trilogy.core.models.datasource import ColumnAssignment
 from trilogy.core.validation.environment import validate_environment
@@ -45,7 +39,7 @@ class ConceptTypeFix:
     """Represents a fix to update a concept's data type."""
 
     concept_address: str
-    new_type: DataType | ArrayType | StructType | MapType | NumericType | TraitDataType | EnumType
+    new_type: CONCRETE_TYPES
 
 
 def update_datasource_column_modifiers(
