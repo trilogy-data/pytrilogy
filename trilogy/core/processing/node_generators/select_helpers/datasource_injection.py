@@ -12,7 +12,7 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildParenthetical,
 )
-from trilogy.core.models.core import DataType
+from trilogy.core.models.core import DataType, EnumType
 
 # Define a generic type that ensures start and end are the same type
 T = TypeVar("T", int, float, date, datetime)
@@ -233,6 +233,30 @@ def is_fully_covered(
     return current_end >= end
 
 
+def _enum_fully_covered(
+    conditions: list[BuildComparison | BuildConditional | BuildParenthetical],
+    enum_type: EnumType,
+) -> bool:
+    """Check if equality conditions cover all values of an enum."""
+    covered: set = set()
+    for condition in conditions:
+        if not isinstance(condition, BuildComparison):
+            return False
+        if condition.operator not in (ComparisonOperator.EQ, ComparisonOperator.IS):
+            return False
+        if isinstance(condition.left, BuildConcept) and not isinstance(
+            condition.right, BuildConcept
+        ):
+            covered.add(condition.right)
+        elif isinstance(condition.right, BuildConcept) and not isinstance(
+            condition.left, BuildConcept
+        ):
+            covered.add(condition.left)
+        else:
+            return False
+    return covered >= set(enum_type.values)
+
+
 def get_union_sources(
     datasources: list[BuildDatasource], concepts: list[BuildConcept]
 ) -> List[list[BuildDatasource]]:
@@ -258,4 +282,10 @@ def get_union_sources(
         conditions = [c.non_partial_for.conditional for c in dses if c.non_partial_for]
         if simplify_conditions(conditions):
             final.append(dses)
+        elif dses and dses[0].non_partial_for:
+            merge_key = dses[0].non_partial_for.concept_arguments[0]
+            if isinstance(merge_key.datatype, EnumType) and _enum_fully_covered(
+                conditions, merge_key.datatype
+            ):
+                final.append(dses)
     return final

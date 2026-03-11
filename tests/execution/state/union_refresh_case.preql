@@ -1,0 +1,76 @@
+
+# source freshness watermarks - batch version per source
+property <*>.increment_a int;
+property <*>.increment_b int;
+auto latest_fresh <- greatest(increment_a, increment_b);
+
+# actual row data
+key id int;
+property id.value string;
+property id.source enum<string>['a', 'b'];
+
+
+root datasource a_fresh (
+    increment_a
+)
+query '''
+select 5 as increment_a
+''';
+
+root datasource b_fresh (
+    increment_b
+)
+query '''
+select 3 as increment_b
+''';
+
+root partial datasource a_raw (
+    ~id,
+    ~value,
+    ~source
+)
+grain (id)
+complete where source = 'a'
+file `./a_raw_source.py`;
+
+partial datasource a_full (
+    increment_a,
+    id,
+    value,
+    source
+)
+grain (id)
+complete where source = 'a'
+address a_full_data
+incremental by increment_a;
+
+
+root partial datasource b_raw (
+    id,
+    value,
+    source
+)
+grain (id)
+complete where source = 'b'
+file `./b_raw_source.py`;
+
+partial datasource b_full (
+    increment_b,
+    id,
+    value,
+    source
+)
+grain (id)
+complete where source = 'b'
+address b_full_data
+incremental by increment_b;
+
+
+datasource union_full (
+    latest_fresh,
+    id,
+    value,
+    source
+)
+address union_data
+incremental by latest_fresh;

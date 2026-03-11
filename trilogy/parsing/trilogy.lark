@@ -49,6 +49,7 @@
     // datasource concepts
     DATASOURCE_STATUS: "published"i | "unpublished"i
     DATASOURCE_ROOT: "root"i
+    DATASOURCE_PARTIAL.2: "partial"i
 
     datasource_status_clause: /state/i DATASOURCE_STATUS
 
@@ -58,7 +59,7 @@
 
     datasource_partition_clause: "partition"i "by"i column_list
 
-    datasource: DATASOURCE_ROOT? "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? whole_grain_clause? (address | query | file) where? datasource_update_trigger_clause? datasource_partition_clause?  datasource_status_clause?
+    datasource: DATASOURCE_ROOT? (DATASOURCE_PARTIAL | SHORTHAND_MODIFIER)? "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? whole_grain_clause? (address | query | file) where? datasource_update_trigger_clause? datasource_partition_clause?  datasource_status_clause?
    
     whole_grain_clause: "complete" where
 
@@ -603,13 +604,15 @@
     struct_component: IDENTIFIER ":" data_type concept_nullable_modifier? metadata?
     struct_type: "struct"i "<" ((struct_component | IDENTIFIER) ",")* (struct_component | IDENTIFIER) ","? ">" 
 
-    list_type: ("list"i | "array"i) "<" (data_type | IDENTIFIER) ">" 
+    list_type: ("list"i | "array"i) "<" (data_type | IDENTIFIER) ">"
 
     numeric_type: "numeric"i "(" int_lit "," int_lit ")"
 
     map_type: "map"i "<" (data_type | IDENTIFIER) "," (data_type | IDENTIFIER) ">"
 
-    !data_type:  ("string"i | "geography"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type) ("::" IDENTIFIER)?
+    enum_type: "enum"i "<" data_type ">" "[" (string_lit | int_lit) ("," (string_lit | int_lit))* ","? "]"
+
+    !data_type:  ("string"i | "geography"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type | enum_type) ("::" IDENTIFIER)?
     
     PURPOSE:  "key"i | "metric"i | "parameter"i | "param"i  | CONST
     PROPERTY: "property"i

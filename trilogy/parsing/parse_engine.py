@@ -101,6 +101,7 @@ from trilogy.core.models.core import (
     ArrayType,
     DataType,
     DataTyped,
+    EnumType,
     ListWrapper,
     MapType,
     MapWrapper,
@@ -631,13 +632,37 @@ class ParseToObjects(Transformer):
             value = self.environment.concepts[value]
         return MapType(key_type=key, value_type=value)
 
+    def enum_type(self, args) -> EnumType:
+        base_type = args[0]
+        if not isinstance(base_type, DataType):
+            raise TypeError(
+                f"enum base type must be a primitive DataType, got {base_type}"
+            )
+        return EnumType(type=base_type, values=list(args[1:]))
+
     @v_args(meta=True)
     def data_type(
         self, meta: Meta, args
-    ) -> DataType | TraitDataType | ArrayType | StructType | MapType | NumericType:
+    ) -> (
+        DataType
+        | TraitDataType
+        | ArrayType
+        | StructType
+        | MapType
+        | NumericType
+        | EnumType
+    ):
         resolved = args[0]
         traits = args[2:]
-        base: DataType | TraitDataType | ArrayType | StructType | MapType | NumericType
+        base: (
+            DataType
+            | TraitDataType
+            | ArrayType
+            | StructType
+            | MapType
+            | NumericType
+            | EnumType
+        )
         if isinstance(resolved, StructType):
             base = resolved
         elif isinstance(resolved, ArrayType):
@@ -645,6 +670,8 @@ class ParseToObjects(Transformer):
         elif isinstance(resolved, NumericType):
             base = resolved
         elif isinstance(resolved, MapType):
+            base = resolved
+        elif isinstance(resolved, EnumType):
             base = resolved
         else:
             base = DataType(args[0].lower())
@@ -714,6 +741,9 @@ class ParseToObjects(Transformer):
 
     def SHORTHAND_MODIFIER(self, args) -> Modifier:
         return Modifier(args.value)
+
+    def DATASOURCE_PARTIAL(self, args) -> Modifier:
+        return Modifier.PARTIAL
 
     def PURPOSE(self, args) -> Purpose:
         return Purpose(args.value)
@@ -1081,8 +1111,12 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def datasource(self, meta: Meta, args):
         is_root = False
+        is_partial = False
         if isinstance(args[0], Token) and args[0].lower() == "root":
             is_root = True
+            args = args[1:]
+        if isinstance(args[0], Modifier) and args[0] == Modifier.PARTIAL:
+            is_partial = True
             args = args[1:]
         name = args[0]
         columns: List[ColumnAssignment] = args[1]
@@ -1131,6 +1165,11 @@ class ParseToObjects(Transformer):
 
         if address and (address.is_file and not address.exists):
             datasource_status = DatasourceState.UNPOPULATED
+        if is_partial:
+            for pc in columns:
+                if Modifier.PARTIAL not in pc.modifiers:
+                    pc.modifiers.append(Modifier.PARTIAL)
+
         datasource = Datasource(
             name=name,
             columns=columns,
@@ -1147,6 +1186,7 @@ class ParseToObjects(Transformer):
             freshness_by=freshness_by,
             freshness_probe=freshness_probe,
             is_root=is_root,
+            is_partial=is_partial,
         )
         if datasource.where:
             for x in datasource.where.concept_arguments:
@@ -2329,6 +2369,18 @@ class ParseToObjects(Transformer):
                 right=right,
                 operator=args[1],
             )
+        # Validate that literal values compared against enum-typed concepts are valid
+        for concept_side, value_side in ((left, right), (right, left)):
+            if isinstance(concept_side, ConceptRef) and isinstance(
+                concept_side.datatype, EnumType
+            ):
+                if (
+                    isinstance(value_side, (str, int))
+                    and value_side not in concept_side.datatype.values
+                ):
+                    raise InvalidSyntaxException(
+                        f"Value {value_side!r} is not a valid member of enum {concept_side.datatype} for '{concept_side.address}'"
+                    )
         return Comparison(left=left, right=right, operator=args[1])
 
     def between_comparison(self, args) -> Conditional:

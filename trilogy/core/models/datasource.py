@@ -219,6 +219,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     freshness_by: List[ConceptRef] = Field(default_factory=list)
     freshness_probe: Optional[str] = None
     is_root: bool = False
+    is_partial: bool = False
 
     @property
     def safe_address(self) -> str:
@@ -366,6 +367,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             partition_by=[c.with_namespace(namespace) for c in self.partition_by],
             freshness_by=[c.with_namespace(namespace) for c in self.freshness_by],
             is_root=self.is_root,
+            is_partial=self.is_partial,
         )
         return new
 

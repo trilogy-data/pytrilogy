@@ -9,7 +9,7 @@ from trilogy.authoring import (
     StructType,
     TraitDataType,
 )
-from trilogy.core.models.core import DataTyped, StructComponent
+from trilogy.core.models.core import DataTyped, EnumType, StructComponent
 
 
 def get_trilogy_syntax_reference() -> str:
@@ -52,6 +52,7 @@ def datatype_to_field_prompt(
         | StructType
         | MapType
         | NumericType
+        | EnumType
         | DataTyped
         | StructComponent
         | int
@@ -59,6 +60,8 @@ def datatype_to_field_prompt(
         | str
     ),
 ) -> str:
+    if isinstance(datatype, EnumType):
+        return f"enum<{', '.join(repr(v) for v in datatype.values)}>"
     if isinstance(datatype, TraitDataType):
         return f"{datatype_to_field_prompt(datatype.type)}({','.join(datatype.traits)})"
     if isinstance(datatype, ArrayType):

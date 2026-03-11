@@ -1,4 +1,5 @@
 from enum import Enum
+from pathlib import Path
 from typing import TYPE_CHECKING, Callable, List, Optional
 
 from trilogy.core.models.environment import Environment
@@ -139,6 +140,7 @@ class Dialects(Enum):
     def default_executor(
         self,
         environment: Optional["Environment"] = None,
+        working_path: Optional[Path] = None,
         hooks: List["BaseHook"] | None = None,
         conf: DialectConfig | None = None,
         rendering: Rendering | None = None,
@@ -146,10 +148,13 @@ class Dialects(Enum):
     ) -> "Executor":
         from trilogy import Executor
 
+        environment = environment or Environment()
+        if working_path:
+            environment.working_path = working_path
         if _engine_factory is not None:
             return Executor(
                 engine=self.default_engine(conf=conf, _engine_factory=_engine_factory),
-                environment=environment or Environment(),
+                environment=environment,
                 dialect=self,
                 rendering=rendering,
                 hooks=hooks,
@@ -158,7 +163,7 @@ class Dialects(Enum):
 
         return Executor(
             engine=self.default_engine(conf=conf),
-            environment=environment or Environment(),
+            environment=environment,
             dialect=self,
             rendering=rendering,
             hooks=hooks,

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import difflib
 from pathlib import Path
 from typing import Annotated, Dict, ItemsView, Never, ValuesView

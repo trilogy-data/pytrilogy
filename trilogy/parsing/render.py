@@ -270,9 +270,12 @@ class Renderer:
             non_partial = f"\ncomplete where {self.to_string(arg.non_partial_for)}"
         else:
             non_partial = ""
-        entry = "datasource"
+        modifiers = []
         if arg.is_root:
-            entry = "root datasource"
+            modifiers.append("root")
+        if arg.is_partial:
+            modifiers.append("partial")
+        entry = " ".join(modifiers + ["datasource"])
         base = f"""{entry} {arg.name} (
 {assignments}
 )
