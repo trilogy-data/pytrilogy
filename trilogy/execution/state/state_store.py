@@ -1,305 +1,22 @@
-import subprocess
-from dataclasses import dataclass, field
-from datetime import date, datetime
+from dataclasses import dataclass
 from typing import Callable
 
 from trilogy import Executor
 from trilogy.core.enums import Purpose
-from trilogy.core.models.author import ConceptRef
-from trilogy.core.models.build import Factory
-from trilogy.core.models.datasource import (
-    Address,
-    ColumnAssignment,
-    Datasource,
-    RawColumnExpr,
-    UpdateKey,
-    UpdateKeys,
-    UpdateKeyType,
-)
+from trilogy.core.models.datasource import UpdateKey, UpdateKeys, UpdateKeyType
 from trilogy.core.models.environment import Environment
-from trilogy.core.models.execute import CTE
-from trilogy.execution.state.exceptions import is_missing_source_error
-
-
-@dataclass
-class DatasourceWatermark:
-    keys: dict[str, UpdateKey]
-
-
-@dataclass
-class StaleAsset:
-    """Represents an asset that needs to be refreshed."""
-
-    datasource_id: str
-    reason: str
-    filters: UpdateKeys = field(default_factory=UpdateKeys)
-
-
-def _compare_watermark_values(
-    a: str | int | float | date, b: str | int | float | date
-) -> int:
-    """Compare two watermark values, returning -1, 0, or 1.
-
-    Handles type mismatches by comparing string representations.
-    """
-    if type(a) is type(b):
-        if isinstance(a, datetime):
-            a_aware = a.tzinfo is not None
-            b_aware = b.tzinfo is not None  # type: ignore[union-attr]
-            if a_aware != b_aware:
-                raise TypeError(
-                    f"offset-naive and offset-aware datetimes: {a!r} vs {b!r}"
-                )
-        if a < b:  # type: ignore[operator]
-            return -1
-        elif a > b:  # type: ignore[operator]
-            return 1
-        return 0
-    # Different types: compare as strings
-    sa, sb = str(a), str(b)
-    if sa < sb:
-        return -1
-    elif sa > sb:
-        return 1
-    return 0
-
-
-def get_last_update_time_watermarks(
-    datasource: Datasource, executor: Executor
-) -> DatasourceWatermark:
-    update_time = executor.generator.get_table_last_modified(
-        executor, datasource.safe_address
-    )
-    return DatasourceWatermark(
-        keys={
-            "update_time": UpdateKey(
-                concept_name="update_time",
-                type=UpdateKeyType.UPDATE_TIME,
-                value=update_time,
-            )
-        }
-    )
-
-
-def get_unique_key_hash_watermarks(
-    datasource: Datasource, executor: Executor
-) -> DatasourceWatermark:
-    key_columns: list[ColumnAssignment] = []
-    for col_assignment in datasource.columns:
-        concrete = executor.environment.concepts[col_assignment.concept.address]
-        if concrete.purpose == Purpose.KEY:
-            key_columns.append(col_assignment)
-
-    if not key_columns:
-        return DatasourceWatermark(keys={})
-
-    if isinstance(datasource.address, Address):
-        table_ref = executor.generator.render_source(datasource.address)
-    else:
-        table_ref = datasource.safe_address
-
-    dialect = executor.generator
-    watermarks = {}
-    for col in key_columns:
-        if isinstance(col.alias, str):
-            column_name = col.alias
-        elif isinstance(col.alias, RawColumnExpr):
-            column_name = col.alias.text
-        else:
-            # Function - use rendered expression
-            column_name = str(col.alias)
-        hash_expr = dialect.hash_column_value(column_name)
-        checksum_expr = dialect.aggregate_checksum(hash_expr)
-        query = f"SELECT {checksum_expr} as checksum FROM {table_ref}"
-
-        try:
-            result = executor.execute_raw_sql(query).fetchone()
-            checksum_value = result[0] if result else None
-        except Exception as e:
-            if is_missing_source_error(e, dialect):
-                checksum_value = None
-                executor.connection.rollback()
-            else:
-                raise
-
-        watermarks[col.concept.address] = UpdateKey(
-            concept_name=col.concept.address,
-            type=UpdateKeyType.KEY_HASH,
-            value=checksum_value,
-        )
-
-    return DatasourceWatermark(keys=watermarks)
-
-
-def get_incremental_key_watermarks(
-    datasource: Datasource, executor: Executor
-) -> DatasourceWatermark:
-    if not datasource.incremental_by:
-        return DatasourceWatermark(keys={})
-
-    if isinstance(datasource.address, Address):
-        table_ref = executor.generator.render_source(datasource.address)
-    else:
-        table_ref = datasource.safe_address
-
-    watermarks = {}
-    factory = Factory(environment=executor.environment)
-
-    dialect = executor.generator
-    for concept_ref in datasource.incremental_by:
-        concept = executor.environment.concepts[concept_ref.address]
-        build_concept = factory.build(concept)
-        build_datasource = factory.build(datasource)
-        cte: CTE = CTE.from_datasource(build_datasource)
-        # Check if concept is in output_concepts by comparing addresses
-        output_addresses = {c.address for c in datasource.output_concepts}
-        if concept.address in output_addresses:
-            query = f"SELECT MAX({dialect.render_concept_sql(build_concept, cte=cte, alias=False)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
-        elif build_concept.lineage is None:
-            raise ValueError(
-                f"Concept '{concept.address}' is set as a freshness field but does not"
-                f" exist on datasource '{datasource.identifier}' and cannot be derived"
-                f" from other datasource fields. Add it to the datasource column list"
-                f" or change the freshness field."
-            )
-        else:
-            query = f"SELECT MAX({dialect.render_expr(build_concept.lineage, cte=cte)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
-
-        try:
-            result = executor.execute_raw_sql(query).fetchone()
-            max_value = result[0] if result else None
-        except Exception as e:
-            if is_missing_source_error(e, dialect):
-                max_value = None
-                executor.connection.rollback()
-            else:
-                raise
-
-        watermarks[concept.name] = UpdateKey(
-            concept_name=concept.name,
-            type=UpdateKeyType.INCREMENTAL_KEY,
-            value=max_value,
-        )
-
-    return DatasourceWatermark(keys=watermarks)
-
-
-def run_freshness_probe(probe_path: str) -> bool:
-    """Run a probe script to check datasource freshness.
-
-    The script should exit 0 and print a truthy value (true/1/yes) if up-to-date,
-    or a falsy value (false/0/no) if stale. A non-zero exit code raises RuntimeError.
-    """
-    result = subprocess.run(
-        ["uv", "run", "--no-project", "--quiet", probe_path],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"Freshness probe '{probe_path}' failed (exit {result.returncode}): {result.stderr.strip()}"
-        )
-    return result.stdout.strip().lower() in ("true", "1", "yes")
-
-
-def get_freshness_watermarks(
-    datasource: Datasource, executor: Executor
-) -> DatasourceWatermark:
-    if not datasource.freshness_by:
-        return DatasourceWatermark(keys={})
-
-    if isinstance(datasource.address, Address):
-        table_ref = executor.generator.render_source(datasource.address)
-    else:
-        table_ref = datasource.safe_address
-
-    watermarks = {}
-    factory = Factory(environment=executor.environment)
-
-    dialect = executor.generator
-    for concept_ref in datasource.freshness_by:
-        concept = executor.environment.concepts[concept_ref.address]
-        build_concept = factory.build(concept)
-        build_datasource = factory.build(datasource)
-        cte: CTE = CTE.from_datasource(build_datasource)
-        output_addresses = {c.address for c in datasource.output_concepts}
-        if concept.address in output_addresses:
-            query = f"SELECT MAX({dialect.render_concept_sql(build_concept, cte=cte, alias=False)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
-        elif build_concept.lineage is None:
-            raise ValueError(
-                f"Concept '{concept.address}' is set as a freshness field but does not"
-                f" exist on datasource '{datasource.identifier}' and cannot be derived"
-                f" from other datasource fields. Add it to the datasource column list"
-                f" or change the freshness field."
-            )
-        else:
-            query = f"SELECT MAX({dialect.render_expr(build_concept.lineage, cte=cte)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
-
-        try:
-            result = executor.execute_raw_sql(query).fetchone()
-            max_value = result[0] if result else None
-        except Exception as e:
-            if is_missing_source_error(e, dialect):
-                max_value = None
-                executor.connection.rollback()
-            else:
-                raise
-
-        watermarks[concept.name] = UpdateKey(
-            concept_name=concept.name,
-            type=UpdateKeyType.UPDATE_TIME,
-            value=max_value,
-        )
-
-    return DatasourceWatermark(keys=watermarks)
-
-
-def get_concept_max_watermarks(
-    datasource: Datasource,
-    concept_refs: list[ConceptRef],
-    executor: Executor,
-) -> DatasourceWatermark:
-    """Fetch MAX watermarks for the given concept refs from a root datasource.
-
-    Used to auto-watermark roots when non-root datasources reference those concepts
-    in their freshness_by/incremental_by without requiring explicit root declarations.
-    """
-    if isinstance(datasource.address, Address):
-        table_ref = executor.generator.render_source(datasource.address)
-    else:
-        table_ref = datasource.safe_address
-
-    output_addresses = {c.address for c in datasource.output_concepts}
-    factory = Factory(environment=executor.environment)
-    dialect = executor.generator
-    watermarks = {}
-
-    for concept_ref in concept_refs:
-        if concept_ref.address not in output_addresses:
-            continue
-        concept = executor.environment.concepts[concept_ref.address]
-        build_concept = factory.build(concept)
-        build_datasource = factory.build(datasource)
-        cte: CTE = CTE.from_datasource(build_datasource)
-        query = f"SELECT MAX({dialect.render_concept_sql(build_concept, cte=cte, alias=False)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
-
-        try:
-            result = executor.execute_raw_sql(query).fetchone()
-            max_value = result[0] if result else None
-        except Exception as e:
-            if is_missing_source_error(e, dialect):
-                max_value = None
-                executor.connection.rollback()
-            else:
-                raise
-
-        watermarks[concept.name] = UpdateKey(
-            concept_name=concept.name,
-            type=UpdateKeyType.INCREMENTAL_KEY,
-            value=max_value,
-        )
-
-    return DatasourceWatermark(keys=watermarks)
+from trilogy.execution.state.watermarks import (
+    DatasourceWatermark,
+    StaleAsset,
+    _compare_watermark_values,
+    get_concept_max_watermark_abstract,
+    get_concept_max_watermarks,
+    get_freshness_watermarks,
+    get_incremental_key_watermarks,
+    get_last_update_time_watermarks,
+    get_unique_key_hash_watermarks,
+    run_freshness_probe,
+)
 
 
 class BaseStateStore:
@@ -307,9 +24,7 @@ class BaseStateStore:
     def __init__(self) -> None:
         self.watermarks: dict[str, DatasourceWatermark] = {}
 
-    def watermark_asset(
-        self, datasource: Datasource, executor: Executor
-    ) -> DatasourceWatermark:
+    def watermark_asset(self, datasource, executor: Executor) -> DatasourceWatermark:
         if datasource.freshness_by:
             watermarks = get_freshness_watermarks(datasource, executor)
         elif datasource.incremental_by:
@@ -329,12 +44,10 @@ class BaseStateStore:
         self.watermarks[datasource.identifier] = watermarks
         return watermarks
 
-    def get_datasource_watermarks(
-        self, datasource: Datasource
-    ) -> DatasourceWatermark | None:
+    def get_datasource_watermarks(self, datasource) -> DatasourceWatermark | None:
         return self.watermarks.get(datasource.identifier)
 
-    def check_datasource_state(self, datasource: Datasource) -> bool:
+    def check_datasource_state(self, datasource) -> bool:
         return datasource.identifier in self.watermarks
 
     def watermark_all_assets(
@@ -346,8 +59,6 @@ class BaseStateStore:
         """Watermark all datasources in the environment."""
         skip_datasources = skip_datasources or set()
 
-        # Collect concepts that non-root datasources need for staleness detection.
-        # Resolve through env.concepts to get canonical namespaced addresses.
         needed_concepts: set[str] = set()
         for ds in env.datasources.values():
             if not ds.is_root and ds.identifier not in skip_datasources:
@@ -363,7 +74,6 @@ class BaseStateStore:
                 if ds.freshness_by or ds.incremental_by:
                     self.watermark_asset(ds, executor)
                 elif needed_concepts:
-                    # Auto-watermark this root for any concepts consumers need
                     target_refs = [
                         ref
                         for ref in ds.output_concepts
@@ -407,10 +117,8 @@ class BaseStateStore:
         skip_datasources = skip_datasources or set()
         stale: list[StaleAsset] = []
 
-        # First pass: watermark all assets to get current state (except skipped ones)
         self.watermark_all_assets(env, executor, skip_datasources=skip_datasources)
 
-        # Check probe-based freshness (independent of watermark comparison)
         for ds in env.datasources.values():
             if (
                 ds.freshness_probe
@@ -426,7 +134,6 @@ class BaseStateStore:
                         )
                     )
 
-        # Build map of concept -> max watermark across root assets
         concept_max_watermarks: dict[str, UpdateKey] = {}
         for ds_id, watermark in self.watermarks.items():
             if ds_id in root_assets:
@@ -453,7 +160,32 @@ class BaseStateStore:
                             if is_newer:
                                 concept_max_watermarks[key] = val
 
-        # Second pass: check non-root assets against max watermarks
+        # For derived concepts (e.g. `auto x <- greatest(a, b)`) that don't appear
+        # directly on any root datasource, query their expected value using only roots.
+        missing_derived: dict[str, str] = {}  # concept name -> address
+        for ds_id, watermark in self.watermarks.items():
+            if ds_id in root_assets:
+                continue
+            for key, val in watermark.keys.items():
+                if (
+                    val.type
+                    in (UpdateKeyType.INCREMENTAL_KEY, UpdateKeyType.UPDATE_TIME)
+                    and key not in concept_max_watermarks
+                    and key not in missing_derived
+                ):
+                    concept = next(
+                        (c for c in env.concepts.values() if c.name == key), None
+                    )
+                    if concept is not None and concept.lineage is not None:
+                        missing_derived[key] = concept.address
+
+        for key, concept_address in missing_derived.items():
+            wm = get_concept_max_watermark_abstract(
+                concept_address, executor, root_assets
+            )
+            if wm.value is not None:
+                concept_max_watermarks[key] = wm
+
         for ds_id, watermark in self.watermarks.items():
             if ds_id in root_assets:
                 continue
@@ -508,9 +240,6 @@ class BaseStateStore:
                             )
                             break
 
-                elif val.type == UpdateKeyType.KEY_HASH:
-                    pass
-
         return stale
 
 
@@ -552,7 +281,6 @@ def refresh_stale_assets(
     state_store = BaseStateStore()
     force_sources = force_sources or set()
 
-    # Build forced assets list (skip watermarking for these)
     forced_assets: list[StaleAsset] = []
     for ds in executor.environment.datasources.values():
         if ds.identifier in force_sources:
@@ -571,13 +299,11 @@ def refresh_stale_assets(
     )
     all_assets = len(executor.environment.datasources)
 
-    # Combine forced and stale assets
     all_refresh_assets = forced_assets + stale_assets
 
     if on_stale_found:
         on_stale_found(len(all_refresh_assets), root_assets, all_assets)
 
-    # If approval callback provided, ask before proceeding
     if on_approval and all_refresh_assets:
         if not on_approval(all_refresh_assets, state_store.watermarks):
             return RefreshResult(
@@ -588,14 +314,9 @@ def refresh_stale_assets(
             )
 
     refreshed = 0
-    # Track which stale assets haven't been refreshed yet so the query planner
-    # can't route through them (e.g. a stale merged datasource shouldn't be used
-    # to populate a stale dependent datasource).
     remaining_stale = {a.datasource_id for a in all_refresh_assets}
     for asset in all_refresh_assets:
         remaining_stale.discard(asset.datasource_id)
-        # Temporarily hide other still-stale datasources from the environment
-        # so the planner is forced to use root/fresh sources instead.
         hidden = {
             ds_id: executor.environment.datasources.pop(ds_id)
             for ds_id in remaining_stale

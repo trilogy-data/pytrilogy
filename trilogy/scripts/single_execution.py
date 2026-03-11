@@ -201,7 +201,7 @@ def execute_refresh_mode(
     print_watermarks: bool = False,
 ) -> RefreshResult:
     """Execute refresh mode to update stale assets."""
-    from trilogy.execution.state.state_store import (
+    from trilogy.execution.state import (
         DatasourceWatermark,
         refresh_stale_assets,
     )

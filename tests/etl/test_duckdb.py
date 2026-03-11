@@ -163,7 +163,7 @@ def test_duckdb_gcs_refresh():
 
     from trilogy.core.models.environment import Environment
     from trilogy.dialect.config import DuckDBConfig
-    from trilogy.execution.state.state_store import refresh_stale_assets
+    from trilogy.execution.state import refresh_stale_assets
 
     load_secret("GOOGLE_HMAC_KEY")
     load_secret("GOOGLE_HMAC_SECRET")

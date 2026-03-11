@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from trilogy import Dialects, Environment
-from trilogy.execution.state.state_store import BaseStateStore
+from trilogy.execution.state import BaseStateStore
 from trilogy.hooks import DebuggingHook
 
 if __name__ == "__main__":

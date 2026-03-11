@@ -6,9 +6,9 @@ from sqlalchemy.exc import ProgrammingError
 
 from trilogy import Dialects, Executor
 from trilogy.core.models.datasource import UpdateKey, UpdateKeys, UpdateKeyType
+from trilogy.execution.state import BaseStateStore
 from trilogy.execution.state.exceptions import is_missing_source_error
-from trilogy.execution.state.state_store import (
-    BaseStateStore,
+from trilogy.execution.state.watermarks import (
     _compare_watermark_values,
     get_concept_max_watermarks,
     get_freshness_watermarks,
@@ -1357,7 +1357,7 @@ def test_get_stale_assets_timezone_mismatch_incremental():
     from datetime import datetime, timezone
     from unittest.mock import MagicMock, patch
 
-    from trilogy.execution.state.state_store import DatasourceWatermark
+    from trilogy.execution.state.watermarks import DatasourceWatermark
 
     state_store = BaseStateStore()
     state_store.watermarks = {
@@ -1395,3 +1395,91 @@ def test_get_stale_assets_timezone_mismatch_incremental():
     msg = str(exc_info.value)
     assert "synced_at" in msg
     assert "tz_target" in msg
+
+
+# --- derived concept watermark tests ---
+
+
+_DERIVED_TS_SETUP = """
+key drv_id int;
+property drv_id.ts_a datetime;
+property drv_id.ts_b datetime;
+
+auto drv_max_ts <- greatest(ts_a, ts_b);
+
+root datasource drv_root (
+    drv_id: drv_id,
+    ts_a: ts_a,
+    ts_b: ts_b
+)
+grain (drv_id)
+query '''
+SELECT 1 as drv_id,
+       TIMESTAMP '2024-01-20 00:00:00' as ts_a,
+       TIMESTAMP '2024-01-15 00:00:00' as ts_b
+''';
+
+datasource drv_target (
+    drv_id: drv_id,
+    drv_max_ts: drv_max_ts
+)
+grain (drv_id)
+address drv_target_table
+freshness by drv_max_ts;
+
+CREATE IF NOT EXISTS DATASOURCE drv_target;
+"""
+
+
+def test_derived_freshness_missing_table():
+    """Derived freshness concept: empty target is stale (compared against root-computed value)."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_DERIVED_TS_SETUP)
+
+    state_store = BaseStateStore()
+    stale = state_store.get_stale_assets(executor.environment, executor)
+
+    assert len(stale) == 1
+    assert stale[0].datasource_id == "drv_target"
+    assert "drv_max_ts" in stale[0].reason
+
+
+def test_derived_freshness_stale():
+    """Derived freshness concept: target behind roots -> stale."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_DERIVED_TS_SETUP)
+    executor.execute_text(
+        """
+        RAW_SQL('''
+        INSERT INTO drv_target_table
+        VALUES (1, TIMESTAMP '2024-01-10 00:00:00')
+        ''');
+        """
+    )
+
+    state_store = BaseStateStore()
+    stale = state_store.get_stale_assets(executor.environment, executor)
+
+    assert len(stale) == 1
+    assert stale[0].datasource_id == "drv_target"
+    assert "behind" in stale[0].reason
+    assert "drv_max_ts" in stale[0].reason
+
+
+def test_derived_freshness_up_to_date():
+    """Derived freshness concept: target matches roots -> not stale."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_DERIVED_TS_SETUP)
+    executor.execute_text(
+        """
+        RAW_SQL('''
+        INSERT INTO drv_target_table
+        VALUES (1, TIMESTAMP '2024-01-20 00:00:00')
+        ''');
+        """
+    )
+
+    state_store = BaseStateStore()
+    stale = state_store.get_stale_assets(executor.environment, executor)
+
+    assert len(stale) == 0

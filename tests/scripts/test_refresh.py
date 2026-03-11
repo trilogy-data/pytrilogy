@@ -4,7 +4,7 @@ import pytest
 
 from trilogy import Dialects
 from trilogy.core.models.datasource import UpdateKey, UpdateKeyType
-from trilogy.execution.state.state_store import (
+from trilogy.execution.state import (
     DatasourceWatermark,
     StaleAsset,
     refresh_stale_assets,
