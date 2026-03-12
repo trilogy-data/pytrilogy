@@ -27,7 +27,7 @@ from trilogy.constants import (
 from trilogy.core.enums import DatePart, Modifier, Ordering
 
 
-class DataTyped(ABC):
+class DataTyped:
 
     # this is not abstract
     # only because when it's a pydantic property, it fails validation
@@ -113,10 +113,6 @@ class TraitDataType:
     type: CONCRETE_TYPES
     traits: list[str] = field(default_factory=list)
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any):
-        return core_schema.any_schema()
-
     def __hash__(self):
         return hash(self.type)
 
@@ -146,10 +142,6 @@ class NumericType:
     precision: int = 20
     scale: int = 5
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any):
-        return core_schema.any_schema()
-
     def __str__(self) -> str:
         return f"Numeric({self.precision},{self.scale})"
 
@@ -169,10 +161,6 @@ class NumericType:
 class EnumType:
     type: DataType
     values: list[Any]
-
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any):
-        return core_schema.any_schema()
 
     def __hash__(self):
         return hash((self.type, tuple(self.values)))
@@ -203,8 +191,8 @@ class ArrayType:
     type: TYPEDEF_TYPES
 
     @classmethod
-    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any):
-        return core_schema.any_schema()
+    def __get_pydantic_core_schema__(cls, _source_type: Any, _handler: Any):
+        return core_schema.is_instance_schema(cls)
 
     def __hash__(self):
         return hash((DataType.ARRAY, self.type))
@@ -235,8 +223,8 @@ class MapType:
     value_type: TYPEDEF_TYPES
 
     @classmethod
-    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any):
-        return core_schema.any_schema()
+    def __get_pydantic_core_schema__(cls, _source_type: Any, _handler: Any):
+        return core_schema.is_instance_schema(cls)
 
     def __hash__(self):
         return hash((DataType.MAP, self.key_type, self.value_type))
@@ -273,8 +261,8 @@ class StructComponent:
     modifiers: list[Modifier] = field(default_factory=list)
 
     @classmethod
-    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any):
-        return core_schema.any_schema()
+    def __get_pydantic_core_schema__(cls, _source_type: Any, _handler: Any):
+        return core_schema.is_instance_schema(cls)
 
 
 @dataclass
@@ -283,8 +271,8 @@ class StructType:
     fields_map: Dict[str, DataTyped | int | float | str | StructComponent]
 
     @classmethod
-    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any):
-        return core_schema.any_schema()
+    def __get_pydantic_core_schema__(cls, _source_type: Any, _handler: Any):
+        return core_schema.is_instance_schema(cls)
 
     def __repr__(self):
         return "struct<{}>".format(

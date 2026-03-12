@@ -40,12 +40,12 @@ from trilogy.core.models.author import (
 from trilogy.core.models.core import (
     ArrayType,
     DataType,
+    EnumType,
     ListWrapper,
     MapType,
     NumericType,
     StructType,
     TraitDataType,
-    EnumType,
 )
 from trilogy.core.models.datasource import Address, Datasource, DatasourceMetadata
 from trilogy.core.models.environment import DictImportResolver, Environment

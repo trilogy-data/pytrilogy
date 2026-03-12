@@ -5,9 +5,9 @@ from trilogy.authoring import (
     Comment,
     ConceptDeclarationStatement,
     Datasource,
+    DataType,
     DictImportResolver,
     Renderer,
-    DataType,
 )
 from trilogy.core.enums import Purpose
 from trilogy.core.models.author import Concept, Grain
@@ -58,6 +58,7 @@ def test_apply_foreign_key_references():
         purpose=Purpose.PROPERTY,
         keys={"item_sk", "ticket_number"},
     )
+    assert customer_sk_concept.datatype == DataType.INTEGER
     item_sk_concept = Concept(
         name="item_sk",
         datatype="int",

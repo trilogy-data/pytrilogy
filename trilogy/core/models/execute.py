@@ -444,11 +444,13 @@ class CTE:
     def sourced_concepts(self) -> List[BuildConcept]:
         return [c for c in self.output_columns if c.address in self.source_map]
 
+
 @dataclass
 class BaseConceptPair:
     left: BuildConcept
     right: BuildConcept
     existing_datasource: Union[BuildDatasource, "QueryDatasource"]
+
 
 @dataclass
 class ConceptPair(BaseConceptPair):
@@ -475,6 +477,7 @@ class CTEConceptPair(BaseConceptPair):
     @property
     def is_nullable(self):
         return Modifier.NULLABLE in self.modifiers
+
 
 @dataclass
 class InstantiatedUnnestJoin:
