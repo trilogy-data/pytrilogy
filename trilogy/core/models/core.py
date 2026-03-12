@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC
 from collections import UserDict, UserList
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
@@ -19,11 +19,6 @@ from typing import (
     get_args,
 )
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    field_validator,
-)
 from pydantic_core import core_schema
 
 from trilogy.constants import (
@@ -113,9 +108,14 @@ class DataType(Enum):
         return self.name
 
 
-class TraitDataType(BaseModel):
+@dataclass
+class TraitDataType:
     type: CONCRETE_TYPES
-    traits: list[str]
+    traits: list[str] = field(default_factory=list)
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any):
+        return core_schema.any_schema()
 
     def __hash__(self):
         return hash(self.type)
@@ -146,6 +146,10 @@ class NumericType:
     precision: int = 20
     scale: int = 5
 
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any):
+        return core_schema.any_schema()
+
     def __str__(self) -> str:
         return f"Numeric({self.precision},{self.scale})"
 
@@ -165,6 +169,10 @@ class NumericType:
 class EnumType:
     type: DataType
     values: list[Any]
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any):
+        return core_schema.any_schema()
 
     def __hash__(self):
         return hash((self.type, tuple(self.values)))
@@ -190,13 +198,13 @@ class EnumType:
         return self.type.value
 
 
-class ArrayType(BaseModel):
-    model_config = ConfigDict(frozen=True)
+@dataclass(frozen=True)
+class ArrayType:
     type: TYPEDEF_TYPES
 
-    @field_validator("type", mode="plain")
-    def validate_type(cls, v):
-        return v
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any):
+        return core_schema.any_schema()
 
     def __hash__(self):
         return hash((DataType.ARRAY, self.type))
@@ -221,17 +229,14 @@ class ArrayType(BaseModel):
         return self.type
 
 
-class MapType(BaseModel):
+@dataclass
+class MapType:
     key_type: TYPEDEF_TYPES
     value_type: TYPEDEF_TYPES
 
-    @field_validator("value_type", mode="plain")
-    def validate_type(cls, v):
-        return v
-
-    @field_validator("key_type", mode="plain")
-    def validate_key_type(cls, v):
-        return v
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any):
+        return core_schema.any_schema()
 
     def __hash__(self):
         return hash((DataType.MAP, self.key_type, self.value_type))
@@ -261,42 +266,37 @@ class MapType(BaseModel):
         return self.key_type
 
 
-class StructComponent(BaseModel):
+@dataclass
+class StructComponent:
     name: str
     type: TYPEDEF_TYPES
-    modifiers: list[Modifier] = []
+    modifiers: list[Modifier] = field(default_factory=list)
 
-    @field_validator("type", mode="plain")
-    def validate_type(cls, v):
-        return v
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any):
+        return core_schema.any_schema()
 
 
-class StructType(BaseModel):
+@dataclass
+class StructType:
     fields: Sequence[StructComponent | TYPEDEF_TYPES]
     fields_map: Dict[str, DataTyped | int | float | str | StructComponent]
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any):
+        return core_schema.any_schema()
 
     def __repr__(self):
         return "struct<{}>".format(
             ", ".join(
-                f"{field.name}:{field.type.name}"
-                for field in self.fields
-                if isinstance(field, StructComponent)
+                f"{f.name}:{f.type.name}"
+                for f in self.fields
+                if isinstance(f, StructComponent)
             )
         )
 
     def __str__(self) -> str:
         return self.__repr__()
-
-    @field_validator("fields", mode="plain")
-    def validate_type(cls, v):
-        final = []
-        for field in v:
-            final.append(field)
-        return final
-
-    @field_validator("fields_map", mode="plain")
-    def validate_fields_map(cls, v):
-        return v
 
     @property
     def data_type(self):
@@ -310,13 +310,13 @@ class StructType(BaseModel):
     def field_types(self) -> Dict[str, CONCRETE_TYPES]:
         out: Dict[str, CONCRETE_TYPES] = {}
         keys = list(self.fields_map.keys())
-        for idx, field in enumerate(self.fields):
-            if isinstance(field, StructComponent):
-                out[field.name] = arg_to_datatype(field.type)
-            elif isinstance(field, DataTyped):
-                out[keys[idx]] = field.output_datatype
+        for idx, f in enumerate(self.fields):
+            if isinstance(f, StructComponent):
+                out[f.name] = arg_to_datatype(f.type)
+            elif isinstance(f, DataTyped):
+                out[keys[idx]] = f.output_datatype
             else:
-                out[keys[idx]] = field
+                out[keys[idx]] = f
         return out
 
     def __hash__(self):

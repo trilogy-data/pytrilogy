@@ -7,6 +7,7 @@ from trilogy.authoring import (
     Datasource,
     DictImportResolver,
     Renderer,
+    DataType,
 )
 from trilogy.core.enums import Purpose
 from trilogy.core.models.author import Concept, Grain

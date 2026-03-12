@@ -3,7 +3,7 @@ from __future__ import annotations
 import difflib
 import os
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -67,19 +67,24 @@ class Import:
     )
 
 
-class BaseImportResolver(BaseModel):
+@dataclass
+class BaseImportResolver:
     pass
 
 
+@dataclass
 class FileSystemImportResolver(BaseImportResolver):
     pass
 
 
+@dataclass
 class DictImportResolver(BaseImportResolver):
-    content: Dict[str, str]
+    content: Dict[str, str] = field(default_factory=dict)
 
 
 class EnvironmentConfig(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     allow_duplicate_declaration: bool = True
     import_resolver: BaseImportResolver = Field(
         default_factory=FileSystemImportResolver

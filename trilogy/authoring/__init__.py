@@ -45,6 +45,7 @@ from trilogy.core.models.core import (
     NumericType,
     StructType,
     TraitDataType,
+    EnumType,
 )
 from trilogy.core.models.datasource import Address, Datasource, DatasourceMetadata
 from trilogy.core.models.environment import DictImportResolver, Environment
@@ -145,4 +146,5 @@ __all__ = [
     "STATEMENT_TYPES",
     "DictImportResolver",
     "Renderer",
+    "EnumType",
 ]
