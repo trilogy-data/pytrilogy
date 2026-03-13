@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 from abc import ABC
+from dataclasses import dataclass
+from dataclasses import field as dc_field
 from datetime import date, datetime
 from functools import cached_property
 from typing import (
@@ -2725,6 +2727,33 @@ class CustomFunctionFactory:
         ]
         return self
 
+    def to_dict(self) -> dict:
+        from pydantic import TypeAdapter
+
+        expr_adapter: TypeAdapter[Expr] = TypeAdapter(Expr)
+        return {
+            "name": self.name,
+            "namespace": self.namespace,
+            "function": expr_adapter.dump_python(self.function, mode="json"),
+            "function_arguments": [
+                a.model_dump(mode="json") for a in self.function_arguments
+            ],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "CustomFunctionFactory":
+        from pydantic import TypeAdapter
+
+        expr_adapter: TypeAdapter[Expr] = TypeAdapter(Expr)
+        return cls(
+            name=data["name"],
+            namespace=data["namespace"],
+            function=expr_adapter.validate_python(data["function"]),
+            function_arguments=[
+                ArgBinding.model_validate(a) for a in data["function_arguments"]
+            ],
+        )
+
     def __call__(self, *creation_args: ArgBinding | Expr):
         nout = (
             self.function.model_copy(deep=True)
@@ -2775,7 +2804,8 @@ class CustomFunctionFactory:
         return nout
 
 
-class Metadata(BaseModel):
+@dataclass
+class Metadata:
     """Metadata container object.
     TODO: support arbitrary tags"""
 
@@ -2784,7 +2814,7 @@ class Metadata(BaseModel):
     column: Optional[int] = None
     end_line: Optional[int] = None
     end_column: Optional[int] = None
-    concept_source: ConceptSource = ConceptSource.MANUAL
+    concept_source: ConceptSource = dc_field(default=ConceptSource.MANUAL)
 
 
 class Window(BaseModel):
