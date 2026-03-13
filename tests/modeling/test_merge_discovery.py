@@ -177,12 +177,12 @@ merge p2.lastname  into p1.lastname;
     assert base.concepts["p1.firstname"].pseudonyms == {"p2.firstname"}
     assert base.alias_origin_lookup["p2.firstname"].pseudonyms == {"p1.firstname"}
     # assert not merge
-    base_size = base.model_dump_json(exclude={"materialized_concepts"})
+    base_size = base.to_dict()
 
     for x in range(0, 10):
         merge = base.merge_concept(c1, c2, [], force=True)
         assert base.concepts["p1.firstname"].pseudonyms == {"p2.firstname"}
         assert base.alias_origin_lookup["p2.firstname"].pseudonyms == {"p1.firstname"}
-        new_size = base.model_dump_json(exclude={"materialized_concepts"})
+        new_size = base.to_dict()
 
         assert len(base_size) == len(new_size)

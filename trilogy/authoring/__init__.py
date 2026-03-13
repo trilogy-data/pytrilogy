@@ -40,6 +40,7 @@ from trilogy.core.models.author import (
 from trilogy.core.models.core import (
     ArrayType,
     DataType,
+    EnumType,
     ListWrapper,
     MapType,
     NumericType,
@@ -145,4 +146,5 @@ __all__ = [
     "STATEMENT_TYPES",
     "DictImportResolver",
     "Renderer",
+    "EnumType",
 ]

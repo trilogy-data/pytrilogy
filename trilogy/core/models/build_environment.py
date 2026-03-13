@@ -1,9 +1,7 @@
 import difflib
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Annotated, Dict, ItemsView, Never, ValuesView
-
-from pydantic import BaseModel, ConfigDict, Field
-from pydantic.functional_validators import PlainValidator
+from typing import Dict, ItemsView, Never, ValuesView
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.exceptions import (
@@ -84,44 +82,25 @@ class BuildEnvironmentDatasourceDict(dict):
         return super().items()
 
 
-def validate_concepts(v) -> BuildEnvironmentConceptDict:
-    if isinstance(v, BuildEnvironmentConceptDict):
-        return v
-    elif isinstance(v, dict):
-        return BuildEnvironmentConceptDict(**{x: y for x, y in v.items()})
-    raise ValueError
-
-
-def validate_datasources(v) -> BuildEnvironmentDatasourceDict:
-    if isinstance(v, BuildEnvironmentDatasourceDict):
-        return v
-    elif isinstance(v, dict):
-        return BuildEnvironmentDatasourceDict(**{x: y for x, y in v.items()})
-    raise ValueError
-
-
-class BuildEnvironment(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True, strict=False)
-
-    concepts: Annotated[
-        BuildEnvironmentConceptDict, PlainValidator(validate_concepts)
-    ] = Field(default_factory=BuildEnvironmentConceptDict)
-
-    canonical_concepts: Annotated[
-        BuildEnvironmentConceptDict, PlainValidator(validate_concepts)
-    ] = Field(default_factory=BuildEnvironmentConceptDict)
-
-    datasources: Annotated[
-        BuildEnvironmentDatasourceDict, PlainValidator(validate_datasources)
-    ] = Field(default_factory=BuildEnvironmentDatasourceDict)
-    functions: Dict[str, BuildFunction] = Field(default_factory=dict)
-    data_types: Dict[str, DataType] = Field(default_factory=dict)
+@dataclass
+class BuildEnvironment:
+    concepts: BuildEnvironmentConceptDict = field(
+        default_factory=BuildEnvironmentConceptDict
+    )
+    canonical_concepts: BuildEnvironmentConceptDict = field(
+        default_factory=BuildEnvironmentConceptDict
+    )
+    datasources: BuildEnvironmentDatasourceDict = field(
+        default_factory=BuildEnvironmentDatasourceDict
+    )
+    functions: Dict[str, BuildFunction] = field(default_factory=dict)
+    data_types: Dict[str, DataType] = field(default_factory=dict)
     namespace: str = DEFAULT_NAMESPACE
-    cte_name_map: Dict[str, str] = Field(default_factory=dict)
-    materialized_concepts: set[str] = Field(default_factory=set)
-    materialized_canonical_concepts: set[str] = Field(default_factory=set)
-    non_partial_materialized_canonical_concepts: set[str] = Field(default_factory=set)
-    alias_origin_lookup: Dict[str, BuildConcept] = Field(default_factory=dict)
+    cte_name_map: Dict[str, str] = field(default_factory=dict)
+    materialized_concepts: set[str] = field(default_factory=set)
+    materialized_canonical_concepts: set[str] = field(default_factory=set)
+    non_partial_materialized_canonical_concepts: set[str] = field(default_factory=set)
+    alias_origin_lookup: Dict[str, BuildConcept] = field(default_factory=dict)
 
     def gen_concept_list_caches(self) -> None:
         concrete_concepts: list[BuildConcept] = []
@@ -158,6 +137,3 @@ class BuildEnvironment(BaseModel):
                 self.non_partial_materialized_canonical_concepts.add(
                     c.canonical_address
                 )
-
-
-BuildEnvironment.model_rebuild()

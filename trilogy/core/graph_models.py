@@ -2,7 +2,7 @@ from enum import Enum
 from logging import Logger
 from typing import Union
 
-import networkx as nx
+from networkx import DiGraph
 
 from trilogy.core.models.build import (
     BuildConcept,
@@ -19,7 +19,7 @@ class SearchCriteria(Enum):
 
 
 def get_graph_exact_match(
-    g: Union[nx.DiGraph, "ReferenceGraph"],
+    g: Union[DiGraph, "ReferenceGraph"],
     criteria: SearchCriteria,
     conditions: BuildWhereClause | None,
 ) -> set[str]:
@@ -129,7 +129,7 @@ def datasource_to_node(input: BuildDatasource) -> str:
     return f"ds~{input.identifier}"
 
 
-class ReferenceGraph(nx.DiGraph):
+class ReferenceGraph(DiGraph):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.concepts: dict[str, BuildConcept] = {}

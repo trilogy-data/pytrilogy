@@ -67,7 +67,7 @@ import web_sales as web_sales;
     _ = env.duplicate()
     end = datetime.now()
     duration = end - start
-    dumped = env.model_dump_json()
+    dumped = env.to_dict()
     assert duration.total_seconds() < 2, f"{len(dumped)}, {duration}"
 
 

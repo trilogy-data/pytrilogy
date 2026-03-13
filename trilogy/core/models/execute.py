@@ -4,15 +4,6 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Union
 
-from pydantic import (
-    BaseModel,
-    Field,
-    ValidationInfo,
-    computed_field,
-    field_validator,
-    model_validator,
-)
-
 from trilogy.constants import (
     CONFIG,
     DEFAULT_NAMESPACE,
@@ -55,13 +46,15 @@ from trilogy.utility import unique
 LOGGER_PREFIX = "[MODELS_EXECUTE]"
 
 
-class InlinedCTE(BaseModel):
+@dataclass
+class InlinedCTE:
     original_alias: str
     new_alias: str
     new_base: str
 
 
-class CTE(BaseModel):
+@dataclass
+class CTE:
     name: str
     source: "QueryDatasource"
     output_columns: List[BuildConcept]
@@ -69,21 +62,29 @@ class CTE(BaseModel):
     grain: BuildGrain
     base: bool = False
     group_to_grain: bool = False
-    existence_source_map: Dict[str, list[str]] = Field(default_factory=dict)
-    parent_ctes: List[Union["CTE", "UnionCTE"]] = Field(default_factory=list)
-    joins: List[Union["Join", "InstantiatedUnnestJoin"]] = Field(default_factory=list)
+    existence_source_map: Dict[str, list[str]] = field(default_factory=dict)
+    parent_ctes: List[Union["CTE", "UnionCTE"]] = field(default_factory=list)
+    joins: List[Union["Join", "InstantiatedUnnestJoin"]] = field(default_factory=list)
     condition: Optional[
         Union[BuildComparison, BuildConditional, BuildParenthetical]
     ] = None
-    partial_concepts: List[BuildConcept] = Field(default_factory=list)
-    nullable_concepts: List[BuildConcept] = Field(default_factory=list)
-    join_derived_concepts: List[BuildConcept] = Field(default_factory=list)
-    hidden_concepts: set[str] = Field(default_factory=set)
+    partial_concepts: List[BuildConcept] = field(default_factory=list)
+    nullable_concepts: List[BuildConcept] = field(default_factory=list)
+    join_derived_concepts: List[BuildConcept] = field(default_factory=list)
+    hidden_concepts: set[str] = field(default_factory=set)
     order_by: Optional[BuildOrderBy] = None
     limit: Optional[int] = None
     base_name_override: Optional[Union["Address", str]] = None
     base_alias_override: Optional[str] = None
-    inlined_ctes: dict[str, InlinedCTE] = Field(default_factory=dict)
+    inlined_ctes: dict[str, InlinedCTE] = field(default_factory=dict)
+
+    def __post_init__(self):
+        if len(self.join_derived_concepts) > 1:
+            raise NotImplementedError(
+                "Multiple join derived concepts not yet supported."
+            )
+        self.join_derived_concepts = unique(self.join_derived_concepts, "address")
+        self.output_columns = unique(self.output_columns, "address")
 
     @classmethod
     def from_datasource(cls, datasource: BuildDatasource) -> "CTE":
@@ -102,14 +103,6 @@ class CTE(BaseModel):
             base_alias_override=datasource.safe_identifier,
         )
 
-    @field_validator("join_derived_concepts")
-    def validate_join_derived_concepts(cls, v):
-        if len(v) > 1:
-            raise NotImplementedError(
-                "Multiple join derived concepts not yet supported."
-            )
-        return unique(v, "address")
-
     @property
     def identifier(self):
         return self.name
@@ -118,14 +111,9 @@ class CTE(BaseModel):
     def safe_identifier(self):
         return self.name
 
-    @computed_field  # type: ignore
     @property
     def output_lcl(self) -> LooseBuildConceptList:
         return LooseBuildConceptList(concepts=self.output_columns)
-
-    @field_validator("output_columns")
-    def validate_output_columns(cls, v):
-        return unique(v, "address")
 
     @property
     def comment(self) -> str:
@@ -457,11 +445,16 @@ class CTE(BaseModel):
         return [c for c in self.output_columns if c.address in self.source_map]
 
 
-class ConceptPair(BaseModel):
+@dataclass
+class BaseConceptPair:
     left: BuildConcept
     right: BuildConcept
     existing_datasource: Union[BuildDatasource, "QueryDatasource"]
-    modifiers: List[Modifier] = Field(default_factory=list)
+
+
+@dataclass
+class ConceptPair(BaseConceptPair):
+    modifiers: List[Modifier] = field(default_factory=list)
 
     @property
     def is_partial(self):
@@ -472,8 +465,18 @@ class ConceptPair(BaseModel):
         return Modifier.NULLABLE in self.modifiers
 
 
-class CTEConceptPair(ConceptPair):
+@dataclass
+class CTEConceptPair(BaseConceptPair):
     cte: CTE | UnionCTE
+    modifiers: List[Modifier] = field(default_factory=list)
+
+    @property
+    def is_partial(self):
+        return Modifier.PARTIAL in self.modifiers
+
+    @property
+    def is_nullable(self):
+        return Modifier.NULLABLE in self.modifiers
 
 
 @dataclass
@@ -521,16 +524,16 @@ def raise_helpful_join_validation_error(
     )
 
 
-class BaseJoin(BaseModel):
+@dataclass
+class BaseJoin:
     right_datasource: Union[BuildDatasource, "QueryDatasource"]
     join_type: JoinType
     concepts: Optional[List[BuildConcept]] = None
     left_datasource: Optional[Union[BuildDatasource, "QueryDatasource"]] = None
     concept_pairs: list[ConceptPair] | None = None
-    modifiers: List[Modifier] = Field(default_factory=list)
+    modifiers: List[Modifier] = field(default_factory=list)
 
-    @model_validator(mode="after")
-    def validate_join(self) -> "BaseJoin":
+    def __post_init__(self):
         if (
             self.left_datasource
             and self.left_datasource.identifier == self.right_datasource.identifier
@@ -539,11 +542,9 @@ class BaseJoin(BaseModel):
                 f"Cannot join a dataself to itself, joining {self.left_datasource} and"
                 f" {self.right_datasource}"
             )
-        # Early returns maintained as in original code
         if self.concept_pairs or self.concepts == []:
-            return self
+            return
 
-        # reduce concept list to just the mutual keys
         final_concepts = []
         for concept in self.concepts or []:
             include = True
@@ -572,7 +573,6 @@ class BaseJoin(BaseModel):
             )
 
         self.concepts = final_concepts
-        return self
 
     @property
     def unique_id(self) -> str:
@@ -600,28 +600,52 @@ class BaseJoin(BaseModel):
         )
 
 
-class QueryDatasource(BaseModel):
+@dataclass
+class QueryDatasource:
     input_concepts: List[BuildConcept]
     output_concepts: List[BuildConcept]
     datasources: List[Union[BuildDatasource, "QueryDatasource"]]
     source_map: Dict[str, Set[Union[BuildDatasource, "QueryDatasource", "UnnestJoin"]]]
-
     grain: BuildGrain
     joins: List[BaseJoin | UnnestJoin]
     limit: Optional[int] = None
     condition: Optional[
         Union[BuildConditional, BuildComparison, BuildParenthetical]
-    ] = Field(default=None)
-    source_type: SourceType = SourceType.SELECT
-    partial_concepts: List[BuildConcept] = Field(default_factory=list)
-    hidden_concepts: set[str] = Field(default_factory=set)
-    nullable_concepts: List[BuildConcept] = Field(default_factory=list)
-    join_derived_concepts: List[BuildConcept] = Field(default_factory=list)
+    ] = None
+    source_type: SourceType = field(default=SourceType.SELECT)
+    partial_concepts: List[BuildConcept] = field(default_factory=list)
+    hidden_concepts: set[str] = field(default_factory=set)
+    nullable_concepts: List[BuildConcept] = field(default_factory=list)
+    join_derived_concepts: List[BuildConcept] = field(default_factory=list)
     force_group: bool | None = None
     existence_source_map: Dict[str, Set[Union[BuildDatasource, "QueryDatasource"]]] = (
-        Field(default_factory=dict)
+        field(default_factory=dict)
     )
     ordering: BuildOrderBy | None = None
+
+    def __post_init__(self):
+        unique_pairs: set[str] = set()
+        for join in self.joins:
+            if not isinstance(join, BaseJoin):
+                continue
+            pairing = str(join)
+            if pairing in unique_pairs:
+                raise SyntaxError(f"Duplicate join {str(join)}")
+            unique_pairs.add(pairing)
+        self.input_concepts = unique(self.input_concepts, "address")
+        self.output_concepts = unique(self.output_concepts, "address")
+        for key in ("input_concepts", "output_concepts"):
+            for concept in getattr(self, key):
+                if concept.address in self.hidden_concepts:
+                    continue
+                if (
+                    concept.address not in self.source_map
+                    and not any(x in self.source_map for x in concept.pseudonyms)
+                    and CONFIG.validate_missing
+                ):
+                    raise SyntaxError(
+                        f"Missing source map entry for {concept.address} on {key} with pseudonyms {concept.pseudonyms}, have map: {self.source_map}"
+                    )
 
     def __repr__(self):
         return f"{self.identifier}@<{self.grain}>"
@@ -652,51 +676,6 @@ class QueryDatasource(BaseModel):
             for c in self.output_concepts
             if c.address not in [z.address for z in self.partial_concepts]
         ]
-
-    @field_validator("joins")
-    @classmethod
-    def validate_joins(cls, v):
-        unique_pairs = set()
-        for join in v:
-            if not isinstance(join, BaseJoin):
-                continue
-            pairing = str(join)
-            if pairing in unique_pairs:
-                raise SyntaxError(f"Duplicate join {str(join)}")
-            unique_pairs.add(pairing)
-        return v
-
-    @field_validator("input_concepts")
-    @classmethod
-    def validate_inputs(cls, v):
-        return unique(v, "address")
-
-    @field_validator("output_concepts")
-    @classmethod
-    def validate_outputs(cls, v):
-        return unique(v, "address")
-
-    @field_validator("source_map")
-    @classmethod
-    def validate_source_map(cls, v: dict, info: ValidationInfo):
-        values = info.data
-        hidden_concepts = values.get("hidden_concepts", set())
-        for key in ("input_concepts", "output_concepts"):
-            if not values.get(key):
-                continue
-            concept: BuildConcept
-            for concept in values[key]:
-                if concept.address in hidden_concepts:
-                    continue
-                if (
-                    concept.address not in v
-                    and not any(x in v for x in concept.pseudonyms)
-                    and CONFIG.validate_missing
-                ):
-                    raise SyntaxError(
-                        f"Missing source map entry for {concept.address} on {key} with pseudonyms {concept.pseudonyms}, have map: {v}"
-                    )
-        return v
 
     def __str__(self):
         return self.__repr__()
@@ -1062,7 +1041,8 @@ class RecursiveCTE(CTE):
         return [top, bottom]
 
 
-class UnionCTE(BaseModel):
+@dataclass
+class UnionCTE:
     name: str
     source: QueryDatasource
     parent_ctes: list[CTE | UnionCTE]
@@ -1072,12 +1052,11 @@ class UnionCTE(BaseModel):
     operator: str = "UNION ALL"
     order_by: Optional[BuildOrderBy] = None
     limit: Optional[int] = None
-    hidden_concepts: set[str] = Field(default_factory=set)
-    partial_concepts: list[BuildConcept] = Field(default_factory=list)
-    existence_source_map: Dict[str, list[str]] = Field(default_factory=dict)
-    inlined_ctes: Dict[str, InlinedCTE] = Field(default_factory=dict)
+    hidden_concepts: set[str] = field(default_factory=set)
+    partial_concepts: list[BuildConcept] = field(default_factory=list)
+    existence_source_map: Dict[str, list[str]] = field(default_factory=dict)
+    inlined_ctes: Dict[str, InlinedCTE] = field(default_factory=dict)
 
-    @computed_field  # type: ignore
     @property
     def output_lcl(self) -> LooseBuildConceptList:
         return LooseBuildConceptList(concepts=self.output_columns)
@@ -1203,9 +1182,7 @@ def merge_ctes(ctes: List[CTE | UnionCTE]) -> List[CTE | UnionCTE]:
     return final_ctes
 
 
-class CompiledCTE(BaseModel):
+@dataclass
+class CompiledCTE:
     name: str
     statement: str
-
-
-UnionCTE.model_rebuild()

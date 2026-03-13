@@ -89,7 +89,8 @@ class UpdateKeys:
         return WhereClause(conditional=conditional)
 
 
-class RawColumnExpr(BaseModel):
+@dataclass
+class RawColumnExpr:
     text: str
 
 
@@ -148,12 +149,13 @@ class ColumnAssignment(BaseModel):
         )
 
 
-class Address(BaseModel):
+@dataclass
+class Address:
     location: str
     write_location: str | None = None
     quoted: bool = False
     exists: bool = True
-    type: AddressType = AddressType.TABLE
+    type: AddressType = field(default=AddressType.TABLE)
 
     @property
     def is_query(self):
@@ -183,9 +185,10 @@ class File:
     exists: bool = True
 
 
-class DatasourceMetadata(BaseModel):
+@dataclass
+class DatasourceMetadata:
     freshness_concept: Concept | None
-    partition_fields: List[Concept] = Field(default_factory=list)
+    partition_fields: List[Concept] = field(default_factory=list)
     line_no: int | None = None
 
 

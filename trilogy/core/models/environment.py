@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+import copy
 import difflib
 import os
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
-    Annotated,
     Any,
     Dict,
     ItemsView,
@@ -20,8 +20,6 @@ from typing import (
 )
 
 from lark.tree import Meta
-from pydantic import BaseModel, ConfigDict, Field
-from pydantic.functional_validators import PlainValidator
 
 from trilogy.constants import DEFAULT_NAMESPACE, ENV_CACHE_NAME, logger
 from trilogy.core.constants import (
@@ -67,26 +65,30 @@ class Import:
     )
 
 
-class BaseImportResolver(BaseModel):
+@dataclass
+class BaseImportResolver:
     pass
 
 
+@dataclass
 class FileSystemImportResolver(BaseImportResolver):
     pass
 
 
+@dataclass
 class DictImportResolver(BaseImportResolver):
-    content: Dict[str, str]
+    content: Dict[str, str] = field(default_factory=dict)
 
 
-class EnvironmentConfig(BaseModel):
+@dataclass
+class EnvironmentConfig:
     allow_duplicate_declaration: bool = True
-    import_resolver: BaseImportResolver = Field(
+    import_resolver: BaseImportResolver = field(
         default_factory=FileSystemImportResolver
     )
 
-    def copy_for_root(self, root: str | None) -> Self:
-        new = self.model_copy(deep=True)
+    def copy_for_root(self, root: str | None) -> "EnvironmentConfig":
+        new = copy.deepcopy(self)
         if isinstance(new.import_resolver, DictImportResolver) and root:
             new.import_resolver = DictImportResolver(
                 content={
@@ -203,47 +205,34 @@ def validate_concepts(v) -> EnvironmentConceptDict:
     raise ValueError
 
 
-def validate_datasources(v) -> EnvironmentDatasourceDict:
-    if isinstance(v, EnvironmentDatasourceDict):
-        return v
-    elif isinstance(v, dict):
-        return EnvironmentDatasourceDict(
-            **{x: Datasource.model_validate(y) for x, y in v.items()}
-        )
-    raise ValueError
-
-
 def get_version():
     from trilogy import __version__
 
     return __version__
 
 
-class Environment(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True, strict=False)
-
-    concepts: Annotated[EnvironmentConceptDict, PlainValidator(validate_concepts)] = (
-        Field(default_factory=EnvironmentConceptDict)
+@dataclass
+class Environment:
+    concepts: EnvironmentConceptDict = field(default_factory=EnvironmentConceptDict)
+    datasources: EnvironmentDatasourceDict = field(
+        default_factory=EnvironmentDatasourceDict
     )
-    datasources: Annotated[
-        EnvironmentDatasourceDict, PlainValidator(validate_datasources)
-    ] = Field(default_factory=EnvironmentDatasourceDict)
-    functions: Dict[str, CustomFunctionFactory] = Field(default_factory=dict)
-    data_types: Dict[str, CustomType] = Field(default_factory=dict)
-    named_statements: Dict[str, SelectLineage] = Field(default_factory=dict)
-    imports: defaultdict[str, list[Import]] = Field(
-        default_factory=lambda: defaultdict(list)  # type: ignore
+    functions: Dict[str, CustomFunctionFactory] = field(default_factory=dict)
+    data_types: Dict[str, CustomType] = field(default_factory=dict)
+    named_statements: Dict[str, SelectLineage] = field(default_factory=dict)
+    imports: defaultdict[str, list[Import]] = field(
+        default_factory=lambda: defaultdict(list)
     )
     namespace: str = DEFAULT_NAMESPACE
-    working_path: str | Path = Field(default_factory=lambda: os.getcwd())
-    config: EnvironmentConfig = Field(default_factory=EnvironmentConfig)
-    version: str = Field(default_factory=get_version)
-    cte_name_map: Dict[str, str] = Field(default_factory=dict)
-    alias_origin_lookup: Dict[str, Concept] = Field(default_factory=dict)
+    working_path: str | Path = field(default_factory=os.getcwd)
+    config: EnvironmentConfig = field(default_factory=EnvironmentConfig)
+    version: str = field(default_factory=get_version)
+    cte_name_map: Dict[str, str] = field(default_factory=dict)
+    alias_origin_lookup: Dict[str, Concept] = field(default_factory=dict)
     # TODO: support freezing environments to avoid mutation
     frozen: bool = False
     env_file_path: Path | str | None = None
-    parameters: Dict[str, Any] = Field(default_factory=dict)
+    parameters: Dict[str, Any] = field(default_factory=dict)
 
     def freeze(self):
         self.frozen = True
@@ -273,7 +262,7 @@ class Environment(BaseModel):
         self.named_statements[name] = lineage
 
     def duplicate(self):
-        return Environment.model_construct(
+        return Environment(
             datasources=self.datasources.duplicate(),
             concepts=self.concepts.duplicate(),
             functions=dict(self.functions),
@@ -281,7 +270,7 @@ class Environment(BaseModel):
             imports=defaultdict(list, self.imports),
             namespace=self.namespace,
             working_path=self.working_path,
-            environment_config=self.config.model_copy(deep=True),
+            config=copy.deepcopy(self.config),
             version=self.version,
             cte_name_map=dict(self.cte_name_map),
             alias_origin_lookup={
@@ -307,7 +296,7 @@ class Environment(BaseModel):
         )
         self.add_concept(concept)
 
-    def model_post_init(self, context: Any) -> None:
+    def __post_init__(self) -> None:
         self._add_path_concepts()
 
     @classmethod
@@ -327,21 +316,68 @@ class Environment(BaseModel):
 
     @classmethod
     def from_cache(cls, path) -> Optional["Environment"]:
-        with open(path, "r") as f:
-            read = f.read()
-        base = cls.model_validate_json(read)
-        version = get_version()
-        if base.version != version:
+        import json
+
+        data = json.loads(Path(path).read_text())
+        if data.get("version") != get_version():
             return None
-        return base
+        concepts = EnvironmentConceptDict()
+        for k, v in data.get("concepts", {}).items():
+            concepts[k] = Concept.model_validate(v)
+        datasources = EnvironmentDatasourceDict()
+        for k, v in data.get("datasources", {}).items():
+            datasources[k] = Datasource.model_validate(v)
+        return cls(
+            concepts=concepts,
+            datasources=datasources,
+            functions={
+                k: CustomFunctionFactory.from_dict(v)
+                for k, v in data.get("functions", {}).items()
+            },
+            data_types={
+                k: CustomType.model_validate(v)
+                for k, v in data.get("data_types", {}).items()
+            },
+            alias_origin_lookup={
+                k: Concept.model_validate(v)
+                for k, v in data.get("alias_origin_lookup", {}).items()
+            },
+            namespace=data.get("namespace", DEFAULT_NAMESPACE),
+            version=data["version"],
+            cte_name_map=data.get("cte_name_map", {}),
+            env_file_path=data.get("env_file_path"),
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "version": self.version,
+            "namespace": self.namespace,
+            "cte_name_map": self.cte_name_map,
+            "env_file_path": str(self.env_file_path) if self.env_file_path else None,
+            "concepts": {
+                k: v.model_dump(mode="json") for k, v in self.concepts.items()
+            },
+            "datasources": {
+                k: v.model_dump(mode="json") for k, v in self.datasources.items()
+            },
+            "functions": {k: v.to_dict() for k, v in self.functions.items()},
+            "data_types": {
+                k: v.model_dump(mode="json") for k, v in self.data_types.items()
+            },
+            "alias_origin_lookup": {
+                k: v.model_dump(mode="json")
+                for k, v in self.alias_origin_lookup.items()
+            },
+        }
 
     def to_cache(self, path: Optional[str | Path] = None) -> Path:
+        import json
+
         if not path:
             ppath = Path(self.working_path) / ENV_CACHE_NAME
         else:
             ppath = Path(path)
-        with open(ppath, "w") as f:
-            f.write(self.model_dump_json())
+        ppath.write_text(json.dumps(self.to_dict()))
         return ppath
 
     def validate_concept(
@@ -711,23 +747,26 @@ class Environment(BaseModel):
         ]
 
 
+@dataclass
 class LazyEnvironment(Environment):
     """Variant of environment to defer parsing of a path
     until relevant attributes accessed."""
 
-    load_path: Path
-    setup_queries: list[Any] = Field(default_factory=list)
+    load_path: Path | None = None
+    setup_queries: list = field(default_factory=list)
     loaded: bool = False
+
+    def __post_init__(self) -> None:
+        if self.load_path is None:
+            raise ValueError("load_path is required")
+        self.working_path = self.load_path.parent
+        # skip _add_path_concepts (overridden as no-op below)
+        super().__post_init__()
 
     @property
     def setup_path(self) -> Path:
+        assert self.load_path is not None
         return self.load_path.parent / "setup.preql"
-
-    def __init__(self, **data):
-        if not data.get("working_path"):
-            data["working_path"] = data["load_path"].parent
-        super().__init__(**data)
-        assert self.working_path == self.load_path.parent
 
     def _add_path_concepts(self):
         pass
@@ -737,8 +776,8 @@ class LazyEnvironment(Environment):
             return
         from trilogy import parse
 
+        assert self.load_path is not None
         env = Environment(working_path=self.load_path.parent)
-        assert env.working_path == self.load_path.parent
         with open(self.load_path, "r") as f:
             env, _ = parse(f.read(), env)
         if self.setup_path.exists():
@@ -771,6 +810,3 @@ class LazyEnvironment(Environment):
         if not self.loaded:
             self._load()
         return super().__getattribute__(name)
-
-
-Environment.model_rebuild()

@@ -1,4 +1,3 @@
-from .bigquery import BigqueryDialect
 from .config import (
     BigQueryConfig,
     DialectConfig,
@@ -9,12 +8,6 @@ from .config import (
     SQLiteConfig,
     SQLServerConfig,
 )
-from .duckdb import DuckDBDialect
-from .postgres import PostgresDialect
-from .presto import PrestoDialect
-from .snowflake import SnowflakeDialect
-from .sql_server import SqlServerDialect
-from .sqlite import SQLiteDialect
 
 __all__ = [
     "BigqueryDialect",
@@ -32,5 +25,24 @@ __all__ = [
     "SnowflakeConfig",
     "PrestoConfig",
     "PostgresConfig",
-    "DialectConfig",
 ]
+
+_dialect_imports: dict[str, tuple[str, str]] = {
+    "BigqueryDialect": (".bigquery", "BigqueryDialect"),
+    "DuckDBDialect": (".duckdb", "DuckDBDialect"),
+    "PostgresDialect": (".postgres", "PostgresDialect"),
+    "PrestoDialect": (".presto", "PrestoDialect"),
+    "SnowflakeDialect": (".snowflake", "SnowflakeDialect"),
+    "SqlServerDialect": (".sql_server", "SqlServerDialect"),
+    "SQLiteDialect": (".sqlite", "SQLiteDialect"),
+}
+
+
+def __getattr__(name: str):
+    if name in _dialect_imports:
+        module_path, attr = _dialect_imports[name]
+        import importlib
+
+        mod = importlib.import_module(module_path, package=__name__)
+        return getattr(mod, attr)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
