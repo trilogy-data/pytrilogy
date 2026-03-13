@@ -251,15 +251,30 @@ class DatasourceFreshnessProbeClause:
     path: str
 
 
-with open(join(dirname(__file__), "trilogy.lark"), "r") as f:
-    PARSER = Lark(
-        f.read(),
-        start="start",
-        propagate_positions=True,
-        g_regex_flags=IGNORECASE,
-        parser="lalr",
-        cache=True,
-    )
+_PARSER: "Lark | None" = None
+
+
+def _get_parser() -> Lark:
+    global _PARSER
+    if _PARSER is None:
+        with open(join(dirname(__file__), "trilogy.lark"), "r") as f:
+            _PARSER = Lark(
+                f.read(),
+                start="start",
+                propagate_positions=True,
+                g_regex_flags=IGNORECASE,
+                parser="lalr",
+                cache=True,
+            )
+    return _PARSER
+
+
+class _LazyParser:
+    def __getattr__(self, name: str):
+        return getattr(_get_parser(), name)
+
+
+PARSER = _LazyParser()
 
 
 def parse_concept_reference(
@@ -1667,7 +1682,7 @@ class ParseToObjects(Transformer):
             self.text_lookup[token_lookup] = text
 
             try:
-                raw_tokens = PARSER.parse(text)
+                raw_tokens = _get_parser().parse(text)
             except Exception as e:
                 raise ImportError(
                     f"Unable to import '{target}', parsing error: {e}"
@@ -3324,7 +3339,7 @@ def unpack_visit_error(e: VisitError, text: str | None = None):
 
 
 def parse_text_raw(text: str, environment: Optional[Environment] = None):
-    PARSER.parse(text)
+    _get_parser().parse(text)
 
 
 ERROR_CODES: dict[int, str] = {
@@ -3468,7 +3483,7 @@ def parse_text(
         parser.set_text(text)
         # disable fail on missing to allow for circular dependencies
         parser.prepare_parse()
-        parser.transform(PARSER.parse(text))
+        parser.transform(_get_parser().parse(text))
         # this will reset fail on missing
         pass_two = parser.run_second_parse_pass()
         output = [v for v in pass_two if v]

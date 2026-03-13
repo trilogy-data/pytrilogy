@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum
 from logging import Logger
-from typing import Any, Dict, List, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple
 
-import networkx as nx
+if TYPE_CHECKING:
+    import networkx as nx
 
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import (
@@ -567,6 +570,8 @@ def get_node_joins(
     environment: BuildEnvironment,
     # concepts:List[Concept],
 ) -> List[BaseJoin]:
+    import networkx as nx
+
     graph = nx.Graph()
     partials: dict[str, list[str]] = {}
     nullables: dict[str, list[str]] = {}

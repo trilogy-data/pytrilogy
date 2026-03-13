@@ -3,8 +3,6 @@ from functools import singledispatchmethod
 from pathlib import Path
 from typing import Any, Generator, List, Optional
 
-from sqlalchemy import text
-
 from trilogy.constants import MagicConstants, Rendering, logger
 from trilogy.core.enums import (
     AddressType,
@@ -691,6 +689,8 @@ class Executor(object):
         """Execute SQL with retry logic based on configured retry policy."""
         import time
 
+        from sqlalchemy import text
+
         attempt = 0
 
         while True:
@@ -719,6 +719,8 @@ class Executor(object):
     ) -> ResultProtocol:
         """Run a command against the raw underlying
         execution engine."""
+        from sqlalchemy import text
+
         final_params = None
         if isinstance(command, Path):
             with open(command, "r") as f:

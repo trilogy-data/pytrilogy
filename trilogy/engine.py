@@ -1,6 +1,9 @@
-from typing import Any, Generator, List, Optional, Protocol
+from __future__ import annotations
 
-from sqlalchemy.sql.elements import TextClause
+from typing import TYPE_CHECKING, Any, Generator, List, Optional, Protocol
+
+if TYPE_CHECKING:
+    from sqlalchemy.sql.elements import TextClause
 
 from trilogy.core.models.environment import Environment
 
