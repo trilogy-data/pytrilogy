@@ -17,6 +17,7 @@ from trilogy.scripts.common import (
     CLIRuntimeParams,
     ExecutionStats,
     RefreshParams,
+    RefreshQuery,
     count_statement_stats,
     handle_execution_exception,
 )
@@ -83,6 +84,9 @@ def execute_script_for_refresh(
         on_watermarks=on_watermarks,
         on_approval=_prompt_approval if interactive else None,
         force_sources=set(force_sources) if force_sources else None,
+        on_refresh_query=lambda ds_id, sql: stats.refresh_queries.append(
+            RefreshQuery(datasource_id=ds_id, sql=sql)
+        ),
     )
     stats.update_count = result.refreshed_count
 

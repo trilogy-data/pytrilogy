@@ -231,20 +231,21 @@ SELECT * FROM (
         unique_id = instance_id or str(uuid.uuid4())
         staging = staging or StagingConfig()
         base_dir = staging.get_executor_subdir(unique_id)
+        # uv run --no-project --quiet C:\Users\ethan\coding_projects\pytrilogy\tests\execution\state\a_raw_source.py  > C:/Users/ethan/AppData/Local/Temp/c450aafd-48e4-4626-826e-378a6d6a10ce/650262d9fc564db625fde56b1c935664.arrow && echo {"name": "done"}
         staging.register_cleanup(base_dir)
         return f"""
 INSTALL shellfs FROM community;
 INSTALL arrow FROM community;
 LOAD shellfs;
 LOAD arrow;
-
+SET VARIABLE __trilogy_uv_temp_dir = '{base_dir}';
 CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
 WITH __build AS (
 SELECT a.name
 FROM read_json('uv run --no-project --quiet ' || script || ' ' || args || ' > {base_dir}' || md5(script || args) || '.arrow && echo {{"name": "done"}} |') AS a
 LIMIT 1
 )
-SELECT * FROM read_arrow('{base_dir}' || md5(script || args) || '.arrow');
+SELECT * FROM read_arrow(getvariable('__trilogy_uv_temp_dir') || md5(script || args) || '.arrow');
 """
     else:
         return """

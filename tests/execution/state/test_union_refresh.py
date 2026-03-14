@@ -52,10 +52,18 @@ def test_b_full_refreshed_from_b_raw():
 def test_union_full_refreshed_from_partials():
     """union_data must combine a_full and b_full for 20 total rows."""
     executor = _make_executor()
-    execute_script_for_refresh(executor, ScriptNode(path=PREQL_PATH), quiet=True)
+    stats = execute_script_for_refresh(
+        executor, ScriptNode(path=PREQL_PATH), quiet=True
+    )
 
     count = executor.execute_raw_sql("SELECT count(*) FROM union_data").fetchone()[0]
     assert count == 20, f"union_data: expected 20 rows, got {count}"
+    assert any("union_data" in q.sql for q in stats.refresh_queries)
+    for x in stats.refresh_queries:
+        print(x.sql)
+    assert not any(
+        "raw" in q.sql and "union_data" in q.sql for q in stats.refresh_queries
+    ), [x for x in stats.refresh_queries if "raw" in x.sql and "union_data" in x.sql]
 
 
 def test_union_refresh_produces_twenty_rows():

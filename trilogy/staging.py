@@ -37,7 +37,7 @@ class StagingConfig:
     def resolved_root(self) -> str:
         """Return the resolved staging root path/URI, normalized with trailing separator."""
         if self.path is None:
-            return str(Path(tempfile.gettempdir()).resolve()).replace("\\", "/") + "/"
+            self.path = str(Path(tempfile.gettempdir()).resolve())
         p = self.path.rstrip("/")
         if self.staging_type == StagingType.LOCAL:
             return str(Path(p).resolve()).replace("\\", "/") + "/"
@@ -49,7 +49,9 @@ class StagingConfig:
 
     def get_executor_subdir(self, instance_id: str) -> str:
         """Return a staging subdirectory namespaced by instance_id."""
-        return self.resolved_root + instance_id + "/"
+        base = self.resolved_root + instance_id + "/"
+        os.makedirs(base, exist_ok=True)
+        return base
 
     def register_cleanup(self, path: str) -> None:
         """Register atexit cleanup for a local staging path (file or directory).
@@ -59,6 +61,7 @@ class StagingConfig:
         if self.staging_type != StagingType.LOCAL:
             return
         local_path = path.rstrip("/")
+        os.makedirs(local_path, exist_ok=True)
 
         def _cleanup() -> None:
             try:

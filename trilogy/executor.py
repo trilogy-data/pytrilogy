@@ -164,8 +164,10 @@ class Executor(object):
 
     def update_datasource(
         self, datasource: Datasource, keys: UpdateKeys | None = None
-    ) -> None:
+    ) -> str | None:
         """Update a datasource with optional filtering based on update keys.
+
+        Returns the compiled persist SQL, or None if not applicable.
 
         Args:
             datasource: The datasource to update
@@ -190,7 +192,16 @@ class Executor(object):
             datasource=datasource,
             select=select_stmt,
         )
-        self.execute_statement(statement)
+        generated = self.generator.generate_queries(
+            self.environment, [statement], hooks=self.hooks  # type: ignore[list-item]
+        )
+        if not generated:
+            return None
+        processed = generated[0]
+        self.execute_query(processed)
+        if isinstance(processed, ProcessedQueryPersist):
+            return self.generator.compile_statement(processed)
+        return None
 
     def execute_statement(
         self,

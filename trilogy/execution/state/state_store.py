@@ -266,6 +266,7 @@ def refresh_stale_assets(
         Callable[[list[StaleAsset], dict[str, DatasourceWatermark]], bool] | None
     ) = None,
     force_sources: set[str] | None = None,
+    on_refresh_query: Callable[[str, str], None] | None = None,
 ) -> RefreshResult:
     """Find and refresh stale assets.
 
@@ -326,7 +327,9 @@ def refresh_stale_assets(
             if on_refresh:
                 on_refresh(asset.datasource_id, asset.reason)
             datasource = executor.environment.datasources[asset.datasource_id]
-            executor.update_datasource(datasource)
+            sql = executor.update_datasource(datasource)
+            if on_refresh_query and sql is not None:
+                on_refresh_query(asset.datasource_id, sql)
             refreshed += 1
         finally:
             executor.environment.datasources.update(hidden)
