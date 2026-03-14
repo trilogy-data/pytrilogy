@@ -490,9 +490,7 @@ class BaseDialect:
             if address.type == AddressType.SQL:
                 with open(address.location, "r", encoding="utf-8") as f:
                     return f"({f.read()})"
-            raise NotImplementedError(
-                f"File source type {address.type} not supported by this dialect"
-            )
+            return f"'{address.location}'"
         return self.safe_quote(address.location)
 
     def get_table_schema(

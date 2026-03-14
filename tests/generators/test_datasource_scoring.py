@@ -1,8 +1,19 @@
 from unittest.mock import MagicMock
 
-from trilogy.core.enums import AddressType
-from trilogy.core.models.build import BuildDatasource
+from trilogy.core.enums import AddressType, ComparisonOperator, Purpose
+from trilogy.core.models.build import (
+    BuildColumnAssignment,
+    BuildComparison,
+    BuildConcept,
+    BuildDatasource,
+    BuildWhereClause,
+)
+from trilogy.core.models.core import DataType, EnumType
 from trilogy.core.models.datasource import Address
+from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
+    _best_enum_union,
+    _datasource_score,
+)
 from trilogy.core.processing.node_generators.select_merge_node import (
     get_materialization_score,
     score_datasource_node,
@@ -212,3 +223,90 @@ class TestScoreDatasourceNode:
 
         # Same materialization level
         assert csv_score[0] == parquet_score[0] == 1
+
+
+def _make_concept(name: str, datatype=DataType.STRING) -> BuildConcept:
+    return BuildConcept(
+        name=name,
+        canonical_name=name,
+        datatype=datatype,
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+    )
+
+
+def _make_enum_ds(
+    city_val: str,
+    address_type: AddressType,
+    city_concept: BuildConcept,
+    shared_concept: BuildConcept,
+) -> BuildDatasource:
+    condition = BuildWhereClause(
+        conditional=BuildComparison(
+            left=city_concept,
+            right=city_val,
+            operator=ComparisonOperator.EQ,
+        )
+    )
+    return BuildDatasource(
+        name=f"{city_val}_{address_type.value}",
+        columns=[
+            BuildColumnAssignment(alias="city", concept=city_concept),
+            BuildColumnAssignment(alias="name", concept=shared_concept),
+        ],
+        address=Address(
+            location=f"/data/{city_val}.{address_type.value}", type=address_type
+        ),
+        non_partial_for=condition,
+    )
+
+
+class TestDatasourceScore:
+    def test_parquet_beats_python_script(self):
+        ds_parquet = BuildDatasource(
+            name="parquet_ds",
+            columns=[],
+            address=Address(location="/data/file.parquet", type=AddressType.PARQUET),
+        )
+        ds_script = BuildDatasource(
+            name="script_ds",
+            columns=[],
+            address=Address(location="/data/script.py", type=AddressType.PYTHON_SCRIPT),
+        )
+        assert _datasource_score(ds_parquet) > _datasource_score(ds_script)
+
+    def test_table_beats_parquet(self):
+        ds_table = BuildDatasource(
+            name="table_ds",
+            columns=[],
+            address=Address(location="my_table", type=AddressType.TABLE),
+        )
+        ds_parquet = BuildDatasource(
+            name="parquet_ds",
+            columns=[],
+            address=Address(location="/data/file.parquet", type=AddressType.PARQUET),
+        )
+        assert _datasource_score(ds_table) > _datasource_score(ds_parquet)
+
+
+class TestBestEnumUnion:
+    def test_prefers_parquet_over_python_script(self):
+        """When both parquet and script sources cover all enum values, pick parquet."""
+        city_enum = EnumType(type=DataType.STRING, values=["USSFO", "USNYC"])
+        city = _make_concept("city", datatype=city_enum)
+        species = _make_concept("species")
+
+        sf_parquet = _make_enum_ds("USSFO", AddressType.PARQUET, city, species)
+        nyc_parquet = _make_enum_ds("USNYC", AddressType.PARQUET, city, species)
+        sf_script = _make_enum_ds("USSFO", AddressType.PYTHON_SCRIPT, city, species)
+        nyc_script = _make_enum_ds("USNYC", AddressType.PYTHON_SCRIPT, city, species)
+
+        result = _best_enum_union(
+            [sf_parquet, nyc_parquet, sf_script, nyc_script], city_enum, city
+        )
+
+        assert result is not None
+        result_types = {ds.address.type for ds in result}
+        assert result_types == {
+            AddressType.PARQUET
+        }, f"Expected parquet sources, got {result_types}"

@@ -267,6 +267,7 @@ def refresh_stale_assets(
     ) = None,
     force_sources: set[str] | None = None,
     on_refresh_query: Callable[[str, str], None] | None = None,
+    dry_run: bool = False,
 ) -> RefreshResult:
     """Find and refresh stale assets.
 
@@ -282,16 +283,17 @@ def refresh_stale_assets(
     state_store = BaseStateStore()
     force_sources = force_sources or set()
 
-    forced_assets: list[StaleAsset] = []
-    for ds in executor.environment.datasources.values():
-        if ds.identifier in force_sources:
-            forced_assets.append(
-                StaleAsset(datasource_id=ds.identifier, reason="forced rebuild")
-            )
-
     stale_assets = state_store.get_stale_assets(
         executor.environment, executor, skip_datasources=force_sources
     )
+
+    stale_ids = {a.datasource_id for a in stale_assets}
+    forced_assets: list[StaleAsset] = []
+    for ds in executor.environment.datasources.values():
+        if ds.identifier in force_sources and ds.identifier not in stale_ids:
+            forced_assets.append(
+                StaleAsset(datasource_id=ds.identifier, reason="forced rebuild")
+            )
 
     if on_watermarks:
         on_watermarks(state_store.watermarks)
@@ -300,7 +302,7 @@ def refresh_stale_assets(
     )
     all_assets = len(executor.environment.datasources)
 
-    all_refresh_assets = forced_assets + stale_assets
+    all_refresh_assets = stale_assets + forced_assets
 
     if on_stale_found:
         on_stale_found(len(all_refresh_assets), root_assets, all_assets)
@@ -327,7 +329,7 @@ def refresh_stale_assets(
             if on_refresh:
                 on_refresh(asset.datasource_id, asset.reason)
             datasource = executor.environment.datasources[asset.datasource_id]
-            sql = executor.update_datasource(datasource)
+            sql = executor.update_datasource(datasource, dry_run=dry_run)
             if on_refresh_query and sql is not None:
                 on_refresh_query(asset.datasource_id, sql)
             refreshed += 1

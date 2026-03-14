@@ -50,7 +50,8 @@ class StagingConfig:
     def get_executor_subdir(self, instance_id: str) -> str:
         """Return a staging subdirectory namespaced by instance_id."""
         base = self.resolved_root + instance_id + "/"
-        os.makedirs(base, exist_ok=True)
+        if self.staging_type == StagingType.LOCAL:
+            os.makedirs(base, exist_ok=True)
         return base
 
     def register_cleanup(self, path: str) -> None:

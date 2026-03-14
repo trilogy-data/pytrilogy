@@ -8,10 +8,10 @@ from trilogy.scripts.refresh import execute_script_for_refresh
 PREQL_PATH = Path(__file__).parent / "union_refresh_case.preql"
 
 
-def _make_executor():
+def _make_executor(working_path: Path = None):
     return Dialects.DUCK_DB.default_executor(
-        working_path=Path(__file__).parent,
-        conf=DuckDBConfig(enable_python_datasources=True),
+        working_path=working_path or Path(__file__).parent,
+        conf=DuckDBConfig(enable_python_datasources=True, enable_gcs=True),
     )
 
 

@@ -87,6 +87,7 @@ class RefreshParams:
     print_watermarks: bool = False
     force_sources: frozenset[str] = frozenset()
     interactive: bool = False
+    dry_run: bool = False
 
 
 @dataclass

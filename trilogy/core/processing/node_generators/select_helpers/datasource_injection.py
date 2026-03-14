@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from itertools import product
 from typing import List, Tuple, TypeVar
 
-from trilogy.core.enums import ComparisonOperator, FunctionType
+from trilogy.core.enums import AddressType, ComparisonOperator, FunctionType
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
@@ -260,10 +260,16 @@ def _enum_fully_covered(
 
 
 def _datasource_score(ds: BuildDatasource) -> int:
-    """1 if table-addressed (materialized), 0 if script/query."""
-    if isinstance(ds.address, Address) and (ds.address.is_query or ds.address.is_file):
+    """Score by materialization level: 2=table, 1=static file (parquet/csv), 0=script/query."""
+    if not isinstance(ds.address, Address):
+        return 2
+    if ds.address.is_query:
         return 0
-    return 1
+    if ds.address.type == AddressType.PYTHON_SCRIPT:
+        return 0
+    if ds.address.is_file:
+        return 1
+    return 2
 
 
 def _extract_enum_value(

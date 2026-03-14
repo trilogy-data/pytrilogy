@@ -163,7 +163,10 @@ class Executor(object):
         self.connected = False
 
     def update_datasource(
-        self, datasource: Datasource, keys: UpdateKeys | None = None
+        self,
+        datasource: Datasource,
+        keys: UpdateKeys | None = None,
+        dry_run: bool = False,
     ) -> str | None:
         """Update a datasource with optional filtering based on update keys.
 
@@ -172,13 +175,14 @@ class Executor(object):
         Args:
             datasource: The datasource to update
             keys: Optional UpdateKeys specifying incremental filters
+            dry_run: If True, compile and return SQL without executing
         """
         where = keys.to_where_clause(self.environment) if keys else None
         # Skip CREATE for file-backed datasources (parquet, csv, etc.) - the file is the source
         is_file_backed = (
             isinstance(datasource.address, Address) and datasource.address.is_file
         )
-        if not is_file_backed:
+        if not dry_run and not is_file_backed:
             create_stmt = CreateStatement(
                 scope=ValidationScope.DATASOURCES,
                 create_mode=CreateMode.CREATE_IF_NOT_EXISTS,
@@ -198,7 +202,8 @@ class Executor(object):
         if not generated:
             return None
         processed = generated[0]
-        self.execute_query(processed)
+        if not dry_run:
+            self.execute_query(processed)
         if isinstance(processed, ProcessedQueryPersist):
             return self.generator.compile_statement(processed)
         return None
