@@ -4,6 +4,7 @@ from typing import Union
 
 from networkx import DiGraph
 
+from trilogy.core.enums import Granularity
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
@@ -56,9 +57,10 @@ def get_graph_exact_match(
             exact.add(node)
             continue
         elif conditions:
-            if not ds.non_partial_for and ds.is_root:
-                # Root datasources provide source-of-truth data valid in any context;
-                # they're needed as join sources even when a partition condition is active.
+            if not ds.non_partial_for and all(
+                c.granularity == Granularity.SINGLE_ROW for c in ds.output_concepts
+            ):
+                # All outputs are scalar — filtering has no effect, safe in any context.
                 exact.add(node)
                 continue
             if conditions == ds.non_partial_for:

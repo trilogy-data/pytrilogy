@@ -1655,7 +1655,6 @@ class BuildDatasource:
     )
     where: Optional[BuildWhereClause] = None
     non_partial_for: Optional[BuildWhereClause] = None
-    is_root: bool = False
 
     def __hash__(self):
         return self.identifier.__hash__()
@@ -2790,7 +2789,6 @@ class Factory:
             non_partial_for=(
                 factory.build(base.non_partial_for) if base.non_partial_for else None
             ),
-            is_root=base.is_root,
         )
 
     def handle_constant(self, base):

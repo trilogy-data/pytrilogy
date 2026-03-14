@@ -217,8 +217,6 @@ SELECT * FROM (
 """
 
     if is_windows:
-        import atexit
-        import os
         import uuid
 
         from trilogy.staging import StagingConfig
@@ -226,35 +224,27 @@ SELECT * FROM (
         # Windows workaround: shellfs has a bug with Arrow IPC pipes on Windows.
         # We use a temp file approach: run script to file, then read file.
         # The read_json forces the shell command to complete before read_arrow.
-        # Using getvariable() defers file path resolution until execution.
-        # Use UUID to ensure unique temp file per executor instance (thread-safe).
+        # Each uv_run call gets a unique file via md5(script||args) so multiple
+        # calls in the same query don't overwrite each other.
+        # The executor-namespaced subdir (UUID) isolates concurrent executors.
 
         unique_id = instance_id or str(uuid.uuid4())
         staging = staging or StagingConfig()
-        temp_file = staging.get_file_path(f"trilogy_uv_run_{unique_id}.arrow")
-
-        def cleanup_temp_file() -> None:
-            try:
-                os.unlink(temp_file)
-            except OSError:
-                pass
-
-        atexit.register(cleanup_temp_file)
+        base_dir = staging.get_executor_subdir(unique_id)
+        staging.register_cleanup(base_dir)
         return f"""
 INSTALL shellfs FROM community;
 INSTALL arrow FROM community;
 LOAD shellfs;
 LOAD arrow;
 
-SET VARIABLE __trilogy_uv_temp_file = '{temp_file}';
-
 CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
 WITH __build AS (
 SELECT a.name
-FROM read_json('uv run --no-project --quiet ' || script || ' ' || args || ' > {temp_file} && echo {{"name": "done"}} |') AS a
+FROM read_json('uv run --no-project --quiet ' || script || ' ' || args || ' > {base_dir}' || md5(script || args) || '.arrow && echo {{"name": "done"}} |') AS a
 LIMIT 1
 )
-SELECT * FROM read_arrow(getvariable('__trilogy_uv_temp_file'));
+SELECT * FROM read_arrow('{base_dir}' || md5(script || args) || '.arrow');
 """
     else:
         return """
