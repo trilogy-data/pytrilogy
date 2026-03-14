@@ -7,7 +7,12 @@ from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import BooleanOperator, DatasourceState, SourceType
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
-from trilogy.core.models.author import MultiSelectLineage, SelectLineage
+from trilogy.core.models.author import (
+    Conditional,
+    MultiSelectLineage,
+    SelectLineage,
+    WhereClause,
+)
 from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
@@ -513,11 +518,35 @@ def process_persist(
         statement.datasource.identifier, statement.datasource
     )
     original_status = ds.status
+    # For partial datasources, scope the source query to the partition condition so
+    # the planner treats sources with matching non_partial_for as non-partial and
+    # selects them directly rather than resorting to a covering union.
+    select_stmt = statement.select
+    # Only inject non_partial_for for explicitly declared partial datasources.
+    # Datasources created from a persist-with-WHERE already embed the condition
+    # in the SELECT, so injecting again would duplicate it.
+    if ds.is_partial and ds.non_partial_for:
+        if select_stmt.where_clause is None:
+            select_stmt = select_stmt.model_copy(
+                update={"where_clause": ds.non_partial_for}
+            )
+        else:
+            select_stmt = select_stmt.model_copy(
+                update={
+                    "where_clause": WhereClause(
+                        conditional=Conditional(
+                            left=ds.non_partial_for.conditional,
+                            right=select_stmt.where_clause.conditional,
+                            operator=BooleanOperator.AND,
+                        )
+                    )
+                }
+            )
     # set to unpublished to avoid circular refs
     try:
         ds.status = DatasourceState.UNPUBLISHED
         select = process_query(
-            environment=environment, statement=statement.select, hooks=hooks
+            environment=environment, statement=select_stmt, hooks=hooks
         )
     except:
         raise

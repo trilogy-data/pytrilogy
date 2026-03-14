@@ -26,6 +26,12 @@ def get_graph_exact_match(
     exact: set[str] = set()
     for node, ds in g.datasources.items():
         if isinstance(ds, BuildUnionDatasource):
+            # When conditions match a specific child's partition, that child is a
+            # better fit than the union; skip the union so it gets pruned.
+            if conditions and any(
+                child.non_partial_for == conditions for child in ds.children
+            ):
+                continue
             exact.add(node)
             continue
         if not conditions and not ds.non_partial_for:
@@ -50,9 +56,12 @@ def get_graph_exact_match(
             exact.add(node)
             continue
         elif conditions:
-            if not ds.non_partial_for:
+            if not ds.non_partial_for and ds.is_root:
+                # Root datasources provide source-of-truth data valid in any context;
+                # they're needed as join sources even when a partition condition is active.
+                exact.add(node)
                 continue
-            if ds.non_partial_for and conditions == ds.non_partial_for:
+            if conditions == ds.non_partial_for:
                 exact.add(node)
                 continue
         else:

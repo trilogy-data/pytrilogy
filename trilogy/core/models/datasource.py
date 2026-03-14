@@ -382,6 +382,10 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     ) -> "SelectStatement":
         from trilogy.core.statements.author import Metadata, SelectItem, SelectStatement
 
+        # TODO(safeguard): inject non_partial_for into WHERE so out-of-partition rows
+        # can never be written even when source-selection is wrong. Blocked on first
+        # fixing source-selection to prefer the exact-matching partial source automatically.
+
         return SelectStatement.from_inputs(
             environment=environment,
             selection=[
