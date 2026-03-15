@@ -4,6 +4,7 @@ from trilogy import Dialects
 from trilogy.dialect.config import DuckDBConfig
 
 PREQL_PATH = Path(__file__).parent / "landmark_info.preql"
+TREE_PATH = Path(__file__).parent / "tree_enrichment.preql"
 
 
 def _make_executor():
@@ -27,3 +28,16 @@ def test_landmark_info_geometry_cast_in_sql():
         "geometry column must be computed via ST_GeomFromText(geometry_raw), "
         f"not referenced directly from the union CTE.\nSQL:\n{sql}"
     )
+
+
+def test_query_fetch():
+    from trilogy.hooks import DebuggingHook
+    DebuggingHook()
+    executor = _make_executor()
+    with open(TREE_PATH) as f:
+        executor.parse_text(f.read())
+
+    results = executor.generate_sql(
+        "SELECT  tree_id,  common_name,  diameter_at_breast_height,  latitude,  longitude WHERE city = 'USBOS' AND diameter_at_breast_height >= 48 LIMIT 100;"
+    )[-1]
+    assert 'fsf' in results, results

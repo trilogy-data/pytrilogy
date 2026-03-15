@@ -1,0 +1,68 @@
+import tree_info;
+
+# Enrichment properties hanging off the species key
+property species.common_names string;           # comma-separated common names, most familiar first
+property species.native_status string;          # native_bay_area | native_california | non_native | naturalized | unknown
+property species.is_evergreen bool;
+property species.mature_height_ft float;
+property species.canopy_spread_ft float;
+property species.growth_rate string;            # slow | moderate | fast
+property species.lifespan_years string;         # e.g. "50-100", "200+"
+property species.drought_tolerance string;      # low | moderate | high
+property species.bloom_season string;           # One of the following: generally, be inclusive when a user asks: September to November | autumn and winter | late spring and summer | late spring or summer | late spring to autumn | spring | spring and summer | summer | winter | year-round
+property species.wildlife_value string;         # low | moderate | high
+property species.fire_risk string;              # low | moderate | high
+property species.tree_category string;          # palm | broadleaf | spreading | coniferous | columnar | ornamental | default
+property species.icon_rgba_b64 string;          # raw RGBA bytes, base64-encoded, 48x48px
+property species.icon_width int;
+property species.icon_height int;
+property species.enriched_at datetime;
+
+# Root datasource: runs the Python script to fetch and enrich new species.
+# Emits the full merged table (existing + newly enriched rows).
+root datasource raw_tree_enrichment (
+    species,
+    common_names,
+    native_status,
+    ?is_evergreen,
+    ?mature_height_ft,
+    ?canopy_spread_ft,
+    ?growth_rate,
+    ?lifespan_years,
+    ?drought_tolerance,
+    ?bloom_season,
+    ?wildlife_value,
+    ?fire_risk,
+    tree_category,
+    icon_rgba_b64,
+    icon_width,
+    icon_height,
+    enriched_at,
+)
+grain (species)
+file `./tree_enrichment.py`;
+
+# Cached datasource: reads/writes the persisted parquet in GCS.
+# Use this for day-to-day queries to avoid re-running enrichment.
+datasource tree_enrichment (
+    species,
+    common_names,
+    native_status,
+    ?is_evergreen,
+    ?mature_height_ft,
+    ?canopy_spread_ft,
+    ?growth_rate,
+    ?lifespan_years,
+    ?drought_tolerance,
+    ?bloom_season,
+    ?wildlife_value,
+    ?fire_risk,
+    tree_category,
+    icon_rgba_b64,
+    icon_width,
+    icon_height,
+    enriched_at,
+)
+grain (species)
+file `https://storage.googleapis.com/trilogy_public_models/duckdb/trees/tree_enrichment.parquet`:`gcs://trilogy_public_models/duckdb/trees/tree_enrichment.parquet`
+freshness by `./tree_enrichment_probe.py`;

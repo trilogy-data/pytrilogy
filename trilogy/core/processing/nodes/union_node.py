@@ -4,6 +4,16 @@ from trilogy.core.enums import SourceType
 from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.execute import QueryDatasource
 from trilogy.core.processing.nodes.base_node import StrategyNode
+from trilogy.core.models.build import (
+    BuildComparison,
+    BuildConcept,
+    BuildConditional,
+    BuildDatasource,
+    BuildFunction,
+    BuildGrain,
+    BuildOrderBy,
+    BuildParenthetical,
+)
 
 
 class UnionNode(StrategyNode):
@@ -20,6 +30,9 @@ class UnionNode(StrategyNode):
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
         partial_concepts: List[BuildConcept] | None = None,
+        preexisting_conditions: (
+            BuildConditional | BuildComparison | BuildParenthetical | None
+        ) = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -29,6 +42,7 @@ class UnionNode(StrategyNode):
             parents=parents,
             depth=depth,
             partial_concepts=partial_concepts,
+            preexisting_conditions=preexisting_conditions,
         )
         if self.partial_concepts != []:
             raise ValueError(
@@ -55,4 +69,5 @@ class UnionNode(StrategyNode):
             parents=[x.copy() for x in self.parents] if self.parents else None,
             depth=self.depth,
             partial_concepts=self.partial_concepts,
+            preexisting_conditions=self.preexisting_conditions,
         )

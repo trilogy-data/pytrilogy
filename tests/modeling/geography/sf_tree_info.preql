@@ -1,0 +1,65 @@
+import tree_common;
+
+root datasource sf_update_time (
+    city: ~city,
+    data_updated_through: sf_data_updated_through
+)
+grain (city)
+complete where city = 'USSFO'
+file `./sf_update_time.py`
+freshness by sf_data_updated_through;
+
+
+root partial datasource sf_raw_tree_info (
+    TreeID: tree_id,
+    city: city,
+    qSpecies: species,
+    PlantDate: ?plant_date,
+    DBH: ?diameter_at_breast_height,
+    Latitude: ?latitude,
+    Longitude: ?longitude,
+    # qLegalStatus: ~?legal_status,
+    # qAddress: ~?address,
+    # SiteOrder: ~?site_order,
+    # qSiteInfo: site_info,
+    # PlantType: plant_type,
+    # qCaretaker: caretaker,
+    # qCareAssistant: ?care_assistant,
+    # PlotSize: ?plot_size,
+    # PermitNotes: ?permit_notes,
+    # XCoord: ?x_coord,
+    # YCoord: ?y_coord,
+    # Location: ?location,
+)
+grain (tree_id)
+complete where city = 'USSFO'
+file `./sf_tree_info.py`;
+
+
+partial datasource sf_tree_info (
+    tree_id,
+    city,
+    species,
+    ?plant_date,
+    ?diameter_at_breast_height,
+    ?latitude,
+    ?longitude,
+    sf_data_updated_through,
+    # ?legal_status,
+    # ?address,
+    # ?site_order,
+    # site_info,
+    # plant_type,
+    # caretaker,
+    # ?care_assistant,
+    # ?plot_size,
+    # ?permit_notes,
+    # ?x_coord,
+    # ?y_coord,
+    # ?location,
+)
+grain (tree_id)
+complete where city = 'USSFO'
+file `https://storage.googleapis.com/trilogy_public_models/duckdb/trees/sf_tree_info.parquet`:`gcs://trilogy_public_models/duckdb/trees/sf_tree_info.parquet`
+freshness by sf_data_updated_through;
+

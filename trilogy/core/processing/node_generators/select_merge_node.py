@@ -524,6 +524,7 @@ def create_datasource_node(
     environment: BuildEnvironment,
     depth: int,
     conditions: BuildWhereClause | None = None,
+    injected_conditions: BuildWhereClause | None = None,
 ) -> tuple[StrategyNode, bool]:
 
     target_grain = BuildGrain.from_concepts(all_concepts, environment=environment)
@@ -561,6 +562,10 @@ def create_datasource_node(
     partial_is_full = conditions and (conditions == datasource.non_partial_for)
 
     datasource_conditions = datasource.where.conditional if datasource.where else None
+    if injected_conditions and datasource_conditions:
+        datasource_conditions = datasource_conditions + injected_conditions
+    elif injected_conditions:
+        datasource_conditions = injected_conditions
     all_inputs = [c.concept for c in datasource.columns]
     canonical_all = CanonicalBuildConceptList(concepts=all_inputs)
 
@@ -616,7 +621,7 @@ def create_union_datasource(
             accept_partial,
             environment,
             depth + 1,
-            conditions=conditions,
+            injected_conditions=conditions.conditional if conditions else None,
         )
         parents.append(subnode)
         force_group = force_group or fg
@@ -629,6 +634,7 @@ def create_union_datasource(
             parents=parents,
             depth=depth,
             partial_concepts=[],
+            preexisting_conditions=conditions.conditional if conditions else None,
         ),
         force_group,
     )
