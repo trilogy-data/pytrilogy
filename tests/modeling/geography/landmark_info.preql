@@ -1,0 +1,19 @@
+import landmark_common;
+import sf_landmarks;
+import nyc_landmarks;
+
+
+# --- Merged union datasource ---
+
+datasource landmark_info (
+    landmark_id,
+    city,
+    name,
+    ?geometry,
+    ?latitude,
+    ?longitude,
+    latest_landmark_update_through
+)
+grain (landmark_id)
+file `https://storage.googleapis.com/trilogy_public_models/duckdb/landmarks/full_landmark_info.parquet`:`gcs://trilogy_public_models/duckdb/landmarks/full_landmark_info.parquet`
+freshness by latest_landmark_update_through;

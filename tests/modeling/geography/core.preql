@@ -1,0 +1,1 @@
+key city enum<string>['USSFO', 'USNYC']; # UN/LOCODE for the source city (e.g. USSFO, USNYC)

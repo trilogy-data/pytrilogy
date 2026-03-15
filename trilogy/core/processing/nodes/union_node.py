@@ -36,6 +36,11 @@ class UnionNode(StrategyNode):
             )
         self.partial_concepts = []
 
+    def add_output_concepts(self, concepts, rebuild=True, unhide=True):
+        for x in self.parents:
+            x.add_output_concepts(concepts, rebuild, unhide)
+        super().add_output_concepts(concepts, rebuild, unhide)
+
     def _resolve(self) -> QueryDatasource:
         """We need to ensure that any filtered values are removed from the output to avoid inappropriate references"""
         base = super()._resolve()
