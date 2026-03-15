@@ -1,0 +1,51 @@
+import tree_common;
+
+root partial datasource nyc_update_time (
+    city: ~city,
+    data_updated_through: nyc_data_updated_through
+)
+grain (city)
+complete where city = 'USNYC'
+file `./nyc_update_time.py`
+freshness by nyc_data_updated_through;
+
+root partial datasource nyc_raw_tree_info (
+    objectid: tree_id,
+    city: city,
+    genusspecies: species,
+    dbh: ?diameter_at_breast_height,
+    planteddate: ?plant_date,
+    latitude: ?latitude,
+    longitude: ?longitude,
+    # tpcondition: ?condition,
+    # tpstructure: ?structure,
+    # stumpdiameter: ?stump_diameter,
+    # riskrating: ?risk_rating,
+    # riskratingdate: ?risk_rating_date,
+    # globalid: ?global_id,
+)
+grain (tree_id)
+complete where city = 'USNYC'
+file `./nyc_tree_info.py`;
+
+
+partial datasource nyc_tree_info (
+    tree_id,
+    city,
+    species,
+    ?diameter_at_breast_height,
+    ?plant_date,
+    ?latitude,
+    ?longitude,
+    nyc_data_updated_through,
+    # ?condition,
+    # ?structure,
+    # ?stump_diameter,
+    # ?risk_rating,
+    # ?risk_rating_date,
+    # ?global_id,
+)
+grain (tree_id)
+complete where city = 'USNYC'
+file `https://storage.googleapis.com/trilogy_public_models/duckdb/trees/nyc_tree_info.parquet`:`gcs://trilogy_public_models/duckdb/trees/nyc_tree_info.parquet`
+freshness by nyc_data_updated_through;

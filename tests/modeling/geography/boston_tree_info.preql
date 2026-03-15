@@ -1,0 +1,39 @@
+import tree_common;
+
+root partial datasource boston_update_time (
+    city: ~city,
+    data_updated_through: boston_data_updated_through
+)
+grain (city)
+complete where city = 'USBOS'
+file `./boston_update_time.py`
+freshness by boston_data_updated_through;
+
+root partial datasource boston_raw_tree_info (
+    id: tree_id,
+    city: city,
+    spp_bot: species,
+    dbh: ?diameter_at_breast_height,
+    date_plant: ?plant_date,
+    y_latitude: ?latitude,
+    x_longitude: ?longitude,
+)
+grain (tree_id)
+complete where city = 'USBOS'
+file `./boston_tree_info.py`;
+
+
+partial datasource boston_tree_info (
+    tree_id,
+    city,
+    species,
+    ?diameter_at_breast_height,
+    ?plant_date,
+    ?latitude,
+    ?longitude,
+    boston_data_updated_through,
+)
+grain (tree_id)
+complete where city = 'USBOS'
+file `https://storage.googleapis.com/trilogy_public_models/duckdb/trees/boston_tree_info.parquet`:`gcs://trilogy_public_models/duckdb/trees/boston_tree_info.parquet`
+freshness by boston_data_updated_through;

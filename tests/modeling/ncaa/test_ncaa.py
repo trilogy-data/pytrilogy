@@ -57,6 +57,8 @@ def test_adhoc01():
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
 
     sql = engine.generate_sql(text)[0]
+    # is_home = true means the away source (complete where is_home = false) is mutually
+    # exclusive with the query filter; only the home branch should appear in the SQL.
     assert (
         """SELECT
     "home_team_games_sr"."game_id" as "id",
@@ -67,16 +69,7 @@ FROM
     "bigquery-public-data"."ncaa_basketball"."mbb_games_sr" as "home_team_games_sr"""
         in sql
     )
-    assert (
-        """SELECT
-    "away_team_games_sr"."game_id" as "id",
-    "away_team_games_sr"."a_points_game" as "points_game",
-    "away_team_games_sr"."a_name" as "team_name",
-    "away_team_games_sr"."a_id" as "team_id"
-FROM
-    "bigquery-public-data"."ncaa_basketball"."mbb_games_sr" as "away_team_games_sr"""
-        in sql
-    )
+    assert "away_team_games_sr" not in sql
 
 
 def test_adhoc02():

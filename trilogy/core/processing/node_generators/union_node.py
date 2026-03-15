@@ -88,4 +88,5 @@ def gen_union_node(
         output_concepts=resolved,
         environment=environment,
         parents=parent_nodes,
+        preexisting_conditions=conditions.conditional if conditions else None,
     )
