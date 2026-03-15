@@ -9,6 +9,8 @@ import boston_tree_info;
 datasource tree_info (
     tree_id,
     city,
+    # commented out for a specific test
+    # common_name,
     species,
     ?plant_date,
     ?diameter_at_breast_height,

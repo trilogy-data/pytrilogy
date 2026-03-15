@@ -15,9 +15,12 @@ from trilogy.core.graph_models import (
 )
 from trilogy.core.models.build import (
     Address,
+    BuildComparison,
     BuildConcept,
+    BuildConditional,
     BuildDatasource,
     BuildGrain,
+    BuildParenthetical,
     BuildUnionDatasource,
     BuildWhereClause,
     CanonicalBuildConceptList,
@@ -524,7 +527,9 @@ def create_datasource_node(
     environment: BuildEnvironment,
     depth: int,
     conditions: BuildWhereClause | None = None,
-    injected_conditions: BuildWhereClause | None = None,
+    injected_conditions: (
+        BuildComparison | BuildConditional | BuildParenthetical | None
+    ) = None,
 ) -> tuple[StrategyNode, bool]:
 
     target_grain = BuildGrain.from_concepts(all_concepts, environment=environment)
@@ -607,25 +612,70 @@ def create_union_datasource(
     conditions: BuildWhereClause | None = None,
 ) -> tuple["UnionNode", bool]:
     from trilogy.core.processing.nodes.union_node import UnionNode
+    from trilogy.core.processing.utility import (
+        condition_implies,
+        conditions_mutually_exclusive,
+        strip_condition_atoms,
+    )
 
-    datasources = datasource.children
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} generating union node parents with condition {conditions}"
     )
+
+    # Build list of (child, injected_condition) pairs, filtering by query conditions.
+    effective: list[
+        tuple[
+            BuildDatasource,
+            BuildComparison | BuildConditional | BuildParenthetical | None,
+        ]
+    ]
+    if conditions:
+        qcond = conditions.conditional
+        effective = []
+        for child in datasource.children:
+            if not child.non_partial_for:
+                effective.append((child, qcond))
+                continue
+            npf = child.non_partial_for.conditional
+            if conditions_mutually_exclusive(qcond, npf):
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} dropping {child.name}: "
+                    f"non_partial_for {npf!r} mutually exclusive with conditions {qcond!r}"
+                )
+                continue
+            if condition_implies(qcond, npf):
+                stripped = strip_condition_atoms(qcond, npf)
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} {child.name} implied by conditions; "
+                    f"injecting stripped condition {stripped!r}"
+                )
+                effective.append((child, stripped))
+            else:
+                effective.append((child, qcond))
+        if not effective:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} all children filtered out; falling back to full union"
+            )
+            effective = [(child, qcond) for child in datasource.children]
+    else:
+        effective = [(child, None) for child in datasource.children]
+
     force_group = False
     parents = []
-    for x in datasources:
+    for child, injected_cond in effective:
         subnode, fg = create_datasource_node(
-            x,
+            child,
             all_concepts,
             accept_partial,
             environment,
             depth + 1,
-            injected_conditions=conditions.conditional if conditions else None,
+            injected_conditions=injected_cond,
         )
         parents.append(subnode)
         force_group = force_group or fg
-    logger.info(f"{padding(depth)}{LOGGER_PREFIX} returning union node")
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} returning union node with {len(parents)} branch(es)"
+    )
     return (
         UnionNode(
             output_concepts=all_concepts,

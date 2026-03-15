@@ -31,8 +31,6 @@ def test_landmark_info_geometry_cast_in_sql():
 
 
 def test_query_fetch():
-    from trilogy.hooks import DebuggingHook
-    DebuggingHook()
     executor = _make_executor()
     with open(TREE_PATH) as f:
         executor.parse_text(f.read())
@@ -40,4 +38,8 @@ def test_query_fetch():
     results = executor.generate_sql(
         "SELECT  tree_id,  common_name,  diameter_at_breast_height,  latitude,  longitude WHERE city = 'USBOS' AND diameter_at_breast_height >= 48 LIMIT 100;"
     )[-1]
-    assert 'fsf' in results, results
+    # With city='USBOS', only the Boston source should appear — SF and NYC are mutually
+    # exclusive with this filter and must be dropped by create_union_datasource.
+    assert "sf_tree_info" not in results, results
+    assert "nyc_tree_info" not in results, results
+    assert "boston" in results.lower(), results

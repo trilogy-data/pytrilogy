@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import (
     BooleanOperator,
+    ComparisonOperator,
     DatePart,
     Derivation,
     FunctionClass,
@@ -906,3 +907,57 @@ def sort_select_output(
 ) -> CTE | UnionCTE:
 
     return sort_select_output_processed(cte, query)
+
+
+def condition_implies(
+    query: BuildComparison | BuildConditional | BuildParenthetical,
+    required: BuildComparison | BuildConditional | BuildParenthetical,
+) -> bool:
+    """True if every AND-atom of required appears in query's AND-atoms (query is a superset)."""
+    query_atoms = decompose_condition(query)
+    return all(atom in query_atoms for atom in decompose_condition(required))
+
+
+def conditions_mutually_exclusive(
+    a: BuildComparison | BuildConditional | BuildParenthetical,
+    b: BuildComparison | BuildConditional | BuildParenthetical,
+) -> bool:
+    """True if a and b cannot both be satisfied: same concept has conflicting EQ values in each."""
+
+    def _eq_map(
+        atoms: list[BuildComparison | BuildConditional | BuildParenthetical],
+    ) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for atom in atoms:
+            if not isinstance(atom, BuildComparison):
+                continue
+            if atom.operator not in (ComparisonOperator.EQ, ComparisonOperator.IS):
+                continue
+            if isinstance(atom.left, BuildConcept) and not isinstance(
+                atom.right, BuildConcept
+            ):
+                result[atom.left.address] = atom.right
+            elif isinstance(atom.right, BuildConcept) and not isinstance(
+                atom.left, BuildConcept
+            ):
+                result[atom.right.address] = atom.left
+        return result
+
+    a_eq = _eq_map(decompose_condition(a))
+    b_eq = _eq_map(decompose_condition(b))
+    return any(addr in b_eq and b_eq[addr] != val for addr, val in a_eq.items())
+
+
+def strip_condition_atoms(
+    query: BuildComparison | BuildConditional | BuildParenthetical,
+    to_strip: BuildComparison | BuildConditional | BuildParenthetical,
+) -> BuildComparison | BuildConditional | BuildParenthetical | None:
+    """Remove atoms present in to_strip from query's AND-tree. Returns None if all atoms removed."""
+    strip_atoms = decompose_condition(to_strip)
+    remaining = [a for a in decompose_condition(query) if a not in strip_atoms]
+    if not remaining:
+        return None
+    result: BuildComparison | BuildConditional | BuildParenthetical = remaining[0]
+    for atom in remaining[1:]:
+        result = result + atom  # type: ignore[operator]
+    return result
