@@ -13,12 +13,10 @@ from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConditional,
-    BuildDatasource,
-    BuildFunction,
-    BuildGrain,
-    BuildOrderBy,
     BuildParenthetical,
 )
+from trilogy.core.models.execute import QueryDatasource
+from trilogy.core.processing.nodes.base_node import StrategyNode
 
 
 class UnionNode(StrategyNode):
