@@ -25,9 +25,9 @@ select 3 as increment_b
 ''';
 
 root partial datasource a_raw (
-    ~id,
-    ~value,
-    ~source
+    id,
+    value,
+    source
 )
 grain (id)
 complete where source = 'a'

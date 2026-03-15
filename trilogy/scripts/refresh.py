@@ -17,6 +17,7 @@ from trilogy.scripts.common import (
     CLIRuntimeParams,
     ExecutionStats,
     RefreshParams,
+    RefreshQuery,
     count_statement_stats,
     handle_execution_exception,
 )
@@ -44,6 +45,7 @@ def execute_script_for_refresh(
     print_watermarks: bool = False,
     force_sources: frozenset[str] = frozenset(),
     interactive: bool = False,
+    dry_run: bool = False,
 ) -> ExecutionStats:
     """Execute a script for the 'refresh' command - parse and refresh stale assets."""
     from trilogy.scripts.display import print_info, print_success, print_warning
@@ -64,17 +66,24 @@ def execute_script_for_refresh(
                 f"No stale assets found in {node.path.name} ({root_assets}/{all_assets} root assets)"
             )
         elif not quiet:
-            print_warning(f"Found {stale_count} stale asset(s) in {node.path.name}")
+            label = "Would refresh" if dry_run else "Found"
+            print_warning(f"{label} {stale_count} stale asset(s) in {node.path.name}")
 
     def on_refresh(asset_id: str, reason: str) -> None:
         if not quiet:
-            print_info(f"  Refreshing {asset_id}: {reason}")
+            label = "Would refresh" if dry_run else "Refreshing"
+            print_info(f"  {label} {asset_id}: {reason}")
 
     def on_watermarks(watermarks: dict[str, DatasourceWatermark]) -> None:
         if print_watermarks:
             from trilogy.scripts.display import show_watermarks
 
             show_watermarks(watermarks)
+
+    def on_refresh_query(ds_id: str, sql: str) -> None:
+        stats.refresh_queries.append(RefreshQuery(datasource_id=ds_id, sql=sql))
+        if dry_run and not quiet:
+            print_info(f"\n-- {ds_id}\n{sql}")
 
     result = refresh_stale_assets(
         exec,
@@ -83,15 +92,22 @@ def execute_script_for_refresh(
         on_watermarks=on_watermarks,
         on_approval=_prompt_approval if interactive else None,
         force_sources=set(force_sources) if force_sources else None,
+        on_refresh_query=on_refresh_query,
+        dry_run=dry_run,
     )
     stats.update_count = result.refreshed_count
 
-    for x in validation:
-        exec.execute_statement(x)
-        stats = count_statement_stats([x])
+    if not dry_run:
+        for x in validation:
+            exec.execute_statement(x)
+            stats = count_statement_stats([x])
 
     if result.had_stale and not quiet:
-        if result.refreshed_count > 0:
+        if dry_run:
+            print_info(
+                f"Dry run: {result.refreshed_count} asset(s) would be refreshed in {node.path.name}"
+            )
+        elif result.refreshed_count > 0:
             print_success(
                 f"Refreshed {result.refreshed_count} asset(s) in {node.path.name}"
             )
@@ -102,7 +118,10 @@ def execute_script_for_refresh(
 
 
 def make_refresh_execution_fn(
-    print_watermarks: bool, force_sources: frozenset[str], interactive: bool
+    print_watermarks: bool,
+    force_sources: frozenset[str],
+    interactive: bool,
+    dry_run: bool = False,
 ):
     """Create a refresh execution function with the given parameters."""
 
@@ -110,7 +129,7 @@ def make_refresh_execution_fn(
         exec: Executor, node: ScriptNode, quiet: bool = False
     ) -> ExecutionStats:
         return execute_script_for_refresh(
-            exec, node, quiet, print_watermarks, force_sources, interactive
+            exec, node, quiet, print_watermarks, force_sources, interactive, dry_run
         )
 
     return wrapped_execute
@@ -153,6 +172,13 @@ def make_refresh_execution_fn(
     default=False,
     help="Show refresh plan and prompt for approval before applying changes",
 )
+@option(
+    "--dry-run",
+    "-n",
+    is_flag=True,
+    default=False,
+    help="Show SQL that would be executed without running it",
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def refresh(
@@ -166,6 +192,7 @@ def refresh(
     env,
     force,
     interactive,
+    dry_run,
     conn_args,
 ):
     """Refresh stale assets in Trilogy scripts.
@@ -180,6 +207,7 @@ def refresh(
         print_watermarks=print_watermarks,
         force_sources=frozenset(force),
         interactive=interactive,
+        dry_run=dry_run,
     )
 
     cli_params = CLIRuntimeParams(
@@ -200,6 +228,7 @@ def refresh(
         refresh_params.print_watermarks,
         refresh_params.force_sources,
         refresh_params.interactive,
+        refresh_params.dry_run,
     )
 
     try:

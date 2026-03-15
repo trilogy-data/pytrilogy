@@ -95,7 +95,13 @@ class Executor(object):
         self.config = config
         self.staging = staging or StagingConfig()
         self._instance_id = str(uuid.uuid4())
-        self.generator = get_dialect_generator(self.dialect, rendering, config)
+        self.generator = get_dialect_generator(
+            self.dialect,
+            rendering,
+            config,
+            staging=self.staging,
+            instance_id=self._instance_id,
+        )
         self.connection = self.connect()
         # TODO: make generic
         if self.dialect == Dialects.DATAFRAME:
@@ -163,20 +169,26 @@ class Executor(object):
         self.connected = False
 
     def update_datasource(
-        self, datasource: Datasource, keys: UpdateKeys | None = None
-    ) -> None:
+        self,
+        datasource: Datasource,
+        keys: UpdateKeys | None = None,
+        dry_run: bool = False,
+    ) -> str | None:
         """Update a datasource with optional filtering based on update keys.
+
+        Returns the compiled persist SQL, or None if not applicable.
 
         Args:
             datasource: The datasource to update
             keys: Optional UpdateKeys specifying incremental filters
+            dry_run: If True, compile and return SQL without executing
         """
         where = keys.to_where_clause(self.environment) if keys else None
         # Skip CREATE for file-backed datasources (parquet, csv, etc.) - the file is the source
         is_file_backed = (
             isinstance(datasource.address, Address) and datasource.address.is_file
         )
-        if not is_file_backed:
+        if not dry_run and not is_file_backed:
             create_stmt = CreateStatement(
                 scope=ValidationScope.DATASOURCES,
                 create_mode=CreateMode.CREATE_IF_NOT_EXISTS,
@@ -190,7 +202,17 @@ class Executor(object):
             datasource=datasource,
             select=select_stmt,
         )
-        self.execute_statement(statement)
+        generated = self.generator.generate_queries(
+            self.environment, [statement], hooks=self.hooks  # type: ignore[list-item]
+        )
+        if not generated:
+            return None
+        processed = generated[0]
+        if not dry_run:
+            self.execute_query(processed)
+        if isinstance(processed, ProcessedQueryPersist):
+            return self.generator.compile_statement(processed)
+        return None
 
     def execute_statement(
         self,

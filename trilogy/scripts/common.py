@@ -1,7 +1,7 @@
 """Common helper functions used across all CLI commands."""
 
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path as PathlibPath
 from typing import Any, Iterable, Sequence, Union
@@ -36,18 +36,28 @@ DEFAULT_STAT_TYPES: list[str] = ["persist", "update", "validate"]
 
 
 @dataclass
+class RefreshQuery:
+    """A refresh query that was executed, with the target datasource and compiled SQL."""
+
+    datasource_id: str
+    sql: str
+
+
+@dataclass
 class ExecutionStats:
     """Statistics about statements executed in a script."""
 
     persist_count: int = 0
     update_count: int = 0
     validate_count: int = 0
+    refresh_queries: list[RefreshQuery] = field(default_factory=list)
 
     def __add__(self, other: "ExecutionStats") -> "ExecutionStats":
         return ExecutionStats(
             persist_count=self.persist_count + other.persist_count,
             update_count=self.update_count + other.update_count,
             validate_count=self.validate_count + other.validate_count,
+            refresh_queries=self.refresh_queries + other.refresh_queries,
         )
 
 
@@ -77,6 +87,7 @@ class RefreshParams:
     print_watermarks: bool = False
     force_sources: frozenset[str] = frozenset()
     interactive: bool = False
+    dry_run: bool = False
 
 
 @dataclass

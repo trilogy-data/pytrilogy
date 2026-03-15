@@ -1,9 +1,10 @@
 import sys
 from collections import defaultdict
 from datetime import date, datetime, timedelta
+from itertools import product
 from typing import List, Tuple, TypeVar
 
-from trilogy.core.enums import ComparisonOperator, FunctionType
+from trilogy.core.enums import AddressType, ComparisonOperator, FunctionType
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
@@ -13,6 +14,7 @@ from trilogy.core.models.build import (
     BuildParenthetical,
 )
 from trilogy.core.models.core import DataType, EnumType
+from trilogy.core.models.datasource import Address
 
 # Define a generic type that ensures start and end are the same type
 T = TypeVar("T", int, float, date, datetime)
@@ -257,6 +259,92 @@ def _enum_fully_covered(
     return covered >= set(enum_type.values)
 
 
+def _datasource_score(ds: BuildDatasource) -> int:
+    """Score by materialization level: 2=table, 1=static file (parquet/csv), 0=script/query."""
+    if not isinstance(ds.address, Address):
+        return 2
+    if ds.address.is_query:
+        return 0
+    if ds.address.type == AddressType.PYTHON_SCRIPT:
+        return 0
+    if ds.address.is_file:
+        return 1
+    return 2
+
+
+def _extract_enum_value(
+    conditional: BuildComparison | BuildConditional | BuildParenthetical,
+) -> object | None:
+    """Extract the literal value from a single equality comparison, or None."""
+    if not isinstance(conditional, BuildComparison):
+        return None
+    if conditional.operator not in (ComparisonOperator.EQ, ComparisonOperator.IS):
+        return None
+    if isinstance(conditional.left, BuildConcept) and not isinstance(
+        conditional.right, BuildConcept
+    ):
+        return conditional.right
+    if isinstance(conditional.right, BuildConcept) and not isinstance(
+        conditional.left, BuildConcept
+    ):
+        return conditional.left
+    return None
+
+
+def _best_enum_union(
+    dses: list[BuildDatasource],
+    enum_type: EnumType,
+    merge_key: BuildConcept,
+) -> list[BuildDatasource] | None:
+    """Find the best minimal covering combination for an enum-partitioned key.
+
+    Groups by covered enum value, then picks the highest-scoring combination
+    (one source per value) that has field overlap beyond the merge key itself.
+    Materialized table sources score higher than script/query sources.
+    """
+    by_value: dict[object, list[BuildDatasource]] = defaultdict(list)
+    for ds in dses:
+        if not ds.non_partial_for:
+            continue
+        val = _extract_enum_value(ds.non_partial_for.conditional)
+        if val is None:
+            continue
+        by_value[val].append(ds)
+
+    # All enum values must have at least one candidate source
+    if set(str(v) for v in by_value.keys()) < set(enum_type.values):
+        return None
+
+    values = list(by_value.keys())
+    merge_key_addr = {merge_key.address}
+
+    best: list[BuildDatasource] | None = None
+    best_score = -1
+
+    for combo in product(*[by_value[v] for v in values]):
+        combo_list = list(combo)
+
+        # Require at least one shared concept beyond the merge key
+        overlap = set(c.address for c in combo_list[0].output_concepts)
+        for ds in combo_list[1:]:
+            overlap &= {c.address for c in ds.output_concepts}
+        if not (overlap - merge_key_addr):
+            continue
+
+        conditions = [
+            c.non_partial_for.conditional for c in combo_list if c.non_partial_for
+        ]
+        if not _enum_fully_covered(conditions, enum_type):
+            continue
+
+        score = sum(_datasource_score(ds) for ds in combo_list)
+        if score > best_score:
+            best_score = score
+            best = combo_list
+
+    return best
+
+
 def get_union_sources(
     datasources: list[BuildDatasource], concepts: list[BuildConcept]
 ) -> List[list[BuildDatasource]]:
@@ -279,13 +367,17 @@ def get_union_sources(
         assocs[merge_key.address].append(x)
     final: list[list[BuildDatasource]] = []
     for _, dses in assocs.items():
-        conditions = [c.non_partial_for.conditional for c in dses if c.non_partial_for]
-        if simplify_conditions(conditions):
-            final.append(dses)
-        elif dses and dses[0].non_partial_for:
-            merge_key = dses[0].non_partial_for.concept_arguments[0]
-            if isinstance(merge_key.datatype, EnumType) and _enum_fully_covered(
-                conditions, merge_key.datatype
-            ):
+        if not dses or not dses[0].non_partial_for:
+            continue
+        merge_key = dses[0].non_partial_for.concept_arguments[0]
+        if isinstance(merge_key.datatype, EnumType):
+            result = _best_enum_union(dses, merge_key.datatype, merge_key)
+            if result:
+                final.append(result)
+        else:
+            conditions = [
+                c.non_partial_for.conditional for c in dses if c.non_partial_for
+            ]
+            if simplify_conditions(conditions):
                 final.append(dses)
     return final

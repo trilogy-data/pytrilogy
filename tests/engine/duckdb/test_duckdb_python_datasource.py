@@ -1,4 +1,5 @@
 import re
+from unittest.mock import patch
 
 from trilogy.dialect.duckdb import get_python_datasource_setup_sql
 from trilogy.staging import StagingConfig
@@ -21,7 +22,7 @@ def test_python_datasource_enabled_unix():
 
 
 def test_python_datasource_enabled_windows_unique_ids():
-    """Test that Windows mode generates unique temp files per instance_id."""
+    """Test that Windows mode generates unique executor subdirs per instance_id."""
     sql1 = get_python_datasource_setup_sql(
         enabled=True, is_windows=True, instance_id="test-id-1"
     )
@@ -29,8 +30,8 @@ def test_python_datasource_enabled_windows_unique_ids():
         enabled=True, is_windows=True, instance_id="test-id-2"
     )
 
-    assert "trilogy_uv_run_test-id-1.arrow" in sql1
-    assert "trilogy_uv_run_test-id-2.arrow" in sql2
+    assert "test-id-1/" in sql1
+    assert "test-id-2/" in sql2
     assert sql1 != sql2
 
 
@@ -39,32 +40,32 @@ def test_python_datasource_windows_auto_uuid():
     sql1 = get_python_datasource_setup_sql(enabled=True, is_windows=True)
     sql2 = get_python_datasource_setup_sql(enabled=True, is_windows=True)
 
-    uuid_pattern = r"trilogy_uv_run_[a-f0-9-]{36}\.arrow"
+    uuid_pattern = r"[a-f0-9-]{36}/"
     assert re.search(uuid_pattern, sql1)
     assert re.search(uuid_pattern, sql2)
     assert sql1 != sql2
 
 
 def test_python_datasource_windows_structure():
-    """Test Windows SQL has correct structure."""
+    """Test Windows SQL has correct structure with per-script temp files."""
     sql = get_python_datasource_setup_sql(
         enabled=True, is_windows=True, instance_id="test"
     )
     assert "INSTALL shellfs" in sql
     assert "INSTALL arrow" in sql
-    assert "SET VARIABLE __trilogy_uv_temp_file" in sql
+    assert "md5(" in sql
     assert "read_json" in sql
     assert "read_arrow" in sql
-    assert "getvariable" in sql
 
 
 def test_python_datasource_windows_custom_staging():
-    """Test that Windows mode uses the staging config path."""
+    """Test that Windows mode uses the staging config path as executor subdir."""
     staging = StagingConfig(path="/custom/staging")
-    sql = get_python_datasource_setup_sql(
-        enabled=True, is_windows=True, instance_id="test", staging=staging
-    )
-    assert "/custom/staging/trilogy_uv_run_test.arrow" in sql
+    with patch("trilogy.staging.os.makedirs"):
+        sql = get_python_datasource_setup_sql(
+            enabled=True, is_windows=True, instance_id="test", staging=staging
+        )
+    assert "/custom/staging/test/" in sql
 
 
 def test_python_datasource_windows_gcs_staging():
@@ -73,7 +74,7 @@ def test_python_datasource_windows_gcs_staging():
     sql = get_python_datasource_setup_sql(
         enabled=True, is_windows=True, instance_id="test", staging=staging
     )
-    assert "gs://my-bucket/staging/trilogy_uv_run_test.arrow" in sql
+    assert "gs://my-bucket/staging/test/" in sql
 
 
 def test_python_datasource_windows_s3_staging():
@@ -82,4 +83,4 @@ def test_python_datasource_windows_s3_staging():
     sql = get_python_datasource_setup_sql(
         enabled=True, is_windows=True, instance_id="test", staging=staging
     )
-    assert "s3://my-bucket/staging/trilogy_uv_run_test.arrow" in sql
+    assert "s3://my-bucket/staging/test/" in sql
