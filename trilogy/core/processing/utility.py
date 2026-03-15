@@ -34,6 +34,7 @@ from trilogy.core.models.build import (
     BuildGrain,
     BuildParenthetical,
     BuildSubselectComparison,
+    BuildWhereClause,
     BuildWindowItem,
     LooseBuildConceptList,
 )
@@ -961,3 +962,33 @@ def strip_condition_atoms(
     for atom in remaining[1:]:
         result = result + atom  # type: ignore[operator]
     return result
+
+
+def filter_union_children(
+    non_partial_map: dict[str, BuildWhereClause | None],
+    query_condition: BuildComparison | BuildConditional | BuildParenthetical,
+) -> dict[str, BuildComparison | BuildConditional | BuildParenthetical | None]:
+    """Filter union datasource children based on query conditions.
+
+    Takes a mapping of child ID → non_partial_for clause and the query condition.
+    Returns a mapping of kept child IDs → injected condition (None = no extra filter needed).
+
+    Children whose non_partial_for is mutually exclusive with the query are dropped.
+    Children whose non_partial_for is implied by the query have redundant atoms stripped.
+    Falls back to all children (with full condition) if filtering would drop everything.
+    """
+    kept: dict[str, BuildComparison | BuildConditional | BuildParenthetical | None] = {}
+    for child_id, non_partial_for in non_partial_map.items():
+        if not non_partial_for:
+            kept[child_id] = query_condition
+            continue
+        npf = non_partial_for.conditional
+        if conditions_mutually_exclusive(query_condition, npf):
+            continue
+        if condition_implies(query_condition, npf):
+            kept[child_id] = strip_condition_atoms(query_condition, npf)
+        else:
+            kept[child_id] = query_condition
+    if not kept:
+        return {child_id: query_condition for child_id in non_partial_map}
+    return kept

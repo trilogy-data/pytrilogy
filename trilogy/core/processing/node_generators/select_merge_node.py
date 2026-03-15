@@ -612,17 +612,12 @@ def create_union_datasource(
     conditions: BuildWhereClause | None = None,
 ) -> tuple["UnionNode", bool]:
     from trilogy.core.processing.nodes.union_node import UnionNode
-    from trilogy.core.processing.utility import (
-        condition_implies,
-        conditions_mutually_exclusive,
-        strip_condition_atoms,
-    )
+    from trilogy.core.processing.utility import filter_union_children
 
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} generating union node parents with condition {conditions}"
     )
 
-    # Build list of (child, injected_condition) pairs, filtering by query conditions.
     effective: list[
         tuple[
             BuildDatasource,
@@ -631,32 +626,26 @@ def create_union_datasource(
     ]
     if conditions:
         qcond = conditions.conditional
-        effective = []
+        non_partial_map = {
+            child.name: child.non_partial_for for child in datasource.children
+        }
+        kept = filter_union_children(non_partial_map, qcond)
         for child in datasource.children:
-            if not child.non_partial_for:
-                effective.append((child, qcond))
-                continue
-            npf = child.non_partial_for.conditional
-            if conditions_mutually_exclusive(qcond, npf):
+            if child.name not in kept:
                 logger.info(
                     f"{padding(depth)}{LOGGER_PREFIX} dropping {child.name}: "
-                    f"non_partial_for {npf!r} mutually exclusive with conditions {qcond!r}"
+                    f"non_partial_for {child.non_partial_for!r} mutually exclusive with {qcond!r}"
                 )
-                continue
-            if condition_implies(qcond, npf):
-                stripped = strip_condition_atoms(qcond, npf)
-                logger.info(
-                    f"{padding(depth)}{LOGGER_PREFIX} {child.name} implied by conditions; "
-                    f"injecting stripped condition {stripped!r}"
-                )
-                effective.append((child, stripped))
-            else:
-                effective.append((child, qcond))
-        if not effective:
+        effective = [
+            (child, kept[child.name])
+            for child in datasource.children
+            if child.name in kept
+        ]
+        if len(effective) < len(datasource.children):
             logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} all children filtered out; falling back to full union"
+                f"{padding(depth)}{LOGGER_PREFIX} reduced union from {len(datasource.children)} "
+                f"to {len(effective)} branch(es)"
             )
-            effective = [(child, qcond) for child in datasource.children]
     else:
         effective = [(child, None) for child in datasource.children]
 
