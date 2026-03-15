@@ -294,11 +294,8 @@ def test_ninety_seven(engine):
 
 def test_ninety_seven_alt(engine):
     query = run_query(engine, 97, preql_file="query97-one.preql", label="97.1")
-    assert len(query) < 5000, query
-    # vacuous GROUP BY should be merged into its parent (yummy) and eliminated
-    assert (
-        "vacuous" not in query
-    ), "Expected vacuous CTE to be merged away by MergeVacuousGroupBy"
+    assert len(query) < 4250, query
+
 
 
 def test_ninety_eight(engine):

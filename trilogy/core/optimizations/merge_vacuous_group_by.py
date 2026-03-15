@@ -74,6 +74,7 @@ class MergeVacuousGroupBy(OptimizationRule):
             return False, None
         if not _is_group_by_cte(cte):
             return False, None
+        # cte must have one parent
         if len(cte.parent_ctes) != 1:
             return False, None
 
@@ -102,13 +103,16 @@ class MergeVacuousGroupBy(OptimizationRule):
             if concept.derivation in CHILD_INELIGIBLE_DERIVATIONS:
                 return False, None
 
-        if not _all_grain_determined_by_parent(cte, parent):
-            self.debug(
-                f"CTE {cte.name} grain is not determined by parent {parent.name}, skipping"
-            )
-            return False, None
+        for concept in parent.output_columns:
+            if concept.derivation in CHILD_INELIGIBLE_DERIVATIONS:
+                return False, None  
+        # if not _all_grain_determined_by_parent(cte, parent):
+        #     self.debug(
+        #         f"CTE {cte.name} grain is not determined by parent {parent.name}, skipping"
+        #     )
+        #     return False, None
 
-        self.log(f"Merging vacuous group-by {cte.name} into parent {parent.name}")
+        self.log(f"Merging  group-by {cte.name} into irrelevant parent {parent.name}")
 
         # Ensure any new derived columns from child exist in parent's source_map
         # (empty list → renderer uses concept lineage to compute the expression).
