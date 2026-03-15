@@ -1,5 +1,5 @@
 query_id = "08"
-gen_length = 2926
+gen_length = 2739
 generated_sql = """
 
 WITH 
@@ -41,15 +41,7 @@ WHERE
     SUBSTRING(cast(\"cheerful\".\"zips_pre\" as string),1,5) in (select concerned.\"_virt_func_substring_4293448550966409\" from concerned where concerned.\"_virt_func_substring_4293448550966409\" is not null)
 
 GROUP BY 
-    SUBSTRING(SUBSTRING(cast(\"cheerful\".\"zips_pre\" as string),1,5),1,2),
-    SUBSTRING(cast(\"cheerful\".\"zips_pre\" as string),1,5)),
-abhorrent as (
-SELECT
-    \"young\".\"final_zips\" as \"final_zips\"
-FROM
-    \"young\"
-GROUP BY 
-    \"young\".\"final_zips\")
+    SUBSTRING(SUBSTRING(cast(\"cheerful\".\"zips_pre\" as string),1,5),1,2))
 SELECT
     \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
     sum(\"store_sales_store_sales\".\"SS_NET_PROFIT\") as \"store_net_profit\"
@@ -58,7 +50,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
 WHERE
-    \"store_sales_date_date\".\"D_QOY\" = 2 and cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 1998 and SUBSTRING(\"store_sales_store_store\".\"S_ZIP\",1,2) in (select abhorrent.\"final_zips\" from abhorrent where abhorrent.\"final_zips\" is not null)
+    \"store_sales_date_date\".\"D_QOY\" = 2 and cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 1998 and SUBSTRING(\"store_sales_store_store\".\"S_ZIP\",1,2) in (select young.\"final_zips\" from young where young.\"final_zips\" is not null)
 
 GROUP BY 
     \"store_sales_store_store\".\"S_STORE_NAME\"

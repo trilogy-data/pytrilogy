@@ -1,5 +1,5 @@
 query_id = "97.1"
-gen_length = 4518
+gen_length = 4057
 generated_sql = """
 
 WITH 
@@ -47,42 +47,27 @@ GROUP BY
     coalesce(\"highfalutin\".\"item_id\",\"item_items\".\"I_ITEM_SK\",\"thoughtful\".\"item_id\")),
 yummy as (
 SELECT
-    \"uneven\".\"catalog_sales_date_month_seq\" as \"catalog_sales_date_month_seq\",
-    \"uneven\".\"customer_id\" as \"customer_id\",
-    \"uneven\".\"customer_item\" as \"customer_item\",
-    \"uneven\".\"item_id\" as \"item_id\",
+    CASE WHEN \"uneven\".\"catalog_sales_date_month_seq\" >= 1200 and \"uneven\".\"catalog_sales_date_month_seq\" <= 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END as \"catalog_sales\",
     CASE WHEN \"uneven\".\"store_sales_date_month_seq\" >= 1200 and \"uneven\".\"store_sales_date_month_seq\" <= 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END as \"store_sales\"
 FROM
     \"uneven\"
 GROUP BY 
-    \"uneven\".\"catalog_sales_date_month_seq\",
     \"uneven\".\"customer_id\",
-    \"uneven\".\"customer_item\",
     \"uneven\".\"item_id\",
-    CASE WHEN \"uneven\".\"store_sales_date_month_seq\" >= 1200 and \"uneven\".\"store_sales_date_month_seq\" <= 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END),
-vacuous as (
-SELECT
-    \"yummy\".\"store_sales\" as \"store_sales\",
-    CASE WHEN \"yummy\".\"catalog_sales_date_month_seq\" >= 1200 and \"yummy\".\"catalog_sales_date_month_seq\" <= 1200 + 11 THEN \"yummy\".\"customer_item\" ELSE NULL END as \"catalog_sales\"
-FROM
-    \"yummy\"
-GROUP BY 
-    \"yummy\".\"customer_id\",
-    \"yummy\".\"item_id\",
-    \"yummy\".\"store_sales\",
-    CASE WHEN \"yummy\".\"catalog_sales_date_month_seq\" >= 1200 and \"yummy\".\"catalog_sales_date_month_seq\" <= 1200 + 11 THEN \"yummy\".\"customer_item\" ELSE NULL END)
+    CASE WHEN \"uneven\".\"catalog_sales_date_month_seq\" >= 1200 and \"uneven\".\"catalog_sales_date_month_seq\" <= 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END,
+    CASE WHEN \"uneven\".\"store_sales_date_month_seq\" >= 1200 and \"uneven\".\"store_sales_date_month_seq\" <= 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END)
 SELECT
     sum(CASE
-	WHEN \"vacuous\".\"store_sales\" is not null and \"vacuous\".\"catalog_sales\" is null THEN 1
+	WHEN \"yummy\".\"store_sales\" is not null and \"yummy\".\"catalog_sales\" is null THEN 1
 	ELSE 0
 	END) as \"store_sale_count\",
     sum(CASE
-	WHEN \"vacuous\".\"store_sales\" is null and \"vacuous\".\"catalog_sales\" is not null THEN 1
+	WHEN \"yummy\".\"store_sales\" is null and \"yummy\".\"catalog_sales\" is not null THEN 1
 	ELSE 0
 	END) as \"catalog_sale_count\",
     sum(CASE
-	WHEN \"vacuous\".\"store_sales\" is not null and \"vacuous\".\"catalog_sales\" is not null THEN 1
+	WHEN \"yummy\".\"store_sales\" is not null and \"yummy\".\"catalog_sales\" is not null THEN 1
 	ELSE 0
 	END) as \"both_sale_count\"
 FROM
-    \"vacuous\""""
+    \"yummy\""""
