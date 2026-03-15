@@ -15,9 +15,12 @@ from trilogy.core.graph_models import (
 )
 from trilogy.core.models.build import (
     Address,
+    BuildComparison,
     BuildConcept,
+    BuildConditional,
     BuildDatasource,
     BuildGrain,
+    BuildParenthetical,
     BuildUnionDatasource,
     BuildWhereClause,
     CanonicalBuildConceptList,
@@ -524,6 +527,9 @@ def create_datasource_node(
     environment: BuildEnvironment,
     depth: int,
     conditions: BuildWhereClause | None = None,
+    injected_conditions: (
+        BuildComparison | BuildConditional | BuildParenthetical | None
+    ) = None,
 ) -> tuple[StrategyNode, bool]:
 
     target_grain = BuildGrain.from_concepts(all_concepts, environment=environment)
@@ -561,6 +567,10 @@ def create_datasource_node(
     partial_is_full = conditions and (conditions == datasource.non_partial_for)
 
     datasource_conditions = datasource.where.conditional if datasource.where else None
+    if injected_conditions and datasource_conditions:
+        datasource_conditions = datasource_conditions + injected_conditions
+    elif injected_conditions:
+        datasource_conditions = injected_conditions
     all_inputs = [c.concept for c in datasource.columns]
     canonical_all = CanonicalBuildConceptList(concepts=all_inputs)
 
@@ -602,25 +612,59 @@ def create_union_datasource(
     conditions: BuildWhereClause | None = None,
 ) -> tuple["UnionNode", bool]:
     from trilogy.core.processing.nodes.union_node import UnionNode
+    from trilogy.core.processing.utility import filter_union_children
 
-    datasources = datasource.children
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} generating union node parents with condition {conditions}"
     )
+
+    effective: list[
+        tuple[
+            BuildDatasource,
+            BuildComparison | BuildConditional | BuildParenthetical | None,
+        ]
+    ]
+    if conditions:
+        qcond = conditions.conditional
+        non_partial_map = {
+            child.name: child.non_partial_for for child in datasource.children
+        }
+        kept = filter_union_children(non_partial_map, qcond)
+        for child in datasource.children:
+            if child.name not in kept:
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} dropping {child.name}: "
+                    f"non_partial_for {child.non_partial_for!r} mutually exclusive with {qcond!r}"
+                )
+        effective = [
+            (child, kept[child.name])
+            for child in datasource.children
+            if child.name in kept
+        ]
+        if len(effective) < len(datasource.children):
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} reduced union from {len(datasource.children)} "
+                f"to {len(effective)} branch(es)"
+            )
+    else:
+        effective = [(child, None) for child in datasource.children]
+
     force_group = False
     parents = []
-    for x in datasources:
+    for child, injected_cond in effective:
         subnode, fg = create_datasource_node(
-            x,
+            child,
             all_concepts,
             accept_partial,
             environment,
             depth + 1,
-            conditions=conditions,
+            injected_conditions=injected_cond,
         )
         parents.append(subnode)
         force_group = force_group or fg
-    logger.info(f"{padding(depth)}{LOGGER_PREFIX} returning union node")
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} returning union node with {len(parents)} branch(es)"
+    )
     return (
         UnionNode(
             output_concepts=all_concepts,
@@ -629,6 +673,7 @@ def create_union_datasource(
             parents=parents,
             depth=depth,
             partial_concepts=[],
+            preexisting_conditions=conditions.conditional if conditions else None,
         ),
         force_group,
     )
