@@ -2,7 +2,7 @@ import atexit
 import os
 import shutil
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
@@ -22,6 +22,7 @@ class StagingConfig:
     """
 
     path: str | None = None
+    _cleanup_paths: set[str] = field(default_factory=set, init=False, repr=False)
 
     @property
     def staging_type(self) -> StagingType:
@@ -49,10 +50,13 @@ class StagingConfig:
 
     def get_executor_subdir(self, instance_id: str) -> str:
         """Return a staging subdirectory namespaced by instance_id."""
-        base = self.resolved_root + instance_id + "/"
-        if self.staging_type == StagingType.LOCAL:
-            os.makedirs(base, exist_ok=True)
-        return base
+        return self.resolved_root + instance_id + "/"
+
+    def prepare_executor_subdir(self, instance_id: str) -> str:
+        """Ensure an executor subdirectory exists and is registered for cleanup."""
+        path = self.get_executor_subdir(instance_id)
+        self.register_cleanup(path)
+        return path
 
     def register_cleanup(self, path: str) -> None:
         """Register atexit cleanup for a local staging path (file or directory).
@@ -63,6 +67,8 @@ class StagingConfig:
             return
         local_path = path.rstrip("/")
         os.makedirs(local_path, exist_ok=True)
+        if local_path in self._cleanup_paths:
+            return
 
         def _cleanup() -> None:
             try:
@@ -73,4 +79,5 @@ class StagingConfig:
             except OSError:
                 pass
 
+        self._cleanup_paths.add(local_path)
         atexit.register(_cleanup)

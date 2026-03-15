@@ -5,6 +5,8 @@ from os import environ
 from typing import TYPE_CHECKING, Any, Callable, Mapping
 
 if TYPE_CHECKING:
+    from trilogy.constants import Rendering
+    from trilogy.dialect.config import DialectConfig
     from trilogy.staging import StagingConfig
 
 from jinja2 import Template
@@ -231,8 +233,6 @@ SELECT * FROM (
         unique_id = instance_id or str(uuid.uuid4())
         staging = staging or StagingConfig()
         base_dir = staging.get_executor_subdir(unique_id)
-        # uv run --no-project --quiet C:\Users\ethan\coding_projects\pytrilogy\tests\execution\state\a_raw_source.py  > C:/Users/ethan/AppData/Local/Temp/c450aafd-48e4-4626-826e-378a6d6a10ce/650262d9fc564db625fde56b1c935664.arrow && echo {"name": "done"}
-        staging.register_cleanup(base_dir)
         return f"""
 INSTALL shellfs FROM community;
 INSTALL arrow FROM community;
@@ -365,6 +365,17 @@ class DuckDBDialect(BaseDialect):
     TABLE_NOT_FOUND_PATTERN = "Catalog Error: Table with name"
     HTTP_NOT_FOUND_PATTERN = "404 (Not Found)"
 
+    def __init__(
+        self,
+        rendering: Rendering | None = None,
+        config: "DialectConfig | None" = None,
+        staging: StagingConfig | None = None,
+        instance_id: str | None = None,
+    ):
+        super().__init__(rendering=rendering, config=config)
+        self.staging = staging
+        self.instance_id = instance_id
+
     def render_source(self, address: Address) -> str:
         if address.type == AddressType.CSV:
             return f"read_csv('{address.location}')"
@@ -384,6 +395,8 @@ class DuckDBDialect(BaseDialect):
                     "Set this in your trilogy.conf under [engine.config] or pass "
                     "DuckDBConfig(enable_python_datasources=True) to the executor."
                 )
+            if self.staging and self.instance_id:
+                self.staging.prepare_executor_subdir(self.instance_id)
             return f"uv_run('{address.location}')"
         if address.type == AddressType.SQL:
             with open(address.location, "r") as f:

@@ -2,12 +2,15 @@ from trilogy.constants import Rendering
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.config import DialectConfig
 from trilogy.dialect.enums import Dialects
+from trilogy.staging import StagingConfig
 
 
 def get_dialect_generator(
     dialect: Dialects,
     rendering: Rendering | None = None,
     config: DialectConfig | None = None,
+    staging: StagingConfig | None = None,
+    instance_id: str | None = None,
 ) -> BaseDialect:
     if dialect == Dialects.BIGQUERY:
         from trilogy.dialect.bigquery import BigqueryDialect
@@ -20,7 +23,12 @@ def get_dialect_generator(
     elif dialect == Dialects.DUCK_DB:
         from trilogy.dialect.duckdb import DuckDBDialect
 
-        return DuckDBDialect(rendering=rendering, config=config)
+        return DuckDBDialect(
+            rendering=rendering,
+            config=config,
+            staging=staging,
+            instance_id=instance_id,
+        )
     elif dialect == Dialects.SQLITE:
         from trilogy.dialect.sqlite import SQLiteDialect
 

@@ -1,4 +1,5 @@
 import re
+from unittest.mock import patch
 
 from trilogy.dialect.duckdb import get_python_datasource_setup_sql
 from trilogy.staging import StagingConfig
@@ -60,9 +61,10 @@ def test_python_datasource_windows_structure():
 def test_python_datasource_windows_custom_staging():
     """Test that Windows mode uses the staging config path as executor subdir."""
     staging = StagingConfig(path="/custom/staging")
-    sql = get_python_datasource_setup_sql(
-        enabled=True, is_windows=True, instance_id="test", staging=staging
-    )
+    with patch("trilogy.staging.os.makedirs"):
+        sql = get_python_datasource_setup_sql(
+            enabled=True, is_windows=True, instance_id="test", staging=staging
+        )
     assert "/custom/staging/test/" in sql
 
 
