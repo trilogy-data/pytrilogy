@@ -9,6 +9,16 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import QueryDatasource
 from trilogy.core.processing.nodes.base_node import StrategyNode
+from trilogy.core.models.build import (
+    BuildComparison,
+    BuildConcept,
+    BuildConditional,
+    BuildDatasource,
+    BuildFunction,
+    BuildGrain,
+    BuildOrderBy,
+    BuildParenthetical,
+)
 
 
 class UnionNode(StrategyNode):
