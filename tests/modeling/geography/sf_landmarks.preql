@@ -1,0 +1,58 @@
+import landmark_common;
+
+root datasource sf_landmarks_update_time (
+    city: ~city,
+    data_updated_through: sf_landmark_data_updated_through
+)
+grain (city)
+complete where city = 'USSFO'
+file `./sf_landmarks_probe.py`
+freshness by sf_landmark_data_updated_through;
+
+
+root partial datasource raw_sf_landmark_info (
+    OBJECTID: landmark_id,
+    city: city,
+    name: name,
+    landmarkno: ?landmark_number,
+    address: ?address,
+    proptype: ?property_type,
+    yearbuilt: ?year_built,
+    yeardes: ?year_designated,
+    desage: ?designation_age,
+    crit1: ?criteria_1,
+    crit2: ?criteria_2,
+    crit3: ?criteria_3,
+    crit1txt: ?criteria_1_text,
+    crit2txt: ?criteria_2_text,
+    crit3txt: ?criteria_3_text,
+    the_geom: ?geometry_raw,
+)
+grain (landmark_id)
+complete where city = 'USSFO'
+file `./sf_landmarks.py`;
+
+
+partial datasource sf_landmark_info (
+    landmark_id,
+    city,
+    name,
+    ?landmark_number,
+    ?address,
+    ?property_type,
+    ?year_built,
+    ?year_designated,
+    ?designation_age,
+    ?criteria_1,
+    ?criteria_2,
+    ?criteria_3,
+    ?criteria_1_text,
+    ?criteria_2_text,
+    ?criteria_3_text,
+    ?geometry_raw,
+    sf_landmark_data_updated_through,
+)
+grain (landmark_id)
+complete where city = 'USSFO'
+file `https://storage.googleapis.com/trilogy_public_models/duckdb/landmarks/sf_landmark_info.parquet`:`gcs://trilogy_public_models/duckdb/landmarks/sf_landmark_info.parquet`
+freshness by sf_landmark_data_updated_through;

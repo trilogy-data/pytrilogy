@@ -1,0 +1,44 @@
+import std.geography;
+import core;
+
+# --- Shared landmark identity ---
+
+key landmark_id string; # city-prefixed unique identifier (sf-<objectid>, nyc-<lm_id>)
+
+property landmark_id.name string; # landmark name
+
+# --- Geometry (computed from raw WKT) ---
+
+property landmark_id.geometry_raw string; # raw WKT polygon/multipolygon
+
+auto geometry <- geo_from_text(geometry_raw);
+auto geo_centroid <- geo_centroid(geometry);
+auto longitude <- geo_x(geo_centroid);
+auto latitude <- geo_y(geo_centroid);
+
+# --- SF-specific properties ---
+
+property landmark_id.landmark_number int;   # official SF landmark number
+property landmark_id.address string;        # street address
+property landmark_id.property_type string;  # property type classification
+property landmark_id.year_built int;        # year the structure was built
+property landmark_id.year_designated int;   # year designated as landmark
+property landmark_id.designation_age int;   # age at time of designation
+property landmark_id.criteria_1 string;     # designation criteria 1 code
+property landmark_id.criteria_2 string;     # designation criteria 2 code
+property landmark_id.criteria_3 string;     # designation criteria 3 code
+property landmark_id.criteria_1_text string;
+property landmark_id.criteria_2_text string;
+property landmark_id.criteria_3_text string;
+
+# --- NYC-specific properties ---
+
+property landmark_id.borough string;         # NYC borough
+property landmark_id.lm_type string;         # landmark type (e.g. Scenic Landmark)
+property landmark_id.designation_date date;  # official designation date
+
+# --- Freshness tracking ---
+
+property <*>.sf_landmark_data_updated_through datetime;
+property <*>.nyc_landmark_data_updated_through datetime;
+auto latest_landmark_update_through <- greatest(sf_landmark_data_updated_through, nyc_landmark_data_updated_through);
