@@ -1,15 +1,15 @@
 #!/usr/bin/env -S uv run
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyarrow"]
+# dependencies = ["pyarrow", "pytrilogy"]
 # ///
-# TODO: restore pytrilogy dependency and use trilogy.io.emit once wheel includes .scripts/build_backend.py
-# See sf_landmarks_grainless_probe_with_trilogy.py for the full version.
 
 import sys
 from datetime import datetime, timezone
 
 import pyarrow as pa
+
+from trilogy.io import emit
 
 
 def main() -> pa.Table:
@@ -27,4 +27,4 @@ def main() -> pa.Table:
 
 
 if __name__ == "__main__":
-    main()
+    emit(main)
