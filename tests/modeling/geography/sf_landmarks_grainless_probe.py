@@ -1,9 +1,16 @@
+#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.13"
+# dependencies = ["pyarrow", "requests", "pytrilogy"]
+# ///
+
 import sys
 from datetime import datetime, timezone
-
+from trilogy.io import emit
 import pyarrow as pa
 
-if __name__ == "__main__":
+
+def main() -> pa.Table:
     table = pa.table(
         {
             "data_updated_through": pa.array(
@@ -14,3 +21,8 @@ if __name__ == "__main__":
     )
     with pa.ipc.new_stream(sys.stdout.buffer, table.schema) as writer:
         writer.write_table(table)
+    return table
+
+
+if __name__ == "__main__":
+    emit(main)
