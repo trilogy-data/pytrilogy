@@ -218,22 +218,22 @@ SELECT * FROM (
 ) WHERE __error__ IS NOT NULL;
 """
 
-    if is_windows:
-        import uuid
+    import uuid
 
-        from trilogy.staging import StagingConfig
+    from trilogy.staging import StagingConfig
 
-        # Windows workaround: shellfs has a bug with Arrow IPC pipes on Windows.
-        # We use a temp file approach: run script to file, then read file.
-        # The read_json forces the shell command to complete before read_arrow.
-        # Each uv_run call gets a unique file via md5(script||args) so multiple
-        # calls in the same query don't overwrite each other.
-        # The executor-namespaced subdir (UUID) isolates concurrent executors.
+    # Windows workaround: shellfs has a bug with Arrow IPC pipes on Windows.
+    # We use a temp file approach: run script to file, then read file.
+    # The read_json forces the shell command to complete before read_arrow.
+    # Each uv_run call gets a unique file via md5(script||args) so multiple
+    # calls in the same query don't overwrite each other.
+    # The executor-namespaced subdir (UUID) isolates concurrent executors.
+    # 2026-3-16 - use this for all pplatforms for stability.
 
-        unique_id = instance_id or str(uuid.uuid4())
-        staging = staging or StagingConfig()
-        base_dir = staging.get_executor_subdir(unique_id)
-        return f"""
+    unique_id = instance_id or str(uuid.uuid4())
+    staging = staging or StagingConfig()
+    base_dir = staging.get_executor_subdir(unique_id)
+    return f"""
 INSTALL shellfs FROM community;
 INSTALL arrow FROM community;
 LOAD shellfs;
@@ -247,16 +247,19 @@ LIMIT 1
 )
 SELECT * FROM read_arrow(getvariable('__trilogy_uv_temp_dir') || md5(script || args) || '.arrow');
 """
-    else:
-        return """
-INSTALL shellfs FROM community;
-INSTALL arrow FROM community;
-LOAD shellfs;
-LOAD arrow;
 
-CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
-    SELECT * FROM read_arrow('uv run --no-project --quiet ' || script || ' ' || args || ' |');
-"""
+
+# TODO: evaluate reenabling - we've seen streaming be unreliable, even though it's "cleaner" than the IO dependency
+#     else:
+#         return """
+# INSTALL shellfs FROM community;
+# INSTALL arrow FROM community;
+# LOAD shellfs;
+# LOAD arrow;
+
+# CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
+#     SELECT * FROM read_arrow('uv run --no-project --quiet ' || script || ' ' || args || ' |');
+# """
 
 
 def get_gcs_setup_sql(enabled: bool) -> str:

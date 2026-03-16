@@ -6,8 +6,10 @@
 
 import sys
 from datetime import datetime, timezone
-from trilogy.io import emit
+
 import pyarrow as pa
+
+from trilogy.io import emit
 
 
 def main() -> pa.Table:
