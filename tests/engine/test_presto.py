@@ -58,7 +58,7 @@ def test_unnest_query_from_table(presto_engine):
     """
         )[0]
         assert re.search(
-            'CROSS JOIN unnest\("[A-z0-9\_]+"."values"\) as t\("_unnest_alias"\)',
+            r'CROSS JOIN unnest\("[A-z0-9\_]+"."values"\) as t\("_unnest_alias"\)',
             results,
         ), results
 
@@ -89,4 +89,4 @@ def test_group_by_index(presto_engine):
     """
         )[0]
 
-        assert re.search("GROUP BY\s+1", results), results
+        assert re.search(r"GROUP BY\s+1", results), results

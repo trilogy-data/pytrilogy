@@ -2,9 +2,12 @@ from pathlib import Path
 
 from trilogy import Dialects
 from trilogy.dialect.config import DuckDBConfig
+from trilogy.scripts.dependency import ScriptNode
+from trilogy.scripts.refresh import execute_script_for_refresh
 
 PREQL_PATH = Path(__file__).parent / "landmark_info.preql"
 TREE_PATH = Path(__file__).parent / "tree_enrichment.preql"
+GRAINLESS_PATH = Path(__file__).parent / "sf_landmarks_grainless.preql"
 
 
 def _make_executor():
@@ -43,3 +46,35 @@ def test_query_fetch():
     assert "sf_tree_info" not in results, results
     assert "nyc_tree_info" not in results, results
     assert "boston" in results.lower(), results
+
+
+def test_probe_script_runs():
+    """Directly invoke the grainless probe script via subprocess to surface raw errors."""
+    import subprocess
+
+    probe = Path(__file__).parent / "sf_landmarks_grainless_probe.py"
+    result = subprocess.run(
+        ["uv", "run", "--no-project", str(probe)],
+        capture_output=True,
+    )
+    assert result.returncode == 0, (
+        f"probe script exited {result.returncode}\n"
+        f"stdout: {result.stdout.decode()}\n"
+        f"stderr: {result.stderr.decode()}"
+    )
+
+
+def test_can_refresh():
+    """Grainless root probe datasource must be resolvable when refreshing a partial datasource.
+
+    Reproduces: 'Could not resolve connections for query' when the root datasource
+    providing a freshness concept has no grain (scalar/single-row) and the target
+    partial datasource includes a BASIC-derived column alongside root columns.
+    """
+    executor = Dialects.DUCK_DB.default_executor(
+        working_path=GRAINLESS_PATH.parent,
+        conf=DuckDBConfig(enable_python_datasources=True),
+    )
+    execute_script_for_refresh(
+        executor, ScriptNode(path=GRAINLESS_PATH), quiet=True, dry_run=True
+    )

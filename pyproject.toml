@@ -62,4 +62,15 @@ module-name = "_preql_import_resolver"
 manifest-path = "trilogy/scripts/dependency/Cargo.toml"
 features = ["pyo3/extension-module"]
 python-packages = ["trilogy"]
-include = ["trilogy/**/*.preql", "trilogy/**/*.lark", "trilogy/**/*.jinja", "trilogy/**/*.tf", "trilogy/py.typed", "_preql_import_resolver/__init__.py", "LICENSE.md"]
+include = [
+  "trilogy/**/*.preql",
+  "trilogy/**/*.lark",
+  "trilogy/**/*.jinja",
+  "trilogy/**/*.tf",
+  "trilogy/py.typed",
+  "_preql_import_resolver/__init__.py",
+  "LICENSE.md",
+  { path = ".scripts/build_backend.py", format = "sdist" },
+  { path = ".scripts/sync_version.py", format = "sdist" },
+  { path = ".scripts/__init__.py", format = "sdist" },
+]

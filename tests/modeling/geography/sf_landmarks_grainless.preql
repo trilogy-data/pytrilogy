@@ -1,0 +1,33 @@
+import landmark_common;
+
+# Grainless root datasource - matches production sf_landmarks.preql pattern
+# where the probe returns a single scalar datetime with no grain key
+root datasource sf_landmarks_update_time (
+    data_updated_through: sf_landmark_data_updated_through
+)
+file `./sf_landmarks_grainless_probe.py`
+;
+
+
+root partial datasource raw_sf_landmark_info (
+    OBJECTID: landmark_id,
+    city: city,
+    name: name,
+    the_geom: ?geometry_raw,
+)
+grain (landmark_id)
+complete where city = 'USSFO'
+file `./sf_landmarks_static_raw.py`;
+
+
+partial datasource sf_landmark_grainless_info (
+    landmark_id,
+    city,
+    name,
+    geometry,
+    sf_landmark_data_updated_through,
+)
+grain (landmark_id)
+complete where city = 'USSFO'
+address sf_landmark_grainless_data
+freshness by sf_landmark_data_updated_through;

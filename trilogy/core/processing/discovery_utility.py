@@ -309,7 +309,7 @@ def evaluate_loop_condition_pushdown(
         [x.address in mandatory for x in conditions.row_arguments]
     ) and not any(
         [
-            x.derivation not in (ROOT_DERIVATIONS + [Derivation.BASIC])
+            x.derivation not in (ROOT_DERIVATIONS)
             for x in mandatory
             if x.address not in conditions.row_arguments
         ]
@@ -406,9 +406,19 @@ def get_priority_concept(
         + [c for c in pass_one if c.derivation == Derivation.GROUP_TO]
         + [c for c in pass_one if c.derivation == Derivation.CONSTANT]
         + [c for c in pass_one if c.derivation == Derivation.SUBSELECT]
+        # roots that are abstract
+        + [
+            c
+            for c in pass_one
+            if c.derivation == Derivation.ROOT
+            and c.granularity == Granularity.SINGLE_ROW
+        ]
         # finally our plain selects
         + [
-            c for c in pass_one if c.derivation == Derivation.ROOT
+            c
+            for c in pass_one
+            if c.derivation == Derivation.ROOT
+            and c.granularity != Granularity.SINGLE_ROW
         ]  # and any non-single row constants
     )
 
@@ -515,14 +525,24 @@ def get_loop_iteration_targets(
     )
     local_all = [*all_concepts_local]
 
-    if all([x.derivation in (Derivation.ROOT,) for x in remaining]) and conditions:
+    if (
+        all(
+            [
+                x.derivation in (Derivation.ROOT,)
+                and x.granularity != Granularity.SINGLE_ROW
+                for x in remaining
+            ]
+        )
+        and conditions
+    ):
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} All remaining mandatory concepts are roots or constants, injecting condition inputs into candidate list"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} All remaining mandatory concepts are roots, injecting condition inputs into candidate list"
         )
         local_all = unique(
             list(conditions.row_arguments) + remaining,
             "address",
         )
+
         conditions = None
     if conditions and force_conditions:
         logger.info(
