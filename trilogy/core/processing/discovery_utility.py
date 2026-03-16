@@ -408,11 +408,17 @@ def get_priority_concept(
         + [c for c in pass_one if c.derivation == Derivation.SUBSELECT]
         # roots that are abstract
         + [
-            c for c in pass_one if c.derivation == Derivation.ROOT and c.granularity == Granularity.SINGLE_ROW
-        ]  
+            c
+            for c in pass_one
+            if c.derivation == Derivation.ROOT
+            and c.granularity == Granularity.SINGLE_ROW
+        ]
         # finally our plain selects
         + [
-            c for c in pass_one if c.derivation == Derivation.ROOT and c.granularity != Granularity.SINGLE_ROW
+            c
+            for c in pass_one
+            if c.derivation == Derivation.ROOT
+            and c.granularity != Granularity.SINGLE_ROW
         ]  # and any non-single row constants
     )
 
@@ -519,7 +525,16 @@ def get_loop_iteration_targets(
     )
     local_all = [*all_concepts_local]
 
-    if all([x.derivation in (Derivation.ROOT,) and x.granularity != Granularity.SINGLE_ROW for x in remaining]) and conditions:
+    if (
+        all(
+            [
+                x.derivation in (Derivation.ROOT,)
+                and x.granularity != Granularity.SINGLE_ROW
+                for x in remaining
+            ]
+        )
+        and conditions
+    ):
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} All remaining mandatory concepts are roots, injecting condition inputs into candidate list"
         )
