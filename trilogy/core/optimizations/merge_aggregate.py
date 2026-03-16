@@ -4,11 +4,11 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import (
     CTE,
-    Join,
     RecursiveCTE,
     UnionCTE,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
+from trilogy.core.optimizations.utils import is_sole_consumer, repoint_consumers
 
 UNSAFE_DERIVATIONS = {
     Derivation.WINDOW,
@@ -26,40 +26,6 @@ def has_unsafe_derivations(cte: CTE) -> bool:
         if isinstance(concept.lineage, BuildWindowItem):
             return True
     return False
-
-
-def replace_parent(old: CTE, new: CTE, target: CTE | UnionCTE):
-    """Replace old parent with new parent in target CTE's source map."""
-    target.parent_ctes = [
-        x for x in target.parent_ctes if x.safe_identifier != old.safe_identifier
-    ] + [new]
-    for k, v in target.source_map.items():
-        if isinstance(v, list):
-            new_sources = []
-            for x in v:
-                if x == old.safe_identifier:
-                    new_sources.append(new.safe_identifier)
-                else:
-                    new_sources.append(x)
-            target.source_map[k] = new_sources
-    if not isinstance(target, CTE):
-        return
-    if target.base_alias_override == old.safe_identifier:
-        target.base_alias_override = new.safe_identifier
-    if target.base_name_override == old.safe_identifier:
-        target.base_name_override = new.safe_identifier
-
-    for join in target.joins:
-        if not isinstance(join, Join):
-            continue
-        if join.left_cte and join.left_cte.safe_identifier == old.safe_identifier:
-            join.left_cte = new
-        if join.joinkey_pairs:
-            for pair in join.joinkey_pairs:
-                if pair.cte and pair.cte.safe_identifier == old.safe_identifier:
-                    pair.cte = new
-        if join.right_cte.safe_identifier == old.safe_identifier:
-            join.right_cte = new
 
 
 class MergeAggregate(OptimizationRule):
@@ -122,12 +88,8 @@ class MergeAggregate(OptimizationRule):
             return False, None
 
         # Parent must only be used by this CTE
-        parent_children = inverse_map.get(parent.name, [])
-        unique_child_names = set(c.name for c in parent_children)
-        if len(unique_child_names) != 1 or cte.name not in unique_child_names:
-            self.debug(
-                f"Parent {parent.name} has multiple children: {list(unique_child_names)}"
-            )
+        if not is_sole_consumer(cte, parent, inverse_map):
+            self.debug(f"Parent {parent.name} has multiple children, skipping")
             return False, None
 
         # Parent must not have unsafe derivations
@@ -155,11 +117,7 @@ class MergeAggregate(OptimizationRule):
         ]
 
         parent.group_to_grain = True
-        for k, v in inverse_map.items():
-            if cte.name == k:
-                for child in v:
-                    replace_parent(cte, parent, child)
-                inverse_map[parent.name] = inverse_map.get(parent.name, []) + v
+        repoint_consumers(cte, parent, inverse_map)
 
         # Return merged map: old CTE name -> replacement CTE name
         return True, {cte.name: parent.name}

@@ -623,7 +623,7 @@ class QueryDatasource:
     )
     ordering: BuildOrderBy | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         unique_pairs: set[str] = set()
         for join in self.joins:
             if not isinstance(join, BaseJoin):
