@@ -297,7 +297,6 @@ def test_ninety_seven_alt(engine):
     assert len(query) < 4250, query
 
 
-
 def test_ninety_eight(engine):
     _ = run_query(engine, 98)
     # assert len(query) < 4200, query

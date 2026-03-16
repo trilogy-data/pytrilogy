@@ -33,7 +33,7 @@ class Optimizations:
     direct_return: bool = True
     hide_unused_concepts: bool = True
     merge_aggregate: bool = True
-    merge_vacuous_group_by: bool = True
+    merge_irrelevant_group_by: bool = True
 
 
 @dataclass

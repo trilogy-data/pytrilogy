@@ -8,7 +8,7 @@ from trilogy.core.optimizations import (
     HideUnusedConcepts,
     InlineDatasource,
     MergeAggregate,
-    MergeVacuousGroupBy,
+    MergeIrrelevantGroupBy,
     OptimizationRule,
     PredicatePushdown,
     PredicatePushdownRemove,
@@ -233,8 +233,8 @@ def optimize_ctes(
 
     if CONFIG.optimizations.merge_aggregate:
         REGISTERED_RULES.append(MergeAggregate())
-    if CONFIG.optimizations.merge_vacuous_group_by:
-        REGISTERED_RULES.append(MergeVacuousGroupBy())
+    if CONFIG.optimizations.merge_irrelevant_group_by:
+        REGISTERED_RULES.append(MergeIrrelevantGroupBy())
     if CONFIG.optimizations.datasource_inlining:
         REGISTERED_RULES.append(InlineDatasource())
     if CONFIG.optimizations.predicate_pushdown:

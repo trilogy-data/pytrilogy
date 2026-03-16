@@ -5,7 +5,7 @@ from trilogy.core.models.execute import (
     UnionCTE,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
-from trilogy.core.optimizations.merge_aggregate import replace_parent
+from trilogy.core.optimizations.utils import is_sole_consumer, repoint_consumers
 
 # Child must have no aggregates or other unsafe derivations — it must be
 # pure scalar transforms so its GROUP BY is truly vacuous relative to parent.
@@ -21,34 +21,7 @@ def _is_group_by_cte(cte: CTE) -> bool:
     return cte.group_to_grain or cte.source.source_type == SourceType.GROUP
 
 
-def _grain_determined_by(
-    address: str, parent_grain: set[str], child: CTE, visited: set[str]
-) -> bool:
-    """Check if a concept address is functionally determined by parent's grain."""
-    if address in parent_grain:
-        return True
-    if address in visited:
-        return False
-    visited.add(address)
-    concept = child.get_concept(address)
-    if concept is None or concept.lineage is None:
-        return False
-    return all(
-        _grain_determined_by(arg.address, parent_grain, child, visited)
-        for arg in concept.concept_arguments
-    )
-
-
-def _all_grain_determined_by_parent(child: CTE, parent: CTE) -> bool:
-    """Return True if child has grain and every component is determined by parent's grain."""
-    parent_grain = parent.grain.components
-    return bool(child.grain.components) and all(
-        _grain_determined_by(addr, parent_grain, child, set())
-        for addr in child.grain.components
-    )
-
-
-class MergeVacuousGroupBy(OptimizationRule):
+class MergeIrrelevantGroupBy(OptimizationRule):
     """Merge a GROUP BY CTE into its parent GROUP BY CTE when the grouping is redundant.
 
     When a CTE groups by keys that are all functionally determined by its parent's
@@ -90,12 +63,8 @@ class MergeVacuousGroupBy(OptimizationRule):
             return False, None
 
         # Parent must only be used by this CTE
-        parent_children = inverse_map.get(parent.name, [])
-        unique_child_names = {c.name for c in parent_children}
-        if len(unique_child_names) != 1 or cte.name not in unique_child_names:
-            self.debug(
-                f"Parent {parent.name} has multiple children: {list(unique_child_names)}"
-            )
+        if not is_sole_consumer(cte, parent, inverse_map):
+            self.debug(f"Parent {parent.name} has multiple children, skipping")
             return False, None
 
         # Child must be pure scalar transforms — no aggregates, windows, etc.
@@ -105,15 +74,9 @@ class MergeVacuousGroupBy(OptimizationRule):
 
         for concept in parent.output_columns:
             if concept.derivation in CHILD_INELIGIBLE_DERIVATIONS:
-                return False, None  
-        # if not _all_grain_determined_by_parent(cte, parent):
-        #     self.debug(
-        #         f"CTE {cte.name} grain is not determined by parent {parent.name}, skipping"
-        #     )
-        #     return False, None
+                return False, None
 
         self.log(f"Merging  group-by {cte.name} into irrelevant parent {parent.name}")
-
         # Ensure any new derived columns from child exist in parent's source_map
         # (empty list → renderer uses concept lineage to compute the expression).
         parent_output_addresses = {x.address for x in parent.output_columns}
@@ -133,13 +96,8 @@ class MergeVacuousGroupBy(OptimizationRule):
         parent.grain = cte.grain
         parent.hidden_concepts = parent.hidden_concepts.union(cte.hidden_concepts)
 
-        # Repoint child's consumers at parent; child becomes childless and is
-        # dropped by filter_irrelevant_ctes.
-        for k, v in inverse_map.items():
-            if cte.name == k:
-                for child in v:
-                    replace_parent(cte, parent, child)
-                inverse_map[parent.name] = inverse_map.get(parent.name, []) + v
+        repoint_consumers(cte, parent, inverse_map)
 
+        self.completed.add(cte.name)
         self.completed.add(parent.name)
         return True, {cte.name: parent.name}
