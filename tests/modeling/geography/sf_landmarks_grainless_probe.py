@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run
 # /// script
-# requires-python = ">=3.13"
-# dependencies = ["pyarrow", "requests", "pytrilogy"]
+# requires-python = ">=3.12"
+# dependencies = ["pyarrow", "pytrilogy"]
 # ///
 
 import sys

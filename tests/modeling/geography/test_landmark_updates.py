@@ -55,11 +55,6 @@ def test_can_refresh():
     providing a freshness concept has no grain (scalar/single-row) and the target
     partial datasource includes a BASIC-derived column alongside root columns.
     """
-    from logging import INFO
-
-    from trilogy.hooks import DebuggingHook
-
-    DebuggingHook(INFO)
     executor = Dialects.DUCK_DB.default_executor(
         working_path=GRAINLESS_PATH.parent,
         conf=DuckDBConfig(enable_python_datasources=True),
