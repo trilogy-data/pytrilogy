@@ -1,4 +1,5 @@
 import difflib
+import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum
@@ -573,6 +574,27 @@ class ParseToObjects(Transformer):
             datatype=datatype,
         )
 
+    def _interpolate_params(self, text: str) -> str:
+        def replace(match: re.Match) -> str:
+            name = match.group(1).strip()
+            lookup = f"{DEFAULT_NAMESPACE}.{name}" if "." not in name else name
+            try:
+                concept = self.environment.concepts[lookup]
+            except KeyError:
+                raise ParseError(
+                    f"Unknown reference '{{{name}}}' in address — '{name}' is not defined."
+                )
+            if (
+                not isinstance(concept.lineage, Function)
+                or concept.lineage.operator != FunctionType.CONSTANT
+            ):
+                raise ParseError(
+                    f"'{{{name}}}' in address must reference a constant or parameter, not {concept.purpose}."
+                )
+            return str(concept.lineage.arguments[0])
+
+        return re.sub(r"\{([^}]+)\}", replace, text)
+
     def ADDRESS(self, args) -> Address:
         return Address(location=args.value, quoted=False)
 
@@ -581,6 +603,12 @@ class ParseToObjects(Transformer):
 
     def FILE_PATH(self, args) -> str:
         return args.value[1:-1]
+
+    def F_QUOTED_ADDRESS(self, args) -> Address:
+        return Address(location=self._interpolate_params(args.value[2:-1]), quoted=True)
+
+    def F_FILE_PATH(self, args) -> str:
+        return self._interpolate_params(args.value[2:-1])
 
     def STRING_CHARS(self, args) -> str:
         return args.value
@@ -838,6 +866,42 @@ class ParseToObjects(Transformer):
         self.environment.add_concept(concept, meta)
         return concept
 
+    def parameter_default(self, args):
+        return args[0]
+
+    @v_args(meta=True)
+    def parameter_declaration(self, meta: Meta, args) -> ConceptDeclarationStatement:
+        metadata = Metadata()
+        default = None
+        name = args[0]
+        datatype = args[1]
+        for arg in args[2:]:
+            if isinstance(arg, Metadata):
+                metadata = arg
+            elif not isinstance(arg, Modifier):
+                default = arg
+        _, namespace, name, _ = parse_concept_reference(name, self.environment)
+        raw = self.environment.parameters.get(name, default)
+        if raw is None:
+            raise MissingParameterException(
+                f'This script requires parameter "{name}" to be set in environment.'
+            )
+        if datatype == DataType.INTEGER:
+            value: Any = int(raw)
+        elif datatype == DataType.FLOAT:
+            value = float(raw)
+        elif datatype == DataType.BOOL:
+            value = bool(raw)
+        elif datatype == DataType.STRING:
+            value = str(raw)
+        elif datatype == DataType.DATE:
+            value = raw if isinstance(raw, date) else date.fromisoformat(raw)
+        elif datatype == DataType.DATETIME:
+            value = raw if isinstance(raw, datetime) else datetime.fromisoformat(raw)
+        else:
+            raise ParseError(f"Unsupported datatype {datatype} for parameter {name}.")
+        return self.constant_derivation(meta, [Purpose.CONSTANT, name, value, metadata])
+
     @v_args(meta=True)
     def concept_declaration(self, meta: Meta, args) -> ConceptDeclarationStatement:
         metadata = Metadata()
@@ -851,38 +915,6 @@ class ParseToObjects(Transformer):
                 modifiers.append(arg)
         name = args[1]
         _, namespace, name, _ = parse_concept_reference(name, self.environment)
-        if purpose == Purpose.PARAMETER:
-            value = self.environment.parameters.get(name, None)
-            if not value:
-                raise MissingParameterException(
-                    f'This script requires parameter "{name}" to be set in environment.'
-                )
-            if datatype == DataType.INTEGER:
-                value = int(value)
-            elif datatype == DataType.FLOAT:
-                value = float(value)
-            elif datatype == DataType.BOOL:
-                value = bool(value)
-            elif datatype == DataType.STRING:
-                value = str(value)
-            elif datatype == DataType.DATE:
-                if isinstance(value, date):
-                    value = value
-                else:
-                    value = date.fromisoformat(value)
-            elif datatype == DataType.DATETIME:
-                if isinstance(value, datetime):
-                    value = value
-                else:
-                    value = datetime.fromisoformat(value)
-            else:
-                raise ParseError(
-                    f"Unsupported datatype {datatype} for parameter {name}."
-                )
-            rval = self.constant_derivation(
-                meta, [Purpose.CONSTANT, name, value, metadata]
-            )
-            return rval
 
         concept = Concept(
             name=name,

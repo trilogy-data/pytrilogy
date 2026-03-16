@@ -27,6 +27,8 @@
     LINE_SEPARATOR.1: /[ \t\r\f\v]*\n+/
     
     // property display_name string
+    parameter_default: "default"i literal
+    parameter_declaration: ("parameter"i | "param"i) IDENTIFIER data_type concept_nullable_modifier? parameter_default? metadata?
     concept_declaration: PURPOSE IDENTIFIER data_type concept_nullable_modifier? metadata?
     //customer_id.property first_name STRING;
     //<customer_id,country>.property local_alias STRING
@@ -40,7 +42,7 @@
     constant_derivation: CONST IDENTIFIER "<-" (literal | _constant_functions)
 
     concept_nullable_modifier: "?"
-    concept:  (concept_declaration | concept_derivation | concept_property_declaration | constant_derivation)
+    concept:  (parameter_declaration | concept_declaration | concept_derivation | concept_property_declaration | constant_derivation)
     
     //concept property
     prop_ident: "<" IDENTIFIER ("," IDENTIFIER )* ","? ">" "." IDENTIFIER
@@ -65,11 +67,11 @@
 
     grain_clause: "grain" "(" column_list ")"
     
-    address: "address" (QUOTED_ADDRESS | ADDRESS)
-    
+    address: "address" (F_QUOTED_ADDRESS | QUOTED_ADDRESS | ADDRESS)
+
     query: "query" MULTILINE_STRING
 
-    file: "file" ((FILE_PATH ":" FILE_PATH) | FILE_PATH)
+    file: "file" ((F_FILE_PATH ":" F_FILE_PATH) | (FILE_PATH ":" FILE_PATH) | F_FILE_PATH | FILE_PATH)
     
     concept_assignment: SHORTHAND_MODIFIER* IDENTIFIER 
     
@@ -565,10 +567,12 @@
     WILDCARD_IDENTIFIER: /[a-zA-Z\_][a-zA-Z0-9\_\-\.\*]*/
     QUOTED_IDENTIFIER:  /`[a-zA-Z\_][a-zA-Z0-9\_\.\-\*\:\s]*`/
     QUOTED_ADDRESS:  /`'?[a-zA-Z\_\\\/][a-zA-Z0-9\_\.\\\/\-\*\:\s]*'?`/
+    F_QUOTED_ADDRESS.2: /f`[^`]*`/
     ADDRESS: IDENTIFIER
 
     MULTILINE_STRING: /\'{3}(.*?)\'{3}/s
     FILE_PATH: /`[^`]+\.(py|csv|json|parquet|tsv|sql)`/i
+    F_FILE_PATH.2: /f`[^`]+\.(py|csv|json|parquet|tsv|sql)`/i
     
     DOUBLE_STRING_CHARS: /(?:(?!\${)([^"\\]|\\.))+/+ // any character except "
     SINGLE_STRING_CHARS: /(?:(?!\${)([^'\\]|\\.))+/+ // any character except '
@@ -614,7 +618,7 @@
 
     !data_type:  ("string"i | "geography"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type | enum_type) ("::" IDENTIFIER)?
     
-    PURPOSE:  "key"i | "metric"i | "parameter"i | "param"i  | CONST
+    PURPOSE:  "key"i | "metric"i | CONST
     PROPERTY: "property"i
     CONST: "const"i | "constant"i
     AUTO: "AUTO"i 

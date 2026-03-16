@@ -905,6 +905,45 @@ def test_params():
     select count(unnest(numbers)) as cnt;
     """
         )
+    parse_text(
+        """
+    parameter scale int default 1;
+
+    auto numbers <- generate_array(1, scale, 1);
+
+    select count(unnest(numbers)) as cnt;
+    """
+    )
+
+
+def test_param_address_interpolation():
+    env, _ = parse_text(
+        """
+    parameter version string default "v2";
+
+    key id int;
+
+    datasource my_source (
+        id
+    )
+    address f`my_table_{version}`;
+    """
+    )
+    assert env.datasources["my_source"].address.location == "my_table_v2"
+
+    env2, _ = parse_text(
+        """
+    parameter fmt string default "parquet";
+
+    key id int;
+
+    datasource cloud_source (
+        id
+    )
+    file f`gcs://bucket/data_{fmt}.parquet`:f`gcs://bucket/data_{fmt}.parquet`;
+    """
+    )
+    assert "parquet" in env2.datasources["cloud_source"].address.location
 
 
 def test_geography_type():
