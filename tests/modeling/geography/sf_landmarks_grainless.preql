@@ -13,6 +13,7 @@ root partial datasource raw_sf_landmark_info (
     OBJECTID: landmark_id,
     city: city,
     name: name,
+    the_geom: ?geometry_raw,
 )
 grain (landmark_id)
 complete where city = 'USSFO'
@@ -23,6 +24,7 @@ partial datasource sf_landmark_grainless_info (
     landmark_id,
     city,
     name,
+    geometry,
     sf_landmark_data_updated_through,
 )
 grain (landmark_id)

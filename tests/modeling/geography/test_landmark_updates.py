@@ -7,9 +7,7 @@ from trilogy.scripts.refresh import execute_script_for_refresh
 
 PREQL_PATH = Path(__file__).parent / "landmark_info.preql"
 TREE_PATH = Path(__file__).parent / "tree_enrichment.preql"
-SF_LANDMARKS_PATH = Path(
-    r"C:\Users\ethan\coding_projects\sf_tree_reporting\data\raw\sf\sf_landmarks.preql"
-)
+GRAINLESS_PATH = Path(__file__).parent / "sf_landmarks_grainless.preql"
 
 
 def _make_executor():
@@ -54,17 +52,17 @@ def test_can_refresh():
     """Grainless root probe datasource must be resolvable when refreshing a partial datasource.
 
     Reproduces: 'Could not resolve connections for query' when the root datasource
-    providing a freshness concept has no grain (scalar/single-row).
-
+    providing a freshness concept has no grain (scalar/single-row) and the target
+    partial datasource includes a BASIC-derived column alongside root columns.
     """
     from trilogy.hooks import DebuggingHook
     from logging import INFO
+
     DebuggingHook(INFO)
     executor = Dialects.DUCK_DB.default_executor(
-        working_path=SF_LANDMARKS_PATH.parent,
+        working_path=GRAINLESS_PATH.parent,
         conf=DuckDBConfig(enable_python_datasources=True),
     )
     execute_script_for_refresh(
-        executor, ScriptNode(path=SF_LANDMARKS_PATH), quiet=True, dry_run=True
+        executor, ScriptNode(path=GRAINLESS_PATH), quiet=True, dry_run=True
     )
-
