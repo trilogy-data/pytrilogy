@@ -48,6 +48,22 @@ def test_query_fetch():
     assert "boston" in results.lower(), results
 
 
+def test_probe_script_runs():
+    """Directly invoke the grainless probe script via subprocess to surface raw errors."""
+    import subprocess
+
+    probe = Path(__file__).parent / "sf_landmarks_grainless_probe.py"
+    result = subprocess.run(
+        ["uv", "run", "--no-project", str(probe)],
+        capture_output=True,
+    )
+    assert result.returncode == 0, (
+        f"probe script exited {result.returncode}\n"
+        f"stdout: {result.stdout.decode()}\n"
+        f"stderr: {result.stderr.decode()}"
+    )
+
+
 def test_can_refresh():
     """Grainless root probe datasource must be resolvable when refreshing a partial datasource.
 
