@@ -515,14 +515,15 @@ def get_loop_iteration_targets(
     )
     local_all = [*all_concepts_local]
 
-    if all([x.derivation in (Derivation.ROOT,) for x in remaining]) and conditions:
+    if all([x.derivation in (Derivation.ROOT,) and x.granularity != Granularity.SINGLE_ROW for x in remaining]) and conditions:
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} All remaining mandatory concepts are roots or constants, injecting condition inputs into candidate list"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} All remaining mandatory concepts are roots, injecting condition inputs into candidate list"
         )
         local_all = unique(
             list(conditions.row_arguments) + remaining,
             "address",
         )
+
         conditions = None
     if conditions and force_conditions:
         logger.info(

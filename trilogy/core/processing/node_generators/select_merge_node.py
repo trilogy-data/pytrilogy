@@ -549,7 +549,9 @@ def create_datasource_node(
             f"{padding(depth)}{LOGGER_PREFIX}_DS_NODE Select node grain {datasource_grain} is subset of target grain {target_grain}, no group required"
         )
     if not datasource_grain.components:
-        force_group = True
+        force_group = any(
+            x.granularity != Granularity.SINGLE_ROW for x in datasource.output_concepts
+        )
     partial_concepts = [
         c.concept
         for c in datasource.columns
@@ -579,6 +581,15 @@ def create_datasource_node(
         if x not in all_inputs and x in canonical_all:
             all_inputs.append(x)
 
+    # additional single row check
+    satisfies_conditions = all(
+        [x.granularity == Granularity.SINGLE_ROW for x in datasource.output_concepts]
+    )
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} creating select node for datasource {datasource.name} with conditions {datasource_conditions}, "
+        f"partial_is_full {partial_is_full}, satisfies_conditions {satisfies_conditions}, "
+        f"force_group {force_group}"
+    )
     rval = SelectNode(
         input_concepts=all_inputs,
         output_concepts=sorted(all_concepts, key=lambda x: x.address),
@@ -594,7 +605,9 @@ def create_datasource_node(
         grain=datasource.grain,
         conditions=datasource_conditions,
         preexisting_conditions=(
-            conditions.conditional if partial_is_full and conditions else None
+            conditions.conditional
+            if (partial_is_full or satisfies_conditions) and conditions
+            else None
         ),
     )
     return (
