@@ -7,6 +7,7 @@ from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import BooleanOperator, DatasourceState, SourceType
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
+from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.author import (
     Conditional,
     MultiSelectLineage,
@@ -469,6 +470,17 @@ def get_query_node(
     ds.ordering = build_statement.order_by
     # TODO: avoid this
     ds.rebuild_cache()
+    requested = {
+        c.address
+        for c in build_statement.output_components
+        if c.address not in build_statement.hidden_components
+    }
+    partial_requested = requested & {c.address for c in ds.partial_concepts}
+    if partial_requested:
+        raise UnresolvableQueryException(
+            f"Query is unresolvable: no complete sources found for output concepts"
+            f" {partial_requested}. These concepts could only be resolved from partial sources."
+        )
     return ds
 
 

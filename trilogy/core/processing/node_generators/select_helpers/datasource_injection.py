@@ -291,6 +291,43 @@ def _extract_enum_value(
     return None
 
 
+def _extract_enum_value_for_key(
+    conditional: BuildComparison | BuildConditional | BuildParenthetical,
+    key_address: str,
+) -> object | None:
+    """Extract the literal value for a specific concept key from a (compound) condition."""
+    if isinstance(conditional, BuildComparison):
+        if conditional.operator not in (ComparisonOperator.EQ, ComparisonOperator.IS):
+            return None
+        if (
+            isinstance(conditional.left, BuildConcept)
+            and conditional.left.address == key_address
+            and not isinstance(conditional.right, BuildConcept)
+        ):
+            return conditional.right
+        if (
+            isinstance(conditional.right, BuildConcept)
+            and conditional.right.address == key_address
+            and not isinstance(conditional.left, BuildConcept)
+        ):
+            return conditional.left
+        return None
+    elif isinstance(conditional, BuildConditional):
+        _cond_types = (BuildComparison, BuildConditional, BuildParenthetical)
+        if isinstance(conditional.left, _cond_types):
+            left_val = _extract_enum_value_for_key(conditional.left, key_address)
+            if left_val is not None:
+                return left_val
+        if isinstance(conditional.right, _cond_types):
+            return _extract_enum_value_for_key(conditional.right, key_address)
+    elif isinstance(conditional, BuildParenthetical):
+        if isinstance(
+            conditional.content, (BuildComparison, BuildConditional, BuildParenthetical)
+        ):
+            return _extract_enum_value_for_key(conditional.content, key_address)
+    return None
+
+
 def _best_enum_union(
     dses: list[BuildDatasource],
     enum_type: EnumType,
@@ -306,7 +343,9 @@ def _best_enum_union(
     for ds in dses:
         if not ds.non_partial_for:
             continue
-        val = _extract_enum_value(ds.non_partial_for.conditional)
+        val = _extract_enum_value_for_key(
+            ds.non_partial_for.conditional, merge_key.address
+        )
         if val is None:
             continue
         by_value[val].append(ds)
@@ -331,10 +370,15 @@ def _best_enum_union(
         if not (overlap - merge_key_addr):
             continue
 
-        conditions = [
-            c.non_partial_for.conditional for c in combo_list if c.non_partial_for
-        ]
-        if not _enum_fully_covered(conditions, enum_type):
+        covered = {
+            _extract_enum_value_for_key(
+                c.non_partial_for.conditional, merge_key.address
+            )
+            for c in combo_list
+            if c.non_partial_for
+        }
+        covered.discard(None)
+        if not covered >= set(enum_type.values):
             continue
 
         score = sum(_datasource_score(ds) for ds in combo_list)
@@ -361,15 +405,27 @@ def get_union_sources(
     for x in candidates:
         if not x.non_partial_for:
             continue
-        if not len(x.non_partial_for.concept_arguments) == 1:
-            continue
-        merge_key = x.non_partial_for.concept_arguments[0]
-        assocs[merge_key.address].append(x)
+        ca = x.non_partial_for.concept_arguments
+        if len(ca) == 1:
+            assocs[ca[0].address].append(x)
+        else:
+            # Multi-concept: register under each enum concept so _best_enum_union
+            # can determine which one is the discriminating merge key.
+            for c in ca:
+                if isinstance(c.datatype, EnumType):
+                    assocs[c.address].append(x)
     final: list[list[BuildDatasource]] = []
-    for _, dses in assocs.items():
+    for merge_key_addr, dses in assocs.items():
         if not dses or not dses[0].non_partial_for:
             continue
-        merge_key = dses[0].non_partial_for.concept_arguments[0]
+        merge_key = next(
+            (
+                c
+                for c in dses[0].non_partial_for.concept_arguments
+                if c.address == merge_key_addr
+            ),
+            dses[0].non_partial_for.concept_arguments[0],
+        )
         if isinstance(merge_key.datatype, EnumType):
             result = _best_enum_union(dses, merge_key.datatype, merge_key)
             if result:

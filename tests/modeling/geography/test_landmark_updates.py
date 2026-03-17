@@ -8,6 +8,7 @@ from trilogy.scripts.refresh import execute_script_for_refresh
 PREQL_PATH = Path(__file__).parent / "landmark_info.preql"
 TREE_PATH = Path(__file__).parent / "tree_enrichment.preql"
 GRAINLESS_PATH = Path(__file__).parent / "sf_landmarks_grainless.preql"
+MULTI_ENUM_PATH = Path(__file__).parent / "multi_enum_union.preql"
 
 
 def _make_executor():
@@ -78,3 +79,51 @@ def test_can_refresh():
     execute_script_for_refresh(
         executor, ScriptNode(path=GRAINLESS_PATH), quiet=True, dry_run=True
     )
+
+
+def test_multi_enum_union_sourcing():
+    """Both partial sources must appear in the union when non_partial_for has two enum conditions.
+
+    Reproduces: only one source being picked arbitrarily when the discriminating
+    enum key is not the first concept argument in the compound non_partial_for clause.
+    """
+    executor = Dialects.DUCK_DB.default_executor(
+        working_path=MULTI_ENUM_PATH.parent,
+        conf=DuckDBConfig(enable_python_datasources=True),
+    )
+    with open(MULTI_ENUM_PATH) as f:
+        executor.parse_text(f.read())
+
+    datasource = executor.environment.datasources["combined_output"]
+    sql = executor.update_datasource(datasource, dry_run=True)
+
+    assert sql is not None, "Expected SQL to be generated"
+    assert "raw_alpha" in sql, f"alpha source missing from SQL:\n{sql}"
+    assert "raw_beta" in sql, f"beta source missing from SQL:\n{sql}"
+
+
+def test_multi_enum_correctness():
+    """Validate that multi-enum complete sources can be resolved together."""
+    target = Path(
+        r"C:\Users\ethan\coding_projects\sf_tree_reporting\data\raw\boston\boston_tree_info.preql"
+    )
+    executor = Dialects.DUCK_DB.default_executor(
+        working_path=target.parent,
+        conf=DuckDBConfig(enable_python_datasources=True),
+    )
+    queries = execute_script_for_refresh(
+        executor,
+        ScriptNode(path=target),
+        quiet=True,
+        dry_run=True,
+        force_sources=set(["boston_tree_info"]),
+    )
+    for q in queries.refresh_queries:
+        assert (
+            r'''uv_run('C:\Users\ethan\coding_projects\sf_tree_reporting\data\raw\boston\arboretum_tree_info.py') as "arboretum_raw_tree_info"'''
+            in q.sql
+        ), q.sql
+        assert (
+            r'''uv_run('C:\Users\ethan\coding_projects\sf_tree_reporting\data\raw\boston\boston_tree_info.py') as "city_raw_tree_info"'''
+            in q.sql
+        ), q.sql

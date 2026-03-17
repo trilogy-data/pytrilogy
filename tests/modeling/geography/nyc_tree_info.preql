@@ -1,13 +1,9 @@
 import tree_common;
 
-root partial datasource nyc_update_time (
-    city: ~city,
+root datasource nyc_update_time (
     data_updated_through: nyc_data_updated_through
 )
-grain (city)
-complete where city = 'USNYC'
-file `./nyc_update_time.py`
-freshness by nyc_data_updated_through;
+file `./nyc_update_time.py`;
 
 root partial datasource nyc_raw_tree_info (
     objectid: tree_id,
