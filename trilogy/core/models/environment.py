@@ -63,6 +63,8 @@ class Import:
     input_path: Path | None = (
         None  # filepath where the text came from (path is the import path, but may be resolved from a dictionary for some resolvers)
     )
+    # explicit concept filter: only these names are public when imported
+    concepts: list[str] | None = None
 
 
 @dataclass
@@ -233,6 +235,8 @@ class Environment:
     frozen: bool = False
     env_file_path: Path | str | None = None
     parameters: Dict[str, Any] = field(default_factory=dict)
+    # concept addresses hidden from public export (imported for build resolution only)
+    hidden_concepts: set[str] = field(default_factory=set)
 
     def freeze(self):
         self.frozen = True
@@ -277,6 +281,7 @@ class Environment:
                 k: v.duplicate() for k, v in self.alias_origin_lookup.items()
             },
             env_file_path=self.env_file_path,
+            hidden_concepts=set(self.hidden_concepts),
         )
 
     def _add_path_concepts(self):
@@ -444,7 +449,11 @@ class Environment:
         )
 
     def add_import(
-        self, alias: str, source: Environment, imp_stm: Import | None = None
+        self,
+        alias: str,
+        source: Environment,
+        imp_stm: Import | None = None,
+        concepts: list[str] | None = None,
     ):
         if self.frozen:
             raise ValueError("Environment is frozen, cannot add imports")
@@ -455,6 +464,8 @@ class Environment:
                 [x.path == imp_stm.path and x.alias == imp_stm.alias for x in existing]
             ):
                 exists = True
+            if concepts is None:
+                concepts = imp_stm.concepts
         else:
             if any(
                 [x.path == source.working_path and x.alias == alias for x in existing]
@@ -475,14 +486,19 @@ class Environment:
             # don't overwrite working path
             if concept.name == WORKING_PATH_CONCEPT:
                 continue
+            source_k = k
             if same_namespace:
                 new = self.add_concept(concept, add_derived=False)
             else:
                 new = self.add_concept(concept.with_namespace(alias), add_derived=False)
-
                 k = address_with_namespace(k, alias)
             # set this explicitly, to handle aliasing
             self.concepts[k] = new
+            # propagate hidden status from source, or apply explicit filter
+            if source_k in source.hidden_concepts or (
+                concepts is not None and concept.name not in concepts
+            ):
+                self.hidden_concepts.add(k)
 
         # Copy to list to avoid mutation issues during self-import
         for _, datasource in list(source.datasources.items()):

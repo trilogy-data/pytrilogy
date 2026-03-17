@@ -1602,38 +1602,37 @@ class ParseToObjects(Transformer):
     def IMPORT_DOT(self, args) -> str:
         return "."
 
-    def import_statement(self, args: list[str]) -> ImportStatement:
-        is_file_resolver = isinstance(
-            self.environment.config.import_resolver, FileSystemImportResolver
-        )
+    def _resolve_import_path(
+        self, raw_args: list[str]
+    ) -> tuple[str, str, str, str, Path | str, bool]:
+        """Parse raw import args into (alias, cache_key, input_path, target, token_lookup, is_stdlib)."""
         parent_dirs = -1
-        parsed_args = []
-        for x in args:
+        parsed_args: list[str] = []
+        for x in raw_args:
             if x == ".":
                 parent_dirs += 1
             else:
-                parsed_args.append(x)
+                parsed_args.append(str(x))
         parent_dirs = max(parent_dirs, 0)
-        args = parsed_args
-        if len(args) == 2:
-            alias = args[-1]
-            cache_key = args[-1]
+        if len(parsed_args) == 2:
+            alias = parsed_args[-1]
+            cache_key = parsed_args[-1]
         else:
             alias = self.environment.namespace
-            cache_key = args[0]
-        input_path = args[0]
+            cache_key = parsed_args[0]
+        input_path = parsed_args[0]
 
         path = input_path.split(".")
-        is_stdlib = False
-        if path[0] == "std":
-            is_stdlib = True
+        is_stdlib = path[0] == "std"
+        if is_stdlib:
             target = join(STDLIB_ROOT, *path) + ".preql"
             token_lookup: Path | str = Path(target)
-        elif is_file_resolver:
+        elif isinstance(
+            self.environment.config.import_resolver, FileSystemImportResolver
+        ):
             troot = Path(self.environment.working_path)
-            if parent_dirs > 0:
-                for _ in range(parent_dirs):
-                    troot = troot.parent
+            for _ in range(parent_dirs):
+                troot = troot.parent
             target = join(troot, *path) + ".preql"
             token_lookup = Path(target)
         elif isinstance(self.environment.config.import_resolver, DictImportResolver):
@@ -1641,7 +1640,12 @@ class ParseToObjects(Transformer):
             token_lookup = target
         else:
             raise NotImplementedError
+        return alias, cache_key, input_path, target, token_lookup, is_stdlib
 
+    def import_statement(self, args: list[str]) -> ImportStatement:
+        alias, cache_key, input_path, target, token_lookup, is_stdlib = (
+            self._resolve_import_path(args)
+        )
         return self._process_import(
             alias=alias,
             input_path=input_path,
@@ -1649,6 +1653,25 @@ class ParseToObjects(Transformer):
             token_lookup=token_lookup,
             cache_key=cache_key,
             is_stdlib=is_stdlib,
+        )
+
+    def import_concepts(self, args) -> list[str]:
+        return [str(a) for a in args]
+
+    def selective_import_statement(self, args) -> ImportStatement:
+        # concepts_list is a list[str] returned by import_concepts
+        concepts: list[str] = next(a for a in args if isinstance(a, list))
+        alias, cache_key, input_path, target, token_lookup, is_stdlib = (
+            self._resolve_import_path([a for a in args if not isinstance(a, list)])
+        )
+        return self._process_import(
+            alias=alias,
+            input_path=input_path,
+            target=target,
+            token_lookup=token_lookup,
+            cache_key=cache_key,
+            is_stdlib=is_stdlib,
+            concepts=concepts,
         )
 
     def self_import_statement(self, args: list[str]) -> ImportStatement:
@@ -1691,6 +1714,7 @@ class ParseToObjects(Transformer):
         cache_key: str,
         is_stdlib: bool = False,
         is_self: bool = False,
+        concepts: list[str] | None = None,
     ) -> ImportStatement:
         start = datetime.now()
         is_file_resolver = isinstance(
@@ -1766,7 +1790,11 @@ class ParseToObjects(Transformer):
 
         parsed_path = Path(input_path)
         imps = ImportStatement(
-            alias=alias, input_path=input_path, path=parsed_path, is_self=is_self
+            alias=alias,
+            input_path=input_path,
+            path=parsed_path,
+            is_self=is_self,
+            concepts=concepts,
         )
 
         self.environment.add_import(
@@ -1776,6 +1804,7 @@ class ParseToObjects(Transformer):
                 alias=alias,
                 path=parsed_path,
                 input_path=Path(target) if is_file_resolver else None,
+                concepts=concepts,
             ),
         )
         end = datetime.now()

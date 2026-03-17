@@ -103,6 +103,53 @@ order by id asc;
     assert row[3] == "times"
 
 
+def test_selective_import():
+    lib_content = """
+key id int;
+property id.name string;
+property id.internal_score int;
+"""
+    config = EnvironmentConfig(
+        import_resolver=DictImportResolver(content={"mylib": lib_content})
+    )
+    env = Environment(config=config)
+    env.parse("from mylib import id, name as lib;")
+
+    # public concepts are accessible
+    assert "lib.id" in env.concepts
+    assert "lib.name" in env.concepts
+    # internal_score was imported for build resolution but is hidden
+    assert "lib.internal_score" in env.concepts
+    assert "lib.internal_score" in env.hidden_concepts
+    # public concepts are not hidden
+    assert "lib.id" not in env.hidden_concepts
+    assert "lib.name" not in env.hidden_concepts
+
+
+def test_selective_import_propagates_hidden():
+    lib_content = """
+key id int;
+property id.name string;
+property id.internal_score int;
+"""
+    consumer_content = """
+from mylib import id, name as lib;
+"""
+    config = EnvironmentConfig(
+        import_resolver=DictImportResolver(
+            content={"mylib": lib_content, "consumer": consumer_content}
+        )
+    )
+    env = Environment(config=config)
+    env.parse("import consumer as c;")
+
+    # public re-exports are accessible
+    assert "c.lib.id" in env.concepts
+    assert "c.lib.name" in env.concepts
+    # hidden concept was propagated as hidden
+    assert "c.lib.internal_score" in env.hidden_concepts
+
+
 def test_self_import_dict_resolver():
     self_content = """
 self import as parent;

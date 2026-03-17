@@ -473,6 +473,8 @@ class ImportStatement(HasUUID, BaseModel):
     path: Path
     # whether this is a self-import (self import as X)
     is_self: bool = False
+    # explicit concept filter: import field1, field2 from abc
+    concepts: list[str] | None = None
 
 
 class PersistStatement(HasUUID, BaseModel):

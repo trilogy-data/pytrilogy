@@ -9,6 +9,7 @@
     | persist_statement
     | rowset_derivation_statement
     | import_statement
+    | selective_import_statement
     | self_import_statement
     | copy_statement
     | merge_statement
@@ -91,6 +92,8 @@
     SELF_IMPORT: "self"i
 
     import_statement: "import" IMPORT_DOT* IDENTIFIER ("."  IDENTIFIER)* ("as" IDENTIFIER)?
+    import_concepts: IDENTIFIER ("," IDENTIFIER)* ","?
+    selective_import_statement: "from"i IMPORT_DOT* IDENTIFIER ("."  IDENTIFIER)* "import"i import_concepts ("as"i IDENTIFIER)?
     self_import_statement: SELF_IMPORT "import" "as" IDENTIFIER
 
     // persist_statement
