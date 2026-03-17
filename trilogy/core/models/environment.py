@@ -235,8 +235,8 @@ class Environment:
     frozen: bool = False
     env_file_path: Path | str | None = None
     parameters: Dict[str, Any] = field(default_factory=dict)
-    # concept addresses hidden from public export (imported for build resolution only)
-    hidden_concepts: set[str] = field(default_factory=set)
+    # concepts excluded from public view but needed for build-time lineage resolution
+    build_concepts: Dict[str, Concept] = field(default_factory=dict)
 
     def freeze(self):
         self.frozen = True
@@ -281,7 +281,7 @@ class Environment:
                 k: v.duplicate() for k, v in self.alias_origin_lookup.items()
             },
             env_file_path=self.env_file_path,
-            hidden_concepts=set(self.hidden_concepts),
+            build_concepts=dict(self.build_concepts),
         )
 
     def _add_path_concepts(self):
@@ -486,19 +486,21 @@ class Environment:
             # don't overwrite working path
             if concept.name == WORKING_PATH_CONCEPT:
                 continue
-            source_k = k
-            if same_namespace:
-                new = self.add_concept(concept, add_derived=False)
+            namespaced = concept if same_namespace else concept.with_namespace(alias)
+            target_k = k if same_namespace else address_with_namespace(k, alias)
+            if concepts is not None and concept.name not in concepts:
+                # excluded from public view; stash for build-time resolution only
+                self.build_concepts[target_k] = namespaced
             else:
-                new = self.add_concept(concept.with_namespace(alias), add_derived=False)
-                k = address_with_namespace(k, alias)
-            # set this explicitly, to handle aliasing
-            self.concepts[k] = new
-            # propagate hidden status from source, or apply explicit filter
-            if source_k in source.hidden_concepts or (
-                concepts is not None and concept.name not in concepts
-            ):
-                self.hidden_concepts.add(k)
+                new = self.add_concept(namespaced, add_derived=False)
+                self.concepts[target_k] = new
+
+        # propagate source's build-only concepts (namespaced)
+        for k, concept in list(source.build_concepts.items()):
+            target_k = k if same_namespace else address_with_namespace(k, alias)
+            self.build_concepts[target_k] = (
+                concept if same_namespace else concept.with_namespace(alias)
+            )
 
         # Copy to list to avoid mutation issues during self-import
         for _, datasource in list(source.datasources.items()):
