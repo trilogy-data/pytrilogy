@@ -1,5 +1,6 @@
 
-import store_returns as returns;
+from store_returns as returns import store.state, store.id, return_date.year, 
+customer.text_id, customer.id, return_amount;
 
 
 where

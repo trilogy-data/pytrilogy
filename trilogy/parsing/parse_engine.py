@@ -1,4 +1,5 @@
 import difflib
+import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum
@@ -573,6 +574,27 @@ class ParseToObjects(Transformer):
             datatype=datatype,
         )
 
+    def _interpolate_params(self, text: str) -> str:
+        def replace(match: re.Match) -> str:
+            name = match.group(1).strip()
+            lookup = f"{DEFAULT_NAMESPACE}.{name}" if "." not in name else name
+            try:
+                concept = self.environment.concepts[lookup]
+            except KeyError:
+                raise ParseError(
+                    f"Unknown reference '{{{name}}}' in address — '{name}' is not defined."
+                )
+            if (
+                not isinstance(concept.lineage, Function)
+                or concept.lineage.operator != FunctionType.CONSTANT
+            ):
+                raise ParseError(
+                    f"'{{{name}}}' in address must reference a constant or parameter, not {concept.purpose}."
+                )
+            return str(concept.lineage.arguments[0])
+
+        return re.sub(r"\{([^}]+)\}", replace, text)
+
     def ADDRESS(self, args) -> Address:
         return Address(location=args.value, quoted=False)
 
@@ -581,6 +603,12 @@ class ParseToObjects(Transformer):
 
     def FILE_PATH(self, args) -> str:
         return args.value[1:-1]
+
+    def F_QUOTED_ADDRESS(self, args) -> Address:
+        return Address(location=self._interpolate_params(args.value[2:-1]), quoted=True)
+
+    def F_FILE_PATH(self, args) -> str:
+        return self._interpolate_params(args.value[2:-1])
 
     def STRING_CHARS(self, args) -> str:
         return args.value
@@ -838,6 +866,42 @@ class ParseToObjects(Transformer):
         self.environment.add_concept(concept, meta)
         return concept
 
+    def parameter_default(self, args):
+        return args[0]
+
+    @v_args(meta=True)
+    def parameter_declaration(self, meta: Meta, args) -> ConceptDeclarationStatement:
+        metadata = Metadata()
+        default = None
+        name = args[0]
+        datatype = args[1]
+        for arg in args[2:]:
+            if isinstance(arg, Metadata):
+                metadata = arg
+            elif not isinstance(arg, Modifier):
+                default = arg
+        _, namespace, name, _ = parse_concept_reference(name, self.environment)
+        raw = self.environment.parameters.get(name, default)
+        if raw is None:
+            raise MissingParameterException(
+                f'This script requires parameter "{name}" to be set in environment.'
+            )
+        if datatype == DataType.INTEGER:
+            value: Any = int(raw)
+        elif datatype == DataType.FLOAT:
+            value = float(raw)
+        elif datatype == DataType.BOOL:
+            value = bool(raw)
+        elif datatype == DataType.STRING:
+            value = str(raw)
+        elif datatype == DataType.DATE:
+            value = raw if isinstance(raw, date) else date.fromisoformat(raw)
+        elif datatype == DataType.DATETIME:
+            value = raw if isinstance(raw, datetime) else datetime.fromisoformat(raw)
+        else:
+            raise ParseError(f"Unsupported datatype {datatype} for parameter {name}.")
+        return self.constant_derivation(meta, [Purpose.CONSTANT, name, value, metadata])
+
     @v_args(meta=True)
     def concept_declaration(self, meta: Meta, args) -> ConceptDeclarationStatement:
         metadata = Metadata()
@@ -851,38 +915,6 @@ class ParseToObjects(Transformer):
                 modifiers.append(arg)
         name = args[1]
         _, namespace, name, _ = parse_concept_reference(name, self.environment)
-        if purpose == Purpose.PARAMETER:
-            value = self.environment.parameters.get(name, None)
-            if not value:
-                raise MissingParameterException(
-                    f'This script requires parameter "{name}" to be set in environment.'
-                )
-            if datatype == DataType.INTEGER:
-                value = int(value)
-            elif datatype == DataType.FLOAT:
-                value = float(value)
-            elif datatype == DataType.BOOL:
-                value = bool(value)
-            elif datatype == DataType.STRING:
-                value = str(value)
-            elif datatype == DataType.DATE:
-                if isinstance(value, date):
-                    value = value
-                else:
-                    value = date.fromisoformat(value)
-            elif datatype == DataType.DATETIME:
-                if isinstance(value, datetime):
-                    value = value
-                else:
-                    value = datetime.fromisoformat(value)
-            else:
-                raise ParseError(
-                    f"Unsupported datatype {datatype} for parameter {name}."
-                )
-            rval = self.constant_derivation(
-                meta, [Purpose.CONSTANT, name, value, metadata]
-            )
-            return rval
 
         concept = Concept(
             name=name,
@@ -1570,38 +1602,37 @@ class ParseToObjects(Transformer):
     def IMPORT_DOT(self, args) -> str:
         return "."
 
-    def import_statement(self, args: list[str]) -> ImportStatement:
-        is_file_resolver = isinstance(
-            self.environment.config.import_resolver, FileSystemImportResolver
-        )
+    def _resolve_import_path(
+        self, raw_args: list[str]
+    ) -> tuple[str, str, str, str, Path | str, bool]:
+        """Parse raw import args into (alias, cache_key, input_path, target, token_lookup, is_stdlib)."""
         parent_dirs = -1
-        parsed_args = []
-        for x in args:
+        parsed_args: list[str] = []
+        for x in raw_args:
             if x == ".":
                 parent_dirs += 1
             else:
-                parsed_args.append(x)
+                parsed_args.append(str(x))
         parent_dirs = max(parent_dirs, 0)
-        args = parsed_args
-        if len(args) == 2:
-            alias = args[-1]
-            cache_key = args[-1]
+        if len(parsed_args) == 2:
+            alias = parsed_args[-1]
+            cache_key = parsed_args[-1]
         else:
             alias = self.environment.namespace
-            cache_key = args[0]
-        input_path = args[0]
+            cache_key = parsed_args[0]
+        input_path = parsed_args[0]
 
         path = input_path.split(".")
-        is_stdlib = False
-        if path[0] == "std":
-            is_stdlib = True
+        is_stdlib = path[0] == "std"
+        if is_stdlib:
             target = join(STDLIB_ROOT, *path) + ".preql"
             token_lookup: Path | str = Path(target)
-        elif is_file_resolver:
+        elif isinstance(
+            self.environment.config.import_resolver, FileSystemImportResolver
+        ):
             troot = Path(self.environment.working_path)
-            if parent_dirs > 0:
-                for _ in range(parent_dirs):
-                    troot = troot.parent
+            for _ in range(parent_dirs):
+                troot = troot.parent
             target = join(troot, *path) + ".preql"
             token_lookup = Path(target)
         elif isinstance(self.environment.config.import_resolver, DictImportResolver):
@@ -1609,7 +1640,12 @@ class ParseToObjects(Transformer):
             token_lookup = target
         else:
             raise NotImplementedError
+        return alias, cache_key, input_path, target, token_lookup, is_stdlib
 
+    def import_statement(self, args: list[str]) -> ImportStatement:
+        alias, cache_key, input_path, target, token_lookup, is_stdlib = (
+            self._resolve_import_path(args)
+        )
         return self._process_import(
             alias=alias,
             input_path=input_path,
@@ -1617,6 +1653,25 @@ class ParseToObjects(Transformer):
             token_lookup=token_lookup,
             cache_key=cache_key,
             is_stdlib=is_stdlib,
+        )
+
+    def import_concepts(self, args) -> list[str]:
+        return [str(a) for a in args]
+
+    def selective_import_statement(self, args) -> ImportStatement:
+        # concepts_list is a list[str] returned by import_concepts
+        concepts: list[str] = next(a for a in args if isinstance(a, list))
+        alias, cache_key, input_path, target, token_lookup, is_stdlib = (
+            self._resolve_import_path([a for a in args if not isinstance(a, list)])
+        )
+        return self._process_import(
+            alias=alias,
+            input_path=input_path,
+            target=target,
+            token_lookup=token_lookup,
+            cache_key=cache_key,
+            is_stdlib=is_stdlib,
+            concepts=concepts,
         )
 
     def self_import_statement(self, args: list[str]) -> ImportStatement:
@@ -1659,6 +1714,7 @@ class ParseToObjects(Transformer):
         cache_key: str,
         is_stdlib: bool = False,
         is_self: bool = False,
+        concepts: list[str] | None = None,
     ) -> ImportStatement:
         start = datetime.now()
         is_file_resolver = isinstance(
@@ -1734,7 +1790,11 @@ class ParseToObjects(Transformer):
 
         parsed_path = Path(input_path)
         imps = ImportStatement(
-            alias=alias, input_path=input_path, path=parsed_path, is_self=is_self
+            alias=alias,
+            input_path=input_path,
+            path=parsed_path,
+            is_self=is_self,
+            concepts=concepts,
         )
 
         self.environment.add_import(
@@ -1744,6 +1804,7 @@ class ParseToObjects(Transformer):
                 alias=alias,
                 path=parsed_path,
                 input_path=Path(target) if is_file_resolver else None,
+                concepts=concepts,
             ),
         )
         end = datetime.now()

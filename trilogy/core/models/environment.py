@@ -63,6 +63,8 @@ class Import:
     input_path: Path | None = (
         None  # filepath where the text came from (path is the import path, but may be resolved from a dictionary for some resolvers)
     )
+    # explicit concept filter: only these names are public when imported
+    concepts: list[str] | None = None
 
 
 @dataclass
@@ -105,13 +107,16 @@ class EnvironmentConceptDict(dict):
         super().__init__(self, *args, **kwargs)
         self.undefined: dict[str, UndefinedConceptFull] = {}
         self.fail_on_missing: bool = True
+        self.hidden: set[str] = set()
         self.populate_default_concepts()
 
     def duplicate(self) -> "EnvironmentConceptDict":
         new = EnvironmentConceptDict()
-        new.update({k: v.duplicate() for k, v in self.items()})
+        # include hidden items via raw iteration
+        new.update({k: v.duplicate() for k, v in super().items()})
         new.undefined = self.undefined
         new.fail_on_missing = self.fail_on_missing
+        new.hidden = set(self.hidden)
         return new
 
     def populate_default_concepts(self):
@@ -120,8 +125,27 @@ class EnvironmentConceptDict(dict):
         for concept in DEFAULT_CONCEPTS.values():
             self[concept.address] = concept
 
+    def __contains__(self, key) -> bool:  # type: ignore
+        return super().__contains__(key) and key not in self.hidden
+
+    def __iter__(self):
+        return (k for k in super().__iter__() if k not in self.hidden)
+
+    def __len__(self) -> int:
+        return sum(1 for _ in self)
+
+    def keys(self):  # type: ignore
+        return [k for k in super().keys() if k not in self.hidden]
+
     def values(self) -> ValuesView[Concept]:  # type: ignore
-        return super().values()
+        return [v for k, v in super().items() if k not in self.hidden]  # type: ignore
+
+    def items(self) -> ItemsView[str, Concept]:  # type: ignore
+        return [(k, v) for k, v in super().items() if k not in self.hidden]  # type: ignore
+
+    def all_items(self) -> list[tuple[str, Concept]]:
+        """Iterate all concepts including hidden ones (for build-time resolution)."""
+        return list(super().items())
 
     def get(self, key: str, default: Concept | None = None) -> Concept | None:  # type: ignore
         try:
@@ -149,8 +173,8 @@ class EnvironmentConceptDict(dict):
     def __getitem__(
         self, key: str, line_no: int | None = None, file: Path | None = None
     ) -> Concept | UndefinedConceptFull:
-        # fast access path
-        if key in self.keys():
+        # fast access path — includes hidden (needed for build resolution)
+        if super().__contains__(key):
             return super(EnvironmentConceptDict, self).__getitem__(key)
         if isinstance(key, ConceptRef):
             return self.__getitem__(key.address, line_no=line_no, file=file)
@@ -190,9 +214,6 @@ class EnvironmentConceptDict(dict):
             strip_local(concept_name), [strip_local(x) for x in self.keys()]
         )
         return matches
-
-    def items(self) -> ItemsView[str, Concept]:  # type: ignore
-        return super().items()
 
 
 def validate_concepts(v) -> EnvironmentConceptDict:
@@ -444,7 +465,11 @@ class Environment:
         )
 
     def add_import(
-        self, alias: str, source: Environment, imp_stm: Import | None = None
+        self,
+        alias: str,
+        source: Environment,
+        imp_stm: Import | None = None,
+        concepts: list[str] | None = None,
     ):
         if self.frozen:
             raise ValueError("Environment is frozen, cannot add imports")
@@ -455,6 +480,8 @@ class Environment:
                 [x.path == imp_stm.path and x.alias == imp_stm.alias for x in existing]
             ):
                 exists = True
+            if concepts is None:
+                concepts = imp_stm.concepts
         else:
             if any(
                 [x.path == source.working_path and x.alias == alias for x in existing]
@@ -467,7 +494,7 @@ class Environment:
             self.imports[alias].append(imp_stm)
         # we can't exit early
         # as there may be new concepts
-        iteration: list[tuple[str, Concept]] = list(source.concepts.items())
+        iteration: list[tuple[str, Concept]] = list(source.concepts.all_items())
         for k, concept in iteration:
             # skip internal namespace
             if INTERNAL_NAMESPACE in concept.address:
@@ -475,14 +502,26 @@ class Environment:
             # don't overwrite working path
             if concept.name == WORKING_PATH_CONCEPT:
                 continue
-            if same_namespace:
-                new = self.add_concept(concept, add_derived=False)
+            namespaced = concept if same_namespace else concept.with_namespace(alias)
+            target_k = k if same_namespace else address_with_namespace(k, alias)
+            is_hidden = k in source.concepts.hidden
+            if (
+                concepts is not None
+                and k not in concepts
+                and concept.name not in concepts
+            ):
+                # excluded from public view — store in concepts but mark hidden
+                new = self.add_concept(namespaced, add_derived=False)
+                dict.__setitem__(self.concepts, target_k, new)
+                self.concepts.hidden.add(target_k)
+            elif is_hidden:
+                # propagate hidden status from source
+                new = self.add_concept(namespaced, add_derived=False)
+                dict.__setitem__(self.concepts, target_k, new)
+                self.concepts.hidden.add(target_k)
             else:
-                new = self.add_concept(concept.with_namespace(alias), add_derived=False)
-
-                k = address_with_namespace(k, alias)
-            # set this explicitly, to handle aliasing
-            self.concepts[k] = new
+                new = self.add_concept(namespaced, add_derived=False)
+                self.concepts[target_k] = new
 
         # Copy to list to avoid mutation issues during self-import
         for _, datasource in list(source.datasources.items()):
