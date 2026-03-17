@@ -93,7 +93,7 @@
 
     import_statement: "import" IMPORT_DOT* IDENTIFIER ("."  IDENTIFIER)* ("as" IDENTIFIER)?
     import_concepts: IDENTIFIER ("," IDENTIFIER)* ","?
-    selective_import_statement: "from"i IMPORT_DOT* IDENTIFIER ("."  IDENTIFIER)* "import"i import_concepts ("as"i IDENTIFIER)?
+    selective_import_statement: "from"i IMPORT_DOT* IDENTIFIER ("."  IDENTIFIER)* ("as"i IDENTIFIER)? "import"i import_concepts
     self_import_statement: SELF_IMPORT "import" "as" IDENTIFIER
 
     // persist_statement

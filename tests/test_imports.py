@@ -113,18 +113,36 @@ property id.internal_score int;
         import_resolver=DictImportResolver(content={"mylib": lib_content})
     )
     env = Environment(config=config)
-    env.parse("from mylib import id, name as lib;")
+    env.parse("from mylib as lib import id, name;")
 
     # public concepts are accessible
     assert "lib.id" in env.concepts
     assert "lib.name" in env.concepts
     # internal_score is excluded from public view
     assert "lib.internal_score" not in env.concepts
-    # but present for build-time lineage resolution
-    assert "lib.internal_score" in env.build_concepts
-    # public concepts are not in build_concepts
-    assert "lib.id" not in env.build_concepts
-    assert "lib.name" not in env.build_concepts
+    # but present for build-time lineage resolution via hidden set
+    assert "lib.internal_score" in env.concepts.hidden
+    # public concepts are not hidden
+    assert "lib.id" not in env.concepts.hidden
+    assert "lib.name" not in env.concepts.hidden
+
+
+def test_selective_import_with_alias():
+    lib_content = """
+key id int;
+property id.name string;
+property id.score int;
+"""
+    config = EnvironmentConfig(
+        import_resolver=DictImportResolver(content={"store_returns": lib_content})
+    )
+    env = Environment(config=config)
+    env.parse("from store_returns as returns import id, name;")
+
+    assert "returns.id" in env.concepts
+    assert "returns.name" in env.concepts
+    assert "returns.score" not in env.concepts
+    assert "returns.score" in env.concepts.hidden
 
 
 def test_selective_import_propagates_hidden():
@@ -134,7 +152,7 @@ property id.name string;
 property id.internal_score int;
 """
     consumer_content = """
-from mylib import id, name as lib;
+from mylib as lib import id, name;
 """
     config = EnvironmentConfig(
         import_resolver=DictImportResolver(
@@ -147,9 +165,9 @@ from mylib import id, name as lib;
     # public re-exports are accessible
     assert "c.lib.id" in env.concepts
     assert "c.lib.name" in env.concepts
-    # build-only concept propagated, not publicly visible
+    # hidden concept propagated, not publicly visible
     assert "c.lib.internal_score" not in env.concepts
-    assert "c.lib.internal_score" in env.build_concepts
+    assert "c.lib.internal_score" in env.concepts.hidden
 
 
 def test_self_import_dict_resolver():

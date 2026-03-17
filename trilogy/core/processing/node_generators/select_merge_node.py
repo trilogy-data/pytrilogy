@@ -834,6 +834,7 @@ def gen_select_merge_node(
         if c.grain.abstract
         and c.purpose == Purpose.PROPERTY
         and c.granularity == Granularity.SINGLE_ROW
+        and c.address in environment.materialized_concepts
     ]
     constants = [c for c in all_concepts if c.derivation == Derivation.CONSTANT]
     excluded = {c.address for c in abstract_props} | {c.address for c in constants}
@@ -926,6 +927,11 @@ def gen_select_merge_node(
         abstract_nodes = _source_concepts_via_graph(
             [p], g, environment, depth + 1, accept_partial, conditions
         )
+        if not abstract_nodes:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} no source found for abstract property {p}, cannot generate select node."
+            )
+            return None
         parents.extend(abstract_nodes)
 
     if len(parents) == 1:

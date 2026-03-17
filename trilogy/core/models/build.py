@@ -2035,8 +2035,8 @@ class Factory:
         if base.address in self.environment.concepts:
             raw = self.environment.concepts[base.address]
             return self._build_concept(raw)
-        if base.address in self.environment.build_concepts:
-            return self._build_concept(self.environment.build_concepts[base.address])
+        if dict.__contains__(self.environment.concepts, base.address):
+            return self._build_concept(self.environment.concepts[base.address])
         # this will error by design - TODO - more helpful message?
         return self._build_concept(self.environment.concepts[base.address])
 
@@ -2684,11 +2684,7 @@ class Factory:
             cte_name_map=base.cte_name_map,
         )
 
-        for k, v in base.concepts.items():
-            v_build = self._build_concept(v)
-            new.concepts[k] = v_build
-            new.canonical_concepts[v_build.canonical_address] = v_build
-        for k, v in base.build_concepts.items():
+        for k, v in base.concepts.all_items():
             v_build = self._build_concept(v)
             new.concepts[k] = v_build
             new.canonical_concepts[v_build.canonical_address] = v_build

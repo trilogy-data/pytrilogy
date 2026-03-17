@@ -107,13 +107,16 @@ class EnvironmentConceptDict(dict):
         super().__init__(self, *args, **kwargs)
         self.undefined: dict[str, UndefinedConceptFull] = {}
         self.fail_on_missing: bool = True
+        self.hidden: set[str] = set()
         self.populate_default_concepts()
 
     def duplicate(self) -> "EnvironmentConceptDict":
         new = EnvironmentConceptDict()
-        new.update({k: v.duplicate() for k, v in self.items()})
+        # include hidden items via raw iteration
+        new.update({k: v.duplicate() for k, v in super().items()})
         new.undefined = self.undefined
         new.fail_on_missing = self.fail_on_missing
+        new.hidden = set(self.hidden)
         return new
 
     def populate_default_concepts(self):
@@ -122,8 +125,27 @@ class EnvironmentConceptDict(dict):
         for concept in DEFAULT_CONCEPTS.values():
             self[concept.address] = concept
 
+    def __contains__(self, key) -> bool:  # type: ignore
+        return super().__contains__(key) and key not in self.hidden
+
+    def __iter__(self):
+        return (k for k in super().__iter__() if k not in self.hidden)
+
+    def __len__(self) -> int:
+        return sum(1 for _ in self)
+
+    def keys(self):  # type: ignore
+        return [k for k in super().keys() if k not in self.hidden]
+
     def values(self) -> ValuesView[Concept]:  # type: ignore
-        return super().values()
+        return [v for k, v in super().items() if k not in self.hidden]  # type: ignore
+
+    def items(self) -> ItemsView[str, Concept]:  # type: ignore
+        return [(k, v) for k, v in super().items() if k not in self.hidden]  # type: ignore
+
+    def all_items(self) -> list[tuple[str, Concept]]:
+        """Iterate all concepts including hidden ones (for build-time resolution)."""
+        return list(super().items())
 
     def get(self, key: str, default: Concept | None = None) -> Concept | None:  # type: ignore
         try:
@@ -151,8 +173,8 @@ class EnvironmentConceptDict(dict):
     def __getitem__(
         self, key: str, line_no: int | None = None, file: Path | None = None
     ) -> Concept | UndefinedConceptFull:
-        # fast access path
-        if key in self.keys():
+        # fast access path — includes hidden (needed for build resolution)
+        if super().__contains__(key):
             return super(EnvironmentConceptDict, self).__getitem__(key)
         if isinstance(key, ConceptRef):
             return self.__getitem__(key.address, line_no=line_no, file=file)
@@ -193,9 +215,6 @@ class EnvironmentConceptDict(dict):
         )
         return matches
 
-    def items(self) -> ItemsView[str, Concept]:  # type: ignore
-        return super().items()
-
 
 def validate_concepts(v) -> EnvironmentConceptDict:
     if isinstance(v, EnvironmentConceptDict):
@@ -235,8 +254,6 @@ class Environment:
     frozen: bool = False
     env_file_path: Path | str | None = None
     parameters: Dict[str, Any] = field(default_factory=dict)
-    # concepts excluded from public view but needed for build-time lineage resolution
-    build_concepts: Dict[str, Concept] = field(default_factory=dict)
 
     def freeze(self):
         self.frozen = True
@@ -281,7 +298,6 @@ class Environment:
                 k: v.duplicate() for k, v in self.alias_origin_lookup.items()
             },
             env_file_path=self.env_file_path,
-            build_concepts=dict(self.build_concepts),
         )
 
     def _add_path_concepts(self):
@@ -478,7 +494,7 @@ class Environment:
             self.imports[alias].append(imp_stm)
         # we can't exit early
         # as there may be new concepts
-        iteration: list[tuple[str, Concept]] = list(source.concepts.items())
+        iteration: list[tuple[str, Concept]] = list(source.concepts.all_items())
         for k, concept in iteration:
             # skip internal namespace
             if INTERNAL_NAMESPACE in concept.address:
@@ -488,19 +504,24 @@ class Environment:
                 continue
             namespaced = concept if same_namespace else concept.with_namespace(alias)
             target_k = k if same_namespace else address_with_namespace(k, alias)
-            if concepts is not None and concept.name not in concepts:
-                # excluded from public view; stash for build-time resolution only
-                self.build_concepts[target_k] = namespaced
+            is_hidden = k in source.concepts.hidden
+            if (
+                concepts is not None
+                and k not in concepts
+                and concept.name not in concepts
+            ):
+                # excluded from public view — store in concepts but mark hidden
+                new = self.add_concept(namespaced, add_derived=False)
+                dict.__setitem__(self.concepts, target_k, new)
+                self.concepts.hidden.add(target_k)
+            elif is_hidden:
+                # propagate hidden status from source
+                new = self.add_concept(namespaced, add_derived=False)
+                dict.__setitem__(self.concepts, target_k, new)
+                self.concepts.hidden.add(target_k)
             else:
                 new = self.add_concept(namespaced, add_derived=False)
                 self.concepts[target_k] = new
-
-        # propagate source's build-only concepts (namespaced)
-        for k, concept in list(source.build_concepts.items()):
-            target_k = k if same_namespace else address_with_namespace(k, alias)
-            self.build_concepts[target_k] = (
-                concept if same_namespace else concept.with_namespace(alias)
-            )
 
         # Copy to list to avoid mutation issues during self-import
         for _, datasource in list(source.datasources.items()):
