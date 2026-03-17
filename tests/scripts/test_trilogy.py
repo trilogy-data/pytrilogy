@@ -888,3 +888,13 @@ def test_debug_flag_before_subcommand(cmd, args):
     assert "No such command" not in result.output, result.output
     assert "is not a valid Dialects" not in result.output, result.output
     assert "Debug mode enabled" in result.output
+
+
+@pytest.mark.parametrize("cmd", ["refresh", "run"])
+def test_flag_after_subcommand_gives_helpful_error(cmd):
+    """Placing --debug after the subcommand should give a clear error, not a cryptic ValueError."""
+    runner = CliRunner()
+    result = runner.invoke(cli, [cmd, "select 1-> test;", "--debug"])
+    assert "looks like a flag" in result.output, result.output
+    assert "must come before the subcommand" in result.output, result.output
+    assert "is not a valid Dialects" not in result.output, result.output

@@ -2,6 +2,7 @@
 
 from pathlib import Path as PathlibPath
 
+import click
 from click import UNPROCESSED, Path, argument, option, pass_context
 from click.exceptions import Exit
 
@@ -55,6 +56,12 @@ def run(
     conn_args,
 ):
     """Execute a Trilogy script or query."""
+    if dialect and dialect.startswith("-"):
+        raise click.UsageError(
+            f"'{dialect}' looks like a flag, not a dialect. "
+            "Global flags like --debug must come before the subcommand.\n"
+            "  Try: trilogy --debug run ..."
+        )
     cli_params = CLIRuntimeParams(
         input=input,
         dialect=Dialects(dialect) if dialect else None,

@@ -2,6 +2,7 @@
 
 from pathlib import Path as PathlibPath
 
+import click
 from click import UNPROCESSED, Path, argument, option, pass_context
 from click.exceptions import Exit
 
@@ -203,6 +204,12 @@ def refresh(
     Returns 0 if any assets were refreshed, 2 if all assets were up to date,
     and 1 on error.
     """
+    if dialect and dialect.startswith("-"):
+        raise click.UsageError(
+            f"'{dialect}' looks like a flag, not a dialect. "
+            "Global flags like --debug must come before the subcommand.\n"
+            "  Try: trilogy --debug refresh ..."
+        )
     refresh_params = RefreshParams(
         print_watermarks=print_watermarks,
         force_sources=frozenset(force),
