@@ -9,6 +9,7 @@ PREQL_PATH = Path(__file__).parent / "landmark_info.preql"
 TREE_PATH = Path(__file__).parent / "tree_enrichment.preql"
 GRAINLESS_PATH = Path(__file__).parent / "sf_landmarks_grainless.preql"
 MULTI_ENUM_PATH = Path(__file__).parent / "multi_enum_union.preql"
+MULTI_ENUM_CORRECTNESS_PATH = Path(__file__).parent / "boston_multi_enum.preql"
 
 
 def _make_executor():
@@ -104,26 +105,17 @@ def test_multi_enum_union_sourcing():
 
 def test_multi_enum_correctness():
     """Validate that multi-enum complete sources can be resolved together."""
-    target = Path(
-        r"C:\Users\ethan\coding_projects\sf_tree_reporting\data\raw\boston\boston_tree_info.preql"
-    )
     executor = Dialects.DUCK_DB.default_executor(
-        working_path=target.parent,
+        working_path=MULTI_ENUM_CORRECTNESS_PATH.parent,
         conf=DuckDBConfig(enable_python_datasources=True),
     )
     queries = execute_script_for_refresh(
         executor,
-        ScriptNode(path=target),
+        ScriptNode(path=MULTI_ENUM_CORRECTNESS_PATH),
         quiet=True,
         dry_run=True,
-        force_sources=set(["boston_tree_info"]),
+        force_sources={"boston_tree_info"},
     )
     for q in queries.refresh_queries:
-        assert (
-            r'''uv_run('C:\Users\ethan\coding_projects\sf_tree_reporting\data\raw\boston\arboretum_tree_info.py') as "arboretum_raw_tree_info"'''
-            in q.sql
-        ), q.sql
-        assert (
-            r'''uv_run('C:\Users\ethan\coding_projects\sf_tree_reporting\data\raw\boston\boston_tree_info.py') as "city_raw_tree_info"'''
-            in q.sql
-        ), q.sql
+        assert "arboretum_raw_tree_info" in q.sql, q.sql
+        assert "city_raw_tree_info" in q.sql, q.sql
