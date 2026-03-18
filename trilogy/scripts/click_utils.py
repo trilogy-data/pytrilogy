@@ -39,3 +39,13 @@ class LazyGroup(click.Group):
 
 
 IGNORE_UNKNOWN = {"ignore_unknown_options": True}
+
+
+def validate_dialect(dialect: str | None, subcommand: str) -> None:
+    """Raise UsageError if dialect looks like a misplaced flag."""
+    if dialect and dialect.startswith("-"):
+        raise click.UsageError(
+            f"'{dialect}' looks like a flag, not a dialect. "
+            "Global flags like --debug must come before the subcommand.\n"
+            f"  Try: trilogy --debug {subcommand} ..."
+        )
