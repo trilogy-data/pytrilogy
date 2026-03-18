@@ -4,8 +4,9 @@
 # dependencies = ["pyarrow"]
 # ///
 import sys
-import pyarrow as pa
 from datetime import datetime, timezone
+
+import pyarrow as pa
 
 if __name__ == "__main__":
     table = pa.table(

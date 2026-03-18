@@ -4,7 +4,12 @@ from datetime import date, datetime, timedelta
 from itertools import product
 from typing import List, Tuple, TypeVar
 
-from trilogy.core.enums import AddressType, ComparisonOperator, FunctionType
+from trilogy.core.enums import (
+    AddressType,
+    BooleanOperator,
+    ComparisonOperator,
+    FunctionType,
+)
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
@@ -313,6 +318,8 @@ def _extract_enum_value_for_key(
             return conditional.left
         return None
     elif isinstance(conditional, BuildConditional):
+        if conditional.operator == BooleanOperator.OR:
+            return None
         _cond_types = (BuildComparison, BuildConditional, BuildParenthetical)
         if isinstance(conditional.left, _cond_types):
             left_val = _extract_enum_value_for_key(conditional.left, key_address)
@@ -362,6 +369,10 @@ def _best_enum_union(
 
     for combo in product(*[by_value[v] for v in values]):
         combo_list = list(combo)
+
+        # A union requires at least 2 distinct sources; a single source is not a union
+        if len(combo_list) < 2:
+            continue
 
         # Require at least one shared concept beyond the merge key
         overlap = set(c.address for c in combo_list[0].output_concepts)

@@ -4,6 +4,7 @@
 # dependencies = ["pyarrow"]
 # ///
 import sys
+
 import pyarrow as pa
 
 if __name__ == "__main__":
