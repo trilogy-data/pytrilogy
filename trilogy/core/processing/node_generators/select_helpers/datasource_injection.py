@@ -4,7 +4,12 @@ from datetime import date, datetime, timedelta
 from itertools import product
 from typing import List, Tuple, TypeVar
 
-from trilogy.core.enums import AddressType, ComparisonOperator, FunctionType
+from trilogy.core.enums import (
+    AddressType,
+    BooleanOperator,
+    ComparisonOperator,
+    FunctionType,
+)
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
@@ -30,7 +35,7 @@ def reduce_expression(
     # if var.datatype in (DataType.FLOAT,):
     #     lower_check = float("-inf")  # type: ignore
     #     upper_check = float("inf")  # type: ignore
-    if var.datatype == DataType.INTEGER:
+    if var.datatype in (DataType.INTEGER, DataType.FLOAT):
         lower_check = float("-inf")  # type: ignore
         upper_check = float("inf")  # type: ignore
     elif var.datatype == DataType.DATE:
@@ -43,9 +48,6 @@ def reduce_expression(
     elif var.datatype == DataType.BOOL:
         lower_check = False  # type: ignore
         upper_check = True  # type: ignore
-    elif var.datatype == DataType.FLOAT:
-        lower_check = float("-inf")  # type: ignore
-        upper_check = float("inf")  # type: ignore
     else:
         return False
 
@@ -89,20 +91,8 @@ def reduce_expression(
                     value,
                 )
             )
-        elif op == "=":
-            ranges.append(
-                (
-                    value,
-                    value,
-                )
-            )
-        elif op == ComparisonOperator.IS:
-            ranges.append(
-                (
-                    value,
-                    value,
-                )
-            )
+        elif op in ("=", ComparisonOperator.IS):
+            ranges.append((value, value))
         elif op == ComparisonOperator.NE:
             pass
         else:
@@ -130,31 +120,16 @@ def simplify_conditions(
     for condition in conditions:
         if not isinstance(condition, BuildComparison):
             return False
-        left_is_concept = False
-        left_is_reducable = False
-        right_is_concept = False
-        right_is_reducable = False
-        if isinstance(condition.left, BuildConcept):
-            left_is_concept = True
-        elif isinstance(condition.left, REDUCABLE_TYPES):
-            left_is_reducable = True
-
-        if isinstance(condition.right, BuildConcept):
-            right_is_concept = True
-        elif isinstance(condition.right, REDUCABLE_TYPES):
-            right_is_reducable = True
-
-        if not (
-            (left_is_concept and right_is_reducable)
-            or (right_is_concept and left_is_reducable)
+        if isinstance(condition.left, BuildConcept) and isinstance(
+            condition.right, REDUCABLE_TYPES
         ):
-            return False
-        if left_is_concept:
-            concept = condition.left
-            raw_comparison = condition.right
+            concept, raw_comparison = condition.left, condition.right
+        elif isinstance(condition.right, BuildConcept) and isinstance(
+            condition.left, REDUCABLE_TYPES
+        ):
+            concept, raw_comparison = condition.right, condition.left
         else:
-            concept = condition.right
-            raw_comparison = condition.left
+            return False
 
         if isinstance(raw_comparison, BuildFunction):
             if not raw_comparison.operator == FunctionType.CONSTANT:
@@ -272,22 +247,42 @@ def _datasource_score(ds: BuildDatasource) -> int:
     return 2
 
 
-def _extract_enum_value(
+def _extract_enum_value_for_key(
     conditional: BuildComparison | BuildConditional | BuildParenthetical,
+    key_address: str,
 ) -> object | None:
-    """Extract the literal value from a single equality comparison, or None."""
-    if not isinstance(conditional, BuildComparison):
+    """Extract the literal value for a specific concept key from a (compound) condition."""
+    if isinstance(conditional, BuildComparison):
+        if conditional.operator not in (ComparisonOperator.EQ, ComparisonOperator.IS):
+            return None
+        if (
+            isinstance(conditional.left, BuildConcept)
+            and conditional.left.address == key_address
+            and not isinstance(conditional.right, BuildConcept)
+        ):
+            return conditional.right
+        if (
+            isinstance(conditional.right, BuildConcept)
+            and conditional.right.address == key_address
+            and not isinstance(conditional.left, BuildConcept)
+        ):
+            return conditional.left
         return None
-    if conditional.operator not in (ComparisonOperator.EQ, ComparisonOperator.IS):
-        return None
-    if isinstance(conditional.left, BuildConcept) and not isinstance(
-        conditional.right, BuildConcept
-    ):
-        return conditional.right
-    if isinstance(conditional.right, BuildConcept) and not isinstance(
-        conditional.left, BuildConcept
-    ):
-        return conditional.left
+    elif isinstance(conditional, BuildConditional):
+        if conditional.operator == BooleanOperator.OR:
+            return None
+        _cond_types = (BuildComparison, BuildConditional, BuildParenthetical)
+        if isinstance(conditional.left, _cond_types):
+            left_val = _extract_enum_value_for_key(conditional.left, key_address)
+            if left_val is not None:
+                return left_val
+        if isinstance(conditional.right, _cond_types):
+            return _extract_enum_value_for_key(conditional.right, key_address)
+    elif isinstance(conditional, BuildParenthetical):
+        if isinstance(
+            conditional.content, (BuildComparison, BuildConditional, BuildParenthetical)
+        ):
+            return _extract_enum_value_for_key(conditional.content, key_address)
     return None
 
 
@@ -306,7 +301,9 @@ def _best_enum_union(
     for ds in dses:
         if not ds.non_partial_for:
             continue
-        val = _extract_enum_value(ds.non_partial_for.conditional)
+        val = _extract_enum_value_for_key(
+            ds.non_partial_for.conditional, merge_key.address
+        )
         if val is None:
             continue
         by_value[val].append(ds)
@@ -324,17 +321,15 @@ def _best_enum_union(
     for combo in product(*[by_value[v] for v in values]):
         combo_list = list(combo)
 
+        # A union requires at least 2 distinct sources; a single source is not a union
+        if len(combo_list) < 2:
+            continue
+
         # Require at least one shared concept beyond the merge key
         overlap = set(c.address for c in combo_list[0].output_concepts)
         for ds in combo_list[1:]:
             overlap &= {c.address for c in ds.output_concepts}
         if not (overlap - merge_key_addr):
-            continue
-
-        conditions = [
-            c.non_partial_for.conditional for c in combo_list if c.non_partial_for
-        ]
-        if not _enum_fully_covered(conditions, enum_type):
             continue
 
         score = sum(_datasource_score(ds) for ds in combo_list)
@@ -361,15 +356,27 @@ def get_union_sources(
     for x in candidates:
         if not x.non_partial_for:
             continue
-        if not len(x.non_partial_for.concept_arguments) == 1:
-            continue
-        merge_key = x.non_partial_for.concept_arguments[0]
-        assocs[merge_key.address].append(x)
+        ca = x.non_partial_for.concept_arguments
+        if len(ca) == 1:
+            assocs[ca[0].address].append(x)
+        else:
+            # Multi-concept: register under each enum concept so _best_enum_union
+            # can determine which one is the discriminating merge key.
+            for c in ca:
+                if isinstance(c.datatype, EnumType):
+                    assocs[c.address].append(x)
     final: list[list[BuildDatasource]] = []
-    for _, dses in assocs.items():
+    for merge_key_addr, dses in assocs.items():
         if not dses or not dses[0].non_partial_for:
             continue
-        merge_key = dses[0].non_partial_for.concept_arguments[0]
+        merge_key = next(
+            (
+                c
+                for c in dses[0].non_partial_for.concept_arguments
+                if c.address == merge_key_addr
+            ),
+            dses[0].non_partial_for.concept_arguments[0],
+        )
         if isinstance(merge_key.datatype, EnumType):
             result = _best_enum_union(dses, merge_key.datatype, merge_key)
             if result:

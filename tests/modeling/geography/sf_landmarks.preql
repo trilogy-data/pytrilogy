@@ -1,13 +1,9 @@
 import landmark_common;
 
 root datasource sf_landmarks_update_time (
-    city: ~city,
     data_updated_through: sf_landmark_data_updated_through
 )
-grain (city)
-complete where city = 'USSFO'
-file `./sf_landmarks_probe.py`
-freshness by sf_landmark_data_updated_through;
+file `./sf_landmarks_probe.py`;
 
 
 root partial datasource raw_sf_landmark_info (

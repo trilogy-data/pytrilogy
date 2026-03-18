@@ -1,5 +1,6 @@
 import std.geography;
-import core;
+# copied this here instead of from core since we only have two probes wired up
+key city enum<string>['USSFO', 'USNYC']; # UN/LOCODE for the source city (e.g. USSFO, USNYC, USBOS)
 
 # --- Shared landmark identity ---
 

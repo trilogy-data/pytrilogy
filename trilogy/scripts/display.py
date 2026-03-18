@@ -593,6 +593,20 @@ def show_stale_assets(stale_assets: list) -> None:
             echo(f"  {asset.datasource_id}: {asset.reason}")
 
 
+def show_dry_run_queries(results: "list[ExecutionResult]") -> None:
+    """Display collected dry-run SQL after parallel refresh completes."""
+    for r in results:
+        if not (r.success and r.stats and r.stats.refresh_queries):
+            continue
+        for q in r.stats.refresh_queries:
+            header = f"-- {r.node.path.name}: {q.datasource_id}"
+            if RICH_AVAILABLE and console is not None:
+                console.print(f"\n[dim]{header}[/dim]")
+                console.print(q.sql)
+            else:
+                echo(f"\n{header}\n{q.sql}")
+
+
 def show_refresh_plan(
     stale_assets: list,
     watermarks: dict,

@@ -563,6 +563,8 @@ def run_single_script_execution(
                 exec,
                 force_sources=set(rp.force_sources) if rp.force_sources else None,
                 print_watermarks=rp.print_watermarks,
+                dry_run=rp.dry_run,
+                interactive=rp.interactive,
             )
             if debug:
                 flush_debugging_hooks(exec)
@@ -611,6 +613,7 @@ def run_parallel_execution(
     from trilogy.scripts.display import (
         print_error,
         print_success,
+        show_dry_run_queries,
         show_execution_info,
         show_parallel_execution_start,
         show_parallel_execution_summary,
@@ -728,6 +731,12 @@ def run_parallel_execution(
         execution_fn=quiet_execution_fn,
         on_script_complete=show_script_result,
     )
+
+    # For dry-run refresh, print collected SQL after all scripts complete
+    if execution_mode == ExecutionMode.REFRESH:
+        rp = cli_params.refresh_params or RefreshParams()
+        if rp.dry_run:
+            show_dry_run_queries(summary.results)
 
     # For refresh mode, calculate skipped (successful but no updates)
     if execution_mode == ExecutionMode.REFRESH:

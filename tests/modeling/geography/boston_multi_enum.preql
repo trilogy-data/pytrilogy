@@ -1,0 +1,38 @@
+key tree_id string;
+key city enum<string>['USBOS'];
+key usbos_source enum<string>['CITY', 'ARBORETUM'];
+property <*>.boston_data_updated_through datetime;
+
+root datasource boston_freshness (
+    data_updated_through: boston_data_updated_through
+)
+file `./boston_multi_enum_freshness.py`;
+
+root partial datasource city_raw_tree_info (
+    tree_id: tree_id,
+    city: city,
+    usbos_source: usbos_source,
+)
+grain (tree_id)
+complete where city = 'USBOS' and usbos_source = 'CITY'
+file `./boston_multi_enum_city.py`;
+
+root partial datasource arboretum_raw_tree_info (
+    tree_id: tree_id,
+    city: city,
+    usbos_source: usbos_source,
+)
+grain (tree_id)
+complete where city = 'USBOS' and usbos_source = 'ARBORETUM'
+file `./boston_multi_enum_arboretum.py`;
+
+partial datasource boston_tree_info (
+    tree_id,
+    city,
+    usbos_source,
+    boston_data_updated_through,
+)
+grain (tree_id)
+complete where city = 'USBOS'
+address boston_tree_parquet
+freshness by boston_data_updated_through;

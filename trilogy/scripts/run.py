@@ -7,6 +7,7 @@ from click.exceptions import Exit
 
 from trilogy import Executor
 from trilogy.dialect.enums import Dialects
+from trilogy.scripts.click_utils import validate_dialect
 from trilogy.scripts.common import (
     CLIRuntimeParams,
     ExecutionStats,
@@ -55,6 +56,7 @@ def run(
     conn_args,
 ):
     """Execute a Trilogy script or query."""
+    validate_dialect(dialect, "run")
     cli_params = CLIRuntimeParams(
         input=input,
         dialect=Dialects(dialect) if dialect else None,

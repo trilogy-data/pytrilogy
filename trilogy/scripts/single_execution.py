@@ -199,13 +199,20 @@ def execute_refresh_mode(
     exec: Executor,
     force_sources: set[str] | None = None,
     print_watermarks: bool = False,
+    dry_run: bool = False,
+    interactive: bool = False,
 ) -> RefreshResult:
     """Execute refresh mode to update stale assets."""
     from trilogy.execution.state import (
         DatasourceWatermark,
+        StaleAsset,
         refresh_stale_assets,
     )
-    from trilogy.scripts.display import print_warning, show_watermarks
+    from trilogy.scripts.display import (
+        print_warning,
+        show_refresh_plan,
+        show_watermarks,
+    )
 
     def on_stale_found(stale_count: int, root_assets: int, all_assets: int) -> None:
         if stale_count == 0:
@@ -213,14 +220,28 @@ def execute_refresh_mode(
                 f"No stale assets found ({root_assets}/{all_assets} root assets)"
             )
         else:
-            print_warning(f"Found {stale_count} stale asset(s)")
+            label = "Would refresh" if dry_run else "Found"
+            print_warning(f"{label} {stale_count} stale asset(s)")
 
     def on_refresh(asset_id: str, reason: str) -> None:
-        print_info(f"  Refreshing {asset_id}: {reason}")
+        label = "Would refresh" if dry_run else "Refreshing"
+        print_info(f"  {label} {asset_id}: {reason}")
 
     def on_watermarks(watermarks: dict[str, DatasourceWatermark]) -> None:
         if print_watermarks:
             show_watermarks(watermarks)
+
+    def on_refresh_query(ds_id: str, sql: str) -> None:
+        if dry_run:
+            print_info(f"\n-- {ds_id}\n{sql}")
+
+    def on_approval(
+        stale_assets: list[StaleAsset], watermarks: dict[str, DatasourceWatermark]
+    ) -> bool:
+        import click
+
+        show_refresh_plan(stale_assets, watermarks)
+        return click.confirm("\nProceed with refresh?", default=True)
 
     result = refresh_stale_assets(
         exec,
@@ -228,10 +249,18 @@ def execute_refresh_mode(
         on_refresh=on_refresh,
         on_watermarks=on_watermarks,
         force_sources=force_sources,
+        on_refresh_query=on_refresh_query,
+        on_approval=on_approval if interactive else None,
+        dry_run=dry_run,
     )
 
     if result.had_stale:
-        print_success(f"Refreshed {result.refreshed_count} asset(s)")
+        if dry_run:
+            print_info(f"Dry run: {result.refreshed_count} asset(s) would be refreshed")
+        elif result.refreshed_count > 0:
+            print_success(f"Refreshed {result.refreshed_count} asset(s)")
+        else:
+            print_info("Refresh skipped by user")
 
     return RefreshResult(
         refreshed_count=result.refreshed_count, had_stale=result.had_stale

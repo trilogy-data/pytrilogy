@@ -407,6 +407,46 @@ def test_execute_script_for_refresh_interactive_declined(tmp_path, capsys):
     assert "Refresh skipped by user" in captured.out
 
 
+def test_execute_script_for_refresh_dry_run(tmp_path, capsys):
+    """dry_run=True should print SQL without executing it."""
+    script = tmp_path / "test.preql"
+    script.write_text(STALE_SCRIPT)
+    executor = Dialects.DUCK_DB.default_executor()
+    node = ScriptNode(path=script)
+
+    with set_rich_mode(False):
+        stats = execute_script_for_refresh(
+            executor,
+            node,
+            force_sources=frozenset({"target_items"}),
+            dry_run=True,
+        )
+
+    captured = capsys.readouterr()
+    assert "SELECT" in captured.out, captured.out
+    assert "Dry run" in captured.out, captured.out
+    assert stats.update_count == 1
+    assert stats.refresh_queries, "Should have collected SQL"
+
+
+def test_execute_refresh_mode_dry_run(capsys):
+    """execute_refresh_mode with dry_run=True should print SQL and not execute."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(STALE_SCRIPT)
+
+    with set_rich_mode(False):
+        result = execute_refresh_mode(
+            executor,
+            force_sources={"target_items"},
+            dry_run=True,
+        )
+
+    captured = capsys.readouterr()
+    assert "SELECT" in captured.out, captured.out
+    assert "Dry run" in captured.out, captured.out
+    assert result.refreshed_count == 1
+
+
 def test_execute_refresh_mode_with_watermarks(capsys):
     """Cover show_watermarks call in single_execution.execute_refresh_mode."""
     executor = Dialects.DUCK_DB.default_executor()

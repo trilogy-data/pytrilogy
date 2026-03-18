@@ -1,13 +1,9 @@
 import landmark_common;
 
-root partial datasource nyc_landmarks_update_time (
-    city: ~city,
+root datasource nyc_landmarks_update_time (
     data_updated_through: nyc_landmark_data_updated_through
 )
-grain (city)
-complete where city = 'USNYC'
-file `./nyc_landmarks_probe.py`
-freshness by nyc_landmark_data_updated_through;
+file `./nyc_landmarks_probe.py`;
 
 
 root partial datasource raw_nyc_landmark_info (

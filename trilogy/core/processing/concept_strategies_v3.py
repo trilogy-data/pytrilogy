@@ -467,7 +467,7 @@ def _search_concepts(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Found {[c.address for c in mandatory_list]} by accepting partials"
             )
             return partial_search
-    logger.error(
+    logger.warning(
         f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve concepts {[c.address for c in mandatory_list]}, network outcome was {complete}, missing {context.all_mandatory - context.found},"
     )
 

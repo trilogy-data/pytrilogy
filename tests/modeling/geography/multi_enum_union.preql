@@ -1,0 +1,41 @@
+key record_id string;
+key category enum<string>['CAT_A', 'CAT_B'];
+key source_type enum<string>['ALPHA', 'BETA'];
+property record_id.value int;
+property record_id.label string;
+
+# Two root partial sources distinguished by both category AND source_type (double-enum non_partial_for)
+
+root partial datasource alpha_source (
+    id: record_id,
+    category: category,
+    source_type: source_type,
+    val: value,
+    lbl: label,
+)
+grain (record_id)
+complete where category = 'CAT_A' and source_type = 'ALPHA'
+address raw_alpha;
+
+root partial datasource beta_source (
+    id: record_id,
+    category: category,
+    source_type: source_type,
+    val: value,
+    lbl: label,
+)
+grain (record_id)
+complete where category = 'CAT_A' and source_type = 'BETA'
+address raw_beta;
+
+# Merged datasource: complete for all CAT_A rows across both source_type values
+partial datasource combined_output (
+    record_id,
+    category,
+    source_type,
+    value,
+    label,
+)
+grain (record_id)
+complete where category = 'CAT_A'
+address combined;

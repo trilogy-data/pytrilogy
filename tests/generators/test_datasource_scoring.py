@@ -1,11 +1,13 @@
 from unittest.mock import MagicMock
 
-from trilogy.core.enums import AddressType, ComparisonOperator, Purpose
+from trilogy.core.enums import AddressType, BooleanOperator, ComparisonOperator, Purpose
 from trilogy.core.models.build import (
     BuildColumnAssignment,
     BuildComparison,
     BuildConcept,
+    BuildConditional,
     BuildDatasource,
+    BuildParenthetical,
     BuildWhereClause,
 )
 from trilogy.core.models.core import DataType, EnumType
@@ -13,6 +15,7 @@ from trilogy.core.models.datasource import Address
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     _best_enum_union,
     _datasource_score,
+    _extract_enum_value_for_key,
 )
 from trilogy.core.processing.node_generators.select_merge_node import (
     get_materialization_score,
@@ -235,6 +238,61 @@ def _make_concept(name: str, datatype=DataType.STRING) -> BuildConcept:
     )
 
 
+def _make_enum_ds_two_key(
+    val1: str,
+    key1: BuildConcept,
+    val2: str,
+    key2: BuildConcept,
+    shared: BuildConcept,
+    address_type: AddressType = AddressType.PYTHON_SCRIPT,
+) -> BuildDatasource:
+    condition = BuildWhereClause(
+        conditional=BuildConditional(
+            left=BuildComparison(left=key1, right=val1, operator=ComparisonOperator.EQ),
+            right=BuildComparison(
+                left=key2, right=val2, operator=ComparisonOperator.EQ
+            ),
+            operator=BooleanOperator.AND,
+        )
+    )
+    return BuildDatasource(
+        name=f"{val1}_{val2}_{address_type.value}",
+        columns=[
+            BuildColumnAssignment(alias="k1", concept=key1),
+            BuildColumnAssignment(alias="k2", concept=key2),
+            BuildColumnAssignment(alias="shared", concept=shared),
+        ],
+        address=Address(location=f"/data/{val1}_{val2}", type=address_type),
+        non_partial_for=condition,
+    )
+
+
+def _make_enum_ds_or(
+    val1: str,
+    val2: str,
+    key: BuildConcept,
+    shared: BuildConcept,
+) -> BuildDatasource:
+    condition = BuildWhereClause(
+        conditional=BuildConditional(
+            left=BuildComparison(left=key, right=val1, operator=ComparisonOperator.EQ),
+            right=BuildComparison(left=key, right=val2, operator=ComparisonOperator.EQ),
+            operator=BooleanOperator.OR,
+        )
+    )
+    return BuildDatasource(
+        name=f"{val1}_or_{val2}",
+        columns=[
+            BuildColumnAssignment(alias="key", concept=key),
+            BuildColumnAssignment(alias="shared", concept=shared),
+        ],
+        address=Address(
+            location=f"/data/{val1}_or_{val2}.py", type=AddressType.PYTHON_SCRIPT
+        ),
+        non_partial_for=condition,
+    )
+
+
 def _make_enum_ds(
     city_val: str,
     address_type: AddressType,
@@ -310,3 +368,120 @@ class TestBestEnumUnion:
         assert result_types == {
             AddressType.PARQUET
         }, f"Expected parquet sources, got {result_types}"
+
+    def test_single_value_enum_returns_none(self):
+        """Single-value enum: both sources share the only value → no valid union."""
+        city_enum = EnumType(type=DataType.STRING, values=["USBOS"])
+        city = _make_concept("city", datatype=city_enum)
+        shared = _make_concept("name")
+
+        src_a = _make_enum_ds("USBOS", AddressType.PYTHON_SCRIPT, city, shared)
+        src_b = _make_enum_ds("USBOS", AddressType.PYTHON_SCRIPT, city, shared)
+
+        result = _best_enum_union([src_a, src_b], city_enum, city)
+        assert result is None, f"Expected None for single-value enum, got {result}"
+
+    def test_three_value_enum_three_sources(self):
+        """Three-value enum: one source per value produces a valid 3-way union."""
+        region_enum = EnumType(type=DataType.STRING, values=["NORTH", "SOUTH", "EAST"])
+        region = _make_concept("region", datatype=region_enum)
+        shared = _make_concept("value")
+
+        north = _make_enum_ds("NORTH", AddressType.TABLE, region, shared)
+        south = _make_enum_ds("SOUTH", AddressType.TABLE, region, shared)
+        east = _make_enum_ds("EAST", AddressType.TABLE, region, shared)
+
+        result = _best_enum_union([north, south, east], region_enum, region)
+        assert result is not None
+        assert len(result) == 3
+        assert {ds.name for ds in result} == {
+            "NORTH_table",
+            "SOUTH_table",
+            "EAST_table",
+        }
+
+    def test_two_key_condition_discriminates_on_correct_key(self):
+        """When non_partial_for has two enum keys, only the discriminating key produces a union.
+
+        city=['USBOS'] (single value) and source=['CITY','ARBORETUM'] (two values).
+        Two sources: (city=USBOS, source=CITY) and (city=USBOS, source=ARBORETUM).
+        The city key has all sources sharing the same value → None.
+        The source key correctly discriminates → 2-way union.
+        """
+        city_enum = EnumType(type=DataType.STRING, values=["USBOS"])
+        source_enum = EnumType(type=DataType.STRING, values=["CITY", "ARBORETUM"])
+        city = _make_concept("city", datatype=city_enum)
+        source = _make_concept("source", datatype=source_enum)
+        shared = _make_concept("name")
+
+        city_raw = _make_enum_ds_two_key("USBOS", city, "CITY", source, shared)
+        arb_raw = _make_enum_ds_two_key("USBOS", city, "ARBORETUM", source, shared)
+
+        city_result = _best_enum_union([city_raw, arb_raw], city_enum, city)
+        assert city_result is None, f"city key should return None, got {city_result}"
+
+        source_result = _best_enum_union([city_raw, arb_raw], source_enum, source)
+        assert source_result is not None
+        assert len(source_result) == 2
+        assert {ds.name for ds in source_result} == {city_raw.name, arb_raw.name}
+
+    def test_or_condition_not_used_as_slot(self):
+        """A source whose non_partial_for uses OR must not occupy a single enum slot.
+
+        Without the OR guard, the OR-source extracts the first branch value ('CITY')
+        and gets placed in the 'CITY' slot, forming a union with the real 'ARBORETUM'
+        source.  That union would duplicate all ARBORETUM rows since the OR-source
+        already covers them.  With the fix, the OR-source is ignored and the union
+        returns None (no complete 2-source cover remains).
+        """
+        source_enum = EnumType(type=DataType.STRING, values=["CITY", "ARBORETUM"])
+        source = _make_concept("source", datatype=source_enum)
+        shared = _make_concept("name")
+
+        or_src = _make_enum_ds_or("CITY", "ARBORETUM", source, shared)
+        arb_src = _make_enum_ds("ARBORETUM", AddressType.PYTHON_SCRIPT, source, shared)
+
+        result = _best_enum_union([or_src, arb_src], source_enum, source)
+        assert (
+            result is None
+        ), f"OR-condition source must not be used as a single-value slot; got {result}"
+
+
+class TestExtractEnumValueForKey:
+    def _concept(self, name: str) -> BuildConcept:
+        return _make_concept(name)
+
+    def test_parenthetical_wrapping_comparison(self):
+        """Value is extracted when the comparison is wrapped in a BuildParenthetical."""
+        key = self._concept("region")
+        cmp = BuildComparison(left=key, right="NORTH", operator=ComparisonOperator.EQ)
+        paren = BuildParenthetical(content=cmp)
+
+        result = _extract_enum_value_for_key(paren, key.address)
+        assert result == "NORTH"
+
+    def test_parenthetical_wrapping_conditional(self):
+        """Value is extracted when a parenthetical wraps a compound AND condition."""
+        key = self._concept("region")
+        other = self._concept("other")
+        inner = BuildConditional(
+            left=BuildComparison(
+                left=key, right="SOUTH", operator=ComparisonOperator.EQ
+            ),
+            right=BuildComparison(
+                left=other, right="X", operator=ComparisonOperator.EQ
+            ),
+            operator=BooleanOperator.AND,
+        )
+        paren = BuildParenthetical(content=inner)
+
+        result = _extract_enum_value_for_key(paren, key.address)
+        assert result == "SOUTH"
+
+    def test_parenthetical_with_non_condition_content_returns_none(self):
+        """A BuildParenthetical whose content is not a condition type returns None."""
+        key = self._concept("region")
+        paren = BuildParenthetical(content="not_a_condition")  # type: ignore[arg-type]
+
+        result = _extract_enum_value_for_key(paren, key.address)
+        assert result is None

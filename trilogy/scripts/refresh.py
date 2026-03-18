@@ -2,6 +2,7 @@
 
 from pathlib import Path as PathlibPath
 
+import click
 from click import UNPROCESSED, Path, argument, option, pass_context
 from click.exceptions import Exit
 
@@ -13,6 +14,7 @@ from trilogy.execution.state import (
     StaleAsset,
     refresh_stale_assets,
 )
+from trilogy.scripts.click_utils import validate_dialect
 from trilogy.scripts.common import (
     CLIRuntimeParams,
     ExecutionStats,
@@ -30,7 +32,6 @@ def _prompt_approval(
     watermarks: dict[str, DatasourceWatermark],
 ) -> bool:
     """Show refresh plan and prompt user for approval."""
-    import click
 
     from trilogy.scripts.display import show_refresh_plan
 
@@ -203,6 +204,7 @@ def refresh(
     Returns 0 if any assets were refreshed, 2 if all assets were up to date,
     and 1 on error.
     """
+    validate_dialect(dialect, "refresh")
     refresh_params = RefreshParams(
         print_watermarks=print_watermarks,
         force_sources=frozenset(force),
