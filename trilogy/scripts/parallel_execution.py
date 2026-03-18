@@ -612,8 +612,8 @@ def run_parallel_execution(
     from trilogy.scripts.dependency import ETLDependencyStrategy
     from trilogy.scripts.display import (
         print_error,
-        print_info,
         print_success,
+        show_dry_run_queries,
         show_execution_info,
         show_parallel_execution_start,
         show_parallel_execution_summary,
@@ -736,12 +736,7 @@ def run_parallel_execution(
     if execution_mode == ExecutionMode.REFRESH:
         rp = cli_params.refresh_params or RefreshParams()
         if rp.dry_run:
-            for r in summary.results:
-                if r.success and r.stats and r.stats.refresh_queries:
-                    for q in r.stats.refresh_queries:
-                        print_info(
-                            f"\n-- {r.node.path.name}: {q.datasource_id}\n{q.sql}"
-                        )
+            show_dry_run_queries(summary.results)
 
     # For refresh mode, calculate skipped (successful but no updates)
     if execution_mode == ExecutionMode.REFRESH:

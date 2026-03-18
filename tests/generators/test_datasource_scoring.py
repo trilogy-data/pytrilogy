@@ -7,6 +7,7 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
     BuildDatasource,
+    BuildParenthetical,
     BuildWhereClause,
 )
 from trilogy.core.models.core import DataType, EnumType
@@ -14,6 +15,7 @@ from trilogy.core.models.datasource import Address
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     _best_enum_union,
     _datasource_score,
+    _extract_enum_value_for_key,
 )
 from trilogy.core.processing.node_generators.select_merge_node import (
     get_materialization_score,
@@ -443,3 +445,43 @@ class TestBestEnumUnion:
         assert (
             result is None
         ), f"OR-condition source must not be used as a single-value slot; got {result}"
+
+
+class TestExtractEnumValueForKey:
+    def _concept(self, name: str) -> BuildConcept:
+        return _make_concept(name)
+
+    def test_parenthetical_wrapping_comparison(self):
+        """Value is extracted when the comparison is wrapped in a BuildParenthetical."""
+        key = self._concept("region")
+        cmp = BuildComparison(left=key, right="NORTH", operator=ComparisonOperator.EQ)
+        paren = BuildParenthetical(content=cmp)
+
+        result = _extract_enum_value_for_key(paren, key.address)
+        assert result == "NORTH"
+
+    def test_parenthetical_wrapping_conditional(self):
+        """Value is extracted when a parenthetical wraps a compound AND condition."""
+        key = self._concept("region")
+        other = self._concept("other")
+        inner = BuildConditional(
+            left=BuildComparison(
+                left=key, right="SOUTH", operator=ComparisonOperator.EQ
+            ),
+            right=BuildComparison(
+                left=other, right="X", operator=ComparisonOperator.EQ
+            ),
+            operator=BooleanOperator.AND,
+        )
+        paren = BuildParenthetical(content=inner)
+
+        result = _extract_enum_value_for_key(paren, key.address)
+        assert result == "SOUTH"
+
+    def test_parenthetical_with_non_condition_content_returns_none(self):
+        """A BuildParenthetical whose content is not a condition type returns None."""
+        key = self._concept("region")
+        paren = BuildParenthetical(content="not_a_condition")  # type: ignore[arg-type]
+
+        result = _extract_enum_value_for_key(paren, key.address)
+        assert result is None
