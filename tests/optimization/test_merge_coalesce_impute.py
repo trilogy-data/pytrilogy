@@ -4,6 +4,49 @@ with a WHERE filter on city — mirrors the Boston tree reporting query shape.""
 from trilogy import Dialects, parse
 from trilogy.core.models.build import concept_is_relevant
 
+_UNION_IMPUTE_QUERY = """
+key tree_id int;
+key city enum<string>['USBOS', 'USCAM'];
+property tree_id.species string;
+property tree_id._raw_dbh float;
+property tree_id.diameter_at_breast_height float;
+property tree_id.latitude float;
+property tree_id.longitude float;
+
+auto processed_dbh <- group(coalesce(_raw_dbh, avg(_raw_dbh) by city, species)) by tree_id;
+
+merge processed_dbh into diameter_at_breast_height;
+
+datasource boston_trees (
+    ~city,
+    tree_id: tree_id,
+    species: species,
+    raw_dbh: _raw_dbh,
+    latitude: latitude,
+    longitude: longitude,
+)
+grain (tree_id)
+complete where city = 'USBOS'
+query '''
+select 'USBOS' city, 1 tree_id, 'Oak' species, 5.0 raw_dbh, 42.0 latitude, -71.0 longitude
+union all select 'USBOS', 2, 'Maple', -1.0, 42.1, -71.1
+''';
+
+datasource cambridge_trees (
+    ~city,
+    tree_id: tree_id,
+    species: species,
+    raw_dbh: _raw_dbh,
+    latitude: latitude,
+    longitude: longitude,
+)
+grain (tree_id)
+complete where city = 'USCAM'
+query '''
+select 'USCAM' city, 3 tree_id, 'Oak' species, 3.0 raw_dbh, 42.2 latitude, -71.2 longitude
+''';
+"""
+
 _BASE_QUERY = """
 key tree_id int;
 property tree_id.city string;
@@ -67,3 +110,29 @@ select
     assert exec.environment.concepts["processed_dbh"].keys == {"local.tree_id"}
     # highfalutin legitimately groups by city+species for the avg; cheerful must not
     assert '"tree_id" ="' not in sql, sql
+
+
+def test_union_sources_include_all_required_columns():
+    """Union CTE must include lat/long even though they aren't needed for the
+    aggregate sub-query — mirrors the Boston tree reporting pruning bug.
+
+    If lat/long are pruned from the union CTE the query will generate invalid
+    SQL (referencing columns that don't exist in the CTE) and fail to execute.
+    """
+    query = (
+        _UNION_IMPUTE_QUERY
+        + """
+select
+    tree_id,
+    city,
+    diameter_at_breast_height,
+    latitude,
+    longitude
+;
+"""
+    )
+    executor = Dialects.DUCK_DB.default_executor()
+    # Execute the query — if the union CTE is missing lat/long this raises
+    rows = executor.execute_text(query)[-1].fetchall()
+    latitudes = {r[3] for r in rows}
+    assert latitudes, "expected non-empty results with latitude values"
