@@ -1115,7 +1115,9 @@ class UnionCTE:
         extra = [c for c in other.output_columns if c not in self.output_lcl]
         if not extra:
             return self
-        self.output_columns = unique(self.output_columns + other.output_columns, "address")
+        self.output_columns = unique(
+            self.output_columns + other.output_columns, "address"
+        )
         # Merge each arm of the union so every branch projects the combined columns.
         self_by_name = {cte.name: i for i, cte in enumerate(self.internal_ctes)}
         for other_cte in other.internal_ctes:
