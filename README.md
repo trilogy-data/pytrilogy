@@ -5,24 +5,28 @@
 [![Discord](https://img.shields.io/badge/DISCORD-CHAT-red?logo=discord)](https://discord.gg/Z4QSSuqGEd)
 [![PyPI version](https://badge.fury.io/py/pytrilogy.svg)](https://badge.fury.io/py/pytrilogy)
 
-The Trilogy platform is a complete analytics solution centered on Trilogy - a streamlined SQL variant that replaces tables/joins with a lightweight semantic binding layer and provides easy reuse and composability. It compiles to classic SQL - making it easy to debug or integrate into existing workflows - and can be run against any supported SQL backend.
+Trilogy is a semantic SQL language for analytics.
 
-Trilogy is future proof - it shines when used with AI agents - but is built for people first.
+It lets you write queries without manual joins, reuse and compose logic,
+and get type-checked, safe SQL for any supported backend.
 
-[pytrilogy](https://github.com/trilogy-data/pytrilogy) is the reference implementation, written in Python.
+## Why Trilogy
 
-## What Trilogy Gives You
+Analytics SQL can get hard to maintain - fast.
 
-- **Speed** - write less, faster. Concise but powerful syntax
-- **Efficiency** - easily reuse and compose functions and models, modeled after python
-- **Easy refactoring** - change and update tables without breaking queries, and easy testing snd static analysis
-- **Testability** - built-in testing patterns with query fixtures
-- **Straightforward** - for humans and LLMs alike
+Trilogy adds a lightweight semantic layer that makes queries reusable,
+refactorable, and safer at any scale. 
 
-Trilogy is especially powerful for data consumption, providing a rich metadata layer that makes creating, interpreting, and visualizing queries easy and expressive.
+• No manual joins; no from clause
+• Reusable models, calculations, and functions
+• Safe refactoring across queries
+• Works where analytics lives: BigQuery, DuckDB, Snowflake, Presto
+• Easy to write - for humans and AI
+• Built-in semantic layer without boilerplate or YAML
 
+Trilogy is future proof - with the fast feedback loops agents crave -but is built for people first.
 
-We recommend starting with the free [studio](https://trilogydata.dev/trilogy-studio-core/) UI to explore Trilogy for most users. The SDK `pytrilogy` provides a CLI - similiar to DBT - that can be run locally to parse and execute trilogy model [.preql], or can be embedding larger python applications by importing the `trilogy` package.
+This repo contains [pytrilogy](https://github.com/trilogy-data/pytrilogy), the reference implementation of the language.
 
 
 ## Quick Start
@@ -35,7 +39,7 @@ We recommend starting with the free [studio](https://trilogydata.dev/trilogy-stu
 pip install pytrilogy[cli]
 ```
 
-**Save in hello.preql**
+**Create a file hello.preql**
 
 Trilogy supports reusable functions and constants. 
 
@@ -58,6 +62,21 @@ LIMIT 10;
 ```bash
 trilogy run hello.preql duckdb
 ```
+
+## What Trilogy Gives You
+
+- **Speed** - write less, faster. Concise but powerful syntax
+- **Efficiency** - easily reuse and compose functions and models, modeled after python
+- **Easy refactoring** - change and update tables without breaking queries, and easy testing snd static analysis
+- **Testability** - built-in testing patterns with query fixtures
+- **Straightforward** - for humans and LLMs alike
+
+Trilogy is especially powerful for data consumption, providing a rich metadata layer that makes creating, interpreting, and visualizing queries easy and expressive.
+
+
+We recommend starting with the free [studio](https://trilogydata.dev/trilogy-studio-core/) UI to explore Trilogy for most users. The SDK `pytrilogy` provides a CLI - similiar to DBT - that can be run locally to parse and execute trilogy model [.preql], or can be embedding larger python applications by importing the `trilogy` package.
+
+
 
 ## Trilogy is Easy to Write
 For humans *and* AI. Enjoy flexible, one-shot query generation without any DB access or security risks. 
