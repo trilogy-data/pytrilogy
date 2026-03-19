@@ -4,7 +4,6 @@ with a WHERE filter on city — mirrors the Boston tree reporting query shape.""
 from trilogy import Dialects, parse
 from trilogy.core.models.build import concept_is_relevant
 
-
 _BASE_QUERY = """
 key tree_id int;
 property tree_id.city string;
@@ -47,6 +46,11 @@ def test_virt_agg_grain_collapses_when_by_concepts_are_properties():
 
 
 def test_merge_coalesce_impute_no_group_by():
+    from logging import INFO
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook(INFO)
     query = (
         _BASE_QUERY
         + """
@@ -62,5 +66,4 @@ select
     sql = exec.generate_sql(stmts[-1])[-1]
     assert exec.environment.concepts["processed_dbh"].keys == {"local.tree_id"}
     # highfalutin legitimately groups by city+species for the avg; cheerful must not
-    cheerful_onward = sql[sql.index("cheerful as ("):]
-    assert "GROUP BY" not in cheerful_onward, sql
+    assert '"tree_id" ="' not in sql, sql

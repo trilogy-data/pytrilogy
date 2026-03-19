@@ -5,9 +5,9 @@
 [![Discord](https://img.shields.io/badge/DISCORD-CHAT-red?logo=discord)](https://discord.gg/Z4QSSuqGEd)
 [![PyPI version](https://badge.fury.io/py/pytrilogy.svg)](https://badge.fury.io/py/pytrilogy)
 
-The Trilogy language is an experiment in better SQL for analytics - a streamlined version that replaces tables/joins with a lightweight semantic binding layer and provides easy reuse and composability. It compiles to SQL - making it easy to debug or integrate into existing workflows - and can be run against any supported SQL backend.
+The Trilogy platform is a complete analytics solution centered on Trilogy - a streamlined SQL variant that replaces tables/joins with a lightweight semantic binding layer and provides easy reuse and composability. It compiles to classic SQL - making it easy to debug or integrate into existing workflows - and can be run against any supported SQL backend.
 
-It shines when used with AI agents, but is built for people first.
+Trilogy is future proof - it shines when used with AI agents - but is built for people first.
 
 [pytrilogy](https://github.com/trilogy-data/pytrilogy) is the reference implementation, written in Python.
 
@@ -22,7 +22,7 @@ It shines when used with AI agents, but is built for people first.
 Trilogy is especially powerful for data consumption, providing a rich metadata layer that makes creating, interpreting, and visualizing queries easy and expressive.
 
 
-We recommend starting with the studio to explore Trilogy. For integration, `pytrilogy` can be run locally to parse and execute trilogy model [.preql] files using the `trilogy` CLI tool, or can be run in python by importing the `trilogy` package.
+We recommend starting with the free [studio](https://trilogydata.dev/trilogy-studio-core/) UI to explore Trilogy for most users. The SDK `pytrilogy` provides a CLI - similiar to DBT - that can be run locally to parse and execute trilogy model [.preql], or can be embedding larger python applications by importing the `trilogy` package.
 
 
 ## Quick Start
@@ -32,10 +32,13 @@ We recommend starting with the studio to explore Trilogy. For integration, `pytr
 
 **Install**
 ```bash
-pip install pytrilogy
+pip install pytrilogy[cli]
 ```
 
 **Save in hello.preql**
+
+Trilogy supports reusable functions and constants. 
+
 ```sql
 const prime <- unnest([2, 3, 5, 7, 11, 13, 17, 19, 23, 29]);
 
