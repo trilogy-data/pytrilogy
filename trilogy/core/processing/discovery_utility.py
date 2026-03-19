@@ -245,10 +245,10 @@ def group_if_required_v2(
                         and x.address not in (root.required_outputs or set())
                     )
                 ]
-
-                logger.info(
-                    f"Adjusting group node outputs to remove injected concepts {where_injected}: remaining {allowed_outputs}"
-                )
+                if where_injected:
+                    logger.info(
+                        f"Adjusting group node outputs to remove injected concepts {where_injected}: remaining {allowed_outputs}"
+                    )
                 root.set_output_concepts(allowed_outputs)
             return root
         return GroupNode(
