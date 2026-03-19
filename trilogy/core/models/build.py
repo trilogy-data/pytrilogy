@@ -191,6 +191,15 @@ def concept_is_relevant(
     if concept.purpose in (Purpose.METRIC,):
         if all([c in others for c in concept.grain.components]):
             return False
+        if (
+            isinstance(concept.lineage, BuildAggregateWrapper)
+            and concept.lineage.by
+            and all(
+                c in others or not concept_is_relevant(c, others)
+                for c in concept.lineage.by
+            )
+        ):
+            return False
     if concept.derivation in (Derivation.UNNEST,):
         return True
     if concept.derivation in (Derivation.BASIC,):
@@ -2486,7 +2495,13 @@ class Factory:
             where = factory._build_where_clause(base.where_clause)
         else:
             where = None
-        return BuildGrain(components=base.components, where_clause=where)
+        normalized = set()
+        for c in base.components:
+            if c in self.environment.concepts:
+                normalized.add(self.environment.concepts[c].address)
+            else:
+                normalized.add(c)
+        return BuildGrain(components=normalized, where_clause=where)
 
     @build.register
     def _(self, base: TupleWrapper) -> TupleWrapper:
