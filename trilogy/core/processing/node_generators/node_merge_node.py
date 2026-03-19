@@ -395,8 +395,23 @@ def resolve_weak_components(
         if not sub_component:
             continue
         subgraphs.append(sub_component)
-
-    return subgraphs
+    fgraphs = []
+    for subgraph in subgraphs:
+        # don't re-enter an unresolvable root when injecting concepts.
+        resolvable = [
+            x
+            for x in subgraph
+            if not (
+                x.derivation == Derivation.ROOT
+                and x.canonical_address
+                not in environment.materialized_canonical_concepts
+            )
+        ]
+        if not resolvable:
+            logger.info(f"Subgraph {subgraph} is not resolvable, skipping")
+            continue
+        fgraphs.append(subgraph)
+    return fgraphs
 
 
 def subgraphs_to_merge_node(

@@ -245,10 +245,10 @@ def group_if_required_v2(
                         and x.address not in (root.required_outputs or set())
                     )
                 ]
-
-                logger.info(
-                    f"Adjusting group node outputs to remove injected concepts {where_injected}: remaining {allowed_outputs}"
-                )
+                if where_injected:
+                    logger.info(
+                        f"Adjusting group node outputs to remove injected concepts {where_injected}: remaining {allowed_outputs}"
+                    )
                 root.set_output_concepts(allowed_outputs)
             return root
         return GroupNode(
@@ -530,13 +530,14 @@ def get_loop_iteration_targets(
             [
                 x.derivation in (Derivation.ROOT,)
                 and x.granularity != Granularity.SINGLE_ROW
+                and x.canonical_address in materialized_canonical
                 for x in remaining
             ]
         )
         and conditions
     ):
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} All remaining mandatory concepts are roots, injecting condition inputs into candidate list"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} All remaining mandatory concepts are materialized roots, injecting condition inputs into candidate list"
         )
         local_all = unique(
             list(conditions.row_arguments) + remaining,
