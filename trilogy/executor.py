@@ -198,9 +198,14 @@ class Executor(object):
         select_stmt = datasource.create_update_statement(
             self.environment, where, line_no=None
         )
+        # Use APPEND only when incremental keys were explicitly supplied (not just any WHERE).
+        persist_mode = (
+            PersistMode.APPEND if (keys and keys.keys) else PersistMode.OVERWRITE
+        )
         statement = PersistStatement(
             datasource=datasource,
             select=select_stmt,
+            persist_mode=persist_mode,
         )
         generated = self.generator.generate_queries(
             self.environment, [statement], hooks=self.hooks  # type: ignore[list-item]

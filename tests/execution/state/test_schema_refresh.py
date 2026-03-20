@@ -11,6 +11,7 @@ from trilogy.execution.state.state_store import refresh_stale_assets
 V1_PATH = Path(__file__).parent / "schema_refresh_v1.preql"
 V2_PATH = Path(__file__).parent / "schema_refresh_v2.preql"
 V3_PATH = Path(__file__).parent / "schema_refresh_v3_type_change.preql"
+V4_PATH = Path(__file__).parent / "schema_refresh_v4_incremental.preql"
 
 
 def _make_executor():
@@ -88,6 +89,67 @@ def test_type_change_triggers_full_refresh():
         "WHERE table_name = 'schema_refresh_test' AND column_name = 'value'"
     ).fetchone()[0]
     assert db_type_v3.upper() in ("INTEGER", "INT", "INT4")
+
+
+def test_incremental_refresh_appends_only_new_rows():
+    """Incremental staleness should INSERT only rows with version > current max, not replace."""
+    executor = _make_executor()
+
+    # v4 uses a grain-specific version property (property id.version int) so the planner
+    # can push WHERE version > N into the source query.
+    with open(V4_PATH) as f:
+        executor.parse_text(f.read())
+
+    # First run: table absent, full OVERWRITE creates it with version=1 rows (ids 1,2)
+    # and version=2 rows (ids 3,4) - but wait, the incremental key is version, so
+    # the first run gets ALL rows (no existing watermark to filter against).
+    result_v1 = refresh_stale_assets(executor)
+    assert result_v1.refreshed_count > 0
+
+    rows_after_v1 = executor.execute_raw_sql(
+        "SELECT id, version FROM schema_refresh_incremental ORDER BY id"
+    ).fetchall()
+    assert len(rows_after_v1) == 4
+
+    # Simulate source gaining new data at version=3 by re-parsing with an extended root.
+    executor.environment = Environment()
+    executor.parse_text(
+        """
+key id int;
+property id.value string;
+property id.version int;
+
+root datasource raw_source (id, value, version)
+grain (id)
+query '''
+select 1 as id, 'hello' as value, 1 as version
+union all select 2 as id, 'world' as value, 1 as version
+union all select 3 as id, 'new' as value, 2 as version
+union all select 4 as id, 'also_new' as value, 2 as version
+union all select 5 as id, 'newest' as value, 3 as version
+''';
+
+datasource processed (id, value, version)
+grain (id)
+address schema_refresh_incremental
+incremental by version;
+"""
+    )
+
+    result_v2 = refresh_stale_assets(executor)
+    assert (
+        result_v2.refreshed_count > 0
+    ), "Expected incremental refresh for new version data"
+
+    rows_after_v2 = executor.execute_raw_sql(
+        "SELECT id, version FROM schema_refresh_incremental ORDER BY id"
+    ).fetchall()
+    # The table should have 5 rows: the original 4 plus the new version=3 row
+    assert (
+        len(rows_after_v2) == 5
+    ), f"Expected 5 rows (4 old + 1 new), got {len(rows_after_v2)}"
+    ids = {r[0] for r in rows_after_v2}
+    assert ids == {1, 2, 3, 4, 5}
 
 
 # Snowflake preql uses the same v1/v3 files but targets a Snowflake executor (via fakesnow).

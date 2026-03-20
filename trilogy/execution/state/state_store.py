@@ -135,12 +135,12 @@ class BaseStateStore:
                         )
                     )
 
-        already_stale = {a.datasource_id for a in stale}
+        stale_ids = {a.datasource_id for a in stale}
         for ds in env.datasources.values():
             if (
                 ds.identifier not in root_assets
                 and ds.identifier not in skip_datasources
-                and ds.identifier not in already_stale
+                and ds.identifier not in stale_ids
                 and has_schema_mismatch(ds, executor)
             ):
                 stale.append(
@@ -150,6 +150,7 @@ class BaseStateStore:
                         filters=UpdateKeys(),
                     )
                 )
+                stale_ids.add(ds.identifier)
 
         concept_max_watermarks: dict[str, UpdateKey] = {}
         for ds_id, watermark in self.watermarks.items():
@@ -204,7 +205,7 @@ class BaseStateStore:
                 concept_max_watermarks[key] = wm
 
         for ds_id, watermark in self.watermarks.items():
-            if ds_id in root_assets:
+            if ds_id in root_assets or ds_id in stale_ids:
                 continue
 
             for key, val in watermark.keys.items():
@@ -233,6 +234,7 @@ class BaseStateStore:
                                     filters=filters,
                                 )
                             )
+                            stale_ids.add(ds_id)
                             break
 
                 elif val.type == UpdateKeyType.UPDATE_TIME:
@@ -255,6 +257,7 @@ class BaseStateStore:
                                     filters=UpdateKeys(),
                                 )
                             )
+                            stale_ids.add(ds_id)
                             break
 
         return stale
@@ -346,7 +349,9 @@ def refresh_stale_assets(
             if on_refresh:
                 on_refresh(asset.datasource_id, asset.reason)
             datasource = executor.environment.datasources[asset.datasource_id]
-            sql = executor.update_datasource(datasource, dry_run=dry_run)
+            sql = executor.update_datasource(
+                datasource, keys=asset.filters, dry_run=dry_run
+            )
             if on_refresh_query and sql is not None:
                 on_refresh_query(asset.datasource_id, sql)
             refreshed += 1

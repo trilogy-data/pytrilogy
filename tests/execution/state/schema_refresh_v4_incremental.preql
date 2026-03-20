@@ -1,0 +1,29 @@
+
+key id int;
+property id.value string;
+property id.version int;
+
+root datasource raw_source (
+    id,
+    value,
+    version
+)
+grain (id)
+query '''
+select 1 as id, 'hello' as value, 1 as version
+union all
+select 2 as id, 'world' as value, 1 as version
+union all
+select 3 as id, 'new' as value, 2 as version
+union all
+select 4 as id, 'also_new' as value, 2 as version
+''';
+
+datasource processed (
+    id,
+    value,
+    version
+)
+grain (id)
+address schema_refresh_incremental
+incremental by version;
