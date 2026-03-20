@@ -404,33 +404,6 @@ class DuckDBDialect(BaseDialect):
             return f"({sql_content})"
         return super().render_source(address)
 
-    def get_table_schema(
-        self, executor, table_name: str, schema: str | None = None
-    ) -> list[tuple]:
-        """Returns a list of tuples: (column_name, data_type, is_nullable, column_comment)."""
-        column_query = """
-        SELECT
-            column_name,
-            data_type,
-            is_nullable,
-            column_comment
-        FROM information_schema.columns
-        WHERE table_name = ?
-        """
-        params = [table_name]
-
-        if schema:
-            column_query += " AND table_schema = ?"
-            params.append(schema)
-
-        column_query += " ORDER BY ordinal_position"
-
-        # DuckDB supports parameterized queries
-        rows = executor.execute_raw_sql(
-            column_query.replace("?", "'{}'").format(*params)
-        ).fetchall()
-        return rows
-
     # DuckDB information_schema returns type names (e.g. "INTEGER", "VARCHAR") that
     # differ from the DDL tokens in DATATYPE_MAP (e.g. "int", "string").
     DB_COLUMN_TYPE_MAP = {

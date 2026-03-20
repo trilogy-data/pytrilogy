@@ -502,7 +502,20 @@ class BaseDialect:
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[tuple]:
-        raise NotImplementedError
+        """Return (column_name, data_type, is_nullable, comment) rows via information_schema."""
+        query = f"""
+        SELECT
+            column_name,
+            data_type,
+            is_nullable,
+            '' as column_comment
+        FROM information_schema.columns
+        WHERE table_name = '{table_name}'
+        """
+        if schema:
+            query += f" AND table_schema = '{schema}'"
+        query += " ORDER BY ordinal_position"
+        return executor.execute_raw_sql(query).fetchall()
 
     def normalize_db_type(self, db_type: str) -> DataType:
         """Map a database type string (from information_schema) to a DataType enum."""
@@ -514,30 +527,13 @@ class BaseDialect:
     ) -> dict[str, DataType] | None:
         """Return a name→DataType mapping for an existing table, or None if not found.
 
-        Delegates to get_table_schema where implemented (efficient metadata query);
-        falls back to SELECT * LIMIT 0 with UNKNOWN types for dialects that don't
-        implement get_table_schema. An empty get_table_schema result is treated as
-        table-not-found since all real tables have at least one column.
+        An empty result is treated as table-not-found since all real tables have at
+        least one column.
         """
-        try:
-            rows = self.get_table_schema(executor, table_name, schema)
-            if not rows:
-                return None
-            return {row[0].lower(): self.normalize_db_type(row[1]) for row in rows}
-        except NotImplementedError:
-            pass
-        from trilogy.execution.state.exceptions import is_missing_source_error
-
-        try:
-            result = executor.execute_raw_sql(
-                f"SELECT * FROM {self.safe_quote(table_name)} LIMIT 0"
-            )
-            return {k.lower(): DataType.UNKNOWN for k in result.keys()}
-        except Exception as e:
-            if is_missing_source_error(e, self):
-                executor.connection.rollback()
-                return None
-            raise
+        rows = self.get_table_schema(executor, table_name, schema)
+        if not rows:
+            return None
+        return {row[0].lower(): self.normalize_db_type(row[1]) for row in rows}
 
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None

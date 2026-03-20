@@ -88,8 +88,6 @@ def _resolve_table_ref(datasource: Datasource, executor: Executor) -> str:
 
 def has_schema_mismatch(datasource: Datasource, executor: Executor) -> bool:
     """Return True if the existing table's columns (names or types) differ from the definition."""
-    if datasource.is_root:
-        return False
     if isinstance(datasource.address, Address) and (
         datasource.address.is_file or datasource.address.is_query
     ):
