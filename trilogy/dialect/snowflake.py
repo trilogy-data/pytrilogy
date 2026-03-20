@@ -3,6 +3,7 @@ from typing import Any, Callable, Mapping
 from jinja2 import Template
 
 from trilogy.core.enums import FunctionType, UnnestMode, WindowType
+from trilogy.core.models.core import DataType
 from trilogy.dialect.base import BaseDialect
 
 ENV_SNOWFLAKE_PW = "PREQL_SNOWFLAKE_PW"
@@ -97,11 +98,14 @@ class SnowflakeDialect(BaseDialect):
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = SNOWFLAKE_SQL_TEMPLATE
     UNNEST_MODE = UnnestMode.SNOWFLAKE
+    TABLE_NOT_FOUND_PATTERN = "does not exist"
 
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[tuple]:
-        """Snowflake requires uppercase identifiers unless quoted."""
+        """Snowflake stores unquoted identifiers as UPPER and quoted as lowercase.
+        Use UPPER() comparison to find tables regardless of how they were created.
+        """
         table_name_upper = table_name.upper()
 
         column_query = f"""
@@ -111,15 +115,29 @@ class SnowflakeDialect(BaseDialect):
             is_nullable,
             comment as column_comment
         FROM information_schema.columns
-        WHERE table_name = '{table_name_upper}'
+        WHERE UPPER(table_name) = '{table_name_upper}'
         """
         if schema:
             schema_upper = schema.upper()
-            column_query += f" AND table_schema = '{schema_upper}'"
+            column_query += f" AND UPPER(table_schema) = '{schema_upper}'"
         column_query += " ORDER BY ordinal_position"
 
         rows = executor.execute_raw_sql(column_query).fetchall()
         return rows
+
+    # Snowflake information_schema reports internal type names that differ from DDL tokens.
+    # e.g. INTEGER/NUMBER → "NUMBER", VARCHAR/TEXT → "TEXT", TIMESTAMP_NTZ → "TIMESTAMP_NTZ"
+    DB_COLUMN_TYPE_MAP = {
+        "text": DataType.STRING,
+        "number": DataType.INTEGER,
+        "float": DataType.FLOAT,
+        "boolean": DataType.BOOL,
+        "date": DataType.DATE,
+        "timestamp_ntz": DataType.DATETIME,
+        "timestamp_ltz": DataType.TIMESTAMP,
+        "timestamp_tz": DataType.TIMESTAMP,
+        "array": DataType.ARRAY,
+    }
 
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None

@@ -431,6 +431,40 @@ class DuckDBDialect(BaseDialect):
         ).fetchall()
         return rows
 
+    # DuckDB information_schema returns type names (e.g. "INTEGER", "VARCHAR") that
+    # differ from the DDL tokens in DATATYPE_MAP (e.g. "int", "string").
+    DB_COLUMN_TYPE_MAP = {
+        **BaseDialect.DB_COLUMN_TYPE_MAP,
+        "integer": DataType.INTEGER,
+        "int4": DataType.INTEGER,
+        "signed": DataType.INTEGER,
+        "smallint": DataType.INTEGER,
+        "int2": DataType.INTEGER,
+        "tinyint": DataType.INTEGER,
+        "int1": DataType.INTEGER,
+        "bigint": DataType.BIGINT,
+        "int8": DataType.BIGINT,
+        "long": DataType.BIGINT,
+        "hugeint": DataType.BIGINT,
+        "varchar": DataType.STRING,
+        "text": DataType.STRING,
+        "char": DataType.STRING,
+        "bpchar": DataType.STRING,
+        "boolean": DataType.BOOL,
+        "logical": DataType.BOOL,
+        "timestamp": DataType.DATETIME,
+        "datetime": DataType.DATETIME,
+        "timestamp without time zone": DataType.DATETIME,
+        "timestamp with time zone": DataType.TIMESTAMP,
+        "timestamptz": DataType.TIMESTAMP,
+        "float4": DataType.FLOAT,
+        "real": DataType.FLOAT,
+        "double": DataType.FLOAT,
+        "float8": DataType.FLOAT,
+        "double precision": DataType.FLOAT,
+        "decimal": DataType.NUMERIC,
+    }
+
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[str]:

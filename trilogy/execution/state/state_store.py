@@ -15,6 +15,7 @@ from trilogy.execution.state.watermarks import (
     get_incremental_key_watermarks,
     get_last_update_time_watermarks,
     get_unique_key_hash_watermarks,
+    has_schema_mismatch,
     run_freshness_probe,
 )
 
@@ -133,6 +134,22 @@ class BaseStateStore:
                             filters=UpdateKeys(),
                         )
                     )
+
+        already_stale = {a.datasource_id for a in stale}
+        for ds in env.datasources.values():
+            if (
+                ds.identifier not in root_assets
+                and ds.identifier not in skip_datasources
+                and ds.identifier not in already_stale
+                and has_schema_mismatch(ds, executor)
+            ):
+                stale.append(
+                    StaleAsset(
+                        datasource_id=ds.identifier,
+                        reason="schema changed: column mismatch",
+                        filters=UpdateKeys(),
+                    )
+                )
 
         concept_max_watermarks: dict[str, UpdateKey] = {}
         for ds_id, watermark in self.watermarks.items():

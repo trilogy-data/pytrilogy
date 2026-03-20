@@ -246,6 +246,22 @@ class BigqueryDialect(BaseDialect):
     def aggregate_checksum(self, hash_expr: str) -> str:
         return f"BIT_XOR({hash_expr})"
 
+    # BQ DATATYPE_MAP uses canonical names (INT64, STRING, FLOAT64, …) that match
+    # information_schema exactly; extend base with legacy aliases BQ also accepts.
+    DB_COLUMN_TYPE_MAP = {
+        **BaseDialect.DB_COLUMN_TYPE_MAP,
+        "int64": DataType.INTEGER,
+        "float64": DataType.FLOAT,
+        "bool": DataType.BOOL,
+        "datetime": DataType.DATETIME,
+        "timestamp": DataType.TIMESTAMP,
+        # legacy aliases
+        "integer": DataType.INTEGER,
+        "int": DataType.INTEGER,
+        "float": DataType.FLOAT,
+        "boolean": DataType.BOOL,
+    }
+
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[tuple]:

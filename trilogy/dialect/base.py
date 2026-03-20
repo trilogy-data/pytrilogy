@@ -195,6 +195,11 @@ COMPLEX_DATATYPE_MAP = {
     DataType.ARRAY: lambda x: f"{x}[]",
 }
 
+# Reverse of DATATYPE_MAP: maps the DB type strings returned by information_schema
+# back to DataType. Dialects merge in their own entries (e.g. "integer" → INTEGER
+# for DuckDB) the same way they extend DATATYPE_MAP.
+DB_COLUMN_TYPE_MAP: dict[str, DataType] = {v: k for k, v in DATATYPE_MAP.items()}
+
 
 def render_case(args):
     return "CASE\n\t" + "\n\t".join(args) + "\n\tEND"
@@ -466,6 +471,7 @@ class BaseDialect:
     CREATE_TABLE_SQL_TEMPLATE = CREATE_TABLE_SQL_TEMPLATE
     DATATYPE_MAP = DATATYPE_MAP
     COMPLEX_DATATYPE_MAP = COMPLEX_DATATYPE_MAP
+    DB_COLUMN_TYPE_MAP = DB_COLUMN_TYPE_MAP
     UNNEST_MODE = UnnestMode.CROSS_APPLY
     GROUP_MODE = GroupMode.AUTO
     EXPLAIN_KEYWORD = "EXPLAIN"
@@ -497,6 +503,41 @@ class BaseDialect:
         self, executor, table_name: str, schema: str | None = None
     ) -> list[tuple]:
         raise NotImplementedError
+
+    def normalize_db_type(self, db_type: str) -> DataType:
+        """Map a database type string (from information_schema) to a DataType enum."""
+        key = db_type.lower().split("(")[0].strip()
+        return self.DB_COLUMN_TYPE_MAP.get(key, DataType.UNKNOWN)
+
+    def get_table_columns(
+        self, executor, table_name: str, schema: str | None = None
+    ) -> dict[str, DataType] | None:
+        """Return a name→DataType mapping for an existing table, or None if not found.
+
+        Delegates to get_table_schema where implemented (efficient metadata query);
+        falls back to SELECT * LIMIT 0 with UNKNOWN types for dialects that don't
+        implement get_table_schema. An empty get_table_schema result is treated as
+        table-not-found since all real tables have at least one column.
+        """
+        try:
+            rows = self.get_table_schema(executor, table_name, schema)
+            if not rows:
+                return None
+            return {row[0].lower(): self.normalize_db_type(row[1]) for row in rows}
+        except NotImplementedError:
+            pass
+        from trilogy.execution.state.exceptions import is_missing_source_error
+
+        try:
+            result = executor.execute_raw_sql(
+                f"SELECT * FROM {self.safe_quote(table_name)} LIMIT 0"
+            )
+            return {k.lower(): DataType.UNKNOWN for k in result.keys()}
+        except Exception as e:
+            if is_missing_source_error(e, self):
+                executor.connection.rollback()
+                return None
+            raise
 
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None

@@ -86,6 +86,35 @@ def _resolve_table_ref(datasource: Datasource, executor: Executor) -> str:
     return datasource.safe_address
 
 
+def has_schema_mismatch(datasource: Datasource, executor: Executor) -> bool:
+    """Return True if the existing table's columns (names or types) differ from the definition."""
+    if datasource.is_root:
+        return False
+    if isinstance(datasource.address, Address) and (
+        datasource.address.is_file or datasource.address.is_query
+    ):
+        return False
+    actual = executor.generator.get_table_columns(executor, datasource.safe_address)
+    if actual is None:
+        return False
+    expected = {
+        executor.environment.concepts[col.concept.address]
+        .safe_address.lower(): executor.environment.concepts[col.concept.address]
+        .datatype.data_type
+        for col in datasource.columns
+    }
+    if set(actual) != set(expected):
+        return True
+    # Check types where the dialect can resolve them (skip UNKNOWN — can't map the type)
+    from trilogy.core.models.core import DataType
+
+    return any(
+        actual[name] != expected[name]
+        for name in expected
+        if actual.get(name, DataType.UNKNOWN) != DataType.UNKNOWN
+    )
+
+
 def get_last_update_time_watermarks(
     datasource: Datasource, executor: Executor
 ) -> DatasourceWatermark:
