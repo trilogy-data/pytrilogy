@@ -1108,10 +1108,10 @@ class BaseDialect:
             if e == MagicConstants.NULL:
                 return "null"
             return str(e.value)
-        elif isinstance(e, date):
-            return self.FUNCTION_MAP[FunctionType.DATE_LITERAL](e, [])
         elif isinstance(e, datetime):
             return self.FUNCTION_MAP[FunctionType.DATETIME_LITERAL](e, [])
+        elif isinstance(e, date):
+            return self.FUNCTION_MAP[FunctionType.DATE_LITERAL](e, [])
         elif isinstance(e, EnumType):
             return self.render_expr(e.data_type, cte=cte, cte_map=cte_map)  # type: ignore[arg-type]
         elif isinstance(e, TraitDataType):
