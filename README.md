@@ -17,12 +17,12 @@ Analytics SQL can get hard to maintain - fast.
 Trilogy adds a lightweight semantic layer that makes queries reusable,
 refactorable, and safer at any scale. 
 
-• No manual joins; no from clause
-• Reusable models, calculations, and functions
-• Safe refactoring across queries
-• Works where analytics lives: BigQuery, DuckDB, Snowflake, Presto
-• Easy to write - for humans and AI
-• Built-in semantic layer without boilerplate or YAML
+- No manual joins; no from clause
+- Reusable models, calculations, and functions
+- Safe refactoring across queries
+- Works where analytics lives: BigQuery, DuckDB, Snowflake, Presto
+- Easy to write - for humans and AI
+- Built-in semantic layer without boilerplate or YAML
 
 Trilogy is future proof - with the fast feedback loops agents crave -but is built for people first.
 
