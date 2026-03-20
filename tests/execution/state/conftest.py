@@ -19,6 +19,44 @@ def duckdb_engine() -> Generator[Executor, None, None]:
     yield executor
 
 
+@fixture(scope="session")
+def snowflake_engine():
+    from unittest import mock
+
+    import fakesnow
+    import snowflake.connector
+
+    from trilogy.constants import Rendering
+    from trilogy.dialect.config import SnowflakeConfig
+
+    already_patched = isinstance(snowflake.connector.connect, mock.MagicMock)
+    if already_patched:
+        executor = Dialects.SNOWFLAKE.default_executor(
+            conf=SnowflakeConfig(
+                account="account",
+                username="user",
+                password="password",
+                database="test",
+                schema="public",
+            ),
+            rendering=Rendering(parameters=False),
+        )
+        yield executor
+    else:
+        with fakesnow.patch():
+            executor = Dialects.SNOWFLAKE.default_executor(
+                conf=SnowflakeConfig(
+                    account="account",
+                    username="user",
+                    password="password",
+                    database="test",
+                    schema="public",
+                ),
+                rendering=Rendering(parameters=False),
+            )
+            yield executor
+
+
 @fixture(scope="function")
 def expected_results():
     yield {}

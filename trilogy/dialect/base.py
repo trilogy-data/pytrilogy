@@ -195,6 +195,11 @@ COMPLEX_DATATYPE_MAP = {
     DataType.ARRAY: lambda x: f"{x}[]",
 }
 
+# Reverse of DATATYPE_MAP: maps the DB type strings returned by information_schema
+# back to DataType. Dialects merge in their own entries (e.g. "integer" → INTEGER
+# for DuckDB) the same way they extend DATATYPE_MAP.
+DB_COLUMN_TYPE_MAP: dict[str, DataType] = {v: k for k, v in DATATYPE_MAP.items()}
+
 
 def render_case(args):
     return "CASE\n\t" + "\n\t".join(args) + "\n\tEND"
@@ -466,6 +471,7 @@ class BaseDialect:
     CREATE_TABLE_SQL_TEMPLATE = CREATE_TABLE_SQL_TEMPLATE
     DATATYPE_MAP = DATATYPE_MAP
     COMPLEX_DATATYPE_MAP = COMPLEX_DATATYPE_MAP
+    DB_COLUMN_TYPE_MAP = DB_COLUMN_TYPE_MAP
     UNNEST_MODE = UnnestMode.CROSS_APPLY
     GROUP_MODE = GroupMode.AUTO
     EXPLAIN_KEYWORD = "EXPLAIN"
@@ -496,7 +502,38 @@ class BaseDialect:
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None
     ) -> list[tuple]:
-        raise NotImplementedError
+        """Return (column_name, data_type, is_nullable, comment) rows via information_schema."""
+        query = f"""
+        SELECT
+            column_name,
+            data_type,
+            is_nullable,
+            '' as column_comment
+        FROM information_schema.columns
+        WHERE table_name = '{table_name}'
+        """
+        if schema:
+            query += f" AND table_schema = '{schema}'"
+        query += " ORDER BY ordinal_position"
+        return executor.execute_raw_sql(query).fetchall()
+
+    def normalize_db_type(self, db_type: str) -> DataType:
+        """Map a database type string (from information_schema) to a DataType enum."""
+        key = db_type.lower().split("(")[0].strip()
+        return self.DB_COLUMN_TYPE_MAP.get(key, DataType.UNKNOWN)
+
+    def get_table_columns(
+        self, executor, table_name: str, schema: str | None = None
+    ) -> dict[str, DataType] | None:
+        """Return a name→DataType mapping for an existing table, or None if not found.
+
+        An empty result is treated as table-not-found since all real tables have at
+        least one column.
+        """
+        rows = self.get_table_schema(executor, table_name, schema)
+        if not rows:
+            return None
+        return {row[0].lower(): self.normalize_db_type(row[1]) for row in rows}
 
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None
@@ -1067,10 +1104,10 @@ class BaseDialect:
             if e == MagicConstants.NULL:
                 return "null"
             return str(e.value)
-        elif isinstance(e, date):
-            return self.FUNCTION_MAP[FunctionType.DATE_LITERAL](e, [])
         elif isinstance(e, datetime):
             return self.FUNCTION_MAP[FunctionType.DATETIME_LITERAL](e, [])
+        elif isinstance(e, date):
+            return self.FUNCTION_MAP[FunctionType.DATE_LITERAL](e, [])
         elif isinstance(e, EnumType):
             return self.render_expr(e.data_type, cte=cte, cte_map=cte_map)  # type: ignore[arg-type]
         elif isinstance(e, TraitDataType):

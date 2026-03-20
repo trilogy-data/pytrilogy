@@ -89,7 +89,7 @@ def test_datetime_lit_rendering():
             right=wrapper,
         )
     )
-    assert "not in (date '" in rendered, rendered
+    assert "not in (datetime '" in rendered, rendered
     rendered = BaseDialect().render_expr(
         BuildComparison(
             left=env.materialize_for_select().concepts["order_id"],
@@ -97,7 +97,7 @@ def test_datetime_lit_rendering():
             right=wrapper,
         )
     )
-    assert "in (date '" in rendered, rendered
+    assert "in (datetime '" in rendered, rendered
 
 
 def test_is_not_null():

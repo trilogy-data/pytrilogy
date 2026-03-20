@@ -75,7 +75,7 @@ def get_coalesce_output_type(args: list[Any]) -> CONCRETE_TYPES:
     processed = [arg_to_datatype(x) for x in non_null if x]
     if not len(set(processed)) == 1:
         raise InvalidSyntaxException(
-            f"All arguments to coalesce must be of the same type, have {set(arg_to_datatype(x) for x in args)}"
+            f"All arguments to coalesce must be of the same type, have {set(arg_to_datatype(x) for x in args)} for {str(args)}"
         )
     return processed[0]
 
