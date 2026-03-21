@@ -16,6 +16,7 @@ from trilogy.core.models.datasource import (
     UpdateKeyType,
 )
 from trilogy.core.models.execute import CTE
+from trilogy.execution.state.cache import ColumnStatsCache
 from trilogy.execution.state.exceptions import is_missing_source_error
 
 
@@ -86,13 +87,24 @@ def _resolve_table_ref(datasource: Datasource, executor: Executor) -> str:
     return datasource.safe_address
 
 
-def has_schema_mismatch(datasource: Datasource, executor: Executor) -> bool:
+def has_schema_mismatch(
+    datasource: Datasource,
+    executor: Executor,
+    cache: ColumnStatsCache | None = None,
+) -> bool:
     """Return True if the existing table's columns (names or types) differ from the definition."""
     if isinstance(datasource.address, Address) and (
         datasource.address.is_file or datasource.address.is_query
     ):
         return False
-    actual = executor.generator.get_table_columns(executor, datasource.safe_address)
+    table_name = datasource.safe_address
+    if cache is not None:
+        hit, actual = cache.get_columns(table_name)
+        if not hit:
+            actual = executor.generator.get_table_columns(executor, table_name)
+            cache.set_columns(table_name, actual)
+    else:
+        actual = executor.generator.get_table_columns(executor, table_name)
     if actual is None:
         return False
     expected = {

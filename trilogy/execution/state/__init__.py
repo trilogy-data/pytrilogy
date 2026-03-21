@@ -1,3 +1,4 @@
+from trilogy.execution.state.cache import ColumnStatsCache, InMemoryColumnStatsCache
 from trilogy.execution.state.state_store import (
     BaseStateStore,
     RefreshResult,
@@ -16,6 +17,8 @@ from trilogy.execution.state.watermarks import (
 )
 
 __all__ = [
+    "ColumnStatsCache",
+    "InMemoryColumnStatsCache",
     "BaseStateStore",
     "RefreshResult",
     "refresh_stale_assets",

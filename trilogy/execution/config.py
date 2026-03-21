@@ -52,6 +52,9 @@ def apply_env_vars(env_vars: dict[str, str]) -> None:
         os.environ[key] = value
 
 
+DEFAULT_STUDIO_URL = "https://trilogydata.dev/trilogy-studio-core/"
+
+
 @dataclass
 class RuntimeConfig:
 
@@ -63,6 +66,7 @@ class RuntimeConfig:
     source_path: Path | None = None
     env_files: list[Path] = field(default_factory=list)
     staging: StagingConfig = field(default_factory=StagingConfig)
+    serve_studio_url: str = DEFAULT_STUDIO_URL
 
 
 def load_config_file(path: Path) -> RuntimeConfig:
@@ -119,6 +123,9 @@ def load_config_file(path: Path) -> RuntimeConfig:
     staging_raw: dict = config_data.get("staging", {})
     staging = StagingConfig(path=staging_raw.get("path"))
 
+    serve_raw: dict = config_data.get("serve", {})
+    serve_studio_url = serve_raw.get("studio_url", DEFAULT_STUDIO_URL)
+
     return RuntimeConfig(
         startup_trilogy=[path.parent / p for p in setup.get("trilogy", [])],
         startup_sql=[path.parent / p for p in setup.get("sql", [])],
@@ -128,4 +135,5 @@ def load_config_file(path: Path) -> RuntimeConfig:
         source_path=path,
         env_files=env_files,
         staging=staging,
+        serve_studio_url=serve_studio_url,
     )

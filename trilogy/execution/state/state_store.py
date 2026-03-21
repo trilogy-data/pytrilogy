@@ -5,6 +5,7 @@ from trilogy import Executor
 from trilogy.core.enums import Purpose
 from trilogy.core.models.datasource import UpdateKey, UpdateKeys, UpdateKeyType
 from trilogy.core.models.environment import Environment
+from trilogy.execution.state.cache import ColumnStatsCache
 from trilogy.execution.state.watermarks import (
     DatasourceWatermark,
     StaleAsset,
@@ -22,8 +23,9 @@ from trilogy.execution.state.watermarks import (
 
 class BaseStateStore:
 
-    def __init__(self) -> None:
+    def __init__(self, cache: ColumnStatsCache | None = None) -> None:
         self.watermarks: dict[str, DatasourceWatermark] = {}
+        self._cache = cache
 
     def watermark_asset(self, datasource, executor: Executor) -> DatasourceWatermark:
         if datasource.freshness_by:
@@ -141,7 +143,7 @@ class BaseStateStore:
                 ds.identifier not in root_assets
                 and ds.identifier not in skip_datasources
                 and ds.identifier not in stale_ids
-                and has_schema_mismatch(ds, executor)
+                and has_schema_mismatch(ds, executor, cache=self._cache)
             ):
                 stale.append(
                     StaleAsset(
@@ -288,6 +290,7 @@ def refresh_stale_assets(
     force_sources: set[str] | None = None,
     on_refresh_query: Callable[[str, str], None] | None = None,
     dry_run: bool = False,
+    cache: ColumnStatsCache | None = None,
 ) -> RefreshResult:
     """Find and refresh stale assets.
 
@@ -299,8 +302,9 @@ def refresh_stale_assets(
         on_approval: Optional callback(stale_assets, watermarks) called before refresh.
                      Return True to proceed, False to skip.
         force_sources: Optional set of datasource names to force rebuild (skip detection)
+        cache: Optional column stats cache to avoid redundant metadata DB queries
     """
-    state_store = BaseStateStore()
+    state_store = BaseStateStore(cache=cache)
     force_sources = force_sources or set()
 
     stale_assets = state_store.get_stale_assets(

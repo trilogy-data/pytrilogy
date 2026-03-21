@@ -15,18 +15,48 @@ from trilogy.scripts.serve_helpers.index_generation import (
     find_model_by_name,
     generate_model_index,
 )
+from trilogy.scripts.serve_helpers.jobs import (
+    Job,
+    cancel_job,
+    create_job,
+    get_job,
+    run_subprocess,
+)
 from trilogy.scripts.serve_helpers.models import (
+    AssetState,
+    DirectoryListing,
+    FileListResponse,
     ImportFile,
+    JobRequest,
+    JobStatus,
     ModelImport,
+    StateResponse,
+    StateSummary,
     StoreIndex,
     StoreModelIndex,
+    WatermarkInfo,
 )
+from trilogy.scripts.serve_helpers.state_computation import compute_state_sync
 
 __all__ = [
     "ImportFile",
     "ModelImport",
     "StoreIndex",
     "StoreModelIndex",
+    "DirectoryListing",
+    "FileListResponse",
+    "JobRequest",
+    "JobStatus",
+    "AssetState",
+    "StateSummary",
+    "StateResponse",
+    "WatermarkInfo",
+    "Job",
+    "cancel_job",
+    "create_job",
+    "get_job",
+    "run_subprocess",
+    "compute_state_sync",
     "find_preql_files",
     "find_sql_files",
     "find_csv_files",

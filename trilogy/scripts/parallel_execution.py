@@ -308,7 +308,10 @@ def _create_worker(
                     results.append(result)
 
                     if on_script_complete:
-                        on_script_complete(result)
+                        try:
+                            on_script_complete(result)
+                        except Exception:
+                            pass  # display errors must not kill the worker or skip _mark_node_complete
 
                     _mark_node_complete(
                         node,
