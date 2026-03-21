@@ -15,7 +15,13 @@ from trilogy.scripts.serve_helpers.index_generation import (
     find_model_by_name,
     generate_model_index,
 )
-from trilogy.scripts.serve_helpers.jobs import Job, create_job, get_job, run_subprocess
+from trilogy.scripts.serve_helpers.jobs import (
+    Job,
+    cancel_job,
+    create_job,
+    get_job,
+    run_subprocess,
+)
 from trilogy.scripts.serve_helpers.models import (
     AssetState,
     DirectoryListing,
@@ -46,6 +52,7 @@ __all__ = [
     "StateResponse",
     "WatermarkInfo",
     "Job",
+    "cancel_job",
     "create_job",
     "get_job",
     "run_subprocess",

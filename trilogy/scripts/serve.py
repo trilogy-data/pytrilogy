@@ -108,6 +108,7 @@ def create_app(
         ModelImport,
         StateResponse,
         StoreIndex,
+        cancel_job,
         compute_state_sync,
         create_job,
         find_file_content_by_name,
@@ -214,6 +215,20 @@ def create_app(
     async def get_job_status(job_id: str) -> JobStatus:
         """Poll the status of a background run or refresh job."""
         job = get_job(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        return JobStatus(
+            job_id=job.job_id,
+            status=job.status,  # type: ignore[arg-type]
+            output=job.output,
+            error=job.error,
+            return_code=job.return_code,
+        )
+
+    @router.post("/jobs/{job_id}/cancel", response_model=JobStatus)
+    async def cancel_job_endpoint(job_id: str) -> JobStatus:
+        """Cancel a running background job. No-op if already finished."""
+        job = cancel_job(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="Job not found")
         return JobStatus(

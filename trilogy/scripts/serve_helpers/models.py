@@ -59,7 +59,7 @@ class JobRequest(BaseModel):
     target: str
 
 
-JobStatusLiteral = Literal["running", "success", "error"]
+JobStatusLiteral = Literal["running", "success", "error", "cancelled"]
 
 
 class JobStatus(BaseModel):
