@@ -92,7 +92,7 @@ def create_app(
     directory_path: PathlibPath,
     host: str,
     port: int,
-    token: str,
+    token: str | None = None,
     config_path: PathlibPath | None = None,
 ):
     from fastapi import BackgroundTasks, Depends, HTTPException
@@ -132,16 +132,21 @@ def create_app(
         allow_headers=["*"],
     )
 
-    # --- Token auth dependency ---
-    _api_key_header = APIKeyHeader(name="X-Trilogy-Token", auto_error=False)
+    # --- Token auth dependency (skipped when token is None) ---
+    if token is not None:
+        _api_key_header = APIKeyHeader(name="X-Trilogy-Token", auto_error=False)
 
-    async def _require_token(api_key: str | None = Depends(_api_key_header)) -> None:
-        if api_key != token:
-            raise HTTPException(
-                status_code=401, detail="Invalid or missing X-Trilogy-Token header"
-            )
+        async def _require_token(
+            api_key: str | None = Depends(_api_key_header),
+        ) -> None:
+            if api_key != token:
+                raise HTTPException(
+                    status_code=401, detail="Invalid or missing X-Trilogy-Token header"
+                )
 
-    router = APIRouter(dependencies=[Depends(_require_token)])
+        router = APIRouter(dependencies=[Depends(_require_token)])
+    else:
+        router = APIRouter()
 
     # --- Existing model endpoints ---
 
@@ -289,6 +294,12 @@ def create_app(
     default=False,
     help="Do not open the browser automatically on startup",
 )
+@option(
+    "--no-auth",
+    is_flag=True,
+    default=False,
+    help="Disable token authentication (for local development only)",
+)
 @pass_context
 def serve(
     ctx,
@@ -298,6 +309,7 @@ def serve(
     host: str,
     timeout: float | None,
     no_browser: bool,
+    no_auth: bool,
 ):
     """Start a FastAPI server to expose Trilogy models from a directory or file."""
     if not check_fastapi_available():
@@ -335,7 +347,7 @@ def serve(
         except Exception:
             pass
 
-    token = secrets.token_urlsafe(TOKEN_BYTES)
+    token = None if no_auth else secrets.token_urlsafe(TOKEN_BYTES)
 
     app = FastAPI(title="Trilogy Model Server", version=__version__)
     create_app(
@@ -368,8 +380,7 @@ def serve(
             f"assetName={quote(asset_name)}&"
             f"modelName={quote(directory_path.name)}&"
             f"connection={quote(engine_url)}&"
-            f"store={quote(store_url)}&"
-            f"token={token}"
+            f"store={quote(store_url)}" + (f"&token={token}" if token else "")
         )
 
         print("\n" + "=" * 80)

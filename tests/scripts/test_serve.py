@@ -679,6 +679,8 @@ def test_serve_cli():
                 "127.0.0.1",
                 "--timeout",
                 "5",
+                "--no-browser",
+                "--no-auth",
             ],
         )
 
