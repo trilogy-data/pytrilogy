@@ -1,5 +1,7 @@
 """Pydantic models for the serve command."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -36,3 +38,71 @@ class StoreIndex(BaseModel):
 
     name: str
     models: list[StoreModelIndex]
+
+
+class DirectoryListing(BaseModel):
+    """Files grouped under a single directory."""
+
+    directory: str
+    files: list[str]
+
+
+class FileListResponse(BaseModel):
+    """All trilogy/sql/csv files organized by directory."""
+
+    directories: list[DirectoryListing]
+
+
+class JobRequest(BaseModel):
+    """Request to run or refresh a target path."""
+
+    target: str
+
+
+JobStatusLiteral = Literal["running", "success", "error"]
+
+
+class JobStatus(BaseModel):
+    """Status of a background job."""
+
+    job_id: str
+    status: JobStatusLiteral
+    output: str
+    error: str
+    return_code: int | None = None
+
+
+AssetStatusLiteral = Literal["fresh", "stale", "unknown"]
+
+
+class WatermarkInfo(BaseModel):
+    """Serialized watermark for a single key on a datasource."""
+
+    type: str  # "incremental_key", "update_time", "key_hash"
+    value: str | None  # always stringified for JSON safety
+
+
+class AssetState(BaseModel):
+    """State of a single datasource asset."""
+
+    id: str
+    is_root: bool
+    status: AssetStatusLiteral
+    stale_reason: str | None = None
+    watermarks: dict[str, WatermarkInfo]
+
+
+class StateSummary(BaseModel):
+    total: int
+    root: int
+    stale: int
+    fresh: int
+    unknown: int
+
+
+class StateResponse(BaseModel):
+    """Asset-level state for a parsed trilogy file."""
+
+    target: str
+    assets: list[AssetState]
+    summary: StateSummary
