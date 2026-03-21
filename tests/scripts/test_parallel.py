@@ -752,3 +752,56 @@ class TestIntegration:
         assert node_b in failed
         assert node_c in failed
         assert len(results) == 2  # B and C recorded as failed
+
+
+# ── EagerBFSStrategy callback exception resilience ────────────────────────────
+
+
+class TestEagerBFSCallbackException:
+    """on_script_complete raising must not kill the worker thread."""
+
+    def test_callback_exception_does_not_abort_execution(
+        self, node_a: ScriptNode
+    ) -> None:
+        from trilogy.scripts.dependency import DependencyResolver
+        from trilogy.scripts.parallel_execution import (
+            EagerBFSStrategy,
+            ExecutionResult,
+        )
+
+        graph = nx.DiGraph()
+        graph.add_node(node_a)
+
+        def executor_factory(node: ScriptNode) -> None:
+            return None
+
+        def execution_fn(executor: None, node: ScriptNode) -> Any:
+            return None  # success; _execute_single wraps the result
+
+        def bad_callback(result: ExecutionResult) -> None:
+            raise RuntimeError("callback exploded")
+
+        # _execute_single is the real wrapper; mock it to return a successful result
+        # without needing a real executor or file system.
+        import unittest.mock as mock
+
+        successful_result = ExecutionResult(node=node_a, success=True)
+        resolver = Mock(spec=DependencyResolver)
+
+        strategy = EagerBFSStrategy()
+        with mock.patch(
+            "trilogy.scripts.parallel_execution._execute_single",
+            return_value=successful_result,
+        ):
+            results = strategy.execute(
+                graph=graph,
+                resolver=resolver,
+                max_workers=1,
+                executor_factory=executor_factory,
+                execution_fn=execution_fn,
+                on_script_complete=bad_callback,
+            )
+
+        # Execution must still return the result despite the callback exception.
+        assert len(results) == 1
+        assert results[0].success is True

@@ -3,6 +3,7 @@
 import json
 import socket
 import tempfile
+import textwrap
 import threading
 import time
 import urllib.error
@@ -719,3 +720,232 @@ def test_serve_cli():
     if cli_result.exception:
         raise cli_result.exception
     assert cli_result.exit_code == 0
+
+
+# ── helpers ────────────────────────────────────────────────────────────────────
+
+_TOKEN = "test-secret-token-abc"
+
+SIMPLE_PREQL = textwrap.dedent(
+    """\
+    key id int;
+
+    root datasource raw (
+        id
+    )
+    grain (id)
+    query '''select 1 as id''';
+"""
+)
+
+
+def _app_with_token(directory_path: Path, engine: str = "generic") -> TestClient:
+    from fastapi import FastAPI
+
+    app = FastAPI()
+    create_app(app, engine, directory_path, "localhost", 80, token=_TOKEN)
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def _app_no_token(directory_path: Path, engine: str = "generic") -> TestClient:
+    from fastapi import FastAPI
+
+    app = FastAPI()
+    create_app(app, engine, directory_path, "localhost", 80)
+    return TestClient(app, raise_server_exceptions=False)
+
+
+# ── token auth ─────────────────────────────────────────────────────────────────
+
+
+def test_token_auth_rejects_missing_token():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        client = _app_with_token(Path(tmpdir))
+        assert client.get("/").status_code == 401
+
+
+def test_token_auth_rejects_wrong_token():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        client = _app_with_token(Path(tmpdir))
+        assert client.get("/", headers={"X-Trilogy-Token": "wrong"}).status_code == 401
+
+
+def test_token_auth_accepts_correct_token():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        client = _app_with_token(Path(tmpdir))
+        assert client.get("/", headers={"X-Trilogy-Token": _TOKEN}).status_code == 200
+
+
+# ── _validate_target helpers ──────────────────────────────────────────────────
+
+
+def test_validate_target_path_traversal_returns_400():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        client = _app_no_token(Path(tmpdir))
+        response = client.post("/run", json={"target": "../../etc/passwd"})
+        assert response.status_code == 400
+
+
+def test_validate_target_not_found_returns_404():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        client = _app_no_token(Path(tmpdir))
+        response = client.post("/run", json={"target": "missing_file.preql"})
+        assert response.status_code == 404
+
+
+# ── _build_cmd ────────────────────────────────────────────────────────────────
+
+
+def test_build_cmd_no_config_generic_engine():
+    from trilogy.scripts.serve import _build_cmd
+
+    cmd = _build_cmd("run", Path("/tmp/f.preql"), None, "generic")
+    assert "run" in cmd
+    assert str(Path("/tmp/f.preql")) in cmd
+    # no engine appended for generic
+    assert "generic" not in cmd
+
+
+def test_build_cmd_no_config_specific_engine():
+    from trilogy.scripts.serve import _build_cmd
+
+    cmd = _build_cmd("run", Path("/tmp/f.preql"), None, "duck_db")
+    assert "duck_db" in cmd
+
+
+def test_build_cmd_with_config_path():
+    from trilogy.scripts.serve import _build_cmd
+
+    cmd = _build_cmd("run", Path("/tmp/f.preql"), Path("/tmp/trilogy.toml"), "generic")
+    assert "--config" in cmd
+    assert str(Path("/tmp/trilogy.toml")) in cmd
+    # engine not appended when config is present
+    assert "generic" not in cmd
+
+
+# ── get_trilogy_cmd ───────────────────────────────────────────────────────────
+
+
+def test_get_trilogy_cmd_returns_list():
+    from trilogy.scripts.serve import get_trilogy_cmd
+
+    cmd = get_trilogy_cmd()
+    assert isinstance(cmd, list)
+    assert len(cmd) >= 1
+
+
+# ── /files list endpoint ──────────────────────────────────────────────────────
+
+
+def test_files_list_endpoint():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "a.preql").write_text("select 1;")
+        client = _app_no_token(tmppath)
+        response = client.get("/files")
+        assert response.status_code == 200
+        data = response.json()
+        assert "directories" in data
+
+
+# ── /run and /refresh ─────────────────────────────────────────────────────────
+
+
+def test_run_endpoint_returns_job_id():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "test.preql").write_text("select 1;")
+        client = _app_no_token(tmppath)
+        response = client.post("/run", json={"target": "test.preql"})
+        assert response.status_code == 200
+        data = response.json()
+        assert "job_id" in data
+        assert data["status"] in ("running", "success", "error")
+
+
+def test_refresh_endpoint_returns_job_id():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "test.preql").write_text("select 1;")
+        client = _app_no_token(tmppath)
+        response = client.post("/refresh", json={"target": "test.preql"})
+        assert response.status_code == 200
+        data = response.json()
+        assert "job_id" in data
+
+
+# ── /jobs ─────────────────────────────────────────────────────────────────────
+
+
+def test_jobs_get_after_run():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "test.preql").write_text("select 1;")
+        client = _app_no_token(tmppath)
+
+        run_resp = client.post("/run", json={"target": "test.preql"})
+        job_id = run_resp.json()["job_id"]
+
+        poll_resp = client.get(f"/jobs/{job_id}")
+        assert poll_resp.status_code == 200
+        assert poll_resp.json()["job_id"] == job_id
+
+
+def test_jobs_get_unknown_returns_404():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        client = _app_no_token(Path(tmpdir))
+        assert client.get("/jobs/no-such-job-id").status_code == 404
+
+
+def test_jobs_cancel_unknown_returns_404():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        client = _app_no_token(Path(tmpdir))
+        assert client.post("/jobs/no-such-job-id/cancel").status_code == 404
+
+
+def test_jobs_cancel_existing_job():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "test.preql").write_text("select 1;")
+        client = _app_no_token(tmppath)
+
+        run_resp = client.post("/run", json={"target": "test.preql"})
+        job_id = run_resp.json()["job_id"]
+
+        cancel_resp = client.post(f"/jobs/{job_id}/cancel")
+        assert cancel_resp.status_code == 200
+        assert cancel_resp.json()["job_id"] == job_id
+
+
+# ── /state endpoint ───────────────────────────────────────────────────────────
+
+
+def test_state_requires_file_not_directory():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        subdir = tmppath / "subdir"
+        subdir.mkdir()
+        client = _app_no_token(tmppath, engine="duck_db")
+        response = client.get("/state", params={"target": "subdir"})
+        assert response.status_code == 400
+
+
+def test_state_no_dialect_returns_400():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "test.preql").write_text(SIMPLE_PREQL)
+        client = _app_no_token(tmppath, engine="generic")
+        response = client.get("/state", params={"target": "test.preql"})
+        assert response.status_code == 400
+
+
+def test_state_with_duckdb_returns_response():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "test.preql").write_text(SIMPLE_PREQL)
+        client = _app_no_token(tmppath, engine="duck_db")
+        response = client.get("/state", params={"target": "test.preql"})
+        assert response.status_code == 200
+        data = response.json()
+        assert "assets" in data
+        assert "summary" in data
