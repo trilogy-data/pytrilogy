@@ -945,7 +945,7 @@ def test_state_with_duckdb_returns_response():
         (tmppath / "test.preql").write_text(SIMPLE_PREQL)
         client = _app_no_token(tmppath, engine="duck_db")
         response = client.get("/state", params={"target": "test.preql"})
-        assert response.status_code == 200
+        assert response.status_code == 200, response.text
         data = response.json()
         assert "assets" in data
         assert "summary" in data
