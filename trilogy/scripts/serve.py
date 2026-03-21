@@ -1,5 +1,6 @@
 """Serve command for Trilogy CLI."""
 
+import os
 import secrets
 import shutil
 import sys
@@ -45,9 +46,12 @@ def _validate_target(target: str, directory_path: PathlibPath) -> PathlibPath:
     """Resolve target and ensure it stays within the served directory."""
     from fastapi import HTTPException
 
-    target_path = (directory_path / target).resolve()
+    # Use os.path.realpath on both sides so Windows short-name vs full-name
+    # differences (e.g. RUNNER~1 vs runneradmin) don't cause false mismatches.
+    real_directory = PathlibPath(os.path.realpath(directory_path))
+    target_path = PathlibPath(os.path.realpath(directory_path / target))
     try:
-        target_path.relative_to(directory_path.resolve())
+        target_path.relative_to(real_directory)
     except ValueError:
         raise HTTPException(
             status_code=400, detail="Target must be within served directory"
