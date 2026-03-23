@@ -949,3 +949,164 @@ def test_state_with_duckdb_returns_response():
         data = response.json()
         assert "assets" in data
         assert "summary" in data
+
+
+# ── project_name in index ─────────────────────────────────────────────────────
+
+
+def test_index_uses_project_name_when_set():
+    from fastapi import FastAPI
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        app = FastAPI()
+        create_app(app, "generic", tmppath, "localhost", 80, project_name="My Project")
+        client = TestClient(app, raise_server_exceptions=False)
+        data = client.get("/index.json").json()
+        assert data["name"] == "My Project"
+        assert data["project_name"] == "My Project"
+
+
+def test_index_falls_back_to_dir_name_without_project_name():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir) / "my_model"
+        tmppath.mkdir()
+        app = create_test_app(tmppath)
+        client = TestClient(app)
+        data = client.get("/index.json").json()
+        assert "my_model" in data["name"]
+        assert data["project_name"] is None
+
+
+# ── file CRUD endpoints ───────────────────────────────────────────────────────
+
+
+def test_create_file_success():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        client = _app_no_token(tmppath)
+        response = client.post("/files", json={"path": "new.preql", "content": "key id int;"})
+        assert response.status_code == 201
+        assert (tmppath / "new.preql").read_text() == "key id int;"
+
+
+def test_create_file_nested_dirs():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        client = _app_no_token(tmppath)
+        response = client.post("/files", json={"path": "sub/dir/model.preql", "content": "select 1;"})
+        assert response.status_code == 201
+        assert (tmppath / "sub" / "dir" / "model.preql").exists()
+
+
+def test_create_file_conflict_returns_409():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "exists.preql").write_text("original")
+        client = _app_no_token(tmppath)
+        response = client.post("/files", json={"path": "exists.preql", "content": "new"})
+        assert response.status_code == 409
+
+
+def test_create_file_disallowed_extension_returns_400():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        client = _app_no_token(Path(tmpdir))
+        response = client.post("/files", json={"path": "bad.py", "content": "import os"})
+        assert response.status_code == 400
+
+
+def test_create_file_path_traversal_returns_400():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        client = _app_no_token(Path(tmpdir))
+        response = client.post("/files", json={"path": "../../evil.preql", "content": ""})
+        assert response.status_code == 400
+
+
+def test_update_file_success():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "model.preql").write_text("original")
+        client = _app_no_token(tmppath)
+        response = client.put("/files/model.preql", json={"content": "updated"})
+        assert response.status_code == 200
+        assert (tmppath / "model.preql").read_text() == "updated"
+
+
+def test_update_file_not_found_returns_404():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        client = _app_no_token(Path(tmpdir))
+        response = client.put("/files/missing.preql", json={"content": "x"})
+        assert response.status_code == 404
+
+
+def test_update_file_disallowed_extension_returns_400():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        client = _app_no_token(Path(tmpdir))
+        response = client.put("/files/bad.py", json={"content": "x"})
+        assert response.status_code == 400
+
+
+def test_delete_file_success():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        target = tmppath / "to_delete.preql"
+        target.write_text("key id int;")
+        client = _app_no_token(tmppath)
+        response = client.delete("/files/to_delete.preql")
+        assert response.status_code == 204
+        assert not target.exists()
+
+
+def test_delete_file_not_found_returns_404():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        client = _app_no_token(Path(tmpdir))
+        assert client.delete("/files/ghost.preql").status_code == 404
+
+
+def test_delete_file_disallowed_extension_returns_400():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        client = _app_no_token(Path(tmpdir))
+        assert client.delete("/files/bad.py").status_code == 400
+
+
+# ── --no-auth warning ─────────────────────────────────────────────────────────
+
+
+def test_no_auth_with_non_localhost_prints_warning():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "serve",
+                tmpdir,
+                "--no-auth",
+                "--host",
+                "0.0.0.0",
+                "--timeout",
+                "0.1",
+                "--no-browser",
+            ],
+            catch_exceptions=False,
+        )
+        assert "WARNING" in result.output
+
+
+def test_no_auth_with_localhost_no_warning():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "serve",
+                tmpdir,
+                "--no-auth",
+                "--host",
+                "127.0.0.1",
+                "--timeout",
+                "0.1",
+                "--no-browser",
+            ],
+            catch_exceptions=False,
+        )
+        assert "WARNING" not in result.output
