@@ -422,6 +422,13 @@ def serve(
 
     if no_auth:
         token = None
+        if host != "localhost" and host != "127.0.0.1":
+            print(
+                "WARNING: Authentication is disabled and the server is bound to "
+                f"{host}. File read and write endpoints are accessible to anyone "
+                "who can reach this host. Use --host localhost for local-only access.",
+                file=sys.stderr,
+            )
     elif auth_token:
         token = auth_token
     else:
