@@ -25,7 +25,9 @@ from trilogy.scripts.serve_helpers.jobs import (
 from trilogy.scripts.serve_helpers.models import (
     AssetState,
     DirectoryListing,
+    FileCreateRequest,
     FileListResponse,
+    FileWriteRequest,
     ImportFile,
     JobRequest,
     JobStatus,
@@ -45,6 +47,8 @@ __all__ = [
     "StoreModelIndex",
     "DirectoryListing",
     "FileListResponse",
+    "FileWriteRequest",
+    "FileCreateRequest",
     "JobRequest",
     "JobStatus",
     "AssetState",

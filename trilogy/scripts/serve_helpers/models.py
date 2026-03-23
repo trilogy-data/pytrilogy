@@ -38,6 +38,20 @@ class StoreIndex(BaseModel):
 
     name: str
     models: list[StoreModelIndex]
+    project_name: str | None = None
+
+
+class FileWriteRequest(BaseModel):
+    """Request body for creating or updating a file."""
+
+    content: str
+
+
+class FileCreateRequest(BaseModel):
+    """Request body for creating a new file."""
+
+    path: str
+    content: str
 
 
 class DirectoryListing(BaseModel):
