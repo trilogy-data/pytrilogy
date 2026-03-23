@@ -8,6 +8,7 @@ from trilogy.scripts.serve_helpers.file_discovery import (
     extract_description_from_file,
     find_all_model_files,
     find_csv_files,
+    find_python_files,
     find_trilogy_files,
     get_relative_model_name,
     get_safe_model_name,
@@ -183,6 +184,22 @@ def find_model_by_name(
                 alias=file_model_name,
                 type="csv",
                 purpose="data",
+            )
+        )
+
+    # Add Python files with purpose="source"
+    python_files = find_python_files(directory_path)
+    for python_file in python_files:
+        file_model_name = get_relative_model_name(python_file, directory_path)
+        safe_file_name = get_safe_model_name(file_model_name)
+
+        components.append(
+            ImportFile(
+                url=f"{base_url}/files/{safe_file_name}.py",
+                name=file_model_name,
+                alias="",
+                type="python",
+                purpose="source",
             )
         )
 

@@ -87,7 +87,7 @@ def _get_file_listing(directory_path: PathlibPath):  # type: ignore[return]
     )
 
 
-ALLOWED_WRITE_EXTENSIONS = {".preql", ".sql", ".csv"}
+ALLOWED_WRITE_EXTENSIONS = {".preql", ".sql", ".csv", ".py"}
 
 
 def _validate_write_path(path: str, directory_path: PathlibPath) -> PathlibPath:
@@ -342,7 +342,7 @@ def create_app(
     print(f"Engine: {engine}")
     print(f"Access the index at: http://{host}:{port}/index.json")
     print(
-        f"Found {len(find_all_model_files(directory_path))} model files (.preql, .sql, .csv)"
+        f"Found {len(find_all_model_files(directory_path))} model files (.preql, .sql, .csv, .py)"
     )
     return app
 

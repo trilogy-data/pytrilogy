@@ -985,7 +985,9 @@ def test_create_file_success():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
         client = _app_no_token(tmppath)
-        response = client.post("/files", json={"path": "new.preql", "content": "key id int;"})
+        response = client.post(
+            "/files", json={"path": "new.preql", "content": "key id int;"}
+        )
         assert response.status_code == 201
         assert (tmppath / "new.preql").read_text() == "key id int;"
 
@@ -994,7 +996,9 @@ def test_create_file_nested_dirs():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
         client = _app_no_token(tmppath)
-        response = client.post("/files", json={"path": "sub/dir/model.preql", "content": "select 1;"})
+        response = client.post(
+            "/files", json={"path": "sub/dir/model.preql", "content": "select 1;"}
+        )
         assert response.status_code == 201
         assert (tmppath / "sub" / "dir" / "model.preql").exists()
 
@@ -1004,21 +1008,25 @@ def test_create_file_conflict_returns_409():
         tmppath = Path(tmpdir)
         (tmppath / "exists.preql").write_text("original")
         client = _app_no_token(tmppath)
-        response = client.post("/files", json={"path": "exists.preql", "content": "new"})
+        response = client.post(
+            "/files", json={"path": "exists.preql", "content": "new"}
+        )
         assert response.status_code == 409
 
 
 def test_create_file_disallowed_extension_returns_400():
     with tempfile.TemporaryDirectory() as tmpdir:
         client = _app_no_token(Path(tmpdir))
-        response = client.post("/files", json={"path": "bad.py", "content": "import os"})
+        response = client.post("/files", json={"path": "bad.sh", "content": "rm -rf /"})
         assert response.status_code == 400
 
 
 def test_create_file_path_traversal_returns_400():
     with tempfile.TemporaryDirectory() as tmpdir:
         client = _app_no_token(Path(tmpdir))
-        response = client.post("/files", json={"path": "../../evil.preql", "content": ""})
+        response = client.post(
+            "/files", json={"path": "../../evil.preql", "content": ""}
+        )
         assert response.status_code == 400
 
 
@@ -1042,7 +1050,7 @@ def test_update_file_not_found_returns_404():
 def test_update_file_disallowed_extension_returns_400():
     with tempfile.TemporaryDirectory() as tmpdir:
         client = _app_no_token(Path(tmpdir))
-        response = client.put("/files/bad.py", json={"content": "x"})
+        response = client.put("/files/bad.sh", json={"content": "x"})
         assert response.status_code == 400
 
 
@@ -1066,7 +1074,46 @@ def test_delete_file_not_found_returns_404():
 def test_delete_file_disallowed_extension_returns_400():
     with tempfile.TemporaryDirectory() as tmpdir:
         client = _app_no_token(Path(tmpdir))
-        assert client.delete("/files/bad.py").status_code == 400
+        assert client.delete("/files/bad.sh").status_code == 400
+
+
+def test_python_file_served_as_component():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir) / "mymodel"
+        tmppath.mkdir()
+        (tmppath / "model.preql").write_text("key id int;")
+        (tmppath / "helper.py").write_text("def foo(): pass")
+        client = TestClient(create_test_app(tmppath, "testserver"))
+        data = client.get("/models/mymodel.json").json()
+        py_component = next(c for c in data["components"] if c["type"] == "python")
+        assert py_component["name"] == "helper"
+        assert py_component["purpose"] == "source"
+        assert py_component["url"] == "http://testserver/files/helper.py"
+
+
+def test_python_file_get_content():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "script.py").write_text("print('hello')")
+        client = _app_no_token(tmppath)
+        response = client.get("/files/script.py")
+        assert response.status_code == 200
+        assert response.text == "print('hello')"
+
+
+def test_create_and_update_python_file():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        client = _app_no_token(tmppath)
+        assert (
+            client.post(
+                "/files", json={"path": "new.py", "content": "x = 1"}
+            ).status_code
+            == 201
+        )
+        assert (tmppath / "new.py").read_text() == "x = 1"
+        assert client.put("/files/new.py", json={"content": "x = 2"}).status_code == 200
+        assert (tmppath / "new.py").read_text() == "x = 2"
 
 
 # ── --no-auth warning ─────────────────────────────────────────────────────────

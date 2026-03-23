@@ -39,6 +39,18 @@ def find_csv_files(directory_path: Path) -> list[Path]:
     return list(directory_path.rglob("*.csv"))
 
 
+def find_python_files(directory_path: Path) -> list[Path]:
+    """Find all .py files in the directory recursively.
+
+    Args:
+        directory_path: The root directory to search
+
+    Returns:
+        List of Path objects for all .py files found
+    """
+    return list(directory_path.rglob("*.py"))
+
+
 def find_trilogy_files(directory_path: Path) -> list[Path]:
     """Find all .preql and .sql files in the directory recursively.
 
@@ -54,7 +66,7 @@ def find_trilogy_files(directory_path: Path) -> list[Path]:
 
 
 def find_all_model_files(directory_path: Path) -> list[Path]:
-    """Find all model files (.preql, .sql, .csv) in the directory recursively.
+    """Find all model files (.preql, .sql, .csv, .py) in the directory recursively.
 
     Args:
         directory_path: The root directory to search
@@ -65,7 +77,8 @@ def find_all_model_files(directory_path: Path) -> list[Path]:
     preql_files = find_preql_files(directory_path)
     sql_files = find_sql_files(directory_path)
     csv_files = find_csv_files(directory_path)
-    return sorted(preql_files + sql_files + csv_files)
+    python_files = find_python_files(directory_path)
+    return sorted(preql_files + sql_files + csv_files + python_files)
 
 
 def get_relative_model_name(preql_file: Path, directory_path: Path) -> str:
@@ -85,6 +98,7 @@ def get_relative_model_name(preql_file: Path, directory_path: Path) -> str:
         .replace(".preql", "")
         .replace(".sql", "")
         .replace(".csv", "")
+        .replace(".py", "")
     )
 
 
