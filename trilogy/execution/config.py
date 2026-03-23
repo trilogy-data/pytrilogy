@@ -67,6 +67,7 @@ class RuntimeConfig:
     env_files: list[Path] = field(default_factory=list)
     staging: StagingConfig = field(default_factory=StagingConfig)
     serve_studio_url: str = DEFAULT_STUDIO_URL
+    project_name: str | None = None
 
 
 def load_config_file(path: Path) -> RuntimeConfig:
@@ -126,6 +127,9 @@ def load_config_file(path: Path) -> RuntimeConfig:
     serve_raw: dict = config_data.get("serve", {})
     serve_studio_url = serve_raw.get("studio_url", DEFAULT_STUDIO_URL)
 
+    project_raw: dict = config_data.get("project", {})
+    project_name: str | None = project_raw.get("name")
+
     return RuntimeConfig(
         startup_trilogy=[path.parent / p for p in setup.get("trilogy", [])],
         startup_sql=[path.parent / p for p in setup.get("sql", [])],
@@ -136,4 +140,5 @@ def load_config_file(path: Path) -> RuntimeConfig:
         env_files=env_files,
         staging=staging,
         serve_studio_url=serve_studio_url,
+        project_name=project_name,
     )

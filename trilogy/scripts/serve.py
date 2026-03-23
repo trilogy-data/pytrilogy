@@ -87,6 +87,28 @@ def _get_file_listing(directory_path: PathlibPath):  # type: ignore[return]
     )
 
 
+ALLOWED_WRITE_EXTENSIONS = {".preql", ".sql", ".csv", ".py"}
+
+
+def _validate_write_path(path: str, directory_path: PathlibPath) -> PathlibPath:
+    """Resolve path and ensure it stays within directory and has an allowed extension."""
+    from fastapi import HTTPException
+
+    target_path = (directory_path / path).resolve()
+    try:
+        target_path.relative_to(directory_path)
+    except ValueError:
+        raise HTTPException(
+            status_code=400, detail="Path must be within served directory"
+        )
+    if target_path.suffix not in ALLOWED_WRITE_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only {', '.join(sorted(ALLOWED_WRITE_EXTENSIONS))} files are allowed",
+        )
+    return target_path
+
+
 def create_app(
     app,
     engine: str,
@@ -95,6 +117,7 @@ def create_app(
     port: int,
     token: str | None = None,
     config_path: PathlibPath | None = None,
+    project_name: str | None = None,
 ):
     # Normalize once so every closure (including compute_state_sync) sees the
     # same representation. Avoids Windows short-name vs full-name mismatches
@@ -108,7 +131,9 @@ def create_app(
     from fastapi.security import APIKeyHeader
 
     from trilogy.scripts.serve_helpers import (
+        FileCreateRequest,
         FileListResponse,
+        FileWriteRequest,
         JobRequest,
         JobStatus,
         ModelImport,
@@ -133,7 +158,6 @@ def create_app(
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -175,8 +199,9 @@ def create_app(
     @router.get("/index.json", response_model=StoreIndex)
     async def get_index() -> StoreIndex:
         return StoreIndex(
-            name=f"Trilogy Models - {directory_path.name}",
+            name=project_name or f"Trilogy Models - {directory_path.name}",
             models=generate_model_index(directory_path, base_url, engine),
+            project_name=project_name,
         )
 
     @router.get("/models/{model_name}.json", response_model=ModelImport)
@@ -192,6 +217,39 @@ def create_app(
         if content is None:
             raise HTTPException(status_code=404, detail="File not found")
         return PlainTextResponse(content=content)
+
+    @router.post("/files", status_code=201)
+    async def create_file(request: FileCreateRequest):
+        """Create a new file within the served directory."""
+        target_path = _validate_write_path(request.path, directory_path)
+        if target_path.exists():
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=409, detail="File already exists")
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(request.content, encoding="utf-8")
+        return {"path": request.path}
+
+    @router.put("/files/{path:path}")
+    async def update_file(path: str, request: FileWriteRequest):
+        """Update the content of an existing file."""
+        target_path = _validate_write_path(path, directory_path)
+        if not target_path.exists():
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=404, detail="File not found")
+        target_path.write_text(request.content, encoding="utf-8")
+        return {"path": path}
+
+    @router.delete("/files/{path:path}", status_code=204)
+    async def delete_file(path: str):
+        """Delete a file within the served directory."""
+        target_path = _validate_write_path(path, directory_path)
+        if not target_path.exists():
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=404, detail="File not found")
+        target_path.unlink()
 
     # --- New endpoints ---
 
@@ -284,7 +342,7 @@ def create_app(
     print(f"Engine: {engine}")
     print(f"Access the index at: http://{host}:{port}/index.json")
     print(
-        f"Found {len(find_all_model_files(directory_path))} model files (.preql, .sql, .csv)"
+        f"Found {len(find_all_model_files(directory_path))} model files (.preql, .sql, .csv, .py)"
     )
     return app
 
@@ -306,6 +364,12 @@ def create_app(
     default=False,
     help="Disable token authentication (for local development only)",
 )
+@option(
+    "--auth-token",
+    default=None,
+    type=str,
+    help="Use a specific auth token instead of generating one randomly",
+)
 @pass_context
 def serve(
     ctx,
@@ -316,6 +380,7 @@ def serve(
     timeout: float | None,
     no_browser: bool,
     no_auth: bool,
+    auth_token: str | None,
 ):
     """Start a FastAPI server to expose Trilogy models from a directory or file."""
     if not check_fastapi_available():
@@ -344,20 +409,41 @@ def serve(
     # Load trilogy.toml for engine dialect and serve settings
     config_path = find_trilogy_config(directory_path)
     studio_url = "https://trilogydata.dev/trilogy-studio-core"
+    project_name: str | None = None
     if config_path:
         try:
             runtime_config = load_config_file(config_path)
             if runtime_config.engine_dialect and engine == "generic":
                 engine = runtime_config.engine_dialect.value
             studio_url = runtime_config.serve_studio_url
+            project_name = runtime_config.project_name
         except Exception:
             pass
 
-    token = None if no_auth else secrets.token_urlsafe(TOKEN_BYTES)
+    if no_auth:
+        token = None
+        if host != "localhost" and host != "127.0.0.1":
+            print(
+                "WARNING: Authentication is disabled and the server is bound to "
+                f"{host}. File read and write endpoints are accessible to anyone "
+                "who can reach this host. Use --host localhost for local-only access.",
+                file=sys.stderr,
+            )
+    elif auth_token:
+        token = auth_token
+    else:
+        token = secrets.token_urlsafe(TOKEN_BYTES)
 
     app = FastAPI(title="Trilogy Model Server", version=__version__)
     create_app(
-        app, engine, directory_path, host, port, token=token, config_path=config_path
+        app,
+        engine,
+        directory_path,
+        host,
+        port,
+        token=token,
+        config_path=config_path,
+        project_name=project_name,
     )
 
     # Generate Trilogy Studio URL
@@ -379,14 +465,16 @@ def serve(
         asset_name = get_relative_model_name(target_file, directory_path)
         engine_url = "duckdb" if engine == "duck_db" else engine
 
+        display_model_name = project_name if project_name else directory_path.name
         studio_link = (
             f"{studio_url}#"
             f"import={quote(model_url)}&"
             f"assetType=trilogy&"
             f"assetName={quote(asset_name)}&"
-            f"modelName={quote(directory_path.name)}&"
+            f"modelName={quote(display_model_name)}&"
             f"connection={quote(engine_url)}&"
-            f"store={quote(store_url)}" + (f"&token={token}" if token else "")
+            f"store={quote(store_url)}&"
+            f"remote={quote('true')}" + (f"&token={token}" if token else "")
         )
 
         print("\n" + "=" * 80)
