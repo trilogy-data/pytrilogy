@@ -25,6 +25,7 @@ def get_graph_exact_match(
     conditions: BuildWhereClause | None,
 ) -> set[str]:
     exact: set[str] = set()
+
     for node, ds in g.datasources.items():
         if isinstance(ds, BuildUnionDatasource):
             # When conditions match a specific child's partition, that child is a
@@ -33,8 +34,15 @@ def get_graph_exact_match(
                 child.non_partial_for == conditions for child in ds.children
             ):
                 continue
-            exact.add(node)
-            continue
+            elif conditions and conditions:
+                if conditions == ds.non_partial_for:
+                    exact.add(node)
+                    continue
+                else:
+                    continue
+            else:
+                exact.add(node)
+                continue
         if not conditions and not ds.non_partial_for:
             exact.add(node)
             continue
