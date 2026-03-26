@@ -11,6 +11,7 @@ env_path = Path(__file__).parent.parent / "modeling" / "faa"
 GOOGLE_LATEST_MODEL = "gemini-2.5-flash"
 OPENAI_LATEST_MODEL = "gpt-5-chat-latest"
 ANTHROPIC_LATEST_MODEL = "claude-sonnet-4-5-20250929"
+OPENROUTER_LATEST_MODEL = "anthropic/claude-sonnet-4-5"
 
 
 def validate_response(response: str):
@@ -57,6 +58,21 @@ def test_basic_anthropic_completion():
         "number of flights by month in 2020",
         Provider.ANTHROPIC,
         ANTHROPIC_LATEST_MODEL,
+        api_key,
+    )
+    validate_response(response)
+
+
+def test_basic_openrouter_completion():
+    api_key = load_secret("OPENROUTER_API_KEY")
+    if not api_key:
+        pytest.skip("OPENROUTER_KEY not found in .env.secrets or environment variables")
+    environment, _ = Environment(working_path=env_path).parse("""import flight;""")
+    response = text_to_query(
+        environment,
+        "number of flights by month in 2020",
+        Provider.OPENROUTER,
+        OPENROUTER_LATEST_MODEL,
         api_key,
     )
     validate_response(response)
