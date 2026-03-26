@@ -34,9 +34,7 @@ root datasource organizations_raw (
     EName: ?_e_name,
     )
 grain (code)
-address test
-freshness by data_updated_through;
-
+address test;
 
 datasource organizations (
     code,
