@@ -34,7 +34,9 @@ def get_graph_exact_match(
                 child.non_partial_for == conditions for child in ds.children
             ):
                 continue
-            elif conditions and conditions:
+
+            elif conditions:
+                print(x)
                 if conditions == ds.non_partial_for:
                     exact.add(node)
                     continue

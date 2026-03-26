@@ -129,11 +129,11 @@ def test_multi_condition_resolution():
     )
 
     from trilogy.hooks import DebuggingHook
-    DebuggingHook()
-    
 
-    sql =  executor.generate_sql(
-        '''
+    DebuggingHook()
+
+    sql = executor.generate_sql(
+        """
 import tree_enrichment;
 
 where city = 'USNYC' and tree_category='deciduous'
@@ -141,7 +141,9 @@ select
     count(tree_id) as total_trees;
 
 
-'''
+"""
     )
 
-    assert 'NVALID_REFERENCE_BUG' not in sql[-1], sql[-1]
+    assert "NVALID_REFERENCE_BUG" not in sql[-1], sql[-1]
+
+    # assert 'FO' in sql[-1], sql[-1]
