@@ -710,9 +710,8 @@ class Environment:
         if datasource.is_root and (
             datasource.freshness_by or datasource.incremental_by
         ):
-            raise ValueError(
-                f"Root datasource '{datasource.identifier}' cannot declare freshness_by or incremental_by; "
-                "downstream datasources should declare freshness_by pointing to concepts on this root."
+            raise SyntaxError(
+                f"Root datasource '{datasource.identifier}' should not declare freshness or incremental by."
             )
         self.datasources[datasource.identifier] = datasource
         return datasource

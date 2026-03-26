@@ -25,8 +25,7 @@ def test_init_creates_workspace_structure():
         workspace = Path(tmpdir)
         assert (workspace / "trilogy.toml").exists()
         assert (workspace / "hello_world.preql").exists()
-        assert (workspace / "raw").is_dir()
-        assert (workspace / "derived").is_dir()
+        assert (workspace / "assets" / "root").is_dir()
         assert (workspace / "jobs").is_dir()
 
 
@@ -40,8 +39,7 @@ def test_init_current_directory():
         assert result.exit_code == 0
         assert Path("trilogy.toml").exists()
         assert Path("hello_world.preql").exists()
-        assert Path("raw").is_dir()
-        assert Path("derived").is_dir()
+        assert Path("assets/root").is_dir()
         assert Path("jobs").is_dir()
 
 
