@@ -1,9 +1,11 @@
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 from tomllib import loads
 
+from trilogy.ai.enums import Provider
 from trilogy.constants import logger
 from trilogy.dialect import (
     BigQueryConfig,
@@ -56,6 +58,12 @@ DEFAULT_STUDIO_URL = "https://trilogydata.dev/trilogy-studio-core/"
 
 
 @dataclass
+class AgentConfig:
+    provider: Optional[Provider] = None
+    model: Optional[str] = None
+
+
+@dataclass
 class RuntimeConfig:
 
     startup_trilogy: list[Path]
@@ -68,6 +76,7 @@ class RuntimeConfig:
     staging: StagingConfig = field(default_factory=StagingConfig)
     serve_studio_url: str = DEFAULT_STUDIO_URL
     project_name: str | None = None
+    agent: AgentConfig = field(default_factory=AgentConfig)
 
 
 def load_config_file(path: Path) -> RuntimeConfig:
@@ -130,6 +139,21 @@ def load_config_file(path: Path) -> RuntimeConfig:
     project_raw: dict = config_data.get("project", {})
     project_name: str | None = project_raw.get("name")
 
+    agent_raw: dict = config_data.get("agent", {})
+    agent_provider: Provider | None = None
+    if raw_provider := agent_raw.get("provider"):
+        try:
+            agent_provider = Provider(raw_provider.lower())
+        except ValueError:
+            raise ValueError(
+                f"Unknown agent provider '{raw_provider}'. "
+                f"Valid options: {', '.join(p.value for p in Provider)}"
+            )
+    agent = AgentConfig(
+        provider=agent_provider,
+        model=agent_raw.get("model"),
+    )
+
     return RuntimeConfig(
         startup_trilogy=[path.parent / p for p in setup.get("trilogy", [])],
         startup_sql=[path.parent / p for p in setup.get("sql", [])],
@@ -141,4 +165,5 @@ def load_config_file(path: Path) -> RuntimeConfig:
         staging=staging,
         serve_studio_url=serve_studio_url,
         project_name=project_name,
+        agent=agent,
     )

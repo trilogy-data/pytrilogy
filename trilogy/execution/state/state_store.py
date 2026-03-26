@@ -17,6 +17,7 @@ from trilogy.execution.state.watermarks import (
     get_last_update_time_watermarks,
     get_unique_key_hash_watermarks,
     has_schema_mismatch,
+    is_missing_local_file,
     run_freshness_probe,
 )
 
@@ -28,6 +29,10 @@ class BaseStateStore:
         self._cache = cache
 
     def watermark_asset(self, datasource, executor: Executor) -> DatasourceWatermark:
+        if is_missing_local_file(datasource):
+            watermarks = DatasourceWatermark(keys={})
+            self.watermarks[datasource.identifier] = watermarks
+            return watermarks
         if datasource.freshness_by:
             watermarks = get_freshness_watermarks(datasource, executor)
         elif datasource.incremental_by:
@@ -74,9 +79,7 @@ class BaseStateStore:
             if ds.identifier in skip_datasources:
                 continue
             if ds.is_root:
-                if ds.freshness_by or ds.incremental_by:
-                    self.watermark_asset(ds, executor)
-                elif needed_concepts:
+                if needed_concepts:
                     target_refs = [
                         ref
                         for ref in ds.output_concepts
@@ -149,6 +152,22 @@ class BaseStateStore:
                     StaleAsset(
                         datasource_id=ds.identifier,
                         reason="schema changed: column mismatch",
+                        filters=UpdateKeys(),
+                    )
+                )
+                stale_ids.add(ds.identifier)
+
+        for ds in env.datasources.values():
+            if (
+                ds.identifier not in root_assets
+                and ds.identifier not in skip_datasources
+                and ds.identifier not in stale_ids
+                and is_missing_local_file(ds)
+            ):
+                stale.append(
+                    StaleAsset(
+                        datasource_id=ds.identifier,
+                        reason="file not found",
                         filters=UpdateKeys(),
                     )
                 )
