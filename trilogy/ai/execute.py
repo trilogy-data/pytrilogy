@@ -37,6 +37,14 @@ def text_to_query(
             api_key=secret,
             model=model,
         )
+    elif provider == Provider.OPENROUTER:
+        from trilogy.ai.providers.openrouter import OpenRouterProvider
+
+        llm_provider = OpenRouterProvider(
+            name="openrouter",
+            api_key=secret,
+            model=model,
+        )
     else:
         raise ValueError(f"Unsupported provider: {provider}")
     conversation = Conversation.create(

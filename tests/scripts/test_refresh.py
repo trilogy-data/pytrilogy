@@ -210,8 +210,7 @@ def test_refresh_stale_assets_on_approval_declined():
         grain (item_id)
         query '''
         SELECT 1 as item_id, 'Widget' as name, TIMESTAMP '2024-01-10 12:00:00' as updated_at
-        '''
-        freshness by updated_at;
+        ''';
 
         datasource target_items (
             item_id: item_id,
@@ -252,8 +251,7 @@ def test_refresh_stale_assets_on_approval_accepted():
         grain (item_id)
         query '''
         SELECT 1 as item_id, 'Widget' as name, TIMESTAMP '2024-01-10 12:00:00' as updated_at
-        '''
-        freshness by updated_at;
+        ''';
 
         datasource target_items (
             item_id: item_id,
@@ -294,8 +292,7 @@ def test_refresh_stale_assets_forced():
         grain (item_id)
         query '''
         SELECT 1 as item_id, 'Widget' as name, TIMESTAMP '2024-01-10 12:00:00' as updated_at
-        '''
-        freshness by updated_at;
+        ''';
 
         datasource target_items (
             item_id: item_id,
@@ -350,8 +347,7 @@ root datasource source_items (
 grain (item_id)
 query '''
 SELECT 1 as item_id, 'Widget' as name, TIMESTAMP '2024-01-10 12:00:00' as updated_at
-'''
-freshness by updated_at;
+''';
 
 datasource target_items (
     item_id: item_id,
@@ -478,8 +474,7 @@ def test_refresh_stale_assets_excludes_peer_stale_from_planner():
             rec_ts: rec_ts
         )
         grain (rec_id)
-        query '''SELECT 1 as rec_id, TIMESTAMP '2024-01-20' as rec_ts'''
-        incremental by rec_ts;
+        query '''SELECT 1 as rec_id, TIMESTAMP '2024-01-20' as rec_ts''';
 
         datasource rec_stage (
             rec_id: rec_id,

@@ -11,7 +11,7 @@ types-tabulate
 sqlalchemy-bigquery
 #fakesnow needs an upgrade to support 1.9; it calls CURRENT_VERSION which isn't mocked and hits duckdb
 snowflake-sqlalchemy<1.9.0
-fakesnow
+fakesnow<=v0.11.3
 matplotlib
 tomli-w
 types-tabulate

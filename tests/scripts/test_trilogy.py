@@ -774,8 +774,7 @@ UNION ALL
 SELECT 2 as event_id, TIMESTAMP '2024-01-15 12:00:00' as event_ts
 UNION ALL
 SELECT 3 as event_id, TIMESTAMP '2024-01-20 12:00:00' as event_ts
-'''
-incremental by event_ts;
+''';
 
 datasource target_events (
     event_id: event_id,
@@ -829,8 +828,7 @@ UNION ALL
 SELECT 2 as event_id, TIMESTAMP '2024-01-15 12:00:00' as event_ts
 UNION ALL
 SELECT 3 as event_id, TIMESTAMP '2024-01-20 12:00:00' as event_ts
-'''
-incremental by event_ts;
+''';
 """
 
     stale_content = """

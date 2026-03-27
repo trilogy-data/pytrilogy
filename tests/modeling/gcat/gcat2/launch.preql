@@ -116,8 +116,7 @@ root datasource raw_launch_info (
     data_update_date: data_updated_through
     )
 grain (launch_tag)
-file `ingest_launch.py`
-freshness by data_updated_through;
+file `ingest_launch.py`;
 
 datasource launch_info (
     launch_tag,

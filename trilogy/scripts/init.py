@@ -58,8 +58,7 @@ def init(ctx, path: str):
 
     Initializes a new workspace with default configuration and structure:
     - trilogy.toml: Configuration file
-    - raw/: Directory for raw data models
-    - derived/: Directory for derived data models
+    - assets/root/: Directory for data models
     - jobs/: Directory for job scripts
     - hello_world.preql: Example script
 
@@ -81,10 +80,9 @@ def init(ctx, path: str):
     workspace_path.mkdir(parents=True, exist_ok=True)
 
     # Create subdirectories
-    subdirs = ["raw", "derived", "jobs"]
-    for subdir in subdirs:
+    for subdir in ["assets/root", "jobs"]:
         subdir_path = workspace_path / subdir
-        subdir_path.mkdir(exist_ok=True)
+        subdir_path.mkdir(parents=True, exist_ok=True)
         print_info(f"Created directory: {subdir}/")
 
     # Create trilogy.toml

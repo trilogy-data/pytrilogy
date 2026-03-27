@@ -15,6 +15,7 @@ from trilogy.execution.state.watermarks import (
     get_incremental_key_watermarks,
     get_last_update_time_watermarks,
     get_unique_key_hash_watermarks,
+    is_missing_local_file,
     run_freshness_probe,
 )
 
@@ -884,8 +885,7 @@ def test_freshness_stale_assets():
         SELECT 2 as record_id, 'b' as data, TIMESTAMP '2024-01-15 12:00:00' as updated_at
         UNION ALL
         SELECT 3 as record_id, 'c' as data, TIMESTAMP '2024-01-20 12:00:00' as updated_at
-        '''
-        freshness by updated_at;
+        ''';
 
         datasource target_records (
             record_id: record_id,
@@ -930,8 +930,7 @@ def test_freshness_up_to_date():
         grain (item_id)
         query '''
         SELECT 1 as item_id, TIMESTAMP '2024-01-10 12:00:00' as modified_at
-        '''
-        freshness by modified_at;
+        ''';
 
         datasource target_items (
             item_id: item_id,
@@ -971,8 +970,7 @@ def test_freshness_empty_target():
         grain (log_id)
         query '''
         SELECT 1 as log_id, TIMESTAMP '2024-01-10 12:00:00' as log_time
-        '''
-        freshness by log_time;
+        ''';
 
         datasource target_logs (
             log_id: log_id,
@@ -1483,3 +1481,85 @@ def test_derived_freshness_up_to_date():
     stale = state_store.get_stale_assets(executor.environment, executor)
 
     assert len(stale) == 0
+
+
+def test_is_missing_local_file_nonexistent(tmp_path):
+    from unittest.mock import MagicMock
+
+    from trilogy.core.enums import AddressType
+    from trilogy.core.models.datasource import Address
+
+    ds = MagicMock()
+    ds.address = Address(
+        location=str(tmp_path / "nonexistent.parquet"), type=AddressType.PARQUET
+    )
+    assert is_missing_local_file(ds) is True
+
+
+def test_is_missing_local_file_exists(tmp_path):
+    from unittest.mock import MagicMock
+
+    from trilogy.core.enums import AddressType
+    from trilogy.core.models.datasource import Address
+
+    f = tmp_path / "data.parquet"
+    f.write_bytes(b"")
+    ds = MagicMock()
+    ds.address = Address(location=str(f), type=AddressType.PARQUET)
+    assert is_missing_local_file(ds) is False
+
+
+def test_is_missing_local_file_cloud_uri():
+    from unittest.mock import MagicMock
+
+    from trilogy.core.enums import AddressType
+    from trilogy.core.models.datasource import Address
+
+    ds = MagicMock()
+    ds.address = Address(
+        location="gcs://bucket/path/file.parquet", type=AddressType.PARQUET
+    )
+    assert is_missing_local_file(ds) is False
+
+
+def test_is_missing_local_file_non_file_address():
+    from unittest.mock import MagicMock
+
+    ds = MagicMock()
+    ds.address = "some_table"
+    assert is_missing_local_file(ds) is False
+
+
+def test_get_stale_assets_missing_parquet(tmp_path):
+    """A parquet datasource whose file doesn't exist should be reported as stale, not error."""
+    executor = Dialects.DUCK_DB.default_executor()
+    parquet_path = str(tmp_path / "output.parquet").replace("\\", "/")
+
+    executor.execute_text(
+        f"""
+        key row_id int;
+
+        root datasource src (
+            row_id
+        )
+        grain (row_id)
+        query '''SELECT 1 as row_id''';
+
+        datasource out (
+            row_id
+        )
+        grain (row_id)
+        file `{parquet_path}`;
+        """
+    )
+
+    state_store = BaseStateStore()
+    stale = state_store.get_stale_assets(
+        executor.environment,
+        executor,
+        root_assets={"src"},
+    )
+
+    assert len(stale) == 1
+    assert stale[0].datasource_id == "out"
+    assert stale[0].reason == "file not found"

@@ -6,8 +6,7 @@ root partial datasource boston_update_time (
 )
 grain (city)
 complete where city = 'USBOS'
-file `./boston_update_time.py`
-freshness by boston_data_updated_through;
+file `./boston_update_time.py`;
 
 root partial datasource boston_raw_tree_info (
     id: tree_id,

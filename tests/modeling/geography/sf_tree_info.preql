@@ -6,8 +6,7 @@ root datasource sf_update_time (
 )
 grain (city)
 complete where city = 'USSFO'
-file `./sf_update_time.py`
-freshness by sf_data_updated_through;
+file `./sf_update_time.py`;
 
 
 root partial datasource sf_raw_tree_info (

@@ -707,6 +707,12 @@ class Environment:
             raise FrozenEnvironmentException(
                 "Environment is frozen, cannot add datasource"
             )
+        if datasource.is_root and (
+            datasource.freshness_by or datasource.incremental_by
+        ):
+            raise SyntaxError(
+                f"Root datasource '{datasource.identifier}' should not declare freshness or incremental by."
+            )
         self.datasources[datasource.identifier] = datasource
         return datasource
 
