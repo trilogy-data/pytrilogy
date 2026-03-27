@@ -4,8 +4,9 @@ import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from enum import Enum
+from functools import partial
 from logging import Logger
-from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 if TYPE_CHECKING:
     import networkx as nx
@@ -109,8 +110,7 @@ def get_connection_keys(
     all_connections: dict[tuple[str, str], set[str]], left: str, right: str
 ) -> set[str]:
     """Get all concepts that connect two datasources"""
-    lookup = sorted([left, right])
-    key: tuple[str, str] = (lookup[0], lookup[1])
+    key: tuple[str, str] = (min(left, right), max(left, right))
     return all_connections.get(key, set())
 
 
@@ -146,23 +146,18 @@ def get_join_type(
     return join_type
 
 
-def reduce_join_types(join_types: Set[JoinType]) -> JoinType:
-    final_join_type = JoinType.INNER
-    has_full = any([x == JoinType.FULL for x in join_types])
-
-    if has_full:
-        final_join_type = JoinType.FULL
-        return final_join_type
-    has_left = any([x == JoinType.LEFT_OUTER for x in join_types])
-    has_right = any([x == JoinType.RIGHT_OUTER for x in join_types])
+def reduce_join_types(join_types: set[JoinType]) -> JoinType:
+    if JoinType.FULL in join_types:
+        return JoinType.FULL
+    has_left = JoinType.LEFT_OUTER in join_types
+    has_right = JoinType.RIGHT_OUTER in join_types
     if has_left and has_right:
-        final_join_type = JoinType.FULL
-    elif has_left:
-        final_join_type = JoinType.LEFT_OUTER
-    elif has_right:
-        final_join_type = JoinType.RIGHT_OUTER
-
-    return final_join_type
+        return JoinType.FULL
+    if has_left:
+        return JoinType.LEFT_OUTER
+    if has_right:
+        return JoinType.RIGHT_OUTER
+    return JoinType.INNER
 
 
 def ensure_content_preservation(joins: list[JoinOrderOutput]):
@@ -202,7 +197,30 @@ def ensure_content_preservation(joins: list[JoinOrderOutput]):
             target = review_join.type
         if review_join.type != target:
             review_join.type = target
-            continue
+
+
+def _score_join_candidate(
+    x: str,
+    *,
+    root: str,
+    eligible_left: set[str],
+    partials: dict[str, list[str]],
+    nullables: dict[str, list[str]],
+    multi_partial: bool,
+) -> tuple[int, int, str]:
+    base = 1
+    if x in eligible_left:
+        base += 3
+    is_partial = root in partials.get(x, [])
+    if multi_partial and is_partial:
+        # boost partial tables so they join together first
+        base += 2
+    elif is_partial:
+        # single partial: lower weight as before
+        base -= 1
+    if root in nullables.get(x, []):
+        base -= 1
+    return (base, len(x), x)
 
 
 def resolve_join_order_v2(
@@ -217,8 +235,7 @@ def resolve_join_order_v2(
         for ds2 in datasources[i + 1 :]:
             connecting_concepts = find_all_connecting_concepts(g, ds1, ds2)
             if connecting_concepts:
-                key = tuple(sorted([ds1, ds2]))
-                all_connections[key] = connecting_concepts
+                all_connections[(min(ds1, ds2), max(ds1, ds2))] = connecting_concepts
 
     output: list[JoinOrderOutput] = []
 
@@ -256,21 +273,14 @@ def resolve_join_order_v2(
         )
 
         # sort so less partials is last and eligible lefts are first
-        def score_key(x: str) -> tuple[int, int, str]:
-            base = 1
-            # if it's left, higher weight
-            if x in eligible_left:
-                base += 3
-            is_partial = root in partials.get(x, [])
-            if multi_partial and is_partial:
-                # boost partial tables so they join together first
-                base += 2
-            elif is_partial:
-                # single partial: lower weight as before
-                base -= 1
-            if root in nullables.get(x, []):
-                base -= 1
-            return (base, len(x), x)
+        score_key = partial(
+            _score_join_candidate,
+            root=root,
+            eligible_left=eligible_left,
+            partials=partials,
+            nullables=nullables,
+            multi_partial=multi_partial,
+        )
 
         # get remaining un-joined datasets
         to_join = sorted(
@@ -391,10 +401,10 @@ def resolve_join_order_v2(
     return output
 
 
-def concept_to_relevant_joins(concepts: list[BuildConcept]) -> List[BuildConcept]:
+def concept_to_relevant_joins(concepts: list[BuildConcept]) -> list[BuildConcept]:
     sub_props = LooseBuildConceptList(
         concepts=[
-            x for x in concepts if x.keys and all([key in concepts for key in x.keys])
+            x for x in concepts if x.keys and all(key in concepts for key in x.keys)
         ]
     )
     final = [c for c in concepts if c.address not in sub_props]
@@ -420,15 +430,14 @@ def calculate_graph_relevance(
     """Calculate the relevance of each node in a graph
     Relevance is used to prune irrelevant nodes from the graph
     """
+    concept_lookup = {c.address: c for c in concepts}
     relevance = 0
     for node in g.nodes:
-
         if node not in subset_nodes:
             continue
-        if not g.nodes[node]["type"] == NodeType.CONCEPT:
+        if g.nodes[node]["type"] != NodeType.CONCEPT:
             continue
-        concept = [x for x in concepts if x.address == node].pop()
-        # debug granularity and derivation
+        concept = concept_lookup[node]
         # a single row concept can always be crossjoined
         # therefore a graph with only single row concepts is always relevant
         if concept.granularity == Granularity.SINGLE_ROW:
@@ -484,9 +493,9 @@ def resolve_instantiated_concept(
         return concept
     for k in concept.pseudonyms:
         if k in datasource.output_concepts:
-            return [x for x in datasource.output_concepts if x.address == k].pop()
+            return next(x for x in datasource.output_concepts if x.address == k)
         if any(k in x.pseudonyms for x in datasource.output_concepts):
-            return [x for x in datasource.output_concepts if k in x.pseudonyms].pop()
+            return next(x for x in datasource.output_concepts if k in x.pseudonyms)
     raise SyntaxError(
         f"Could not find {concept.address} in {datasource.identifier} output {[c.address for c in datasource.output_concepts]}, acceptable synonyms {concept.pseudonyms}"
     )
@@ -534,7 +543,7 @@ def reduce_concept_pairs(
         seen.add(dedup_key)
         right_left_seen[rl_key] = right_left_seen.get(rl_key, False) or pair.is_partial
         final.append(pair)
-    all_keys = set([x.right.address for x in final])
+    all_keys = {x.right.address for x in final}
     if right_source.grain.components and right_source.grain.components.issubset(
         all_keys
     ):
@@ -571,10 +580,9 @@ def _collect_deep_partial_addresses(
 
 
 def get_node_joins(
-    datasources: List[QueryDatasource | BuildDatasource],
+    datasources: list[QueryDatasource | BuildDatasource],
     environment: BuildEnvironment,
-    # concepts:List[Concept],
-) -> List[BaseJoin]:
+) -> list[BaseJoin]:
     import networkx as nx
 
     graph = nx.Graph()
@@ -663,8 +671,8 @@ def get_node_joins(
 
 
 def get_disconnected_components(
-    concept_map: Dict[str, Set[BuildConcept]],
-) -> Tuple[int, List]:
+    concept_map: dict[str, set[BuildConcept]],
+) -> tuple[int, list]:
     """Find if any of the datasources are not linked"""
     import networkx as nx
 
@@ -725,7 +733,7 @@ def is_scalar_condition(
     elif isinstance(element, FUNCTION_TYPES):
         if element.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
             return False
-        return all([is_scalar_condition(x, materialized) for x in element.arguments])
+        return all(is_scalar_condition(x, materialized) for x in element.arguments)
     elif isinstance(element, CONCEPT_TYPES):
         if materialized and element.address in materialized:
             return True
@@ -826,21 +834,17 @@ def reduce_expression(
 def boolean_fully_covered(
     start: bool,
     end: bool,
-    ranges: List[Tuple[bool, bool]],
+    ranges: list[tuple[bool, bool]],
 ) -> bool:
-    vals = []
-    for r_start, r_end in ranges:
-        if r_start is True and r_end is True:
-            vals.append(True)
-        elif r_start is False and r_end is False:
-            vals.append(False)
-    return set(vals) == {False, True}
+    return any(r_start is True and r_end is True for r_start, r_end in ranges) and any(
+        r_start is False and r_end is False for r_start, r_end in ranges
+    )
 
 
 def is_fully_covered(
     start: _T,
     end: _T,
-    ranges: List[Tuple[_T, _T]],
+    ranges: list[tuple[_T, _T]],
     increment: int | timedelta | float,
 ) -> bool:
     if isinstance(start, bool) and isinstance(end, bool):
@@ -927,10 +931,10 @@ def decompose_condition(
 
 
 def find_nullable_concepts(
-    source_map: Dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]],
-    datasources: List[BuildDatasource | QueryDatasource],
-    joins: List[BaseJoin | UnnestJoin],
-) -> List[str]:
+    source_map: dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]],
+    datasources: list[BuildDatasource | QueryDatasource],
+    joins: list[BaseJoin | UnnestJoin],
+) -> list[str]:
     """give a set of datasources and joins, find the concepts
     that may contain nulls in the output set
     """
@@ -940,19 +944,26 @@ def find_nullable_concepts(
         for x in datasources
         if isinstance(x, (BuildDatasource, QueryDatasource))
     }
+    # pre-build address sets for O(1) lookup in inner loops
+    nullable_addrs: dict[str, set[str]] = {
+        ds.identifier: {c.address for c in ds.nullable_concepts}
+        for ds in datasources
+        if isinstance(ds, (BuildDatasource, QueryDatasource))
+    }
+    output_addrs: dict[str, set[str]] = {
+        ds.identifier: {c.address for c in ds.output_concepts}
+        for ds in datasources
+        if isinstance(ds, (BuildDatasource, QueryDatasource))
+    }
     for join in joins:
         is_on_nullable_condition = False
         if not isinstance(join, BaseJoin):
             continue
         if not join.concept_pairs:
             continue
+        right_nullables = nullable_addrs.get(join.right_datasource.identifier, set())
         for pair in join.concept_pairs:
-            if pair.right.address in [
-                y.address
-                for y in datasource_map[
-                    join.right_datasource.identifier
-                ].nullable_concepts
-            ]:
+            if pair.right.address in right_nullables:
                 is_on_nullable_condition = True
                 break
             left_check = (
@@ -960,9 +971,7 @@ def find_nullable_concepts(
                 if join.left_datasource is not None
                 else pair.existing_datasource.identifier
             )
-            if pair.left.address in [
-                y.address for y in datasource_map[left_check].nullable_concepts
-            ]:
+            if pair.left.address in nullable_addrs.get(left_check, set()):
                 is_on_nullable_condition = True
                 break
         if is_on_nullable_condition:
@@ -971,16 +980,16 @@ def find_nullable_concepts(
 
     for k, v in source_map.items():
         local_nullable = [
-            x for x in datasources if k in [v.address for v in x.nullable_concepts]
+            x for x in datasources if k in nullable_addrs.get(x.identifier, set())
         ]
         nullable_matches = [
-            k in [v.address for v in x.nullable_concepts]
+            k in nullable_addrs.get(x.identifier, set())
             for x in datasources
-            if k in [z.address for z in x.output_concepts]
+            if k in output_addrs.get(x.identifier, set())
         ]
         if all(nullable_matches) and len(nullable_matches) > 0:
             final_nullable.add(k)
-        all_ds = set([ds for ds in local_nullable]).union(nullable_datasources)
+        all_ds = set(local_nullable).union(nullable_datasources)
         if nullable_datasources:
             if set(v).issubset(all_ds):
                 final_nullable.add(k)
@@ -997,7 +1006,7 @@ def sort_select_output_processed(
         targets = query.output_components
         hidden = query.hidden_components
 
-    output_addresses = [c.address for c in targets]
+    output_addresses = {c.address for c in targets}
 
     mapping = {x.address: x for x in cte.output_columns}
 
@@ -1029,13 +1038,11 @@ def sort_select_output_processed(
         if oc.address not in output_addresses:
             new_output.append(oc)
 
-    cte.hidden_concepts = set(
-        [
-            c.address
-            for c in cte.output_columns
-            if (c.address not in targets or c.address in hidden)
-        ]
-    )
+    cte.hidden_concepts = {
+        c.address
+        for c in cte.output_columns
+        if (c.address not in targets or c.address in hidden)
+    }
     cte.output_columns = new_output
     return cte
 
@@ -1090,33 +1097,33 @@ def drop_covered_conditions(
     return result
 
 
+def _build_eq_map(
+    atoms: list[BuildComparison | BuildConditional | BuildParenthetical],
+) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for atom in atoms:
+        if not isinstance(atom, BuildComparison):
+            continue
+        if atom.operator not in (ComparisonOperator.EQ, ComparisonOperator.IS):
+            continue
+        if isinstance(atom.left, BuildConcept) and not isinstance(
+            atom.right, BuildConcept
+        ):
+            result[atom.left.address] = atom.right
+        elif isinstance(atom.right, BuildConcept) and not isinstance(
+            atom.left, BuildConcept
+        ):
+            result[atom.right.address] = atom.left
+    return result
+
+
 def conditions_mutually_exclusive(
     a: BuildComparison | BuildConditional | BuildParenthetical,
     b: BuildComparison | BuildConditional | BuildParenthetical,
 ) -> bool:
     """True if a and b cannot both be satisfied: same concept has conflicting EQ values in each."""
-
-    def _eq_map(
-        atoms: list[BuildComparison | BuildConditional | BuildParenthetical],
-    ) -> dict[str, object]:
-        result: dict[str, object] = {}
-        for atom in atoms:
-            if not isinstance(atom, BuildComparison):
-                continue
-            if atom.operator not in (ComparisonOperator.EQ, ComparisonOperator.IS):
-                continue
-            if isinstance(atom.left, BuildConcept) and not isinstance(
-                atom.right, BuildConcept
-            ):
-                result[atom.left.address] = atom.right
-            elif isinstance(atom.right, BuildConcept) and not isinstance(
-                atom.left, BuildConcept
-            ):
-                result[atom.right.address] = atom.left
-        return result
-
-    a_eq = _eq_map(decompose_condition(a))
-    b_eq = _eq_map(decompose_condition(b))
+    a_eq = _build_eq_map(decompose_condition(a))
+    b_eq = _build_eq_map(decompose_condition(b))
     return any(addr in b_eq and b_eq[addr] != val for addr, val in a_eq.items())
 
 
