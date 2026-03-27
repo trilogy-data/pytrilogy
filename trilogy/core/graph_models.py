@@ -54,6 +54,8 @@ def get_graph_exact_match(
             elif not conditions:
                 exact.add(node)
                 continue
+            else:
+                continue
         if not conditions and not ds.non_partial_for:
             exact.add(node)
             continue
@@ -87,7 +89,7 @@ def get_graph_exact_match(
                     conditions.conditional, ds.non_partial_for.conditional
                 )
                 if implied:
-                    required = set()
+                    required: set[str] = set()
                     for x in extras:
                         required = required.union(
                             {c.address for c in x.concept_arguments}

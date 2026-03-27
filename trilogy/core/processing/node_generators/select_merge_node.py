@@ -168,7 +168,7 @@ def deduplicate_datasources(
             deduplicated.append(ds_list[0])
         else:
             # Pick the best one by materialization score
-            def get_mat_score(ds_name: str) -> tuple[int, int, str]:
+            def get_mat_score(ds_name: str) -> tuple[int, float, str]:
                 partial_count = len(
                     [x for x in partial_map.get(ds_name, []) if x in relevant_concepts]
                 )
@@ -612,11 +612,7 @@ def create_datasource_node(
     if conditions and datasource.non_partial_for:
         _, extras = condition_implies_with_extras(
             conditions.conditional,
-            (
-                datasource.non_partial_for.conditional
-                if datasource.non_partial_for
-                else None
-            ),
+            datasource.non_partial_for.conditional,
         )
         if extras:
             for extra in extras:
