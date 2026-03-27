@@ -1,3 +1,4 @@
+import json
 from os import environ
 from typing import Any, Dict, List, Optional
 
@@ -7,6 +8,23 @@ from trilogy.constants import logger
 
 from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions
 from .utils import RetryOptions, fetch_with_retry
+
+
+def _extract_google_retry_delay_ms(error: Exception) -> Optional[int]:
+    """Parse retryDelay from Google's error body (proto Duration string like '1.5s')."""
+    try:
+        from httpx import HTTPStatusError
+
+        if not isinstance(error, HTTPStatusError):
+            return None
+        body = json.loads(error.response.text)
+        for detail in body.get("error", {}).get("details", []):
+            if "RetryInfo" in detail.get("@type", "") and "retryDelay" in detail:
+                delay_str = detail["retryDelay"].rstrip("s")
+                return int(float(delay_str) * 1000)
+    except Exception:
+        pass
+    return None
 
 
 class GoogleProvider(LLMProvider):
@@ -34,6 +52,7 @@ class GoogleProvider(LLMProvider):
             on_retry=lambda attempt, delay_ms, error: logger.info(
                 f"Google API retry attempt {attempt} after {delay_ms}ms delay due to error: {str(error)}"
             ),
+            extract_retry_delay_fn=_extract_google_retry_delay_ms,
         )
 
     def _convert_to_gemini_history(
