@@ -43,7 +43,14 @@
     constant_derivation: CONST IDENTIFIER "<-" (literal | _constant_functions)
 
     concept_nullable_modifier: "?"
-    concept:  (parameter_declaration | concept_declaration | concept_derivation | concept_property_declaration | constant_derivation)
+
+    // properties <key> (...) or properties <key1, key2> (...)
+    inline_property: IDENTIFIER data_type concept_nullable_modifier? metadata?
+    inline_property_list: PARSE_COMMENT* (inline_property "," PARSE_COMMENT*)* inline_property ","? PARSE_COMMENT*
+    properties_declaration: "properties"i (prop_ident_list | IDENTIFIER) "(" inline_property_list ")"
+    prop_ident_list: "<" IDENTIFIER ("," IDENTIFIER)* ","? ">"
+
+    concept:  (parameter_declaration | concept_declaration | concept_derivation | concept_property_declaration | constant_derivation | properties_declaration)
     
     //concept property
     prop_ident: "<" IDENTIFIER ("," IDENTIFIER )* ","? ">" "." IDENTIFIER
