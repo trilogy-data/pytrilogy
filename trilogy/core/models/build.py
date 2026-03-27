@@ -519,8 +519,8 @@ class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs):
             return self
         if not isinstance(other, (BuildComparison, BuildConditional, BuildParenthetical)):
             raise ValueError(f"Cannot add {self.__class__} and {type(other)}")
-        existing = _and_atoms(self)
-        new_atoms = [a for a in _and_atoms(other) if a not in existing]
+        existing = {str(a) for a in _and_atoms(self)}
+        new_atoms = [a for a in _and_atoms(other) if str(a) not in existing]
         if not new_atoms:
             return self
         result: "BuildParenthetical | BuildConditional" = self
@@ -607,8 +607,8 @@ class BuildConditional(DataTyped, BuildConceptArgs, ConstantInlineable):
             return self
         if not isinstance(other, (BuildComparison, BuildConditional, BuildParenthetical)):
             raise ValueError(f"Cannot add {self.__class__} and {type(other)}")
-        existing = _and_atoms(self)
-        new_atoms = [a for a in _and_atoms(other) if a not in existing]
+        existing = {str(a) for a in _and_atoms(self)}
+        new_atoms = [a for a in _and_atoms(other) if str(a) not in existing]
         if not new_atoms:
             return self
         result: "BuildConditional" = self
@@ -796,7 +796,7 @@ class BuildComparison(DataTyped, BuildConceptArgs, ConstantInlineable):
             return self
         if not isinstance(other, (BuildComparison, BuildConditional, BuildParenthetical)):
             raise ValueError(f"Cannot add {type(other)} to {__class__}")
-        new_atoms = [a for a in _and_atoms(other) if a != self]
+        new_atoms = [a for a in _and_atoms(other) if str(a) != str(self)]
         if not new_atoms:
             return self
         result: "BuildComparison | BuildConditional" = self
