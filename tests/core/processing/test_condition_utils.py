@@ -5,13 +5,29 @@ from trilogy.core.models.build import (
     BuildGrain,
     BuildWhereClause,
 )
-from trilogy.core.models.core import DataType
+from trilogy.core.models.core import DataType, EnumType
 from trilogy.core.processing.utility import (
     condition_implies,
+    condition_implies_with_extras,
     conditions_mutually_exclusive,
+    drop_covered_conditions,
     filter_union_children,
+    merge_conditions,
     strip_condition_atoms,
 )
+
+
+def _enum_concept(name: str, values: list[str]) -> BuildConcept:
+    return BuildConcept(
+        name=name,
+        canonical_name=name,
+        datatype=EnumType(type=DataType.STRING, values=values),
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+        namespace="test",
+        grain=BuildGrain(),
+        pseudonyms=set(),
+    )
 
 
 def _concept(name: str) -> BuildConcept:
@@ -57,6 +73,38 @@ class TestConditionImplies:
 
     def test_different_value_not_implied(self):
         assert not condition_implies(cond_bos, cond_sfo)
+
+
+class TestConditionImpliesWithExtras:
+    def test_exact_match_no_extras(self):
+        implied, extras = condition_implies_with_extras(cond_bos, cond_bos)
+        assert implied
+        assert extras == []
+
+    def test_superset_returns_extras(self):
+        implied, extras = condition_implies_with_extras(cond_bos_and_dbh, cond_bos)
+        assert implied
+        assert extras == [cond_dbh]
+
+    def test_subset_not_implied(self):
+        implied, extras = condition_implies_with_extras(cond_bos, cond_bos_and_dbh)
+        assert not implied
+        assert extras == []
+
+    def test_disjoint_not_implied(self):
+        implied, extras = condition_implies_with_extras(cond_bos, cond_sfo)
+        assert not implied
+        assert extras == []
+
+    def test_three_atoms_two_extras(self):
+        extra = _concept("extra")
+        cond_extra = _eq(extra, "z")
+        three = cond_bos + cond_dbh + cond_extra  # type: ignore[operator]
+        implied, extras = condition_implies_with_extras(three, cond_bos)
+        assert implied
+        assert cond_dbh in extras
+        assert cond_extra in extras
+        assert cond_bos not in extras
 
 
 class TestConditionsMutuallyExclusive:
@@ -121,6 +169,98 @@ class TestStripConditionAtoms:
         assert cond_dbh in atoms
         assert cond_extra in atoms
         assert cond_bos not in atoms
+
+
+class TestDropCoveredConditions:
+    def test_more_specific_dropped_when_general_present(self):
+        # cond_bos_and_dbh implies cond_bos → cond_bos_and_dbh is redundant
+        result = drop_covered_conditions([cond_bos_and_dbh, cond_bos])
+        assert cond_bos in result
+        assert cond_bos_and_dbh not in result
+
+    def test_general_not_dropped(self):
+        result = drop_covered_conditions([cond_bos_and_dbh, cond_bos])
+        assert cond_bos in result
+
+    def test_disjoint_conditions_both_kept(self):
+        result = drop_covered_conditions([cond_bos, cond_sfo])
+        assert cond_bos in result
+        assert cond_sfo in result
+
+    def test_single_condition_kept(self):
+        assert drop_covered_conditions([cond_bos]) == [cond_bos]
+
+    def test_empty_list(self):
+        assert drop_covered_conditions([]) == []
+
+    def test_exact_duplicates_deduplicated(self):
+        result = drop_covered_conditions([cond_bos, cond_bos])
+        assert result == [cond_bos]
+
+    def test_three_way_keeps_most_general(self):
+        extra = _concept("extra")
+        cond_extra = _eq(extra, "z")
+        most_specific = cond_bos + cond_dbh + cond_extra  # type: ignore[operator]
+        mid = cond_bos + cond_dbh  # type: ignore[operator]
+        result = drop_covered_conditions([most_specific, mid, cond_bos])
+        assert cond_bos in result
+        assert mid not in result
+        assert most_specific not in result
+
+
+class TestMergeConditions:
+    def setup_method(self):
+        self.status = _enum_concept("status", ["a", "b"])
+        self.cond_a = _eq(self.status, "a")
+        self.cond_b = _eq(self.status, "b")
+
+    def test_enum_complete_drops_enum_keeps_common(self):
+        c1 = cond_bos + self.cond_a  # type: ignore[operator]
+        c2 = cond_bos + self.cond_b  # type: ignore[operator]
+        result = merge_conditions([c1, c2])
+        assert result == cond_bos
+
+    def test_enum_complete_no_common_returns_none(self):
+        result = merge_conditions([self.cond_a, self.cond_b])
+        assert result is None
+
+    def test_enum_incomplete_returns_first_unchanged(self):
+        # Only one value covered — can't prove complete
+        c1 = cond_bos + self.cond_a  # type: ignore[operator]
+        c2 = cond_bos + self.cond_a  # type: ignore[operator]
+        result = merge_conditions([c1, c2])
+        assert result == c1
+
+    def test_non_enum_varying_returns_first_unchanged(self):
+        # dbh is not an enum — can't prove complete
+        c1 = cond_bos + cond_dbh  # type: ignore[operator]
+        c2 = cond_sfo + cond_dbh  # type: ignore[operator]
+        result = merge_conditions([c1, c2])
+        assert result == c1
+
+    def test_identical_conditions_returns_single(self):
+        result = merge_conditions([cond_bos, cond_bos])
+        assert result == cond_bos
+
+    def test_single_condition_returned_as_is(self):
+        assert merge_conditions([cond_bos]) == cond_bos
+
+    def test_empty_returns_none(self):
+        assert merge_conditions([]) is None
+
+    def test_three_value_enum_complete(self):
+        tri = _enum_concept("tri", ["x", "y", "z"])
+        cx = _eq(tri, "x")
+        cy = _eq(tri, "y")
+        cz = _eq(tri, "z")
+        result = merge_conditions(
+            [
+                cond_bos + cx,  # type: ignore[operator]
+                cond_bos + cy,  # type: ignore[operator]
+                cond_bos + cz,  # type: ignore[operator]
+            ]
+        )
+        assert result == cond_bos
 
 
 class TestFilterUnionChildren:

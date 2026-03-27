@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from enum import Enum
 from logging import Logger
-from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, TypeVar
 
 if TYPE_CHECKING:
     import networkx as nx
@@ -16,6 +17,7 @@ from trilogy.core.enums import (
     DatePart,
     Derivation,
     FunctionClass,
+    FunctionType,
     Granularity,
     JoinType,
     Modifier,
@@ -42,6 +44,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import (
     ArrayType,
     DataType,
+    EnumType,
     ListWrapper,
     MapType,
     MapWrapper,
@@ -755,6 +758,140 @@ CONDITION_TYPES = (
     BuildParenthetical,
 )
 
+_T = TypeVar("_T", int, float, date, datetime)
+
+TARGET_TYPES = (int, date, float, datetime, bool, str)
+REDUCABLE_TYPES = (int, float, date, bool, datetime, str, BuildFunction)
+
+
+def reduce_expression(
+    var: BuildConcept, group_tuple: list[tuple[ComparisonOperator, Any]]
+) -> bool:
+    if isinstance(var.datatype, EnumType):
+        covered = {
+            str(v)
+            for op, v in group_tuple
+            if op in (ComparisonOperator.EQ, ComparisonOperator.IS)
+        }
+        return covered >= {str(v) for v in var.datatype.values}
+
+    lower_check: Any
+    upper_check: Any
+    if var.datatype in (DataType.INTEGER, DataType.FLOAT):
+        lower_check = float("-inf")
+        upper_check = float("inf")
+    elif var.datatype == DataType.DATE:
+        lower_check = date.min
+        upper_check = date.max
+    elif var.datatype == DataType.DATETIME:
+        lower_check = datetime.min
+        upper_check = datetime.max
+    elif var.datatype == DataType.BOOL:
+        lower_check = False
+        upper_check = True
+    else:
+        return False
+
+    ranges: list[tuple[Any, Any]] = []
+    for op, value in group_tuple:
+        increment: int | timedelta | float
+        if isinstance(value, date):
+            increment = timedelta(days=1)
+        elif isinstance(value, datetime):
+            increment = timedelta(seconds=1)
+        elif isinstance(value, int):
+            increment = 1
+        elif isinstance(value, float):
+            increment = sys.float_info.epsilon
+        else:
+            return False
+
+        if op == ">":
+            ranges.append((value + increment, upper_check))  # type: ignore[operator]
+        elif op == ">=":
+            ranges.append((value, upper_check))
+        elif op == "<":
+            ranges.append((lower_check, value - increment))  # type: ignore[operator]
+        elif op == "<=":
+            ranges.append((lower_check, value))
+        elif op in ("=", ComparisonOperator.IS):
+            ranges.append((value, value))
+        elif op == ComparisonOperator.NE:
+            pass
+        else:
+            return False
+    return is_fully_covered(lower_check, upper_check, ranges, increment)  # type: ignore[arg-type]
+
+
+def boolean_fully_covered(
+    start: bool,
+    end: bool,
+    ranges: List[Tuple[bool, bool]],
+) -> bool:
+    vals = []
+    for r_start, r_end in ranges:
+        if r_start is True and r_end is True:
+            vals.append(True)
+        elif r_start is False and r_end is False:
+            vals.append(False)
+    return set(vals) == {False, True}
+
+
+def is_fully_covered(
+    start: _T,
+    end: _T,
+    ranges: List[Tuple[_T, _T]],
+    increment: int | timedelta | float,
+) -> bool:
+    if isinstance(start, bool) and isinstance(end, bool):
+        bool_ranges = [(bool(r_start), bool(r_end)) for r_start, r_end in ranges]
+        return boolean_fully_covered(start, end, bool_ranges)
+    ranges.sort()
+    current_end = start
+    for r_start, r_end in ranges:
+        if (r_start - current_end) > increment:  # type: ignore[operator]
+            return False
+        current_end = max(current_end, r_end)
+    return current_end >= end
+
+
+def simplify_conditions(
+    conditions: list[BuildComparison | BuildConditional | BuildParenthetical],
+) -> bool:
+    # Key by address string — concept objects from different datasources may not
+    # hash/compare identically even when they represent the same concept.
+    grouped: dict[str, tuple[BuildConcept, list[tuple[ComparisonOperator, Any]]]] = {}
+    for condition in conditions:
+        if not isinstance(condition, BuildComparison):
+            return False
+        if isinstance(condition.left, BuildConcept) and isinstance(
+            condition.right, REDUCABLE_TYPES
+        ):
+            concept, raw_comparison = condition.left, condition.right
+        elif isinstance(condition.right, BuildConcept) and isinstance(
+            condition.left, REDUCABLE_TYPES
+        ):
+            concept, raw_comparison = condition.right, condition.left
+        else:
+            return False
+
+        if isinstance(raw_comparison, BuildFunction):
+            if raw_comparison.operator != FunctionType.CONSTANT:
+                return False
+            first_arg = raw_comparison.arguments[0]
+            if not isinstance(first_arg, TARGET_TYPES):
+                return False
+            comparison = first_arg
+        else:
+            if not isinstance(raw_comparison, TARGET_TYPES):
+                return False
+            comparison = raw_comparison
+
+        entry = grouped.setdefault(concept.canonical_address, (concept, []))
+        entry[1].append((condition.operator, comparison))
+
+    return all(reduce_expression(var, group) for var, group in grouped.values())
+
 
 def decompose_condition(
     conditional: BuildConditional | BuildComparison | BuildParenthetical,
@@ -910,13 +1047,47 @@ def sort_select_output(
     return sort_select_output_processed(cte, query)
 
 
+def condition_implies_with_extras(
+    query: BuildComparison | BuildConditional | BuildParenthetical,
+    required: BuildComparison | BuildConditional | BuildParenthetical,
+) -> tuple[bool, list[BuildComparison | BuildConditional | BuildParenthetical]]:
+    """If required is a subset of query, returns (True, atoms in query not in required).
+    Otherwise returns (False, [])."""
+    query_atoms = decompose_condition(query)
+    required_atoms = decompose_condition(required)
+    if not all(atom in query_atoms for atom in required_atoms):
+        return False, []
+    return True, [atom for atom in query_atoms if atom not in required_atoms]
+
+
 def condition_implies(
     query: BuildComparison | BuildConditional | BuildParenthetical,
     required: BuildComparison | BuildConditional | BuildParenthetical,
 ) -> bool:
     """True if every AND-atom of required appears in query's AND-atoms (query is a superset)."""
-    query_atoms = decompose_condition(query)
-    return all(atom in query_atoms for atom in decompose_condition(required))
+    implied, _ = condition_implies_with_extras(query, required)
+    return implied
+
+
+def drop_covered_conditions(
+    conditions: list[BuildComparison | BuildConditional | BuildParenthetical],
+) -> list[BuildComparison | BuildConditional | BuildParenthetical]:
+    """Remove conditions that are made redundant by a more general one in the same list.
+
+    A condition C is dropped if another condition D exists (D != C) where
+    condition_implies(C, D) — meaning D is more general (fewer atoms) and
+    covers everything C covers.
+    """
+    result = []
+    for i, c in enumerate(conditions):
+        dominated = any(
+            j != i and condition_implies(c, d)
+            for j, d in enumerate(conditions)
+            if j < i or c != d  # keep first occurrence of duplicates, drop the rest
+        )
+        if not dominated:
+            result.append(c)
+    return result
 
 
 def conditions_mutually_exclusive(
@@ -949,19 +1120,57 @@ def conditions_mutually_exclusive(
     return any(addr in b_eq and b_eq[addr] != val for addr, val in a_eq.items())
 
 
+def _build_from_atoms(
+    atoms: list[BuildComparison | BuildConditional | BuildParenthetical],
+) -> BuildComparison | BuildConditional | BuildParenthetical | None:
+    if not atoms:
+        return None
+    result: BuildComparison | BuildConditional | BuildParenthetical = atoms[0]
+    for atom in atoms[1:]:
+        result = result + atom  # type: ignore[operator]
+    return result
+
+
 def strip_condition_atoms(
     query: BuildComparison | BuildConditional | BuildParenthetical,
     to_strip: BuildComparison | BuildConditional | BuildParenthetical,
 ) -> BuildComparison | BuildConditional | BuildParenthetical | None:
     """Remove atoms present in to_strip from query's AND-tree. Returns None if all atoms removed."""
     strip_atoms = decompose_condition(to_strip)
-    remaining = [a for a in decompose_condition(query) if a not in strip_atoms]
-    if not remaining:
+    return _build_from_atoms(
+        [a for a in decompose_condition(query) if a not in strip_atoms]
+    )
+
+
+def merge_conditions(
+    conditions: list[BuildComparison | BuildConditional | BuildParenthetical],
+) -> BuildComparison | BuildConditional | BuildParenthetical | None:
+    """Merge a list of OR'd conditions into a minimal equivalent.
+
+    Keeps atoms common to all conditions, then drops per-concept varying atoms
+    that are provably complete (cover all enum values or the full numeric/date/bool
+    range via simplify_conditions). Returns None if the merged result is unconditional.
+    If varying atoms cannot be proven complete, returns the first condition unchanged.
+
+    Example: [city='USBOS' AND status='a', city='USBOS' AND status='b'] where
+    status has only values {'a','b'} → returns city='USBOS'.
+    """
+    if not conditions:
         return None
-    result: BuildComparison | BuildConditional | BuildParenthetical = remaining[0]
-    for atom in remaining[1:]:
-        result = result + atom  # type: ignore[operator]
-    return result
+    if len(conditions) == 1:
+        return conditions[0]
+
+    per_atoms = [decompose_condition(c) for c in conditions]
+    common = [a for a in per_atoms[0] if all(a in atoms for atoms in per_atoms[1:])]
+    all_varying = [a for atoms in per_atoms for a in atoms if a not in common]
+
+    if not all_varying:
+        return _build_from_atoms(common)
+
+    if not simplify_conditions(all_varying):
+        return conditions[0]
+
+    return _build_from_atoms(common)
 
 
 def filter_union_children(

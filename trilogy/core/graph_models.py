@@ -11,6 +11,7 @@ from trilogy.core.models.build import (
     BuildUnionDatasource,
     BuildWhereClause,
 )
+from trilogy.core.processing.utility import condition_implies, condition_implies_with_extras
 
 
 class SearchCriteria(Enum):
@@ -28,21 +29,26 @@ def get_graph_exact_match(
 
     for node, ds in g.datasources.items():
         if isinstance(ds, BuildUnionDatasource):
-            # When conditions match a specific child's partition, that child is a
+            # When conditions satisfy a specific child's partition, that child is a
             # better fit than the union; skip the union so it gets pruned.
             if conditions and any(
-                child.non_partial_for == conditions for child in ds.children
+                child.non_partial_for
+                and condition_implies(
+                    conditions.conditional, child.non_partial_for.conditional
+                )
+                for child in ds.children
             ):
                 continue
 
             elif conditions:
-                print(x)
-                if conditions == ds.non_partial_for:
+                if ds.non_partial_for and condition_implies(
+                    conditions.conditional, ds.non_partial_for.conditional
+                ):
                     exact.add(node)
                     continue
                 else:
                     continue
-            else:
+            elif not conditions:
                 exact.add(node)
                 continue
         if not conditions and not ds.non_partial_for:
@@ -73,9 +79,17 @@ def get_graph_exact_match(
                 # All outputs are scalar — filtering has no effect, safe in any context.
                 exact.add(node)
                 continue
-            if conditions == ds.non_partial_for:
-                exact.add(node)
-                continue
+            if ds.non_partial_for:
+                implied, extras = condition_implies_with_extras(
+                    conditions.conditional, ds.non_partial_for.conditional
+                )
+                if implied:
+                    required = set()
+                    for x in extras:
+                        required = required.union({c.address for c in x.concept_arguments})
+                    if all([c in ds.output_concepts for c in required]):
+                        exact.add(node)
+                        continue
         else:
             continue
 

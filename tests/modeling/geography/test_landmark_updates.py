@@ -39,7 +39,9 @@ def test_query_fetch():
     executor = _make_executor()
     with open(TREE_PATH) as f:
         executor.parse_text(f.read())
+    from trilogy.hooks import DebuggingHook
 
+    DebuggingHook()
     results = executor.generate_sql(
         "SELECT  tree_id,  common_name,  diameter_at_breast_height,  latitude,  longitude WHERE city = 'USBOS' AND diameter_at_breast_height >= 48 LIMIT 100;"
     )[-1]
@@ -109,6 +111,9 @@ def test_multi_enum_correctness():
         working_path=MULTI_ENUM_CORRECTNESS_PATH.parent,
         conf=DuckDBConfig(enable_python_datasources=True),
     )
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
     queries = execute_script_for_refresh(
         executor,
         ScriptNode(path=MULTI_ENUM_CORRECTNESS_PATH),

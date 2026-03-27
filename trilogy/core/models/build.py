@@ -517,11 +517,16 @@ class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs):
     def __add__(self, other) -> Union["BuildParenthetical", "BuildConditional"]:
         if other is None:
             return self
-        elif isinstance(other, (BuildComparison, BuildConditional, BuildParenthetical)):
-            return BuildConditional(
-                left=self, right=other, operator=BooleanOperator.AND
-            )
-        raise ValueError(f"Cannot add {self.__class__} and {type(other)}")
+        if not isinstance(other, (BuildComparison, BuildConditional, BuildParenthetical)):
+            raise ValueError(f"Cannot add {self.__class__} and {type(other)}")
+        existing = _and_atoms(self)
+        new_atoms = [a for a in _and_atoms(other) if a not in existing]
+        if not new_atoms:
+            return self
+        result: "BuildParenthetical | BuildConditional" = self
+        for atom in new_atoms:
+            result = BuildConditional(left=result, right=atom, operator=BooleanOperator.AND)
+        return result
 
     def __str__(self):
         return self.__repr__()
@@ -600,13 +605,16 @@ class BuildConditional(DataTyped, BuildConceptArgs, ConstantInlineable):
     def __add__(self, other) -> "BuildConditional":
         if other is None:
             return self
-        elif str(other) == str(self):
+        if not isinstance(other, (BuildComparison, BuildConditional, BuildParenthetical)):
+            raise ValueError(f"Cannot add {self.__class__} and {type(other)}")
+        existing = _and_atoms(self)
+        new_atoms = [a for a in _and_atoms(other) if a not in existing]
+        if not new_atoms:
             return self
-        elif isinstance(other, (BuildComparison, BuildConditional, BuildParenthetical)):
-            return BuildConditional(
-                left=self, right=other, operator=BooleanOperator.AND
-            )
-        raise ValueError(f"Cannot add {self.__class__} and {type(other)}")
+        result: "BuildConditional" = self
+        for atom in new_atoms:
+            result = BuildConditional(left=result, right=atom, operator=BooleanOperator.AND)
+        return result
 
     def __str__(self):
         return self.__repr__()
@@ -696,6 +704,13 @@ class BuildConditional(DataTyped, BuildConceptArgs, ConstantInlineable):
         return DataType.BOOL
 
 
+def _and_atoms(cond: object) -> list:
+    """Recursively collect the leaf AND-atoms of a condition tree."""
+    if isinstance(cond, BuildConditional) and cond.operator == BooleanOperator.AND:
+        return _and_atoms(cond.left) + _and_atoms(cond.right)
+    return [cond]
+
+
 @dataclass
 class BuildWhereClause(BuildConceptArgs):
     conditional: Union[
@@ -779,13 +794,15 @@ class BuildComparison(DataTyped, BuildConceptArgs, ConstantInlineable):
     def __add__(self, other):
         if other is None:
             return self
-        if not isinstance(
-            other, (BuildComparison, BuildConditional, BuildParenthetical)
-        ):
+        if not isinstance(other, (BuildComparison, BuildConditional, BuildParenthetical)):
             raise ValueError(f"Cannot add {type(other)} to {__class__}")
-        if other == self:
+        new_atoms = [a for a in _and_atoms(other) if a != self]
+        if not new_atoms:
             return self
-        return BuildConditional(left=self, right=other, operator=BooleanOperator.AND)
+        result: "BuildComparison | BuildConditional" = self
+        for atom in new_atoms:
+            result = BuildConditional(left=result, right=atom, operator=BooleanOperator.AND)
+        return result
 
     def __repr__(self):
         if isinstance(self.left, BuildConcept):
@@ -1780,7 +1797,6 @@ class BuildUnionDatasource:
     @property
     def grain(self) -> BuildGrain:
         return reduce(lambda x, y: x.union(y.grain), self.children, BuildGrain())
-
 
     @property
     def partial_concepts(self) -> List[BuildConcept]:

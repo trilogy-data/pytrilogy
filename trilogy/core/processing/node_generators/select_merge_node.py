@@ -37,7 +37,12 @@ from trilogy.core.processing.nodes import (
     SelectNode,
     StrategyNode,
 )
-from trilogy.core.processing.utility import padding
+from trilogy.core.processing.utility import (
+    condition_implies,
+    condition_implies_with_extras,
+    merge_conditions,
+    padding,
+)
 
 if TYPE_CHECKING:
     from trilogy.core.processing.nodes.union_node import UnionNode
@@ -55,7 +60,13 @@ def get_graph_partial_nodes(
     partial: dict[str, list[str]] = {}
     for node, ds in g.datasources.items():
 
-        if ds.non_partial_for and conditions == ds.non_partial_for:
+        if (
+            ds.non_partial_for
+            and conditions
+            and condition_implies(
+                conditions.conditional, ds.non_partial_for.conditional
+            )
+        ):
             partial[node] = []
             continue
         partial[node] = [concept_to_node(c) for c in ds.partial_concepts]
@@ -68,7 +79,13 @@ def get_graph_partial_canonical(
     partial: dict[str, set[str]] = {}
     for node, ds in g.datasources.items():
 
-        if ds.non_partial_for and conditions == ds.non_partial_for:
+        if (
+            ds.non_partial_for
+            and conditions
+            and condition_implies(
+                conditions.conditional, ds.non_partial_for.conditional
+            )
+        ):
             partial[node] = set()
             continue
         partial[node] = set(c.canonical_address for c in ds.partial_concepts)
@@ -168,7 +185,7 @@ def deduplicate_datasources(
                     return (
                         partial_count,
                         max(
-                            get_materialization_score(child.address)
+                            get_materialization_score(child.address) + 0.1
                             for child in ds.children
                         ),
                         ds_name,
@@ -271,13 +288,25 @@ def create_pruned_concept_graph(
 
     for ds_list in union_options:
         node_address = "ds~" + "-".join([x.name for x in ds_list])
+        _merged = merge_conditions(
+            [
+                x.non_partial_for.conditional
+                for x in ds_list
+                if x.non_partial_for is not None
+            ]
+        )
+        reduced_non_partial_for = (
+            BuildWhereClause(conditional=_merged) if _merged is not None else None
+        )
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} injecting potentially relevant union datasource {node_address}"
+            f"{padding(depth)}{LOGGER_PREFIX} injecting potentially relevant union datasource {node_address} with non_partial_for {reduced_non_partial_for} from children {[x.name for x in ds_list]}"
         )
         common: set[BuildConcept] = set.intersection(
             *[set(x.output_concepts) for x in ds_list]
         )
-        g.datasources[node_address] = BuildUnionDatasource(children=ds_list)
+        g.datasources[node_address] = BuildUnionDatasource(
+            children=ds_list, non_partial_for=reduced_non_partial_for
+        )
         for c in common:
             cnode = concept_to_node(c)
             g.add_edge(node_address, cnode)
@@ -566,13 +595,35 @@ def create_datasource_node(
     ]
 
     nullable_lcl = CanonicalBuildConceptList(concepts=nullable_concepts)
-    partial_is_full = conditions and (conditions == datasource.non_partial_for)
+    partial_is_full = (
+        conditions
+        and datasource.non_partial_for
+        and condition_implies(
+            conditions.conditional, datasource.non_partial_for.conditional
+        )
+    )
 
     datasource_conditions = datasource.where.conditional if datasource.where else None
     if injected_conditions and datasource_conditions:
         datasource_conditions = datasource_conditions + injected_conditions
     elif injected_conditions:
         datasource_conditions = injected_conditions
+
+    if conditions and datasource.non_partial_for:
+        _, extras = condition_implies_with_extras(
+            conditions.conditional,
+            (
+                datasource.non_partial_for.conditional
+                if datasource.non_partial_for
+                else None
+            ),
+        )
+        if extras:
+            for extra in extras:
+                datasource_conditions = (
+                    datasource_conditions + extra if datasource_conditions else extra
+                )
+
     all_inputs = [c.concept for c in datasource.columns]
     canonical_all = CanonicalBuildConceptList(concepts=all_inputs)
 
