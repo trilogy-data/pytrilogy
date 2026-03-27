@@ -14,13 +14,15 @@ import address as bill_address;
 
 key order_number int;
 key return_order_number int;
-property <order_number,item.id>.quantity int;
-property <order_number,item.id>.sales_price float;
-property <order_number,item.id>.net_profit float;
-property <order_number,item.id>.ext_sales_price float;
-property <order_number,item.id>.ext_ship_cost float;
-property <order_number,item.id>.return_amount float;
-property <order_number,item.id>.is_returned bool;
+properties <order_number,item.id> (
+    quantity int,
+    sales_price float,
+    net_profit float,
+    ext_sales_price float,
+    ext_ship_cost float,
+    return_amount float,
+    is_returned bool,
+);
 
 
 datasource web_sales (

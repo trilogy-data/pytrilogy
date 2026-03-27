@@ -2,10 +2,12 @@
 
 
 key id int;
-property id.date_string string;
-property id.date date;
-property id.year int;
-property id.day_of_week int;
+properties id (
+    date_string string,
+    date date,
+    year int,
+    day_of_week int,
+);
 
 datasource date (
     D_DATE_SK: id,

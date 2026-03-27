@@ -1,10 +1,11 @@
 
 
-
 key id int;
-property id.text_id string;
-property id.last_name string;
-property id.first_name string;
+properties id (
+    text_id string,
+    last_name string,
+    first_name string,
+);
 
 datasource customers (
     C_CUSTOMER_SK: id,

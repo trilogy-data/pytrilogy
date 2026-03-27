@@ -1,9 +1,11 @@
 key id int;
-property id.string_id string;
-property id.channel_email string;
-property id.channel_catalog string;
-property id.channel_event string;
-property id.cost float;
+properties id (
+    string_id string,
+    channel_email string,
+    channel_catalog string,
+    channel_event string,
+    cost float,
+);
 
 datasource promotion (
     P_PROMO_SK: id,

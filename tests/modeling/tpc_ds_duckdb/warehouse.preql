@@ -1,9 +1,10 @@
 
-
 key id int;
-property id.string_id string;
-property id.name string;
-property id.square_feet int;
+properties id (
+    string_id string,
+    name string,
+    square_feet int,
+);
 
 
 datasource warehouse (
@@ -16,4 +17,3 @@ datasource warehouse (
 grain (id)
 address memory.warehouse
 ;
-

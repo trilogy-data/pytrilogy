@@ -1,19 +1,18 @@
 
-
-
 key id int;
-property id.date_string string;
-property id._date_string string;
-property id.date date;
-property id._year_string string;
-property id.year int;
-property id.day_of_week int;
-property id.week_seq int;
-property id.month_of_year int;
-property id.quarter int;
-property id.d_week_seq1 int;
-property id.month_seq int;
-
+properties id (
+    date_string string,
+    _date_string string,
+    date date,
+    _year_string string,
+    year int,
+    day_of_week int,
+    week_seq int,
+    month_of_year int,
+    quarter int,
+    d_week_seq1 int,
+    month_seq int,
+);
 
 
 datasource date (

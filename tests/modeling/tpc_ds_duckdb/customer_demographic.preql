@@ -1,13 +1,15 @@
 
 key id int;
-property id.gender string;
-property id.marital_status string;
-property id.education_status string;
-property id.purchase_estimate string;
-property id.credit_rating string;
-property id.dependent_count int;
-property id.employed_dependent_count int;
-property id.college_dependent_count int; 
+properties id (
+    gender string,
+    marital_status string,
+    education_status string,
+    purchase_estimate string,
+    credit_rating string,
+    dependent_count int,
+    employed_dependent_count int,
+    college_dependent_count int,
+);
 
 
 datasource customer_demographics (

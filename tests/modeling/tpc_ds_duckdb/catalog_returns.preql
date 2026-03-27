@@ -5,8 +5,10 @@ import time as time;
 
 key order_number int;
 
-property<order_number,item.id>.net_loss float;
-property<order_number,item.id>.had_return bool;
+properties <order_number,item.id> (
+    net_loss float,
+    had_return bool,
+);
 
 datasource catalog_returns (
     CR_RETURNED_DATE_SK: date.id,

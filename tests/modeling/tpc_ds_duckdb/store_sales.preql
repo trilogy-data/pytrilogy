@@ -12,22 +12,22 @@ import store as return_store;
 import address as customer_address;
 
 
-
 key ticket_number int;
-property <ticket_number,item.id>.quantity int;
-property <ticket_number,item.id>.sales_price float;
-property <ticket_number,item.id>.list_price float;
-property <ticket_number,item.id>.ext_sales_price numeric(15,2);
-property <ticket_number,item.id>.ext_wholesale_cost float;
-property <ticket_number,item.id>.ext_list_price float;
-property <ticket_number,item.id>.ext_discount_amount float;
-property <ticket_number,item.id>.coupon_amt float;
-property <ticket_number,item.id>.net_profit float;
-property <ticket_number,item.id>.is_returned bool;
-property <ticket_number,item.id>.net_paid float;
-property <ticket_number,item.id>.return_amount float?;
-property <ticket_number,item.id>.return_net_loss float?;
-
+properties <ticket_number,item.id> (
+    quantity int,
+    sales_price float,
+    list_price float,
+    ext_sales_price numeric(15,2),
+    ext_wholesale_cost float,
+    ext_list_price float,
+    ext_discount_amount float,
+    coupon_amt float,
+    net_profit float,
+    is_returned bool,
+    net_paid float,
+    return_amount float?,
+    return_net_loss float?,
+);
 
 auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price;
 

@@ -1,13 +1,15 @@
 
 key id int;
-property id.address_id_string string;
-property id.street string;
-property id.city string;
-property id.state string?;
-property id.zip string;
-property id.county string;
-property id.country string;
-property id.gmt_offset float;
+properties id (
+    address_id_string string,
+    street string,
+    city string,
+    state string?,
+    zip string,
+    county string,
+    country string,
+    gmt_offset float,
+);
 
 
 datasource customer_address(

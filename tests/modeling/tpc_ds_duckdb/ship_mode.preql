@@ -1,7 +1,9 @@
 
 key id int;
-property id.string_id string;
-property id.type string;
+properties id (
+    string_id string,
+    type string,
+);
 
 
 datasource ship_mode (

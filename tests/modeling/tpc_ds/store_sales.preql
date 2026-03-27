@@ -4,8 +4,10 @@ import time as time;
 import customer as customer;
 
 key ticket_number int;
-property <ticket_number,item.id>.quantity int;
-property <ticket_number,item.id>.sales_price float;
+properties <ticket_number,item.id> (
+    quantity int,
+    sales_price float,
+);
 
 
 datasource store_sales (
