@@ -878,6 +878,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def properties_declaration(self, meta: Meta, args) -> list[Concept]:
+        # _PROPERTIES is filtered; args[0] = parent(s), args[1] = inline_property_list
         parents_arg = args[0]
         inline_props: list[list] = args[1]
 
@@ -913,7 +914,9 @@ class ParseToObjects(Transformer):
                 keys=grain_components,
                 modifiers=modifiers,
                 granularity=(
-                    Granularity.SINGLE_ROW if is_abstract_grain else Granularity.MULTI_ROW
+                    Granularity.SINGLE_ROW
+                    if is_abstract_grain
+                    else Granularity.MULTI_ROW
                 ),
             )
             self.environment.add_concept(concept, meta)
