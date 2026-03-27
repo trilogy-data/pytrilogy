@@ -16,12 +16,13 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import BaseJoin, QueryDatasource, UnnestJoin
+from trilogy.core.processing.join_resolution import get_node_joins
 from trilogy.core.processing.nodes.base_node import (
     NodeJoin,
     StrategyNode,
     resolve_concept_map,
 )
-from trilogy.core.processing.utility import find_nullable_concepts, get_node_joins
+from trilogy.core.processing.utility import find_nullable_concepts
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"

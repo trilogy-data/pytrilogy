@@ -25,6 +25,11 @@ from trilogy.core.models.build import (
     CanonicalBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_utility import (
+    condition_implies,
+    condition_implies_with_extras,
+    merge_conditions,
+)
 from trilogy.core.processing.node_generators.common import reinject_common_join_keys_v2
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
@@ -36,12 +41,7 @@ from trilogy.core.processing.nodes import (
     SelectNode,
     StrategyNode,
 )
-from trilogy.core.processing.utility import (
-    condition_implies,
-    condition_implies_with_extras,
-    merge_conditions,
-    padding,
-)
+from trilogy.core.processing.utility import padding
 
 if TYPE_CHECKING:
     from trilogy.core.processing.nodes.union_node import UnionNode
@@ -627,8 +627,8 @@ def create_union_datasource(
     depth: int,
     conditions: BuildWhereClause | None = None,
 ) -> tuple["UnionNode", bool]:
+    from trilogy.core.processing.condition_utility import filter_union_children
     from trilogy.core.processing.nodes.union_node import UnionNode
-    from trilogy.core.processing.utility import filter_union_children
 
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} generating union node parents with condition {conditions}"

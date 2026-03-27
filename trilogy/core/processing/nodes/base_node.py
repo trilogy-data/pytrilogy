@@ -21,7 +21,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import ConceptPair, QueryDatasource, UnnestJoin
-from trilogy.core.processing.utility import merge_conditions_and_dedup
+from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
 from trilogy.utility import unique
 
 

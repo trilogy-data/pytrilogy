@@ -2,17 +2,17 @@ from networkx import Graph
 
 from trilogy import parse
 from trilogy.core.enums import JoinType
+from trilogy.core.processing.join_resolution import (
+    JoinOrderOutput,
+    ensure_content_preservation,
+    resolve_join_order_v2,
+)
 from trilogy.core.processing.node_generators.common import (
     # resolve_join_order_v2,
     NodeJoin,
     StrategyNode,
     concepts_to_grain_concepts,
     resolve_join_order,
-)
-from trilogy.core.processing.utility import (
-    JoinOrderOutput,
-    ensure_content_preservation,
-    resolve_join_order_v2,
 )
 
 

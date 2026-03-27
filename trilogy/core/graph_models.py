@@ -11,7 +11,7 @@ from trilogy.core.models.build import (
     BuildUnionDatasource,
     BuildWhereClause,
 )
-from trilogy.core.processing.utility import (
+from trilogy.core.processing.condition_utility import (
     condition_implies,
     condition_implies_with_extras,
 )

@@ -16,7 +16,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.core import EnumType
 from trilogy.core.models.datasource import Address
-from trilogy.core.processing.utility import simplify_conditions
+from trilogy.core.processing.condition_utility import simplify_conditions
 
 
 def _datasource_score(ds: BuildDatasource) -> int:

@@ -7,6 +7,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_utility import is_scalar_condition
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
 )
@@ -17,7 +18,8 @@ from trilogy.core.processing.nodes import (
     SelectNode,
     StrategyNode,
 )
-from trilogy.core.processing.utility import is_scalar_condition, padding, unique
+from trilogy.core.processing.utility import padding
+from trilogy.utility import unique
 
 LOGGER_PREFIX = "[GEN_FILTER_NODE]"
 
