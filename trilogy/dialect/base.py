@@ -65,11 +65,11 @@ from trilogy.core.models.core import (
 from trilogy.core.models.datasource import Address, Datasource, RawColumnExpr
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import CTE, CompiledCTE, RecursiveCTE, UnionCTE
-from trilogy.core.processing.utility import (
+from trilogy.core.processing.condition_utility import (
     decompose_condition,
     is_scalar_condition,
-    sort_select_output,
 )
+from trilogy.core.processing.utility import sort_select_output
 from trilogy.core.query_processor import (
     process_chart,
     process_copy,

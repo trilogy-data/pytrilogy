@@ -21,6 +21,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import ConceptPair, QueryDatasource, UnnestJoin
+from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
 from trilogy.utility import unique
 
 
@@ -185,10 +186,9 @@ class StrategyNode:
             and self.preexisting_conditions
             and self.conditions != self.preexisting_conditions
         ):
-            self.preexisting_conditions = BuildConditional(
-                left=self.conditions,
-                right=self.preexisting_conditions,
-                operator=BooleanOperator.AND,
+            self.preexisting_conditions = merge_conditions_and_dedup(
+                self.conditions,
+                self.preexisting_conditions,
             )
         self.partial_concepts: list[BuildConcept] = self.derive_partials(
             partial_concepts

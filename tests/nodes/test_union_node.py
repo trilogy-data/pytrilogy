@@ -8,9 +8,7 @@ from trilogy.core.models.build import (
     DataType,
     Purpose,
 )
-from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
-    simplify_conditions,
-)
+from trilogy.core.processing.condition_utility import simplify_conditions
 
 test_concept = BuildConcept(
     name="test_concept",

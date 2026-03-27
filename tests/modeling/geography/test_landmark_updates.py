@@ -39,7 +39,9 @@ def test_query_fetch():
     executor = _make_executor()
     with open(TREE_PATH) as f:
         executor.parse_text(f.read())
+    from trilogy.hooks import DebuggingHook
 
+    DebuggingHook()
     results = executor.generate_sql(
         "SELECT  tree_id,  common_name,  diameter_at_breast_height,  latitude,  longitude WHERE city = 'USBOS' AND diameter_at_breast_height >= 48 LIMIT 100;"
     )[-1]
@@ -109,6 +111,9 @@ def test_multi_enum_correctness():
         working_path=MULTI_ENUM_CORRECTNESS_PATH.parent,
         conf=DuckDBConfig(enable_python_datasources=True),
     )
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
     queries = execute_script_for_refresh(
         executor,
         ScriptNode(path=MULTI_ENUM_CORRECTNESS_PATH),
@@ -119,3 +124,31 @@ def test_multi_enum_correctness():
     for q in queries.refresh_queries:
         assert "arboretum_raw_tree_info" in q.sql, q.sql
         assert "city_raw_tree_info" in q.sql, q.sql
+
+
+def test_multi_condition_resolution():
+    """Validate that multi-enum complete sources can be resolved together."""
+    executor = Dialects.DUCK_DB.default_executor(
+        working_path=MULTI_ENUM_CORRECTNESS_PATH.parent,
+        conf=DuckDBConfig(enable_python_datasources=True),
+    )
+
+    from trilogy.hooks import DebuggingHook
+
+    DebuggingHook()
+
+    sql = executor.generate_sql(
+        """
+import tree_enrichment;
+
+where city = 'USNYC' and tree_category='deciduous'
+select
+    count(tree_id) as total_trees;
+
+
+"""
+    )
+
+    assert "NVALID_REFERENCE_BUG" not in sql[-1], sql[-1]
+
+    # assert 'FO' in sql[-1], sql[-1]

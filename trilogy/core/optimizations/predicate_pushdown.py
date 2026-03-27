@@ -12,7 +12,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
-from trilogy.core.processing.utility import is_scalar_condition
+from trilogy.core.processing.condition_utility import is_scalar_condition
 from trilogy.utility import unique
 
 

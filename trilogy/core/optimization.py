@@ -13,8 +13,9 @@ from trilogy.core.optimizations import (
     PredicatePushdown,
     PredicatePushdownRemove,
 )
-from trilogy.core.processing.utility import sort_select_output, unique
+from trilogy.core.processing.utility import sort_select_output
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
+from trilogy.utility import unique
 
 MAX_OPTIMIZATION_LOOPS = 100
 

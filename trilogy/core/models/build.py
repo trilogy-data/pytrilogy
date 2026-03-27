@@ -1768,6 +1768,7 @@ class BuildDatasource:
 @dataclass
 class BuildUnionDatasource:
     children: List[BuildDatasource]
+    non_partial_for: Optional[BuildWhereClause] = None
 
     def is_union(self) -> bool:
         return True
@@ -1779,10 +1780,6 @@ class BuildUnionDatasource:
     @property
     def grain(self) -> BuildGrain:
         return reduce(lambda x, y: x.union(y.grain), self.children, BuildGrain())
-
-    @property
-    def non_partial_for(self) -> Optional[BuildWhereClause]:
-        return None
 
     @property
     def partial_concepts(self) -> List[BuildConcept]:

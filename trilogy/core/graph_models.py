@@ -11,12 +11,58 @@ from trilogy.core.models.build import (
     BuildUnionDatasource,
     BuildWhereClause,
 )
+from trilogy.core.processing.condition_utility import (
+    condition_implies,
+    condition_implies_with_extras,
+)
 
 
 class SearchCriteria(Enum):
     FULL_ONLY = "full_only"
     PARTIAL_UNSCOPED = "partial_unscoped"
     PARTIAL_INCLUDING_SCOPED = "partial_scoped"
+
+
+def _union_is_exact_match(
+    ds: BuildUnionDatasource,
+    conditions: BuildWhereClause | None,
+) -> bool:
+    if not conditions:
+        return True
+    # When a child's partition is fully satisfied by conditions, prefer that child
+    # over the union so the union gets pruned.
+    if any(
+        child.non_partial_for
+        and condition_implies(conditions.conditional, child.non_partial_for.conditional)
+        for child in ds.children
+    ):
+        return False
+    return bool(
+        ds.non_partial_for
+        and condition_implies(conditions.conditional, ds.non_partial_for.conditional)
+    )
+
+
+def _datasource_is_exact_match(
+    ds: BuildDatasource,
+    criteria: SearchCriteria,
+    conditions: BuildWhereClause | None,
+) -> bool:
+    if not conditions:
+        return (
+            not ds.non_partial_for
+            or criteria == SearchCriteria.PARTIAL_INCLUDING_SCOPED
+        )
+    # All outputs are scalar — filtering has no effect, safe in any context.
+    if not ds.non_partial_for:
+        return all(c.granularity == Granularity.SINGLE_ROW for c in ds.output_concepts)
+    implied, extras = condition_implies_with_extras(
+        conditions.conditional, ds.non_partial_for.conditional
+    )
+    if not implied:
+        return False
+    required = {c.address for x in extras for c in x.concept_arguments}
+    return all(c in ds.output_concepts for c in required)
 
 
 def get_graph_exact_match(
@@ -27,48 +73,10 @@ def get_graph_exact_match(
     exact: set[str] = set()
     for node, ds in g.datasources.items():
         if isinstance(ds, BuildUnionDatasource):
-            # When conditions match a specific child's partition, that child is a
-            # better fit than the union; skip the union so it gets pruned.
-            if conditions and any(
-                child.non_partial_for == conditions for child in ds.children
-            ):
-                continue
-            exact.add(node)
-            continue
-        if not conditions and not ds.non_partial_for:
-            exact.add(node)
-            continue
-        elif (
-            not conditions
-            and criteria == SearchCriteria.PARTIAL_INCLUDING_SCOPED
-            and ds.non_partial_for
-        ):
-            exact.add(node)
-            continue
-        elif (
-            not conditions
-            and criteria
-            in (
-                SearchCriteria.PARTIAL_UNSCOPED,
-                SearchCriteria.PARTIAL_INCLUDING_SCOPED,
-            )
-            and not ds.non_partial_for
-        ):
-            exact.add(node)
-            continue
-        elif conditions:
-            if not ds.non_partial_for and all(
-                c.granularity == Granularity.SINGLE_ROW for c in ds.output_concepts
-            ):
-                # All outputs are scalar — filtering has no effect, safe in any context.
+            if _union_is_exact_match(ds, conditions):
                 exact.add(node)
-                continue
-            if conditions == ds.non_partial_for:
-                exact.add(node)
-                continue
-        else:
-            continue
-
+        elif _datasource_is_exact_match(ds, criteria, conditions):
+            exact.add(node)
     return exact
 
 

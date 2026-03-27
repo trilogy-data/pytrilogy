@@ -10,7 +10,7 @@ from trilogy.core.models.build import (
 from trilogy.core.optimizations.predicate_pushdown import (
     is_child_of,
 )
-from trilogy.core.processing.utility import decompose_condition
+from trilogy.core.processing.condition_utility import decompose_condition
 
 
 def test_pushdown():

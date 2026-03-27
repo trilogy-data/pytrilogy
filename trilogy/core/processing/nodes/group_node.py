@@ -12,6 +12,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource
+from trilogy.core.processing.condition_utility import is_scalar_condition
 from trilogy.core.processing.nodes.base_node import (
     StrategyNode,
     resolve_concept_map,
@@ -19,7 +20,6 @@ from trilogy.core.processing.nodes.base_node import (
 from trilogy.core.processing.utility import (
     GroupRequiredResponse,
     find_nullable_concepts,
-    is_scalar_condition,
 )
 from trilogy.utility import unique
 

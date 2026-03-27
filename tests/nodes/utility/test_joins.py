@@ -5,9 +5,14 @@ import pytest
 from trilogy import parse
 from trilogy.core.enums import JoinType, Modifier
 from trilogy.core.models.build import BuildGrain
-from trilogy.core.models.execute import CTE, CTEConceptPair, Join, QueryDatasource
-from trilogy.core.processing.utility import (
+from trilogy.core.models.execute import (
+    CTE,
     ConceptPair,
+    CTEConceptPair,
+    Join,
+    QueryDatasource,
+)
+from trilogy.core.processing.join_resolution import (
     get_join_type,
     reduce_concept_pairs,
 )

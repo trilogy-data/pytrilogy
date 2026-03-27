@@ -1,10 +1,85 @@
+import json
 import time
+from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
 from unittest.mock import Mock, call
 
 import pytest
 from httpx import HTTPStatusError, Request, Response, TimeoutException
 
-from trilogy.ai.providers.utils import RetryOptions, fetch_with_retry
+from trilogy.ai.providers.google import _extract_google_retry_delay_ms
+from trilogy.ai.providers.utils import (
+    RetryOptions,
+    _parse_retry_after_ms,
+    fetch_with_retry,
+)
+
+
+class TestParseRetryAfterMs:
+    def test_integer_seconds(self):
+        assert _parse_retry_after_ms("2") == 2000
+
+    def test_float_seconds(self):
+        assert _parse_retry_after_ms("0.165") == 165
+
+    def test_http_date_future(self):
+        future = datetime.now(timezone.utc) + timedelta(seconds=1)
+        value = format_datetime(future, usegmt=True)
+        result = _parse_retry_after_ms(value)
+        assert result is not None
+        assert 0 < result <= 1500
+
+    def test_unparseable_returns_none(self):
+        assert _parse_retry_after_ms("not-a-date-or-number") is None
+
+
+class TestExtractGoogleRetryDelayMs:
+    def _make_error(self, body: dict) -> HTTPStatusError:
+        response = Response(
+            status_code=429,
+            content=json.dumps(body).encode(),
+            request=Request("GET", "http://test.com"),
+        )
+        return HTTPStatusError(
+            "Rate limited", request=response.request, response=response
+        )
+
+    def test_parses_retry_delay(self):
+        error = self._make_error(
+            {
+                "error": {
+                    "details": [
+                        {
+                            "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                            "retryDelay": "1.5s",
+                        }
+                    ]
+                }
+            }
+        )
+        assert _extract_google_retry_delay_ms(error) == 1500
+
+    def test_zero_delay(self):
+        error = self._make_error(
+            {
+                "error": {
+                    "details": [
+                        {
+                            "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                            "retryDelay": "0s",
+                        }
+                    ]
+                }
+            }
+        )
+        assert _extract_google_retry_delay_ms(error) == 0
+
+    def test_no_retry_info_returns_none(self):
+        error = self._make_error({"error": {"details": []}})
+        assert _extract_google_retry_delay_ms(error) is None
+
+    def test_non_http_error_returns_none(self):
+        assert _extract_google_retry_delay_ms(ValueError("oops")) is None
 
 
 class TestFetchWithRetry:
@@ -191,6 +266,86 @@ class TestFetchWithRetry:
             fetch_with_retry(fetch_fn, options)
 
         assert fetch_fn.call_count == 1
+
+    def test_retry_after_header_overrides_backoff(self):
+        """Retry-After header delay is used instead of exponential backoff."""
+        response = Response(
+            status_code=429,
+            headers={"Retry-After": "0.05"},  # 50ms
+            request=Request("GET", "http://test.com"),
+        )
+        error = HTTPStatusError(
+            "Rate limited", request=response.request, response=response
+        )
+
+        fetch_fn = Mock(side_effect=[error, "success"])
+        on_retry_mock = Mock()
+        options = RetryOptions(
+            max_retries=2,
+            initial_delay_ms=10000,  # would be 10s without header
+            retry_after_padding_ms=10,
+            on_retry=on_retry_mock,
+        )
+
+        start = time.time()
+        result = fetch_with_retry(fetch_fn, options)
+        elapsed = time.time() - start
+
+        assert result == "success"
+        assert elapsed < 1.0  # used header (50ms + 10ms), not 10s backoff
+        on_retry_mock.assert_called_once_with(1, 60, error)  # 50ms + 10ms padding
+
+    def test_extract_retry_delay_fn_used_when_no_header(self):
+        """extract_retry_delay_fn is used when no Retry-After header is present."""
+        response = Response(
+            status_code=429,
+            request=Request("GET", "http://test.com"),
+        )
+        error = HTTPStatusError(
+            "Rate limited", request=response.request, response=response
+        )
+
+        fetch_fn = Mock(side_effect=[error, "success"])
+        on_retry_mock = Mock()
+        options = RetryOptions(
+            max_retries=2,
+            initial_delay_ms=10000,
+            retry_after_padding_ms=50,
+            on_retry=on_retry_mock,
+            extract_retry_delay_fn=lambda _: 100,  # 100ms from body
+        )
+
+        start = time.time()
+        result = fetch_with_retry(fetch_fn, options)
+        elapsed = time.time() - start
+
+        assert result == "success"
+        assert elapsed < 1.0
+        on_retry_mock.assert_called_once_with(1, 150, error)  # 100ms + 50ms padding
+
+    def test_retry_after_header_takes_precedence_over_extract_fn(self):
+        """Retry-After header takes precedence over extract_retry_delay_fn."""
+        response = Response(
+            status_code=429,
+            headers={"Retry-After": "0.02"},  # 20ms
+            request=Request("GET", "http://test.com"),
+        )
+        error = HTTPStatusError(
+            "Rate limited", request=response.request, response=response
+        )
+
+        fetch_fn = Mock(side_effect=[error, "success"])
+        on_retry_mock = Mock()
+        options = RetryOptions(
+            max_retries=2,
+            initial_delay_ms=10000,
+            retry_after_padding_ms=0,
+            on_retry=on_retry_mock,
+            extract_retry_delay_fn=lambda _: 9000,  # should be ignored
+        )
+
+        fetch_with_retry(fetch_fn, options)
+        on_retry_mock.assert_called_once_with(1, 20, error)
 
     def test_type_preservation(self):
         """Test that return type is preserved correctly."""

@@ -16,6 +16,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         python-version: ["3.11", "3.12", "3.13"]
+        include:
+          - python-version: "3.13"
+            run_llm_tests: true
     permissions:
       contents: 'read'
       id-token: 'write'
@@ -60,11 +63,11 @@ jobs:
           # stop the build if there are Python syntax errors or undefined names
           ruff check trilogy
       - name: Test with pytest
+        if: matrix.run_llm_tests == true
         run: |
           pip install pytest
           pip install pytest-cov
-          # disable active adventureworks queries unless we get docker configured
-          pytest tests/ --cov=./ -m "not adventureworks_execution" 
+          pytest tests/ --cov=./ -m "not adventureworks_execution"
         env:
           GOOGLE_HMAC_SECRET: ${{ secrets.GOOGLE_HMAC_SECRET }}
           GOOGLE_HMAC_KEY: ${{ secrets.GOOGLE_HMAC_KEY }}
@@ -72,6 +75,15 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      - name: Test with pytest (skip LLM provider tests)
+        if: matrix.run_llm_tests != true
+        run: |
+          pip install pytest
+          pip install pytest-cov
+          pytest tests/ --cov=./ -m "not adventureworks_execution" --ignore=tests/ai/test_providers_basic.py
+        env:
+          GOOGLE_HMAC_SECRET: ${{ secrets.GOOGLE_HMAC_SECRET }}
+          GOOGLE_HMAC_KEY: ${{ secrets.GOOGLE_HMAC_KEY }}
       - name: Test after installing rich
         run: |
           # install rich and rerun CLI tests
