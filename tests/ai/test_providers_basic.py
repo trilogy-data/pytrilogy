@@ -10,8 +10,8 @@ env_path = Path(__file__).parent.parent / "modeling" / "faa"
 
 GOOGLE_LATEST_MODEL = "gemini-2.5-flash"
 OPENAI_LATEST_MODEL = "gpt-5-chat-latest"
-ANTHROPIC_LATEST_MODEL = "claude-sonnet-4-5-20250929"
-OPENROUTER_LATEST_MODEL = "anthropic/claude-sonnet-4-5"
+ANTHROPIC_LATEST_MODEL = "claude-sonnet-4-6"
+OPENROUTER_LATEST_MODEL = "anthropic/claude-sonnet-4-6"
 
 
 def validate_response(response: str):
