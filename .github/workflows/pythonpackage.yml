@@ -68,6 +68,10 @@ jobs:
         env:
           GOOGLE_HMAC_SECRET: ${{ secrets.GOOGLE_HMAC_SECRET }}
           GOOGLE_HMAC_KEY: ${{ secrets.GOOGLE_HMAC_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       - name: Test after installing rich
         run: |
           # install rich and rerun CLI tests
@@ -75,11 +79,6 @@ jobs:
           pytest tests/ --cov=./ --cov-append -m "not adventureworks_execution" -k "test_trilogy"
           pytest tests/ --cov=./ --cov-append -m "not adventureworks_execution" -k "test_display"
           pytest tests/ --cov=./ --cov-append -m "not adventureworks_execution" -k "test_refresh"
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
