@@ -1131,6 +1131,24 @@ def _build_from_atoms(
     return result
 
 
+def merge_conditions_and_dedup(
+    conditions: BuildComparison | BuildConditional | BuildParenthetical,
+    preexisting: BuildComparison | BuildConditional | BuildParenthetical,
+) -> BuildComparison | BuildConditional | BuildParenthetical:
+    """AND-merge two conditions, deduplicating atoms from `conditions` already in `preexisting`.
+
+    Returns `preexisting` unchanged when every atom of `conditions` is already present,
+    preserving object identity so equality checks in validate_stack remain intact.
+    """
+    preexisting_atoms = decompose_condition(preexisting)
+    new_atoms = [
+        a for a in decompose_condition(conditions) if a not in preexisting_atoms
+    ]
+    if not new_atoms:
+        return preexisting
+    return _build_from_atoms(preexisting_atoms + new_atoms)  # type: ignore[return-value]
+
+
 def strip_condition_atoms(
     query: BuildComparison | BuildConditional | BuildParenthetical,
     to_strip: BuildComparison | BuildConditional | BuildParenthetical,

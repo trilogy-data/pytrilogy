@@ -11,7 +11,10 @@ from trilogy.core.models.build import (
     BuildUnionDatasource,
     BuildWhereClause,
 )
-from trilogy.core.processing.utility import condition_implies, condition_implies_with_extras
+from trilogy.core.processing.utility import (
+    condition_implies,
+    condition_implies_with_extras,
+)
 
 
 class SearchCriteria(Enum):
@@ -86,7 +89,9 @@ def get_graph_exact_match(
                 if implied:
                     required = set()
                     for x in extras:
-                        required = required.union({c.address for c in x.concept_arguments})
+                        required = required.union(
+                            {c.address for c in x.concept_arguments}
+                        )
                     if all([c in ds.output_concepts for c in required]):
                         exact.add(node)
                         continue
