@@ -384,7 +384,7 @@ class DuckDBDialect(BaseDialect):
         else:
             self._gcs_cache_bust_token = None
 
-    _GCS_PREFIXES = ("gcs://", "gs://")
+    _GCS_PREFIXES = ("gcs://", "gs://", "https://storage.googleapis.com")
 
     def _maybe_bust_gcs_url(self, url: str) -> str:
         if self._gcs_cache_bust_token and url.startswith(self._GCS_PREFIXES):
