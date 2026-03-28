@@ -282,7 +282,7 @@ def get_concept_max_watermark_abstract(
         row = result.fetchone() if result else None
         value = row[0] if row else None
     except Exception:
-        value = None
+        raise
     finally:
         executor.environment.datasources.update(hidden)
     return UpdateKey(

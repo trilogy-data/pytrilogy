@@ -3019,3 +3019,58 @@ select map_struct['c'].a as a_value, map_keys(map_struct) as map_keys;
     assert len(results) == 1
     assert results[0].a_value == 1
     assert results[0].map_keys == ["c", "d"]
+
+
+def test_gcs_cache_bust_render_source():
+    from trilogy.core.enums import AddressType
+    from trilogy.core.models.datasource import Address
+    from trilogy.dialect.config import DuckDBConfig
+    from trilogy.dialect.duckdb import DuckDBDialect
+
+    config = DuckDBConfig(gcs_cache_bust=True)
+    dialect = DuckDBDialect(config=config)
+    assert dialect._gcs_cache_bust_token is not None
+
+    gcs_address = Address(
+        location="gcs://bucket/data.parquet", type=AddressType.PARQUET
+    )
+    gs_address = Address(location="gs://bucket/data.parquet", type=AddressType.PARQUET)
+    gcs_https_address = Address(
+        location="https://storage.googleapis.com/bucket/data.parquet",
+        type=AddressType.PARQUET,
+    )
+    local_address = Address(location="./local/data.parquet", type=AddressType.PARQUET)
+    other_https_address = Address(
+        location="https://example.com/data.parquet", type=AddressType.PARQUET
+    )
+
+    token = dialect._gcs_cache_bust_token
+    assert f"?cache_bust={token}" in dialect.render_source(gcs_address)
+    assert f"?cache_bust={token}" in dialect.render_source(gs_address)
+    assert f"?cache_bust={token}" in dialect.render_source(gcs_https_address)
+    assert "cache_bust" not in dialect.render_source(local_address)
+    assert "cache_bust" not in dialect.render_source(other_https_address)
+
+
+def test_gcs_cache_bust_disabled_by_default():
+    from trilogy.core.enums import AddressType
+    from trilogy.core.models.datasource import Address
+    from trilogy.dialect.duckdb import DuckDBDialect
+
+    dialect = DuckDBDialect()
+    assert dialect._gcs_cache_bust_token is None
+
+    gcs_address = Address(
+        location="gcs://bucket/data.parquet", type=AddressType.PARQUET
+    )
+    assert "cache_bust" not in dialect.render_source(gcs_address)
+
+
+def test_gcs_cache_bust_token_unique_per_instance():
+    from trilogy.dialect.config import DuckDBConfig
+    from trilogy.dialect.duckdb import DuckDBDialect
+
+    config = DuckDBConfig(gcs_cache_bust=True)
+    d1 = DuckDBDialect(config=config)
+    d2 = DuckDBDialect(config=config)
+    assert d1._gcs_cache_bust_token != d2._gcs_cache_bust_token
