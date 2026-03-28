@@ -16,17 +16,18 @@ import address as bill_address;
 key warehouse_id int;
 
 key order_number int;
-property <order_number,item.id>.quantity int;
-property <order_number,item.id>.sales_price float;
-property <order_number,item.id>.list_price float;
-property <order_number,item.id>.wholesale_cost float;
-property <order_number,item.id>.discount_amount float;
-property <order_number,item.id>.ext_sales_price float;
-property <order_number,item.id>.ext_ship_cost float;
-property <order_number,item.id>.ext_wholesale_cost float;
-property <order_number,item.id>.net_profit float;
-property <order_number,item.id>.coupon_amt float;
-
+properties <order_number,item.id> (
+    quantity int,
+    sales_price float,
+    list_price float,
+    wholesale_cost float,
+    discount_amount float,
+    ext_sales_price float,
+    ext_ship_cost float,
+    ext_wholesale_cost float,
+    net_profit float,
+    coupon_amt float,
+);
 
 
 # metrics

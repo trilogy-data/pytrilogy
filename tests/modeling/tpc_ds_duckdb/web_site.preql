@@ -1,7 +1,9 @@
 
 key id int;
-property id.string_id string;
-property id.company_name string;
+properties id (
+    string_id string,
+    company_name string,
+);
 
 
 datasource web_site (

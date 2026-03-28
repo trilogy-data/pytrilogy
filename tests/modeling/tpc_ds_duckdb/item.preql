@@ -1,20 +1,22 @@
 
 key id int;
 
-property id.name string;
-property id.product_name string;
-property id.brand_id int;
-property id.brand_name string;
-property id.manufacturer_id int;
-property id.category string?;
-property id.category_id int?;
-property id.current_price float?;
-property id.class string?;
-property id.desc string?;
-property id.color string;
-property id.manager_id int?;
-property id.size string;
-property id.units string?;
+properties id (
+    name string,
+    product_name string,
+    brand_id int,
+    brand_name string,
+    manufacturer_id int,
+    category string?,
+    category_id int?,
+    current_price float?,
+    class string?,
+    desc string?,
+    color string,
+    manager_id int?,
+    size string,
+    units string?,
+);
 
 datasource items (
     I_ITEM_SK: id,

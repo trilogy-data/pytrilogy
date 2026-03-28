@@ -1,9 +1,12 @@
 
 
 
+
 key id int;
-property id.time_string string;
-property id.time int;
+properties id (
+    time_string string,
+    time int,
+);
 
 
 datasource date (

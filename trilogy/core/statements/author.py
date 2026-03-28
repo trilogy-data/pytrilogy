@@ -529,6 +529,11 @@ class ConceptDeclarationStatement(HasUUID):
 
 
 @dataclass
+class PropertiesDeclarationStatement(HasUUID):
+    concepts: list[Concept]
+
+
+@dataclass
 class ConceptDerivationStatement:
     concept: Concept
 

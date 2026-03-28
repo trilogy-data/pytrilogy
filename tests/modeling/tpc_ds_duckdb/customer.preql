@@ -3,29 +3,28 @@ import address as address;
 
 key id int;
 unique property id.text_id string;
-property id.last_name string;
-property id.first_name string;
-property id.preferred_cust_flag string;
-property id.birth_day int;
-property id.birth_month int;
-property id.birth_year int;
-property id.birth_country string;
-property id.salutation string;
-property id.email_address string;
-property id.login string;
-property id.last_review_date string;
-
+properties id (
+    last_name string,
+    first_name string,
+    preferred_cust_flag string,
+    birth_day int,
+    birth_month int,
+    birth_year int,
+    birth_country string,
+    salutation string,
+    email_address string,
+    login string,
+    last_review_date string,
+);
 
 property id.full_name <- concat(salutation, ' ', first_name, ' ', last_name);
 
 property id.birth_date <- cast(
-    concat(cast(birth_year as string), 
-        '/', cast(birth_month as string), 
+    concat(cast(birth_year as string),
+        '/', cast(birth_month as string),
         '/', cast(birth_day as string)
     ) as date
 );
-
-
 
 
 datasource customers (
@@ -47,4 +46,3 @@ datasource customers (
 )
 grain (id)
 address memory.customer;
-

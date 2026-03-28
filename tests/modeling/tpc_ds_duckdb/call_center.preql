@@ -1,8 +1,9 @@
 
-
 key id int;
-property id.county string;
-property id.name string;
+properties id (
+    county string,
+    name string,
+);
 
 datasource call_center(
     CC_CALL_CENTER_SK: id,

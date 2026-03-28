@@ -1,20 +1,22 @@
 import date as date;
 
 key id int;
-property id.text_id string;
-property id.name string;
-property id.employees int;
-property id.floor_space int;
-property id.hours string;
-property id.store_manager string;
-property id.market_id int;
-property id.geography_class string;
-property id.market_manager string;
-property id.tax_percentage float;
-property id.county string;
-property id.state string;
-property id.city string;
-property id.zip string;
+properties id (
+    text_id string,
+    name string,
+    employees int,
+    floor_space int,
+    hours string,
+    store_manager string,
+    market_id int,
+    geography_class string,
+    market_manager string,
+    tax_percentage float,
+    county string,
+    state string,
+    city string,
+    zip string,
+);
 
 datasource store (
     S_STORE_SK: id,

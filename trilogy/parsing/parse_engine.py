@@ -866,6 +866,63 @@ class ParseToObjects(Transformer):
         self.environment.add_concept(concept, meta)
         return concept
 
+    def inline_property(self, args):
+        # returns (name, datatype, nullable, metadata) for use by properties_declaration
+        return args
+
+    def inline_property_list(self, args):
+        return [a for a in args if isinstance(a, list)]
+
+    def prop_ident_list(self, args):
+        return [str(a) for a in args]
+
+    @v_args(meta=True)
+    def properties_declaration(self, meta: Meta, args) -> list[Concept]:
+        # _PROPERTIES is filtered; args[0] = parent(s), args[1] = inline_property_list
+        parents_arg = args[0]
+        inline_props: list[list] = args[1]
+
+        if isinstance(parents_arg, list):
+            # <key1, key2> form
+            parents = [self.environment.concepts[k] for k in parents_arg]
+        else:
+            parent = self.environment.concepts[str(parents_arg)]
+            parents = [parent]
+
+        grain_components = {x.address for x in parents}
+        namespace = parents[0].namespace
+        all_rows_addr = f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"
+        is_abstract_grain = grain_components == {all_rows_addr}
+        concepts = []
+        for prop_args in inline_props:
+            name = str(prop_args[0])
+            datatype = prop_args[1]
+            metadata = Metadata()
+            modifiers = []
+            for extra in prop_args[2:]:
+                if isinstance(extra, Metadata):
+                    metadata = extra
+                elif isinstance(extra, Modifier):
+                    modifiers.append(extra)
+            concept = Concept(
+                name=name,
+                datatype=datatype,
+                purpose=Purpose.PROPERTY,
+                metadata=metadata,
+                grain=Grain(components=grain_components),
+                namespace=namespace,
+                keys=grain_components,
+                modifiers=modifiers,
+                granularity=(
+                    Granularity.SINGLE_ROW
+                    if is_abstract_grain
+                    else Granularity.MULTI_ROW
+                ),
+            )
+            self.environment.add_concept(concept, meta)
+            concepts.append(concept)
+        return concepts
+
     def parameter_default(self, args):
         return args[0]
 
@@ -1091,8 +1148,11 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def concept(self, meta: Meta, args) -> ConceptDeclarationStatement:
-        if isinstance(args[0], Concept):
-            concept: Concept = args[0]
+        if isinstance(args[0], list):
+            # properties_declaration returns a list; concepts already added to env
+            concept: Concept = args[0][0]
+        elif isinstance(args[0], Concept):
+            concept = args[0]
         else:
             concept = args[0].concept
         if concept.metadata:

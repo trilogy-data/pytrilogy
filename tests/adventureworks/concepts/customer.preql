@@ -1,11 +1,11 @@
 
 
 
-key customer_id int;
-property customer_id.first_name string;
-property customer_id.last_name string;
+key customer_id int; 
+property customer_id.first_name string; # first name, capitalized
+property customer_id.last_name string; #last name, capitalized
 property customer_id.birth_date date;
-property customer_id.gender string;
+property customer_id.gender string; # M|F|O
 property customer_id.phone string;
 property customer_id.email_address string;
 
