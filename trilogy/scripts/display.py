@@ -532,7 +532,7 @@ def show_script_result(
             )
 
 
-def show_watermarks(watermarks: dict) -> None:
+def show_watermarks(watermarks: dict, env_max: dict | None = None) -> None:
     """Display datasource watermark information."""
     if RICH_AVAILABLE and console is not None:
         wm_table = Table(
@@ -559,6 +559,24 @@ def show_watermarks(watermarks: dict) -> None:
                     )
 
         console.print(wm_table)
+
+        if env_max:
+            max_table = Table(
+                title="Environment Max Watermarks",
+                show_header=True,
+                header_style="bold green",
+                box=box.MINIMAL_DOUBLE_HEAD,
+            )
+            max_table.add_column("Key", style="white")
+            max_table.add_column("Max Value", style="green")
+            max_table.add_column("Type", style="dim")
+            for key_name, update_key in sorted(env_max.items()):
+                max_table.add_row(
+                    key_name,
+                    str(update_key.value),
+                    update_key.type.value,
+                )
+            console.print(max_table)
     else:
         print_info("Watermarks:")
         for ds_id, watermark in sorted(watermarks.items()):
@@ -569,6 +587,13 @@ def show_watermarks(watermarks: dict) -> None:
                     print_info(
                         f"  {ds_id}.{key_name}: {update_key.value} ({update_key.type.value})"
                     )
+
+        if env_max:
+            print_info("Environment max watermarks:")
+            for key_name, update_key in sorted(env_max.items()):
+                print_info(
+                    f"  {key_name}: {update_key.value} ({update_key.type.value})"
+                )
 
 
 def show_stale_assets(stale_assets: list) -> None:

@@ -210,10 +210,13 @@ class StrategyNode:
                     non_hidden.add(psd)
             for z in x.hidden_concepts:
                 hidden.add(z)
-        if not all([x.address in non_hidden for x in self.input_concepts]):
-            missing = [x for x in self.input_concepts if x.address not in non_hidden]
+        missing = [
+            x.address for x in self.input_concepts if x.address not in non_hidden
+        ]
+        if missing:
+
             raise ValueError(
-                f"Invalid input concepts; {missing} are missing non-hidden parent nodes; have {non_hidden} and hidden {hidden} from root {usable_outputs}"
+                f"Invalid input concepts to node! {missing} are missing non-hidden parent nodes; have {non_hidden} and hidden {hidden} from root {usable_outputs}"
             )
 
     def add_parents(self, parents: list["StrategyNode"]):

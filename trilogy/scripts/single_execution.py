@@ -227,9 +227,11 @@ def execute_refresh_mode(
         label = "Would refresh" if dry_run else "Refreshing"
         print_info(f"  {label} {asset_id}: {reason}")
 
-    def on_watermarks(watermarks: dict[str, DatasourceWatermark]) -> None:
+    def on_watermarks(
+        watermarks: dict[str, DatasourceWatermark], env_max: dict
+    ) -> None:
         if print_watermarks:
-            show_watermarks(watermarks)
+            show_watermarks(watermarks, env_max)
 
     def on_refresh_query(ds_id: str, sql: str) -> None:
         if dry_run:

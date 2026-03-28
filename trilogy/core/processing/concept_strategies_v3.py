@@ -251,8 +251,12 @@ def check_for_early_exit(
         logger.info(
             f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Not complete (missing {missing}), continuing search"
         )
-    # if we have attempted on root node, we've tried them all.
-    if priority_concept.derivation == Derivation.ROOT:
+    # if we have attempted one root node, we've tried them all.
+    # unless it's a single row property, in which case we can keep looking
+    if (
+        priority_concept.derivation == Derivation.ROOT
+        and not priority_concept.granularity == Granularity.SINGLE_ROW
+    ):
         logger.info(
             f"{depth_to_prefix(context.depth)}{LOGGER_PREFIX} Breaking as attempted root with no results"
         )

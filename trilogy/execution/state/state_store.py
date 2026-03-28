@@ -26,6 +26,7 @@ class BaseStateStore:
 
     def __init__(self, cache: ColumnStatsCache | None = None) -> None:
         self.watermarks: dict[str, DatasourceWatermark] = {}
+        self.concept_max_watermarks: dict[str, UpdateKey] = {}
         self._cache = cache
 
     def watermark_asset(self, datasource, executor: Executor) -> DatasourceWatermark:
@@ -225,6 +226,8 @@ class BaseStateStore:
             if wm.value is not None:
                 concept_max_watermarks[key] = wm
 
+        self.concept_max_watermarks = concept_max_watermarks
+
         for ds_id, watermark in self.watermarks.items():
             if ds_id in root_assets or ds_id in stale_ids:
                 continue
@@ -302,7 +305,9 @@ def refresh_stale_assets(
     executor: "Executor",
     on_stale_found: Callable[[int, int, int], None] | None = None,
     on_refresh: Callable[[str, str], None] | None = None,
-    on_watermarks: Callable[[dict[str, DatasourceWatermark]], None] | None = None,
+    on_watermarks: (
+        Callable[[dict[str, DatasourceWatermark], dict[str, UpdateKey]], None] | None
+    ) = None,
     on_approval: (
         Callable[[list[StaleAsset], dict[str, DatasourceWatermark]], bool] | None
     ) = None,
@@ -339,7 +344,7 @@ def refresh_stale_assets(
             )
 
     if on_watermarks:
-        on_watermarks(state_store.watermarks)
+        on_watermarks(state_store.watermarks, state_store.concept_max_watermarks)
     root_assets = sum(
         1 for asset in executor.environment.datasources.values() if asset.is_root
     )

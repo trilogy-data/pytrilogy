@@ -89,6 +89,7 @@ class DuckDBConfig(DialectConfig):
         enable_python_datasources: bool | None = None,
         enable_gcs: bool | None = None,
         enable_spatial: bool | None = None,
+        gcs_cache_bust: bool | None = None,
         retry_config: RetryConfig | None = None,
     ):
         super().__init__(retry_config=retry_config)
@@ -96,6 +97,7 @@ class DuckDBConfig(DialectConfig):
         self._enable_python_datasources = enable_python_datasources
         self._enable_gcs = enable_gcs
         self._enable_spatial = enable_spatial
+        self._gcs_cache_bust = gcs_cache_bust
         self.guid = id(self)
 
     @property
@@ -109,6 +111,10 @@ class DuckDBConfig(DialectConfig):
     @property
     def enable_spatial(self) -> bool:
         return self._enable_spatial or False
+
+    @property
+    def gcs_cache_bust(self) -> bool:
+        return self._gcs_cache_bust or False
 
     def connection_string(self) -> str:
         if not self.path:

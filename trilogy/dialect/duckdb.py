@@ -375,14 +375,30 @@ class DuckDBDialect(BaseDialect):
         super().__init__(rendering=rendering, config=config)
         self.staging = staging
         self.instance_id = instance_id
+        from trilogy.dialect.config import DuckDBConfig
+
+        if isinstance(config, DuckDBConfig) and config.gcs_cache_bust:
+            import random
+
+            self._gcs_cache_bust_token: str | None = str(random.randint(1, 2**31))
+        else:
+            self._gcs_cache_bust_token = None
+
+    _GCS_PREFIXES = ("gcs://", "gs://")
+
+    def _maybe_bust_gcs_url(self, url: str) -> str:
+        if self._gcs_cache_bust_token and url.startswith(self._GCS_PREFIXES):
+            return f"{url}?cache_bust={self._gcs_cache_bust_token}"
+        return url
 
     def render_source(self, address: Address) -> str:
+        location = self._maybe_bust_gcs_url(address.location)
         if address.type == AddressType.CSV:
-            return f"read_csv('{address.location}')"
+            return f"read_csv('{location}')"
         if address.type == AddressType.TSV:
-            return f"read_csv('{address.location}', delim='\\t')"
+            return f"read_csv('{location}', delim='\\t')"
         if address.type == AddressType.PARQUET:
-            return f"read_parquet('{address.location}')"
+            return f"read_parquet('{location}')"
         if address.type == AddressType.PYTHON_SCRIPT:
             from trilogy.dialect.config import DuckDBConfig
 

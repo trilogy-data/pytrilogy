@@ -75,11 +75,13 @@ def execute_script_for_refresh(
             label = "Would refresh" if dry_run else "Refreshing"
             print_info(f"  {label} {asset_id}: {reason}")
 
-    def on_watermarks(watermarks: dict[str, DatasourceWatermark]) -> None:
+    def on_watermarks(
+        watermarks: dict[str, DatasourceWatermark], env_max: dict
+    ) -> None:
         if print_watermarks:
             from trilogy.scripts.display import show_watermarks
 
-            show_watermarks(watermarks)
+            show_watermarks(watermarks, env_max)
 
     def on_refresh_query(ds_id: str, sql: str) -> None:
         stats.refresh_queries.append(RefreshQuery(datasource_id=ds_id, sql=sql))

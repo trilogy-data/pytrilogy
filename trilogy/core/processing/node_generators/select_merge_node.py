@@ -93,7 +93,9 @@ def get_graph_grains(g: ReferenceGraph) -> dict[str, set[str]]:
     return {node: ds.grain.components for node, ds in g.datasources.items()}
 
 
-def get_materialization_score(address: Address | AddressType | str) -> int:
+def get_materialization_score(
+    address: Address | AddressType | str, is_filtered: bool = False
+) -> float:
     """Score datasource by materialization level. Lower is better (more materialized).
 
     - 0: TABLE - fully materialized in the database
@@ -101,18 +103,20 @@ def get_materialization_score(address: Address | AddressType | str) -> int:
     - 2: Dynamic sources (QUERY, SQL) - queries that need to be executed
     - 3: Executable scripts (PYTHON_SCRIPT) - scripts that need to run
     """
+    base = -0.1 if is_filtered else 0.0
+
     if isinstance(address, str):
-        return 0
+        return base
     address_type = address if isinstance(address, AddressType) else address.type
     if address_type == AddressType.TABLE:
-        return 0
+        return base
     if address_type in (AddressType.CSV, AddressType.TSV, AddressType.PARQUET):
-        return 1
+        return base + 1.0
     if address_type in (AddressType.QUERY, AddressType.SQL):
-        return 2
+        return base + 2.0
     if address_type == AddressType.PYTHON_SCRIPT:
-        return 3
-    return 2
+        return base + 3.0
+    return base + 2.0
 
 
 def _ds_mat_score(
@@ -128,12 +132,22 @@ def _ds_mat_score(
     if ds is None:
         return (partial_count, 2, ds_name)
     if isinstance(ds, BuildDatasource):
-        return (partial_count, get_materialization_score(ds.address), ds_name)
+        return (
+            partial_count,
+            get_materialization_score(
+                ds.address, True if ds.non_partial_for else False
+            ),
+            ds_name,
+        )
     if isinstance(ds, BuildUnionDatasource):
         return (
             partial_count,
             max(
-                get_materialization_score(child.address) + 0.1 for child in ds.children
+                get_materialization_score(
+                    child.address, True if ds.non_partial_for else False
+                )
+                + 0.11
+                for child in ds.children
             ),
             ds_name,
         )
@@ -189,7 +203,7 @@ def score_datasource_node(
     concept_map: dict[str, set[str]],
     exact_map: set[str],
     subgraphs: dict[str, list[str]],
-) -> tuple[int, int, float, int, str]:
+) -> tuple[float, int, float, int, str]:
     """Score a datasource node for selection priority. Lower score = higher priority.
 
     Returns tuple of:
@@ -201,7 +215,7 @@ def score_datasource_node(
     """
     ds = datasources.get(node)
     if ds is None:
-        mat_score = 2
+        mat_score = 2.0
     elif isinstance(ds, BuildDatasource):
         mat_score = get_materialization_score(ds.address)
     elif isinstance(ds, BuildUnionDatasource):
@@ -209,7 +223,7 @@ def score_datasource_node(
             get_materialization_score(child.address) for child in ds.children
         )
     else:
-        mat_score = 2
+        mat_score = 2.0
 
     grain = grain_map[node]
     grain_score = len(grain) - sum(1 for x in concept_map[node] if x in grain)
@@ -226,7 +240,7 @@ def _score_node(
     exact_map: set[str],
     subgraphs: dict[str, list[str]],
     depth: int,
-) -> tuple[int, int, float, int, str]:
+) -> tuple[float, int, float, int, str]:
     logger.debug(f"{padding(depth)}{LOGGER_PREFIX} scoring node {node}")
     score = score_datasource_node(
         node, datasources, grain_length, concept_map, exact_map, subgraphs
@@ -444,7 +458,7 @@ def resolve_subgraphs(
 
     pruned_subgraphs = {}
 
-    def _scorer(n: str) -> tuple[int, int, float, int, str]:
+    def _scorer(n: str) -> tuple[float, int, float, int, str]:
         return _score_node(
             n, g.datasources, grain_length, concept_map, exact_map, subgraphs, depth
         )
@@ -855,6 +869,12 @@ def gen_select_merge_node(
                 [p], g, environment, depth + 1, accept_partial, conditions
             )
         ]
+        # all found
+        if len(abstract_nodes) < len(abstract_props):
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} not all abstract properties could be sourced, cannot generate select node."
+            )
+            return None
         if not abstract_nodes:
             return None
         if len(abstract_nodes) == 1:
