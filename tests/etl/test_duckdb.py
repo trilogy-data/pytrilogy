@@ -137,8 +137,6 @@ def test_duckdb_gcs_persistence_read_write():
 
     load_secret("GOOGLE_HMAC_KEY")
     load_secret("GOOGLE_HMAC_SECRET")
-    config = DuckDBConfig(enable_gcs=True)
-    exec = Dialects.DUCK_DB.default_executor(conf=config)
 
     text = """
 auto base <- unnest([1,2,3,4,5]);
@@ -153,8 +151,15 @@ overwrite gcs_export;
 
 select base order by base asc;
 """
-    results = exec.execute_text(text)
-    assert results[-1].fetchall() == [(1,), (2,), (3,), (4,), (5,)]
+    baseline = Dialects.DUCK_DB.default_executor(conf=DuckDBConfig(enable_gcs=True))
+    baseline_results = baseline.execute_text(text)[-1].fetchall()
+    assert baseline_results == [(1,), (2,), (3,), (4,), (5,)]
+
+    busted = Dialects.DUCK_DB.default_executor(
+        conf=DuckDBConfig(enable_gcs=True, gcs_cache_bust=True)
+    )
+    busted_results = busted.execute_text(text)[-1].fetchall()
+    assert busted_results == baseline_results
 
 
 def test_duckdb_gcs_refresh():
