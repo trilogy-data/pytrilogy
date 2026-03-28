@@ -1028,6 +1028,64 @@ property y.y_name string;
     assert test == "property y.y_name string;"
 
 
+def test_render_properties_grouped_round_trip():
+    src = """key order_number int;
+key item_id int;
+
+properties <order_number,item_id> (
+    quantity int,
+    sales_price float,
+    net_profit float,
+);"""
+    env = Environment.from_string(src)
+    rendered = Renderer().to_string(env)
+
+    assert (
+        "properties <item_id,order_number> (\n    quantity int,\n    sales_price float,\n    net_profit float,\n);"
+        in rendered
+    )
+
+    # round-trip: re-parse the rendered environment
+    env2 = Environment.from_string(rendered)
+    for name in ("quantity", "sales_price", "net_profit"):
+        c1 = env.concepts[name]
+        c2 = env2.concepts[name]
+        assert c1.datatype == c2.datatype
+        assert c1.keys == c2.keys
+
+
+def test_render_properties_grouped_mixed():
+    """Single-key properties render individually; multi-key groups use grouped format."""
+    env = Environment.from_string(
+        """
+key x int;
+key y int;
+
+property x.x_name string;
+properties <x,y> (
+    a int,
+    b float,
+);
+property y.y_name string;
+"""
+    )
+    rendered = Renderer().to_string(env)
+
+    # single-key properties render individually
+    assert "property x.x_name string;" in rendered
+    assert "property y.y_name string;" in rendered
+    # multi-key group renders as grouped block
+    assert "properties <x,y> (\n    a int,\n    b float,\n);" in rendered
+
+    # round-trip
+    env2 = Environment.from_string(rendered)
+    for name in ("x_name", "y_name", "a", "b"):
+        c1 = env.concepts[name]
+        c2 = env2.concepts[name]
+        assert c1.datatype == c2.datatype
+        assert c1.keys == c2.keys
+
+
 def test_render_trait_type():
     basic = Environment()
 

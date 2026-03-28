@@ -71,6 +71,7 @@ from trilogy.core.statements.author import (
     MergeStatementV2,
     MultiSelectStatement,
     PersistStatement,
+    PropertiesDeclarationStatement,
     RawSQLStatement,
     RowsetDerivationStatement,
     SelectItem,
@@ -177,7 +178,6 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: Environment):
-        output_concepts = []
         constants: list[Concept] = []
         keys: list[Concept] = []
         properties = defaultdict(list)
@@ -211,15 +211,32 @@ class Renderer:
             else:
                 metrics.append(concept)
 
-        output_concepts = constants
-        for key_concept in keys:
-            output_concepts += [key_concept]
-            output_concepts += properties.get(key_concept.name, [])
-        output_concepts += metrics
-
         rendered_concepts = [
-            self.to_string(ConceptDeclarationStatement(concept=concept))
-            for concept in output_concepts
+            self.to_string(ConceptDeclarationStatement(concept=c)) for c in constants
+        ]
+        for key_concept in keys:
+            rendered_concepts.append(
+                self.to_string(ConceptDeclarationStatement(concept=key_concept))
+            )
+            key_props = properties.get(key_concept.address, [])
+            grouped: dict[frozenset, list[Concept]] = defaultdict(list)
+            for prop in key_props:
+                grouped[frozenset(prop.keys or [])].append(prop)
+            for group_props in grouped.values():
+                if len(group_props) > 1:
+                    rendered_concepts.append(
+                        self.to_string(
+                            PropertiesDeclarationStatement(concepts=group_props)
+                        )
+                    )
+                else:
+                    rendered_concepts.append(
+                        self.to_string(
+                            ConceptDeclarationStatement(concept=group_props[0])
+                        )
+                    )
+        rendered_concepts += [
+            self.to_string(ConceptDeclarationStatement(concept=c)) for c in metrics
         ]
 
         rendered_datasources = [
@@ -461,6 +478,40 @@ class Renderer:
             lines = "\n#".join(base_description.split("\n"))
             output += f" #{lines}"
         return output
+
+    @to_string.register
+    def _(self, arg: PropertiesDeclarationStatement):
+        concepts = arg.concepts
+        keys_set = concepts[0].keys or set()
+        if len(keys_set) == 1:
+            key_str = self.to_string(
+                ConceptRef(address=safe_address(list(keys_set)[0]))
+            )
+        else:
+            key_str = (
+                "<"
+                + ",".join(
+                    sorted(
+                        self.to_string(ConceptRef(address=safe_address(x)))
+                        for x in keys_set
+                    )
+                )
+                + ">"
+            )
+        namespace = concepts[0].namespace
+        namespace_prefix = (
+            f"{namespace}." if namespace and namespace != DEFAULT_NAMESPACE else ""
+        )
+        with self.indented():
+            prop_lines = []
+            for c in concepts:
+                nullable = "?" if Modifier.NULLABLE in c.modifiers else ""
+                prop_lines.append(
+                    self.indent_lines(
+                        f"{namespace_prefix}{c.name} {self.to_string(c.datatype)}{nullable}"
+                    )
+                )
+        return "properties {} (\n{},\n);".format(key_str, ",\n".join(prop_lines))
 
     @to_string.register
     def _(self, arg: ArrayType):
