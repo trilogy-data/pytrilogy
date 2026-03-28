@@ -729,6 +729,114 @@ class TestActualFormattingDifferences:
                 ), f"Did not expect table characters in fallback output: {repr(fallback_output)}"
 
 
+class TestShowWatermarks:
+    """Test show_watermarks in both Rich and fallback modes."""
+
+    def _make_watermarks(self):
+        from datetime import datetime
+
+        from trilogy.core.models.datasource import UpdateKey, UpdateKeyType
+        from trilogy.execution.state.watermarks import DatasourceWatermark
+
+        return {
+            "source_a": DatasourceWatermark(
+                keys={
+                    "ts_field": UpdateKey(
+                        concept_name="ts_field",
+                        type=UpdateKeyType.UPDATE_TIME,
+                        value=datetime(2026, 1, 1),
+                    )
+                }
+            ),
+            "source_b": DatasourceWatermark(keys={}),
+        }
+
+    def _make_env_max(self):
+        from datetime import datetime
+
+        from trilogy.core.models.datasource import UpdateKey, UpdateKeyType
+
+        return {
+            "ts_field": UpdateKey(
+                concept_name="ts_field",
+                type=UpdateKeyType.INCREMENTAL_KEY,
+                value=datetime(2026, 3, 1),
+            )
+        }
+
+    def test_show_watermarks_without_env_max(self, rich_mode):
+        watermarks = self._make_watermarks()
+
+        if rich_mode and RICH_AVAILABLE:
+            with capture_rich_console_output() as output:
+                display.show_watermarks(watermarks)
+                captured = output.getvalue()
+                assert "source_a" in captured
+                assert "ts_field" in captured
+                assert "2026-01-01" in captured
+                assert "Environment Max" not in captured
+        else:
+            with capture_all_output() as (stdout, stderr):
+                display.show_watermarks(watermarks)
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "source_a" in captured
+                assert "ts_field" in captured
+                assert "Environment max" not in captured
+
+    def test_show_watermarks_with_env_max(self, rich_mode):
+        watermarks = self._make_watermarks()
+        env_max = self._make_env_max()
+
+        if rich_mode and RICH_AVAILABLE:
+            with capture_rich_console_output() as output:
+                display.show_watermarks(watermarks, env_max)
+                captured = output.getvalue()
+                assert "source_a" in captured
+                assert "ts_field" in captured
+                assert "Environment Max Watermarks" in captured
+                assert "2026-03-01" in captured
+                assert "incremental_key" in captured
+        else:
+            with capture_all_output() as (stdout, stderr):
+                display.show_watermarks(watermarks, env_max)
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "source_a" in captured
+                assert "Environment max watermarks" in captured
+                assert "ts_field" in captured
+                assert "2026-03-01" in captured
+                assert "incremental_key" in captured
+
+    def test_show_watermarks_empty_env_max(self, rich_mode):
+        watermarks = self._make_watermarks()
+
+        if rich_mode and RICH_AVAILABLE:
+            with capture_rich_console_output() as output:
+                display.show_watermarks(watermarks, {})
+                captured = output.getvalue()
+                assert "Environment Max" not in captured
+        else:
+            with capture_all_output() as (stdout, stderr):
+                display.show_watermarks(watermarks, {})
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "Environment max" not in captured
+
+    def test_show_watermarks_no_keys_datasource(self, rich_mode):
+        watermarks = self._make_watermarks()  # source_b has no keys
+
+        if rich_mode and RICH_AVAILABLE:
+            with capture_rich_console_output() as output:
+                display.show_watermarks(watermarks)
+                captured = output.getvalue()
+                assert "source_b" in captured
+                assert "no watermarks" in captured
+        else:
+            with capture_all_output() as (stdout, stderr):
+                display.show_watermarks(watermarks)
+                captured = stdout.getvalue() + stderr.getvalue()
+                assert "source_b" in captured
+                assert "no watermarks" in captured
+
+
 def test_create_progress_context():
     """Test create_progress_context with different query counts."""
     original_state = display.is_rich_available()
