@@ -1,4 +1,5 @@
 from collections import defaultdict
+from dataclasses import replace
 from math import ceil
 from typing import Dict, List, Optional, Set, Tuple, Union
 
@@ -539,20 +540,17 @@ def process_persist(
     # in the SELECT, so injecting again would duplicate it.
     if ds.is_partial and ds.non_partial_for:
         if select_stmt.where_clause is None:
-            select_stmt = select_stmt.model_copy(
-                update={"where_clause": ds.non_partial_for}
-            )
+            select_stmt = replace(select_stmt, where_clause=ds.non_partial_for)
         else:
-            select_stmt = select_stmt.model_copy(
-                update={
-                    "where_clause": WhereClause(
-                        conditional=Conditional(
-                            left=ds.non_partial_for.conditional,
-                            right=select_stmt.where_clause.conditional,
-                            operator=BooleanOperator.AND,
-                        )
+            select_stmt = replace(
+                select_stmt,
+                where_clause=WhereClause(
+                    conditional=Conditional(
+                        left=ds.non_partial_for.conditional,
+                        right=select_stmt.where_clause.conditional,
+                        operator=BooleanOperator.AND,
                     )
-                }
+                ),
             )
     # set to unpublished to avoid circular refs
     try:

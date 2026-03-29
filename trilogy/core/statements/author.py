@@ -1,10 +1,7 @@
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import Annotated, List, Literal, Optional, Union
-
-from pydantic import BaseModel, Field, computed_field, field_validator
-from pydantic.functional_validators import PlainValidator
+from typing import List, Literal, Optional, Union
 
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
 from trilogy.core.enums import (
@@ -83,19 +80,18 @@ class ConceptTransform:
         )
 
 
-class SelectItem(BaseModel):
+@dataclass
+class SelectItem:
     content: Union[ConceptTransform, ConceptRef]
-    modifiers: List[Modifier] = Field(default_factory=list)
+    modifiers: List[Modifier] = field(default_factory=list)
 
-    @field_validator("content", mode="before")
-    def parse_content(cls, v):
-        if isinstance(v, Concept):
-            return v.reference
-        return v
+    def __post_init__(self):
+        if isinstance(self.content, Concept):
+            self.content = self.content.reference
 
     @property
     def concept(self) -> ConceptRef:
-        if isinstance(self.content, (ConceptRef)):
+        if isinstance(self.content, ConceptRef):
             return self.content
         elif isinstance(self.content, Concept):
             return self.content.reference
@@ -106,20 +102,35 @@ class SelectItem(BaseModel):
         return True if isinstance(self.content, UndefinedConcept) else False
 
 
-class FromClause(BaseModel):
+@dataclass
+class FromClause:
     sources: List[str]
 
 
-class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
+@dataclass
+class SelectStatement(HasUUID, SelectTypeMixin):
     selection: List[SelectItem]
+    where_clause: Optional[WhereClause] = None
+    having_clause: Optional[HavingClause] = None
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     eligible_datasources: Optional[list[str]] = None
-    meta: Metadata = Field(default_factory=lambda: Metadata())
-    local_concepts: Annotated[
-        EnvironmentConceptDict, PlainValidator(validate_concepts)
-    ] = Field(default_factory=EnvironmentConceptDict)
-    grain: Grain = Field(default_factory=Grain)
+    meta: Metadata = field(default_factory=Metadata)
+    local_concepts: EnvironmentConceptDict = field(
+        default_factory=EnvironmentConceptDict
+    )
+    grain: Grain = field(default_factory=Grain)
+
+    def __post_init__(self):
+        new = []
+        for item in self.selection:
+            if isinstance(item, (Concept, ConceptTransform)):
+                new.append(SelectItem(content=item))
+            else:
+                new.append(item)
+        self.selection = new
+        if not isinstance(self.local_concepts, EnvironmentConceptDict):
+            self.local_concepts = validate_concepts(self.local_concepts)
 
     def as_lineage(self, environment: Environment) -> SelectLineage:
         derived = [
@@ -284,17 +295,6 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
 
         return render_query(self)
 
-    @field_validator("selection", mode="before")
-    @classmethod
-    def selection_validation(cls, v):
-        new = []
-        for item in v:
-            if isinstance(item, (Concept, ConceptTransform)):
-                new.append(SelectItem(content=item))
-            else:
-                new.append(item)
-        return new
-
     @property
     def locally_derived(self) -> set[str]:
         locally_derived: set[str] = set()
@@ -361,29 +361,34 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         return new_datasource
 
 
-class RawSQLStatement(BaseModel):
+@dataclass
+class RawSQLStatement:
     text: str
-    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+    meta: Optional[Metadata] = field(default_factory=Metadata)
 
 
-class CopyStatement(BaseModel):
+@dataclass
+class CopyStatement:
     target: str
     target_type: IOType
-    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
     select: SelectStatement
+    meta: Optional[Metadata] = field(default_factory=Metadata)
 
 
-class MultiSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
+@dataclass
+class MultiSelectStatement(HasUUID, SelectTypeMixin):
     selects: List[SelectStatement]
     align: AlignClause
     namespace: str
     derived_concepts: List[Concept]
+    where_clause: Optional[WhereClause] = None
+    having_clause: Optional[HavingClause] = None
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
-    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
-    local_concepts: Annotated[
-        EnvironmentConceptDict, PlainValidator(validate_concepts)
-    ] = Field(default_factory=EnvironmentConceptDict)
+    meta: Optional[Metadata] = field(default_factory=Metadata)
+    local_concepts: EnvironmentConceptDict = field(
+        default_factory=EnvironmentConceptDict
+    )
     derive: DeriveClause | None = None
 
     def as_lineage(self, environment: Environment):
@@ -421,7 +426,6 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             ]
         return unique(output, "address")
 
-    @computed_field  # type: ignore
     @cached_property
     def hidden_components(self) -> set[str]:
         output: set[str] = set()
@@ -437,7 +441,8 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         return locally_derived
 
 
-class RowsetDerivationStatement(HasUUID, BaseModel):
+@dataclass
+class RowsetDerivationStatement(HasUUID):
     name: str
     select: SelectStatement | MultiSelectStatement
     namespace: str
@@ -458,12 +463,14 @@ class MergeStatementV2(HasUUID):
     modifiers: List[Modifier] = field(default_factory=list)
 
 
-class KeyMergeStatement(HasUUID, BaseModel):
+@dataclass
+class KeyMergeStatement(HasUUID):
     keys: set[str]
     target: ConceptRef
 
 
-class ImportStatement(HasUUID, BaseModel):
+@dataclass
+class ImportStatement(HasUUID):
     # import abc.def as bar
     # the bit after 'as', eg bar
     alias: str
@@ -477,12 +484,13 @@ class ImportStatement(HasUUID, BaseModel):
     concepts: list[str] | None = None
 
 
-class PersistStatement(HasUUID, BaseModel):
+@dataclass
+class PersistStatement(HasUUID):
     datasource: Datasource
     select: SelectStatement
     persist_mode: PersistMode = PersistMode.OVERWRITE
-    partition_by: List[ConceptRef] = Field(default_factory=list)
-    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+    partition_by: List[ConceptRef] = field(default_factory=list)
+    meta: Optional[Metadata] = field(default_factory=Metadata)
 
     @property
     def identifier(self):
@@ -493,33 +501,39 @@ class PersistStatement(HasUUID, BaseModel):
         return self.datasource.address
 
 
-class ValidateStatement(BaseModel):
+@dataclass
+class ValidateStatement:
     scope: ValidationScope
     targets: list[str] | None = None
 
 
-class MockStatement(BaseModel):
+@dataclass
+class MockStatement:
     scope: ValidationScope
     targets: list[str]
 
 
-class PublishStatement(BaseModel):
+@dataclass
+class PublishStatement:
     scope: ValidationScope
     targets: list[str]
     action: PublishAction = PublishAction.PUBLISH
 
 
-class CreateStatement(BaseModel):
+@dataclass
+class CreateStatement:
     scope: ValidationScope
     create_mode: CreateMode = CreateMode.CREATE_OR_REPLACE
-    targets: list[str]
+    targets: list[str] = field(default_factory=list)
 
 
-class ShowStatement(BaseModel):
+@dataclass
+class ShowStatement:
     content: SelectStatement | PersistStatement | ValidateStatement | ShowCategory
 
 
-class Limit(BaseModel):
+@dataclass
+class Limit:
     count: int
 
 
@@ -538,7 +552,8 @@ class ConceptDerivationStatement:
     concept: Concept
 
 
-class TypeDeclaration(BaseModel):
+@dataclass
+class TypeDeclaration:
     type: CustomType
 
 
@@ -549,10 +564,11 @@ class FunctionDeclaration(HasUUID):
     expr: Expr
 
 
-class ChartConfig(BaseModel):
+@dataclass
+class ChartConfig:
     chart_type: ChartType
-    x_fields: list[str] = Field(default_factory=list)
-    y_fields: list[str] = Field(default_factory=list)
+    x_fields: list[str] = field(default_factory=list)
+    y_fields: list[str] = field(default_factory=list)
     color_field: str | None = None
     size_field: str | None = None
     group_field: str | None = None
@@ -566,10 +582,11 @@ class ChartConfig(BaseModel):
     scale_y: Literal["linear", "log", "sqrt"] | None = None
 
 
-class ChartStatement(BaseModel):
+@dataclass
+class ChartStatement:
     config: ChartConfig
     select: SelectStatement
-    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+    meta: Optional[Metadata] = field(default_factory=Metadata)
 
 
 STATEMENT_TYPES = (
