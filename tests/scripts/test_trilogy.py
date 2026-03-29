@@ -25,8 +25,6 @@ def strip_ansi(text):
     return ansi_escape.sub("", text)
 
 
-path = Path(__file__).parent / "test.db"
-
 bad_syntax_fmt = Path(__file__).parent / "bad_syntax_fmt.preql"
 
 
@@ -192,7 +190,15 @@ def test_cli_fmt_string():
             os.remove("test.sql")
 
 
-def test_db_args_string():
+def test_db_args_string(tmp_path):
+    import duckdb
+
+    db_path = tmp_path / "test.db"
+    con = duckdb.connect(str(db_path))
+    con.execute("CREATE TABLE test (i INTEGER)")
+    con.execute("INSERT INTO test VALUES (42)")
+    con.close()
+
     for mode in RICH_MODES:
         with set_rich_mode(mode):
             runner = CliRunner()
@@ -203,7 +209,7 @@ def test_db_args_string():
                     "key in int; datasource test_source ( i:in) grain(in) address test; publish datasource test_source; select in as int_aliased;",
                     "duckdb",
                     "--path",
-                    str(path),
+                    str(db_path),
                 ],
             )
             if result.exception:

@@ -4,7 +4,7 @@ import networkx as nx
 from networkx.algorithms import approximation as ax
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, FunctionType
+from trilogy.core.enums import BooleanOperator, Derivation, FunctionType
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
 from trilogy.core.graph_models import (
     ReferenceGraph,
@@ -15,10 +15,15 @@ from trilogy.core.graph_models import (
 from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
+    BuildDatasource,
     BuildFunction,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_utility import (
+    condition_implies,
+    decompose_condition,
+)
 from trilogy.core.processing.node_generators.common import (
     reinject_common_join_keys_v2,
 )
@@ -437,13 +442,19 @@ def subgraphs_to_merge_node(
             f"{padding(depth)}{LOGGER_PREFIX} fetching subgraph {[c.address for c in graph]}"
         )
 
+        subgraph_addrs = {c.address for c in graph}
+        subgraph_conditions = (
+            _conditions_for_subgraph(search_conditions, subgraph_addrs)
+            if search_conditions
+            else None
+        )
         parent: StrategyNode | None = source_concepts(
             mandatory_list=graph,
             environment=environment,
             g=g,
             depth=depth + 1,
             history=history,
-            # conditions=search_conditions,
+            conditions=subgraph_conditions,
         )
         if not parent:
             logger.info(
@@ -489,6 +500,58 @@ def subgraphs_to_merge_node(
     return rval
 
 
+def _preserved_conditions(
+    conditions: BuildWhereClause, environment: BuildEnvironment
+) -> BuildWhereClause | None:
+    """Return only condition atoms covered by some datasource's complete_where.
+
+    If the full conditions imply a datasource's non_partial_for, the atoms of that
+    non_partial_for are "owned" by an exact-match source and should be preserved as
+    a WHERE filter rather than flattened into concept projections.
+    """
+    atoms = decompose_condition(conditions.conditional)
+    atom_str_map = {str(a): a for a in atoms}
+    preserved = []
+    seen: set[str] = set()
+    for ds in environment.datasources.values():
+        if not isinstance(ds, BuildDatasource) or not ds.non_partial_for:
+            continue
+        if not condition_implies(
+            conditions.conditional, ds.non_partial_for.conditional
+        ):
+            continue
+        for np_atom in decompose_condition(ds.non_partial_for.conditional):
+            key = str(np_atom)
+            if key in atom_str_map and key not in seen:
+                preserved.append(atom_str_map[key])
+                seen.add(key)
+    if not preserved:
+        return None
+    cond = preserved[0]
+    for a in preserved[1:]:
+        cond = BuildConditional(left=cond, right=a, operator=BooleanOperator.AND)
+    return BuildWhereClause(conditional=cond)
+
+
+def _conditions_for_subgraph(
+    conditions: BuildWhereClause,
+    subgraph_addrs: set[str],
+) -> BuildWhereClause | None:
+    """Return condition atoms whose concepts are all present in the subgraph."""
+    atoms = decompose_condition(conditions.conditional)
+    relevant = [
+        a
+        for a in atoms
+        if all(c.address in subgraph_addrs for c in a.concept_arguments)
+    ]
+    if not relevant:
+        return None
+    cond = relevant[0]
+    for a in relevant[1:]:
+        cond = BuildConditional(left=cond, right=a, operator=BooleanOperator.AND)
+    return BuildWhereClause(conditional=cond)
+
+
 def gen_merge_node(
     all_concepts: List[BuildConcept],
     g: nx.DiGraph,
@@ -510,18 +573,30 @@ def gen_merge_node(
         all_search_concepts = unique(
             all_concepts + list(search_conditions.row_arguments), "address"
         )
+        # Preserve only atoms that are satisfied by a datasource's complete_where so
+        # that partial-datasource exact-match resolution works inside each subgraph.
+        # Extra condition concepts are still in all_search_concepts as projections.
+        effective_search_conditions = _preserved_conditions(
+            search_conditions, environment
+        )
     else:
+        effective_search_conditions = None
         all_search_concepts = all_concepts
     all_search_concepts = sorted(all_search_concepts, key=lambda x: x.address)
     break_set = set([x.address for x in all_search_concepts])
     for filter_downstream in [True, False]:
+        # Skip condition pruning only when conditions are "owned" by a partial datasource;
+        # otherwise retain normal pruning so regular WHERE conditions still gate resolution.
+        resolved_search_conditions = (
+            None if effective_search_conditions is not None else search_conditions
+        )
         weak_resolve = resolve_weak_components(
             all_search_concepts,
             environment,
             g,
             filter_downstream=filter_downstream,
             accept_partial=accept_partial,
-            search_conditions=search_conditions,
+            search_conditions=resolved_search_conditions,
         )
         if not weak_resolve:
             logger.info(
@@ -548,7 +623,7 @@ def gen_merge_node(
             source_concepts=source_concepts,
             history=history,
             conditions=conditions,
-            search_conditions=search_conditions,
+            search_conditions=effective_search_conditions,
             output_concepts=all_concepts,
         )
     return None

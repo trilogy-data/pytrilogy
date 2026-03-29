@@ -151,4 +151,27 @@ select
 
     assert "NVALID_REFERENCE_BUG" not in sql[-1], sql[-1]
 
-    # assert 'FO' in sql[-1], sql[-1]
+
+def test_exact_match_resolution():
+    """Partial datasource exact-match must not be disqualified when the WHERE clause
+    contains a condition on a concept from a joined datasource.
+
+    Reproduces: sf_tree_info (complete where city='USSFO') being rejected as an exact
+    match when the query also has `native_status IS NOT NULL` — a condition whose concept
+    lives in tree_enrichment, not sf_tree_info.  The system was falling through to the
+    full tree_info datasource instead.
+    """
+    query = """
+import tree_enrichment;
+
+SELECT native_status, count(tree_id) as tree_count
+WHERE city = 'USSFO' and native_status IS NOT NULL
+ORDER BY tree_count DESC;"""
+
+    base = Dialects.DUCK_DB.default_executor(
+        working_path=Path(__file__).parent,
+        conf=DuckDBConfig(enable_python_datasources=True),
+    )
+
+    generated = base.generate_sql(query)[-1]
+    assert "full_tree_info" not in generated, generated

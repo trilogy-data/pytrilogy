@@ -401,6 +401,7 @@ def _search_concepts(
                 if not accept_partial
                 else environment.materialized_canonical_concepts
             ),
+            environment=environment,
         )
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {str(priority_concept)} derivation {priority_concept.derivation} granularity {priority_concept.granularity} with conditions {local_conditions}"
