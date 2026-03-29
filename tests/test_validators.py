@@ -4,6 +4,7 @@ from decimal import Decimal
 from trilogy.core.models.core import (
     ArrayType,
     DataType,
+    EnumType,
     MapType,
     NumericType,
     StructType,
@@ -155,6 +156,17 @@ def test_type_check():
     assert not type_check(None, DataType.INTEGER, nullable=False)
     assert not type_check(None, DataType.FLOAT, nullable=False)
     assert not type_check(None, DataType.BOOL, nullable=False)
+
+    # EnumType tests
+    enum_type = EnumType(
+        type=DataType.STRING, values=["Full sun", "Partial shade", "Shade"]
+    )
+    assert type_check("Full sun", enum_type)
+    assert type_check("Shade", enum_type)
+    assert not type_check("full_sun", enum_type)  # original key, not display value
+    assert not type_check(123, enum_type)  # wrong base type
+    assert type_check(None, enum_type)  # nullable by default
+    assert not type_check(None, enum_type, nullable=False)
 
     # TraitDataType tests (recursive handling)
     # Assuming TraitDataType wraps another DataType

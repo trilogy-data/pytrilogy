@@ -1,7 +1,6 @@
 
 key id int;
 properties id (
-    address_id_string string,
     street string,
     city string,
     state string?,

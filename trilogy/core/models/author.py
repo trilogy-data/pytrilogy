@@ -2923,6 +2923,7 @@ FuncArgs = (
     | ArrayType
     | MapType
     | NumericType
+    | EnumType
     | ListWrapper[Any]
     | TupleWrapper[Any]
     | Comparison

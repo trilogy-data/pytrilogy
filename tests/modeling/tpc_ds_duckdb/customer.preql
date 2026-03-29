@@ -4,17 +4,18 @@ import address as address;
 key id int;
 unique property id.text_id string;
 properties id (
-    last_name string,
-    first_name string,
-    preferred_cust_flag string,
-    birth_day int,
-    birth_month int,
-    birth_year int,
-    birth_country string,
-    salutation string,
-    email_address string,
-    login string,
-    last_review_date string,
+    last_name string,              # Customer last name (not guaranteed unique; weak for identity)
+    first_name string,             # Customer first name (display only; low analytical value alone)
+    preferred_cust_flag string,    # 'Y'/'N' indicator for preferred/loyalty status (use for segmentation, LTV analysis)
+    birth_day int,                 # Day of birth (1–31; combine with month/year for full DOB)
+    birth_month int,               # Month of birth (1–12)
+    birth_year int,                # Year of birth (used for age calculation, cohorting)
+    birth_country string,          # Country of birth (demographic segmentation; may differ from residence)
+    salutation string,             # Title (e.g., 'Mr.', 'Ms.', 'Dr.'; mostly presentation, sometimes demographic proxy)
+    email_address string,          # Contact email (quasi-unique, but not reliable as a key; can change over time)
+    login string,                  # Account username/login (more stable than email, often used for authentication)
+    last_review_date string,       # Last date customer submitted a review (string in TPC-DS; should be cast to date)
+                                   # Useful for engagement/recency metrics
 );
 
 property id.full_name <- concat(salutation, ' ', first_name, ' ', last_name);
