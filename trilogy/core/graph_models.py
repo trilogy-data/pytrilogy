@@ -14,6 +14,7 @@ from trilogy.core.models.build import (
 from trilogy.core.processing.condition_utility import (
     condition_implies,
     condition_implies_with_extras,
+    decompose_condition,
 )
 
 
@@ -47,6 +48,7 @@ def _datasource_is_exact_match(
     ds: BuildDatasource,
     criteria: SearchCriteria,
     conditions: BuildWhereClause | None,
+    allow_intersection: bool = False,
 ) -> bool:
     if not conditions:
         return (
@@ -55,27 +57,48 @@ def _datasource_is_exact_match(
         )
     # All outputs are scalar — filtering has no effect, safe in any context.
     if not ds.non_partial_for:
+        if allow_intersection:
+            # When conditions are "covered" by another datasource's non_partial_for,
+            # a datasource with no overlap is still an exact match (condition handled elsewhere).
+            cond_concept_addresses = {
+                c.address
+                for atom in decompose_condition(conditions.conditional)
+                for c in atom.concept_arguments
+            }
+            ds_output_addresses = {c.address for c in ds.output_concepts}
+            if not cond_concept_addresses.intersection(ds_output_addresses):
+                return True
         return all(c.granularity == Granularity.SINGLE_ROW for c in ds.output_concepts)
     implied, extras = condition_implies_with_extras(
         conditions.conditional, ds.non_partial_for.conditional
     )
     if not implied:
         return False
-    required = {c.address for x in extras for c in x.concept_arguments}
-    return all(c in ds.output_concepts for c in required)
+    ds_output_addresses = {c.address for c in ds.output_concepts}
+    # Only gate on extras whose concepts are local to this datasource; foreign
+    # extras (e.g. native_status IS NOT NULL against sf_tree_info) are handled
+    # by a joined datasource and must not disqualify this one.
+    required = {
+        c.address
+        for x in extras
+        if any(c.address in ds_output_addresses for c in x.concept_arguments)
+        for c in x.concept_arguments
+    }
+    return all(addr in ds_output_addresses for addr in required)
 
 
 def get_graph_exact_match(
     g: Union[DiGraph, "ReferenceGraph"],
     criteria: SearchCriteria,
     conditions: BuildWhereClause | None,
+    allow_intersection: bool = False,
 ) -> set[str]:
     exact: set[str] = set()
     for node, ds in g.datasources.items():
         if isinstance(ds, BuildUnionDatasource):
             if _union_is_exact_match(ds, conditions):
                 exact.add(node)
-        elif _datasource_is_exact_match(ds, criteria, conditions):
+        elif _datasource_is_exact_match(ds, criteria, conditions, allow_intersection):
             exact.add(node)
     return exact
 
@@ -84,8 +107,9 @@ def prune_sources_for_conditions(
     g: "ReferenceGraph",
     criteria: SearchCriteria,
     conditions: BuildWhereClause | None,
+    allow_intersection: bool = False,
 ):
-    complete = get_graph_exact_match(g, criteria, conditions)
+    complete = get_graph_exact_match(g, criteria, conditions, allow_intersection)
     to_remove = []
     for node in g.datasources:
         if node not in complete:

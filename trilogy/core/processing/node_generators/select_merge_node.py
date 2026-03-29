@@ -3,7 +3,13 @@ from typing import TYPE_CHECKING
 import networkx as nx
 
 from trilogy.constants import logger
-from trilogy.core.enums import AddressType, Derivation, Granularity, Purpose
+from trilogy.core.enums import (
+    AddressType,
+    BooleanOperator,
+    Derivation,
+    Granularity,
+    Purpose,
+)
 from trilogy.core.graph_models import (
     ReferenceGraph,
     SearchCriteria,
@@ -28,6 +34,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import (
     condition_implies,
     condition_implies_with_extras,
+    decompose_condition,
     merge_conditions,
 )
 from trilogy.core.processing.node_generators.common import reinject_common_join_keys_v2
@@ -280,6 +287,7 @@ def create_pruned_concept_graph(
     criteria: SearchCriteria,
     conditions: BuildWhereClause | None = None,
     depth: int = 0,
+    allow_intersection: bool = False,
 ) -> nx.DiGraph:
     orig_g = g
     g = g.copy()
@@ -311,7 +319,7 @@ def create_pruned_concept_graph(
             g.add_edge(node_address, cnode)
             g.add_edge(cnode, node_address)
 
-    prune_sources_for_conditions(g, criteria, conditions)
+    prune_sources_for_conditions(g, criteria, conditions, allow_intersection)
     prune_sources_for_aggregates(g, all_concepts, logger)
 
     target_addresses = {c.canonical_address for c in all_concepts}
@@ -585,10 +593,14 @@ def create_datasource_node(
             datasource.non_partial_for.conditional,
         )
         if extras:
+            ds_outputs = {c.address for c in datasource.output_concepts}
             for extra in extras:
-                datasource_conditions = (
-                    datasource_conditions + extra if datasource_conditions else extra
-                )
+                if all(c.address in ds_outputs for c in extra.concept_arguments):
+                    datasource_conditions = (
+                        datasource_conditions + extra
+                        if datasource_conditions
+                        else extra
+                    )
 
     all_inputs = [c.concept for c in datasource.columns]
     canonical_all = CanonicalBuildConceptList(concepts=all_inputs)
@@ -791,8 +803,17 @@ def _source_concepts_via_graph(
     depth: int,
     accept_partial: bool = False,
     conditions: BuildWhereClause | None = None,
+    allow_intersection: bool = False,
+    filter_conditions: BuildWhereClause | None = None,
 ) -> list[StrategyNode]:
-    """Run the pruned-graph → subgraph → SelectNode pipeline for a list of concepts."""
+    """Run the pruned-graph → subgraph → SelectNode pipeline for a list of concepts.
+
+    conditions: used for graph pruning (which datasources to keep).
+    filter_conditions: if set, used for WHERE application in SelectNodes instead of conditions.
+    """
+    select_conditions = (
+        filter_conditions if filter_conditions is not None else conditions
+    )
     attempts = [SearchCriteria.FULL_ONLY]
     if accept_partial:
         attempts.append(SearchCriteria.PARTIAL_UNSCOPED)
@@ -807,6 +828,7 @@ def _source_concepts_via_graph(
             conditions=conditions,
             datasources=list(environment.datasources.values()),
             depth=depth,
+            allow_intersection=allow_intersection,
         )
         if not pruned:
             continue
@@ -814,7 +836,7 @@ def _source_concepts_via_graph(
             pruned,
             relevant=concepts,
             criteria=attempt,
-            conditions=conditions,
+            conditions=select_conditions,
             depth=depth,
         )
         break
@@ -828,10 +850,43 @@ def _source_concepts_via_graph(
             accept_partial=accept_partial,
             environment=environment,
             depth=depth,
-            conditions=conditions,
+            conditions=select_conditions,
         )
         for k, subgraph in sub_nodes.items()
     ]
+
+
+def _covered_conditions(
+    conditions: BuildWhereClause, environment: BuildEnvironment
+) -> BuildWhereClause | None:
+    """Return condition atoms covered by some datasource's complete_where (non_partial_for).
+
+    These are "owned" by a partial datasource, so foreign datasources (like tree_enrichment
+    when the condition is city='USSFO') can safely ignore them — they will be applied via
+    the owning datasource's non_partial_for mechanism.
+    """
+    atoms = decompose_condition(conditions.conditional)
+    atom_str_map = {str(a): a for a in atoms}
+    preserved = []
+    seen: set[str] = set()
+    for ds in environment.datasources.values():
+        if not isinstance(ds, BuildDatasource) or not ds.non_partial_for:
+            continue
+        if not condition_implies(
+            conditions.conditional, ds.non_partial_for.conditional
+        ):
+            continue
+        for np_atom in decompose_condition(ds.non_partial_for.conditional):
+            key = str(np_atom)
+            if key in atom_str_map and key not in seen:
+                preserved.append(atom_str_map[key])
+                seen.add(key)
+    if not preserved:
+        return None
+    cond = preserved[0]
+    for a in preserved[1:]:
+        cond = BuildConditional(left=cond, right=a, operator=BooleanOperator.AND)
+    return BuildWhereClause(conditional=cond)
 
 
 def gen_select_merge_node(
@@ -925,6 +980,25 @@ def gen_select_merge_node(
         parents = _source_concepts_via_graph(
             normals, g, environment, depth, accept_partial, conditions
         )
+        if not parents and conditions:
+            # Retry with only "covered" condition atoms (those implied by some datasource's
+            # non_partial_for) for graph pruning. Foreign datasources (e.g. tree_enrichment
+            # when filtering by city='USSFO') are kept via the intersection check since the
+            # condition is guaranteed to be applied by the owning partial datasource.
+            # The original conditions are still passed as filter_conditions so that
+            # per-datasource WHERE clauses (e.g. tree_category='deciduous') are preserved.
+            covered = _covered_conditions(conditions, environment)
+            if covered:
+                parents = _source_concepts_via_graph(
+                    normals,
+                    g,
+                    environment,
+                    depth,
+                    accept_partial,
+                    covered,
+                    allow_intersection=True,
+                    filter_conditions=conditions,
+                )
         if not parents:
             logger.info(f"{padding(depth)}{LOGGER_PREFIX} no covering graph found.")
             return None

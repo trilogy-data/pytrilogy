@@ -2,6 +2,7 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import (
+    BooleanOperator,
     Derivation,
     FunctionType,
     Granularity,
@@ -10,6 +11,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.models.build import (
     BuildConcept,
+    BuildConditional,
     BuildDatasource,
     BuildFilterItem,
     BuildFunction,
@@ -19,6 +21,10 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
+from trilogy.core.processing.condition_utility import (
+    condition_implies,
+    decompose_condition,
+)
 from trilogy.core.processing.constants import ROOT_DERIVATIONS
 from trilogy.core.processing.nodes import GroupNode, MergeNode, StrategyNode
 from trilogy.core.processing.utility import GroupRequiredResponse
@@ -478,6 +484,38 @@ def get_inputs_that_require_pushdown(
     ]
 
 
+def _condition_atoms_for_complete_wheres(
+    conditions: BuildWhereClause, environment: BuildEnvironment
+) -> BuildWhereClause | None:
+    """Return the subset of condition atoms that are implied by some datasource's complete_where.
+
+    These atoms should be preserved as WHERE filters rather than flattened into concept
+    projections, so that partial-datasource exact-match resolution works downstream.
+    """
+    atoms = decompose_condition(conditions.conditional)
+    atom_str_map = {str(a): a for a in atoms}
+    preserved = []
+    seen: set[str] = set()
+    for ds in environment.datasources.values():
+        if not isinstance(ds, BuildDatasource) or not ds.non_partial_for:
+            continue
+        if not condition_implies(
+            conditions.conditional, ds.non_partial_for.conditional
+        ):
+            continue
+        for np_atom in decompose_condition(ds.non_partial_for.conditional):
+            key = str(np_atom)
+            if key in atom_str_map and key not in seen:
+                preserved.append(atom_str_map[key])
+                seen.add(key)
+    if not preserved:
+        return None
+    cond = preserved[0]
+    for a in preserved[1:]:
+        cond = BuildConditional(left=cond, right=a, operator=BooleanOperator.AND)
+    return BuildWhereClause(conditional=cond)
+
+
 def get_loop_iteration_targets(
     mandatory: list[BuildConcept],
     conditions: BuildWhereClause | None,
@@ -487,6 +525,7 @@ def get_loop_iteration_targets(
     partial: set[str],
     depth: int,
     materialized_canonical: set[str],
+    environment: BuildEnvironment | None = None,
 ) -> tuple[BuildConcept, List[BuildConcept], BuildWhereClause | None]:
     # objectives
     # 1. if we have complex types; push any conditions further up until we only have roots
@@ -543,8 +582,14 @@ def get_loop_iteration_targets(
             list(conditions.row_arguments) + remaining,
             "address",
         )
-
-        conditions = None
+        # Preserve condition atoms covered by a datasource's complete_where so that
+        # partial-datasource exact-match resolution works when searching for those concepts.
+        # Only the extra (non-covered) condition concepts are flattened into projections.
+        conditions = (
+            _condition_atoms_for_complete_wheres(conditions, environment)
+            if environment
+            else None
+        )
     if conditions and force_conditions:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} condition evaluation at this level forced"
