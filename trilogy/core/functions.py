@@ -109,7 +109,7 @@ def get_attr_datatype(
 
 def get_cast_output_type(
     args: list[Any],
-) -> DataType | TraitDataType:
+) -> CONCRETE_TYPES:
     base = arg_to_datatype(args[0])
     if isinstance(base, TraitDataType):
         traits = base.traits

@@ -23,7 +23,7 @@ from trilogy.core.models.build import (
     BuildDatasource,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.models.core import CONCRETE_TYPES
+from trilogy.core.models.core import CONCRETE_TYPES, EnumType
 from trilogy.core.validation.common import ExpectationType, ValidationTest, easy_query
 from trilogy.utility import unique
 
@@ -43,6 +43,12 @@ def type_check(
     target_type = expected_type
     while isinstance(target_type, TraitDataType):
         return type_check(input, target_type.data_type, nullable)
+
+    if isinstance(target_type, EnumType):
+        return (
+            type_check(input, target_type.type, nullable)
+            and input in target_type.values
+        )
 
     if target_type == DataType.STRING:
         return isinstance(input, str)

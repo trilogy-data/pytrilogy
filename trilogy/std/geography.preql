@@ -17,6 +17,10 @@ type country_code string; # ISO-3166 Country code - ex US, CA, GB
 type timezone string; # Timezone name
 type region string; # Region name
 
+## ecoregion classification (Olson et al. 2001)
+type ecoregion string; # Terrestrial ecoregion name - one of 825 globally defined units
+type biome string; # Biome name - one of 14 major habitat types (e.g. Tropical Moist Broadleaf Forests)
+type biogeographic_realm string; # Biogeographic realm - one of 8 global regions (e.g. Nearctic, Palearctic)
 
 ## special formats
 type geojson string; # GeoJSON format for geographic data

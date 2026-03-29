@@ -1,10 +1,12 @@
 import pytest
 
 from trilogy import Dialects
+from trilogy.core.exceptions import ModelValidationError
 from trilogy.core.models.core import EnumType
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
 )
+from trilogy.core.validation.environment import validate_environment
 
 PREQL = """
 key category enum<string>['A', 'B'];
@@ -177,6 +179,79 @@ query '''
 select 'B' as category, 2 as field_b
 ''';
 """
+
+
+PREQL_CAST = """
+key sun_exposure string;
+auto sun_exposure_label <- CASE sun_exposure
+  when 'full_sun' then 'Full sun'
+  when 'partial_shade' then 'Partial shade'
+  when 'shade' then 'Shade'
+  end::enum<string>['Full sun', 'Partial shade', 'Shade'];
+
+datasource plants (
+  sun_exposure: sun_exposure
+)
+grain (sun_exposure)
+query '''
+select 'full_sun' as sun_exposure
+''';
+"""
+
+
+def test_enum_cast():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(PREQL_CAST)
+    concept = executor.environment.concepts["local.sun_exposure_label"]
+    assert isinstance(concept.datatype, EnumType)
+    assert set(concept.datatype.values) == {"Full sun", "Partial shade", "Shade"}
+    results = executor.execute_text("select sun_exposure_label;")[-1].fetchall()
+    assert len(results) == 1
+    assert results[0].sun_exposure_label == "Full sun"
+
+
+PREQL_ENUM_VALID = """
+key category enum<string>['A', 'B'];
+property <category>.sales int;
+
+datasource valid_ds (
+    ~category,
+    sales
+)
+grain (category)
+query '''
+select 'A' as category, 10 as sales
+UNION ALL
+select 'B' as category, 20 as sales
+''';
+"""
+
+PREQL_ENUM_INVALID = """
+key category enum<string>['A', 'B'];
+property <category>.sales int;
+
+datasource invalid_ds (
+    ~category,
+    sales
+)
+grain (category)
+query '''
+select 'C' as category, 99 as sales
+''';
+"""
+
+
+def test_enum_validate_valid_values():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(PREQL_ENUM_VALID)
+    validate_environment(executor.environment, exec=executor)
+
+
+def test_enum_validate_invalid_values():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(PREQL_ENUM_INVALID)
+    with pytest.raises(ModelValidationError):
+        validate_environment(executor.environment, exec=executor)
 
 
 def test_no_shared_data_fields_not_combined():
