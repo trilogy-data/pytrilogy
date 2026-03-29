@@ -7,7 +7,10 @@ from sqlalchemy.exc import ProgrammingError
 from trilogy import Dialects, Executor
 from trilogy.core.models.datasource import UpdateKey, UpdateKeys, UpdateKeyType
 from trilogy.execution.state import BaseStateStore
-from trilogy.execution.state.exceptions import is_missing_source_error
+from trilogy.execution.state.exceptions import (
+    is_missing_source_error,
+    is_schema_mismatch_error,
+)
 from trilogy.execution.state.watermarks import (
     _compare_watermark_values,
     get_concept_max_watermarks,
@@ -1563,3 +1566,98 @@ def test_get_stale_assets_missing_parquet(tmp_path):
     assert len(stale) == 1
     assert stale[0].datasource_id == "out"
     assert stale[0].reason == "file not found"
+
+
+class TestIsSchemasMismatchError:
+    """Tests for is_schema_mismatch_error function."""
+
+    class MockDialect:
+        COLUMN_NOT_FOUND_PATTERN = "does not have a column named"
+
+    class MockDialectNoPattern:
+        COLUMN_NOT_FOUND_PATTERN = None
+
+    def test_column_not_found(self) -> None:
+        exc = Exception('Binder Error: Table "t" does not have a column named "x"')
+        assert is_schema_mismatch_error(exc, self.MockDialect()) is True
+
+    def test_unrelated_error(self) -> None:
+        exc = Exception("Some other error")
+        assert is_schema_mismatch_error(exc, self.MockDialect()) is False
+
+    def test_no_pattern_configured(self) -> None:
+        exc = Exception('Table "t" does not have a column named "x"')
+        assert is_schema_mismatch_error(exc, self.MockDialectNoPattern()) is False
+
+
+def test_freshness_watermarks_missing_column_parquet(tmp_path):
+    """Freshness watermark query against parquet with missing column returns None, not exception."""
+    executor = Dialects.DUCK_DB.default_executor()
+    parquet_path = str(tmp_path / "data.parquet").replace("\\", "/")
+    # Write parquet with 'id' and 'value' but no 'updated_at'
+    executor.execute_raw_sql(
+        f"COPY (SELECT 1 as id, 'hello' as value) TO '{parquet_path}' (FORMAT PARQUET)"
+    )
+
+    executor.execute_text(
+        f"""
+        key rec_id int;
+        property rec_id.updated_at datetime;
+
+        datasource parquet_src (
+            rec_id: rec_id,
+            updated_at: updated_at
+        )
+        grain (rec_id)
+        file `{parquet_path}`
+        freshness by updated_at;
+        """
+    )
+
+    datasource = executor.environment.datasources["parquet_src"]
+    watermarks = get_freshness_watermarks(datasource, executor)
+
+    assert "updated_at" in watermarks.keys
+    assert watermarks.keys["updated_at"].value is None
+
+
+def test_get_stale_assets_parquet_missing_column(tmp_path):
+    """Parquet datasource with freshness column missing from file is marked stale."""
+    executor = Dialects.DUCK_DB.default_executor()
+    parquet_path = str(tmp_path / "events.parquet").replace("\\", "/")
+    root_parquet_path = str(tmp_path / "root.parquet").replace("\\", "/")
+
+    # Root has updated_at, target parquet has wrong column name
+    executor.execute_raw_sql(
+        f"COPY (SELECT 1 as event_id, TIMESTAMP '2024-06-01' as updated_at) TO '{root_parquet_path}' (FORMAT PARQUET)"
+    )
+    executor.execute_raw_sql(
+        f"COPY (SELECT 1 as event_id, TIMESTAMP '2024-06-01' as wrong_col) TO '{parquet_path}' (FORMAT PARQUET)"
+    )
+
+    executor.execute_text(
+        f"""
+        key event_id int;
+        property event_id.updated_at datetime;
+
+        root datasource root_src (
+            event_id,
+            updated_at
+        )
+        grain (event_id)
+        file `{root_parquet_path}`;
+
+        datasource target_events (
+            event_id,
+            updated_at
+        )
+        grain (event_id)
+        file `{parquet_path}`
+        freshness by updated_at;
+        """
+    )
+
+    state_store = BaseStateStore()
+    stale = state_store.get_stale_assets(executor.environment, executor)
+
+    assert any(a.datasource_id == "target_events" for a in stale)

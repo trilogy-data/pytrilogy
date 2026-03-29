@@ -250,6 +250,7 @@ class SQLiteDialect(BaseDialect):
     SQL_TEMPLATE = SQLITE_SQL_TEMPLATE
     CREATE_TABLE_SQL_TEMPLATE = SQLITE_CREATE_TABLE_SQL_TEMPLATE
     TABLE_NOT_FOUND_PATTERN = "no such table"
+    COLUMN_NOT_FOUND_PATTERN = "no such column"
 
     def compile_create_table_statement(self, target, create_mode):
         statement = super().compile_create_table_statement(target, create_mode)

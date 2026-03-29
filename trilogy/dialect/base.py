@@ -479,6 +479,7 @@ class BaseDialect:
     ALIAS_ORDER_REFERENCING_ALLOWED = True
     TABLE_NOT_FOUND_PATTERN: str | None = None  # Dialect-specific pattern to match
     HTTP_NOT_FOUND_PATTERN: str | None = None  # Pattern for HTTP 404 errors (e.g., GCS)
+    COLUMN_NOT_FOUND_PATTERN: str | None = None  # Pattern for column-not-found errors
 
     def __init__(
         self,

@@ -18,7 +18,10 @@ from trilogy.core.models.datasource import (
 )
 from trilogy.core.models.execute import CTE
 from trilogy.execution.state.cache import ColumnStatsCache
-from trilogy.execution.state.exceptions import is_missing_source_error
+from trilogy.execution.state.exceptions import (
+    is_missing_source_error,
+    is_schema_mismatch_error,
+)
 
 
 @dataclass
@@ -76,7 +79,7 @@ def _execute_raw_sql_scalar(
         result = executor.execute_raw_sql(query).fetchone()
         return result[0] if result else None
     except Exception as e:
-        if is_missing_source_error(e, dialect):
+        if is_missing_source_error(e, dialect) or is_schema_mismatch_error(e, dialect):
             executor.connection.rollback()
             return None
         raise
