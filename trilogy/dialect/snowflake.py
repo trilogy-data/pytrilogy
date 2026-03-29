@@ -99,6 +99,7 @@ class SnowflakeDialect(BaseDialect):
     SQL_TEMPLATE = SNOWFLAKE_SQL_TEMPLATE
     UNNEST_MODE = UnnestMode.SNOWFLAKE
     TABLE_NOT_FOUND_PATTERN = "does not exist"
+    COLUMN_NOT_FOUND_PATTERN = "invalid identifier"
 
     def get_table_schema(
         self, executor, table_name: str, schema: str | None = None

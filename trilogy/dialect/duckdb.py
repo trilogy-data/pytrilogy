@@ -364,6 +364,7 @@ class DuckDBDialect(BaseDialect):
     NULL_WRAPPER = staticmethod(null_wrapper)
     TABLE_NOT_FOUND_PATTERN = "Catalog Error: Table with name"
     HTTP_NOT_FOUND_PATTERN = "404 (Not Found)"
+    COLUMN_NOT_FOUND_PATTERN = "does not have a column named"
 
     def __init__(
         self,
