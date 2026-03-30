@@ -430,6 +430,7 @@ def subgraphs_to_merge_node(
     conditions,
     output_concepts: List[BuildConcept],
     search_conditions: BuildWhereClause | None = None,
+    filter_conditions: BuildWhereClause | None = None,
     enable_early_exit: bool = True,
 ):
 
@@ -443,9 +444,12 @@ def subgraphs_to_merge_node(
         )
 
         subgraph_addrs = {c.address for c in graph}
+        applicable_conditions = (
+            filter_conditions if filter_conditions is not None else search_conditions
+        )
         subgraph_conditions = (
-            _conditions_for_subgraph(search_conditions, subgraph_addrs)
-            if search_conditions
+            _conditions_for_subgraph(applicable_conditions, subgraph_addrs)
+            if applicable_conditions
             else None
         )
         parent: StrategyNode | None = source_concepts(
@@ -624,6 +628,7 @@ def gen_merge_node(
             history=history,
             conditions=conditions,
             search_conditions=effective_search_conditions,
+            filter_conditions=search_conditions,
             output_concepts=all_concepts,
         )
     return None
