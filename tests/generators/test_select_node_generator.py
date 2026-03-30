@@ -1,6 +1,15 @@
-from trilogy.core.enums import ComparisonOperator
+from pathlib import Path
+
+import pytest
+
+from trilogy.core.enums import BooleanOperator, ComparisonOperator
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.models.build import BuildComparison, BuildWhereClause, Factory
+from trilogy.core.models.build import (
+    BuildComparison,
+    BuildConditional,
+    BuildWhereClause,
+    Factory,
+)
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators import gen_select_node
 from trilogy.core.processing.node_generators.select_merge_node import (
@@ -269,3 +278,61 @@ where order_id = 1;
 
     resolved = gnode.resolve()
     assert len(resolved.datasources) == 2
+
+
+GEOGRAPHY_DIR = Path(__file__).resolve().parents[1] / "modeling" / "geography"
+
+
+@pytest.mark.parametrize(
+    ("concept_names", "condition_names"),
+    [
+        (
+            ["city", "species", "common_names", "tree_category"],
+            ["city", "species"],
+        ),
+        (
+            ["tree_category", "common_names", "species", "city"],
+            ["species", "city"],
+        ),
+    ],
+)
+def test_gen_select_node_preserves_exact_match_subgraph_filters(
+    concept_names: list[str], condition_names: list[str]
+):
+    env = Environment.from_file(GEOGRAPHY_DIR / "tree_enrichment.preql")
+    env = env.materialize_for_select()
+
+    comparisons = {
+        "city": BuildComparison(
+            left=env.concepts["city"],
+            right="USBOS",
+            operator=ComparisonOperator.EQ,
+        ),
+        "species": BuildComparison(
+            left=env.concepts["species"],
+            right="Oak",
+            operator=ComparisonOperator.EQ,
+        ),
+    }
+    conditions = BuildWhereClause(
+        conditional=BuildConditional(
+            left=comparisons[condition_names[0]],
+            right=comparisons[condition_names[1]],
+            operator=BooleanOperator.AND,
+        )
+    )
+
+    gnode = gen_select_node(
+        concepts=[env.concepts[name] for name in concept_names],
+        environment=env,
+        g=generate_graph(env),
+        depth=0,
+        conditions=conditions,
+    )
+
+    resolved = gnode.resolve()
+    assert len(resolved.datasources) == 2
+
+    enrichment = next(ds for ds in resolved.datasources if "tree_enrichment" in ds.name)
+    assert enrichment.condition is not None
+    assert str(enrichment.condition) == "local.species = Oak"
