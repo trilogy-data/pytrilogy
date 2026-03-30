@@ -653,15 +653,15 @@ def show_grouped_refresh_assets(
             first_group_row = True
             for ds in group.datasources:
                 files_str = ", ".join(str(f) for f in ds.referenced_in)
-                
-                # Show common reason on the first row of the group, 
+
+                # Show common reason on the first row of the group,
                 # otherwise show specific reason if it exists and differs.
                 reason_to_show = ""
                 if first_group_row and group.common_reason:
                     reason_to_show = group.common_reason
                 elif ds.reason:
                     reason_to_show = ds.reason
-                
+
                 stale_table.add_row(
                     group.data_address if first_group_row else "",
                     ds.datasource_id,

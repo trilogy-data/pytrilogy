@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, Union
-from typing_extensions import TypeAlias
 
 import networkx as nx
+from typing_extensions import TypeAlias
 
 from trilogy.execution.state import StaleAsset
 from trilogy.parsing.exceptions import ParseError

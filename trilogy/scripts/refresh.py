@@ -1,7 +1,7 @@
 """Refresh command for Trilogy CLI - refreshes stale assets."""
 
-from dataclasses import dataclass
 from collections import defaultdict
+from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
 
@@ -142,7 +142,9 @@ def _group_assets_for_script(
     )
 
 
-def _preview_directory_refresh(cli_params: CLIRuntimeParams, input_path: Path) -> tuple[bool, nx.DiGraph | None]:
+def _preview_directory_refresh(
+    cli_params: CLIRuntimeParams, input_path: Path
+) -> tuple[bool, nx.DiGraph | None]:
     from trilogy.execution.config import apply_env_vars, load_env_file
     from trilogy.scripts.common import (
         create_executor_for_script,
@@ -174,10 +176,10 @@ def _preview_directory_refresh(cli_params: CLIRuntimeParams, input_path: Path) -
     edialect, _ = merge_runtime_config(cli_params, config)
     plans_by_node: list[tuple[ScriptNode, RefreshPlan]] = []
     address_map: dict[str, str] = {}
-    
+
     # Track which scripts define/persist which datasources
     ds_to_scripts: dict[str, list[ScriptNode]] = defaultdict(list)
-    
+
     for file_path in files:
         if isinstance(file_path, StringIO):
             continue
@@ -198,11 +200,11 @@ def _preview_directory_refresh(cli_params: CLIRuntimeParams, input_path: Path) -
                 except Exception as e:
                     print_error(f"Error parsing {node.path}: {e}")
                     raise Exit(1) from e
-            
+
             for ds_id, ds in executor.environment.datasources.items():
                 address_map.setdefault(ds_id, ds.safe_address)
                 ds_to_scripts[ds_id].append(node)
-                
+
             plans_by_node.append(
                 (
                     node,
@@ -247,31 +249,29 @@ def _preview_directory_refresh(cli_params: CLIRuntimeParams, input_path: Path) -
         # In a tie, we could look for PERSIST presence, but topo order handles most cases.
         owner_entry = min(entries, key=lambda x: script_to_order.get(x[1], 999999))
         owner_script = owner_entry[1]
-        
+
         # Deduplicate assets for this address (same ds_id + reason can be merged)
         seen_assets: dict[str, StaleAsset] = {}
         for asset, _ in entries:
-             # If exact same asset already seen, skip
-             key = f"{asset.datasource_id}:{asset.reason}"
-             if key not in seen_assets:
-                 seen_assets[key] = asset
-        
+            # If exact same asset already seen, skip
+            key = f"{asset.datasource_id}:{asset.reason}"
+            if key not in seen_assets:
+                seen_assets[key] = asset
+
         physical_nodes[addr] = PhysicalRefreshNode(
-            address=addr,
-            owner_script=owner_script,
-            assets=list(seen_assets.values())
+            address=addr, owner_script=owner_script, assets=list(seen_assets.values())
         )
 
     # Build Physical dependency graph
     # (Simplified: if any logical ds in Node B depends on logical ds in Node A)
-    # For now, let's derive it from the script graph dependencies? 
+    # For now, let's derive it from the script graph dependencies?
     # Or more directly from concept/datasource deps.
     # Actually, if script B depends on script A, and both have physical nodes,
     # then PhysNode B likely depends on PhysNode A.
     phys_graph = nx.DiGraph()
     for pnode in physical_nodes.values():
         phys_graph.add_node(pnode)
-        
+
     # Connect physical nodes if their owner scripts have dependencies
     # This is a safe heuristic for now.
     for addr1, node1 in physical_nodes.items():
@@ -290,13 +290,13 @@ def _preview_directory_refresh(cli_params: CLIRuntimeParams, input_path: Path) -
         display_root=input_path,
         address_map=address_map,
     )
-    
+
     show_refresh_plan(
         refresh_assets,
         _merge_watermarks([plan.watermarks for _, plan in plans_by_node]),
         grouped_assets=grouped_assets,
     )
-    
+
     if click.confirm("\nProceed with refresh?", default=True):
         return True, phys_graph
     return False, None
@@ -437,8 +437,8 @@ def execute_physical_node_for_refresh(
     dry_run: bool,
 ) -> ExecutionStats:
     stats = ExecutionStats()
-    
-    # Create a minimal refresh plan for this specific physical address 
+
+    # Create a minimal refresh plan for this specific physical address
     # Use empty watermarks since we're already at the execution stage and don't need them
     plan = RefreshPlan(
         stale_assets=node.assets,
@@ -448,7 +448,7 @@ def execute_physical_node_for_refresh(
         root_assets=len(node.assets),
         all_assets=len(node.assets),
     )
-    
+
     result = _run_refresh_plan(executor, plan, stats, quiet, dry_run)
     stats.update_count = result.refreshed_count
     return stats
@@ -499,7 +499,9 @@ def make_refresh_execution_fn(
     help="Maximum parallel workers for directory execution",
 )
 @option(
-    "--config", type=ClickPath(exists=True), help="Path to trilogy.toml configuration file"
+    "--config",
+    type=ClickPath(exists=True),
+    help="Path to trilogy.toml configuration file",
 )
 @option(
     "--print-watermarks",
@@ -581,8 +583,14 @@ def refresh(
 
     try:
         input_path = Path(input)
-        from trilogy.scripts.common import merge_runtime_config, resolve_input_information
-        _, _, _, _, runtime_config = resolve_input_information(input, cli_params.config_path)
+        from trilogy.scripts.common import (
+            merge_runtime_config,
+            resolve_input_information,
+        )
+
+        _, _, _, _, runtime_config = resolve_input_information(
+            input, cli_params.config_path
+        )
         edialect, _ = merge_runtime_config(cli_params, runtime_config)
         if input_path.is_dir():
             approved, phys_graph = _preview_directory_refresh(cli_params, input_path)
@@ -596,9 +604,10 @@ def refresh(
                     False,  # interactive always False after preview
                     refresh_params.dry_run,
                 )
-                
+
                 def physical_executor_factory(node: PhysicalRefreshNode) -> Executor:
                     from trilogy.scripts.common import create_executor_for_script
+
                     return create_executor_for_script(
                         node.owner_script,
                         cli_params.param,
@@ -611,7 +620,7 @@ def refresh(
 
                 summary = run_parallel_execution(
                     cli_params=cli_params,
-                    execution_fn=execution_fn, # type: ignore
+                    execution_fn=execution_fn,  # type: ignore
                     execution_mode=ExecutionMode.REFRESH,
                     graph=phys_graph,
                     executor_factory_override=physical_executor_factory,
@@ -632,7 +641,7 @@ def refresh(
                 execution_fn=execution_fn,
                 execution_mode=ExecutionMode.REFRESH,
             )
-            
+
         if summary.successful == 0 and summary.skipped > 0:
             # if everything was up to date, exit with code 2
             raise Exit(2)
