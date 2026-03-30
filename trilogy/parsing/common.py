@@ -1,3 +1,4 @@
+from dataclasses import replace as dc_replace
 from datetime import date, datetime
 from typing import Iterable, List, Sequence, Tuple
 
@@ -852,8 +853,8 @@ def rowset_concept(
         new_address = address_with_namespace(x, rowset.name)
         origa = environment.alias_origin_lookup[x]
         environment.concepts[new_address] = new_concept
-        environment.alias_origin_lookup[new_address] = origa.model_copy(
-            update={"namespace": f"{rowset.name}.{origa.namespace}"}
+        environment.alias_origin_lookup[new_address] = dc_replace(
+            origa, namespace=f"{rowset.name}.{origa.namespace}"
         )
     orig[orig_concept.address] = new_concept
     orig_map[new_concept.address] = orig_concept

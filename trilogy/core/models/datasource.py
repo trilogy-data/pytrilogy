@@ -194,7 +194,10 @@ class DatasourceMetadata:
 
 def safe_grain(v) -> Grain:
     if isinstance(v, dict):
-        return Grain.model_validate(v)
+        components = v.get("components", set())
+        if isinstance(components, list):
+            components = set(components)
+        return Grain(components=components, where_clause=v.get("where_clause"))
     elif isinstance(v, Grain):
         return v
     elif not v:

@@ -20,6 +20,7 @@ from typing import (
 )
 
 from lark.tree import Meta
+from pydantic import TypeAdapter as _TypeAdapter
 
 from trilogy.constants import DEFAULT_NAMESPACE, ENV_CACHE_NAME, logger
 from trilogy.core.constants import (
@@ -177,7 +178,7 @@ class EnvironmentConceptDict(dict):
         if super().__contains__(key):
             return super(EnvironmentConceptDict, self).__getitem__(key)
         if isinstance(key, ConceptRef):
-            return self.__getitem__(key.address, line_no=line_no, file=file)
+            return self.__getitem__(key.address, line_no=line_no, file=file)  # type: ignore[call-arg]
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
         except KeyError:
@@ -216,12 +217,34 @@ class EnvironmentConceptDict(dict):
         return matches
 
 
+_concept_ta: _TypeAdapter | None = None
+_custom_type_ta: _TypeAdapter | None = None
+
+
+def _concept_adapter():
+    global _concept_ta
+    if _concept_ta is None:
+        from trilogy.core.models.author import Concept
+
+        _concept_ta = _TypeAdapter(Concept)
+    return _concept_ta
+
+
+def _custom_type_adapter():
+    global _custom_type_ta
+    if _custom_type_ta is None:
+        from trilogy.core.models.author import CustomType
+
+        _custom_type_ta = _TypeAdapter(CustomType)
+    return _custom_type_ta
+
+
 def validate_concepts(v) -> EnvironmentConceptDict:
     if isinstance(v, EnvironmentConceptDict):
         return v
     elif isinstance(v, dict):
         return EnvironmentConceptDict(
-            **{x: Concept.model_validate(y) for x, y in v.items()}
+            **{x: _concept_adapter().validate_python(y) for x, y in v.items()}
         )
     raise ValueError
 
@@ -344,7 +367,7 @@ class Environment:
             return None
         concepts = EnvironmentConceptDict()
         for k, v in data.get("concepts", {}).items():
-            concepts[k] = Concept.model_validate(v)
+            concepts[k] = _concept_adapter().validate_python(v)
         datasources = EnvironmentDatasourceDict()
         for k, v in data.get("datasources", {}).items():
             datasources[k] = Datasource.model_validate(v)
@@ -356,11 +379,11 @@ class Environment:
                 for k, v in data.get("functions", {}).items()
             },
             data_types={
-                k: CustomType.model_validate(v)
+                k: _custom_type_adapter().validate_python(v)
                 for k, v in data.get("data_types", {}).items()
             },
             alias_origin_lookup={
-                k: Concept.model_validate(v)
+                k: _concept_adapter().validate_python(v)
                 for k, v in data.get("alias_origin_lookup", {}).items()
             },
             namespace=data.get("namespace", DEFAULT_NAMESPACE),
@@ -376,17 +399,19 @@ class Environment:
             "cte_name_map": self.cte_name_map,
             "env_file_path": str(self.env_file_path) if self.env_file_path else None,
             "concepts": {
-                k: v.model_dump(mode="json") for k, v in self.concepts.items()
+                k: _concept_adapter().dump_python(v, mode="json")
+                for k, v in self.concepts.items()
             },
             "datasources": {
                 k: v.model_dump(mode="json") for k, v in self.datasources.items()
             },
             "functions": {k: v.to_dict() for k, v in self.functions.items()},
             "data_types": {
-                k: v.model_dump(mode="json") for k, v in self.data_types.items()
+                k: _custom_type_adapter().dump_python(v, mode="json")
+                for k, v in self.data_types.items()
             },
             "alias_origin_lookup": {
-                k: v.model_dump(mode="json")
+                k: _concept_adapter().dump_python(v, mode="json")
                 for k, v in self.alias_origin_lookup.items()
             },
         }

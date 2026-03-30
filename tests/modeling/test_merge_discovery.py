@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from trilogy import Dialects, Executor
 from trilogy.core.models.environment import Environment
 from trilogy.hooks.query_debugger import DebuggingHook
@@ -161,7 +163,7 @@ SELECT 'John' as firstname, 'Smith' as lastname
     base.add_import("p2", imports)
     base.add_import("p3", imports)
     # merge p1.firstname, p3.firstname and p1.lastname, p3.lastname;
-    c1 = base.concepts["p2.firstname"].model_copy(deep=True)
+    c1 = deepcopy(base.concepts["p2.firstname"])
     base.parse(
         """
 merge p2.firstname into p1.firstname;
