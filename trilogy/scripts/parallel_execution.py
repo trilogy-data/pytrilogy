@@ -16,6 +16,7 @@ from trilogy.scripts.common import CLIRuntimeParams, ExecutionStats, RefreshPara
 from trilogy.scripts.dependency import (
     DependencyResolver,
     DependencyStrategy,
+    ExecutionNode,
     ScriptNode,
     create_script_nodes,
 )
@@ -34,7 +35,7 @@ class ExecutionMode(Enum):
 class ExecutionResult:
     """Result of executing a single script."""
 
-    node: ScriptNode
+    node: ExecutionNode
     success: bool
     error: Exception | None = None
     duration: float = 0.0  # seconds
@@ -65,38 +66,29 @@ class ExecutionStrategy(Protocol):
         graph: nx.DiGraph,
         resolver: DependencyResolver,
         max_workers: int,
-        executor_factory: Callable[[ScriptNode], Any],
-        execution_fn: Callable[[Any, ScriptNode], Any],
-        on_script_start: Callable[[ScriptNode], None] | None = None,
+        executor_factory: Callable[[Any], Any],
+        execution_fn: Callable[[Any, Any], Any],
+        on_script_start: Callable[[Any], None] | None = None,
         on_script_complete: Callable[[ExecutionResult], None] | None = None,
     ) -> list[ExecutionResult]:
         """
-        Execute scripts according to the strategy.
-
-        Args:
-            graph: The dependency graph (edges point from deps to dependents).
-            max_workers: Maximum parallel workers.
-            executor_factory: Factory to create executor for each script.
-            execution_fn: Function to execute a script.
-
-        Returns:
-            List of ExecutionResult for all scripts.
+        Execute nodes according to the strategy.
         """
         ...
 
 
 # Type aliases for cleaner signatures
-CompletedSet = set[ScriptNode]
-FailedSet = set[ScriptNode]
-InProgressSet = set[ScriptNode]
+CompletedSet = set[ExecutionNode]
+FailedSet = set[ExecutionNode]
+InProgressSet = set[ExecutionNode]
 ResultsList = list[ExecutionResult]
-RemainingDepsDict = dict[ScriptNode, int]
-ReadyList = list[ScriptNode]
+RemainingDepsDict = dict[ExecutionNode, int]
+ReadyList = list[ExecutionNode]
 OnCompleteCallback = Callable[[ExecutionResult], None] | None
 
 
 def _propagate_failure(
-    failed_node: ScriptNode,
+    failed_node: ExecutionNode,
     graph: nx.DiGraph,
     completed: CompletedSet,
     in_progress: InProgressSet,
@@ -131,7 +123,7 @@ def _propagate_failure(
             )
 
 
-def _get_next_ready(ready: ReadyList) -> ScriptNode | None:
+def _get_next_ready(ready: ReadyList) -> Any | None:
     """Get next ready node from the queue."""
     if ready:
         return ready.pop(0)
@@ -139,7 +131,7 @@ def _get_next_ready(ready: ReadyList) -> ScriptNode | None:
 
 
 def _mark_node_complete(
-    node: ScriptNode,
+    node: Any,
     success: bool,
     graph: nx.DiGraph,
     completed: CompletedSet,
@@ -225,11 +217,11 @@ def _is_execution_done(completed: CompletedSet, total_count: int) -> bool:
 
 
 def _execute_single(
-    node: ScriptNode,
-    executor_factory: Callable[[ScriptNode], Executor],
-    execution_fn: Callable[[Any, ScriptNode], ExecutionStats | None],
+    node: Any,
+    executor_factory: Callable[[Any], Executor],
+    execution_fn: Callable[[Any, Any], ExecutionStats | None],
 ) -> ExecutionResult:
-    """Execute a single script and return the result."""
+    """Execute a single node and return the result."""
     start_time = datetime.now()
     executor = None
     try:
@@ -269,9 +261,9 @@ def _create_worker(
     ready: ReadyList,
     results: ResultsList,
     total_count: int,
-    executor_factory: Callable[[ScriptNode], Any],
-    execution_fn: Callable[[Any, ScriptNode], Any],
-    on_script_start: Callable[[ScriptNode], None] | None,
+    executor_factory: Callable[[Any], Any],
+    execution_fn: Callable[[Any, Any], Any],
+    on_script_start: Callable[[Any], None] | None,
     on_script_complete: OnCompleteCallback,
 ) -> Callable[[], None]:
     """
@@ -343,9 +335,9 @@ class EagerBFSStrategy:
         graph: nx.DiGraph,
         resolver: DependencyResolver,
         max_workers: int,
-        executor_factory: Callable[[ScriptNode], Any],
-        execution_fn: Callable[[Any, ScriptNode], Any],
-        on_script_start: Callable[[ScriptNode], None] | None = None,
+        executor_factory: Callable[[Any], Any],
+        execution_fn: Callable[[Any, Any], Any],
+        on_script_start: Callable[[Any], None] | None = None,
         on_script_complete: Callable[[ExecutionResult], None] | None = None,
     ) -> list[ExecutionResult]:
         """Execute scripts eagerly as dependencies complete."""
@@ -439,34 +431,38 @@ class ParallelExecutor:
     def execute(
         self,
         root: Path,
-        executor_factory: Callable[[ScriptNode], Any],
-        execution_fn: Callable[[Any, ScriptNode], Any],
-        on_script_start: Callable[[ScriptNode], None] | None = None,
+        executor_factory: Callable[[Any], Any],
+        execution_fn: Callable[[Any, Any], Any],
+        on_script_start: Callable[[Any], None] | None = None,
         on_script_complete: Callable[[ExecutionResult], None] | None = None,
+        graph: nx.DiGraph | None = None,
     ) -> ParallelExecutionSummary:
         """
-        Execute scripts in parallel respecting dependencies.
+        Execute scripts or custom nodes in parallel respecting dependencies.
 
         Args:
             root: Root path (folder or single file) to find scripts.
-            executor_factory: Factory function to create an executor for a script.
-            execution_fn: Function that executes a script given (executor, node).
+            executor_factory: Factory function to create an executor for a node.
+            execution_fn: Function that executes a node given (executor, node).
+            on_script_start: Optional callback on starting a node.
+            on_script_complete: Optional callback on finishing a node.
+            graph: Optional pre-built dependency graph to execute.
 
         Returns:
             ParallelExecutionSummary with all results.
         """
         start_time = datetime.now()
 
-        # Build dependency graph
-        if root.is_dir():
-            graph = self.resolver.build_folder_graph(root)
-            nodes = list(graph.nodes())
-        else:
-            nodes = create_script_nodes([root])
-            graph = self.resolver.build_graph(nodes)
+        # Build or use provided dependency graph
+        if graph is None:
+            if root.is_dir():
+                graph = self.resolver.build_folder_graph(root)
+            else:
+                nodes = create_script_nodes([root])
+                graph = self.resolver.build_graph(nodes)
 
         # Total count of nodes for summary/completion check
-        total_scripts = len(nodes)
+        total_scripts = len(graph.nodes())
 
         # Execute using the configured strategy
         results = self.execution_strategy.execute(
@@ -602,8 +598,10 @@ def get_execution_strategy(strategy_name: str):
 
 def run_parallel_execution(
     cli_params: CLIRuntimeParams,
-    execution_fn: Callable[[Executor, ScriptNode, bool], ExecutionStats],
+    execution_fn: Callable[[Executor, Any, bool], ExecutionStats],
     execution_mode: ExecutionMode = ExecutionMode.RUN,
+    graph: nx.DiGraph | None = None,
+    executor_factory_override: Callable[[Any], Executor] | None = None,
 ) -> ParallelExecutionSummary:
     """
     Run parallel execution for directory inputs, or single-script execution
@@ -651,7 +649,7 @@ def run_parallel_execution(
 
     # Merge CLI params with config file
     edialect, parallelism = merge_runtime_config(cli_params, config)
-    if not pathlib_input.exists() or len(files) == 1:
+    if not (pathlib_input.exists() or graph) or (len(files) == 1 and not graph):
         # Inline query - use polished single-script execution
 
         refresh_count = run_single_script_execution(
@@ -683,7 +681,7 @@ def run_parallel_execution(
             total_duration=0.0,
             results=[],
         )
-    # Multiple files - use parallel execution
+    # Multiple files or physical graph - use parallel execution
     config_path_str = str(config.source_path) if config.source_path else None
     show_execution_info(
         input_type, input_name, edialect.value, cli_params.debug, config_path_str
@@ -699,13 +697,15 @@ def run_parallel_execution(
         execution_strategy=strategy,
     )
 
+    execution_plan = graph
     # Get execution plan for display
-    if pathlib_input.is_dir():
-        execution_plan = parallel_exec.get_folder_execution_plan(pathlib_input)
-    elif pathlib_input.is_file():
-        execution_plan = parallel_exec.get_execution_plan([pathlib_input])
-    else:
-        raise FileNotFoundError(f"Input path '{pathlib_input}' does not exist.")
+    if execution_plan is None:
+        if pathlib_input.is_dir():
+            execution_plan = parallel_exec.get_folder_execution_plan(pathlib_input)
+        elif pathlib_input.is_file():
+            execution_plan = parallel_exec.get_execution_plan([pathlib_input])
+        else:
+            raise FileNotFoundError(f"Input path '{pathlib_input}' does not exist.")
 
     num_edges = execution_plan.number_of_edges()
     num_nodes = execution_plan.number_of_nodes()
@@ -714,8 +714,8 @@ def run_parallel_execution(
         num_nodes, num_edges, parallelism, cli_params.execution_strategy
     )
 
-    # Factory to create executor for each script
-    def executor_factory(node: ScriptNode) -> Executor:
+    # Factory to create executor for each node
+    def default_executor_factory(node: ScriptNode) -> Executor:
         return create_executor_for_script(
             node,
             cli_params.param,
@@ -726,8 +726,10 @@ def run_parallel_execution(
             cli_params.debug_file,
         )
 
+    executor_factory = executor_factory_override or default_executor_factory
+
     # Wrap execution_fn to pass quiet=True for parallel execution and return stats
-    def quiet_execution_fn(exec: Executor, node: ScriptNode) -> ExecutionStats | None:
+    def quiet_execution_fn(exec: Executor, node: Any) -> ExecutionStats | None:
         return execution_fn(exec, node, True)
 
     # Run parallel execution
@@ -736,6 +738,7 @@ def run_parallel_execution(
         executor_factory=executor_factory,
         execution_fn=quiet_execution_fn,
         on_script_complete=show_script_result,
+        graph=execution_plan,
     )
 
     # For dry-run refresh, print collected SQL after all scripts complete

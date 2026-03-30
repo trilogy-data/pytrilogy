@@ -1,9 +1,11 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, Union
+from typing_extensions import TypeAlias
 
 import networkx as nx
 
+from trilogy.execution.state import StaleAsset
 from trilogy.parsing.exceptions import ParseError
 
 
@@ -35,6 +37,29 @@ class ScriptNode:
 
     def __repr__(self):
         return f"ScriptNode({self.path.name})"
+
+
+@dataclass(frozen=True)
+class PhysicalRefreshNode:
+    """Represents a physical data address to be refreshed."""
+
+    address: str
+    owner_script: ScriptNode
+    assets: list[StaleAsset]
+
+    def __hash__(self):
+        return hash(self.address)
+
+    def __eq__(self, other):
+        if not isinstance(other, PhysicalRefreshNode):
+            return False
+        return self.address == other.address
+
+    def __repr__(self):
+        return f"PhysicalRefreshNode({self.address})"
+
+
+ExecutionNode: TypeAlias = Union[ScriptNode, PhysicalRefreshNode]
 
 
 class DependencyStrategy(Protocol):

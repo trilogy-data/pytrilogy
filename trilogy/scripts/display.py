@@ -47,16 +47,17 @@ class ResultSet:
 
 
 @dataclass(frozen=True)
-class LogicalRefreshAssetDisplay:
+class StaleDataSourceEntry:
     datasource_id: str
-    reason: str
-    logical_path: Path
+    referenced_in: list[Path]
+    reason: str | None = None
 
 
 @dataclass
-class PhysicalRefreshAssetDisplayGroup:
-    physical_path: Path
-    logical_assets: list[LogicalRefreshAssetDisplay]
+class PhysicalDataGroup:
+    data_address: str
+    datasources: list[StaleDataSourceEntry]
+    common_reason: str | None = None
 
 
 class SetRichMode:
@@ -633,9 +634,9 @@ def show_stale_assets(stale_assets: list) -> None:
 
 
 def show_grouped_refresh_assets(
-    grouped_assets: list[PhysicalRefreshAssetDisplayGroup],
+    grouped_assets: list[PhysicalDataGroup],
 ) -> None:
-    """Display stale assets grouped by the physical file that owns them."""
+    """Display stale assets grouped by physical data address."""
     if RICH_AVAILABLE and console is not None:
         stale_table = Table(
             title="Stale Assets to Refresh",
@@ -643,34 +644,43 @@ def show_grouped_refresh_assets(
             header_style="bold yellow",
             box=box.MINIMAL_DOUBLE_HEAD,
         )
-        stale_table.add_column("Physical File", style="cyan")
-        stale_table.add_column("Logical File", style="white")
+        stale_table.add_column("Data Object", style="cyan")
         stale_table.add_column("Datasource", style="white")
         stale_table.add_column("Reason", style="yellow")
+        stale_table.add_column("Files", style="dim")
 
         for group in grouped_assets:
-            physical_label = str(group.physical_path)
-            for idx, asset in enumerate(group.logical_assets):
+            first_group_row = True
+            for ds in group.datasources:
+                files_str = ", ".join(str(f) for f in ds.referenced_in)
+                
+                # Show common reason on the first row of the group, 
+                # otherwise show specific reason if it exists and differs.
+                reason_to_show = ""
+                if first_group_row and group.common_reason:
+                    reason_to_show = group.common_reason
+                elif ds.reason:
+                    reason_to_show = ds.reason
+                
                 stale_table.add_row(
-                    physical_label if idx == 0 else "",
-                    str(asset.logical_path),
-                    asset.datasource_id,
-                    asset.reason,
+                    group.data_address if first_group_row else "",
+                    ds.datasource_id,
+                    reason_to_show,
+                    files_str,
                 )
+                first_group_row = False
 
         console.print(stale_table)
         return
 
     echo(style("Stale Assets to Refresh:", fg="yellow", bold=True))
     for group in grouped_assets:
-        echo(f"  {group.physical_path}")
-        for asset in group.logical_assets:
-            logical_label = (
-                f" via {asset.logical_path.name}"
-                if asset.logical_path != group.physical_path
-                else ""
-            )
-            echo(f"    {asset.datasource_id}{logical_label}: {asset.reason}")
+        reason_label = f" [{group.common_reason}]" if group.common_reason else ""
+        echo(f"  {group.data_address}{reason_label}")
+        for ds in group.datasources:
+            files_str = ", ".join(str(f) for f in ds.referenced_in)
+            ds_reason = f": {ds.reason}" if ds.reason else ""
+            echo(f"    {ds.datasource_id}{ds_reason} [{files_str}]")
 
 
 def show_dry_run_queries(results: "list[ExecutionResult]") -> None:
@@ -690,7 +700,7 @@ def show_dry_run_queries(results: "list[ExecutionResult]") -> None:
 def show_refresh_plan(
     stale_assets: list,
     watermarks: dict,
-    grouped_assets: list[PhysicalRefreshAssetDisplayGroup] | None = None,
+    grouped_assets: list[PhysicalDataGroup] | None = None,
 ) -> None:
     """Display refresh plan showing watermarks and stale assets for approval."""
     show_watermarks(watermarks)

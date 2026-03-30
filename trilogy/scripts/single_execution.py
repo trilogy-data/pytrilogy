@@ -232,8 +232,11 @@ def execute_refresh_mode(
     if interactive and plan.refresh_assets:
         import click
 
+        addr_map = {
+            ds_id: ds.safe_address for ds_id, ds in exec.environment.datasources.items()
+        }
         grouped_assets = (
-            _group_assets_for_script(script_path, plan.refresh_assets)
+            _group_assets_for_script(script_path, plan.refresh_assets, addr_map)
             if script_path is not None
             else None
         )
