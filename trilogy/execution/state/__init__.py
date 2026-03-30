@@ -1,7 +1,10 @@
 from trilogy.execution.state.cache import ColumnStatsCache, InMemoryColumnStatsCache
 from trilogy.execution.state.state_store import (
     BaseStateStore,
+    RefreshPlan,
     RefreshResult,
+    create_refresh_plan,
+    execute_refresh_plan,
     refresh_stale_assets,
 )
 from trilogy.execution.state.watermarks import (
@@ -20,7 +23,10 @@ __all__ = [
     "ColumnStatsCache",
     "InMemoryColumnStatsCache",
     "BaseStateStore",
+    "RefreshPlan",
     "RefreshResult",
+    "create_refresh_plan",
+    "execute_refresh_plan",
     "refresh_stale_assets",
     "DatasourceWatermark",
     "StaleAsset",

@@ -201,60 +201,58 @@ def execute_refresh_mode(
     print_watermarks: bool = False,
     dry_run: bool = False,
     interactive: bool = False,
+    script_path=None,
 ) -> RefreshResult:
     """Execute refresh mode to update stale assets."""
     from trilogy.execution.state import (
-        DatasourceWatermark,
-        StaleAsset,
-        refresh_stale_assets,
+        RefreshResult as StateRefreshResult,
+    )
+    from trilogy.execution.state import (
+        create_refresh_plan,
     )
     from trilogy.scripts.display import (
         print_warning,
         show_refresh_plan,
         show_watermarks,
     )
+    from trilogy.scripts.refresh import _group_assets_for_script
 
-    def on_stale_found(stale_count: int, root_assets: int, all_assets: int) -> None:
-        if stale_count == 0:
-            print_info(
-                f"No stale assets found ({root_assets}/{all_assets} root assets)"
-            )
-        else:
-            label = "Would refresh" if dry_run else "Found"
-            print_warning(f"{label} {stale_count} stale asset(s)")
+    plan = create_refresh_plan(exec, force_sources=force_sources)
+    if plan.stale_count == 0:
+        print_info(
+            f"No stale assets found ({plan.root_assets}/{plan.all_assets} root assets)"
+        )
+    else:
+        label = "Would refresh" if dry_run else "Found"
+        print_warning(f"{label} {plan.stale_count} stale asset(s)")
 
-    def on_refresh(asset_id: str, reason: str) -> None:
-        label = "Would refresh" if dry_run else "Refreshing"
-        print_info(f"  {label} {asset_id}: {reason}")
+    if print_watermarks:
+        show_watermarks(plan.watermarks, plan.concept_max_watermarks)
 
-    def on_watermarks(
-        watermarks: dict[str, DatasourceWatermark], env_max: dict
-    ) -> None:
-        if print_watermarks:
-            show_watermarks(watermarks, env_max)
-
-    def on_refresh_query(ds_id: str, sql: str) -> None:
-        if dry_run:
-            print_info(f"\n-- {ds_id}\n{sql}")
-
-    def on_approval(
-        stale_assets: list[StaleAsset], watermarks: dict[str, DatasourceWatermark]
-    ) -> bool:
+    if interactive and plan.refresh_assets:
         import click
 
-        show_refresh_plan(stale_assets, watermarks)
-        return click.confirm("\nProceed with refresh?", default=True)
-
-    result = refresh_stale_assets(
-        exec,
-        on_stale_found=on_stale_found,
-        on_refresh=on_refresh,
-        on_watermarks=on_watermarks,
-        force_sources=force_sources,
-        on_refresh_query=on_refresh_query,
-        on_approval=on_approval if interactive else None,
-        dry_run=dry_run,
-    )
+        grouped_assets = (
+            _group_assets_for_script(script_path, plan.refresh_assets)
+            if script_path is not None
+            else None
+        )
+        show_refresh_plan(
+            plan.refresh_assets,
+            plan.watermarks,
+            grouped_assets=grouped_assets,
+        )
+        if not click.confirm("\nProceed with refresh?", default=True):
+            result = StateRefreshResult(
+                stale_count=plan.stale_count,
+                refreshed_count=0,
+                root_assets=plan.root_assets,
+                all_assets=plan.all_assets,
+            )
+        else:
+            result = _execute_refresh_plan(exec, plan, dry_run)
+    else:
+        result = _execute_refresh_plan(exec, plan, dry_run)
 
     if result.had_stale:
         if dry_run:
@@ -266,4 +264,28 @@ def execute_refresh_mode(
 
     return RefreshResult(
         refreshed_count=result.refreshed_count, had_stale=result.had_stale
+    )
+
+
+def _execute_refresh_plan(
+    exec: Executor,
+    plan,
+    dry_run: bool,
+):
+    from trilogy.execution.state import execute_refresh_plan
+
+    def on_refresh(asset_id: str, reason: str) -> None:
+        label = "Would refresh" if dry_run else "Refreshing"
+        print_info(f"  {label} {asset_id}: {reason}")
+
+    def on_refresh_query(ds_id: str, sql: str) -> None:
+        if dry_run:
+            print_info(f"\n-- {ds_id}\n{sql}")
+
+    return execute_refresh_plan(
+        exec,
+        plan,
+        on_refresh=on_refresh,
+        on_refresh_query=on_refresh_query,
+        dry_run=dry_run,
     )

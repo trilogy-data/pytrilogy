@@ -301,6 +301,106 @@ class RefreshResult:
         return self.stale_count > 0
 
 
+@dataclass
+class RefreshPlan:
+    """Computed refresh plan before any assets are updated."""
+
+    stale_assets: list[StaleAsset]
+    forced_assets: list[StaleAsset]
+    watermarks: dict[str, DatasourceWatermark]
+    concept_max_watermarks: dict[str, UpdateKey]
+    root_assets: int
+    all_assets: int
+
+    @property
+    def refresh_assets(self) -> list[StaleAsset]:
+        return self.stale_assets + self.forced_assets
+
+    @property
+    def stale_count(self) -> int:
+        return len(self.refresh_assets)
+
+    @property
+    def had_stale(self) -> bool:
+        return self.stale_count > 0
+
+
+def create_refresh_plan(
+    executor: "Executor",
+    force_sources: set[str] | None = None,
+    cache: ColumnStatsCache | None = None,
+) -> RefreshPlan:
+    """Compute which assets would be refreshed without executing updates."""
+
+    state_store = BaseStateStore(cache=cache)
+    force_sources = force_sources or set()
+
+    stale_assets = state_store.get_stale_assets(
+        executor.environment, executor, skip_datasources=force_sources
+    )
+
+    stale_ids = {a.datasource_id for a in stale_assets}
+    forced_assets: list[StaleAsset] = []
+    for ds in executor.environment.datasources.values():
+        if ds.identifier in force_sources and ds.identifier not in stale_ids:
+            forced_assets.append(
+                StaleAsset(datasource_id=ds.identifier, reason="forced rebuild")
+            )
+
+    root_assets = sum(
+        1 for asset in executor.environment.datasources.values() if asset.is_root
+    )
+    all_assets = len(executor.environment.datasources)
+
+    return RefreshPlan(
+        stale_assets=stale_assets,
+        forced_assets=forced_assets,
+        watermarks=state_store.watermarks,
+        concept_max_watermarks=state_store.concept_max_watermarks,
+        root_assets=root_assets,
+        all_assets=all_assets,
+    )
+
+
+def execute_refresh_plan(
+    executor: "Executor",
+    plan: RefreshPlan,
+    on_refresh: Callable[[str, str], None] | None = None,
+    on_refresh_query: Callable[[str, str], None] | None = None,
+    dry_run: bool = False,
+) -> RefreshResult:
+    """Execute a previously computed refresh plan."""
+
+    refreshed = 0
+    remaining_stale = {a.datasource_id for a in plan.refresh_assets}
+    for asset in plan.refresh_assets:
+        remaining_stale.discard(asset.datasource_id)
+        hidden = {
+            ds_id: executor.environment.datasources.pop(ds_id)
+            for ds_id in remaining_stale
+            if ds_id in executor.environment.datasources
+        }
+        try:
+            if on_refresh:
+                on_refresh(asset.datasource_id, asset.reason)
+            datasource = executor.environment.datasources[asset.datasource_id]
+            sql = executor.update_datasource(
+                datasource, keys=asset.filters, dry_run=dry_run
+            )
+            if on_refresh_query and sql is not None:
+                on_refresh_query(asset.datasource_id, sql)
+            refreshed += 1
+        finally:
+            executor.environment.datasources.update(hidden)
+
+    return RefreshResult(
+        stale_count=plan.stale_count,
+        refreshed_count=refreshed,
+        root_assets=plan.root_assets,
+        all_assets=plan.all_assets,
+    )
+
+
 def refresh_stale_assets(
     executor: "Executor",
     on_stale_found: Callable[[int, int, int], None] | None = None,
@@ -328,67 +428,31 @@ def refresh_stale_assets(
         force_sources: Optional set of datasource names to force rebuild (skip detection)
         cache: Optional column stats cache to avoid redundant metadata DB queries
     """
-    state_store = BaseStateStore(cache=cache)
-    force_sources = force_sources or set()
-
-    stale_assets = state_store.get_stale_assets(
-        executor.environment, executor, skip_datasources=force_sources
+    plan = create_refresh_plan(
+        executor,
+        force_sources=force_sources,
+        cache=cache,
     )
-
-    stale_ids = {a.datasource_id for a in stale_assets}
-    forced_assets: list[StaleAsset] = []
-    for ds in executor.environment.datasources.values():
-        if ds.identifier in force_sources and ds.identifier not in stale_ids:
-            forced_assets.append(
-                StaleAsset(datasource_id=ds.identifier, reason="forced rebuild")
-            )
 
     if on_watermarks:
-        on_watermarks(state_store.watermarks, state_store.concept_max_watermarks)
-    root_assets = sum(
-        1 for asset in executor.environment.datasources.values() if asset.is_root
-    )
-    all_assets = len(executor.environment.datasources)
-
-    all_refresh_assets = stale_assets + forced_assets
+        on_watermarks(plan.watermarks, plan.concept_max_watermarks)
 
     if on_stale_found:
-        on_stale_found(len(all_refresh_assets), root_assets, all_assets)
+        on_stale_found(plan.stale_count, plan.root_assets, plan.all_assets)
 
-    if on_approval and all_refresh_assets:
-        if not on_approval(all_refresh_assets, state_store.watermarks):
+    if on_approval and plan.refresh_assets:
+        if not on_approval(plan.refresh_assets, plan.watermarks):
             return RefreshResult(
-                stale_count=len(all_refresh_assets),
+                stale_count=plan.stale_count,
                 refreshed_count=0,
-                root_assets=root_assets,
-                all_assets=all_assets,
+                root_assets=plan.root_assets,
+                all_assets=plan.all_assets,
             )
 
-    refreshed = 0
-    remaining_stale = {a.datasource_id for a in all_refresh_assets}
-    for asset in all_refresh_assets:
-        remaining_stale.discard(asset.datasource_id)
-        hidden = {
-            ds_id: executor.environment.datasources.pop(ds_id)
-            for ds_id in remaining_stale
-            if ds_id in executor.environment.datasources
-        }
-        try:
-            if on_refresh:
-                on_refresh(asset.datasource_id, asset.reason)
-            datasource = executor.environment.datasources[asset.datasource_id]
-            sql = executor.update_datasource(
-                datasource, keys=asset.filters, dry_run=dry_run
-            )
-            if on_refresh_query and sql is not None:
-                on_refresh_query(asset.datasource_id, sql)
-            refreshed += 1
-        finally:
-            executor.environment.datasources.update(hidden)
-
-    return RefreshResult(
-        stale_count=len(all_refresh_assets),
-        refreshed_count=refreshed,
-        root_assets=root_assets,
-        all_assets=all_assets,
+    return execute_refresh_plan(
+        executor,
+        plan,
+        on_refresh=on_refresh,
+        on_refresh_query=on_refresh_query,
+        dry_run=dry_run,
     )

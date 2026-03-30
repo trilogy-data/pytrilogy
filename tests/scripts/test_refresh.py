@@ -1,6 +1,8 @@
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from click.testing import CliRunner
 
 from trilogy import Dialects
 from trilogy.core.models.datasource import UpdateKey, UpdateKeyType
@@ -11,6 +13,8 @@ from trilogy.execution.state import (
 )
 from trilogy.scripts.dependency import ScriptNode
 from trilogy.scripts.display import (
+    LogicalRefreshAssetDisplay,
+    PhysicalRefreshAssetDisplayGroup,
     is_rich_available,
     set_rich_mode,
     show_refresh_plan,
@@ -19,6 +23,7 @@ from trilogy.scripts.display import (
 )
 from trilogy.scripts.refresh import _prompt_approval, execute_script_for_refresh
 from trilogy.scripts.single_execution import execute_refresh_mode
+from trilogy.scripts.trilogy import cli
 
 requires_rich = pytest.mark.skipif(
     not is_rich_available(), reason="rich is not installed"
@@ -46,6 +51,26 @@ def _sample_stale_assets() -> list[StaleAsset]:
             datasource_id="target_orders",
             reason="incremental key 'order_date' behind: 2024-01-10 < 2024-01-15",
         ),
+    ]
+
+
+def _sample_grouped_assets() -> list[PhysicalRefreshAssetDisplayGroup]:
+    return [
+        PhysicalRefreshAssetDisplayGroup(
+            physical_path=Path("base.preql"),
+            logical_assets=[
+                LogicalRefreshAssetDisplay(
+                    datasource_id="target_orders",
+                    reason="forced rebuild",
+                    logical_path=Path("base.preql"),
+                ),
+                LogicalRefreshAssetDisplay(
+                    datasource_id="target_orders",
+                    reason="forced rebuild",
+                    logical_path=Path("consumer.preql"),
+                ),
+            ],
+        )
     ]
 
 
@@ -169,6 +194,19 @@ def test_show_refresh_plan_plain(capsys):
     captured = capsys.readouterr()
     assert "Watermarks:" in captured.out
     assert "Stale Assets to Refresh" in captured.out
+    assert "target_orders" in captured.out
+
+
+def test_show_refresh_plan_grouped_plain(capsys):
+    with set_rich_mode(False):
+        show_refresh_plan(
+            _sample_stale_assets(),
+            _sample_watermarks(),
+            grouped_assets=_sample_grouped_assets(),
+        )
+    captured = capsys.readouterr()
+    assert "base.preql" in captured.out
+    assert "via consumer.preql" in captured.out
     assert "target_orders" in captured.out
 
 
@@ -458,6 +496,61 @@ def test_execute_refresh_mode_with_watermarks(capsys):
     assert result.refreshed_count == 1
     captured = capsys.readouterr()
     assert "Watermarks:" in captured.out
+
+
+def test_refresh_directory_interactive_aggregates_plan(tmp_path):
+    source_file = tmp_path / "source.preql"
+    source_file.write_text(
+        """
+key event_id int;
+property event_id.event_ts datetime;
+
+root datasource source_events (
+    event_id: event_id,
+    event_ts: event_ts
+)
+grain (event_id)
+query '''
+SELECT 1 as event_id, TIMESTAMP '2024-01-10 12:00:00' as event_ts
+UNION ALL
+SELECT 2 as event_id, TIMESTAMP '2024-01-15 12:00:00' as event_ts
+''';
+"""
+    )
+
+    base_file = tmp_path / "base.preql"
+    base_file.write_text(
+        """
+import source;
+
+datasource target_events (
+    event_id: event_id,
+    event_ts: event_ts
+)
+grain (event_id)
+address target_events_table
+incremental by event_ts;
+"""
+    )
+
+    consumer_file = tmp_path / "consumer.preql"
+    consumer_file.write_text(
+        """
+import base;
+"""
+    )
+
+    runner = CliRunner()
+    with set_rich_mode(False), patch("click.confirm", return_value=True) as confirm:
+        result = runner.invoke(
+            cli,
+            ["refresh", str(tmp_path), "duckdb", "--interactive"],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert confirm.call_count == 1
+    assert "base.preql" in result.output
+    assert "via consumer.preql" in result.output
 
 
 def test_refresh_stale_assets_excludes_peer_stale_from_planner():

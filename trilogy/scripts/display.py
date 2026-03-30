@@ -1,6 +1,7 @@
 """Display helpers for prettier CLI output with configurable Rich support."""
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from click import echo, style
@@ -43,6 +44,19 @@ FETCH_LIMIT = 51
 class ResultSet:
     rows: list[tuple]
     columns: list[str]
+
+
+@dataclass(frozen=True)
+class LogicalRefreshAssetDisplay:
+    datasource_id: str
+    reason: str
+    logical_path: Path
+
+
+@dataclass
+class PhysicalRefreshAssetDisplayGroup:
+    physical_path: Path
+    logical_assets: list[LogicalRefreshAssetDisplay]
 
 
 class SetRichMode:
@@ -618,6 +632,47 @@ def show_stale_assets(stale_assets: list) -> None:
             echo(f"  {asset.datasource_id}: {asset.reason}")
 
 
+def show_grouped_refresh_assets(
+    grouped_assets: list[PhysicalRefreshAssetDisplayGroup],
+) -> None:
+    """Display stale assets grouped by the physical file that owns them."""
+    if RICH_AVAILABLE and console is not None:
+        stale_table = Table(
+            title="Stale Assets to Refresh",
+            show_header=True,
+            header_style="bold yellow",
+            box=box.MINIMAL_DOUBLE_HEAD,
+        )
+        stale_table.add_column("Physical File", style="cyan")
+        stale_table.add_column("Logical File", style="white")
+        stale_table.add_column("Datasource", style="white")
+        stale_table.add_column("Reason", style="yellow")
+
+        for group in grouped_assets:
+            physical_label = str(group.physical_path)
+            for idx, asset in enumerate(group.logical_assets):
+                stale_table.add_row(
+                    physical_label if idx == 0 else "",
+                    str(asset.logical_path),
+                    asset.datasource_id,
+                    asset.reason,
+                )
+
+        console.print(stale_table)
+        return
+
+    echo(style("Stale Assets to Refresh:", fg="yellow", bold=True))
+    for group in grouped_assets:
+        echo(f"  {group.physical_path}")
+        for asset in group.logical_assets:
+            logical_label = (
+                f" via {asset.logical_path.name}"
+                if asset.logical_path != group.physical_path
+                else ""
+            )
+            echo(f"    {asset.datasource_id}{logical_label}: {asset.reason}")
+
+
 def show_dry_run_queries(results: "list[ExecutionResult]") -> None:
     """Display collected dry-run SQL after parallel refresh completes."""
     for r in results:
@@ -635,10 +690,14 @@ def show_dry_run_queries(results: "list[ExecutionResult]") -> None:
 def show_refresh_plan(
     stale_assets: list,
     watermarks: dict,
+    grouped_assets: list[PhysicalRefreshAssetDisplayGroup] | None = None,
 ) -> None:
     """Display refresh plan showing watermarks and stale assets for approval."""
     show_watermarks(watermarks)
-    show_stale_assets(stale_assets)
+    if grouped_assets:
+        show_grouped_refresh_assets(grouped_assets)
+    else:
+        show_stale_assets(stale_assets)
 
 
 def show_execution_plan(

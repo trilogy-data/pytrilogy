@@ -76,6 +76,25 @@ def resolve_with_errors(folder: Path) -> dict:
     return result
 
 
+def resolve_script_with_errors(path: Path) -> dict:
+    try:
+        from _preql_import_resolver import PyImportResolver
+    except ImportError:
+        raise ImportError(
+            "The dependency resolution script could not be found. If this error occured in production, please open an issue on https://github.com/trilogy-data/pytrilogy. "
+            "If developing, please build it by running: maturin develop"
+        )
+    resolver = PyImportResolver()
+
+    result = resolver.resolve(str(path))
+
+    warnings = result.get("warnings", [])
+    parse_errors = [w for w in warnings if "Parse error" in w]
+    if parse_errors:
+        raise ParseError("\n".join(parse_errors))
+    return result
+
+
 class ETLDependencyStrategy:
     """
     Dependency strategy using the Rust-based ETL logic parser.

@@ -551,23 +551,26 @@ def run_single_script_execution(
 
     try:
         if execution_mode == ExecutionMode.RUN:
-            queries = exec.parse_text(text)
+            queries = exec.parse_text(
+                text, root=base if isinstance(base, Path) else None
+            )
             execute_run_mode(exec, queries)
         elif execution_mode == ExecutionMode.INTEGRATION:
-            exec.parse_text(text)
+            exec.parse_text(text, root=base if isinstance(base, Path) else None)
             execute_integration_mode(exec)
         elif execution_mode == ExecutionMode.UNIT:
-            exec.parse_text(text)
+            exec.parse_text(text, root=base if isinstance(base, Path) else None)
             execute_unit_mode(exec)
         elif execution_mode == ExecutionMode.REFRESH:
             rp = refresh_params or RefreshParams()
-            exec.parse_text(text)
+            exec.parse_text(text, root=base if isinstance(base, Path) else None)
             result = execute_refresh_mode(
                 exec,
                 force_sources=set(rp.force_sources) if rp.force_sources else None,
                 print_watermarks=rp.print_watermarks,
                 dry_run=rp.dry_run,
                 interactive=rp.interactive,
+                script_path=base if isinstance(base, Path) else None,
             )
             if debug:
                 flush_debugging_hooks(exec)
