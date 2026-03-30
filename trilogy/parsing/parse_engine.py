@@ -2994,6 +2994,10 @@ class ParseToObjects(Transformer):
         return self.function_factory.create_function(args, FunctionType.HASH, meta)
 
     @v_args(meta=True)
+    def fhex(self, meta, args):
+        return self.function_factory.create_function(args, FunctionType.HEX, meta)
+
+    @v_args(meta=True)
     def fsubstring(self, meta, args):
         return self.function_factory.create_function(args, FunctionType.SUBSTRING, meta)
 

@@ -1080,6 +1080,12 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type=DataType.STRING,
         arg_count=2,
     ),
+    FunctionType.HEX: FunctionConfig(
+        valid_inputs={DataType.STRING},
+        output_purpose=Purpose.PROPERTY,
+        output_type=DataType.STRING,
+        arg_count=1,
+    ),
     FunctionType.GEO_POINT: FunctionConfig(
         valid_inputs={DataType.NUMERIC},
         output_purpose=Purpose.PROPERTY,

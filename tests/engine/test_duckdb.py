@@ -3074,3 +3074,52 @@ def test_gcs_cache_bust_token_unique_per_instance():
     d1 = DuckDBDialect(config=config)
     d2 = DuckDBDialect(config=config)
     assert d1._gcs_cache_bust_token != d2._gcs_cache_bust_token
+
+
+def test_hex_function():
+    environment = Environment()
+    _, queries = environment.parse(
+        """
+    const word <- 'abc';
+    select
+        hex(word) -> word_hex
+    ;
+        """
+    )
+
+    executor = Dialects.DUCK_DB.default_executor(environment=environment)
+    results = executor.execute_query(queries[-1]).fetchall()
+    assert results[0].word_hex == "616263"
+
+
+def test_dense_rank_window():
+    environment = Environment()
+    _, queries = environment.parse(
+        """
+key item_id int;
+property item_id.score int;
+property item_id.item_dense_rank <- dense_rank item_id by score desc;
+
+datasource items (
+    item_id: item_id,
+    score: score
+)
+grain (item_id)
+query '''
+    select 1 as item_id, 10 as score
+    union all select 2, 10
+    union all select 3, 5
+''';
+
+select item_id, score, item_dense_rank
+order by item_id asc;
+        """
+    )
+
+    executor = Dialects.DUCK_DB.default_executor(environment=environment)
+    results = executor.execute_query(queries[-1]).fetchall()
+    # items 1 and 2 tie at score 10 -> dense_rank 1; item 3 at score 5 -> dense_rank 2
+    rows = {r.item_id: r.item_dense_rank for r in results}
+    assert rows[1] == 1
+    assert rows[2] == 1
+    assert rows[3] == 2
