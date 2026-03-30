@@ -457,6 +457,7 @@ def show_parallel_execution_start(
 def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None:
     """Display parallel execution summary."""
     from trilogy.scripts.common import ExecutionStats
+    from trilogy.scripts.dependency import ScriptNode
 
     # Aggregate stats from all results
     total_stats = ExecutionStats()
@@ -490,7 +491,12 @@ def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None
             console.print("\n[bold red]Failed Scripts:[/bold red]")
             for result in summary.results:
                 if not result.success:
-                    console.print(f"  [red]✗[/red] {result.node.path}")
+                    node_label = (
+                        result.node.path
+                        if isinstance(result.node, ScriptNode)
+                        else result.node.address
+                    )
+                    console.print(f"  [red]✗[/red] {node_label}")
                     if result.error:
                         console.print(f"    Error: {result.error}")
     else:
@@ -512,7 +518,12 @@ def show_parallel_execution_summary(summary: "ParallelExecutionSummary") -> None
             print("\nFailed Scripts:")
             for result in summary.results:
                 if not result.success:
-                    print(f"  ✗ {result.node.path}")
+                    node_label = (
+                        result.node.path
+                        if isinstance(result.node, ScriptNode)
+                        else result.node.address
+                    )
+                    print(f"  ✗ {node_label}")
                     if result.error:
                         print(f"    Error: {result.error}")
 
@@ -522,6 +533,7 @@ def show_script_result(
 ) -> None:
     """Display result of a single script execution."""
     from trilogy.scripts.common import format_stats
+    from trilogy.scripts.dependency import PhysicalRefreshNode, ScriptNode
 
     stats_str = ""
     if result.stats:
@@ -531,20 +543,43 @@ def show_script_result(
 
     if RICH_AVAILABLE and console is not None:
         if result.success:
-            console.print(
-                f"  [green]✓[/green] {result.node.path.name} ({result.duration:.2f}s){stats_str}"
-            )
+            if isinstance(result.node, ScriptNode):
+                print(
+                    f"[green]✓[/green] {result.node.path.name} ({result.duration:.2f}s){stats_str}"
+                )
+            elif isinstance(result.node, PhysicalRefreshNode):
+                print(f"{result.node.address} ({result.duration:.2f}s){stats_str}")
+            else:
+                print(str(result))
         else:
-            console.print(
-                f"  [red]✗[/red] {result.node.path.name} ({result.duration:.2f}s) - {result.error}"
-            )
+            if isinstance(result.node, ScriptNode):
+                print(
+                    f"{result.node.path.name} ({result.duration:.2f}s) - {result.error}"
+                )
+            elif isinstance(result.node, PhysicalRefreshNode):
+                print(
+                    f"{result.node.address} ({result.duration:.2f}s) - {result.error}"
+                )
+            else:
+                print(str(result))
+
     else:
         if result.success:
-            print(f"  ✓ {result.node.path.name} ({result.duration:.2f}s){stats_str}")
+            if isinstance(result.node, ScriptNode):
+                print(
+                    f"  ✓ {result.node.path.name} ({result.duration:.2f}s){stats_str}"
+                )
+            else:
+                print(f"  ✓ {result.node.address} ({result.duration:.2f}s){stats_str}")
         else:
-            print(
-                f"  ✗ {result.node.path.name} ({result.duration:.2f}s) - {result.error}"
-            )
+            if isinstance(result.node, ScriptNode):
+                print(
+                    f"  ✗ {result.node.path.name} ({result.duration:.2f}s) - {result.error}"
+                )
+            else:
+                print(
+                    f"  ✗ {result.node.address} ({result.duration:.2f}s) - {result.error}"
+                )
 
 
 def show_watermarks(watermarks: dict, env_max: dict | None = None) -> None:
@@ -685,11 +720,16 @@ def show_grouped_refresh_assets(
 
 def show_dry_run_queries(results: "list[ExecutionResult]") -> None:
     """Display collected dry-run SQL after parallel refresh completes."""
+    from trilogy.scripts.dependency import ScriptNode
+
     for r in results:
         if not (r.success and r.stats and r.stats.refresh_queries):
             continue
         for q in r.stats.refresh_queries:
-            header = f"-- {r.node.path.name}: {q.datasource_id}"
+            node_name = (
+                r.node.path.name if isinstance(r.node, ScriptNode) else r.node.address
+            )
+            header = f"-- {node_name}: {q.datasource_id}"
             if RICH_AVAILABLE and console is not None:
                 console.print(f"\n[dim]{header}[/dim]")
                 console.print(q.sql)
