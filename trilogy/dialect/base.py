@@ -173,6 +173,7 @@ WINDOW_FUNCTION_MAP = {
     WindowType.LAG: window_factory("lag", include_concept=True),
     WindowType.LEAD: window_factory("lead", include_concept=True),
     WindowType.RANK: window_factory("rank"),
+    WindowType.DENSE_RANK: window_factory("dense_rank"),
     WindowType.ROW_NUMBER: window_factory("row_number"),
     WindowType.SUM: window_factory("sum", include_concept=True),
     WindowType.COUNT: window_factory("count", include_concept=True),
@@ -329,6 +330,7 @@ FUNCTION_MAP = {
     FunctionType.RTRIM: lambda x, types: f"RTRIM({x[0]})",
     FunctionType.REPLACE: lambda x, types: f"REPLACE({x[0]},{x[1]},{x[2]})",
     FunctionType.HASH: lambda x, types: hash_from_args(x[0], x[1]),
+    FunctionType.HEX: lambda x, types: f"HEX({x[0]})",
     # FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
     # date types
     FunctionType.DATE_TRUNCATE: lambda x, types: f"date_trunc({x[0]},{x[1]})",

@@ -150,6 +150,7 @@ class Ordering(Enum):
 class WindowType(Enum):
     ROW_NUMBER = "row_number"
     RANK = "rank"
+    DENSE_RANK = "dense_rank"
     LAG = "lag"
     LEAD = "lead"
     SUM = "sum"
@@ -266,6 +267,7 @@ class FunctionType(Enum):
     RTRIM = "rtrim"
     REPLACE = "replace"
     HASH = "hash"
+    HEX = "hex"
 
     # STRING REGEX
     REGEXP_CONTAINS = "regexp_contains"

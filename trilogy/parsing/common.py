@@ -694,7 +694,7 @@ def window_item_to_concept(
         WindowType.COUNT_DISTINCT,
     ):
         datatype = DataType.INTEGER
-    if parent.type == WindowType.RANK:
+    if parent.type in (WindowType.RANK, WindowType.DENSE_RANK):
         datatype = TraitDataType(type=DataType.INTEGER, traits=["rank"])
     return Concept(
         name=name,
