@@ -1,3 +1,5 @@
+import copy
+
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import ConceptSource, DatePart, FunctionType, Purpose
 from trilogy.core.functions import AttrAccess
@@ -35,13 +37,13 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             if concept.purpose == Purpose.CONSTANT
             else Purpose.PROPERTY
         )
-        function = Function.model_construct(
+        function = Function(
             operator=ftype,
             arguments=[concept.reference],
             output_datatype=dtype,
             output_purpose=default_type,
         )
-        new_concept = Concept.model_construct(
+        new_concept = Concept(
             name=f"{concept.name}.{fname}",
             datatype=function.output_datatype,
             purpose=default_type,
@@ -61,19 +63,19 @@ def generate_date_concepts(concept: Concept, environment: Environment):
         address = concept.address + f".{grain.value}_start"
         if address in environment.concepts:
             continue
-        function = Function.model_construct(
+        function = Function(
             operator=FunctionType.DATE_TRUNCATE,
             arguments=[concept.reference, grain],
             output_datatype=DataType.DATE,
             output_purpose=default_type,
             arg_count=2,
         )
-        new_concept = Concept.model_construct(
+        new_concept = Concept(
             name=f"{concept.name}.{grain.value}_start",
             datatype=DataType.DATE,
             purpose=Purpose.PROPERTY,
             lineage=function,
-            grain=concept.grain.model_copy(),
+            grain=copy.copy(concept.grain),
             namespace=concept.namespace,
             keys=set(
                 [concept.address],
@@ -109,18 +111,18 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
             if concept.purpose == Purpose.CONSTANT
             else Purpose.PROPERTY
         )
-        const_function = Function.model_construct(
+        const_function = Function(
             operator=ftype,
             arguments=[concept.reference],
             output_datatype=datatype,
             output_purpose=default_type,
         )
-        new_concept = Concept.model_construct(
+        new_concept = Concept(
             name=f"{concept.name}.{fname}",
             datatype=datatype,
             purpose=default_type,
             lineage=const_function,
-            grain=concept.grain.model_copy(),
+            grain=copy.copy(concept.grain),
             namespace=concept.namespace,
             keys=set(
                 [concept.address],
@@ -146,13 +148,13 @@ def generate_key_concepts(concept: Concept, environment: Environment):
             continue
         fname = ftype.name.lower()
         default_type = Purpose.METRIC
-        const_function: Function = Function.model_construct(
+        const_function: Function = Function(
             operator=ftype,
             output_datatype=DataType.INTEGER,
             output_purpose=default_type,
             arguments=[concept.reference],
         )
-        new_concept = Concept.model_construct(
+        new_concept = Concept(
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
             purpose=default_type,
@@ -298,7 +300,7 @@ def generate_related_concepts(
 
     if isinstance(concept.datatype, StructType):
         for key, value in concept.datatype.fields_map.items():
-            auto = Concept.model_construct(
+            auto = Concept(
                 name=key,
                 datatype=arg_to_datatype(value),
                 purpose=Purpose.PROPERTY,

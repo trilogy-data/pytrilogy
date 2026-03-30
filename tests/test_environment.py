@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import TypeAdapter, ValidationError
 from pytest import raises
 
 from trilogy import Dialects
@@ -53,7 +54,8 @@ def test_concept_rehydration():
         "modifiers": [],
         "pseudonyms": [],
     }
-    Concept.model_validate(test)
+    _ta = TypeAdapter(Concept)
+    _ta.validate_python(test)
     test["lineage"]["arguments"] = [
         {
             "address": "local.order_timestamp",
@@ -66,8 +68,8 @@ def test_concept_rehydration():
         },
         "monthz",
     ]
-    with raises(TypeError):
-        Concept.model_validate(test)
+    with raises((TypeError, ValidationError)):
+        _ta.validate_python(test)
 
 
 def test_environment_serialization(test_environment: Environment):

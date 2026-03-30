@@ -80,7 +80,7 @@ def datatype_to_field_prompt(
     if isinstance(datatype, NumericType):
         return f"NUMERIC({datatype.precision}, {datatype.scale})>"
     if isinstance(datatype, DataTyped):
-        return datatype_to_field_prompt(datatype.output_datatype)
+        return datatype_to_field_prompt(datatype.output_datatype)  # type: ignore[attr-defined]
     if isinstance(datatype, StructComponent):
         return f"{datatype.name}: {datatype_to_field_prompt(datatype.type)}"
     if isinstance(datatype, (int, float, str)):

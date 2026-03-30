@@ -1208,7 +1208,7 @@ class FunctionFactory:
             else:
                 output_purpose = Purpose.PROPERTY
 
-        return Function(
+        func = Function(
             operator=operator,
             arguments=full_args,  # type: ignore
             output_datatype=final_output_type,
@@ -1216,6 +1216,8 @@ class FunctionFactory:
             valid_inputs=valid_inputs,
             arg_count=arg_count,
         )
+        func.validate_arguments()
+        return func
 
 
 def create_function_derived_concept(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 from abc import ABC
 from dataclasses import dataclass
@@ -18,16 +19,6 @@ from typing import (
     Tuple,
     Type,
     Union,
-)
-
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    ValidationInfo,
-    computed_field,
-    field_validator,
-    model_validator,
 )
 
 from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
@@ -114,7 +105,8 @@ def compute_safe_address(namespace: str, name: str) -> str:
     return name.replace(".", "_")
 
 
-class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
+@dataclass
+class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable):
     address: str
     datatype: CONCRETE_TYPES = DataType.UNKNOWN
     metadata: Optional["Metadata"] = None
@@ -144,6 +136,9 @@ class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
             return self.address == other.address
         return False
 
+    def __hash__(self):
+        return hash(self.address)
+
     @property
     def namespace(self):
         return self.address.rsplit(".", 1)[0]
@@ -164,13 +159,13 @@ class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> ConceptRef:
         if self.address == source.address:
-            return ConceptRef.model_construct(
+            return ConceptRef(
                 address=target.address, datatype=target.datatype, metadata=self.metadata
             )
         return self
 
     def with_namespace(self, namespace: str):
-        return ConceptRef.model_construct(
+        return ConceptRef(
             address=address_with_namespace(self.address, namespace),
             datatype=self.datatype,
             metadata=self.metadata,
@@ -201,9 +196,8 @@ class ConceptRef(Addressable, Namespaced, DataTyped, Mergeable, BaseModel):
         return self
 
 
+@dataclass(eq=False)
 class UndefinedConcept(ConceptRef):
-    pass
-
     @property
     def reference(self):
         return self
@@ -226,21 +220,18 @@ def address_with_namespace(address: str, namespace: str) -> str:
     return f"{namespace}.{address}"
 
 
+@dataclass
 class Parenthetical(
     DataTyped,
     ConceptArgs,
     Mergeable,
     Namespaced,
-    BaseModel,
 ):
     content: "Expr"
 
-    @field_validator("content", mode="before")
-    @classmethod
-    def content_validator(cls, v, info: ValidationInfo):
-        if isinstance(v, Concept):
-            return v.reference
-        return v
+    def __post_init__(self):
+        if isinstance(self.content, Concept):
+            self.content = self.content.reference
 
     def __add__(self, other) -> Union["Parenthetical", "Conditional"]:
         if other is None:
@@ -256,7 +247,7 @@ class Parenthetical(
         return f"({str(self.content)})"
 
     def with_namespace(self, namespace: str) -> Parenthetical:
-        return Parenthetical.model_construct(
+        return Parenthetical(
             content=(
                 self.content.with_namespace(namespace)
                 if isinstance(self.content, Namespaced)
@@ -265,7 +256,7 @@ class Parenthetical(
         )
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return Parenthetical.model_construct(
+        return Parenthetical(
             content=(
                 self.content.with_merge(source, target, modifiers)
                 if isinstance(self.content, Mergeable)
@@ -274,7 +265,7 @@ class Parenthetical(
         )
 
     def with_reference_replacement(self, source, target):
-        return Parenthetical.model_construct(
+        return Parenthetical(
             content=(
                 self.content.with_reference_replacement(source, target)
                 if isinstance(self.content, Mergeable)
@@ -309,24 +300,19 @@ class Parenthetical(
         return arg_to_datatype(self.content)
 
 
-class Conditional(Mergeable, ConceptArgs, Namespaced, DataTyped, BaseModel):
+@dataclass
+class Conditional(Mergeable, ConceptArgs, Namespaced, DataTyped):
     left: Expr
     right: Expr
     operator: BooleanOperator
 
-    @field_validator("left", mode="before")
-    @classmethod
-    def left_validator(cls, v, info: ValidationInfo):
-        if isinstance(v, Concept):
-            return v.reference
-        return v
-
-    @field_validator("right", mode="before")
-    @classmethod
-    def right_validator(cls, v, info: ValidationInfo):
-        if isinstance(v, Concept):
-            return v.reference
-        return v
+    def __post_init__(self):
+        if isinstance(self.left, Concept):
+            self.left = self.left.reference
+        if isinstance(self.right, Concept):
+            self.right = self.right.reference
+        if not isinstance(self.operator, BooleanOperator):
+            self.operator = BooleanOperator(str(self.operator))
 
     def __add__(self, other) -> "Conditional":
         if other is None:
@@ -334,9 +320,7 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, DataTyped, BaseModel):
         elif str(other) == str(self):
             return self
         elif isinstance(other, (Comparison, Conditional, Parenthetical)):
-            return Conditional.model_construct(
-                left=self, right=other, operator=BooleanOperator.AND
-            )
+            return Conditional(left=self, right=other, operator=BooleanOperator.AND)
         raise ValueError(f"Cannot add {self.__class__} and {type(other)}")
 
     def __str__(self):
@@ -354,8 +338,11 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, DataTyped, BaseModel):
             and self.operator == other.operator
         )
 
+    def __hash__(self):
+        return hash(repr(self))
+
     def with_namespace(self, namespace: str) -> "Conditional":
-        return Conditional.model_construct(
+        return Conditional(
             left=(
                 self.left.with_namespace(namespace)
                 if isinstance(self.left, Namespaced)
@@ -372,7 +359,7 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, DataTyped, BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "Conditional":
-        return Conditional.model_construct(
+        return Conditional(
             left=(
                 self.left.with_merge(source, target, modifiers)
                 if isinstance(self.left, Mergeable)
@@ -387,7 +374,7 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, DataTyped, BaseModel):
         )
 
     def with_reference_replacement(self, source, target):
-        return self.__class__.model_construct(
+        return self.__class__(
             left=(
                 self.left.with_reference_replacement(source, target)
                 if isinstance(self.left, Mergeable)
@@ -442,7 +429,8 @@ class Conditional(Mergeable, ConceptArgs, Namespaced, DataTyped, BaseModel):
         return chunks
 
 
-class WhereClause(Mergeable, ConceptArgs, Namespaced, BaseModel):
+@dataclass
+class WhereClause(Mergeable, ConceptArgs, Namespaced):
     conditional: Union[SubselectComparison, Comparison, Conditional, Parenthetical]
 
     def __repr__(self):
@@ -466,30 +454,44 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> Self:
-        return self.__class__.model_construct(
+        return self.__class__(
             conditional=self.conditional.with_merge(source, target, modifiers)
         )
 
     def with_namespace(self, namespace: str) -> Self:
-        return self.__class__.model_construct(
-            conditional=self.conditional.with_namespace(namespace)
-        )
+        return self.__class__(conditional=self.conditional.with_namespace(namespace))
 
     def with_reference_replacement(self, source, target):
-        return self.__class__.model_construct(
+        return self.__class__(
             conditional=self.conditional.with_reference_replacement(source, target)
         )
 
 
+@dataclass
 class HavingClause(WhereClause):
     pass
 
 
-class Grain(Namespaced, BaseModel):
-    components: set[str] = Field(default_factory=set)
+@dataclass
+class Grain(Namespaced):
+    components: set[str] = dc_field(default_factory=set)
     where_clause: Optional["WhereClause"] = None
-    _str: str | None = None
-    _abstract: bool = False
+    _str: Optional[str] = dc_field(default=None, init=False, repr=False, compare=False)
+    _abstract: bool = dc_field(default=False, init=False, repr=False, compare=False)
+
+    def __post_init__(self):
+        if isinstance(self.components, (list, tuple)):
+            output = set()
+            for vc in self.components:
+                if isinstance(vc, Addressable):
+                    output.add(vc._address)
+                else:
+                    output.add(vc)
+            self.components = output
+        if not isinstance(self.components, set):
+            raise ValueError(f"Invalid grain component {self.components}, is not set")
+        if not all(isinstance(x, str) for x in self.components):
+            raise ValueError(f"Invalid component {self.components}")
 
     def without_condition(self):
         return Grain(components=self.components)
@@ -501,7 +503,7 @@ class Grain(Namespaced, BaseModel):
                 new_components.add(target.address)
             else:
                 new_components.add(c)
-        return Grain.model_construct(components=new_components)
+        return Grain(components=new_components)
 
     @classmethod
     def from_concepts(
@@ -513,17 +515,15 @@ class Grain(Namespaced, BaseModel):
     ) -> Grain:
         from trilogy.parsing.common import concepts_to_grain_concepts
 
-        x = Grain.model_construct(
+        return Grain(
             components=concepts_to_grain_concepts(
                 concepts, environment=environment, local_concepts=local_concepts
             ),
             where_clause=where_clause,
         )
 
-        return x
-
     def with_namespace(self, namespace: str) -> "Grain":
-        return Grain.model_construct(
+        return Grain(
             components={address_with_namespace(c, namespace) for c in self.components},
             where_clause=(
                 self.where_clause.with_namespace(namespace)
@@ -531,23 +531,6 @@ class Grain(Namespaced, BaseModel):
                 else None
             ),
         )
-
-    @field_validator("components", mode="before")
-    def component_validator(cls, v, info: ValidationInfo):
-        output = set()
-        if isinstance(v, list):
-            for vc in v:
-                if isinstance(vc, Addressable):
-                    output.add(vc._address)
-                else:
-                    output.add(vc)
-        else:
-            output = v
-        if not isinstance(output, set):
-            raise ValueError(f"Invalid grain component {output}, is not set")
-        if not all(isinstance(x, str) for x in output):
-            raise ValueError(f"Invalid component {output}")
-        return output
 
     def __add__(self, other: "Grain") -> "Grain":
         if not other:
@@ -557,22 +540,19 @@ class Grain(Namespaced, BaseModel):
             if not self.where_clause:
                 where = other.where_clause
             elif not other.where_clause == self.where_clause:
-                where = WhereClause.model_construct(
+                where = WhereClause(
                     conditional=Conditional(
                         left=self.where_clause.conditional,
                         right=other.where_clause.conditional,
                         operator=BooleanOperator.AND,
                     )
                 )
-                # raise NotImplementedError(
-                #     f"Cannot merge grains with where clauses, self {self.where_clause} other {other.where_clause}"
-                # )
         return Grain(
             components=self.components.union(other.components), where_clause=where
         )
 
     def __sub__(self, other: "Grain") -> "Grain":
-        return Grain.model_construct(
+        return Grain(
             components=self.components.difference(other.components),
             where_clause=self.where_clause,
         )
@@ -598,6 +578,9 @@ class Grain(Namespaced, BaseModel):
         if self.components == other.components:
             return True
         return False
+
+    def __hash__(self):
+        return hash(frozenset(self.components))
 
     def issubset(self, other: "Grain"):
         return self.components.issubset(other.components)
@@ -634,7 +617,8 @@ class Grain(Namespaced, BaseModel):
             return self.__add__(other)
 
 
-class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
+@dataclass
+class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced):
     left: Union[
         int,
         str,
@@ -677,22 +661,14 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
     ]
     operator: ComparisonOperator
 
-    @field_validator("left", mode="before")
-    @classmethod
-    def left_validator(cls, v, info: ValidationInfo):
-        if isinstance(v, Concept):
-            return v.reference
-        return v
+    def __post_init__(self):
+        if isinstance(self.left, Concept):
+            self.left = self.left.reference
+        if isinstance(self.right, Concept):
+            self.right = self.right.reference
+        self._validate_types()
 
-    @field_validator("right", mode="before")
-    @classmethod
-    def right_validator(cls, v, info: ValidationInfo):
-        if isinstance(v, Concept):
-            return v.reference
-        return v
-
-    @model_validator(mode="after")
-    def validate_comparison(self):
+    def _validate_types(self):
         left_type = arg_to_datatype(self.left)
         right_type = arg_to_datatype(self.right)
         left_name = (
@@ -707,7 +683,6 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
                     f"Cannot use {self.operator.value} with non-null or boolean value {self.right}"
                 )
         elif self.operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
-
             if isinstance(right_type, ArrayType) and not is_compatible_datatype(
                 left_type, right_type.value_data_type
             ):
@@ -725,8 +700,6 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
                 raise SyntaxError(
                     f"Cannot compare {left_name} ({self.left}) and {right_name} ({self.right}) of different types with operator {self.operator.value} in {str(self)}"
                 )
-
-        return self
 
     def __add__(self, other):
         if other is None:
@@ -760,8 +733,11 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
             and self.operator == other.operator
         )
 
+    def __hash__(self):
+        return hash(repr(self))
+
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return self.__class__.model_construct(
+        return self.__class__(
             left=(
                 self.left.with_merge(source, target, modifiers)
                 if isinstance(self.left, Mergeable)
@@ -776,7 +752,7 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
         )
 
     def with_reference_replacement(self, source, target):
-        return self.__class__.model_construct(
+        return self.__class__(
             left=(
                 self.left.with_reference_replacement(source, target)
                 if isinstance(self.left, Mergeable)
@@ -791,7 +767,7 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
         )
 
     def with_namespace(self, namespace: str):
-        return self.__class__.model_construct(
+        return self.__class__(
             left=(
                 self.left.with_namespace(namespace)
                 if isinstance(self.left, Namespaced)
@@ -836,6 +812,7 @@ class Comparison(ConceptArgs, Mergeable, DataTyped, Namespaced, BaseModel):
         return DataType.BOOL
 
 
+@dataclass(eq=False)
 class SubselectComparison(Comparison):
     def __eq__(self, other):
         if not isinstance(other, SubselectComparison):
@@ -848,6 +825,9 @@ class SubselectComparison(Comparison):
         )
         return comp
 
+    def __hash__(self):
+        return hash(repr(self))
+
     @property
     def row_arguments(self) -> List[ConceptRef]:
         return get_concept_row_arguments(self.left)
@@ -857,18 +837,15 @@ class SubselectComparison(Comparison):
         return [tuple(get_concept_arguments(self.right))]
 
 
-class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-    )
+@dataclass
+class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
     name: str
     datatype: CONCRETE_TYPES
     purpose: Purpose
     derivation: Derivation = Derivation.ROOT
     granularity: Granularity = Granularity.MULTI_ROW
-    metadata: Metadata = Field(
-        default_factory=lambda: Metadata(description=None, line_number=None),
-        validate_default=True,
+    metadata: Metadata = dc_field(
+        default_factory=lambda: Metadata(description=None, line_number=None)
     )
     lineage: Optional[
         Union[
@@ -882,14 +859,54 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             Comparison,
         ]
     ] = None
-    namespace: str = Field(default=DEFAULT_NAMESPACE, validate_default=True)
+    namespace: str = dc_field(default=DEFAULT_NAMESPACE)
     keys: Optional[set[str]] = None
-    grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
-    modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
-    pseudonyms: set[str] = Field(default_factory=set)
+    grain: "Grain" = dc_field(default=None)  # type: ignore
+    modifiers: List[Modifier] = dc_field(default_factory=list)
+    pseudonyms: set[str] = dc_field(default_factory=set)
+
+    def __post_init__(self):
+        self.namespace = self.namespace or DEFAULT_NAMESPACE
+        self.metadata = self.metadata or Metadata()
+        if isinstance(self.datatype, str):
+            self.datatype = DataType(self.datatype)
+        if isinstance(self.keys, (list, tuple)):
+            self.keys = set(self.keys)
+        if isinstance(self.pseudonyms, (list, tuple)):
+            self.pseudonyms = set(self.pseudonyms)
+        if self.purpose == Purpose.AUTO:
+            raise ValueError("Cannot set purpose to AUTO")
+        # parse grain
+        if not self.grain and self.purpose == Purpose.KEY:
+            self.grain = Grain(components={f"{self.namespace}.{self.name}"})
+        elif not self.grain and self.purpose == Purpose.PROPERTY:
+            self.grain = Grain(components=self.keys or set())
+        elif (
+            self.lineage
+            and isinstance(self.lineage, AggregateWrapper)
+            and self.lineage.by
+        ):
+            if not self.grain:
+                self.grain = Grain(components={c.address for c in self.lineage.by})
+        elif not self.grain:
+            self.grain = Grain(components=set())
+        elif isinstance(self.grain, Grain):
+            pass
+        elif isinstance(self.grain, Concept):
+            self.grain = Grain(components={self.grain.address})
+        elif isinstance(self.grain, dict):
+            components = self.grain.get("components", set())
+            if isinstance(components, list):
+                components = set(components)
+            self.grain = Grain(
+                components=components,
+                where_clause=self.grain.get("where_clause"),
+            )
+        else:
+            raise SyntaxError(f"Invalid grain {self.grain} for concept {self.name}")
 
     def duplicate(self) -> Concept:
-        return self.model_copy(deep=True)
+        return copy.deepcopy(self)
 
     def __hash__(self):
         return hash(
@@ -906,7 +923,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
 
     @property
     def reference(self) -> ConceptRef:
-        return ConceptRef.model_construct(
+        return ConceptRef(
             address=self.address,
             datatype=self.output_datatype,
             metadata=self.metadata,
@@ -940,7 +957,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             return new
         if not self.grain.components and not self.lineage and not self.keys:
             return self
-        return self.__class__.model_construct(
+        return self.__class__(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
@@ -962,57 +979,6 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
         )
-
-    @field_validator("namespace", mode="plain")
-    @classmethod
-    def namespace_validation(cls, v):
-        return v or DEFAULT_NAMESPACE
-
-    @field_validator("metadata", mode="before")
-    @classmethod
-    def metadata_validation(cls, v):
-        v = v or Metadata()
-        return v
-
-    @field_validator("purpose", mode="after")
-    @classmethod
-    def purpose_validation(cls, v):
-        if v == Purpose.AUTO:
-            raise ValueError("Cannot set purpose to AUTO")
-        return v
-
-    @field_validator("grain", mode="before")
-    @classmethod
-    def parse_grain(cls, v, info: ValidationInfo) -> Grain:
-
-        # this is silly - rethink how we do grains
-        values = info.data
-
-        if not v and values.get("purpose", None) == Purpose.KEY:
-            v = Grain(
-                components={
-                    f'{values.get("namespace", DEFAULT_NAMESPACE)}.{values["name"]}'
-                }
-            )
-        elif not v and values.get("purpose", None) == Purpose.PROPERTY:
-            v = Grain(components=values.get("keys", set()) or set())
-        elif (
-            "lineage" in values
-            and isinstance(values["lineage"], AggregateWrapper)
-            and values["lineage"].by
-        ):
-            v = Grain(components={c.address for c in values["lineage"].by})
-        elif not v:
-            v = Grain(components=set())
-        elif isinstance(v, Grain):
-            pass
-        elif isinstance(v, Concept):
-            v = Grain(components={v.address})
-        elif isinstance(v, dict):
-            v = Grain.model_validate(v)
-        else:
-            raise SyntaxError(f"Invalid grain {v} for concept {values['name']}")
-        return v
 
     def __eq__(self, other: object):
         if isinstance(other, str):
@@ -1050,7 +1016,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         return compute_safe_address(self.namespace, self.name)
 
     def with_namespace(self, namespace: str) -> Self:
-        return self.__class__.model_construct(
+        return self.__class__(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
@@ -1102,16 +1068,14 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             grain_components: list[ConceptRef | Concept] = [
                 environment.concepts[c].reference for c in grain.components
             ]
-            new_lineage = AggregateWrapper.model_construct(
-                function=new_lineage, by=grain_components
-            )
+            new_lineage = AggregateWrapper(function=new_lineage, by=grain_components)
             final_grain = grain
             keys = set(grain.components)
         elif isinstance(new_lineage, AggregateWrapper) and not new_lineage.by:
             grain_components = [
                 environment.concepts[c].reference for c in grain.components
             ]
-            new_lineage = AggregateWrapper.model_construct(
+            new_lineage = AggregateWrapper(
                 function=new_lineage.function, by=grain_components
             )
             final_grain = grain
@@ -1139,7 +1103,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         new_lineage, final_grain, keys = self.get_select_grain_and_keys(
             grain, environment
         )
-        return self.__class__.model_construct(
+        return self.__class__(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
@@ -1156,7 +1120,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
 
     def with_grain(self, grain: Optional["Grain"] = None) -> Self:
 
-        return self.__class__.model_construct(
+        return self.__class__(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
@@ -1164,7 +1128,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
             granularity=self.granularity,
             derivation=self.derivation,
             lineage=self.lineage,
-            grain=grain if grain else Grain.model_construct(components=set()),
+            grain=grain if grain else Grain(components=set()),
             namespace=self.namespace,
             keys=self.keys,
             modifiers=self.modifiers,
@@ -1336,7 +1300,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         new_lineage = FilterItem(
             content=self.reference, where=WhereClause(conditional=condition)
         )
-        new = Concept.model_construct(
+        new = Concept(
             name=f"{self.name}_filter_{hash}",
             datatype=self.datatype,
             purpose=self.purpose,
@@ -1355,9 +1319,8 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced, BaseMo
         return new
 
 
+@dataclass(eq=False)
 class UndefinedConceptFull(Concept, Mergeable, Namespaced):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-    name: str
     line_no: int | None = None
     datatype: CONCRETE_TYPES = DataType.UNKNOWN
     purpose: Purpose = Purpose.UNKNOWN
@@ -1367,19 +1330,20 @@ class UndefinedConceptFull(Concept, Mergeable, Namespaced):
         return UndefinedConcept(address=self.address)
 
 
-class OrderItem(Mergeable, ConceptArgs, Namespaced, BaseModel):
+@dataclass
+class OrderItem(Mergeable, ConceptArgs, Namespaced):
     # this needs to be a full concept as it may not exist in environment
     expr: Expr
     order: Ordering
 
-    @field_validator("expr", mode="before")
-    def enforce_reference(cls, v):
-        if isinstance(v, Concept):
-            return v.reference
-        return v
+    def __post_init__(self):
+        if isinstance(self.expr, Concept):
+            self.expr = self.expr.reference
+        if not isinstance(self.order, Ordering):
+            self.order = Ordering(self.order)
 
     def with_namespace(self, namespace: str) -> "OrderItem":
-        return OrderItem.model_construct(
+        return OrderItem(
             expr=(
                 self.expr.with_namespace(namespace)
                 if isinstance(self.expr, Namespaced)
@@ -1391,7 +1355,7 @@ class OrderItem(Mergeable, ConceptArgs, Namespaced, BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "OrderItem":
-        return OrderItem.model_construct(
+        return OrderItem(
             expr=(
                 self.expr.with_merge(source, target, modifiers)
                 if isinstance(self.expr, Mergeable)
@@ -1401,7 +1365,7 @@ class OrderItem(Mergeable, ConceptArgs, Namespaced, BaseModel):
         )
 
     def with_reference_replacement(self, source, target):
-        return OrderItem.model_construct(
+        return OrderItem(
             expr=(
                 self.expr.with_reference_replacement(source, target)
                 if isinstance(self.expr, Mergeable)
@@ -1431,12 +1395,26 @@ class OrderItem(Mergeable, ConceptArgs, Namespaced, BaseModel):
         return arg_to_datatype(self.expr)
 
 
-class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
+@dataclass
+class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced):
     type: WindowType
     content: FuncArgs
     order_by: List["OrderItem"]
-    over: List["ConceptRef"] = Field(default_factory=list)
+    over: List["ConceptRef"] = dc_field(default_factory=list)
     index: Optional[int] = None
+
+    def __post_init__(self):
+        if isinstance(self.content, Concept):
+            self.content = ConceptRef(
+                address=self.content.address, datatype=self.content.datatype
+            )
+        final = []
+        for item in self.over:
+            if isinstance(item, Concept):
+                final.append(ConceptRef(address=item.address, datatype=item.datatype))
+            else:
+                final.append(item)
+        self.over = final
 
     def __str__(self):
         return self.__repr__()
@@ -1444,26 +1422,10 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
     def __repr__(self):
         return f"{self.type.value} {self.content} by {self.index} over {self.over} order {self.order_by}"
 
-    @field_validator("content", mode="before")
-    def enforce_concept_ref(cls, v):
-        if isinstance(v, Concept):
-            return ConceptRef(address=v.address, datatype=v.datatype)
-        return v
-
-    @field_validator("over", mode="before")
-    def enforce_concept_ref_over(cls, v):
-        final = []
-        for item in v:
-            if isinstance(item, Concept):
-                final.append(ConceptRef(address=item.address, datatype=item.datatype))
-            else:
-                final.append(item)
-        return final
-
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "WindowItem":
-        output = WindowItem.model_construct(
+        output = WindowItem(
             type=self.type,
             content=(
                 self.content.with_merge(source, target, modifiers)
@@ -1477,7 +1439,7 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         return output
 
     def with_reference_replacement(self, source, target):
-        return WindowItem.model_construct(
+        return WindowItem(
             type=self.type,
             content=(
                 self.content.with_reference_replacement(source, target)
@@ -1492,7 +1454,7 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         )
 
     def with_namespace(self, namespace: str) -> "WindowItem":
-        return WindowItem.model_construct(
+        return WindowItem(
             type=self.type,
             content=(
                 self.content.with_namespace(namespace)
@@ -1537,19 +1499,18 @@ def get_basic_type(
     if isinstance(type, TraitDataType):
         return get_basic_type(type.type)
     if isinstance(type, DataTyped):
-        return get_basic_type(type.output_datatype)
+        return get_basic_type(type.output_datatype)  # type: ignore[attr-defined]
     return type
 
 
-class CaseSimpleWhen(Namespaced, ConceptArgs, DataTyped, Mergeable, BaseModel):
+@dataclass
+class CaseSimpleWhen(Namespaced, ConceptArgs, DataTyped, Mergeable):
     value_expr: "Expr"
     expr: "Expr"
 
-    @field_validator("expr", mode="before")
-    def enforce_reference(cls, v):
-        if isinstance(v, Concept):
-            return v.reference
-        return v
+    def __post_init__(self):
+        if isinstance(self.expr, Concept):
+            self.expr = self.expr.reference
 
     @property
     def output_datatype(self):
@@ -1572,7 +1533,7 @@ class CaseSimpleWhen(Namespaced, ConceptArgs, DataTyped, Mergeable, BaseModel):
         )
 
     def with_namespace(self, namespace: str) -> CaseSimpleWhen:
-        return CaseSimpleWhen.model_construct(
+        return CaseSimpleWhen(
             value_expr=(
                 self.value_expr.with_namespace(namespace)
                 if isinstance(self.value_expr, Namespaced)
@@ -1591,7 +1552,7 @@ class CaseSimpleWhen(Namespaced, ConceptArgs, DataTyped, Mergeable, BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> CaseSimpleWhen:
-        return CaseSimpleWhen.model_construct(
+        return CaseSimpleWhen(
             value_expr=(
                 self.value_expr.with_merge(source, target, modifiers)
                 if isinstance(self.value_expr, Mergeable)
@@ -1605,7 +1566,7 @@ class CaseSimpleWhen(Namespaced, ConceptArgs, DataTyped, Mergeable, BaseModel):
         )
 
     def with_reference_replacement(self, source, target):
-        return CaseSimpleWhen.model_construct(
+        return CaseSimpleWhen(
             value_expr=(
                 self.value_expr.with_reference_replacement(source, target)
                 if isinstance(self.value_expr, Mergeable)
@@ -1619,15 +1580,14 @@ class CaseSimpleWhen(Namespaced, ConceptArgs, DataTyped, Mergeable, BaseModel):
         )
 
 
-class CaseWhen(Namespaced, DataTyped, ConceptArgs, Mergeable, BaseModel):
+@dataclass
+class CaseWhen(Namespaced, DataTyped, ConceptArgs, Mergeable):
     comparison: Conditional | SubselectComparison | Comparison
     expr: "Expr"
 
-    @field_validator("expr", mode="before")
-    def enforce_reference(cls, v):
-        if isinstance(v, Concept):
-            return v.reference
-        return v
+    def __post_init__(self):
+        if isinstance(self.expr, Concept):
+            self.expr = self.expr.reference
 
     @property
     def output_datatype(self):
@@ -1650,7 +1610,7 @@ class CaseWhen(Namespaced, DataTyped, ConceptArgs, Mergeable, BaseModel):
         )
 
     def with_namespace(self, namespace: str) -> CaseWhen:
-        return CaseWhen.model_construct(
+        return CaseWhen(
             comparison=self.comparison.with_namespace(namespace),
             expr=(
                 self.expr.with_namespace(namespace)
@@ -1665,7 +1625,7 @@ class CaseWhen(Namespaced, DataTyped, ConceptArgs, Mergeable, BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> CaseWhen:
-        return CaseWhen.model_construct(
+        return CaseWhen(
             comparison=self.comparison.with_merge(source, target, modifiers),
             expr=(
                 self.expr.with_merge(source, target, modifiers)
@@ -1675,7 +1635,7 @@ class CaseWhen(Namespaced, DataTyped, ConceptArgs, Mergeable, BaseModel):
         )
 
     def with_reference_replacement(self, source, target):
-        return CaseWhen.model_construct(
+        return CaseWhen(
             comparison=self.comparison.with_reference_replacement(source, target),
             expr=(
                 self.expr.with_reference_replacement(source, target)
@@ -1685,10 +1645,19 @@ class CaseWhen(Namespaced, DataTyped, ConceptArgs, Mergeable, BaseModel):
         )
 
 
-class CaseElse(Namespaced, ConceptArgs, DataTyped, Mergeable, BaseModel):
+@dataclass
+class CaseElse(Namespaced, ConceptArgs, DataTyped, Mergeable):
     expr: "Expr"
     # this ensures that it's easily differentiable from CaseWhen
-    discriminant: ComparisonOperator = ComparisonOperator.ELSE
+    discriminant: ComparisonOperator = dc_field(
+        default_factory=lambda: ComparisonOperator.ELSE
+    )
+
+    def __post_init__(self):
+        if isinstance(self.expr, Concept):
+            self.expr = ConceptRef(
+                address=self.expr.address, datatype=self.expr.datatype
+            )
 
     def __str__(self):
         return self.__repr__()
@@ -1700,12 +1669,6 @@ class CaseElse(Namespaced, ConceptArgs, DataTyped, Mergeable, BaseModel):
     def output_datatype(self):
         return arg_to_datatype(self.expr)
 
-    @field_validator("expr", mode="before")
-    def enforce_expr(cls, v):
-        if isinstance(v, Concept):
-            return ConceptRef(address=v.address, datatype=v.datatype)
-        return v
-
     @property
     def concept_arguments(self):
         return get_concept_arguments(self.expr)
@@ -1713,7 +1676,7 @@ class CaseElse(Namespaced, ConceptArgs, DataTyped, Mergeable, BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> CaseElse:
-        return CaseElse.model_construct(
+        return CaseElse(
             discriminant=self.discriminant,
             expr=(
                 self.expr.with_merge(source, target, modifiers)
@@ -1723,7 +1686,7 @@ class CaseElse(Namespaced, ConceptArgs, DataTyped, Mergeable, BaseModel):
         )
 
     def with_reference_replacement(self, source, target):
-        return CaseElse.model_construct(
+        return CaseElse(
             discriminant=self.discriminant,
             expr=(
                 self.expr.with_reference_replacement(
@@ -1736,7 +1699,7 @@ class CaseElse(Namespaced, ConceptArgs, DataTyped, Mergeable, BaseModel):
         )
 
     def with_namespace(self, namespace: str) -> CaseElse:
-        return CaseElse.model_construct(
+        return CaseElse(
             discriminant=self.discriminant,
             expr=(
                 self.expr.with_namespace(namespace)
@@ -1797,66 +1760,55 @@ def _matches_valid_type(
     return False
 
 
-class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
+@dataclass
+class Function(DataTyped, ConceptArgs, Mergeable, Namespaced):
     operator: FunctionType
-    arg_count: int = Field(default=1)
     output_datatype: CONCRETE_TYPES
     output_purpose: Purpose
+    arguments: Sequence[FuncArgs]
+    arg_count: int = 1
     valid_inputs: Optional[
         Union[
             Set[DataType | ArrayType | MapType],
             List[Set[DataType | ArrayType | MapType]],
         ]
     ] = None
-    arguments: Sequence[FuncArgs]
 
-    class Config:
-        frozen = True
-
-    def __repr__(self):
-        return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
-
-    def __str__(self):
-        return self.__repr__()
-
-    @property
-    def datatype(self):
-        return self.output_datatype
-
-    @field_validator("arguments", mode="before")
-    @classmethod
-    def parse_arguments(cls, v, info: ValidationInfo):
+    def __post_init__(self):
         from trilogy.core.models.build import BuildConcept
-        from trilogy.parsing.exceptions import ParseError
 
-        values = info.data
-        arg_count = len(v)
         final = []
-        for x in v:
+        for x in self.arguments:
             if isinstance(x, Concept) and not isinstance(x, BuildConcept):
                 final.append(x.reference)
             else:
                 final.append(x)
-        v = final
-        target_arg_count = values["arg_count"]
-        operator_name = values["operator"].name
-        # surface right error
-        if "valid_inputs" not in values:
-            return v
-        valid_inputs = values["valid_inputs"]
+        self.arguments = final
+        self.validate_arguments()
+
+    def validate_arguments(self):
+        """Run full argument type validation - called from parser."""
+        from trilogy.parsing.exceptions import ParseError
+
+        arg_count = len(self.arguments)
+        target_arg_count = self.arg_count
+        operator_name = self.operator.name
+        valid_inputs = self.valid_inputs
+
+        if valid_inputs is None:
+            return
+
         if not arg_count <= target_arg_count:
             if target_arg_count != InfiniteFunctionArgs:
                 raise ParseError(
                     f"Incorrect argument count to {operator_name} function, expects"
                     f" {target_arg_count}, got {arg_count}"
                 )
-        # if all arguments can be any of the set type
-        # turn this into an array for validation
         if isinstance(valid_inputs, set):
-            valid_inputs = [valid_inputs for _ in v]
+            valid_inputs = [valid_inputs for _ in self.arguments]
         elif not valid_inputs:
-            return v
-        for idx, arg in enumerate(v):
+            return
+        for idx, arg in enumerate(self.arguments):
             if isinstance(arg, ConceptRef):
                 if arg.datatype == DataType.UNKNOWN:
                     continue
@@ -1873,7 +1825,6 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
                         f"Invalid argument type {arg.output_datatype}' passed into"
                         f" {operator_name} function from function {arg.operator.name} in position {idx+1}. Valid: {args_to_pretty(valid_inputs[idx])}"
                     )
-            # check constants
             comparisons: List[Tuple[Type, DataType]] = [
                 (str, DataType.STRING),
                 (int, DataType.INTEGER),
@@ -1886,7 +1837,6 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
                     isinstance(arg, ptype)
                     and get_basic_type(dtype) in valid_inputs[idx]
                 ):
-                    # attempt to exit early to avoid checking all types
                     break
                 elif isinstance(arg, ptype):
                     if isinstance(arg, str) and DataType.DATE_PART in valid_inputs[idx]:
@@ -1897,7 +1847,16 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
                     raise TypeError(
                         f'Invalid {dtype} constant passed into {operator_name} "{arg}", expecting one of {valid_inputs[idx]}'
                     )
-        return v
+
+    def __repr__(self):
+        return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
+
+    def __str__(self):
+        return self.__repr__()
+
+    @property
+    def datatype(self):
+        return self.output_datatype
 
     def with_reference_replacement(self, source: str, target: Expr | ArgBinding):
         from trilogy.core.functions import arg_to_datatype, merge_datatypes
@@ -1929,7 +1888,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         # should use function factory, but does not have environment access
         # probably move all datatype resolution to build?
 
-        return Function.model_construct(
+        return Function(
             operator=self.operator,
             arguments=nargs,
             output_datatype=new_output,
@@ -1939,7 +1898,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         )
 
     def with_namespace(self, namespace: str) -> "Function":
-        return Function.model_construct(
+        return Function(
             operator=self.operator,
             arguments=[
                 (
@@ -1962,7 +1921,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "Function":
 
-        return Function.model_construct(
+        return Function(
             operator=self.operator,
             arguments=[
                 (
@@ -1989,12 +1948,12 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, BaseModel):
         return base
 
 
+@dataclass
 class FunctionCallWrapper(
     DataTyped,
     ConceptArgs,
     Mergeable,
     Namespaced,
-    BaseModel,
 ):
     content: Expr
     name: str
@@ -2004,7 +1963,7 @@ class FunctionCallWrapper(
         return f'@{self.name}({",".join([str(x) for x in self.args])})'
 
     def with_namespace(self, namespace) -> "FunctionCallWrapper":
-        return FunctionCallWrapper.model_construct(
+        return FunctionCallWrapper(
             content=(
                 self.content.with_namespace(namespace)
                 if isinstance(self.content, Namespaced)
@@ -2024,7 +1983,7 @@ class FunctionCallWrapper(
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "FunctionCallWrapper":
-        return FunctionCallWrapper.model_construct(
+        return FunctionCallWrapper(
             content=(
                 self.content.with_merge(source, target, modifiers)
                 if isinstance(self.content, Mergeable)
@@ -2056,20 +2015,19 @@ class FunctionCallWrapper(
         return arg_to_datatype(self.content)
 
 
-class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel):
+@dataclass
+class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced):
     function: Function
-    by: List[ConceptRef | Concept] = Field(default_factory=list)
+    by: List[ConceptRef | Concept] = dc_field(default_factory=list)
 
-    @field_validator("by", mode="before")
-    @classmethod
-    def enforce_concept_ref(cls, v):
+    def __post_init__(self):
         output = []
-        for item in v:
+        for item in self.by:
             if isinstance(item, Concept):
                 output.append(item.reference)
             else:
                 output.append(item)
-        return output
+        self.by = output
 
     def __str__(self):
         grain_str = [str(c) for c in self.by] if self.by else "abstract"
@@ -2092,7 +2050,7 @@ class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel)
         return self.function.output_purpose
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return AggregateWrapper.model_construct(
+        return AggregateWrapper(
             function=self.function.with_merge(source, target, modifiers=modifiers),
             by=(
                 [c.with_merge(source, target, modifiers) for c in self.by]
@@ -2102,7 +2060,7 @@ class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel)
         )
 
     def with_reference_replacement(self, source, target):
-        return AggregateWrapper.model_construct(
+        return AggregateWrapper(
             function=self.function.with_reference_replacement(source, target),
             by=(
                 [c.with_reference_replacement(source, target) for c in self.by]
@@ -2112,21 +2070,22 @@ class AggregateWrapper(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel)
         )
 
     def with_namespace(self, namespace: str) -> "AggregateWrapper":
-        return AggregateWrapper.model_construct(
+        return AggregateWrapper(
             function=self.function.with_namespace(namespace),
             by=[c.with_namespace(namespace) for c in self.by] if self.by else [],
         )
 
 
-class FilterItem(Mergeable, DataTyped, Namespaced, ConceptArgs, BaseModel):
+@dataclass
+class FilterItem(Mergeable, DataTyped, Namespaced, ConceptArgs):
     content: FuncArgs
     where: "WhereClause"
 
-    @field_validator("content", mode="before")
-    def enforce_concept_ref(cls, v):
-        if isinstance(v, Concept):
-            return ConceptRef(address=v.address, datatype=v.datatype)
-        return v
+    def __post_init__(self):
+        if isinstance(self.content, Concept):
+            self.content = ConceptRef(
+                address=self.content.address, datatype=self.content.datatype
+            )
 
     def __str__(self):
         return f"<Filter: {str(self.content)} where {str(self.where)}>"
@@ -2134,7 +2093,7 @@ class FilterItem(Mergeable, DataTyped, Namespaced, ConceptArgs, BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "FilterItem":
-        return FilterItem.model_construct(
+        return FilterItem(
             content=(
                 self.content.with_merge(source, target, modifiers)
                 if isinstance(self.content, Mergeable)
@@ -2144,7 +2103,7 @@ class FilterItem(Mergeable, DataTyped, Namespaced, ConceptArgs, BaseModel):
         )
 
     def with_namespace(self, namespace: str) -> "FilterItem":
-        return FilterItem.model_construct(
+        return FilterItem(
             content=(
                 self.content.with_namespace(namespace)
                 if isinstance(self.content, Namespaced)
@@ -2154,7 +2113,7 @@ class FilterItem(Mergeable, DataTyped, Namespaced, ConceptArgs, BaseModel):
         )
 
     def with_reference_replacement(self, source, target):
-        return FilterItem.model_construct(
+        return FilterItem(
             content=(
                 self.content.with_reference_replacement(source, target)
                 if isinstance(self.content, Mergeable)
@@ -2176,12 +2135,19 @@ class FilterItem(Mergeable, DataTyped, Namespaced, ConceptArgs, BaseModel):
         return self.where.concept_arguments
 
 
-class SubselectItem(Mergeable, DataTyped, Namespaced, ConceptArgs, BaseModel):
+@dataclass
+class SubselectItem(Mergeable, DataTyped, Namespaced, ConceptArgs):
     content: ConceptRef
     where: Optional["WhereClause"] = None
-    order_by: List["OrderItem"] = Field(default_factory=list)
+    order_by: List["OrderItem"] = dc_field(default_factory=list)
     limit: Optional[int] = None
-    outer_arguments: List[ConceptRef] = Field(default_factory=list)
+    outer_arguments: List[ConceptRef] = dc_field(default_factory=list)
+
+    def __post_init__(self):
+        if isinstance(self.content, Concept):
+            self.content = ConceptRef(
+                address=self.content.address, datatype=self.content.datatype
+            )
 
     def __repr__(self):
         parts = [f"subselect({self.content}"]
@@ -2196,16 +2162,10 @@ class SubselectItem(Mergeable, DataTyped, Namespaced, ConceptArgs, BaseModel):
     def __str__(self):
         return self.__repr__()
 
-    @field_validator("content", mode="before")
-    def enforce_concept_ref(cls, v):
-        if isinstance(v, Concept):
-            return ConceptRef(address=v.address, datatype=v.datatype)
-        return v
-
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "SubselectItem":
-        return SubselectItem.model_construct(
+        return SubselectItem(
             content=(
                 self.content.with_merge(source, target, modifiers)
                 if isinstance(self.content, Mergeable)
@@ -2222,7 +2182,7 @@ class SubselectItem(Mergeable, DataTyped, Namespaced, ConceptArgs, BaseModel):
         )
 
     def with_reference_replacement(self, source, target):
-        return SubselectItem.model_construct(
+        return SubselectItem(
             content=(
                 self.content.with_reference_replacement(source, target)
                 if isinstance(self.content, Mergeable)
@@ -2248,7 +2208,7 @@ class SubselectItem(Mergeable, DataTyped, Namespaced, ConceptArgs, BaseModel):
         )
 
     def with_namespace(self, namespace: str) -> "SubselectItem":
-        return SubselectItem.model_construct(
+        return SubselectItem(
             content=(
                 self.content.with_namespace(namespace)
                 if isinstance(self.content, Namespaced)
@@ -2278,13 +2238,14 @@ class SubselectItem(Mergeable, DataTyped, Namespaced, ConceptArgs, BaseModel):
         return args
 
 
-class RowsetLineage(Namespaced, Mergeable, BaseModel):
+@dataclass
+class RowsetLineage(Namespaced, Mergeable):
     name: str
     derived_concepts: List[ConceptRef]
     select: SelectLineage | MultiSelectLineage
 
     def with_namespace(self, namespace: str):
-        return RowsetLineage.model_construct(
+        return RowsetLineage(
             name=self.name,
             derived_concepts=[
                 x.with_namespace(namespace) for x in self.derived_concepts
@@ -2293,7 +2254,7 @@ class RowsetLineage(Namespaced, Mergeable, BaseModel):
         )
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return RowsetLineage.model_construct(
+        return RowsetLineage(
             name=self.name,
             derived_concepts=[
                 x.with_merge(source, target, modifiers) for x in self.derived_concepts
@@ -2302,7 +2263,8 @@ class RowsetLineage(Namespaced, Mergeable, BaseModel):
         )
 
 
-class RowsetItem(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel):
+@dataclass
+class RowsetItem(Mergeable, DataTyped, ConceptArgs, Namespaced):
     content: ConceptRef
     rowset: RowsetLineage
 
@@ -2313,13 +2275,13 @@ class RowsetItem(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel):
         return self.__repr__()
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return RowsetItem.model_construct(
+        return RowsetItem(
             content=self.content.with_merge(source, target, modifiers),
             rowset=self.rowset,
         )
 
     def with_namespace(self, namespace: str) -> "RowsetItem":
-        return RowsetItem.model_construct(
+        return RowsetItem(
             content=self.content.with_namespace(namespace),
             rowset=self.rowset.with_namespace(namespace),
         )
@@ -2337,18 +2299,17 @@ class RowsetItem(Mergeable, DataTyped, ConceptArgs, Namespaced, BaseModel):
         return [self.content]
 
 
-class OrderBy(Mergeable, Namespaced, BaseModel):
+@dataclass
+class OrderBy(Mergeable, Namespaced):
     items: List[OrderItem]
 
     def with_namespace(self, namespace: str) -> "OrderBy":
-        return OrderBy.model_construct(
-            items=[x.with_namespace(namespace) for x in self.items]
-        )
+        return OrderBy(items=[x.with_namespace(namespace) for x in self.items])
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "OrderBy":
-        return OrderBy.model_construct(
+        return OrderBy(
             items=[x.with_merge(source, target, modifiers) for x in self.items]
         )
 
@@ -2360,16 +2321,16 @@ class OrderBy(Mergeable, Namespaced, BaseModel):
         return base
 
 
-class AlignClause(Namespaced, BaseModel):
+@dataclass
+class AlignClause(Namespaced):
     items: List[AlignItem]
 
     def with_namespace(self, namespace: str) -> "AlignClause":
-        return AlignClause.model_construct(
-            items=[x.with_namespace(namespace) for x in self.items]
-        )
+        return AlignClause(items=[x.with_namespace(namespace) for x in self.items])
 
 
-class DeriveItem(Namespaced, DataTyped, ConceptArgs, Mergeable, BaseModel):
+@dataclass
+class DeriveItem(Namespaced, DataTyped, ConceptArgs, Mergeable):
     expr: Expr
     name: str
     namespace: str
@@ -2383,7 +2344,7 @@ class DeriveItem(Namespaced, DataTyped, ConceptArgs, Mergeable, BaseModel):
         # )
 
     def with_namespace(self, namespace):
-        return DeriveItem.model_construct(
+        return DeriveItem(
             expr=(self.expr.with_namespace(namespace) if self.expr else None),
             name=self.name,
             namespace=namespace,
@@ -2392,7 +2353,7 @@ class DeriveItem(Namespaced, DataTyped, ConceptArgs, Mergeable, BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "DeriveItem":
-        return DeriveItem.model_construct(
+        return DeriveItem(
             expr=(
                 self.expr.with_merge(source, target, modifiers)
                 if isinstance(self.expr, Mergeable)
@@ -2403,7 +2364,7 @@ class DeriveItem(Namespaced, DataTyped, ConceptArgs, Mergeable, BaseModel):
         )
 
     def with_reference_replacement(self, source, target):
-        return DeriveItem.model_construct(
+        return DeriveItem(
             expr=(
                 self.expr.with_reference_replacement(source, target)
                 if isinstance(self.expr, Mergeable)
@@ -2414,11 +2375,12 @@ class DeriveItem(Namespaced, DataTyped, ConceptArgs, Mergeable, BaseModel):
         )
 
 
-class DeriveClause(Mergeable, Namespaced, BaseModel):
+@dataclass
+class DeriveClause(Mergeable, Namespaced):
     items: List[DeriveItem]
 
     def with_namespace(self, namespace: str) -> "DeriveClause":
-        return DeriveClause.model_construct(
+        return DeriveClause(
             items=[
                 x.with_namespace(namespace) if isinstance(x, Namespaced) else x
                 for x in self.items
@@ -2428,7 +2390,7 @@ class DeriveClause(Mergeable, Namespaced, BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "DeriveClause":
-        return DeriveClause.model_construct(
+        return DeriveClause(
             items=[
                 (
                     x.with_merge(source, target, modifiers)
@@ -2440,7 +2402,7 @@ class DeriveClause(Mergeable, Namespaced, BaseModel):
         )
 
     def with_reference_replacement(self, source, target):
-        return DeriveClause.model_construct(
+        return DeriveClause(
             items=[
                 (
                     x.with_reference_replacement(source, target)
@@ -2452,16 +2414,17 @@ class DeriveClause(Mergeable, Namespaced, BaseModel):
         )
 
 
-class SelectLineage(Mergeable, Namespaced, BaseModel):
+@dataclass
+class SelectLineage(Mergeable, Namespaced):
     selection: List[ConceptRef]
     hidden_components: set[str]
     local_concepts: dict[str, Concept]
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
-    meta: Metadata = Field(default_factory=lambda: Metadata())
-    grain: Grain = Field(default_factory=Grain)
-    where_clause: Union["WhereClause", None] = Field(default=None)
-    having_clause: Union["HavingClause", None] = Field(default=None)
+    meta: Metadata = dc_field(default_factory=lambda: Metadata())
+    grain: Grain = dc_field(default_factory=Grain)
+    where_clause: Optional[WhereClause] = None
+    having_clause: Optional[HavingClause] = None
 
     @property
     def output_components(self) -> List[ConceptRef]:
@@ -2470,7 +2433,7 @@ class SelectLineage(Mergeable, Namespaced, BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> SelectLineage:
-        return SelectLineage.model_construct(
+        return SelectLineage(
             selection=[x.with_merge(source, target, modifiers) for x in self.selection],
             hidden_components=self.hidden_components,
             local_concepts={
@@ -2497,7 +2460,7 @@ class SelectLineage(Mergeable, Namespaced, BaseModel):
         )
 
     def with_namespace(self, namespace):
-        return SelectLineage.model_construct(
+        return SelectLineage(
             selection=[x.with_namespace(namespace) for x in self.selection],
             hidden_components=self.hidden_components,
             local_concepts={
@@ -2520,17 +2483,17 @@ class SelectLineage(Mergeable, Namespaced, BaseModel):
         )
 
 
-class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
+@dataclass
+class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced):
     selects: List[SelectLineage]
     align: AlignClause
-
     namespace: str
+    hidden_components: set[str]
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
-    where_clause: Union["WhereClause", None] = Field(default=None)
-    having_clause: Union["HavingClause", None] = Field(default=None)
+    where_clause: Optional[WhereClause] = None
+    having_clause: Optional[HavingClause] = None
     derive: DeriveClause | None = None
-    hidden_components: set[str]
 
     @property
     def grain(self):
@@ -2542,7 +2505,7 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
     @property
     def output_components(self) -> list[ConceptRef]:
         output = [
-            ConceptRef.model_construct(address=x, datatype=DataType.UNKNOWN)
+            ConceptRef(address=x, datatype=DataType.UNKNOWN)
             for x in self.derived_concepts
         ]
         for select in self.selects:
@@ -2552,7 +2515,7 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> MultiSelectLineage:
-        new = MultiSelectLineage.model_construct(
+        new = MultiSelectLineage(
             selects=[s.with_merge(source, target, modifiers) for s in self.selects],
             align=self.align,
             derive=(
@@ -2582,7 +2545,7 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
         return new
 
     def with_namespace(self, namespace: str) -> "MultiSelectLineage":
-        return MultiSelectLineage.model_construct(
+        return MultiSelectLineage(
             selects=[c.with_namespace(namespace) for c in self.selects],
             align=self.align.with_namespace(namespace),
             derive=self.derive.with_namespace(namespace) if self.derive else None,
@@ -2620,7 +2583,8 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
         return unique(output, "address")
 
 
-class LooseConceptList(BaseModel):
+@dataclass
+class LooseConceptList:
     concepts: Sequence[Concept | ConceptRef]
 
     @cached_property
@@ -2669,23 +2633,21 @@ class LooseConceptList(BaseModel):
         return self.addresses.isdisjoint(other.addresses)
 
 
-class AlignItem(Namespaced, BaseModel):
+@dataclass
+class AlignItem(Namespaced):
     alias: str
     concepts: List[ConceptRef]
-    namespace: str = Field(default=DEFAULT_NAMESPACE, validate_default=True)
+    namespace: str = DEFAULT_NAMESPACE
 
-    @field_validator("concepts", mode="before")
-    @classmethod
-    def enforce_concept_ref(cls, v):
+    def __post_init__(self):
         output = []
-        for item in v:
+        for item in self.concepts:
             if isinstance(item, Concept):
                 output.append(item.reference)
             else:
                 output.append(item)
-        return output
+        self.concepts = output
 
-    @computed_field  # type: ignore
     @cached_property
     def concepts_lcl(self) -> LooseConceptList:
         return LooseConceptList(concepts=self.concepts)
@@ -2695,7 +2657,7 @@ class AlignItem(Namespaced, BaseModel):
         return f"{self.namespace}.{self.alias}"
 
     def with_namespace(self, namespace: str) -> "AlignItem":
-        return AlignItem.model_construct(
+        return AlignItem(
             alias=self.alias,
             concepts=[c.with_namespace(namespace) for c in self.concepts],
             namespace=namespace,
@@ -2736,7 +2698,8 @@ class CustomFunctionFactory:
             "namespace": self.namespace,
             "function": expr_adapter.dump_python(self.function, mode="json"),
             "function_arguments": [
-                a.model_dump(mode="json") for a in self.function_arguments
+                TypeAdapter(ArgBinding).dump_python(a, mode="json")
+                for a in self.function_arguments
             ],
         }
 
@@ -2750,14 +2713,17 @@ class CustomFunctionFactory:
             namespace=data["namespace"],
             function=expr_adapter.validate_python(data["function"]),
             function_arguments=[
-                ArgBinding.model_validate(a) for a in data["function_arguments"]
+                TypeAdapter(ArgBinding).validate_python(a)
+                for a in data["function_arguments"]
             ],
         )
 
     def __call__(self, *creation_args: ArgBinding | Expr):
+        from dataclasses import is_dataclass
+
         nout = (
-            self.function.model_copy(deep=True)
-            if isinstance(self.function, BaseModel)
+            copy.deepcopy(self.function)
+            if is_dataclass(self.function)
             else self.function
         )
         creation_arg_list: list[ArgBinding | Expr] = list(creation_args)
@@ -2817,7 +2783,8 @@ class Metadata:
     concept_source: ConceptSource = dc_field(default=ConceptSource.MANUAL)
 
 
-class Window(BaseModel):
+@dataclass
+class Window:
     count: int
     window_order: WindowOrder
 
@@ -2825,25 +2792,29 @@ class Window(BaseModel):
         return f"Window<{self.window_order}>"
 
 
-class WindowItemOver(BaseModel):
+@dataclass
+class WindowItemOver:
     contents: List[ConceptRef]
 
 
-class WindowItemOrder(BaseModel):
+@dataclass
+class WindowItemOrder:
     contents: List["OrderItem"]
 
 
-class Comment(BaseModel):
+@dataclass
+class Comment:
     text: str
 
 
-class ArgBinding(Namespaced, DataTyped, BaseModel):
+@dataclass
+class ArgBinding(Namespaced, DataTyped):
     name: str
     default: Expr | None = None
     datatype: CONCRETE_TYPES = DataType.UNKNOWN
 
     def with_namespace(self, namespace):
-        return ArgBinding.model_construct(
+        return ArgBinding(
             name=address_with_namespace(self.name, namespace),
             default=(
                 self.default.with_namespace(namespace)
@@ -2859,14 +2830,15 @@ class ArgBinding(Namespaced, DataTyped, BaseModel):
         return self.datatype
 
 
-class CustomType(BaseModel):
+@dataclass
+class CustomType:
     name: str
     type: DataType | list[DataType]
-    drop_on: list[FunctionType] = Field(default_factory=list)
-    add_on: list[FunctionType] = Field(default_factory=list)
+    drop_on: list[FunctionType] = dc_field(default_factory=list)
+    add_on: list[FunctionType] = dc_field(default_factory=list)
 
     def with_namespace(self, namespace: str) -> "CustomType":
-        return CustomType.model_construct(
+        return CustomType(
             name=address_with_namespace(self.name, namespace),
             type=self.type,
             drop_on=self.drop_on,

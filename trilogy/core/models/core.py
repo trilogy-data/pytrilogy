@@ -28,17 +28,7 @@ from trilogy.core.enums import DatePart, Modifier, Ordering
 
 
 class DataTyped:
-
-    # this is not abstract
-    # only because when it's a pydantic property, it fails validation
-    @property
-    def output_datatype(self) -> CONCRETE_TYPES:
-        """
-        This is a huge hack to get property vs pydantic attribute inheritance to work.
-        """
-        if "output_datatype" in self.__dict__:
-            return self.__dict__["output_datatype"]
-        raise NotImplementedError
+    pass
 
 
 class Addressable(ABC):
@@ -213,7 +203,7 @@ class ArrayType:
         self,
     ) -> CONCRETE_TYPES:
         if isinstance(self.type, DataTyped):
-            return self.type.output_datatype
+            return self.type.output_datatype  # type: ignore[attr-defined]
         return self.type
 
 
@@ -242,7 +232,7 @@ class MapType:
         self,
     ) -> CONCRETE_TYPES:
         if isinstance(self.value_type, DataTyped):
-            return self.value_type.output_datatype
+            return self.value_type.output_datatype  # type: ignore[attr-defined]
         return self.value_type
 
     @property
@@ -250,7 +240,7 @@ class MapType:
         self,
     ) -> CONCRETE_TYPES:
         if isinstance(self.key_type, DataTyped):
-            return self.key_type.output_datatype
+            return self.key_type.output_datatype  # type: ignore[attr-defined]
         return self.key_type
 
 
@@ -302,7 +292,7 @@ class StructType:
             if isinstance(f, StructComponent):
                 out[f.name] = arg_to_datatype(f.type)
             elif isinstance(f, DataTyped):
-                out[keys[idx]] = f.output_datatype
+                out[keys[idx]] = f.output_datatype  # type: ignore[attr-defined]
             else:
                 out[keys[idx]] = f
         return out
@@ -517,7 +507,7 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
         case MapWrapper(key_type=kt, value_type=vt):
             return MapType(key_type=kt, value_type=vt)
 
-        case DataTyped(output_datatype=dt):
+        case DataTyped(output_datatype=dt):  # type: ignore[misc]
             return dt
 
         case datetime():

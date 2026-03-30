@@ -356,7 +356,7 @@ def unwrap_transformation(
     elif isinstance(input, SubselectItem):
         return input
     else:
-        return Function.model_construct(
+        return Function(
             operator=FunctionType.CONSTANT,
             output_datatype=arg_to_datatype(input),
             output_purpose=Purpose.CONSTANT,
@@ -2299,7 +2299,9 @@ class ParseToObjects(Transformer):
                 type = arg.type
             else:
                 default = arg
-        return ArgBinding.model_construct(name=args[0], datatype=type, default=default)
+        return ArgBinding(
+            name=args[0], datatype=type or DataType.UNKNOWN, default=default
+        )
 
     @v_args(meta=True)
     def raw_function(self, meta: Meta, args) -> FunctionDeclaration:
@@ -2749,9 +2751,7 @@ class ParseToObjects(Transformer):
         if isinstance(raw, WhereClause):
             where = raw
         else:
-            where = WhereClause.model_construct(
-                conditional=expr_to_boolean(raw, self.function_factory)
-            )
+            where = WhereClause(conditional=expr_to_boolean(raw, self.function_factory))
         if isinstance(expr, str):
             expr = self.environment.concepts[expr].reference
         return FilterItem(content=expr, where=where)
@@ -3327,7 +3327,6 @@ class ParseToObjects(Transformer):
                 ),
                 operator=ComparisonOperator.EQ,
                 right=False,
-                meta=meta,
             )
         return self.function_factory.create_function(args, FunctionType.IS_NULL, meta)
 

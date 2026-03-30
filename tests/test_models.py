@@ -340,9 +340,7 @@ def test_parenthetical(test_environment: Environment):
 
     assert x.concept_arguments == []
 
-    x = Parenthetical(
-        content=test_environment.concepts["order_id"], type=DataType.INTEGER
-    )
+    x = Parenthetical(content=test_environment.concepts["order_id"])
     # return concept if it's a concept
     assert x.concept_arguments == [test_environment.concepts["order_id"]]
     function = Function(
