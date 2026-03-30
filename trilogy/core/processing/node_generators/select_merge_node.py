@@ -33,9 +33,10 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import (
     condition_implies,
-    condition_implies_with_extras,
     decompose_condition,
+    is_scalar_condition,
     merge_conditions,
+    merge_conditions_and_dedup,
 )
 from trilogy.core.processing.node_generators.common import reinject_common_join_keys_v2
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
@@ -587,20 +588,23 @@ def create_datasource_node(
     elif injected_conditions:
         datasource_conditions = injected_conditions
 
-    if conditions and datasource.non_partial_for:
-        _, extras = condition_implies_with_extras(
-            conditions.conditional,
-            datasource.non_partial_for.conditional,
-        )
-        if extras:
-            ds_outputs = {c.address for c in datasource.output_concepts}
-            for extra in extras:
-                if all(c.address in ds_outputs for c in extra.concept_arguments):
-                    datasource_conditions = (
-                        datasource_conditions + extra
-                        if datasource_conditions
-                        else extra
-                    )
+    if conditions:
+        ds_outputs = {c.address for c in datasource.output_concepts}
+        covered_atoms: set[str] = set()
+        if partial_is_full and datasource.non_partial_for:
+            covered_atoms = {
+                str(atom)
+                for atom in decompose_condition(datasource.non_partial_for.conditional)
+            }
+        for atom in decompose_condition(conditions.conditional):
+            if str(atom) in covered_atoms or not is_scalar_condition(atom):
+                continue
+            if all(c.address in ds_outputs for c in atom.concept_arguments):
+                datasource_conditions = (
+                    merge_conditions_and_dedup(atom, datasource_conditions)
+                    if datasource_conditions
+                    else atom
+                )
 
     all_inputs = [c.concept for c in datasource.columns]
     canonical_all = CanonicalBuildConceptList(concepts=all_inputs)

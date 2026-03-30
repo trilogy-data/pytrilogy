@@ -175,3 +175,30 @@ ORDER BY tree_count DESC;"""
 
     generated = base.generate_sql(query)[-1]
     assert "full_tree_info" not in generated, generated
+
+
+def test_exact_match_merge_preserves_subgraph_filters():
+    """Filters outside non_partial_for must still reach every relevant subgraph.
+
+    Reproduces: `species='Oak'` being pushed only into the tree-info aggregate branch
+    after exact-match resolution on `city='USBOS'`, leaving tree_enrichment unfiltered.
+    """
+    query = """
+import tree_enrichment;
+
+where city = 'USBOS' and species = 'Oak'
+select
+    species,
+    common_names,
+    tree_category,
+    count(tree_id) by species as tree_count;
+"""
+
+    base = Dialects.DUCK_DB.default_executor(
+        working_path=Path(__file__).parent,
+        conf=DuckDBConfig(enable_python_datasources=True),
+    )
+
+    generated = base.generate_sql(query)[-1]
+    assert '"tree_enrichment"."species" = \'Oak\'' in generated, generated
+    assert '"boston_tree_info"."species" = \'Oak\'' in generated, generated
