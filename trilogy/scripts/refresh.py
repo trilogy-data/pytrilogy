@@ -608,7 +608,7 @@ def refresh(
                 def physical_executor_factory(node: PhysicalRefreshNode) -> Executor:
                     from trilogy.scripts.common import create_executor_for_script
 
-                    return create_executor_for_script(
+                    executor = create_executor_for_script(
                         node.owner_script,
                         cli_params.param,
                         cli_params.conn_args,
@@ -617,6 +617,9 @@ def refresh(
                         runtime_config,
                         cli_params.debug_file,
                     )
+                    with open(node.owner_script.path, "r") as handle:
+                        executor.parse_text(handle.read(), root=node.owner_script.path)
+                    return executor
 
                 summary = run_parallel_execution(
                     cli_params=cli_params,
