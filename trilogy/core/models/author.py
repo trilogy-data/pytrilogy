@@ -886,8 +886,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
             and isinstance(self.lineage, AggregateWrapper)
             and self.lineage.by
         ):
-            if not self.grain:
-                self.grain = Grain(components={c.address for c in self.lineage.by})
+            self.grain = Grain(components={c.address for c in self.lineage.by})
         elif not self.grain:
             self.grain = Grain(components=set())
         elif isinstance(self.grain, Grain):
@@ -1784,7 +1783,18 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced):
             else:
                 final.append(x)
         self.arguments = final
-        self.validate_arguments()
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Any) -> Any:
+        from pydantic_core import core_schema
+
+        schema = handler(source_type)
+
+        def _validate(v: "Function") -> "Function":
+            v.validate_arguments()
+            return v
+
+        return core_schema.no_info_after_validator_function(_validate, schema)
 
     def validate_arguments(self):
         """Run full argument type validation - called from parser."""
