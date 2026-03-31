@@ -544,24 +544,26 @@ def show_script_result(
     if RICH_AVAILABLE and console is not None:
         if result.success:
             if isinstance(result.node, ScriptNode):
-                print(
-                    f"[green]✓[/green] {result.node.path.name} ({result.duration:.2f}s){stats_str}"
+                console.print(
+                    f"  [green]✓[/green] {result.node.path.name} ({result.duration:.2f}s){stats_str}"
                 )
             elif isinstance(result.node, PhysicalRefreshNode):
-                print(f"{result.node.address} ({result.duration:.2f}s){stats_str}")
+                console.print(
+                    f"  [green]✓[/green] {result.node.address} ({result.duration:.2f}s){stats_str}"
+                )
             else:
-                print(str(result))
+                console.print(str(result))
         else:
             if isinstance(result.node, ScriptNode):
-                print(
-                    f"{result.node.path.name} ({result.duration:.2f}s) - {result.error}"
+                console.print(
+                    f"  [red]✗[/red] {result.node.path.name} ({result.duration:.2f}s) - {result.error}"
                 )
             elif isinstance(result.node, PhysicalRefreshNode):
-                print(
-                    f"{result.node.address} ({result.duration:.2f}s) - {result.error}"
+                console.print(
+                    f"  [red]✗[/red] {result.node.address} ({result.duration:.2f}s) - {result.error}"
                 )
             else:
-                print(str(result))
+                console.print(str(result))
 
     else:
         if result.success:
