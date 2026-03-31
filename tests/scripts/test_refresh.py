@@ -13,8 +13,8 @@ from trilogy.execution.state import (
 )
 from trilogy.scripts.dependency import ScriptNode
 from trilogy.scripts.display import (
-    LogicalRefreshAssetDisplay,
-    PhysicalRefreshAssetDisplayGroup,
+    PhysicalDataGroup,
+    StaleDataSourceEntry,
     is_rich_available,
     set_rich_mode,
     show_refresh_plan,
@@ -54,20 +54,15 @@ def _sample_stale_assets() -> list[StaleAsset]:
     ]
 
 
-def _sample_grouped_assets() -> list[PhysicalRefreshAssetDisplayGroup]:
+def _sample_grouped_assets() -> list[PhysicalDataGroup]:
     return [
-        PhysicalRefreshAssetDisplayGroup(
-            physical_path=Path("base.preql"),
-            logical_assets=[
-                LogicalRefreshAssetDisplay(
+        PhysicalDataGroup(
+            data_address="target_orders",
+            common_reason="forced rebuild",
+            datasources=[
+                StaleDataSourceEntry(
                     datasource_id="target_orders",
-                    reason="forced rebuild",
-                    logical_path=Path("base.preql"),
-                ),
-                LogicalRefreshAssetDisplay(
-                    datasource_id="target_orders",
-                    reason="forced rebuild",
-                    logical_path=Path("consumer.preql"),
+                    referenced_in=[Path("base.preql"), Path("consumer.preql")],
                 ),
             ],
         )
@@ -206,7 +201,8 @@ def test_show_refresh_plan_grouped_plain(capsys):
         )
     captured = capsys.readouterr()
     assert "base.preql" in captured.out
-    assert "via consumer.preql" in captured.out
+    assert "consumer.preql" in captured.out
+    assert "forced rebuild" in captured.out
     assert "target_orders" in captured.out
 
 
@@ -541,16 +537,18 @@ import base;
     )
 
     runner = CliRunner()
-    with set_rich_mode(False), patch("click.confirm", return_value=True) as confirm:
+    with set_rich_mode(False), patch("click.confirm", return_value=False) as confirm:
         result = runner.invoke(
             cli,
             ["refresh", str(tmp_path), "duckdb", "--interactive"],
         )
 
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == 2, result.output
     assert confirm.call_count == 1
+    assert "target_events_table" in result.output
+    assert "incremental key 'event_ts' behind" in result.output
     assert "base.preql" in result.output
-    assert "via consumer.preql" in result.output
+    assert "consumer.preql" in result.output
 
 
 def test_refresh_stale_assets_excludes_peer_stale_from_planner():

@@ -5,8 +5,8 @@ key id int;
 properties id (
     date_string string,
     date date,
-    year int,
-    day_of_week int,
+    year int, # 
+    day_of_week int, #DOW, 0 indexed
 );
 
 datasource date (

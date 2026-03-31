@@ -2,6 +2,7 @@ import importlib.util
 import os
 import re
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from click.exceptions import Exit
@@ -701,10 +702,7 @@ def test_refresh_folder():
             "duckdb",
         ],
     )
-    # Exit code 2 means nothing needed to be refreshed (all up to date)
     assert result.exit_code == 2
-    assert "Total Scripts" in result.output.strip()
-    assert "4" in result.output.strip()
 
 
 def test_refresh_exception():
@@ -756,7 +754,10 @@ def test_refresh_parallel_failure():
         ["refresh", str(target_path), "duckdb"],
     )
     assert results.exit_code == 1
-    assert "Skipped due to failed dependency" in results.output
+    clean_output = strip_ansi(results.output).replace("\n", "")
+    assert "Error parsing" in clean_output
+    assert "cloudy" in clean_output
+    assert "preql" in clean_output
 
 
 def test_refresh_with_stale_assets(tmp_path: Path):
@@ -808,8 +809,8 @@ incremental by event_ts;
         raise result.exception
     assert result.exit_code == 0
     assert "stale asset" in result.output.lower()
-    assert "Refreshing" in result.output
     assert "target_events" in result.output
+    assert "Refreshing" in result.output
     assert "Refreshed" in result.output
 
 
@@ -818,7 +819,6 @@ def test_refresh_directory_with_stale_assets(tmp_path: Path):
 
     Uses the trilogy CLI to exercise the full refresh path.
     """
-    # Create the script with stale assets
     script_content = """
 key event_id int;
 property event_id.event_ts datetime;
@@ -835,38 +835,34 @@ SELECT 2 as event_id, TIMESTAMP '2024-01-15 12:00:00' as event_ts
 UNION ALL
 SELECT 3 as event_id, TIMESTAMP '2024-01-20 12:00:00' as event_ts
 ''';
-"""
-
-    stale_content = """
-    import source;
-
-    datasource target_events (
-        event_id: event_id,
-        event_ts: event_ts
-    )
-    grain (event_id)
-    address target_events_table
-    incremental by event_ts;
-
-
+datasource target_events (
+    event_id: event_id,
+    event_ts: event_ts
+)
+grain (event_id)
+address target_events_table
+incremental by event_ts;
     """
-    source_file = tmp_path / "source.preql"
-    source_file.write_text(script_content)
     test_file = tmp_path / "stale_test.preql"
-    test_file.write_text(stale_content)
+    test_file.write_text(script_content)
 
     runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        [
-            "refresh",
-            str(tmp_path),
-            "duckdb",
-        ],
-    )
+    with patch("click.confirm", return_value=True):
+        result = runner.invoke(
+            cli,
+            [
+                "refresh",
+                str(tmp_path),
+                "duckdb",
+            ],
+        )
     if result.exception:
         raise result.exception
     assert result.exit_code == 0
+    assert "stale asset" in result.output.lower()
+    assert "target_events" in result.output
+    assert "Datasources Updated" in result.output
+    assert "All scripts executed successfully!" in result.output
 
 
 @pytest.mark.parametrize(

@@ -2,7 +2,7 @@ import customer_demographic as demographics;
 import address as address;
 
 key id int;
-unique property id.text_id string;
+unique property id.text_id string; # text version of ID
 properties id (
     last_name string,              # Customer last name (not guaranteed unique; weak for identity)
     first_name string,             # Customer first name (display only; low analytical value alone)

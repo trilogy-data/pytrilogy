@@ -11,6 +11,19 @@ property user_id.display_name string metadata(description="The display name");""
     assert env.concepts["display_name"].metadata.description == "The display name"
 
 
+def test_properties_block_comment_description():
+    env, _ = parse(
+        """key user_id int;
+properties user_id (
+    last_name string, # Customer last name
+    first_name string, # Customer first name
+);"""
+    )
+
+    assert env.concepts["last_name"].metadata.description == " Customer last name"
+    assert env.concepts["first_name"].metadata.description == " Customer first name"
+
+
 # def test_import_metadata():
 #     env = Environment(working_path=Path(__file__).parent)
 #     env, _ = parse(
