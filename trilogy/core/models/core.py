@@ -440,6 +440,8 @@ def is_compatible_datatype(left, right):
         return any(is_compatible_datatype(left, rtype) for rtype in right)
     if left == DataType.ANY or right == DataType.ANY:
         return True
+    if left == DataType.NULL or right == DataType.NULL:
+        return True
     if all(
         isinstance(x, NumericType)
         or x in (DataType.INTEGER, DataType.FLOAT, DataType.NUMERIC)
