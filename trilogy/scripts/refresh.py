@@ -1,7 +1,6 @@
 """Refresh command for Trilogy CLI - refreshes stale assets."""
 
 from collections import defaultdict
-from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
 
@@ -33,29 +32,10 @@ from trilogy.scripts.common import (
 )
 from trilogy.scripts.dependency import (
     DependencyResolver,
+    PhysicalRefreshNode,
     ScriptNode,
 )
 from trilogy.scripts.parallel_execution import ExecutionMode, run_parallel_execution
-
-
-@dataclass(frozen=True)
-class PhysicalRefreshNode:
-    """Represents a physical data address to be refreshed."""
-
-    address: str
-    owner_script: ScriptNode
-    assets: list[StaleAsset]
-
-    def __hash__(self):
-        return hash(self.address)
-
-    def __eq__(self, other):
-        if not isinstance(other, PhysicalRefreshNode):
-            return False
-        return self.address == other.address
-
-    def __repr__(self):
-        return f"PhysicalRefreshNode({self.address})"
 
 
 def _display_path(path: Path, root: Path) -> Path:
@@ -143,7 +123,7 @@ def _group_assets_for_script(
 
 
 def _preview_directory_refresh(
-    cli_params: CLIRuntimeParams, input_path: Path
+    cli_params: CLIRuntimeParams, input_path: Path, interactive: bool = False
 ) -> tuple[bool, nx.DiGraph | None]:
     from trilogy.execution.config import apply_env_vars, load_env_file
     from trilogy.scripts.common import (
@@ -301,9 +281,10 @@ def _preview_directory_refresh(
         grouped_assets=grouped_assets,
     )
 
-    if click.confirm("\nProceed with refresh?", default=True):
-        return True, phys_graph
-    return False, None
+    if interactive and not click.confirm("\nProceed with refresh?", default=True):
+        return False, None
+
+    return True, phys_graph
 
 
 def _prompt_approval(
@@ -596,13 +577,27 @@ def refresh(
             merge_runtime_config,
             resolve_input_information,
         )
+        from trilogy.scripts.display import show_execution_info
 
-        _, _, _, _, runtime_config = resolve_input_information(
+        _, _, input_type, input_name, runtime_config = resolve_input_information(
             input, cli_params.config_path
         )
         edialect, _ = merge_runtime_config(cli_params, runtime_config)
+        config_path_str = (
+            str(runtime_config.source_path) if runtime_config.source_path else None
+        )
+        show_execution_info(
+            input_type,
+            input_name,
+            edialect.value,
+            cli_params.debug,
+            config_path_str,
+            cli_params.debug_file,
+        )
         if input_path.is_dir():
-            approved, phys_graph = _preview_directory_refresh(cli_params, input_path)
+            approved, phys_graph = _preview_directory_refresh(
+                cli_params, input_path, interactive=refresh_params.interactive
+            )
             if not approved:
                 raise Exit(2)
 
