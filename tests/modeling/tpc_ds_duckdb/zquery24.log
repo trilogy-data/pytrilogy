@@ -1,46 +1,10 @@
 query_id = "24"
-gen_length = 8715
+gen_length = 3968
 generated_sql = """
 
 WITH 
-vacuous as (
+cooperative as (
 SELECT
-    \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
-    \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
-    \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\"
-FROM
-    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    LEFT OUTER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
-    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
-    INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"store_sales_customer_address_customer_address\" on \"store_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"store_sales_customer_address_customer_address\".\"CA_ADDRESS_SK\"
-WHERE
-    \"store_sales_store_store\".\"S_MARKET_ID\" = 8 and \"store_sales_customer_customers\".\"C_BIRTH_COUNTRY\" != UPPER(\"store_sales_customer_address_customer_address\".\"CA_COUNTRY\")  and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END is True and \"store_sales_store_store\".\"S_ZIP\" = \"store_sales_customer_address_customer_address\".\"CA_ZIP\"
-
-GROUP BY 
-    \"store_sales_customer_customers\".\"C_CUSTOMER_SK\",
-    \"store_sales_customer_customers\".\"C_FIRST_NAME\",
-    \"store_sales_customer_customers\".\"C_LAST_NAME\"),
-concerned as (
-SELECT
-    \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
-    \"store_sales_store_store\".\"S_STORE_SK\" as \"store_sales_store_id\"
-FROM
-    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-    LEFT OUTER JOIN \"memory\".\"store_returns\" as \"store_sales_store_returns\" on \"store_sales_store_sales\".\"SS_ITEM_SK\" = \"store_sales_store_returns\".\"SR_ITEM_SK\" AND \"store_sales_store_sales\".\"SS_TICKET_NUMBER\" = \"store_sales_store_returns\".\"SR_TICKET_NUMBER\"
-    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
-    INNER JOIN \"memory\".\"customer\" as \"store_sales_customer_customers\" on \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" = \"store_sales_customer_customers\".\"C_CUSTOMER_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"store_sales_customer_address_customer_address\" on \"store_sales_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"store_sales_customer_address_customer_address\".\"CA_ADDRESS_SK\"
-WHERE
-    \"store_sales_store_store\".\"S_MARKET_ID\" = 8 and \"store_sales_customer_customers\".\"C_BIRTH_COUNTRY\" != UPPER(\"store_sales_customer_address_customer_address\".\"CA_COUNTRY\")  and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END is True and \"store_sales_store_store\".\"S_ZIP\" = \"store_sales_customer_address_customer_address\".\"CA_ZIP\"
-
-GROUP BY 
-    \"store_sales_store_store\".\"S_STORE_NAME\",
-    \"store_sales_store_store\".\"S_STORE_SK\"),
-yummy as (
-SELECT
-    \"store_sales_customer_customers\".\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
-    \"store_sales_store_store\".\"S_STORE_SK\" as \"store_sales_store_id\",
     sum(\"store_sales_store_sales\".\"SS_NET_PAID\") as \"_virt_agg_sum_1360566110228423\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
@@ -55,7 +19,7 @@ GROUP BY
     \"store_sales_customer_customers\".\"C_CUSTOMER_SK\",
     \"store_sales_store_sales\".\"SS_ITEM_SK\",
     \"store_sales_store_store\".\"S_STORE_SK\"),
-questionable as (
+yummy as (
 SELECT
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
     \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
@@ -75,41 +39,19 @@ GROUP BY
     \"store_sales_customer_customers\".\"C_FIRST_NAME\",
     \"store_sales_customer_customers\".\"C_LAST_NAME\",
     \"store_sales_store_store\".\"S_STORE_NAME\"),
-young as (
+abundant as (
 SELECT
-    \"concerned\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    \"vacuous\".\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
-    \"vacuous\".\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
-    \"yummy\".\"_virt_agg_sum_1360566110228423\" as \"_virt_agg_sum_1360566110228423\"
+    avg(\"cooperative\".\"_virt_agg_sum_1360566110228423\") as \"avg_store_customer_sales\"
+FROM
+    \"cooperative\")
+SELECT
+    \"yummy\".\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
+    \"yummy\".\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
+    \"yummy\".\"store_sales_store_name\" as \"store_sales_store_name\",
+    \"yummy\".\"peach_sales\" as \"peach_sales\"
 FROM
     \"yummy\"
-    INNER JOIN \"concerned\" on \"yummy\".\"store_sales_store_id\" = \"concerned\".\"store_sales_store_id\"
-    INNER JOIN \"vacuous\" on \"yummy\".\"store_sales_customer_id\" = \"vacuous\".\"store_sales_customer_id\"
-GROUP BY 
-    \"concerned\".\"store_sales_store_name\",
-    \"vacuous\".\"store_sales_customer_first_name\",
-    \"vacuous\".\"store_sales_customer_last_name\",
-    \"yummy\".\"_virt_agg_sum_1360566110228423\"),
-sparkling as (
-SELECT
-    \"young\".\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
-    \"young\".\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
-    \"young\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    avg(\"young\".\"_virt_agg_sum_1360566110228423\") as \"avg_store_customer_sales\"
-FROM
-    \"young\"
-GROUP BY 
-    \"young\".\"store_sales_customer_first_name\",
-    \"young\".\"store_sales_customer_last_name\",
-    \"young\".\"store_sales_store_name\")
-SELECT
-    \"questionable\".\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
-    \"questionable\".\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
-    \"questionable\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    \"questionable\".\"peach_sales\" as \"peach_sales\"
-FROM
-    \"sparkling\"
-    INNER JOIN \"questionable\" on \"sparkling\".\"store_sales_customer_first_name\" = \"questionable\".\"store_sales_customer_first_name\" AND \"sparkling\".\"store_sales_customer_last_name\" = \"questionable\".\"store_sales_customer_last_name\" AND \"sparkling\".\"store_sales_store_name\" = \"questionable\".\"store_sales_store_name\"
+    FULL JOIN \"abundant\" on 1=1
 WHERE
-    \"questionable\".\"peach_sales\" > 0.05 * \"sparkling\".\"avg_store_customer_sales\"
+    \"yummy\".\"peach_sales\" > 0.05 * \"abundant\".\"avg_store_customer_sales\"
 """
