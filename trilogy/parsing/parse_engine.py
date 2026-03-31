@@ -871,7 +871,20 @@ class ParseToObjects(Transformer):
         return args
 
     def inline_property_list(self, args):
-        return [a for a in args if isinstance(a, list)]
+        props = []
+        for arg in args:
+            if isinstance(arg, list):
+                props.append(arg)
+            elif isinstance(arg, Comment) and props:
+                # comment follows a comma after the preceding property
+                merged = arg.text.split("#")[1].rstrip()
+                prop_args = props[-1]
+                existing = next((a for a in prop_args if isinstance(a, Metadata)), None)
+                if existing is None:
+                    prop_args.append(Metadata(description=merged))
+                elif not existing.description:
+                    existing.description = merged
+        return props
 
     def prop_ident_list(self, args):
         return [str(a) for a in args]

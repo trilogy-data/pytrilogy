@@ -46,7 +46,7 @@
 
     // properties <key> (...) or properties <key1, key2> (...)
     inline_property: IDENTIFIER data_type concept_nullable_modifier? metadata?
-    inline_property_list: inline_property ("," inline_property)* ","?
+    inline_property_list: inline_property ("," PARSE_COMMENT? inline_property)* ("," PARSE_COMMENT?)?
     properties_declaration: _PROPERTIES (prop_ident_list | IDENTIFIER) "(" inline_property_list ")"
     prop_ident_list: "<" IDENTIFIER ("," IDENTIFIER)* ","? ">"
 
