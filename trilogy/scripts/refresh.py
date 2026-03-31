@@ -206,6 +206,9 @@ def _preview_directory_refresh(
         asset for _, plan in plans_by_node for asset in plan.refresh_assets
     ]
     if not refresh_assets:
+        from trilogy.scripts.display import print_info
+
+        print_info("All assets are up to date.")
         return True, None
 
     # Group stale assets by physical address
