@@ -488,10 +488,6 @@ class Grain(Namespaced):
                 else:
                     output.add(vc)
             self.components = output
-        if not isinstance(self.components, set):
-            raise ValueError(f"Invalid grain component {self.components}, is not set")
-        if not all(isinstance(x, str) for x in self.components):
-            raise ValueError(f"Invalid component {self.components}")
 
     def without_condition(self):
         return Grain(components=self.components)
@@ -870,10 +866,6 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
         self.metadata = self.metadata or Metadata()
         if isinstance(self.datatype, str):
             self.datatype = DataType(self.datatype)
-        if isinstance(self.keys, (list, tuple)):
-            self.keys = set(self.keys)
-        if isinstance(self.pseudonyms, (list, tuple)):
-            self.pseudonyms = set(self.pseudonyms)
         if self.purpose == Purpose.AUTO:
             raise ValueError("Cannot set purpose to AUTO")
         # parse grain
@@ -893,14 +885,6 @@ class Concept(Addressable, DataTyped, ConceptArgs, Mergeable, Namespaced):
             pass
         elif isinstance(self.grain, Concept):
             self.grain = Grain(components={self.grain.address})
-        elif isinstance(self.grain, dict):
-            components = self.grain.get("components", set())
-            if isinstance(components, list):
-                components = set(components)
-            self.grain = Grain(
-                components=components,
-                where_clause=self.grain.get("where_clause"),
-            )
         else:
             raise SyntaxError(f"Invalid grain {self.grain} for concept {self.name}")
 
