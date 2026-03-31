@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 from trilogy import Executor
@@ -311,6 +311,7 @@ class RefreshPlan:
     concept_max_watermarks: dict[str, UpdateKey]
     root_assets: int
     all_assets: int
+    root_watermarks: dict[str, DatasourceWatermark] = field(default_factory=dict)
 
     @property
     def refresh_assets(self) -> list[StaleAsset]:
@@ -329,28 +330,43 @@ def create_refresh_plan(
     executor: "Executor",
     force_sources: set[str] | None = None,
     cache: ColumnStatsCache | None = None,
+    skip_datasources: set[str] | None = None,
 ) -> RefreshPlan:
-    """Compute which assets would be refreshed without executing updates."""
+    """Compute which assets would be refreshed without executing updates.
 
+    skip_datasources: ds_ids to completely ignore (already covered by another owner script).
+    """
     state_store = BaseStateStore(cache=cache)
     force_sources = force_sources or set()
+    extra_skip = skip_datasources or set()
+    all_skip = force_sources | extra_skip
 
     stale_assets = state_store.get_stale_assets(
-        executor.environment, executor, skip_datasources=force_sources
+        executor.environment, executor, skip_datasources=all_skip
     )
 
     stale_ids = {a.datasource_id for a in stale_assets}
     forced_assets: list[StaleAsset] = []
     for ds in executor.environment.datasources.values():
-        if ds.identifier in force_sources and ds.identifier not in stale_ids:
+        if (
+            ds.identifier in force_sources
+            and ds.identifier not in stale_ids
+            and ds.identifier not in extra_skip
+        ):
             forced_assets.append(
                 StaleAsset(datasource_id=ds.identifier, reason="forced rebuild")
             )
 
-    root_assets = sum(
-        1 for asset in executor.environment.datasources.values() if asset.is_root
-    )
+    root_ds_ids = {
+        ds.identifier for ds in executor.environment.datasources.values() if ds.is_root
+    }
+    root_assets = len(root_ds_ids)
     all_assets = len(executor.environment.datasources)
+    root_watermarks = {
+        ds_id: wm
+        for ds_id, wm in state_store.watermarks.items()
+        if ds_id in root_ds_ids
+    }
 
     return RefreshPlan(
         stale_assets=stale_assets,
@@ -359,6 +375,7 @@ def create_refresh_plan(
         concept_max_watermarks=state_store.concept_max_watermarks,
         root_assets=root_assets,
         all_assets=all_assets,
+        root_watermarks=root_watermarks,
     )
 
 

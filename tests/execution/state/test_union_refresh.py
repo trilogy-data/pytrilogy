@@ -3,7 +3,7 @@ from pathlib import Path
 from trilogy import Dialects
 from trilogy.dialect.config import DuckDBConfig
 from trilogy.scripts.dependency import ScriptNode
-from trilogy.scripts.refresh import execute_script_for_refresh
+from trilogy.scripts.single_execution import execute_script_for_refresh
 
 PREQL_PATH = Path(__file__).parent / "union_refresh_case.preql"
 
