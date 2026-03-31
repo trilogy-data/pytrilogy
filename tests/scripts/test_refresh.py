@@ -11,6 +11,7 @@ from trilogy.execution.state import (
     StaleAsset,
     refresh_stale_assets,
 )
+from trilogy.scripts.common import CLIRuntimeParams, RefreshParams
 from trilogy.scripts.dependency import ScriptNode
 from trilogy.scripts.display import (
     PhysicalDataGroup,
@@ -21,7 +22,12 @@ from trilogy.scripts.display import (
     show_stale_assets,
     show_watermarks,
 )
-from trilogy.scripts.refresh import _prompt_approval, execute_script_for_refresh
+from trilogy.scripts.refresh import (
+    _preview_directory_refresh,
+    _prompt_approval,
+    execute_physical_node_for_refresh,
+    execute_script_for_refresh,
+)
 from trilogy.scripts.single_execution import execute_refresh_mode
 from trilogy.scripts.trilogy import cli
 
@@ -619,3 +625,150 @@ def test_refresh_stale_assets_excludes_peer_stale_from_planner():
     assert (
         len(stale_visible_second) == 2
     ), f"Expected both stale datasources visible during second refresh, got: {stale_visible_second}"
+
+
+# --- Helpers for physical graph tests ---
+
+_SOURCE_SCRIPT = """\
+key ev_id int;
+property ev_id.ev_ts datetime;
+
+root datasource src_events (
+    ev_id: ev_id,
+    ev_ts: ev_ts
+)
+grain (ev_id)
+query '''SELECT 1 as ev_id, TIMESTAMP '2024-01-10 12:00:00' as ev_ts''';
+"""
+
+_STALE_DS_SCRIPT = """\
+import {dep};
+
+datasource {name} (
+    ev_id: ev_id,
+    ev_ts: ev_ts
+)
+grain (ev_id)
+address {name}_table
+incremental by ev_ts;
+"""
+
+
+def _make_cli_params(tmp_path) -> CLIRuntimeParams:
+    return CLIRuntimeParams(
+        input=str(tmp_path),
+        dialect=Dialects.DUCK_DB,
+        refresh_params=RefreshParams(force_sources=frozenset()),
+    )
+
+
+def test_phys_graph_independent_scripts_no_edges(tmp_path):
+    """Two scripts with no import relationship → phys_graph has no edges."""
+    (tmp_path / "source.preql").write_text(_SOURCE_SCRIPT)
+    (tmp_path / "alpha.preql").write_text(
+        _STALE_DS_SCRIPT.format(dep="source", name="alpha")
+    )
+    (tmp_path / "beta.preql").write_text(
+        _STALE_DS_SCRIPT.format(dep="source", name="beta")
+    )
+
+    cli_params = _make_cli_params(tmp_path)
+    with patch("click.confirm", return_value=True):
+        approved, phys_graph = _preview_directory_refresh(cli_params, tmp_path)
+
+    assert approved
+    assert phys_graph is not None
+    assert phys_graph.number_of_nodes() == 2
+    assert phys_graph.number_of_edges() == 0
+
+
+def test_phys_graph_dependent_scripts_edge_direction(tmp_path):
+    """Script B imports A → phys_graph edge goes from node(A) to node(B)."""
+    (tmp_path / "source.preql").write_text(_SOURCE_SCRIPT)
+    (tmp_path / "base.preql").write_text(
+        _STALE_DS_SCRIPT.format(dep="source", name="base")
+    )
+    (tmp_path / "derived.preql").write_text(
+        """\
+import base;
+
+datasource derived (
+    ev_id: ev_id,
+    ev_ts: ev_ts
+)
+grain (ev_id)
+address derived_table
+incremental by ev_ts;
+"""
+    )
+
+    cli_params = _make_cli_params(tmp_path)
+    with patch("click.confirm", return_value=True):
+        approved, phys_graph = _preview_directory_refresh(cli_params, tmp_path)
+
+    assert approved
+    assert phys_graph is not None
+    assert phys_graph.number_of_nodes() == 2
+    assert phys_graph.number_of_edges() >= 1
+
+    # Edge must go from base_table node → derived_table node
+    nodes_by_addr = {n.address: n for n in phys_graph.nodes}
+    assert "base_table" in nodes_by_addr
+    assert "derived_table" in nodes_by_addr
+    base_node = nodes_by_addr["base_table"]
+    derived_node = nodes_by_addr["derived_table"]
+    assert phys_graph.has_edge(base_node, derived_node)
+    assert not phys_graph.has_edge(derived_node, base_node)
+
+
+def test_phys_graph_no_stale_script_excluded(tmp_path):
+    """A script with no stale assets does not appear in the phys_graph."""
+    (tmp_path / "source.preql").write_text(_SOURCE_SCRIPT)
+    # Only base has a stale datasource; consumer imports base but persists nothing stale
+    (tmp_path / "base.preql").write_text(
+        _STALE_DS_SCRIPT.format(dep="source", name="base")
+    )
+    (tmp_path / "consumer.preql").write_text("import base;\n")
+
+    cli_params = _make_cli_params(tmp_path)
+    with patch("click.confirm", return_value=True):
+        approved, phys_graph = _preview_directory_refresh(cli_params, tmp_path)
+
+    assert approved
+    assert phys_graph is not None
+    assert phys_graph.number_of_nodes() == 1
+    node = next(iter(phys_graph.nodes))
+    assert node.address == "base_table"
+
+
+def test_execute_physical_node_prints_refreshed_count(tmp_path, capsys):
+    """execute_physical_node_for_refresh prints a summary after refreshing."""
+    script = tmp_path / "test.preql"
+    script.write_text(STALE_SCRIPT)
+    executor = Dialects.DUCK_DB.default_executor()
+    with open(script) as f:
+        executor.parse_text(f.read(), root=script)
+
+    from trilogy.execution.state import StaleAsset
+    from trilogy.scripts.dependency import PhysicalRefreshNode, ScriptNode
+
+    node = PhysicalRefreshNode(
+        address="target_items_table",
+        owner_script=ScriptNode(path=script),
+        assets=[StaleAsset(datasource_id="target_items", reason="forced rebuild")],
+    )
+
+    with set_rich_mode(False):
+        stats = execute_physical_node_for_refresh(
+            executor,
+            node,
+            quiet=False,
+            print_watermarks=False,
+            interactive=False,
+            dry_run=False,
+        )
+
+    assert stats.update_count == 1
+    captured = capsys.readouterr()
+    assert "Refreshed 1 asset(s)" in captured.out
+    assert "target_items_table" in captured.out

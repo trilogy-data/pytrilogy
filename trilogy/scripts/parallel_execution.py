@@ -683,9 +683,11 @@ def run_parallel_execution(
         )
     # Multiple files or physical graph - use parallel execution
     config_path_str = str(config.source_path) if config.source_path else None
-    show_execution_info(
-        input_type, input_name, edialect.value, cli_params.debug, config_path_str
-    )
+    # Skip header when caller already printed it (e.g. directory refresh pre-builds the graph)
+    if graph is None:
+        show_execution_info(
+            input_type, input_name, edialect.value, cli_params.debug, config_path_str
+        )
 
     # Get execution strategy
     strategy = get_execution_strategy(cli_params.execution_strategy)
