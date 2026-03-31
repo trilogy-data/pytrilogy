@@ -432,4 +432,22 @@ mod tests {
         let parsed = parse_file(content).unwrap();
         assert_eq!(parsed.imports.len(), 3);
     }
+
+    #[test]
+    fn test_comment_with_quotes() {
+        let content = r#"auto short_e_name <- coalesce(CASE WHEN _short_e_name = '-' then NULL else _short_e_name end, short_name); # the short English name of an "organization" - a company, state, or other body."#;
+        parse_file(content).unwrap();
+    }
+
+    #[test]
+    fn test_line_comment_with_double_quotes() {
+        let content = r#"import foo; # comment with "quoted" text"#;
+        parse_file(content).unwrap();
+    }
+
+    #[test]
+    fn test_statement_with_single_quoted_string_and_comment() {
+        let content = "auto x <- coalesce(CASE WHEN y = '-' then NULL else y end, z); # comment with \"quoted\" text";
+        parse_file(content).unwrap();
+    }
 }

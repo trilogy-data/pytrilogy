@@ -40,8 +40,8 @@ class ScriptNode:
 
 
 @dataclass(frozen=True)
-class PhysicalRefreshNode:
-    """Represents a physical data address to be refreshed."""
+class ManagedRefreshNode:
+    """Represents a managed data address to be refreshed."""
 
     address: str
     owner_script: ScriptNode
@@ -51,15 +51,15 @@ class PhysicalRefreshNode:
         return hash(self.address)
 
     def __eq__(self, other):
-        if not isinstance(other, PhysicalRefreshNode):
+        if not isinstance(other, ManagedRefreshNode):
             return False
         return self.address == other.address
 
     def __repr__(self):
-        return f"PhysicalRefreshNode({self.address})"
+        return f"ManagedRefreshNode({self.address})"
 
 
-ExecutionNode: TypeAlias = Union[ScriptNode, PhysicalRefreshNode]
+ExecutionNode: TypeAlias = Union[ScriptNode, ManagedRefreshNode]
 
 
 class DependencyStrategy(Protocol):

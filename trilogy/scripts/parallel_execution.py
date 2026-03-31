@@ -598,7 +598,7 @@ def get_execution_strategy(strategy_name: str):
 
 def run_parallel_execution(
     cli_params: CLIRuntimeParams,
-    execution_fn: Callable[[Executor, Any, bool], ExecutionStats],
+    execution_fn: Callable[[Executor, Any, bool], ExecutionStats] | None = None,
     execution_mode: ExecutionMode = ExecutionMode.RUN,
     graph: nx.DiGraph | None = None,
     executor_factory_override: Callable[[Any], Executor] | None = None,
@@ -729,6 +729,9 @@ def run_parallel_execution(
         )
 
     executor_factory = executor_factory_override or default_executor_factory
+
+    if execution_fn is None:
+        raise ValueError("execution_fn is required for parallel execution")
 
     # Wrap execution_fn to pass quiet=True for parallel execution and return stats
     def quiet_execution_fn(exec: Executor, node: Any) -> ExecutionStats | None:

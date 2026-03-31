@@ -11,10 +11,11 @@ from trilogy.execution.state import (
     StaleAsset,
     refresh_stale_assets,
 )
+from trilogy.execution.state.state_store import BaseStateStore
 from trilogy.scripts.common import CLIRuntimeParams, RefreshParams
 from trilogy.scripts.dependency import ScriptNode
 from trilogy.scripts.display import (
-    PhysicalDataGroup,
+    ManagedDataGroup,
     StaleDataSourceEntry,
     is_rich_available,
     set_rich_mode,
@@ -24,11 +25,12 @@ from trilogy.scripts.display import (
 )
 from trilogy.scripts.refresh import (
     _preview_directory_refresh,
-    _prompt_approval,
-    execute_physical_node_for_refresh,
+    execute_managed_node_for_refresh,
+)
+from trilogy.scripts.single_execution import (
+    execute_refresh_mode,
     execute_script_for_refresh,
 )
-from trilogy.scripts.single_execution import execute_refresh_mode
 from trilogy.scripts.trilogy import cli
 
 requires_rich = pytest.mark.skipif(
@@ -60,9 +62,9 @@ def _sample_stale_assets() -> list[StaleAsset]:
     ]
 
 
-def _sample_grouped_assets() -> list[PhysicalDataGroup]:
+def _sample_grouped_assets() -> list[ManagedDataGroup]:
     return [
-        PhysicalDataGroup(
+        ManagedDataGroup(
             data_address="target_orders",
             common_reason="forced rebuild",
             datasources=[
@@ -219,18 +221,6 @@ def test_show_refresh_plan_rich(capsys):
     captured = capsys.readouterr()
     assert "Datasource Watermarks" in captured.out
     assert "Stale Assets to Refresh" in captured.out
-
-
-def test_prompt_approval_accepted(capsys):
-    with set_rich_mode(False), patch("click.confirm", return_value=True):
-        result = _prompt_approval(_sample_stale_assets(), _sample_watermarks())
-    assert result is True
-
-
-def test_prompt_approval_declined(capsys):
-    with set_rich_mode(False), patch("click.confirm", return_value=False):
-        result = _prompt_approval(_sample_stale_assets(), _sample_watermarks())
-    assert result is False
 
 
 def test_refresh_stale_assets_on_approval_declined():
@@ -419,7 +409,7 @@ def test_execute_script_for_refresh_with_watermarks(tmp_path, capsys):
 
     assert stats.update_count == 1
     captured = capsys.readouterr()
-    assert "Watermarks:" in captured.out
+    assert "Asset Status:" in captured.out
     assert "Refreshed 1 asset(s)" in captured.out
 
 
@@ -497,7 +487,7 @@ def test_execute_refresh_mode_with_watermarks(capsys):
 
     assert result.refreshed_count == 1
     captured = capsys.readouterr()
-    assert "Watermarks:" in captured.out
+    assert "Asset Status:" in captured.out
 
 
 def test_refresh_directory_interactive_aggregates_plan(tmp_path):
@@ -553,8 +543,7 @@ import base;
     assert confirm.call_count == 1
     assert "target_events_table" in result.output
     assert "incremental key 'event_ts' behind" in result.output
-    assert "base.preql" in result.output
-    assert "consumer.preql" in result.output
+    assert "Asset Status:" in result.output
 
 
 def test_refresh_stale_assets_excludes_peer_stale_from_planner():
@@ -741,8 +730,100 @@ def test_phys_graph_no_stale_script_excluded(tmp_path):
     assert node.address == "base_table"
 
 
+# Two scripts that define different ds_ids but share the same physical address
+_SHARED_ADDR_SCRIPT = """\
+import {dep};
+
+datasource {name} (
+    ev_id: ev_id,
+    ev_ts: ev_ts
+)
+grain (ev_id)
+address shared_physical_table
+incremental by ev_ts;
+"""
+
+
+def test_preview_directory_probes_each_physical_asset_once(tmp_path):
+    """When two scripts define datasources at the same physical address, the
+    address is probed exactly once — not once per script."""
+    (tmp_path / "source.preql").write_text(_SOURCE_SCRIPT)
+    (tmp_path / "alpha.preql").write_text(
+        _SHARED_ADDR_SCRIPT.format(dep="source", name="alpha")
+    )
+    (tmp_path / "beta.preql").write_text(
+        _SHARED_ADDR_SCRIPT.format(dep="source", name="beta")
+    )
+
+    probe_calls: list[str] = []
+    original = BaseStateStore.watermark_asset
+
+    def counting(self, datasource, executor):  # type: ignore[override]
+        probe_calls.append(datasource.identifier)
+        return original(self, datasource, executor)
+
+    cli_params = _make_cli_params(tmp_path)
+    with patch.object(BaseStateStore, "watermark_asset", counting):
+        _preview_directory_refresh(cli_params, tmp_path)
+
+    # alpha and beta share the same physical address — only one should be probed
+    assert probe_calls.count("alpha") + probe_calls.count("beta") == 1
+
+
+def test_preview_directory_excludes_root_addresses_from_list(tmp_path):
+    """Root datasources (marked with the 'root' modifier) must not appear in the
+    physical-asset list — only non-root addresses should be shown and probed."""
+    (tmp_path / "source.preql").write_text(_SOURCE_SCRIPT)
+    (tmp_path / "alpha.preql").write_text(
+        _STALE_DS_SCRIPT.format(dep="source", name="alpha")
+    )
+
+    import trilogy.scripts.display as display_mod
+
+    listed: list[list[str]] = []
+    original = display_mod.show_managed_asset_list
+
+    def capturing(addresses: list[str]) -> None:
+        listed.append(list(addresses))
+        return original(addresses)
+
+    cli_params = _make_cli_params(tmp_path)
+    with patch.object(display_mod, "show_managed_asset_list", capturing):
+        _preview_directory_refresh(cli_params, tmp_path)
+
+    assert listed, "show_managed_asset_list should have been called"
+    # Only the non-root address (alpha_table) should appear — the root datasource
+    # (src_events) is used only for watermark comparison and must be excluded
+    assert listed[0] == ["alpha_table"]
+
+
+def test_preview_directory_import_only_script_does_not_reprobe(tmp_path):
+    """A script that only imports another script should not trigger a second
+    probe for the physical assets it inherits via that import."""
+    (tmp_path / "source.preql").write_text(_SOURCE_SCRIPT)
+    (tmp_path / "alpha.preql").write_text(
+        _SHARED_ADDR_SCRIPT.format(dep="source", name="alpha")
+    )
+    # consumer only imports alpha — no new datasources, just inherits alpha's env
+    (tmp_path / "consumer.preql").write_text("import alpha;\n")
+
+    probe_calls: list[str] = []
+    original = BaseStateStore.watermark_asset
+
+    def counting(self, datasource, executor):  # type: ignore[override]
+        probe_calls.append(datasource.identifier)
+        return original(self, datasource, executor)
+
+    cli_params = _make_cli_params(tmp_path)
+    with patch.object(BaseStateStore, "watermark_asset", counting):
+        _preview_directory_refresh(cli_params, tmp_path)
+
+    # alpha owns shared_physical_table; consumer's import must not cause a second probe
+    assert probe_calls.count("alpha") == 1
+
+
 def test_execute_physical_node_prints_refreshed_count(tmp_path, capsys):
-    """execute_physical_node_for_refresh prints a summary after refreshing."""
+    """execute_managed_node_for_refresh prints a summary after refreshing."""
     script = tmp_path / "test.preql"
     script.write_text(STALE_SCRIPT)
     executor = Dialects.DUCK_DB.default_executor()
@@ -750,16 +831,16 @@ def test_execute_physical_node_prints_refreshed_count(tmp_path, capsys):
         executor.parse_text(f.read(), root=script)
 
     from trilogy.execution.state import StaleAsset
-    from trilogy.scripts.dependency import PhysicalRefreshNode, ScriptNode
+    from trilogy.scripts.dependency import ManagedRefreshNode, ScriptNode
 
-    node = PhysicalRefreshNode(
+    node = ManagedRefreshNode(
         address="target_items_table",
         owner_script=ScriptNode(path=script),
         assets=[StaleAsset(datasource_id="target_items", reason="forced rebuild")],
     )
 
     with set_rich_mode(False):
-        stats = execute_physical_node_for_refresh(
+        stats = execute_managed_node_for_refresh(
             executor,
             node,
             quiet=False,

@@ -20,6 +20,7 @@ try:
     from rich.panel import Panel
     from rich.progress import (
         BarColumn,
+        MofNCompleteColumn,
         Progress,
         SpinnerColumn,
         TextColumn,
@@ -54,7 +55,7 @@ class StaleDataSourceEntry:
 
 
 @dataclass
-class PhysicalDataGroup:
+class ManagedDataGroup:
     data_address: str
     datasources: list[StaleDataSourceEntry]
     common_reason: str | None = None
@@ -533,7 +534,7 @@ def show_script_result(
 ) -> None:
     """Display result of a single script execution."""
     from trilogy.scripts.common import format_stats
-    from trilogy.scripts.dependency import PhysicalRefreshNode, ScriptNode
+    from trilogy.scripts.dependency import ManagedRefreshNode, ScriptNode
 
     stats_str = ""
     if result.stats:
@@ -547,7 +548,7 @@ def show_script_result(
                 console.print(
                     f"  [green]✓[/green] {result.node.path.name} ({result.duration:.2f}s){stats_str}"
                 )
-            elif isinstance(result.node, PhysicalRefreshNode):
+            elif isinstance(result.node, ManagedRefreshNode):
                 console.print(
                     f"  [green]✓[/green] {result.node.address} ({result.duration:.2f}s){stats_str}"
                 )
@@ -558,7 +559,7 @@ def show_script_result(
                 console.print(
                     f"  [red]✗[/red] {result.node.path.name} ({result.duration:.2f}s) - {result.error}"
                 )
-            elif isinstance(result.node, PhysicalRefreshNode):
+            elif isinstance(result.node, ManagedRefreshNode):
                 console.print(
                     f"  [red]✗[/red] {result.node.address} ({result.duration:.2f}s) - {result.error}"
                 )
@@ -671,7 +672,7 @@ def show_stale_assets(stale_assets: list) -> None:
 
 
 def show_grouped_refresh_assets(
-    grouped_assets: list[PhysicalDataGroup],
+    grouped_assets: list[ManagedDataGroup],
 ) -> None:
     """Display stale assets grouped by physical data address."""
     if RICH_AVAILABLE and console is not None:
@@ -720,6 +721,189 @@ def show_grouped_refresh_assets(
             echo(f"    {ds.datasource_id}{ds_reason} [{files_str}]")
 
 
+class _ProbeProgressContext:
+    """Context manager for probe progress tracking."""
+
+    def __init__(self, total: int):
+        self._total = total
+        self._progress = None
+        self._task = None
+
+    def __enter__(self):
+        if RICH_AVAILABLE and console is not None:
+            self._progress = Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                console=console,
+            )
+            self._progress.start()
+            self._task = self._progress.add_task("Checking assets", total=self._total)
+        return self
+
+    def advance(self) -> None:
+        if self._progress is not None and self._task is not None:
+            self._progress.advance(self._task)
+
+    def __exit__(self, *args):
+        if self._progress is not None:
+            self._progress.stop()
+
+
+def probe_progress(total: int) -> _ProbeProgressContext:
+    """Context manager showing progress while collecting watermarks."""
+    return _ProbeProgressContext(total)
+
+
+def show_managed_asset_list(addresses: list[str]) -> None:
+    """Print the list of managed assets found before probing begins."""
+    if RICH_AVAILABLE and console is not None:
+        console.print("[bold]Managed assets found:[/bold]")
+        for addr in addresses:
+            console.print(f"  [cyan]{addr}[/cyan]")
+    else:
+        echo(style("Managed assets found:", bold=True))
+        for addr in addresses:
+            echo(f"  {addr}")
+
+
+def show_root_probe_breakdown(
+    root_watermarks: dict,
+    concept_max_watermarks: dict,
+) -> None:
+    """Show per-root values for each probe concept and the derived max."""
+    if not concept_max_watermarks:
+        return
+
+    if RICH_AVAILABLE and console is not None:
+        table = Table(
+            title="Root Probe Results",
+            show_header=True,
+            header_style="bold blue",
+            box=box.MINIMAL_DOUBLE_HEAD,
+        )
+        table.add_column("Concept", style="cyan")
+        table.add_column("Root Datasource", style="white")
+        table.add_column("Value", style="white")
+
+        for concept_name in sorted(concept_max_watermarks):
+            max_val = concept_max_watermarks[concept_name]
+            roots_for_concept = [
+                (ds_id, wm.keys[concept_name])
+                for ds_id, wm in sorted(root_watermarks.items())
+                if concept_name in wm.keys
+            ]
+            first = True
+            for ds_id, update_key in roots_for_concept:
+                table.add_row(
+                    concept_name if first else "",
+                    ds_id,
+                    str(update_key.value),
+                )
+                first = False
+            table.add_row(
+                concept_name if not roots_for_concept else "",
+                "[dim]→ max[/dim]",
+                f"[green]{max_val.value}[/green]",
+            )
+        console.print(table)
+    else:
+        echo(style("Root Probe Results:", bold=True))
+        for concept_name in sorted(concept_max_watermarks):
+            max_val = concept_max_watermarks[concept_name]
+            echo(f"  {concept_name}:")
+            for ds_id, wm in sorted(root_watermarks.items()):
+                if concept_name in wm.keys:
+                    echo(f"    {ds_id}: {wm.keys[concept_name].value}")
+            echo(f"    → max: {max_val.value}")
+
+
+def show_asset_status_summary(
+    watermarks: dict,
+    address_map: dict[str, str],
+    stale_assets: list,
+    env_max: dict | None = None,
+) -> None:
+    """Display combined watermark and staleness status grouped by managed asset."""
+    stale_reasons: dict[str, str] = {a.datasource_id: a.reason for a in stale_assets}
+    all_ds_ids = sorted(set(watermarks.keys()) | set(stale_reasons.keys()))
+
+    addr_to_ds: dict[str, list[str]] = {}
+    for ds_id in all_ds_ids:
+        addr = address_map.get(ds_id, ds_id)
+        addr_to_ds.setdefault(addr, []).append(ds_id)
+
+    if RICH_AVAILABLE and console is not None:
+        table = Table(
+            title="Asset Status",
+            show_header=True,
+            header_style="bold blue",
+            box=box.MINIMAL_DOUBLE_HEAD,
+        )
+        table.add_column("Managed Asset", style="cyan")
+        table.add_column("Datasource", style="white")
+        table.add_column("Watermark", style="white")
+        table.add_column("Status", style="white")
+
+        for addr in sorted(addr_to_ds):
+            first = True
+            for ds_id in addr_to_ds[addr]:
+                wm = watermarks.get(ds_id)
+                wm_str = (
+                    ", ".join(f"{k}={v.value}" for k, v in wm.keys.items())
+                    if wm and wm.keys
+                    else "-"
+                )
+                reason = stale_reasons.get(ds_id)
+                status = (
+                    f"[yellow]stale: {reason}[/yellow]"
+                    if reason
+                    else "[green]up to date[/green]"
+                )
+                table.add_row(addr if first else "", ds_id, wm_str, status)
+                first = False
+
+        console.print(table)
+
+        if env_max:
+            max_table = Table(
+                title="Environment Max Watermarks",
+                show_header=True,
+                header_style="bold green",
+                box=box.MINIMAL_DOUBLE_HEAD,
+            )
+            max_table.add_column("Key", style="white")
+            max_table.add_column("Max Value", style="green")
+            max_table.add_column("Type", style="dim")
+            for key_name, update_key in sorted(env_max.items()):
+                max_table.add_row(
+                    key_name, str(update_key.value), update_key.type.value
+                )
+            console.print(max_table)
+    else:
+        echo(style("Asset Status:", bold=True))
+        for addr in sorted(addr_to_ds):
+            echo(f"  {addr}")
+            for ds_id in addr_to_ds[addr]:
+                wm = watermarks.get(ds_id)
+                wm_str = (
+                    ", ".join(f"{k}={v.value}" for k, v in wm.keys.items())
+                    if wm and wm.keys
+                    else "-"
+                )
+                reason = stale_reasons.get(ds_id)
+                status = f"stale: {reason}" if reason else "up to date"
+                echo(f"    {ds_id} | wm: {wm_str} | {status}")
+
+        if env_max:
+            print_info("Environment max watermarks:")
+            for key_name, update_key in sorted(env_max.items()):
+                print_info(
+                    f"  {key_name}: {update_key.value} ({update_key.type.value})"
+                )
+
+
 def show_dry_run_queries(results: "list[ExecutionResult]") -> None:
     """Display collected dry-run SQL after parallel refresh completes."""
     from trilogy.scripts.dependency import ScriptNode
@@ -742,7 +926,7 @@ def show_dry_run_queries(results: "list[ExecutionResult]") -> None:
 def show_refresh_plan(
     stale_assets: list,
     watermarks: dict,
-    grouped_assets: list[PhysicalDataGroup] | None = None,
+    grouped_assets: list[ManagedDataGroup] | None = None,
 ) -> None:
     """Display refresh plan showing watermarks and stale assets for approval."""
     show_watermarks(watermarks)
