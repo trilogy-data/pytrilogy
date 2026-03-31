@@ -278,7 +278,11 @@ def _preview_directory_refresh(
         for addr2, node2 in physical_nodes.items():
             if addr1 == addr2:
                 continue
-            if nx.has_path(script_graph, node1.owner_script, node2.owner_script):
+            if (
+                node1.owner_script in script_graph
+                and node2.owner_script in script_graph
+                and nx.has_path(script_graph, node1.owner_script, node2.owner_script)
+            ):
                 phys_graph.add_edge(node1, node2)
 
     grouped_assets = _build_grouped_refresh_assets(
@@ -451,6 +455,11 @@ def execute_physical_node_for_refresh(
 
     result = _run_refresh_plan(executor, plan, stats, quiet, dry_run)
     stats.update_count = result.refreshed_count
+    if not quiet and result.refreshed_count > 0:
+        from trilogy.scripts.display import print_success
+
+        label = "Would refresh" if dry_run else "Refreshed"
+        print_success(f"{label} {result.refreshed_count} asset(s) for {node.address}")
     return stats
 
 
