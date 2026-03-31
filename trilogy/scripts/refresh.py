@@ -1,6 +1,7 @@
 """Refresh command for Trilogy CLI - refreshes stale assets."""
 
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import StringIO
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from click.exceptions import Exit
 
 from trilogy import Executor
 from trilogy.dialect.enums import Dialects
+from trilogy.execution.config import RuntimeConfig
 from trilogy.execution.state import (
     DatasourceWatermark,
     RefreshPlan,
@@ -34,6 +36,48 @@ from trilogy.scripts.dependency import (
     ScriptNode,
 )
 from trilogy.scripts.parallel_execution import ExecutionMode, run_parallel_execution
+
+
+def _probe_owner_node(
+    owner_node: ScriptNode,
+    owned_addrs: set[str],
+    address_map: dict[str, str],
+    ds_is_root: dict[str, bool],
+    ds_to_scripts: dict[str, list[ScriptNode]],
+    force_sources: set[str] | None,
+    cli_params: CLIRuntimeParams,
+    edialect: Dialects,
+    config: RuntimeConfig,
+) -> tuple[ScriptNode, RefreshPlan]:
+    from trilogy.scripts.common import create_executor_for_script
+
+    skip_ids: set[str] = {
+        ds_id
+        for ds_id, addr in address_map.items()
+        if addr not in owned_addrs
+        and not ds_is_root.get(ds_id, False)
+        and owner_node in ds_to_scripts.get(ds_id, [])
+    }
+    executor = create_executor_for_script(
+        owner_node,
+        cli_params.param,
+        cli_params.conn_args,
+        edialect,
+        cli_params.debug,
+        config,
+        cli_params.debug_file,
+    )
+    try:
+        with open(owner_node.path, "r") as handle:
+            executor.parse_text(handle.read(), root=owner_node.path)
+        plan = create_refresh_plan(
+            executor,
+            force_sources=force_sources,
+            skip_datasources=skip_ids,
+        )
+        return owner_node, plan
+    finally:
+        executor.close()
 
 
 def _merge_watermarks(
@@ -170,48 +214,32 @@ def _preview_directory_refresh(
     show_managed_asset_list(sorted(probe_addrs))
     print_info(f"Probing {total_physical} managed asset(s)...")
 
-    # Phase 2: probe each physical asset exactly once via its owner script
+    # Phase 2: probe each managed asset exactly once via its owner script (parallel)
+    _, parallelism = merge_runtime_config(cli_params, config)
+    ordered_nodes = sorted(owner_to_addrs, key=lambda n: script_to_order.get(n, 999999))
     plans_by_node: list[tuple[ScriptNode, RefreshPlan]] = []
     with probe_progress(total_physical) as _progress:
-        for owner_node in sorted(
-            owner_to_addrs, key=lambda n: script_to_order.get(n, 999999)
-        ):
-            owned_addrs = owner_to_addrs[owner_node]
-            # Skip non-root ds_ids whose address is owned by a different script;
-            # roots are always probed so concept_max_watermarks stays accurate.
-            skip_ids: set[str] = {
-                ds_id
-                for ds_id, addr in address_map.items()
-                if addr not in owned_addrs
-                and not ds_is_root.get(ds_id, False)
-                and owner_node in ds_to_scripts.get(ds_id, [])
+        with ThreadPoolExecutor(max_workers=parallelism) as pool:
+            futures = {
+                pool.submit(
+                    _probe_owner_node,
+                    node,
+                    owner_to_addrs[node],
+                    address_map,
+                    ds_is_root,
+                    ds_to_scripts,
+                    force_sources,
+                    cli_params,
+                    edialect,
+                    config,
+                ): node
+                for node in ordered_nodes
             }
-            executor = create_executor_for_script(
-                owner_node,
-                cli_params.param,
-                cli_params.conn_args,
-                edialect,
-                cli_params.debug,
-                config,
-                cli_params.debug_file,
-            )
-            try:
-                with open(owner_node.path, "r") as handle:
-                    executor.parse_text(handle.read(), root=owner_node.path)
-                plans_by_node.append(
-                    (
-                        owner_node,
-                        create_refresh_plan(
-                            executor,
-                            force_sources=force_sources,
-                            skip_datasources=skip_ids,
-                        ),
-                    )
-                )
-            finally:
-                executor.close()
-            for _ in owned_addrs & probe_addrs:
-                _progress.advance()
+            for future in as_completed(futures):
+                owner_node, plan = future.result()
+                plans_by_node.append((owner_node, plan))
+                for _ in owner_to_addrs[owner_node] & probe_addrs:
+                    _progress.advance()
 
     refresh_assets = [
         asset for _, plan in plans_by_node for asset in plan.refresh_assets
