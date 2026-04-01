@@ -234,17 +234,15 @@ def concepts_to_build_grain_concepts(
     return final
 
 
-@dataclass
+@dataclass(slots=True)
 class LooseBuildConceptList:
     concepts: Sequence[BuildConcept]
+    addresses: set[str] = field(init=False)
+    sorted_addresses: List[str] = field(init=False)
 
-    @cached_property
-    def addresses(self) -> set[str]:
-        return {s.address for s in self.concepts}
-
-    @cached_property
-    def sorted_addresses(self) -> List[str]:
-        return sorted(list(self.addresses))
+    def __post_init__(self):
+        self.addresses = {s.address for s in self.concepts}
+        self.sorted_addresses = sorted(self.addresses)
 
     def __str__(self) -> str:
         return f"lcl{str(self.sorted_addresses)}"
@@ -280,17 +278,15 @@ class LooseBuildConceptList:
         return self.addresses.isdisjoint(other.addresses)
 
 
-@dataclass
+@dataclass(slots=True)
 class CanonicalBuildConceptList:
     concepts: Sequence[BuildConcept]
+    addresses: set[str] = field(init=False)
+    sorted_addresses: List[str] = field(init=False)
 
-    @cached_property
-    def addresses(self) -> set[str]:
-        return {s.canonical_address for s in self.concepts}
-
-    @cached_property
-    def sorted_addresses(self) -> List[str]:
-        return sorted(list(self.addresses))
+    def __post_init__(self):
+        self.addresses = {s.canonical_address for s in self.concepts}
+        self.sorted_addresses = sorted(self.addresses)
 
     def __str__(self) -> str:
         return f"lcl{str(self.sorted_addresses)}"
@@ -368,7 +364,7 @@ def get_rendered_concept_arguments(expr) -> List["BuildConcept"]:
     return output
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildParamaterizedConceptReference(DataTyped):
     concept: BuildConcept
 
@@ -388,7 +384,7 @@ class BuildParamaterizedConceptReference(DataTyped):
         return self.concept.lineage.arguments[0]
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildGrain:
     components: set[str] = field(default_factory=set)
     where_clause: Optional[BuildWhereClause] = None
@@ -511,7 +507,7 @@ class BuildGrain:
 DEFAULT_GRAIN = BuildGrain(components=set())
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs):
     content: "BuildExpr"
 
@@ -564,7 +560,7 @@ class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs):
         return arg_to_datatype(self.content)
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildConditional(DataTyped, BuildConceptArgs, ConstantInlineable):
     left: Union[
         int,
@@ -697,7 +693,7 @@ class BuildConditional(DataTyped, BuildConceptArgs, ConstantInlineable):
         return DataType.BOOL
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildWhereClause(BuildConceptArgs):
     conditional: Union[
         BuildSubselectComparison,
@@ -734,7 +730,7 @@ class BuildHavingClause(BuildWhereClause):
     pass
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildComparison(DataTyped, BuildConceptArgs, ConstantInlineable):
 
     left: Union[
@@ -1146,7 +1142,7 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
         return self.lineage.concept_arguments if self.lineage else []
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildOrderItem(DataTyped, BuildConceptArgs):
     expr: BuildExpr
     order: Ordering
@@ -1178,7 +1174,7 @@ class BuildOrderItem(DataTyped, BuildConceptArgs):
         return arg_to_datatype(self.expr)
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildWindowItem(DataTyped, BuildConceptArgs):
     type: WindowType
     content: BuildConcept
@@ -1212,7 +1208,7 @@ class BuildWindowItem(DataTyped, BuildConceptArgs):
         return Purpose.PROPERTY
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildCaseSimpleWhen(DataTyped, BuildConceptArgs):
     value_expr: "BuildExpr"
     expr: "BuildExpr"
@@ -1238,7 +1234,7 @@ class BuildCaseSimpleWhen(DataTyped, BuildConceptArgs):
         return arg_to_datatype(self.expr)
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildCaseWhen(DataTyped, BuildConceptArgs):
     comparison: BuildConditional | BuildSubselectComparison | BuildComparison
     expr: "BuildExpr"
@@ -1264,7 +1260,7 @@ class BuildCaseWhen(DataTyped, BuildConceptArgs):
         return arg_to_datatype(self.expr)
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildCaseElse(DataTyped, BuildConceptArgs):
     expr: "BuildExpr"
 
@@ -1276,7 +1272,7 @@ class BuildCaseElse(DataTyped, BuildConceptArgs):
         return arg_to_datatype(self.expr)
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildFunction(DataTyped, BuildConceptArgs):
     operator: FunctionType
     arguments: Sequence[
@@ -1357,7 +1353,7 @@ class BuildFunction(DataTyped, BuildConceptArgs):
         return BuildGrain(components=args)
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildAggregateWrapper(BuildConceptArgs, DataTyped):
     function: BuildFunction
     by: List[BuildConcept] = field(default_factory=list)
@@ -1394,7 +1390,7 @@ class BuildAggregateWrapper(BuildConceptArgs, DataTyped):
         return self.function.output_purpose
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildFilterItem(BuildConceptArgs):
     content: "BuildExpr"
     where: BuildWhereClause
@@ -1430,14 +1426,14 @@ class BuildFilterItem(BuildConceptArgs):
         )
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildRowsetLineage(BuildConceptArgs):
     name: str
     derived_concepts: List[str]
     select: SelectLineage | MultiSelectLineage
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildRowsetItem(DataTyped, BuildConceptArgs):
     content: BuildConcept
     rowset: BuildRowsetLineage
@@ -1461,7 +1457,7 @@ class BuildRowsetItem(DataTyped, BuildConceptArgs):
         return [self.content]
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildSubselectItem(DataTyped, BuildConceptArgs):
     content: BuildConcept
     where: Optional[BuildWhereClause] = None
@@ -1510,7 +1506,7 @@ class BuildSubselectItem(DataTyped, BuildConceptArgs):
         return args
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildOrderBy:
     items: List[BuildOrderItem]
 
@@ -1519,17 +1515,17 @@ class BuildOrderBy:
         return [x.expr for x in self.items]
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildAlignClause:
     items: List[BuildAlignItem]
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildDeriveClause:
     items: List[BuildDeriveItem]
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildDeriveItem:
     expr: BuildExpr
     name: str
@@ -1540,7 +1536,7 @@ class BuildDeriveItem:
         return f"{self.namespace}.{self.name}"
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildSelectLineage:
     selection: List[BuildConcept]
     hidden_components: set[str]
@@ -1557,7 +1553,7 @@ class BuildSelectLineage:
         return self.selection
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildMultiSelectLineage(BuildConceptArgs):
     selects: List[SelectLineage]
     grain: BuildGrain
@@ -1619,22 +1615,22 @@ class BuildMultiSelectLineage(BuildConceptArgs):
         )
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildAlignItem:
     alias: str
     concepts: List[BuildConcept]
     namespace: str = field(default=DEFAULT_NAMESPACE)
+    concepts_lcl: LooseBuildConceptList = field(init=False)
 
-    @cached_property
-    def concepts_lcl(self) -> LooseBuildConceptList:
-        return LooseBuildConceptList(concepts=self.concepts)
+    def __post_init__(self):
+        self.concepts_lcl = LooseBuildConceptList(concepts=self.concepts)
 
     @property
     def aligned_concept(self) -> str:
         return f"{self.namespace}.{self.alias}"
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildColumnAssignment:
     alias: str | RawColumnExpr | BuildFunction | BuildAggregateWrapper
     concept: BuildConcept
@@ -1649,7 +1645,7 @@ class BuildColumnAssignment:
         return Modifier.NULLABLE in self.modifiers
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildDatasource:
     name: str
     columns: List[BuildColumnAssignment]
@@ -1764,7 +1760,7 @@ class BuildDatasource:
         return False
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildUnionDatasource:
     children: List[BuildDatasource]
     non_partial_for: Optional[BuildWhereClause] = None
