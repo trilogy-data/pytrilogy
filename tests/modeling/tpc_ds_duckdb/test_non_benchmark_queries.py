@@ -100,12 +100,12 @@ select
     count(store_sales.ticket_number) as store_order_count;
 
 select
-    store_sales.date.year,
-    count(store_sales.ticket_number) as store_order_count;
+    web_sales.date.year,
+    count(web_sales.order_number) as web_order_count;
 
-    select
-    store_sales.date.year,
-    count(store_sales.ticket_number) as store_order_count;
+select
+    catalog_sales.date.year,
+    count(catalog_sales.order_number) as catalog_order_count;
 
 
 """
@@ -115,11 +115,11 @@ select
         dialect.parse_text(test_queries)
         end = datetime.now()
         durations.append((end - start).total_seconds())
-    # 0.4639s
+    # 0.42464
     avg_duration = sum(durations) / len(durations)
     print(f"Parse times: {durations}")
     print(f"Average parse time: {avg_duration:.4f}s")
-    assert avg_duration < 2, f"Average duration: {avg_duration:.4f}s"
+    assert avg_duration < 2.0, f"Average duration: {avg_duration:.4f}s"
 
 
 def test_merge_comparison(engine):

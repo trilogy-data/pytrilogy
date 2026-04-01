@@ -267,7 +267,7 @@ class StructType:
     def __repr__(self):
         return "struct<{}>".format(
             ", ".join(
-                f"{f.name}:{f.type.name}"
+                f"{f.name}:{str(f.type)}"
                 for f in self.fields
                 if isinstance(f, StructComponent)
             )
