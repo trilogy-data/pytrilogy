@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC
 from collections import defaultdict
 from dataclasses import dataclass, field
+from dataclasses import replace as dc_replace
 from datetime import date, datetime
 from functools import cached_property, reduce, singledispatchmethod
 from typing import (
@@ -930,7 +931,7 @@ class BuildSubselectComparison(BuildComparison):
         return [tuple(get_concept_arguments(self.right))]
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
     name: str
     canonical_name: str
@@ -958,6 +959,12 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
     grain: BuildGrain = field(default=None)  # type: ignore
     modifiers: List[Modifier] = field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = field(default_factory=set)
+    address: str = field(init=False)
+    canonical_address: str = field(init=False)
+
+    def __post_init__(self):
+        self.address = f"{self.namespace}.{self.name}"
+        self.canonical_address = f"{self.namespace}.{self.canonical_name}"
 
     @property
     def is_aggregate(self) -> bool:
@@ -996,21 +1003,13 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
             # and self.keys == other.keys
         )
 
-    def __str__(self):
-        grain = str(self.grain) if self.grain else "Grain<>"
-        return f"{self.namespace}.{self.name}@{grain}"
-
-    @cached_property
-    def address(self) -> str:
-        return f"{self.namespace}.{self.name}"
-
-    @cached_property
-    def canonical_address(self) -> str:
-        return f"{self.namespace}.{self.canonical_name}"
-
     @cached_property
     def canonical_address_grain(self) -> str:
         return f"{self.namespace}.{self.canonical_name}@{str(self.grain)}"
+
+    def __str__(self):
+        grain = str(self.grain) if self.grain else "Grain<>"
+        return f"{self.namespace}.{self.name}@{grain}"
 
     @property
     def safe_address(self) -> str:
@@ -2112,9 +2111,9 @@ class Factory:
         if new_lineage:
             build_lineage = self.build(new_lineage)
             if isinstance(build_lineage, BuildConcept):
-                build_lineage.name = base.name
-                build_lineage.namespace = base.namespace
-                return build_lineage
+                return dc_replace(
+                    build_lineage, name=base.name, namespace=base.namespace
+                )
             elif isinstance(build_lineage, bool):
                 build_lineage = BuildFunction(
                     operator=FunctionType.CONSTANT,
