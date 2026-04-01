@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import difflib
 import os
-from collections import defaultdict
+from collections import UserDict, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import (
@@ -103,9 +103,9 @@ class EnvironmentConfig:
         return new
 
 
-class EnvironmentConceptDict(dict):
+class EnvironmentConceptDict(UserDict[str, Concept]):
     def __init__(self, *args, **kwargs) -> None:
-        super().__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.undefined: dict[str, UndefinedConceptFull] = {}
         self.fail_on_missing: bool = True
         self.hidden: set[str] = set()
@@ -114,7 +114,7 @@ class EnvironmentConceptDict(dict):
     def duplicate(self) -> "EnvironmentConceptDict":
         new = EnvironmentConceptDict()
         # include hidden items via raw iteration
-        new.update({k: v.duplicate() for k, v in super().items()})
+        new.update({k: v.duplicate() for k, v in self.data.items()})
         new.undefined = self.undefined
         new.fail_on_missing = self.fail_on_missing
         new.hidden = set(self.hidden)
@@ -126,29 +126,29 @@ class EnvironmentConceptDict(dict):
         for concept in DEFAULT_CONCEPTS.values():
             self[concept.address] = concept
 
-    def __contains__(self, key) -> bool:  # type: ignore
-        return super().__contains__(key) and key not in self.hidden
+    def __contains__(self, key: object) -> bool:
+        return key in self.data and key not in self.hidden
 
     def __iter__(self):
-        return (k for k in super().__iter__() if k not in self.hidden)
+        return (k for k in self.data if k not in self.hidden)
 
     def __len__(self) -> int:
         return sum(1 for _ in self)
 
     def keys(self):  # type: ignore
-        return [k for k in super().keys() if k not in self.hidden]
+        return [k for k in self.data if k not in self.hidden]
 
     def values(self) -> ValuesView[Concept]:  # type: ignore
-        return [v for k, v in super().items() if k not in self.hidden]  # type: ignore
+        return [v for k, v in self.data.items() if k not in self.hidden]  # type: ignore
 
     def items(self) -> ItemsView[str, Concept]:  # type: ignore
-        return [(k, v) for k, v in super().items() if k not in self.hidden]  # type: ignore
+        return [(k, v) for k, v in self.data.items() if k not in self.hidden]  # type: ignore
 
     def all_items(self) -> list[tuple[str, Concept]]:
         """Iterate all concepts including hidden ones (for build-time resolution)."""
-        return list(super().items())
+        return list(self.data.items())
 
-    def get(self, key: str, default: Concept | None = None) -> Concept | None:  # type: ignore
+    def get(self, key: str, default: Concept | None = None) -> Concept | None:  # type: ignore[override]
         try:
             return self.__getitem__(key)
         except UndefinedConceptException:
@@ -175,12 +175,12 @@ class EnvironmentConceptDict(dict):
         self, key: str, line_no: int | None = None, file: Path | None = None
     ) -> Concept | UndefinedConceptFull:
         # fast access path — includes hidden (needed for build resolution)
-        if super().__contains__(key):
-            return super(EnvironmentConceptDict, self).__getitem__(key)
+        if key in self.data:
+            return self.data[key]
         if isinstance(key, ConceptRef):
             return self.__getitem__(key.address, line_no=line_no, file=file)  # type: ignore[call-arg]
         try:
-            return super(EnvironmentConceptDict, self).__getitem__(key)
+            return self.data[key]
         except KeyError:
             if "." in key and key.split(".", 1)[0] == DEFAULT_NAMESPACE:
                 return self.__getitem__(key.split(".", 1)[1], line_no)
@@ -432,7 +432,7 @@ class Environment:
         lookup = new_concept.address
         if lookup not in self.concepts:
             return None
-        existing: Concept = self.concepts.get(lookup)  # type: ignore
+        existing: Concept = self.concepts[lookup]
         if isinstance(existing, UndefinedConcept):
             return None
 
@@ -537,12 +537,12 @@ class Environment:
             ):
                 # excluded from public view — store in concepts but mark hidden
                 new = self.add_concept(namespaced, add_derived=False)
-                dict.__setitem__(self.concepts, target_k, new)
+                self.concepts.data[target_k] = new
                 self.concepts.hidden.add(target_k)
             elif is_hidden:
                 # propagate hidden status from source
                 new = self.add_concept(namespaced, add_derived=False)
-                dict.__setitem__(self.concepts, target_k, new)
+                self.concepts.data[target_k] = new
                 self.concepts.hidden.add(target_k)
             else:
                 new = self.add_concept(namespaced, add_derived=False)

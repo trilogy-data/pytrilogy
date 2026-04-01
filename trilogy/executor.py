@@ -1,7 +1,7 @@
 import uuid
 from functools import singledispatchmethod
 from pathlib import Path
-from typing import Any, Generator, List, Optional
+from typing import Any, Generator, List, Mapping, Optional
 
 from trilogy.constants import MagicConstants, Rendering, logger
 from trilogy.core.enums import (
@@ -623,7 +623,7 @@ class Executor(object):
     def _concept_to_value(
         self,
         concept: Concept,
-        local_concepts: dict[str, Concept] | None = None,
+        local_concepts: Mapping[str, Concept] | None = None,
     ) -> Any:
         if not concept.granularity == Granularity.SINGLE_ROW:
             raise SyntaxError(
@@ -683,7 +683,7 @@ class Executor(object):
             return None
 
     def _hydrate_param(
-        self, param: str, local_concepts: dict[str, Concept] | None = None
+        self, param: str, local_concepts: Mapping[str, Concept] | None = None
     ) -> Any:
         matched = [
             v
@@ -742,7 +742,7 @@ class Executor(object):
         self,
         command: str | Path,
         variables: dict | None = None,
-        local_concepts: dict[str, Concept] | None = None,
+        local_concepts: Mapping[str, Concept] | None = None,
     ) -> ResultProtocol:
         """Run a command against the raw underlying
         execution engine."""

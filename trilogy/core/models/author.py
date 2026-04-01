@@ -12,6 +12,7 @@ from typing import (
     Any,
     Iterable,
     List,
+    Mapping,
     Optional,
     Self,
     Sequence,
@@ -507,7 +508,7 @@ class Grain(Namespaced):
         concepts: Iterable[Concept | ConceptRef | str],
         environment: Environment | None = None,
         where_clause: WhereClause | None = None,
-        local_concepts: dict[str, Concept] | None = None,
+        local_concepts: Mapping[str, Concept] | None = None,
     ) -> Grain:
         from trilogy.parsing.common import concepts_to_grain_concepts
 
@@ -1722,7 +1723,7 @@ def type_to_pretty(dtype: TYPEDEF_TYPES):
     return str(dtype)
 
 
-def args_to_pretty(input: set[DataType]) -> str:
+def args_to_pretty(input: set[DataType | ArrayType | MapType]) -> str:
     return ", ".join(
         sorted([f"'{type_to_pretty(x)}'" for x in input if x != DataType.UNKNOWN])
     )
@@ -1780,7 +1781,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced):
 
         return core_schema.no_info_after_validator_function(_validate, schema)
 
-    def validate_arguments(self):
+    def validate_arguments(self) -> None:
         """Run full argument type validation - called from parser."""
         from trilogy.parsing.exceptions import ParseError
 
