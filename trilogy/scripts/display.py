@@ -768,6 +768,81 @@ def show_managed_asset_list(addresses: list[str]) -> None:
             echo(f"  {addr}")
 
 
+def show_root_concepts(
+    needed_concepts: set[str],
+    root_addr_to_concepts: dict[str, set[str]],
+) -> None:
+    """Show which concepts will be probed and from which root physical addresses."""
+    if not needed_concepts:
+        return
+    # Group by root address: addr -> sorted list of needed concepts it provides
+    needed_names = {c.rsplit(".", 1)[-1] for c in needed_concepts}
+    root_to_concepts: dict[str, list[str]] = {}
+    for addr, concepts in sorted(root_addr_to_concepts.items()):
+        matching = sorted(c for c in concepts if c.rsplit(".", 1)[-1] in needed_names)
+        if matching:
+            root_to_concepts[addr] = matching
+
+    if RICH_AVAILABLE and console is not None:
+        table = Table(
+            title="Root Watermark Concepts",
+            show_header=True,
+            header_style="bold blue",
+            box=box.MINIMAL_DOUBLE_HEAD,
+        )
+        table.add_column("Root Address", style="cyan")
+        table.add_column("Concept", style="white")
+        for addr, addr_concepts in root_to_concepts.items():
+            first = True
+            for concept in addr_concepts:
+                table.add_row(addr if first else "", concept)
+                first = False
+        console.print(table)
+    else:
+        echo(style("Root Watermark Concepts:", bold=True))
+        for addr, addr_concepts in root_to_concepts.items():
+            echo(f"  {addr}:")
+            for concept in addr_concepts:
+                echo(f"    {concept}")
+
+
+class _RootProbeProgressContext:
+    """Context manager for root watermark collection progress tracking."""
+
+    def __init__(self, total: int):
+        self._total = total
+        self._progress = None
+        self._task = None
+
+    def __enter__(self):
+        if RICH_AVAILABLE and console is not None:
+            self._progress = Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                console=console,
+            )
+            self._progress.start()
+            self._task = self._progress.add_task(
+                "Probing root watermarks", total=self._total
+            )
+        return self
+
+    def advance(self) -> None:
+        if self._progress is not None and self._task is not None:
+            self._progress.advance(self._task)
+
+    def __exit__(self, *args):
+        if self._progress is not None:
+            self._progress.stop()
+
+
+def root_probe_progress(total: int) -> _RootProbeProgressContext:
+    """Context manager showing progress while collecting root watermarks."""
+    return _RootProbeProgressContext(total)
+
+
 def show_root_probe_breakdown(
     root_watermarks: dict,
     concept_max_watermarks: dict,
