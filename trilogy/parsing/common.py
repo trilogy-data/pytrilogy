@@ -1,6 +1,6 @@
 from dataclasses import replace as dc_replace
 from datetime import date, datetime
-from typing import Iterable, List, Sequence, Tuple
+from typing import Iterable, List, Mapping, Sequence, Tuple
 
 from lark.tree import Meta
 
@@ -350,7 +350,7 @@ def concept_is_relevant(
 def concepts_to_grain_concepts(
     concepts: Iterable[Concept | ConceptRef | str],
     environment: Environment | None,
-    local_concepts: dict[str, Concept] | None = None,
+    local_concepts: Mapping[str, Concept] | None = None,
 ) -> set[str]:
     preconcepts: list[Concept] = []
     for c in concepts:

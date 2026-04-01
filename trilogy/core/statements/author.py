@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import List, Literal, Optional, Union
+from typing import List, Literal, Mapping, Optional, Union
 
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
 from trilogy.core.enums import (
@@ -221,7 +221,7 @@ class SelectStatement(HasUUID, SelectTypeMixin):
     def calculate_grain(
         self,
         environment: Environment | None = None,
-        local_concepts: dict[str, Concept] | None = None,
+        local_concepts: Mapping[str, Concept] | None = None,
     ) -> Grain:
         targets = []
         for x in self.selection:
