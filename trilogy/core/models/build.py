@@ -379,7 +379,7 @@ class BuildParamaterizedConceptReference(DataTyped):
         return self.concept.safe_address
 
     @property
-    def output_datatype(self) -> DataType:
+    def output_datatype(self):
         return self.concept.output_datatype
 
     @property
@@ -2041,7 +2041,7 @@ class Factory:
         if base.address in self.environment.concepts:
             raw = self.environment.concepts[base.address]
             return self._build_concept(raw)
-        if dict.__contains__(self.environment.concepts, base.address):
+        if base.address in self.environment.concepts.data:
             return self._build_concept(self.environment.concepts[base.address])
         # this will error by design - TODO - more helpful message?
         return self._build_concept(self.environment.concepts[base.address])
