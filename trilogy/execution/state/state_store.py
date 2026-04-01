@@ -79,6 +79,8 @@ class BaseStateStore:
         for ds in env.datasources.values():
             if ds.identifier in skip_datasources:
                 continue
+            if ds.identifier in self.watermarks:
+                continue
             if ds.is_root:
                 if needed_concepts:
                     target_refs = [
@@ -331,12 +333,16 @@ def create_refresh_plan(
     force_sources: set[str] | None = None,
     cache: ColumnStatsCache | None = None,
     skip_datasources: set[str] | None = None,
+    initial_watermarks: dict[str, DatasourceWatermark] | None = None,
 ) -> RefreshPlan:
     """Compute which assets would be refreshed without executing updates.
 
     skip_datasources: ds_ids to completely ignore (already covered by another owner script).
+    initial_watermarks: pre-collected watermarks (e.g. root watermarks from a prior phase).
     """
     state_store = BaseStateStore(cache=cache)
+    if initial_watermarks:
+        state_store.watermarks.update(initial_watermarks)
     force_sources = force_sources or set()
     extra_skip = skip_datasources or set()
     all_skip = force_sources | extra_skip
