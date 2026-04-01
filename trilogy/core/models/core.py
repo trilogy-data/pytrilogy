@@ -28,11 +28,7 @@ from trilogy.core.enums import DatePart, Modifier, Ordering
 
 
 class DataTyped:
-    pass
-
-    @property
-    def output_datatype(self) -> "CONCRETE_TYPES":
-        raise NotImplementedError("Subclasses must implement output_datatype property")
+    output_datatype: CONCRETE_TYPES
 
 
 class Addressable(ABC):
