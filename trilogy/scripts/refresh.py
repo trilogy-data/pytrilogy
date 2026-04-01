@@ -230,7 +230,9 @@ def _preview_directory_refresh(
                             if ref.address in needed_in_script
                         }
                         if matching:
-                            root_addr_to_needed_concepts[ds.safe_address].update(matching)
+                            root_addr_to_needed_concepts[ds.safe_address].update(
+                                matching
+                            )
         finally:
             executor.close()
 
