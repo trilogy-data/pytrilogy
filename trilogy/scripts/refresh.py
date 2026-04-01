@@ -182,13 +182,16 @@ def _preview_directory_refresh(
     address_map: dict[str, str] = {}
     ds_to_scripts: dict[str, list[ScriptNode]] = defaultdict(list)
     ds_is_root: dict[str, bool] = {}
-    all_needed_concepts: set[str] = set()
-    root_addr_to_concepts: dict[str, set[str]] = defaultdict(set)
+    # root physical address -> set of concept addresses (as seen in that executor's namespace)
+    # that are needed by at least one non-root datasource in any script
+    root_addr_to_needed_concepts: dict[str, set[str]] = defaultdict(set)
 
     script_files = [fp for fp in files if not isinstance(fp, StringIO)]
     print_info(f"Scanning {len(script_files)} file(s)...")
 
-    # Phase 1: parse all scripts to collect datasource metadata — no DB queries
+    # Phase 1: parse all scripts to collect datasource metadata — no DB queries.
+    # Within each executor context, directly match non-root freshness/incremental refs
+    # against root output concepts — no cross-script namespace reconciliation needed.
     for file_path in script_files:
         node = ScriptNode(path=file_path)
         executor = create_executor_for_script(
@@ -207,23 +210,27 @@ def _preview_directory_refresh(
                 except Exception as e:
                     print_error(f"Error parsing {node.path}: {e}")
                     raise Exit(1) from e
-            for ds_id, ds in executor.environment.datasources.items():
+            env = executor.environment
+            needed_in_script: set[str] = set()
+            for ds_id, ds in env.datasources.items():
                 address_map.setdefault(ds_id, ds.safe_address)
                 ds_to_scripts[ds_id].append(node)
                 ds_is_root.setdefault(ds_id, ds.is_root)
-                if ds.is_root:
-                    addr = ds.safe_address
-                    for ref in ds.output_concepts:
-                        root_addr_to_concepts[addr].add(ref.address)
                 if not ds.is_root:
                     for ref in ds.freshness_by:
-                        all_needed_concepts.add(
-                            executor.environment.concepts[ref.address].address
-                        )
+                        needed_in_script.add(env.concepts[ref.address].address)
                     for ref in ds.incremental_by:
-                        all_needed_concepts.add(
-                            executor.environment.concepts[ref.address].address
-                        )
+                        needed_in_script.add(env.concepts[ref.address].address)
+            if needed_in_script:
+                for ds in env.datasources.values():
+                    if ds.is_root:
+                        matching = {
+                            ref.address
+                            for ref in ds.output_concepts
+                            if ref.address in needed_in_script
+                        }
+                        if matching:
+                            root_addr_to_needed_concepts[ds.safe_address].update(matching)
         finally:
             executor.close()
 
@@ -277,31 +284,22 @@ def _preview_directory_refresh(
     _, parallelism = merge_runtime_config(cli_params, config)
     ordered_nodes = sorted(owner_to_addrs, key=lambda n: script_to_order.get(n, 999999))
 
-    # Phase 2a: collect root watermarks once per physical root address (parallel)
-    # Filter to only root addresses that expose at least one concept we need.
-    # Namespace prefixes differ across scripts so we match on concept name (final segment).
-    needed_names = {c.rsplit(".", 1)[-1] for c in all_needed_concepts}
-    root_addrs = {
-        addr
-        for addr in addr_to_owner
-        if addr not in probe_addrs
-        and any(
-            c.rsplit(".", 1)[-1] in needed_names
-            for c in root_addr_to_concepts.get(addr, set())
-        )
-    }
+    # Phase 2a: collect root watermarks once per physical root address (parallel).
+    # Only probe root addresses that were directly matched to a needed concept within
+    # an executor context — no cross-script namespace reconciliation needed.
     root_owner_to_addrs: dict[ScriptNode, set[str]] = defaultdict(set)
-    for addr in root_addrs:
-        root_owner_to_addrs[addr_to_owner[addr]].add(addr)
+    for addr in root_addr_to_needed_concepts:
+        if addr in addr_to_owner:
+            root_owner_to_addrs[addr_to_owner[addr]].add(addr)
 
     from trilogy.scripts.display import root_probe_progress, show_root_concepts
 
-    show_root_concepts(all_needed_concepts, root_addr_to_concepts)
+    show_root_concepts(root_addr_to_needed_concepts)
     print_info(f"Probing {total_physical} managed asset(s)...")
 
     all_root_watermarks: dict[str, DatasourceWatermark] = {}
     if root_owner_to_addrs:
-        with root_probe_progress(len(root_owner_to_addrs)) as _root_progress:
+        with root_probe_progress(len(root_addr_to_needed_concepts)) as _root_progress:
             with ThreadPoolExecutor(max_workers=parallelism) as pool:
                 root_futures = {
                     pool.submit(
@@ -309,7 +307,12 @@ def _preview_directory_refresh(
                         node,
                         root_owner_to_addrs[node],
                         address_map,
-                        all_needed_concepts,
+                        set().union(
+                            *[
+                                root_addr_to_needed_concepts[addr]
+                                for addr in root_owner_to_addrs[node]
+                            ]
+                        ),
                         cli_params,
                         edialect,
                         config,
