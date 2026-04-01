@@ -768,21 +768,10 @@ def show_managed_asset_list(addresses: list[str]) -> None:
             echo(f"  {addr}")
 
 
-def show_root_concepts(
-    needed_concepts: set[str],
-    root_addr_to_concepts: dict[str, set[str]],
-) -> None:
-    """Show which concepts will be probed and from which root physical addresses."""
-    if not needed_concepts:
+def show_root_concepts(root_addr_to_needed_concepts: dict[str, set[str]]) -> None:
+    """Show root physical addresses and the concepts being probed from each."""
+    if not root_addr_to_needed_concepts:
         return
-    # Group by root address: addr -> sorted list of needed concepts it provides
-    needed_names = {c.rsplit(".", 1)[-1] for c in needed_concepts}
-    root_to_concepts: dict[str, list[str]] = {}
-    for addr, concepts in sorted(root_addr_to_concepts.items()):
-        matching = sorted(c for c in concepts if c.rsplit(".", 1)[-1] in needed_names)
-        if matching:
-            root_to_concepts[addr] = matching
-
     if RICH_AVAILABLE and console is not None:
         table = Table(
             title="Root Watermark Concepts",
@@ -792,17 +781,17 @@ def show_root_concepts(
         )
         table.add_column("Root Address", style="cyan")
         table.add_column("Concept", style="white")
-        for addr, addr_concepts in root_to_concepts.items():
+        for addr, concepts in sorted(root_addr_to_needed_concepts.items()):
             first = True
-            for concept in addr_concepts:
+            for concept in sorted(concepts):
                 table.add_row(addr if first else "", concept)
                 first = False
         console.print(table)
     else:
         echo(style("Root Watermark Concepts:", bold=True))
-        for addr, addr_concepts in root_to_concepts.items():
+        for addr, concepts in sorted(root_addr_to_needed_concepts.items()):
             echo(f"  {addr}:")
-            for concept in addr_concepts:
+            for concept in sorted(concepts):
                 echo(f"    {concept}")
 
 
