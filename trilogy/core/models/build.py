@@ -865,48 +865,8 @@ class BuildComparison(DataTyped, BuildConceptArgs, ConstantInlineable):
         return DataType.BOOL
 
 
-@dataclass
+@dataclass(slots=True)
 class BuildSubselectComparison(BuildComparison):
-    left: Union[
-        int,
-        str,
-        float,
-        bool,
-        datetime,
-        date,
-        BuildFunction,
-        BuildConcept,
-        "BuildConditional",
-        DataType,
-        "BuildComparison",
-        "BuildParenthetical",
-        MagicConstants,
-        BuildWindowItem,
-        BuildAggregateWrapper,
-        ListWrapper,
-        TupleWrapper,
-    ]
-    right: Union[
-        int,
-        str,
-        float,
-        bool,
-        date,
-        datetime,
-        BuildConcept,
-        BuildFunction,
-        "BuildConditional",
-        DataType,
-        "BuildComparison",
-        "BuildParenthetical",
-        MagicConstants,
-        BuildWindowItem,
-        BuildAggregateWrapper,
-        TupleWrapper,
-        ListWrapper,
-    ]
-    operator: ComparisonOperator
-
     def __eq__(self, other):
         if not isinstance(other, BuildSubselectComparison):
             return False
