@@ -73,7 +73,7 @@ import web_sales as web_sales;
 
 def test_generate_queries_perf():
 
-    env, imports = Environment(working_path=working_path).parse(
+    env, _ = Environment(working_path=working_path).parse(
         """
 import call_center as call_center;
 import catalog_returns as catalog_returns;
