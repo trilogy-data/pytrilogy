@@ -1,8 +1,7 @@
 from typing import TYPE_CHECKING
 
-import networkx as nx
-
 from trilogy.constants import logger
+from trilogy.core import graph as nx
 from trilogy.core.enums import (
     AddressType,
     BooleanOperator,
@@ -258,7 +257,10 @@ def _score_node(
 
 
 def subgraph_is_complete(
-    nodes: list[str], targets: set[str], mapping: dict[str, str], g: nx.DiGraph
+    nodes: list[str],
+    targets: set[str],
+    mapping: dict[str, str],
+    g: nx.DiGraph,
 ) -> bool:
     mapped = {mapping.get(n, n) for n in nodes}
     if not targets.issubset(mapped):
@@ -289,7 +291,7 @@ def create_pruned_concept_graph(
     conditions: BuildWhereClause | None = None,
     depth: int = 0,
     allow_intersection: bool = False,
-) -> nx.DiGraph:
+) -> ReferenceGraph | None:
     orig_g = g
     g = g.copy()
     union_options = get_union_sources(datasources, all_concepts)
@@ -802,7 +804,7 @@ def create_select_node(
 
 def _source_concepts_via_graph(
     concepts: list[BuildConcept],
-    g: nx.DiGraph,
+    g: ReferenceGraph,
     environment: BuildEnvironment,
     depth: int,
     accept_partial: bool = False,
@@ -822,7 +824,7 @@ def _source_concepts_via_graph(
     if accept_partial:
         attempts.append(SearchCriteria.PARTIAL_UNSCOPED)
         attempts.append(SearchCriteria.PARTIAL_INCLUDING_SCOPED)
-    pruned = None
+    pruned: ReferenceGraph | None = None
     sub_nodes: dict[str, list[str]] = {}
     for attempt in attempts:
         pruned = create_pruned_concept_graph(
@@ -895,7 +897,7 @@ def _covered_conditions(
 
 def gen_select_merge_node(
     all_concepts: list[BuildConcept],
-    g: nx.DiGraph,
+    g: ReferenceGraph,
     environment: BuildEnvironment,
     depth: int,
     accept_partial: bool = False,

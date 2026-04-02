@@ -1,4 +1,3 @@
-import json
 import os
 import platform
 import sys
@@ -36,14 +35,22 @@ def analyze(show: bool = False):
         if filename.endswith(".log"):
             with open(root / filename, "r") as f:
                 try:
-                    loaded = tomllib.loads(f.read())
-                except json.decoder.JSONDecodeError:
+                    raw = f.read()
+                    if not raw.strip():
+                        continue
+                    loaded = tomllib.loads(raw)
+                except tomllib.TOMLDecodeError:
                     print(f"Error loading {filename}")
                     continue
                 results.append(loaded)
     timing_path = Path(root / f"zquery_timing_{fingerprint}.log")
     with open(timing_path, "r") as f:
-        timing = tomllib.loads(f.read())
+        raw = f.read()
+        try:
+            timing = tomllib.loads(raw) if raw.strip() else {}
+        except tomllib.TOMLDecodeError:
+            print(f"Error loading {timing_path.name}")
+            timing = {}
     final_results = []
     for x in results:
         if "query_id" not in x:

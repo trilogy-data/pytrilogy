@@ -22,6 +22,21 @@ fingerprint = (
 working_path = Path(__file__).parent
 
 
+def _load_toml_mapping(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    raw = path.read_text()
+    if not raw.strip():
+        return {}
+    try:
+        loaded = tomllib.loads(raw)
+    except tomllib.TOMLDecodeError:
+        return {}
+    if isinstance(loaded, dict):
+        return loaded
+    return {}
+
+
 def run_query(
     engine: Executor,
     idx: int,
@@ -79,32 +94,21 @@ def run_query(
         )
 
     timing = Path(working_path / f"zquery_timing_{fingerprint}.log")
-
-    if not timing.exists():
-        with open(timing, "w") as f:
-            pass
-
-    with open(timing, "r+") as f:
-        # seek to 0, as we use append to ensure it exists
-        current = tomllib.loads(f.read())
-        # go back to 0, as we will rewrite the whole thing
-
-        # modify the current dict
-        current[f"query_{query_label}"] = {
-            "parse_time": parse_time.total_seconds(),
-            "exec_time": exec_time.total_seconds(),
-            "comp_time": comp_time.total_seconds(),
-        }
-        final = {x: current[x] for x in sorted(list(current.keys()))}
-        # dump it all back
-        f.seek(0)
-        f.write(
-            tomli_w.dumps(
-                final,
-                multiline_strings=True,
-            )
+    current = _load_toml_mapping(timing)
+    current[f"query_{query_label}"] = {
+        "parse_time": parse_time.total_seconds(),
+        "exec_time": exec_time.total_seconds(),
+        "comp_time": comp_time.total_seconds(),
+    }
+    final = {x: current[x] for x in sorted(current.keys())}
+    temp_timing = timing.with_suffix(f"{timing.suffix}.tmp")
+    temp_timing.write_text(
+        tomli_w.dumps(
+            final,
+            multiline_strings=True,
         )
-        f.truncate()
+    )
+    temp_timing.replace(timing)
     return query
 
 

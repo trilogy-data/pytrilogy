@@ -6,7 +6,7 @@ from logging import Logger
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import networkx as nx
+    from trilogy.core import graph as nx
 
 from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.models.build import (
@@ -53,7 +53,7 @@ def create_log_lambda(prefix: str, depth: int, logger: Logger):
 
 
 def calculate_graph_relevance(
-    g: nx.DiGraph, subset_nodes: set[str], concepts: set[BuildConcept]
+    g: nx.Graph | nx.DiGraph, subset_nodes: set[str], concepts: set[BuildConcept]
 ) -> int:
     """Calculate the relevance of each node in a graph.
     Relevance is used to prune irrelevant nodes from the graph.
@@ -89,7 +89,7 @@ def get_disconnected_components(
     concept_map: dict[str, set[BuildConcept]],
 ) -> tuple[int, list]:
     """Find if any of the datasources are not linked"""
-    import networkx as nx
+    from trilogy.core import graph as nx
 
     graph = nx.Graph()
     all_concepts = set()

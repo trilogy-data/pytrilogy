@@ -5,7 +5,7 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import networkx as nx
+    from trilogy.core import graph as nx
 
 from trilogy.core.enums import JoinType, Modifier
 from trilogy.core.models.build import (
@@ -421,7 +421,7 @@ def reduce_concept_pairs(
 
 
 def add_node_join_concept(
-    graph: nx.DiGraph,
+    graph: nx.Graph | nx.DiGraph,
     concept: BuildConcept,
     concept_map: dict[str, BuildConcept],
     ds_node: str,
@@ -451,7 +451,7 @@ def get_node_joins(
     datasources: list[QueryDatasource | BuildDatasource],
     environment: BuildEnvironment,
 ) -> list[BaseJoin]:
-    import networkx as nx
+    from trilogy.core import graph as nx
 
     graph = nx.Graph()
     partials: dict[str, list[str]] = {}

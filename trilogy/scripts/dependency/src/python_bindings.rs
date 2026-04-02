@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use std::path::PathBuf;
 
+use crate::graph::GraphCore;
 use crate::parser::parse_file;
 use crate::resolver::ImportResolver;
 
@@ -9,6 +10,7 @@ use crate::resolver::ImportResolver;
 #[pymodule]
 fn _preql_import_resolver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyImportResolver>()?;
+    m.add_class::<PyGraphCore>()?;
     m.add_function(wrap_pyfunction!(parse_preql_file, m)?)?;
     Ok(())
 }
@@ -53,6 +55,148 @@ fn parse_preql_file(py: Python<'_>, content: &str) -> PyResult<PyObject> {
     result.set_item("persists", persists)?;
 
     Ok(result.into())
+}
+
+#[pyclass]
+#[derive(Clone)]
+struct PyGraphCore {
+    graph: GraphCore,
+}
+
+#[pymethods]
+impl PyGraphCore {
+    #[new]
+    fn new(directed: bool) -> Self {
+        Self {
+            graph: GraphCore::new(directed),
+        }
+    }
+
+    fn directed(&self) -> bool {
+        self.graph.directed()
+    }
+
+    fn add_node(&mut self, node: &str) {
+        self.graph.add_node(node);
+    }
+
+    fn has_node(&self, node: &str) -> bool {
+        self.graph.has_node(node)
+    }
+
+    fn add_edge(&mut self, left: &str, right: &str) {
+        self.graph.add_edge(left, right);
+    }
+
+    fn has_edge(&self, left: &str, right: &str) -> bool {
+        self.graph.has_edge(left, right)
+    }
+
+    fn remove_node(&mut self, node: &str) {
+        self.graph.remove_node(node);
+    }
+
+    fn remove_nodes(&mut self, nodes: Vec<String>) {
+        self.graph.remove_nodes(nodes);
+    }
+
+    fn remove_edges(&mut self, edges: Vec<(String, String)>) {
+        self.graph.remove_edges(edges);
+    }
+
+    fn nodes(&self) -> Vec<String> {
+        self.graph.nodes()
+    }
+
+    fn edges(&self) -> Vec<(String, String)> {
+        self.graph.edges()
+    }
+
+    fn neighbors(&self, node: &str) -> Vec<String> {
+        self.graph.neighbors(node)
+    }
+
+    fn predecessors(&self, node: &str) -> Vec<String> {
+        self.graph.predecessors(node)
+    }
+
+    fn successors(&self, node: &str) -> Vec<String> {
+        self.graph.successors(node)
+    }
+
+    fn all_neighbors(&self, node: &str) -> Vec<String> {
+        self.graph.all_neighbors(node)
+    }
+
+    fn in_degree(&self, node: &str) -> usize {
+        self.graph.in_degree(node)
+    }
+
+    fn out_degree(&self, node: &str) -> usize {
+        self.graph.out_degree(node)
+    }
+
+    fn clone_graph(&self) -> Self {
+        self.clone()
+    }
+
+    fn induced_subgraph(&self, nodes: Vec<String>) -> Self {
+        Self {
+            graph: self.graph.induced_subgraph(nodes),
+        }
+    }
+
+    fn to_undirected_graph(&self) -> Self {
+        Self {
+            graph: self.graph.to_undirected_graph(),
+        }
+    }
+
+    fn connected_components(&self) -> Vec<Vec<String>> {
+        self.graph.connected_components()
+    }
+
+    fn is_weakly_connected(&self) -> bool {
+        self.graph.is_weakly_connected()
+    }
+
+    fn topological_sort(&self) -> PyResult<Vec<String>> {
+        self.graph
+            .topological_sort()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))
+    }
+
+    fn shortest_path(&self, source: &str, target: &str) -> Option<Vec<String>> {
+        self.graph.shortest_path(source, target)
+    }
+
+    fn shortest_path_length(&self, source: &str, target: &str) -> Option<usize> {
+        self.graph.shortest_path_length(source, target)
+    }
+
+    fn ego_graph_nodes(&self, center: &str, radius: usize) -> Vec<String> {
+        self.graph.ego_graph_nodes(center, radius)
+    }
+
+    fn multi_source_dijkstra_path(
+        &self,
+        sources: Vec<String>,
+        weights: Vec<(String, String, f64)>,
+    ) -> PyResult<Vec<(String, Vec<String>)>> {
+        self.graph
+            .multi_source_dijkstra_path(sources, weights)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))
+    }
+
+    fn steiner_tree_nodes(
+        &self,
+        terminals: Vec<String>,
+        weights: Vec<(String, String, f64)>,
+    ) -> PyResult<Vec<String>> {
+        self.graph
+            .steiner_tree_nodes(terminals, weights)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))
+    }
 }
 
 /// Python wrapper for ImportResolver

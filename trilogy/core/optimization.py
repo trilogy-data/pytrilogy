@@ -40,7 +40,7 @@ MAX_OPTIMIZATION_LOOPS = 100
 def reorder_ctes(
     input: list[CTE],
 ):
-    import networkx as nx
+    from trilogy.core import graph as nx
 
     # Create a directed graph
     G = nx.DiGraph()

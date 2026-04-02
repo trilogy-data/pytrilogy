@@ -1,10 +1,9 @@
 from enum import Enum
 from logging import Logger
-from typing import Union
-
-from networkx import DiGraph
+from typing import cast
 
 from trilogy.core.enums import Granularity
+from trilogy.core.graph import DiGraph
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
@@ -88,7 +87,7 @@ def _datasource_is_exact_match(
 
 
 def get_graph_exact_match(
-    g: Union[DiGraph, "ReferenceGraph"],
+    g: "ReferenceGraph",
     criteria: SearchCriteria,
     conditions: BuildWhereClause | None,
     allow_intersection: bool = False,
@@ -181,12 +180,26 @@ class ReferenceGraph(DiGraph):
 
     def copy(self) -> "ReferenceGraph":
         g = ReferenceGraph()
+        g._copy_from(self)
         g.concepts = self.concepts.copy()
         g.datasources = self.datasources.copy()
         g.pseudonyms = self.pseudonyms.copy()
-        g._node.update(self._node)
-        g._adj.update({k: dict(v) for k, v in self._adj.items()})
-        g._pred.update({k: dict(v) for k, v in self._pred.items()})
+        return g
+
+    def subgraph(self, nodes) -> "ReferenceGraph":
+        keep = set(nodes)
+        g = cast(ReferenceGraph, super().subgraph(keep))
+        g.concepts = {
+            node: concept for node, concept in self.concepts.items() if node in keep
+        }
+        g.datasources = {
+            node: datasource
+            for node, datasource in self.datasources.items()
+            if node in keep
+        }
+        g.pseudonyms = {
+            edge for edge in self.pseudonyms if edge[0] in keep and edge[1] in keep
+        }
         return g
 
     def remove_node(self, n) -> None:
@@ -195,6 +208,11 @@ class ReferenceGraph(DiGraph):
         if n in self.datasources:
             del self.datasources[n]
         super().remove_node(n)
+
+    def remove_nodes_from(self, nodes) -> None:
+        for node in list(nodes):
+            if node in self:
+                self.remove_node(node)
 
     def add_node(self, node_for_adding, **attr):
         return super().add_node(node_for_adding, **attr)

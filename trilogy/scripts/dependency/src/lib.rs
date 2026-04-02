@@ -1,6 +1,7 @@
 mod parser;
 mod resolver;
 mod directory_resolver;
+mod graph;
 pub mod python_bindings;
 
 pub use parser::{
@@ -14,3 +15,4 @@ pub use resolver::{
 pub use directory_resolver::{
     process_directory_with_imports, build_edges, DirectoryGraph, Edge, EdgeReason, FileInfo,
 };
+pub use graph::GraphCore;
