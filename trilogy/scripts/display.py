@@ -788,6 +788,7 @@ class _ProbeProgressContext:
                 BarColumn(),
                 MofNCompleteColumn(),
                 console=console,
+                redirect_stderr=True,
             )
             self._progress.start()
             self._task = self._progress.add_task("Checking assets", total=self._total)
@@ -887,6 +888,7 @@ class _RootProbeProgressContext:
                 BarColumn(),
                 MofNCompleteColumn(),
                 console=console,
+                redirect_stderr=True,
             )
             self._progress.start()
             self._task = self._progress.add_task(
