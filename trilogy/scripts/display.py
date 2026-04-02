@@ -1,8 +1,9 @@
 """Display helpers for prettier CLI output with configurable Rich support."""
 
+import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from click import echo, style
 
@@ -585,6 +586,56 @@ def show_script_result(
                 )
 
 
+class ParallelProgressTracker:
+    """Context manager that shows an animated spinner for each in-progress node."""
+
+    def __init__(self) -> None:
+        self._task_ids: dict[int, Any] = {}
+        self._lock = threading.Lock()
+        self._progress: Any = None
+
+    def __enter__(self) -> "ParallelProgressTracker":
+        if RICH_AVAILABLE and console is not None:
+            self._progress = Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                TimeElapsedColumn(),
+                console=console,
+                transient=True,
+            )
+            self._progress.__enter__()
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        if self._progress is not None:
+            self._progress.__exit__(*args)
+            self._progress = None
+
+    def on_start(self, node: Any) -> None:
+        from trilogy.scripts.dependency import ManagedRefreshNode, ScriptNode
+
+        if isinstance(node, ScriptNode):
+            label = node.path.name
+        elif isinstance(node, ManagedRefreshNode):
+            label = node.address
+        else:
+            label = str(node)
+        if self._progress is not None:
+            with self._lock:
+                task_id = self._progress.add_task(f"[cyan]{label}[/cyan]")
+                self._task_ids[id(node)] = task_id
+        else:
+            print(f"  \u2192 {label}")
+
+    def on_complete(self, result: Any) -> None:
+        if self._progress is not None:
+            with self._lock:
+                task_id = self._task_ids.pop(id(result.node), None)
+                if task_id is not None:
+                    self._progress.remove_task(task_id)
+        show_script_result(result)
+
+
 def show_watermarks(watermarks: dict, env_max: dict | None = None) -> None:
     """Display datasource watermark information."""
     if RICH_AVAILABLE and console is not None:
@@ -768,13 +819,36 @@ def show_managed_asset_list(addresses: list[str]) -> None:
             echo(f"  {addr}")
 
 
+def _common_prefix(strings: list[str]) -> str:
+    if not strings:
+        return ""
+    prefix = strings[0]
+    for s in strings[1:]:
+        while not s.startswith(prefix):
+            prefix = prefix[:-1]
+            if not prefix:
+                return ""
+    # trim to last path separator so we don't cut mid-component
+    last_sep = max(prefix.rfind("/"), prefix.rfind("\\"))
+    return prefix[: last_sep + 1] if last_sep >= 0 else prefix
+
+
 def show_root_concepts(root_addr_to_needed_concepts: dict[str, set[str]]) -> None:
     """Show root physical addresses and the concepts being probed from each."""
     if not root_addr_to_needed_concepts:
         return
+    addrs = list(root_addr_to_needed_concepts.keys())
+    prefix = _common_prefix(addrs) if len(addrs) > 1 else ""
+
+    def _short(addr: str) -> str:
+        return addr[len(prefix) :] if prefix else addr
+
     if RICH_AVAILABLE and console is not None:
+        title = "Root Watermark Concepts"
+        if prefix:
+            title += f"\n[dim](prefix: {prefix})[/dim]"
         table = Table(
-            title="Root Watermark Concepts",
+            title=title,
             show_header=True,
             header_style="bold blue",
             box=box.MINIMAL_DOUBLE_HEAD,
@@ -784,13 +858,15 @@ def show_root_concepts(root_addr_to_needed_concepts: dict[str, set[str]]) -> Non
         for addr, concepts in sorted(root_addr_to_needed_concepts.items()):
             first = True
             for concept in sorted(concepts):
-                table.add_row(addr if first else "", concept)
+                table.add_row(_short(addr) if first else "", concept)
                 first = False
         console.print(table)
     else:
         echo(style("Root Watermark Concepts:", bold=True))
+        if prefix:
+            echo(f"  (prefix: {prefix})")
         for addr, concepts in sorted(root_addr_to_needed_concepts.items()):
-            echo(f"  {addr}:")
+            echo(f"  {_short(addr)}:")
             for concept in sorted(concepts):
                 echo(f"    {concept}")
 

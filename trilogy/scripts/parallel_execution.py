@@ -615,13 +615,13 @@ def run_parallel_execution(
     )
     from trilogy.scripts.dependency import ETLDependencyStrategy
     from trilogy.scripts.display import (
+        ParallelProgressTracker,
         print_error,
         print_success,
         show_dry_run_queries,
         show_execution_info,
         show_parallel_execution_start,
         show_parallel_execution_summary,
-        show_script_result,
     )
     from trilogy.scripts.environment import parse_env_vars
 
@@ -737,14 +737,17 @@ def run_parallel_execution(
     def quiet_execution_fn(exec: Executor, node: Any) -> ExecutionStats | None:
         return execution_fn(exec, node, True)
 
-    # Run parallel execution
-    summary = parallel_exec.execute(
-        root=pathlib_input,
-        executor_factory=executor_factory,
-        execution_fn=quiet_execution_fn,
-        on_script_complete=show_script_result,
-        graph=execution_plan,
-    )
+    # Run parallel execution with live spinner per in-progress node
+    tracker = ParallelProgressTracker()
+    with tracker:
+        summary = parallel_exec.execute(
+            root=pathlib_input,
+            executor_factory=executor_factory,
+            execution_fn=quiet_execution_fn,
+            on_script_start=tracker.on_start,
+            on_script_complete=tracker.on_complete,
+            graph=execution_plan,
+        )
 
     # For dry-run refresh, print collected SQL after all scripts complete
     if execution_mode == ExecutionMode.REFRESH:

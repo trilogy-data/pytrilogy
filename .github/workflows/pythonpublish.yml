@@ -13,13 +13,13 @@ jobs:
       local_version: ${{ steps.version_check.outputs.local_version }}
       pypi_version: ${{ steps.version_check.outputs.pypi_version }}
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
       with:
         python-version: '3.13'
     - name: Set up Rust
-      uses: actions-rust-lang/setup-rust-toolchain@v1
+      uses: actions-rust-lang/setup-rust-toolchain@150fca883cd4034361b621bd4e6a9d34e5143606  # v1.15.4
       with:
         toolchain: stable
     - name: Install dependencies
@@ -129,15 +129,15 @@ jobs:
       matrix:
         target: [x86_64, aarch64]
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
     - name: Set up Python for version sync
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
       with:
         python-version: '3.13'
     - name: Sync version to Cargo.toml
       run: python .scripts/sync_version.py
     - name: Build wheels
-      uses: PyO3/maturin-action@v1
+      uses: PyO3/maturin-action@04ac600d27cdf7a9a280dadf7147097c42b757ad  # v1.50.1
       with:
         target: ${{ matrix.target }}
         args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
@@ -166,7 +166,7 @@ jobs:
         test_venv/bin/trilogy run "SELECT 1 + 1->test;" duckdb
         rm -rf test_venv
     - name: Upload wheels
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
       with:
         name: wheels-linux-${{ matrix.target }}
         path: dist
@@ -179,22 +179,22 @@ jobs:
       matrix:
         target: [x86_64, aarch64]
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
     - name: Set up Python for version sync
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
       with:
         python-version: '3.13'
     - name: Sync version to Cargo.toml
       run: python .scripts/sync_version.py
     - name: Build wheels
-      uses: PyO3/maturin-action@v1
+      uses: PyO3/maturin-action@04ac600d27cdf7a9a280dadf7147097c42b757ad  # v1.50.1
       with:
         target: ${{ matrix.target }}
         args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
     - name: Patch wheels with dependencies
       run: python .scripts/patch_wheels.py dist
     - name: Upload wheels
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
       with:
         name: wheels-macos-${{ matrix.target }}
         path: dist
@@ -207,15 +207,15 @@ jobs:
       matrix:
         target: [x64]
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
     - name: Set up Python for version sync
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
       with:
         python-version: '3.13'
     - name: Sync version to Cargo.toml
       run: python .scripts/sync_version.py
     - name: Build wheels
-      uses: PyO3/maturin-action@v1
+      uses: PyO3/maturin-action@04ac600d27cdf7a9a280dadf7147097c42b757ad  # v1.50.1
       with:
         target: ${{ matrix.target }}
         args: --release --out dist --interpreter ${{ env.PYTHON_VERSIONS }}
@@ -239,7 +239,7 @@ jobs:
         test_venv/Scripts/trilogy run "SELECT 1 + 1->test;" duckdb
         rm -rf test_venv
     - name: Upload wheels
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
       with:
         name: wheels-windows-${{ matrix.target }}
         path: dist
@@ -249,20 +249,20 @@ jobs:
     if: needs.version-check.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
     - name: Set up Python for version sync
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
       with:
         python-version: '3.13'
     - name: Sync version to Cargo.toml
       run: python .scripts/sync_version.py
     - name: Build sdist
-      uses: PyO3/maturin-action@v1
+      uses: PyO3/maturin-action@04ac600d27cdf7a9a280dadf7147097c42b757ad  # v1.50.1
       with:
         command: sdist
         args: --out dist
     - name: Upload sdist
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
       with:
         name: wheels-sdist
         path: dist
@@ -277,7 +277,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-    - uses: actions/download-artifact@v4
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
       with:
         pattern: wheels-*
         merge-multiple: true
