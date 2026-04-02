@@ -209,11 +209,6 @@ class ReferenceGraph(DiGraph):
             del self.datasources[n]
         super().remove_node(n)
 
-    def remove_nodes_from(self, nodes) -> None:
-        for node in list(nodes):
-            if node in self:
-                self.remove_node(node)
-
     def add_node(self, node_for_adding, **attr):
         return super().add_node(node_for_adding, **attr)
 

@@ -257,7 +257,7 @@ def _score_node(
 
 
 def subgraph_is_complete(
-    nodes: list[str],
+    nodes: set[str] | list[str],
     targets: set[str],
     mapping: dict[str, str],
     g: nx.DiGraph,

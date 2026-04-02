@@ -342,9 +342,19 @@ class _GraphBase:
         self._assert_graph_parity("remove_node")
 
     def remove_nodes_from(self, nodes: Iterable[str]) -> None:
+        normalized: list[str] = []
         for node in nodes:
-            if node in self:
-                self.remove_node(node)
+            if not isinstance(node, str) or not self._core.has_node(node):
+                continue
+            normalized.append(node)
+            self._node_attrs.pop(node, None)
+            for edge in list(self._edge_attrs):
+                if node in edge:
+                    self._edge_attrs.pop(edge, None)
+        self._core.remove_nodes(normalized)
+        if self._shadow is not None:
+            self._shadow.remove_nodes_from(normalized)
+        self._assert_graph_parity("remove_nodes_from")
 
     def remove_edges_from(self, edges: Iterable[tuple[str, str]]) -> None:
         normalized: list[tuple[str, str]] = []

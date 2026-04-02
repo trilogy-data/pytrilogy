@@ -162,3 +162,27 @@ def test_insertion_order_and_tie_break_parity():
     native_sub = native.subgraph(["end", "start", "b"])
     reference_sub = reference.subgraph(["end", "start", "b"]).copy()
     assert list(native_sub.nodes) == list(reference_sub.nodes)
+
+
+def test_remove_nodes_from_does_not_dispatch_remove_node():
+    class CountingDiGraph(rust_nx.DiGraph):
+        def __init__(self):
+            super().__init__()
+            self.removed: list[str] = []
+
+        def remove_node(self, node: str) -> None:
+            self.removed.append(node)
+            super().remove_node(node)
+
+    native = CountingDiGraph()
+    reference = nx.DiGraph()
+    for graph in [native, reference]:
+        graph.add_edge("a", "b")
+        graph.add_edge("b", "c")
+
+    native.remove_nodes_from(["a", "missing"])
+    reference.remove_nodes_from(["a", "missing"])
+
+    assert native.removed == []
+    assert list(native.nodes) == list(reference.nodes)
+    assert list(native.edges) == list(reference.edges)
