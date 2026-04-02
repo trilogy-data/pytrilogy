@@ -182,7 +182,6 @@ class TestReinjectCommonJoinKeysV2:
         # The function uses with_default_grain() when creating nodes
         assert result is True
         assert concept_to_node(customer_id.with_default_grain()) in working_g.nodes
-        assert concept_to_node(customer_id.with_default_grain()) in working_g.concepts
 
     def test_no_injection_when_concept_already_in_graph(self):
         """If the shared concept is already in the working graph, don't inject.

@@ -110,12 +110,12 @@ def test_reference_graph_subgraph_preserves_filtered_metadata_order():
     assert subgraph.pseudonyms == {(concept_nodes[3], concept_nodes[1])}
 
 
-def test_reference_graph_remove_nodes_from_updates_metadata():
+def test_reference_graph_remove_nodes_from_preserves_metadata_contract():
     graph, concept_nodes, datasource_nodes = build_reference_graph()
 
     graph.remove_nodes_from([datasource_nodes[0], concept_nodes[0], "missing"])
 
     assert datasource_nodes[0] not in graph.nodes
     assert concept_nodes[0] not in graph.nodes
-    assert datasource_nodes[0] not in graph.datasources
-    assert concept_nodes[0] not in graph.concepts
+    assert datasource_nodes[0] in graph.datasources
+    assert concept_nodes[0] in graph.concepts

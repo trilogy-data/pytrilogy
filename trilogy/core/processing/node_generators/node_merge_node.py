@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, cast
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
@@ -180,7 +180,7 @@ def determine_induced_minimal_nodes(
         return None
 
     logger.debug(f"Steiner tree found for nodes {nodelist} {sG.nodes}")
-    final: nx.DiGraph = nx.subgraph(G, sG.nodes).copy()
+    final = cast(ReferenceGraph, nx.subgraph(G, sG.nodes).copy())
 
     final_nodes = set(final.nodes)
     for edge in G.edges:

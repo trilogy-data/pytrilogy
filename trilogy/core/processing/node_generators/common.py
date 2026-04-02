@@ -1,6 +1,6 @@
 from collections import defaultdict
 from itertools import combinations
-from typing import Callable, Dict, Iterable, List, Set, Tuple
+from typing import Callable, Dict, Iterable, List, Set, Tuple, cast
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
@@ -348,7 +348,7 @@ def iter_unique_ds_pairs(
     seen = set()
     for ds in g.nodes:
         for nbr in g.neighbors(ds):
-            pair = tuple(sorted((ds, nbr)))
+            pair = cast(Tuple[str, str], tuple(sorted((ds, nbr))))
             if pair in seen:
                 continue
             seen.add(pair)
