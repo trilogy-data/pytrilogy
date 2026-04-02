@@ -57,7 +57,7 @@ select 1 as customer_id
         input_concepts=[order_id, product_id],
         output_concepts=[order_id, product_id],
         datasources=[order_ds],
-        grain=BuildGrain(components=[order_id]),
+        grain=BuildGrain(components={order_id.address}),
         joins=[],
         source_map={order_id.address: {order_ds}, product_id.address: {order_ds}},
         nullable_concepts=[product_id],
@@ -66,7 +66,7 @@ select 1 as customer_id
         input_concepts=[product_id, product_name],
         output_concepts=[product_id, product_name],
         datasources=[product_ds],
-        grain=BuildGrain(components=[product_id]),
+        grain=BuildGrain(components={product_id.address}),
         joins=[],
         source_map={
             product_id.address: {product_ds},
@@ -106,7 +106,7 @@ select 1 as customer_id
         input_concepts=[customer_id],
         output_concepts=[customer_id],
         datasources=[customer_ds],
-        grain=BuildGrain(components=[customer_id]),
+        grain=BuildGrain(components={customer_id.address}),
         joins=[],
         source_map={
             customer_id.address: {customer_ds},

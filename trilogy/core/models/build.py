@@ -389,7 +389,14 @@ class BuildGrain:
     components: set[str] = field(default_factory=set)
     where_clause: Optional[BuildWhereClause] = None
     _str: str | None = None
-    _str_no_condition: str | None = None
+    _str_no_condition: str = field(init=False)
+    abstract: bool = field(init=False)
+
+    def __post_init__(self):
+        self.abstract = not self.components or all(
+            c.endswith(ALL_ROWS_CONCEPT) for c in self.components
+        )
+        self._str_no_condition = self._calculate_string_no_condition()
 
     def without_condition(self):
         if not self.where_clause:
@@ -439,12 +446,6 @@ class BuildGrain:
             where_clause=self.where_clause,
         )
 
-    @property
-    def abstract(self):
-        return not self.components or all(
-            [c.endswith(ALL_ROWS_CONCEPT) for c in self.components]
-        )
-
     def __eq__(self, other):
         if other is None:
             return False
@@ -486,9 +487,6 @@ class BuildGrain:
 
     @property
     def str_no_condition(self):
-        if self._str_no_condition:
-            return self._str_no_condition
-        self._str_no_condition = self._calculate_string_no_condition()
         return self._str_no_condition
 
     def __str__(self):
