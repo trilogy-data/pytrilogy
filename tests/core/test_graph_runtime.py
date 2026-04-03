@@ -55,6 +55,23 @@ def test_subgraph_and_to_undirected_parity():
     ]
 
 
+def test_subgraph_preserves_attrs():
+    native, reference = build_weighted_directed_pair()
+
+    native.nodes["a"]["kind"] = "source"
+    reference.nodes["a"]["kind"] = "source"
+    native.edges["a", "b"]["weight"] = 7
+    reference.edges["a", "b"]["weight"] = 7
+
+    native_sub = native.subgraph(["a", "b"])
+    reference_sub = reference.subgraph(["a", "b"]).copy()
+
+    assert native_sub.nodes["a"]["kind"] == reference_sub.nodes["a"]["kind"]
+    assert native_sub.edges["a", "b"]["weight"] == reference_sub.edges["a", "b"][
+        "weight"
+    ]
+
+
 def test_topological_sort_cycle_and_shortest_path_parity():
     native, reference = build_weighted_directed_pair()
 
