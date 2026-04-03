@@ -94,6 +94,15 @@ def test_topological_sort_cycle_and_shortest_path_parity():
         list(nx.topological_sort(reference))
 
 
+def test_native_digraph_supports_real_networkx_shortest_path():
+    native, reference = build_weighted_directed_pair()
+
+    assert nx.shortest_path(native, "a", "d") == nx.shortest_path(reference, "a", "d")
+    assert nx.shortest_path_length(native, "a", "d") == nx.shortest_path_length(
+        reference, "a", "d"
+    )
+
+
 def test_ego_graph_isolates_and_weak_connectivity_parity():
     native = rust_nx.DiGraph()
     reference = nx.DiGraph()
