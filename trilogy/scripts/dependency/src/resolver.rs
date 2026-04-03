@@ -120,12 +120,6 @@ pub struct DependencyGraph {
 pub struct ImportResolver {
     /// Cache of parsed files
     parsed_cache: HashMap<PathBuf, ParsedFile>,
-    /// Track files currently being processed (for cycle detection)
-    #[allow(dead_code)]
-    processing: HashSet<PathBuf>,
-    /// Track fully processed files
-    #[allow(dead_code)]
-    processed: HashSet<PathBuf>,
     /// Warnings accumulated during resolution
     warnings: Vec<String>,
 }
@@ -134,8 +128,6 @@ impl ImportResolver {
     pub fn new() -> Self {
         Self {
             parsed_cache: HashMap::new(),
-            processing: HashSet::new(),
-            processed: HashSet::new(),
             warnings: Vec::new(),
         }
     }
