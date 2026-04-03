@@ -669,11 +669,10 @@ impl GraphCore {
         expanded_nodes: HashSet<String>,
         weight_map: &HashMap<String, HashMap<String, f64>>,
     ) -> Vec<String> {
-        let induced = expanded_nodes.clone();
         let ordered_expanded_nodes = self
             .nodes()
             .into_iter()
-            .filter(|node| induced.contains(node))
+            .filter(|node| expanded_nodes.contains(node))
             .collect::<Vec<_>>();
         let mut original_edges = Vec::new();
         let mut seen_edges = HashSet::new();
@@ -682,7 +681,7 @@ impl GraphCore {
                 continue;
             };
             for right in neighbors {
-                if !induced.contains(right) || !self.has_edge(left, right) {
+                if !expanded_nodes.contains(right) || !self.has_edge(left, right) {
                     continue;
                 }
                 let key = canonical_edge(left, right);
@@ -942,7 +941,6 @@ impl GraphCore {
 
         targets
             .iter()
-            .into_iter()
             .filter_map(|node| {
                 let distance = distances.get(node).copied()?;
                 let path = paths.remove(node)?;
