@@ -157,6 +157,55 @@ class _EdgeView:
         return list(self)
 
 
+class _NeighborView(Mapping[str, MutableMapping[str, object]]):
+    def __init__(self, graph: "_GraphBase", node: str, reverse: bool = False) -> None:
+        self._graph = graph
+        self._node = node
+        self._reverse = reverse and graph.directed
+
+    def _neighbors(self) -> list[str]:
+        if self._reverse:
+            return list(self._graph._core.predecessors(self._node))
+        return list(self._graph._core.successors(self._node))
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._neighbors())
+
+    def __len__(self) -> int:
+        return len(self._neighbors())
+
+    def __getitem__(self, neighbor: str) -> MutableMapping[str, object]:
+        if neighbor not in self:
+            raise KeyError(neighbor)
+        left, right = (
+            (neighbor, self._node) if self._reverse else (self._node, neighbor)
+        )
+        attrs = self._graph._edge_attrs.setdefault(
+            _edge_key(self._graph, left, right), {}
+        )
+        shadow_attrs = None
+        if self._graph._shadow is not None and self._graph._shadow.has_edge(left, right):
+            shadow_attrs = self._graph._shadow.edges[left, right]
+        return _AttrProxy(attrs, shadow_attrs)
+
+
+class _AdjacencyView(Mapping[str, _NeighborView]):
+    def __init__(self, graph: "_GraphBase", reverse: bool = False) -> None:
+        self._graph = graph
+        self._reverse = reverse
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._graph._ordered_nodes())
+
+    def __len__(self) -> int:
+        return len(self._graph)
+
+    def __getitem__(self, node: str) -> _NeighborView:
+        if node not in self._graph:
+            raise KeyError(node)
+        return _NeighborView(self._graph, node, reverse=self._reverse)
+
+
 class _GraphBase:
     directed = False
 
@@ -299,6 +348,33 @@ class _GraphBase:
     @property
     def edges(self) -> _EdgeView:
         return _EdgeView(self)
+
+    @property
+    def adj(self) -> _AdjacencyView:
+        return _AdjacencyView(self)
+
+    @property
+    def _adj(self) -> _AdjacencyView:
+        return self.adj
+
+    @property
+    def succ(self) -> _AdjacencyView:
+        return _AdjacencyView(self)
+
+    @property
+    def _succ(self) -> _AdjacencyView:
+        return self.succ
+
+    @property
+    def pred(self) -> _AdjacencyView:
+        return _AdjacencyView(self, reverse=True)
+
+    @property
+    def _pred(self) -> _AdjacencyView:
+        return self.pred
+
+    def __getitem__(self, node: str) -> _NeighborView:
+        return self.adj[node]
 
     def add_node(self, node_for_adding: object, **attr: object) -> None:
         node = _coerce_node(node_for_adding)
