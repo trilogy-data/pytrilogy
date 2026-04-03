@@ -7,6 +7,7 @@ from io import StringIO
 
 import pytest
 
+import trilogy.scripts.display_core as display_core
 from trilogy.scripts import display
 
 RICH_AVAILABLE = False
@@ -30,7 +31,7 @@ def test_rich_available():
     with display.set_rich_mode(True):
         assert display.is_rich_available() is True
     assert display.is_rich_available() is True
-    display.RICH_AVAILABLE = False
+    display_core.RICH_AVAILABLE = False
     assert display.is_rich_available() is False
     with display.set_rich_mode(True):
         assert display.is_rich_available() is True
@@ -38,7 +39,7 @@ def test_rich_available():
     with display.set_rich_mode(False):
         assert display.is_rich_available() is False
     assert display.is_rich_available() is False
-    display.RICH_AVAILABLE = True
+    display_core.RICH_AVAILABLE = True
 
 
 @pytest.fixture(params=[True, False], ids=["rich_enabled", "rich_disabled"])
@@ -96,14 +97,14 @@ def capture_rich_console_output():
         output_buffer = StringIO()
         test_console = Console(file=output_buffer, force_terminal=True, width=80)
 
-        # Temporarily replace the display module's console
-        original_console = display.console
-        display.console = test_console
+        # Patch display_core.console so all submodules pick up the test console
+        original_console = display_core.console
+        display_core.console = test_console
 
         try:
             yield output_buffer
         finally:
-            display.console = original_console
+            display_core.console = original_console
     else:
         # If Rich isn't available, just use regular output capture
         with capture_all_output() as (stdout, stderr):
@@ -949,3 +950,99 @@ class TestExecutionPlan:
                 assert "Dependencies: 0" in captured
                 # Should not have Dependencies section with arrows
                 assert "->" not in captured
+
+
+class TestAdditionalExecutionCoverage:
+    """Cover remaining branches in display_execution."""
+
+    def test_show_execution_info_with_debug_file_and_config(self, rich_mode):
+        if rich_mode and RICH_AVAILABLE:
+            with capture_rich_console_output() as output:
+                display.show_execution_info(
+                    "file",
+                    "test.sql",
+                    "duckdb",
+                    debug=True,
+                    debug_file="out.log",
+                    config_path="/etc/trilogy.toml",
+                )
+                captured = output.getvalue()
+            assert "out.log" in captured
+            assert "trilogy.toml" in captured
+        else:
+            with capture_all_output() as (stdout, stderr):
+                display.show_execution_info(
+                    "file",
+                    "test.sql",
+                    "duckdb",
+                    debug=True,
+                    debug_file="out.log",
+                    config_path="/etc/trilogy.toml",
+                )
+                captured = stdout.getvalue() + stderr.getvalue()
+            assert "out.log" in captured
+            assert "trilogy.toml" in captured
+
+    def test_show_execution_summary_failed(self, rich_mode):
+        from datetime import timedelta
+
+        if rich_mode and RICH_AVAILABLE:
+            with capture_rich_console_output() as output:
+                display.show_execution_summary(2, timedelta(seconds=3), False)
+                captured = output.getvalue()
+            assert "Failed" in captured
+        else:
+            with capture_all_output() as (stdout, stderr):
+                display.show_execution_summary(2, timedelta(seconds=3), False)
+                captured = stdout.getvalue() + stderr.getvalue()
+            assert "failed" in captured
+
+    def test_show_statement_result_unclear_error(self, rich_mode):
+        from datetime import timedelta
+
+        with capture_all_output() as (stdout, stderr):
+            display.show_statement_result(
+                idx=0,
+                total=1,
+                duration=timedelta(seconds=0.1),
+                has_results=False,
+                error="",
+                exception_type=RuntimeError,
+            )
+            captured = stdout.getvalue() + stderr.getvalue()
+        assert "RuntimeError" in captured
+
+    def test_show_statement_result_null_error_no_type(self, rich_mode):
+        from datetime import timedelta
+
+        with capture_all_output() as (stdout, stderr):
+            display.show_statement_result(
+                idx=0,
+                total=1,
+                duration=timedelta(seconds=0.1),
+                has_results=False,
+                error="None",
+            )
+            captured = stdout.getvalue() + stderr.getvalue()
+        assert "failed" in captured
+
+
+class TestExecutionPlanRequiredFiles:
+    """Cover required_files branches in show_execution_plan."""
+
+    def test_show_execution_plan_with_required_files(self, rich_mode):
+        nodes = ["a.preql"]
+        edges: list = []
+        order = [["a.preql"]]
+        files = ["/path/to/lib.preql"]
+
+        if rich_mode and RICH_AVAILABLE:
+            with capture_rich_console_output() as output:
+                display.show_execution_plan(nodes, edges, order, required_files=files)
+                captured = output.getvalue()
+            assert "lib.preql" in captured
+        else:
+            with capture_all_output() as (stdout, stderr):
+                display.show_execution_plan(nodes, edges, order, required_files=files)
+                captured = stdout.getvalue() + stderr.getvalue()
+            assert "lib.preql" in captured
