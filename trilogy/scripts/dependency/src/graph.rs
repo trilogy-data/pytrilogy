@@ -525,19 +525,25 @@ impl GraphCore {
                 continue;
             };
 
-            for neighbor in self.successors(&node) {
-                let edge_weight = self.edge_weight(&node, &neighbor, &weight_map);
+            let Some(neighbors) = self.succ_order.get(&node) else {
+                continue;
+            };
+            for neighbor in neighbors {
+                if !self.has_edge(&node, neighbor) {
+                    continue;
+                }
+                let edge_weight = self.edge_weight(&node, neighbor, &weight_map);
                 let next_cost = cost + edge_weight;
                 let mut next_path = current_path.clone();
                 next_path.push(neighbor.clone());
 
-                let should_update = match distances.get(&neighbor) {
+                let should_update = match distances.get(neighbor) {
                     None => true,
                     Some(existing) if next_cost + FLOAT_TOLERANCE < *existing => true,
                     Some(existing)
                         if (next_cost - *existing).abs() <= FLOAT_TOLERANCE =>
                     {
-                        match paths.get(&neighbor) {
+                        match paths.get(neighbor) {
                             None => true,
                             Some(existing_path) => next_path < *existing_path,
                         }
@@ -550,7 +556,7 @@ impl GraphCore {
                     paths.insert(neighbor.clone(), next_path);
                     heap.push(State {
                         cost: next_cost,
-                        node: neighbor,
+                        node: neighbor.clone(),
                     });
                 }
             }
@@ -586,13 +592,14 @@ impl GraphCore {
         let weight_map = self.weight_map(weights);
         let mut metric_edges: Vec<(f64, String, String, Vec<String>)> = Vec::new();
         for index in 0..terminals.len() {
+            let left = &terminals[index];
+            let shortest_paths = self.weighted_shortest_paths_from(left, &weight_map);
             for other_index in index + 1..terminals.len() {
-                let left = &terminals[index];
                 let right = &terminals[other_index];
-                let Some((distance, path)) = self.weighted_shortest_path(left, right, &weight_map) else {
+                let Some((distance, path)) = shortest_paths.get(right) else {
                     return Err(format!("No path between {left} and {right}"));
                 };
-                metric_edges.push((distance, left.clone(), right.clone(), path));
+                metric_edges.push(( *distance, left.clone(), right.clone(), path.clone()));
             }
         }
 
@@ -651,25 +658,25 @@ impl GraphCore {
         }
 
         let terminals_set = terminals.into_iter().collect::<HashSet<_>>();
-        loop {
-            let removable = tree
-                .iter()
-                .filter_map(|(node, neighbors)| {
-                    if !terminals_set.contains(node) && neighbors.len() <= 1 {
-                        Some(node.clone())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>();
-            if removable.is_empty() {
-                break;
-            }
-            for node in removable {
-                let neighbors = tree.remove(&node).unwrap_or_default();
-                for neighbor in neighbors {
-                    if let Some(entries) = tree.get_mut(&neighbor) {
-                        entries.remove(&node);
+        let mut removable = tree
+            .iter()
+            .filter_map(|(node, neighbors)| {
+                if !terminals_set.contains(node) && neighbors.len() <= 1 {
+                    Some(node.clone())
+                } else {
+                    None
+                }
+            })
+            .collect::<VecDeque<_>>();
+        while let Some(node) = removable.pop_front() {
+            let Some(neighbors) = tree.remove(&node) else {
+                continue;
+            };
+            for neighbor in neighbors {
+                if let Some(entries) = tree.get_mut(&neighbor) {
+                    entries.remove(&node);
+                    if !terminals_set.contains(&neighbor) && entries.len() <= 1 {
+                        removable.push_back(neighbor.clone());
                     }
                 }
             }
@@ -682,46 +689,48 @@ impl GraphCore {
             .collect())
     }
 
-    fn weight_map(&self, weights: Vec<(String, String, f64)>) -> HashMap<(String, String), f64> {
+    fn weight_map(&self, weights: Vec<(String, String, f64)>) -> HashMap<String, HashMap<String, f64>> {
         let mut output = HashMap::new();
         for (left, right, weight) in weights {
-            output.insert(self.edge_key(&left, &right), weight);
+            output
+                .entry(left.clone())
+                .or_insert_with(HashMap::new)
+                .insert(right.clone(), weight);
+            if !self.directed {
+                output
+                    .entry(right)
+                    .or_insert_with(HashMap::new)
+                    .insert(left, weight);
+            }
         }
         output
-    }
-
-    fn edge_key(&self, left: &str, right: &str) -> (String, String) {
-        if self.directed || left <= right {
-            (left.to_string(), right.to_string())
-        } else {
-            (right.to_string(), left.to_string())
-        }
     }
 
     fn edge_weight(
         &self,
         left: &str,
         right: &str,
-        weights: &HashMap<(String, String), f64>,
+        weights: &HashMap<String, HashMap<String, f64>>,
     ) -> f64 {
         weights
-            .get(&self.edge_key(left, right))
+            .get(left)
+            .and_then(|neighbors| neighbors.get(right))
             .copied()
             .unwrap_or(1.0)
     }
 
-    fn weighted_shortest_path(
+    fn weighted_shortest_paths_from(
         &self,
         source: &str,
-        target: &str,
-        weights: &HashMap<(String, String), f64>,
-    ) -> Option<(f64, Vec<String>)> {
-        if !self.has_node(source) || !self.has_node(target) {
-            return None;
+        weights: &HashMap<String, HashMap<String, f64>>,
+    ) -> HashMap<String, (f64, Vec<String>)> {
+        if !self.has_node(source) {
+            return HashMap::new();
         }
 
         let mut heap = BinaryHeap::new();
-        let mut distances: HashMap<String, f64> = HashMap::from([(source.to_string(), 0.0)]);
+        let mut distances: HashMap<String, f64> =
+            HashMap::from([(source.to_string(), 0.0)]);
         let mut paths: HashMap<String, Vec<String>> =
             HashMap::from([(source.to_string(), vec![source.to_string()])]);
         heap.push(State {
@@ -736,22 +745,28 @@ impl GraphCore {
             if cost > *best_cost + FLOAT_TOLERANCE {
                 continue;
             }
-            if node == target {
-                return paths.get(&node).cloned().map(|path| (cost, path));
-            }
-            let current_path = paths.get(&node).cloned().unwrap_or_default();
-            for neighbor in self.successors(&node) {
-                let next_cost = cost + self.edge_weight(&node, &neighbor, weights);
+            let Some(current_path) = paths.get(&node).cloned() else {
+                continue;
+            };
+
+            let Some(neighbors) = self.succ_order.get(&node) else {
+                continue;
+            };
+            for neighbor in neighbors {
+                if !self.has_edge(&node, neighbor) {
+                    continue;
+                }
+                let next_cost = cost + self.edge_weight(&node, neighbor, weights);
                 let mut next_path = current_path.clone();
                 next_path.push(neighbor.clone());
 
-                let should_update = match distances.get(&neighbor) {
+                let should_update = match distances.get(neighbor) {
                     None => true,
                     Some(existing) if next_cost + FLOAT_TOLERANCE < *existing => true,
                     Some(existing)
                         if (next_cost - *existing).abs() <= FLOAT_TOLERANCE =>
                     {
-                        match paths.get(&neighbor) {
+                        match paths.get(neighbor) {
                             None => true,
                             Some(existing_path) => next_path < *existing_path,
                         }
@@ -764,13 +779,20 @@ impl GraphCore {
                     paths.insert(neighbor.clone(), next_path);
                     heap.push(State {
                         cost: next_cost,
-                        node: neighbor,
+                        node: neighbor.clone(),
                     });
                 }
             }
         }
 
-        None
+        self.nodes()
+            .into_iter()
+            .filter_map(|node| {
+                let distance = distances.get(&node).copied()?;
+                let path = paths.remove(&node)?;
+                Some((node, (distance, path)))
+            })
+            .collect()
     }
 }
 

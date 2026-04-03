@@ -347,10 +347,16 @@ class _GraphBase:
             if not isinstance(node, str) or not self._core.has_node(node):
                 continue
             normalized.append(node)
+        if not normalized:
+            return
+        removed = set(normalized)
+        for node in normalized:
             self._node_attrs.pop(node, None)
-            for edge in list(self._edge_attrs):
-                if node in edge:
-                    self._edge_attrs.pop(edge, None)
+        self._edge_attrs = {
+            edge: attrs
+            for edge, attrs in self._edge_attrs.items()
+            if edge[0] not in removed and edge[1] not in removed
+        }
         self._core.remove_nodes(normalized)
         if self._shadow is not None:
             self._shadow.remove_nodes_from(normalized)
@@ -413,28 +419,27 @@ class _GraphBase:
             if coerced not in self:
                 continue
             keep_set.add(coerced)
+        ordered_keep = [node for node in self._ordered_nodes() if node in keep_set]
         new = self.__class__()
-        for node in self._ordered_nodes():
-            if node not in keep_set:
-                continue
-            new.add_node(node, **self._node_attrs.get(node, {}).copy())
-        for left, right in self._ordered_edges():
-            if left in keep_set and right in keep_set:
-                new.add_edge(
-                    left,
-                    right,
-                    **self._edge_attrs.get(_edge_key(self, left, right), {}).copy(),
-                )
+        new._core = self._core.induced_subgraph(ordered_keep)
+        new._node_attrs = {
+            node: self._node_attrs.get(node, {}).copy() for node in ordered_keep
+        }
+        new._edge_attrs = {
+            _edge_key(new, left, right): attrs.copy()
+            for (left, right), attrs in self._edge_attrs.items()
+            if left in keep_set and right in keep_set
+        }
         new.graph = self.graph.copy()
         if self._shadow is not None:
             expected_shadow = self._shadow.subgraph(keep_set).copy()
+            new._shadow = expected_shadow
             new._assert_equal(
                 "subgraph.nodes", list(new._core.nodes()), list(expected_shadow.nodes)
             )
             new._assert_equal(
                 "subgraph.edges", list(new._core.edges()), list(expected_shadow.edges)
             )
-            new._shadow = expected_shadow
         return new
 
     def to_undirected(self) -> "Graph":
