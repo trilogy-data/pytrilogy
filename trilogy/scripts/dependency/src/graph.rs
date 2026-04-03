@@ -593,7 +593,9 @@ impl GraphCore {
         let mut metric_edges: Vec<(f64, String, String, Vec<String>)> = Vec::new();
         for index in 0..terminals.len() {
             let left = &terminals[index];
-            let shortest_paths = self.weighted_shortest_paths_from(left, &weight_map);
+            let targets = terminals[index + 1..].to_vec();
+            let shortest_paths =
+                self.weighted_shortest_paths_to_targets(left, &targets, &weight_map);
             for other_index in index + 1..terminals.len() {
                 let right = &terminals[other_index];
                 let Some((distance, path)) = shortest_paths.get(right) else {
@@ -622,21 +624,26 @@ impl GraphCore {
         }
 
         let induced = expanded_nodes.clone();
-        let mut original_edges = self
-            .edges()
-            .into_iter()
-            .filter_map(|(left, right)| {
-                if induced.contains(&left) && induced.contains(&right) {
-                    Some((
-                        self.edge_weight(&left, &right, &weight_map),
-                        left,
-                        right,
-                    ))
-                } else {
-                    None
+        let mut original_edges = Vec::new();
+        let mut seen_edges = HashSet::new();
+        for left in &expanded_nodes {
+            let Some(neighbors) = self.succ_order.get(left) else {
+                continue;
+            };
+            for right in neighbors {
+                if !induced.contains(right) || !self.has_edge(left, right) {
+                    continue;
                 }
-            })
-            .collect::<Vec<_>>();
+                let key = canonical_edge(left, right);
+                if self.directed || seen_edges.insert(key) {
+                    original_edges.push((
+                        self.edge_weight(left, right, &weight_map),
+                        left.clone(),
+                        right.clone(),
+                    ));
+                }
+            }
+        }
         original_edges.sort_by(|left, right| {
             left.0
                 .total_cmp(&right.0)
@@ -719,12 +726,17 @@ impl GraphCore {
             .unwrap_or(1.0)
     }
 
-    fn weighted_shortest_paths_from(
+    fn weighted_shortest_paths_to_targets(
         &self,
         source: &str,
+        targets: &[String],
         weights: &HashMap<String, HashMap<String, f64>>,
     ) -> HashMap<String, (f64, Vec<String>)> {
         if !self.has_node(source) {
+            return HashMap::new();
+        }
+        let mut remaining = targets.iter().cloned().collect::<HashSet<_>>();
+        if remaining.is_empty() {
             return HashMap::new();
         }
 
@@ -744,6 +756,10 @@ impl GraphCore {
             };
             if cost > *best_cost + FLOAT_TOLERANCE {
                 continue;
+            }
+            remaining.remove(&node);
+            if remaining.is_empty() {
+                break;
             }
             let Some(current_path) = paths.get(&node).cloned() else {
                 continue;
@@ -785,12 +801,13 @@ impl GraphCore {
             }
         }
 
-        self.nodes()
+        targets
+            .iter()
             .into_iter()
             .filter_map(|node| {
-                let distance = distances.get(&node).copied()?;
-                let path = paths.remove(&node)?;
-                Some((node, (distance, path)))
+                let distance = distances.get(node).copied()?;
+                let path = paths.remove(node)?;
+                Some((node.clone(), (distance, path)))
             })
             .collect()
     }
