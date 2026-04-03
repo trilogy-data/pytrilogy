@@ -42,6 +42,35 @@ impl PartialOrd for State {
     }
 }
 
+#[derive(Copy, Clone)]
+struct IndexState {
+    cost: f64,
+    node: usize,
+}
+
+impl Eq for IndexState {}
+
+impl PartialEq for IndexState {
+    fn eq(&self, other: &Self) -> bool {
+        self.cost.total_cmp(&other.cost) == Ordering::Equal && self.node == other.node
+    }
+}
+
+impl Ord for IndexState {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other
+            .cost
+            .total_cmp(&self.cost)
+            .then_with(|| other.node.cmp(&self.node))
+    }
+}
+
+impl PartialOrd for IndexState {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 #[derive(Default)]
 struct DisjointSet {
     parent: HashMap<String, String>,
@@ -576,6 +605,14 @@ impl GraphCore {
         terminals: Vec<String>,
         weights: Vec<(String, String, f64)>,
     ) -> Result<Vec<String>, String> {
+        self.steiner_tree_nodes_indexed(terminals, weights)
+    }
+
+    pub fn steiner_tree_nodes_legacy(
+        &self,
+        terminals: Vec<String>,
+        weights: Vec<(String, String, f64)>,
+    ) -> Result<Vec<String>, String> {
         let terminals = dedupe_preserve_order(terminals);
         if terminals.is_empty() {
             return Ok(Vec::new());
@@ -623,10 +660,24 @@ impl GraphCore {
             }
         }
 
+        Ok(self.finalize_steiner_tree(terminals, expanded_nodes, &weight_map))
+    }
+
+    fn finalize_steiner_tree(
+        &self,
+        terminals: Vec<String>,
+        expanded_nodes: HashSet<String>,
+        weight_map: &HashMap<String, HashMap<String, f64>>,
+    ) -> Vec<String> {
         let induced = expanded_nodes.clone();
+        let ordered_expanded_nodes = self
+            .nodes()
+            .into_iter()
+            .filter(|node| induced.contains(node))
+            .collect::<Vec<_>>();
         let mut original_edges = Vec::new();
         let mut seen_edges = HashSet::new();
-        for left in &expanded_nodes {
+        for left in &ordered_expanded_nodes {
             let Some(neighbors) = self.succ_order.get(left) else {
                 continue;
             };
@@ -653,7 +704,7 @@ impl GraphCore {
 
         let mut tree = HashMap::<String, HashSet<String>>::new();
         let mut induced_dsu = DisjointSet::default();
-        for node in &induced {
+        for node in &ordered_expanded_nodes {
             tree.entry(node.clone()).or_default();
             induced_dsu.insert(node);
         }
@@ -665,9 +716,10 @@ impl GraphCore {
         }
 
         let terminals_set = terminals.into_iter().collect::<HashSet<_>>();
-        let mut removable = tree
+        let mut removable = ordered_expanded_nodes
             .iter()
-            .filter_map(|(node, neighbors)| {
+            .filter_map(|node| {
+                let neighbors = tree.get(node)?;
                 if !terminals_set.contains(node) && neighbors.len() <= 1 {
                     Some(node.clone())
                 } else {
@@ -689,11 +741,98 @@ impl GraphCore {
             }
         }
 
-        Ok(self
-            .nodes()
+        self.nodes()
             .into_iter()
             .filter(|node| tree.contains_key(node))
-            .collect())
+            .collect()
+    }
+
+    fn steiner_tree_nodes_indexed(
+        &self,
+        terminals: Vec<String>,
+        weights: Vec<(String, String, f64)>,
+    ) -> Result<Vec<String>, String> {
+        let terminals = dedupe_preserve_order(terminals);
+        if terminals.is_empty() {
+            return Ok(Vec::new());
+        }
+        let lex_nodes = {
+            let mut nodes = self.nodes();
+            nodes.sort();
+            nodes
+        };
+        let mut node_to_index = HashMap::new();
+        for (index, node) in lex_nodes.iter().enumerate() {
+            node_to_index.insert(node.clone(), index);
+        }
+        let mut terminal_indices = Vec::with_capacity(terminals.len());
+        for terminal in &terminals {
+            let Some(index) = node_to_index.get(terminal).copied() else {
+                return Err(format!("Node not found: {terminal}"));
+            };
+            terminal_indices.push(index);
+        }
+        if terminal_indices.len() == 1 {
+            return Ok(terminals);
+        }
+
+        let weight_map = self.weight_map(weights);
+        let mut weighted_neighbors = vec![Vec::<(usize, f64)>::new(); lex_nodes.len()];
+        for (index, left) in lex_nodes.iter().enumerate() {
+            let Some(neighbors) = self.succ_order.get(left) else {
+                continue;
+            };
+            for right in neighbors {
+                if !self.has_edge(left, right) {
+                    continue;
+                }
+                let Some(right_index) = node_to_index.get(right).copied() else {
+                    continue;
+                };
+                weighted_neighbors[index]
+                    .push((right_index, self.edge_weight(left, right, &weight_map)));
+            }
+        }
+
+        let mut metric_edges: Vec<(f64, usize, usize, Vec<usize>)> = Vec::new();
+        for index in 0..terminal_indices.len() {
+            let left = terminal_indices[index];
+            let targets = terminal_indices[index + 1..].to_vec();
+            let shortest_paths = self.weighted_shortest_paths_to_target_indices(
+                left,
+                &targets,
+                &weighted_neighbors,
+            );
+            for other_index in index + 1..terminal_indices.len() {
+                let right = terminal_indices[other_index];
+                let Some((distance, path)) = shortest_paths.get(&right) else {
+                    return Err(format!(
+                        "No path between {} and {}",
+                        terminals[index], terminals[other_index]
+                    ));
+                };
+                metric_edges.push((*distance, left, right, path.clone()));
+            }
+        }
+
+        metric_edges.sort_by(|left, right| {
+            left.0
+                .total_cmp(&right.0)
+                .then_with(|| left.1.cmp(&right.1))
+                .then_with(|| left.2.cmp(&right.2))
+        });
+
+        let mut metric_dsu = IndexDisjointSet::new(lex_nodes.len());
+        let mut expanded_nodes = terminals.iter().cloned().collect::<HashSet<_>>();
+        for (_distance, left, right, path) in metric_edges {
+            if metric_dsu.union(left, right) {
+                for node in path {
+                    expanded_nodes.insert(lex_nodes[node].clone());
+                }
+            }
+        }
+
+        Ok(self.finalize_steiner_tree(terminals, expanded_nodes, &weight_map))
     }
 
     fn weight_map(&self, weights: Vec<(String, String, f64)>) -> HashMap<String, HashMap<String, f64>> {
@@ -810,6 +949,113 @@ impl GraphCore {
                 Some((node.clone(), (distance, path)))
             })
             .collect()
+    }
+
+    fn weighted_shortest_paths_to_target_indices(
+        &self,
+        source: usize,
+        targets: &[usize],
+        weighted_neighbors: &[Vec<(usize, f64)>],
+    ) -> HashMap<usize, (f64, Vec<usize>)> {
+        if targets.is_empty() {
+            return HashMap::new();
+        }
+        let mut remaining = targets.iter().copied().collect::<HashSet<_>>();
+        let mut heap = BinaryHeap::new();
+        let mut distances = vec![f64::INFINITY; weighted_neighbors.len()];
+        let mut paths: Vec<Option<Vec<usize>>> = vec![None; weighted_neighbors.len()];
+
+        distances[source] = 0.0;
+        paths[source] = Some(vec![source]);
+        heap.push(IndexState {
+            cost: 0.0,
+            node: source,
+        });
+
+        while let Some(IndexState { cost, node }) = heap.pop() {
+            if cost > distances[node] + FLOAT_TOLERANCE {
+                continue;
+            }
+            remaining.remove(&node);
+            if remaining.is_empty() {
+                break;
+            }
+            let Some(current_path) = paths[node].clone() else {
+                continue;
+            };
+            for (neighbor, weight) in &weighted_neighbors[node] {
+                let next_cost = cost + *weight;
+                let mut next_path = current_path.clone();
+                next_path.push(*neighbor);
+                let should_update = if next_cost + FLOAT_TOLERANCE < distances[*neighbor] {
+                    true
+                } else if (next_cost - distances[*neighbor]).abs() <= FLOAT_TOLERANCE {
+                    match &paths[*neighbor] {
+                        None => true,
+                        Some(existing_path) => next_path < *existing_path,
+                    }
+                } else {
+                    false
+                };
+                if should_update {
+                    distances[*neighbor] = next_cost;
+                    paths[*neighbor] = Some(next_path);
+                    heap.push(IndexState {
+                        cost: next_cost,
+                        node: *neighbor,
+                    });
+                }
+            }
+        }
+
+        targets
+            .iter()
+            .filter_map(|target| {
+                let path = paths[*target].clone()?;
+                Some((*target, (distances[*target], path)))
+            })
+            .collect()
+    }
+}
+
+struct IndexDisjointSet {
+    parent: Vec<usize>,
+    rank: Vec<usize>,
+}
+
+impl IndexDisjointSet {
+    fn new(size: usize) -> Self {
+        Self {
+            parent: (0..size).collect(),
+            rank: vec![0; size],
+        }
+    }
+
+    fn find(&mut self, node: usize) -> usize {
+        if self.parent[node] != node {
+            let root = self.find(self.parent[node]);
+            self.parent[node] = root;
+        }
+        self.parent[node]
+    }
+
+    fn union(&mut self, left: usize, right: usize) -> bool {
+        let left_root = self.find(left);
+        let right_root = self.find(right);
+        if left_root == right_root {
+            return false;
+        }
+        let left_rank = self.rank[left_root];
+        let right_rank = self.rank[right_root];
+        if left_rank < right_rank {
+            self.parent[left_root] = right_root;
+        } else if left_rank > right_rank {
+            self.parent[right_root] = left_root;
+        } else {
+            self.parent[right_root] = left_root;
+            self.rank[left_root] += 1;
+        }
+        true
     }
 }
 

@@ -13,6 +13,8 @@ except ImportError as exc:  # pragma: no cover
     ) from exc
 
 _COMPARE_MODE = os.getenv("TRILOGY_GRAPH_COMPARE") == "1"
+_STEINER_IMPL = os.getenv("TRILOGY_STEINER_IMPL", "indexed")
+_STEINER_COMPARE = os.getenv("TRILOGY_STEINER_COMPARE") == "1"
 if _COMPARE_MODE:  # pragma: no cover
     import networkx as _shadow_nx
 else:  # pragma: no cover
@@ -478,9 +480,18 @@ class _ApproximationSteinerTree:
     ) -> GraphT:
         terminals = [_coerce_node(node) for node in nodes]
         try:
-            tree_nodes = graph._core.steiner_tree_nodes(
-                terminals, _weight_triples(graph, weight)
-            )
+            weights = _weight_triples(graph, weight)
+            if _STEINER_IMPL == "legacy":
+                tree_nodes = graph._core.steiner_tree_nodes_legacy(terminals, weights)
+            else:
+                tree_nodes = graph._core.steiner_tree_nodes(terminals, weights)
+            if _STEINER_COMPARE:
+                legacy_nodes = graph._core.steiner_tree_nodes_legacy(terminals, weights)
+                if tree_nodes != legacy_nodes:
+                    raise AssertionError(
+                        "Steiner parity mismatch: "
+                        f"expected {legacy_nodes!r}, got {tree_nodes!r}"
+                    )
         except ValueError as exc:
             message = str(exc)
             if "Node not found" in message:

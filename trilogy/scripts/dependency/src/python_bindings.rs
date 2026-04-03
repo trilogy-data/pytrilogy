@@ -197,6 +197,16 @@ impl PyGraphCore {
             .steiner_tree_nodes(terminals, weights)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))
     }
+
+    fn steiner_tree_nodes_legacy(
+        &self,
+        terminals: Vec<String>,
+        weights: Vec<(String, String, f64)>,
+    ) -> PyResult<Vec<String>> {
+        self.graph
+            .steiner_tree_nodes_legacy(terminals, weights)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))
+    }
 }
 
 /// Python wrapper for ImportResolver
