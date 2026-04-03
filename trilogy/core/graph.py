@@ -96,7 +96,9 @@ class _NodeView(Mapping[str, MutableMapping[str, object]]):
         return len(self._graph._ordered_nodes())
 
     def __contains__(self, node: object) -> bool:
-        present = isinstance(node, str) and self._graph._core.has_node(node)
+        if not isinstance(node, str):
+            raise TypeError(f"Graph nodes must be strings, got {type(node).__name__}")
+        present = self._graph._core.has_node(node)
         self._graph._assert_shadow("nodes.__contains__", present, node)
         return present
 
@@ -125,10 +127,10 @@ class _EdgeView:
 
     def __contains__(self, edge: object) -> bool:
         if not isinstance(edge, tuple) or len(edge) != 2:
-            return False
+            raise TypeError("Graph edges must be 2-tuples of strings")
         left, right = edge
         if not isinstance(left, str) or not isinstance(right, str):
-            return False
+            raise TypeError("Graph edges must contain string nodes")
         present = self._graph._core.has_edge(left, right)
         self._graph._assert_shadow("edges.__contains__", present, edge)
         return present
@@ -337,7 +339,9 @@ class _GraphBase:
         self._cached_edges = None
 
     def __contains__(self, node: object) -> bool:
-        present = isinstance(node, str) and self._core.has_node(node)
+        if not isinstance(node, str):
+            raise TypeError(f"Graph nodes must be strings, got {type(node).__name__}")
+        present = self._core.has_node(node)
         self._assert_shadow("nodes.__contains__", present, node)
         return present
 
@@ -452,7 +456,11 @@ class _GraphBase:
     def remove_nodes_from(self, nodes: Iterable[str]) -> None:
         normalized: list[str] = []
         for node in nodes:
-            if not isinstance(node, str) or not self._core.has_node(node):
+            if not isinstance(node, str):
+                raise TypeError(
+                    f"Graph nodes must be strings, got {type(node).__name__}"
+                )
+            if not self._core.has_node(node):
                 continue
             normalized.append(node)
         if not normalized:
@@ -475,8 +483,10 @@ class _GraphBase:
         normalized: list[tuple[str, str]] = []
         for edge in edges:
             if len(edge) != 2:
-                continue
+                raise TypeError("Graph edges must be 2-tuples of strings")
             left, right = edge
+            if not isinstance(left, str) or not isinstance(right, str):
+                raise TypeError("Graph edges must contain string nodes")
             if self._core.has_edge(left, right):
                 normalized.append((left, right))
                 self._edge_attrs.pop(_edge_key(self, left, right), None)
