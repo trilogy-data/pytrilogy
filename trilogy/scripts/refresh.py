@@ -321,6 +321,7 @@ def _preview_directory_refresh(
                     ): node
                     for node in root_owner_to_addrs
                 }
+                _root_progress.register_futures(root_futures)
                 for root_future in as_completed(root_futures):
                     all_root_watermarks.update(root_future.result())
                     node = root_futures[root_future]
@@ -347,6 +348,7 @@ def _preview_directory_refresh(
                 ): node
                 for node in ordered_nodes
             }
+            _progress.register_futures(futures)
             for future in as_completed(futures):
                 owner_node, plan = future.result()
                 plans_by_node.append((owner_node, plan))

@@ -1,9 +1,10 @@
 """Display helpers for prettier CLI output with configurable Rich support."""
 
+import os
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from click import echo, style
 
@@ -591,8 +592,12 @@ class ParallelProgressTracker:
 
     def __init__(self) -> None:
         self._task_ids: dict[int, Any] = {}
+        self._in_progress_labels: dict[int, str] = {}
         self._lock = threading.Lock()
         self._progress: Any = None
+        self._stderr_cap = _FdStderrCapture(
+            get_context=lambda: " | ".join(sorted(self._in_progress_labels.values()))
+        )
 
     def __enter__(self) -> "ParallelProgressTracker":
         if RICH_AVAILABLE and console is not None:
@@ -602,12 +607,15 @@ class ParallelProgressTracker:
                 TimeElapsedColumn(),
                 console=console,
                 transient=True,
+                redirect_stderr=True,
             )
             self._progress.__enter__()
+            self._stderr_cap.__enter__()
         return self
 
     def __exit__(self, *args: Any) -> None:
         if self._progress is not None:
+            self._stderr_cap.__exit__(*args)
             self._progress.__exit__(*args)
             self._progress = None
 
@@ -624,6 +632,7 @@ class ParallelProgressTracker:
             with self._lock:
                 task_id = self._progress.add_task(f"[cyan]{label}[/cyan]")
                 self._task_ids[id(node)] = task_id
+                self._in_progress_labels[id(node)] = label
         else:
             print(f"  \u2192 {label}")
 
@@ -631,6 +640,7 @@ class ParallelProgressTracker:
         if self._progress is not None:
             with self._lock:
                 task_id = self._task_ids.pop(id(result.node), None)
+                self._in_progress_labels.pop(id(result.node), None)
                 if task_id is not None:
                     self._progress.remove_task(task_id)
         show_script_result(result)
@@ -772,6 +782,91 @@ def show_grouped_refresh_assets(
             echo(f"    {ds.datasource_id}{ds_reason} [{files_str}]")
 
 
+def _make_futures_context_getter(futures: dict) -> "Callable[[], str]":
+    """Return a callable that yields labels of futures not yet done."""
+    from trilogy.scripts.dependency import ScriptNode
+
+    def get_ctx() -> str:
+        active = []
+        for f, node in futures.items():
+            if not f.done():
+                label = node.path.name if isinstance(node, ScriptNode) else str(node)
+                active.append(label)
+        return " | ".join(sorted(active))
+
+    return get_ctx
+
+
+class _FdStderrCapture:
+    """Redirect OS-level fd 2 to a pipe so subprocess stderr is routed through
+    the Rich console instead of tearing the progress bar display.
+
+    Rich's redirect_stderr only patches sys.stderr (Python level); subprocesses
+    write directly to fd 2 and bypass it.  This captures at the fd level.
+    """
+
+    def __init__(self, get_context: "Callable[[], str] | None" = None) -> None:
+        self._orig_fd: int | None = None
+        self._thread: threading.Thread | None = None
+        self.get_context = get_context
+
+    def __enter__(self) -> "_FdStderrCapture":
+        if not (RICH_AVAILABLE and console is not None):
+            return self
+        self._orig_fd = os.dup(2)
+        read_fd, write_fd = os.pipe()
+        os.dup2(write_fd, 2)
+        os.close(write_fd)
+        self._thread = threading.Thread(
+            target=self._drain, args=(read_fd,), daemon=True
+        )
+        self._thread.start()
+        return self
+
+    def _drain(self, read_fd: int) -> None:
+        buf = b""
+        while True:
+            try:
+                chunk = os.read(read_fd, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            buf += chunk
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                text = line.decode("utf-8", errors="replace").rstrip()
+                if text and console is not None:
+                    if self.get_context:
+                        ctx = self.get_context()
+                        if ctx:
+                            text = f"[dim]\[{ctx}][/dim] {text}"
+                    console.print(text)
+        if buf and console is not None:
+            text = buf.decode("utf-8", errors="replace").rstrip()
+            if text:
+                if self.get_context:
+                    ctx = self.get_context()
+                    if ctx:
+                        text = f"[dim]\[{ctx}][/dim] {text}"
+                console.print(text)
+        try:
+            os.close(read_fd)
+        except OSError:
+            pass
+
+    def __exit__(self, *args: Any) -> None:
+        if self._orig_fd is None:
+            return
+        # Restoring fd 2 closes the pipe write end → EOF on read end → thread exits
+        os.dup2(self._orig_fd, 2)
+        os.close(self._orig_fd)
+        self._orig_fd = None
+        if self._thread is not None:
+            self._thread.join()
+            self._thread = None
+
+
 class _ProbeProgressContext:
     """Context manager for probe progress tracking."""
 
@@ -779,6 +874,7 @@ class _ProbeProgressContext:
         self._total = total
         self._progress = None
         self._task = None
+        self._stderr_cap = _FdStderrCapture()
 
     def __enter__(self):
         if RICH_AVAILABLE and console is not None:
@@ -792,7 +888,12 @@ class _ProbeProgressContext:
             )
             self._progress.start()
             self._task = self._progress.add_task("Checking assets", total=self._total)
+            self._stderr_cap.__enter__()
         return self
+
+    def register_futures(self, futures: dict) -> None:
+        """Set provenance getter from a future→node map (call after pool.submit)."""
+        self._stderr_cap.get_context = _make_futures_context_getter(futures)
 
     def advance(self) -> None:
         if self._progress is not None and self._task is not None:
@@ -800,6 +901,7 @@ class _ProbeProgressContext:
 
     def __exit__(self, *args):
         if self._progress is not None:
+            self._stderr_cap.__exit__(*args)
             self._progress.stop()
 
 
@@ -879,6 +981,7 @@ class _RootProbeProgressContext:
         self._total = total
         self._progress = None
         self._task = None
+        self._stderr_cap = _FdStderrCapture()
 
     def __enter__(self):
         if RICH_AVAILABLE and console is not None:
@@ -894,7 +997,12 @@ class _RootProbeProgressContext:
             self._task = self._progress.add_task(
                 "Probing root watermarks", total=self._total
             )
+            self._stderr_cap.__enter__()
         return self
+
+    def register_futures(self, futures: dict) -> None:
+        """Set provenance getter from a future→node map (call after pool.submit)."""
+        self._stderr_cap.get_context = _make_futures_context_getter(futures)
 
     def advance(self) -> None:
         if self._progress is not None and self._task is not None:
@@ -902,6 +1010,7 @@ class _RootProbeProgressContext:
 
     def __exit__(self, *args):
         if self._progress is not None:
+            self._stderr_cap.__exit__(*args)
             self._progress.stop()
 
 
