@@ -72,8 +72,14 @@ def _weight_triples(
     graph: "_GraphBase",
     weight: str,
 ) -> list[tuple[str, str, float]]:
+    edges = graph._cached_edges
+    if edges is None:
+        edges = graph._core.edges()
+        graph._cached_edges = edges
+        if graph._shadow is not None:
+            graph._assert_equal("edges()", edges, list(graph._shadow.edges))
     output: list[tuple[str, str, float]] = []
-    for left, right in graph._core.edges():
+    for left, right in edges:
         raw = graph._edge_attrs.get(_edge_key(graph, left, right), {}).get(weight, 1.0)
         output.append(
             (
@@ -221,6 +227,8 @@ class _GraphBase:
         self._core = _RustGraphCore(self.directed)
         self._node_attrs: dict[str, dict[str, object]] = {}
         self._edge_attrs: dict[tuple[str, str], dict[str, object]] = {}
+        self._cached_nodes: list[str] | None = None
+        self._cached_edges: list[tuple[str, str]] | None = None
         self.graph: dict[str, object] = dict(attr)
         self._shadow = self._make_shadow_graph()
 
@@ -240,6 +248,12 @@ class _GraphBase:
             node: attrs.copy() for node, attrs in other._node_attrs.items()
         }
         self._edge_attrs = _copy_edge_attrs(other)
+        self._cached_nodes = (
+            list(other._cached_nodes) if other._cached_nodes is not None else None
+        )
+        self._cached_edges = (
+            list(other._cached_edges) if other._cached_edges is not None else None
+        )
         self.graph = other.graph.copy()
         self._shadow = other._shadow.copy() if other._shadow is not None else None
 
@@ -315,16 +329,26 @@ class _GraphBase:
         self._assert_equal(f"{op}.edges", self._core.edges(), list(self._shadow.edges))
 
     def _ordered_nodes(self) -> list[str]:
-        nodes = self._core.nodes()
+        nodes = self._cached_nodes
+        if nodes is None:
+            nodes = self._core.nodes()
+            self._cached_nodes = nodes
         if self._shadow is not None:
             self._assert_equal("nodes()", nodes, list(self._shadow.nodes))
         return nodes
 
     def _ordered_edges(self) -> list[tuple[str, str]]:
-        edges = self._core.edges()
+        edges = self._cached_edges
+        if edges is None:
+            edges = self._core.edges()
+            self._cached_edges = edges
         if self._shadow is not None:
             self._assert_equal("edges()", edges, list(self._shadow.edges))
         return edges
+
+    def _invalidate_structure_cache(self) -> None:
+        self._cached_nodes = None
+        self._cached_edges = None
 
     def __contains__(self, node: object) -> bool:
         present = isinstance(node, str) and self._core.has_node(node)
@@ -361,6 +385,7 @@ class _GraphBase:
         if self._core.has_node(node):
             return
         self._core.add_node(node)
+        self._invalidate_structure_cache()
         if self._shadow is not None:
             self._shadow.add_node(node)
 
@@ -394,6 +419,7 @@ class _GraphBase:
     def add_node(self, node_for_adding: object, **attr: object) -> None:
         node = _coerce_node(node_for_adding)
         self._core.add_node(node)
+        self._invalidate_structure_cache()
         if attr:
             attrs = self._node_attrs.setdefault(node, {})
             attrs.update(attr)
@@ -407,6 +433,7 @@ class _GraphBase:
         self._ensure_node(left)
         self._ensure_node(right)
         self._core.add_edge(left, right)
+        self._invalidate_structure_cache()
         if attr:
             edge_attrs = self._edge_attrs.setdefault(_edge_key(self, left, right), {})
             edge_attrs.update(attr)
@@ -428,6 +455,7 @@ class _GraphBase:
         if node not in self:
             _raise_missing(node)
         self._core.remove_node(node)
+        self._invalidate_structure_cache()
         self._node_attrs.pop(node, None)
         for edge in list(self._edge_attrs):
             if node in edge:
@@ -453,6 +481,7 @@ class _GraphBase:
             if edge[0] not in removed and edge[1] not in removed
         }
         self._core.remove_nodes(normalized)
+        self._invalidate_structure_cache()
         if self._shadow is not None:
             self._shadow.remove_nodes_from(normalized)
         self._assert_graph_parity("remove_nodes_from")
@@ -468,6 +497,7 @@ class _GraphBase:
                 normalized.append((left, right))
                 self._edge_attrs.pop(_edge_key(self, left, right), None)
         self._core.remove_edges(normalized)
+        self._invalidate_structure_cache()
         if self._shadow is not None:
             self._shadow.remove_edges_from(normalized)
         self._assert_graph_parity("remove_edges_from")
@@ -517,6 +547,8 @@ class _GraphBase:
         ordered_keep = [node for node in self._ordered_nodes() if node in keep_set]
         new = self.__class__()
         new._core = self._core.induced_subgraph(ordered_keep)
+        new._cached_nodes = list(ordered_keep)
+        new._cached_edges = None
         new._node_attrs = {
             node: self._node_attrs.get(node, {}).copy() for node in ordered_keep
         }
@@ -542,6 +574,8 @@ class _GraphBase:
             return cast("Graph", self.copy())
         new = Graph()
         new._core = self._core.to_undirected_graph()
+        new._cached_nodes = list(self._ordered_nodes())
+        new._cached_edges = None
         new._node_attrs = {
             node: attrs.copy() for node, attrs in self._node_attrs.items()
         }
