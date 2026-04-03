@@ -186,7 +186,9 @@ class _NeighborView(Mapping[str, MutableMapping[str, object]]):
             _edge_key(self._graph, left, right), {}
         )
         shadow_attrs = None
-        if self._graph._shadow is not None and self._graph._shadow.has_edge(left, right):
+        if self._graph._shadow is not None and self._graph._shadow.has_edge(
+            left, right
+        ):
             shadow_attrs = self._graph._shadow.edges[left, right]
         if shadow_attrs is None:
             return attrs

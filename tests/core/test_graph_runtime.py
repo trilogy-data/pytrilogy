@@ -67,9 +67,9 @@ def test_subgraph_preserves_attrs():
     reference_sub = reference.subgraph(["a", "b"]).copy()
 
     assert native_sub.nodes["a"]["kind"] == reference_sub.nodes["a"]["kind"]
-    assert native_sub.edges["a", "b"]["weight"] == reference_sub.edges["a", "b"][
-        "weight"
-    ]
+    assert (
+        native_sub.edges["a", "b"]["weight"] == reference_sub.edges["a", "b"]["weight"]
+    )
 
 
 def test_topological_sort_cycle_and_shortest_path_parity():
