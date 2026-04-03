@@ -139,6 +139,29 @@ def test_steiner_tree_parity_on_unique_solution():
     assert set(native_tree.edges) == set(reference_tree.edges)
 
 
+def test_steiner_tree_parity_on_disconnected_and_missing_terminals():
+    native = rust_nx.Graph()
+    reference = nx.Graph()
+    for graph in [native, reference]:
+        graph.add_edge("a", "b")
+        graph.add_edge("c", "d")
+
+    native_tree = rust_nx.approximation.steinertree.steiner_tree(native, ["a", "c"])
+    reference_tree = nx.algorithms.approximation.steinertree.steiner_tree(
+        reference, ["a", "c"]
+    )
+
+    assert list(native_tree.nodes) == list(reference_tree.nodes)
+    assert list(native_tree.edges) == list(reference_tree.edges)
+
+    with pytest.raises(rust_nx.NodeNotFound):
+        rust_nx.approximation.steinertree.steiner_tree(native, ["a", "missing"])
+    with pytest.raises(nx.NodeNotFound):
+        nx.algorithms.approximation.steinertree.steiner_tree(
+            reference, ["a", "missing"]
+        )
+
+
 def test_insertion_order_and_tie_break_parity():
     native = rust_nx.DiGraph()
     reference = nx.DiGraph()

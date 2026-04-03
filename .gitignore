@@ -1,6 +1,7 @@
 
 
 *.egg-info
+*.parquet
 
 node_modules/
 

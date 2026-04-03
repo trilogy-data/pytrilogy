@@ -326,6 +326,7 @@ def resolve_weak_components(
     # to ensure there are not ambiguous discovery paths
     # (if we did not care about raising ambiguity errors, we could just use the first one)
     while break_flag is not True:
+        g: nx.DiGraph | None = None
         count += 1
         if count > AMBIGUITY_CHECK_LIMIT:
             break_flag = True
