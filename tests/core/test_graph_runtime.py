@@ -1,7 +1,28 @@
+import importlib
+import os
+import subprocess
+import sys
+import textwrap
+from contextlib import contextmanager
+from pathlib import Path
+
 import networkx as nx
 import pytest
 
 from trilogy.core import graph as rust_nx
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+@contextmanager
+def graph_compare_mode(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("TRILOGY_GRAPH_COMPARE", "1")
+    importlib.reload(rust_nx)
+    try:
+        yield rust_nx
+    finally:
+        monkeypatch.delenv("TRILOGY_GRAPH_COMPARE", raising=False)
+        importlib.reload(rust_nx)
 
 
 def build_weighted_directed_pair():
@@ -265,3 +286,121 @@ def test_remove_nodes_from_does_not_dispatch_remove_node():
     assert native.removed == []
     assert list(native.nodes) == list(reference.nodes)
     assert list(native.edges) == list(reference.edges)
+
+
+def test_compare_mode_shadow_paths(monkeypatch: pytest.MonkeyPatch):
+    with graph_compare_mode(monkeypatch) as compare_nx:
+        native = compare_nx.DiGraph([("a", "b"), ("a", "c"), ("b", "d"), ("c", "d")])
+        native.nodes["a"]["kind"] = "start"
+        native.edges["a", "b"]["weight"] = 2
+        native.pred["d"]["b"]["kind"] = "incoming"
+
+        assert native.nodes() == ["a", "b", "c", "d"]
+        assert native.edges() == [("a", "b"), ("a", "c"), ("b", "d"), ("c", "d")]
+        assert native.nodes["a"]["kind"] == "start"
+        assert native.edges["a", "b"]["weight"] == 2
+        assert native.pred["d"]["b"]["kind"] == "incoming"
+        assert ("a", "b") in native.edges
+        assert "a" in native.nodes
+        assert list(native.neighbors("a")) == ["b", "c"]
+        assert list(native.successors("a")) == ["b", "c"]
+        assert list(native.predecessors("d")) == ["b", "c"]
+        assert native.in_degree("d") == 2
+        assert native.out_degree("a") == 2
+        assert compare_nx.shortest_path(native, "a", "d") == ["a", "b", "d"]
+        assert compare_nx.shortest_path_length(native, "a", "d") == 2
+        assert list(compare_nx.topological_sort(native)) == ["a", "b", "c", "d"]
+        assert list(compare_nx.ego_graph(native, "a", 1).nodes) == ["a", "b", "c"]
+
+        copied = native.copy()
+        subgraph = native.subgraph(["a", "b", "d"])
+        undirected = native.to_undirected()
+
+        assert list(copied.nodes) == ["a", "b", "c", "d"]
+        assert list(subgraph.edges) == [("a", "b"), ("b", "d")]
+        assert list(compare_nx.connected_components(undirected)) == [
+            {"a", "b", "c", "d"}
+        ]
+        assert compare_nx.is_weakly_connected(native) is True
+
+        weighted = compare_nx.Graph()
+        weighted.add_edge("a", "b", weight=1)
+        weighted.add_edge("b", "c", weight=1)
+        weighted.add_edge("a", "d", weight=2)
+        weighted.add_edge("d", "c", weight=5)
+
+        assert compare_nx.multi_source_dijkstra_path(
+            weighted, ["a"], weight="weight"
+        ) == {
+            "a": ["a"],
+            "b": ["a", "b"],
+            "c": ["a", "b", "c"],
+            "d": ["a", "d"],
+        }
+        assert set(
+            compare_nx.approximation.steinertree.steiner_tree(
+                weighted, ["a", "c"], weight="weight"
+            ).nodes
+        ) == {"a", "b", "c"}
+
+        with pytest.raises(KeyError):
+            native.edges["d", "a"]
+        with pytest.raises(KeyError):
+            native.adj["missing"]
+        with pytest.raises(compare_nx.NodeNotFound):
+            compare_nx.shortest_path(native, "a", "missing")
+
+        del native.edges["a", "b"]["weight"]
+        del native.pred["d"]["b"]["kind"]
+        native.remove_edges_from([("a", "c")])
+        native.remove_nodes_from(["c"])
+
+        assert list(native.edges) == [("a", "b"), ("b", "d")]
+
+
+def test_compare_mode_query_smoke():
+    script = textwrap.dedent(
+        """
+        from trilogy import Dialects
+        from trilogy.core.models.environment import Environment
+
+        setup = \"\"\"
+        key id int;
+        property id.value int;
+        property id.category string;
+
+        datasource test (
+            id: id,
+            value: value,
+            category: category
+        )
+        grain (id)
+        query '''
+        SELECT 1 as id, 10 as value, 'A' as category
+        UNION ALL SELECT 2 as id, 20 as value, 'B' as category
+        ''';
+        \"\"\"
+
+        env = Environment()
+        env.parse(setup)
+        executor = Dialects.DUCK_DB.default_executor(environment=env)
+        sql = executor.generate_sql(
+            "where category = 'A' select category, sum(value) -> total_value;"
+        )[-1]
+        assert "SELECT" in sql
+        print(sql)
+        """
+    )
+    env = os.environ.copy()
+    env["TRILOGY_GRAPH_COMPARE"] = "1"
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "SELECT" in result.stdout

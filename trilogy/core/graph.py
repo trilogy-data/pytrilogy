@@ -43,23 +43,10 @@ exception = SimpleNamespace(
 )
 
 
-def _coerce_node(node: object) -> str:
-    if not isinstance(node, str):
-        raise TypeError(f"Rust graph nodes must be strings, got {type(node).__name__}")
-    return node
-
-
 def _edge_key(graph: "_GraphBase", left: str, right: str) -> tuple[str, str]:
     if graph.directed or left <= right:
         return (left, right)
     return (right, left)
-
-
-def _canonical_edge_set(
-    graph: "_GraphBase",
-    edges: Iterable[tuple[str, str]],
-) -> set[tuple[str, str]]:
-    return {_edge_key(graph, left, right) for left, right in edges}
 
 
 def _copy_edge_attrs(
@@ -183,7 +170,7 @@ class _NeighborView(Mapping[str, MutableMapping[str, object]]):
         return len(self._neighbors())
 
     def __getitem__(self, neighbor: str) -> MutableMapping[str, object]:
-        if neighbor not in self:
+        if neighbor not in self._neighbors():
             raise KeyError(neighbor)
         left, right = (
             (neighbor, self._node) if self._reverse else (self._node, neighbor)
@@ -240,7 +227,10 @@ class _GraphBase:
         for edge in cast(Iterable[tuple[object, object]], incoming_graph_data):
             if not isinstance(edge, tuple) or len(edge) != 2:
                 raise TypeError("Expected iterable of 2-tuples for graph edges")
-            self.add_edge(edge[0], edge[1])
+            left, right = edge
+            if not isinstance(left, str) or not isinstance(right, str):
+                raise TypeError("Expected graph edges to contain string nodes")
+            self.add_edge(left, right)
 
     def _copy_from(self, other: "_GraphBase") -> None:
         self._core = other._core.clone_graph()
@@ -265,10 +255,6 @@ class _GraphBase:
     def _shadow_expected(self, op: str, value: object | None = None):
         if self._shadow is None:
             return None
-        if op == "nodes":
-            return list(self._shadow.nodes)
-        if op == "edges":
-            return list(self._shadow.edges)
         if op == "node_in":
             return bool(value in self._shadow)
         if op == "edge_in":
@@ -416,29 +402,28 @@ class _GraphBase:
     def __getitem__(self, node: str) -> _NeighborView:
         return self.adj[node]
 
-    def add_node(self, node_for_adding: object, **attr: object) -> None:
-        node = _coerce_node(node_for_adding)
-        self._core.add_node(node)
+    def add_node(self, node_for_adding: str, **attr: object) -> None:
+        self._core.add_node(node_for_adding)
         self._invalidate_structure_cache()
         if attr:
-            attrs = self._node_attrs.setdefault(node, {})
+            attrs = self._node_attrs.setdefault(node_for_adding, {})
             attrs.update(attr)
         if self._shadow is not None:
-            self._shadow.add_node(node, **attr)
+            self._shadow.add_node(node_for_adding, **attr)
         self._assert_graph_parity("add_node")
 
-    def add_edge(self, u_of_edge: object, v_of_edge: object, **attr: object) -> None:
-        left = _coerce_node(u_of_edge)
-        right = _coerce_node(v_of_edge)
-        self._ensure_node(left)
-        self._ensure_node(right)
-        self._core.add_edge(left, right)
+    def add_edge(self, u_of_edge: str, v_of_edge: str, **attr: object) -> None:
+        self._ensure_node(u_of_edge)
+        self._ensure_node(v_of_edge)
+        self._core.add_edge(u_of_edge, v_of_edge)
         self._invalidate_structure_cache()
         if attr:
-            edge_attrs = self._edge_attrs.setdefault(_edge_key(self, left, right), {})
+            edge_attrs = self._edge_attrs.setdefault(
+                _edge_key(self, u_of_edge, v_of_edge), {}
+            )
             edge_attrs.update(attr)
         if self._shadow is not None:
-            self._shadow.add_edge(left, right, **attr)
+            self._shadow.add_edge(u_of_edge, v_of_edge, **attr)
         self._assert_graph_parity("add_edge")
 
     def has_edge(self, left: str, right: str) -> bool:
@@ -491,8 +476,7 @@ class _GraphBase:
         for edge in edges:
             if len(edge) != 2:
                 continue
-            left = _coerce_node(edge[0])
-            right = _coerce_node(edge[1])
+            left, right = edge
             if self._core.has_edge(left, right):
                 normalized.append((left, right))
                 self._edge_attrs.pop(_edge_key(self, left, right), None)
@@ -540,10 +524,9 @@ class _GraphBase:
     def subgraph(self, nodes: Iterable[str]) -> Self:
         keep_set: set[str] = set()
         for node in nodes:
-            coerced = _coerce_node(node)
-            if coerced not in self:
+            if node not in self:
                 continue
-            keep_set.add(coerced)
+            keep_set.add(node)
         ordered_keep = [node for node in self._ordered_nodes() if node in keep_set]
         new = self.__class__()
         new._core = self._core.induced_subgraph(ordered_keep)
@@ -605,10 +588,9 @@ class _ApproximationSteinerTree:
         nodes: Iterable[str],
         weight: str = "weight",
     ) -> GraphT:
-        terminals = [_coerce_node(node) for node in nodes]
         try:
             tree_nodes = graph._core.steiner_tree_nodes(
-                terminals, _weight_triples(graph, weight)
+                list(nodes), _weight_triples(graph, weight)
             )
         except ValueError as exc:
             message = str(exc)
@@ -718,7 +700,7 @@ def multi_source_dijkstra_path(
     sources: Iterable[str],
     weight: str = "weight",
 ) -> dict[str, list[str]]:
-    source_nodes = [_coerce_node(node) for node in sources]
+    source_nodes = list(sources)
     try:
         pairs = graph._core.multi_source_dijkstra_path(
             source_nodes,
