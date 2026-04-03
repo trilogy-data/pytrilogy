@@ -75,9 +75,8 @@ def _weight_triples(
     weight: str,
 ) -> list[tuple[str, str, float]]:
     output: list[tuple[str, str, float]] = []
-    for left, right in graph.edges:
-        attrs = graph.edges[left, right]
-        raw = attrs.get(weight, 1.0)
+    for left, right in graph._core.edges():
+        raw = graph._edge_attrs.get(_edge_key(graph, left, right), {}).get(weight, 1.0)
         output.append(
             (
                 left,
@@ -284,6 +283,8 @@ class _GraphBase:
     def _assert_shadow(
         self, op: str, actual: object, value: object | None = None
     ) -> None:
+        if self._shadow is None:
+            return
         expected = self._shadow_expected(
             {
                 "nodes.__contains__": "node_in",
