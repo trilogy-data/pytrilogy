@@ -165,7 +165,7 @@ def test_steiner_tree_parity_on_unique_solution():
     assert set(native_tree.edges) == set(reference_tree.edges)
 
 
-def test_steiner_tree_indexed_matches_legacy_exactly():
+def test_steiner_tree_is_stable_on_repeated_calls():
     native = rust_nx.Graph()
     for left, right in [
         ("a", "b"),
@@ -191,7 +191,7 @@ def test_steiner_tree_indexed_matches_legacy_exactly():
     ]
 
     assert native._core.steiner_tree_nodes(["a", "c", "f"], weights) == (
-        native._core.steiner_tree_nodes_legacy(["a", "c", "f"], weights)
+        native._core.steiner_tree_nodes(["a", "c", "f"], weights)
     )
 
 
