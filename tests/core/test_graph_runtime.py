@@ -404,3 +404,83 @@ def test_compare_mode_query_smoke():
 
     assert result.returncode == 0, result.stderr
     assert "SELECT" in result.stdout
+
+
+def test_facade_wrapper_surface():
+    native = rust_nx.DiGraph([("a", "b"), ("a", "c")], purpose="demo")
+
+    assert list(native) == ["a", "b", "c"]
+    assert len(native) == 3
+    assert native.is_directed() is True
+    assert native.is_multigraph() is False
+    assert native.number_of_nodes() == 3
+    assert native.number_of_edges() == 2
+    assert list(native.adj) == ["a", "b", "c"]
+    assert list(native._adj) == ["a", "b", "c"]
+    assert list(native.succ) == ["a", "b", "c"]
+    assert list(native._succ) == ["a", "b", "c"]
+    assert list(native.pred) == ["a", "b", "c"]
+    assert list(native._pred) == ["a", "b", "c"]
+    assert list(native["a"]) == ["b", "c"]
+    assert len(native["a"]) == 2
+    assert list(rust_nx.neighbors(native, "a")) == ["b", "c"]
+    assert list(rust_nx.all_neighbors(native, "b")) == ["a"]
+    assert list(rust_nx.subgraph(native, ["a", "b"]).nodes) == ["a", "b"]
+    assert list(rust_nx.to_undirected(native).edges) == [("a", "b"), ("a", "c")]
+
+    copied = rust_nx.DiGraph(native)
+    assert copied.graph["purpose"] == "demo"
+    assert list(copied.nodes) == ["a", "b", "c"]
+    assert list(copied.edges) == [("a", "b"), ("a", "c")]
+
+
+def test_contract_errors_raise_loudly():
+    native = rust_nx.DiGraph([("a", "b")])
+
+    with pytest.raises(rust_nx.NodeNotFound):
+        native.nodes["missing"]
+    with pytest.raises(KeyError):
+        native["missing"]
+    with pytest.raises(rust_nx.NodeNotFound):
+        list(rust_nx.all_neighbors(native, "missing"))
+    with pytest.raises(rust_nx.NodeNotFound):
+        list(native.neighbors("missing"))
+    with pytest.raises(rust_nx.NodeNotFound):
+        list(native.successors("missing"))
+    with pytest.raises(rust_nx.NodeNotFound):
+        list(native.predecessors("missing"))
+    with pytest.raises(rust_nx.NodeNotFound):
+        native.in_degree("missing")
+    with pytest.raises(rust_nx.NodeNotFound):
+        native.out_degree("missing")
+    with pytest.raises(rust_nx.NodeNotFound):
+        native.remove_node("missing")
+    with pytest.raises(rust_nx.NodeNotFound):
+        rust_nx.shortest_path(native, "missing", "a")
+    with pytest.raises(rust_nx.NetworkXNoPath):
+        rust_nx.shortest_path(native, "b", "a")
+    with pytest.raises(rust_nx.NodeNotFound):
+        rust_nx.shortest_path_length(native, "missing", "a")
+    with pytest.raises(rust_nx.NetworkXNoPath):
+        rust_nx.shortest_path_length(native, "b", "a")
+    with pytest.raises(rust_nx.NodeNotFound):
+        rust_nx.ego_graph(native, "missing", 1)
+
+
+def test_invalid_facade_inputs_raise_type_error():
+    native = rust_nx.Graph([("a", "b")])
+
+    with pytest.raises(TypeError):
+        _ = 1 in native
+    with pytest.raises(TypeError):
+        _ = 1 in native.nodes
+    with pytest.raises(TypeError):
+        _ = ("a",) in native.edges
+    with pytest.raises(TypeError):
+        _ = ("a", 1) in native.edges
+    with pytest.raises(TypeError):
+        native.remove_nodes_from(["a", 1])
+    with pytest.raises(TypeError):
+        native.remove_edges_from([("a",)])
+    with pytest.raises(TypeError):
+        native.remove_edges_from([("a", 1)])
