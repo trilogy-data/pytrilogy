@@ -13,35 +13,6 @@ pub struct GraphCore {
     pred_order: HashMap<String, Vec<String>>,
 }
 
-#[derive(Clone)]
-struct State {
-    cost: f64,
-    node: String,
-}
-
-impl Eq for State {}
-
-impl PartialEq for State {
-    fn eq(&self, other: &Self) -> bool {
-        self.cost.total_cmp(&other.cost) == Ordering::Equal && self.node == other.node
-    }
-}
-
-impl Ord for State {
-    fn cmp(&self, other: &Self) -> Ordering {
-        other
-            .cost
-            .total_cmp(&self.cost)
-            .then_with(|| other.node.cmp(&self.node))
-    }
-}
-
-impl PartialOrd for State {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 #[derive(Copy, Clone)]
 struct IndexState {
     cost: f64,
@@ -68,57 +39,6 @@ impl Ord for IndexState {
 impl PartialOrd for IndexState {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
-    }
-}
-
-#[derive(Default)]
-struct DisjointSet {
-    parent: HashMap<String, String>,
-    rank: HashMap<String, usize>,
-}
-
-impl DisjointSet {
-    fn insert(&mut self, node: &str) {
-        self.parent
-            .entry(node.to_string())
-            .or_insert_with(|| node.to_string());
-        self.rank.entry(node.to_string()).or_insert(0);
-    }
-
-    fn find(&mut self, node: &str) -> String {
-        let parent = self
-            .parent
-            .get(node)
-            .cloned()
-            .unwrap_or_else(|| node.to_string());
-        if parent == node {
-            self.insert(node);
-            return parent;
-        }
-        let root = self.find(&parent);
-        self.parent.insert(node.to_string(), root.clone());
-        root
-    }
-
-    fn union(&mut self, left: &str, right: &str) -> bool {
-        self.insert(left);
-        self.insert(right);
-        let left_root = self.find(left);
-        let right_root = self.find(right);
-        if left_root == right_root {
-            return false;
-        }
-        let left_rank = *self.rank.get(&left_root).unwrap_or(&0);
-        let right_rank = *self.rank.get(&right_root).unwrap_or(&0);
-        if left_rank < right_rank {
-            self.parent.insert(left_root, right_root);
-        } else if left_rank > right_rank {
-            self.parent.insert(right_root, left_root);
-        } else {
-            self.parent.insert(right_root.clone(), left_root.clone());
-            self.rank.insert(left_root, left_rank + 1);
-        }
-        true
     }
 }
 
@@ -275,8 +195,39 @@ impl GraphCore {
     }
 
     pub fn remove_nodes(&mut self, nodes: Vec<String>) {
-        for node in nodes {
-            self.remove_node(&node);
+        let removed = nodes
+            .into_iter()
+            .filter(|node| self.succ.contains_key(node))
+            .collect::<HashSet<_>>();
+        if removed.is_empty() {
+            return;
+        }
+        if removed.len() <= 8 || removed.len() * 8 < self.node_order.len() {
+            for node in removed {
+                self.remove_node(&node);
+            }
+            return;
+        }
+        self.node_order.retain(|node| !removed.contains(node));
+        for node in &removed {
+            self.succ.remove(node);
+            self.pred.remove(node);
+            self.succ_order.remove(node);
+            self.pred_order.remove(node);
+        }
+        for node in &self.node_order {
+            if let Some(neighbors) = self.succ.get_mut(node) {
+                neighbors.retain(|neighbor| !removed.contains(neighbor));
+            }
+            if let Some(neighbors) = self.pred.get_mut(node) {
+                neighbors.retain(|neighbor| !removed.contains(neighbor));
+            }
+            if let Some(order) = self.succ_order.get_mut(node) {
+                order.retain(|neighbor| !removed.contains(neighbor));
+            }
+            if let Some(order) = self.pred_order.get_mut(node) {
+                order.retain(|neighbor| !removed.contains(neighbor));
+            }
         }
     }
 
@@ -285,14 +236,13 @@ impl GraphCore {
     }
 
     pub fn edges(&self) -> Vec<(String, String)> {
-        let mut edges = Vec::new();
+        let mut edges = Vec::with_capacity(
+            self.succ_order.values().map(|neighbors| neighbors.len()).sum(),
+        );
         let mut seen = HashSet::new();
-        for left in self.nodes() {
-            if let Some(neighbors) = self.succ_order.get(&left) {
+        for left in &self.node_order {
+            if let Some(neighbors) = self.succ_order.get(left) {
                 for right in neighbors {
-                    if !self.has_edge(&left, right) {
-                        continue;
-                    }
                     if self.directed {
                         edges.push((left.clone(), right.clone()));
                     } else {
@@ -308,29 +258,11 @@ impl GraphCore {
     }
 
     pub fn neighbors(&self, node: &str) -> Vec<String> {
-        self.succ_order
-            .get(node)
-            .map(|neighbors| {
-                neighbors
-                    .iter()
-                    .filter(|neighbor| self.has_edge(node, neighbor))
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default()
+        self.succ_order.get(node).cloned().unwrap_or_default()
     }
 
     pub fn predecessors(&self, node: &str) -> Vec<String> {
-        self.pred_order
-            .get(node)
-            .map(|neighbors| {
-                neighbors
-                    .iter()
-                    .filter(|neighbor| self.has_edge(neighbor, node))
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default()
+        self.pred_order.get(node).cloned().unwrap_or_default()
     }
 
     pub fn successors(&self, node: &str) -> Vec<String> {
@@ -368,26 +300,131 @@ impl GraphCore {
     pub fn induced_subgraph(&self, nodes: Vec<String>) -> Self {
         let keep = nodes.into_iter().collect::<HashSet<_>>();
         let mut graph = Self::new(self.directed);
-        for node in self.nodes() {
-            if keep.contains(&node) {
-                graph.add_node(&node);
-            }
-        }
-        for (left, right) in self.edges() {
-            if keep.contains(&left) && keep.contains(&right) {
-                graph.add_edge(&left, &right);
-            }
+        graph.node_order = self
+            .node_order
+            .iter()
+            .filter(|node| keep.contains(*node))
+            .cloned()
+            .collect();
+        for node in &graph.node_order {
+            graph.succ.insert(
+                node.clone(),
+                self.succ
+                    .get(node)
+                    .map(|neighbors| {
+                        neighbors
+                            .iter()
+                            .filter(|neighbor| keep.contains(*neighbor))
+                            .cloned()
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            );
+            graph.pred.insert(
+                node.clone(),
+                self.pred
+                    .get(node)
+                    .map(|neighbors| {
+                        neighbors
+                            .iter()
+                            .filter(|neighbor| keep.contains(*neighbor))
+                            .cloned()
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            );
+            graph.succ_order.insert(
+                node.clone(),
+                self.succ_order
+                    .get(node)
+                    .map(|neighbors| {
+                        neighbors
+                            .iter()
+                            .filter(|neighbor| keep.contains(*neighbor))
+                            .cloned()
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            );
+            graph.pred_order.insert(
+                node.clone(),
+                self.pred_order
+                    .get(node)
+                    .map(|neighbors| {
+                        neighbors
+                            .iter()
+                            .filter(|neighbor| keep.contains(*neighbor))
+                            .cloned()
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            );
         }
         graph
     }
 
     pub fn to_undirected_graph(&self) -> Self {
-        let mut graph = Self::new(false);
-        for node in self.nodes() {
-            graph.add_node(&node);
+        if !self.directed {
+            return self.clone();
         }
-        for (left, right) in self.edges() {
-            graph.add_edge(&left, &right);
+        let mut graph = Self::new(false);
+        graph.node_order = self.node_order.clone();
+        for node in &graph.node_order {
+            graph.succ.insert(node.clone(), HashSet::new());
+            graph.pred.insert(node.clone(), HashSet::new());
+            graph.succ_order.insert(node.clone(), Vec::new());
+            graph.pred_order.insert(node.clone(), Vec::new());
+        }
+        for left in &self.node_order {
+            let Some(neighbors) = self.succ_order.get(left) else {
+                continue;
+            };
+            for right in neighbors {
+                if graph
+                    .succ
+                    .get_mut(left)
+                    .expect("left node exists")
+                    .insert(right.clone())
+                {
+                    graph
+                        .succ_order
+                        .get_mut(left)
+                        .expect("left order exists")
+                        .push(right.clone());
+                    graph
+                        .pred
+                        .get_mut(right)
+                        .expect("right pred exists")
+                        .insert(left.clone());
+                    graph
+                        .pred_order
+                        .get_mut(right)
+                        .expect("right pred order exists")
+                        .push(left.clone());
+                }
+                if graph
+                    .succ
+                    .get_mut(right)
+                    .expect("right node exists")
+                    .insert(left.clone())
+                {
+                    graph
+                        .succ_order
+                        .get_mut(right)
+                        .expect("right order exists")
+                        .push(left.clone());
+                    graph
+                        .pred
+                        .get_mut(left)
+                        .expect("left pred exists")
+                        .insert(right.clone());
+                    graph
+                        .pred_order
+                        .get_mut(left)
+                        .expect("left pred order exists")
+                        .push(right.clone());
+                }
+            }
         }
         graph
     }
@@ -396,8 +433,8 @@ impl GraphCore {
         let mut seen = HashSet::new();
         let mut components = Vec::new();
 
-        for node in self.nodes() {
-            if seen.contains(&node) {
+        for node in &self.node_order {
+            if seen.contains(node) {
                 continue;
             }
             let mut queue = VecDeque::from([node.clone()]);
@@ -405,9 +442,18 @@ impl GraphCore {
             seen.insert(node.clone());
             while let Some(current) = queue.pop_front() {
                 component.push(current.clone());
-                for neighbor in self.all_neighbors(&current) {
-                    if seen.insert(neighbor.clone()) {
-                        queue.push_back(neighbor);
+                if let Some(neighbors) = self.pred_order.get(&current) {
+                    for neighbor in neighbors {
+                        if seen.insert(neighbor.clone()) {
+                            queue.push_back(neighbor.clone());
+                        }
+                    }
+                }
+                if let Some(neighbors) = self.succ_order.get(&current) {
+                    for neighbor in neighbors {
+                        if seen.insert(neighbor.clone()) {
+                            queue.push_back(neighbor.clone());
+                        }
                     }
                 }
             }
@@ -440,11 +486,13 @@ impl GraphCore {
         let mut output = Vec::new();
         while let Some(node) = ready.pop_front() {
             output.push(node.clone());
-            for neighbor in self.successors(&node) {
-                if let Some(entry) = indegree.get_mut(&neighbor) {
-                    *entry -= 1;
-                    if *entry == 0 {
-                        ready.push_back(neighbor);
+            if let Some(neighbors) = self.succ_order.get(&node) {
+                for neighbor in neighbors {
+                    if let Some(entry) = indegree.get_mut(neighbor) {
+                        *entry -= 1;
+                        if *entry == 0 {
+                            ready.push_back(neighbor.clone());
+                        }
                     }
                 }
             }
@@ -469,7 +517,10 @@ impl GraphCore {
         let mut previous: HashMap<String, String> = HashMap::new();
 
         while let Some(current) = queue.pop_front() {
-            for neighbor in self.successors(&current) {
+            let Some(neighbors) = self.succ_order.get(&current) else {
+                continue;
+            };
+            for neighbor in neighbors {
                 if !visited.insert(neighbor.clone()) {
                     continue;
                 }
@@ -477,7 +528,7 @@ impl GraphCore {
                 if neighbor == target {
                     return Some(reconstruct_path(&previous, source, target));
                 }
-                queue.push_back(neighbor);
+                queue.push_back(neighbor.clone());
             }
         }
 
@@ -501,9 +552,12 @@ impl GraphCore {
             if depth >= radius {
                 continue;
             }
-            for neighbor in self.successors(&current) {
+            let Some(neighbors) = self.succ_order.get(&current) else {
+                continue;
+            };
+            for neighbor in neighbors {
                 if visited.insert(neighbor.clone()) {
-                    queue.push_back((neighbor, depth + 1));
+                    queue.push_back((neighbor.clone(), depth + 1));
                 }
             }
         }
@@ -523,69 +577,81 @@ impl GraphCore {
         if source_set.is_empty() {
             return Ok(Vec::new());
         }
+        let lex_nodes = {
+            let mut nodes = self.nodes();
+            nodes.sort();
+            nodes
+        };
+        let mut node_to_index = HashMap::new();
+        for (index, node) in lex_nodes.iter().enumerate() {
+            node_to_index.insert(node.clone(), index);
+        }
+        let mut source_indices = Vec::with_capacity(source_set.len());
         for source in &source_set {
-            if !self.has_node(source) {
+            let Some(index) = node_to_index.get(source).copied() else {
                 return Err(format!("Node not found: {source}"));
+            };
+            source_indices.push(index);
+        }
+
+        let weight_map = self.weight_map(weights);
+        let mut weighted_neighbors = vec![Vec::<(usize, f64)>::new(); lex_nodes.len()];
+        for (index, left) in lex_nodes.iter().enumerate() {
+            let Some(neighbors) = self.succ_order.get(left) else {
+                continue;
+            };
+            for right in neighbors {
+                let Some(right_index) = node_to_index.get(right).copied() else {
+                    continue;
+                };
+                weighted_neighbors[index]
+                    .push((right_index, self.edge_weight(left, right, &weight_map)));
             }
         }
-        let weight_map = self.weight_map(weights);
 
         let mut heap = BinaryHeap::new();
-        let mut distances: HashMap<String, f64> = HashMap::new();
-        let mut paths: HashMap<String, Vec<String>> = HashMap::new();
+        let mut distances = vec![f64::INFINITY; lex_nodes.len()];
+        let mut paths: Vec<Option<Vec<usize>>> = vec![None; lex_nodes.len()];
 
-        for source in &source_set {
-            distances.insert(source.clone(), 0.0);
-            paths.insert(source.clone(), vec![source.clone()]);
-            heap.push(State {
+        for source in source_indices {
+            distances[source] = 0.0;
+            paths[source] = Some(vec![source]);
+            heap.push(IndexState {
                 cost: 0.0,
-                node: source.clone(),
+                node: source,
             });
         }
 
-        while let Some(State { cost, node }) = heap.pop() {
-            let Some(best_cost) = distances.get(&node) else {
-                continue;
-            };
-            if cost > *best_cost + FLOAT_TOLERANCE {
+        while let Some(IndexState { cost, node }) = heap.pop() {
+            if cost > distances[node] + FLOAT_TOLERANCE {
                 continue;
             }
-            let Some(current_path) = paths.get(&node).cloned() else {
+            let Some(current_path) = paths[node].clone() else {
                 continue;
             };
 
-            let Some(neighbors) = self.succ_order.get(&node) else {
-                continue;
-            };
-            for neighbor in neighbors {
-                if !self.has_edge(&node, neighbor) {
-                    continue;
-                }
-                let edge_weight = self.edge_weight(&node, neighbor, &weight_map);
-                let next_cost = cost + edge_weight;
+            for (neighbor, weight) in &weighted_neighbors[node] {
+                let next_cost = cost + *weight;
                 let mut next_path = current_path.clone();
-                next_path.push(neighbor.clone());
+                next_path.push(*neighbor);
 
-                let should_update = match distances.get(neighbor) {
-                    None => true,
-                    Some(existing) if next_cost + FLOAT_TOLERANCE < *existing => true,
-                    Some(existing)
-                        if (next_cost - *existing).abs() <= FLOAT_TOLERANCE =>
-                    {
-                        match paths.get(neighbor) {
-                            None => true,
-                            Some(existing_path) => next_path < *existing_path,
-                        }
+                let should_update = if next_cost + FLOAT_TOLERANCE < distances[*neighbor] {
+                    true
+                } else if (next_cost - distances[*neighbor]).abs() <= FLOAT_TOLERANCE {
+                    match &paths[*neighbor] {
+                        None => true,
+                        Some(existing_path) => next_path < *existing_path,
                     }
-                    _ => false,
+                } else {
+                    false
                 };
 
                 if should_update {
-                    distances.insert(neighbor.clone(), next_cost);
-                    paths.insert(neighbor.clone(), next_path);
-                    heap.push(State {
+                    distances[*neighbor] = next_cost;
+                    paths[*neighbor] = Some(next_path);
+                    heap.push(IndexState {
                         cost: next_cost,
-                        node: neighbor.clone(),
+                        node: *neighbor,
                     });
                 }
             }
@@ -593,9 +659,16 @@ impl GraphCore {
 
         let mut output = Vec::new();
         for node in self.nodes() {
-            if let Some(path) = paths.remove(&node) {
-                output.push((node, path));
-            }
+            let Some(&index) = node_to_index.get(&node) else {
+                continue;
+            };
+            let Some(path) = &paths[index] else {
+                continue;
+            };
+            output.push((
+                node,
+                path.iter().map(|index| lex_nodes[*index].clone()).collect(),
+            ));
         }
         Ok(output)
     }
@@ -606,61 +679,6 @@ impl GraphCore {
         weights: Vec<(String, String, f64)>,
     ) -> Result<Vec<String>, String> {
         self.steiner_tree_nodes_indexed(terminals, weights)
-    }
-
-    pub fn steiner_tree_nodes_legacy(
-        &self,
-        terminals: Vec<String>,
-        weights: Vec<(String, String, f64)>,
-    ) -> Result<Vec<String>, String> {
-        let terminals = dedupe_preserve_order(terminals);
-        if terminals.is_empty() {
-            return Ok(Vec::new());
-        }
-        for terminal in &terminals {
-            if !self.has_node(terminal) {
-                return Err(format!("Node not found: {terminal}"));
-            }
-        }
-        if terminals.len() == 1 {
-            return Ok(terminals);
-        }
-
-        let weight_map = self.weight_map(weights);
-        let mut metric_edges: Vec<(f64, String, String, Vec<String>)> = Vec::new();
-        for index in 0..terminals.len() {
-            let left = &terminals[index];
-            let targets = terminals[index + 1..].to_vec();
-            let shortest_paths =
-                self.weighted_shortest_paths_to_targets(left, &targets, &weight_map);
-            for other_index in index + 1..terminals.len() {
-                let right = &terminals[other_index];
-                let Some((distance, path)) = shortest_paths.get(right) else {
-                    return Err(format!("No path between {left} and {right}"));
-                };
-                metric_edges.push(( *distance, left.clone(), right.clone(), path.clone()));
-            }
-        }
-
-        metric_edges.sort_by(|left, right| {
-            left.0
-                .total_cmp(&right.0)
-                .then_with(|| left.1.cmp(&right.1))
-                .then_with(|| left.2.cmp(&right.2))
-        });
-
-        let mut metric_dsu = DisjointSet::default();
-        let mut expanded_nodes = terminals.iter().cloned().collect::<HashSet<_>>();
-        for terminal in &terminals {
-            metric_dsu.insert(terminal);
-        }
-        for (_distance, left, right, path) in metric_edges {
-            if metric_dsu.union(&left, &right) {
-                expanded_nodes.extend(path);
-            }
-        }
-
-        Ok(self.finalize_steiner_tree(terminals, expanded_nodes, &weight_map))
     }
 
     fn finalize_steiner_tree(
@@ -674,22 +692,33 @@ impl GraphCore {
             .into_iter()
             .filter(|node| expanded_nodes.contains(node))
             .collect::<Vec<_>>();
+        let mut node_to_index = HashMap::new();
+        for (index, node) in ordered_expanded_nodes.iter().enumerate() {
+            node_to_index.insert(node.clone(), index);
+        }
         let mut original_edges = Vec::new();
         let mut seen_edges = HashSet::new();
         for left in &ordered_expanded_nodes {
             let Some(neighbors) = self.succ_order.get(left) else {
                 continue;
             };
+            let Some(&left_index) = node_to_index.get(left) else {
+                continue;
+            };
             for right in neighbors {
-                if !expanded_nodes.contains(right) || !self.has_edge(left, right) {
+                let Some(&right_index) = node_to_index.get(right) else {
                     continue;
-                }
-                let key = canonical_edge(left, right);
+                };
+                let key = if self.directed || left_index <= right_index {
+                    (left_index, right_index)
+                } else {
+                    (right_index, left_index)
+                };
                 if self.directed || seen_edges.insert(key) {
                     original_edges.push((
                         self.edge_weight(left, right, &weight_map),
-                        left.clone(),
-                        right.clone(),
+                        left_index,
+                        right_index,
                     ));
                 }
             }
@@ -697,52 +726,64 @@ impl GraphCore {
         original_edges.sort_by(|left, right| {
             left.0
                 .total_cmp(&right.0)
-                .then_with(|| left.1.cmp(&right.1))
-                .then_with(|| left.2.cmp(&right.2))
+                .then_with(|| ordered_expanded_nodes[left.1].cmp(&ordered_expanded_nodes[right.1]))
+                .then_with(|| ordered_expanded_nodes[left.2].cmp(&ordered_expanded_nodes[right.2]))
         });
 
-        let mut tree = HashMap::<String, HashSet<String>>::new();
-        let mut induced_dsu = DisjointSet::default();
-        for node in &ordered_expanded_nodes {
-            tree.entry(node.clone()).or_default();
-            induced_dsu.insert(node);
-        }
+        let mut tree = vec![HashSet::<usize>::new(); ordered_expanded_nodes.len()];
+        let mut induced_dsu = IndexDisjointSet::new(ordered_expanded_nodes.len());
         for (_weight, left, right) in original_edges {
-            if induced_dsu.union(&left, &right) {
-                tree.entry(left.clone()).or_default().insert(right.clone());
-                tree.entry(right).or_default().insert(left);
+            if induced_dsu.union(left, right) {
+                tree[left].insert(right);
+                tree[right].insert(left);
             }
         }
 
         let terminals_set = terminals.into_iter().collect::<HashSet<_>>();
         let mut removable = ordered_expanded_nodes
             .iter()
+            .enumerate()
             .filter_map(|node| {
-                let neighbors = tree.get(node)?;
-                if !terminals_set.contains(node) && neighbors.len() <= 1 {
-                    Some(node.clone())
+                let (index, name) = node;
+                if !terminals_set.contains(name) && tree[index].len() <= 1 {
+                    Some(index)
                 } else {
                     None
                 }
             })
             .collect::<VecDeque<_>>();
-        while let Some(node) = removable.pop_front() {
-            let Some(neighbors) = tree.remove(&node) else {
+        let mut removed = vec![false; ordered_expanded_nodes.len()];
+        while let Some(node_index) = removable.pop_front() {
+            if removed[node_index]
+                || terminals_set.contains(&ordered_expanded_nodes[node_index])
+                || tree[node_index].len() > 1
+            {
                 continue;
-            };
+            }
+            removed[node_index] = true;
+            let neighbors = std::mem::take(&mut tree[node_index]);
             for neighbor in neighbors {
-                if let Some(entries) = tree.get_mut(&neighbor) {
-                    entries.remove(&node);
-                    if !terminals_set.contains(&neighbor) && entries.len() <= 1 {
-                        removable.push_back(neighbor.clone());
-                    }
+                if tree[neighbor].remove(&node_index)
+                    && !terminals_set.contains(&ordered_expanded_nodes[neighbor])
+                    && tree[neighbor].len() <= 1
+                {
+                    removable.push_back(neighbor);
                 }
             }
         }
 
         self.nodes()
             .into_iter()
-            .filter(|node| tree.contains_key(node))
+            .filter(|node| {
+                node_to_index
+                    .get(node)
+                    .copied()
+                    .map(|index| {
+                        !removed[index]
+                            && (!tree[index].is_empty() || terminals_set.contains(node))
+                    })
+                    .unwrap_or(false)
+            })
             .collect()
     }
 
@@ -782,9 +823,6 @@ impl GraphCore {
                 continue;
             };
             for right in neighbors {
-                if !self.has_edge(left, right) {
-                    continue;
-                }
                 let Some(right_index) = node_to_index.get(right).copied() else {
                     continue;
                 };
@@ -862,91 +900,6 @@ impl GraphCore {
             .and_then(|neighbors| neighbors.get(right))
             .copied()
             .unwrap_or(1.0)
-    }
-
-    fn weighted_shortest_paths_to_targets(
-        &self,
-        source: &str,
-        targets: &[String],
-        weights: &HashMap<String, HashMap<String, f64>>,
-    ) -> HashMap<String, (f64, Vec<String>)> {
-        if !self.has_node(source) {
-            return HashMap::new();
-        }
-        let mut remaining = targets.iter().cloned().collect::<HashSet<_>>();
-        if remaining.is_empty() {
-            return HashMap::new();
-        }
-
-        let mut heap = BinaryHeap::new();
-        let mut distances: HashMap<String, f64> =
-            HashMap::from([(source.to_string(), 0.0)]);
-        let mut paths: HashMap<String, Vec<String>> =
-            HashMap::from([(source.to_string(), vec![source.to_string()])]);
-        heap.push(State {
-            cost: 0.0,
-            node: source.to_string(),
-        });
-
-        while let Some(State { cost, node }) = heap.pop() {
-            let Some(best_cost) = distances.get(&node) else {
-                continue;
-            };
-            if cost > *best_cost + FLOAT_TOLERANCE {
-                continue;
-            }
-            remaining.remove(&node);
-            if remaining.is_empty() {
-                break;
-            }
-            let Some(current_path) = paths.get(&node).cloned() else {
-                continue;
-            };
-
-            let Some(neighbors) = self.succ_order.get(&node) else {
-                continue;
-            };
-            for neighbor in neighbors {
-                if !self.has_edge(&node, neighbor) {
-                    continue;
-                }
-                let next_cost = cost + self.edge_weight(&node, neighbor, weights);
-                let mut next_path = current_path.clone();
-                next_path.push(neighbor.clone());
-
-                let should_update = match distances.get(neighbor) {
-                    None => true,
-                    Some(existing) if next_cost + FLOAT_TOLERANCE < *existing => true,
-                    Some(existing)
-                        if (next_cost - *existing).abs() <= FLOAT_TOLERANCE =>
-                    {
-                        match paths.get(neighbor) {
-                            None => true,
-                            Some(existing_path) => next_path < *existing_path,
-                        }
-                    }
-                    _ => false,
-                };
-
-                if should_update {
-                    distances.insert(neighbor.clone(), next_cost);
-                    paths.insert(neighbor.clone(), next_path);
-                    heap.push(State {
-                        cost: next_cost,
-                        node: neighbor.clone(),
-                    });
-                }
-            }
-        }
-
-        targets
-            .iter()
-            .filter_map(|node| {
-                let distance = distances.get(node).copied()?;
-                let path = paths.remove(node)?;
-                Some((node.clone(), (distance, path)))
-            })
-            .collect()
     }
 
     fn weighted_shortest_paths_to_target_indices(

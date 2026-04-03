@@ -13,8 +13,6 @@ except ImportError as exc:  # pragma: no cover
     ) from exc
 
 _COMPARE_MODE = os.getenv("TRILOGY_GRAPH_COMPARE") == "1"
-_STEINER_IMPL = os.getenv("TRILOGY_STEINER_IMPL", "indexed")
-_STEINER_COMPARE = os.getenv("TRILOGY_STEINER_COMPARE") == "1"
 if _COMPARE_MODE:  # pragma: no cover
     import networkx as _shadow_nx
 else:  # pragma: no cover
@@ -114,6 +112,8 @@ class _NodeView(Mapping[str, MutableMapping[str, object]]):
             _raise_missing(node)
         attrs = self._graph._node_attrs.setdefault(node, {})
         shadow_attrs = self._graph._shadow.nodes[node] if self._graph._shadow else None
+        if shadow_attrs is None:
+            return attrs
         return _AttrProxy(attrs, shadow_attrs)
 
     def __call__(self) -> list[str]:
@@ -142,14 +142,17 @@ class _EdgeView:
 
     def __getitem__(self, edge: tuple[str, str]) -> MutableMapping[str, object]:
         left, right = edge
-        if not self._graph._core.has_edge(left, right):
-            raise KeyError(edge)
-        attrs = self._graph._edge_attrs.setdefault(
-            _edge_key(self._graph, left, right), {}
-        )
+        key = _edge_key(self._graph, left, right)
+        attrs = self._graph._edge_attrs.get(key)
+        if attrs is None:
+            if not self._graph._core.has_edge(left, right):
+                raise KeyError(edge)
+            attrs = self._graph._edge_attrs.setdefault(key, {})
         shadow_attrs = (
             self._graph._shadow.edges[left, right] if self._graph._shadow else None
         )
+        if shadow_attrs is None:
+            return attrs
         return _AttrProxy(attrs, shadow_attrs)
 
     def __call__(self) -> list[tuple[str, str]]:
@@ -185,6 +188,8 @@ class _NeighborView(Mapping[str, MutableMapping[str, object]]):
         shadow_attrs = None
         if self._graph._shadow is not None and self._graph._shadow.has_edge(left, right):
             shadow_attrs = self._graph._shadow.edges[left, right]
+        if shadow_attrs is None:
+            return attrs
         return _AttrProxy(attrs, shadow_attrs)
 
 
@@ -200,7 +205,7 @@ class _AdjacencyView(Mapping[str, _NeighborView]):
         return len(self._graph)
 
     def __getitem__(self, node: str) -> _NeighborView:
-        if node not in self._graph:
+        if not self._graph._core.has_node(node):
             raise KeyError(node)
         return _NeighborView(self._graph, node, reverse=self._reverse)
 
@@ -350,6 +355,13 @@ class _GraphBase:
     def edges(self) -> _EdgeView:
         return _EdgeView(self)
 
+    def _ensure_node(self, node: str) -> None:
+        if self._core.has_node(node):
+            return
+        self._core.add_node(node)
+        if self._shadow is not None:
+            self._shadow.add_node(node)
+
     @property
     def adj(self) -> _AdjacencyView:
         return _AdjacencyView(self)
@@ -380,8 +392,9 @@ class _GraphBase:
     def add_node(self, node_for_adding: object, **attr: object) -> None:
         node = _coerce_node(node_for_adding)
         self._core.add_node(node)
-        attrs = self._node_attrs.setdefault(node, {})
-        attrs.update(attr)
+        if attr:
+            attrs = self._node_attrs.setdefault(node, {})
+            attrs.update(attr)
         if self._shadow is not None:
             self._shadow.add_node(node, **attr)
         self._assert_graph_parity("add_node")
@@ -389,11 +402,12 @@ class _GraphBase:
     def add_edge(self, u_of_edge: object, v_of_edge: object, **attr: object) -> None:
         left = _coerce_node(u_of_edge)
         right = _coerce_node(v_of_edge)
-        self.add_node(left)
-        self.add_node(right)
+        self._ensure_node(left)
+        self._ensure_node(right)
         self._core.add_edge(left, right)
-        edge_attrs = self._edge_attrs.setdefault(_edge_key(self, left, right), {})
-        edge_attrs.update(attr)
+        if attr:
+            edge_attrs = self._edge_attrs.setdefault(_edge_key(self, left, right), {})
+            edge_attrs.update(attr)
         if self._shadow is not None:
             self._shadow.add_edge(left, right, **attr)
         self._assert_graph_parity("add_edge")
@@ -557,18 +571,9 @@ class _ApproximationSteinerTree:
     ) -> GraphT:
         terminals = [_coerce_node(node) for node in nodes]
         try:
-            weights = _weight_triples(graph, weight)
-            if _STEINER_IMPL == "legacy":
-                tree_nodes = graph._core.steiner_tree_nodes_legacy(terminals, weights)
-            else:
-                tree_nodes = graph._core.steiner_tree_nodes(terminals, weights)
-            if _STEINER_COMPARE:
-                legacy_nodes = graph._core.steiner_tree_nodes_legacy(terminals, weights)
-                if tree_nodes != legacy_nodes:
-                    raise AssertionError(
-                        "Steiner parity mismatch: "
-                        f"expected {legacy_nodes!r}, got {tree_nodes!r}"
-                    )
+            tree_nodes = graph._core.steiner_tree_nodes(
+                terminals, _weight_triples(graph, weight)
+            )
         except ValueError as exc:
             message = str(exc)
             if "Node not found" in message:
