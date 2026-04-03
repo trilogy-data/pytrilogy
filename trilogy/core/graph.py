@@ -480,7 +480,7 @@ class _ApproximationSteinerTree:
             message = str(exc)
             if "Node not found" in message:
                 raise NodeNotFound(message) from exc
-            raise NetworkXNoPath(message) from exc
+            return graph.subgraph([])
         return graph.subgraph(tree_nodes)
 
 
