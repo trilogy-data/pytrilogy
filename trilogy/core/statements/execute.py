@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 from trilogy.core.enums import (
     CreateMode,
@@ -62,6 +62,7 @@ class ProcessedQuery:
         default_factory=EnvironmentConceptDict
     )
     locally_derived: set[str] = field(default_factory=set)
+    parameters: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
