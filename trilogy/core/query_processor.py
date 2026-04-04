@@ -5,12 +5,18 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 
 from trilogy.constants import CONFIG, logger
 from trilogy.core.constants import CONSTANT_DATASET
-from trilogy.core.enums import BooleanOperator, DatasourceState, SourceType
+from trilogy.core.enums import (
+    BooleanOperator,
+    DatasourceState,
+    FunctionType,
+    SourceType,
+)
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.author import (
     Conditional,
+    Function,
     MultiSelectLineage,
     SelectLineage,
     WhereClause,
@@ -61,6 +67,18 @@ from trilogy.hooks.base_hook import BaseHook
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[QUERY BUILD]"
+
+
+def _extract_params(*concept_dicts) -> dict:
+    result = {}
+    for concepts in concept_dicts:
+        for concept in concepts.values():
+            if (
+                isinstance(concept.lineage, Function)
+                and concept.lineage.operator == FunctionType.CONSTANT
+            ):
+                result[concept.safe_address] = concept.lineage.arguments[0]
+    return result
 
 
 def base_join_to_join(
@@ -674,4 +692,5 @@ def process_query(
         hidden_columns=set([x for x in statement.hidden_components]),
         local_concepts=statement.local_concepts,
         locally_derived=statement.locally_derived,
+        parameters=_extract_params(environment.concepts, statement.local_concepts),
     )

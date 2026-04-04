@@ -1624,3 +1624,23 @@ class BaseDialect:
             )
         logger.info(f"{LOGGER_PREFIX} Compiled query: {final}")
         return final
+
+    def compile_statement_with_params(
+        self,
+        query: PROCESSED_STATEMENT_TYPES,
+    ) -> tuple[str, dict[str, Any]]:
+        """Return (sql, parameters) where sql contains :name placeholders and
+        parameters maps name -> value (keys without the leading colon).
+
+        Returns ({}, ) as the second element when rendering.parameters is False
+        or the statement type carries no parameters.
+        """
+        import re
+
+        sql = self.compile_statement(query)
+        if not self.rendering.parameters or not isinstance(query, ProcessedQuery):
+            return sql, {}
+        param_keys = re.findall(r"(?<!:):([a-zA-Z_][a-zA-Z0-9_]*)", sql)
+        return sql, {
+            k: query.parameters[k] for k in param_keys if k in query.parameters
+        }
