@@ -56,6 +56,7 @@ LAZY_SUBCOMMANDS: dict[str, tuple[str, str, dict | None]] = {
     "agent-info": ("trilogy.scripts.agent_info", "agent_info", None),
     "cloud": ("trilogy.scripts.cloud", "cloud", None),
     "database": ("trilogy.scripts.database", "database", None),
+    "env": ("trilogy.scripts.env_commands", "env", None),
     "explore": ("trilogy.scripts.explore", "explore", None),
     "file": ("trilogy.scripts.file", "file", None),
     "fmt": ("trilogy.scripts.fmt", "fmt", IGNORE_UNKNOWN),

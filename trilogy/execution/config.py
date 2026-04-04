@@ -216,6 +216,8 @@ class RuntimeConfig:
     report_theme: str | None = None
     # fallback roots for import resolution (see Environment.import_paths)
     import_paths: list[Path] = field(default_factory=list)
+    # registry home for deployment environments (trilogy env ...); default ~/.trilogy
+    environments_home: Path | None = None
 
 
 # Schema of known fields. `[engine.config]` is intentionally omitted (validated
@@ -234,6 +236,7 @@ _KNOWN_TOP_LEVEL: set[str] = {
     "report",
     "import_paths",
     "cloud",
+    "environments",
 }
 _KNOWN_SECTIONS: dict[str, set[str] | None] = {
     "engine": {"dialect", "config", "env_file", "parallelism"},
@@ -245,6 +248,7 @@ _KNOWN_SECTIONS: dict[str, set[str] | None] = {
     "serve.connection.options": None,
     "project": {"name"},
     "report": {"theme"},
+    "environments": {"home"},
     # Consumed by `trilogy cloud` (scripts/cloud.py), not by RuntimeConfig —
     # listed so the documented [cloud] section doesn't audit as unknown.
     "cloud": {"api_url", "org"},
@@ -446,6 +450,16 @@ def load_config_file(
         import_paths_raw = [import_paths_raw]
     import_paths = [(path.parent / p).resolve() for p in import_paths_raw]
 
+    # Relative entries resolve against the toml's directory (absolute paths
+    # pass through the join unchanged).
+    environments_raw: dict = config_data.get("environments", {})
+    environments_home_raw: str | None = environments_raw.get("home")
+    environments_home = (
+        path.parent / Path(environments_home_raw).expanduser()
+        if environments_home_raw
+        else None
+    )
+
     return RuntimeConfig(
         startup_trilogy=[path.parent / p for p in setup.get("trilogy", [])],
         startup_sql=[path.parent / p for p in setup.get("sql", [])],
@@ -461,4 +475,5 @@ def load_config_file(
         agent=agent,
         report_theme=report_theme,
         import_paths=import_paths,
+        environments_home=environments_home,
     )

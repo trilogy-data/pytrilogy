@@ -1,0 +1,23 @@
+key order_id int;
+property order_id.product string;
+property order_id.amount int;
+property order_id.updated_at datetime;
+
+root datasource raw_orders (
+    order_id: order_id,
+    product: product,
+    amount: amount,
+    updated_at: updated_at
+)
+grain (order_id)
+address raw_orders;
+
+datasource orders_enriched (
+    order_id: order_id,
+    product: product,
+    amount: amount,
+    updated_at: updated_at
+)
+grain (order_id)
+address orders_enriched
+freshness by updated_at;

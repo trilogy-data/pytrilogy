@@ -588,6 +588,11 @@ def state_merge(
         "summary counts."
     ),
 )
+@option(
+    "--environment",
+    default=None,
+    help="Probe this deployment environment's tables (overrides the activated one)",
+)
 @report_options
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
@@ -601,6 +606,7 @@ def state(
     env,
     output: str | None,
     state_max_partitions: str | None,
+    environment: str | None,
     report_file: str | None,
     run_id: str | None,
     conn_args,
@@ -634,13 +640,24 @@ def state(
             parallelism=parallelism,
             config_path=str(config) if config else None,
         ):
-            sink = get_report_sink()
-            snapshot = cap_snapshot(
-                compute_state_snapshot(
-                    cli_params, run_id=sink.run_id if sink else None
-                ),
-                resolve_partition_limit(state_max_partitions),
+            from trilogy.execution.envs import env_activation_scope
+            from trilogy.scripts.env_commands import (
+                announce_activation,
+                resolve_activation,
             )
+
+            activation = resolve_activation(
+                environment, str(input), cli_params.config_path
+            )
+            announce_activation(activation)
+            sink = get_report_sink()
+            with env_activation_scope(activation):
+                snapshot = cap_snapshot(
+                    compute_state_snapshot(
+                        cli_params, run_id=sink.run_id if sink else None
+                    ),
+                    resolve_partition_limit(state_max_partitions),
+                )
             if output:
                 write_state_snapshot(snapshot, PathlibPath(output))
             else:

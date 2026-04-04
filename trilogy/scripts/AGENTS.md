@@ -84,6 +84,60 @@ Always check the actual `.preql` files before concluding how many physical roots
 `_plan_and_execute_refresh` in `single_execution.py` is the single path for display + interactive confirm + execution + result reporting. Both single-file and directory refresh flow through it. Do not duplicate this logic.
 
 
+## Deployment environments (`trilogy env`)
+
+`trilogy/execution/envs.py` + `scripts/env_commands.py`. An environment is a
+prefixed parallel build: every managed (non-root) TABLE address becomes
+`{env}_{table}` (file addresses suffix the stem). Roots are never rewritten —
+an environment shares its sources of truth with production. Cutover
+(`env publish`) is a two-phase rename: prod -> `*__pub_backup`, env -> prod,
+rollback on failure, backups dropped on success. Tables rename via SQL; local
+single-file outputs rename via `os.replace` (atomic on one volume). Remote
+objects, globs, file arrays, and split read/write locations are rejected at
+preflight — object stores have no atomic rename, and a partial cutover is the
+failure the two-phase design exists to prevent.
+
+Rules that are load-bearing:
+
+- **The rewrite happens between parse and processing**, as an
+  `Executor.datasource_transform` applied in `parse_text_*` before
+  `_generate`. Post-parse mutation is too late: processing bakes physical
+  addresses into processed statements (Build* copies), so a rewrite after
+  `parse_text` returns silently misses run-mode persists.
+- Anonymous `persist x into addr from ...` targets are NOT in
+  `environment.datasources` at parse time — the transform also walks parsed
+  `PersistStatement`s, and publish's pair collection walks
+  `ProcessedQueryPersist`s.
+- **`Address.env_label` is the idempotence guard.** Executors re-walk every
+  datasource on each parse call (startup scripts, multi-parse flows); without
+  the label a second walk double-prefixes. It survives `model_copy`, so a
+  copied address stays marked.
+- The ambient activation (`env_activation_scope` / `active_env`) is a plain
+  module global like `state_store_factory`, for the same worker-thread
+  reason. `create_executor` reads it at construction; the directory probe's
+  lightweight phase-1 parse bypasses executors and applies
+  `apply_env_to_environment` directly — phase 1's `address_map` must match
+  phase 2's executor-parsed addresses or owner assignment silently splits.
+- The CLI commands (`run`/`refresh`/`state`) resolve flag > activated env and
+  enter the scope around their whole body, so post-run state snapshots also
+  record env-prefixed addresses (which are distinct snapshot identities by
+  construction — `stable_asset_key` passes tables through verbatim).
+- `env publish`/`env delete` never enter the scope: publish parses unscoped to
+  collect (env, prod) address pairs as a pure function of the current code,
+  and preflights that every env asset exists before touching prod. Publish
+  classifies through the SAME `rewritable_address` predicate the build's
+  transform uses — anything it skipped was never prefixed, so a divergent
+  skip set silently promotes or misses assets.
+- File addresses are script-relative; publish and tracking resolve them
+  absolute against the owning script's directory (mirroring
+  `_resolve_copy_target`).
+- Tracked assets (registry meta) are what `env delete --drop-assets` drops,
+  tagged `table:`/`file:` because cleanup drops tables via SQL but files via
+  unlink. They are recorded on scope exit from whatever the transform rewrote, so
+  probe-only commands may over-track; drops are `IF EXISTS` and publish
+  clears the list, so over-tracking is harmless and under-tracking is the
+  failure to avoid.
+
 ## Serve: the on-disk state cache
 
 `serve_helpers/state_cache.py` caches `/state` under `<served dir>/.trilogy/state`.
