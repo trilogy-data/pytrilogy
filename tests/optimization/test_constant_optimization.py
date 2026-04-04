@@ -86,7 +86,14 @@ def test_compile_statement_with_params_returns_sql_and_dict():
     )
     sql, params = executor.generator.compile_statement_with_params(processed[0])
     assert ":filter_val" in sql
-    assert params == {"filter_val": "A319"}
+    assert params == {
+        "_virt_705671875681119": [
+            "A319",
+            "B737",
+            "C172",
+        ],
+        "filter_val": "A319",
+    }
 
 
 def test_compile_statement_with_params_imported_namespace():
