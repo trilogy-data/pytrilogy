@@ -32,7 +32,12 @@ class LazyGroup(click.Group):
                 module_path, attr, context_settings = self._lazy_subcommands[cmd_name]
                 module = importlib.import_module(module_path)
                 func = getattr(module, attr)
-                cmd = click.command(cmd_name, context_settings=context_settings)(func)
+                if isinstance(func, click.Command):
+                    cmd: click.Command = func
+                else:
+                    cmd = click.command(cmd_name, context_settings=context_settings)(
+                        func
+                    )
                 self._loaded_commands[cmd_name] = cmd
             return self._loaded_commands[cmd_name]
         return super().get_command(ctx, cmd_name)
