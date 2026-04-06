@@ -2236,6 +2236,8 @@ class Factory:
         return self._build_where_clause(base)
 
     def _build_where_clause(self, base: WhereClause) -> BuildWhereClause:
+        from trilogy.core.processing.condition_utility import flatten_conditions
+
         conditional = self.build(base.conditional)
         if isinstance(conditional, bool):
             return BuildWhereClause(
@@ -2243,6 +2245,10 @@ class Factory:
                     left=conditional, right=conditional, operator=ComparisonOperator.IS
                 )
             )
+        if isinstance(
+            conditional, (BuildComparison, BuildConditional, BuildParenthetical)
+        ):
+            conditional = flatten_conditions(conditional)
         return BuildWhereClause(conditional=conditional)
 
     @build.register

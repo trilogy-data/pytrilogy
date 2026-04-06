@@ -1,8 +1,10 @@
-from trilogy.core.enums import ComparisonOperator, Purpose
+from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
+    BuildConditional,
     BuildGrain,
+    BuildParenthetical,
     BuildWhereClause,
 )
 from trilogy.core.models.core import DataType, EnumType
@@ -10,8 +12,10 @@ from trilogy.core.processing.condition_utility import (
     condition_implies,
     condition_implies_with_extras,
     conditions_mutually_exclusive,
+    decompose_condition,
     drop_covered_conditions,
     filter_union_children,
+    flatten_conditions,
     merge_conditions,
     strip_condition_atoms,
 )
@@ -299,3 +303,106 @@ class TestFilterUnionChildren:
         kept = filter_union_children({"boston": _where(cond_bos)}, cond_bos)
         assert "boston" in kept
         assert kept["boston"] is None
+
+
+# --- helpers for flatten tests ---
+
+_tautology = BuildComparison(left=True, right=True, operator=ComparisonOperator.IS)
+
+
+class TestFlattenConditions:
+    def test_unwraps_parenthetical_around_comparison(self):
+        wrapped = BuildParenthetical(content=cond_bos)
+        assert flatten_conditions(wrapped) == cond_bos
+
+    def test_unwraps_nested_parentheticals(self):
+        double = BuildParenthetical(content=BuildParenthetical(content=cond_sfo))
+        assert flatten_conditions(double) == cond_sfo
+
+    def test_preserves_parenthetical_around_or_conditional(self):
+        """Parens around OR enforce precedence and must not be stripped."""
+        or_cond = BuildConditional(
+            left=cond_bos, right=cond_sfo, operator=BooleanOperator.OR
+        )
+        wrapped = BuildParenthetical(content=or_cond)
+        result = flatten_conditions(wrapped)
+        assert isinstance(result, BuildParenthetical)
+
+    def test_flattens_both_sides_of_and(self):
+        cond = BuildConditional(
+            left=BuildParenthetical(content=cond_bos),
+            right=BuildParenthetical(content=cond_dbh),
+            operator=BooleanOperator.AND,
+        )
+        result = flatten_conditions(cond)
+        assert isinstance(result, BuildConditional)
+        assert result.left == cond_bos
+        assert result.right == cond_dbh
+
+    def test_flattened_atoms_match_for_condition_implies(self):
+        """The whole point: after flattening, condition_implies can see through
+        what were Parenthetical wrappers."""
+        wrapped_cond = BuildConditional(
+            left=BuildParenthetical(content=cond_bos),
+            right=BuildParenthetical(content=cond_dbh),
+            operator=BooleanOperator.AND,
+        )
+        flattened = flatten_conditions(wrapped_cond)
+        assert condition_implies(flattened, cond_bos)
+
+    def test_decompose_after_flatten(self):
+        wrapped_cond = BuildConditional(
+            left=BuildParenthetical(content=cond_bos),
+            right=BuildParenthetical(content=cond_dbh),
+            operator=BooleanOperator.AND,
+        )
+        atoms = decompose_condition(flatten_conditions(wrapped_cond))
+        assert cond_bos in atoms
+        assert cond_dbh in atoms
+
+    def test_drops_tautology_from_and_right(self):
+        cond = BuildConditional(
+            left=cond_bos, right=_tautology, operator=BooleanOperator.AND
+        )
+        assert flatten_conditions(cond) == cond_bos
+
+    def test_drops_tautology_from_and_left(self):
+        cond = BuildConditional(
+            left=_tautology, right=cond_sfo, operator=BooleanOperator.AND
+        )
+        assert flatten_conditions(cond) == cond_sfo
+
+    def test_both_tautologies_returns_tautology(self):
+        cond = BuildConditional(
+            left=_tautology, right=_tautology, operator=BooleanOperator.AND
+        )
+        result = flatten_conditions(cond)
+        assert _is_tautology(result)
+
+    def test_tautology_in_or_preserved(self):
+        """Tautology removal only applies to AND chains."""
+        cond = BuildConditional(
+            left=cond_bos, right=_tautology, operator=BooleanOperator.OR
+        )
+        result = flatten_conditions(cond)
+        assert isinstance(result, BuildConditional)
+
+    def test_drops_parenthetical_tautology(self):
+        """Tautology wrapped in parens should be unwrapped then dropped."""
+        cond = BuildConditional(
+            left=cond_bos,
+            right=BuildParenthetical(content=_tautology),
+            operator=BooleanOperator.AND,
+        )
+        assert flatten_conditions(cond) == cond_bos
+
+    def test_plain_comparison_unchanged(self):
+        assert flatten_conditions(cond_bos) == cond_bos
+
+
+def _is_tautology(node) -> bool:
+    from trilogy.core.processing.condition_utility import (
+        _is_tautology as _is_taut_impl,
+    )
+
+    return isinstance(node, BuildComparison) and _is_taut_impl(node)

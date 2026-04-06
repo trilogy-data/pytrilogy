@@ -236,3 +236,64 @@ LIMIT 1;
     assert (
         "full_tree_info" not in generated
     ), f"Expected sf_tree_info (partial) to be used instead of full_tree_info.\nSQL:\n{generated}"
+
+
+def test_exact_match_with_parenthetical_extra_filter():
+    """Partial datasource must be selected when extra_filters are concatenated
+    with Parenthetical wrappers (as the web server does).
+
+    Reproduces: the web server wraps each condition side in Parenthetical when
+    joining extra_filters to the parsed query's WHERE clause. This prevented
+    decompose_condition from matching city='USSFO' against the datasource's
+    non_partial_for, causing the full datasource to be chosen.
+    """
+    from trilogy.authoring import (
+        BooleanOperator as AuthBoolOp,
+    )
+    from trilogy.authoring import (
+        Conditional as AuthConditional,
+    )
+    from trilogy.authoring import (
+        Parenthetical as AuthParenthetical,
+    )
+    from trilogy.authoring import (
+        SelectStatement as AuthSelect,
+    )
+    from trilogy.parser import parse_text as trilogy_parse
+
+    base_query = """
+import tree_enrichment;
+
+SELECT
+  tree_category,
+  count(tree_id) as tree_count
+WHERE tree_category IS NOT NULL
+ORDER BY tree_count DESC;
+"""
+    extra_filter = "city = 'USSFO'"
+
+    base = Dialects.DUCK_DB.default_executor(
+        working_path=Path(__file__).parent,
+        conf=DuckDBConfig(enable_python_datasources=True),
+    )
+
+    # Parse the base query
+    env, parsed = trilogy_parse(base_query, base.environment)
+    select = parsed[-1]
+    assert isinstance(select, AuthSelect)
+
+    # Parse the extra filter into the same env (mimics web server)
+    _, fparsed = trilogy_parse(f"WHERE {extra_filter} SELECT 1 as __ftest;", env)
+    filter_clause = fparsed[-1].where_clause
+
+    # Concatenate with Parenthetical wrappers (exactly as the web server does)
+    select.where_clause.conditional = AuthConditional(
+        left=AuthParenthetical(content=select.where_clause.conditional),
+        right=AuthParenthetical(content=filter_clause.conditional),
+        operator=AuthBoolOp.AND,
+    )
+
+    generated = base.generate_sql(select)[-1]
+    assert (
+        "full_tree_info" not in generated
+    ), f"Expected partial datasource, not full_tree_info.\nSQL:\n{generated}"
