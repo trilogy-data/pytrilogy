@@ -940,11 +940,11 @@ LIMIT 10
     sql = base.generate_sql(queries[-1])
     assert (
         """GROUP BY
-    "fuel_aggregates"."launch_tag",
     1,
     2,
     3,
-    4"""
+    4,
+    "fuel_aggregates"."launch_tag\""""
         in sql[0]
     ), sql[0]
 

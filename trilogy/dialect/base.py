@@ -1172,11 +1172,11 @@ class BaseDialect:
                         indices.append(idx)
                 else:
                     sql = self.render_concept_sql(c, cte, alias=False)
-                    idx = rendered_to_index.get(sql)
-                    if idx is not None:
-                        if idx not in seen:
-                            seen.add(idx)
-                            indices.append(idx)
+                    existing_idx = rendered_to_index.get(sql)
+                    if existing_idx is not None:
+                        if existing_idx not in seen:
+                            seen.add(existing_idx)
+                            indices.append(existing_idx)
                     else:
                         fallbacks.append(sql)
             return [str(i) for i in sorted(indices)] + sorted(fallbacks)
