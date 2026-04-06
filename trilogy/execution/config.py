@@ -21,6 +21,13 @@ from trilogy.dialect.enums import Dialects
 from trilogy.staging import StagingConfig
 
 DEFAULT_PARALLELISM = 4
+DEFAULT_STATE_HOME = Path.home() / ".trilogy"
+
+
+@dataclass
+class StateConfig:
+    home: Path = DEFAULT_STATE_HOME
+    env_prefix_style: str = "table_prefix"  # reserved for future engine-level overrides
 
 
 def load_env_file(env_file_path: Path) -> dict[str, str] | None:
@@ -77,6 +84,7 @@ class RuntimeConfig:
     serve_studio_url: str = DEFAULT_STUDIO_URL
     project_name: str | None = None
     agent: AgentConfig = field(default_factory=AgentConfig)
+    state: StateConfig = field(default_factory=StateConfig)
 
 
 def load_config_file(path: Path) -> RuntimeConfig:
@@ -154,6 +162,15 @@ def load_config_file(path: Path) -> RuntimeConfig:
         model=agent_raw.get("model"),
     )
 
+    state_raw: dict = config_data.get("state", {})
+    state_home_raw: str | None = state_raw.get("home")
+    state = StateConfig(
+        home=(
+            Path(state_home_raw).expanduser() if state_home_raw else DEFAULT_STATE_HOME
+        ),
+        env_prefix_style=state_raw.get("env_prefix_style", "table_prefix"),
+    )
+
     return RuntimeConfig(
         startup_trilogy=[path.parent / p for p in setup.get("trilogy", [])],
         startup_sql=[path.parent / p for p in setup.get("sql", [])],
@@ -166,4 +183,5 @@ def load_config_file(path: Path) -> RuntimeConfig:
         serve_studio_url=serve_studio_url,
         project_name=project_name,
         agent=agent,
+        state=state,
     )

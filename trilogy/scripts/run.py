@@ -22,7 +22,17 @@ def execute_script_for_run(
     exec: Executor, node: ScriptNode, quiet: bool = False
 ) -> ExecutionStats:
     """Execute a script for the 'run' command (parallel execution mode)."""
-    return execute_script_with_stats(exec, node.path, run_statements=True)
+    env_name: str | None = getattr(exec, "_trilogy_env", None)
+    hook = None
+    if env_name:
+        from trilogy.scripts.env_commands import apply_environment_to_executor
+
+        def hook(e: Executor) -> None:
+            apply_environment_to_executor(e, env_name)
+
+    return execute_script_with_stats(
+        exec, node.path, run_statements=True, post_parse_hook=hook
+    )
 
 
 @argument("input", type=Path(), default=".")
@@ -43,6 +53,11 @@ def execute_script_for_run(
     multiple=True,
     help="Set env vars as KEY=VALUE or pass an env file path",
 )
+@option(
+    "--environment",
+    default=None,
+    help="Trilogy environment name (overrides active environment)",
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def run(
@@ -53,6 +68,7 @@ def run(
     parallelism: int | None,
     config,
     env,
+    environment: str | None,
     conn_args,
 ):
     """Execute a Trilogy script or query."""
@@ -68,6 +84,7 @@ def run(
         config_path=PathlibPath(config) if config else None,
         execution_strategy="eager_bfs",
         env=env,
+        environment_name=environment,
     )
 
     try:

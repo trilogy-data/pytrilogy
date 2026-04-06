@@ -46,6 +46,7 @@ def _collect_root_watermarks(
     cli_params: CLIRuntimeParams,
     edialect: Dialects,
     config: RuntimeConfig,
+    env_name: str | None = None,
 ) -> dict[str, DatasourceWatermark]:
     """Probe owned root datasources and return their watermarks.
 
@@ -68,6 +69,10 @@ def _collect_root_watermarks(
     try:
         with open(owner_node.path, "r") as handle:
             executor.parse_text(handle.read(), root=owner_node.path)
+        if env_name:
+            from trilogy.scripts.env_commands import apply_environment_to_executor
+
+            apply_environment_to_executor(executor, env_name)
         watermarks: dict[str, DatasourceWatermark] = {}
         for ds in executor.environment.datasources.values():
             if not ds.is_root:
@@ -95,6 +100,7 @@ def _probe_owner_node(
     edialect: Dialects,
     config: RuntimeConfig,
     initial_watermarks: dict[str, DatasourceWatermark] | None = None,
+    env_name: str | None = None,
 ) -> tuple[ScriptNode, RefreshPlan]:
     from trilogy.scripts.common import create_executor_for_script
 
@@ -115,6 +121,10 @@ def _probe_owner_node(
     try:
         with open(owner_node.path, "r") as handle:
             executor.parse_text(handle.read(), root=owner_node.path)
+        if env_name:
+            from trilogy.scripts.env_commands import apply_environment_to_executor
+
+            apply_environment_to_executor(executor, env_name)
         plan = create_refresh_plan(
             executor,
             force_sources=force_sources,
@@ -138,7 +148,7 @@ def _merge_watermarks(
 
 def _preview_directory_refresh(
     cli_params: CLIRuntimeParams, input_path: Path, interactive: bool = False
-) -> tuple[bool, nx.DiGraph | None]:
+) -> tuple[bool, nx.DiGraph | None, list, dict[str, str]]:
     from trilogy.execution.config import apply_env_vars, load_env_file
     from trilogy.scripts.common import (
         create_executor_for_script,
@@ -173,6 +183,9 @@ def _preview_directory_refresh(
         apply_env_vars(cli_env_vars)
 
     edialect, _ = merge_runtime_config(cli_params, config)
+    from trilogy.scripts.parallel_execution import _resolve_active_env
+
+    env_name = _resolve_active_env(cli_params, config)
     force_sources = (
         set(cli_params.refresh_params.force_sources)
         if cli_params.refresh_params and cli_params.refresh_params.force_sources
@@ -318,6 +331,7 @@ def _preview_directory_refresh(
                         cli_params,
                         edialect,
                         config,
+                        env_name,
                     ): node
                     for node in root_owner_to_addrs
                 }
@@ -345,6 +359,7 @@ def _preview_directory_refresh(
                     edialect,
                     config,
                     initial_watermarks,
+                    env_name,
                 ): node
                 for node in ordered_nodes
             }
@@ -360,7 +375,7 @@ def _preview_directory_refresh(
     ]
     if not refresh_assets:
         print_info("All assets are up to date.")
-        return True, None
+        return True, None, plans_by_node, address_map
 
     # Group stale assets by managed address
     physical_groups: dict[str, list[tuple[StaleAsset, ScriptNode]]] = defaultdict(list)
@@ -426,9 +441,9 @@ def _preview_directory_refresh(
     )
 
     if interactive and not click.confirm("\nProceed with refresh?", default=True):
-        return False, None
+        return False, None, [], {}
 
-    return True, phys_graph
+    return True, phys_graph, plans_by_node, address_map
 
 
 def _run_refresh_plan(
@@ -508,6 +523,63 @@ def make_managed_refresh_fn(
     return wrapped_execute
 
 
+def _save_dir_refresh_state(
+    env_name: str,
+    runtime_config: "RuntimeConfig",
+    plans_by_node: list,
+    address_map: dict[str, str],
+) -> None:
+    """Persist watermarks for all refreshed assets after a directory refresh."""
+    try:
+        from pathlib import Path as _Path
+
+        from trilogy.execution.state.env_manager import EnvironmentManager
+        from trilogy.execution.state.watermarks import DatasourceWatermark
+
+        project_name = runtime_config.project_name or _Path(".").resolve().name
+        state_home = getattr(getattr(runtime_config, "state", None), "home", None)
+        manager = EnvironmentManager(project_name=project_name, state_home=state_home)
+
+        merged_concept_max: dict = {}
+        for _, plan in plans_by_node:
+            for k, v in plan.concept_max_watermarks.items():
+                merged_concept_max.setdefault(k, v)
+
+        to_save: dict[str, DatasourceWatermark] = {}
+        for _, plan in plans_by_node:
+            for asset in plan.refresh_assets:
+                ds_id = asset.datasource_id
+                if ds_id in to_save:
+                    continue
+                keys = {
+                    k: v
+                    for k, v in merged_concept_max.items()
+                    if k
+                    in {
+                        uk
+                        for uk in plan.watermarks.get(
+                            ds_id, DatasourceWatermark(keys={})
+                        ).keys
+                    }
+                }
+                if keys:
+                    to_save[ds_id] = DatasourceWatermark(keys=keys)
+
+        if to_save:
+            manager.save_state(env_name, to_save)
+
+        # Track physical addresses
+        refreshed_ids = {
+            a.datasource_id for _, plan in plans_by_node for a in plan.refresh_assets
+        }
+        for ds_id in refreshed_ids:
+            addr = address_map.get(ds_id)
+            if addr:
+                manager.track_asset(env_name, addr)
+    except Exception:
+        pass
+
+
 @argument("input", type=ClickPath(), default=".")
 @argument("dialect", type=str, required=False)
 @option("--param", multiple=True, help="Environment parameters as key=value pairs")
@@ -554,6 +626,11 @@ def make_managed_refresh_fn(
     default=False,
     help="Show SQL that would be executed without running it",
 )
+@option(
+    "--environment",
+    default=None,
+    help="Trilogy environment name (overrides active environment)",
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def refresh(
@@ -568,6 +645,7 @@ def refresh(
     force,
     interactive,
     dry_run,
+    environment: str | None,
     conn_args,
 ):
     """Refresh stale assets in Trilogy scripts.
@@ -598,6 +676,7 @@ def refresh(
         execution_strategy="eager_bfs",
         env=env,
         refresh_params=refresh_params,
+        environment_name=environment,
     )
 
     try:
@@ -624,8 +703,10 @@ def refresh(
             cli_params.debug_file,
         )
         if input_path.is_dir():
-            approved, phys_graph = _preview_directory_refresh(
-                cli_params, input_path, interactive=refresh_params.interactive
+            approved, phys_graph, plans_by_node, address_map = (
+                _preview_directory_refresh(
+                    cli_params, input_path, interactive=refresh_params.interactive
+                )
             )
             if not approved:
                 raise Exit(2)
@@ -637,6 +718,12 @@ def refresh(
                     False,  # interactive always False after preview
                     refresh_params.dry_run,
                 )
+
+                from trilogy.scripts.parallel_execution import (
+                    _resolve_active_env as _res_env,
+                )
+
+                _dir_env_name = _res_env(cli_params, runtime_config)
 
                 def physical_executor_factory(node: ManagedRefreshNode) -> Executor:
                     from trilogy.scripts.common import create_executor_for_script
@@ -652,6 +739,12 @@ def refresh(
                     )
                     with open(node.owner_script.path, "r") as handle:
                         executor.parse_text(handle.read(), root=node.owner_script.path)
+                    if _dir_env_name:
+                        from trilogy.scripts.env_commands import (
+                            apply_environment_to_executor,
+                        )
+
+                        apply_environment_to_executor(executor, _dir_env_name)
                     return executor
 
                 summary = run_parallel_execution(
@@ -661,6 +754,14 @@ def refresh(
                     graph=phys_graph,
                     executor_factory_override=physical_executor_factory,
                 )
+                if (
+                    _dir_env_name
+                    and not refresh_params.dry_run
+                    and summary.successful > 0
+                ):
+                    _save_dir_refresh_state(
+                        _dir_env_name, runtime_config, plans_by_node, address_map
+                    )
             else:
                 # No stale assets found
                 raise Exit(2)

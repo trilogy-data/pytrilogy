@@ -515,6 +515,7 @@ def run_single_script_execution(
     config,
     refresh_params: RefreshParams | None = None,
     debug_file: str | None = None,
+    environment_name: str | None = None,
 ) -> int:
     """Run single script execution. Returns count of assets refreshed (for refresh mode)."""
     from trilogy.scripts.common import (
@@ -550,16 +551,32 @@ def run_single_script_execution(
             queries = exec.parse_text(
                 text, root=base if isinstance(base, Path) else None
             )
+            if environment_name:
+                from trilogy.scripts.env_commands import apply_environment_to_executor
+
+                apply_environment_to_executor(exec, environment_name)
             execute_run_mode(exec, queries)
         elif execution_mode == ExecutionMode.INTEGRATION:
             exec.parse_text(text, root=base if isinstance(base, Path) else None)
+            if environment_name:
+                from trilogy.scripts.env_commands import apply_environment_to_executor
+
+                apply_environment_to_executor(exec, environment_name)
             execute_integration_mode(exec)
         elif execution_mode == ExecutionMode.UNIT:
             exec.parse_text(text, root=base if isinstance(base, Path) else None)
+            if environment_name:
+                from trilogy.scripts.env_commands import apply_environment_to_executor
+
+                apply_environment_to_executor(exec, environment_name)
             execute_unit_mode(exec)
         elif execution_mode == ExecutionMode.REFRESH:
             rp = refresh_params or RefreshParams()
             exec.parse_text(text, root=base if isinstance(base, Path) else None)
+            if environment_name:
+                from trilogy.scripts.env_commands import apply_environment_to_executor
+
+                apply_environment_to_executor(exec, environment_name)
             result = execute_refresh_mode(
                 exec,
                 force_sources=set(rp.force_sources) if rp.force_sources else None,
@@ -567,6 +584,8 @@ def run_single_script_execution(
                 dry_run=rp.dry_run,
                 interactive=rp.interactive,
                 script_path=base if isinstance(base, Path) else None,
+                environment_name=environment_name,
+                runtime_config=config,
             )
             if debug:
                 flush_debugging_hooks(exec)
@@ -581,6 +600,21 @@ def run_single_script_execution(
     if debug:
         flush_debugging_hooks(exec)
     return 0
+
+
+def _resolve_active_env(cli_params: CLIRuntimeParams, config) -> str | None:
+    """Return the active environment name: explicit flag takes precedence over stored active."""
+    if cli_params.environment_name:
+        return cli_params.environment_name
+    from pathlib import Path as _Path
+
+    from trilogy.execution.state.env_manager import EnvironmentManager
+
+    project_name = config.project_name or _Path(cli_params.input).resolve().name
+    manager = EnvironmentManager(
+        project_name=project_name, state_home=config.state.home
+    )
+    return manager.get_active()
 
 
 def get_execution_strategy(strategy_name: str):
@@ -665,6 +699,7 @@ def run_parallel_execution(
             config=config,
             refresh_params=cli_params.refresh_params,
             debug_file=cli_params.debug_file,
+            environment_name=_resolve_active_env(cli_params, config),
         )
         # For refresh mode: skipped=1 if nothing was refreshed, successful=1 otherwise
         if execution_mode == ExecutionMode.REFRESH:
@@ -716,9 +751,11 @@ def run_parallel_execution(
         num_nodes, num_edges, parallelism, cli_params.execution_strategy
     )
 
+    env_name = _resolve_active_env(cli_params, config)
+
     # Factory to create executor for each node
     def default_executor_factory(node: ScriptNode) -> Executor:
-        return create_executor_for_script(
+        exec_ = create_executor_for_script(
             node,
             cli_params.param,
             cli_params.conn_args,
@@ -727,6 +764,9 @@ def run_parallel_execution(
             config,
             cli_params.debug_file,
         )
+        if env_name:
+            exec_._trilogy_env = env_name  # type: ignore[attr-defined]
+        return exec_
 
     executor_factory = executor_factory_override or default_executor_factory
 

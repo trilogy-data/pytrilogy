@@ -4,7 +4,7 @@ import traceback
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path as PathlibPath
-from typing import Any, Iterable, Sequence, Union
+from typing import Any, Callable, Iterable, Sequence, Union
 
 from click.exceptions import Exit
 
@@ -105,6 +105,8 @@ class CLIRuntimeParams:
     execution_strategy: str = "eager_bfs"
     env: tuple[str, ...] = ()
     refresh_params: RefreshParams | None = None
+    # Trilogy environment name (overrides active env from state store)
+    environment_name: str | None = None
 
 
 def merge_runtime_config(
@@ -485,11 +487,17 @@ def count_statement_stats(
 
 
 def execute_script_with_stats(
-    exec: Executor, script_path: PathlibPath, run_statements: bool = True
+    exec: Executor,
+    script_path: PathlibPath,
+    run_statements: bool = True,
+    post_parse_hook: Callable[[Executor], None] | None = None,
 ) -> ExecutionStats:
     """Parse and optionally execute a script, returning execution stats."""
+
     with open(script_path, "r") as f:
         queries = exec.parse_text(f.read())
+    if post_parse_hook:
+        post_parse_hook(exec)
     stats = ExecutionStats()
     if run_statements:
         for query in queries:

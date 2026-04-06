@@ -335,15 +335,26 @@ def execute_refresh_mode(
     dry_run: bool = False,
     interactive: bool = False,
     script_path: Any = None,
+    environment_name: str | None = None,
+    runtime_config: Any = None,
 ) -> StateRefreshResult:
     """Execute refresh mode on an already-parsed executor."""
     from trilogy.execution.state import create_refresh_plan
 
-    plan = create_refresh_plan(exec, force_sources=force_sources)
+    state_store = _get_file_state_store(environment_name, runtime_config, exec)
+    initial_watermarks = (
+        _load_state_store_watermarks(state_store, exec) if state_store else None
+    )
+
+    plan = create_refresh_plan(
+        exec,
+        force_sources=force_sources,
+        initial_watermarks=initial_watermarks,
+    )
     addr_map = {
         ds_id: ds.safe_address for ds_id, ds in exec.environment.datasources.items()
     }
-    return _plan_and_execute_refresh(
+    result = _plan_and_execute_refresh(
         exec,
         plan,
         quiet=False,
@@ -353,3 +364,85 @@ def execute_refresh_mode(
         addr_map=addr_map,
         name="",
     )
+    if state_store and not dry_run and result.refreshed_count > 0:
+        _save_refreshed_watermarks(state_store, plan, exec)
+        _track_refreshed_assets(state_store, plan, exec)
+    return result
+
+
+def _get_file_state_store(
+    environment_name: str | None,
+    runtime_config: Any,
+    exec: Executor,
+) -> "Any | None":
+    if not environment_name:
+        return None
+    try:
+        from pathlib import Path as _Path
+
+        from trilogy.execution.state.file_state_store import get_state_store_for_project
+
+        project_name = None
+        state_home = None
+        if runtime_config is not None:
+            project_name = getattr(runtime_config, "project_name", None)
+            state_cfg = getattr(runtime_config, "state", None)
+            if state_cfg:
+                state_home = state_cfg.home
+        if not project_name:
+            project_name = _Path(exec.environment.working_path or ".").resolve().name
+        return get_state_store_for_project(project_name, environment_name, state_home)
+    except Exception:
+        return None
+
+
+def _load_state_store_watermarks(state_store: Any, exec: Executor) -> dict | None:
+    try:
+        stored = state_store.load()
+        if not stored:
+            return None
+        non_root_ids = {
+            ds_id
+            for ds_id, ds in exec.environment.datasources.items()
+            if not ds.is_root
+        }
+        filtered = {k: v for k, v in stored.items() if k in non_root_ids}
+        return filtered or None
+    except Exception:
+        return None
+
+
+def _save_refreshed_watermarks(state_store: Any, plan: Any, exec: Executor) -> None:
+    try:
+        from trilogy.execution.state.watermarks import DatasourceWatermark
+
+        refreshed_ids = {a.datasource_id for a in plan.refresh_assets}
+        to_save: dict = {}
+        for ds_id in refreshed_ids:
+            ds = exec.environment.datasources.get(ds_id)
+            if not ds or ds.is_root:
+                continue
+            keys = {}
+            for ref in list(ds.freshness_by) + list(ds.incremental_by):
+                concept = exec.environment.concepts.get(ref.address)
+                if concept is None:
+                    continue
+                cname = concept.name
+                if cname in plan.concept_max_watermarks:
+                    keys[cname] = plan.concept_max_watermarks[cname]
+            if keys:
+                to_save[ds_id] = DatasourceWatermark(keys=keys)
+        if to_save:
+            state_store.save(to_save)
+    except Exception:
+        pass
+
+
+def _track_refreshed_assets(state_store: Any, plan: Any, exec: Executor) -> None:
+    try:
+        for asset in plan.refresh_assets:
+            ds = exec.environment.datasources.get(asset.datasource_id)
+            if ds and not ds.is_root:
+                state_store.track_asset(ds.safe_address)
+    except Exception:
+        pass
