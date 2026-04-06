@@ -12,8 +12,8 @@ FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
 GROUP BY
     1,
-    3,
-    2),
+    2,
+    3),
 highfalutin as (
 SELECT
     \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
@@ -23,8 +23,8 @@ FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
 GROUP BY
     1,
-    3,
-    2),
+    2,
+    3),
 abundant as (
 SELECT
     \"cooperative\".\"catalog_sales_bill_customer_id\" as \"catalog_sales_bill_customer_id\",
@@ -39,8 +39,8 @@ WHERE
 
 GROUP BY
     1,
-    3,
     2,
+    3,
     4),
 cheerful as (
 SELECT
@@ -55,10 +55,10 @@ WHERE
     \"store_sales_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"store_sales_date_date\".\"D_MONTH_SEQ\" <= 1200 + 11
 
 GROUP BY
-    2,
-    4,
     1,
-    3),
+    2,
+    3,
+    4),
 uneven as (
 SELECT
     \"abundant\".\"catalog_sales_bill_customer_id\" as \"merged_catalog_sales_bill_customer_id\",
@@ -69,10 +69,10 @@ FROM
     \"cheerful\"
     FULL JOIN \"abundant\" on \"cheerful\".\"customer_id\" is not distinct from \"abundant\".\"customer_id\" AND \"cheerful\".\"item_id\" is not distinct from \"abundant\".\"item_id\"
 GROUP BY
-    3,
-    4,
     1,
-    2)
+    2,
+    3,
+    4)
 SELECT
     sum(CASE
 	WHEN \"uneven\".\"merged_store_sales_customer_id\" is not null and \"uneven\".\"merged_store_sales_item_id\" is not null and \"uneven\".\"merged_catalog_sales_bill_customer_id\" is null and \"uneven\".\"merged_catalog_sales_item_id\" is null THEN 1

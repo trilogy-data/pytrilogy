@@ -28,8 +28,8 @@ SELECT
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
 GROUP BY
-    2,
-    1),
+    1,
+    2),
 concerned as (
 SELECT
     coalesce(\"abundant\".\"customer_id\",\"customer_customers\".\"C_CUSTOMER_SK\",\"juicy\".\"customer_id\",\"thoughtful\".\"customer_id\") as \"relevant_customers\"

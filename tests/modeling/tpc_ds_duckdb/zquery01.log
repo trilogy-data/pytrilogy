@@ -26,9 +26,9 @@ SELECT
 FROM
     \"memory\".\"store_returns\" as \"returns_store_returns\"
 GROUP BY
-    3,
     1,
-    2),
+    2,
+    3),
 yummy as (
 SELECT
     \"questionable\".\"returns_store_id\" as \"returns_store_id\",
@@ -51,8 +51,8 @@ WHERE
     \"returns_store_store\".\"S_STATE\" = 'TN' and cast(\"returns_return_date_date\".\"D_YEAR\" as int) = 2000
 
 GROUP BY
-    2,
     1,
+    2,
     3),
 uneven as (
 SELECT
@@ -63,8 +63,8 @@ FROM
     \"cooperative\"
     INNER JOIN \"questionable\" on \"cooperative\".\"returns_customer_id\" = \"questionable\".\"returns_customer_id\" AND \"cooperative\".\"returns_store_id\" = \"questionable\".\"returns_store_id\"
 GROUP BY
-    2,
     1,
+    2,
     3)
 SELECT
     \"uneven\".\"returns_customer_text_id\" as \"returns_customer_text_id\"
