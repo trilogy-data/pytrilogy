@@ -100,8 +100,8 @@ FROM
     \"cheerful\"
 GROUP BY
     1,
-    2,
-    3),
+    3,
+    2),
 thoughtful as (
 SELECT
     \"cheerful\".\"inventory_item_brand_name\" as \"i_brand\",
@@ -112,14 +112,14 @@ SELECT
 FROM
     \"cheerful\"
 GROUP BY
-    \"cheerful\".\"inventory_item_brand_name\",
-    \"cheerful\".\"inventory_item_class\",
     \"cheerful\".\"inventory_item_category\",
+    \"cheerful\".\"inventory_item_brand_name\",
     \"cheerful\".\"inventory_item_product_name\",
-    1,
-    3,
+    \"cheerful\".\"inventory_item_class\",
     2,
-    4),
+    1,
+    4,
+    3),
 sweltering as (
 SELECT
     \"sparkling\".\"qoh5\" as \"qoh5\",

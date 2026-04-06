@@ -44,10 +44,10 @@ WHERE
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select thoughtful.\"cr_order_number\" from thoughtful where thoughtful.\"cr_order_number\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_sales\" from uneven where uneven.\"multi_warehouse_sales\" is not null)
 
 GROUP BY
-    1,
     2,
     4,
-    3),
+    3,
+    1),
 yummy as (
 SELECT
     sum(\"cs_catalog_sales\".\"CS_EXT_SHIP_COST\") as \"total_shipping_cost\",
