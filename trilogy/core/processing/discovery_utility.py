@@ -484,13 +484,13 @@ def get_inputs_that_require_pushdown(
     ]
 
 
-def _condition_atoms_for_complete_wheres(
+def _extract_routing_atoms(
     conditions: BuildWhereClause, environment: BuildEnvironment
 ) -> BuildWhereClause | None:
-    """Return the subset of condition atoms that are implied by some datasource's complete_where.
+    """Return the subset of condition atoms implied by a datasource's non_partial_for.
 
-    These atoms should be preserved as WHERE filters rather than flattened into concept
-    projections, so that partial-datasource exact-match resolution works downstream.
+    Preserved as WHERE filters (not flattened into projections) so that
+    partial-datasource exact-match resolution works downstream.
     """
     atoms = decompose_condition(conditions.conditional)
     atom_str_map = {str(a): a for a in atoms}
@@ -514,6 +514,55 @@ def _condition_atoms_for_complete_wheres(
     for a in preserved[1:]:
         cond = BuildConditional(left=cond, right=a, operator=BooleanOperator.AND)
     return BuildWhereClause(conditional=cond)
+
+
+def _resolve_condition_disposition(
+    conditions: BuildWhereClause | None,
+    original_conditions: BuildWhereClause | None,
+    remaining: list[BuildConcept],
+    materialized_canonical: set[str],
+    force_conditions: bool,
+    force_pushdown_to_complex_input: bool,
+    environment: BuildEnvironment | None,
+    depth: int,
+) -> tuple[bool, BuildWhereClause | None]:
+    """Decide whether to inject condition row args and what conditions to push down.
+
+    Returns (inject_row_args, routing_conditions).
+    """
+    all_materialized_roots = (
+        bool(remaining)
+        and conditions is not None
+        and all(
+            x.derivation == Derivation.ROOT
+            and x.granularity != Granularity.SINGLE_ROW
+            and x.canonical_address in materialized_canonical
+            for x in remaining
+        )
+    )
+
+    if all_materialized_roots:
+        assert conditions is not None
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} All remaining mandatory concepts are materialized roots, injecting condition inputs into candidate list"
+        )
+        routing = (
+            _extract_routing_atoms(conditions, environment) if environment else None
+        )
+        return True, routing
+    elif conditions and force_conditions:
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} condition evaluation at this level forced"
+        )
+        routing = conditions if force_pushdown_to_complex_input else None
+        if routing is None and original_conditions and environment:
+            routing = _extract_routing_atoms(original_conditions, environment)
+        return True, routing
+    else:
+        # No consumption — recover routing atoms if conditions were already consumed
+        if conditions is None and original_conditions and environment:
+            return False, _extract_routing_atoms(original_conditions, environment)
+        return False, conditions
 
 
 def get_loop_iteration_targets(
@@ -555,7 +604,7 @@ def get_loop_iteration_targets(
         all_concepts_local.append(x.with_materialized_source())
 
     remaining = [x for x in all_concepts_local if x.address not in attempted]
-    pre_pushdown_conditions = conditions
+    original_conditions = conditions
     conditions = evaluate_loop_condition_pushdown(
         mandatory=all_concepts_local,
         conditions=conditions,
@@ -565,47 +614,20 @@ def get_loop_iteration_targets(
     )
     local_all = [*all_concepts_local]
 
-    if (
-        all(
-            [
-                x.derivation in (Derivation.ROOT,)
-                and x.granularity != Granularity.SINGLE_ROW
-                and x.canonical_address in materialized_canonical
-                for x in remaining
-            ]
-        )
-        and conditions
-    ):
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} All remaining mandatory concepts are materialized roots, injecting condition inputs into candidate list"
-        )
+    inject_row_args, conditions = _resolve_condition_disposition(
+        conditions=conditions,
+        original_conditions=original_conditions,
+        remaining=remaining,
+        materialized_canonical=materialized_canonical,
+        force_conditions=force_conditions,
+        force_pushdown_to_complex_input=force_pushdown_to_complex_input,
+        environment=environment,
+        depth=depth,
+    )
+    if inject_row_args and original_conditions:
         local_all = unique(
-            list(conditions.row_arguments) + remaining,
+            list(original_conditions.row_arguments) + remaining,
             "address",
-        )
-        # Preserve condition atoms covered by a datasource's complete_where so that
-        # partial-datasource exact-match resolution works when searching for those concepts.
-        # Only the extra (non-covered) condition concepts are flattened into projections.
-        conditions = (
-            _condition_atoms_for_complete_wheres(conditions, environment)
-            if environment
-            else None
-        )
-    if conditions and force_conditions:
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} condition evaluation at this level forced"
-        )
-        local_all = unique(
-            list(conditions.row_arguments) + remaining,
-            "address",
-        )
-        # if we have a forced pushdown, also push them down while keeping them at this level too
-        conditions = conditions if force_pushdown_to_complex_input else None
-    # When conditions were consumed at this level (set to None), preserve atoms
-    # that match datasource complete_where clauses for partial datasource routing.
-    if conditions is None and pre_pushdown_conditions is not None and environment:
-        conditions = _condition_atoms_for_complete_wheres(
-            pre_pushdown_conditions, environment
         )
 
     priority_concept = get_priority_concept(
@@ -620,7 +642,5 @@ def get_loop_iteration_targets(
         priority_concept=priority_concept,
         candidates=local_all,
         exhausted=attempted,
-        # conditions_exist = conditions is not None,
-        # depth=depth,
     )
     return priority_concept, optional, conditions
