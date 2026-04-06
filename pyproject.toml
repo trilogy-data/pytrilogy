@@ -70,6 +70,7 @@ include = [
   "trilogy/py.typed",
   "_preql_import_resolver/__init__.py",
   "LICENSE.md",
+  "README.md",
   { path = ".scripts/build_backend.py", format = "sdist" },
   { path = ".scripts/sync_version.py", format = "sdist" },
   { path = ".scripts/__init__.py", format = "sdist" },
