@@ -48,10 +48,10 @@ WHERE
     \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select questionable.\"multi_warehouse_order\" from questionable where questionable.\"multi_warehouse_order\" is not null) and \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select uneven.\"returned_orders\" from uneven where uneven.\"returned_orders\" is not null)
 
 GROUP BY
-    1,
-    2,
     3,
-    4),
+    4,
+    2,
+    1),
 yummy as (
 SELECT
     sum(\"web_sales_web_sales\".\"WS_EXT_SHIP_COST\") as \"total_shipping_cost\",

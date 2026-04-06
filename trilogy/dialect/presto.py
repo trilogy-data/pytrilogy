@@ -65,7 +65,7 @@ WITH {% for cte in ctes %}
 {% if where %}WHERE
     {{ where }}
 {% endif %}
-{%- if group_by %}GROUP BY {% for group in group_by %}
+{%- if group_by %}GROUP BY{% for group in group_by %}
     {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{% if having %}
 HAVING
 \t{{ having }}{% endif %}

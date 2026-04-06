@@ -25,8 +25,8 @@ SELECT
 FROM
     \"memory\".\"web_returns\" as \"web_returns_web_returns\"
 GROUP BY
-    1,
-    2),
+    2,
+    1),
 vacuous as (
 SELECT
     \"abundant\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\",

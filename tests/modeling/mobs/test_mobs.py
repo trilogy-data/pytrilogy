@@ -54,7 +54,7 @@ having
 
     query = dialect.generate_sql(query)[0]
     assert (
-        '''GROUP BY 
+        '''GROUP BY
     "data_all_112224"."class",
     "data_all_112224"."genus",
     "data_all_112224"."length_cm"'''

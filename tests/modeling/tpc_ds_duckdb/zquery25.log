@@ -38,8 +38,8 @@ SELECT
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
 GROUP BY
-    1,
     3,
+    1,
     2),
 concerned as (
 SELECT
@@ -51,10 +51,10 @@ SELECT
 FROM
     \"vacuous\"
 GROUP BY
-    4,
-    3,
     2,
-    1),
+    3,
+    1,
+    4),
 yummy as (
 SELECT
     \"store_sales_item_items\".\"I_ITEM_DESC\" as \"store_sales_item_desc\",
@@ -95,10 +95,10 @@ SELECT
 FROM
     \"yummy\"
 GROUP BY
-    4,
-    3,
     2,
-    1)
+    3,
+    1,
+    4)
 SELECT
     \"juicy\".\"store_sales_item_name\" as \"store_sales_item_name\",
     \"juicy\".\"store_sales_item_desc\" as \"store_sales_item_desc\",

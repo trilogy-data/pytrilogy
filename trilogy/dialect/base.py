@@ -1152,14 +1152,17 @@ class BaseDialect:
             return sorted(list(base))
 
         else:
-            return [
-                str(
-                    select_index.get(
-                        c.address, self.render_concept_sql(c, cte, alias=False)
-                    )
-                )
+            indices = [
+                select_index.get(c.address)
                 for c in cte.group_concepts
+                if c.address in select_index
             ]
+            fallbacks = [
+                self.render_concept_sql(c, cte, alias=False)
+                for c in cte.group_concepts
+                if c.address not in select_index
+            ]
+            return [str(i) for i in sorted(indices)] + sorted(fallbacks)
 
     def safe_quote(self, name: str) -> str:
         return safe_quote(name, self.QUOTE_CHARACTER)

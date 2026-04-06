@@ -27,7 +27,7 @@ SELECT
     sum(1) as "grain_check"
 FROM
     "lvs_info"
-GROUP BY 
+GROUP BY
     "lvs_info"."LV_Name",
     "lvs_info"."LV_Variant",
     "lvs_info"."Stage_Name")

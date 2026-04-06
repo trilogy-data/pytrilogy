@@ -107,8 +107,8 @@ select
     assert (
         """WHERE
     "quizzical"."date_converted" = "cheerful"."latest_date" and True
-GROUP BY 
-    2,
-    1)"""
+GROUP BY
+    1,
+    2)"""
         in results
     ), results

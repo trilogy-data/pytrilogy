@@ -226,7 +226,7 @@ order by
     assert (
         """FROM
     "bigquery-public-data"."usa_names"."usa_1910_current" as "usa_names"
-GROUP BY 
+GROUP BY
     1),"""
         in sql
     ), sql
@@ -393,7 +393,7 @@ LIMIT 15
         is False
     )
     assert (
-        """GROUP BY 
+        """GROUP BY
     1"""
         in query
     ), query

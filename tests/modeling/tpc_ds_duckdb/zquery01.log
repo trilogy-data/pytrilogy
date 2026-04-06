@@ -27,8 +27,8 @@ FROM
     \"memory\".\"store_returns\" as \"returns_store_returns\"
 GROUP BY
     3,
-    2,
-    1),
+    1,
+    2),
 yummy as (
 SELECT
     \"questionable\".\"returns_store_id\" as \"returns_store_id\",
