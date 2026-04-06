@@ -1152,16 +1152,33 @@ class BaseDialect:
             return sorted(list(base))
 
         else:
-            indices = [
-                select_index.get(c.address)
-                for c in cte.group_concepts
-                if c.address in select_index
-            ]
-            fallbacks = [
-                self.render_concept_sql(c, cte, alias=False)
-                for c in cte.group_concepts
-                if c.address not in select_index
-            ]
+            # Build reverse map from rendered SQL to index for resolving
+            # hidden concepts that render identically to visible ones
+            rendered_to_index: dict[str, int] = {}
+            for addr, idx in select_index.items():
+                for c in cte.output_columns:
+                    if c.address == addr:
+                        sql = self.render_concept_sql(c, cte, alias=False)
+                        rendered_to_index[sql] = idx
+                        break
+            seen: set[int] = set()
+            indices: list[int] = []
+            fallbacks: list[str] = []
+            for c in cte.group_concepts:
+                if c.address in select_index:
+                    idx = select_index[c.address]
+                    if idx not in seen:
+                        seen.add(idx)
+                        indices.append(idx)
+                else:
+                    sql = self.render_concept_sql(c, cte, alias=False)
+                    idx = rendered_to_index.get(sql)
+                    if idx is not None:
+                        if idx not in seen:
+                            seen.add(idx)
+                            indices.append(idx)
+                    else:
+                        fallbacks.append(sql)
             return [str(i) for i in sorted(indices)] + sorted(fallbacks)
 
     def safe_quote(self, name: str) -> str:

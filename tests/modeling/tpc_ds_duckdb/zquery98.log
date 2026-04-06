@@ -38,11 +38,11 @@ SELECT
 FROM
     \"cheerful\"
 GROUP BY
-    5,
     1,
-    4,
+    2,
     3,
-    2)
+    4,
+    5)
 SELECT
     \"thoughtful\".\"store_sales_item_name\" as \"store_sales_item_name\",
     \"thoughtful\".\"store_sales_item_desc\" as \"store_sales_item_desc\",

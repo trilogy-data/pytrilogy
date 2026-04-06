@@ -24,12 +24,12 @@ WHERE
 
 GROUP BY
     1,
-    \"catalog_sales_catalog_sales\".\"CS_ORDER_NUMBER\",
     2,
-    \"store_sales_item_items\".\"I_ITEM_SK\",
     3,
+    4,
     5,
-    4),
+    \"catalog_sales_catalog_sales\".\"CS_ORDER_NUMBER\",
+    \"store_sales_item_items\".\"I_ITEM_SK\"),
 uneven as (
 SELECT
     \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" as \"store_sales_customer_id\",
@@ -38,9 +38,9 @@ SELECT
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
 GROUP BY
-    3,
     1,
-    2),
+    2,
+    3),
 concerned as (
 SELECT
     \"vacuous\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
@@ -51,9 +51,9 @@ SELECT
 FROM
     \"vacuous\"
 GROUP BY
+    1,
     2,
     3,
-    1,
     4),
 yummy as (
 SELECT
@@ -77,12 +77,12 @@ WHERE
 
 GROUP BY
     1,
-    \"store_sales_item_items\".\"I_ITEM_SK\",
     2,
-    4,
     3,
-    6,
+    4,
     5,
+    6,
+    \"store_sales_item_items\".\"I_ITEM_SK\",
     \"store_sales_store_sales\".\"SS_TICKET_NUMBER\"),
 juicy as (
 SELECT
@@ -95,9 +95,9 @@ SELECT
 FROM
     \"yummy\"
 GROUP BY
+    1,
     2,
     3,
-    1,
     4)
 SELECT
     \"juicy\".\"store_sales_item_name\" as \"store_sales_item_name\",

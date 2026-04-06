@@ -22,9 +22,9 @@ SELECT
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
 GROUP BY
-    3,
     1,
-    2),
+    2,
+    3),
 uneven as (
 SELECT
     \"catalog_sales_date_date\".\"D_MONTH_SEQ\" as \"catalog_sales_date_month_seq\",
@@ -41,10 +41,10 @@ FROM
     FULL JOIN \"memory\".\"customer\" as \"customer_customers\" on coalesce(\"thoughtful\".\"customer_id\", \"highfalutin\".\"customer_id\") = \"customer_customers\".\"C_CUSTOMER_SK\"
 GROUP BY
     1,
-    4,
-    5,
     2,
-    3),
+    3,
+    4,
+    5),
 yummy as (
 SELECT
     CASE WHEN \"uneven\".\"catalog_sales_date_month_seq\" >= 1200 and \"uneven\".\"catalog_sales_date_month_seq\" <= 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END as \"catalog_sales\",
@@ -52,10 +52,10 @@ SELECT
 FROM
     \"uneven\"
 GROUP BY
+    1,
     2,
-    \"uneven\".\"item_id\",
     \"uneven\".\"customer_id\",
-    1)
+    \"uneven\".\"item_id\")
 SELECT
     sum(CASE
 	WHEN \"yummy\".\"store_sales\" is not null and \"yummy\".\"catalog_sales\" is null THEN 1
