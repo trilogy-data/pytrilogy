@@ -399,6 +399,24 @@ class TestFlattenConditions:
     def test_plain_comparison_unchanged(self):
         assert flatten_conditions(cond_bos) == cond_bos
 
+    def test_unwraps_condition_compared_to_true(self):
+        cond = BuildComparison(
+            left=BuildParenthetical(content=cond_bos),
+            right=True,
+            operator=ComparisonOperator.EQ,
+        )
+
+        assert flatten_conditions(cond) == cond_bos
+
+    def test_condition_compared_to_true_implies_partition_condition(self):
+        cond = BuildComparison(
+            left=BuildParenthetical(content=cond_bos),
+            right=True,
+            operator=ComparisonOperator.EQ,
+        )
+
+        assert condition_implies(flatten_conditions(cond), cond_bos)
+
 
 def _is_tautology(node) -> bool:
     from trilogy.core.processing.condition_utility import (
