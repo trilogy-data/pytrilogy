@@ -555,6 +555,7 @@ def get_loop_iteration_targets(
         all_concepts_local.append(x.with_materialized_source())
 
     remaining = [x for x in all_concepts_local if x.address not in attempted]
+    pre_pushdown_conditions = conditions
     conditions = evaluate_loop_condition_pushdown(
         mandatory=all_concepts_local,
         conditions=conditions,
@@ -600,6 +601,12 @@ def get_loop_iteration_targets(
         )
         # if we have a forced pushdown, also push them down while keeping them at this level too
         conditions = conditions if force_pushdown_to_complex_input else None
+    # When conditions were consumed at this level (set to None), preserve atoms
+    # that match datasource complete_where clauses for partial datasource routing.
+    if conditions is None and pre_pushdown_conditions is not None and environment:
+        conditions = _condition_atoms_for_complete_wheres(
+            pre_pushdown_conditions, environment
+        )
 
     priority_concept = get_priority_concept(
         all_concepts=local_all,

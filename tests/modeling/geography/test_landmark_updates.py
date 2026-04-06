@@ -202,3 +202,37 @@ select
     generated = base.generate_sql(query)[-1]
     assert '"tree_enrichment"."species" = \'Oak\'' in generated, generated
     assert '"boston_tree_info"."species" = \'Oak\'' in generated, generated
+
+
+def test_exact_match_with_derived_concept_and_extra_filter():
+    """Partial datasource must be selected when WHERE includes both city filter
+    and a filter on a derived concept (split of species).
+
+    Reproduces: city='USSFO' filter should route to sf_tree_info instead of
+    full_tree_info when the query also selects/filters on split(species, ' ')[1].
+    """
+    query = """
+import tree_enrichment;
+
+auto option_value <- split(species, ' ')[1];
+
+SELECT
+  option_value,
+  option_value as option_label,
+  count(tree_id) as tree_count
+WHERE species IS NOT NULL
+  AND city = 'USSFO'
+  AND option_value = 'Acer'
+ORDER BY tree_count DESC
+LIMIT 1;
+"""
+
+    base = Dialects.DUCK_DB.default_executor(
+        working_path=Path(__file__).parent,
+        conf=DuckDBConfig(enable_python_datasources=True),
+    )
+
+    generated = base.generate_sql(query)[-1]
+    assert (
+        "full_tree_info" not in generated
+    ), f"Expected sf_tree_info (partial) to be used instead of full_tree_info.\nSQL:\n{generated}"
