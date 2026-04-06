@@ -1,5 +1,5 @@
 query_id = "42"
-gen_length = 1178
+gen_length = 1058
 generated_sql = """
 SELECT
     cast(\"store_sales_date_date\".\"D_YEAR\" as int) as \"store_sales_date_year\",
@@ -13,10 +13,10 @@ FROM
 WHERE
     \"store_sales_item_items\".\"I_MANAGER_ID\" = 1 and \"store_sales_date_date\".\"D_MOY\" = 11 and cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 2000
 
-GROUP BY 
-    \"store_sales_item_items\".\"I_CATEGORY\",
-    \"store_sales_item_items\".\"I_CATEGORY_ID\",
-    cast(\"store_sales_date_date\".\"D_YEAR\" as int)
+GROUP BY
+    1,
+    2,
+    3
 ORDER BY 
     \"total_ext_sales_price\" desc,
     cast(\"store_sales_date_date\".\"D_YEAR\" as int) asc,

@@ -1,5 +1,5 @@
 query_id = "22"
-gen_length = 9031
+gen_length = 8753
 generated_sql = """
 
 WITH 
@@ -24,8 +24,8 @@ FROM
 WHERE
     \"inventory_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"inventory_date_date\".\"D_MONTH_SEQ\" <= 1211
 
-GROUP BY 
-    \"inventory_date_date\".\"D_MONTH_SEQ\"),
+GROUP BY
+    1),
 cheerful as (
 SELECT
     \"inventory_item_items\".\"I_BRAND\" as \"inventory_item_brand_name\",
@@ -78,8 +78,8 @@ SELECT
     avg(\"cheerful\".\"inventory_quantity_on_hand\") as \"qoh4\"
 FROM
     \"cheerful\"
-GROUP BY 
-    \"cheerful\".\"inventory_item_product_name\"),
+GROUP BY
+    1),
 juicy as (
 SELECT
     \"cheerful\".\"inventory_item_brand_name\" as \"inventory_item_brand_name\",
@@ -87,9 +87,9 @@ SELECT
     avg(\"cheerful\".\"inventory_quantity_on_hand\") as \"qoh3\"
 FROM
     \"cheerful\"
-GROUP BY 
-    \"cheerful\".\"inventory_item_brand_name\",
-    \"cheerful\".\"inventory_item_product_name\"),
+GROUP BY
+    1,
+    2),
 cooperative as (
 SELECT
     \"cheerful\".\"inventory_item_brand_name\" as \"inventory_item_brand_name\",
@@ -98,10 +98,10 @@ SELECT
     avg(\"cheerful\".\"inventory_quantity_on_hand\") as \"qoh2\"
 FROM
     \"cheerful\"
-GROUP BY 
-    \"cheerful\".\"inventory_item_brand_name\",
-    \"cheerful\".\"inventory_item_class\",
-    \"cheerful\".\"inventory_item_product_name\"),
+GROUP BY
+    1,
+    2,
+    3),
 thoughtful as (
 SELECT
     \"cheerful\".\"inventory_item_brand_name\" as \"i_brand\",
@@ -111,11 +111,15 @@ SELECT
     avg(\"cheerful\".\"inventory_quantity_on_hand\") as \"qoh1\"
 FROM
     \"cheerful\"
-GROUP BY 
+GROUP BY
     \"cheerful\".\"inventory_item_brand_name\",
-    \"cheerful\".\"inventory_item_category\",
     \"cheerful\".\"inventory_item_class\",
-    \"cheerful\".\"inventory_item_product_name\"),
+    \"cheerful\".\"inventory_item_category\",
+    \"cheerful\".\"inventory_item_product_name\",
+    1,
+    3,
+    2,
+    4),
 sweltering as (
 SELECT
     \"sparkling\".\"qoh5\" as \"qoh5\",
@@ -126,12 +130,16 @@ SELECT
 FROM
     \"uneven\"
     FULL JOIN \"sparkling\" on 1=1
-GROUP BY 
-    \"sparkling\".\"qoh5\",
+GROUP BY
+    \"uneven\".\"null_name\",
     \"uneven\".\"null_brand2\",
-    \"uneven\".\"null_category4\",
     \"uneven\".\"null_class3\",
-    \"uneven\".\"null_name\"),
+    \"uneven\".\"null_category4\",
+    1,
+    5,
+    2,
+    4,
+    3),
 young as (
 SELECT
     \"concerned\".\"inventory_item_product_name\" as \"i_product_name\",
@@ -142,12 +150,16 @@ SELECT
 FROM
     \"concerned\"
     FULL JOIN \"uneven\" on 1=1
-GROUP BY 
+GROUP BY
     \"concerned\".\"inventory_item_product_name\",
-    \"concerned\".\"qoh4\",
     \"uneven\".\"null_brand\",
+    \"uneven\".\"null_class2\",
     \"uneven\".\"null_category3\",
-    \"uneven\".\"null_class2\"),
+    2,
+    1,
+    3,
+    5,
+    4),
 vacuous as (
 SELECT
     \"juicy\".\"inventory_item_brand_name\" as \"i_brand\",
@@ -158,12 +170,16 @@ SELECT
 FROM
     \"juicy\"
     FULL JOIN \"uneven\" on 1=1
-GROUP BY 
-    \"juicy\".\"inventory_item_brand_name\",
+GROUP BY
     \"juicy\".\"inventory_item_product_name\",
-    \"juicy\".\"qoh3\",
+    \"juicy\".\"inventory_item_brand_name\",
+    \"uneven\".\"null_class\",
     \"uneven\".\"null_category2\",
-    \"uneven\".\"null_class\"),
+    3,
+    2,
+    1,
+    5,
+    4),
 yummy as (
 SELECT
     \"cooperative\".\"inventory_item_brand_name\" as \"i_brand\",
@@ -174,12 +190,16 @@ SELECT
 FROM
     \"cooperative\"
     FULL JOIN \"uneven\" on 1=1
-GROUP BY 
+GROUP BY
+    \"cooperative\".\"inventory_item_product_name\",
     \"cooperative\".\"inventory_item_brand_name\",
     \"cooperative\".\"inventory_item_class\",
-    \"cooperative\".\"inventory_item_product_name\",
-    \"cooperative\".\"qoh2\",
-    \"uneven\".\"null_category\"),
+    \"uneven\".\"null_category\",
+    4,
+    3,
+    1,
+    2,
+    5),
 late as (
 SELECT
     coalesce(\"sweltering\".\"i_brand\",\"thoughtful\".\"i_brand\",\"vacuous\".\"i_brand\",\"young\".\"i_brand\",\"yummy\".\"i_brand\") as \"i_brand\",
@@ -203,12 +223,12 @@ FROM
     \"late\"
     FULL JOIN \"macho\" on 1=1
     FULL JOIN \"questionable\" on 1=1
-GROUP BY 
-    \"late\".\"i_brand\",
-    \"late\".\"i_category\",
-    \"late\".\"i_class\",
-    \"late\".\"i_product_name\",
-    \"late\".\"qoh_all\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5
 ORDER BY 
     \"level0_qoh_all\" asc nulls first,
     \"level0_i_product_name\" asc nulls first,

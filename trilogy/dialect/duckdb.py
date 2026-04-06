@@ -14,6 +14,7 @@ from jinja2 import Template
 from trilogy.core.enums import (
     AddressType,
     FunctionType,
+    GroupMode,
     Modifier,
     UnnestMode,
     WindowType,
@@ -337,7 +338,8 @@ WITH {% if recursive%}RECURSIVE{% endif %}{% for cte in ctes %}
 WHERE
     {{ where }}
 {% endif -%}{%- if group_by %}
-GROUP BY {% for group in group_by %}
+GROUP BY
+{%- for group in group_by %}
     {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{% if having %}
 HAVING
     {{ having }}
@@ -361,6 +363,7 @@ class DuckDBDialect(BaseDialect):
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = DUCKDB_TEMPLATE
     UNNEST_MODE = UnnestMode.DIRECT
+    GROUP_MODE = GroupMode.BY_INDEX
     NULL_WRAPPER = staticmethod(null_wrapper)
     TABLE_NOT_FOUND_PATTERN = "Catalog Error: Table with name"
     HTTP_NOT_FOUND_PATTERN = "404 (Not Found)"

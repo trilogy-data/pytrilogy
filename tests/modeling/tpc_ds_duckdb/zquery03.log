@@ -1,5 +1,5 @@
 query_id = "03"
-gen_length = 1033
+gen_length = 919
 generated_sql = """
 SELECT
     cast(\"store_sales_date_date\".\"D_YEAR\" as int) as \"store_sales_date_year\",
@@ -13,10 +13,10 @@ FROM
 WHERE
     \"store_sales_date_date\".\"D_MOY\" = 11 and \"store_sales_item_items\".\"I_MANUFACT_ID\" = 128
 
-GROUP BY 
-    \"store_sales_item_items\".\"I_BRAND\",
-    \"store_sales_item_items\".\"I_BRAND_ID\",
-    cast(\"store_sales_date_date\".\"D_YEAR\" as int)
+GROUP BY
+    1,
+    2,
+    3
 ORDER BY 
     cast(\"store_sales_date_date\".\"D_YEAR\" as int) asc,
     \"sum_agg\" desc,

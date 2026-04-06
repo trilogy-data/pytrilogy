@@ -1,5 +1,5 @@
 query_id = "02"
-gen_length = 6186
+gen_length = 6114
 generated_sql = """
 
 WITH 
@@ -11,8 +11,8 @@ FROM
 WHERE
     cast(\"date_date\".\"D_YEAR\" as int) in (2001,2002)
 
-GROUP BY 
-    \"date_date\".\"D_WEEK_SEQ\"),
+GROUP BY
+    1),
 abundant as (
 SELECT
     \"date_date\".\"D_WEEK_SEQ\" as \"date_week_seq\",
@@ -50,8 +50,8 @@ FROM
 WHERE
     \"date_date\".\"D_WEEK_SEQ\" in (select wakeful.\"relevent_week_seq\" from wakeful where wakeful.\"relevent_week_seq\" is not null)
 
-GROUP BY 
-    \"date_date\".\"D_WEEK_SEQ\"),
+GROUP BY
+    1),
 thoughtful as (
 SELECT
     \"date_date\".\"D_WEEK_SEQ\" as \"date_week_seq\",
@@ -89,8 +89,8 @@ FROM
 WHERE
     \"date_date\".\"D_WEEK_SEQ\" in (select wakeful.\"relevent_week_seq\" from wakeful where wakeful.\"relevent_week_seq\" is not null)
 
-GROUP BY 
-    \"date_date\".\"D_WEEK_SEQ\"),
+GROUP BY
+    1),
 yummy as (
 SELECT
     \"abundant\".\"_virt_agg_sum_1385964036159911\" + \"thoughtful\".\"_virt_agg_sum_8612587756824465\" as \"yearly_agg_thursday_sales\",

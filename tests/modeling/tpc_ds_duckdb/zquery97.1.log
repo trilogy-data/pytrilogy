@@ -1,5 +1,5 @@
 query_id = "97.1"
-gen_length = 4057
+gen_length = 3004
 generated_sql = """
 
 WITH 
@@ -10,10 +10,10 @@ SELECT
     \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
 FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-GROUP BY 
-    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\",
-    \"store_sales_store_sales\".\"SS_ITEM_SK\",
-    \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\"),
+GROUP BY
+    1,
+    2,
+    3),
 thoughtful as (
 SELECT
     \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" as \"customer_id\",
@@ -21,10 +21,10 @@ SELECT
     \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"catalog_sales_catalog_sales\"
-GROUP BY 
-    \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\",
-    \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\",
-    \"catalog_sales_catalog_sales\".\"CS_SOLD_DATE_SK\"),
+GROUP BY
+    3,
+    1,
+    2),
 uneven as (
 SELECT
     \"catalog_sales_date_date\".\"D_MONTH_SEQ\" as \"catalog_sales_date_month_seq\",
@@ -39,23 +39,23 @@ FROM
     FULL JOIN \"thoughtful\" on \"highfalutin\".\"customer_id\" = \"thoughtful\".\"customer_id\" AND coalesce(\"item_items\".\"I_ITEM_SK\", \"highfalutin\".\"item_id\") = \"thoughtful\".\"item_id\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"thoughtful\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
     FULL JOIN \"memory\".\"customer\" as \"customer_customers\" on coalesce(\"thoughtful\".\"customer_id\", \"highfalutin\".\"customer_id\") = \"customer_customers\".\"C_CUSTOMER_SK\"
-GROUP BY 
-    \"catalog_sales_date_date\".\"D_MONTH_SEQ\",
-    \"store_sales_date_date\".\"D_MONTH_SEQ\",
-    ((cast(coalesce(\"customer_customers\".\"C_CUSTOMER_SK\",\"highfalutin\".\"customer_id\",\"thoughtful\".\"customer_id\") as string) || '-') || cast(coalesce(\"highfalutin\".\"item_id\",\"item_items\".\"I_ITEM_SK\",\"thoughtful\".\"item_id\") as string)),
-    coalesce(\"customer_customers\".\"C_CUSTOMER_SK\",\"highfalutin\".\"customer_id\",\"thoughtful\".\"customer_id\"),
-    coalesce(\"highfalutin\".\"item_id\",\"item_items\".\"I_ITEM_SK\",\"thoughtful\".\"item_id\")),
+GROUP BY
+    1,
+    4,
+    5,
+    2,
+    3),
 yummy as (
 SELECT
     CASE WHEN \"uneven\".\"catalog_sales_date_month_seq\" >= 1200 and \"uneven\".\"catalog_sales_date_month_seq\" <= 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END as \"catalog_sales\",
     CASE WHEN \"uneven\".\"store_sales_date_month_seq\" >= 1200 and \"uneven\".\"store_sales_date_month_seq\" <= 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END as \"store_sales\"
 FROM
     \"uneven\"
-GROUP BY 
-    \"uneven\".\"customer_id\",
+GROUP BY
+    2,
     \"uneven\".\"item_id\",
-    CASE WHEN \"uneven\".\"catalog_sales_date_month_seq\" >= 1200 and \"uneven\".\"catalog_sales_date_month_seq\" <= 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END,
-    CASE WHEN \"uneven\".\"store_sales_date_month_seq\" >= 1200 and \"uneven\".\"store_sales_date_month_seq\" <= 1200 + 11 THEN \"uneven\".\"customer_item\" ELSE NULL END)
+    \"uneven\".\"customer_id\",
+    1)
 SELECT
     sum(CASE
 	WHEN \"yummy\".\"store_sales\" is not null and \"yummy\".\"catalog_sales\" is null THEN 1
