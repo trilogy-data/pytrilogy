@@ -939,12 +939,12 @@ LIMIT 10
     )
     sql = base.generate_sql(queries[-1])
     assert (
-        """GROUP BY 
+        """GROUP BY
     "fuel_aggregates"."launch_tag",
-    "fuel_aggregates"."orb_pay",
-    "fuel_aggregates"."org_hex",
-    "fuel_aggregates"."org_state_code",
-    CASE"""
+    1,
+    2,
+    3,
+    4"""
         in sql[0]
     ), sql[0]
 

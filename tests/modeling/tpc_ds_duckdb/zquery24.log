@@ -1,5 +1,5 @@
 query_id = "24"
-gen_length = 3968
+gen_length = 3836
 generated_sql = """
 
 WITH 
@@ -15,7 +15,7 @@ FROM
 WHERE
     \"store_sales_store_store\".\"S_MARKET_ID\" = 8 and \"store_sales_customer_customers\".\"C_BIRTH_COUNTRY\" != UPPER(\"store_sales_customer_address_customer_address\".\"CA_COUNTRY\")  and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END is True and \"store_sales_store_store\".\"S_ZIP\" = \"store_sales_customer_address_customer_address\".\"CA_ZIP\"
 
-GROUP BY 
+GROUP BY
     \"store_sales_customer_customers\".\"C_CUSTOMER_SK\",
     \"store_sales_store_sales\".\"SS_ITEM_SK\",
     \"store_sales_store_store\".\"S_STORE_SK\"),
@@ -35,10 +35,10 @@ FROM
 WHERE
     \"store_sales_store_store\".\"S_MARKET_ID\" = 8 and \"store_sales_customer_customers\".\"C_BIRTH_COUNTRY\" != UPPER(\"store_sales_customer_address_customer_address\".\"CA_COUNTRY\")  and CASE WHEN \"store_sales_store_returns\".\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END is True and \"store_sales_store_store\".\"S_ZIP\" = \"store_sales_customer_address_customer_address\".\"CA_ZIP\"
 
-GROUP BY 
-    \"store_sales_customer_customers\".\"C_FIRST_NAME\",
-    \"store_sales_customer_customers\".\"C_LAST_NAME\",
-    \"store_sales_store_store\".\"S_STORE_NAME\"),
+GROUP BY
+    1,
+    2,
+    3),
 abundant as (
 SELECT
     avg(\"cooperative\".\"_virt_agg_sum_1360566110228423\") as \"avg_store_customer_sales\"

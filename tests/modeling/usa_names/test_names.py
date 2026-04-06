@@ -54,8 +54,8 @@ SELECT
     sum("names_usa_names"."number") as "_virt_agg_sum_7286114413769231"
 FROM
     "bigquery-public-data"."usa_names"."usa_1910_current" as "names_usa_names"
-GROUP BY 
-    "names_usa_names"."name"),
+GROUP BY
+    1),
 highfalutin as (
 SELECT
     "names_usa_names"."name" as "names_name",
@@ -63,9 +63,9 @@ SELECT
     sum("names_usa_names"."number") as "total_births"
 FROM
     "bigquery-public-data"."usa_names"."usa_1910_current" as "names_usa_names"
-GROUP BY 
-    "names_usa_names"."name",
-    "names_usa_names"."year"),
+GROUP BY
+    1,
+    2),
 cheerful as (
 SELECT
     "wakeful"."names_name" as "names_name",
@@ -111,7 +111,7 @@ WITH\s+
 \s*FROM
 \s*"bigquery-public-data"\."usa_names"\."usa_1910_current"\s+as\s+"[^"]+"
 \s*GROUP\s+BY
-\s*"[^"]+"\."name"\s*\)
+\s*1\s*\)
 .*?
 WHERE
 \s*abs\(
@@ -152,7 +152,7 @@ WITH\s+
 \s*FROM
 \s*"bigquery-public-data"\."usa_names"\."usa_1910_current"\s+as\s+"[^"]+"
 \s*GROUP\s+BY
-\s*"[^"]+"\."name"\s*\)
+\s*1\s*\)
 .*?
 WHERE
 \s*abs\(
@@ -194,7 +194,7 @@ WITH\s+
 \s*FROM
 \s*"bigquery-public-data"\."usa_names"\."usa_1910_current"\s+as\s+"[^"]+"
 \s*GROUP\s+BY
-\s*"[^"]+"\."name"\s*\)
+\s*1\s*\)
 .*?
 SELECT
 \s*"[^"]+"\."state"\s+as\s+"state",
@@ -227,7 +227,7 @@ order by
         """FROM
     "bigquery-public-data"."usa_names"."usa_1910_current" as "usa_names"
 GROUP BY 
-    "usa_names"."name"),"""
+    1),"""
         in sql
     ), sql
 
@@ -393,7 +393,7 @@ LIMIT 15
         is False
     )
     assert (
-        '''GROUP BY 
-    "usa_names"."name"'''
+        """GROUP BY 
+    1"""
         in query
     ), query

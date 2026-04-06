@@ -1,5 +1,5 @@
 query_id = "16"
-gen_length = 4537
+gen_length = 4226
 generated_sql = """
 
 WITH 
@@ -9,24 +9,24 @@ SELECT
     \"cs_catalog_sales\".\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\"
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
-GROUP BY 
-    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\",
-    \"cs_catalog_sales\".\"CS_WAREHOUSE_SK\"),
+GROUP BY
+    1,
+    2),
 thoughtful as (
 SELECT
     \"cr_catalog_returns\".\"CR_ORDER_NUMBER\" as \"cr_order_number\"
 FROM
     \"memory\".\"catalog_returns\" as \"cr_catalog_returns\"
-GROUP BY 
-    \"cr_catalog_returns\".\"CR_ORDER_NUMBER\"),
+GROUP BY
+    1),
 abundant as (
 SELECT
     \"questionable\".\"cs_order_number\" as \"cs_order_number\",
     count(\"questionable\".\"cs_warehouse_id\") as \"_virt_agg_count_7777088585630721\"
 FROM
     \"questionable\"
-GROUP BY 
-    \"questionable\".\"cs_order_number\"),
+GROUP BY
+    1),
 uneven as (
 SELECT
     CASE WHEN \"abundant\".\"_virt_agg_count_7777088585630721\" > 1 THEN \"abundant\".\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
@@ -43,11 +43,11 @@ FROM
 WHERE
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select thoughtful.\"cr_order_number\" from thoughtful where thoughtful.\"cr_order_number\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_sales\" from uneven where uneven.\"multi_warehouse_sales\" is not null)
 
-GROUP BY 
-    \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\",
-    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\",
-    \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\",
-    \"cs_catalog_sales\".\"CS_SHIP_DATE_SK\"),
+GROUP BY
+    1,
+    2,
+    4,
+    3),
 yummy as (
 SELECT
     sum(\"cs_catalog_sales\".\"CS_EXT_SHIP_COST\") as \"total_shipping_cost\",
@@ -71,8 +71,8 @@ FROM
 WHERE
     cast(\"cs_ship_date_date\".\"D_DATE\" as date) >= date '2002-02-01' and cast(\"cs_ship_date_date\".\"D_DATE\" as date) <= date '2002-04-02' and \"cs_customer_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"vacuous\".\"cs_order_number\" not in (select thoughtful.\"cr_order_number\" from thoughtful where thoughtful.\"cr_order_number\" is not null) and \"vacuous\".\"cs_order_number\" in (select uneven.\"multi_warehouse_sales\" from uneven where uneven.\"multi_warehouse_sales\" is not null)
 
-GROUP BY 
-    \"vacuous\".\"cs_order_number\"),
+GROUP BY
+    1),
 young as (
 SELECT
     count(distinct \"concerned\".\"cs_order_number\") as \"order_count\"

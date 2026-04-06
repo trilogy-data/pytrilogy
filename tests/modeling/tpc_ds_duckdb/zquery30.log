@@ -1,5 +1,5 @@
 query_id = "30"
-gen_length = 9560
+gen_length = 8059
 generated_sql = """
 
 WITH 
@@ -15,26 +15,26 @@ FROM
 WHERE
     \"web_returns_return_address_customer_address\".\"CA_STATE\" is not null
 
-GROUP BY 
-    \"web_returns_return_address_customer_address\".\"CA_STATE\",
-    \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\"),
+GROUP BY
+    2,
+    1),
 thoughtful as (
 SELECT
     \"web_returns_web_returns\".\"WR_RETURNING_ADDR_SK\" as \"web_returns_return_address_id\",
     \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\" as \"web_returns_customer_id\"
 FROM
     \"memory\".\"web_returns\" as \"web_returns_web_returns\"
-GROUP BY 
-    \"web_returns_web_returns\".\"WR_RETURNING_ADDR_SK\",
-    \"web_returns_web_returns\".\"WR_RETURNING_CUSTOMER_SK\"),
+GROUP BY
+    1,
+    2),
 vacuous as (
 SELECT
     \"abundant\".\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
     avg(\"abundant\".\"customer_state_returns_2002\") as \"_virt_agg_avg_3885168128306444\"
 FROM
     \"abundant\"
-GROUP BY 
-    \"abundant\".\"web_returns_return_address_state\"),
+GROUP BY
+    1),
 cooperative as (
 SELECT
     \"web_returns_customer_address_customer_address\".\"CA_STATE\" as \"web_returns_customer_address_state\",
@@ -60,22 +60,22 @@ FROM
 WHERE
     \"web_returns_customer_address_customer_address\".\"CA_STATE\" = 'GA' and \"web_returns_return_address_customer_address\".\"CA_STATE\" is not null
 
-GROUP BY 
-    \"web_returns_customer_address_customer_address\".\"CA_STATE\",
-    \"web_returns_customer_customers\".\"C_BIRTH_COUNTRY\",
-    \"web_returns_customer_customers\".\"C_BIRTH_DAY\",
-    \"web_returns_customer_customers\".\"C_BIRTH_MONTH\",
-    \"web_returns_customer_customers\".\"C_BIRTH_YEAR\",
-    \"web_returns_customer_customers\".\"C_CUSTOMER_ID\",
-    \"web_returns_customer_customers\".\"C_CUSTOMER_SK\",
-    \"web_returns_customer_customers\".\"C_EMAIL_ADDRESS\",
-    \"web_returns_customer_customers\".\"C_FIRST_NAME\",
-    \"web_returns_customer_customers\".\"C_LAST_NAME\",
-    \"web_returns_customer_customers\".\"C_LAST_REVIEW_DATE_SK\",
-    \"web_returns_customer_customers\".\"C_LOGIN\",
-    \"web_returns_customer_customers\".\"C_PREFERRED_CUST_FLAG\",
-    \"web_returns_customer_customers\".\"C_SALUTATION\",
-    \"web_returns_return_address_customer_address\".\"CA_STATE\"),
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    8,
+    9,
+    7,
+    10,
+    11,
+    12,
+    13,
+    14,
+    6,
+    15),
 juicy as (
 SELECT
     \"abundant\".\"customer_state_returns_2002\" as \"customer_state_returns_2002\",
@@ -120,21 +120,21 @@ FROM
 WHERE
     \"juicy\".\"customer_state_returns_2002\" > 1.2 * \"vacuous\".\"_virt_agg_avg_3885168128306444\" and \"juicy\".\"web_returns_customer_address_state\" = 'GA' and \"juicy\".\"web_returns_return_address_state\" is not null
 
-GROUP BY 
-    \"juicy\".\"customer_state_returns_2002\",
-    \"juicy\".\"web_returns_customer_birth_country\",
-    \"juicy\".\"web_returns_customer_birth_day\",
-    \"juicy\".\"web_returns_customer_birth_month\",
-    \"juicy\".\"web_returns_customer_birth_year\",
-    \"juicy\".\"web_returns_customer_email_address\",
-    \"juicy\".\"web_returns_customer_first_name\",
+GROUP BY
     \"juicy\".\"web_returns_customer_id\",
-    \"juicy\".\"web_returns_customer_last_name\",
-    \"juicy\".\"web_returns_customer_last_review_date\",
-    \"juicy\".\"web_returns_customer_login\",
-    \"juicy\".\"web_returns_customer_preferred_cust_flag\",
-    \"juicy\".\"web_returns_customer_salutation\",
-    \"juicy\".\"web_returns_customer_text_id\"
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
 ORDER BY 
     \"juicy\".\"web_returns_customer_text_id\" asc nulls first,
     \"juicy\".\"web_returns_customer_salutation\" asc nulls first,

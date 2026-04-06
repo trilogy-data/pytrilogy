@@ -1,5 +1,5 @@
 query_id = "95"
-gen_length = 5398
+gen_length = 4966
 generated_sql = """
 
 WITH 
@@ -9,17 +9,17 @@ SELECT
     \"web_sales_web_sales\".\"WS_WAREHOUSE_SK\" as \"web_sales_warehouse_id\"
 FROM
     \"memory\".\"web_sales\" as \"web_sales_web_sales\"
-GROUP BY 
-    \"web_sales_web_sales\".\"WS_ORDER_NUMBER\",
-    \"web_sales_web_sales\".\"WS_WAREHOUSE_SK\"),
+GROUP BY
+    1,
+    2),
 cooperative as (
 SELECT
     \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
     count(\"thoughtful\".\"web_sales_warehouse_id\") as \"_virt_agg_count_2435454530783120\"
 FROM
     \"thoughtful\"
-GROUP BY 
-    \"thoughtful\".\"web_sales_order_number\"),
+GROUP BY
+    1),
 questionable as (
 SELECT
     CASE WHEN \"cooperative\".\"_virt_agg_count_2435454530783120\" > 1 THEN \"cooperative\".\"web_sales_order_number\" ELSE NULL END as \"multi_warehouse_order\"
@@ -34,8 +34,8 @@ FROM
 WHERE
     CASE WHEN WR_ORDER_NUMBER IS NOT NULL THEN 1 else 0 END is True and \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select questionable.\"multi_warehouse_order\" from questionable where questionable.\"multi_warehouse_order\" is not null)
 
-GROUP BY 
-    CASE WHEN CASE WHEN WR_ORDER_NUMBER IS NOT NULL THEN 1 else 0 END is True THEN \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" ELSE NULL END),
+GROUP BY
+    1),
 vacuous as (
 SELECT
     \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" as \"web_sales_order_number\",
@@ -47,11 +47,11 @@ FROM
 WHERE
     \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select questionable.\"multi_warehouse_order\" from questionable where questionable.\"multi_warehouse_order\" is not null) and \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select uneven.\"returned_orders\" from uneven where uneven.\"returned_orders\" is not null)
 
-GROUP BY 
-    \"web_sales_web_sales\".\"WS_ORDER_NUMBER\",
-    \"web_sales_web_sales\".\"WS_SHIP_ADDR_SK\",
-    \"web_sales_web_sales\".\"WS_SHIP_DATE_SK\",
-    \"web_sales_web_sales\".\"WS_WEB_SITE_SK\"),
+GROUP BY
+    1,
+    2,
+    3,
+    4),
 yummy as (
 SELECT
     sum(\"web_sales_web_sales\".\"WS_EXT_SHIP_COST\") as \"total_shipping_cost\",
@@ -75,8 +75,8 @@ FROM
 WHERE
     cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) >= date '1999-02-01' and cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) <= date '1999-04-02' and \"web_sales_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"web_sales_web_site_web_site\".\"web_company_name\" = 'pri' and \"vacuous\".\"web_sales_order_number\" in (select questionable.\"multi_warehouse_order\" from questionable where questionable.\"multi_warehouse_order\" is not null) and \"vacuous\".\"web_sales_order_number\" in (select uneven.\"returned_orders\" from uneven where uneven.\"returned_orders\" is not null)
 
-GROUP BY 
-    \"vacuous\".\"web_sales_order_number\"),
+GROUP BY
+    1),
 young as (
 SELECT
     count(\"concerned\".\"web_sales_order_number\") as \"order_count\"

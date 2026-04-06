@@ -1,5 +1,5 @@
 query_id = "01"
-gen_length = 3269
+gen_length = 2823
 generated_sql = """
 
 WITH 
@@ -15,9 +15,9 @@ FROM
 WHERE
     \"returns_store_store\".\"S_STATE\" = 'TN' and cast(\"returns_return_date_date\".\"D_YEAR\" as int) = 2000
 
-GROUP BY 
-    \"returns_store_returns\".\"SR_CUSTOMER_SK\",
-    \"returns_store_store\".\"S_STORE_SK\"),
+GROUP BY
+    1,
+    2),
 thoughtful as (
 SELECT
     \"returns_store_returns\".\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
@@ -25,18 +25,18 @@ SELECT
     \"returns_store_returns\".\"SR_STORE_SK\" as \"returns_store_id\"
 FROM
     \"memory\".\"store_returns\" as \"returns_store_returns\"
-GROUP BY 
-    \"returns_store_returns\".\"SR_CUSTOMER_SK\",
-    \"returns_store_returns\".\"SR_RETURNED_DATE_SK\",
-    \"returns_store_returns\".\"SR_STORE_SK\"),
+GROUP BY
+    3,
+    2,
+    1),
 yummy as (
 SELECT
     \"questionable\".\"returns_store_id\" as \"returns_store_id\",
     avg(\"questionable\".\"total_returns\") as \"avg_store_returns\"
 FROM
     \"questionable\"
-GROUP BY 
-    \"questionable\".\"returns_store_id\"),
+GROUP BY
+    1),
 cooperative as (
 SELECT
     \"returns_customer_customers\".\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
@@ -50,10 +50,10 @@ FROM
 WHERE
     \"returns_store_store\".\"S_STATE\" = 'TN' and cast(\"returns_return_date_date\".\"D_YEAR\" as int) = 2000
 
-GROUP BY 
-    \"returns_customer_customers\".\"C_CUSTOMER_ID\",
-    \"returns_customer_customers\".\"C_CUSTOMER_SK\",
-    \"returns_store_store\".\"S_STORE_SK\"),
+GROUP BY
+    2,
+    1,
+    3),
 uneven as (
 SELECT
     \"cooperative\".\"returns_customer_text_id\" as \"returns_customer_text_id\",
@@ -62,10 +62,10 @@ SELECT
 FROM
     \"cooperative\"
     INNER JOIN \"questionable\" on \"cooperative\".\"returns_customer_id\" = \"questionable\".\"returns_customer_id\" AND \"cooperative\".\"returns_store_id\" = \"questionable\".\"returns_store_id\"
-GROUP BY 
-    \"cooperative\".\"returns_customer_text_id\",
-    \"cooperative\".\"returns_store_id\",
-    \"questionable\".\"total_returns\")
+GROUP BY
+    2,
+    1,
+    3)
 SELECT
     \"uneven\".\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM

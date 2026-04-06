@@ -1,5 +1,5 @@
 query_id = "08"
-gen_length = 2416
+gen_length = 2143
 generated_sql = """
 
 WITH 
@@ -10,8 +10,8 @@ SELECT
 FROM
     \"memory\".\"customer_address\" as \"customer_address_customer_address\"
     INNER JOIN \"memory\".\"customer\" as \"customer_customers\" on \"customer_address_customer_address\".\"CA_ADDRESS_SK\" = \"customer_customers\".\"C_CURRENT_ADDR_SK\"
-GROUP BY 
-    \"customer_address_customer_address\".\"CA_ZIP\"),
+GROUP BY
+    1),
 cheerful as (
 SELECT
     unnest(:_virt_7180871482901048) as \"zips_pre\"
@@ -22,8 +22,8 @@ SELECT
 FROM
     \"questionable\"
     INNER JOIN \"memory\".\"customer_address\" as \"customer_address_customer_address\" on \"questionable\".\"customer_address_zip\" = \"customer_address_customer_address\".\"CA_ZIP\"
-GROUP BY 
-    SUBSTRING(CASE WHEN \"questionable\".\"zip_p_count\" > 10 THEN \"customer_address_customer_address\".\"CA_ZIP\" ELSE NULL END,1,5)),
+GROUP BY
+    1),
 young as (
 SELECT
     SUBSTRING(SUBSTRING(cast(\"cheerful\".\"zips_pre\" as string),1,5),1,2) as \"final_zips\"
@@ -32,8 +32,8 @@ FROM
 WHERE
     SUBSTRING(cast(\"cheerful\".\"zips_pre\" as string),1,5) in (select yummy.\"_virt_func_substring_4293448550966409\" from yummy where yummy.\"_virt_func_substring_4293448550966409\" is not null)
 
-GROUP BY 
-    SUBSTRING(SUBSTRING(cast(\"cheerful\".\"zips_pre\" as string),1,5),1,2))
+GROUP BY
+    1)
 SELECT
     \"store_sales_store_store\".\"S_STORE_NAME\" as \"store_sales_store_name\",
     sum(\"store_sales_store_sales\".\"SS_NET_PROFIT\") as \"store_net_profit\"
@@ -44,8 +44,8 @@ FROM
 WHERE
     \"store_sales_date_date\".\"D_QOY\" = 2 and cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 1998 and SUBSTRING(\"store_sales_store_store\".\"S_ZIP\",1,2) in (select young.\"final_zips\" from young where young.\"final_zips\" is not null)
 
-GROUP BY 
-    \"store_sales_store_store\".\"S_STORE_NAME\"
+GROUP BY
+    1
 ORDER BY 
     \"store_sales_store_store\".\"S_STORE_NAME\" asc
 LIMIT (100)"""

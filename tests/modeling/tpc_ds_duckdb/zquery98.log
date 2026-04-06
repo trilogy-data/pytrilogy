@@ -1,5 +1,5 @@
 query_id = "98"
-gen_length = 3077
+gen_length = 2862
 generated_sql = """
 
 WITH 
@@ -24,8 +24,8 @@ SELECT
     sum(\"cheerful\".\"store_sales_ext_sales_price\") as \"_virt_agg_sum_7595906549305205\"
 FROM
     \"cheerful\"
-GROUP BY 
-    \"cheerful\".\"store_sales_item_class\"),
+GROUP BY
+    1),
 thoughtful as (
 SELECT
     \"cheerful\".\"store_sales_item_category\" as \"store_sales_item_category\",
@@ -37,12 +37,12 @@ SELECT
     sum(\"cheerful\".\"store_sales_ext_sales_price\") as \"item_revenue\"
 FROM
     \"cheerful\"
-GROUP BY 
-    \"cheerful\".\"store_sales_item_category\",
-    \"cheerful\".\"store_sales_item_class\",
-    \"cheerful\".\"store_sales_item_current_price\",
-    \"cheerful\".\"store_sales_item_desc\",
-    \"cheerful\".\"store_sales_item_name\")
+GROUP BY
+    1,
+    4,
+    5,
+    3,
+    2)
 SELECT
     \"thoughtful\".\"store_sales_item_name\" as \"store_sales_item_name\",
     \"thoughtful\".\"store_sales_item_desc\" as \"store_sales_item_desc\",

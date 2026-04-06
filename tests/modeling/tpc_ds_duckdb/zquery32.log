@@ -1,5 +1,5 @@
 query_id = "32"
-gen_length = 1602
+gen_length = 1574
 generated_sql = """
 
 WITH 
@@ -26,8 +26,8 @@ FROM
 WHERE
     cast(\"sold_date_date\".\"D_DATE\" as date) >= :start_date and cast(\"sold_date_date\".\"D_DATE\" as date) <= :end_date
 
-GROUP BY 
-    \"catalog_sales\".\"CS_ITEM_SK\")
+GROUP BY
+    1)
 SELECT
     sum(\"cheerful\".\"discount_amount\") as \"total_discount\"
 FROM

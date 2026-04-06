@@ -1,5 +1,5 @@
 query_id = "21"
-gen_length = 2608
+gen_length = 2525
 generated_sql = """
 SELECT
     \"inventory_warehouse_warehouse\".\"w_warehouse_name\" as \"inventory_warehouse_name\",
@@ -20,9 +20,9 @@ FROM
 WHERE
     cast(\"inventory_date_date\".\"D_DATE\" as date) >= date '2000-02-10' and cast(\"inventory_date_date\".\"D_DATE\" as date) <= date '2000-04-10' and \"inventory_item_items\".\"I_CURRENT_PRICE\" >= 0.99 and \"inventory_item_items\".\"I_CURRENT_PRICE\" <= 1.49
 
-GROUP BY 
-    \"inventory_item_items\".\"I_ITEM_ID\",
-    \"inventory_warehouse_warehouse\".\"w_warehouse_name\"
+GROUP BY
+    1,
+    2
 HAVING
     CASE
 	WHEN sum(CASE

@@ -1,5 +1,5 @@
 query_id = "20"
-gen_length = 2106
+gen_length = 1942
 generated_sql = """
 
 WITH 
@@ -18,20 +18,20 @@ FROM
 WHERE
     \"cs_item_items\".\"I_CATEGORY\" in ('Sports','Books','Home') and cast(\"cs_sold_date_date\".\"D_DATE\" as date) >= date '1999-02-22' and cast(\"cs_sold_date_date\".\"D_DATE\" as date) <= date '1999-03-24' and \"cs_item_items\".\"I_ITEM_ID\" is not null
 
-GROUP BY 
-    \"cs_item_items\".\"I_CATEGORY\",
-    \"cs_item_items\".\"I_CLASS\",
-    \"cs_item_items\".\"I_CURRENT_PRICE\",
-    \"cs_item_items\".\"I_ITEM_DESC\",
-    \"cs_item_items\".\"I_ITEM_ID\"),
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5),
 cooperative as (
 SELECT
     \"cheerful\".\"cs_item_class\" as \"cs_item_class\",
     sum(\"cheerful\".\"revenue\") as \"_virt_agg_sum_9832457364876792\"
 FROM
     \"cheerful\"
-GROUP BY 
-    \"cheerful\".\"cs_item_class\")
+GROUP BY
+    1)
 SELECT
     \"cheerful\".\"cs_item_name\" as \"cs_item_name\",
     \"cheerful\".\"cs_item_desc\" as \"cs_item_desc\",

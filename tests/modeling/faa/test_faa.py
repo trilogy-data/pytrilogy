@@ -24,9 +24,9 @@ select
     )[-1]
     # if we don't have this group by, we will get the wrong result
     assert (
-        '''GROUP BY 
-    "carrier_carrier"."code",
-    "carrier_carrier"."name"'''
+        """GROUP BY
+    1,
+    2"""
         in sql
     )
 

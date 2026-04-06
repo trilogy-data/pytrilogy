@@ -1,5 +1,5 @@
 query_id = "55"
-gen_length = 920
+gen_length = 850
 generated_sql = """
 SELECT
     \"store_sales_item_items\".\"I_BRAND_ID\" as \"store_sales_item_brand_id\",
@@ -12,9 +12,9 @@ FROM
 WHERE
     \"store_sales_item_items\".\"I_MANAGER_ID\" = 28 and cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 1999 and \"store_sales_date_date\".\"D_MOY\" = 11
 
-GROUP BY 
-    \"store_sales_item_items\".\"I_BRAND\",
-    \"store_sales_item_items\".\"I_BRAND_ID\"
+GROUP BY
+    1,
+    2
 ORDER BY 
     \"total_ext_sales\" desc,
     \"store_sales_item_items\".\"I_BRAND_ID\" asc

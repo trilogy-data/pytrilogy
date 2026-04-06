@@ -1,5 +1,5 @@
 query_id = "99"
-gen_length = 3266
+gen_length = 3138
 generated_sql = """
 SELECT
     SUBSTRING(\"warehouse_warehouse\".\"w_warehouse_name\",1,20) as \"warehouse_short_name\",
@@ -20,10 +20,10 @@ FROM
 WHERE
     \"ship_date_date\".\"D_MONTH_SEQ\" >= 1200 and \"ship_date_date\".\"D_MONTH_SEQ\" <= 1211 and \"catalog_sales\".\"CS_ORDER_NUMBER\" is not null and \"call_center_call_center\".\"CC_CALL_CENTER_SK\" is not null and \"warehouse_warehouse\".\"w_warehouse_sk\" is not null and \"ship_mode_ship_mode\".\"SM_SHIP_MODE_SK\" is not null
 
-GROUP BY 
-    \"ship_mode_ship_mode\".\"SM_TYPE\",
-    LOWER(\"call_center_call_center\".\"CC_NAME\") ,
-    SUBSTRING(\"warehouse_warehouse\".\"w_warehouse_name\",1,20)
+GROUP BY
+    1,
+    2,
+    3
 ORDER BY 
     \"warehouse_short_name\" asc nulls first,
     \"ship_mode_ship_mode\".\"SM_TYPE\" asc nulls first,
