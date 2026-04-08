@@ -1,0 +1,5 @@
+[engine]
+dialect = "sqlite"
+
+[engine.config]
+db_location = "https://github.com/trilogy-data/trilogy-public-models/raw/730c1aa19bc901c7cc52c04bbb07ae3175c01aa8/trilogy_public_models/sqlite/chinook/chinook.db"

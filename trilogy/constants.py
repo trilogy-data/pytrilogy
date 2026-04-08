@@ -15,6 +15,17 @@ VIRTUAL_CONCEPT_PREFIX = "_virt"
 
 ENV_CACHE_NAME = ".preql_cache.json"
 
+REMOTE_PREFIXES = (
+    "gs://",
+    "gcs://",
+    "s3://",
+    "az://",
+    "abfs://",
+    "abfss://",
+    "http://",
+    "https://",
+)
+
 
 class MagicConstants(Enum):
     NULL = "null"

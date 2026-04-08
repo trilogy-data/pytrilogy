@@ -24,6 +24,7 @@ from trilogy.constants import (
     CONFIG,
     DEFAULT_NAMESPACE,
     NULL_VALUE,
+    REMOTE_PREFIXES,
     MagicConstants,
     Parsing,
 )
@@ -2199,8 +2200,7 @@ class ParseToObjects(Transformer):
 
         def process_path(ipath: str) -> tuple[str, str, bool]:
             # Cloud storage URLs should be used as-is without path resolution
-            cloud_prefixes = ("gcs://", "gs://", "s3://", "https://", "http://")
-            is_cloud = ipath.startswith(cloud_prefixes)
+            is_cloud = ipath.startswith(REMOTE_PREFIXES)
 
             if is_cloud:
                 base = ipath
