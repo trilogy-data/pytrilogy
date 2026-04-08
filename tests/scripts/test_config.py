@@ -414,6 +414,89 @@ def test_sqlite_no_path():
         assert config.engine_config is None
 
 
+def test_sqlite_remote_downloads_to_staging(tmp_path, monkeypatch):
+    """Test that a remote SQLite db_location downloads to staging and opens read-only."""
+    # Create a real sqlite db to serve as the "remote" content
+    import sqlite3
+
+    src_db = tmp_path / "source.db"
+    conn = sqlite3.connect(str(src_db))
+    conn.execute("CREATE TABLE t (id INTEGER)")
+    conn.execute("INSERT INTO t VALUES (1)")
+    conn.commit()
+    conn.close()
+
+    # Mock urlretrieve to copy the local db instead of hitting the network
+    def fake_urlretrieve(url: str, dest: str) -> None:
+        import shutil
+
+        shutil.copy2(str(src_db), dest)
+
+    monkeypatch.setattr(
+        "trilogy.dialect.config.urllib.request.urlretrieve", fake_urlretrieve
+    )
+
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+
+    config = SQLiteConfig(
+        path="https://example.com/remote.db", staging_path=str(staging_dir)
+    )
+
+    # Downloaded to staging dir
+    assert config.path is not None
+    assert str(staging_dir) in config.path
+    assert config._remote is True
+
+    # Connection string is bare sqlite:// (creator handles the rest)
+    assert config.connection_string() == "sqlite://"
+    engine_args = config.create_engine_args()
+    assert "creator" in engine_args
+
+    # Actually queryable via sqlalchemy
+    from sqlalchemy import create_engine, text
+
+    engine = create_engine(config.connection_string(), **engine_args)
+    with engine.connect() as c:
+        result = c.execute(text("SELECT count(*) FROM t")).scalar()
+        assert result == 1
+
+
+def test_sqlite_remote_uses_system_temp_without_staging(tmp_path, monkeypatch):
+    """Test that remote SQLite falls back to system temp when no staging_path."""
+    import sqlite3
+
+    src_db = tmp_path / "source.db"
+    conn = sqlite3.connect(str(src_db))
+    conn.execute("CREATE TABLE t (id INTEGER)")
+    conn.close()
+
+    def fake_urlretrieve(url: str, dest: str) -> None:
+        import shutil
+
+        shutil.copy2(str(src_db), dest)
+
+    monkeypatch.setattr(
+        "trilogy.dialect.config.urllib.request.urlretrieve", fake_urlretrieve
+    )
+
+    config = SQLiteConfig(path="gs://bucket/data.db")
+
+    assert config._remote is True
+    assert config.path is not None
+    # Should be in system temp, not in any custom staging dir
+    assert tempfile.gettempdir() in config.path
+
+
+def test_sqlite_local_path_not_remote():
+    """Test that local paths don't trigger remote behavior."""
+    config = SQLiteConfig(path="/tmp/local.db")
+    assert config._remote is False
+    assert config.path == "/tmp/local.db"
+    assert config.connection_string() == "sqlite:////tmp/local.db"
+    assert config.create_connect_args() == {}
+
+
 def test_duckdb_remote_path_passthrough():
     """Test that remote URIs are not resolved as local paths."""
     with tempfile.TemporaryDirectory() as tmpdir:

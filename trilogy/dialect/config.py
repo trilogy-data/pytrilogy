@@ -1,6 +1,7 @@
 import tempfile
 import urllib.request
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from trilogy.constants import REMOTE_PREFIXES
@@ -51,6 +52,9 @@ class DialectConfig:
         raise NotImplementedError
 
     def create_connect_args(self) -> dict:
+        return {}
+
+    def create_engine_args(self) -> dict:
         return {}
 
     def merge_config(self, other: "DialectConfig") -> "DialectConfig":
@@ -151,12 +155,20 @@ class SQLiteConfig(DialectConfig):
         if not self.path:
             return "sqlite:///:memory:"
         if self._remote:
-            return f"sqlite:///file:{self.path}?mode=ro"
+            return "sqlite://"
         return f"sqlite:///{self.path}"
 
-    def create_connect_args(self) -> dict:
+    def create_engine_args(self) -> dict:
         if self._remote:
-            return {"uri": True}
+            import sqlite3
+
+            assert self.path is not None
+            posix_path = Path(self.path).as_posix()
+            return {
+                "creator": lambda: sqlite3.connect(
+                    f"file:{posix_path}?mode=ro", uri=True
+                )
+            }
         return {}
 
 
