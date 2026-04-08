@@ -33,6 +33,7 @@ def default_factory(conf: DialectConfig, config_type):
     connect_args = conf.create_connect_args()
     if connect_args:
         engine_args["connect_args"] = connect_args
+    engine_args.update(conf.create_engine_args())
     return create_engine(conf.connection_string(), **engine_args)
 
 

@@ -615,15 +615,15 @@ def refresh(
         config_path_str = (
             str(runtime_config.source_path) if runtime_config.source_path else None
         )
-        show_execution_info(
-            input_type,
-            input_name,
-            edialect.value,
-            cli_params.debug,
-            config_path_str,
-            cli_params.debug_file,
-        )
         if input_path.is_dir():
+            show_execution_info(
+                input_type,
+                input_name,
+                edialect.value,
+                cli_params.debug,
+                config_path_str,
+                cli_params.debug_file,
+            )
             approved, phys_graph = _preview_directory_refresh(
                 cli_params, input_path, interactive=refresh_params.interactive
             )
