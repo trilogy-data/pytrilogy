@@ -1,5 +1,9 @@
+import tempfile
+import urllib.request
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+
+from trilogy.constants import REMOTE_PREFIXES
 
 if TYPE_CHECKING:
     try:
@@ -127,14 +131,33 @@ class SQLiteConfig(DialectConfig):
         self,
         path: str | None = None,
         retry_config: RetryConfig | None = None,
+        staging_path: str | None = None,
     ):
         super().__init__(retry_config=retry_config)
-        self.path = path
+        self._remote = bool(path and path.startswith(REMOTE_PREFIXES))
+        self.path: str | None
+        if self._remote:
+            self.path = self._download_remote(path, staging_path)  # type: ignore
+        else:
+            self.path = path
+
+    @staticmethod
+    def _download_remote(url: str, staging_path: str | None = None) -> str:
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False, dir=staging_path)
+        urllib.request.urlretrieve(url, tmp.name)
+        return tmp.name
 
     def connection_string(self) -> str:
         if not self.path:
             return "sqlite:///:memory:"
+        if self._remote:
+            return f"sqlite:///file:{self.path}?mode=ro"
         return f"sqlite:///{self.path}"
+
+    def create_connect_args(self) -> dict:
+        if self._remote:
+            return {"uri": True}
+        return {}
 
 
 class PostgresConfig(DialectConfig):

@@ -139,9 +139,6 @@ def test_cli_merge_config():
         config_content = """
 [engine]
 dialect = "duckdb"
-
-[engine.config]
-path = ":memory:"
 """
         config_file = tmppath / "trilogy.toml"
         config_file.write_text(config_content)
@@ -221,11 +218,10 @@ def test_config_types():
 dialect = "duck_db"
 
 [engine.config]
-path = "/tmp/test.db"
 enable_spatial = true
 """,
             DuckDBConfig,
-            {"path": "/tmp/test.db", "enable_spatial": True},
+            {"enable_spatial": True},
         ),
         (
             Dialects.POSTGRES,
@@ -336,10 +332,10 @@ project = "test-project"
 dialect = "sqlite"
 
 [engine.config]
-path = "/tmp/test.sqlite"
+db_location = "test.sqlite"
 """,
             SQLiteConfig,
-            {"path": "/tmp/test.sqlite"},
+            {},  # path checked separately since it resolves to absolute
         ),
     ]
 
@@ -375,6 +371,61 @@ path = "/tmp/test.sqlite"
         finally:
             # Clean up the temporary file
             tmp_file_path.unlink()
+
+
+def test_duckdb_path_resolution():
+    """Test that DuckDB path in config is resolved relative to the toml file."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(
+            '[engine]\ndialect = "duck_db"\n\n[engine.config]\ndb_location = "my.duckdb"\n'
+        )
+
+        config = load_config_file(config_file)
+        assert isinstance(config.engine_config, DuckDBConfig)
+        expected = str((tmppath / "my.duckdb").resolve())
+        assert config.engine_config.path == expected
+
+
+def test_sqlite_path_resolution():
+    """Test that SQLite path in config is resolved relative to the toml file."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(
+            '[engine]\ndialect = "sqlite"\n\n[engine.config]\ndb_location = "chinook.db"\n'
+        )
+
+        config = load_config_file(config_file)
+        assert isinstance(config.engine_config, SQLiteConfig)
+        expected = str((tmppath / "chinook.db").resolve())
+        assert config.engine_config.path == expected
+
+
+def test_sqlite_no_path():
+    """Test that SQLite config without path defaults to in-memory."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text('[engine]\ndialect = "sqlite"\n')
+
+        config = load_config_file(config_file)
+        assert config.engine_config is None
+
+
+def test_duckdb_remote_path_passthrough():
+    """Test that remote URIs are not resolved as local paths."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(
+            '[engine]\ndialect = "duck_db"\n\n[engine.config]\ndb_location = "gs://my-bucket/data.duckdb"\n'
+        )
+
+        config = load_config_file(config_file)
+        assert isinstance(config.engine_config, DuckDBConfig)
+        assert config.engine_config.path == "gs://my-bucket/data.duckdb"
 
 
 def test_load_env_file():

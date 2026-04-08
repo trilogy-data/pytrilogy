@@ -6,7 +6,7 @@ from typing import Optional
 from tomllib import loads
 
 from trilogy.ai.enums import Provider
-from trilogy.constants import logger
+from trilogy.constants import REMOTE_PREFIXES, logger
 from trilogy.dialect import (
     BigQueryConfig,
     DialectConfig,
@@ -21,6 +21,13 @@ from trilogy.dialect.enums import Dialects
 from trilogy.staging import StagingConfig
 
 DEFAULT_PARALLELISM = 4
+DB_LOCATION_KEY = "db_location"
+
+
+def resolve_db_location(raw: str, toml_parent: Path) -> str:
+    if raw.startswith(REMOTE_PREFIXES):
+        return raw
+    return str((toml_parent / raw).resolve())
 
 
 def load_env_file(env_file_path: Path) -> dict[str, str] | None:
@@ -84,19 +91,33 @@ def load_config_file(path: Path) -> RuntimeConfig:
         toml_content = f.read()
     config_data = loads(toml_content)
 
+    staging_raw: dict = config_data.get("staging", {})
+    staging = StagingConfig(path=staging_raw.get("path"))
+
     engine_raw: dict = config_data.get("engine", {})
     engine_config_raw = engine_raw.get("config", {})
     engine = Dialects(engine_raw.get("dialect")) if engine_raw.get("dialect") else None
     engine_config: DialectConfig | None
     if engine:
         if engine == Dialects.DUCK_DB:
-            engine_config = (
-                DuckDBConfig(**engine_config_raw) if engine_config_raw else None
-            )
+            if engine_config_raw:
+                if DB_LOCATION_KEY in engine_config_raw:
+                    engine_config_raw["path"] = resolve_db_location(
+                        engine_config_raw.pop(DB_LOCATION_KEY), path.parent
+                    )
+                engine_config = DuckDBConfig(**engine_config_raw)
+            else:
+                engine_config = None
         elif engine == Dialects.SQLITE:
-            engine_config = (
-                SQLiteConfig(**engine_config_raw) if engine_config_raw else None
-            )
+            if engine_config_raw:
+                if DB_LOCATION_KEY in engine_config_raw:
+                    engine_config_raw["path"] = resolve_db_location(
+                        engine_config_raw.pop(DB_LOCATION_KEY), path.parent
+                    )
+                engine_config_raw["staging_path"] = staging.resolved_root.rstrip("/")
+                engine_config = SQLiteConfig(**engine_config_raw)
+            else:
+                engine_config = None
         elif engine == Dialects.POSTGRES:
             engine_config = (
                 PostgresConfig(**engine_config_raw) if engine_config_raw else None
@@ -129,9 +150,6 @@ def load_config_file(path: Path) -> RuntimeConfig:
         env_files = [path.parent / env_raw]
     else:
         env_files = [path.parent / p for p in env_raw]
-
-    staging_raw: dict = config_data.get("staging", {})
-    staging = StagingConfig(path=staging_raw.get("path"))
 
     serve_raw: dict = config_data.get("serve", {})
     serve_studio_url = serve_raw.get("studio_url", DEFAULT_STUDIO_URL)

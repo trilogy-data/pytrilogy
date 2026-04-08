@@ -1,0 +1,13 @@
+key id int;
+property id.name string;
+
+auto count <- count(id);
+
+datasource artists (
+    ArtistId:id,
+    Name:name,
+)
+grain (id)
+address artists;
+
+select count;
