@@ -822,6 +822,31 @@ def test_preview_directory_import_only_script_does_not_reprobe(tmp_path):
     assert probe_calls.count("alpha") == 1
 
 
+def test_preview_directory_root_probe_uses_matching_namespace(tmp_path):
+    """Root probes must run in a script whose concept namespace matches the target."""
+    (tmp_path / "source.preql").write_text(_SOURCE_SCRIPT)
+    (tmp_path / "base.preql").write_text(
+        """\
+import source as src;
+
+datasource target_events (
+    ev_id: src.ev_id,
+    ev_ts: src.ev_ts
+)
+grain (src.ev_id)
+address target_events_table
+incremental by src.ev_ts;
+"""
+    )
+
+    cli_params = _make_cli_params(tmp_path)
+    approved, phys_graph = _preview_directory_refresh(cli_params, tmp_path)
+
+    assert approved
+    assert phys_graph is not None
+    assert {node.address for node in phys_graph.nodes} == {"target_events_table"}
+
+
 def test_execute_physical_node_prints_refreshed_count(tmp_path, capsys):
     """execute_managed_node_for_refresh prints a summary after refreshing."""
     script = tmp_path / "test.preql"

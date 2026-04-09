@@ -185,6 +185,7 @@ def _preview_directory_refresh(
     # root physical address -> set of concept addresses (as seen in that executor's namespace)
     # that are needed by at least one non-root datasource in any script
     root_addr_to_needed_concepts: dict[str, set[str]] = defaultdict(set)
+    root_probe_candidates: dict[str, dict[ScriptNode, set[str]]] = defaultdict(dict)
 
     script_files = [fp for fp in files if not isinstance(fp, StringIO)]
     print_info(f"Scanning {len(script_files)} file(s)...")
@@ -233,6 +234,10 @@ def _preview_directory_refresh(
                             root_addr_to_needed_concepts[ds.safe_address].update(
                                 matching
                             )
+                            root_probe_candidates.setdefault(ds.safe_address, {})
+                            root_probe_candidates[ds.safe_address].setdefault(
+                                node, set()
+                            ).update(matching)
         finally:
             executor.close()
 
@@ -289,10 +294,10 @@ def _preview_directory_refresh(
     # Phase 2a: collect root watermarks once per physical root address (parallel).
     # Only probe root addresses that were directly matched to a needed concept within
     # an executor context — no cross-script namespace reconciliation needed.
-    root_owner_to_addrs: dict[ScriptNode, set[str]] = defaultdict(set)
-    for addr in root_addr_to_needed_concepts:
-        if addr in addr_to_owner:
-            root_owner_to_addrs[addr_to_owner[addr]].add(addr)
+    root_probe_plan: dict[ScriptNode, dict[str, set[str]]] = defaultdict(dict)
+    for addr, matches_by_node in root_probe_candidates.items():
+        probe_node = min(matches_by_node, key=lambda n: script_to_order.get(n, 999999))
+        root_probe_plan[probe_node][addr] = matches_by_node[probe_node]
 
     from trilogy.scripts.display import root_probe_progress, show_root_concepts
 
@@ -300,32 +305,27 @@ def _preview_directory_refresh(
     print_info(f"Probing {total_physical} managed asset(s)...")
 
     all_root_watermarks: dict[str, DatasourceWatermark] = {}
-    if root_owner_to_addrs:
+    if root_probe_plan:
         with root_probe_progress(len(root_addr_to_needed_concepts)) as _root_progress:
             with ThreadPoolExecutor(max_workers=parallelism) as pool:
                 root_futures = {
                     pool.submit(
                         _collect_root_watermarks,
                         node,
-                        root_owner_to_addrs[node],
+                        set(root_probe_plan[node]),
                         address_map,
-                        set().union(
-                            *[
-                                root_addr_to_needed_concepts[addr]
-                                for addr in root_owner_to_addrs[node]
-                            ]
-                        ),
+                        set().union(*root_probe_plan[node].values()),
                         cli_params,
                         edialect,
                         config,
                     ): node
-                    for node in root_owner_to_addrs
+                    for node in root_probe_plan
                 }
                 _root_progress.register_futures(root_futures)
                 for root_future in as_completed(root_futures):
                     all_root_watermarks.update(root_future.result())
                     node = root_futures[root_future]
-                    for _ in root_owner_to_addrs[node]:
+                    for _ in root_probe_plan[node]:
                         _root_progress.advance()
 
     # Phase 2b: probe each managed asset exactly once via its owner script (parallel)
