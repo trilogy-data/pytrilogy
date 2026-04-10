@@ -53,7 +53,7 @@ packages = {find = {exclude = ["dist", "build", "*.tests", "*.tests.*", "tests.*
 "*" = ["*.tf", "*.jinja", "py.typed", "*.lark", "*.preql"]
 
 [build-system]
-requires = ["maturin>=1.0,<2.0"]
+requires = ["maturin==1.10.2"]
 build-backend = "build_backend"
 backend-path = [".scripts"]
 
