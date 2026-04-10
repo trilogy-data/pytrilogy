@@ -292,33 +292,33 @@ def test_get_requires_for_build_wheel():
     """Test get_requires_for_build_wheel delegates to maturin"""
     with patch(
         "build_backend.maturin.get_requires_for_build_wheel",
-        return_value=["maturin>=1.0"],
+        return_value=["maturin==1.10.2"],
     ) as mock_get:
         result = build_backend.get_requires_for_build_wheel()
 
     mock_get.assert_called_once_with(None)
-    assert result == ["maturin>=1.0"]
+    assert result == ["maturin==1.10.2"]
 
 
 def test_get_requires_for_build_sdist():
     """Test get_requires_for_build_sdist delegates to maturin"""
     with patch(
         "build_backend.maturin.get_requires_for_build_sdist",
-        return_value=["maturin>=1.0"],
+        return_value=["maturin==1.10.2"],
     ) as mock_get:
         result = build_backend.get_requires_for_build_sdist()
 
     mock_get.assert_called_once_with(None)
-    assert result == ["maturin>=1.0"]
+    assert result == ["maturin==1.10.2"]
 
 
 def test_get_requires_for_build_editable():
     """Test get_requires_for_build_editable delegates to maturin"""
     with patch(
         "build_backend.maturin.get_requires_for_build_editable",
-        return_value=["maturin>=1.0"],
+        return_value=["maturin==1.10.2"],
     ) as mock_get:
         result = build_backend.get_requires_for_build_editable()
 
     mock_get.assert_called_once_with(None)
-    assert result == ["maturin>=1.0"]
+    assert result == ["maturin==1.10.2"]

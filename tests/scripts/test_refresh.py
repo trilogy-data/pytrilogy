@@ -2,6 +2,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from click.exceptions import Exit
 from click.testing import CliRunner
 
 from trilogy import Dialects
@@ -845,6 +846,69 @@ incremental by src.ev_ts;
     assert approved
     assert phys_graph is not None
     assert {node.address for node in phys_graph.nodes} == {"target_events_table"}
+
+
+def test_preview_directory_relative_input_matches_absolute_behavior(
+    tmp_path, monkeypatch
+):
+    """Relative refresh paths should resolve to the same script ownership as absolute ones."""
+    (tmp_path / "source.preql").write_text(_SOURCE_SCRIPT)
+    (tmp_path / "base.preql").write_text(
+        """\
+import source as src;
+
+datasource target_events (
+    ev_id: src.ev_id,
+    ev_ts: src.ev_ts
+)
+grain (src.ev_id)
+address target_events_table
+incremental by src.ev_ts;
+"""
+    )
+
+    monkeypatch.chdir(tmp_path.parent)
+    relative_input = Path(tmp_path.name)
+    cli_params = CLIRuntimeParams(
+        input=str(relative_input),
+        dialect=Dialects.DUCK_DB,
+        refresh_params=RefreshParams(force_sources=frozenset()),
+    )
+
+    approved, phys_graph = _preview_directory_refresh(cli_params, relative_input)
+
+    assert approved
+    assert phys_graph is not None
+    assert {node.address for node in phys_graph.nodes} == {"target_events_table"}
+
+
+def test_preview_directory_fails_when_root_probe_coverage_is_missing(tmp_path, capsys):
+    """Silent root probe misses should fail validation instead of reporting up to date."""
+    (tmp_path / "source.preql").write_text(_SOURCE_SCRIPT)
+    (tmp_path / "base.preql").write_text(
+        """\
+import source as src;
+
+datasource target_events (
+    ev_id: src.ev_id,
+    ev_ts: src.ev_ts
+)
+grain (src.ev_id)
+address target_events_table
+incremental by src.ev_ts;
+"""
+    )
+
+    cli_params = _make_cli_params(tmp_path)
+    with set_rich_mode(False), patch(
+        "trilogy.scripts.refresh._collect_root_watermarks", return_value={}
+    ):
+        with pytest.raises(Exit) as exc_info:
+            _preview_directory_refresh(cli_params, tmp_path)
+
+    assert exc_info.value.exit_code == 1
+    captured = capsys.readouterr()
+    assert "root watermark concepts were planned but never collected" in captured.out
 
 
 def test_execute_physical_node_prints_refreshed_count(tmp_path, capsys):
