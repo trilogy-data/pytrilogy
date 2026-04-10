@@ -1,6 +1,11 @@
 from datetime import date, datetime
 from decimal import Decimal
 
+import pytest
+
+from trilogy import Dialects
+from trilogy.core.enums import ValidationScope
+from trilogy.core.exceptions import DatasourceGrainValidationError, ModelValidationError
 from trilogy.core.models.core import (
     ArrayType,
     DataType,
@@ -11,6 +16,7 @@ from trilogy.core.models.core import (
     TraitDataType,
 )
 from trilogy.core.validation.datasource import type_check
+from trilogy.core.validation.environment import validate_environment
 
 
 def test_type_check():
@@ -225,3 +231,34 @@ def test_type_check_edge_cases():
     assert type_check(nested_list, DataType.ARRAY)
     assert type_check(nested_dict, DataType.MAP)
     assert type_check(nested_dict, DataType.STRUCT)
+
+
+def test_validate_datasource_fails_early_for_missing_grain_column():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        """
+        key city string;
+        property city.data_updated_through datetime;
+
+        datasource city_update_time (
+            data_updated_through: data_updated_through
+        )
+        grain (city)
+        query '''
+        SELECT 'USNYC' as city, TIMESTAMP '2024-01-01 00:00:00' as data_updated_through
+        ''';
+        """
+    )
+
+    with pytest.raises(ModelValidationError) as exc_info:
+        validate_environment(
+            executor.environment,
+            scope=ValidationScope.DATASOURCES,
+            exec=executor,
+        )
+
+    assert any(
+        isinstance(child, DatasourceGrainValidationError)
+        and "not present in datasource output: local.city" in child.message
+        for child in exc_info.value.children or []
+    )

@@ -602,6 +602,7 @@ def run_parallel_execution(
     execution_mode: ExecutionMode = ExecutionMode.RUN,
     graph: nx.DiGraph | None = None,
     executor_factory_override: Callable[[Any], Executor] | None = None,
+    fail_on_error: bool = True,
 ) -> ParallelExecutionSummary:
     """
     Run parallel execution for directory inputs, or single-script execution
@@ -776,7 +777,9 @@ def run_parallel_execution(
 
     if not summary.all_succeeded:
         print_error("Some scripts failed during execution.")
-        raise Exit(1)
+        if fail_on_error:
+            raise Exit(1)
+        return summary
 
     print_success("All scripts executed successfully!")
     return summary

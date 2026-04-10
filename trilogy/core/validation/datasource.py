@@ -16,6 +16,7 @@ from trilogy.core.enums import ComparisonOperator, Modifier
 from trilogy.core.exceptions import (
     DatasourceColumnBindingData,
     DatasourceColumnBindingError,
+    DatasourceGrainValidationError,
     DatasourceModelValidationError,
 )
 from trilogy.core.models.build import (
@@ -121,6 +122,28 @@ def validate_datasource(
     fix: bool = False,
 ) -> list[ValidationTest]:
     results: list[ValidationTest] = []
+    datasource_output_addresses = {concept.address for concept in datasource.concepts}
+    missing_grain_components = sorted(
+        component
+        for component in datasource.grain.components
+        if component not in datasource_output_addresses
+    )
+    if missing_grain_components:
+        results.append(
+            ValidationTest(
+                check_type=ExpectationType.LOGICAL,
+                expected="grain_columns_present",
+                ran=True,
+                result=DatasourceGrainValidationError(
+                    "Datasource"
+                    f" {datasource.name} failed validation. Grain references"
+                    " concepts not present in datasource output:"
+                    f" {', '.join(missing_grain_components)}"
+                ),
+            )
+        )
+        return results
+
     validation_datasource = (
         exec.get_validation_cached_datasource(datasource) if exec else datasource
     )
