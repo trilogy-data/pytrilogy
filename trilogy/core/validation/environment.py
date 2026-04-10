@@ -1,3 +1,5 @@
+from contextlib import nullcontext
+
 from trilogy import Environment, Executor
 from trilogy.authoring import DataType, Function
 from trilogy.core.enums import FunctionType, Purpose, ValidationScope
@@ -48,17 +50,19 @@ def validate_environment(
         env.add_concept(concept)
     build_env = env.materialize_for_select()
     results: list[ValidationTest] = []
-    if scope == ValidationScope.ALL or scope == ValidationScope.DATASOURCES:
-        for datasource in build_env.datasources.values():
-            if targets and datasource.name not in targets:
-                continue
-            results += validate_datasource(datasource, env, build_env, exec)
-    if scope == ValidationScope.ALL or scope == ValidationScope.CONCEPTS:
+    validation_scope = exec.validation_scope() if exec else nullcontext()
+    with validation_scope:
+        if scope == ValidationScope.ALL or scope == ValidationScope.DATASOURCES:
+            for datasource in build_env.datasources.values():
+                if targets and datasource.name not in targets:
+                    continue
+                results += validate_datasource(datasource, env, build_env, exec)
+        if scope == ValidationScope.ALL or scope == ValidationScope.CONCEPTS:
 
-        for bconcept in build_env.concepts.values():
-            if targets and bconcept.address not in targets:
-                continue
-            results += validate_concept(bconcept, env, build_env, exec)
+            for bconcept in build_env.concepts.values():
+                if targets and bconcept.address not in targets:
+                    continue
+                results += validate_concept(bconcept, env, build_env, exec)
 
     # raise a nicely formatted union of all exceptions
     exceptions: list[ModelValidationError] = [e.result for e in results if e.result]
