@@ -1,7 +1,9 @@
 import uuid
+from contextlib import contextmanager
+from dataclasses import replace as dc_replace
 from functools import singledispatchmethod
 from pathlib import Path
-from typing import Any, Generator, List, Mapping, Optional
+from typing import Any, Generator, List, Mapping, Optional, TypeVar, cast
 
 from trilogy.constants import MagicConstants, Rendering, logger
 from trilogy.core.enums import (
@@ -15,7 +17,7 @@ from trilogy.core.enums import (
     ValidationScope,
 )
 from trilogy.core.models.author import Comment, Comparison, Concept, Function
-from trilogy.core.models.build import BuildFunction
+from trilogy.core.models.build import BuildDatasource, BuildFunction
 from trilogy.core.models.core import ListWrapper, MapWrapper
 from trilogy.core.models.datasource import Address, Datasource, UpdateKeys
 from trilogy.core.models.environment import Environment
@@ -73,6 +75,8 @@ from trilogy.parser import parse_text
 from trilogy.render import get_dialect_generator
 from trilogy.staging import StagingConfig
 
+ValidationDatasourceT = TypeVar("ValidationDatasourceT", Datasource, BuildDatasource)
+
 
 class Executor(object):
     def __init__(
@@ -103,6 +107,10 @@ class Executor(object):
             instance_id=self._instance_id,
         )
         self.connection = self.connect()
+        self._validation_datasource_cache: (
+            dict[str, Datasource | BuildDatasource] | None
+        ) = None
+        self._validation_temp_tables: list[str] = []
         # TODO: make generic
         if self.dialect == Dialects.DATAFRAME:
             self.engine.setup(self.environment, self.connection)
@@ -167,6 +175,65 @@ class Executor(object):
 
             gc.collect()
         self.connected = False
+
+    @contextmanager
+    def validation_scope(self) -> Generator[None, None, None]:
+        if self._validation_datasource_cache is not None:
+            yield
+            return
+
+        self._validation_datasource_cache = {}
+        self._validation_temp_tables = []
+        try:
+            yield
+        finally:
+            quote = self.generator.QUOTE_CHARACTER
+            for table_name in reversed(self._validation_temp_tables):
+                try:
+                    self.execute_raw_sql(
+                        f"DROP TABLE IF EXISTS {quote}{table_name}{quote}"
+                    )
+                except Exception:
+                    pass
+            self._validation_datasource_cache = None
+            self._validation_temp_tables = []
+
+    def get_validation_cached_datasource(
+        self, datasource: ValidationDatasourceT
+    ) -> ValidationDatasourceT:
+        cache = self._validation_datasource_cache
+        if cache is None or self.dialect != Dialects.DUCK_DB:
+            return datasource
+
+        address = datasource.address
+        if (
+            not isinstance(address, Address)
+            or address.type != AddressType.PYTHON_SCRIPT
+        ):
+            return datasource
+
+        cached = cache.get(datasource.identifier)
+        if cached is not None:
+            return cast(ValidationDatasourceT, cached)
+
+        table_name = f"__trilogy_validation_cache_{datasource.safe_identifier}"
+        quote = self.generator.QUOTE_CHARACTER
+        source_sql = self.generator.render_source(address)
+        self.execute_raw_sql(
+            f"CREATE TEMP TABLE {quote}{table_name}{quote} AS SELECT * FROM {source_sql}"
+        )
+
+        cached_address = Address(location=table_name, type=AddressType.TABLE)
+        cached_datasource: Datasource | BuildDatasource
+        if isinstance(datasource, Datasource):
+            cached_datasource = datasource.duplicate()
+            cached_datasource.address = cached_address
+        else:
+            cached_datasource = dc_replace(datasource, address=cached_address)
+
+        cache[datasource.identifier] = cached_datasource
+        self._validation_temp_tables.append(table_name)
+        return cast(ValidationDatasourceT, cached_datasource)
 
     def update_datasource(
         self,

@@ -121,14 +121,20 @@ def validate_datasource(
     fix: bool = False,
 ) -> list[ValidationTest]:
     results: list[ValidationTest] = []
+    validation_datasource = (
+        exec.get_validation_cached_datasource(datasource) if exec else datasource
+    )
     # we might have merged concepts, where both will map out to the same
     unique_outputs = unique(
-        [build_env.concepts[col.concept.address] for col in datasource.columns],
+        [
+            build_env.concepts[col.concept.address]
+            for col in validation_datasource.columns
+        ],
         "address",
     )
     type_query = easy_query(
         concepts=unique_outputs,
-        datasource=datasource,
+        datasource=validation_datasource,
         env=env,
         limit=100,
     )
@@ -237,9 +243,11 @@ def validate_datasource(
 
     # grain validation section
     query = easy_query(
-        concepts=[build_env.concepts[name] for name in datasource.grain.components]
+        concepts=[
+            build_env.concepts[name] for name in validation_datasource.grain.components
+        ]
         + [build_env.concepts["grain_check"]],
-        datasource=datasource,
+        datasource=validation_datasource,
         env=exec.environment,
         condition=BuildComparison(
             left=build_env.concepts["grain_check"],
