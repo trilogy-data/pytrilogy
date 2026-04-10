@@ -229,6 +229,8 @@ def test_duckdb_normalize_db_type():
     dialect = Dialects.DUCK_DB.default_executor().generator
     assert dialect.normalize_db_type("INTEGER") == DataType.INTEGER
     assert dialect.normalize_db_type("VARCHAR") == DataType.STRING
+    assert dialect.normalize_db_type("GEOMETRY") == DataType.GEOGRAPHY
+    assert dialect.normalize_db_type("GEOMETRY('OGC:CRS84')") == DataType.GEOGRAPHY
     assert dialect.normalize_db_type("BOOLEAN") == DataType.BOOL
     assert dialect.normalize_db_type("DATE") == DataType.DATE
     assert dialect.normalize_db_type("TIMESTAMP") == DataType.DATETIME

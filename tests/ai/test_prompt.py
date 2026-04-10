@@ -15,6 +15,7 @@ def test_datatype_to_field_prompt():
 
     # Test basic DataType enum values
     assert datatype_to_field_prompt(DataType.STRING) == "string"
+    assert datatype_to_field_prompt(DataType.BYTES) == "bytes"
     assert datatype_to_field_prompt(DataType.BOOL) == "bool"
     assert datatype_to_field_prompt(DataType.INTEGER) == "int"
     assert datatype_to_field_prompt(DataType.FLOAT) == "float"

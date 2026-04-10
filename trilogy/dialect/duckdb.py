@@ -19,7 +19,7 @@ from trilogy.core.enums import (
     UnnestMode,
     WindowType,
 )
-from trilogy.core.models.core import DataType
+from trilogy.core.models.core import CONCRETE_TYPES, DataType
 from trilogy.core.models.datasource import Address
 from trilogy.dialect.base import BaseDialect
 
@@ -439,10 +439,12 @@ class DuckDBDialect(BaseDialect):
         "int8": DataType.BIGINT,
         "long": DataType.BIGINT,
         "hugeint": DataType.BIGINT,
+        "blob": DataType.BYTES,
         "varchar": DataType.STRING,
         "text": DataType.STRING,
         "char": DataType.STRING,
         "bpchar": DataType.STRING,
+        "geometry": DataType.GEOGRAPHY,
         "boolean": DataType.BOOL,
         "logical": DataType.BOOL,
         "timestamp": DataType.DATETIME,
@@ -457,6 +459,40 @@ class DuckDBDialect(BaseDialect):
         "double precision": DataType.FLOAT,
         "decimal": DataType.NUMERIC,
     }
+
+    def refine_runtime_value_type_for_validation(
+        self,
+        executor,
+        value: Any,
+        inferred_type: CONCRETE_TYPES,
+        expected_type: CONCRETE_TYPES,
+        result_type: CONCRETE_TYPES | None = None,
+    ) -> CONCRETE_TYPES:
+        if (
+            inferred_type == DataType.BYTES
+            and expected_type == DataType.GEOGRAPHY
+            and result_type == DataType.GEOGRAPHY
+        ):
+            return DataType.GEOGRAPHY
+
+        return inferred_type
+
+    def get_result_column_types_for_validation(
+        self, result: Any
+    ) -> dict[str, CONCRETE_TYPES] | None:
+        cursor = getattr(result, "cursor", None)
+        description = getattr(cursor, "description", None)
+        if not description:
+            return None
+
+        output: dict[str, CONCRETE_TYPES] = {}
+        for column in description:
+            if len(column) < 2:
+                continue
+            name = str(column[0]).lower()
+            datatype = self.normalize_db_type(str(column[1]))
+            output[name] = datatype
+        return output
 
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None

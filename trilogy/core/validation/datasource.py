@@ -23,7 +23,7 @@ from trilogy.core.models.build import (
     BuildDatasource,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.models.core import CONCRETE_TYPES, EnumType
+from trilogy.core.models.core import CONCRETE_TYPES, EnumType, is_compatible_datatype
 from trilogy.core.validation.common import ExpectationType, ValidationTest, easy_query
 from trilogy.utility import unique
 
@@ -52,6 +52,8 @@ def type_check(
 
     if target_type == DataType.STRING:
         return isinstance(input, str)
+    if target_type == DataType.BYTES:
+        return isinstance(input, (bytes, bytearray, memoryview))
     if target_type == DataType.INTEGER:
         return isinstance(input, int)
     if target_type == DataType.BIGINT:
@@ -74,6 +76,10 @@ def type_check(
         return isinstance(input, datetime)
     if target_type == DataType.TIMESTAMP:
         return isinstance(input, datetime)  # or timestamp type if you have one
+    if target_type == DataType.GEOGRAPHY:
+        # Unsafe compatibility shim: some DuckDB geography values currently surface
+        # as raw bytes, but not all bytes payloads are valid geometries.
+        return isinstance(input, (bytes, bytearray, memoryview))
     if target_type == DataType.UNIX_SECONDS:
         return isinstance(input, (int, float))  # Unix timestamps are numeric
     if target_type == DataType.DATE_PART:
@@ -91,6 +97,20 @@ def type_check(
     if target_type == DataType.UNKNOWN:
         return True
     return False
+
+
+def inferred_type_check(
+    inferred_type: CONCRETE_TYPES,
+    expected_type: CONCRETE_TYPES,
+) -> bool:
+    target_type = expected_type
+    while isinstance(target_type, TraitDataType):
+        target_type = target_type.data_type
+
+    if isinstance(target_type, EnumType):
+        return inferred_type_check(inferred_type, target_type.type)
+
+    return is_compatible_datatype(inferred_type, target_type)
 
 
 def validate_datasource(
@@ -114,10 +134,15 @@ def validate_datasource(
     )
 
     rows = []
+    result_column_types: dict[str, CONCRETE_TYPES] = {}
     if exec:
         type_sql = exec.generate_sql(type_query)[-1]
         try:
-            rows = exec.execute_raw_sql(type_sql).fetchall()
+            result = exec.execute_raw_sql(type_sql)
+            result_column_types = (
+                exec.generator.get_result_column_types_for_validation(result) or {}
+            )
+            rows = result.fetchall()
         except Exception as e:
             results.append(
                 ValidationTest(
@@ -146,6 +171,7 @@ def validate_datasource(
         return results
     failures: list[DatasourceColumnBindingData] = []
     cols_with_error = set()
+    refined_type_cache: dict[tuple[str, str, str], CONCRETE_TYPES] = {}
     for row in rows:
         for col in datasource.columns:
             actual_address = build_env.concepts[col.concept.address].safe_address
@@ -153,10 +179,31 @@ def validate_datasource(
                 continue
             rval = getattr(row, actual_address)
             passed = type_check(rval, col.concept.datatype, col.is_nullable)
+            value_type = None
             if not passed:
                 value_type = (
                     arg_to_datatype(rval) if rval is not None else col.concept.datatype
                 )
+                if rval is not None and exec:
+                    cache_key = (
+                        actual_address,
+                        str(value_type),
+                        str(col.concept.datatype),
+                    )
+                    if cache_key not in refined_type_cache:
+                        refined_type_cache[cache_key] = (
+                            exec.generator.refine_runtime_value_type_for_validation(
+                                exec,
+                                rval,
+                                value_type,
+                                col.concept.datatype,
+                                result_type=result_column_types.get(actual_address),
+                            )
+                        )
+                    value_type = refined_type_cache[cache_key]
+                    passed = inferred_type_check(value_type, col.concept.datatype)
+            if not passed:
+                assert value_type is not None
                 traits = None
                 if isinstance(col.concept.datatype, TraitDataType):
                     traits = col.concept.datatype.traits

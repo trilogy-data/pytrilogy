@@ -96,6 +96,12 @@ def test_type_check():
     assert type_check("day", DataType.DATE_PART)
     assert not type_check(2023, DataType.DATE_PART)
 
+    # Bytes tests
+    assert type_check(b"\x00\x01", DataType.BYTES)
+    assert type_check(bytearray(b"\x00\x01"), DataType.BYTES)
+    assert not type_check("POINT(1 1)", DataType.BYTES)
+    assert type_check(b"\x00\x01", DataType.GEOGRAPHY)
+
     # Array tests
     assert type_check([1, 2, 3], DataType.ARRAY)
     assert type_check([], DataType.ARRAY)  # empty array
