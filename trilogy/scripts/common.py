@@ -90,6 +90,33 @@ class RefreshParams:
     dry_run: bool = False
 
 
+def parse_force_sources(force_sources: Iterable[str]) -> frozenset[str]:
+    """Normalize --force values, including comma-separated input."""
+    return frozenset(
+        item.strip()
+        for value in force_sources
+        for item in value.split(",")
+        if item.strip()
+    )
+
+
+def validate_force_sources(
+    force_sources: set[str] | frozenset[str] | None,
+    available_sources: Iterable[str],
+) -> None:
+    """Fail fast when --force includes unknown datasource names."""
+    if not force_sources:
+        return
+
+    missing = sorted(set(force_sources) - set(available_sources))
+    if not missing:
+        return
+
+    noun = "datasource" if len(missing) == 1 else "datasources"
+    print_error(f"Unknown {noun} passed to --force: {', '.join(missing)}")
+    raise Exit(1)
+
+
 @dataclass
 class CLIRuntimeParams:
     """Parameters provided via CLI for execution."""

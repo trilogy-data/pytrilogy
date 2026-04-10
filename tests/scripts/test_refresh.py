@@ -547,6 +547,62 @@ import base;
     assert "Asset Status:" in result.output
 
 
+def test_refresh_cli_splits_comma_separated_force_sources(tmp_path):
+    script = tmp_path / "test.preql"
+    script.write_text(STALE_SCRIPT)
+
+    captured: dict[str, frozenset[str]] = {}
+
+    def fake_run_parallel_execution(*, cli_params, **_kwargs):
+        from trilogy.scripts.parallel_execution import ParallelExecutionSummary
+
+        assert cli_params.refresh_params is not None
+        captured["force_sources"] = cli_params.refresh_params.force_sources
+        return ParallelExecutionSummary(
+            total_scripts=1,
+            successful=1,
+            skipped=0,
+            failed=0,
+            total_duration=0.0,
+            results=[],
+        )
+
+    runner = CliRunner()
+    with patch(
+        "trilogy.scripts.refresh.run_parallel_execution",
+        side_effect=fake_run_parallel_execution,
+    ), set_rich_mode(False):
+        result = runner.invoke(
+            cli,
+            [
+                "refresh",
+                str(script),
+                "duckdb",
+                "--force=target_items,target_events",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert captured["force_sources"] == frozenset({"target_items", "target_events"})
+
+
+def test_refresh_directory_errors_for_unknown_force_source(tmp_path):
+    (tmp_path / "source.preql").write_text(_SOURCE_SCRIPT)
+    (tmp_path / "base.preql").write_text(
+        _STALE_DS_SCRIPT.format(dep="source", name="base")
+    )
+
+    runner = CliRunner()
+    with set_rich_mode(False):
+        result = runner.invoke(
+            cli,
+            ["refresh", str(tmp_path), "duckdb", "--force=missing_datasource"],
+        )
+
+    assert result.exit_code == 1, result.output
+    assert "Unknown datasource passed to --force: missing_datasource" in result.output
+
+
 def test_refresh_stale_assets_excludes_peer_stale_from_planner():
     """When multiple datasources are stale, each refresh hides the not-yet-refreshed
     peers from the query planner so it cannot route through stale/missing sources."""
