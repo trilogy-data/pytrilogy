@@ -127,6 +127,20 @@ def test_sort():
 def test_arg_to_datatype():
     assert arg_to_datatype(1.00) == DataType.FLOAT
     assert arg_to_datatype("test") == DataType.STRING
+    assert arg_to_datatype(b"\x00\x01") == DataType.BYTES
+
+
+def test_geo_from_text_accepts_bytes():
+    env, _ = parse_text(
+        """
+import std.geography;
+key id int;
+property id.geometry_raw bytes;
+auto geometry <- geo_from_text(geometry_raw);
+"""
+    )
+    assert env.concepts["geometry_raw"].datatype == DataType.BYTES
+    assert env.concepts["geometry"].datatype == DataType.GEOGRAPHY
 
 
 def test_argument_to_purpose(test_environment: Environment):

@@ -51,6 +51,7 @@ from trilogy.core.models.build import (
     BuildWindowItem,
 )
 from trilogy.core.models.core import (
+    CONCRETE_TYPES,
     ArrayType,
     DataType,
     EnumType,
@@ -182,6 +183,7 @@ WINDOW_FUNCTION_MAP = {
 
 DATATYPE_MAP: dict[DataType, str] = {
     DataType.STRING: "string",
+    DataType.BYTES: "bytes",
     DataType.INTEGER: "int",
     DataType.FLOAT: "float",
     DataType.BOOL: "bool",
@@ -537,6 +539,21 @@ class BaseDialect:
         if not rows:
             return None
         return {row[0].lower(): self.normalize_db_type(row[1]) for row in rows}
+
+    def refine_runtime_value_type_for_validation(
+        self,
+        executor,
+        value: Any,
+        inferred_type: CONCRETE_TYPES,
+        expected_type: CONCRETE_TYPES,
+        result_type: CONCRETE_TYPES | None = None,
+    ) -> CONCRETE_TYPES:
+        return inferred_type
+
+    def get_result_column_types_for_validation(
+        self, result: Any
+    ) -> dict[str, CONCRETE_TYPES] | None:
+        return None
 
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None

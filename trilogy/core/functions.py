@@ -1093,7 +1093,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         arg_count=2,
     ),
     FunctionType.GEO_FROM_TEXT: FunctionConfig(
-        valid_inputs={DataType.STRING},
+        valid_inputs={DataType.STRING, DataType.BYTES},
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.GEOGRAPHY,
         arg_count=1,

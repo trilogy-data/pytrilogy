@@ -2115,6 +2115,56 @@ select 'abc' as x, 1.0 as y, 2.0 as z union all select null as x, null as y, nul
     ), rewritten.strip()
 
 
+def test_validate_fix_bytes():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    from trilogy.core.validation.fix import validate_and_rewrite
+
+    test = """
+key id int;
+property id.payload string;
+
+datasource example (
+    id: id,
+    payload: payload
+)
+grain (id)
+query '''
+select 1 as id, CAST('abc' AS BLOB) as payload''';
+"""
+    rewritten = validate_and_rewrite(test, default_duckdb_engine)
+
+    assert rewritten is not None
+    assert "property id.payload bytes;" in rewritten
+
+
+def test_validate_duckdb_geometry_bytes_are_refined():
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    from trilogy.core.validation.fix import validate_and_rewrite
+
+    try:
+        default_duckdb_engine.execute_raw_sql("INSTALL spatial;")
+        default_duckdb_engine.execute_raw_sql("LOAD spatial;")
+    except Exception as exc:
+        pytest.skip(f"DuckDB spatial extension unavailable: {exc}")
+
+    test = """
+import std.geography;
+key id int;
+property id.geom geography;
+
+datasource example (
+    id: id,
+    geom: geom
+)
+grain (id)
+query '''
+select 1 as id, ST_GeomFromText('POINT(1 1)') as geom''';
+"""
+    rewritten = validate_and_rewrite(test, default_duckdb_engine)
+
+    assert rewritten is None
+
+
 def test_show_validate():
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
     test = """

@@ -67,6 +67,7 @@ LT = TypeVar("LT")
 class DataType(Enum):
     # PRIMITIVES
     STRING = "string"
+    BYTES = "bytes"
     BOOL = "bool"
     MAP = "map"
     NUMBER = "number"
@@ -481,6 +482,8 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
             return DataType.INTEGER
         case str():
             return DataType.STRING
+        case bytes() | bytearray() | memoryview():
+            return DataType.BYTES
         case float():
             return DataType.FLOAT
         case Decimal():
