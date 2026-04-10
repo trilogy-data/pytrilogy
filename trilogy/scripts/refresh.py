@@ -29,6 +29,8 @@ from trilogy.scripts.common import (
     RefreshParams,
     RefreshQuery,
     handle_execution_exception,
+    parse_force_sources,
+    validate_force_sources,
 )
 from trilogy.scripts.dependency import (
     DependencyResolver,
@@ -229,6 +231,7 @@ def _preview_directory_refresh(
     )
 
     address_map: dict[str, str] = {}
+    available_datasources: set[str] = set()
     ds_to_scripts: dict[str, list[ScriptNode]] = defaultdict(list)
     ds_is_root: dict[str, bool] = {}
     # root physical address -> set of concept addresses (as seen in that executor's namespace)
@@ -264,6 +267,7 @@ def _preview_directory_refresh(
                     print_error(f"Error parsing {node.path}: {e}")
                     raise Exit(1) from e
             env = executor.environment
+            available_datasources.update(env.datasources)
             needed_in_script: set[str] = set()
             for ds_id, ds in env.datasources.items():
                 address_map.setdefault(ds_id, ds.safe_address)
@@ -296,6 +300,8 @@ def _preview_directory_refresh(
                             ).update(env.concepts[ref].name for ref in matching)
         finally:
             executor.close()
+
+    validate_force_sources(force_sources, available_datasources)
 
     # Build topo order so we can assign each physical address to its furthest-upstream owner
     resolver = DependencyResolver()
@@ -647,7 +653,7 @@ def refresh(
     validate_dialect(dialect, "refresh")
     refresh_params = RefreshParams(
         print_watermarks=print_watermarks,
-        force_sources=frozenset(force),
+        force_sources=parse_force_sources(force),
         interactive=interactive,
         dry_run=dry_run,
     )

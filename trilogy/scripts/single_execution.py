@@ -10,7 +10,11 @@ from trilogy.core.statements.execute import (
 from trilogy.dialect.results import ChartResult
 from trilogy.execution.state import RefreshPlan
 from trilogy.execution.state import RefreshResult as StateRefreshResult
-from trilogy.scripts.common import ExecutionStats, RefreshQuery
+from trilogy.scripts.common import (
+    ExecutionStats,
+    RefreshQuery,
+    validate_force_sources,
+)
 from trilogy.scripts.dependency import ScriptNode
 from trilogy.scripts.display import (
     FETCH_LIMIT,
@@ -301,6 +305,8 @@ def execute_script_for_refresh(
         if isinstance(x, ProcessedValidateStatement):
             validation.append(x)
 
+    validate_force_sources(force_sources, exec.environment.datasources)
+
     plan = create_refresh_plan(
         exec, force_sources=set(force_sources) if force_sources else None
     )
@@ -339,6 +345,7 @@ def execute_refresh_mode(
     """Execute refresh mode on an already-parsed executor."""
     from trilogy.execution.state import create_refresh_plan
 
+    validate_force_sources(force_sources, exec.environment.datasources)
     plan = create_refresh_plan(exec, force_sources=force_sources)
     addr_map = {
         ds_id: ds.safe_address for ds_id, ds in exec.environment.datasources.items()
