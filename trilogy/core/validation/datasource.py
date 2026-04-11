@@ -24,7 +24,7 @@ from trilogy.core.models.build import (
     BuildDatasource,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.models.core import CONCRETE_TYPES, EnumType, is_compatible_datatype
+from trilogy.core.models.core import CONCRETE_TYPES, EnumType
 from trilogy.core.validation.common import ExpectationType, ValidationTest, easy_query
 from trilogy.utility import unique
 
@@ -104,14 +104,21 @@ def inferred_type_check(
     inferred_type: CONCRETE_TYPES,
     expected_type: CONCRETE_TYPES,
 ) -> bool:
+    while isinstance(inferred_type, TraitDataType):
+        inferred_type = inferred_type.data_type
+
     target_type = expected_type
     while isinstance(target_type, TraitDataType):
         target_type = target_type.data_type
 
-    if isinstance(target_type, EnumType):
-        return inferred_type_check(inferred_type, target_type.type)
+    if isinstance(inferred_type, EnumType) or isinstance(target_type, EnumType):
+        return (
+            isinstance(inferred_type, EnumType)
+            and isinstance(target_type, EnumType)
+            and inferred_type == target_type
+        )
 
-    return is_compatible_datatype(inferred_type, target_type)
+    return inferred_type == target_type
 
 
 def validate_datasource(
