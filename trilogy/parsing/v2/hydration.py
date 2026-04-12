@@ -148,14 +148,20 @@ def rehydrate_lineage(
             operator=lineage.operator,
         )
     if isinstance(lineage, Parenthetical):
-        lineage.content = rehydrate_lineage(lineage.content, environment, function_factory)
+        lineage.content = rehydrate_lineage(
+            lineage.content, environment, function_factory
+        )
         return lineage
     if isinstance(lineage, WindowItem):
         assert isinstance(lineage.content, ConceptRef)
-        lineage.content.datatype = environment.concepts[lineage.content.address].datatype
+        lineage.content.datatype = environment.concepts[
+            lineage.content.address
+        ].datatype
         return lineage
     if isinstance(lineage, AggregateWrapper):
-        lineage.function = rehydrate_lineage(lineage.function, environment, function_factory)
+        lineage.function = rehydrate_lineage(
+            lineage.function, environment, function_factory
+        )
         return lineage
     return lineage
 
@@ -238,9 +244,7 @@ class NativeHydrator:
             return handler(element.meta, transformed)
         if len(transformed) == 1 and element.name in TRANSPARENT_NODES:
             return transformed[0]
-        raise UnsupportedSyntaxError(
-            f"No v2 hydrator for syntax node '{element.name}'"
-        )
+        raise UnsupportedSyntaxError(f"No v2 hydrator for syntax node '{element.name}'")
 
     def transform_token(self, token: SyntaxToken) -> Any:
         handler = getattr(self, token.name, None)
@@ -261,7 +265,9 @@ class NativeHydrator:
                 )
         return output
 
-    def concept(self, meta: SyntaxMeta | None, args: list[Any]) -> ConceptDeclarationStatement:
+    def concept(
+        self, meta: SyntaxMeta | None, args: list[Any]
+    ) -> ConceptDeclarationStatement:
         if isinstance(args[0], list):
             concept = args[0][0]
         elif isinstance(args[0], Concept):
@@ -484,7 +490,9 @@ class NativeHydrator:
         else:
             snippet = ""
             if meta and meta.start_pos is not None and meta.end_pos is not None:
-                snippet = self.text_lookup[self.token_address][meta.start_pos : meta.end_pos]
+                snippet = self.text_lookup[self.token_address][
+                    meta.start_pos : meta.end_pos
+                ]
             raise SyntaxError(
                 f"Received invalid type {type(source_value)} {source_value} as input to concept derivation: `{snippet}`"
             )
@@ -617,7 +625,9 @@ class NativeHydrator:
             }.get(op)
             if operator is None:
                 raise ValueError(f"Unknown operator: {op}")
-            result = self.function_factory.create_function([result, right], operator=operator)
+            result = self.function_factory.create_function(
+                [result, right], operator=operator
+            )
         return result
 
     def sum_operator(self, meta: SyntaxMeta | None, args: list[Any]) -> Any:
@@ -665,17 +675,25 @@ class NativeHydrator:
                     )
         return Comparison(left=left, right=right, operator=operator)
 
-    def between_comparison(self, meta: SyntaxMeta | None, args: list[Any]) -> Conditional:
+    def between_comparison(
+        self, meta: SyntaxMeta | None, args: list[Any]
+    ) -> Conditional:
         return Conditional(
-            left=Comparison(left=args[0], right=args[1], operator=ComparisonOperator.GTE),
-            right=Comparison(left=args[0], right=args[2], operator=ComparisonOperator.LTE),
+            left=Comparison(
+                left=args[0], right=args[1], operator=ComparisonOperator.GTE
+            ),
+            right=Comparison(
+                left=args[0], right=args[2], operator=ComparisonOperator.LTE
+            ),
             operator=BooleanOperator.AND,
         )
 
     def parenthetical(self, meta: SyntaxMeta | None, args: list[Any]) -> Parenthetical:
         return Parenthetical(content=args[0])
 
-    def prop_ident(self, meta: SyntaxMeta | None, args: list[Any]) -> tuple[list[Concept], str]:
+    def prop_ident(
+        self, meta: SyntaxMeta | None, args: list[Any]
+    ) -> tuple[list[Concept], str]:
         return [self.environment.concepts[grain] for grain in args[:-1]], args[-1]
 
     def prop_ident_wildcard(
