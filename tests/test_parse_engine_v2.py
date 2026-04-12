@@ -68,7 +68,7 @@ show concepts;
 
 def test_parse_text_v2_marks_unported_statements_explicitly() -> None:
     with raises(UnsupportedSyntaxError, match="No v2 statement plan"):
-        parse_text("persist x;", Environment())
+        parse_text("type test int;", Environment())
 
 
 def test_v2_architecture_avoids_lark_or_v1_shims() -> None:

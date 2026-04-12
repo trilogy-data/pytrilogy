@@ -5,11 +5,26 @@ from pathlib import Path
 import pytest
 
 from trilogy import Dialects, Executor
+from trilogy.constants import CONFIG, ParserVersion
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.config import DuckDBConfig
 from trilogy.hooks.query_debugger import DebuggingHook
 
 working_path = Path(__file__).parent
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--parser-v2",
+        action="store_true",
+        default=False,
+        help="Use v2 parser instead of v1",
+    )
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    if config.getoption("--parser-v2", default=False):
+        CONFIG.parser_version = ParserVersion.V2
 
 
 @pytest.fixture(scope="session")

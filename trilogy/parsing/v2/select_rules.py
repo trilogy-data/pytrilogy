@@ -7,6 +7,7 @@ from trilogy.core.models.author import (
     AlignClause,
     AlignItem,
     Comparison,
+    ConceptRef,
     DeriveClause,
     DeriveItem,
     Function,
@@ -173,13 +174,32 @@ def order_by(
     return OrderBy(items=args[0])
 
 
+def _resolve_order_ref(name: str, env: "Environment") -> ConceptRef:
+    """Resolve an order-by identifier to a ConceptRef.
+
+    Uses the environment only for namespace resolution (short name → qualified
+    address). Returns a lightweight ConceptRef regardless of whether the concept
+    is fully defined yet — downstream phases handle that."""
+    from trilogy.core.models.environment import Environment
+
+    return ConceptRef(address=env.concepts[name].address)
+
+
 def order_list(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> list[OrderItem]:
     args = hydrated_children(node, hydrate)
-    return [OrderItem(expr=x, order=y) for x, y in zip(args[::2], args[1::2])]
+    return [
+        OrderItem(
+            expr=_resolve_order_ref(str(x), context.environment)
+            if isinstance(x, str)
+            else x,
+            order=y,
+        )
+        for x, y in zip(args[::2], args[1::2])
+    ]
 
 
 def ordering(
