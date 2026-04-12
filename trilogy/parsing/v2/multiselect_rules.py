@@ -34,7 +34,7 @@ def align_item(
 ) -> AlignItem:
     args = hydrated_children(node, hydrate)
     alias = str(args[0])
-    concepts = [context.environment.concepts[str(a)].reference for a in args[1:]]
+    concepts = [context.concepts.reference(str(a)) for a in args[1:]]
     return AlignItem(
         alias=alias,
         namespace=context.environment.namespace,

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from trilogy.core.enums import Ordering
-from trilogy.core.models.author import ConceptRef, OrderBy, OrderItem
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.author import OrderBy, OrderItem
 from trilogy.core.statements.author import Limit
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
@@ -22,12 +21,6 @@ def order_by(
     return OrderBy(items=args[0])
 
 
-def _resolve_order_ref(name: str, env: Environment) -> ConceptRef:
-    # Namespace resolution only: returns a lightweight ConceptRef whether or not the
-    # target concept is fully defined yet - downstream phases resolve the rest.
-    return ConceptRef(address=env.concepts[name].address)
-
-
 def order_list(
     node: SyntaxNode,
     context: RuleContext,
@@ -36,11 +29,7 @@ def order_list(
     args = hydrated_children(node, hydrate)
     return [
         OrderItem(
-            expr=(
-                _resolve_order_ref(str(x), context.environment)
-                if isinstance(x, str)
-                else x
-            ),
+            expr=(context.concepts.reference(str(x)) if isinstance(x, str) else x),
             order=y,
         )
         for x, y in zip(args[::2], args[1::2])

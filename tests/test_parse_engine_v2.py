@@ -92,5 +92,6 @@ def test_v2_node_hydrators_use_syntax_nodes_not_hydrated_args() -> None:
 def test_v2_environment_update_names_record_and_apply_semantics() -> None:
     combined = "\n".join(path.read_text() for path in V2_PATH.glob("*.py"))
 
-    assert "RecordingEnvironmentUpdate" in combined
-    assert "EnvironmentUpdate" not in combined.replace("RecordingEnvironmentUpdate", "")
+    assert "SemanticState" in combined
+    assert "RecordingEnvironmentUpdate" not in combined
+    assert "EnvironmentUpdate" not in combined

@@ -27,7 +27,7 @@ def persist_partition_clause(
     args = hydrated_children(node, hydrate)
     cols = args[0] if isinstance(args[0], list) else args
     return DatasourcePartitionClause(
-        columns=[context.environment.concepts[str(c)].reference for c in cols]
+        columns=[context.concepts.reference(str(c)) for c in cols]
     )
 
 
@@ -101,7 +101,7 @@ def full_persist(
         if new_datasource.partition_by != partition_clause.columns:
             raise fail(node, "Partition mismatch for append")
         for x in partition_clause.columns:
-            concept = context.environment.concepts[x.address]
+            concept = context.concepts.require(x.address)
             if concept.output_datatype not in SUPPORTED_INCREMENTAL_TYPES:
                 raise fail(
                     node,
