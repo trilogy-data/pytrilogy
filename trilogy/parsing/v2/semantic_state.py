@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Iterable, Iterator
 
+from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.models.author import Concept, ConceptRef
 from trilogy.core.models.environment import Environment
 
@@ -127,6 +128,8 @@ class SemanticState:
             resolved = self.environment.add_concept(concept, meta, force=True)
         else:
             resolved = concept
+            if self._visible_depth > 0:
+                self._expose_to_environment(address, resolved)
         self._pending_by_address[address] = resolved
         self.concepts.append(ConceptUpdate(concept=resolved, kind=kind, meta=meta))
         return resolved
@@ -239,21 +242,35 @@ class ConceptLookup:
         self._state = state
         self._env = state.environment
 
+    def _candidate_addresses(self, address: str) -> list[str]:
+        # Mirror EnvironmentConceptDict.__getitem__ fallback: exact, strip
+        # leading ``local.``, or qualify unnamespaced keys with ``local.``.
+        candidates = [address]
+        prefix = f"{DEFAULT_NAMESPACE}."
+        if address.startswith(prefix):
+            candidates.append(address[len(prefix) :])
+        elif "." not in address:
+            candidates.append(prefix + address)
+        return candidates
+
     def require(self, address: str) -> Concept:
-        pending = self._state.pending_lookup(address)
-        if pending is not None:
-            return pending
+        for candidate in self._candidate_addresses(address):
+            pending = self._state.pending_lookup(candidate)
+            if pending is not None:
+                return pending
         return self._env.concepts[address]  # type: ignore[return-value]
 
     def get(self, address: str) -> Concept | None:
-        pending = self._state.pending_lookup(address)
-        if pending is not None:
-            return pending
+        for candidate in self._candidate_addresses(address):
+            pending = self._state.pending_lookup(candidate)
+            if pending is not None:
+                return pending
         return self._env.concepts.get(address)
 
     def contains(self, address: str) -> bool:
-        if self._state.pending_lookup(address) is not None:
-            return True
+        for candidate in self._candidate_addresses(address):
+            if self._state.pending_lookup(candidate) is not None:
+                return True
         return address in self._env.concepts
 
     def __contains__(self, address: object) -> bool:
