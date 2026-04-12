@@ -375,25 +375,28 @@ def multi_select_statement(
     for sel in selects:
         sel.finalize(context.environment)
 
-    # Build align-derived concepts and register them before hydrating clauses
-    # that may reference them by alias.
+    # WHERE/LIMIT do not reference align-derived outputs, so hydrate them
+    # up front and fold them into the align concepts' lineage.
+    where: WhereClause | None = hydrate(where_node) if where_node else None
+    limit_val: int | None = hydrate(limit_node).count if limit_node else None
+
     derived_concepts: list = []
     for x in align_c.items:
         concept = align_item_to_concept(
             x,
             align_c,
             selects,
-            where=None,
+            where=where,
             having=None,
-            limit=None,
+            limit=limit_val,
             environment=context.environment,
         )
         derived_concepts.append(concept)
         context.add_concept(concept, meta=core_meta(node.meta))
 
-    where: WhereClause | None = hydrate(where_node) if where_node else None
+    # These clauses may reference align-derived outputs (e.g. `report_date`),
+    # so hydrate them after the align concepts are registered.
     having: HavingClause | None = hydrate(having_node) if having_node else None
-    limit_val: int | None = hydrate(limit_node).count if limit_node else None
     derive: DeriveClause | None = hydrate(derive_node) if derive_node else None
     order_by_val: OrderBy | None = hydrate(order_by_node) if order_by_node else None
 
