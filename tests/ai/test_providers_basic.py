@@ -85,11 +85,21 @@ def test_basic_google_completion():
     if not api_key:
         pytest.skip("GOOGLE_API_KEY not found in .env.secrets or environment variables")
     environment, _ = Environment(working_path=env_path).parse("""import flight;""")
-    response = text_to_query(
-        environment,
-        "number of flights by month in 2020",
-        Provider.GOOGLE,
-        GOOGLE_LATEST_MODEL,
-        api_key,
-    )
+    try:
+        response = text_to_query(
+            environment,
+            "number of flights by month in 2020",
+            Provider.GOOGLE,
+            GOOGLE_LATEST_MODEL,
+            api_key,
+        )
+    except Exception as exc:
+        message = str(exc)
+        if "429" in message and (
+            "RESOURCE_EXHAUSTED" in message
+            or "quota" in message.lower()
+            or "rate limit" in message.lower()
+        ):
+            pytest.skip(f"Skipping Google integration test due to quota/rate limit: {exc}")
+        raise
     validate_response(response)
