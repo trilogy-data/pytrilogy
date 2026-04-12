@@ -1,0 +1,72 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from trilogy.core.models.author import Concept
+from trilogy.core.statements.author import (
+    ConceptDeclarationStatement,
+    ConceptDerivationStatement,
+    ShowStatement,
+)
+from trilogy.parsing.v2.model import HydrationDiagnostic, HydrationError
+from trilogy.parsing.v2.rules_context import HydrateFunction, RuleContext
+from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
+
+
+def only_child_node(
+    parent: SyntaxNode, kind: SyntaxNodeKind | None = None
+) -> SyntaxNode:
+    found = parent.child_nodes(kind)
+    if len(found) != 1:
+        expected = kind.value if kind else "node"
+        raise HydrationError(
+            HydrationDiagnostic.from_syntax(
+                f"Expected one child {expected} under statement node, found {len(found)}",
+                parent,
+            )
+        )
+    return found[0]
+
+
+@dataclass(frozen=True)
+class ShowStatementSyntax:
+    category: SyntaxNode
+
+    @classmethod
+    def from_node(cls, node: SyntaxNode) -> "ShowStatementSyntax":
+        return cls(category=only_child_node(node, SyntaxNodeKind.SHOW_CATEGORY))
+
+
+def hydrate_concept_statement(
+    concept_node: SyntaxNode,
+    context: RuleContext,
+    hydrate_rule: HydrateFunction,
+) -> ConceptDeclarationStatement | ConceptDerivationStatement | Concept:
+    declaration = only_child_node(concept_node)
+    output = hydrate_rule(declaration)
+    if isinstance(output, Concept):
+        concept_value = output
+    else:
+        concept_value = output.concept
+    if concept_value.metadata:
+        concept_value.metadata.line_number = (
+            concept_node.meta.line if concept_node.meta else None
+        )
+        concept_value.metadata.column = (
+            concept_node.meta.column if concept_node.meta else None
+        )
+        concept_value.metadata.end_line = (
+            concept_node.meta.end_line if concept_node.meta else None
+        )
+        concept_value.metadata.end_column = (
+            concept_node.meta.end_column if concept_node.meta else None
+        )
+    return ConceptDeclarationStatement(concept=concept_value)
+
+
+def hydrate_show_statement(
+    show_node: SyntaxNode,
+    hydrate_rule: HydrateFunction,
+) -> ShowStatement:
+    syntax = ShowStatementSyntax.from_node(show_node)
+    return ShowStatement(content=hydrate_rule(syntax.category))
