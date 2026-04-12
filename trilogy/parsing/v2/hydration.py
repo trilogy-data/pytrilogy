@@ -7,18 +7,21 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from trilogy.constants import DEFAULT_NAMESPACE, Parsing
-from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.functions import FunctionFactory
 from trilogy.core.models.author import (
     Comment,
-    Concept,
-    Metadata,
 )
-from trilogy.core.models.core import DataType
+from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
+    FunctionDeclaration,
     ImportStatement,
+    MergeStatementV2,
+    MultiSelectStatement,
+    PersistStatement,
+    RawSQLStatement,
+    RowsetDerivationStatement,
     SelectStatement,
     ShowStatement,
 )
@@ -172,6 +175,32 @@ def extract_concept_name_from_literal(node: SyntaxNode, namespace: str) -> str:
     return name
 
 
+def find_select_transform_targets(element: SyntaxElement) -> list[str]:
+    """Find all concept names created by `expr -> name` in SELECT projections."""
+    result: list[str] = []
+    stack: list[SyntaxElement] = [element]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, SyntaxNode):
+            if node.kind == SyntaxNodeKind.SELECT_TRANSFORM:
+                # Last child token is the target identifier
+                for child in reversed(node.children):
+                    if isinstance(child, SyntaxToken) and child.kind == SyntaxTokenKind.IDENTIFIER:
+                        result.append(child.value)
+                        break
+            else:
+                stack.extend(node.children)
+    return result
+
+
+def collect_inline_concept_addresses(
+    element: SyntaxElement, namespace: str
+) -> list[str]:
+    """Extract addresses of concepts created inline via `-> name` in SELECT statements."""
+    names = find_select_transform_targets(element)
+    return [_make_address(n, namespace) for n in names]
+
+
 def _get_concept_inner_node(block: SyntaxNode) -> SyntaxNode:
     """Get the inner concept node (declaration/derivation/etc) from a BLOCK > CONCEPT."""
     statement = block.children[0]
@@ -186,33 +215,16 @@ def _get_concept_inner_node(block: SyntaxNode) -> SyntaxNode:
     return nodes[0]
 
 
-def _register_skeleton(
-    name: str, namespace: str, environment: Environment
-) -> str:
-    """Register a minimal placeholder concept for forward-reference resolution.
-
-    Uses direct dict assignment to avoid triggering generate_related_concepts.
-    The real concept is added during HYDRATE via add_concept, which overwrites this.
-    """
-    concept = Concept(
-        name=name,
-        datatype=DataType.UNKNOWN,
-        purpose=Purpose.KEY,
-        metadata=Metadata(),
-        namespace=namespace,
-        derivation=Derivation.ROOT,
-        granularity=Granularity.MULTI_ROW,
-    )
-    environment.concepts[concept.address] = concept
-    return concept.address
+def _make_address(name: str, namespace: str) -> str:
+    return f"{namespace}.{name}"
 
 
-def collect_concept_symbol(
+def collect_concept_address(
     block: SyntaxNode, environment: Environment
 ) -> str | None:
-    """Register a skeleton concept in the environment during COLLECT_SYMBOLS.
+    """Extract the concept address from a block without modifying the environment.
 
-    Returns the concept address, or None for parameter declarations.
+    Returns the concept address, or None for parameter/properties declarations.
     """
     inner = _get_concept_inner_node(block)
     kind = inner.kind
@@ -221,7 +233,7 @@ def collect_concept_symbol(
         syntax = ConceptDeclarationSyntax.from_node(inner)
         name = syntax.name.value
         _, namespace, name, _ = parse_concept_reference(name, environment)
-        return _register_skeleton(name, namespace, environment)
+        return _make_address(name, namespace)
 
     if kind == SyntaxNodeKind.CONCEPT_DERIVATION:
         syntax = ConceptDerivationSyntax.from_node(inner)
@@ -242,13 +254,13 @@ def collect_concept_symbol(
         else:
             name_str = str(raw_name)
             namespace = environment.namespace or DEFAULT_NAMESPACE
-        return _register_skeleton(name_str, namespace, environment)
+        return _make_address(name_str, namespace)
 
     if kind == SyntaxNodeKind.CONSTANT_DERIVATION:
         syntax_const = ConstantDerivationSyntax.from_node(inner)
         name_str = syntax_const.name.value
         _, namespace, name_str, _ = parse_concept_reference(name_str, environment)
-        return _register_skeleton(name_str, namespace, environment)
+        return _make_address(name_str, namespace)
 
     if kind == SyntaxNodeKind.CONCEPT_PROPERTY_DECLARATION:
         syntax_prop = ConceptPropertyDeclarationSyntax.from_node(inner)
@@ -258,7 +270,6 @@ def collect_concept_symbol(
             name_str = pi.name.value
         elif isinstance(decl, SyntaxToken):
             raw = decl.value
-            # "parent.name" format — extract just the property name
             name_str = raw.rsplit(".", 1)[-1] if "." in raw else raw
         else:
             tokens = [
@@ -268,11 +279,30 @@ def collect_concept_symbol(
             ]
             name_str = tokens[-1].value if tokens else "unknown"
         namespace = environment.namespace or DEFAULT_NAMESPACE
-        return _register_skeleton(name_str, namespace, environment)
+        return _make_address(name_str, namespace)
 
-    # PARAMETER_DECLARATION, PROPERTIES_DECLARATION — not tracked for ordering
-    # Properties declarations create multiple concepts; they hydrate in-place.
+    # PARAMETER_DECLARATION, PROPERTIES_DECLARATION — no single address
     return None
+
+
+def collect_properties_addresses(
+    block: SyntaxNode, environment: Environment
+) -> list[str]:
+    """Extract all concept addresses from a PROPERTIES_DECLARATION block."""
+    inner = _get_concept_inner_node(block)
+    if inner.kind != SyntaxNodeKind.PROPERTIES_DECLARATION:
+        return []
+    namespace = environment.namespace or DEFAULT_NAMESPACE
+    result: list[str] = []
+    for child in inner.children:
+        if isinstance(child, SyntaxNode) and child.kind == SyntaxNodeKind.INLINE_PROPERTY_LIST:
+            for prop in child.children:
+                if isinstance(prop, SyntaxNode) and prop.kind == SyntaxNodeKind.INLINE_PROPERTY:
+                    for token in prop.children:
+                        if isinstance(token, SyntaxToken) and token.kind == SyntaxTokenKind.IDENTIFIER:
+                            result.append(_make_address(token.value, namespace))
+                            break
+    return result
 
 
 def extract_dependencies(
@@ -286,7 +316,6 @@ def extract_dependencies(
     if kind == SyntaxNodeKind.CONCEPT_DERIVATION:
         syntax = ConceptDerivationSyntax.from_node(inner)
         literals = find_concept_literals(syntax.source)
-        # Also check for property grain refs in the name
         if isinstance(syntax.name, SyntaxNode):
             literals.extend(find_concept_literals(syntax.name))
     elif kind == SyntaxNodeKind.CONCEPT_PROPERTY_DECLARATION:
@@ -295,6 +324,18 @@ def extract_dependencies(
     elif kind == SyntaxNodeKind.CONSTANT_DERIVATION:
         syntax_const = ConstantDerivationSyntax.from_node(inner)
         literals = find_concept_literals(syntax_const.source)
+    elif kind == SyntaxNodeKind.PROPERTIES_DECLARATION:
+        # Properties blocks depend on their grain concepts
+        deps: list[str] = []
+        for child in inner.children:
+            if isinstance(child, SyntaxNode) and child.kind == SyntaxNodeKind.PROP_IDENT_LIST:
+                for token in child.children:
+                    if isinstance(token, SyntaxToken) and token.kind == SyntaxTokenKind.IDENTIFIER:
+                        name = token.value
+                        if "." not in name:
+                            name = f"{namespace}.{name}"
+                        deps.append(name)
+        return deps
     else:
         return []
 
@@ -309,67 +350,62 @@ def topological_sort_plans(
     if not concept_plans:
         return []
 
-    addr_to_plan: dict[str | None, "ConceptStatementPlan"] = {}
+    # Map every provided address to its owning plan
+    addr_to_plan: dict[str, "ConceptStatementPlan"] = {}
     for plan in concept_plans:
-        addr_to_plan[plan.address] = plan
+        for addr in plan.provided_addresses:
+            addr_to_plan[addr] = plan
 
-    # Build adjacency: address -> set of addresses it depends on
-    graph: dict[str | None, list[str]] = {}
+    # Use plan identity (id) as graph nodes
+    plan_ids = {id(p): p for p in concept_plans}
+
+    # Build dependency edges: plan -> set of plans it depends on
+    dep_graph: dict[int, set[int]] = {id(p): set() for p in concept_plans}
     for plan in concept_plans:
-        if plan.address is not None:
-            deps = [
-                d for d in plan.dependencies
-                if d in addr_to_plan and d != plan.address
-            ]
-            graph[plan.address] = deps
+        for dep_addr in plan.dependencies:
+            dep_plan = addr_to_plan.get(dep_addr)
+            if dep_plan is not None and id(dep_plan) != id(plan):
+                dep_graph[id(plan)].add(id(dep_plan))
 
     # Kahn's algorithm
-    in_degree: dict[str | None, int] = defaultdict(int)
-    for addr in graph:
-        in_degree.setdefault(addr, 0)
-        for dep in graph[addr]:
-            in_degree[dep] = in_degree.get(dep, 0) + 1
+    forward: dict[int, list[int]] = defaultdict(list)
+    in_deg: dict[int, int] = {}
+    for pid, deps in dep_graph.items():
+        in_deg[pid] = len(deps)
+        for dep_pid in deps:
+            forward[dep_pid].append(pid)
 
-    # Wait — reverse: if A depends on B, B must come first.
-    # So edges should be: B -> A (B blocks A).
-    # Let's redo: graph[addr] = things addr depends on.
-    # For topo sort: in_degree counts how many things depend on you (not helpful).
-    # Standard approach: edges from dependency to dependent.
-    forward: dict[str | None, list[str | None]] = defaultdict(list)
-    in_deg: dict[str | None, int] = {}
-    for addr in graph:
-        in_deg[addr] = len(graph[addr])
-        for dep in graph[addr]:
-            forward[dep].append(addr)
+    queue: deque[int] = deque(
+        pid for pid, deg in in_deg.items() if deg == 0
+    )
 
-    queue: deque[str | None] = deque()
-    for addr in graph:
-        if in_deg.get(addr, 0) == 0:
-            queue.append(addr)
-
-    ordered: list[str | None] = []
+    ordered: list["ConceptStatementPlan"] = []
     while queue:
-        addr = queue.popleft()
-        ordered.append(addr)
-        for dependent in forward.get(addr, []):
+        pid = queue.popleft()
+        ordered.append(plan_ids[pid])
+        for dependent in forward.get(pid, []):
             in_deg[dependent] -= 1
             if in_deg[dependent] == 0:
                 queue.append(dependent)
 
-    # Plans without addresses (parameter declarations) go first
-    result: list["ConceptStatementPlan"] = [
-        p for p in concept_plans if p.address is None
-    ]
-    for addr in ordered:
-        result.append(addr_to_plan[addr])
-
-    # Any remaining (cycles) — append in original order
-    seen = set(id(p) for p in result)
+    # Append any remaining (cycles) in original order
+    seen = set(id(p) for p in ordered)
     for plan in concept_plans:
         if id(plan) not in seen:
-            result.append(plan)
+            ordered.append(plan)
 
-    return result
+    return ordered
+
+
+def _finalize_nested_selects(output: Any, environment: Environment) -> None:
+    """Find and finalize any SelectStatements nested inside a hydrated output."""
+    if isinstance(output, SelectStatement):
+        output.finalize(environment)
+    elif isinstance(output, PersistStatement):
+        output.select.finalize(environment)
+    elif isinstance(output, MultiSelectStatement):
+        for sel in output.selects:
+            sel.finalize(environment)
 
 
 @dataclass
@@ -389,12 +425,20 @@ class ConceptStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
     output: ConceptDeclarationStatement | None = None
     address: str | None = None
+    provided_addresses: list[str] = field(default_factory=list)
     dependencies: list[str] = field(default_factory=list)
 
     def collect_symbols(self, hydrator: "NativeHydrator") -> None:
-        self.address = collect_concept_symbol(
+        self.address = collect_concept_address(
             self.syntax, hydrator.environment
         )
+        if self.address:
+            self.provided_addresses = [self.address]
+        else:
+            # Properties blocks: extract all child concept names
+            self.provided_addresses = collect_properties_addresses(
+                self.syntax, hydrator.environment
+            )
 
     def bind(self, hydrator: "NativeHydrator") -> None:
         self.dependencies = extract_dependencies(
@@ -402,7 +446,8 @@ class ConceptStatementPlan(StatementPlanBase):
         )
 
     def hydrate(self, hydrator: "NativeHydrator") -> None:
-        self.output = hydrator.hydrate_concept_block(self.syntax)
+        # Concepts are created during BIND via _sort_and_create_concepts
+        pass
 
     def commit(
         self,
@@ -428,7 +473,7 @@ class ImportStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
     output: ImportStatement | None = None
 
-    def hydrate(self, hydrator: "NativeHydrator") -> None:
+    def bind(self, hydrator: "NativeHydrator") -> None:
         kind = self.syntax.kind
         if kind == SyntaxNodeKind.IMPORT_STATEMENT:
             self.output = import_statement(
@@ -460,25 +505,97 @@ class ImportStatementPlan(StatementPlanBase):
 class SelectStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
     output: SelectStatement | None = None
+    inline_addresses: list[str] = field(default_factory=list)
+
+    def collect_symbols(self, hydrator: "NativeHydrator") -> None:
+        namespace = hydrator.environment.namespace or DEFAULT_NAMESPACE
+        self.inline_addresses = collect_inline_concept_addresses(
+            self.syntax, namespace
+        )
 
     def hydrate(self, hydrator: "NativeHydrator") -> None:
         self.output = hydrator.hydrate_rule(self.syntax)
+
+    def validate(self, hydrator: "NativeHydrator") -> None:
+        if isinstance(self.output, SelectStatement):
+            self.output.finalize(hydrator.environment)
 
     def commit(self, hydrator: "NativeHydrator") -> SelectStatement | None:
         return self.output
 
 
 @dataclass
-class GenericStatementPlan(StatementPlanBase):
-    """Handles any statement type registered in NODE_HYDRATORS."""
-
+class FunctionDefinitionPlan(StatementPlanBase):
     syntax: SyntaxNode
-    output: Any = None
+    output: FunctionDeclaration | None = None
+
+    def bind(self, hydrator: "NativeHydrator") -> None:
+        self.output = hydrator.hydrate_rule(self.syntax)
+
+    def commit(self, hydrator: "NativeHydrator") -> FunctionDeclaration | None:
+        return self.output
+
+
+@dataclass
+class DatasourceStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: Datasource | None = None
 
     def hydrate(self, hydrator: "NativeHydrator") -> None:
         self.output = hydrator.hydrate_rule(self.syntax)
 
-    def commit(self, hydrator: "NativeHydrator") -> Any:
+    def commit(self, hydrator: "NativeHydrator") -> Datasource | None:
+        return self.output
+
+
+@dataclass
+class MergeStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: MergeStatementV2 | None = None
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        self.output = hydrator.hydrate_rule(self.syntax)
+
+    def commit(self, hydrator: "NativeHydrator") -> MergeStatementV2 | None:
+        return self.output
+
+
+@dataclass
+class RowsetStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: RowsetDerivationStatement | None = None
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        self.output = hydrator.hydrate_rule(self.syntax)
+
+    def commit(self, hydrator: "NativeHydrator") -> RowsetDerivationStatement | None:
+        return self.output
+
+
+@dataclass
+class PersistStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: PersistStatement | None = None
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        self.output = hydrator.hydrate_rule(self.syntax)
+
+    def validate(self, hydrator: "NativeHydrator") -> None:
+        _finalize_nested_selects(self.output, hydrator.environment)
+
+    def commit(self, hydrator: "NativeHydrator") -> PersistStatement | None:
+        return self.output
+
+
+@dataclass
+class RawSQLStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: RawSQLStatement | None = None
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        self.output = hydrator.hydrate_rule(self.syntax)
+
+    def commit(self, hydrator: "NativeHydrator") -> RawSQLStatement | None:
         return self.output
 
 
@@ -508,6 +625,7 @@ class NativeHydrator:
         self.text_lookup: dict[Path | str, str] = {}
         self.function_factory = FunctionFactory(self.environment)
         self.update = RecordingEnvironmentUpdate()
+        self.plans: list[StatementPlan] = []
         self._cached_rule_context: RuleContext = RuleContext(
             environment=self.environment,
             function_factory=self.function_factory,
@@ -526,31 +644,11 @@ class NativeHydrator:
             source_text=self.text_lookup.get(self.token_address, ""),
             update=self.update,
         )
-        plans = self.plan(document.forms)
-        self._run_phase(plans, HydrationPhase.COLLECT_SYMBOLS)
-        self._run_phase(plans, HydrationPhase.BIND)
-        # Reorder concept plans by dependency graph
-        concept_plans = [p for p in plans if isinstance(p, ConceptStatementPlan)]
-        if concept_plans:
-            sorted_concepts = topological_sort_plans(
-                concept_plans, self.environment
-            )
-            # Rebuild plan list preserving non-concept order
-            concept_iter = iter(sorted_concepts)
-            plans = [
-                next(concept_iter) if isinstance(p, ConceptStatementPlan) else p
-                for p in plans
-            ]
-        # Allow undefined concept references during hydration for inline
-        # derivations in SELECT statements (e.g. `sum(x) -> new_name`).
-        self.environment.concepts.fail_on_missing = False
-        try:
-            self._run_phase(plans, HydrationPhase.HYDRATE)
-            self._run_phase(plans, HydrationPhase.VALIDATE)
-            output = self._run_phase(plans, HydrationPhase.COMMIT)
-            return [item for item in output if item]
-        finally:
-            self.environment.concepts.fail_on_missing = True
+        self.plans = self.plan(document.forms)
+        output: list[Any] = []
+        for phase in HydrationPhase:
+            output = self._run_phase(phase)
+        return [item for item in output if item]
 
     def plan(self, forms: list[SyntaxElement]) -> list[StatementPlan]:
         return [self.plan_form(form) for form in forms]
@@ -559,6 +657,17 @@ class NativeHydrator:
         SyntaxNodeKind.IMPORT_STATEMENT,
         SyntaxNodeKind.SELECTIVE_IMPORT_STATEMENT,
         SyntaxNodeKind.SELF_IMPORT_STATEMENT,
+    }
+
+    _FUNCTION_INNER_KINDS = {
+        SyntaxNodeKind.RAW_FUNCTION,
+        SyntaxNodeKind.TABLE_FUNCTION,
+    }
+
+    _PERSIST_KINDS = {
+        SyntaxNodeKind.PERSIST_STATEMENT,
+        SyntaxNodeKind.AUTO_PERSIST,
+        SyntaxNodeKind.FULL_PERSIST,
     }
 
     def plan_form(self, form: SyntaxElement) -> StatementPlan:
@@ -577,30 +686,58 @@ class NativeHydrator:
             if statement.kind == SyntaxNodeKind.CONCEPT:
                 return ConceptStatementPlan(syntax=form)
             if statement.kind == SyntaxNodeKind.FUNCTION:
-                inner = statement.children[0]
-                if (
-                    isinstance(inner, SyntaxNode)
-                    and inner.kind
-                    and NODE_HYDRATORS.get(inner.kind)
-                ):
-                    return GenericStatementPlan(inner)
-                return UnsupportedStatementPlan(statement)
+                return self._plan_function_block(statement)
             if statement.kind in self._IMPORT_KINDS:
                 return ImportStatementPlan(statement)
             if statement.kind == SyntaxNodeKind.SELECT_STATEMENT:
                 return SelectStatementPlan(statement)
-            if statement.kind and NODE_HYDRATORS.get(statement.kind):
-                return GenericStatementPlan(statement)
-            return UnsupportedStatementPlan(statement)
+            return self._plan_block_statement(statement)
         return UnsupportedStatementPlan(form)
 
-    def _run_phase(
-        self, plans: list[StatementPlan], phase: HydrationPhase
-    ) -> list[Any]:
+    def _plan_function_block(self, statement: SyntaxNode) -> StatementPlan:
+        inner = statement.children[0]
+        if isinstance(inner, SyntaxNode) and inner.kind in self._FUNCTION_INNER_KINDS:
+            return FunctionDefinitionPlan(inner)
+        return UnsupportedStatementPlan(statement)
+
+    def _plan_block_statement(self, statement: SyntaxNode) -> StatementPlan:
+        kind = statement.kind
+        if kind == SyntaxNodeKind.DATASOURCE:
+            return DatasourceStatementPlan(statement)
+        if kind == SyntaxNodeKind.MERGE_STATEMENT:
+            return MergeStatementPlan(statement)
+        if kind == SyntaxNodeKind.ROWSET_DERIVATION_STATEMENT:
+            return RowsetStatementPlan(statement)
+        if kind in self._PERSIST_KINDS:
+            return PersistStatementPlan(statement)
+        if kind == SyntaxNodeKind.RAWSQL_STATEMENT:
+            return RawSQLStatementPlan(statement)
+        return UnsupportedStatementPlan(statement)
+
+    def _run_phase(self, phase: HydrationPhase) -> list[Any]:
         output = []
-        for plan in plans:
+        for plan in self.plans:
             output.append(getattr(plan, phase.value)(self))
+        if phase == HydrationPhase.BIND:
+            self._sort_and_create_concepts()
         return output
+
+    def _sort_and_create_concepts(self) -> None:
+        concept_plans = [
+            p for p in self.plans if isinstance(p, ConceptStatementPlan)
+        ]
+        if not concept_plans:
+            return
+        sorted_concepts = topological_sort_plans(
+            concept_plans, self.environment
+        )
+        concept_iter = iter(sorted_concepts)
+        self.plans = [
+            next(concept_iter) if isinstance(p, ConceptStatementPlan) else p
+            for p in self.plans
+        ]
+        for plan in sorted_concepts:
+            plan.output = self.hydrate_concept_block(plan.syntax)
 
     def block_statement(self, block: SyntaxNode) -> SyntaxNode:
         self.require_node(block, SyntaxNodeKind.BLOCK)

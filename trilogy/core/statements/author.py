@@ -154,6 +154,52 @@ class SelectStatement(HasUUID, SelectTypeMixin):
             grain=self.grain,
         )
 
+    def finalize(self, environment: Environment) -> None:
+        """Register inline concepts, calculate grain, and validate.
+
+        Called after all statements in the file have been hydrated so that
+        forward references between SELECTs are resolved.
+        """
+        self.grain = self.calculate_grain(environment, self.local_concepts)
+        output_addresses: set[str] = set()
+        for x in self.selection:
+            if x.is_undefined:
+                environment.concepts.raise_undefined(
+                    x.concept.address, self.meta.line_number if self.meta else None
+                )
+            elif isinstance(x.content, ConceptTransform):
+                if isinstance(x.content.output, UndefinedConcept):
+                    continue
+                if CONFIG.parsing.select_as_definition and not environment.frozen:
+                    if x.concept.address not in environment.concepts:
+                        environment.add_concept(x.content.output, add_derived=False)
+                    elif x.concept.address in environment.concepts:
+                        version = environment.concepts[x.concept.address]
+                        if version.metadata.concept_source == ConceptSource.SELECT:
+                            environment.add_concept(
+                                x.content.output, force=True, add_derived=False
+                            )
+                x.content.output = x.content.output.set_select_grain(
+                    self.grain, environment
+                )
+                self.local_concepts[x.content.output.address] = x.content.output
+                if x.content.output.address in output_addresses:
+                    raise SyntaxError(
+                        f"Duplicate select output for {x.content.output.address}; Line: {self.meta.line_number if self.meta else 'unknown'}"
+                    )
+                output_addresses.add(x.content.output.address)
+            elif isinstance(x.content, ConceptRef):
+                self.local_concepts[x.content.address] = environment.concepts[
+                    x.content.address
+                ]
+                if x.content.address in output_addresses:
+                    raise SyntaxError(
+                        f"Duplicate select output for {x.content.address}; Line: {self.meta.line_number if self.meta else 'unknown'}"
+                    )
+                output_addresses.add(x.content.address)
+        self.grain = self.calculate_grain(environment, self.local_concepts)
+        self.validate_syntax(environment)
+
     @classmethod
     def from_inputs(
         cls,
