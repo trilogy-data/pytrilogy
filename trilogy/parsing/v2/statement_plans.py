@@ -90,15 +90,24 @@ class StatementPlanBase:
         return None
 
 
-def _finalize_nested_selects(output: Any, environment: Environment) -> None:
-    """Find and finalize any SelectStatements nested inside a hydrated output."""
+def finalize_select_tree(output: Any, environment: Environment) -> None:
+    """Finalize any SelectStatements nested inside a hydrated output.
+
+    Mirrors v1's eager SelectStatement.from_inputs behavior for nested
+    contexts (multi-select, persist, rowset) so that `as_lineage` and
+    downstream lineage conversion see populated grain/local_concepts.
+    """
+    if output is None:
+        return
     if isinstance(output, SelectStatement):
         output.finalize(environment)
-    elif isinstance(output, PersistStatement):
-        output.select.finalize(environment)
     elif isinstance(output, MultiSelectStatement):
         for sel in output.selects:
             sel.finalize(environment)
+    elif isinstance(output, PersistStatement):
+        finalize_select_tree(output.select, environment)
+    elif isinstance(output, RowsetDerivationStatement):
+        finalize_select_tree(output.select, environment)
 
 
 @dataclass
@@ -204,10 +213,32 @@ class SelectStatementPlan(StatementPlanBase):
         self.output = hydrator.hydrate_rule(self.syntax)
 
     def validate(self, hydrator: "NativeHydrator") -> None:
-        if isinstance(self.output, SelectStatement):
-            self.output.finalize(hydrator.environment)
+        finalize_select_tree(self.output, hydrator.environment)
 
     def commit(self, hydrator: "NativeHydrator") -> SelectStatement | None:
+        return self.output
+
+
+@dataclass
+class MultiSelectStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: MultiSelectStatement | None = None
+    inline_addresses: list[str] = field(default_factory=list)
+
+    def collect_symbols(self, hydrator: "NativeHydrator") -> None:
+        namespace = hydrator.environment.namespace or DEFAULT_NAMESPACE
+        self.inline_addresses = collect_inline_concept_addresses(self.syntax, namespace)
+        for addr in self.inline_addresses:
+            ns, _, nm = addr.rpartition(".")
+            hydrator.symbol_table.declare(addr, nm or addr, ns or namespace)
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        self.output = hydrator.hydrate_rule(self.syntax)
+
+    def validate(self, hydrator: "NativeHydrator") -> None:
+        finalize_select_tree(self.output, hydrator.environment)
+
+    def commit(self, hydrator: "NativeHydrator") -> MultiSelectStatement | None:
         return self.output
 
 
@@ -308,7 +339,7 @@ class PersistStatementPlan(StatementPlanBase):
         self.output = hydrator.hydrate_rule(self.syntax)
 
     def validate(self, hydrator: "NativeHydrator") -> None:
-        _finalize_nested_selects(self.output, hydrator.environment)
+        finalize_select_tree(self.output, hydrator.environment)
 
     def commit(self, hydrator: "NativeHydrator") -> PersistStatement | None:
         return self.output

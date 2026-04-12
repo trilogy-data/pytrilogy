@@ -362,6 +362,10 @@ def multi_select_statement(
 
     if align_c is None:
         raise fail(node, "Multi-select statement requires an align clause")
+    # Mirror v1's SelectStatement.from_inputs: finalize inner selects before
+    # `as_lineage` so grain/local_concepts are populated.
+    for sel in selects:
+        sel.finalize(context.environment)
     derived_concepts = []
     new_selects = [x.as_lineage(context.environment) for x in selects]
     lineage = MultiSelectLineage(
@@ -385,7 +389,7 @@ def multi_select_statement(
             environment=context.environment,
         )
         derived_concepts.append(concept)
-        context.environment.add_concept(concept)
+        context.add_concept(concept, meta=core_meta(node.meta))
     if derive:
         for derived in derive.items:
             derivation = derived.expr
@@ -399,7 +403,7 @@ def multi_select_statement(
                 derivation, name, lineage, context.environment.namespace
             )
             derived_concepts.append(concept)
-            context.environment.add_concept(concept)
+            context.add_concept(concept, meta=core_meta(node.meta))
     return MultiSelectStatement(
         selects=selects,
         align=align_c,

@@ -29,8 +29,13 @@ class RuleContext:
         default_factory=RecordingEnvironmentUpdate
     )
 
-    def add_concept(self, concept: Concept, meta: Any | None = None) -> None:
-        self.update.add_concept(self.environment, concept, meta)
+    def add_concept(
+        self,
+        concept: Concept,
+        meta: Any | None = None,
+        force: bool = False,
+    ) -> None:
+        self.update.add_concept(self.environment, concept, meta, force=force)
 
 
 def core_meta(meta: SyntaxMeta | None) -> Any:
