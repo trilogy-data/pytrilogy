@@ -7,7 +7,7 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.functions import Count, CountDistinct, Max, Min
+from trilogy.core.functions import FunctionFactory
 from trilogy.core.models.author import (
     Comparison,
     Concept,
@@ -28,6 +28,7 @@ from trilogy.core.models.environment import Environment
 @fixture(scope="session")
 def test_environment():
     env = Environment()
+    ff = FunctionFactory(env)
     order_id = Concept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
 
     order_timestamp = Concept(
@@ -38,28 +39,28 @@ def test_environment():
         name="order_count",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=Count([order_id], env),
+        lineage=ff.create_function([order_id], FunctionType.COUNT),
     )
 
     distinct_order_count = Concept(
         name="distinct_order_count",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=CountDistinct([order_id], env),
+        lineage=ff.create_function([order_id], FunctionType.COUNT_DISTINCT),
     )
 
     max_order_id = Concept(
         name="max_order_id",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=Max([order_id], env),
+        lineage=ff.create_function([order_id], FunctionType.MAX),
     )
 
     min_order_id = Concept(
         name="min_order_id",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=Min([order_id], env),
+        lineage=ff.create_function([order_id], FunctionType.MIN),
     )
 
     revenue = Concept(

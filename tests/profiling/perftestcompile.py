@@ -8,7 +8,7 @@ from trilogy.core.enums import (
     Purpose,
     WindowType,
 )
-from trilogy.core.functions import Count, CountDistinct, Max, Min
+from trilogy.core.functions import FunctionFactory
 from trilogy.core.models.author import (
     Comparison,
     Concept,
@@ -36,6 +36,7 @@ from trilogy.dialect.sql_server import SqlServerDialect
 
 def gen_environment():
     env = Environment()
+    ff = FunctionFactory(env)
     order_id = Concept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
 
     order_timestamp = Concept(
@@ -46,28 +47,28 @@ def gen_environment():
         name="order_count",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=Count([order_id]),
+        lineage=ff.create_function([order_id], FunctionType.COUNT),
     )
 
     distinct_order_count = Concept(
         name="distinct_order_count",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=CountDistinct([order_id]),
+        lineage=ff.create_function([order_id], FunctionType.COUNT_DISTINCT),
     )
 
     max_order_id = Concept(
         name="max_order_id",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=Max([order_id]),
+        lineage=ff.create_function([order_id], FunctionType.MAX),
     )
 
     min_order_id = Concept(
         name="min_order_id",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=Min([order_id]),
+        lineage=ff.create_function([order_id], FunctionType.MIN),
     )
 
     revenue = Concept(name="revenue", datatype=DataType.FLOAT, purpose=Purpose.PROPERTY)

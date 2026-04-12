@@ -1321,53 +1321,56 @@ def function_args_to_output_purpose(args, environment: Environment) -> Purpose:
     return Purpose.PROPERTY
 
 
-def Count(args: list[Concept], environment: Environment) -> Function:
-    return FunctionFactory(environment).create_function(
-        args=args, operator=FunctionType.COUNT
+def try_create_auto_derived(
+    parent: Concept, suffix: str, environment: Environment
+) -> Concept | None:
+    """Try to create a derived concept from a parent and suffix.
+
+    If the suffix matches a single-arg function valid for the parent's
+    datatype, returns the derived Concept. Otherwise returns None."""
+    from trilogy.core.models.author import Grain
+
+    try:
+        ftype = FunctionType(suffix)
+    except ValueError:
+        return None
+
+    config = FUNCTION_REGISTRY.get(ftype)
+    if not config or config.arg_count != 1:
+        return None
+
+    parent_dt = parent.output_datatype
+    valid = config.valid_inputs
+    if isinstance(valid, list):
+        if valid and parent_dt not in valid[0]:
+            return None
+    elif isinstance(valid, set) and parent_dt not in valid:
+        return None
+
+    func = FunctionFactory(environment).create_function(args=[parent], operator=ftype)
+
+    if ftype in FunctionClass.AGGREGATE_FUNCTIONS.value:
+        return Concept(
+            name=f"{parent.name}.{suffix}",
+            datatype=func.output_datatype,
+            purpose=Purpose.METRIC,
+            lineage=func,
+            grain=Grain(),
+            namespace=parent.namespace,
+            keys=set(),
+        )
+
+    purpose = (
+        Purpose.CONSTANT
+        if parent.purpose == Purpose.CONSTANT
+        else (func.output_purpose or Purpose.PROPERTY)
     )
-
-
-def CountDistinct(args: list[Concept], environment: Environment) -> Function:
-    return FunctionFactory(environment).create_function(
-        args=args, operator=FunctionType.COUNT
-    )
-
-
-def Max(args: list[Concept], environment: Environment) -> Function:
-    return FunctionFactory(environment).create_function(
-        args=args, operator=FunctionType.COUNT
-    )
-
-
-def Min(args: list[Concept], environment: Environment) -> Function:
-    return FunctionFactory(environment).create_function(
-        args=args, operator=FunctionType.COUNT
-    )
-
-
-def Split(args: list[Concept], environment: Environment) -> Function:
-    return FunctionFactory(environment).create_function(
-        args=args, operator=FunctionType.SPLIT
-    )
-
-
-def AttrAccess(args: list[ConceptRef | str | int], environment: Environment):
-    return FunctionFactory(environment).create_function(
-        args=args, operator=FunctionType.ATTR_ACCESS
-    )
-
-
-def CurrentDate(
-    args: list[Concept], environment: Environment | None = None
-) -> Function:
-    return FunctionFactory(environment).create_function(
-        args=args, operator=FunctionType.CURRENT_DATE
-    )
-
-
-def CurrentDatetime(
-    args: list[Concept], environment: Environment | None = None
-) -> Function:
-    return FunctionFactory(environment).create_function(
-        args=args, operator=FunctionType.CURRENT_DATETIME
+    return Concept(
+        name=f"{parent.name}.{suffix}",
+        datatype=func.output_datatype,
+        purpose=purpose,
+        lineage=func,
+        grain=parent.grain,
+        namespace=parent.namespace,
+        keys=set([parent.address]),
     )

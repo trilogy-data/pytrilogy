@@ -303,7 +303,6 @@ merge launch_date into ~launch_spine;
 merge decom_date into ~decom_spine;
         """
     )
-    pre_concepts = set(base.environment.concepts.keys())
     queries = base.parse_text(
         """
 select
@@ -326,13 +325,6 @@ align date:launch_spine,decom_spine;
     assert "local.date" in query.locally_derived
     # verify date.month can be lazily resolved
     assert base.environment.concepts["local.date.month"] is not None
-    for c in query.locally_derived:
-        base.environment.remove_concept(c)
-    post_concepts = set(base.environment.concepts.keys())
-    assert (
-        pre_concepts == post_concepts
-    ), f"Environment cleanup did not remove locally derived concepts: {post_concepts - pre_concepts}"
-
     # check we can materialize it safely
     base.environment.materialize_for_select()
 

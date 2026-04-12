@@ -2,7 +2,7 @@ import copy
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import ConceptSource, DatePart, FunctionType, Purpose
-from trilogy.core.functions import AttrAccess
+from trilogy.core.functions import FunctionFactory
 from trilogy.core.models.author import Concept, Function, Grain, Metadata, TraitDataType
 from trilogy.core.models.core import DataType, StructType, arg_to_datatype
 from trilogy.core.models.environment import Environment
@@ -295,7 +295,9 @@ def generate_related_concepts(
                     and environment.namespace != DEFAULT_NAMESPACE
                     else concept.name
                 ),
-                lineage=AttrAccess([concept.reference, key], environment=environment),
+                lineage=FunctionFactory(environment).create_function(
+                    [concept.reference, key], FunctionType.ATTR_ACCESS
+                ),
                 grain=concept.grain,
                 metadata=Metadata(
                     concept_source=ConceptSource.AUTO_DERIVED,
