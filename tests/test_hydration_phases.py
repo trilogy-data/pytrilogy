@@ -24,6 +24,11 @@ from trilogy.parsing.v2.hydration import (
 )
 from trilogy.parsing.v2.model import ConceptUpdate, ConceptUpdateKind
 from trilogy.parsing.v2.semantic_state import ConceptLookup, SemanticState
+from trilogy.core.statements.author import (
+    MultiSelectStatement,
+    RowsetDerivationStatement,
+    SelectStatement,
+)
 
 
 def _semantic_state(env: Environment) -> SemanticState:
@@ -413,6 +418,39 @@ ALIGN one_key:one,other_one;
         assert all(u.concept.address != "local.second" for u in state.concepts)
 
 
+class TestSemanticStateMirrorDisabled:
+    def test_add_does_not_mutate_environment(self):
+        env = Environment()
+        state = SemanticState(environment=env, mirror_to_environment=False)
+        state.add(_make_probe("quiet"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+        assert "local.quiet" not in env.concepts.data
+        assert state.pending_lookup("local.quiet") is not None
+
+    def test_commit_applies_pending_to_environment(self):
+        env = Environment()
+        state = SemanticState(environment=env, mirror_to_environment=False)
+        state.add(_make_probe("deferred"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+        state.commit()
+        assert "local.deferred" in env.concepts.data
+
+    def test_rollback_does_not_touch_environment(self):
+        env = Environment()
+        baseline = set(env.concepts.data.keys())
+        state = SemanticState(environment=env, mirror_to_environment=False)
+        state.add(_make_probe("disposable"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+        state.rollback()
+        assert set(env.concepts.data.keys()) == baseline
+        assert state.pending_lookup("local.disposable") is None
+
+    def test_lookup_facade_sees_pending_without_mirror(self):
+        env = Environment()
+        state = SemanticState(environment=env, mirror_to_environment=False)
+        lookup = ConceptLookup(state)
+        state.add(_make_probe("offstage"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+        assert lookup.require("local.offstage").name == "offstage"
+        assert "local.offstage" not in env.concepts.data
+
+
 class TestConceptLookupFacade:
     def test_pending_concept_resolves_before_commit(self):
         env = Environment()
@@ -482,3 +520,55 @@ class TestConceptLookupFacade:
         lookup = ConceptLookup(state)
         assert lookup.get("local.nope") is None
         assert not lookup.contains("local.nope")
+
+
+def _parse_no_mirror(text: str) -> tuple[Environment, list]:
+    env = Environment()
+    state = SemanticState(environment=env, mirror_to_environment=False)
+    ctx = HydrationContext(environment=env, semantic_state=state)
+    hydrator = NativeHydrator(ctx)
+    document = parse_syntax(text)
+    output = hydrator.parse(document)
+    return env, output
+
+
+class TestNoMirrorParser:
+    def test_key_then_select_ref(self):
+        env, output = _parse_no_mirror("key x int;\nselect x;")
+        assert "local.x" in env.concepts.data
+        select = next(o for o in output if isinstance(o, SelectStatement))
+        assert [x.concept.address for x in select.selection] == ["local.x"]
+
+    def test_key_then_inline_derivation(self):
+        env, output = _parse_no_mirror("key x int;\nselect x + 1 -> y;")
+        assert "local.x" in env.concepts.data
+        assert "local.y" in env.concepts.data
+        assert env.concepts["local.y"].datatype == DataType.INTEGER
+
+    def test_multiselect_align(self):
+        text = """
+key one int;
+key other_one int;
+datasource num_one (
+    one:one
+) grain (one) address num_one;
+datasource num_other (
+    other_one:other_one
+) grain (other_one) address num_other;
+
+SELECT one
+MERGE
+SELECT other_one
+ALIGN one_key:one,other_one;
+"""
+        env, output = _parse_no_mirror(text)
+        assert "local.one_key" in env.concepts.data
+        multi = next(o for o in output if isinstance(o, MultiSelectStatement))
+        assert multi is not None
+
+    def test_rowset_output(self):
+        env, output = _parse_no_mirror("key x int;\nrowset r <- select x;")
+        assert "local.x" in env.concepts.data
+        assert "r.x" in env.concepts.data
+        rowset = next(o for o in output if isinstance(o, RowsetDerivationStatement))
+        assert rowset.name == "r"

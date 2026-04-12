@@ -31,7 +31,7 @@ from trilogy.core.models.author import (
     WindowItemOver,
 )
 from trilogy.core.models.core import DataType, MapType, arg_to_datatype
-from trilogy.parsing.common import arbitrary_to_concept
+from trilogy.parsing.v2.concept_factory import arbitrary_to_concept_v2
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,
@@ -606,7 +606,7 @@ def _parse_window_args(
         elif isinstance(item, WindowType):
             wtype = item
         else:
-            concept = arbitrary_to_concept(item, environment=context.environment)
+            concept = arbitrary_to_concept_v2(item, context=context)
             context.add_virtual_concept(concept, meta=core_meta(None))
     return wtype, concept, index, order_by, over
 

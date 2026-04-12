@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any, Protocol
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.models.author import Comment, CustomFunctionFactory
 from trilogy.core.models.datasource import Datasource
-from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     FunctionDeclaration,
@@ -27,6 +26,9 @@ from trilogy.parsing.v2.import_rules import (
 )
 from trilogy.parsing.v2.import_service import ImportRequest
 from trilogy.parsing.v2.model import HydrationDiagnostic
+from trilogy.parsing.v2.select_finalize import (
+    finalize_select_tree as _v2_finalize_select_tree,
+)
 from trilogy.parsing.v2.symbols import (
     collect_concept_address,
     collect_inline_concept_addresses,
@@ -95,24 +97,14 @@ class StatementPlanBase:
         return None
 
 
-def finalize_select_tree(output: Any, environment: Environment) -> None:
-    """Finalize any SelectStatements nested inside a hydrated output.
+def finalize_select_tree(output: Any, hydrator: "NativeHydrator") -> None:
+    """v2-native finalize entry point used by statement plans.
 
-    Mirrors v1's eager SelectStatement.from_inputs behavior for nested
-    contexts (multi-select, persist, rowset) so that `as_lineage` and
-    downstream lineage conversion see populated grain/local_concepts.
+    Routes through ``select_finalize.finalize_select_tree`` so concept
+    lookups resolve against ``RuleContext.concepts`` instead of reading
+    directly from ``environment.concepts``.
     """
-    if output is None:
-        return
-    if isinstance(output, SelectStatement):
-        output.finalize(environment)
-    elif isinstance(output, MultiSelectStatement):
-        for sel in output.selects:
-            sel.finalize(environment)
-    elif isinstance(output, PersistStatement):
-        finalize_select_tree(output.select, environment)
-    elif isinstance(output, RowsetDerivationStatement):
-        finalize_select_tree(output.select, environment)
+    _v2_finalize_select_tree(output, hydrator.rule_context())
 
 
 @dataclass
@@ -223,7 +215,7 @@ class SelectStatementPlan(StatementPlanBase):
         self.output = hydrator.hydrate_rule(self.syntax)
 
     def validate(self, hydrator: "NativeHydrator") -> None:
-        finalize_select_tree(self.output, hydrator.environment)
+        finalize_select_tree(self.output, hydrator)
 
     def commit(self, hydrator: "NativeHydrator") -> SelectStatement | None:
         return self.output
@@ -246,7 +238,7 @@ class MultiSelectStatementPlan(StatementPlanBase):
         self.output = hydrator.hydrate_rule(self.syntax)
 
     def validate(self, hydrator: "NativeHydrator") -> None:
-        finalize_select_tree(self.output, hydrator.environment)
+        finalize_select_tree(self.output, hydrator)
 
     def commit(self, hydrator: "NativeHydrator") -> MultiSelectStatement | None:
         return self.output
@@ -374,7 +366,7 @@ class PersistStatementPlan(StatementPlanBase):
         self.output = hydrator.hydrate_rule(self.syntax)
 
     def validate(self, hydrator: "NativeHydrator") -> None:
-        finalize_select_tree(self.output, hydrator.environment)
+        finalize_select_tree(self.output, hydrator)
 
     def commit(self, hydrator: "NativeHydrator") -> PersistStatement | None:
         return self.output

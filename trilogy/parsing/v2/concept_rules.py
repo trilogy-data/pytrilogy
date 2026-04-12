@@ -49,7 +49,8 @@ from trilogy.core.statements.author import (
     ConceptDerivationStatement,
     ShowStatement,
 )
-from trilogy.parsing.common import arbitrary_to_concept, constant_to_concept
+from trilogy.parsing.common import constant_to_concept
+from trilogy.parsing.v2.concept_factory import arbitrary_to_concept_v2
 from trilogy.parsing.v2.concept_syntax import (
     ConceptDeclarationSyntax,
     ConceptDerivationSyntax,
@@ -282,11 +283,11 @@ def concept_derivation(
             SubselectItem,
         ),
     ):
-        concept_value = arbitrary_to_concept(
+        concept_value = arbitrary_to_concept_v2(
             source_value,
             name=name,
             namespace=namespace,
-            environment=context.environment,
+            context=context,
             metadata=metadata,
         )
         if purpose == Purpose.KEY and concept_value.purpose != Purpose.KEY:
@@ -311,7 +312,7 @@ def concept_derivation(
             metadata=metadata,
         )
     elif isinstance(source_value, ConceptRef):
-        concept_value = arbitrary_to_concept(
+        concept_value = arbitrary_to_concept_v2(
             context.function_factory.create_function(
                 [source_value],
                 FunctionType.ALIAS,
@@ -319,7 +320,7 @@ def concept_derivation(
             ),
             name=name,
             namespace=namespace,
-            environment=context.environment,
+            context=context,
             metadata=metadata,
         )
     else:

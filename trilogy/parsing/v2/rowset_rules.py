@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.statements.author import RowsetDerivationStatement
-from trilogy.parsing.common import rowset_to_concepts
+from trilogy.parsing.v2.rowset_semantics import rowset_to_concepts_v2
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,
@@ -10,7 +10,7 @@ from trilogy.parsing.v2.rules_context import (
     core_meta,
     hydrated_children,
 )
-from trilogy.parsing.v2.statement_plans import finalize_select_tree
+from trilogy.parsing.v2.select_finalize import finalize_select_tree
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
 
 
@@ -22,15 +22,16 @@ def rowset_derivation_statement(
     args = hydrated_children(node, hydrate)
     name = str(args[0])
     select = args[1]
-    # rowset_to_concepts relies on as_lineage, which needs the inner
+    # rowset_to_concepts_v2 relies on as_lineage, which needs the inner
     # select(s) finalized before lineage conversion.
-    finalize_select_tree(select, context.environment)
+    finalize_select_tree(select, context)
     output = RowsetDerivationStatement(
         name=name,
         select=select,
         namespace=context.environment.namespace or DEFAULT_NAMESPACE,
     )
-    for new_concept in rowset_to_concepts(output, context.environment):
+    result = rowset_to_concepts_v2(output, context)
+    for new_concept in result.concepts:
         context.add_rowset_concept(new_concept, meta=core_meta(node.meta), force=True)
     return output
 
