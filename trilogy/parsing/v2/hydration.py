@@ -89,6 +89,11 @@ NODE_HYDRATORS = (
 
 
 class HydrationPhase(Enum):
+    # LOAD_IMPORTS runs before COLLECT_SYMBOLS because later statements
+    # need imported concepts/functions/datasources available during
+    # symbol collection and binding. Only ImportStatementPlan does work
+    # here; every other plan no-ops.
+    LOAD_IMPORTS = "load_imports"
     COLLECT_SYMBOLS = "collect_symbols"
     BIND = "bind"
     HYDRATE = "hydrate"
@@ -196,6 +201,7 @@ class NativeHydrator:
             update=self.update,
         )
         self.plans = self.plan(document.forms)
+        self._run_phase(HydrationPhase.LOAD_IMPORTS)
         self._run_phase(HydrationPhase.COLLECT_SYMBOLS)
         self._run_phase(HydrationPhase.BIND)
         # Interleave hydrate/validate/commit per plan so commit-side env

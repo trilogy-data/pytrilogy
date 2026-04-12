@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
 from trilogy.constants import DEFAULT_NAMESPACE
-from trilogy.core.models.author import Comment
+from trilogy.core.models.author import Comment, CustomFunctionFactory
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
@@ -65,6 +65,8 @@ class UnsupportedSyntaxError(NotImplementedError):
 
 
 class StatementPlan(Protocol):
+    def load_imports(self, hydrator: "NativeHydrator") -> None: ...
+
     def collect_symbols(self, hydrator: "NativeHydrator") -> None: ...
 
     def bind(self, hydrator: "NativeHydrator") -> None: ...
@@ -77,6 +79,9 @@ class StatementPlan(Protocol):
 
 
 class StatementPlanBase:
+    def load_imports(self, hydrator: "NativeHydrator") -> None:
+        return None
+
     def collect_symbols(self, hydrator: "NativeHydrator") -> None:
         return None
 
@@ -173,7 +178,12 @@ class ImportStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
     output: ImportStatement | None = None
 
-    def bind(self, hydrator: "NativeHydrator") -> None:
+    def load_imports(self, hydrator: "NativeHydrator") -> None:
+        # Imports materialize in their own early phase because later
+        # statements need the imported concepts/functions/datasources
+        # resolvable during collect_symbols, bind, and hydrate. This is
+        # not a generic commit - it is an intentional early binding of
+        # another environment into this one.
         kind = self.syntax.kind
         context = hydrator.rule_context()
         if kind == SyntaxNodeKind.IMPORT_STATEMENT:
@@ -260,8 +270,6 @@ class FunctionDefinitionPlan(StatementPlanBase):
     def commit(self, hydrator: "NativeHydrator") -> FunctionDeclaration | None:
         if self.output is None:
             return None
-        from trilogy.core.models.author import CustomFunctionFactory
-
         hydrator.environment.functions[self.output.name] = CustomFunctionFactory(
             function=self.output.expr,
             namespace=hydrator.environment.namespace,
