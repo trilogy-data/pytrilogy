@@ -1,0 +1,342 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Protocol
+
+from trilogy.constants import DEFAULT_NAMESPACE
+from trilogy.core.models.author import Comment
+from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.environment import Environment
+from trilogy.core.statements.author import (
+    ConceptDeclarationStatement,
+    FunctionDeclaration,
+    ImportStatement,
+    MergeStatementV2,
+    MultiSelectStatement,
+    PersistStatement,
+    RawSQLStatement,
+    RowsetDerivationStatement,
+    SelectStatement,
+    ShowStatement,
+)
+from trilogy.parsing.v2.function_syntax import FunctionDefinitionSyntax
+from trilogy.parsing.v2.import_rules import (
+    import_statement,
+    selective_import_statement,
+    self_import_statement,
+)
+from trilogy.parsing.v2.model import HydrationDiagnostic
+from trilogy.parsing.v2.scopes import (
+    temporary_function_scope,
+    temporary_rowset_scope,
+)
+from trilogy.parsing.v2.symbols import (
+    collect_concept_address,
+    collect_inline_concept_addresses,
+    collect_properties_addresses,
+    extract_concept_name_from_literal,
+    extract_dependencies,
+    find_concept_literals,
+)
+from trilogy.parsing.v2.syntax import (
+    SyntaxElement,
+    SyntaxNode,
+    SyntaxNodeKind,
+    SyntaxToken,
+    SyntaxTokenKind,
+    syntax_name,
+)
+
+if TYPE_CHECKING:
+    from trilogy.parsing.v2.hydration import NativeHydrator
+
+
+class UnsupportedSyntaxError(NotImplementedError):
+    def __init__(
+        self,
+        message: str,
+        diagnostic: HydrationDiagnostic | None = None,
+    ) -> None:
+        self.diagnostic = diagnostic
+        super().__init__(message)
+
+    @classmethod
+    def from_syntax(
+        cls, message: str, syntax: SyntaxElement
+    ) -> "UnsupportedSyntaxError":
+        return cls(message, HydrationDiagnostic.from_syntax(message, syntax))
+
+
+class StatementPlan(Protocol):
+    def collect_symbols(self, hydrator: "NativeHydrator") -> None: ...
+
+    def bind(self, hydrator: "NativeHydrator") -> None: ...
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None: ...
+
+    def validate(self, hydrator: "NativeHydrator") -> None: ...
+
+    def commit(self, hydrator: "NativeHydrator") -> Any: ...
+
+
+class StatementPlanBase:
+    def collect_symbols(self, hydrator: "NativeHydrator") -> None:
+        return None
+
+    def bind(self, hydrator: "NativeHydrator") -> None:
+        return None
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        return None
+
+    def validate(self, hydrator: "NativeHydrator") -> None:
+        return None
+
+
+def _finalize_nested_selects(output: Any, environment: Environment) -> None:
+    """Find and finalize any SelectStatements nested inside a hydrated output."""
+    if isinstance(output, SelectStatement):
+        output.finalize(environment)
+    elif isinstance(output, PersistStatement):
+        output.select.finalize(environment)
+    elif isinstance(output, MultiSelectStatement):
+        for sel in output.selects:
+            sel.finalize(environment)
+
+
+@dataclass
+class CommentStatementPlan(StatementPlanBase):
+    syntax: SyntaxToken
+    output: Comment | None = None
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        self.output = hydrator.hydrate_comment(self.syntax)
+
+    def commit(self, hydrator: "NativeHydrator") -> Comment | None:
+        return self.output
+
+
+@dataclass
+class ConceptStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: ConceptDeclarationStatement | None = None
+    address: str | None = None
+    provided_addresses: list[str] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)
+
+    def collect_symbols(self, hydrator: "NativeHydrator") -> None:
+        self.address = collect_concept_address(self.syntax, hydrator.environment)
+        if self.address:
+            self.provided_addresses = [self.address]
+        else:
+            self.provided_addresses = collect_properties_addresses(
+                self.syntax, hydrator.environment
+            )
+
+    def bind(self, hydrator: "NativeHydrator") -> None:
+        self.dependencies = extract_dependencies(self.syntax, hydrator.environment)
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        # Concepts are created during BIND via _sort_and_create_concepts
+        pass
+
+    def commit(
+        self,
+        hydrator: "NativeHydrator",
+    ) -> ConceptDeclarationStatement | None:
+        return self.output
+
+
+@dataclass
+class ShowStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: ShowStatement | None = None
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        self.output = hydrator.hydrate_show_statement(self.syntax)
+
+    def commit(self, hydrator: "NativeHydrator") -> ShowStatement | None:
+        return self.output
+
+
+@dataclass
+class ImportStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: ImportStatement | None = None
+
+    def bind(self, hydrator: "NativeHydrator") -> None:
+        kind = self.syntax.kind
+        if kind == SyntaxNodeKind.IMPORT_STATEMENT:
+            self.output = import_statement(
+                self.syntax,
+                hydrator.rule_context(),
+                hydrator.hydrate_rule,
+                hydrator=hydrator,
+            )
+        elif kind == SyntaxNodeKind.SELECTIVE_IMPORT_STATEMENT:
+            self.output = selective_import_statement(
+                self.syntax,
+                hydrator.rule_context(),
+                hydrator.hydrate_rule,
+                hydrator=hydrator,
+            )
+        elif kind == SyntaxNodeKind.SELF_IMPORT_STATEMENT:
+            self.output = self_import_statement(
+                self.syntax,
+                hydrator.rule_context(),
+                hydrator.hydrate_rule,
+                hydrator=hydrator,
+            )
+
+    def commit(self, hydrator: "NativeHydrator") -> ImportStatement | None:
+        return self.output
+
+
+@dataclass
+class SelectStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: SelectStatement | None = None
+    inline_addresses: list[str] = field(default_factory=list)
+
+    def collect_symbols(self, hydrator: "NativeHydrator") -> None:
+        namespace = hydrator.environment.namespace or DEFAULT_NAMESPACE
+        self.inline_addresses = collect_inline_concept_addresses(self.syntax, namespace)
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        self.output = hydrator.hydrate_rule(self.syntax)
+
+    def validate(self, hydrator: "NativeHydrator") -> None:
+        if isinstance(self.output, SelectStatement):
+            self.output.finalize(hydrator.environment)
+
+    def commit(self, hydrator: "NativeHydrator") -> SelectStatement | None:
+        return self.output
+
+
+@dataclass
+class FunctionDefinitionPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: FunctionDeclaration | None = None
+    parameter_names: list[str] = field(default_factory=list)
+
+    def collect_symbols(self, hydrator: "NativeHydrator") -> None:
+        self.parameter_names = FunctionDefinitionSyntax.from_node(
+            self.syntax
+        ).parameter_names
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        with temporary_function_scope(hydrator.environment, self.parameter_names):
+            self.output = hydrator.hydrate_rule(self.syntax)
+
+    def commit(self, hydrator: "NativeHydrator") -> FunctionDeclaration | None:
+        return self.output
+
+
+@dataclass
+class DatasourceStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: Datasource | None = None
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        self.output = hydrator.hydrate_rule(self.syntax)
+
+    def commit(self, hydrator: "NativeHydrator") -> Datasource | None:
+        return self.output
+
+
+@dataclass
+class MergeStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: MergeStatementV2 | None = None
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        self.output = hydrator.hydrate_rule(self.syntax)
+
+    def commit(self, hydrator: "NativeHydrator") -> MergeStatementV2 | None:
+        return self.output
+
+
+@dataclass
+class RowsetStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: RowsetDerivationStatement | None = None
+    rowset_name: str | None = None
+    forward_addresses: list[str] = field(default_factory=list)
+
+    def collect_symbols(self, hydrator: "NativeHydrator") -> None:
+        for child in self.syntax.children:
+            if (
+                isinstance(child, SyntaxToken)
+                and child.kind == SyntaxTokenKind.IDENTIFIER
+            ):
+                self.rowset_name = child.value
+                return
+
+    def bind(self, hydrator: "NativeHydrator") -> None:
+        # Forward references inside a rowset derive clause (e.g. coalesce(level0.qoh1, ...))
+        # resolve to outputs that only exist after rowset_to_concepts runs. Stage deliberate
+        # placeholders now; the real concepts replace them during hydrate.
+        if not self.rowset_name:
+            return
+        namespace = hydrator.environment.namespace or DEFAULT_NAMESPACE
+        prefixes = (
+            f"{self.rowset_name}.",
+            f"{namespace}.{self.rowset_name}.",
+        )
+        seen: set[str] = set()
+        for literal in find_concept_literals(self.syntax):
+            address = extract_concept_name_from_literal(literal, namespace)
+            if not address.startswith(prefixes):
+                continue
+            if address in seen:
+                continue
+            seen.add(address)
+            self.forward_addresses.append(address)
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        with temporary_rowset_scope(hydrator.environment, self.forward_addresses):
+            self.output = hydrator.hydrate_rule(self.syntax)
+
+    def commit(self, hydrator: "NativeHydrator") -> RowsetDerivationStatement | None:
+        return self.output
+
+
+@dataclass
+class PersistStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: PersistStatement | None = None
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        self.output = hydrator.hydrate_rule(self.syntax)
+
+    def validate(self, hydrator: "NativeHydrator") -> None:
+        _finalize_nested_selects(self.output, hydrator.environment)
+
+    def commit(self, hydrator: "NativeHydrator") -> PersistStatement | None:
+        return self.output
+
+
+@dataclass
+class RawSQLStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: RawSQLStatement | None = None
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        self.output = hydrator.hydrate_rule(self.syntax)
+
+    def commit(self, hydrator: "NativeHydrator") -> RawSQLStatement | None:
+        return self.output
+
+
+@dataclass
+class UnsupportedStatementPlan(StatementPlanBase):
+    syntax: SyntaxElement
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        raise UnsupportedSyntaxError.from_syntax(
+            f"No v2 statement plan for syntax node '{syntax_name(self.syntax)}'",
+            self.syntax,
+        )
+
+    def commit(self, hydrator: "NativeHydrator") -> Any:
+        return None
