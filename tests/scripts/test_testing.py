@@ -505,3 +505,61 @@ def test_refresh_derived_directory_uses_shared_refresh_command(tmp_path, monkeyp
     assert run_refresh_command.call_args.args[
         0
     ].refresh_params.force_sources == frozenset({"derived.one"})
+
+
+def test_refresh_derived_exits_when_only_dependency_skips(tmp_path, monkeypatch):
+    """When all failures are dependency-skipped, no refresh targets exist."""
+    test_file = tmp_path / "model.preql"
+    test_file.write_text("select 1;")
+    skipped_node = ScriptNode(path=test_file)
+    initial_summary = _make_summary(
+        [
+            ExecutionResult(
+                node=skipped_node,
+                success=False,
+                error=RuntimeError("Skipped due to failed dependency"),
+            )
+        ],
+        skipped=1,
+    )
+    run_parallel_execution = Mock(side_effect=[initial_summary])
+    monkeypatch.setattr(testing, "run_parallel_execution", run_parallel_execution)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["integration", str(test_file), "duckdb", "--refresh-derived", "failed"],
+    )
+
+    assert result.exit_code == 1
+    assert "No actual failed scripts were identified" in result.output
+    assert run_parallel_execution.call_count == 1
+
+
+def test_refresh_derived_prints_message_on_noop_refresh(tmp_path, monkeypatch):
+    """When refresh completes but updates nothing, a message is printed."""
+    test_file = tmp_path / "model.preql"
+    test_file.write_text("select 1;")
+    failed_node = ScriptNode(path=test_file)
+    initial_summary = _make_summary(
+        [ExecutionResult(node=failed_node, success=False, error=Exit(1))]
+    )
+    noop_refresh = _make_summary([], skipped=1)
+    rerun_summary = _make_summary([ExecutionResult(node=failed_node, success=True)])
+    run_parallel_execution = Mock(side_effect=[initial_summary, rerun_summary])
+    monkeypatch.setattr(testing, "run_parallel_execution", run_parallel_execution)
+    monkeypatch.setattr(testing, "run_refresh_command", Mock(return_value=noop_refresh))
+    monkeypatch.setattr(
+        testing,
+        "_collect_refreshable_derived_datasources",
+        Mock(return_value=["derived.one"]),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["integration", str(test_file), "duckdb", "--refresh-derived", "failed"],
+    )
+
+    assert result.exit_code == 0
+    assert "without updating any derived datasources" in result.output
