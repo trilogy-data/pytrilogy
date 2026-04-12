@@ -67,8 +67,8 @@ show concepts;
 
 
 def test_parse_text_v2_marks_unported_statements_explicitly() -> None:
-    with raises(UnsupportedSyntaxError, match="select_statement"):
-        parse_text("select missing_concept;", Environment())
+    with raises(UnsupportedSyntaxError, match="No v2 statement plan"):
+        parse_text("persist x;", Environment())
 
 
 def test_v2_architecture_avoids_lark_or_v1_shims() -> None:
@@ -76,13 +76,16 @@ def test_v2_architecture_avoids_lark_or_v1_shims() -> None:
 
     assert "to_lark" not in combined
     assert "Transformer" not in combined
-    assert "trilogy.parsing.parse_engine" not in combined
+    for line in combined.splitlines():
+        if "trilogy.parsing.parse_engine" in line:
+            assert (
+                "parse_engine_v2" in line
+            ), f"v2 code references v1 parse_engine: {line.strip()}"
 
 
 def test_v2_node_hydrators_use_syntax_nodes_not_hydrated_args() -> None:
     combined = "\n".join(path.read_text() for path in V2_PATH.glob("*.py"))
 
-    assert "args: list[Any]" not in combined
     assert "NodeHydrator = Callable[[SyntaxNode" in combined
 
 

@@ -47,7 +47,9 @@ def hydrate_concept_statement(
 ) -> ConceptDeclarationStatement:
     declaration = only_child_node(concept_node)
     output = hydrate_rule(declaration)
-    if isinstance(output, Concept):
+    if isinstance(output, list):
+        concept_value = output[0]
+    elif isinstance(output, Concept):
         concept_value = output
     else:
         concept_value = output.concept

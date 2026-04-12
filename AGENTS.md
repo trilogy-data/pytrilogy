@@ -47,4 +47,4 @@ Project uses a build_backend defined in .scripts/build_backend.py, which mostly 
 
 ## CLI
 
-The trilogy/scripts/trilogy.py file is the CLI entrypoint. The CLI is used for management, interacitons and other tasks. 
+The trilogy/scripts/trilogy.py file is the CLI entrypoint. The CLI is used for management, interactions and other tasks. 

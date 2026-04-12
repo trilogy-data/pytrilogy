@@ -100,7 +100,7 @@ class TopLevelStatementParser:
         parse_config: Parsing | None = None,
         max_parse_depth: int = MAX_PARSE_DEPTH,
     ) -> None:
-        _ = parsed, tokens, text_lookup, environment_lookup, import_keys
+        _ = parsed, tokens
         self.hydrator = NativeHydrator(
             HydrationContext(
                 environment=environment,
@@ -110,6 +110,12 @@ class TopLevelStatementParser:
                 max_parse_depth=max_parse_depth,
             )
         )
+        if import_keys:
+            self.hydrator.import_keys = import_keys
+        if environment_lookup:
+            self.hydrator.parsed_environments = environment_lookup
+        if text_lookup:
+            self.hydrator.text_lookup = text_lookup
 
     @property
     def environment(self) -> Environment:

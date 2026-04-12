@@ -20,12 +20,24 @@ from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
+    ImportStatement,
+    SelectStatement,
     ShowStatement,
 )
 from trilogy.parsing.v2.concept_rules import CONCEPT_NODE_HYDRATORS
+from trilogy.parsing.v2.conditional_rules import CONDITIONAL_NODE_HYDRATORS
 from trilogy.parsing.v2.expression_rules import EXPRESSION_NODE_HYDRATORS
+from trilogy.parsing.v2.function_rules import FUNCTION_NODE_HYDRATORS
+from trilogy.parsing.v2.import_rules import (
+    IMPORT_NODE_HYDRATORS,
+    import_statement,
+    selective_import_statement,
+    self_import_statement,
+)
 from trilogy.parsing.v2.model import HydrationDiagnostic, RecordingEnvironmentUpdate
 from trilogy.parsing.v2.rules_context import RuleContext
+from trilogy.parsing.v2.select_rules import SELECT_NODE_HYDRATORS
+from trilogy.parsing.v2.statement_rules import STATEMENT_NODE_HYDRATORS
 from trilogy.parsing.v2.statements import (
     hydrate_concept_statement,
     hydrate_show_statement,
@@ -48,7 +60,15 @@ TRANSPARENT_NODES = {
     SyntaxNodeKind.PRODUCT_CHAIN,
     SyntaxNodeKind.ATOM,
 }
-NODE_HYDRATORS = CONCEPT_NODE_HYDRATORS | EXPRESSION_NODE_HYDRATORS
+NODE_HYDRATORS = (
+    CONCEPT_NODE_HYDRATORS
+    | EXPRESSION_NODE_HYDRATORS
+    | CONDITIONAL_NODE_HYDRATORS
+    | SELECT_NODE_HYDRATORS
+    | IMPORT_NODE_HYDRATORS
+    | FUNCTION_NODE_HYDRATORS
+    | STATEMENT_NODE_HYDRATORS
+)
 
 
 class HydrationPhase(Enum):
@@ -150,6 +170,65 @@ class ShowStatementPlan(StatementPlanBase):
 
 
 @dataclass
+class ImportStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: ImportStatement | None = None
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        kind = self.syntax.kind
+        if kind == SyntaxNodeKind.IMPORT_STATEMENT:
+            self.output = import_statement(
+                self.syntax,
+                hydrator.rule_context(),
+                hydrator.hydrate_rule,
+                hydrator=hydrator,
+            )
+        elif kind == SyntaxNodeKind.SELECTIVE_IMPORT_STATEMENT:
+            self.output = selective_import_statement(
+                self.syntax,
+                hydrator.rule_context(),
+                hydrator.hydrate_rule,
+                hydrator=hydrator,
+            )
+        elif kind == SyntaxNodeKind.SELF_IMPORT_STATEMENT:
+            self.output = self_import_statement(
+                self.syntax,
+                hydrator.rule_context(),
+                hydrator.hydrate_rule,
+                hydrator=hydrator,
+            )
+
+    def commit(self, hydrator: "NativeHydrator") -> ImportStatement | None:
+        return self.output
+
+
+@dataclass
+class SelectStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: SelectStatement | None = None
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        self.output = hydrator.hydrate_rule(self.syntax)
+
+    def commit(self, hydrator: "NativeHydrator") -> SelectStatement | None:
+        return self.output
+
+
+@dataclass
+class GenericStatementPlan(StatementPlanBase):
+    """Handles any statement type registered in NODE_HYDRATORS."""
+
+    syntax: SyntaxNode
+    output: Any = None
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        self.output = hydrator.hydrate_rule(self.syntax)
+
+    def commit(self, hydrator: "NativeHydrator") -> Any:
+        return self.output
+
+
+@dataclass
 class UnsupportedStatementPlan(StatementPlanBase):
     syntax: SyntaxElement
 
@@ -214,6 +293,8 @@ class NativeHydrator:
         self.token_address = context.token_address
         self.parse_config = context.parse_config
         self.max_parse_depth = context.max_parse_depth
+        self.import_keys: list[str] = []
+        self.parsed_environments: dict[str, Environment] = {}
         self.text_lookup: dict[Path | str, str] = {}
         self.function_factory = FunctionFactory(self.environment)
         self.update = RecordingEnvironmentUpdate()
@@ -255,6 +336,12 @@ class NativeHydrator:
     def plan(self, forms: list[SyntaxElement]) -> list[StatementPlan]:
         return [self.plan_form(form) for form in forms]
 
+    _IMPORT_KINDS = {
+        SyntaxNodeKind.IMPORT_STATEMENT,
+        SyntaxNodeKind.SELECTIVE_IMPORT_STATEMENT,
+        SyntaxNodeKind.SELF_IMPORT_STATEMENT,
+    }
+
     def plan_form(self, form: SyntaxElement) -> StatementPlan:
         if isinstance(form, SyntaxToken):
             if form.kind == SyntaxTokenKind.COMMENT:
@@ -262,10 +349,29 @@ class NativeHydrator:
             return UnsupportedStatementPlan(form)
         if form.kind == SyntaxNodeKind.SHOW_STATEMENT:
             return ShowStatementPlan(form)
+        if form.kind == SyntaxNodeKind.SELECT_STATEMENT:
+            return SelectStatementPlan(form)
+        if form.kind in self._IMPORT_KINDS:
+            return ImportStatementPlan(form)
         if form.kind == SyntaxNodeKind.BLOCK:
             statement = self.block_statement(form)
             if statement.kind == SyntaxNodeKind.CONCEPT:
                 return ConceptStatementPlan(form)
+            if statement.kind == SyntaxNodeKind.FUNCTION:
+                inner = statement.children[0]
+                if (
+                    isinstance(inner, SyntaxNode)
+                    and inner.kind
+                    and NODE_HYDRATORS.get(inner.kind)
+                ):
+                    return GenericStatementPlan(inner)
+                return UnsupportedStatementPlan(statement)
+            if statement.kind in self._IMPORT_KINDS:
+                return ImportStatementPlan(statement)
+            if statement.kind == SyntaxNodeKind.SELECT_STATEMENT:
+                return SelectStatementPlan(statement)
+            if statement.kind and NODE_HYDRATORS.get(statement.kind):
+                return GenericStatementPlan(statement)
             return UnsupportedStatementPlan(statement)
         return UnsupportedStatementPlan(form)
 
