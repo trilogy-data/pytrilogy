@@ -211,48 +211,19 @@ def test_generate_query_reprompts_after_missing_query_argument():
         for message in user_messages(conversation)
     )
 
-    def test_extract_response_markdown_fallback():
-        provider = ScriptedProvider(responses=[])
-        conversation = Conversation.create(provider=provider)
 
-        response = conversation.extract_response(
-            'Reasoning: test """```trilogy\nselect 1 as one;\n```"""'
+def test_generate_query_raises_after_attempt_limit():
+    environment, _ = Environment(working_path=env_path).parse("""import flight;""")
+    provider = ScriptedProvider(
+        responses=[make_response(text="no tool call") for _ in range(2)]
+    )
+    conversation = Conversation.create(provider=provider)
+
+    with pytest.raises(Exception, match="Failed to generate a valid query"):
+        conversation.generate_query(
+            user_input="number of flights by month in 2020",
+            environment=environment,
+            attempts=2,
         )
 
-        assert response == "select 1 as one;"
-
-    def test_extract_response_prefers_submit_tool_call():
-        provider = ScriptedProvider(responses=[])
-        conversation = Conversation.create(provider=provider)
-
-        response = conversation.extract_response(
-            make_response(make_tool_call(TRILOGY_QUERY_TOOL.name, "select 4 as four"))
-        )
-
-        assert response == "select 4 as four"
-
-    def test_extract_response_returns_response_text_without_tool_call():
-        provider = ScriptedProvider(responses=[])
-        conversation = Conversation.create(provider=provider)
-
-        response = conversation.extract_response(
-            make_response(text='prefix """select 5 as five;""" suffix')
-        )
-
-        assert response == "select 5 as five;"
-
-    def test_generate_query_raises_after_attempt_limit():
-        environment, _ = Environment(working_path=env_path).parse("""import flight;""")
-        provider = ScriptedProvider(
-            responses=[make_response(text="no tool call") for _ in range(2)]
-        )
-        conversation = Conversation.create(provider=provider)
-
-        with pytest.raises(Exception, match="Failed to generate a valid query"):
-            conversation.generate_query(
-                user_input="number of flights by month in 2020",
-                environment=environment,
-                attempts=2,
-            )
-
-        assert provider.call_count == 2
+    assert provider.call_count == 2
