@@ -20,7 +20,6 @@ from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
-    ConceptDerivationStatement,
     ShowStatement,
 )
 from trilogy.parsing.v2.concept_rules import CONCEPT_NODE_HYDRATORS
@@ -126,9 +125,7 @@ class CommentStatementPlan(StatementPlanBase):
 @dataclass
 class ConceptStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
-    output: (
-        ConceptDeclarationStatement | ConceptDerivationStatement | Concept | None
-    ) = None
+    output: ConceptDeclarationStatement | None = None
 
     def hydrate(self, hydrator: "NativeHydrator") -> None:
         self.output = hydrator.hydrate_concept_block(self.syntax)
@@ -136,7 +133,7 @@ class ConceptStatementPlan(StatementPlanBase):
     def commit(
         self,
         hydrator: "NativeHydrator",
-    ) -> ConceptDeclarationStatement | ConceptDerivationStatement | Concept | None:
+    ) -> ConceptDeclarationStatement | None:
         return self.output
 
 
@@ -220,6 +217,12 @@ class NativeHydrator:
         self.text_lookup: dict[Path | str, str] = {}
         self.function_factory = FunctionFactory(self.environment)
         self.update = RecordingEnvironmentUpdate()
+        self._cached_rule_context: RuleContext = RuleContext(
+            environment=self.environment,
+            function_factory=self.function_factory,
+            source_text="",
+            update=self.update,
+        )
 
     def set_text(self, text: str) -> None:
         self.text_lookup[self.token_address] = text
@@ -229,6 +232,12 @@ class NativeHydrator:
 
     def parse(self, document: SyntaxDocument) -> list[Any]:
         self.set_text(document.text)
+        self._cached_rule_context = RuleContext(
+            environment=self.environment,
+            function_factory=self.function_factory,
+            source_text=self.text_lookup.get(self.token_address, ""),
+            update=self.update,
+        )
         self.prepare_parse()
         plans = self.plan(document.forms)
         try:
@@ -315,28 +324,26 @@ class NativeHydrator:
     def hydrate_concept_block(
         self,
         block: SyntaxNode,
-    ) -> ConceptDeclarationStatement | ConceptDerivationStatement | Concept:
+    ) -> ConceptDeclarationStatement:
         concept_node = self.require_node(
             self.block_statement(block), SyntaxNodeKind.CONCEPT
         )
         output = self.hydrate_concept_statement(concept_node)
-        if isinstance(output, ConceptDeclarationStatement):
-            comments = [
-                self.hydrate_comment(child)
-                for child in block.children[1:]
-                if isinstance(child, SyntaxToken)
-                and child.kind == SyntaxTokenKind.COMMENT
-            ]
-            if comments:
-                output.concept.metadata.description = "\n".join(
-                    comment.text.split("#")[1].rstrip() for comment in comments
-                )
+        comments = [
+            self.hydrate_comment(child)
+            for child in block.children[1:]
+            if isinstance(child, SyntaxToken) and child.kind == SyntaxTokenKind.COMMENT
+        ]
+        if comments:
+            output.concept.metadata.description = "\n".join(
+                comment.text.split("#")[1].rstrip() for comment in comments
+            )
         return output
 
     def hydrate_concept_statement(
         self,
         concept_node: SyntaxNode,
-    ) -> ConceptDeclarationStatement | ConceptDerivationStatement | Concept:
+    ) -> ConceptDeclarationStatement:
         self.require_node(concept_node, SyntaxNodeKind.CONCEPT)
         return hydrate_concept_statement(
             concept_node, self.rule_context(), self.hydrate_rule
@@ -347,12 +354,7 @@ class NativeHydrator:
         return hydrate_show_statement(show_node, self.hydrate_rule)
 
     def rule_context(self) -> RuleContext:
-        return RuleContext(
-            environment=self.environment,
-            function_factory=self.function_factory,
-            source_text=self.text_lookup.get(self.token_address, ""),
-            update=self.update,
-        )
+        return self._cached_rule_context
 
     def hydrate_rule(self, element: SyntaxElement) -> Any:
         if isinstance(element, SyntaxToken):

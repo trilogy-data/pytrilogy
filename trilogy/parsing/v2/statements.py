@@ -5,11 +5,14 @@ from dataclasses import dataclass
 from trilogy.core.models.author import Concept
 from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
-    ConceptDerivationStatement,
     ShowStatement,
 )
 from trilogy.parsing.v2.model import HydrationDiagnostic, HydrationError
-from trilogy.parsing.v2.rules_context import HydrateFunction, RuleContext
+from trilogy.parsing.v2.rules_context import (
+    HydrateFunction,
+    RuleContext,
+    apply_source_location,
+)
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
 
 
@@ -41,26 +44,14 @@ def hydrate_concept_statement(
     concept_node: SyntaxNode,
     context: RuleContext,
     hydrate_rule: HydrateFunction,
-) -> ConceptDeclarationStatement | ConceptDerivationStatement | Concept:
+) -> ConceptDeclarationStatement:
     declaration = only_child_node(concept_node)
     output = hydrate_rule(declaration)
     if isinstance(output, Concept):
         concept_value = output
     else:
         concept_value = output.concept
-    if concept_value.metadata:
-        concept_value.metadata.line_number = (
-            concept_node.meta.line if concept_node.meta else None
-        )
-        concept_value.metadata.column = (
-            concept_node.meta.column if concept_node.meta else None
-        )
-        concept_value.metadata.end_line = (
-            concept_node.meta.end_line if concept_node.meta else None
-        )
-        concept_value.metadata.end_column = (
-            concept_node.meta.end_column if concept_node.meta else None
-        )
+    apply_source_location(concept_value, concept_node.meta)
     return ConceptDeclarationStatement(concept=concept_value)
 
 

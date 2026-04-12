@@ -21,25 +21,15 @@ from trilogy.core.models.core import (
     list_to_wrapper,
     tuple_to_wrapper,
 )
-from trilogy.parsing.v2.model import HydrationDiagnostic, HydrationError
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,
     RuleContext,
     core_meta,
+    fail,
+    hydrated_children,
 )
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
-
-
-def hydrated_children(
-    node: SyntaxNode,
-    hydrate: HydrateFunction,
-) -> list[Any]:
-    return [hydrate(child) for child in node.children]
-
-
-def fail(node: SyntaxNode, message: str) -> HydrationError:
-    return HydrationError(HydrationDiagnostic.from_syntax(message, node))
 
 
 def int_lit(

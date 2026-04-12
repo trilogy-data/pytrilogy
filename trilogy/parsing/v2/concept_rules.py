@@ -58,27 +58,18 @@ from trilogy.parsing.v2.concept_syntax import (
     PropertyIdentifierSyntax,
     PropertyWildcardSyntax,
 )
-from trilogy.parsing.v2.model import HydrationDiagnostic, HydrationError
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,
     RuleContext,
+    apply_source_location,
     core_meta,
+    fail,
+    hydrated_children,
 )
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
 
 CONSTANT_TYPES = (int, float, str, bool, ListWrapper, TupleWrapper, MapWrapper)
-
-
-def fail(node: SyntaxNode, message: str) -> HydrationError:
-    return HydrationError(HydrationDiagnostic.from_syntax(message, node))
-
-
-def hydrated_children(
-    node: SyntaxNode,
-    hydrate: HydrateFunction,
-) -> list[Any]:
-    return [hydrate(child) for child in node.children]
 
 
 def metadata_from_meta(
@@ -187,11 +178,7 @@ def concept_declaration(
         derivation=Derivation.ROOT,
         granularity=Granularity.MULTI_ROW,
     )
-    if concept_value.metadata:
-        concept_value.metadata.line_number = node.meta.line if node.meta else None
-        concept_value.metadata.column = node.meta.column if node.meta else None
-        concept_value.metadata.end_line = node.meta.end_line if node.meta else None
-        concept_value.metadata.end_column = node.meta.end_column if node.meta else None
+    apply_source_location(concept_value, node.meta)
     context.add_concept(concept_value, meta=core_meta(node.meta))
     return ConceptDeclarationStatement(concept=concept_value)
 
@@ -336,11 +323,7 @@ def concept_derivation(
             node,
             f"Received invalid type {type(source_value)} {source_value} as input to concept derivation: `{snippet}`",
         )
-    if concept_value.metadata:
-        concept_value.metadata.line_number = node.meta.line if node.meta else None
-        concept_value.metadata.column = node.meta.column if node.meta else None
-        concept_value.metadata.end_line = node.meta.end_line if node.meta else None
-        concept_value.metadata.end_column = node.meta.end_column if node.meta else None
+    apply_source_location(concept_value, node.meta)
     context.add_concept(concept_value, meta=core_meta(node.meta))
     return ConceptDerivationStatement(concept=concept_value)
 
@@ -386,11 +369,7 @@ def build_constant_derivation(
         namespace=namespace,
         granularity=Granularity.SINGLE_ROW,
     )
-    if concept_value.metadata:
-        concept_value.metadata.line_number = meta.line if meta else None
-        concept_value.metadata.column = meta.column if meta else None
-        concept_value.metadata.end_line = meta.end_line if meta else None
-        concept_value.metadata.end_column = meta.end_column if meta else None
+    apply_source_location(concept_value, meta)
     context.add_concept(concept_value, core_meta(meta))
     return concept_value
 
