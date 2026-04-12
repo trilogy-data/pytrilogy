@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Iterator
+from typing import Any, Iterable, Iterator
 
-from trilogy.core.models.author import Concept
+from trilogy.core.models.author import Concept, ConceptRef
 from trilogy.core.models.environment import Environment
 
 
@@ -50,16 +50,18 @@ class SemanticState:
     ``rollback`` can reverse compatibility writes if the parse fails partway
     through.
 
-    ``commit`` finalizes the pending updates. The compatibility mirror has
-    already applied them, so commit is a bookkeeping step that seals the
-    rollback window and returns the applied updates.
+    ``concepts`` accumulates the full update history across committed batches
+    so callers can inspect what was applied. The in-flight batch is bounded
+    by ``_pending_start``; ``commit`` advances that boundary and ``rollback``
+    drops the in-flight entries and restores the mirrored environment keys.
     """
 
     environment: Environment
     concepts: list[ConceptUpdate] = field(default_factory=list)
     _mirror: list[_MirrorEntry] = field(default_factory=list)
     _seen: set[str] = field(default_factory=set)
-    _committed: bool = False
+    _pending_by_address: dict[str, Concept] = field(default_factory=dict)
+    _pending_start: int = 0
 
     def add(
         self,
@@ -70,42 +72,100 @@ class SemanticState:
     ) -> Concept:
         address = concept.address
         if address not in self._seen:
-            prior = self.environment.concepts.get(address, _ABSENT)
+            # Read through the raw dict to avoid EnvironmentConceptDict's
+            # namespace/fallback resolution muddying the rollback snapshot.
+            prior = self.environment.concepts.data.get(address, _ABSENT)
             self._mirror.append(_MirrorEntry(address=address, prior=prior))
             self._seen.add(address)
         resolved = self.environment.add_concept(concept, meta, force=force)
-        self.concepts.append(
-            ConceptUpdate(concept=resolved, kind=kind, meta=meta)
-        )
+        self._pending_by_address[address] = resolved
+        self.concepts.append(ConceptUpdate(concept=resolved, kind=kind, meta=meta))
         return resolved
 
     def lookup(self, address: str) -> Concept | None:
-        return self.environment.concepts.get(address)
+        pending = self._pending_by_address.get(address)
+        if pending is not None:
+            return pending
+        return self.environment.concepts.data.get(address)
+
+    def pending_lookup(self, address: str) -> Concept | None:
+        return self._pending_by_address.get(address)
+
+    def pending_concepts(self) -> Iterable[tuple[str, Concept]]:
+        return self._pending_by_address.items()
 
     def pending(self) -> Iterator[ConceptUpdate]:
-        return iter(self.concepts)
+        return iter(self.concepts[self._pending_start :])
 
-    def commit(
-        self, environment: Environment | None = None
-    ) -> list[ConceptUpdate]:
+    def commit(self, environment: Environment | None = None) -> list[ConceptUpdate]:
         if environment is not None and environment is not self.environment:
-            raise ValueError(
-                "SemanticState committed against a different environment"
-            )
-        committed = list(self.concepts)
+            raise ValueError("SemanticState committed against a different environment")
+        committed = self.concepts[self._pending_start :]
         self._mirror.clear()
         self._seen.clear()
-        self._committed = False
-        return committed
+        self._pending_by_address.clear()
+        self._pending_start = len(self.concepts)
+        return list(committed)
 
     def rollback(self) -> None:
-        if self._committed:
-            return
+        data = self.environment.concepts.data
         for entry in reversed(self._mirror):
             if entry.prior is _ABSENT:
-                self.environment.concepts.pop(entry.address, None)
+                data.pop(entry.address, None)
             else:
-                self.environment.concepts[entry.address] = entry.prior
+                data[entry.address] = entry.prior
+        del self.concepts[self._pending_start :]
         self._mirror.clear()
         self._seen.clear()
-        self.concepts.clear()
+        self._pending_by_address.clear()
+
+
+class ConceptLookup:
+    """Parser-owned concept lookup facade.
+
+    Resolves concepts by address, preferring the current parse's in-flight
+    (uncommitted) concepts from ``SemanticState`` and falling back to the
+    base ``Environment``. Rule modules in ``trilogy.parsing.v2`` should go
+    through this instead of reading ``environment.concepts`` directly, so
+    we can eventually stop mirroring pending writes into the environment.
+    """
+
+    __slots__ = ("_state", "_env")
+
+    def __init__(self, state: SemanticState) -> None:
+        self._state = state
+        self._env = state.environment
+
+    def require(self, address: str) -> Concept:
+        pending = self._state.pending_lookup(address)
+        if pending is not None:
+            return pending
+        return self._env.concepts[address]  # type: ignore[return-value]
+
+    def get(self, address: str) -> Concept | None:
+        pending = self._state.pending_lookup(address)
+        if pending is not None:
+            return pending
+        return self._env.concepts.get(address)
+
+    def contains(self, address: str) -> bool:
+        if self._state.pending_lookup(address) is not None:
+            return True
+        return address in self._env.concepts
+
+    def __contains__(self, address: object) -> bool:
+        return isinstance(address, str) and self.contains(address)
+
+    def __getitem__(self, address: str) -> Concept:
+        return self.require(address)
+
+    def values(self) -> list[Concept]:
+        merged: dict[str, Concept] = {}
+        for concept in self._env.concepts.values():
+            merged[concept.address] = concept
+        for address, concept in self._state.pending_concepts():
+            merged[address] = concept
+        return list(merged.values())
+
+    def reference(self, address: str) -> ConceptRef:
+        return self.require(address).reference

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, cast
 
 from trilogy.core.functions import FunctionFactory
@@ -8,7 +8,11 @@ from trilogy.core.models.author import Concept
 from trilogy.core.models.environment import Environment
 from trilogy.parsing.v2.model import HydrationDiagnostic, HydrationError
 from trilogy.parsing.v2.semantic_scope import SymbolTable
-from trilogy.parsing.v2.semantic_state import ConceptUpdateKind, SemanticState
+from trilogy.parsing.v2.semantic_state import (
+    ConceptLookup,
+    ConceptUpdateKind,
+    SemanticState,
+)
 from trilogy.parsing.v2.syntax import SyntaxElement, SyntaxMeta, SyntaxNode, SyntaxToken
 
 HydrateFunction = Callable[[SyntaxElement], Any]
@@ -23,6 +27,10 @@ class RuleContext:
     symbol_table: SymbolTable
     semantic_state: SemanticState
     source_text: str = ""
+    concepts: ConceptLookup = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "concepts", ConceptLookup(self.semantic_state))
 
     def _add_concept(
         self,

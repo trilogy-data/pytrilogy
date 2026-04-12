@@ -68,6 +68,7 @@ from trilogy.parsing.v2.rules_context import (
     fail,
     hydrated_children,
 )
+from trilogy.parsing.v2.semantic_state import ConceptLookup
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
 
 CONSTANT_TYPES = (int, float, str, bool, ListWrapper, TupleWrapper, MapWrapper)
@@ -92,12 +93,18 @@ def parse_concept_reference(
     name: str,
     environment: Environment,
     purpose: Purpose | None = None,
+    concepts: ConceptLookup | None = None,
 ) -> tuple[str, str, str, str | None]:
     parent = None
     if "." in name:
         if purpose == Purpose.PROPERTY:
             parent, name = name.rsplit(".", 1)
-            namespace = environment.concepts[parent].namespace or DEFAULT_NAMESPACE
+            parent_concept = (
+                concepts.require(parent)
+                if concepts is not None
+                else environment.concepts[parent]
+            )
+            namespace = parent_concept.namespace or DEFAULT_NAMESPACE
             lookup = f"{namespace}.{name}"
         else:
             namespace, name = name.rsplit(".", 1)
@@ -126,7 +133,9 @@ def parameter_declaration(
     default = hydrate(syntax.default) if syntax.default else None
     name = hydrate(syntax.name)
     datatype = hydrate(syntax.datatype)
-    _, _, name, _ = parse_concept_reference(name, context.environment)
+    _, _, name, _ = parse_concept_reference(
+        name, context.environment, concepts=context.concepts
+    )
     raw = context.environment.parameters.get(name, default)
     if raw is None:
         raise fail(
@@ -168,7 +177,9 @@ def concept_declaration(
     purpose = hydrate(syntax.purpose)
     name = hydrate(syntax.name)
     datatype = hydrate(syntax.datatype)
-    _, namespace, name, _ = parse_concept_reference(name, context.environment)
+    _, namespace, name, _ = parse_concept_reference(
+        name, context.environment, concepts=context.concepts
+    )
     concept_value = Concept(
         name=name,
         datatype=datatype,
@@ -202,7 +213,7 @@ def concept_property_declaration(
                 f"Property declaration {declaration} must be fully qualified with a parent key",
             )
         grain, name = declaration.rsplit(".", 1)
-        parent = context.environment.concepts[grain]
+        parent = context.concepts.require(grain)
         parents = [parent]
         namespace = parent.namespace
     else:
@@ -242,11 +253,10 @@ def concept_derivation(
             raw_name,
             context.environment,
             purpose,
+            concepts=context.concepts,
         )
         keys = (
-            [context.environment.concepts[parent_concept].address]
-            if parent_concept
-            else []
+            [context.concepts.require(parent_concept).address] if parent_concept else []
         )
     else:
         keys, name = raw_name
@@ -354,7 +364,9 @@ def build_constant_derivation(
     metadata: Metadata | None,
     context: RuleContext,
 ) -> Concept:
-    _, namespace, name, _ = parse_concept_reference(name, context.environment)
+    _, namespace, name, _ = parse_concept_reference(
+        name, context.environment, concepts=context.concepts
+    )
     concept_value = Concept(
         name=name,
         datatype=arg_to_datatype(constant),
@@ -399,7 +411,7 @@ def concept_lit(
     address = hydrate(node.children[0])
     if "." not in address and context.environment.namespace == DEFAULT_NAMESPACE:
         address = f"{DEFAULT_NAMESPACE}.{address}"
-    mapping = context.environment.concepts[address]
+    mapping = context.concepts.require(address)
     return ConceptRef(
         address=mapping.address,
         metadata=metadata_from_meta(node.meta),
@@ -455,9 +467,9 @@ def map_type(
     key = args[0]
     value = args[1]
     if isinstance(key, str):
-        key = context.environment.concepts[key]
+        key = context.concepts.require(key)
     if isinstance(value, str):
-        value = context.environment.concepts[value]
+        value = context.concepts.require(value)
     return MapType(key_type=key, value_type=value)
 
 
@@ -469,7 +481,7 @@ def list_type(
     args = hydrated_children(node, hydrate)
     content = args[0]
     if isinstance(content, str):
-        content = context.environment.concepts[content]
+        content = context.concepts.require(content)
     return ArrayType(type=content)
 
 
@@ -484,7 +496,7 @@ def struct_type(
         if isinstance(arg, StructComponent):
             final.append(arg)
         else:
-            final.append(context.environment.concepts[arg])
+            final.append(context.concepts.require(arg))
     return StructType(
         fields=final,
         fields_map={
@@ -532,9 +544,7 @@ def prop_ident(
 ) -> tuple[list[Concept], str]:
     syntax = PropertyIdentifierSyntax.from_node(node)
     grains = [hydrate(grain) for grain in syntax.grains]
-    return [context.environment.concepts[grain] for grain in grains], hydrate(
-        syntax.name
-    )
+    return [context.concepts.require(grain) for grain in grains], hydrate(syntax.name)
 
 
 def prop_ident_wildcard(
@@ -544,7 +554,7 @@ def prop_ident_wildcard(
 ) -> tuple[list[Concept], str]:
     syntax = PropertyWildcardSyntax.from_node(node)
     return [
-        context.environment.concepts[f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"]
+        context.concepts.require(f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}")
     ], hydrate(syntax.name)
 
 

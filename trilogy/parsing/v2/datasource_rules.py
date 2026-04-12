@@ -134,9 +134,9 @@ def properties_declaration(
     inline_props: list[list[Any]] = args[1]
 
     if isinstance(parents_arg, list):
-        parents = [context.environment.concepts[k] for k in parents_arg]
+        parents = [context.concepts.require(k) for k in parents_arg]
     else:
-        parents = [context.environment.concepts[str(parents_arg)]]
+        parents = [context.concepts.require(str(parents_arg))]
 
     grain_components = {x.address for x in parents}
     namespace = parents[0].namespace
@@ -198,7 +198,7 @@ def column_assignment(
     if isinstance(concept_list, list) and len(concept_list) > 1:
         modifiers += [m for m in concept_list[:-1] if isinstance(m, Modifier)]
     concept_name = concept_list[-1] if isinstance(concept_list, list) else concept_list
-    resolved = context.environment.concepts[concept_name]
+    resolved = context.concepts.require(concept_name)
     if short_binding:
         alias = resolved.safe_address
     return ColumnAssignment(
@@ -229,7 +229,7 @@ def grain_clause(
 ) -> Grain:
     args = hydrated_children(node, hydrate)
     cols = args[0] if isinstance(args[0], list) else args
-    return Grain(components=set(context.environment.concepts[a].address for a in cols))
+    return Grain(components=set(context.concepts.require(a).address for a in cols))
 
 
 def whole_grain_clause(
@@ -440,19 +440,19 @@ def datasource_node(
         for column in columns:
             if column.concept.address in grain.components:
                 continue
-            target_c = context.environment.concepts[column.concept.address]
+            target_c = context.concepts.require(column.concept.address)
             if target_c.purpose != Purpose.KEY:
                 continue
             key_inputs = grain.components
             eligible = True
             for key in key_inputs:
                 if column.concept.address in (
-                    context.environment.concepts[key].keys or set()
+                    context.concepts.require(key).keys or set()
                 ):
                     eligible = False
             if not eligible:
                 continue
-            keys = [context.environment.concepts[g] for g in key_inputs]
+            keys = [context.concepts.require(g) for g in key_inputs]
             target_c.keys = set(x.address for x in keys)
     return datasource
 

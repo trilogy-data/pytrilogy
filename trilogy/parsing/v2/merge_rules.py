@@ -36,19 +36,17 @@ def merge_statement(
         source_wildcard = source_str[:-2]
         target_wildcard = target_str[:-2]
         sources = [
-            v
-            for v in context.environment.concepts.values()
-            if v.namespace == source_wildcard
+            v for v in context.concepts.values() if v.namespace == source_wildcard
         ]
         targets: dict[str, Concept] = {}
         for x in sources:
             taddr = target_wildcard + "." + x.name
-            if taddr in context.environment.concepts:
-                targets[x.address] = context.environment.concepts[taddr]
+            if context.concepts.contains(taddr):
+                targets[x.address] = context.concepts.require(taddr)
         sources = [x for x in sources if x.address in targets]
     else:
-        sources = [context.environment.concepts[source_str]]
-        targets = {sources[0].address: context.environment.concepts[target_str]}
+        sources = [context.concepts.require(source_str)]
+        targets = {sources[0].address: context.concepts.require(target_str)}
 
     for source_c in sources:
         if isinstance(source_c, UndefinedConcept):

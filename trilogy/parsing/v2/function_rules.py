@@ -230,7 +230,7 @@ def aggregate_by(
     args = hydrated_children(node, hydrate)
     base = args[0]
     b_concept = str(base).split(" ")[-1]
-    fargs = [context.environment.concepts[a] for a in [b_concept] + args[1:]]
+    fargs = [context.concepts.require(a) for a in [b_concept] + args[1:]]
     return context.function_factory.create_function(fargs, FunctionType.GROUP)
 
 
@@ -453,7 +453,7 @@ def filter_item(
     else:
         where = WhereClause(conditional=_expr_to_boolean(raw, context))
     if isinstance(expr, str):
-        expr = context.environment.concepts[expr].reference
+        expr = context.concepts.reference(expr)
     return FilterItem(content=expr, where=where)
 
 
@@ -600,9 +600,9 @@ def _parse_window_args(
             over = item.get("over", [])
             order_by = item.get("order", [])
         elif isinstance(item, str):
-            concept = context.environment.concepts[item]
+            concept = context.concepts.require(item)
         elif isinstance(item, ConceptRef):
-            concept = context.environment.concepts[item.address]
+            concept = context.concepts.require(item.address)
         elif isinstance(item, WindowType):
             wtype = item
         else:

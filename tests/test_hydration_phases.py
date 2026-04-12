@@ -5,6 +5,10 @@ Covers COLLECT_SYMBOLS, BIND, HYDRATE phases and topological ordering.
 
 from __future__ import annotations
 
+import pytest
+
+from trilogy.core.enums import Purpose
+from trilogy.core.models.author import Concept
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 from trilogy.parsing.parse_engine_v2 import parse_syntax, parse_text
@@ -19,6 +23,20 @@ from trilogy.parsing.v2.hydration import (
     topological_sort_plans,
 )
 from trilogy.parsing.v2.model import ConceptUpdate, ConceptUpdateKind
+from trilogy.parsing.v2.semantic_state import ConceptLookup, SemanticState
+
+
+def _semantic_state(env: Environment) -> SemanticState:
+    return SemanticState(environment=env)
+
+
+def _make_probe(name: str) -> Concept:
+    return Concept(
+        name=name,
+        namespace="local",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+    )
 
 
 def _hydrator_for(text: str) -> NativeHydrator:
@@ -34,8 +52,8 @@ def _hydrator_for(text: str) -> NativeHydrator:
         environment=hydrator.environment,
         function_factory=hydrator.function_factory,
         symbol_table=hydrator.symbol_table,
+        semantic_state=hydrator.semantic_state,
         source_text=document.text,
-        update=hydrator.update,
     )
     hydrator.plans = hydrator.plan(document.forms)
     return hydrator
@@ -288,19 +306,19 @@ class TestConceptUpdateKinds:
     def test_top_level_declaration(self):
         hydrator = _fully_parse("key id int;")
         assert ConceptUpdateKind.TOP_LEVEL_DECLARATION in _kinds_for(
-            hydrator.update.concepts, "local.id"
+            hydrator.semantic_state.concepts, "local.id"
         )
 
     def test_property_declaration(self):
         hydrator = _fully_parse("key id int;\nproperty id.name string;")
         assert ConceptUpdateKind.PROPERTY_DECLARATION in _kinds_for(
-            hydrator.update.concepts, "local.name"
+            hydrator.semantic_state.concepts, "local.name"
         )
 
     def test_select_local(self):
         hydrator = _fully_parse("key x int;\nselect x + 1 -> y;")
         assert ConceptUpdateKind.SELECT_LOCAL in _kinds_for(
-            hydrator.update.concepts, "local.y"
+            hydrator.semantic_state.concepts, "local.y"
         )
 
     def test_multiselect_output(self):
@@ -320,11 +338,147 @@ SELECT other_one
 ALIGN one_key:one,other_one;
 """
         hydrator = _fully_parse(text)
-        kinds = [u.kind for u in hydrator.update.concepts]
+        kinds = [u.kind for u in hydrator.semantic_state.concepts]
         assert ConceptUpdateKind.MULTISELECT_OUTPUT in kinds
 
     def test_rowset_output(self):
         text = "key x int;\nrowset r <- select x;"
         hydrator = _fully_parse(text)
-        kinds = [u.kind for u in hydrator.update.concepts]
+        kinds = [u.kind for u in hydrator.semantic_state.concepts]
         assert ConceptUpdateKind.ROWSET_OUTPUT in kinds
+
+
+class TestSemanticStateTransaction:
+    def test_successful_parse_commits_concepts(self):
+        env = Environment()
+        _, _ = parse_text("key id int;\nauto derived <- id + 1;", env)
+        assert "local.id" in env.concepts.data
+        assert "local.derived" in env.concepts.data
+
+    def test_failed_parse_does_not_leak_concepts(self):
+        env = Environment()
+        baseline = set(env.concepts.data.keys())
+        with pytest.raises(Exception):
+            parse_text("key leaked int;\nselect undefined_col;", env)
+        assert "local.leaked" not in env.concepts.data
+        assert set(env.concepts.data.keys()) == baseline
+
+    def test_select_local_resolves_during_hydration(self):
+        env, _ = parse_text("key x int;\nselect x + 1 -> y;", Environment())
+        assert "local.y" in env.concepts.data
+
+    def test_multiselect_output_resolves_during_hydration(self):
+        text = """
+key one int;
+key other_one int;
+datasource num_one (
+    one:one
+) grain (one) address num_one;
+datasource num_other (
+    other_one:other_one
+) grain (other_one) address num_other;
+
+SELECT one
+MERGE
+SELECT other_one
+ALIGN one_key:one,other_one;
+"""
+        env, _ = parse_text(text, Environment())
+        assert "local.one_key" in env.concepts.data
+
+    def test_rowset_output_resolves_during_hydration(self):
+        env, _ = parse_text("key x int;\nrowset r <- select x;", Environment())
+        assert "r.x" in env.concepts.data
+
+    def test_semantic_state_unit_rollback_restores_prior(self):
+        env = Environment()
+        state = _semantic_state(env)
+        concept = _make_probe("probe")
+        assert "local.probe" not in env.concepts.data
+        state.add(concept, ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+        assert "local.probe" in env.concepts.data
+        state.rollback()
+        assert "local.probe" not in env.concepts.data
+
+    def test_semantic_state_unit_commit_advances_boundary(self):
+        env = Environment()
+        state = _semantic_state(env)
+        state.add(_make_probe("first"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+        state.commit()
+        state.add(_make_probe("second"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+        state.rollback()
+        assert "local.first" in env.concepts.data
+        assert "local.second" not in env.concepts.data
+        assert any(u.concept.address == "local.first" for u in state.concepts)
+        assert all(u.concept.address != "local.second" for u in state.concepts)
+
+
+class TestConceptLookupFacade:
+    def test_pending_concept_resolves_before_commit(self):
+        env = Environment()
+        state = _semantic_state(env)
+        lookup = ConceptLookup(state)
+        state.add(_make_probe("pending"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+        assert lookup.require("local.pending").name == "pending"
+        assert lookup.get("local.pending") is not None
+        assert lookup.contains("local.pending")
+        assert "local.pending" in lookup
+
+    def test_base_environment_concept_resolves(self):
+        env = Environment()
+        env.add_concept(_make_probe("base"))
+        state = _semantic_state(env)
+        lookup = ConceptLookup(state)
+        assert lookup.require("local.base").name == "base"
+        assert lookup.contains("local.base")
+        assert "local.base" in [c.address for c in lookup.values()]
+
+    def test_pending_overrides_base(self):
+        env = Environment()
+        base = _make_probe("shared")
+        base.metadata = None
+        env.add_concept(base)
+        state = _semantic_state(env)
+        lookup = ConceptLookup(state)
+        replacement = Concept(
+            name="shared",
+            namespace="local",
+            datatype=DataType.STRING,
+            purpose=Purpose.KEY,
+        )
+        state.add(replacement, ConceptUpdateKind.TOP_LEVEL_DECLARATION, force=True)
+        resolved = lookup.require("local.shared")
+        assert resolved.datatype == DataType.STRING
+
+    def test_pending_resolves_independent_of_environment_mirror(self):
+        env = Environment()
+        state = _semantic_state(env)
+        lookup = ConceptLookup(state)
+        state.add(_make_probe("isolated"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+        # Simulate disabled mirroring: drop the env copy but keep SemanticState.
+        env.concepts.data.pop("local.isolated", None)
+        assert lookup.require("local.isolated").name == "isolated"
+        assert lookup.get("local.isolated") is not None
+        assert lookup.contains("local.isolated")
+
+    def test_reference_returns_concept_ref(self):
+        env = Environment()
+        state = _semantic_state(env)
+        lookup = ConceptLookup(state)
+        state.add(_make_probe("ref_me"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+        ref = lookup.reference("local.ref_me")
+        assert ref.address == "local.ref_me"
+
+    def test_missing_require_raises(self):
+        env = Environment()
+        state = _semantic_state(env)
+        lookup = ConceptLookup(state)
+        with pytest.raises(Exception):
+            lookup.require("local.nope")
+
+    def test_missing_get_returns_none(self):
+        env = Environment()
+        state = _semantic_state(env)
+        lookup = ConceptLookup(state)
+        assert lookup.get("local.nope") is None
+        assert not lookup.contains("local.nope")
