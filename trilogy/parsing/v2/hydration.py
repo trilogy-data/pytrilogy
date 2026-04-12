@@ -216,11 +216,17 @@ class NativeHydrator:
             self._run_phase(HydrationPhase.BIND)
             # Interleave hydrate/validate/commit per plan so commit-side env
             # mutations in plan N are visible to hydrate in plan N+1.
+            # The visible_in_environment scope exposes pending concepts
+            # through environment.concepts.data for v1 helpers called during
+            # hydrate/validate when the mirror is disabled. Writes made by
+            # this scope are reverted on exit, leaving the final commit to
+            # apply concepts for real via semantic_state.commit.
             output: list[Any] = []
-            for plan in self.plans:
-                plan.hydrate(self)
-                plan.validate(self)
-                output.append(plan.commit(self))
+            with self.semantic_state.visible_in_environment():
+                for plan in self.plans:
+                    plan.hydrate(self)
+                    plan.validate(self)
+                    output.append(plan.commit(self))
         except BaseException:
             self.semantic_state.rollback()
             raise

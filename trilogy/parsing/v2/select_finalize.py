@@ -62,12 +62,16 @@ from trilogy.parsing.v2.semantic_state import ConceptUpdateKind
 def _merged_local_concepts(
     select: SelectStatement, context: RuleContext
 ) -> dict[str, Concept]:
-    """Return the select's own local_concepts, augmented with any pending
+    """Return the select's own local_concepts, augmented with pending
     concepts the v1 grain helper would otherwise miss during a mirror-off
-    run. With the mirror active, this reduces to select.local_concepts —
-    which matches v1 ``SelectStatement.finalize`` semantics exactly.
+    run. The grain helper falls through to ``environment.concepts`` only when
+    a target ConceptRef is not present in ``local_concepts``; seeding pending
+    concepts here keeps the shallow resolution on the parser-owned lookup.
     """
-    merged: dict[str, Concept] = dict(select.local_concepts)
+    merged: dict[str, Concept] = {}
+    for address, concept in context.semantic_state.pending_concepts():
+        merged[address] = concept
+    merged.update(select.local_concepts)
     return merged
 
 

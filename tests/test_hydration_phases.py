@@ -11,6 +11,11 @@ from trilogy.core.enums import Purpose
 from trilogy.core.models.author import Concept
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
+from trilogy.core.statements.author import (
+    MultiSelectStatement,
+    RowsetDerivationStatement,
+    SelectStatement,
+)
 from trilogy.parsing.parse_engine_v2 import parse_syntax, parse_text
 from trilogy.parsing.v2.hydration import (
     ConceptStatementPlan,
@@ -24,11 +29,6 @@ from trilogy.parsing.v2.hydration import (
 )
 from trilogy.parsing.v2.model import ConceptUpdate, ConceptUpdateKind
 from trilogy.parsing.v2.semantic_state import ConceptLookup, SemanticState
-from trilogy.core.statements.author import (
-    MultiSelectStatement,
-    RowsetDerivationStatement,
-    SelectStatement,
-)
 
 
 def _semantic_state(env: Environment) -> SemanticState:

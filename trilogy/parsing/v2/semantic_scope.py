@@ -59,9 +59,17 @@ class SymbolTable:
     ``trilogy.core`` (notably ``function_args_to_output_purpose``) look
     up ConceptRefs by address via ``environment.concepts[...]``, so a
     materialized placeholder is the current compatibility contract.
-    This compatibility shim is intentionally isolated here; nothing
-    else in ``trilogy.parsing.v2`` should mutate
-    ``environment.concepts.data`` for scoped declarations.
+
+    This is an accepted compatibility exception, deliberately isolated
+    here. Unlike real concept hydration — which flows through
+    ``SemanticState`` and is exposed to v1 helpers through the
+    ``visible_in_environment`` scaffold — scoped placeholders cover
+    forward references (function parameters, rowset forward refs) that
+    have no real concept at all. They must be present in
+    ``environment.concepts.data`` for type inference helpers to resolve
+    the ref without blowing up, and they are deterministically demoted
+    on scope exit (``_demote``). Nothing else in ``trilogy.parsing.v2``
+    should mutate ``environment.concepts.data`` for scoped declarations.
     """
 
     def __init__(self, environment: Environment) -> None:

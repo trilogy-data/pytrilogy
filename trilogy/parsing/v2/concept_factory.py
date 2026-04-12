@@ -2,18 +2,20 @@
 
 Wraps the equivalent functions from ``trilogy.parsing.common`` with an API
 that takes a ``RuleContext`` instead of an ``Environment`` directly. This
-defines the migration boundary between parse-time helper calls that must
-eventually stop relying on ``Environment`` mutation and reads, and the
-remaining v1 helpers used in execution-time paths.
+defines the single migration boundary where v2 rule code meets the
+v1-shaped concept builders.
 
-Today these wrappers still call through to the v1 helpers, which read
-``environment.concepts`` (currently kept in sync via the SemanticState
-mirror). The wrappers exist so that once the mirror is removed, the
-remaining environment-coupling lives in exactly one place and can be
-migrated helper-by-helper.
+The underlying v1 helpers still read ``environment.concepts`` to resolve
+``ConceptRef`` arguments. When ``SemanticState.mirror_to_environment`` is
+disabled, the ``visible_in_environment`` scope installed by
+``NativeHydrator.parse`` temporarily exposes pending concepts via
+``environment.concepts.data`` for the duration of hydrate/validate/commit.
+That scope lives inside ``SemanticState`` (the documented compatibility
+exception) and is fully reverted on exit, so mirror-off parses exercise
+these wrappers without any persistent parse-time environment mutation.
 
-None of these wrappers call ``environment.add_concept``; the helpers they
-wrap only read from ``environment.concepts``.
+None of these wrappers call ``environment.add_concept`` directly; the
+helpers they wrap only read from ``environment.concepts``.
 """
 
 from __future__ import annotations
@@ -50,9 +52,8 @@ def arbitrary_to_concept_v2(
 ) -> Concept:
     """v2 wrapper for ``arbitrary_to_concept``.
 
-    Reads concepts through ``context.environment`` today; the mirror keeps
-    pending concepts visible. When the mirror is removed, this wrapper is
-    the migration point to a context-native implementation.
+    Pending concepts are resolved through the ``visible_in_environment``
+    compatibility scope owned by ``SemanticState``.
     """
     return arbitrary_to_concept(
         parent,
@@ -80,8 +81,8 @@ def align_item_to_concept_v2(
     """v2 wrapper for ``align_item_to_concept``.
 
     The v1 helper calls ``SelectStatement.as_lineage(environment)`` which
-    reads ``environment.concepts``. This remains a dependency to resolve
-    as part of the mirror-removal follow-up.
+    reads ``environment.concepts``. Mirror-off parses resolve those reads
+    through the ``visible_in_environment`` compatibility scope.
     """
     return align_item_to_concept(
         parent,
