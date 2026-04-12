@@ -17,6 +17,7 @@ OPENROUTER_LATEST_MODEL = "anthropic/claude-sonnet-4-6"
 def validate_response(response: str):
     assert (
         "dep_time.year = 2020" in response
+        or "year(local.dep_time) = 2020" in response
         or "date_part(local.dep_time, year) = 2020" in response
     ), response
     assert (

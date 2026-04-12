@@ -2,8 +2,8 @@ from logging import INFO
 from pathlib import Path
 
 from trilogy import Dialects, parse
-from trilogy.core.enums import Derivation, Granularity, Purpose
-from trilogy.core.functions import CurrentDatetime
+from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
+from trilogy.core.functions import FunctionFactory
 from trilogy.core.models.author import Concept
 from trilogy.core.models.build import BuildFunction
 from trilogy.core.models.core import (
@@ -24,7 +24,9 @@ ENVIRONMENT_CONCEPTS = [
         namespace="local",
         datatype=DataType.DATETIME,
         purpose=Purpose.CONSTANT,
-        lineage=CurrentDatetime([]),
+        lineage=FunctionFactory(None).create_function(
+            [], FunctionType.CURRENT_DATETIME
+        ),
         granularity=Granularity.SINGLE_ROW,
         derivation=Derivation.CONSTANT,
     )

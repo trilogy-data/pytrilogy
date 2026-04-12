@@ -57,7 +57,6 @@ from trilogy.core.exceptions import (
     UndefinedConceptException,
 )
 from trilogy.core.functions import (
-    CurrentDate,
     FunctionFactory,
 )
 from trilogy.core.internal import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
@@ -3304,7 +3303,9 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fcurrent_date(self, meta, args):
-        return CurrentDate([])
+        return self.function_factory.create_function(
+            args=[], operator=FunctionType.CURRENT_DATE, meta=meta
+        )
 
     @v_args(meta=True)
     def fcurrent_datetime(self, meta, args):

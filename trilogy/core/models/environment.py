@@ -45,8 +45,6 @@ from trilogy.core.models.author import (
     CustomFunctionFactory,
     CustomType,
     Function,
-    Grain,
-    Metadata,
     SelectLineage,
     UndefinedConcept,
     UndefinedConceptFull,
@@ -232,7 +230,7 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
             self._resolving.discard(key)
 
     def _resolve_derived_inner(self, key: str) -> Concept | None:
-        from trilogy.core.functions import FUNCTION_REGISTRY
+        from trilogy.core.functions import try_create_auto_derived
 
         parent_addr, suffix = key.rsplit(".", 1)
 
@@ -242,61 +240,11 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         if parent is None:
             return None
 
-        # try to match suffix to a FunctionType name
-        try:
-            ftype = FunctionType(suffix)
-        except ValueError:
-            return None
-
-        config = FUNCTION_REGISTRY.get(ftype)
-        if not config or config.arg_count != 1:
-            return None
-
-        # check valid inputs
-        parent_dt = parent.output_datatype
-        valid = config.valid_inputs
-        if isinstance(valid, list):
-            if valid and parent_dt not in valid[0]:
-                return None
-        elif isinstance(valid, set) and parent_dt not in valid:
-            return None
-
-        func = Function(
-            operator=ftype,
-            arguments=[parent.reference],
-            output_datatype=config.output_type or parent_dt,
-            output_purpose=config.output_purpose or Purpose.PROPERTY,
+        derived = try_create_auto_derived(
+            parent, suffix, environment=Environment(concepts=self)
         )
-
-        # special handling for aggregate functions (count on keys)
-        if ftype == FunctionType.COUNT:
-            derived = Concept(
-                name=f"{parent.name}.{suffix}",
-                datatype=func.output_datatype,
-                purpose=Purpose.METRIC,
-                lineage=func,
-                grain=Grain(),
-                namespace=parent.namespace,
-                keys=set(),
-                metadata=Metadata(concept_source=ConceptSource.AUTO_DERIVED),
-            )
-        else:
-            default_purpose = (
-                Purpose.CONSTANT
-                if parent.purpose == Purpose.CONSTANT
-                else (config.output_purpose or Purpose.PROPERTY)
-            )
-            derived = Concept(
-                name=f"{parent.name}.{suffix}",
-                datatype=func.output_datatype,
-                purpose=default_purpose,
-                lineage=func,
-                grain=parent.grain,
-                namespace=parent.namespace,
-                keys=set([parent.address]),
-                metadata=Metadata(concept_source=ConceptSource.AUTO_DERIVED),
-            )
-
+        if derived is None:
+            return None
         self[derived.address] = derived
         return derived
 
