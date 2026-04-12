@@ -1,6 +1,8 @@
 from collections.abc import Iterator
 from pathlib import Path
 
+import pytest
+
 from trilogy.core.models.environment import Environment
 from trilogy.parsing.parse_engine import parse_text as parse_text_v1
 from trilogy.parsing.parse_engine_v2 import SyntaxNode, parse_syntax, parse_text
@@ -79,6 +81,17 @@ def test_parse_text_v2_type_declaration_propagates_to_concepts() -> None:
     datatype = concept.datatype
     # TraitDataType wraps the base type with the money trait
     assert getattr(datatype, "traits", None) == ["money"]
+
+
+def test_parse_text_v2_type_declaration_rolls_back_on_failure() -> None:
+    env = Environment()
+    with pytest.raises(Exception):
+        parse_text(
+            "type money float;\nkey revenue float::missing_trait;",
+            env,
+        )
+    assert "money" not in env.data_types
+    assert "missing_trait" not in env.data_types
 
 
 def test_v2_architecture_avoids_lark_or_v1_shims() -> None:

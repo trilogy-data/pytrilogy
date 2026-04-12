@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Any, Iterable, Iterator
 
 from trilogy.constants import DEFAULT_NAMESPACE
-from trilogy.core.models.author import Concept, ConceptRef
+from trilogy.core.models.author import Concept, ConceptRef, CustomType
 from trilogy.core.models.environment import Environment
 
 
@@ -56,6 +56,7 @@ class SemanticState:
     _pending_by_address: dict[str, Concept] = field(default_factory=dict)
     _pending_start: int = 0
     _pending_rowset_aliases: list[Any] = field(default_factory=list)
+    _pending_types_by_name: dict[str, CustomType] = field(default_factory=dict)
 
     def add(
         self,
@@ -115,6 +116,16 @@ class SemanticState:
     def pending_concepts(self) -> Iterable[tuple[str, Concept]]:
         return self._pending_by_address.items()
 
+    def add_type(self, type_: CustomType) -> CustomType:
+        self._pending_types_by_name[type_.name] = type_
+        return type_
+
+    def pending_type(self, name: str) -> CustomType | None:
+        return self._pending_types_by_name.get(name)
+
+    def pending_types(self) -> Iterable[tuple[str, CustomType]]:
+        return self._pending_types_by_name.items()
+
     def stage_rowset_aliases(self, updates: list[Any]) -> None:
         self._pending_rowset_aliases.extend(updates)
 
@@ -129,6 +140,11 @@ class SemanticState:
     def commit(self, environment: Environment | None = None) -> list[ConceptUpdate]:
         if environment is not None and environment is not self.environment:
             raise ValueError("SemanticState committed against a different environment")
+        # Types commit before concepts so concept hydration downstream sees
+        # durable data_types entries through the same fallback path as imports.
+        for name, type_ in self._pending_types_by_name.items():
+            self.environment.data_types[name] = type_
+        self._pending_types_by_name.clear()
         committed = self.concepts[self._pending_start :]
         for update in committed:
             self.environment.add_concept(update.concept, meta=update.meta, force=True)
@@ -140,6 +156,7 @@ class SemanticState:
         del self.concepts[self._pending_start :]
         self._pending_by_address.clear()
         self._pending_rowset_aliases.clear()
+        self._pending_types_by_name.clear()
 
 
 class ConceptLookup:
@@ -233,3 +250,43 @@ class ConceptLookup:
 
     def reference(self, address: str) -> ConceptRef:
         return self.require(address).reference
+
+
+class TypeLookup:
+    """Parser-owned custom-type lookup facade.
+
+    Resolves ``CustomType`` entries by name, preferring the current parse's
+    staged types from ``SemanticState`` and falling back to the environment's
+    ``data_types`` dict. Rule modules in ``trilogy.parsing.v2`` should route
+    type reads through this so pending type declarations are never written
+    into the environment before a parse successfully commits.
+    """
+
+    __slots__ = ("_state", "_env")
+
+    def __init__(self, state: SemanticState) -> None:
+        self._state = state
+        self._env = state.environment
+
+    def get(self, name: str) -> CustomType | None:
+        pending = self._state.pending_type(name)
+        if pending is not None:
+            return pending
+        return self._env.data_types.get(name)
+
+    def require(self, name: str) -> CustomType:
+        found = self.get(name)
+        if found is None:
+            raise KeyError(name)
+        return found
+
+    def contains(self, name: str) -> bool:
+        if self._state.pending_type(name) is not None:
+            return True
+        return name in self._env.data_types
+
+    def __contains__(self, name: object) -> bool:
+        return isinstance(name, str) and self.contains(name)
+
+    def __getitem__(self, name: str) -> CustomType:
+        return self.require(name)

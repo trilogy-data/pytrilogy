@@ -407,11 +407,13 @@ class TypeDeclarationPlan(StatementPlanBase):
     output: TypeDeclaration | None = None
 
     def bind(self, hydrator: "NativeHydrator") -> None:
-        # Materialize before concept hydration so `key revenue float::money;`
-        # can resolve the trait when _sort_and_create_concepts runs after BIND.
+        # Stage before concept hydration so `key revenue float::money;`
+        # can resolve the trait through the type lookup facade when
+        # _sort_and_create_concepts runs after BIND. Durable writes into
+        # environment.data_types happen in semantic_state.commit.
         self.output = hydrator.hydrate_rule(self.syntax)
         if self.output is not None:
-            hydrator.environment.data_types[self.output.type.name] = self.output.type
+            hydrator.semantic_state.add_type(self.output.type)
 
     def commit(self, hydrator: "NativeHydrator") -> TypeDeclaration | None:
         return self.output

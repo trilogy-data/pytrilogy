@@ -12,6 +12,7 @@ from trilogy.parsing.v2.semantic_state import (
     ConceptLookup,
     ConceptUpdateKind,
     SemanticState,
+    TypeLookup,
 )
 from trilogy.parsing.v2.syntax import SyntaxElement, SyntaxMeta, SyntaxNode, SyntaxToken
 
@@ -28,9 +29,11 @@ class RuleContext:
     semantic_state: SemanticState
     source_text: str = ""
     concepts: ConceptLookup = field(init=False, repr=False, compare=False)
+    types: TypeLookup = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "concepts", ConceptLookup(self.semantic_state))
+        object.__setattr__(self, "types", TypeLookup(self.semantic_state))
 
     def _add_concept(
         self,
