@@ -2,10 +2,10 @@ from os import environ
 from typing import List, Optional
 
 from trilogy.ai.enums import Provider
-from trilogy.ai.models import LLMMessage, LLMResponse, UsageDict
+from trilogy.ai.models import LLMMessage, LLMResponse, LLMToolCall, UsageDict
 from trilogy.constants import logger
 
-from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions
+from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions, parse_tool_arguments
 from .utils import RetryOptions, fetch_with_retry
 
 
@@ -57,6 +57,25 @@ class OpenAIProvider(LLMProvider):
                         "model": self.model,
                         "messages": messages,
                     }
+                    if options.tools:
+                        payload["tools"] = [
+                            {
+                                "type": "function",
+                                "function": {
+                                    "name": tool.name,
+                                    "description": tool.description,
+                                    "parameters": tool.input_schema,
+                                },
+                            }
+                            for tool in options.tools
+                        ]
+                    if options.tool_choice:
+                        payload["tool_choice"] = {
+                            "type": "function",
+                            "function": {"name": options.tool_choice},
+                        }
+                    elif options.require_tool:
+                        payload["tool_choice"] = "required"
 
                     response = client.post(
                         url=self.base_completion_url,
@@ -70,8 +89,19 @@ class OpenAIProvider(LLMProvider):
                     return response.json()
 
             data = fetch_with_retry(make_request, self.retry_options)
+            message = data["choices"][0]["message"]
             return LLMResponse(
-                text=data["choices"][0]["message"]["content"],
+                text=message.get("content") or "",
+                tool_calls=[
+                    LLMToolCall(
+                        name=tool_call["function"]["name"],
+                        arguments=parse_tool_arguments(
+                            tool_call["function"].get("arguments")
+                        ),
+                    )
+                    for tool_call in message.get("tool_calls", [])
+                    if tool_call.get("function", {}).get("name")
+                ],
                 usage=UsageDict(
                     prompt_tokens=data["usage"]["prompt_tokens"],
                     completion_tokens=data["usage"]["completion_tokens"],

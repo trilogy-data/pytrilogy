@@ -2,7 +2,7 @@ from os import environ
 from typing import List, Optional
 
 from trilogy.ai.enums import Provider
-from trilogy.ai.models import LLMMessage, LLMResponse, UsageDict
+from trilogy.ai.models import LLMMessage, LLMResponse, LLMToolCall, UsageDict
 from trilogy.constants import logger
 
 from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions
@@ -67,6 +67,22 @@ class AnthropicProvider(LLMProvider):
                         # "temperature": options.temperature or 0.7,
                         # "top_p": options.top_p if hasattr(options, "top_p") else 1.0,
                     }
+                    if options.tools:
+                        payload["tools"] = [
+                            {
+                                "name": tool.name,
+                                "description": tool.description,
+                                "input_schema": tool.input_schema,
+                            }
+                            for tool in options.tools
+                        ]
+                    if options.tool_choice:
+                        payload["tool_choice"] = {
+                            "type": "tool",
+                            "name": options.tool_choice,
+                        }
+                    elif options.require_tool:
+                        payload["tool_choice"] = {"type": "any"}
 
                     # Add system parameter if there are system messages
                     if system_messages:
@@ -86,9 +102,22 @@ class AnthropicProvider(LLMProvider):
                     return response.json()
 
             data = fetch_with_retry(make_request, self.retry_options)
+            content = data.get("content", [])
 
             return LLMResponse(
-                text=data["content"][0]["text"],
+                text="\n".join(
+                    block.get("text", "")
+                    for block in content
+                    if block.get("type") == "text"
+                ).strip(),
+                tool_calls=[
+                    LLMToolCall(
+                        name=block["name"],
+                        arguments=block.get("input", {}),
+                    )
+                    for block in content
+                    if block.get("type") == "tool_use" and block.get("name")
+                ],
                 usage=UsageDict(
                     prompt_tokens=data["usage"]["input_tokens"],
                     completion_tokens=data["usage"]["output_tokens"],

@@ -2,8 +2,14 @@ from dataclasses import dataclass
 from typing import Literal, Union
 
 from trilogy import Environment
-from trilogy.ai.models import LLMMessage, LLMRequestOptions
-from trilogy.ai.prompts import TRILOGY_LEAD_IN, create_query_prompt
+from trilogy.ai.models import LLMMessage, LLMRequestOptions, LLMResponse
+from trilogy.ai.prompts import (
+    TRILOGY_CREATE_QUERY_TOOL,
+    TRILOGY_LEAD_IN,
+    TRILOGY_QUERY_TOOL,
+    create_query_prompt,
+    create_query_request_options,
+)
 from trilogy.ai.providers.base import LLMProvider
 from trilogy.core.exceptions import (
     InvalidSyntaxException,
@@ -48,14 +54,58 @@ class Conversation:
             message = LLMMessage(role=role, content=message)
         self.messages.append(message)
 
-    def get_response(self) -> LLMMessage:
-        options = LLMRequestOptions()
-        response = self.provider.generate_completion(options, history=self.messages)
-        response_message = LLMMessage(role="assistant", content=response.text)
+    def get_response(self, options: LLMRequestOptions | None = None) -> LLMResponse:
+        response = self.provider.generate_completion(
+            options or LLMRequestOptions(), history=self.messages
+        )
+        model_info = {}
+        if response.tool_calls:
+            model_info["tool_calls"] = [
+                {"name": tool_call.name, "arguments": tool_call.arguments}
+                for tool_call in response.tool_calls
+            ]
+        response_message = LLMMessage(
+            role="assistant", content=response.text, model_info=model_info
+        )
         self.add_message(response_message)
-        return response_message
+        return response
 
-    def extract_response(self, content: str) -> str:
+    def _normalize_query(self, query: str) -> str:
+        normalized = query.strip()
+        if normalized and not normalized.endswith(";"):
+            normalized += ";"
+        return normalized
+
+    def _validate_query(
+        self, query: str, environment: Environment
+    ) -> tuple[str, str | None]:
+        normalized = self._normalize_query(query)
+        try:
+            _, raw = environment.parse(normalized)
+            processed = process_query(statement=raw[-1], environment=environment)
+            return (
+                f"environment.parse succeeded and process_query returned: {processed}",
+                None,
+            )
+        except (
+            InvalidSyntaxException,
+            NoDatasourceException,
+            UnresolvableQueryException,
+            UndefinedConceptException,
+            SyntaxError,
+        ) as error:
+            return ("", str(error))
+
+    def extract_response(self, response: LLMResponse | str) -> str:
+        if isinstance(response, LLMResponse):
+            for tool_call in response.tool_calls:
+                if tool_call.name == TRILOGY_QUERY_TOOL.name:
+                    query = tool_call.arguments.get("query")
+                    if isinstance(query, str):
+                        return query.strip()
+            content = response.text
+        else:
+            content = response
         # get contents in triple backticks
         content = content.replace('"""', "```")
         # replace markdown trilogy code block prefix that is
@@ -70,38 +120,61 @@ class Conversation:
     def generate_query(
         self, user_input: str, environment: Environment, attempts: int = 4
     ) -> str:
-        attempts = 0
         self.add_message(create_query_prompt(user_input, environment), role="user")
-        e = None
-        while attempts < 4:
-            attempts += 1
-
-            response_message = self.get_response()
-            response = self.extract_response(response_message.content)
-            if not response.strip():
+        last_error: str | None = None
+        for _ in range(attempts):
+            response_message = self.get_response(create_query_request_options())
+            if not response_message.tool_calls:
                 self.add_message(
-                    "Your response did not contain a valid Trilogy query. Please provide a valid Trilogy query enclosed in triple backticks, without a language specification.",
+                    f"You must call either {TRILOGY_CREATE_QUERY_TOOL.name} to validate a draft query or {TRILOGY_QUERY_TOOL.name} to submit the final query.",
                     role="user",
                 )
                 continue
-            if not response.strip()[-1] == ";":
-                response += ";"
-            try:
-                _, raw = environment.parse(response)
-                process_query(statement=raw[-1], environment=environment)
-                return response
-            except (
-                InvalidSyntaxException,
-                NoDatasourceException,
-                UnresolvableQueryException,
-                UndefinedConceptException,
-                SyntaxError,
-            ) as e2:
-                e = e2
+
+            for tool_call in response_message.tool_calls:
+                query = tool_call.arguments.get("query")
+                if not isinstance(query, str) or not query.strip():
+                    last_error = (
+                        f"Tool {tool_call.name} was called without a non-empty query."
+                    )
+                    self.add_message(
+                        f"{last_error} Call {TRILOGY_CREATE_QUERY_TOOL.name} or {TRILOGY_QUERY_TOOL.name} with a query string.",
+                        role="user",
+                    )
+                    continue
+
+                result, validation_error = self._validate_query(query, environment)
+                normalized = self._normalize_query(query)
+
+                if tool_call.name == TRILOGY_CREATE_QUERY_TOOL.name:
+                    last_error = validation_error
+                    if validation_error:
+                        self.add_message(
+                            f"{TRILOGY_CREATE_QUERY_TOOL.name} failed for query {normalized} with validation error: {validation_error}",
+                            role="user",
+                        )
+                    else:
+                        self.add_message(
+                            f"{TRILOGY_CREATE_QUERY_TOOL.name} succeeded for query {normalized}. {result}",
+                            role="user",
+                        )
+                    continue
+
+                if tool_call.name == TRILOGY_QUERY_TOOL.name:
+                    if validation_error is None:
+                        return normalized
+                    last_error = validation_error
+                    self.add_message(
+                        f"{TRILOGY_QUERY_TOOL.name} failed for query {normalized} with validation error: {validation_error}. Use {TRILOGY_CREATE_QUERY_TOOL.name} to validate the next draft before submitting it again.",
+                        role="user",
+                    )
+                    continue
+
+                last_error = f"Unknown tool call: {tool_call.name}."
                 self.add_message(
-                    f"Your extracted response - {response} - could not be parsed due to the error: {str(e)}. Please generate a new query with the issues fixed. Use the same response format.",
+                    f"Unknown tool call: {tool_call.name}. Use only {TRILOGY_CREATE_QUERY_TOOL.name} and {TRILOGY_QUERY_TOOL.name}.",
                     role="user",
                 )
         raise Exception(
-            f"Failed to generate a valid query after {attempts} attempts. Last error: {str(e)}. Full conversation: {self.messages}"
+            f"Failed to generate a valid query after {attempts} attempts. Last error: {last_error}. Full conversation: {self.messages}"
         )

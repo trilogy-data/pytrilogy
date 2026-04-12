@@ -1,5 +1,6 @@
 from trilogy import Environment
 from trilogy.ai.constants import AGGREGATE_FUNCTIONS, FUNCTIONS, RULE_PROMPT
+from trilogy.ai.models import LLMRequestOptions, LLMToolDefinition
 from trilogy.authoring import (
     ArrayType,
     Concept,
@@ -38,9 +39,59 @@ def get_trilogy_prompt(intro: str | None = None, outro: str | None = None) -> st
     return "\n\n".join(parts)
 
 
+TRILOGY_CREATE_QUERY_TOOL = LLMToolDefinition(
+    name="create_query",
+    description="Validate a draft Trilogy query against the current environment.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "A draft Trilogy query to validate.",
+            }
+        },
+        "required": ["query"],
+        "additionalProperties": False,
+    },
+)
+
+
+TRILOGY_QUERY_TOOL = LLMToolDefinition(
+    name="submit_query",
+    description="Return the final Trilogy query that answers the user's request.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "A complete valid Trilogy query ending with a semicolon.",
+            },
+            "reasoning": {
+                "type": "string",
+                "description": "Brief explanation for how the query answers the request.",
+            },
+        },
+        "required": ["query"],
+        "additionalProperties": False,
+    },
+)
+
+
+def create_query_request_options() -> LLMRequestOptions:
+    return LLMRequestOptions(
+        tools=[TRILOGY_CREATE_QUERY_TOOL, TRILOGY_QUERY_TOOL],
+        require_tool=True,
+    )
+
+
 TRILOGY_LEAD_IN = get_trilogy_prompt(
     intro="You are a world-class expert in Trilogy, a SQL inspired language with similar syntax and a built in semantic layer. Use the following syntax description to help answer whatever questions they have. Often, they will be asking you to generate a query for them.",
-    outro='For any response to the user, use this format -> put your actual response within triple double quotes with thinking and justification before it, in this format (replace placeholders with relevant content): Reasoning: {reasoning} """{response}"""',
+    outro=(
+        f"When generating a Trilogy query, use the {TRILOGY_CREATE_QUERY_TOOL.name} tool to validate draft queries. "
+        f"That tool returns parser and query-processing validation feedback only; it does not execute the query. "
+        f"When you are done, you must call the {TRILOGY_QUERY_TOOL.name} tool with the final query and optional reasoning. "
+        "Do not wrap the query in markdown fences or triple quotes."
+    ),
 )
 
 
@@ -99,5 +150,5 @@ def concepts_to_fields_prompt(concepts: list[Concept]) -> str:
 
 def create_query_prompt(query: str, environment: Environment) -> str:
     fields = concepts_to_fields_prompt(list(environment.concepts.values()))
-    return f'''
-Using these base and aliased calculations, derivations thereof created with valid Trilogy, and any extra context you have: {fields}, create the best valid Trilogy query to answer the following user input: "{query}" Return the query within triple double quotes with your thinking and justification before it, so of this form as a jinja template: Reasoning: {{reasoning_placeholder}} """{{trilogy}}""". Example: Because the user asked for sales by year, and revenue is the best sales related field available, we can aggregate revenue by year: """SELECT order.year, sum(revenue) as year_revenue order by order.year asc;"""'''
+    return f"""
+Using these base and aliased calculations, derivations thereof created with valid Trilogy, and any extra context you have: {fields}, create the best valid Trilogy query to answer the following user input: "{query}". Use the {TRILOGY_CREATE_QUERY_TOOL.name} tool to validate draft queries if needed. You must finish by calling the {TRILOGY_QUERY_TOOL.name} tool with a complete Trilogy query in the query field. The final query must end with a semicolon."""
