@@ -114,6 +114,7 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         self.fail_on_missing: bool = True
         self.hidden: set[str] = set()
         self._resolving: set[str] = set()
+        self._overlay_stack: list[Mapping[str, Concept]] = []
         self.populate_default_concepts()
 
     def duplicate(self) -> "EnvironmentConceptDict":
@@ -173,6 +174,8 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         return None
 
     def __contains__(self, key: object) -> bool:
+        if isinstance(key, str) and self._overlay_lookup(key) is not None:
+            return True
         if key in self.data and key not in self.hidden:
             return True
         if isinstance(key, str):

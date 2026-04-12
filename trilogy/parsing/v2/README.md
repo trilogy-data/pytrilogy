@@ -29,6 +29,8 @@ Parser v2 separates syntax parsing from semantic enrichment. The parser should p
      classes or syntax-walking helpers of its own.
    - Phase-based so each top-level statement can be migrated without preserving
      the old transformer replay model.
+   - Uses `SemanticState` to stage concept writes. Staged concepts are committed
+     to the `Environment` only after a successful parse.
 
 4. `statement_planner.py`
    - Maps top-level `SyntaxElement`s to `StatementPlan` instances.
@@ -94,10 +96,21 @@ Parser v2 separates syntax parsing from semantic enrichment. The parser should p
      child hydration callback. They should read the syntax shape they own rather than
      accepting generic pre-hydrated child args.
 
-12. `model.py` / `rules_context.py`
+12. `semantic_state.py`
+   - Owns staged concept updates for the current parse. `SemanticState.add` and
+     `replace_concept` record pending concepts without mutating the environment;
+     `commit` is the durable concept write path.
+   - Provides `pending_overlay_scope`, a read-only compatibility overlay for
+     remaining v1 helpers that still resolve concepts through the environment
+     concept dictionary. This keeps pending concepts visible to those helpers
+     without writing to `environment.concepts.data`.
+   - The overlay is a migration bridge, not the final target. New v2 helper code
+     should prefer `RuleContext.concepts` / `ConceptLookup` directly.
+
+13. `model.py` / `rules_context.py`
    - `model.py` defines v2 diagnostics and the `RecordingEnvironmentUpdate` shape.
    - `rules_context.py` defines `RuleContext`, including the environment, function
-     factory, source text, and current update.
+     factory, source text, `SemanticState`, and `ConceptLookup`.
 
 ## Hydration Phases
 
@@ -131,12 +144,36 @@ Each top-level syntax form becomes a `StatementPlan`. Plans run through these ph
 
 5. `commit`
    - Apply the final semantic result to the environment and return top-level output.
-   - Long term this should behave like a small transaction boundary so failed hydration
-     does not leave partial environment state behind.
-   - Today `RecordingEnvironmentUpdate` records concept additions while still
-     applying them immediately to preserve same-parse references. Moving those
-     updates to true commit-time application is a planned follow-up once
-     collect/bind are richer.
+   - Concept writes are staged in `SemanticState` and applied durably only after a
+     successful parse. Failed hydration rolls back pending concept updates rather
+     than leaving partial environment state behind.
+   - Non-concept materialization, such as imports, datasources, functions, rowsets,
+     and merge statements, still lives at explicit statement-plan boundaries.
+
+## Pending Overlay
+
+Parser v2 currently keeps same-parse concept definitions visible in two ways:
+
+- Native v2 rule code should use `RuleContext.concepts`, which reads pending
+  concepts from `SemanticState` before falling back to the environment.
+- Remaining v1-shaped helpers, such as concept factory helpers, select lineage,
+  and grain helpers, still read through `environment.concepts[...]`. During the
+  relevant hydration phases, `SemanticState.pending_overlay_scope` installs a
+  read-only overlay on the environment concept dictionary so those reads can see
+  pending concepts without mutating `environment.concepts.data`.
+
+The overlay is intentionally a bridge. It keeps the current migration low-risk,
+but it is not a replacement for native v2 helper code. As more helpers move to
+`RuleContext.concepts`, the overlay surface should shrink and eventually be
+removed.
+
+Known concurrency limitation: the overlay stack currently lives on
+`EnvironmentConceptDict`. That is fine for the current serial parser test path,
+but overlapping parses against the same warmed `Environment` can observe each
+other's overlays. Before using parser v2 for concurrent independent query
+generation on a shared environment, either replace the overlay stack with a
+`ContextVar`-scoped implementation or remove the overlay by migrating the
+remaining v1 helper reads to native v2 helpers.
 
 ## Current Coverage
 
@@ -168,3 +205,20 @@ targeted by rule family and should stay below the statement boundary.
 Port one top-level statement family at a time. Add or specialize a `StatementPlan`
 for that family, then move the minimum expression helpers needed by that statement.
 Keep `parse_engine.py` available for comparison tests until v2 coverage is complete.
+
+## Next Migration Stage
+
+The next coverage push should focus on unsupported top-level statement families and
+grammar forms while preserving the staged concept model:
+
+1. Identify unsupported forms by running the parser comparison suite and searching
+   for `UnsupportedSyntaxError`.
+2. Add a small targeted fixture for one unsupported statement family.
+3. Add or extend the corresponding `StatementPlan`.
+4. Move only the rule helpers needed by that family into syntax-node-first v2 code.
+5. Prefer `RuleContext.concepts` for all concept reads. Use the pending overlay only
+   when calling a still-v1 helper would otherwise require an invasive rewrite.
+6. Add v1/v2 comparison coverage for the migrated family before moving on.
+
+Do not broaden the pending overlay as a default design pattern. Treat it as a
+compatibility boundary for already-identified v1 helper calls.

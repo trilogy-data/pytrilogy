@@ -14,6 +14,7 @@ class ConceptUpdateKind(Enum):
     TOP_LEVEL_DECLARATION = "top_level_declaration"
     PROPERTY_DECLARATION = "property_declaration"
     DATASOURCE_PROPERTY = "datasource_property"
+    AUTO_DERIVED = "auto_derived"
     SELECT_LOCAL = "select_local"
     MULTISELECT_OUTPUT = "multiselect_output"
     ROWSET_OUTPUT = "rowset_output"
@@ -164,29 +165,57 @@ class ConceptLookup:
         prefix = f"{DEFAULT_NAMESPACE}."
         if address.startswith(prefix):
             candidates.append(address[len(prefix) :])
-        elif "." not in address:
+        else:
             candidates.append(prefix + address)
         return candidates
 
-    def require(self, address: str) -> Concept:
+    def _existing_concept(self, address: str) -> Concept | None:
         for candidate in self._candidate_addresses(address):
             pending = self._state.pending_lookup(candidate)
             if pending is not None:
                 return pending
+            committed = self._env.concepts.data.get(candidate)
+            if committed is not None:
+                return committed
+        return None
+
+    def _auto_derive(self, address: str) -> Concept | None:
+        if "." not in address:
+            return None
+        parent_address, suffix = address.rsplit(".", 1)
+        parent = self._existing_concept(parent_address)
+        if parent is None:
+            return None
+
+        from trilogy.core.functions import try_create_auto_derived
+
+        derived = try_create_auto_derived(parent, suffix, environment=self._env)
+        if derived is None:
+            return None
+        return self._state.add(derived, ConceptUpdateKind.AUTO_DERIVED)
+
+    def require(self, address: str) -> Concept:
+        existing = self._existing_concept(address)
+        if existing is not None:
+            return existing
+        for candidate in self._candidate_addresses(address):
+            derived = self._auto_derive(candidate)
+            if derived is not None:
+                return derived
         return self._env.concepts[address]  # type: ignore[return-value]
 
     def get(self, address: str) -> Concept | None:
+        existing = self._existing_concept(address)
+        if existing is not None:
+            return existing
         for candidate in self._candidate_addresses(address):
-            pending = self._state.pending_lookup(candidate)
-            if pending is not None:
-                return pending
-        return self._env.concepts.get(address)
+            derived = self._auto_derive(candidate)
+            if derived is not None:
+                return derived
+        return None
 
     def contains(self, address: str) -> bool:
-        for candidate in self._candidate_addresses(address):
-            if self._state.pending_lookup(candidate) is not None:
-                return True
-        return address in self._env.concepts
+        return self._existing_concept(address) is not None
 
     def __contains__(self, address: object) -> bool:
         return isinstance(address, str) and self.contains(address)

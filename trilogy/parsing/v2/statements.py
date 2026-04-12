@@ -31,13 +31,30 @@ def only_child_node(
     return found[0]
 
 
+_SHOW_CONTENT_KINDS = {
+    SyntaxNodeKind.SHOW_CATEGORY,
+    SyntaxNodeKind.VALIDATE_STATEMENT,
+    SyntaxNodeKind.SELECT_STATEMENT,
+    SyntaxNodeKind.PERSIST_STATEMENT,
+}
+
+
 @dataclass(frozen=True)
 class ShowStatementSyntax:
-    category: SyntaxNode
+    content: SyntaxNode
 
     @classmethod
     def from_node(cls, node: SyntaxNode) -> "ShowStatementSyntax":
-        return cls(category=only_child_node(node, SyntaxNodeKind.SHOW_CATEGORY))
+        nodes = node.child_nodes()
+        for child in nodes:
+            if child.kind in _SHOW_CONTENT_KINDS:
+                return cls(content=child)
+        raise HydrationError(
+            HydrationDiagnostic.from_syntax(
+                "show statement requires a show_category, validate, select, or persist child",
+                node,
+            )
+        )
 
 
 def hydrate_concept_statement(
@@ -62,4 +79,4 @@ def hydrate_show_statement(
     hydrate_rule: HydrateFunction,
 ) -> ShowStatement:
     syntax = ShowStatementSyntax.from_node(show_node)
-    return ShowStatement(content=hydrate_rule(syntax.category))
+    return ShowStatement(content=hydrate_rule(syntax.content))

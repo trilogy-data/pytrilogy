@@ -70,7 +70,7 @@ from trilogy.parsing.v2.rules_context import (
     hydrated_children,
 )
 from trilogy.parsing.v2.semantic_state import ConceptLookup
-from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
+from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind, SyntaxToken
 
 CONSTANT_TYPES = (int, float, str, bool, ListWrapper, TupleWrapper, MapWrapper)
 
@@ -426,9 +426,21 @@ def data_type(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> Any:
-    values = hydrated_children(node, hydrate)
-    resolved = values[0]
-    traits = values[1:]
+    resolved: Any = None
+    traits: list[str] = []
+    for child in node.children:
+        if isinstance(child, SyntaxToken):
+            if child.value == "::":
+                continue
+            if resolved is None:
+                resolved = hydrate(child)
+            else:
+                traits.append(hydrate(child))
+        else:
+            if resolved is None:
+                resolved = hydrate(child)
+            else:
+                traits.append(hydrate(child))
     base: Any
     if isinstance(
         resolved,
