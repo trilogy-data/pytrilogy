@@ -65,14 +65,27 @@ Parser v2 separates syntax parsing from semantic enrichment. The parser should p
      `FunctionDefinitionPlan` uses it to extract parameter names for scope
      management.
 
-9. `scopes.py`
-   - Temporary semantic-placeholder bridge (`temporary_function_scope`,
-     `temporary_rowset_scope`) that stages function parameters and rowset
-     forward references on the environment for the duration of a hydration call.
-   - This is a placeholder for a real symbol/scope table and should eventually
-     be replaced by one.
+9. `semantic_scope.py`
+   - Defines `SemanticScope`, `SymbolDefinition`, `SymbolReference`, and
+     `SymbolTable`, the stacked scope used by plans during `collect_symbols`
+     and `bind`.
+   - `SymbolTable.function_scope` and `SymbolTable.rowset_scope` replace the
+     old environment-mutating `temporary_function_scope` / `temporary_rowset_scope`
+     bridge; function parameters and rowset forward references now live in
+     dedicated scopes instead of the global environment.
 
-10. Rule modules
+10. `import_service.py`
+   - Owns recursive import parsing and the `ImportHydrationService` caches
+     (`parsed_environments`, `text_lookup`, `import_keys`) that keep imports
+     idempotent across nested parses.
+   - Defines `ImportRequest`, the syntax-agnostic payload produced by
+     `import_rules.py`. `ImportStatementPlan.load_imports` hands the request
+     to `ImportHydrationService.execute`, which recursively parses the target,
+     caches the result, and calls `environment.add_import(...)`.
+   - Keeping this out of `import_rules.py` means the rule layer stays pure
+     syntax-to-`ImportRequest` and never imports `NativeHydrator`.
+
+11. Rule modules
    - `concept_rules.py`, `expression_rules.py`, and `token_rules.py` contain the
      currently ported rule-level semantic builders.
    - Each rule module owns its local `SyntaxNodeKind` or `SyntaxTokenKind` registry;
@@ -81,7 +94,7 @@ Parser v2 separates syntax parsing from semantic enrichment. The parser should p
      child hydration callback. They should read the syntax shape they own rather than
      accepting generic pre-hydrated child args.
 
-11. `model.py` / `rules_context.py`
+12. `model.py` / `rules_context.py`
    - `model.py` defines v2 diagnostics and the `RecordingEnvironmentUpdate` shape.
    - `rules_context.py` defines `RuleContext`, including the environment, function
      factory, source text, and current update.
@@ -89,6 +102,15 @@ Parser v2 separates syntax parsing from semantic enrichment. The parser should p
 ## Hydration Phases
 
 Each top-level syntax form becomes a `StatementPlan`. Plans run through these phases:
+
+0. `load_imports`
+   - Materialize imports before any other statement touches the environment.
+   - Only `ImportStatementPlan` does work here; every other plan no-ops.
+   - Imports run early because later statements reference imported concepts,
+     functions, and datasources during `collect_symbols`, `bind`, and `hydrate`.
+     Hiding this inside a generic `commit` (or `RecordingEnvironmentUpdate`
+     replay) would make the ordering an implementation accident; naming the
+     phase makes the materialization boundary explicit.
 
 1. `collect_symbols`
    - Register declarations that other statements may refer to.
@@ -118,14 +140,19 @@ Each top-level syntax form becomes a `StatementPlan`. Plans run through these ph
 
 ## Current Coverage
 
-Current native coverage is intentionally small:
+Current native coverage:
 
 - comments
 - concept declarations
 - property declarations
 - parameter declarations
 - constant and simple concept derivations
-- simple literals and arithmetic expressions
+- literals, arithmetic, and comparison expressions
+- function definitions
+- datasource declarations
+- select / multi-select / persist / rowset / raw SQL statements
+- merge statements
+- imports (plain, selective, and self), resolved via `ImportHydrationService`
 - `show concepts` / `show datasources`
 
 Unported forms raise `UnsupportedSyntaxError`. That is deliberate. It prevents new v2

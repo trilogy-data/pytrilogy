@@ -39,7 +39,6 @@ from trilogy.core.models.datasource import (
 from trilogy.core.statements.author import (
     FunctionDeclaration,
     MergeStatementV2,
-    MultiSelectStatement,
     PersistStatement,
     RawSQLStatement,
     RowsetDerivationStatement,
@@ -54,6 +53,7 @@ from trilogy.parsing.v2.rules_context import (
     fail,
     hydrated_children,
 )
+from trilogy.parsing.v2.statement_plans import finalize_select_tree
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
 
 
@@ -653,13 +653,9 @@ def rowset_derivation_statement(
     args = hydrated_children(node, hydrate)
     name = str(args[0])
     select = args[1]
-    # Ensure the inner select(s) have grain/local_concepts populated before
-    # rowset_to_concepts (which relies on as_lineage).
-    if isinstance(select, SelectStatement):
-        select.finalize(context.environment)
-    elif isinstance(select, MultiSelectStatement):
-        for inner in select.selects:
-            inner.finalize(context.environment)
+    # rowset_to_concepts relies on as_lineage, which needs the inner
+    # select(s) finalized before lineage conversion.
+    finalize_select_tree(select, context.environment)
     output = RowsetDerivationStatement(
         name=name,
         select=select,
@@ -735,20 +731,18 @@ def full_persist(
         address_str = None
     target: Datasource | None = context.environment.datasources.get(identifier)
 
-    if not address_str and not target:
+    if target:
+        address_str = target.safe_address
+    if not address_str:
         raise fail(
             node,
             f'Persist without address for unknown datasource "{identifier}"',
         )
-    elif target:
-        address_str = target.safe_address
-
-    assert address_str is not None
 
     modes = [x for x in args if isinstance(x, PersistMode)]
     mode = modes[0] if modes else PersistMode.OVERWRITE
     select: SelectStatement = next(x for x in args if isinstance(x, SelectStatement))
-    select.finalize(context.environment)
+    finalize_select_tree(select, context.environment)
 
     if mode == PersistMode.APPEND:
         if target is None:

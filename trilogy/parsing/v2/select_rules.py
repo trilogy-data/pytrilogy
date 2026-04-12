@@ -177,7 +177,7 @@ def order_by(
 
 def _resolve_order_ref(name: str, env: Environment) -> ConceptRef:
     # Namespace resolution only: returns a lightweight ConceptRef whether or not the
-    # target concept is fully defined yet — downstream phases resolve the rest.
+    # target concept is fully defined yet - downstream phases resolve the rest.
     return ConceptRef(address=env.concepts[name].address)
 
 
