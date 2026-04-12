@@ -75,8 +75,7 @@ def select_statement(
             having = arg
     if not select_items:
         raise fail(node, "Malformed select, missing select items")
-    return SelectStatement.from_inputs(
-        environment=context.environment,
+    return SelectStatement(
         selection=select_items,
         order_by=order_by,
         where_clause=where,
@@ -128,6 +127,7 @@ def select_transform(
         name=output_name,
         metadata=meta,
     )
+    context.add_concept(concept, meta=core_meta(node.meta))
     return ConceptTransform(function=transformation, output=concept)
 
 
