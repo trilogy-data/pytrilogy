@@ -451,9 +451,9 @@ def data_type(
         base = DataType(str(resolved).lower())
     if traits:
         for trait in traits:
-            if trait not in context.environment.data_types:
+            matched = context.types.get(trait)
+            if matched is None:
                 raise fail(node, f"Invalid type (trait) {trait} for {base}")
-            matched = context.environment.data_types[trait]
             if not is_compatible_datatype(matched.type, base):
                 raise fail(
                     node,
