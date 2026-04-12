@@ -106,6 +106,11 @@ class Parsing:
     select_as_definition: bool = True
 
 
+class ParserVersion(Enum):
+    V1 = "v1"
+    V2 = "v2"
+
+
 # TODO: support loading from environments
 @dataclass
 class Config:
@@ -118,6 +123,7 @@ class Config:
     rendering: Rendering = field(default_factory=Rendering)
     parsing: Parsing = field(default_factory=Parsing)
     generation: Generation = field(default_factory=Generation)
+    parser_version: ParserVersion = ParserVersion.V1
 
     @property
     def show_comments(self) -> bool:
