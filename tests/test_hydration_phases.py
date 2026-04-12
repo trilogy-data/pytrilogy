@@ -395,15 +395,17 @@ ALIGN one_key:one,other_one;
         env, _ = parse_text("key x int;\nrowset r <- select x;", Environment())
         assert "r.x" in env.concepts.data
 
-    def test_semantic_state_unit_rollback_restores_prior(self):
+    def test_semantic_state_unit_rollback_does_not_leak(self):
         env = Environment()
         state = _semantic_state(env)
         concept = _make_probe("probe")
         assert "local.probe" not in env.concepts.data
         state.add(concept, ConceptUpdateKind.TOP_LEVEL_DECLARATION)
-        assert "local.probe" in env.concepts.data
+        assert "local.probe" not in env.concepts.data
+        assert state.pending_lookup("local.probe") is concept
         state.rollback()
         assert "local.probe" not in env.concepts.data
+        assert state.pending_lookup("local.probe") is None
 
     def test_semantic_state_unit_commit_advances_boundary(self):
         env = Environment()
@@ -418,17 +420,17 @@ ALIGN one_key:one,other_one;
         assert all(u.concept.address != "local.second" for u in state.concepts)
 
 
-class TestSemanticStateMirrorDisabled:
+class TestSemanticStateStaged:
     def test_add_does_not_mutate_environment(self):
         env = Environment()
-        state = SemanticState(environment=env, mirror_to_environment=False)
+        state = SemanticState(environment=env)
         state.add(_make_probe("quiet"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
         assert "local.quiet" not in env.concepts.data
         assert state.pending_lookup("local.quiet") is not None
 
     def test_commit_applies_pending_to_environment(self):
         env = Environment()
-        state = SemanticState(environment=env, mirror_to_environment=False)
+        state = SemanticState(environment=env)
         state.add(_make_probe("deferred"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
         state.commit()
         assert "local.deferred" in env.concepts.data
@@ -436,23 +438,23 @@ class TestSemanticStateMirrorDisabled:
     def test_rollback_does_not_touch_environment(self):
         env = Environment()
         baseline = set(env.concepts.data.keys())
-        state = SemanticState(environment=env, mirror_to_environment=False)
+        state = SemanticState(environment=env)
         state.add(_make_probe("disposable"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
         state.rollback()
         assert set(env.concepts.data.keys()) == baseline
         assert state.pending_lookup("local.disposable") is None
 
-    def test_lookup_facade_sees_pending_without_mirror(self):
+    def test_lookup_facade_sees_pending(self):
         env = Environment()
-        state = SemanticState(environment=env, mirror_to_environment=False)
+        state = SemanticState(environment=env)
         lookup = ConceptLookup(state)
         state.add(_make_probe("offstage"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
         assert lookup.require("local.offstage").name == "offstage"
         assert "local.offstage" not in env.concepts.data
 
-    def test_replace_concept_updates_visible_scope(self):
+    def test_replace_concept_uses_overlay(self):
         env = Environment()
-        state = SemanticState(environment=env, mirror_to_environment=False)
+        state = SemanticState(environment=env)
         state.add(_make_probe("morph"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
         replacement = Concept(
             name="morph",
@@ -460,16 +462,110 @@ class TestSemanticStateMirrorDisabled:
             datatype=DataType.STRING,
             purpose=Purpose.KEY,
         )
-        with state.visible_in_environment():
+        with state.pending_overlay_scope():
             state.replace_concept(
                 "local.morph",
                 replacement,
                 ConceptUpdateKind.TOP_LEVEL_DECLARATION,
             )
-            assert env.concepts.data["local.morph"].datatype == DataType.STRING
+            assert env.concepts["local.morph"].datatype == DataType.STRING
+            assert "local.morph" not in env.concepts.data
         assert "local.morph" not in env.concepts.data
         state.commit()
         assert env.concepts.data["local.morph"].datatype == DataType.STRING
+
+
+class TestPendingOverlayScope:
+    def test_overlay_exposes_pending_to_env_read(self):
+        env = Environment()
+        state = SemanticState(environment=env)
+        state.add(_make_probe("staged"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+        with state.pending_overlay_scope():
+            resolved = env.concepts["local.staged"]
+            assert resolved.name == "staged"
+            assert "local.staged" not in env.concepts.data
+            assert "local.staged" in env.concepts
+        assert "local.staged" not in env.concepts.data
+
+    def test_overlay_is_popped_on_exception(self):
+        env = Environment()
+        state = SemanticState(environment=env)
+        state.add(_make_probe("boom"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+        with pytest.raises(RuntimeError):
+            with state.pending_overlay_scope():
+                assert env.concepts["local.boom"].name == "boom"
+                raise RuntimeError("parse failure")
+        assert env.concepts._overlay_stack == []
+        with pytest.raises(Exception):
+            env.concepts["local.boom"]
+
+    def test_overlay_sees_concepts_added_mid_scope(self):
+        env = Environment()
+        state = SemanticState(environment=env)
+        with state.pending_overlay_scope():
+            assert "local.late" not in env.concepts
+            state.add(_make_probe("late"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+            assert env.concepts["local.late"].name == "late"
+            assert "local.late" not in env.concepts.data
+
+    def test_overlay_namespace_fallback(self):
+        env = Environment()
+        state = SemanticState(environment=env)
+        state.add(_make_probe("bare"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+        with state.pending_overlay_scope():
+            assert env.concepts["bare"].name == "bare"
+            assert env.concepts["local.bare"].name == "bare"
+
+    def test_overlay_does_not_leak_between_scopes(self):
+        env = Environment()
+        state_a = SemanticState(environment=env)
+        state_b = SemanticState(environment=env)
+        state_a.add(_make_probe("alpha"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+        state_b.add(_make_probe("beta"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+        with state_a.pending_overlay_scope():
+            assert env.concepts["local.alpha"].name == "alpha"
+            with pytest.raises(Exception):
+                env.concepts["local.beta"]
+        with state_b.pending_overlay_scope():
+            assert env.concepts["local.beta"].name == "beta"
+            with pytest.raises(Exception):
+                env.concepts["local.alpha"]
+
+    def test_nested_overlays_read_both(self):
+        env = Environment()
+        state = SemanticState(environment=env)
+        state.add(_make_probe("outer"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+        with state.pending_overlay_scope():
+            inner_view = {"local.inner": _make_probe("inner")}
+            with env.concepts.push_overlay(inner_view):
+                assert env.concepts["local.inner"].name == "inner"
+                assert env.concepts["local.outer"].name == "outer"
+            with pytest.raises(Exception):
+                env.concepts["local.inner"]
+            assert env.concepts["local.outer"].name == "outer"
+        assert env.concepts._overlay_stack == []
+
+    def test_overlay_is_read_only(self):
+        from types import MappingProxyType
+
+        env = Environment()
+        state = SemanticState(environment=env)
+        with state.pending_overlay_scope():
+            assert env.concepts._overlay_stack, "overlay not installed"
+            top = env.concepts._overlay_stack[-1]
+            assert isinstance(top, MappingProxyType)
+            with pytest.raises(TypeError):
+                top["local.sneaky"] = _make_probe("sneaky")  # type: ignore[index]
+
+    def test_commit_after_overlay_persists(self):
+        env = Environment()
+        state = SemanticState(environment=env)
+        state.add(_make_probe("keep"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+        with state.pending_overlay_scope():
+            pass
+        assert "local.keep" not in env.concepts.data
+        state.commit()
+        assert "local.keep" in env.concepts.data
 
 
 class TestConceptLookupFacade:
@@ -509,13 +605,12 @@ class TestConceptLookupFacade:
         resolved = lookup.require("local.shared")
         assert resolved.datatype == DataType.STRING
 
-    def test_pending_resolves_independent_of_environment_mirror(self):
+    def test_pending_resolves_without_environment_write(self):
         env = Environment()
         state = _semantic_state(env)
         lookup = ConceptLookup(state)
         state.add(_make_probe("isolated"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
-        # Simulate disabled mirroring: drop the env copy but keep SemanticState.
-        env.concepts.data.pop("local.isolated", None)
+        assert "local.isolated" not in env.concepts.data
         assert lookup.require("local.isolated").name == "isolated"
         assert lookup.get("local.isolated") is not None
         assert lookup.contains("local.isolated")
@@ -544,7 +639,7 @@ class TestConceptLookupFacade:
 
     def test_unqualified_resolves_pending_local(self):
         env = Environment()
-        state = SemanticState(environment=env, mirror_to_environment=False)
+        state = SemanticState(environment=env)
         lookup = ConceptLookup(state)
         state.add(_make_probe("id"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
         assert lookup.require("id").address == "local.id"
@@ -555,7 +650,7 @@ class TestConceptLookupFacade:
 
     def test_local_qualified_resolves_stripped(self):
         env = Environment()
-        state = SemanticState(environment=env, mirror_to_environment=False)
+        state = SemanticState(environment=env)
         lookup = ConceptLookup(state)
         # Simulate a pending concept stored under a stripped name variant.
         probe = _make_probe("id")
@@ -565,9 +660,9 @@ class TestConceptLookupFacade:
         assert lookup.contains("local.id")
 
 
-def _parse_no_mirror(text: str) -> tuple[Environment, list]:
+def _parse_staged(text: str) -> tuple[Environment, list]:
     env = Environment()
-    state = SemanticState(environment=env, mirror_to_environment=False)
+    state = SemanticState(environment=env)
     ctx = HydrationContext(environment=env, semantic_state=state)
     hydrator = NativeHydrator(ctx)
     document = parse_syntax(text)
@@ -575,15 +670,15 @@ def _parse_no_mirror(text: str) -> tuple[Environment, list]:
     return env, output
 
 
-class TestNoMirrorParser:
+class TestStagedParser:
     def test_key_then_select_ref(self):
-        env, output = _parse_no_mirror("key x int;\nselect x;")
+        env, output = _parse_staged("key x int;\nselect x;")
         assert "local.x" in env.concepts.data
         select = next(o for o in output if isinstance(o, SelectStatement))
         assert [x.concept.address for x in select.selection] == ["local.x"]
 
     def test_key_then_inline_derivation(self):
-        env, output = _parse_no_mirror("key x int;\nselect x + 1 -> y;")
+        env, output = _parse_staged("key x int;\nselect x + 1 -> y;")
         assert "local.x" in env.concepts.data
         assert "local.y" in env.concepts.data
         assert env.concepts["local.y"].datatype == DataType.INTEGER
@@ -604,62 +699,35 @@ MERGE
 SELECT other_one
 ALIGN one_key:one,other_one;
 """
-        env, output = _parse_no_mirror(text)
+        env, output = _parse_staged(text)
         assert "local.one_key" in env.concepts.data
         multi = next(o for o in output if isinstance(o, MultiSelectStatement))
         assert multi is not None
 
     def test_rowset_output(self):
-        env, output = _parse_no_mirror("key x int;\nrowset r <- select x;")
+        env, output = _parse_staged("key x int;\nrowset r <- select x;")
         assert "local.x" in env.concepts.data
         assert "r.x" in env.concepts.data
         rowset = next(o for o in output if isinstance(o, RowsetDerivationStatement))
         assert rowset.name == "r"
 
 
-@pytest.fixture
-def force_default_mirror_off(monkeypatch):
-    """Force NativeHydrator's default SemanticState to mirror_to_environment=False.
-
-    Targets the `SemanticState` name imported in `trilogy.parsing.v2.hydration`,
-    so any hydrator that constructs its own SemanticState picks up mirror-off.
-    """
-    import trilogy.parsing.v2.hydration as hydration_mod
-
-    original = hydration_mod.SemanticState
-
-    def factory(*args, **kwargs):
-        kwargs.setdefault("mirror_to_environment", False)
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(hydration_mod, "SemanticState", factory)
-    return factory
-
-
-class TestForcedDefaultMirrorOff:
-    def test_key_then_property(self, force_default_mirror_off):
-        from trilogy.parsing.parse_engine_v2 import parse_text
-
+class TestDefaultStagedParser:
+    def test_key_then_property(self):
         env, _ = parse_text("key id int; property id.name string;", Environment())
         assert "local.id" in env.concepts.data
         assert "local.name" in env.concepts.data
 
-    def test_key_then_auto_derivation(self, force_default_mirror_off):
-        from trilogy.parsing.parse_engine_v2 import parse_text
-
+    def test_key_then_auto_derivation(self):
         env, _ = parse_text("key x int; auto y <- x + 1;", Environment())
         assert env.concepts["local.y"].datatype == DataType.INTEGER
 
-    def test_auto_before_key(self, force_default_mirror_off):
-        from trilogy.parsing.parse_engine_v2 import parse_text
-
+    def test_auto_before_key(self):
         env, _ = parse_text("auto y <- x + 1; key x int;", Environment())
         assert env.concepts["local.y"].datatype == DataType.INTEGER
         assert env.concepts["local.x"].datatype == DataType.INTEGER
 
-    def test_datasource_resolves_pending_key(self, force_default_mirror_off):
-        from trilogy.parsing.parse_engine_v2 import parse_text
-
+    def test_datasource_resolves_pending_key(self):
         env, _ = parse_text(
             "key id int; datasource test (id:id) grain (id) address memory.test;",
             Environment(),
@@ -667,9 +735,7 @@ class TestForcedDefaultMirrorOff:
         assert "test" in env.datasources
         assert "local.id" in env.concepts.data
 
-    def test_select_derivation_roundtrip(self, force_default_mirror_off):
-        from trilogy.parsing.parse_engine_v2 import parse_text
-
+    def test_select_derivation_roundtrip(self):
         env, output = parse_text("key x int;\nselect x + 1 -> y;", Environment())
         assert "local.y" in env.concepts.data
         select = next(o for o in output if isinstance(o, SelectStatement))

@@ -4,14 +4,18 @@ import copy
 import difflib
 import os
 from collections import UserDict, defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
     Any,
     Dict,
     ItemsView,
+    Iterator,
     List,
+    Mapping,
     Never,
     Optional,
     Self,
@@ -127,6 +131,47 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         for concept in DEFAULT_CONCEPTS.values():
             self[concept.address] = concept
 
+    @contextmanager
+    def push_overlay(
+        self, overlay: Mapping[str, Concept]
+    ) -> Iterator[Mapping[str, Concept]]:
+        """Install a read-only concept overlay for the duration of the scope.
+
+        While active, reads through ``__getitem__``/``get``/``__contains__``
+        consult the overlay before ``self.data``. Mutable dicts are wrapped
+        in ``MappingProxyType`` so this API cannot be used as a write path;
+        ``self.data`` is never mutated by overlay installation or teardown.
+        The wrapper is a *live* view of the caller's dict, so concepts added
+        to the underlying dict during the scope become visible immediately.
+        """
+        if isinstance(overlay, dict):
+            view: Mapping[str, Concept] = MappingProxyType(overlay)
+        else:
+            view = overlay
+        self._overlay_stack.append(view)
+        try:
+            yield view
+        finally:
+            popped = self._overlay_stack.pop()
+            assert popped is view, "overlay stack corrupted"
+
+    def _overlay_lookup(self, key: str) -> Concept | None:
+        if not self._overlay_stack:
+            return None
+        for overlay in reversed(self._overlay_stack):
+            hit = overlay.get(key)
+            if hit is not None:
+                return hit
+            if "." in key and key.split(".", 1)[0] == DEFAULT_NAMESPACE:
+                hit = overlay.get(key.split(".", 1)[1])
+                if hit is not None:
+                    return hit
+            elif "." not in key:
+                hit = overlay.get(f"{DEFAULT_NAMESPACE}.{key}")
+                if hit is not None:
+                    return hit
+        return None
+
     def __contains__(self, key: object) -> bool:
         if key in self.data and key not in self.hidden:
             return True
@@ -180,6 +225,10 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
     def __getitem__(
         self, key: str, line_no: int | None = None, file: Path | None = None
     ) -> Concept | UndefinedConceptFull:
+        if self._overlay_stack:
+            overlay_hit = self._overlay_lookup(key)
+            if overlay_hit is not None:
+                return overlay_hit
         # fast access path — includes hidden (needed for build resolution)
         if key in self.data:
             return self.data[key]

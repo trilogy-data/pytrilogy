@@ -12,10 +12,10 @@ Audit — ``context.environment`` usage in v2 (Phase 1):
    - ``datasources``, ``functions``, ``data_types``
 
 2. Concept reads (must go through ``context.concepts``):
-   - ``environment.concepts[addr]`` in rule modules — migrated.
+   - Direct environment concept lookups in rule modules — migrated.
    - ``concepts_to_grain_concepts(..., environment=...)`` — served via a
      merged ``local_concepts`` map in this module so v1 grain logic sees
-     pending concepts without consulting ``environment.concepts``.
+     pending concepts without consulting the env concept store.
    - ``SelectStatement.validate_syntax(environment)`` inlined here, using
      ``context.concepts``.
 

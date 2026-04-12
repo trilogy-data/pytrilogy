@@ -54,22 +54,23 @@ class SymbolTable:
     """v2 semantic symbol table.
 
     Owns a stack of SemanticScopes and is the single point that mirrors
-    scoped declarations into ``environment.concepts.data`` as
+    scoped declarations into the environment concept store as
     ``UndefinedConceptFull`` placeholders. Downstream code paths in
     ``trilogy.core`` (notably ``function_args_to_output_purpose``) look
-    up ConceptRefs by address via ``environment.concepts[...]``, so a
-    materialized placeholder is the current compatibility contract.
+    up ConceptRefs directly against the store, so a materialized
+    placeholder is the current compatibility contract.
 
     This is an accepted compatibility exception, deliberately isolated
     here. Unlike real concept hydration — which flows through
-    ``SemanticState`` and is exposed to v1 helpers through the
-    ``visible_in_environment`` scaffold — scoped placeholders cover
-    forward references (function parameters, rowset forward refs) that
-    have no real concept at all. They must be present in
-    ``environment.concepts.data`` for type inference helpers to resolve
-    the ref without blowing up, and they are deterministically demoted
-    on scope exit (``_demote``). Nothing else in ``trilogy.parsing.v2``
-    should mutate ``environment.concepts.data`` for scoped declarations.
+    ``SemanticState`` and is exposed to v1 helpers via
+    ``pending_overlay_scope`` (a strictly read-only overlay, no store
+    mutation) — scoped placeholders cover forward references (function
+    parameters, rowset forward refs) that have no real concept at all.
+    They must be physically materialized in the store so type inference
+    helpers can resolve the ref without blowing up, and they are
+    deterministically demoted on scope exit (``_demote``). Nothing else
+    in ``trilogy.parsing.v2`` mutates the concept store for scoped
+    declarations.
     """
 
     def __init__(self, environment: Environment) -> None:
