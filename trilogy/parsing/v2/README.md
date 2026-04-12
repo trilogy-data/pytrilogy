@@ -21,20 +21,58 @@ Parser v2 separates syntax parsing from semantic enrichment. The parser should p
      branch on them.
 
 3. `hydration.py`
-   - Converts syntax into authoring statements and environment updates.
-   - Hydration is phase-based so each top-level statement can be migrated without
-     preserving the old transformer replay model.
-   - Top-level forms are dispatched to explicit plans such as
-     `CommentStatementPlan`, `ConceptStatementPlan`, and `ShowStatementPlan`.
-     Unported statement families receive `UnsupportedStatementPlan`; they are not
-     hydrated by recursively replaying syntax rules.
+   - Coordinator for phase-based hydration of a `SyntaxDocument` against an
+     `Environment`. Owns `NativeHydrator`, `HydrationContext`, `HydrationPhase`,
+     the `NODE_HYDRATORS` / `TOKEN_HYDRATORS` registries, and `hydrate_rule` /
+     `hydrate_token` dispatch.
+   - Delegates plan construction to `statement_planner.py` and holds no plan
+     classes or syntax-walking helpers of its own.
+   - Phase-based so each top-level statement can be migrated without preserving
+     the old transformer replay model.
 
-4. `statements.py`
+4. `statement_planner.py`
+   - Maps top-level `SyntaxElement`s to `StatementPlan` instances.
+   - `StatementPlanner.plan(forms)` is the only dispatch surface; it replaces the
+     large syntax-kind branch that previously lived on `NativeHydrator`.
+   - Also exports `require_block_statement`, the shared BLOCK-unwrap helper.
+
+5. `statement_plans.py`
+   - Home of the explicit `StatementPlan` classes (`CommentStatementPlan`,
+     `ConceptStatementPlan`, `ShowStatementPlan`, `ImportStatementPlan`,
+     `SelectStatementPlan`, `FunctionDefinitionPlan`, `DatasourceStatementPlan`,
+     `MergeStatementPlan`, `RowsetStatementPlan`, `PersistStatementPlan`,
+     `RawSQLStatementPlan`, `UnsupportedStatementPlan`).
+   - Also defines `StatementPlan`, `StatementPlanBase`, and
+     `UnsupportedSyntaxError`. Unported statement families receive
+     `UnsupportedStatementPlan`; they are not hydrated by recursively replaying
+     syntax rules.
+
+6. `symbols.py`
+   - Syntax-walking helpers for concept discovery and dependency resolution:
+     `find_concept_literals`, `extract_concept_name_from_literal`,
+     `collect_inline_concept_addresses`, `collect_concept_address`,
+     `collect_properties_addresses`, `extract_dependencies`, and
+     `topological_sort_plans`.
+   - Used by the concept/rowset/select plans during `collect_symbols` and `bind`.
+
+7. `statements.py`
    - Contains syntax-node-first statement hydrators.
    - New top-level statement families should start here instead of adding another
      generic child-args transformer handler.
 
-5. Rule modules
+8. `function_syntax.py`
+   - Typed view over `FUNCTION` / `RAW_FUNCTION` / `TABLE_FUNCTION` syntax nodes.
+     `FunctionDefinitionPlan` uses it to extract parameter names for scope
+     management.
+
+9. `scopes.py`
+   - Temporary semantic-placeholder bridge (`temporary_function_scope`,
+     `temporary_rowset_scope`) that stages function parameters and rowset
+     forward references on the environment for the duration of a hydration call.
+   - This is a placeholder for a real symbol/scope table and should eventually
+     be replaced by one.
+
+10. Rule modules
    - `concept_rules.py`, `expression_rules.py`, and `token_rules.py` contain the
      currently ported rule-level semantic builders.
    - Each rule module owns its local `SyntaxNodeKind` or `SyntaxTokenKind` registry;
@@ -43,7 +81,7 @@ Parser v2 separates syntax parsing from semantic enrichment. The parser should p
      child hydration callback. They should read the syntax shape they own rather than
      accepting generic pre-hydrated child args.
 
-6. `model.py` / `rules_context.py`
+11. `model.py` / `rules_context.py`
    - `model.py` defines v2 diagnostics and the `RecordingEnvironmentUpdate` shape.
    - `rules_context.py` defines `RuleContext`, including the environment, function
      factory, source text, and current update.
