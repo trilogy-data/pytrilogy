@@ -258,6 +258,16 @@ class FunctionDefinitionPlan(StatementPlanBase):
             self.output = hydrator.hydrate_rule(self.syntax)
 
     def commit(self, hydrator: "NativeHydrator") -> FunctionDeclaration | None:
+        if self.output is None:
+            return None
+        from trilogy.core.models.author import CustomFunctionFactory
+
+        hydrator.environment.functions[self.output.name] = CustomFunctionFactory(
+            function=self.output.expr,
+            namespace=hydrator.environment.namespace,
+            function_arguments=self.output.args,
+            name=self.output.name,
+        )
         return self.output
 
 
@@ -270,6 +280,9 @@ class DatasourceStatementPlan(StatementPlanBase):
         self.output = hydrator.hydrate_rule(self.syntax)
 
     def commit(self, hydrator: "NativeHydrator") -> Datasource | None:
+        if self.output is None:
+            return None
+        hydrator.environment.add_datasource(self.output)
         return self.output
 
 
@@ -282,6 +295,14 @@ class MergeStatementPlan(StatementPlanBase):
         self.output = hydrator.hydrate_rule(self.syntax)
 
     def commit(self, hydrator: "NativeHydrator") -> MergeStatementV2 | None:
+        if self.output is None:
+            return None
+        for source_c in self.output.sources:
+            hydrator.environment.merge_concept(
+                source_c,
+                self.output.targets[source_c.address],
+                self.output.modifiers,
+            )
         return self.output
 
 
@@ -327,6 +348,12 @@ class RowsetStatementPlan(StatementPlanBase):
             self.output = hydrator.hydrate_rule(self.syntax)
 
     def commit(self, hydrator: "NativeHydrator") -> RowsetDerivationStatement | None:
+        if self.output is None:
+            return None
+        hydrator.environment.add_rowset(
+            self.output.name,
+            self.output.select.as_lineage(hydrator.environment),
+        )
         return self.output
 
 

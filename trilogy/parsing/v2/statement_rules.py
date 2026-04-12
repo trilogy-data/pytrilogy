@@ -462,7 +462,6 @@ def datasource_node(
         is_root=is_root,
         is_partial=is_partial,
     )
-    context.environment.add_datasource(datasource)
     # Propagate keys from datasource grain to foreign key concepts.
     # A KEY concept on a datasource that isn't part of the grain
     # gets the grain components as its keys (matching v1 second-pass behaviour).
@@ -533,18 +532,13 @@ def merge_statement(
                 node, f"Cannot merge non-existent source concept {source_c.address}"
             )
 
-    result = MergeStatementV2(
+    return MergeStatementV2(
         sources=sources,
         targets=targets,
         modifiers=modifiers,
         source_wildcard=source_wildcard,
         target_wildcard=target_wildcard,
     )
-    for source_c in result.sources:
-        context.environment.merge_concept(
-            source_c, targets[source_c.address], modifiers
-        )
-    return result
 
 
 # --- Function definition handlers ---
@@ -599,18 +593,10 @@ def raw_function(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> FunctionDeclaration:
-    from trilogy.core.models.author import CustomFunctionFactory
-
     args = hydrated_children(node, hydrate)
     identity = str(args[0])
     function_arguments: list[ArgBinding] = args[1]
     output = args[2]
-    context.environment.functions[identity] = CustomFunctionFactory(
-        function=output,
-        namespace=context.environment.namespace,
-        function_arguments=function_arguments,
-        name=identity,
-    )
     return FunctionDeclaration(name=identity, args=function_arguments, expr=output)
 
 
@@ -619,8 +605,6 @@ def table_function(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> FunctionDeclaration:
-    from trilogy.core.models.author import CustomFunctionFactory
-
     args = hydrated_children(node, hydrate)
     identity = str(args[0])
     idx = 1
@@ -643,12 +627,6 @@ def table_function(
         elif isinstance(arg, int):
             limit = arg
     sub = SubselectItem(content=content, where=where, order_by=order_by, limit=limit)
-    context.environment.functions[identity] = CustomFunctionFactory(
-        function=sub,
-        namespace=context.environment.namespace,
-        function_arguments=function_arguments,
-        name=identity,
-    )
     return FunctionDeclaration(name=identity, args=function_arguments, expr=sub)
 
 
@@ -689,9 +667,6 @@ def rowset_derivation_statement(
     )
     for new_concept in rowset_to_concepts(output, context.environment):
         context.add_concept(new_concept, meta=core_meta(node.meta), force=True)
-    context.environment.add_rowset(
-        output.name, output.select.as_lineage(context.environment)
-    )
     return output
 
 
