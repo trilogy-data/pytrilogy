@@ -23,6 +23,8 @@ class SyntaxNodeKind(str, Enum):
     NUMERIC_TYPE = "numeric_type"
     MAP_TYPE = "map_type"
     STRUCT_TYPE = "struct_type"
+    STRUCT_COMPONENT = "struct_component"
+    STRUCT_LITERAL = "struct_literal"
     LIST_TYPE = "list_type"
     ENUM_TYPE = "enum_type"
     CONCEPT_NULLABLE_MODIFIER = "concept_nullable_modifier"
@@ -295,6 +297,13 @@ class SyntaxTokenKind(str, Enum):
     WILDCARD_IDENTIFIER = "wildcard_identifier"
     DATASOURCE_PARTIAL = "datasource_partial"
     PERSIST_MODE = "persist_mode"
+    FILE_PATH = "file_path"
+    F_FILE_PATH = "f_file_path"
+    CHART_TYPE = "chart_type"
+    VALIDATE_SCOPE = "validate_scope"
+    COPY_TYPE = "copy_type"
+    DATASOURCE_ROOT = "datasource_root"
+    DATASOURCE_UPDATE_TRIGGER = "datasource_update_trigger"
 
 
 LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
@@ -315,6 +324,8 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "numeric_type": SyntaxNodeKind.NUMERIC_TYPE,
     "map_type": SyntaxNodeKind.MAP_TYPE,
     "struct_type": SyntaxNodeKind.STRUCT_TYPE,
+    "struct_component": SyntaxNodeKind.STRUCT_COMPONENT,
+    "struct_lit": SyntaxNodeKind.STRUCT_LITERAL,
     "list_type": SyntaxNodeKind.LIST_TYPE,
     "enum_type": SyntaxNodeKind.ENUM_TYPE,
     "concept_nullable_modifier": SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER,
@@ -586,6 +597,13 @@ LARK_TOKEN_KIND: dict[str, SyntaxTokenKind] = {
     "WILDCARD_IDENTIFIER": SyntaxTokenKind.WILDCARD_IDENTIFIER,
     "DATASOURCE_PARTIAL": SyntaxTokenKind.DATASOURCE_PARTIAL,
     "PERSIST_MODE": SyntaxTokenKind.PERSIST_MODE,
+    "FILE_PATH": SyntaxTokenKind.FILE_PATH,
+    "F_FILE_PATH": SyntaxTokenKind.F_FILE_PATH,
+    "CHART_TYPE": SyntaxTokenKind.CHART_TYPE,
+    "VALIDATE_SCOPE": SyntaxTokenKind.VALIDATE_SCOPE,
+    "COPY_TYPE": SyntaxTokenKind.COPY_TYPE,
+    "DATASOURCE_ROOT": SyntaxTokenKind.DATASOURCE_ROOT,
+    "DATASOURCE_UPDATE_TRIGGER": SyntaxTokenKind.DATASOURCE_UPDATE_TRIGGER,
 }
 
 

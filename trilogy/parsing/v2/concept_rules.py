@@ -499,6 +499,16 @@ def list_type(
     return ArrayType(type=content)
 
 
+def struct_component(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> StructComponent:
+    args = hydrated_children(node, hydrate)
+    modifiers = [a for a in args if isinstance(a, Modifier)]
+    return StructComponent(name=str(args[0]), type=args[1], modifiers=modifiers)
+
+
 def struct_type(
     node: SyntaxNode,
     context: RuleContext,
@@ -587,6 +597,7 @@ CONCEPT_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.MAP_TYPE: map_type,
     SyntaxNodeKind.LIST_TYPE: list_type,
     SyntaxNodeKind.STRUCT_TYPE: struct_type,
+    SyntaxNodeKind.STRUCT_COMPONENT: struct_component,
     SyntaxNodeKind.ENUM_TYPE: enum_type,
     SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER: concept_nullable_modifier,
     SyntaxNodeKind.METADATA: metadata,

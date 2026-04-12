@@ -12,6 +12,7 @@ from trilogy.parsing.v2.concept_syntax import (
     ConceptPropertyDeclarationSyntax,
     ConstantDerivationSyntax,
     PropertyIdentifierSyntax,
+    PropertyWildcardSyntax,
 )
 from trilogy.parsing.v2.model import HydrationDiagnostic, HydrationError
 from trilogy.parsing.v2.syntax import (
@@ -180,6 +181,12 @@ def collect_concept_address(block: SyntaxNode, environment: Environment) -> str 
         ):
             property_id = PropertyIdentifierSyntax.from_node(decl)
             return _make_address(property_id.name.value, namespace)
+        if (
+            isinstance(decl, SyntaxNode)
+            and decl.kind == SyntaxNodeKind.PROPERTY_IDENTIFIER_WILDCARD
+        ):
+            wildcard = PropertyWildcardSyntax.from_node(decl)
+            return _make_address(wildcard.name.value, namespace)
         if isinstance(decl, SyntaxToken):
             raw = decl.value
             short = raw.rsplit(".", 1)[-1] if "." in raw else raw

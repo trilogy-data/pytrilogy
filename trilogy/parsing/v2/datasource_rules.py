@@ -28,6 +28,7 @@ from trilogy.core.models.datasource import (
     Datasource,
     RawColumnExpr,
 )
+from trilogy.parsing.helpers import comment_body
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,
@@ -106,7 +107,7 @@ def inline_property_list(
         if isinstance(arg, list):
             props.append(arg)
         elif isinstance(arg, Comment) and props:
-            merged = arg.text.split("#")[1].rstrip()
+            merged = comment_body(arg)
             prop_args = props[-1]
             existing = next((a for a in prop_args if isinstance(a, Metadata)), None)
             if existing is None:

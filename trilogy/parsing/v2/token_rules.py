@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import re
+
+from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import (
     BooleanOperator,
     ComparisonOperator,
     DatePart,
+    FunctionType,
     Modifier,
     PersistMode,
     Purpose,
     WindowType,
 )
-from trilogy.core.models.author import Comment
+from trilogy.core.models.author import Comment, Function
+from trilogy.parsing.exceptions import ParseError
 from trilogy.parsing.v2.rules_context import RuleContext, TokenHydrator
 from trilogy.parsing.v2.syntax import SyntaxToken, SyntaxTokenKind
 
@@ -131,7 +136,7 @@ def PARSE_WILDCARD_IDENTIFIER(token: SyntaxToken, context: RuleContext) -> str:
 
 
 def PARSE_DATASOURCE_PARTIAL(token: SyntaxToken, context: RuleContext) -> Modifier:
-    return Modifier(token.value)
+    return Modifier.PARTIAL
 
 
 def PARSE_PERSIST_MODE(token: SyntaxToken, context: RuleContext) -> PersistMode:
@@ -139,6 +144,59 @@ def PARSE_PERSIST_MODE(token: SyntaxToken, context: RuleContext) -> PersistMode:
     if val == "persist":
         return PersistMode.OVERWRITE
     return PersistMode(val)
+
+
+_PARAM_PATTERN = re.compile(r"\{([^}]+)\}")
+
+
+def _interpolate_params(text: str, context: RuleContext) -> str:
+    def replace(match: re.Match) -> str:
+        name = match.group(1).strip()
+        lookup = f"{DEFAULT_NAMESPACE}.{name}" if "." not in name else name
+        try:
+            concept = context.environment.concepts[lookup]
+        except KeyError:
+            raise ParseError(
+                f"Unknown reference '{{{name}}}' in address — '{name}' is not defined."
+            )
+        if (
+            not isinstance(concept.lineage, Function)
+            or concept.lineage.operator != FunctionType.CONSTANT
+        ):
+            raise ParseError(
+                f"'{{{name}}}' in address must reference a constant or parameter, not {concept.purpose}."
+            )
+        return str(concept.lineage.arguments[0])
+
+    return _PARAM_PATTERN.sub(replace, text)
+
+
+def PARSE_FILE_PATH(token: SyntaxToken, context: RuleContext) -> str:
+    return token.value[1:-1]
+
+
+def PARSE_F_FILE_PATH(token: SyntaxToken, context: RuleContext) -> str:
+    return _interpolate_params(token.value[2:-1], context)
+
+
+def PARSE_CHART_TYPE(token: SyntaxToken, context: RuleContext) -> str:
+    return token.value.lower()
+
+
+def PARSE_VALIDATE_SCOPE(token: SyntaxToken, context: RuleContext) -> str:
+    return token.value.lower()
+
+
+def PARSE_COPY_TYPE(token: SyntaxToken, context: RuleContext) -> str:
+    return token.value.lower()
+
+
+def PARSE_DATASOURCE_ROOT(token: SyntaxToken, context: RuleContext) -> str:
+    return token.value.lower()
+
+
+def PARSE_DATASOURCE_UPDATE_TRIGGER(token: SyntaxToken, context: RuleContext) -> str:
+    return token.value.lower()
 
 
 TOKEN_HYDRATORS: dict[SyntaxTokenKind, TokenHydrator] = {
@@ -172,4 +230,11 @@ TOKEN_HYDRATORS: dict[SyntaxTokenKind, TokenHydrator] = {
     SyntaxTokenKind.WILDCARD_IDENTIFIER: PARSE_WILDCARD_IDENTIFIER,
     SyntaxTokenKind.DATASOURCE_PARTIAL: PARSE_DATASOURCE_PARTIAL,
     SyntaxTokenKind.PERSIST_MODE: PARSE_PERSIST_MODE,
+    SyntaxTokenKind.FILE_PATH: PARSE_FILE_PATH,
+    SyntaxTokenKind.F_FILE_PATH: PARSE_F_FILE_PATH,
+    SyntaxTokenKind.CHART_TYPE: PARSE_CHART_TYPE,
+    SyntaxTokenKind.VALIDATE_SCOPE: PARSE_VALIDATE_SCOPE,
+    SyntaxTokenKind.COPY_TYPE: PARSE_COPY_TYPE,
+    SyntaxTokenKind.DATASOURCE_ROOT: PARSE_DATASOURCE_ROOT,
+    SyntaxTokenKind.DATASOURCE_UPDATE_TRIGGER: PARSE_DATASOURCE_UPDATE_TRIGGER,
 }

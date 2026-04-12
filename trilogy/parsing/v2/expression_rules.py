@@ -98,6 +98,17 @@ def map_lit(
     return dict_to_map_wrapper(dict(zip(values[::2], values[1::2])))
 
 
+def struct_lit(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> Any:
+    args = hydrated_children(node, hydrate)
+    return context.function_factory.create_function(
+        args, operator=FunctionType.STRUCT, meta=core_meta(node.meta)
+    )
+
+
 def literal(
     node: SyntaxNode,
     context: RuleContext,
@@ -223,6 +234,7 @@ EXPRESSION_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.ARRAY_LITERAL: array_lit,
     SyntaxNodeKind.TUPLE_LITERAL: tuple_lit,
     SyntaxNodeKind.MAP_LITERAL: map_lit,
+    SyntaxNodeKind.STRUCT_LITERAL: struct_lit,
     SyntaxNodeKind.LITERAL: literal,
     SyntaxNodeKind.PRODUCT_OPERATOR: product_operator,
     SyntaxNodeKind.SUM_OPERATOR: sum_operator,

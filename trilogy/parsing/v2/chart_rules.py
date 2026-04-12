@@ -11,7 +11,12 @@ from trilogy.parsing.v2.rules_context import (
     RuleContext,
     fail,
 )
-from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind, SyntaxToken
+from trilogy.parsing.v2.syntax import (
+    SyntaxNode,
+    SyntaxNodeKind,
+    SyntaxToken,
+    SyntaxTokenKind,
+)
 
 _FIELD_MAP = {
     "x_axis": "x_fields",
@@ -80,8 +85,8 @@ def chart_statement(
     select: SelectStatement | None = None
     for child in node.children:
         if isinstance(child, SyntaxToken):
-            if child.name == "CHART_TYPE":
-                chart_type = ChartType(child.value.lower())
+            if child.kind == SyntaxTokenKind.CHART_TYPE:
+                chart_type = ChartType(hydrate(child))
             continue
         if child.kind == SyntaxNodeKind.SELECT_STATEMENT:
             select = hydrate(child)

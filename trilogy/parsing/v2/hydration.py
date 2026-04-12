@@ -13,6 +13,7 @@ from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     ShowStatement,
 )
+from trilogy.parsing.helpers import comment_body
 from trilogy.parsing.v2.concept_rules import CONCEPT_NODE_HYDRATORS
 from trilogy.parsing.v2.conditional_rules import CONDITIONAL_NODE_HYDRATORS
 from trilogy.parsing.v2.expression_rules import EXPRESSION_NODE_HYDRATORS
@@ -297,7 +298,7 @@ class NativeHydrator:
         ]
         if comments:
             output.concept.metadata.description = "\n".join(
-                comment.text.split("#")[1].rstrip() for comment in comments
+                comment_body(comment) for comment in comments
             )
         return output
 
