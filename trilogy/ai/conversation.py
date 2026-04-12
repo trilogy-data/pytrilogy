@@ -96,27 +96,6 @@ class Conversation:
         ) as error:
             return ("", str(error))
 
-    def extract_response(self, response: LLMResponse | str) -> str:
-        if isinstance(response, LLMResponse):
-            for tool_call in response.tool_calls:
-                if tool_call.name == TRILOGY_QUERY_TOOL.name:
-                    query = tool_call.arguments.get("query")
-                    if isinstance(query, str):
-                        return query.strip()
-            content = response.text
-        else:
-            content = response
-        # get contents in triple backticks
-        content = content.replace('"""', "```")
-        # replace markdown trilogy code block prefix that is
-        # sometimes added
-        content = content.replace("```trilogy", "```")
-        if "```" in content:
-            parts = content.split("```")
-            if len(parts) >= 3:
-                return parts[-2].strip()
-        return content
-
     def generate_query(
         self, user_input: str, environment: Environment, attempts: int = 4
     ) -> str:
