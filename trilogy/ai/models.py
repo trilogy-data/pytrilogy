@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Literal, Optional
+from dataclasses import dataclass, field
+from typing import Any, Literal, Optional
 
 
 @dataclass
@@ -10,9 +10,23 @@ class UsageDict:
 
 
 @dataclass
+class LLMToolDefinition:
+    name: str
+    description: str
+    input_schema: dict[str, Any]
+
+
+@dataclass
+class LLMToolCall:
+    name: str
+    arguments: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class LLMResponse:
     text: str
     usage: UsageDict
+    tool_calls: list[LLMToolCall] = field(default_factory=list)
 
 
 @dataclass
@@ -20,6 +34,9 @@ class LLMRequestOptions:
     max_tokens: Optional[int] = None
     temperature: Optional[float] = None
     top_p: Optional[float] = None
+    tools: list[LLMToolDefinition] = field(default_factory=list)
+    require_tool: bool = False
+    tool_choice: Optional[str] = None
 
 
 @dataclass

@@ -1,5 +1,6 @@
+import json
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from trilogy.ai.enums import Provider
 from trilogy.ai.models import LLMMessage, LLMRequestOptions, LLMResponse
@@ -22,3 +23,16 @@ class LLMProvider(ABC):
         self, options: LLMRequestOptions, history: List[LLMMessage]
     ) -> LLMResponse:
         pass
+
+
+def parse_tool_arguments(arguments: str | dict[str, Any] | None) -> dict[str, Any]:
+    if arguments is None:
+        return {}
+    if isinstance(arguments, dict):
+        return arguments
+    if not arguments.strip():
+        return {}
+    parsed = json.loads(arguments)
+    if not isinstance(parsed, dict):
+        raise ValueError(f"Tool arguments must decode to an object, got {type(parsed)}")
+    return parsed

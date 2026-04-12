@@ -26,7 +26,7 @@ SELECT RULES:
 - For lag/lead, offset is first: lag/lead offset field order by expr asc/desc.
 - For lag/lead with a window clause: lag/lead offset field by window_clause order by expr asc/desc.
 - Use `::type` casting, e.g., `"2020-01-01"::date`.
-- Date_parts have no quotes; use `date_part(order_date, year)` instead of `date_part(order_date, 'year')`.
+- Date_parts have no quotes; use `date_part(order_date, year)` instead of `date_part(order_date, 'year')`. Prefer idiomatic function casts (year(order_date) instead of date_part(order_date, year)) when possible.
 - Comments use `#` only, per line.
 - Two example queries: "where year between 1940 and 1950
   select

@@ -1,4 +1,9 @@
-from trilogy.ai.prompts import datatype_to_field_prompt
+from trilogy.ai.prompts import (
+    TRILOGY_CREATE_QUERY_TOOL,
+    TRILOGY_QUERY_TOOL,
+    create_query_request_options,
+    datatype_to_field_prompt,
+)
 from trilogy.authoring import (
     ArrayType,
     DataType,
@@ -124,3 +129,13 @@ def test_datatype_to_field_prompt():
     )
     expected_complex = "STRUCT<metadata: MAP<string, string>, items: ARRAY<int>, config: string(encrypted)>"
     assert datatype_to_field_prompt(complex_struct) == expected_complex
+
+
+def test_query_request_options():
+    options = create_query_request_options()
+
+    assert options.require_tool is True
+    assert options.tool_choice is None
+    assert len(options.tools) == 2
+    assert options.tools[0] == TRILOGY_CREATE_QUERY_TOOL
+    assert options.tools[1] == TRILOGY_QUERY_TOOL

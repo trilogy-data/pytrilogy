@@ -3,7 +3,7 @@ from os import environ
 from typing import Any, Dict, List, Optional
 
 from trilogy.ai.enums import Provider
-from trilogy.ai.models import LLMMessage, LLMResponse, UsageDict
+from trilogy.ai.models import LLMMessage, LLMResponse, LLMToolCall, UsageDict
 from trilogy.constants import logger
 
 from .base import RETRYABLE_CODES, LLMProvider, LLMRequestOptions
@@ -25,6 +25,22 @@ def _extract_google_retry_delay_ms(error: Exception) -> Optional[int]:
     except Exception:
         pass
     return None
+
+
+def _convert_to_google_schema(value: Any) -> Any:
+    if isinstance(value, dict):
+        converted: Dict[str, Any] = {}
+        for key, nested_value in value.items():
+            if key == "additionalProperties":
+                continue
+            if key == "type" and isinstance(nested_value, str):
+                converted[key] = nested_value.upper()
+            else:
+                converted[key] = _convert_to_google_schema(nested_value)
+        return converted
+    if isinstance(value, list):
+        return [_convert_to_google_schema(item) for item in value]
+    return value
 
 
 class GoogleProvider(LLMProvider):
@@ -94,6 +110,32 @@ class GoogleProvider(LLMProvider):
 
         # Build request body
         request_body: Dict[str, Any] = {"contents": contents, "generationConfig": {}}
+        if options.tools:
+            request_body["tools"] = [
+                {
+                    "functionDeclarations": [
+                        {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "parameters": _convert_to_google_schema(tool.input_schema),
+                        }
+                        for tool in options.tools
+                    ]
+                }
+            ]
+        if options.tool_choice:
+            request_body["toolConfig"] = {
+                "functionCallingConfig": {
+                    "mode": "ANY",
+                    "allowedFunctionNames": [options.tool_choice],
+                }
+            }
+        elif options.require_tool:
+            request_body["toolConfig"] = {
+                "functionCallingConfig": {
+                    "mode": "ANY",
+                }
+            }
 
         # Add system instruction if present
         if system_instruction:
@@ -141,7 +183,15 @@ class GoogleProvider(LLMProvider):
             if not parts:
                 raise Exception("No parts in response content")
 
-            text = parts[0].get("text", "")
+            text_parts = [part.get("text", "") for part in parts if part.get("text")]
+            tool_calls = [
+                LLMToolCall(
+                    name=part["functionCall"]["name"],
+                    arguments=part["functionCall"].get("args", {}),
+                )
+                for part in parts
+                if part.get("functionCall", {}).get("name")
+            ]
 
             # Extract usage metadata
             usage_metadata = data.get("usageMetadata", {})
@@ -149,7 +199,8 @@ class GoogleProvider(LLMProvider):
             completion_tokens = usage_metadata.get("candidatesTokenCount", 0)
 
             return LLMResponse(
-                text=text,
+                text="\n".join(text_parts).strip(),
+                tool_calls=tool_calls,
                 usage=UsageDict(
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
