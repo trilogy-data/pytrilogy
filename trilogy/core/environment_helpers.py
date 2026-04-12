@@ -58,7 +58,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
                 concept_source=ConceptSource.AUTO_DERIVED,
             ),
         )
-        environment.add_concept(new_concept, add_derived=False)
+        environment.add_concept(new_concept)
     for grain in [DatePart.MONTH, DatePart.YEAR]:
         address = concept.address + f".{grain.value}_start"
         if address in environment.concepts:
@@ -87,7 +87,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             ),
         )
 
-        environment.add_concept(new_concept, add_derived=False)
+        environment.add_concept(new_concept)
 
 
 def generate_datetime_concepts(concept: Concept, environment: Environment):
@@ -134,7 +134,7 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
         )
         if new_concept.name in environment.concepts:
             continue
-        environment.add_concept(new_concept, add_derived=False)
+        environment.add_concept(new_concept)
 
 
 def generate_key_concepts(concept: Concept, environment: Environment):
@@ -168,7 +168,7 @@ def generate_key_concepts(concept: Concept, environment: Environment):
                 concept_source=ConceptSource.AUTO_DERIVED,
             ),
         )
-        environment.add_concept(new_concept, add_derived=False)
+        environment.add_concept(new_concept)
 
 
 def remove_date_concepts(concept: Concept, environment: Environment):
@@ -281,23 +281,8 @@ def generate_related_concepts(
     concept: Concept,
     environment: Environment,
     meta: Meta | None = None,
-    add_derived: bool = False,
 ):
-    """Auto populate common derived concepts on types"""
-    if concept.purpose == Purpose.KEY and add_derived:
-        generate_key_concepts(concept, environment)
-
-    # datatype types
-    if concept.datatype == DataType.DATE and add_derived:
-        generate_date_concepts(concept, environment)
-    elif concept.datatype == DataType.DATETIME and add_derived:
-
-        generate_date_concepts(concept, environment)
-        generate_datetime_concepts(concept, environment)
-    elif concept.datatype == DataType.TIMESTAMP and add_derived:
-        generate_date_concepts(concept, environment)
-        generate_datetime_concepts(concept, environment)
-
+    """Auto populate struct field concepts on struct types."""
     if isinstance(concept.datatype, StructType):
         for key, value in concept.datatype.fields_map.items():
             auto = Concept(
@@ -320,3 +305,16 @@ def generate_related_concepts(
             environment.add_concept(auto, meta=meta)
             if isinstance(value, Concept):
                 environment.merge_concept(auto, value, modifiers=[])
+
+
+def enrich_environment(environment: Environment):
+    """Optional helper to eagerly populate key/date/datetime derived concepts
+    for all concepts in the environment."""
+    for concept in list(environment.concepts.values()):
+        if concept.purpose == Purpose.KEY:
+            generate_key_concepts(concept, environment)
+        if concept.datatype == DataType.DATE:
+            generate_date_concepts(concept, environment)
+        elif concept.datatype in (DataType.DATETIME, DataType.TIMESTAMP):
+            generate_date_concepts(concept, environment)
+            generate_datetime_concepts(concept, environment)

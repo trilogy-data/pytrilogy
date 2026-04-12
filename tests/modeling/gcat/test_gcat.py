@@ -324,7 +324,8 @@ align date:launch_spine,decom_spine;
     assert "local.date" in query.locally_derived
     assert base.environment.concepts["local.date"].datatype == DataType.DATE
     assert "local.date" in query.locally_derived
-    assert "local.date.month" in base.environment.concepts
+    # verify date.month can be lazily resolved
+    assert base.environment.concepts["local.date.month"] is not None
     for c in query.locally_derived:
         base.environment.remove_concept(c)
     post_concepts = set(base.environment.concepts.keys())
@@ -333,7 +334,6 @@ align date:launch_spine,decom_spine;
     ), f"Environment cleanup did not remove locally derived concepts: {post_concepts - pre_concepts}"
 
     # check we can materialize it safely
-    assert "local.date.month" not in base.environment.concepts
     base.environment.materialize_for_select()
 
 
