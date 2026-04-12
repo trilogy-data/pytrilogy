@@ -262,3 +262,157 @@ def test_validate_datasource_fails_early_for_missing_grain_column():
         and "not present in datasource output: local.city" in child.message
         for child in exc_info.value.children or []
     )
+
+
+def test_inferred_type_check():
+    from trilogy.core.validation.datasource import inferred_type_check
+
+    # Simple match
+    assert inferred_type_check(DataType.STRING, DataType.STRING)
+    assert not inferred_type_check(DataType.STRING, DataType.INTEGER)
+
+    # TraitDataType unwrapping
+    trait = TraitDataType(type=DataType.INTEGER, traits=[])
+    assert inferred_type_check(trait, DataType.INTEGER)
+    assert inferred_type_check(DataType.INTEGER, trait)
+    assert not inferred_type_check(trait, DataType.STRING)
+
+    # EnumType matching
+    enum_a = EnumType(type=DataType.STRING, values=["a", "b"])
+    enum_b = EnumType(type=DataType.STRING, values=["a", "b"])
+    enum_c = EnumType(type=DataType.STRING, values=["x", "y"])
+    assert inferred_type_check(enum_a, enum_b)
+    assert not inferred_type_check(enum_a, enum_c)
+    # EnumType vs non-EnumType
+    assert not inferred_type_check(enum_a, DataType.STRING)
+    assert not inferred_type_check(DataType.STRING, enum_a)
+
+
+def test_validate_environment_without_executor():
+    """validate_environment with exec=None uses nullcontext — no crash."""
+    from trilogy import Environment
+    from trilogy.core.enums import ValidationScope
+    from trilogy.core.validation.environment import validate_environment
+
+    env = Environment()
+    env.parse("key id int;")
+    # Should not raise — exercises the nullcontext() branch
+    validate_environment(env, scope=ValidationScope.CONCEPTS)
+
+
+def test_duckdb_refine_runtime_value_type():
+    from trilogy.dialect.duckdb import DuckDBDialect
+
+    dialect = DuckDBDialect()
+
+    # bytes → geography when result_type is GEOGRAPHY
+    assert (
+        dialect.refine_runtime_value_type_for_validation(
+            None, b"\x00", DataType.BYTES, DataType.GEOGRAPHY, DataType.GEOGRAPHY
+        )
+        == DataType.GEOGRAPHY
+    )
+
+    # No refinement when conditions don't match
+    assert (
+        dialect.refine_runtime_value_type_for_validation(
+            None, b"\x00", DataType.BYTES, DataType.GEOGRAPHY, DataType.STRING
+        )
+        == DataType.BYTES
+    )
+    assert (
+        dialect.refine_runtime_value_type_for_validation(
+            None, "hello", DataType.STRING, DataType.STRING, None
+        )
+        == DataType.STRING
+    )
+
+
+def test_duckdb_get_result_column_types():
+    from unittest.mock import Mock
+
+    from trilogy.dialect.duckdb import DuckDBDialect
+
+    dialect = DuckDBDialect()
+
+    # No cursor → None
+    assert dialect.get_result_column_types_for_validation(object()) is None
+
+    # With cursor description
+    cursor = Mock()
+    cursor.description = [("Name", "VARCHAR"), ("Age", "INTEGER"), ("X",)]
+    result = Mock()
+    result.cursor = cursor
+
+    types = dialect.get_result_column_types_for_validation(result)
+    assert types is not None
+    assert types["name"] == DataType.STRING
+    assert types["age"] == DataType.INTEGER
+    assert "x" not in types  # skipped due to len < 2
+
+
+def test_base_dialect_validation_defaults():
+    from trilogy.dialect.base import BaseDialect
+
+    dialect = BaseDialect()
+    assert (
+        dialect.refine_runtime_value_type_for_validation(
+            None, "v", DataType.STRING, DataType.INTEGER
+        )
+        == DataType.STRING
+    )
+    assert dialect.get_result_column_types_for_validation(object()) is None
+
+
+def test_validation_scope_reentrant():
+    """Nested validation_scope calls should not reset the cache."""
+    from trilogy import Dialects
+
+    executor = Dialects.DUCK_DB.default_executor()
+    with executor.validation_scope():
+        executor._validation_datasource_cache["test"] = "value"
+        # Re-entering should not reset
+        with executor.validation_scope():
+            assert executor._validation_datasource_cache.get("test") == "value"
+        # Still intact after inner exit
+        assert executor._validation_datasource_cache.get("test") == "value"
+    # Cleaned up after outer exit
+    assert executor._validation_datasource_cache is None
+
+
+def test_validation_scope_cleans_up_temp_tables():
+    """validation_scope should drop temp tables on exit."""
+    from trilogy import Dialects
+
+    executor = Dialects.DUCK_DB.default_executor()
+    with executor.validation_scope():
+        executor.execute_raw_sql(
+            'CREATE TEMP TABLE "__trilogy_validation_cache_test" AS SELECT 1 AS x'
+        )
+        executor._validation_temp_tables.append("__trilogy_validation_cache_test")
+    # Table should be dropped
+    import pytest as _pytest
+
+    with _pytest.raises(Exception):
+        executor.execute_raw_sql('SELECT * FROM "__trilogy_validation_cache_test"')
+
+
+def test_get_validation_cached_datasource_skips_non_python_script():
+    """Non-PYTHON_SCRIPT datasources should be returned as-is."""
+    from trilogy import Dialects
+    from trilogy.core.enums import AddressType
+    from trilogy.core.models.datasource import Address, Datasource
+
+    executor = Dialects.DUCK_DB.default_executor()
+    ds = Datasource(
+        name="test_ds",
+        columns=[],
+        address=Address(location="test_table", type=AddressType.TABLE),
+    )
+    with executor.validation_scope():
+        result = executor.get_validation_cached_datasource(ds)
+        assert result is ds  # unchanged
+
+    # Without validation scope (cache is None)
+    result = executor.get_validation_cached_datasource(ds)
+    assert result is ds
