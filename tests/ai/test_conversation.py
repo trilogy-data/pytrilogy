@@ -31,30 +31,31 @@ class ScriptedProvider(LLMProvider):
         return self.responses.pop(0)
 
 
+def make_response(*tool_calls: LLMToolCall, text: str = "") -> LLMResponse:
+    return LLMResponse(
+        text=text,
+        usage=UsageDict(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+        tool_calls=list(tool_calls),
+    )
+
+
+def make_tool_call(name: str, query: str | None = None) -> LLMToolCall:
+    arguments = {} if query is None else {"query": query}
+    return LLMToolCall(name=name, arguments=arguments)
+
+
+def user_messages(conversation: Conversation) -> list[str]:
+    return [
+        message.content for message in conversation.messages if message.role == "user"
+    ]
+
+
 def test_generate_query_requires_submit_query_after_create_query():
     environment, _ = Environment(working_path=env_path).parse("""import flight;""")
     provider = ScriptedProvider(
         responses=[
-            LLMResponse(
-                text="",
-                usage=UsageDict(prompt_tokens=0, completion_tokens=0, total_tokens=0),
-                tool_calls=[
-                    LLMToolCall(
-                        name=TRILOGY_CREATE_QUERY_TOOL.name,
-                        arguments={"query": VALID_QUERY},
-                    )
-                ],
-            ),
-            LLMResponse(
-                text="",
-                usage=UsageDict(prompt_tokens=0, completion_tokens=0, total_tokens=0),
-                tool_calls=[
-                    LLMToolCall(
-                        name=TRILOGY_QUERY_TOOL.name,
-                        arguments={"query": VALID_QUERY},
-                    )
-                ],
-            ),
+            make_response(make_tool_call(TRILOGY_CREATE_QUERY_TOOL.name, VALID_QUERY)),
+            make_response(make_tool_call(TRILOGY_QUERY_TOOL.name, VALID_QUERY)),
         ]
     )
 
@@ -67,37 +68,39 @@ def test_generate_query_requires_submit_query_after_create_query():
     assert provider.call_count == 2
     assert response == f"{VALID_QUERY};"
     assert any(
-        TRILOGY_CREATE_QUERY_TOOL.name in message.content
-        and "process_query returned" in message.content
-        for message in conversation.messages
-        if message.role == "user"
+        TRILOGY_CREATE_QUERY_TOOL.name in message
+        and "process_query returned" in message
+        for message in user_messages(conversation)
     )
+
+
+def test_generate_query_accepts_create_and_submit_in_one_response():
+    environment, _ = Environment(working_path=env_path).parse("""import flight;""")
+    provider = ScriptedProvider(
+        responses=[
+            make_response(
+                make_tool_call(TRILOGY_CREATE_QUERY_TOOL.name, VALID_QUERY),
+                make_tool_call(TRILOGY_QUERY_TOOL.name, VALID_QUERY),
+            )
+        ]
+    )
+
+    conversation = Conversation.create(provider=provider)
+    response = conversation.generate_query(
+        user_input="number of flights by month in 2020",
+        environment=environment,
+    )
+
+    assert provider.call_count == 1
+    assert response == f"{VALID_QUERY};"
 
 
 def test_generate_query_reprompts_after_invalid_submit_query():
     environment, _ = Environment(working_path=env_path).parse("""import flight;""")
     provider = ScriptedProvider(
         responses=[
-            LLMResponse(
-                text="",
-                usage=UsageDict(prompt_tokens=0, completion_tokens=0, total_tokens=0),
-                tool_calls=[
-                    LLMToolCall(
-                        name=TRILOGY_QUERY_TOOL.name,
-                        arguments={"query": INVALID_QUERY},
-                    )
-                ],
-            ),
-            LLMResponse(
-                text="",
-                usage=UsageDict(prompt_tokens=0, completion_tokens=0, total_tokens=0),
-                tool_calls=[
-                    LLMToolCall(
-                        name=TRILOGY_QUERY_TOOL.name,
-                        arguments={"query": VALID_QUERY},
-                    )
-                ],
-            ),
+            make_response(make_tool_call(TRILOGY_QUERY_TOOL.name, INVALID_QUERY)),
+            make_response(make_tool_call(TRILOGY_QUERY_TOOL.name, VALID_QUERY)),
         ]
     )
 
@@ -110,7 +113,98 @@ def test_generate_query_reprompts_after_invalid_submit_query():
     assert provider.call_count == 2
     assert response == f"{VALID_QUERY};"
     assert any(
-        TRILOGY_QUERY_TOOL.name in message.content and "failed" in message.content
-        for message in conversation.messages
-        if message.role == "user"
+        TRILOGY_QUERY_TOOL.name in message and "failed" in message
+        for message in user_messages(conversation)
+    )
+
+
+def test_generate_query_reprompts_after_invalid_create_query():
+    environment, _ = Environment(working_path=env_path).parse("""import flight;""")
+    provider = ScriptedProvider(
+        responses=[
+            make_response(
+                make_tool_call(TRILOGY_CREATE_QUERY_TOOL.name, INVALID_QUERY)
+            ),
+            make_response(make_tool_call(TRILOGY_QUERY_TOOL.name, VALID_QUERY)),
+        ]
+    )
+
+    conversation = Conversation.create(provider=provider)
+    response = conversation.generate_query(
+        user_input="number of flights by month in 2020",
+        environment=environment,
+    )
+
+    assert provider.call_count == 2
+    assert response == f"{VALID_QUERY};"
+    assert any(
+        TRILOGY_CREATE_QUERY_TOOL.name in message and "failed" in message
+        for message in user_messages(conversation)
+    )
+
+
+def test_generate_query_reprompts_when_no_tool_call_is_returned():
+    environment, _ = Environment(working_path=env_path).parse("""import flight;""")
+    provider = ScriptedProvider(
+        responses=[
+            make_response(text="plain text is not allowed here"),
+            make_response(make_tool_call(TRILOGY_QUERY_TOOL.name, VALID_QUERY)),
+        ]
+    )
+
+    conversation = Conversation.create(provider=provider)
+    response = conversation.generate_query(
+        user_input="number of flights by month in 2020",
+        environment=environment,
+    )
+
+    assert provider.call_count == 2
+    assert response == f"{VALID_QUERY};"
+    assert any(
+        "You must call either" in message for message in user_messages(conversation)
+    )
+
+
+def test_generate_query_reprompts_after_unknown_tool_call():
+    environment, _ = Environment(working_path=env_path).parse("""import flight;""")
+    provider = ScriptedProvider(
+        responses=[
+            make_response(make_tool_call("not_a_real_tool", VALID_QUERY)),
+            make_response(make_tool_call(TRILOGY_QUERY_TOOL.name, VALID_QUERY)),
+        ]
+    )
+
+    conversation = Conversation.create(provider=provider)
+    response = conversation.generate_query(
+        user_input="number of flights by month in 2020",
+        environment=environment,
+    )
+
+    assert provider.call_count == 2
+    assert response == f"{VALID_QUERY};"
+    assert any(
+        "Unknown tool call" in message for message in user_messages(conversation)
+    )
+
+
+def test_generate_query_reprompts_after_missing_query_argument():
+    environment, _ = Environment(working_path=env_path).parse("""import flight;""")
+    provider = ScriptedProvider(
+        responses=[
+            make_response(make_tool_call(TRILOGY_QUERY_TOOL.name)),
+            make_response(make_tool_call(TRILOGY_QUERY_TOOL.name, VALID_QUERY)),
+        ]
+    )
+
+    conversation = Conversation.create(provider=provider)
+    response = conversation.generate_query(
+        user_input="number of flights by month in 2020",
+        environment=environment,
+    )
+
+    assert provider.call_count == 2
+    assert response == f"{VALID_QUERY};"
+    assert any(
+        "without a non-empty query" in message
+        for message in user_messages(conversation)
     )
