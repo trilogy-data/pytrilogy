@@ -44,31 +44,31 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install wheel maturin==1.10.2
-          pip install -r requirements.txt
-          pip install -r requirements-test.txt
-          pip install sqlalchemy-bigquery --ignore-requires-python
+          python -m pip install wheel maturin==1.10.2
+          python -m pip install -r requirements.txt
+          python -m pip install -r requirements-test.txt
+          python -m pip install sqlalchemy-bigquery --ignore-requires-python
       - name: Run Rust tests
         run: |
           cd trilogy/scripts/dependency
           cargo test --release
       - name: Build Rust extension
         run: |
-          pip install -e .
+          python -m pip install -e .
       - name: Lint with mypy
         run: |
           # stop the build if there are Python syntax errors or undefined names
-          mypy trilogy
+          python -m mypy trilogy
       - name: Lint with ruff
         run: |
           # stop the build if there are Python syntax errors or undefined names
-          ruff check trilogy
+          python -m ruff check trilogy
       - name: Test with pytest
         if: matrix.run_llm_tests == true
         run: |
-          pip install pytest
-          pip install pytest-cov
-          pytest tests/ --cov=./ -m "not adventureworks_execution"
+          python -m pip install pytest
+          python -m pip install pytest-cov
+          python -m pytest tests/ --cov=./ -m "not adventureworks_execution"
         env:
           GOOGLE_HMAC_SECRET: ${{ secrets.GOOGLE_HMAC_SECRET }}
           GOOGLE_HMAC_KEY: ${{ secrets.GOOGLE_HMAC_KEY }}
@@ -79,19 +79,19 @@ jobs:
       - name: Test with pytest (skip LLM provider tests)
         if: matrix.run_llm_tests != true
         run: |
-          pip install pytest
-          pip install pytest-cov
-          pytest tests/ --cov=./ -m "not adventureworks_execution" --ignore=tests/ai/test_providers_basic.py
+          python -m pip install pytest
+          python -m pip install pytest-cov
+          python -m pytest tests/ --cov=./ -m "not adventureworks_execution" --ignore=tests/ai/test_providers_basic.py
         env:
           GOOGLE_HMAC_SECRET: ${{ secrets.GOOGLE_HMAC_SECRET }}
           GOOGLE_HMAC_KEY: ${{ secrets.GOOGLE_HMAC_KEY }}
       - name: Test after installing rich
         run: |
           # install rich and rerun CLI tests
-          pip install rich
-          pytest tests/ --cov=./ --cov-append -m "not adventureworks_execution" -k "test_trilogy"
-          pytest tests/ --cov=./ --cov-append -m "not adventureworks_execution" -k "test_display"
-          pytest tests/ --cov=./ --cov-append -m "not adventureworks_execution" -k "test_refresh"
+          python -m pip install rich
+          python -m pytest tests/ --cov=./ --cov-append -m "not adventureworks_execution" -k "test_trilogy"
+          python -m pytest tests/ --cov=./ --cov-append -m "not adventureworks_execution" -k "test_display"
+          python -m pytest tests/ --cov=./ --cov-append -m "not adventureworks_execution" -k "test_refresh"
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
         with:
