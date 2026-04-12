@@ -5,6 +5,7 @@ from trilogy.core.enums import (
     ComparisonOperator,
     DatePart,
     Modifier,
+    PersistMode,
     Purpose,
     WindowType,
 )
@@ -133,6 +134,13 @@ def PARSE_DATASOURCE_PARTIAL(token: SyntaxToken, context: RuleContext) -> Modifi
     return Modifier(token.value)
 
 
+def PARSE_PERSIST_MODE(token: SyntaxToken, context: RuleContext) -> PersistMode:
+    val = token.value.lower()
+    if val == "persist":
+        return PersistMode.OVERWRITE
+    return PersistMode(val)
+
+
 TOKEN_HYDRATORS: dict[SyntaxTokenKind, TokenHydrator] = {
     SyntaxTokenKind.COMMENT: PARSE_COMMENT,
     SyntaxTokenKind.IDENTIFIER: IDENTIFIER,
@@ -163,4 +171,5 @@ TOKEN_HYDRATORS: dict[SyntaxTokenKind, TokenHydrator] = {
     SyntaxTokenKind.SHORTHAND_MODIFIER: PARSE_SHORTHAND_MODIFIER,
     SyntaxTokenKind.WILDCARD_IDENTIFIER: PARSE_WILDCARD_IDENTIFIER,
     SyntaxTokenKind.DATASOURCE_PARTIAL: PARSE_DATASOURCE_PARTIAL,
+    SyntaxTokenKind.PERSIST_MODE: PARSE_PERSIST_MODE,
 }

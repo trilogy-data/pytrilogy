@@ -12,6 +12,7 @@ from trilogy.core.enums import (
     DatasourceState,
     Granularity,
     Modifier,
+    PersistMode,
     Purpose,
 )
 from trilogy.core.internal import INTERNAL_NAMESPACE
@@ -38,8 +39,10 @@ from trilogy.core.models.datasource import (
 from trilogy.core.statements.author import (
     FunctionDeclaration,
     MergeStatementV2,
+    PersistStatement,
     RawSQLStatement,
     RowsetDerivationStatement,
+    SelectStatement,
 )
 from trilogy.parsing.common import rowset_to_concepts
 from trilogy.parsing.v2.rules_context import (
@@ -458,6 +461,27 @@ def datasource_node(
         is_partial=is_partial,
     )
     context.environment.add_datasource(datasource)
+    # Propagate keys from datasource grain to foreign key concepts.
+    # A KEY concept on a datasource that isn't part of the grain
+    # gets the grain components as its keys (matching v1 second-pass behaviour).
+    if grain:
+        for column in columns:
+            if column.concept.address in grain.components:
+                continue
+            target_c = context.environment.concepts[column.concept.address]
+            if target_c.purpose != Purpose.KEY:
+                continue
+            key_inputs = grain.components
+            eligible = True
+            for key in key_inputs:
+                if column.concept.address in (
+                    context.environment.concepts[key].keys or set()
+                ):
+                    eligible = False
+            if not eligible:
+                continue
+            keys = [context.environment.concepts[g] for g in key_inputs]
+            target_c.keys = set(x.address for x in keys)
     return datasource
 
 
@@ -662,6 +686,126 @@ def rowset_derivation_statement(
     return output
 
 
+SUPPORTED_INCREMENTAL_TYPES: set[DataType] = {DataType.DATE, DataType.TIMESTAMP}
+
+
+def persist_partition_clause(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> DatasourcePartitionClause:
+    args = hydrated_children(node, hydrate)
+    cols = args[0] if isinstance(args[0], list) else args
+    return DatasourcePartitionClause(
+        columns=[context.environment.concepts[str(c)].reference for c in cols]
+    )
+
+
+def auto_persist(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> PersistStatement:
+    from trilogy.parsing.v2.concept_rules import metadata_from_meta
+
+    args = hydrated_children(node, hydrate)
+    persist_mode = args[0]
+    target_name = str(args[1])
+    where = args[2] if len(args) > 2 else None
+    if target_name not in context.environment.datasources:
+        raise fail(
+            node,
+            f"Auto persist target datasource {target_name} does not exist in environment",
+        )
+    target = context.environment.datasources[target_name]
+    select: SelectStatement = target.create_update_statement(
+        context.environment, where, line_no=node.meta.line if node.meta else None
+    )
+    return PersistStatement(
+        select=select,
+        datasource=target,
+        persist_mode=persist_mode,
+        partition_by=target.incremental_by,
+        meta=metadata_from_meta(node.meta),
+    )
+
+
+def full_persist(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> PersistStatement:
+    from trilogy.parsing.v2.concept_rules import metadata_from_meta
+
+    args = hydrated_children(node, hydrate)
+    partition_clause = DatasourcePartitionClause([])
+    labels: list[str] = [str(x) for x in args if isinstance(x, str)]
+    for x in args:
+        if isinstance(x, DatasourcePartitionClause):
+            partition_clause = x
+    if len(labels) == 2:
+        identifier = labels[0]
+        address_str: str | None = labels[1]
+    else:
+        identifier = labels[0]
+        address_str = None
+    target: Datasource | None = context.environment.datasources.get(identifier)
+
+    if not address_str and not target:
+        raise fail(
+            node,
+            f'Persist without address for unknown datasource "{identifier}"',
+        )
+    elif target:
+        address_str = target.safe_address
+
+    assert address_str is not None
+
+    modes = [x for x in args if isinstance(x, PersistMode)]
+    mode = modes[0] if modes else PersistMode.OVERWRITE
+    select: SelectStatement = next(x for x in args if isinstance(x, SelectStatement))
+
+    if mode == PersistMode.APPEND:
+        if target is None:
+            raise fail(node, f"Cannot append to non-existent datasource {identifier}")
+        new_datasource: Datasource = target
+        if new_datasource.partition_by != partition_clause.columns:
+            raise fail(node, "Partition mismatch for append")
+        for x in partition_clause.columns:
+            concept = context.environment.concepts[x.address]
+            if concept.output_datatype not in SUPPORTED_INCREMENTAL_TYPES:
+                raise fail(
+                    node,
+                    f"Cannot incremental persist on {concept.address} of type {concept.output_datatype}",
+                )
+    elif target:
+        new_datasource = target
+    else:
+        new_datasource = select.to_datasource(
+            namespace=context.environment.namespace or DEFAULT_NAMESPACE,
+            name=identifier,
+            address=Address(location=address_str),
+            grain=select.grain,
+            environment=context.environment,
+        )
+    return PersistStatement(
+        select=select,
+        datasource=new_datasource,
+        persist_mode=mode,
+        partition_by=partition_clause.columns if partition_clause else [],
+        meta=metadata_from_meta(node.meta),
+    )
+
+
+def persist_statement(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> PersistStatement:
+    args = hydrated_children(node, hydrate)
+    return args[0]
+
+
 STATEMENT_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     # properties
     SyntaxNodeKind.PROPERTIES_DECLARATION: properties_declaration,
@@ -696,4 +840,9 @@ STATEMENT_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.RAWSQL_STATEMENT: rawsql_statement,
     # rowset
     SyntaxNodeKind.ROWSET_DERIVATION_STATEMENT: rowset_derivation_statement,
+    # persist
+    SyntaxNodeKind.PERSIST_STATEMENT: persist_statement,
+    SyntaxNodeKind.AUTO_PERSIST: auto_persist,
+    SyntaxNodeKind.FULL_PERSIST: full_persist,
+    SyntaxNodeKind.PERSIST_PARTITION_CLAUSE: persist_partition_clause,
 }

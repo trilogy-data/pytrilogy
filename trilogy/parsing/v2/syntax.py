@@ -213,6 +213,9 @@ class SyntaxNodeKind(str, Enum):
     # Phase 7: remaining statements
     DATASOURCE = "datasource"
     PERSIST_STATEMENT = "persist_statement"
+    AUTO_PERSIST = "auto_persist"
+    FULL_PERSIST = "full_persist"
+    PERSIST_PARTITION_CLAUSE = "persist_partition_clause"
     COPY_STATEMENT = "copy_statement"
     RAWSQL_STATEMENT = "rawsql_statement"
     VALIDATE_STATEMENT = "validate_statement"
@@ -284,6 +287,7 @@ class SyntaxTokenKind(str, Enum):
     SHORTHAND_MODIFIER = "shorthand_modifier"
     WILDCARD_IDENTIFIER = "wildcard_identifier"
     DATASOURCE_PARTIAL = "datasource_partial"
+    PERSIST_MODE = "persist_mode"
 
 
 LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
@@ -505,6 +509,9 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "file": SyntaxNodeKind.FILE,
     "datasource": SyntaxNodeKind.DATASOURCE,
     "persist_statement": SyntaxNodeKind.PERSIST_STATEMENT,
+    "auto_persist": SyntaxNodeKind.AUTO_PERSIST,
+    "full_persist": SyntaxNodeKind.FULL_PERSIST,
+    "persist_partition_clause": SyntaxNodeKind.PERSIST_PARTITION_CLAUSE,
     "copy_statement": SyntaxNodeKind.COPY_STATEMENT,
     "rawsql_statement": SyntaxNodeKind.RAWSQL_STATEMENT,
     "validate_statement": SyntaxNodeKind.VALIDATE_STATEMENT,
@@ -564,6 +571,7 @@ LARK_TOKEN_KIND: dict[str, SyntaxTokenKind] = {
     "SHORTHAND_MODIFIER": SyntaxTokenKind.SHORTHAND_MODIFIER,
     "WILDCARD_IDENTIFIER": SyntaxTokenKind.WILDCARD_IDENTIFIER,
     "DATASOURCE_PARTIAL": SyntaxTokenKind.DATASOURCE_PARTIAL,
+    "PERSIST_MODE": SyntaxTokenKind.PERSIST_MODE,
 }
 
 
