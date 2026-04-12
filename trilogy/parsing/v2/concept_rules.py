@@ -180,7 +180,7 @@ def concept_declaration(
         granularity=Granularity.MULTI_ROW,
     )
     apply_source_location(concept_value, node.meta)
-    context.add_concept(concept_value, meta=core_meta(node.meta))
+    context.add_top_level_concept(concept_value, meta=core_meta(node.meta))
     return ConceptDeclarationStatement(concept=concept_value)
 
 
@@ -224,7 +224,7 @@ def concept_property_declaration(
             Granularity.SINGLE_ROW if is_abstract_grain else Granularity.MULTI_ROW
         ),
     )
-    context.add_concept(concept_value, core_meta(node.meta))
+    context.add_property_concept(concept_value, meta=core_meta(node.meta))
     return concept_value
 
 
@@ -325,7 +325,7 @@ def concept_derivation(
             f"Received invalid type {type(source_value)} {source_value} as input to concept derivation: `{snippet}`",
         )
     apply_source_location(concept_value, node.meta)
-    context.add_concept(concept_value, meta=core_meta(node.meta))
+    context.add_top_level_concept(concept_value, meta=core_meta(node.meta))
     return ConceptDerivationStatement(concept=concept_value)
 
 
@@ -371,7 +371,7 @@ def build_constant_derivation(
         granularity=Granularity.SINGLE_ROW,
     )
     apply_source_location(concept_value, meta)
-    context.add_concept(concept_value, core_meta(meta))
+    context.add_top_level_concept(concept_value, meta=core_meta(meta))
     return concept_value
 
 

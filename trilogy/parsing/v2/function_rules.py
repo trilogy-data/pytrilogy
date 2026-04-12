@@ -607,7 +607,7 @@ def _parse_window_args(
             wtype = item
         else:
             concept = arbitrary_to_concept(item, environment=context.environment)
-            context.add_concept(concept, meta=core_meta(None))
+            context.add_virtual_concept(concept, meta=core_meta(None))
     return wtype, concept, index, order_by, over
 
 

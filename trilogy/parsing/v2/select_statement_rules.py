@@ -106,7 +106,7 @@ def select_transform(
         name=output_name,
         metadata=meta,
     )
-    context.add_concept(concept, meta=core_meta(node.meta))
+    context.add_select_concept(concept, meta=core_meta(node.meta))
     return ConceptTransform(function=transformation, output=concept)
 
 
