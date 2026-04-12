@@ -165,6 +165,7 @@ from trilogy.parsing.common import (
     rowset_to_concepts,
 )
 from trilogy.parsing.exceptions import NameShadowError, ParseError
+from trilogy.parsing.helpers import comment_body
 
 perf_logger = getLogger("trilogy.parse.performance")
 
@@ -524,7 +525,7 @@ class ParseToObjects(Transformer):
         if isinstance(output, ConceptDeclarationStatement):
             if len(args) > 1 and args[1] != MagicConstants.LINE_SEPARATOR:
                 comments = [x for x in args[1:] if isinstance(x, Comment)]
-                merged = "\n".join([x.text.split("#")[1].rstrip() for x in comments])
+                merged = "\n".join(comment_body(x) for x in comments)
                 output.concept.metadata.description = merged
         # this is a bad plan for now;
         # because a comment after an import statement is very common
@@ -877,7 +878,7 @@ class ParseToObjects(Transformer):
                 props.append(arg)
             elif isinstance(arg, Comment) and props:
                 # comment follows a comma after the preceding property
-                merged = arg.text.split("#")[1].rstrip()
+                merged = comment_body(arg)
                 prop_args = props[-1]
                 existing = next((a for a in prop_args if isinstance(a, Metadata)), None)
                 if existing is None:

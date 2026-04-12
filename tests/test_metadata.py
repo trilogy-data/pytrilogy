@@ -24,6 +24,17 @@ properties user_id (
     assert env.concepts["first_name"].metadata.description == " Customer first name"
 
 
+def test_concept_block_comment_description_mixed():
+    env, _ = parse(
+        """key hash_comment int; # hashed note
+key slash_comment int; // slashed note
+"""
+    )
+
+    assert env.concepts["hash_comment"].metadata.description == " hashed note"
+    assert env.concepts["slash_comment"].metadata.description == " slashed note"
+
+
 # def test_import_metadata():
 #     env = Environment(working_path=Path(__file__).parent)
 #     env, _ = parse(

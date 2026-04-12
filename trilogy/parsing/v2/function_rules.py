@@ -14,6 +14,7 @@ from trilogy.core.enums import (
 from trilogy.core.internal import INTERNAL_NAMESPACE
 from trilogy.core.models.author import (
     AggregateWrapper,
+    ArgBinding,
     CaseElse,
     CaseSimpleWhen,
     CaseWhen,
@@ -30,7 +31,7 @@ from trilogy.core.models.author import (
     WindowItemOrder,
     WindowItemOver,
 )
-from trilogy.core.models.core import DataType, MapType, arg_to_datatype
+from trilogy.core.models.core import ArrayType, DataType, MapType, arg_to_datatype
 from trilogy.parsing.v2.concept_factory import arbitrary_to_concept_v2
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
@@ -720,7 +721,24 @@ def farray_transform(
     factory = args[1]
     if not len(factory.function_arguments) == 1:
         raise fail(node, "Array transform lambda must have exactly 1 argument")
-    return context.function_factory.create_function(args, FunctionType.ARRAY_TRANSFORM)
+    array_type = arg_to_datatype(args[0])
+    if not isinstance(array_type, ArrayType):
+        raise fail(
+            node,
+            f"Array transform function must be applied to an array, not {array_type}",
+        )
+    binding = factory.function_arguments[0]
+    return context.function_factory.create_function(
+        [
+            args[0],
+            binding,
+            factory(
+                ArgBinding(name=binding.name, datatype=array_type.value_data_type)
+            ),
+        ],
+        FunctionType.ARRAY_TRANSFORM,
+        meta=core_meta(node.meta),
+    )
 
 
 def farray_filter(

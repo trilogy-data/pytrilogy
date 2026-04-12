@@ -21,7 +21,12 @@ from trilogy.parsing.v2.rules_context import (
     RuleContext,
     fail,
 )
-from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind, SyntaxToken
+from trilogy.parsing.v2.syntax import (
+    SyntaxNode,
+    SyntaxNodeKind,
+    SyntaxToken,
+    SyntaxTokenKind,
+)
 
 
 def _parse_validate_scope(token: SyntaxToken) -> ValidationScope:
@@ -62,17 +67,16 @@ def publish_statement(
     action = PublishAction.PUBLISH
     for child in node.children:
         if isinstance(child, SyntaxToken):
-            name = child.name
-            if name == "PUBLISH_ACTION":
+            if child.kind == SyntaxTokenKind.PUBLISH_ACTION:
                 action = PublishAction(child.value.lower())
-            elif name == "VALIDATE_SCOPE":
+            elif child.kind == SyntaxTokenKind.VALIDATE_SCOPE:
                 scope = _parse_validate_scope(child)
                 if scope != ValidationScope.DATASOURCES:
                     raise fail(
                         node,
                         f"Publishing is only supported for Datasources, got {scope}",
                     )
-            elif name == "IDENTIFIER":
+            elif child.kind == SyntaxTokenKind.IDENTIFIER:
                 targets.append(child.value)
     return PublishStatement(scope=scope, targets=targets, action=action)
 
@@ -87,14 +91,14 @@ def create_statement(
     mode = CreateMode.CREATE
     for child in node.children:
         if isinstance(child, SyntaxToken):
-            if child.name == "VALIDATE_SCOPE":
+            if child.kind == SyntaxTokenKind.VALIDATE_SCOPE:
                 scope = _parse_validate_scope(child)
                 if scope != ValidationScope.DATASOURCES:
                     raise fail(
                         node,
                         f"Creating is only supported for Datasources, got {scope}",
                     )
-            elif child.name == "IDENTIFIER":
+            elif child.kind == SyntaxTokenKind.IDENTIFIER:
                 targets.append(child.value)
         elif (
             isinstance(child, SyntaxNode)
@@ -113,9 +117,9 @@ def validate_statement(
     targets: list[str] = []
     for child in node.children:
         if isinstance(child, SyntaxToken):
-            if child.name == "VALIDATE_SCOPE":
+            if child.kind == SyntaxTokenKind.VALIDATE_SCOPE:
                 scope = _parse_validate_scope(child)
-            elif child.name == "IDENTIFIER":
+            elif child.kind == SyntaxTokenKind.IDENTIFIER:
                 targets.append(child.value)
     if scope is None:
         return ValidateStatement(scope=ValidationScope.ALL, targets=None)
@@ -131,9 +135,9 @@ def mock_statement(
     targets: list[str] = []
     for child in node.children:
         if isinstance(child, SyntaxToken):
-            if child.name == "VALIDATE_SCOPE":
+            if child.kind == SyntaxTokenKind.VALIDATE_SCOPE:
                 scope = _parse_validate_scope(child)
-            elif child.name == "IDENTIFIER":
+            elif child.kind == SyntaxTokenKind.IDENTIFIER:
                 targets.append(child.value)
     return MockStatement(scope=scope, targets=targets)
 
@@ -148,10 +152,16 @@ def copy_statement(
     select: SelectStatement | None = None
     for child in node.children:
         if isinstance(child, SyntaxToken):
-            if child.name == "COPY_TYPE" and target_type is None:
-                target_type = IOType(child.value.lower())
-            elif target_type is not None and target is None:
-                target = child.value
+            if (
+                child.kind == SyntaxTokenKind.COPY_TYPE
+                and target_type is None
+            ):
+                target_type = IOType(hydrate(child))
+            elif child.kind in (
+                SyntaxTokenKind.FILE_PATH,
+                SyntaxTokenKind.F_FILE_PATH,
+            ) and target is None:
+                target = str(hydrate(child))
         elif isinstance(child, SyntaxNode):
             if child.kind == SyntaxNodeKind.STRING_LITERAL and target is None:
                 target = str(hydrate(child))
