@@ -39,14 +39,23 @@ from trilogy.parsing.v2.concept_syntax import (
 from trilogy.parsing.v2.conditional_rules import CONDITIONAL_NODE_HYDRATORS
 from trilogy.parsing.v2.expression_rules import EXPRESSION_NODE_HYDRATORS
 from trilogy.parsing.v2.function_rules import FUNCTION_NODE_HYDRATORS
+from trilogy.parsing.v2.function_syntax import FunctionDefinitionSyntax
 from trilogy.parsing.v2.import_rules import (
     IMPORT_NODE_HYDRATORS,
     import_statement,
     selective_import_statement,
     self_import_statement,
 )
-from trilogy.parsing.v2.model import HydrationDiagnostic, RecordingEnvironmentUpdate
+from trilogy.parsing.v2.model import (
+    HydrationDiagnostic,
+    HydrationError,
+    RecordingEnvironmentUpdate,
+)
 from trilogy.parsing.v2.rules_context import RuleContext
+from trilogy.parsing.v2.scopes import (
+    temporary_function_scope,
+    temporary_rowset_scope,
+)
 from trilogy.parsing.v2.select_rules import SELECT_NODE_HYDRATORS
 from trilogy.parsing.v2.statement_rules import STATEMENT_NODE_HYDRATORS
 from trilogy.parsing.v2.statements import (
@@ -167,9 +176,13 @@ def find_concept_literals(element: SyntaxElement) -> list[SyntaxNode]:
 
 def extract_concept_name_from_literal(node: SyntaxNode, namespace: str) -> str:
     """Extract the fully-qualified concept address from a CONCEPT_LITERAL node."""
-    token = node.children[0]
-    assert isinstance(token, SyntaxToken)
-    name = token.value
+    if not node.children or not isinstance(node.children[0], SyntaxToken):
+        raise HydrationError(
+            HydrationDiagnostic.from_syntax(
+                "Concept literal requires a leading identifier token", node
+            )
+        )
+    name = node.children[0].value
     if "." not in name and namespace == DEFAULT_NAMESPACE:
         name = f"{DEFAULT_NAMESPACE}.{name}"
     return name
@@ -185,7 +198,10 @@ def find_select_transform_targets(element: SyntaxElement) -> list[str]:
             if node.kind == SyntaxNodeKind.SELECT_TRANSFORM:
                 # Last child token is the target identifier
                 for child in reversed(node.children):
-                    if isinstance(child, SyntaxToken) and child.kind == SyntaxTokenKind.IDENTIFIER:
+                    if (
+                        isinstance(child, SyntaxToken)
+                        and child.kind == SyntaxTokenKind.IDENTIFIER
+                    ):
                         result.append(child.value)
                         break
             else:
@@ -203,15 +219,32 @@ def collect_inline_concept_addresses(
 
 def _get_concept_inner_node(block: SyntaxNode) -> SyntaxNode:
     """Get the inner concept node (declaration/derivation/etc) from a BLOCK > CONCEPT."""
+    if not block.children:
+        raise HydrationError(
+            HydrationDiagnostic.from_syntax("Concept block is empty", block)
+        )
     statement = block.children[0]
-    assert isinstance(statement, SyntaxNode)
-    assert statement.kind == SyntaxNodeKind.CONCEPT
+    if (
+        not isinstance(statement, SyntaxNode)
+        or statement.kind != SyntaxNodeKind.CONCEPT
+    ):
+        raise HydrationError(
+            HydrationDiagnostic.from_syntax(
+                "Expected CONCEPT node inside concept block", block
+            )
+        )
     nodes = [
         c
         for c in statement.children
         if isinstance(c, SyntaxNode) and c.kind in _CONCEPT_INNER_KINDS
     ]
-    assert len(nodes) == 1
+    if len(nodes) != 1:
+        raise HydrationError(
+            HydrationDiagnostic.from_syntax(
+                f"Concept block expects a single inner declaration, found {len(nodes)}",
+                statement,
+            )
+        )
     return nodes[0]
 
 
@@ -219,9 +252,7 @@ def _make_address(name: str, namespace: str) -> str:
     return f"{namespace}.{name}"
 
 
-def collect_concept_address(
-    block: SyntaxNode, environment: Environment
-) -> str | None:
+def collect_concept_address(block: SyntaxNode, environment: Environment) -> str | None:
     """Extract the concept address from a block without modifying the environment.
 
     Returns the concept address, or None for parameter/properties declarations.
@@ -230,56 +261,61 @@ def collect_concept_address(
     kind = inner.kind
 
     if kind == SyntaxNodeKind.CONCEPT_DECLARATION:
-        syntax = ConceptDeclarationSyntax.from_node(inner)
-        name = syntax.name.value
-        _, namespace, name, _ = parse_concept_reference(name, environment)
+        decl_syntax = ConceptDeclarationSyntax.from_node(inner)
+        _, namespace, name, _ = parse_concept_reference(
+            decl_syntax.name.value, environment
+        )
         return _make_address(name, namespace)
 
     if kind == SyntaxNodeKind.CONCEPT_DERIVATION:
-        syntax = ConceptDerivationSyntax.from_node(inner)
-        raw_name = syntax.name
+        derivation_syntax = ConceptDerivationSyntax.from_node(inner)
+        raw_name = derivation_syntax.name
         if isinstance(raw_name, SyntaxToken):
-            name_str = raw_name.value
             _, namespace, name_str, _ = parse_concept_reference(
-                name_str, environment
+                raw_name.value, environment
             )
-        elif isinstance(raw_name, SyntaxNode):
-            if raw_name.kind == SyntaxNodeKind.PROPERTY_IDENTIFIER:
-                pi = PropertyIdentifierSyntax.from_node(raw_name)
-                name_str = pi.name.value
-                namespace = environment.namespace or DEFAULT_NAMESPACE
-            else:
-                name_str = raw_name.children[0].value if raw_name.children else "unknown"
-                namespace = environment.namespace or DEFAULT_NAMESPACE
-        else:
-            name_str = str(raw_name)
+            return _make_address(name_str, namespace)
+        if (
+            isinstance(raw_name, SyntaxNode)
+            and raw_name.kind == SyntaxNodeKind.PROPERTY_IDENTIFIER
+        ):
+            property_id = PropertyIdentifierSyntax.from_node(raw_name)
             namespace = environment.namespace or DEFAULT_NAMESPACE
-        return _make_address(name_str, namespace)
+            return _make_address(property_id.name.value, namespace)
+        raise HydrationError(
+            HydrationDiagnostic.from_syntax(
+                "Concept derivation name must be an identifier or property identifier",
+                raw_name,
+            )
+        )
 
     if kind == SyntaxNodeKind.CONSTANT_DERIVATION:
-        syntax_const = ConstantDerivationSyntax.from_node(inner)
-        name_str = syntax_const.name.value
-        _, namespace, name_str, _ = parse_concept_reference(name_str, environment)
+        const_syntax = ConstantDerivationSyntax.from_node(inner)
+        _, namespace, name_str, _ = parse_concept_reference(
+            const_syntax.name.value, environment
+        )
         return _make_address(name_str, namespace)
 
     if kind == SyntaxNodeKind.CONCEPT_PROPERTY_DECLARATION:
-        syntax_prop = ConceptPropertyDeclarationSyntax.from_node(inner)
-        decl = syntax_prop.declaration
-        if isinstance(decl, SyntaxNode) and decl.kind == SyntaxNodeKind.PROPERTY_IDENTIFIER:
-            pi = PropertyIdentifierSyntax.from_node(decl)
-            name_str = pi.name.value
-        elif isinstance(decl, SyntaxToken):
-            raw = decl.value
-            name_str = raw.rsplit(".", 1)[-1] if "." in raw else raw
-        else:
-            tokens = [
-                c
-                for c in (decl.children if isinstance(decl, SyntaxNode) else [])
-                if isinstance(c, SyntaxToken)
-            ]
-            name_str = tokens[-1].value if tokens else "unknown"
+        property_syntax = ConceptPropertyDeclarationSyntax.from_node(inner)
+        decl = property_syntax.declaration
         namespace = environment.namespace or DEFAULT_NAMESPACE
-        return _make_address(name_str, namespace)
+        if (
+            isinstance(decl, SyntaxNode)
+            and decl.kind == SyntaxNodeKind.PROPERTY_IDENTIFIER
+        ):
+            property_id = PropertyIdentifierSyntax.from_node(decl)
+            return _make_address(property_id.name.value, namespace)
+        if isinstance(decl, SyntaxToken):
+            raw = decl.value
+            short = raw.rsplit(".", 1)[-1] if "." in raw else raw
+            return _make_address(short, namespace)
+        raise HydrationError(
+            HydrationDiagnostic.from_syntax(
+                "Property declaration target must be a property identifier or token",
+                decl,
+            )
+        )
 
     # PARAMETER_DECLARATION, PROPERTIES_DECLARATION — no single address
     return None
@@ -295,19 +331,26 @@ def collect_properties_addresses(
     namespace = environment.namespace or DEFAULT_NAMESPACE
     result: list[str] = []
     for child in inner.children:
-        if isinstance(child, SyntaxNode) and child.kind == SyntaxNodeKind.INLINE_PROPERTY_LIST:
+        if (
+            isinstance(child, SyntaxNode)
+            and child.kind == SyntaxNodeKind.INLINE_PROPERTY_LIST
+        ):
             for prop in child.children:
-                if isinstance(prop, SyntaxNode) and prop.kind == SyntaxNodeKind.INLINE_PROPERTY:
+                if (
+                    isinstance(prop, SyntaxNode)
+                    and prop.kind == SyntaxNodeKind.INLINE_PROPERTY
+                ):
                     for token in prop.children:
-                        if isinstance(token, SyntaxToken) and token.kind == SyntaxTokenKind.IDENTIFIER:
+                        if (
+                            isinstance(token, SyntaxToken)
+                            and token.kind == SyntaxTokenKind.IDENTIFIER
+                        ):
                             result.append(_make_address(token.value, namespace))
                             break
     return result
 
 
-def extract_dependencies(
-    block: SyntaxNode, environment: Environment
-) -> list[str]:
+def extract_dependencies(block: SyntaxNode, environment: Environment) -> list[str]:
     """Find all concept addresses referenced in a concept block's source expression."""
     inner = _get_concept_inner_node(block)
     kind = inner.kind
@@ -328,9 +371,15 @@ def extract_dependencies(
         # Properties blocks depend on their grain concepts
         deps: list[str] = []
         for child in inner.children:
-            if isinstance(child, SyntaxNode) and child.kind == SyntaxNodeKind.PROP_IDENT_LIST:
+            if (
+                isinstance(child, SyntaxNode)
+                and child.kind == SyntaxNodeKind.PROP_IDENT_LIST
+            ):
                 for token in child.children:
-                    if isinstance(token, SyntaxToken) and token.kind == SyntaxTokenKind.IDENTIFIER:
+                    if (
+                        isinstance(token, SyntaxToken)
+                        and token.kind == SyntaxTokenKind.IDENTIFIER
+                    ):
                         name = token.value
                         if "." not in name:
                             name = f"{namespace}.{name}"
@@ -375,9 +424,7 @@ def topological_sort_plans(
         for dep_pid in deps:
             forward[dep_pid].append(pid)
 
-    queue: deque[int] = deque(
-        pid for pid, deg in in_deg.items() if deg == 0
-    )
+    queue: deque[int] = deque(pid for pid, deg in in_deg.items() if deg == 0)
 
     ordered: list["ConceptStatementPlan"] = []
     while queue:
@@ -429,9 +476,7 @@ class ConceptStatementPlan(StatementPlanBase):
     dependencies: list[str] = field(default_factory=list)
 
     def collect_symbols(self, hydrator: "NativeHydrator") -> None:
-        self.address = collect_concept_address(
-            self.syntax, hydrator.environment
-        )
+        self.address = collect_concept_address(self.syntax, hydrator.environment)
         if self.address:
             self.provided_addresses = [self.address]
         else:
@@ -441,9 +486,7 @@ class ConceptStatementPlan(StatementPlanBase):
             )
 
     def bind(self, hydrator: "NativeHydrator") -> None:
-        self.dependencies = extract_dependencies(
-            self.syntax, hydrator.environment
-        )
+        self.dependencies = extract_dependencies(self.syntax, hydrator.environment)
 
     def hydrate(self, hydrator: "NativeHydrator") -> None:
         # Concepts are created during BIND via _sort_and_create_concepts
@@ -509,9 +552,7 @@ class SelectStatementPlan(StatementPlanBase):
 
     def collect_symbols(self, hydrator: "NativeHydrator") -> None:
         namespace = hydrator.environment.namespace or DEFAULT_NAMESPACE
-        self.inline_addresses = collect_inline_concept_addresses(
-            self.syntax, namespace
-        )
+        self.inline_addresses = collect_inline_concept_addresses(self.syntax, namespace)
 
     def hydrate(self, hydrator: "NativeHydrator") -> None:
         self.output = hydrator.hydrate_rule(self.syntax)
@@ -528,9 +569,16 @@ class SelectStatementPlan(StatementPlanBase):
 class FunctionDefinitionPlan(StatementPlanBase):
     syntax: SyntaxNode
     output: FunctionDeclaration | None = None
+    parameter_names: list[str] = field(default_factory=list)
 
-    def bind(self, hydrator: "NativeHydrator") -> None:
-        self.output = hydrator.hydrate_rule(self.syntax)
+    def collect_symbols(self, hydrator: "NativeHydrator") -> None:
+        self.parameter_names = FunctionDefinitionSyntax.from_node(
+            self.syntax
+        ).parameter_names
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        with temporary_function_scope(hydrator.environment, self.parameter_names):
+            self.output = hydrator.hydrate_rule(self.syntax)
 
     def commit(self, hydrator: "NativeHydrator") -> FunctionDeclaration | None:
         return self.output
@@ -538,6 +586,7 @@ class FunctionDefinitionPlan(StatementPlanBase):
 
 @dataclass
 class DatasourceStatementPlan(StatementPlanBase):
+    # Datasources are self-contained: build the output in hydrate, commit as-is.
     syntax: SyntaxNode
     output: Datasource | None = None
 
@@ -550,6 +599,7 @@ class DatasourceStatementPlan(StatementPlanBase):
 
 @dataclass
 class MergeStatementPlan(StatementPlanBase):
+    # Merge resolves concept addresses at hydrate time only.
     syntax: SyntaxNode
     output: MergeStatementV2 | None = None
 
@@ -564,9 +614,42 @@ class MergeStatementPlan(StatementPlanBase):
 class RowsetStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
     output: RowsetDerivationStatement | None = None
+    rowset_name: str | None = None
+    forward_addresses: list[str] = field(default_factory=list)
+
+    def collect_symbols(self, hydrator: "NativeHydrator") -> None:
+        for child in self.syntax.children:
+            if (
+                isinstance(child, SyntaxToken)
+                and child.kind == SyntaxTokenKind.IDENTIFIER
+            ):
+                self.rowset_name = child.value
+                return
+
+    def bind(self, hydrator: "NativeHydrator") -> None:
+        # Forward references inside a rowset derive clause (e.g. coalesce(level0.qoh1, ...))
+        # resolve to outputs that only exist after rowset_to_concepts runs. Stage deliberate
+        # placeholders now; the real concepts replace them during hydrate.
+        if not self.rowset_name:
+            return
+        namespace = hydrator.environment.namespace or DEFAULT_NAMESPACE
+        prefixes = (
+            f"{self.rowset_name}.",
+            f"{namespace}.{self.rowset_name}.",
+        )
+        seen: set[str] = set()
+        for literal in find_concept_literals(self.syntax):
+            address = extract_concept_name_from_literal(literal, namespace)
+            if not address.startswith(prefixes):
+                continue
+            if address in seen:
+                continue
+            seen.add(address)
+            self.forward_addresses.append(address)
 
     def hydrate(self, hydrator: "NativeHydrator") -> None:
-        self.output = hydrator.hydrate_rule(self.syntax)
+        with temporary_rowset_scope(hydrator.environment, self.forward_addresses):
+            self.output = hydrator.hydrate_rule(self.syntax)
 
     def commit(self, hydrator: "NativeHydrator") -> RowsetDerivationStatement | None:
         return self.output
@@ -574,6 +657,7 @@ class RowsetStatementPlan(StatementPlanBase):
 
 @dataclass
 class PersistStatementPlan(StatementPlanBase):
+    # Persist wraps a SELECT; hydrate builds the statement, validate finalizes the nested select.
     syntax: SyntaxNode
     output: PersistStatement | None = None
 
@@ -589,6 +673,7 @@ class PersistStatementPlan(StatementPlanBase):
 
 @dataclass
 class RawSQLStatementPlan(StatementPlanBase):
+    # Raw SQL carries an opaque string; hydrate just extracts it.
     syntax: SyntaxNode
     output: RawSQLStatement | None = None
 
@@ -723,14 +808,10 @@ class NativeHydrator:
         return output
 
     def _sort_and_create_concepts(self) -> None:
-        concept_plans = [
-            p for p in self.plans if isinstance(p, ConceptStatementPlan)
-        ]
+        concept_plans = [p for p in self.plans if isinstance(p, ConceptStatementPlan)]
         if not concept_plans:
             return
-        sorted_concepts = topological_sort_plans(
-            concept_plans, self.environment
-        )
+        sorted_concepts = topological_sort_plans(concept_plans, self.environment)
         concept_iter = iter(sorted_concepts)
         self.plans = [
             next(concept_iter) if isinstance(p, ConceptStatementPlan) else p
