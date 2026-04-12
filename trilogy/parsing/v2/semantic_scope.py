@@ -107,13 +107,9 @@ class SymbolTable:
             self._stack.pop()
 
     @contextmanager
-    def function_scope(
-        self, parameter_names: list[str]
-    ) -> Iterator[SemanticScope]:
+    def function_scope(self, parameter_names: list[str]) -> Iterator[SemanticScope]:
         namespace = self.environment.namespace or DEFAULT_NAMESPACE
-        entries = [
-            (f"{namespace}.{name}", name, namespace) for name in parameter_names
-        ]
+        entries = [(f"{namespace}.{name}", name, namespace) for name in parameter_names]
         with self.push_scope(ScopeKind.FUNCTION) as scope:
             materialized = self._materialize(scope, entries)
             try:

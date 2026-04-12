@@ -43,7 +43,9 @@ def _hydrator_for(text: str) -> NativeHydrator:
 class TestCollectSymbols:
     def test_declaration_extracts_address(self):
         hydrator = _hydrator_for("key id int;")
-        concept_plans = [p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)]
+        concept_plans = [
+            p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)
+        ]
         assert len(concept_plans) == 1
 
         hydrator._run_phase(HydrationPhase.COLLECT_SYMBOLS)
@@ -52,7 +54,9 @@ class TestCollectSymbols:
 
     def test_derivation_extracts_address(self):
         hydrator = _hydrator_for("key x int;\nauto y <- x + 1;")
-        concept_plans = [p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)]
+        concept_plans = [
+            p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)
+        ]
         assert len(concept_plans) == 2
 
         hydrator._run_phase(HydrationPhase.COLLECT_SYMBOLS)
@@ -63,7 +67,9 @@ class TestCollectSymbols:
 
     def test_constant_extracts_address(self):
         hydrator = _hydrator_for("const pi <- 3.14;")
-        concept_plans = [p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)]
+        concept_plans = [
+            p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)
+        ]
 
         hydrator._run_phase(HydrationPhase.COLLECT_SYMBOLS)
 
@@ -71,7 +77,9 @@ class TestCollectSymbols:
 
     def test_property_extracts_address(self):
         hydrator = _hydrator_for("key id int;\nproperty id.name string;")
-        concept_plans = [p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)]
+        concept_plans = [
+            p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)
+        ]
 
         hydrator._run_phase(HydrationPhase.COLLECT_SYMBOLS)
 
@@ -92,10 +100,10 @@ class TestCollectSymbols:
         hydrator._run_phase(HydrationPhase.COLLECT_SYMBOLS)
 
     def test_properties_block_returns_none(self):
-        hydrator = _hydrator_for(
-            "key id int;\nproperties <id> (name string, age int);"
-        )
-        concept_plans = [p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)]
+        hydrator = _hydrator_for("key id int;\nproperties <id> (name string, age int);")
+        concept_plans = [
+            p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)
+        ]
         hydrator._run_phase(HydrationPhase.COLLECT_SYMBOLS)
         # properties block has no single address
         props_plan = next(p for p in concept_plans if p.address is None)
@@ -108,7 +116,9 @@ class TestBind:
         hydrator._run_phase(HydrationPhase.COLLECT_SYMBOLS)
         hydrator._run_phase(HydrationPhase.BIND)
 
-        concept_plans = [p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)]
+        concept_plans = [
+            p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)
+        ]
         assert concept_plans[0].dependencies == []
 
     def test_derivation_finds_dependency(self):
@@ -116,7 +126,9 @@ class TestBind:
         hydrator._run_phase(HydrationPhase.COLLECT_SYMBOLS)
         hydrator._run_phase(HydrationPhase.BIND)
 
-        concept_plans = [p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)]
+        concept_plans = [
+            p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)
+        ]
         y_plan = next(p for p in concept_plans if p.address == "local.y")
         assert "local.x" in y_plan.dependencies
 
@@ -126,7 +138,9 @@ class TestBind:
         hydrator._run_phase(HydrationPhase.COLLECT_SYMBOLS)
         hydrator._run_phase(HydrationPhase.BIND)
 
-        concept_plans = [p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)]
+        concept_plans = [
+            p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)
+        ]
         c_plan = next(p for p in concept_plans if p.address == "local.c")
         assert "local.a" in c_plan.dependencies
         assert "local.b" in c_plan.dependencies
@@ -136,7 +150,9 @@ class TestBind:
         hydrator._run_phase(HydrationPhase.COLLECT_SYMBOLS)
         hydrator._run_phase(HydrationPhase.BIND)
 
-        concept_plans = [p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)]
+        concept_plans = [
+            p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)
+        ]
         assert concept_plans[0].dependencies == []
 
 
@@ -147,7 +163,9 @@ class TestTopologicalSort:
         hydrator._run_phase(HydrationPhase.COLLECT_SYMBOLS)
         hydrator._run_phase(HydrationPhase.BIND)
 
-        concept_plans = [p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)]
+        concept_plans = [
+            p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)
+        ]
         sorted_plans = topological_sort_plans(concept_plans, hydrator.environment)
         assert [p.address for p in sorted_plans] == [p.address for p in concept_plans]
 
@@ -157,7 +175,9 @@ class TestTopologicalSort:
         hydrator._run_phase(HydrationPhase.COLLECT_SYMBOLS)
         hydrator._run_phase(HydrationPhase.BIND)
 
-        concept_plans = [p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)]
+        concept_plans = [
+            p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)
+        ]
         sorted_plans = topological_sort_plans(concept_plans, hydrator.environment)
 
         addresses = [p.address for p in sorted_plans]
@@ -169,7 +189,9 @@ class TestTopologicalSort:
         hydrator._run_phase(HydrationPhase.COLLECT_SYMBOLS)
         hydrator._run_phase(HydrationPhase.BIND)
 
-        concept_plans = [p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)]
+        concept_plans = [
+            p for p in hydrator.plans if isinstance(p, ConceptStatementPlan)
+        ]
         sorted_plans = topological_sort_plans(concept_plans, hydrator.environment)
 
         addresses = [p.address for p in sorted_plans]
@@ -183,23 +205,17 @@ class TestHydrate:
         assert output[0].concept.datatype == DataType.INTEGER
 
     def test_derivation_resolves_lineage(self):
-        env, output = parse_text(
-            "key x int;\nauto y <- x + 1;", Environment()
-        )
+        env, output = parse_text("key x int;\nauto y <- x + 1;", Environment())
         assert env.concepts["local.y"].datatype == DataType.INTEGER
         assert env.concepts["local.y"].lineage is not None
 
     def test_forward_reference_resolved(self):
-        env, output = parse_text(
-            "auto y <- x + 1;\nkey x int;", Environment()
-        )
+        env, output = parse_text("auto y <- x + 1;\nkey x int;", Environment())
         assert env.concepts["local.y"].datatype == DataType.INTEGER
         assert env.concepts["local.y"].lineage is not None
 
     def test_property_hydrates_fully(self):
-        env, _ = parse_text(
-            "key id int;\nproperty id.name string;", Environment()
-        )
+        env, _ = parse_text("key id int;\nproperty id.name string;", Environment())
         assert env.concepts["local.name"].datatype == DataType.STRING
 
     def test_constant_hydrates_fully(self):
@@ -228,17 +244,13 @@ class TestFindConceptLiterals:
         block = doc.forms[0]
         literals = find_concept_literals(block)
         assert len(literals) >= 1
-        assert all(
-            lit.kind == SyntaxNodeKind.CONCEPT_LITERAL for lit in literals
-        )
+        assert all(lit.kind == SyntaxNodeKind.CONCEPT_LITERAL for lit in literals)
 
     def test_extracts_name(self):
         doc = parse_syntax("auto y <- x + 1;")
         block = doc.forms[0]
         literals = find_concept_literals(block)
-        names = [
-            extract_concept_name_from_literal(lit, "local") for lit in literals
-        ]
+        names = [extract_concept_name_from_literal(lit, "local") for lit in literals]
         assert "local.x" in names
 
 
