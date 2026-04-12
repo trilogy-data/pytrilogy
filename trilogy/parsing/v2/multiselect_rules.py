@@ -14,7 +14,10 @@ from trilogy.core.models.author import (
     WindowItem,
 )
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
-from trilogy.parsing.common import align_item_to_concept, derive_item_to_concept
+from trilogy.parsing.v2.concept_factory import (
+    align_item_to_concept_v2,
+    derive_item_to_concept_v2,
+)
 from trilogy.parsing.v2.concept_rules import metadata_from_meta
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
@@ -24,6 +27,7 @@ from trilogy.parsing.v2.rules_context import (
     fail,
     hydrated_children,
 )
+from trilogy.parsing.v2.select_finalize import finalize_select_statement
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
 
 
@@ -112,7 +116,7 @@ def multi_select_statement(
     # Finalize inner selects so as_lineage / align_item_to_concept see
     # populated grain and local_concepts.
     for sel in selects:
-        sel.finalize(context.environment)
+        finalize_select_statement(sel, context)
 
     # WHERE/LIMIT do not reference align-derived outputs, so hydrate them
     # up front and fold them into the align concepts' lineage.
@@ -121,14 +125,14 @@ def multi_select_statement(
 
     derived_concepts: list = []
     for x in align_c.items:
-        concept = align_item_to_concept(
+        concept = align_item_to_concept_v2(
             x,
             align_c,
             selects,
             where=where,
             having=None,
             limit=limit_val,
-            environment=context.environment,
+            context=context,
         )
         derived_concepts.append(concept)
         context.add_multiselect_concept(concept, meta=core_meta(node.meta))
@@ -159,8 +163,8 @@ def multi_select_statement(
                     node,
                     f"Invalid derive expression {derivation}, must be a function or conditional",
                 )
-            concept = derive_item_to_concept(
-                derivation, name, lineage, context.environment.namespace
+            concept = derive_item_to_concept_v2(
+                derivation, name, lineage, context=context
             )
             derived_concepts.append(concept)
             context.add_multiselect_concept(concept, meta=core_meta(node.meta))

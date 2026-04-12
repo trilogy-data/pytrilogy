@@ -45,7 +45,7 @@ def subselect_comparison(
         WindowItem,
     )
     from trilogy.core.models.core import ListWrapper, TupleWrapper
-    from trilogy.parsing.common import arbitrary_to_concept
+    from trilogy.parsing.v2.concept_factory import arbitrary_to_concept_v2
 
     args = hydrated_children(node, hydrate)
     left = args[0]
@@ -65,7 +65,7 @@ def subselect_comparison(
     ):
         right = right.content
     if isinstance(right, (Function, FilterItem, WindowItem, AggregateWrapper)):
-        right_concept = arbitrary_to_concept(right, environment=context.environment)
+        right_concept = arbitrary_to_concept_v2(right, context=context)
         context.add_virtual_concept(right_concept, meta=core_meta(node.meta))
         right = right_concept.reference
     return SubselectComparison(left=left, right=right, operator=operator)

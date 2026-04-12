@@ -14,7 +14,10 @@ from trilogy.core.statements.author import (
     SelectItem,
     SelectStatement,
 )
-from trilogy.parsing.common import arbitrary_to_concept, unwrap_transformation
+from trilogy.parsing.v2.concept_factory import (
+    arbitrary_to_concept_v2,
+    unwrap_transformation_v2,
+)
 from trilogy.parsing.v2.concept_rules import metadata_from_meta, parse_concept_reference
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
@@ -92,16 +95,16 @@ def select_transform(
     expr_val = content_args[0]
     output_name: str = content_args[1]
     metadata: Metadata | None = content_args[2] if len(content_args) > 2 else None
-    transformation = unwrap_transformation(expr_val, context.environment)
+    transformation = unwrap_transformation_v2(expr_val, context)
     _, namespace, output_name, _ = parse_concept_reference(
         output_name, context.environment
     )
     meta = metadata_from_meta(node.meta, concept_source=ConceptSource.SELECT)
     if metadata:
         meta = metadata
-    concept = arbitrary_to_concept(
+    concept = arbitrary_to_concept_v2(
         transformation,
-        environment=context.environment,
+        context=context,
         namespace=namespace,
         name=output_name,
         metadata=meta,

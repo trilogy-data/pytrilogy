@@ -13,7 +13,7 @@ from trilogy.parsing.v2.rules_context import (
     fail,
     hydrated_children,
 )
-from trilogy.parsing.v2.statement_plans import finalize_select_tree
+from trilogy.parsing.v2.select_finalize import finalize_select_tree
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
 
 SUPPORTED_INCREMENTAL_TYPES: set[DataType] = {DataType.DATE, DataType.TIMESTAMP}
@@ -92,7 +92,7 @@ def full_persist(
     modes = [x for x in args if isinstance(x, PersistMode)]
     mode = modes[0] if modes else PersistMode.OVERWRITE
     select: SelectStatement = next(x for x in args if isinstance(x, SelectStatement))
-    finalize_select_tree(select, context.environment)
+    finalize_select_tree(select, context)
 
     if mode == PersistMode.APPEND:
         if target is None:

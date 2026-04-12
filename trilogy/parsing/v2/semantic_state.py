@@ -58,6 +58,7 @@ class SemanticState:
 
     environment: Environment
     concepts: list[ConceptUpdate] = field(default_factory=list)
+    mirror_to_environment: bool = True
     _mirror: list[_MirrorEntry] = field(default_factory=list)
     _seen: set[str] = field(default_factory=set)
     _pending_by_address: dict[str, Concept] = field(default_factory=dict)
@@ -71,13 +72,46 @@ class SemanticState:
         force: bool = False,
     ) -> Concept:
         address = concept.address
-        if address not in self._seen:
-            # Read through the raw dict to avoid EnvironmentConceptDict's
-            # namespace/fallback resolution muddying the rollback snapshot.
-            prior = self.environment.concepts.data.get(address, _ABSENT)
-            self._mirror.append(_MirrorEntry(address=address, prior=prior))
-            self._seen.add(address)
-        resolved = self.environment.add_concept(concept, meta, force=force)
+        if self.mirror_to_environment:
+            if address not in self._seen:
+                # Read through the raw dict to avoid EnvironmentConceptDict's
+                # namespace/fallback resolution muddying the rollback snapshot.
+                prior = self.environment.concepts.data.get(address, _ABSENT)
+                self._mirror.append(_MirrorEntry(address=address, prior=prior))
+                self._seen.add(address)
+            resolved = self.environment.add_concept(concept, meta, force=force)
+        else:
+            existing = self._pending_by_address.get(address)
+            if existing is not None and not force:
+                resolved = existing
+            else:
+                resolved = concept
+        self._pending_by_address[address] = resolved
+        self.concepts.append(ConceptUpdate(concept=resolved, kind=kind, meta=meta))
+        return resolved
+
+    def replace_concept(
+        self,
+        address: str,
+        concept: Concept,
+        kind: ConceptUpdateKind,
+        meta: Any | None = None,
+    ) -> Concept:
+        """Replace a previously-added pending concept with a new version.
+
+        Used when a helper (e.g. select finalization) needs to update a
+        concept after its initial registration — for example after the
+        grain is known. Emits a new ConceptUpdate entry so downstream
+        bookkeeping continues to see the canonical address.
+        """
+        if self.mirror_to_environment:
+            if address not in self._seen:
+                prior = self.environment.concepts.data.get(address, _ABSENT)
+                self._mirror.append(_MirrorEntry(address=address, prior=prior))
+                self._seen.add(address)
+            resolved = self.environment.add_concept(concept, meta, force=True)
+        else:
+            resolved = concept
         self._pending_by_address[address] = resolved
         self.concepts.append(ConceptUpdate(concept=resolved, kind=kind, meta=meta))
         return resolved
@@ -101,6 +135,14 @@ class SemanticState:
         if environment is not None and environment is not self.environment:
             raise ValueError("SemanticState committed against a different environment")
         committed = self.concepts[self._pending_start :]
+        if not self.mirror_to_environment:
+            # When mirroring is disabled, the environment has not yet seen
+            # the pending concepts. Apply them now so downstream consumers
+            # (executor, rendering, etc.) can resolve them by address.
+            for update in committed:
+                self.environment.add_concept(
+                    update.concept, meta=update.meta, force=True
+                )
         self._mirror.clear()
         self._seen.clear()
         self._pending_by_address.clear()
@@ -108,12 +150,13 @@ class SemanticState:
         return list(committed)
 
     def rollback(self) -> None:
-        data = self.environment.concepts.data
-        for entry in reversed(self._mirror):
-            if entry.prior is _ABSENT:
-                data.pop(entry.address, None)
-            else:
-                data[entry.address] = entry.prior
+        if self.mirror_to_environment:
+            data = self.environment.concepts.data
+            for entry in reversed(self._mirror):
+                if entry.prior is _ABSENT:
+                    data.pop(entry.address, None)
+                else:
+                    data[entry.address] = entry.prior
         del self.concepts[self._pending_start :]
         self._mirror.clear()
         self._seen.clear()
