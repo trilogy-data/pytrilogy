@@ -18,6 +18,7 @@ from trilogy.parsing.v2.hydration import (
     find_concept_literals,
     topological_sort_plans,
 )
+from trilogy.parsing.v2.model import ConceptUpdate, ConceptUpdateKind
 
 
 def _hydrator_for(text: str) -> NativeHydrator:
@@ -268,3 +269,62 @@ class TestExtractDependencies:
         block = doc.forms[0]
         deps = extract_dependencies(block, env)
         assert "local.x" in deps
+
+
+def _fully_parse(text: str) -> NativeHydrator:
+    env = Environment()
+    ctx = HydrationContext(environment=env)
+    hydrator = NativeHydrator(ctx)
+    document = parse_syntax(text)
+    hydrator.parse(document)
+    return hydrator
+
+
+def _kinds_for(updates: list[ConceptUpdate], address: str) -> list[ConceptUpdateKind]:
+    return [u.kind for u in updates if u.concept.address == address]
+
+
+class TestConceptUpdateKinds:
+    def test_top_level_declaration(self):
+        hydrator = _fully_parse("key id int;")
+        assert ConceptUpdateKind.TOP_LEVEL_DECLARATION in _kinds_for(
+            hydrator.update.concepts, "local.id"
+        )
+
+    def test_property_declaration(self):
+        hydrator = _fully_parse("key id int;\nproperty id.name string;")
+        assert ConceptUpdateKind.PROPERTY_DECLARATION in _kinds_for(
+            hydrator.update.concepts, "local.name"
+        )
+
+    def test_select_local(self):
+        hydrator = _fully_parse("key x int;\nselect x + 1 -> y;")
+        assert ConceptUpdateKind.SELECT_LOCAL in _kinds_for(
+            hydrator.update.concepts, "local.y"
+        )
+
+    def test_multiselect_output(self):
+        text = """
+key one int;
+key other_one int;
+datasource num_one (
+    one:one
+) grain (one) address num_one;
+datasource num_other (
+    other_one:other_one
+) grain (other_one) address num_other;
+
+SELECT one
+MERGE
+SELECT other_one
+ALIGN one_key:one,other_one;
+"""
+        hydrator = _fully_parse(text)
+        kinds = [u.kind for u in hydrator.update.concepts]
+        assert ConceptUpdateKind.MULTISELECT_OUTPUT in kinds
+
+    def test_rowset_output(self):
+        text = "key x int;\nrowset r <- select x;"
+        hydrator = _fully_parse(text)
+        kinds = [u.kind for u in hydrator.update.concepts]
+        assert ConceptUpdateKind.ROWSET_OUTPUT in kinds

@@ -131,7 +131,7 @@ def multi_select_statement(
             environment=context.environment,
         )
         derived_concepts.append(concept)
-        context.add_concept(concept, meta=core_meta(node.meta))
+        context.add_multiselect_concept(concept, meta=core_meta(node.meta))
 
     # These clauses may reference align-derived outputs (e.g. `report_date`),
     # so hydrate them after the align concepts are registered.
@@ -163,7 +163,7 @@ def multi_select_statement(
                 derivation, name, lineage, context.environment.namespace
             )
             derived_concepts.append(concept)
-            context.add_concept(concept, meta=core_meta(node.meta))
+            context.add_multiselect_concept(concept, meta=core_meta(node.meta))
     return MultiSelectStatement(
         selects=selects,
         align=align_c,

@@ -19,10 +19,10 @@ from trilogy.parsing.v2.expression_rules import EXPRESSION_NODE_HYDRATORS
 from trilogy.parsing.v2.function_rules import FUNCTION_NODE_HYDRATORS
 from trilogy.parsing.v2.import_rules import IMPORT_NODE_HYDRATORS
 from trilogy.parsing.v2.import_service import ImportHydrationService
-from trilogy.parsing.v2.model import RecordingEnvironmentUpdate
 from trilogy.parsing.v2.rules_context import RuleContext
 from trilogy.parsing.v2.select_rules import SELECT_NODE_HYDRATORS
 from trilogy.parsing.v2.semantic_scope import SymbolTable
+from trilogy.parsing.v2.semantic_state import SemanticState
 from trilogy.parsing.v2.statement_planner import (
     StatementPlanner,
     require_block_statement,
@@ -112,6 +112,7 @@ class HydrationContext:
     text_lookup: dict[Path | str, str] | None = None
     import_keys: list[str] | None = None
     symbol_table: SymbolTable | None = None
+    semantic_state: SemanticState | None = None
 
 
 class NativeHydrator:
@@ -132,7 +133,11 @@ class NativeHydrator:
             import_keys=list(context.import_keys) if context.import_keys else [],
         )
         self.function_factory = FunctionFactory(self.environment)
-        self.update = RecordingEnvironmentUpdate()
+        self.semantic_state: SemanticState = (
+            context.semantic_state
+            if context.semantic_state is not None
+            else SemanticState(environment=self.environment)
+        )
         self.symbol_table: SymbolTable = (
             context.symbol_table
             if context.symbol_table is not None
@@ -144,8 +149,8 @@ class NativeHydrator:
             environment=self.environment,
             function_factory=self.function_factory,
             symbol_table=self.symbol_table,
+            semantic_state=self.semantic_state,
             source_text="",
-            update=self.update,
         )
 
     @property
@@ -197,20 +202,29 @@ class NativeHydrator:
             environment=self.environment,
             function_factory=self.function_factory,
             symbol_table=self.symbol_table,
+            semantic_state=self.semantic_state,
             source_text=self.text_lookup.get(self.token_address, ""),
-            update=self.update,
         )
-        self.plans = self.plan(document.forms)
-        self._run_phase(HydrationPhase.LOAD_IMPORTS)
-        self._run_phase(HydrationPhase.COLLECT_SYMBOLS)
-        self._run_phase(HydrationPhase.BIND)
-        # Interleave hydrate/validate/commit per plan so commit-side env
-        # mutations in plan N are visible to hydrate in plan N+1.
-        output: list[Any] = []
-        for plan in self.plans:
-            plan.hydrate(self)
-            plan.validate(self)
-            output.append(plan.commit(self))
+        try:
+            self.plans = self.plan(document.forms)
+            # LOAD_IMPORTS is the explicit early import materialization phase
+            # and intentionally stays outside the rollback window: imports
+            # mutate the environment via add_import and should persist across
+            # parse failures in later statements.
+            self._run_phase(HydrationPhase.LOAD_IMPORTS)
+            self._run_phase(HydrationPhase.COLLECT_SYMBOLS)
+            self._run_phase(HydrationPhase.BIND)
+            # Interleave hydrate/validate/commit per plan so commit-side env
+            # mutations in plan N are visible to hydrate in plan N+1.
+            output: list[Any] = []
+            for plan in self.plans:
+                plan.hydrate(self)
+                plan.validate(self)
+                output.append(plan.commit(self))
+        except BaseException:
+            self.semantic_state.rollback()
+            raise
+        self.semantic_state.commit(self.environment)
         return [item for item in output if item]
 
     def plan(self, forms: list[SyntaxElement]) -> list[StatementPlan]:

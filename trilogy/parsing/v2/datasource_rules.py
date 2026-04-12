@@ -167,7 +167,7 @@ def properties_declaration(
                 Granularity.SINGLE_ROW if is_abstract_grain else Granularity.MULTI_ROW
             ),
         )
-        context.add_concept(concept, meta=core_meta(node.meta))
+        context.add_datasource_property_concept(concept, meta=core_meta(node.meta))
         concepts.append(concept)
     return concepts
 

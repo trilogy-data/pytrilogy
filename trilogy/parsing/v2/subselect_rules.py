@@ -66,7 +66,7 @@ def subselect_comparison(
         right = right.content
     if isinstance(right, (Function, FilterItem, WindowItem, AggregateWrapper)):
         right_concept = arbitrary_to_concept(right, environment=context.environment)
-        context.add_concept(right_concept, meta=core_meta(node.meta))
+        context.add_virtual_concept(right_concept, meta=core_meta(node.meta))
         right = right_concept.reference
     return SubselectComparison(left=left, right=right, operator=operator)
 

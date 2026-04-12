@@ -31,7 +31,7 @@ def rowset_derivation_statement(
         namespace=context.environment.namespace or DEFAULT_NAMESPACE,
     )
     for new_concept in rowset_to_concepts(output, context.environment):
-        context.add_concept(new_concept, meta=core_meta(node.meta), force=True)
+        context.add_rowset_concept(new_concept, meta=core_meta(node.meta), force=True)
     return output
 
 
