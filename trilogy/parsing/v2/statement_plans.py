@@ -25,11 +25,8 @@ from trilogy.parsing.v2.import_rules import (
     selective_import_statement,
     self_import_statement,
 )
+from trilogy.parsing.v2.import_service import ImportRequest
 from trilogy.parsing.v2.model import HydrationDiagnostic
-from trilogy.parsing.v2.scopes import (
-    temporary_function_scope,
-    temporary_rowset_scope,
-)
 from trilogy.parsing.v2.symbols import (
     collect_concept_address,
     collect_inline_concept_addresses,
@@ -132,6 +129,9 @@ class ConceptStatementPlan(StatementPlanBase):
             self.provided_addresses = collect_properties_addresses(
                 self.syntax, hydrator.environment
             )
+        for addr in self.provided_addresses:
+            namespace, _, name = addr.rpartition(".")
+            hydrator.symbol_table.declare(addr, name or addr, namespace or "")
 
     def bind(self, hydrator: "NativeHydrator") -> None:
         self.dependencies = extract_dependencies(self.syntax, hydrator.environment)
@@ -166,27 +166,22 @@ class ImportStatementPlan(StatementPlanBase):
 
     def bind(self, hydrator: "NativeHydrator") -> None:
         kind = self.syntax.kind
+        context = hydrator.rule_context()
         if kind == SyntaxNodeKind.IMPORT_STATEMENT:
-            self.output = import_statement(
-                self.syntax,
-                hydrator.rule_context(),
-                hydrator.hydrate_rule,
-                hydrator=hydrator,
-            )
+            request = import_statement(self.syntax, context, hydrator.hydrate_rule)
         elif kind == SyntaxNodeKind.SELECTIVE_IMPORT_STATEMENT:
-            self.output = selective_import_statement(
-                self.syntax,
-                hydrator.rule_context(),
-                hydrator.hydrate_rule,
-                hydrator=hydrator,
+            request = selective_import_statement(
+                self.syntax, context, hydrator.hydrate_rule
             )
         elif kind == SyntaxNodeKind.SELF_IMPORT_STATEMENT:
             self.output = self_import_statement(
-                self.syntax,
-                hydrator.rule_context(),
-                hydrator.hydrate_rule,
-                hydrator=hydrator,
+                self.syntax, context, hydrator.hydrate_rule
             )
+            return
+        else:
+            return
+        if isinstance(request, ImportRequest):
+            self.output = hydrator.import_service.execute(request)
 
     def commit(self, hydrator: "NativeHydrator") -> ImportStatement | None:
         return self.output
@@ -201,6 +196,9 @@ class SelectStatementPlan(StatementPlanBase):
     def collect_symbols(self, hydrator: "NativeHydrator") -> None:
         namespace = hydrator.environment.namespace or DEFAULT_NAMESPACE
         self.inline_addresses = collect_inline_concept_addresses(self.syntax, namespace)
+        for addr in self.inline_addresses:
+            ns, _, nm = addr.rpartition(".")
+            hydrator.symbol_table.declare(addr, nm or addr, ns or namespace)
 
     def hydrate(self, hydrator: "NativeHydrator") -> None:
         self.output = hydrator.hydrate_rule(self.syntax)
@@ -225,7 +223,7 @@ class FunctionDefinitionPlan(StatementPlanBase):
         ).parameter_names
 
     def hydrate(self, hydrator: "NativeHydrator") -> None:
-        with temporary_function_scope(hydrator.environment, self.parameter_names):
+        with hydrator.symbol_table.function_scope(self.parameter_names):
             self.output = hydrator.hydrate_rule(self.syntax)
 
     def commit(self, hydrator: "NativeHydrator") -> FunctionDeclaration | None:
@@ -294,7 +292,7 @@ class RowsetStatementPlan(StatementPlanBase):
             self.forward_addresses.append(address)
 
     def hydrate(self, hydrator: "NativeHydrator") -> None:
-        with temporary_rowset_scope(hydrator.environment, self.forward_addresses):
+        with hydrator.symbol_table.rowset_scope(self.forward_addresses):
             self.output = hydrator.hydrate_rule(self.syntax)
 
     def commit(self, hydrator: "NativeHydrator") -> RowsetDerivationStatement | None:

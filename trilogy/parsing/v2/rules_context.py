@@ -11,6 +11,7 @@ from trilogy.parsing.v2.model import (
     HydrationError,
     RecordingEnvironmentUpdate,
 )
+from trilogy.parsing.v2.semantic_scope import SymbolTable
 from trilogy.parsing.v2.syntax import SyntaxElement, SyntaxMeta, SyntaxNode, SyntaxToken
 
 HydrateFunction = Callable[[SyntaxElement], Any]
@@ -22,6 +23,7 @@ TokenHydrator = Callable[[SyntaxToken, "RuleContext"], Any]
 class RuleContext:
     environment: Environment
     function_factory: FunctionFactory
+    symbol_table: SymbolTable
     source_text: str = ""
     update: RecordingEnvironmentUpdate = field(
         default_factory=RecordingEnvironmentUpdate

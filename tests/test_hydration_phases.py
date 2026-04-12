@@ -32,6 +32,7 @@ def _hydrator_for(text: str) -> NativeHydrator:
     hydrator._cached_rule_context = RuleContext(
         environment=hydrator.environment,
         function_factory=hydrator.function_factory,
+        symbol_table=hydrator.symbol_table,
         source_text=document.text,
         update=hydrator.update,
     )

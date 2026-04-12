@@ -18,10 +18,15 @@ from trilogy.parsing.v2.conditional_rules import CONDITIONAL_NODE_HYDRATORS
 from trilogy.parsing.v2.expression_rules import EXPRESSION_NODE_HYDRATORS
 from trilogy.parsing.v2.function_rules import FUNCTION_NODE_HYDRATORS
 from trilogy.parsing.v2.import_rules import IMPORT_NODE_HYDRATORS
+from trilogy.parsing.v2.import_service import ImportHydrationService
 from trilogy.parsing.v2.model import RecordingEnvironmentUpdate
 from trilogy.parsing.v2.rules_context import RuleContext
 from trilogy.parsing.v2.select_rules import SELECT_NODE_HYDRATORS
-from trilogy.parsing.v2.statement_planner import StatementPlanner, require_block_statement
+from trilogy.parsing.v2.semantic_scope import SymbolTable
+from trilogy.parsing.v2.statement_planner import (
+    StatementPlanner,
+    require_block_statement,
+)
 from trilogy.parsing.v2.statement_plans import (
     ConceptStatementPlan,
     StatementPlan,
@@ -98,6 +103,10 @@ class HydrationContext:
     token_address: Path | str = "root"
     parse_config: Parsing | None = None
     max_parse_depth: int = MAX_PARSE_DEPTH
+    parsed_environments: dict[str, Environment] | None = None
+    text_lookup: dict[Path | str, str] | None = None
+    import_keys: list[str] | None = None
+    symbol_table: SymbolTable | None = None
 
 
 class NativeHydrator:
@@ -105,30 +114,84 @@ class NativeHydrator:
         self.environment = context.environment
         self.parse_address = context.parse_address
         self.token_address = context.token_address
-        self.parse_config = context.parse_config
-        self.max_parse_depth = context.max_parse_depth
-        self.import_keys: list[str] = []
-        self.parsed_environments: dict[str, Environment] = {}
-        self.text_lookup: dict[Path | str, str] = {}
+        self.import_service = ImportHydrationService(
+            environment=context.environment,
+            parse_config=context.parse_config,
+            max_parse_depth=context.max_parse_depth,
+            parsed_environments=(
+                context.parsed_environments
+                if context.parsed_environments is not None
+                else {}
+            ),
+            text_lookup=context.text_lookup if context.text_lookup is not None else {},
+            import_keys=list(context.import_keys) if context.import_keys else [],
+        )
         self.function_factory = FunctionFactory(self.environment)
         self.update = RecordingEnvironmentUpdate()
+        self.symbol_table: SymbolTable = (
+            context.symbol_table
+            if context.symbol_table is not None
+            else SymbolTable(self.environment)
+        )
         self.plans: list[StatementPlan] = []
         self._planner = StatementPlanner()
         self._cached_rule_context: RuleContext = RuleContext(
             environment=self.environment,
             function_factory=self.function_factory,
+            symbol_table=self.symbol_table,
             source_text="",
             update=self.update,
         )
 
+    @property
+    def parse_config(self) -> Parsing | None:
+        return self.import_service.parse_config
+
+    @parse_config.setter
+    def parse_config(self, value: Parsing | None) -> None:
+        self.import_service.parse_config = value
+
+    @property
+    def max_parse_depth(self) -> int:
+        return self.import_service.max_parse_depth
+
+    @max_parse_depth.setter
+    def max_parse_depth(self, value: int) -> None:
+        self.import_service.max_parse_depth = value
+
+    @property
+    def parsed_environments(self) -> dict[str, Environment]:
+        return self.import_service.parsed_environments
+
+    @parsed_environments.setter
+    def parsed_environments(self, value: dict[str, Environment]) -> None:
+        self.import_service.parsed_environments = value
+
+    @property
+    def text_lookup(self) -> dict[Path | str, str]:
+        return self.import_service.text_lookup
+
+    @text_lookup.setter
+    def text_lookup(self, value: dict[Path | str, str]) -> None:
+        self.import_service.text_lookup = value
+
+    @property
+    def import_keys(self) -> list[str]:
+        return self.import_service.import_keys
+
+    @import_keys.setter
+    def import_keys(self, value: list[str]) -> None:
+        self.import_service.import_keys = value
+
     def set_text(self, text: str) -> None:
-        self.text_lookup[self.token_address] = text
+        self.import_service.set_text(self.token_address, text)
 
     def parse(self, document: SyntaxDocument) -> list[Any]:
         self.set_text(document.text)
         self._cached_rule_context = RuleContext(
             environment=self.environment,
             function_factory=self.function_factory,
+            symbol_table=self.symbol_table,
             source_text=self.text_lookup.get(self.token_address, ""),
             update=self.update,
         )
