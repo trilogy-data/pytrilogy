@@ -26,6 +26,7 @@ from trilogy.parsing.v2.import_rules import (
 )
 from trilogy.parsing.v2.import_service import ImportRequest
 from trilogy.parsing.v2.model import HydrationDiagnostic
+from trilogy.parsing.v2.rowset_semantics import apply_alias_updates
 from trilogy.parsing.v2.select_finalize import (
     finalize_select_tree as _v2_finalize_select_tree,
 )
@@ -350,6 +351,8 @@ class RowsetStatementPlan(StatementPlanBase):
     def commit(self, hydrator: "NativeHydrator") -> RowsetDerivationStatement | None:
         if self.output is None:
             return None
+        alias_updates = hydrator.semantic_state.drain_rowset_aliases()
+        apply_alias_updates(alias_updates, hydrator.environment)
         hydrator.environment.add_rowset(
             self.output.name,
             self.output.select.as_lineage(hydrator.environment),

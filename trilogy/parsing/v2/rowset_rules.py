@@ -33,6 +33,8 @@ def rowset_derivation_statement(
     result = rowset_to_concepts_v2(output, context)
     for new_concept in result.concepts:
         context.add_rowset_concept(new_concept, meta=core_meta(node.meta), force=True)
+    if result.alias_updates:
+        context.semantic_state.stage_rowset_aliases(result.alias_updates)
     return output
 
 

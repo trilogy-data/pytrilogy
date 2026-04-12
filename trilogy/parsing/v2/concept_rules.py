@@ -100,11 +100,12 @@ def parse_concept_reference(
     if "." in name:
         if purpose == Purpose.PROPERTY:
             parent, name = name.rsplit(".", 1)
-            parent_concept = (
-                concepts.require(parent)
-                if concepts is not None
-                else environment.concepts[parent]
-            )
+            if concepts is None:
+                raise ValueError(
+                    "parse_concept_reference requires a ConceptLookup when "
+                    "resolving a PROPERTY parent reference"
+                )
+            parent_concept = concepts.require(parent)
             namespace = parent_concept.namespace or DEFAULT_NAMESPACE
             lookup = f"{namespace}.{name}"
         else:

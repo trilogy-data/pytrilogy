@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Iterable, Iterator
@@ -63,6 +64,10 @@ class SemanticState:
     _seen: set[str] = field(default_factory=set)
     _pending_by_address: dict[str, Concept] = field(default_factory=dict)
     _pending_start: int = 0
+    _visible_depth: int = 0
+    _visible_writes: list[_MirrorEntry] = field(default_factory=list)
+    _visible_seen: set[str] = field(default_factory=set)
+    _pending_rowset_aliases: list[Any] = field(default_factory=list)
 
     def add(
         self,
@@ -86,9 +91,19 @@ class SemanticState:
                 resolved = existing
             else:
                 resolved = concept
+            if self._visible_depth > 0:
+                self._expose_to_environment(address, resolved)
         self._pending_by_address[address] = resolved
         self.concepts.append(ConceptUpdate(concept=resolved, kind=kind, meta=meta))
         return resolved
+
+    def _expose_to_environment(self, address: str, concept: Concept) -> None:
+        data = self.environment.concepts.data
+        if address not in self._visible_seen:
+            prior = data.get(address, _ABSENT)
+            self._visible_writes.append(_MirrorEntry(address=address, prior=prior))
+            self._visible_seen.add(address)
+        data[address] = concept
 
     def replace_concept(
         self,
@@ -116,6 +131,42 @@ class SemanticState:
         self.concepts.append(ConceptUpdate(concept=resolved, kind=kind, meta=meta))
         return resolved
 
+    @contextmanager
+    def visible_in_environment(self) -> Iterator[None]:
+        """Temporarily expose pending concepts via ``environment.concepts.data``.
+
+        Compatibility scaffold: v1 helper functions in ``trilogy.parsing.common``
+        resolve ConceptRefs via ``environment.concepts[...]``. When the mirror
+        is disabled, pending concepts are not yet visible there. v2 rule code
+        wraps a phase (hydrate/validate) with this context manager so v1
+        helpers called within can resolve pending concepts. Concepts added via
+        ``add`` while the scope is active are also exposed on the fly. All
+        env writes made by this scaffold are reverted on exit of the outer
+        scope so parse-time env mutation does not leak. This lives inside
+        SemanticState so the documented compatibility exception applies.
+        """
+        if self.mirror_to_environment:
+            yield
+            return
+        outermost = self._visible_depth == 0
+        self._visible_depth += 1
+        if outermost:
+            for address, concept in self._pending_by_address.items():
+                self._expose_to_environment(address, concept)
+        try:
+            yield
+        finally:
+            self._visible_depth -= 1
+            if self._visible_depth == 0:
+                data = self.environment.concepts.data
+                for entry in reversed(self._visible_writes):
+                    if entry.prior is _ABSENT:
+                        data.pop(entry.address, None)
+                    else:
+                        data[entry.address] = entry.prior
+                self._visible_writes.clear()
+                self._visible_seen.clear()
+
     def lookup(self, address: str) -> Concept | None:
         pending = self._pending_by_address.get(address)
         if pending is not None:
@@ -127,6 +178,14 @@ class SemanticState:
 
     def pending_concepts(self) -> Iterable[tuple[str, Concept]]:
         return self._pending_by_address.items()
+
+    def stage_rowset_aliases(self, updates: list[Any]) -> None:
+        self._pending_rowset_aliases.extend(updates)
+
+    def drain_rowset_aliases(self) -> list[Any]:
+        drained = list(self._pending_rowset_aliases)
+        self._pending_rowset_aliases.clear()
+        return drained
 
     def pending(self) -> Iterator[ConceptUpdate]:
         return iter(self.concepts[self._pending_start :])
@@ -161,6 +220,7 @@ class SemanticState:
         self._mirror.clear()
         self._seen.clear()
         self._pending_by_address.clear()
+        self._pending_rowset_aliases.clear()
 
 
 class ConceptLookup:
