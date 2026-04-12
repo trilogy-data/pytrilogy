@@ -254,8 +254,14 @@ class NativeHydrator:
             next(concept_iter) if isinstance(p, ConceptStatementPlan) else p
             for p in self.plans
         ]
-        for plan in sorted_concepts:
-            plan.output = self.hydrate_concept_block(plan.syntax)
+        # Concept hydration calls v1 function helpers (FunctionFactory /
+        # parsing.common) which read environment.concepts[...] directly.
+        # Expose pending concepts through the visible scope so those
+        # helpers resolve forward references. Compatibility bridge —
+        # not a new parse-time env write path; reverted on scope exit.
+        with self.semantic_state.visible_in_environment():
+            for plan in sorted_concepts:
+                plan.output = self.hydrate_concept_block(plan.syntax)
 
     def block_statement(self, block: SyntaxNode) -> SyntaxNode:
         return require_block_statement(block)

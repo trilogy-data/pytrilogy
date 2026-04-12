@@ -450,6 +450,27 @@ class TestSemanticStateMirrorDisabled:
         assert lookup.require("local.offstage").name == "offstage"
         assert "local.offstage" not in env.concepts.data
 
+    def test_replace_concept_updates_visible_scope(self):
+        env = Environment()
+        state = SemanticState(environment=env, mirror_to_environment=False)
+        state.add(_make_probe("morph"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+        replacement = Concept(
+            name="morph",
+            namespace="local",
+            datatype=DataType.STRING,
+            purpose=Purpose.KEY,
+        )
+        with state.visible_in_environment():
+            state.replace_concept(
+                "local.morph",
+                replacement,
+                ConceptUpdateKind.TOP_LEVEL_DECLARATION,
+            )
+            assert env.concepts.data["local.morph"].datatype == DataType.STRING
+        assert "local.morph" not in env.concepts.data
+        state.commit()
+        assert env.concepts.data["local.morph"].datatype == DataType.STRING
+
 
 class TestConceptLookupFacade:
     def test_pending_concept_resolves_before_commit(self):
@@ -521,6 +542,28 @@ class TestConceptLookupFacade:
         assert lookup.get("local.nope") is None
         assert not lookup.contains("local.nope")
 
+    def test_unqualified_resolves_pending_local(self):
+        env = Environment()
+        state = SemanticState(environment=env, mirror_to_environment=False)
+        lookup = ConceptLookup(state)
+        state.add(_make_probe("id"), ConceptUpdateKind.TOP_LEVEL_DECLARATION)
+        assert lookup.require("id").address == "local.id"
+        assert lookup.get("id") is not None
+        assert lookup.contains("id")
+        assert "id" in lookup
+        assert lookup.reference("id").address == "local.id"
+
+    def test_local_qualified_resolves_stripped(self):
+        env = Environment()
+        state = SemanticState(environment=env, mirror_to_environment=False)
+        lookup = ConceptLookup(state)
+        # Simulate a pending concept stored under a stripped name variant.
+        probe = _make_probe("id")
+        state._pending_by_address["id"] = probe
+        assert lookup.require("local.id") is probe
+        assert lookup.get("local.id") is probe
+        assert lookup.contains("local.id")
+
 
 def _parse_no_mirror(text: str) -> tuple[Environment, list]:
     env = Environment()
@@ -572,3 +615,62 @@ ALIGN one_key:one,other_one;
         assert "r.x" in env.concepts.data
         rowset = next(o for o in output if isinstance(o, RowsetDerivationStatement))
         assert rowset.name == "r"
+
+
+@pytest.fixture
+def force_default_mirror_off(monkeypatch):
+    """Force NativeHydrator's default SemanticState to mirror_to_environment=False.
+
+    Targets the `SemanticState` name imported in `trilogy.parsing.v2.hydration`,
+    so any hydrator that constructs its own SemanticState picks up mirror-off.
+    """
+    import trilogy.parsing.v2.hydration as hydration_mod
+
+    original = hydration_mod.SemanticState
+
+    def factory(*args, **kwargs):
+        kwargs.setdefault("mirror_to_environment", False)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(hydration_mod, "SemanticState", factory)
+    return factory
+
+
+class TestForcedDefaultMirrorOff:
+    def test_key_then_property(self, force_default_mirror_off):
+        from trilogy.parsing.parse_engine_v2 import parse_text
+
+        env, _ = parse_text("key id int; property id.name string;", Environment())
+        assert "local.id" in env.concepts.data
+        assert "local.name" in env.concepts.data
+
+    def test_key_then_auto_derivation(self, force_default_mirror_off):
+        from trilogy.parsing.parse_engine_v2 import parse_text
+
+        env, _ = parse_text("key x int; auto y <- x + 1;", Environment())
+        assert env.concepts["local.y"].datatype == DataType.INTEGER
+
+    def test_auto_before_key(self, force_default_mirror_off):
+        from trilogy.parsing.parse_engine_v2 import parse_text
+
+        env, _ = parse_text("auto y <- x + 1; key x int;", Environment())
+        assert env.concepts["local.y"].datatype == DataType.INTEGER
+        assert env.concepts["local.x"].datatype == DataType.INTEGER
+
+    def test_datasource_resolves_pending_key(self, force_default_mirror_off):
+        from trilogy.parsing.parse_engine_v2 import parse_text
+
+        env, _ = parse_text(
+            "key id int; datasource test (id:id) grain (id) address memory.test;",
+            Environment(),
+        )
+        assert "test" in env.datasources
+        assert "local.id" in env.concepts.data
+
+    def test_select_derivation_roundtrip(self, force_default_mirror_off):
+        from trilogy.parsing.parse_engine_v2 import parse_text
+
+        env, output = parse_text("key x int;\nselect x + 1 -> y;", Environment())
+        assert "local.y" in env.concepts.data
+        select = next(o for o in output if isinstance(o, SelectStatement))
+        assert any(s.concept.address == "local.y" for s in select.selection)
