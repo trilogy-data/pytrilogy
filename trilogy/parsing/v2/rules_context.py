@@ -1,0 +1,31 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Callable, cast
+
+from trilogy.core.functions import FunctionFactory
+from trilogy.core.models.author import Concept
+from trilogy.core.models.environment import Environment
+from trilogy.parsing.v2.model import RecordingEnvironmentUpdate
+from trilogy.parsing.v2.syntax import SyntaxElement, SyntaxMeta, SyntaxNode, SyntaxToken
+
+HydrateFunction = Callable[[SyntaxElement], Any]
+NodeHydrator = Callable[[SyntaxNode, "RuleContext", HydrateFunction], Any]
+TokenHydrator = Callable[[SyntaxToken, "RuleContext"], Any]
+
+
+@dataclass(frozen=True)
+class RuleContext:
+    environment: Environment
+    function_factory: FunctionFactory
+    source_text: str = ""
+    update: RecordingEnvironmentUpdate = field(
+        default_factory=RecordingEnvironmentUpdate
+    )
+
+    def add_concept(self, concept: Concept, meta: Any | None = None) -> None:
+        self.update.add_concept(self.environment, concept, meta)
+
+
+def core_meta(meta: SyntaxMeta | None) -> Any:
+    return cast(Any, meta)

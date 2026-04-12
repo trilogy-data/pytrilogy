@@ -1,9 +1,22 @@
+from collections.abc import Iterator
+from pathlib import Path
+
 from pytest import raises
 
 from trilogy.core.models.environment import Environment
 from trilogy.parsing.parse_engine import parse_text as parse_text_v1
 from trilogy.parsing.parse_engine_v2 import SyntaxNode, parse_syntax, parse_text
 from trilogy.parsing.v2.hydration import UnsupportedSyntaxError
+from trilogy.parsing.v2.syntax import SyntaxElement, SyntaxNodeKind, SyntaxTokenKind
+
+V2_PATH = Path(__file__).parents[1] / "trilogy" / "parsing" / "v2"
+
+
+def walk_nodes(element: SyntaxElement) -> Iterator[SyntaxNode]:
+    if isinstance(element, SyntaxNode):
+        yield element
+        for child in element.children:
+            yield from walk_nodes(child)
 
 
 def test_parse_syntax_only_returns_syntax() -> None:
@@ -16,7 +29,24 @@ select missing_concept;
 
     assert isinstance(document.tree, SyntaxNode)
     assert document.tree.name == "start"
+    assert document.tree.kind == SyntaxNodeKind.DOCUMENT
     assert all(isinstance(form, SyntaxNode) for form in document.forms)
+    assert document.forms[0].kind == SyntaxNodeKind.BLOCK
+    assert document.forms[1].kind == SyntaxNodeKind.BLOCK
+
+
+def test_parse_syntax_translates_lark_token_names() -> None:
+    document = parse_syntax("# hello\nconst a <- 1;")
+
+    comment = document.forms[0]
+    assert comment.kind == SyntaxTokenKind.COMMENT
+    const_value = next(
+        node
+        for node in walk_nodes(document.forms[1])
+        if node.kind == SyntaxNodeKind.INT_LITERAL
+    )
+    assert const_value.kind == SyntaxNodeKind.INT_LITERAL
+    assert const_value.children[0].kind == SyntaxTokenKind.INT_LITERAL_PART
 
 
 def test_parse_text_v2_matches_v1_for_native_concept_statements() -> None:
@@ -37,5 +67,27 @@ show concepts;
 
 
 def test_parse_text_v2_marks_unported_statements_explicitly() -> None:
-    with raises(UnsupportedSyntaxError, match="select_item"):
+    with raises(UnsupportedSyntaxError, match="select_statement"):
         parse_text("select missing_concept;", Environment())
+
+
+def test_v2_architecture_avoids_lark_or_v1_shims() -> None:
+    combined = "\n".join(path.read_text() for path in V2_PATH.glob("*.py"))
+
+    assert "to_lark" not in combined
+    assert "Transformer" not in combined
+    assert "trilogy.parsing.parse_engine" not in combined
+
+
+def test_v2_node_hydrators_use_syntax_nodes_not_hydrated_args() -> None:
+    combined = "\n".join(path.read_text() for path in V2_PATH.glob("*.py"))
+
+    assert "args: list[Any]" not in combined
+    assert "NodeHydrator = Callable[[SyntaxNode" in combined
+
+
+def test_v2_environment_update_names_record_and_apply_semantics() -> None:
+    combined = "\n".join(path.read_text() for path in V2_PATH.glob("*.py"))
+
+    assert "RecordingEnvironmentUpdate" in combined
+    assert "EnvironmentUpdate" not in combined.replace("RecordingEnvironmentUpdate", "")
