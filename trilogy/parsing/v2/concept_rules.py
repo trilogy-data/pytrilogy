@@ -36,6 +36,7 @@ from trilogy.core.models.core import (
     MapType,
     MapWrapper,
     NumericType,
+    StructComponent,
     StructType,
     TraitDataType,
     TupleWrapper,
@@ -436,6 +437,76 @@ def data_type(
     return base
 
 
+def numeric_type(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> NumericType:
+    args = hydrated_children(node, hydrate)
+    return NumericType(precision=args[0], scale=args[1])
+
+
+def map_type(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> MapType:
+    args = hydrated_children(node, hydrate)
+    key = args[0]
+    value = args[1]
+    if isinstance(key, str):
+        key = context.environment.concepts[key]
+    if isinstance(value, str):
+        value = context.environment.concepts[value]
+    return MapType(key_type=key, value_type=value)
+
+
+def list_type(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> ArrayType:
+    args = hydrated_children(node, hydrate)
+    content = args[0]
+    if isinstance(content, str):
+        content = context.environment.concepts[content]
+    return ArrayType(type=content)
+
+
+def struct_type(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> StructType:
+    args = hydrated_children(node, hydrate)
+    final: list[Any] = []
+    for arg in args:
+        if isinstance(arg, StructComponent):
+            final.append(arg)
+        else:
+            final.append(context.environment.concepts[arg])
+    return StructType(
+        fields=final,
+        fields_map={
+            x.name: x for x in final if isinstance(x, (Concept, StructComponent))
+        },
+    )
+
+
+def enum_type(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> EnumType:
+    args = hydrated_children(node, hydrate)
+    base_type = args[0]
+    if not isinstance(base_type, DataType):
+        raise fail(
+            node, f"enum base type must be a primitive DataType, got {base_type}"
+        )
+    return EnumType(type=base_type, values=list(args[1:]))
+
+
 def concept_nullable_modifier(
     node: SyntaxNode,
     context: RuleContext,
@@ -488,6 +559,11 @@ CONCEPT_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.SHOW_STATEMENT: show_statement,
     SyntaxNodeKind.CONCEPT_LITERAL: concept_lit,
     SyntaxNodeKind.DATA_TYPE: data_type,
+    SyntaxNodeKind.NUMERIC_TYPE: numeric_type,
+    SyntaxNodeKind.MAP_TYPE: map_type,
+    SyntaxNodeKind.LIST_TYPE: list_type,
+    SyntaxNodeKind.STRUCT_TYPE: struct_type,
+    SyntaxNodeKind.ENUM_TYPE: enum_type,
     SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER: concept_nullable_modifier,
     SyntaxNodeKind.METADATA: metadata,
     SyntaxNodeKind.PROPERTY_IDENTIFIER: prop_ident,

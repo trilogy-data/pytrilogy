@@ -73,6 +73,60 @@ ARBITRARY_INPUTS = (
     | bool
 )
 
+Expr = (
+    Function
+    | FilterItem
+    | WindowItem
+    | AggregateWrapper
+    | FunctionCallWrapper
+    | Parenthetical
+    | SubselectItem
+    | ConceptRef
+)
+
+
+def unwrap_transformation(
+    input: Expr,
+    environment: Environment,
+) -> (
+    Function
+    | FilterItem
+    | WindowItem
+    | AggregateWrapper
+    | FunctionCallWrapper
+    | Parenthetical
+    | SubselectItem
+):
+    if isinstance(input, Function):
+        return input
+    elif isinstance(input, AggregateWrapper):
+        return input
+    elif isinstance(input, ConceptRef):
+        concept = environment.concepts[input.address]
+        return Function(
+            operator=FunctionType.ALIAS,
+            output_datatype=concept.datatype,
+            output_purpose=concept.purpose,
+            arguments=[input],
+        )
+    elif isinstance(input, FilterItem):
+        return input
+    elif isinstance(input, WindowItem):
+        return input
+    elif isinstance(input, FunctionCallWrapper):
+        return input
+    elif isinstance(input, Parenthetical):
+        return input
+    elif isinstance(input, SubselectItem):
+        return input
+    else:
+        return Function(
+            operator=FunctionType.CONSTANT,
+            output_datatype=arg_to_datatype(input),
+            output_purpose=Purpose.CONSTANT,
+            arguments=[input],
+        )
+
 
 def process_function_arg(
     arg,

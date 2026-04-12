@@ -1,0 +1,254 @@
+from __future__ import annotations
+
+from logging import getLogger
+from os.path import dirname, join
+from pathlib import Path
+from typing import Any
+
+from trilogy.core.models.environment import (
+    DictImportResolver,
+    Environment,
+    FileSystemImportResolver,
+    Import,
+)
+from trilogy.core.statements.author import ImportStatement
+from trilogy.parsing.v2.rules_context import (
+    HydrateFunction,
+    NodeHydrator,
+    RuleContext,
+    hydrated_children,
+)
+from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
+
+perf_logger = getLogger("trilogy.parse.performance")
+
+STDLIB_ROOT = Path(__file__).parent.parent.parent
+
+
+def _resolve_import_path(
+    raw_args: list[str],
+    environment: Environment,
+) -> tuple[str, str, str, str, Path | str, bool]:
+    parent_dirs = -1
+    parsed_args: list[str] = []
+    for x in raw_args:
+        if x == ".":
+            parent_dirs += 1
+        else:
+            parsed_args.append(str(x))
+    parent_dirs = max(parent_dirs, 0)
+    if len(parsed_args) == 2:
+        alias = parsed_args[-1]
+        cache_key = parsed_args[-1]
+    else:
+        alias = environment.namespace
+        cache_key = parsed_args[0]
+    input_path = parsed_args[0]
+    path = input_path.split(".")
+    is_stdlib = path[0] == "std"
+    if is_stdlib:
+        target = join(STDLIB_ROOT, *path) + ".preql"
+        token_lookup: Path | str = Path(target)
+    elif isinstance(environment.config.import_resolver, FileSystemImportResolver):
+        troot = Path(environment.working_path)
+        for _ in range(parent_dirs):
+            troot = troot.parent
+        target = join(troot, *path) + ".preql"
+        token_lookup = Path(target)
+    elif isinstance(environment.config.import_resolver, DictImportResolver):
+        target = ".".join(path)
+        token_lookup = target
+    else:
+        raise NotImplementedError
+    return alias, cache_key, input_path, target, token_lookup, is_stdlib
+
+
+def _resolve_import_address(
+    address: str, environment: Environment, is_stdlib: bool = False
+) -> str:
+    if (
+        isinstance(environment.config.import_resolver, FileSystemImportResolver)
+        or is_stdlib
+    ):
+        with open(address, "r", encoding="utf-8") as f:
+            return f.read()
+    elif isinstance(environment.config.import_resolver, DictImportResolver):
+        lookup = address
+        if lookup not in environment.config.import_resolver.content:
+            raise ImportError(
+                f"Unable to import file {lookup}, not resolvable from provided source files."
+            )
+        return environment.config.import_resolver.content[lookup]
+    raise ImportError(
+        f"Unable to import file {address}, resolver type {type(environment.config.import_resolver)} not supported"
+    )
+
+
+def process_import(
+    alias: str,
+    input_path: str,
+    target: str,
+    token_lookup: Path | str,
+    cache_key: str,
+    hydrator: Any,
+    is_stdlib: bool = False,
+    concepts: list[str] | None = None,
+) -> ImportStatement:
+    from trilogy.parsing.parse_engine_v2 import parse_syntax
+    from trilogy.parsing.v2.hydration import HydrationContext, NativeHydrator
+
+    environment = hydrator.environment
+    key_path = hydrator.import_keys + [cache_key]
+    cache_lookup = "-".join(key_path)
+
+    if len(key_path) > hydrator.max_parse_depth:
+        return ImportStatement(alias=alias, input_path=input_path, path=Path(target))
+
+    if token_lookup in hydrator.text_lookup:
+        text = hydrator.text_lookup[token_lookup]
+    else:
+        text = _resolve_import_address(target, environment, is_stdlib)
+        hydrator.text_lookup[token_lookup] = text
+
+    if cache_lookup in hydrator.parsed_environments:
+        new_env = hydrator.parsed_environments[cache_lookup]
+    else:
+        root = None
+        if "." in str(token_lookup):
+            root = str(token_lookup).rsplit(".", 1)[0]
+        try:
+            document = parse_syntax(text)
+            new_env = Environment(
+                working_path=dirname(target),
+                env_file_path=token_lookup,
+                config=environment.config.copy_for_root(root=root),
+                parameters=environment.parameters,
+            )
+            child = NativeHydrator(
+                HydrationContext(
+                    environment=new_env,
+                    parse_address=cache_lookup,
+                    token_address=token_lookup,
+                    parse_config=hydrator.parse_config,
+                    max_parse_depth=hydrator.max_parse_depth,
+                ),
+            )
+            child.import_keys = key_path
+            child.parsed_environments = hydrator.parsed_environments
+            child.text_lookup = hydrator.text_lookup
+            child.parse(document)
+            hydrator.parsed_environments[cache_lookup] = new_env
+        except Exception as e:
+            raise ImportError(
+                f"Unable to import file {target}, parsing error: {e}"
+            ) from e
+
+    is_file_resolver = isinstance(
+        environment.config.import_resolver, FileSystemImportResolver
+    )
+    parsed_path = Path(input_path)
+    environment.add_import(
+        alias,
+        new_env,
+        Import(
+            alias=alias,
+            path=parsed_path,
+            input_path=Path(target) if is_file_resolver else None,
+            concepts=concepts,
+        ),
+    )
+    return ImportStatement(
+        alias=alias,
+        input_path=input_path,
+        path=parsed_path,
+        concepts=concepts,
+    )
+
+
+def import_statement(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+    hydrator: Any = None,
+) -> ImportStatement:
+    args = [str(hydrate(child)) for child in node.children]
+    alias, cache_key, input_path, target, token_lookup, is_stdlib = (
+        _resolve_import_path(args, context.environment)
+    )
+    return process_import(
+        alias=alias,
+        input_path=input_path,
+        target=target,
+        token_lookup=token_lookup,
+        cache_key=cache_key,
+        hydrator=hydrator,
+        is_stdlib=is_stdlib,
+    )
+
+
+def selective_import_statement(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+    hydrator: Any = None,
+) -> ImportStatement:
+    args = hydrated_children(node, hydrate)
+    concepts_list: list[str] = next(a for a in args if isinstance(a, list))
+    path_args = [str(a) for a in args if not isinstance(a, list)]
+    alias, cache_key, input_path, target, token_lookup, is_stdlib = (
+        _resolve_import_path(path_args, context.environment)
+    )
+    return process_import(
+        alias=alias,
+        input_path=input_path,
+        target=target,
+        token_lookup=token_lookup,
+        cache_key=cache_key,
+        hydrator=hydrator,
+        is_stdlib=is_stdlib,
+        concepts=concepts_list,
+    )
+
+
+def self_import_statement(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+    hydrator: Any = None,
+) -> ImportStatement:
+    args = [str(hydrate(child)) for child in node.children]
+    alias = args[-1]
+    environment = context.environment
+    is_dict_resolver = isinstance(
+        environment.config.import_resolver, DictImportResolver
+    )
+    if is_dict_resolver:
+        input_path = "."
+        path = Path(".")
+    elif environment.env_file_path is not None:
+        env_file_path = environment.env_file_path
+        if isinstance(env_file_path, str):
+            env_file_path = Path(env_file_path)
+        input_path = str(env_file_path.stem)
+        path = env_file_path
+    else:
+        raise ImportError("Cannot use 'self import' without a file path context.")
+    return ImportStatement(
+        alias=alias,
+        input_path=input_path,
+        path=path,
+        is_self=True,
+    )
+
+
+def import_concepts(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> list[str]:
+    return [str(hydrate(child)) for child in node.children]
+
+
+IMPORT_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
+    SyntaxNodeKind.IMPORT_CONCEPTS: import_concepts,
+}
