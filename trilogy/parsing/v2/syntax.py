@@ -222,7 +222,14 @@ class SyntaxNodeKind(str, Enum):
     MOCK_STATEMENT = "mock_statement"
     PUBLISH_STATEMENT = "publish_statement"
     CREATE_STATEMENT = "create_statement"
+    CREATE_MODIFIER_CLAUSE = "create_modifier_clause"
     TYPE_DECLARATION = "type_declaration"
+    TYPE_DROP_CLAUSE = "type_drop_clause"
+    CHART_STATEMENT = "chart_statement"
+    CHART_SETTING = "chart_setting"
+    CHART_FIELD_SETTING = "chart_field_setting"
+    CHART_BOOL_SETTING = "chart_bool_setting"
+    CHART_SCALE_SETTING = "chart_scale_setting"
     PROPERTIES_DECLARATION = "properties_declaration"
     INLINE_PROPERTY = "inline_property"
     INLINE_PROPERTY_LIST = "inline_property_list"
@@ -518,7 +525,14 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "mock_statement": SyntaxNodeKind.MOCK_STATEMENT,
     "publish_statement": SyntaxNodeKind.PUBLISH_STATEMENT,
     "create_statement": SyntaxNodeKind.CREATE_STATEMENT,
+    "create_modifier_clause": SyntaxNodeKind.CREATE_MODIFIER_CLAUSE,
     "type_declaration": SyntaxNodeKind.TYPE_DECLARATION,
+    "type_drop_clause": SyntaxNodeKind.TYPE_DROP_CLAUSE,
+    "chart_statement": SyntaxNodeKind.CHART_STATEMENT,
+    "chart_setting": SyntaxNodeKind.CHART_SETTING,
+    "chart_field_setting": SyntaxNodeKind.CHART_FIELD_SETTING,
+    "chart_bool_setting": SyntaxNodeKind.CHART_BOOL_SETTING,
+    "chart_scale_setting": SyntaxNodeKind.CHART_SCALE_SETTING,
     "properties_declaration": SyntaxNodeKind.PROPERTIES_DECLARATION,
     "datasource_column_def": SyntaxNodeKind.DATASOURCE_COLUMN_DEF,
     "datasource_column_list": SyntaxNodeKind.DATASOURCE_COLUMN_LIST,

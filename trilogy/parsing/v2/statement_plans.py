@@ -7,16 +7,23 @@ from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.models.author import Comment, CustomFunctionFactory
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.statements.author import (
+    ChartStatement,
     ConceptDeclarationStatement,
+    CopyStatement,
+    CreateStatement,
     FunctionDeclaration,
     ImportStatement,
     MergeStatementV2,
+    MockStatement,
     MultiSelectStatement,
     PersistStatement,
+    PublishStatement,
     RawSQLStatement,
     RowsetDerivationStatement,
     SelectStatement,
     ShowStatement,
+    TypeDeclaration,
+    ValidateStatement,
 )
 from trilogy.parsing.v2.function_syntax import FunctionDefinitionSyntax
 from trilogy.parsing.v2.import_rules import (
@@ -161,6 +168,13 @@ class ShowStatementPlan(StatementPlanBase):
 
     def hydrate(self, hydrator: "NativeHydrator") -> None:
         self.output = hydrator.hydrate_show_statement(self.syntax)
+
+    def validate(self, hydrator: "NativeHydrator") -> None:
+        if self.output is None:
+            return
+        content = self.output.content
+        if isinstance(content, (SelectStatement, PersistStatement)):
+            finalize_select_tree(content, hydrator)
 
     def commit(self, hydrator: "NativeHydrator") -> ShowStatement | None:
         return self.output
@@ -384,6 +398,92 @@ class RawSQLStatementPlan(StatementPlanBase):
         self.output = hydrator.hydrate_rule(self.syntax)
 
     def commit(self, hydrator: "NativeHydrator") -> RawSQLStatement | None:
+        return self.output
+
+
+@dataclass
+class TypeDeclarationPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: TypeDeclaration | None = None
+
+    def bind(self, hydrator: "NativeHydrator") -> None:
+        # Materialize before concept hydration so `key revenue float::money;`
+        # can resolve the trait when _sort_and_create_concepts runs after BIND.
+        self.output = hydrator.hydrate_rule(self.syntax)
+        if self.output is not None:
+            hydrator.environment.data_types[self.output.type.name] = self.output.type
+
+    def commit(self, hydrator: "NativeHydrator") -> TypeDeclaration | None:
+        return self.output
+
+
+@dataclass
+class SimpleOperationalStatementPlan(StatementPlanBase):
+    """Shared plan for simple operational top-level statements.
+
+    Used for create/validate/mock/publish statements that do not
+    introduce concepts, datasources, or select trees.
+    """
+
+    syntax: SyntaxNode
+    output: Any = None
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        self.output = hydrator.hydrate_rule(self.syntax)
+
+    def commit(self, hydrator: "NativeHydrator") -> Any:
+        return self.output
+
+
+@dataclass
+class CreateStatementPlan(SimpleOperationalStatementPlan):
+    output: CreateStatement | None = None
+
+
+@dataclass
+class ValidateStatementPlan(SimpleOperationalStatementPlan):
+    output: ValidateStatement | None = None
+
+
+@dataclass
+class MockStatementPlan(SimpleOperationalStatementPlan):
+    output: MockStatement | None = None
+
+
+@dataclass
+class PublishStatementPlan(SimpleOperationalStatementPlan):
+    output: PublishStatement | None = None
+
+
+@dataclass
+class CopyStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: CopyStatement | None = None
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        self.output = hydrator.hydrate_rule(self.syntax)
+
+    def validate(self, hydrator: "NativeHydrator") -> None:
+        if self.output is not None:
+            finalize_select_tree(self.output.select, hydrator)
+
+    def commit(self, hydrator: "NativeHydrator") -> CopyStatement | None:
+        return self.output
+
+
+@dataclass
+class ChartStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: ChartStatement | None = None
+
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        self.output = hydrator.hydrate_rule(self.syntax)
+
+    def validate(self, hydrator: "NativeHydrator") -> None:
+        if self.output is not None:
+            finalize_select_tree(self.output.select, hydrator)
+
+    def commit(self, hydrator: "NativeHydrator") -> ChartStatement | None:
         return self.output
 
 

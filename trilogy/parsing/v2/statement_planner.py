@@ -1,21 +1,28 @@
 from __future__ import annotations
 
 from trilogy.parsing.v2.statement_plans import (
+    ChartStatementPlan,
     CommentStatementPlan,
     ConceptStatementPlan,
+    CopyStatementPlan,
+    CreateStatementPlan,
     DatasourceStatementPlan,
     FunctionDefinitionPlan,
     ImportStatementPlan,
     MergeStatementPlan,
+    MockStatementPlan,
     MultiSelectStatementPlan,
     PersistStatementPlan,
+    PublishStatementPlan,
     RawSQLStatementPlan,
     RowsetStatementPlan,
     SelectStatementPlan,
     ShowStatementPlan,
     StatementPlan,
+    TypeDeclarationPlan,
     UnsupportedStatementPlan,
     UnsupportedSyntaxError,
+    ValidateStatementPlan,
 )
 from trilogy.parsing.v2.syntax import (
     SyntaxElement,
@@ -110,4 +117,18 @@ class StatementPlanner:
             return PersistStatementPlan(statement)
         if kind == SyntaxNodeKind.RAWSQL_STATEMENT:
             return RawSQLStatementPlan(statement)
+        if kind == SyntaxNodeKind.TYPE_DECLARATION:
+            return TypeDeclarationPlan(statement)
+        if kind == SyntaxNodeKind.CREATE_STATEMENT:
+            return CreateStatementPlan(statement)
+        if kind == SyntaxNodeKind.VALIDATE_STATEMENT:
+            return ValidateStatementPlan(statement)
+        if kind == SyntaxNodeKind.MOCK_STATEMENT:
+            return MockStatementPlan(statement)
+        if kind == SyntaxNodeKind.PUBLISH_STATEMENT:
+            return PublishStatementPlan(statement)
+        if kind == SyntaxNodeKind.COPY_STATEMENT:
+            return CopyStatementPlan(statement)
+        if kind == SyntaxNodeKind.CHART_STATEMENT:
+            return ChartStatementPlan(statement)
         return UnsupportedStatementPlan(statement)

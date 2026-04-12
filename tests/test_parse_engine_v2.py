@@ -1,12 +1,9 @@
 from collections.abc import Iterator
 from pathlib import Path
 
-from pytest import raises
-
 from trilogy.core.models.environment import Environment
 from trilogy.parsing.parse_engine import parse_text as parse_text_v1
 from trilogy.parsing.parse_engine_v2 import SyntaxNode, parse_syntax, parse_text
-from trilogy.parsing.v2.hydration import UnsupportedSyntaxError
 from trilogy.parsing.v2.syntax import SyntaxElement, SyntaxNodeKind, SyntaxTokenKind
 
 V2_PATH = Path(__file__).parents[1] / "trilogy" / "parsing" / "v2"
@@ -66,9 +63,22 @@ show concepts;
     assert env_v2.concepts["local.adjusted_count"].lineage
 
 
-def test_parse_text_v2_marks_unported_statements_explicitly() -> None:
-    with raises(UnsupportedSyntaxError, match="No v2 statement plan"):
-        parse_text("type test int;", Environment())
+def test_parse_text_v2_supports_type_declaration() -> None:
+    env, output = parse_text("type test int;", Environment())
+    assert "test" in env.data_types
+    assert len(output) == 1
+
+
+def test_parse_text_v2_type_declaration_propagates_to_concepts() -> None:
+    env, _ = parse_text(
+        "type money float;\nkey revenue float::money;",
+        Environment(),
+    )
+    assert "money" in env.data_types
+    concept = env.concepts["local.revenue"]
+    datatype = concept.datatype
+    # TraitDataType wraps the base type with the money trait
+    assert getattr(datatype, "traits", None) == ["money"]
 
 
 def test_v2_architecture_avoids_lark_or_v1_shims() -> None:
