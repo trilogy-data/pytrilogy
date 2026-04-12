@@ -196,9 +196,15 @@ class NativeHydrator:
             update=self.update,
         )
         self.plans = self.plan(document.forms)
+        self._run_phase(HydrationPhase.COLLECT_SYMBOLS)
+        self._run_phase(HydrationPhase.BIND)
+        # Interleave hydrate/validate/commit per plan so commit-side env
+        # mutations in plan N are visible to hydrate in plan N+1.
         output: list[Any] = []
-        for phase in HydrationPhase:
-            output = self._run_phase(phase)
+        for plan in self.plans:
+            plan.hydrate(self)
+            plan.validate(self)
+            output.append(plan.commit(self))
         return [item for item in output if item]
 
     def plan(self, forms: list[SyntaxElement]) -> list[StatementPlan]:
