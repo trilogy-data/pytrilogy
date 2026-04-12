@@ -56,6 +56,14 @@ class RecordingEnvironmentUpdate:
 
     Current v2 hydration needs declarations to be visible to later statements in
     the same parse. This is deliberately not a transaction yet.
+
+    This is the single sanctioned entry point for v2 hydrators to mutate
+    ``environment.concepts``. Direct calls to ``environment.add_concept`` or
+    writes to ``environment.concepts.data`` inside v2 rule handlers should be
+    replaced with ``RuleContext.add_concept`` so every write is recorded here.
+    The one deliberate exception is the SymbolTable compatibility shim, which
+    materializes short-lived ``UndefinedConceptFull`` placeholders for scoped
+    name resolution.
     """
 
     concepts: list[ConceptUpdate] = field(default_factory=list)
@@ -65,6 +73,7 @@ class RecordingEnvironmentUpdate:
         environment: Environment,
         concept: Concept,
         meta: Any | None = None,
+        force: bool = False,
     ) -> None:
         self.concepts.append(ConceptUpdate(concept=concept, meta=meta))
-        environment.add_concept(concept, meta)
+        environment.add_concept(concept, meta, force=force)

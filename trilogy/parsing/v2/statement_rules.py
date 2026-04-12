@@ -39,6 +39,7 @@ from trilogy.core.models.datasource import (
 from trilogy.core.statements.author import (
     FunctionDeclaration,
     MergeStatementV2,
+    MultiSelectStatement,
     PersistStatement,
     RawSQLStatement,
     RowsetDerivationStatement,
@@ -49,6 +50,7 @@ from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,
     RuleContext,
+    core_meta,
     fail,
     hydrated_children,
 )
@@ -191,7 +193,7 @@ def properties_declaration(
                 Granularity.SINGLE_ROW if is_abstract_grain else Granularity.MULTI_ROW
             ),
         )
-        context.environment.add_concept(concept)
+        context.add_concept(concept, meta=core_meta(node.meta))
         concepts.append(concept)
     return concepts
 
@@ -673,13 +675,20 @@ def rowset_derivation_statement(
     args = hydrated_children(node, hydrate)
     name = str(args[0])
     select = args[1]
+    # Ensure the inner select(s) have grain/local_concepts populated before
+    # rowset_to_concepts (which relies on as_lineage).
+    if isinstance(select, SelectStatement):
+        select.finalize(context.environment)
+    elif isinstance(select, MultiSelectStatement):
+        for inner in select.selects:
+            inner.finalize(context.environment)
     output = RowsetDerivationStatement(
         name=name,
         select=select,
         namespace=context.environment.namespace or DEFAULT_NAMESPACE,
     )
     for new_concept in rowset_to_concepts(output, context.environment):
-        context.environment.add_concept(new_concept, force=True)
+        context.add_concept(new_concept, meta=core_meta(node.meta), force=True)
     context.environment.add_rowset(
         output.name, output.select.as_lineage(context.environment)
     )
@@ -764,6 +773,7 @@ def full_persist(
     modes = [x for x in args if isinstance(x, PersistMode)]
     mode = modes[0] if modes else PersistMode.OVERWRITE
     select: SelectStatement = next(x for x in args if isinstance(x, SelectStatement))
+    select.finalize(context.environment)
 
     if mode == PersistMode.APPEND:
         if target is None:

@@ -7,6 +7,7 @@ from trilogy.parsing.v2.statement_plans import (
     FunctionDefinitionPlan,
     ImportStatementPlan,
     MergeStatementPlan,
+    MultiSelectStatementPlan,
     PersistStatementPlan,
     RawSQLStatementPlan,
     RowsetStatementPlan,
@@ -72,6 +73,8 @@ class StatementPlanner:
             return ShowStatementPlan(form)
         if form.kind == SyntaxNodeKind.SELECT_STATEMENT:
             return SelectStatementPlan(form)
+        if form.kind == SyntaxNodeKind.MULTI_SELECT_STATEMENT:
+            return MultiSelectStatementPlan(form)
         if form.kind in _IMPORT_KINDS:
             return ImportStatementPlan(form)
         if form.kind == SyntaxNodeKind.BLOCK:
@@ -84,6 +87,8 @@ class StatementPlanner:
                 return ImportStatementPlan(statement)
             if statement.kind == SyntaxNodeKind.SELECT_STATEMENT:
                 return SelectStatementPlan(statement)
+            if statement.kind == SyntaxNodeKind.MULTI_SELECT_STATEMENT:
+                return MultiSelectStatementPlan(statement)
             return self._plan_block_statement(statement)
         return UnsupportedStatementPlan(form)
 

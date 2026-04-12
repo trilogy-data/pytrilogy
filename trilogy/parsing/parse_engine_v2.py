@@ -226,6 +226,7 @@ def parse_text(
 
     try:
         document = parse_syntax(text)
+        environment.concepts.fail_on_missing = False
         output = parser.parse(document)
         environment.concepts.fail_on_missing = True
         end = datetime.now()
