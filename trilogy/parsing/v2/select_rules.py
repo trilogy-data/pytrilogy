@@ -19,6 +19,7 @@ from trilogy.core.models.author import (
     WhereClause,
     WindowItem,
 )
+from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
     ConceptTransform,
     FromClause,
@@ -174,14 +175,9 @@ def order_by(
     return OrderBy(items=args[0])
 
 
-def _resolve_order_ref(name: str, env: "Environment") -> ConceptRef:
-    """Resolve an order-by identifier to a ConceptRef.
-
-    Uses the environment only for namespace resolution (short name → qualified
-    address). Returns a lightweight ConceptRef regardless of whether the concept
-    is fully defined yet — downstream phases handle that."""
-    from trilogy.core.models.environment import Environment
-
+def _resolve_order_ref(name: str, env: Environment) -> ConceptRef:
+    # Namespace resolution only: returns a lightweight ConceptRef whether or not the
+    # target concept is fully defined yet — downstream phases resolve the rest.
     return ConceptRef(address=env.concepts[name].address)
 
 
@@ -193,9 +189,11 @@ def order_list(
     args = hydrated_children(node, hydrate)
     return [
         OrderItem(
-            expr=_resolve_order_ref(str(x), context.environment)
-            if isinstance(x, str)
-            else x,
+            expr=(
+                _resolve_order_ref(str(x), context.environment)
+                if isinstance(x, str)
+                else x
+            ),
             order=y,
         )
         for x, y in zip(args[::2], args[1::2])
@@ -362,7 +360,8 @@ def multi_select_statement(
         elif atype is DeriveClause:
             derive = arg
 
-    assert align_c is not None
+    if align_c is None:
+        raise fail(node, "Multi-select statement requires an align clause")
     derived_concepts = []
     new_selects = [x.as_lineage(context.environment) for x in selects]
     lineage = MultiSelectLineage(
