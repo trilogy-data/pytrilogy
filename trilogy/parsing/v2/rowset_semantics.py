@@ -154,7 +154,13 @@ def apply_alias_updates(
     updates: list[AliasUpdate],
     environment: Environment,
 ) -> None:
-    """Materialize alias updates into the environment during commit."""
+    """Materialize alias updates into the environment during commit.
+
+    This is an allowed parse-time env write: it runs from
+    ``RowsetStatementPlan.commit`` as final statement materialization,
+    not during hydrate/validate. The corresponding concept store write
+    is the only rowset-side exception to the v2 no-mutation rule.
+    """
     for update in updates:
         origin = environment.alias_origin_lookup[update.origin_address]
         environment.concepts[update.new_address] = update.concept

@@ -5,17 +5,17 @@ that takes a ``RuleContext`` instead of an ``Environment`` directly. This
 defines the single migration boundary where v2 rule code meets the
 v1-shaped concept builders.
 
-The underlying v1 helpers still read ``environment.concepts`` to resolve
-``ConceptRef`` arguments. When ``SemanticState.mirror_to_environment`` is
-disabled, the ``visible_in_environment`` scope installed by
-``NativeHydrator.parse`` temporarily exposes pending concepts via
-``environment.concepts.data`` for the duration of hydrate/validate/commit.
-That scope lives inside ``SemanticState`` (the documented compatibility
-exception) and is fully reverted on exit, so mirror-off parses exercise
-these wrappers without any persistent parse-time environment mutation.
+The underlying v1 helpers still read the environment's concept dict to
+resolve ``ConceptRef`` arguments. Pending concepts are never written to
+the environment at ``add`` time; ``SemanticState.pending_overlay_scope``
+installs a ``MappingProxyType`` overlay on the env concept dict for the
+duration of hydrate/validate/commit. The overlay is strictly read-only:
+the underlying store is never mutated, and the overlay is popped on
+scope exit (success or failure), so parses exercise these wrappers
+without any persistent parse-time environment mutation.
 
 None of these wrappers call ``environment.add_concept`` directly; the
-helpers they wrap only read from ``environment.concepts``.
+helpers they wrap only read from the environment.
 """
 
 from __future__ import annotations
@@ -52,8 +52,9 @@ def arbitrary_to_concept_v2(
 ) -> Concept:
     """v2 wrapper for ``arbitrary_to_concept``.
 
-    Pending concepts are resolved through the ``visible_in_environment``
-    compatibility scope owned by ``SemanticState``.
+    Pending concepts are resolved through the pending-overlay scope owned
+    by ``SemanticState`` — v1 helpers see them as if they were in the
+    environment's concept dict, without any mutation.
     """
     return arbitrary_to_concept(
         parent,
@@ -81,8 +82,9 @@ def align_item_to_concept_v2(
     """v2 wrapper for ``align_item_to_concept``.
 
     The v1 helper calls ``SelectStatement.as_lineage(environment)`` which
-    reads ``environment.concepts``. Mirror-off parses resolve those reads
-    through the ``visible_in_environment`` compatibility scope.
+    reads from the environment. Those reads are served by the pending
+    overlay scope installed by ``SemanticState`` — read-only, no store
+    mutation.
     """
     return align_item_to_concept(
         parent,

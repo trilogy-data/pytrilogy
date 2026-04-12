@@ -27,47 +27,33 @@ class ConceptUpdate:
     meta: Any | None = None
 
 
-class _Absent:
-    def __repr__(self) -> str:  # pragma: no cover - debugging aid
-        return "<absent>"
-
-
-_ABSENT: Any = _Absent()
-
-
-@dataclass
-class _MirrorEntry:
-    address: str
-    prior: Any
-
-
 @dataclass
 class SemanticState:
-    """Parser-owned concept state with explicit commit/rollback.
+    """Parser-owned concept state with staged commit/rollback.
 
-    v2 hydration must make newly declared concepts visible to later rules in
-    the same parse. SemanticState records each pending write with its intent
-    (``ConceptUpdateKind``) and mirrors it into ``environment.concepts`` so
-    existing address-based lookups still resolve. The mirror is bookkept so
-    ``rollback`` can reverse compatibility writes if the parse fails partway
-    through.
+    v2 hydration stages every newly declared concept in ``_pending_by_address``
+    so later rules can resolve them via :class:`ConceptLookup` without mutating
+    the base ``Environment``. ``commit`` is the only durable write path: it
+    applies pending updates through ``Environment.add_concept``. ``rollback``
+    drops pending state without touching the environment.
 
     ``concepts`` accumulates the full update history across committed batches
-    so callers can inspect what was applied. The in-flight batch is bounded
-    by ``_pending_start``; ``commit`` advances that boundary and ``rollback``
-    drops the in-flight entries and restores the mirrored environment keys.
+    so callers can inspect what was applied. The in-flight batch is bounded by
+    ``_pending_start``; ``commit`` advances that boundary.
+
+    ``pending_overlay_scope`` installs a read-only overlay on the
+    environment's concept dict so v1 helper code in
+    ``trilogy.parsing.common`` — which still resolves pending concept refs
+    against the environment — sees pending concepts without any mutation
+    of the underlying concept store. The overlay is backed by
+    ``MappingProxyType`` and cannot be used as a write path. It is always
+    popped on scope exit, even on exception.
     """
 
     environment: Environment
     concepts: list[ConceptUpdate] = field(default_factory=list)
-    mirror_to_environment: bool = True
-    _mirror: list[_MirrorEntry] = field(default_factory=list)
-    _seen: set[str] = field(default_factory=set)
     _pending_by_address: dict[str, Concept] = field(default_factory=dict)
     _pending_start: int = 0
-    _visible_depth: int = 0
-    _visible_writes: list[_MirrorEntry] = field(default_factory=list)
-    _visible_seen: set[str] = field(default_factory=set)
     _pending_rowset_aliases: list[Any] = field(default_factory=list)
 
     def add(
@@ -78,33 +64,14 @@ class SemanticState:
         force: bool = False,
     ) -> Concept:
         address = concept.address
-        if self.mirror_to_environment:
-            if address not in self._seen:
-                # Read through the raw dict to avoid EnvironmentConceptDict's
-                # namespace/fallback resolution muddying the rollback snapshot.
-                prior = self.environment.concepts.data.get(address, _ABSENT)
-                self._mirror.append(_MirrorEntry(address=address, prior=prior))
-                self._seen.add(address)
-            resolved = self.environment.add_concept(concept, meta, force=force)
+        existing = self._pending_by_address.get(address)
+        if existing is not None and not force:
+            resolved = existing
         else:
-            existing = self._pending_by_address.get(address)
-            if existing is not None and not force:
-                resolved = existing
-            else:
-                resolved = concept
-            if self._visible_depth > 0:
-                self._expose_to_environment(address, resolved)
+            resolved = concept
         self._pending_by_address[address] = resolved
         self.concepts.append(ConceptUpdate(concept=resolved, kind=kind, meta=meta))
         return resolved
-
-    def _expose_to_environment(self, address: str, concept: Concept) -> None:
-        data = self.environment.concepts.data
-        if address not in self._visible_seen:
-            prior = data.get(address, _ABSENT)
-            self._visible_writes.append(_MirrorEntry(address=address, prior=prior))
-            self._visible_seen.add(address)
-        data[address] = concept
 
     def replace_concept(
         self,
@@ -120,61 +87,26 @@ class SemanticState:
         grain is known. Emits a new ConceptUpdate entry so downstream
         bookkeeping continues to see the canonical address.
         """
-        if self.mirror_to_environment:
-            if address not in self._seen:
-                prior = self.environment.concepts.data.get(address, _ABSENT)
-                self._mirror.append(_MirrorEntry(address=address, prior=prior))
-                self._seen.add(address)
-            resolved = self.environment.add_concept(concept, meta, force=True)
-        else:
-            resolved = concept
-            if self._visible_depth > 0:
-                self._expose_to_environment(address, resolved)
-        self._pending_by_address[address] = resolved
-        self.concepts.append(ConceptUpdate(concept=resolved, kind=kind, meta=meta))
-        return resolved
+        self._pending_by_address[address] = concept
+        self.concepts.append(ConceptUpdate(concept=concept, kind=kind, meta=meta))
+        return concept
 
     @contextmanager
-    def visible_in_environment(self) -> Iterator[None]:
-        """Temporarily expose pending concepts via ``environment.concepts.data``.
+    def pending_overlay_scope(self) -> Iterator[None]:
+        """Install pending concepts as a read-only overlay on the env concept dict.
 
-        Compatibility scaffold: v1 helper functions in ``trilogy.parsing.common``
-        resolve ConceptRefs via ``environment.concepts[...]``. When the mirror
-        is disabled, pending concepts are not yet visible there. v2 rule code
-        wraps a phase (hydrate/validate) with this context manager so v1
-        helpers called within can resolve pending concepts. Concepts added via
-        ``add`` while the scope is active are also exposed on the fly. All
-        env writes made by this scaffold are reverted on exit of the outer
-        scope so parse-time env mutation does not leak. This lives inside
-        SemanticState so the documented compatibility exception applies.
+        v1 helper functions in ``trilogy.parsing.common`` resolve concept
+        references via the environment's concept dict. v2 rule code wraps a
+        phase (hydrate/validate) with this context manager so those helpers
+        see pending concepts without any parse-time mutation of the
+        underlying concept store. The overlay is a live ``MappingProxyType``
+        view of ``_pending_by_address`` — new concepts added via ``add``
+        during the scope become visible on the fly, and the overlay is
+        always removed on exit via ``EnvironmentConceptDict.push_overlay``'s
+        ``finally`` clause.
         """
-        if self.mirror_to_environment:
+        with self.environment.concepts.push_overlay(self._pending_by_address):
             yield
-            return
-        outermost = self._visible_depth == 0
-        self._visible_depth += 1
-        if outermost:
-            for address, concept in self._pending_by_address.items():
-                self._expose_to_environment(address, concept)
-        try:
-            yield
-        finally:
-            self._visible_depth -= 1
-            if self._visible_depth == 0:
-                data = self.environment.concepts.data
-                for entry in reversed(self._visible_writes):
-                    if entry.prior is _ABSENT:
-                        data.pop(entry.address, None)
-                    else:
-                        data[entry.address] = entry.prior
-                self._visible_writes.clear()
-                self._visible_seen.clear()
-
-    def lookup(self, address: str) -> Concept | None:
-        pending = self._pending_by_address.get(address)
-        if pending is not None:
-            return pending
-        return self.environment.concepts.data.get(address)
 
     def pending_lookup(self, address: str) -> Concept | None:
         return self._pending_by_address.get(address)
@@ -197,31 +129,14 @@ class SemanticState:
         if environment is not None and environment is not self.environment:
             raise ValueError("SemanticState committed against a different environment")
         committed = self.concepts[self._pending_start :]
-        if not self.mirror_to_environment:
-            # When mirroring is disabled, the environment has not yet seen
-            # the pending concepts. Apply them now so downstream consumers
-            # (executor, rendering, etc.) can resolve them by address.
-            for update in committed:
-                self.environment.add_concept(
-                    update.concept, meta=update.meta, force=True
-                )
-        self._mirror.clear()
-        self._seen.clear()
+        for update in committed:
+            self.environment.add_concept(update.concept, meta=update.meta, force=True)
         self._pending_by_address.clear()
         self._pending_start = len(self.concepts)
         return list(committed)
 
     def rollback(self) -> None:
-        if self.mirror_to_environment:
-            data = self.environment.concepts.data
-            for entry in reversed(self._mirror):
-                if entry.prior is _ABSENT:
-                    data.pop(entry.address, None)
-                else:
-                    data[entry.address] = entry.prior
         del self.concepts[self._pending_start :]
-        self._mirror.clear()
-        self._seen.clear()
         self._pending_by_address.clear()
         self._pending_rowset_aliases.clear()
 
@@ -233,7 +148,7 @@ class ConceptLookup:
     (uncommitted) concepts from ``SemanticState`` and falling back to the
     base ``Environment``. Rule modules in ``trilogy.parsing.v2`` should go
     through this instead of reading ``environment.concepts`` directly, so
-    we can eventually stop mirroring pending writes into the environment.
+    pending writes never have to leak into the environment.
     """
 
     __slots__ = ("_state", "_env")

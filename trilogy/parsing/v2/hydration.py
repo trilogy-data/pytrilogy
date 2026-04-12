@@ -216,13 +216,13 @@ class NativeHydrator:
             self._run_phase(HydrationPhase.BIND)
             # Interleave hydrate/validate/commit per plan so commit-side env
             # mutations in plan N are visible to hydrate in plan N+1.
-            # The visible_in_environment scope exposes pending concepts
-            # through environment.concepts.data for v1 helpers called during
-            # hydrate/validate when the mirror is disabled. Writes made by
-            # this scope are reverted on exit, leaving the final commit to
-            # apply concepts for real via semantic_state.commit.
+            # pending_overlay_scope installs a read-only overlay on the
+            # env concept dict so v1 helpers called during hydrate/validate
+            # see pending concepts. The overlay is never written through,
+            # and commit is the only durable write path via
+            # semantic_state.commit.
             output: list[Any] = []
-            with self.semantic_state.visible_in_environment():
+            with self.semantic_state.pending_overlay_scope():
                 for plan in self.plans:
                     plan.hydrate(self)
                     plan.validate(self)
@@ -255,11 +255,11 @@ class NativeHydrator:
             for p in self.plans
         ]
         # Concept hydration calls v1 function helpers (FunctionFactory /
-        # parsing.common) which read environment.concepts[...] directly.
-        # Expose pending concepts through the visible scope so those
-        # helpers resolve forward references. Compatibility bridge —
-        # not a new parse-time env write path; reverted on scope exit.
-        with self.semantic_state.visible_in_environment():
+        # parsing.common) which read the environment's concept dict
+        # directly. The pending overlay exposes staged concepts to those
+        # reads without mutating the underlying store, so forward
+        # references resolve during hydrate without any parse-time write.
+        with self.semantic_state.pending_overlay_scope():
             for plan in sorted_concepts:
                 plan.output = self.hydrate_concept_block(plan.syntax)
 
