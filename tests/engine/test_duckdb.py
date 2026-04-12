@@ -70,12 +70,8 @@ def test_concept_derivation():
         "year",
     ]:
         test_query = f"""
-        select local.test.{truncation}_start;
+        select date_trunc(local.test, {truncation}) -> test_{truncation}_start;
         """
-        query = duckdb_engine.parse_text(test_query)
-        name = f"local.test.{truncation}_start"
-        assert duckdb_engine.environment.concepts[name].address == name
-        assert query[-1].output_columns[0].address == f"local.test.{truncation}_start"
         results = duckdb_engine.execute_text(test_query)[0].fetchall()
         assert results[0][0] == test_datetime.replace(
             day=1,

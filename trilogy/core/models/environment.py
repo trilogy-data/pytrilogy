@@ -45,6 +45,8 @@ from trilogy.core.models.author import (
     CustomFunctionFactory,
     CustomType,
     Function,
+    Grain,
+    Metadata,
     SelectLineage,
     UndefinedConcept,
     UndefinedConceptFull,
@@ -109,6 +111,7 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         self.undefined: dict[str, UndefinedConceptFull] = {}
         self.fail_on_missing: bool = True
         self.hidden: set[str] = set()
+        self._resolving: set[str] = set()
         self.populate_default_concepts()
 
     def duplicate(self) -> "EnvironmentConceptDict":
@@ -127,7 +130,12 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
             self[concept.address] = concept
 
     def __contains__(self, key: object) -> bool:
-        return key in self.data and key not in self.hidden
+        if key in self.data and key not in self.hidden:
+            return True
+        if isinstance(key, str):
+            if DEFAULT_NAMESPACE + "." + key in self.data:
+                return True
+        return False
 
     def __iter__(self):
         return (k for k in self.data if k not in self.hidden)
@@ -186,6 +194,10 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
                 return self.__getitem__(key.split(".", 1)[1], line_no)
             if DEFAULT_NAMESPACE + "." + key in self:
                 return self.__getitem__(DEFAULT_NAMESPACE + "." + key, line_no)
+            # lazy resolution of derived concepts (e.g. signup_date.year)
+            derived = self._try_resolve_derived(key)
+            if derived is not None:
+                return derived
             if not self.fail_on_missing:
                 if "." in key:
                     ns, rest = key.rsplit(".", 1)
@@ -204,6 +216,89 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
                 self.undefined[key] = undefined
                 return undefined
         self.raise_undefined(key, line_no, file)
+
+    def _try_resolve_derived(self, key: str) -> Concept | None:
+        """Lazily resolve a derived concept like 'signup_date.year' by checking
+        if the suffix matches a single-arg function valid for the parent's datatype."""
+
+        if key in self._resolving:
+            return None
+        if "." not in key:
+            return None
+        self._resolving.add(key)
+        try:
+            return self._resolve_derived_inner(key)
+        finally:
+            self._resolving.discard(key)
+
+    def _resolve_derived_inner(self, key: str) -> Concept | None:
+        from trilogy.core.functions import FUNCTION_REGISTRY
+
+        parent_addr, suffix = key.rsplit(".", 1)
+
+        parent = self.data.get(parent_addr)
+        if parent is None and DEFAULT_NAMESPACE + "." + parent_addr in self.data:
+            parent = self.data[DEFAULT_NAMESPACE + "." + parent_addr]
+        if parent is None:
+            return None
+
+        # try to match suffix to a FunctionType name
+        try:
+            ftype = FunctionType(suffix)
+        except ValueError:
+            return None
+
+        config = FUNCTION_REGISTRY.get(ftype)
+        if not config or config.arg_count != 1:
+            return None
+
+        # check valid inputs
+        parent_dt = parent.output_datatype
+        valid = config.valid_inputs
+        if isinstance(valid, list):
+            if valid and parent_dt not in valid[0]:
+                return None
+        elif isinstance(valid, set) and parent_dt not in valid:
+            return None
+
+        func = Function(
+            operator=ftype,
+            arguments=[parent.reference],
+            output_datatype=config.output_type or parent_dt,
+            output_purpose=config.output_purpose or Purpose.PROPERTY,
+        )
+
+        # special handling for aggregate functions (count on keys)
+        if ftype == FunctionType.COUNT:
+            derived = Concept(
+                name=f"{parent.name}.{suffix}",
+                datatype=func.output_datatype,
+                purpose=Purpose.METRIC,
+                lineage=func,
+                grain=Grain(),
+                namespace=parent.namespace,
+                keys=set(),
+                metadata=Metadata(concept_source=ConceptSource.AUTO_DERIVED),
+            )
+        else:
+            default_purpose = (
+                Purpose.CONSTANT
+                if parent.purpose == Purpose.CONSTANT
+                else (config.output_purpose or Purpose.PROPERTY)
+            )
+            derived = Concept(
+                name=f"{parent.name}.{suffix}",
+                datatype=func.output_datatype,
+                purpose=default_purpose,
+                lineage=func,
+                grain=parent.grain,
+                namespace=parent.namespace,
+                keys=set([parent.address]),
+                metadata=Metadata(concept_source=ConceptSource.AUTO_DERIVED),
+            )
+
+        self[derived.address] = derived
+        return derived
 
     def _find_similar_concepts(self, concept_name: str):
         def strip_local(input: str):
@@ -536,16 +631,16 @@ class Environment:
                 and concept.name not in concepts
             ):
                 # excluded from public view — store in concepts but mark hidden
-                new = self.add_concept(namespaced, add_derived=False)
+                new = self.add_concept(namespaced)
                 self.concepts.data[target_k] = new
                 self.concepts.hidden.add(target_k)
             elif is_hidden:
                 # propagate hidden status from source
-                new = self.add_concept(namespaced, add_derived=False)
+                new = self.add_concept(namespaced)
                 self.concepts.data[target_k] = new
                 self.concepts.hidden.add(target_k)
             else:
-                new = self.add_concept(namespaced, add_derived=False)
+                new = self.add_concept(namespaced)
                 self.concepts[target_k] = new
 
         # Copy to list to avoid mutation issues during self-import
@@ -675,7 +770,6 @@ class Environment:
         concept: Concept,
         meta: Meta | None = None,
         force: bool = False,
-        add_derived: bool = True,
     ):
 
         if self.frozen:
@@ -691,7 +785,7 @@ class Environment:
 
         from trilogy.core.environment_helpers import generate_related_concepts
 
-        generate_related_concepts(concept, self, meta=meta, add_derived=add_derived)
+        generate_related_concepts(concept, self, meta=meta)
 
         return concept
 

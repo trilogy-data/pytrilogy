@@ -17,8 +17,8 @@ def test_query_gen():
     sql = x.generate_sql(
         """import flight;
 
-where local.dep_time.month_start between '2001-12-31'::date and '2002-03-31'::date  
-select 
+where date_trunc(local.dep_time, month) between '2001-12-31'::date and '2002-03-31'::date
+select
     count(carrier.name) as carrier_count;
     """
     )[-1]
@@ -40,10 +40,10 @@ def test_helpful_error():
     with raises(InvalidSyntaxException) as e:
         x.generate_sql(
             """import flight;
-        
+
 select
-    max(dep_time.year_start) as max_year,
-    min(dep_time.year_start) min_year;
+    max(date_trunc(dep_time, year)) as max_year,
+    min(date_trunc(dep_time, year)) min_year;
     """
         )
     assert "AS " in str(e.value)
