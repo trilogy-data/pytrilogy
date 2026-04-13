@@ -406,6 +406,54 @@ def show_statement(
     return ShowStatement(content=hydrate(node.children[0]))
 
 
+def _repair_alias_origin_merge(context: RuleContext, address: str) -> None:
+    """Force-remerge a stale ``alias_origin_lookup`` entry for ``address``.
+
+    ``DatasourceStatementPlan.commit`` runs ``semantic_state.commit`` while the
+    parser's pending-concept overlay is still installed on
+    ``environment.concepts``. ``merge_concept``'s early-return equality check
+    reads ``self.concepts[source.address]`` — which consults the overlay — so
+    a staged ``stage_field_alias`` entry for a struct field like
+    ``unnest_array.a`` (pointing at the freshly declared ``local.a``) shadows
+    the real env value and collapses the comparison to True. On the second
+    parse against the same executor, where ``alias_origin_lookup`` already
+    carries a stale entry from the prior parse, the early return fires and
+    the merge is skipped entirely — leaving ``env.concepts[source.address]``
+    as the non-merged auto concept.
+
+    This helper detects the stale state and force-remerges so subsequent
+    ``context.concepts.require(address)`` observes the canonical target.
+    Runs at concept-literal hydration time so the resulting ``ConceptRef``
+    carries the canonical ``local.a`` address, and downstream safe column
+    names match v1's parser.
+    """
+    env = context.environment
+    if env.frozen:
+        return
+    recorded = env.alias_origin_lookup.get(address)
+    if recorded is None:
+        return
+    candidates = [p for p in recorded.pseudonyms if p != address]
+    if not candidates:
+        return
+    current = env.concepts.data.get(address)
+    target: Concept | None = None
+    for candidate in candidates:
+        maybe_target = env.concepts.data.get(candidate)
+        if maybe_target is not None:
+            target = maybe_target
+            break
+    if target is None:
+        return
+    if (
+        current is target
+        and address in target.pseudonyms
+        and address in recorded.pseudonyms
+    ):
+        return
+    env.merge_concept(recorded, target, modifiers=[], force=True)
+
+
 def concept_lit(
     node: SyntaxNode,
     context: RuleContext,
@@ -414,6 +462,7 @@ def concept_lit(
     address = hydrate(node.children[0])
     if "." not in address and context.environment.namespace == DEFAULT_NAMESPACE:
         address = f"{DEFAULT_NAMESPACE}.{address}"
+    _repair_alias_origin_merge(context, address)
     mapping = context.concepts.require(address)
     return ConceptRef(
         address=mapping.address,
