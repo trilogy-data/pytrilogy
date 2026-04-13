@@ -5,6 +5,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from trilogy.constants import REMOTE_PREFIXES
 from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
     AddressType,
@@ -64,9 +65,6 @@ class DatasourceUpdateTriggerClause:
 @dataclass
 class DatasourceFreshnessProbeClause:
     path: str
-
-
-REMOTE_PREFIXES = ("gs://", "s3://", "az://", "http://", "https://")
 
 
 class File:

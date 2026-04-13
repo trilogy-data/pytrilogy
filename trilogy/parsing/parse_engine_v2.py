@@ -237,7 +237,5 @@ def parse_text(
         _handle_unexpected_token(e, text)
     except (UnexpectedCharacters, UnexpectedEOF, UnexpectedInput) as e:
         raise _create_generic_syntax_error(str(e), e.pos_in_stream or 0, text)
-    except TypeError as e:
-        raise InvalidSyntaxException(str(e)) from e
 
     return environment, output

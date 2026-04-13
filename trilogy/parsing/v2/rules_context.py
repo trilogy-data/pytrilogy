@@ -6,7 +6,7 @@ from typing import Any, Callable, cast
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import ConceptSource, FunctionType, Purpose
 from trilogy.core.functions import FunctionFactory
-from trilogy.core.models.author import Concept, Metadata
+from trilogy.core.models.author import Concept, CustomFunctionFactory, Metadata
 from trilogy.core.models.core import StructType, arg_to_datatype
 from trilogy.core.models.environment import Environment
 from trilogy.parsing.v2.model import HydrationDiagnostic, HydrationError
@@ -48,9 +48,7 @@ class RuleContext:
         self.semantic_state.add(concept, kind, meta=meta, force=force)
         self._stage_struct_fields(concept, meta=meta)
 
-    def _stage_struct_fields(
-        self, concept: Concept, meta: Any | None = None
-    ) -> None:
+    def _stage_struct_fields(self, concept: Concept, meta: Any | None = None) -> None:
         """Stage pending-only field concepts for struct-typed concepts.
 
         Mirrors ``generate_related_concepts``' struct branch so field concepts
@@ -126,6 +124,10 @@ class RuleContext:
 
     def add_virtual_concept(self, concept: Concept, meta: Any | None = None) -> None:
         self._add_concept(concept, ConceptUpdateKind.VIRTUAL_HELPER, meta=meta)
+
+    @property
+    def functions(self) -> dict[str, CustomFunctionFactory]:
+        return self.environment.functions
 
 
 def core_meta(meta: SyntaxMeta | None) -> Any:

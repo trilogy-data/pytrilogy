@@ -6,8 +6,7 @@ from enum import Enum
 from typing import Any, Iterable, Iterator
 
 from trilogy.constants import DEFAULT_NAMESPACE
-from trilogy.core.enums import Purpose
-from trilogy.core.enums import Modifier
+from trilogy.core.enums import Modifier, Purpose
 from trilogy.core.models.author import (
     Concept,
     ConceptRef,
