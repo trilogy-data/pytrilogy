@@ -226,9 +226,9 @@ class NativeHydrator:
             # mutations in plan N are visible to hydrate in plan N+1.
             # pending_overlay_scope installs a read-only overlay on the
             # env concept dict so v1 helpers called during hydrate/validate
-            # see pending concepts. The overlay is never written through,
-            # and commit is the only durable write path via
-            # semantic_state.commit.
+            # see pending concepts. Commit-time writes that flush pending
+            # state (``semantic_state.commit``) temporarily drop the overlay
+            # so merge_concept walks durable env.concepts.
             output: list[Any] = []
             with self.semantic_state.pending_overlay_scope():
                 for plan in self.plans:
@@ -324,24 +324,19 @@ class NativeHydrator:
         # Match v1: a blank line between the concept and the next comment
         # detaches the comment, so it is preserved as a standalone element
         # rather than mutating the concept's description.
+        if concept_node.meta is None:
+            return output
         base_line = concept_node.meta.end_line
         comments = []
-        # while we have immediatling trailing comments
-        # and not, ex newlines
-        # append them all
-        # this should match declarationg; #abc
-        # #def
-        # with def
-        # But not declaration;\n#abc
         for x in trailing:
             if (
                 isinstance(x, SyntaxToken)
                 and x.kind == SyntaxTokenKind.COMMENT
+                and x.meta is not None
                 and x.meta.line == base_line
             ):
                 comments.append(self.hydrate_comment(x))
                 base_line = x.meta.end_line
-            # anything else, break
             else:
                 break
         if comments:
