@@ -40,8 +40,20 @@ class HideUnusedConcepts(OptimizationRule):
             f"Hiding unused concepts {[x.address for x in add_to_hidden]} from {cte.name} (used: {used}, all: {[x.address for x in cte.output_columns]})"
         )
         candidates = [x.address for x in cte.output_columns if x.address not in used]
-        if len(candidates) == len(set([x.address for x in cte.output_columns])):
-            # pop one out
-            candidates.pop()
+        visible_addresses = {
+            x.address
+            for x in cte.output_columns
+            if x.address not in cte.hidden_concepts
+        }
+        if visible_addresses.issubset(set(candidates)):
+            # Keep one projected address so an anchor CTE cannot render as SELECT FROM.
+            keep_address = next(
+                x.address
+                for x in reversed(cte.output_columns)
+                if x.address in visible_addresses
+            )
+            candidates = [x for x in candidates if x != keep_address]
+        if not candidates:
+            return False, None
         cte.hidden_concepts = set(candidates)
         return True, None

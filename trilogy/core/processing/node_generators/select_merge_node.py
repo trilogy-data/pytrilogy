@@ -57,6 +57,16 @@ if TYPE_CHECKING:
 LOGGER_PREFIX = "[GEN_ROOT_MERGE_NODE]"
 
 
+def _condition_atom_addresses(
+    atom: BuildComparison | BuildConditional | BuildParenthetical,
+) -> set[str]:
+    return {
+        c.canonical_address
+        for c in atom.row_arguments
+        if c.derivation != Derivation.CONSTANT
+    }
+
+
 def extract_address(node: str) -> str:
     return node.split("~")[1].split("@")[0]
 
@@ -323,7 +333,13 @@ def create_pruned_concept_graph(
             g.add_edge(node_address, cnode)
             g.add_edge(cnode, node_address)
 
-    prune_sources_for_conditions(g, criteria, conditions, allow_intersection)
+    prune_sources_for_conditions(
+        g,
+        criteria,
+        conditions,
+        allow_intersection,
+        {c.canonical_address for c in all_concepts},
+    )
     prune_sources_for_aggregates(g, all_concepts, logger)
 
     target_addresses = {c.canonical_address for c in all_concepts}
@@ -594,7 +610,7 @@ def create_datasource_node(
         datasource_conditions = injected_conditions
 
     if conditions:
-        ds_outputs = {c.address for c in datasource.output_concepts}
+        ds_outputs = {c.canonical_address for c in datasource.output_concepts}
         covered_atoms: set[str] = set()
         if partial_is_full and datasource.non_partial_for:
             covered_atoms = {
@@ -602,9 +618,13 @@ def create_datasource_node(
                 for atom in decompose_condition(datasource.non_partial_for.conditional)
             }
         for atom in decompose_condition(conditions.conditional):
-            if str(atom) in covered_atoms or not is_scalar_condition(atom):
+            if (
+                str(atom) in covered_atoms
+                or atom.existence_arguments
+                or not is_scalar_condition(atom)
+            ):
                 continue
-            if all(c.address in ds_outputs for c in atom.concept_arguments):
+            if _condition_atom_addresses(atom).issubset(ds_outputs):
                 datasource_conditions = (
                     merge_conditions_and_dedup(atom, datasource_conditions)
                     if datasource_conditions

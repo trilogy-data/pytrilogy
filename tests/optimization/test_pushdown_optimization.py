@@ -25,7 +25,7 @@ def test_pushdown():
 
     print(generated)
     test_str = """ = '2024-01-01' """.strip()
-    assert generated.count(test_str) == 2
+    assert generated.count(test_str) == 1
 
 
 def test_pushdown_execution():
