@@ -298,18 +298,25 @@ class NativeHydrator:
             self.block_statement(block), SyntaxNodeKind.CONCEPT
         )
         output = self.hydrate_concept_statement(concept_node)
-        concept_end_line = (
-            concept_node.meta.end_line if concept_node.meta is not None else None
+        trailing = block.children[1:]
+        # Match v1: a blank line between the concept and the next comment
+        # detaches the comment, so it is preserved as a standalone element
+        # rather than mutating the concept's description.
+        attach_comments = not (
+            trailing
+            and isinstance(trailing[0], SyntaxToken)
+            and trailing[0].kind == SyntaxTokenKind.LINE_SEPARATOR
         )
-        comments = [
-            self.hydrate_comment(child)
-            for child in block.children[1:]
-            if isinstance(child, SyntaxToken)
-            and child.kind == SyntaxTokenKind.COMMENT
-            and concept_end_line is not None
-            and child.meta is not None
-            and child.meta.line == concept_end_line
-        ]
+        comments = (
+            [
+                self.hydrate_comment(child)
+                for child in trailing
+                if isinstance(child, SyntaxToken)
+                and child.kind == SyntaxTokenKind.COMMENT
+            ]
+            if attach_comments
+            else []
+        )
         if comments:
             output.concept.metadata.description = "\n".join(
                 comment_body(comment) for comment in comments
