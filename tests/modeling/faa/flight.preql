@@ -3,6 +3,8 @@ import airport as origin;
 import airport as destination;
 import carrier as carrier;
 
+
+key id2 int;
 property id2.origin string; #airport code, such as LAX
 property id2.destination string; #airport code, such as LAX
 property id2.flight_num string;
@@ -16,7 +18,7 @@ property id2.taxi_in int;
 property id2.distance int;
 property id2.cancelled string;
 property id2.diverted string;
-key id2 int;
+
 
 auto count <-count(id2);
 auto total_distance <-sum(distance);

@@ -19,6 +19,11 @@ class ConceptUpdateKind(Enum):
     MULTISELECT_OUTPUT = "multiselect_output"
     ROWSET_OUTPUT = "rowset_output"
     VIRTUAL_HELPER = "virtual_helper"
+    # Staged pending-only placeholder for a struct field concept. These are
+    # dropped on commit because ``environment.add_concept`` regenerates them
+    # (with proper pseudonyms) via ``generate_related_concepts`` when the
+    # parent struct concept is committed.
+    STRUCT_FIELD_VIRTUAL = "struct_field_virtual"
 
 
 @dataclass
