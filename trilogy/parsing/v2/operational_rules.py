@@ -152,15 +152,16 @@ def copy_statement(
     select: SelectStatement | None = None
     for child in node.children:
         if isinstance(child, SyntaxToken):
-            if (
-                child.kind == SyntaxTokenKind.COPY_TYPE
-                and target_type is None
-            ):
+            if child.kind == SyntaxTokenKind.COPY_TYPE and target_type is None:
                 target_type = IOType(hydrate(child))
-            elif child.kind in (
-                SyntaxTokenKind.FILE_PATH,
-                SyntaxTokenKind.F_FILE_PATH,
-            ) and target is None:
+            elif (
+                child.kind
+                in (
+                    SyntaxTokenKind.FILE_PATH,
+                    SyntaxTokenKind.F_FILE_PATH,
+                )
+                and target is None
+            ):
                 target = str(hydrate(child))
         elif isinstance(child, SyntaxNode):
             if child.kind == SyntaxNodeKind.STRING_LITERAL and target is None:

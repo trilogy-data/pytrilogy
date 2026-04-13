@@ -141,7 +141,7 @@ class ImportHydrationService:
                 self.parsed_environments[cache_lookup] = new_env
             except Exception as e:
                 raise ImportError(
-                    f"Unable to import file {request.target}, parsing error: {e}"
+                    f"Unable to import '{request.target}', parsing error: {e}"
                 ) from e
             finally:
                 self.in_flight_imports.discard(target_key)

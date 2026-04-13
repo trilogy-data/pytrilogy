@@ -228,7 +228,16 @@ def grain_clause(
 ) -> Grain:
     args = hydrated_children(node, hydrate)
     cols = args[0] if isinstance(args[0], list) else args
-    return Grain(components=set(context.concepts.require(a).address for a in cols))
+    # Grain is a declarative set of addresses. v1 tolerated unresolved
+    # references during import parse (via fail_on_missing=False) so grain
+    # could point at virtual paths like `order_item.product.id` that only
+    # exist as derivation chains. Mirror that by resolving when possible
+    # and otherwise keeping the raw address string.
+    components: set[str] = set()
+    for a in cols:
+        resolved = context.concepts.get(a)
+        components.add(resolved.address if resolved is not None else a)
+    return Grain(components=components)
 
 
 def whole_grain_clause(
@@ -448,16 +457,18 @@ def datasource_node(
             if target_c.purpose != Purpose.KEY:
                 continue
             key_inputs = grain.components
+            resolved_keys = [context.concepts.get(g) for g in key_inputs]
+            # Skip inheritance if any grain component is a symbolic address
+            # that hasn't resolved to a real concept yet.
+            if any(k is None for k in resolved_keys):
+                continue
             eligible = True
-            for key in key_inputs:
-                if column.concept.address in (
-                    context.concepts.require(key).keys or set()
-                ):
+            for k in resolved_keys:
+                if column.concept.address in (k.keys or set()):  # type: ignore[union-attr]
                     eligible = False
             if not eligible:
                 continue
-            keys = [context.concepts.require(g) for g in key_inputs]
-            target_c.keys = set(x.address for x in keys)
+            target_c.keys = set(k.address for k in resolved_keys)  # type: ignore[union-attr]
     return datasource
 
 

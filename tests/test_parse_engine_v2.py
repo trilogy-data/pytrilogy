@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from trilogy.core.enums import DatasourceState
-from trilogy.core.exceptions import UndefinedConceptException
+from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.models.environment import Environment
 from trilogy.parsing.parse_engine import parse_text as parse_text_v1
 from trilogy.parsing.parse_engine_v2 import SyntaxNode, parse_syntax, parse_text
@@ -196,6 +196,66 @@ key a int;
     assert "local.a" in env.concepts
     assert "local.b" in env.concepts
     assert env.concepts["local.b"].lineage is not None
+
+
+def test_parse_text_v2_select_transform_shadowing_does_not_recurse() -> None:
+    # Regression: a select transform whose output shadows a non-SELECT
+    # concept must not stage a pending entry — the overlay would then
+    # make set_select_grain see the new concept's lineage as self-referential.
+    env, _ = parse_text(
+        """
+type money float;
+key revenue float::money;
+def revenue_times_2(revenue) -> revenue * 2;
+
+with scaled as
+SELECT
+    @revenue_times_2(revenue) -> revenue
+;
+""",
+        Environment(),
+    )
+    original_revenue = env.concepts["local.revenue"]
+    assert original_revenue.lineage is None
+    scaled_revenue = env.concepts["scaled.revenue"]
+    assert scaled_revenue.lineage is not None
+
+
+def test_parse_text_v2_select_transform_inline_shadowing() -> None:
+    env, _ = parse_text(
+        """
+key revenue float;
+SELECT revenue * 2 -> revenue;
+""",
+        Environment(),
+    )
+    assert env.concepts["local.revenue"].lineage is None
+
+
+def test_parse_text_v2_select_as_definition_new_alias_commits() -> None:
+    env, _ = parse_text(
+        """
+key revenue float;
+SELECT revenue * 2 -> doubled;
+""",
+        Environment(),
+    )
+    assert "local.doubled" in env.concepts
+    assert env.concepts["local.doubled"].lineage is not None
+
+
+def test_parse_text_v2_duplicate_select_outputs_raise() -> None:
+    with pytest.raises(InvalidSyntaxException, match="Duplicate select output"):
+        parse_text(
+            """
+key revenue float;
+SELECT
+    revenue -> x,
+    revenue * 2 -> x
+;
+""",
+            Environment(),
+        )
 
 
 def test_parse_text_v2_rowset_output_forward_reference() -> None:
