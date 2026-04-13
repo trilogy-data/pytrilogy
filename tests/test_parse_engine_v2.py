@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from trilogy.core.enums import DatasourceState
 from trilogy.core.exceptions import UndefinedConceptException
 from trilogy.core.models.environment import Environment
 from trilogy.parsing.parse_engine import parse_text as parse_text_v1
@@ -148,6 +149,25 @@ file `{remote_path}`;
     )
     ds = env.datasources["local.remote"]
     assert ds.address.location == remote_path
+
+
+def test_parse_text_v2_datasource_status_unpublished() -> None:
+    env, _ = parse_text(
+        """
+key id int;
+datasource hidden (
+    id: id,
+)
+grain (id)
+address some_table
+state unpublished;
+""",
+        Environment(),
+    )
+    ds = env.datasources["local.hidden"]
+    assert ds.status == DatasourceState.UNPUBLISHED
+    build_env = env.materialize_for_select()
+    assert "local.hidden" not in build_env.datasources
 
 
 def test_parse_text_v2_rejects_property_on_missing_parent() -> None:
