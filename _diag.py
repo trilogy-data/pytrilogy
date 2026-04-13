@@ -1,20 +1,20 @@
 import os
 import sys
 
-if "--v2" in sys.argv:
-    os.environ["TRILOGY_FORCE_V2_PARSER"] = "1"
+if "--v1" in sys.argv:
+    os.environ["TRILOGY_FORCE_V1_PARSER"] = "1"
 
 from trilogy.constants import CONFIG, ParserVersion
 
-if os.environ.get("TRILOGY_FORCE_V2_PARSER") == "1":
-    CONFIG.parser_version = ParserVersion.V2
+if os.environ.get("TRILOGY_FORCE_V1_PARSER") == "1":
+    CONFIG.parser_version = ParserVersion.V1
 
 from trilogy.core.models.environment import Environment
 
-if "--v2" in sys.argv:
-    from trilogy.parsing.parse_engine_v2 import parse_text
-else:
+if "--v1" in sys.argv:
     from trilogy.parsing.parse_engine import parse_text
+else:
+    from trilogy.parsing.parse_engine_v2 import parse_text
 
 env = Environment()
 env, r = parse_text(
