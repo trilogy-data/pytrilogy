@@ -156,6 +156,22 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
             popped = self._overlay_stack.pop()
             assert popped is view, "overlay stack corrupted"
 
+    @contextmanager
+    def without_overlays(self) -> Iterator[None]:
+        """Temporarily detach every installed overlay.
+
+        Commit-time write paths (``semantic_state.commit`` running
+        ``add_concept``/``merge_concept``) must consult durable
+        ``self.data`` rather than the pending overlay view; otherwise
+        ``merge_concept``'s equality shortcut reads a staged alias and
+        skips rewiring a stale ``alias_origin_lookup`` entry.
+        """
+        saved, self._overlay_stack = self._overlay_stack, []
+        try:
+            yield
+        finally:
+            self._overlay_stack = saved
+
     def _overlay_lookup(self, key: str) -> Concept | None:
         if not self._overlay_stack:
             return None

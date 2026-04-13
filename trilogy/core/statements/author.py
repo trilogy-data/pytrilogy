@@ -172,13 +172,11 @@ class SelectStatement(HasUUID, SelectTypeMixin):
                     continue
                 if CONFIG.parsing.select_as_definition and not environment.frozen:
                     if x.concept.address not in environment.concepts:
-                        environment.add_concept(x.content.output, add_derived=False)
+                        environment.add_concept(x.content.output)
                     elif x.concept.address in environment.concepts:
                         version = environment.concepts[x.concept.address]
                         if version.metadata.concept_source == ConceptSource.SELECT:
-                            environment.add_concept(
-                                x.content.output, force=True, add_derived=False
-                            )
+                            environment.add_concept(x.content.output, force=True)
                 x.content.output = x.content.output.set_select_grain(
                     self.grain, environment
                 )
