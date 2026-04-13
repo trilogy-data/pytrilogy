@@ -695,10 +695,7 @@ class Environment:
     ):
         if self.frozen:
             raise ValueError("Environment is frozen, cannot add imports")
-        from trilogy.parsing.parse_engine import (
-            PARSER,
-            ParseToObjects,
-        )
+        from trilogy.parser import parse_text
 
         if isinstance(path, str):
             if path.endswith(".preql"):
@@ -711,34 +708,17 @@ class Environment:
         else:
             target = path
         if not env:
-            import_keys = ["root", alias]
-            parse_address = "-".join(import_keys)
             try:
                 with open(target, "r", encoding="utf-8") as f:
                     text = f.read()
-                nenv = Environment(
-                    working_path=target.parent,
-                )
+                nenv = Environment(working_path=target.parent)
                 nenv.concepts.fail_on_missing = False
-                nparser = ParseToObjects(
-                    environment=Environment(
-                        working_path=target.parent,
-                    ),
-                    parse_address=parse_address,
-                    token_address=target,
-                    import_keys=import_keys,
-                )
-                nparser.set_text(text)
-                nparser.environment.concepts.fail_on_missing = False
-                nparser.transform(PARSER.parse(text))
-                nparser.run_second_parse_pass()
-                nparser.environment.concepts.fail_on_missing = True
-
+                nenv, _ = parse_text(text, environment=nenv, root=target.parent)
             except Exception as e:
                 raise ImportError(
                     f"Unable to import file {target.parent}, parsing error: {e}"
                 )
-            env = nparser.environment
+            env = nenv
         imps = Import(alias=alias, path=target)
         self.add_import(alias, source=env, imp_stm=imps)
         return imps
