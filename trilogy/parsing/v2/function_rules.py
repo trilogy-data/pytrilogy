@@ -55,7 +55,6 @@ SIMPLE_FUNCTION_DISPATCH: dict[SyntaxNodeKind, FunctionType] = {
     SyntaxNodeKind.FLTRIM: FunctionType.LTRIM,
     SyntaxNodeKind.FRTRIM: FunctionType.RTRIM,
     SyntaxNodeKind.FREPLACE: FunctionType.REPLACE,
-    SyntaxNodeKind.FREGEXP_EXTRACT: FunctionType.REGEXP_EXTRACT,
     SyntaxNodeKind.FREGEXP_CONTAINS: FunctionType.REGEXP_CONTAINS,
     SyntaxNodeKind.FREGEXP_REPLACE: FunctionType.REGEXP_REPLACE,
     SyntaxNodeKind.FHASH: FunctionType.HASH,
@@ -289,6 +288,18 @@ def flog(
     if len(args) == 1:
         args.append(10)
     return context.function_factory.create_function(args, FunctionType.LOG)
+
+
+def fregexp_extract(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> Function:
+    args = hydrated_children(node, hydrate)
+    # -1 is the sentinel for "auto-detect capture group" used by dialect render
+    if len(args) == 2:
+        args.append(-1)
+    return context.function_factory.create_function(args, FunctionType.REGEXP_EXTRACT)
 
 
 def farray_sort(
@@ -709,7 +720,7 @@ def transform_lambda(
     hydrate: HydrateFunction,
 ) -> Any:
     args = hydrated_children(node, hydrate)
-    return context.environment.functions[str(args[0])]
+    return context.functions[str(args[0])]
 
 
 def farray_transform(
@@ -732,9 +743,7 @@ def farray_transform(
         [
             args[0],
             binding,
-            factory(
-                ArgBinding(name=binding.name, datatype=array_type.value_data_type)
-            ),
+            factory(ArgBinding(name=binding.name, datatype=array_type.value_data_type)),
         ],
         FunctionType.ARRAY_TRANSFORM,
         meta=core_meta(node.meta),
@@ -758,9 +767,9 @@ def custom_function(
     args = hydrated_children(node, hydrate)
     name = str(args[0])
     fn_args = args[1:]
-    if name not in context.environment.functions:
+    if name not in context.functions:
         raise fail(node, f"Unknown function @{name}")
-    factory = context.environment.functions[name]
+    factory = context.functions[name]
     return FunctionCallWrapper(content=factory(*fn_args), name=name, args=fn_args)
 
 
@@ -778,6 +787,7 @@ FUNCTION_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     # special functions
     SyntaxNodeKind.FROUND: fround,
     SyntaxNodeKind.FLOG: flog,
+    SyntaxNodeKind.FREGEXP_EXTRACT: fregexp_extract,
     SyntaxNodeKind.FARRAY_SORT: farray_sort,
     SyntaxNodeKind.FCAST: fcast,
     SyntaxNodeKind.FCURRENT_DATE: fcurrent_date,

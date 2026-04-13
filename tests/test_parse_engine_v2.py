@@ -118,3 +118,32 @@ def test_v2_environment_update_names_record_and_apply_semantics() -> None:
     assert "SemanticState" in combined
     assert "RecordingEnvironmentUpdate" not in combined
     assert "EnvironmentUpdate" not in combined
+
+
+@pytest.mark.parametrize(
+    "remote_path",
+    [
+        "gs://bucket/data.parquet",
+        "gcs://bucket/data.parquet",
+        "s3://bucket/data.parquet",
+        "abfs://container/data.parquet",
+        "abfss://container/data.parquet",
+        "https://example.com/data.parquet",
+    ],
+)
+def test_parse_text_v2_datasource_preserves_remote_file_address(
+    remote_path: str,
+) -> None:
+    env, _ = parse_text(
+        f"""
+key id int;
+datasource remote (
+    id: id,
+)
+grain (id)
+file `{remote_path}`;
+""",
+        Environment(),
+    )
+    ds = env.datasources["local.remote"]
+    assert ds.address.location == remote_path

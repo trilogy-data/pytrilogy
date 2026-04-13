@@ -270,19 +270,21 @@ class FunctionDefinitionPlan(StatementPlanBase):
             self.syntax
         ).parameter_names
 
-    def hydrate(self, hydrator: "NativeHydrator") -> None:
+    def bind(self, hydrator: "NativeHydrator") -> None:
+        # Register into env.functions during BIND so later concept plans
+        # (hydrated inside _sort_and_create_concepts) can resolve @name refs.
         with hydrator.symbol_table.function_scope(self.parameter_names):
             self.output = hydrator.hydrate_rule(self.syntax)
-
-    def commit(self, hydrator: "NativeHydrator") -> FunctionDeclaration | None:
         if self.output is None:
-            return None
+            return
         hydrator.environment.functions[self.output.name] = CustomFunctionFactory(
             function=self.output.expr,
             namespace=hydrator.environment.namespace,
             function_arguments=self.output.args,
             name=self.output.name,
         )
+
+    def commit(self, hydrator: "NativeHydrator") -> FunctionDeclaration | None:
         return self.output
 
 
