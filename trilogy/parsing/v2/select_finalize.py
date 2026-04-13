@@ -46,6 +46,7 @@ from trilogy.core.models.author import (
     Function,
     Grain,
     UndefinedConcept,
+    UndefinedConceptFull,
 )
 from trilogy.core.models.environment import UndefinedConceptException
 from trilogy.core.statements.author import (
@@ -79,7 +80,9 @@ def _raise_undefined(
     context: RuleContext, address: str, line_no: int | None = None
 ) -> None:
     existing = context.concepts.get(address)
-    if existing is not None and not isinstance(existing, UndefinedConcept):
+    if existing is not None and not isinstance(
+        existing, (UndefinedConcept, UndefinedConceptFull)
+    ):
         return
     matches: list[str] = []
     try:
@@ -216,7 +219,9 @@ def finalize_select_statement(
         else:
             addr = x.concept.address
             resolved = context.concepts.get(addr)
-            if resolved is None:
+            if resolved is None or isinstance(
+                resolved, (UndefinedConcept, UndefinedConceptFull)
+            ):
                 _raise_undefined(context, addr, line_no)
                 continue
             select.local_concepts[addr] = resolved

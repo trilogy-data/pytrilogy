@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Iterable, Iterator
+from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import Modifier, Purpose
@@ -15,6 +15,9 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
+
+if TYPE_CHECKING:
+    from trilogy.parsing.v2.semantic_scope import SymbolTable
 
 
 class ConceptUpdateKind(Enum):
@@ -86,6 +89,15 @@ class SemanticState:
     # import higher up in the call stack materializes the real concepts
     # through the normal ``environment.add_import`` path.
     _deferred_import_aliases: set[str] = field(default_factory=set)
+    # Addresses staged via ``stage_placeholder``: scoped forward references
+    # produced during function/select/rowset hydration whose target concept
+    # is declared in the current parse but not yet hydrated. These live in
+    # ``_pending_by_address`` (so the env overlay surfaces them to v1
+    # helpers) but are NOT recorded in ``concepts`` — commit only walks
+    # ``concepts``, so placeholders never leak into the durable concept
+    # store. ``add`` clears the entry when a real concept later resolves
+    # to the same address.
+    _placeholder_addresses: set[str] = field(default_factory=set)
 
     def add(
         self,
@@ -96,13 +108,34 @@ class SemanticState:
     ) -> Concept:
         address = concept.address
         existing = self._pending_by_address.get(address)
-        if existing is not None and not force:
+        is_placeholder = address in self._placeholder_addresses
+        if existing is not None and not force and not is_placeholder:
             resolved = existing
         else:
             resolved = concept
         self._pending_by_address[address] = resolved
+        self._placeholder_addresses.discard(address)
         self.concepts.append(ConceptUpdate(concept=resolved, kind=kind, meta=meta))
         return resolved
+
+    def stage_placeholder(self, concept: Concept) -> Concept:
+        """Stage a non-durable scoped placeholder concept.
+
+        Used for forward references inside function/select/rowset bodies whose
+        target concept is declared in the current parse but has not yet been
+        hydrated. The placeholder lives only in ``_pending_by_address`` so it
+        is visible to ``ConceptLookup`` and the env overlay during the parse.
+        It is NOT recorded in ``concepts``, so ``commit`` (which iterates
+        ``concepts``) never persists it. If a real concept later hydrates to
+        the same address, ``add`` displaces the placeholder atomically.
+        """
+        address = concept.address
+        existing = self._pending_by_address.get(address)
+        if existing is not None and address not in self._placeholder_addresses:
+            return existing
+        self._pending_by_address[address] = concept
+        self._placeholder_addresses.add(address)
+        return concept
 
     def replace_concept(
         self,
@@ -220,12 +253,14 @@ class SemanticState:
         for source, target, modifiers in pending_merges:
             self.environment.merge_concept(source, target, modifiers)
         self._pending_by_address.clear()
+        self._placeholder_addresses.clear()
         self._pending_start = len(self.concepts)
         return list(committed)
 
     def rollback(self) -> None:
         del self.concepts[self._pending_start :]
         self._pending_by_address.clear()
+        self._placeholder_addresses.clear()
         self._pending_rowset_aliases.clear()
         self._pending_types_by_name.clear()
         self._deferred_import_aliases.clear()
@@ -240,13 +275,24 @@ class ConceptLookup:
     base ``Environment``. Rule modules in ``trilogy.parsing.v2`` should go
     through this instead of reading ``environment.concepts`` directly, so
     pending writes never have to leak into the environment.
+
+    When wired with a ``SymbolTable``, also resolves *scoped placeholders*:
+    forward references whose target is declared in the current parse but
+    not yet hydrated, and dotted children of materialized scoped concepts
+    (function parameters, rowset forward refs). Placeholders are staged
+    via :meth:`SemanticState.stage_placeholder` and never commit.
     """
 
-    __slots__ = ("_state", "_env")
+    __slots__ = ("_state", "_env", "_symbol_table")
 
-    def __init__(self, state: SemanticState) -> None:
+    def __init__(
+        self,
+        state: SemanticState,
+        symbol_table: "SymbolTable | None" = None,
+    ) -> None:
         self._state = state
         self._env = state.environment
+        self._symbol_table = symbol_table
 
     def _candidate_addresses(self, address: str) -> list[str]:
         # Mirror EnvironmentConceptDict.__getitem__ fallback: exact, strip
@@ -284,6 +330,59 @@ class ConceptLookup:
             return None
         return self._state.add(derived, ConceptUpdateKind.AUTO_DERIVED)
 
+    def _make_scoped_placeholder(self, address: str) -> Concept:
+        cached = self._state.pending_lookup(address)
+        if isinstance(cached, UndefinedConceptFull):
+            return cached
+        namespace, _, name = address.rpartition(".")
+        placeholder = UndefinedConceptFull(
+            name=name or address,
+            namespace=namespace or DEFAULT_NAMESPACE,
+            datatype=DataType.UNKNOWN,
+            purpose=Purpose.UNKNOWN,
+        )
+        self._state.stage_placeholder(placeholder)
+        return placeholder
+
+    def _scoped_placeholder(self, address: str) -> Concept | None:
+        """Return a non-durable placeholder for forward / scoped references.
+
+        Two cases:
+
+        1. The address (or a candidate) is declared in the symbol table by
+           an earlier ``collect_symbols`` pass — e.g. a top-level concept
+           referenced before its hydration plan runs, or a select inline
+           identifier referenced from a function defined alongside the
+           select.
+        2. The address is a dotted child whose parent is itself a scoped
+           placeholder (a function/rowset parameter materialized into the
+           env as ``UndefinedConceptFull``, or a previously staged
+           placeholder). Mirrors v1 lazy lookup of ``param.field`` chains.
+
+        Both paths stage the placeholder via
+        :meth:`SemanticState.stage_placeholder` so it is visible to v1
+        helpers through the env overlay but never commits.
+        """
+        if self._symbol_table is not None:
+            for candidate in self._candidate_addresses(address):
+                if self._symbol_table.lookup(candidate) is not None:
+                    return self._make_scoped_placeholder(candidate)
+        if "." not in address:
+            return None
+        for candidate in self._candidate_addresses(address):
+            if "." not in candidate:
+                continue
+            parent_address, _ = candidate.rsplit(".", 1)
+            parent = self._existing_concept(parent_address)
+            if parent is None and self._symbol_table is not None:
+                for parent_candidate in self._candidate_addresses(parent_address):
+                    if self._symbol_table.lookup(parent_candidate) is not None:
+                        parent = self._make_scoped_placeholder(parent_candidate)
+                        break
+            if isinstance(parent, UndefinedConceptFull):
+                return self._make_scoped_placeholder(candidate)
+        return None
+
     def _deferred_placeholder(self, address: str) -> Concept | None:
         aliases = self._state.deferred_import_aliases
         if not aliases:
@@ -316,6 +415,9 @@ class ConceptLookup:
             derived = self._auto_derive(candidate)
             if derived is not None:
                 return derived
+        scoped = self._scoped_placeholder(address)
+        if scoped is not None:
+            return scoped
         deferred = self._deferred_placeholder(address)
         if deferred is not None:
             return deferred
@@ -329,10 +431,15 @@ class ConceptLookup:
             derived = self._auto_derive(candidate)
             if derived is not None:
                 return derived
+        scoped = self._scoped_placeholder(address)
+        if scoped is not None:
+            return scoped
         return self._deferred_placeholder(address)
 
     def contains(self, address: str) -> bool:
         if self._existing_concept(address) is not None:
+            return True
+        if self._scoped_placeholder(address) is not None:
             return True
         return self._deferred_placeholder(address) is not None
 
