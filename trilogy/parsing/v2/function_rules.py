@@ -340,10 +340,10 @@ def fcurrent_date(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
-) -> Any:
-    from trilogy.core.functions import CurrentDate
-
-    return CurrentDate([])
+) -> Function:
+    return context.function_factory.create_function(
+        args=[], operator=FunctionType.CURRENT_DATE
+    )
 
 
 def fcurrent_datetime(
