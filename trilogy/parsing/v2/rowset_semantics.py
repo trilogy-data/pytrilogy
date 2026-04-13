@@ -55,6 +55,24 @@ class RowsetConceptResult:
     alias_updates: list[AliasUpdate] = field(default_factory=list)
 
 
+def rowset_output_namespace(
+    rowset_name: str,
+    rowset_namespace: str,
+    source_namespace: str,
+) -> str:
+    """Target namespace for a rowset output concept.
+
+    When the source concept's namespace matches the rowset's own
+    namespace, the output collapses to ``{rowset_name}`` (so
+    ``local.revenue`` in a ``local``-scoped rowset becomes
+    ``even_orders.revenue``). Otherwise the source namespace is nested
+    under the rowset name.
+    """
+    if not source_namespace or source_namespace == rowset_namespace:
+        return rowset_name
+    return f"{rowset_name}.{source_namespace}"
+
+
 def _rowset_concept(
     orig_address: ConceptRef,
     rowset: RowsetDerivationStatement,
@@ -72,10 +90,8 @@ def _rowset_concept(
             lineage.content, (ConceptRef, Concept)
         ):
             name = context.concepts.require(lineage.content.address).name
-    base_namespace = (
-        f"{rowset.name}.{orig_concept.namespace}"
-        if orig_concept.namespace != rowset.namespace
-        else rowset.name
+    base_namespace = rowset_output_namespace(
+        rowset.name, rowset.namespace, orig_concept.namespace
     )
     new_concept = Concept(
         name=name,

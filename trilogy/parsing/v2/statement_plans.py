@@ -33,7 +33,10 @@ from trilogy.parsing.v2.import_rules import (
 )
 from trilogy.parsing.v2.import_service import ImportRequest
 from trilogy.parsing.v2.model import HydrationDiagnostic
-from trilogy.parsing.v2.rowset_semantics import apply_alias_updates
+from trilogy.parsing.v2.rowset_semantics import (
+    apply_alias_updates,
+    rowset_output_namespace,
+)
 from trilogy.parsing.v2.select_finalize import (
     finalize_select_tree as _v2_finalize_select_tree,
 )
@@ -334,6 +337,10 @@ class DatasourceStatementPlan(StatementPlanBase):
     def commit(self, hydrator: "NativeHydrator") -> Datasource | None:
         if self.output is None:
             return None
+        # Flush staged concepts before add_datasource so validate_concept
+        # sees this parse's concept declarations as durable rather than
+        # invalidating the just-bound datasource during the final commit.
+        hydrator.semantic_state.commit(hydrator.environment)
         hydrator.environment.add_datasource(self.output)
         return self.output
 
@@ -386,23 +393,20 @@ class RowsetStatementPlan(StatementPlanBase):
         seen: set[str] = set()
         for literal in find_concept_literals(self.syntax):
             source_address = extract_concept_name_from_literal(literal, namespace)
-            rowset_address = f"{self.rowset_name}.{source_address}"
+            source_ns, _, source_name = source_address.rpartition(".")
+            target_ns = rowset_output_namespace(self.rowset_name, namespace, source_ns)
+            rowset_address = f"{target_ns}.{source_name}"
             if rowset_address in seen:
                 continue
             seen.add(rowset_address)
-            ns, _, nm = rowset_address.rpartition(".")
-            hydrator.symbol_table.declare(
-                rowset_address, nm or rowset_address, ns or namespace
-            )
+            hydrator.symbol_table.declare(rowset_address, source_name, target_ns)
         for transform_name in find_select_transform_targets(self.syntax):
-            rowset_address = f"{self.rowset_name}.{transform_name}"
+            target_ns = rowset_output_namespace(self.rowset_name, namespace, namespace)
+            rowset_address = f"{target_ns}.{transform_name}"
             if rowset_address in seen:
                 continue
             seen.add(rowset_address)
-            ns, _, nm = rowset_address.rpartition(".")
-            hydrator.symbol_table.declare(
-                rowset_address, nm or rowset_address, ns or namespace
-            )
+            hydrator.symbol_table.declare(rowset_address, transform_name, target_ns)
 
     def bind(self, hydrator: "NativeHydrator") -> None:
         # Forward references inside a rowset derive clause (e.g. coalesce(level0.qoh1, ...))
