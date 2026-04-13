@@ -298,10 +298,17 @@ class NativeHydrator:
             self.block_statement(block), SyntaxNodeKind.CONCEPT
         )
         output = self.hydrate_concept_statement(concept_node)
+        concept_end_line = (
+            concept_node.meta.end_line if concept_node.meta is not None else None
+        )
         comments = [
             self.hydrate_comment(child)
             for child in block.children[1:]
-            if isinstance(child, SyntaxToken) and child.kind == SyntaxTokenKind.COMMENT
+            if isinstance(child, SyntaxToken)
+            and child.kind == SyntaxTokenKind.COMMENT
+            and concept_end_line is not None
+            and child.meta is not None
+            and child.meta.line == concept_end_line
         ]
         if comments:
             output.concept.metadata.description = "\n".join(
