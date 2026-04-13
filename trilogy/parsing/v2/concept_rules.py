@@ -505,9 +505,7 @@ def data_type(
             matched = context.types.get(trait)
             if matched is None:
                 known = set(context.environment.data_types.keys())
-                known.update(
-                    name for name, _ in context.semantic_state.pending_types()
-                )
+                known.update(name for name, _ in context.semantic_state.pending_types())
                 similar = difflib.get_close_matches(trait, list(known))
                 hint = f" Did you mean: {', '.join(similar)}?" if similar else ""
                 raise TypeError(
