@@ -195,22 +195,24 @@ def test_parsing():
         """
 key x int;
 property x.price float;
+property x.weekday int;
 
 datasource raw_data (
 x: x,
-price: price
+price: price,
+weekday: weekday
 )
 grain (x)
 query '''
-select 1 as x, 2.0 as price
+select 1 as x, 2.0 as price, 1 as weekday
 union all
-select 2 as x, 3.0 as price
+select 2 as x, 3.0 as price, 2 as weekday
 union all
-select 10 as x, 5.0 as price
+select 10 as x, 5.0 as price, 3 as weekday
 ''';
 
 
-auto test <-SUM(CASE WHEN 10 = weekday THEN x ELSE 0 END) + 
+auto test <-SUM(CASE WHEN 10 = weekday THEN x ELSE 0 END) +
     SUM(CASE WHEN 10 = weekday THEN price ELSE 0.0 END);
 
 

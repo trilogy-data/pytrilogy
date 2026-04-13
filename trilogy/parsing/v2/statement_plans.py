@@ -146,19 +146,15 @@ class ConceptStatementPlan(StatementPlanBase):
         for addr in self.provided_addresses:
             namespace, _, name = addr.rpartition(".")
             hydrator.symbol_table.declare(addr, name or addr, namespace or "")
-        # Pre-declare body literal addresses so that concept bodies referencing
-        # not-yet-hydrated concepts (or wholly undeclared identifiers carried
-        # forward from v1's lazy lookup) resolve through the scoped placeholder
-        # path during _sort_and_create_concepts. Real declarations later
-        # displace the placeholder atomically via SemanticState.add.
+        # Dependency addresses are extracted for the topological sort only.
+        # They are NOT declared into the symbol table: a concept body may
+        # only reference identifiers that have a real source (already in
+        # env.concepts from a prior statement or import, or provided by
+        # another top-level concept plan's collect_symbols). Declaring
+        # arbitrary body literals here would authorize scoped placeholders
+        # for wholly undeclared identifiers and silently accept broken
+        # concept declarations — strict v2 parsing must raise instead.
         self.dependencies = extract_dependencies(self.syntax, hydrator.environment)
-        for dep in self.dependencies:
-            ns, _, nm = dep.rpartition(".")
-            hydrator.symbol_table.declare(dep, nm or dep, ns or "")
-
-    def bind(self, hydrator: "NativeHydrator") -> None:
-        if not self.dependencies:
-            self.dependencies = extract_dependencies(self.syntax, hydrator.environment)
 
     def hydrate(self, hydrator: "NativeHydrator") -> None:
         # Concepts are created during BIND via _sort_and_create_concepts
