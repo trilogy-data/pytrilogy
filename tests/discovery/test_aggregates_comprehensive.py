@@ -422,8 +422,8 @@ WHERE order_date between '2024-01-15'::date and '2024-01-17'::date
 ;
 """
     )[-1]
-    assert (
-        "orders" in generated
+    assert any(
+        source in generated for source in ("daily_summary", "orders")
     ), f"Expected daily_summary or orders table, got: {generated}"
 
 

@@ -2,7 +2,7 @@ from enum import Enum
 from logging import Logger
 from typing import cast
 
-from trilogy.core.enums import Granularity
+from trilogy.core.enums import Derivation, Granularity
 from trilogy.core.graph import DiGraph
 from trilogy.core.models.build import (
     BuildConcept,
@@ -44,7 +44,11 @@ def _union_is_exact_match(
 
 
 def _condition_canonical_addresses(conditions: BuildWhereClause) -> set[str]:
-    return {c.canonical_address for c in conditions.row_arguments}
+    return {
+        c.canonical_address
+        for c in conditions.row_arguments
+        if c.derivation != Derivation.CONSTANT
+    }
 
 
 def datasource_has_filter_sensitive_aggregate(
@@ -64,6 +68,7 @@ def _datasource_is_exact_match(
     conditions: BuildWhereClause | None,
     allow_intersection: bool = False,
     allow_filter_application: bool = True,
+    relevant_concepts: set[str] | None = None,
 ) -> bool:
     if not conditions:
         return (
@@ -76,9 +81,14 @@ def _datasource_is_exact_match(
             return False
         condition_addresses = _condition_canonical_addresses(conditions)
         ds_output_addresses = {c.canonical_address for c in ds.output_concepts}
-        if allow_filter_application and condition_addresses.issubset(
-            ds_output_addresses
-        ):
+        partial_addresses = {c.canonical_address for c in ds.partial_concepts}
+        requested_addresses = relevant_concepts or ds_output_addresses
+        if (
+            allow_filter_application
+            and not conditions.existence_arguments
+            and condition_addresses.issubset(ds_output_addresses)
+            and condition_addresses.issubset(requested_addresses)
+        ) and requested_addresses.isdisjoint(partial_addresses):
             return True
         if allow_intersection:
             # When conditions are "covered" by another datasource's non_partial_for,
@@ -115,6 +125,7 @@ def get_graph_exact_match(
     conditions: BuildWhereClause | None,
     allow_intersection: bool = False,
     allow_filter_application: bool = True,
+    relevant_concepts: set[str] | None = None,
 ) -> set[str]:
     exact: set[str] = set()
     for node, ds in g.datasources.items():
@@ -127,6 +138,7 @@ def get_graph_exact_match(
             conditions,
             allow_intersection,
             allow_filter_application,
+            relevant_concepts,
         ):
             exact.add(node)
     return exact
@@ -137,8 +149,11 @@ def prune_sources_for_conditions(
     criteria: SearchCriteria,
     conditions: BuildWhereClause | None,
     allow_intersection: bool = False,
+    relevant_concepts: set[str] | None = None,
 ):
-    complete = get_graph_exact_match(g, criteria, conditions, allow_intersection)
+    complete = get_graph_exact_match(
+        g, criteria, conditions, allow_intersection, True, relevant_concepts
+    )
     to_remove = []
     for node in g.datasources:
         if node not in complete:
