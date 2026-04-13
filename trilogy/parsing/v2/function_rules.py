@@ -153,8 +153,17 @@ def _expr_to_boolean(root: Any, context: RuleContext) -> Any:
 
         if isinstance(root, Conditional):
             return root
-        if arg_to_datatype(root) == DataType.BOOL:
+        dt = arg_to_datatype(root)
+        if dt == DataType.BOOL:
             return Comparison(left=root, right=True, operator=ComparisonOperator.EQ)
+        if dt == DataType.INTEGER:
+            return Comparison(
+                left=context.function_factory.create_function(
+                    [root], FunctionType.BOOL
+                ),
+                right=True,
+                operator=ComparisonOperator.EQ,
+            )
         return Comparison(
             left=root,
             right=MagicConstants.NULL,
@@ -755,8 +764,29 @@ def farray_filter(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> Function:
+    from trilogy.core.exceptions import InvalidSyntaxException
+
     args = hydrated_children(node, hydrate)
-    return context.function_factory.create_function(args, FunctionType.ARRAY_FILTER)
+    factory = args[1]
+    if not len(factory.function_arguments) == 1:
+        raise InvalidSyntaxException(
+            "Array filter function must have exactly one argument;"
+        )
+    array_type = arg_to_datatype(args[0])
+    if not isinstance(array_type, ArrayType):
+        raise InvalidSyntaxException(
+            f"Array filter function must be applied to an array, not {array_type}"
+        )
+    binding = factory.function_arguments[0]
+    return context.function_factory.create_function(
+        [
+            args[0],
+            binding,
+            factory(ArgBinding(name=binding.name, datatype=array_type.value_data_type)),
+        ],
+        FunctionType.ARRAY_FILTER,
+        meta=core_meta(node.meta),
+    )
 
 
 def custom_function(

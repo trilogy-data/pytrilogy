@@ -625,7 +625,7 @@ const x <- 1;
 const x2 <- x+1;
 
 auto constant_group_orid <- unnest([1,2,3]);
-property constan_group_orid.mod_two <- constant_group_orid % 2;
+property constant_group_orid.mod_two <- constant_group_orid % 2;
 
 select 
     mod_two,
