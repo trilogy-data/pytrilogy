@@ -246,7 +246,12 @@ def address_node(
     hydrate: HydrateFunction,
 ) -> Any:
     args = hydrated_children(node, hydrate)
-    return Address(location=str(args[0]).strip("'\""), type=AddressType.TABLE)
+    raw = str(args[0])
+    if len(raw) >= 2 and raw[0] == "`" and raw[-1] == "`":
+        location = raw[1:-1]
+    else:
+        location = raw.strip("'\"")
+    return Address(location=location, type=AddressType.TABLE)
 
 
 def query_node(
@@ -281,7 +286,7 @@ def file_node(
                 path = Path(context.environment.working_path) / path
             base = str(path.resolve().absolute())
             suffix = path.suffix
-        exists = not is_cloud and Path(base).exists()
+        exists = is_cloud or Path(base).exists()
         return base, suffix, exists
 
     read_base, suffix, exists = process_path(read_path)

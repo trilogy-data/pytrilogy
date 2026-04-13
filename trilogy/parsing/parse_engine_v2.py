@@ -224,7 +224,6 @@ def parse_text(
     )
     start = datetime.now()
 
-    environment.concepts.fail_on_missing = False
     try:
         document = parse_syntax(text)
         output = parser.parse(document)
