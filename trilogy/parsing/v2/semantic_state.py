@@ -231,6 +231,20 @@ class SemanticState:
         target: Concept,
         modifiers: list[Modifier],
     ) -> None:
+        # Apply eagerly when both sides are already durable so downstream
+        # plans (e.g. rowset hydration) observe the merged pseudonyms on
+        # the source concept, matching v1's inline merge semantics. When
+        # either side is still pending, defer to semantic_state.commit so
+        # merge_concept's walk over env.concepts can actually see them.
+        durable = self.environment.concepts.data
+        if (
+            source.address in durable
+            and target.address in durable
+            and source.address not in self._pending_by_address
+            and target.address not in self._pending_by_address
+        ):
+            self.environment.merge_concept(source, target, modifiers)
+            return
         self._pending_merges.append((source, target, modifiers))
 
     def stage_rowset_aliases(self, updates: list[Any]) -> None:
