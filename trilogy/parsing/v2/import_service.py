@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from os.path import dirname
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from trilogy.constants import Parsing
 from trilogy.core.models.environment import (
@@ -12,6 +13,9 @@ from trilogy.core.models.environment import (
     Import,
 )
 from trilogy.core.statements.author import ImportStatement
+
+if TYPE_CHECKING:
+    from trilogy.parsing.v2.semantic_state import SemanticState
 
 
 @dataclass
@@ -56,6 +60,17 @@ class ImportHydrationService:
     parsed_environments: dict[str, Environment] = field(default_factory=dict)
     text_lookup: dict[Path | str, str] = field(default_factory=dict)
     import_keys: list[str] = field(default_factory=list)
+    # Target paths whose parse is currently on the call stack. Used to break
+    # circular imports at re-entry rather than recursing until max_parse_depth.
+    # Shared by reference across child ImportHydrationServices via
+    # HydrationContext so cycle detection sees the full parse stack.
+    in_flight_imports: set[str] = field(default_factory=set)
+    # Parser-local SemanticState. When a cycle is detected, the broken
+    # alias is registered here so ConceptLookup can generate narrow
+    # UndefinedConceptFull placeholders for datasource columns referencing
+    # concepts in that in-flight namespace. Optional for back-compat with
+    # direct ImportHydrationService construction in tests.
+    semantic_state: "SemanticState | None" = None
 
     def set_text(self, key: Path | str, text: str) -> None:
         self.text_lookup[key] = text
@@ -67,6 +82,21 @@ class ImportHydrationService:
         environment = self.environment
         key_path = self.import_keys + [request.cache_key]
         cache_lookup = "-".join(key_path)
+        target_key = str(request.token_lookup)
+
+        # Cycle detection: a parse currently on the stack re-encounters
+        # itself. Break by returning a stub ImportStatement and registering
+        # the alias as a deferred namespace; downstream concept lookups in
+        # this parser produce partial placeholders via ConceptLookup rather
+        # than recursing until max_parse_depth and failing.
+        if target_key in self.in_flight_imports:
+            if self.semantic_state is not None:
+                self.semantic_state.add_deferred_import_alias(request.alias)
+            return ImportStatement(
+                alias=request.alias,
+                input_path=request.input_path,
+                path=Path(request.target),
+            )
 
         if len(key_path) > self.max_parse_depth:
             return ImportStatement(
@@ -87,6 +117,7 @@ class ImportHydrationService:
             root = None
             if "." in str(request.token_lookup):
                 root = str(request.token_lookup).rsplit(".", 1)[0]
+            self.in_flight_imports.add(target_key)
             try:
                 document = parse_syntax(text)
                 new_env = Environment(
@@ -104,6 +135,7 @@ class ImportHydrationService:
                     parsed_environments=self.parsed_environments,
                     text_lookup=self.text_lookup,
                     import_keys=key_path,
+                    in_flight_imports=self.in_flight_imports,
                 )
                 NativeHydrator(child_context).parse(document)
                 self.parsed_environments[cache_lookup] = new_env
@@ -111,6 +143,8 @@ class ImportHydrationService:
                 raise ImportError(
                     f"Unable to import file {request.target}, parsing error: {e}"
                 ) from e
+            finally:
+                self.in_flight_imports.discard(target_key)
 
         is_file_resolver = isinstance(
             environment.config.import_resolver, FileSystemImportResolver

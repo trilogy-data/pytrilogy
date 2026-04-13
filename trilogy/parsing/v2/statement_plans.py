@@ -313,7 +313,7 @@ class MergeStatementPlan(StatementPlanBase):
         if self.output is None:
             return None
         for source_c in self.output.sources:
-            hydrator.environment.merge_concept(
+            hydrator.semantic_state.stage_merge(
                 source_c,
                 self.output.targets[source_c.address],
                 self.output.modifiers,
