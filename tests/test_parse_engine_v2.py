@@ -196,3 +196,28 @@ key a int;
     assert "local.a" in env.concepts
     assert "local.b" in env.concepts
     assert env.concepts["local.b"].lineage is not None
+
+
+def test_parse_text_v2_rowset_output_forward_reference() -> None:
+    env, _ = parse_text(
+        """
+key order_id int;
+property order_id.store_id int;
+property order_id.revenue float;
+
+datasource orders (
+    order_id: order_id,
+    store_id: store_id,
+    revenue: revenue,
+)
+grain (order_id)
+address orders;
+
+rowset even_orders <- select order_id, store_id, revenue where (order_id % 2) = 0;
+auto even_order_store_revenue <- sum(even_orders.revenue);
+""",
+        Environment(),
+    )
+    assert "even_orders.revenue" in env.concepts
+    assert "even_orders.local.revenue" not in env.concepts
+    assert "local.even_order_store_revenue" in env.concepts

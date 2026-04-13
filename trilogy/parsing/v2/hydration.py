@@ -302,21 +302,24 @@ class NativeHydrator:
         # Match v1: a blank line between the concept and the next comment
         # detaches the comment, so it is preserved as a standalone element
         # rather than mutating the concept's description.
-        attach_comments = not (
-            trailing
-            and isinstance(trailing[0], SyntaxToken)
-            and trailing[0].kind == SyntaxTokenKind.LINE_SEPARATOR
-        )
-        comments = (
-            [
-                self.hydrate_comment(child)
-                for child in trailing
-                if isinstance(child, SyntaxToken)
-                and child.kind == SyntaxTokenKind.COMMENT
-            ]
-            if attach_comments
-            else []
-        )
+        base_line = concept_node.meta.end_line
+        comments = []
+        # while we have immediatling trailing comments
+        # and not, ex newlines
+        # append them all
+        # this should match declarationg; #abc
+        # #def
+        # with def
+        # But not declaration;\n#abc
+        for x in trailing:
+            if (isinstance(x, SyntaxToken)
+            and x.kind == SyntaxTokenKind.COMMENT
+            and x.meta.line == base_line):
+                comments.append(self.hydrate_comment(x))
+                base_line = x.meta.end_line
+            # anything else, break
+            else:
+                break
         if comments:
             output.concept.metadata.description = "\n".join(
                 comment_body(comment) for comment in comments
