@@ -123,7 +123,7 @@ class Config:
     rendering: Rendering = field(default_factory=Rendering)
     parsing: Parsing = field(default_factory=Parsing)
     generation: Generation = field(default_factory=Generation)
-    parser_version: ParserVersion = ParserVersion.V1
+    parser_version: ParserVersion = ParserVersion.V2
 
     @property
     def show_comments(self) -> bool:
