@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from trilogy.core.exceptions import UndefinedConceptException
 from trilogy.core.models.environment import Environment
 from trilogy.parsing.parse_engine import parse_text as parse_text_v1
 from trilogy.parsing.parse_engine_v2 import SyntaxNode, parse_syntax, parse_text
@@ -147,3 +148,31 @@ file `{remote_path}`;
     )
     ds = env.datasources["local.remote"]
     assert ds.address.location == remote_path
+
+
+def test_parse_text_v2_rejects_property_on_missing_parent() -> None:
+    with pytest.raises(UndefinedConceptException):
+        parse_text("property missing_parent.foo string;", Environment())
+
+
+def test_parse_text_v2_rejects_auto_with_missing_dependency() -> None:
+    with pytest.raises(UndefinedConceptException):
+        parse_text("auto bad <- missing_ref + 1;", Environment())
+
+
+def test_parse_text_v2_allows_function_parameter_dotted_access() -> None:
+    env, output = parse_text("def get_a(x)-> x.a;", Environment())
+    assert "get_a" in env.functions
+
+
+def test_parse_text_v2_allows_forward_reference_between_top_level_concepts() -> None:
+    env, _ = parse_text(
+        """
+auto b <- a + 1;
+key a int;
+""",
+        Environment(),
+    )
+    assert "local.a" in env.concepts
+    assert "local.b" in env.concepts
+    assert env.concepts["local.b"].lineage is not None
