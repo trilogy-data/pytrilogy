@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from trilogy import Dialects
 from trilogy.core.enums import BooleanOperator, ComparisonOperator
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.models.build import (
@@ -336,3 +337,41 @@ def test_gen_select_node_preserves_exact_match_subgraph_filters(
     enrichment = next(ds for ds in resolved.datasources if "tree_enrichment" in ds.name)
     assert enrichment.condition is not None
     assert str(enrichment.condition) == "local.species = Oak"
+
+
+def test_filtered_aggregate_does_not_use_unfiltered_grainless_cache():
+    env = Environment()
+    env.parse(
+        """
+key order_id int;
+property order_id.state string;
+property order_id.amount float;
+
+metric total_amount <- sum(amount);
+
+datasource orders (
+    order_id: order_id,
+    state: state,
+    amount: amount,
+)
+grain (order_id)
+address orders;
+
+datasource cached_total (
+    total_amount: total_amount,
+)
+address cached_total;
+""",
+        persist=True,
+    )
+
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    generated = executor.generate_sql(
+        """
+WHERE state = 'GA'
+SELECT total_amount;
+"""
+    )[-1]
+
+    assert '"cached_total"' not in generated, generated
+    assert '"orders"."state" = \'GA\'' in generated, generated

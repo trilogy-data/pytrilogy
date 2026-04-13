@@ -13,6 +13,7 @@ from trilogy.core.graph_models import (
     ReferenceGraph,
     SearchCriteria,
     concept_to_node,
+    datasource_has_filter_sensitive_aggregate,
     get_graph_exact_match,
     prune_sources_for_aggregates,
     prune_sources_for_conditions,
@@ -456,7 +457,9 @@ def resolve_subgraphs(
         ]
 
     partial_canonical = get_graph_partial_canonical(g, conditions)
-    exact_map = get_graph_exact_match(g, criteria, conditions)
+    exact_map = get_graph_exact_match(
+        g, criteria, conditions, allow_filter_application=False
+    )
     grain_length = get_graph_grains(g)
 
     # compute concept_map and non_partial_map in one pass over subgraphs
@@ -617,7 +620,9 @@ def create_datasource_node(
             all_inputs.append(x)
 
     # additional single row check
-    satisfies_conditions = all(
+    satisfies_conditions = not datasource_has_filter_sensitive_aggregate(
+        datasource, conditions
+    ) and all(
         x.granularity == Granularity.SINGLE_ROW for x in datasource.output_concepts
     )
     logger.info(
