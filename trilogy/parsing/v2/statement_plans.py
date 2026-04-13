@@ -322,6 +322,45 @@ class FunctionDefinitionPlan(StatementPlanBase):
             name=self.output.name,
         )
 
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        # Re-hydrate the function body now that concept plans have committed
+        # their staged concepts via _sort_and_create_concepts. During BIND we
+        # had to materialize parameter names as placeholders because the
+        # referenced concepts (e.g. ``key revenue float::money``) had not
+        # yet been hydrated; that drops trait datatypes from the body's
+        # output_datatype, which then propagates lossy ``merge_datatypes``
+        # behavior at every call site. Re-hydrating here lets parameter
+        # names that collide with already-pending concepts resolve to the
+        # real (trait-bearing) concept, mirroring v1 where the function
+        # body is parsed sequentially after declarations and never sees a
+        # placeholder for a real concept of the same name.
+        if self.output is None:
+            return
+        namespace = hydrator.environment.namespace or DEFAULT_NAMESPACE
+        scoped_params: list[str] = []
+        for name in self.parameter_names:
+            address = f"{namespace}.{name}"
+            if address in hydrator.environment.concepts.data:
+                continue
+            if hydrator.semantic_state.pending_lookup(address) is not None:
+                continue
+            scoped_params.append(name)
+        if len(scoped_params) == len(self.parameter_names):
+            return
+        with hydrator.symbol_table.function_scope(
+            scoped_params
+        ), hydrator.semantic_state.pending_overlay_scope():
+            rehydrated = hydrator.hydrate_rule(self.syntax)
+        if rehydrated is None:
+            return
+        self.output = rehydrated
+        hydrator.environment.functions[rehydrated.name] = CustomFunctionFactory(
+            function=rehydrated.expr,
+            namespace=hydrator.environment.namespace,
+            function_arguments=rehydrated.args,
+            name=rehydrated.name,
+        )
+
     def commit(self, hydrator: "NativeHydrator") -> FunctionDeclaration | None:
         return self.output
 
