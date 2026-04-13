@@ -320,7 +320,7 @@ def datasource_status_clause(
     hydrate: HydrateFunction,
 ) -> DatasourceState:
     args = hydrated_children(node, hydrate)
-    return args[1]
+    return DatasourceState(str(args[1]).lower())
 
 
 def datasource_partition_clause(

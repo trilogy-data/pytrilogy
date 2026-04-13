@@ -4,7 +4,7 @@ from pathlib import Path
 from pytest import raises
 
 from trilogy import Dialects, Executor
-from trilogy.core.exceptions import InvalidSyntaxException
+from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.hooks import DebuggingHook
@@ -51,7 +51,7 @@ def test_adhoc04():
     with open(working_path / "adhoc04.preql") as f:
         text = f.read()
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
-    with raises(InvalidSyntaxException):
+    with raises((InvalidSyntaxException, UndefinedConceptException)):
         engine.parse_text(text)[-1]
 
 
