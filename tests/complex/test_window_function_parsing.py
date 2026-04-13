@@ -343,8 +343,12 @@ property user_id.country_rank <- rank(user_id) over (partition by country order 
     renderer = Renderer(environment=env)
     rendered = renderer.to_string(parsed[-1])
 
-    # Re-parse the rendered output
-    env2, _ = parse(rendered)
+    prelude = (
+        "key user_id int;\n"
+        "property user_id.country string;\n"
+        "property user_id.score int;\n"
+    )
+    env2, _ = parse(prelude + rendered)
     assert "country_rank" in [c.split(".")[-1] for c in env2.concepts.keys()]
 
 

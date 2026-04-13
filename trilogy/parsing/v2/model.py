@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from trilogy.parsing.exceptions import ParseError
 from trilogy.parsing.v2.semantic_state import ConceptUpdate, ConceptUpdateKind
 from trilogy.parsing.v2.syntax import SyntaxElement, SyntaxMeta, syntax_name
 
@@ -44,7 +45,7 @@ class HydrationDiagnostic:
         )
 
 
-class HydrationError(Exception):
+class HydrationError(ParseError):
     def __init__(self, diagnostic: HydrationDiagnostic) -> None:
         self.diagnostic = diagnostic
         super().__init__(diagnostic.message)
