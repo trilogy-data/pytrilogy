@@ -1,4 +1,60 @@
+from pathlib import Path
+
+from trilogy.core.models.environment import Environment
 from trilogy.parser import parse
+
+
+def test_rowset_imported_nested_namespace(tmp_path: Path) -> None:
+    inner = tmp_path / "inner.preql"
+    inner.write_text(
+        """
+key id int;
+property id.zip string;
+property id.state string;
+
+datasource stores (
+    id: id,
+    zip: zip,
+    state: state,
+)
+grain (id)
+address stores;
+"""
+    )
+    env = Environment(working_path=tmp_path)
+    env, _ = parse(
+        """import inner as store;
+
+key sale_id int;
+property sale_id.amount float;
+
+datasource sales (
+    id: sale_id,
+    store_id: store.id,
+    amount: amount,
+)
+grain (sale_id)
+address sales;
+
+rowset by_state <- select
+    store.id,
+    store.state,
+    sum(amount) -> total,
+;
+
+auto state_avg <- avg(by_state.total) by by_state.store.id;
+
+select
+    by_state.store.id,
+    by_state.total,
+    state_avg,
+;
+""",
+        env,
+    )
+    assert "by_state.store.id" in env.concepts
+    assert "by_state.store.state" in env.concepts
+    assert "by_state.total" in env.concepts
 
 
 def test_rowset() -> None:

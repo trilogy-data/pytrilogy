@@ -1,10 +1,16 @@
 
 
+import lineitem;
+
+metric total_items_sold <- sum(quantity);
+metric total_orders <- count(order.id);
+metric total_customers <- count(order.customer.id);
+
 datasource dashboard_agg_1(
-    _total_rev,
-    _total_items_sold,
-    _total_orders,
-    _total_customers
+    _total_rev: total_revenue,
+    _total_items_sold: total_items_sold,
+    _total_orders: total_orders,
+    _total_customers: total_customers
 )
 address `dashboard_agg_1`
 ;
