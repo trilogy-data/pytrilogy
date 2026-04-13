@@ -40,6 +40,7 @@ from typing import Any, Mapping
 
 from trilogy.constants import CONFIG
 from trilogy.core.enums import ConceptSource, FunctionClass
+from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import (
     AggregateWrapper,
     Concept,
@@ -48,7 +49,6 @@ from trilogy.core.models.author import (
     UndefinedConcept,
     UndefinedConceptFull,
 )
-from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.environment import UndefinedConceptException
 from trilogy.core.statements.author import (
     ConceptTransform,
