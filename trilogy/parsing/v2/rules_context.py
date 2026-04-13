@@ -3,8 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, cast
 
+from trilogy.constants import DEFAULT_NAMESPACE
+from trilogy.core.enums import ConceptSource, FunctionType, Purpose
 from trilogy.core.functions import FunctionFactory
-from trilogy.core.models.author import Concept
+from trilogy.core.models.author import Concept, Metadata
+from trilogy.core.models.core import StructType, arg_to_datatype
 from trilogy.core.models.environment import Environment
 from trilogy.parsing.v2.model import HydrationDiagnostic, HydrationError
 from trilogy.parsing.v2.semantic_scope import SymbolTable
@@ -43,6 +46,54 @@ class RuleContext:
         force: bool = False,
     ) -> None:
         self.semantic_state.add(concept, kind, meta=meta, force=force)
+        self._stage_struct_fields(concept, meta=meta)
+
+    def _stage_struct_fields(
+        self, concept: Concept, meta: Any | None = None
+    ) -> None:
+        """Stage pending-only field concepts for struct-typed concepts.
+
+        Mirrors ``generate_related_concepts``' struct branch so field concepts
+        like ``wrapper.a`` resolve through ``ConceptLookup`` during per-plan
+        validate. The staged entries are committed as
+        ``STRUCT_FIELD_VIRTUAL`` and skipped by ``SemanticState.commit`` — at
+        final commit, ``environment.add_concept`` on the parent regenerates
+        each field with pseudonyms already merged.
+        """
+        datatype = concept.datatype
+        if not isinstance(datatype, StructType):
+            return
+        env_namespace = self.environment.namespace
+        if env_namespace and env_namespace != DEFAULT_NAMESPACE:
+            field_namespace = f"{env_namespace}.{concept.name}"
+        else:
+            field_namespace = concept.name
+        parent_ref = concept.reference
+        for field_name, value in datatype.fields_map.items():
+            field_address = f"{field_namespace}.{field_name}"
+            if isinstance(value, Concept):
+                # Mirror ``merge_concept``: expose the existing canonical
+                # concept (e.g. ``local.a``) at the field address so select
+                # resolution canonicalizes output column names.
+                self.semantic_state.stage_field_alias(field_address, value)
+                continue
+            field_concept = Concept(
+                name=field_name,
+                datatype=arg_to_datatype(value),
+                purpose=Purpose.PROPERTY,
+                namespace=field_namespace,
+                lineage=self.function_factory.create_function(
+                    [parent_ref, field_name], FunctionType.ATTR_ACCESS
+                ),
+                grain=concept.grain,
+                metadata=Metadata(concept_source=ConceptSource.AUTO_DERIVED),
+                keys=concept.keys,
+            )
+            self.semantic_state.add(
+                field_concept,
+                ConceptUpdateKind.STRUCT_FIELD_VIRTUAL,
+                meta=meta,
+            )
 
     def add_top_level_concept(self, concept: Concept, meta: Any | None = None) -> None:
         self._add_concept(concept, ConceptUpdateKind.TOP_LEVEL_DECLARATION, meta=meta)

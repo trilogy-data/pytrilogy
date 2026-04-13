@@ -114,6 +114,7 @@ class HydrationContext:
     import_keys: list[str] | None = None
     symbol_table: SymbolTable | None = None
     semantic_state: SemanticState | None = None
+    in_flight_imports: set[str] | None = None
 
 
 class NativeHydrator:
@@ -121,6 +122,11 @@ class NativeHydrator:
         self.environment = context.environment
         self.parse_address = context.parse_address
         self.token_address = context.token_address
+        self.semantic_state: SemanticState = (
+            context.semantic_state
+            if context.semantic_state is not None
+            else SemanticState(environment=self.environment)
+        )
         self.import_service = ImportHydrationService(
             environment=context.environment,
             parse_config=context.parse_config,
@@ -132,13 +138,14 @@ class NativeHydrator:
             ),
             text_lookup=context.text_lookup if context.text_lookup is not None else {},
             import_keys=list(context.import_keys) if context.import_keys else [],
+            in_flight_imports=(
+                context.in_flight_imports
+                if context.in_flight_imports is not None
+                else set()
+            ),
+            semantic_state=self.semantic_state,
         )
         self.function_factory = FunctionFactory(self.environment)
-        self.semantic_state: SemanticState = (
-            context.semantic_state
-            if context.semantic_state is not None
-            else SemanticState(environment=self.environment)
-        )
         self.symbol_table: SymbolTable = (
             context.symbol_table
             if context.symbol_table is not None
