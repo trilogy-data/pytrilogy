@@ -146,9 +146,18 @@ def collect_concept_address(block: SyntaxNode, environment: Environment) -> str 
         derivation_syntax = ConceptDerivationSyntax.from_node(inner)
         raw_name = derivation_syntax.name
         if isinstance(raw_name, SyntaxToken):
-            _, namespace, name_str, _ = parse_concept_reference(
-                raw_name.value, environment
-            )
+            name_value = raw_name.value
+            if (
+                derivation_syntax.purpose.value.lower() == "property"
+                and "." in name_value
+            ):
+                parent, short_name = name_value.rsplit(".", 1)
+                if "." in parent:
+                    namespace = parent.rsplit(".", 1)[0]
+                else:
+                    namespace = environment.namespace or DEFAULT_NAMESPACE
+                return _make_address(short_name, namespace)
+            _, namespace, name_str, _ = parse_concept_reference(name_value, environment)
             return _make_address(name_str, namespace)
         if (
             isinstance(raw_name, SyntaxNode)
