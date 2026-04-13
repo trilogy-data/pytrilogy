@@ -42,7 +42,7 @@ select count(ride_id) as rides;
 auto daily_rides <- count(ride_id) by ride_date;
 
 SELECT
-    day_of_week,
+    ride_start_time.day_of_week,
     rank start_station.id by avg(daily_rides) desc as daily_station_rank
 HAVING
     daily_station_rank <5
@@ -53,7 +53,7 @@ HAVING
 
 persist daily_ranking into tbl_daily_ranking from
 SELECT
-    day_of_week,
+    ride_start_time.day_of_week,
     daily_station_rank
 ;
 
