@@ -44,6 +44,7 @@ from trilogy.parsing.v2.symbols import (
     extract_concept_name_from_literal,
     extract_dependencies,
     find_concept_literals,
+    find_select_transform_targets,
 )
 from trilogy.parsing.v2.syntax import (
     SyntaxElement,
@@ -371,7 +372,37 @@ class RowsetStatementPlan(StatementPlanBase):
                 and child.kind == SyntaxTokenKind.IDENTIFIER
             ):
                 self.rowset_name = child.value
-                return
+                break
+        if not self.rowset_name:
+            return
+        # Declare scoped placeholders for the rowset's prospective output
+        # addresses so concept declarations later in the same parse (which
+        # hydrate during BIND, before this plan's hydrate runs) can resolve
+        # ``rowset_name.<source_address>`` and ``rowset_name.<transform_name>``
+        # as forward references. Real concepts created in
+        # ``rowset_derivation_statement`` displace these via
+        # ``SemanticState.add``.
+        namespace = hydrator.environment.namespace or DEFAULT_NAMESPACE
+        seen: set[str] = set()
+        for literal in find_concept_literals(self.syntax):
+            source_address = extract_concept_name_from_literal(literal, namespace)
+            rowset_address = f"{self.rowset_name}.{source_address}"
+            if rowset_address in seen:
+                continue
+            seen.add(rowset_address)
+            ns, _, nm = rowset_address.rpartition(".")
+            hydrator.symbol_table.declare(
+                rowset_address, nm or rowset_address, ns or namespace
+            )
+        for transform_name in find_select_transform_targets(self.syntax):
+            rowset_address = f"{self.rowset_name}.{transform_name}"
+            if rowset_address in seen:
+                continue
+            seen.add(rowset_address)
+            ns, _, nm = rowset_address.rpartition(".")
+            hydrator.symbol_table.declare(
+                rowset_address, nm or rowset_address, ns or namespace
+            )
 
     def bind(self, hydrator: "NativeHydrator") -> None:
         # Forward references inside a rowset derive clause (e.g. coalesce(level0.qoh1, ...))
