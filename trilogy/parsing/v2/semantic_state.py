@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator
 
 from trilogy.constants import DEFAULT_NAMESPACE
@@ -89,6 +90,15 @@ class SemanticState:
     # import higher up in the call stack materializes the real concepts
     # through the normal ``environment.add_import`` path.
     _deferred_import_aliases: set[str] = field(default_factory=set)
+    # `self import as X` statements deferred until after the current parse's
+    # concepts and datasources are durable. v2 load_imports runs before
+    # concept hydration so the current env has nothing to copy yet; we stage
+    # the alias here and materialize it via environment.add_import after the
+    # final semantic_state.commit. Datasource columns that reference the
+    # alias (e.g. parent.id) resolve to deferred placeholders during hydrate
+    # via _deferred_import_aliases, then get overwritten when the real
+    # concepts are copied in under the alias.
+    _pending_self_imports: list[tuple[str, Path | None]] = field(default_factory=list)
     # Addresses staged via ``stage_placeholder``: scoped forward references
     # produced during function/select/rowset hydration whose target concept
     # is declared in the current parse but not yet hydrated. These live in
@@ -193,6 +203,14 @@ class SemanticState:
     def add_deferred_import_alias(self, alias: str) -> None:
         self._deferred_import_aliases.add(alias)
 
+    def add_pending_self_import(self, alias: str, path: Path | None) -> None:
+        self._pending_self_imports.append((alias, path))
+
+    def drain_pending_self_imports(self) -> list[tuple[str, Path | None]]:
+        drained = list(self._pending_self_imports)
+        self._pending_self_imports.clear()
+        return drained
+
     @property
     def deferred_import_aliases(self) -> set[str]:
         return self._deferred_import_aliases
@@ -265,6 +283,7 @@ class SemanticState:
         self._pending_types_by_name.clear()
         self._deferred_import_aliases.clear()
         self._pending_merges.clear()
+        self._pending_self_imports.clear()
 
 
 class ConceptLookup:
@@ -407,6 +426,36 @@ class ConceptLookup:
             return placeholder
         return None
 
+    def _resolve_property_sibling(self, address: str) -> Concept | None:
+        """Resolve `key_name.prop_name` shorthand to a sibling property concept.
+
+        `property x.part_1 string;` declares a concept at `local.part_1` with
+        ``keys={'local.x'}`` — the syntactic parent address ``x.part_1`` never
+        exists as a standalone key. References to ``x.part_1`` in expressions
+        (e.g. ``concat(x.part_1, x.part_2)``) should resolve to that sibling
+        property. v1 quietly returned an UndefinedConcept via ``fail_on_missing``
+        and let the reference stay dangling; v2 resolves it strictly by
+        verifying the key relationship and returning the real concept.
+        """
+        if "." not in address:
+            return None
+        for candidate in self._candidate_addresses(address):
+            if "." not in candidate:
+                continue
+            key_name, suffix = candidate.rsplit(".", 1)
+            key_concept = self._existing_concept(key_name)
+            if key_concept is None:
+                continue
+            namespace = key_concept.namespace or DEFAULT_NAMESPACE
+            sibling_addr = f"{namespace}.{suffix}"
+            sibling = self._existing_concept(sibling_addr)
+            if sibling is None:
+                continue
+            sibling_keys = getattr(sibling, "keys", None)
+            if sibling_keys and key_concept.address in sibling_keys:
+                return sibling
+        return None
+
     def require(self, address: str) -> Concept:
         existing = self._existing_concept(address)
         if existing is not None:
@@ -415,6 +464,9 @@ class ConceptLookup:
             derived = self._auto_derive(candidate)
             if derived is not None:
                 return derived
+        sibling = self._resolve_property_sibling(address)
+        if sibling is not None:
+            return sibling
         scoped = self._scoped_placeholder(address)
         if scoped is not None:
             return scoped
@@ -431,6 +483,9 @@ class ConceptLookup:
             derived = self._auto_derive(candidate)
             if derived is not None:
                 return derived
+        sibling = self._resolve_property_sibling(address)
+        if sibling is not None:
+            return sibling
         scoped = self._scoped_placeholder(address)
         if scoped is not None:
             return scoped
@@ -438,6 +493,8 @@ class ConceptLookup:
 
     def contains(self, address: str) -> bool:
         if self._existing_concept(address) is not None:
+            return True
+        if self._resolve_property_sibling(address) is not None:
             return True
         if self._scoped_placeholder(address) is not None:
             return True

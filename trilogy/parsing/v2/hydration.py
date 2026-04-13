@@ -8,7 +8,7 @@ from typing import Any
 from trilogy.constants import Parsing
 from trilogy.core.functions import FunctionFactory
 from trilogy.core.models.author import Comment
-from trilogy.core.models.environment import Environment
+from trilogy.core.models.environment import Environment, Import
 from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     ShowStatement,
@@ -239,7 +239,29 @@ class NativeHydrator:
             self.semantic_state.rollback()
             raise
         self.semantic_state.commit(self.environment)
+        self._resolve_pending_self_imports()
         return [item for item in output if item]
+
+    def _resolve_pending_self_imports(self) -> None:
+        """Materialize `self import as X` aliases after the current parse commits.
+
+        Mirrors v1's ``_resolve_pending_self_imports`` phase. Runs after the
+        final ``semantic_state.commit`` so ``environment.concepts`` and
+        ``environment.datasources`` contain every declaration from this parse;
+        ``environment.add_import`` then copies them under the self-import
+        alias, replacing any deferred placeholder that was created while
+        hydrating references like ``parent.id``.
+        """
+        pending = self.semantic_state.drain_pending_self_imports()
+        if not pending:
+            return
+        for alias, path in pending:
+            import_path = path if path is not None else Path(".")
+            self.environment.add_import(
+                alias,
+                self.environment,
+                Import(alias=alias, path=import_path, input_path=path),
+            )
 
     def plan(self, forms: list[SyntaxElement]) -> list[StatementPlan]:
         return self._planner.plan(forms)
@@ -312,9 +334,11 @@ class NativeHydrator:
         # with def
         # But not declaration;\n#abc
         for x in trailing:
-            if (isinstance(x, SyntaxToken)
-            and x.kind == SyntaxTokenKind.COMMENT
-            and x.meta.line == base_line):
+            if (
+                isinstance(x, SyntaxToken)
+                and x.kind == SyntaxTokenKind.COMMENT
+                and x.meta.line == base_line
+            ):
                 comments.append(self.hydrate_comment(x))
                 base_line = x.meta.end_line
             # anything else, break

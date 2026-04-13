@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from trilogy.core.enums import ConceptSource, Modifier
 from trilogy.core.models.author import (
+    Concept,
     HavingClause,
     Metadata,
     OrderBy,
+    UndefinedConcept,
+    UndefinedConceptFull,
     WhereClause,
 )
 from trilogy.core.statements.author import (
@@ -85,6 +88,19 @@ def select_item(
     return SelectItem(content=content, modifiers=modifiers)
 
 
+def _existing_select_definition_target(
+    context: RuleContext,
+    address: str,
+) -> Concept | None:
+    # Side-effect-free lookup: avoid ConceptLookup.get(), which can auto-derive
+    # or stage placeholders. We only want to know whether this address is
+    # already bound to a durable or pending concept.
+    pending = context.semantic_state.pending_lookup(address)
+    if pending is not None:
+        return pending
+    return context.environment.concepts.data.get(address)
+
+
 def select_transform(
     node: SyntaxNode,
     context: RuleContext,
@@ -109,7 +125,16 @@ def select_transform(
         name=output_name,
         metadata=meta,
     )
-    context.add_select_concept(concept, meta=core_meta(node.meta))
+    existing = _existing_select_definition_target(context, concept.address)
+    if (
+        existing is None
+        or isinstance(existing, (UndefinedConcept, UndefinedConceptFull))
+        or (
+            existing.metadata
+            and existing.metadata.concept_source == ConceptSource.SELECT
+        )
+    ):
+        context.add_select_concept(concept, meta=core_meta(node.meta))
     return ConceptTransform(function=transformation, output=concept)
 
 

@@ -12,7 +12,7 @@ import std.money;
 
 key order int;
 key order_score int::rank;
-property order_item.amount numeric::usd;            
+property order.amount numeric::usd;            
 datasource orders (
     order:order,
     order_score:order_score,

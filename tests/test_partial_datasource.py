@@ -100,7 +100,7 @@ def test_partial_render_roundtrip():
     r = Renderer()
     rendered = r.to_string(ds)
     assert rendered.startswith("partial datasource")
-    env2, _ = parse(rendered)
+    env2, _ = parse(r.to_string(env))
     ds2 = env2.datasources["orders"]
     assert ds2.is_partial
     assert _all_partial(ds2)
@@ -112,7 +112,7 @@ def test_root_partial_render_roundtrip():
     r = Renderer()
     rendered = r.to_string(ds)
     assert rendered.startswith("root partial datasource")
-    env2, _ = parse(rendered)
+    env2, _ = parse(r.to_string(env))
     ds2 = env2.datasources["orders"]
     assert ds2.is_root
     assert ds2.is_partial

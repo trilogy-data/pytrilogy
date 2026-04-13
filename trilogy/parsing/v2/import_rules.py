@@ -114,6 +114,7 @@ def self_import_statement(
     is_dict_resolver = isinstance(
         environment.config.import_resolver, DictImportResolver
     )
+    path: Path
     if is_dict_resolver:
         input_path = "."
         path = Path(".")
@@ -125,6 +126,12 @@ def self_import_statement(
         path = env_file_path
     else:
         raise ImportError("Cannot use 'self import' without a file path context.")
+    # Register the alias for deferred-placeholder fallbacks during datasource /
+    # concept hydration (``parent.id`` → UndefinedConceptFull) and stage the
+    # self-import for materialization after the current parse's concepts and
+    # datasources are durable. See SemanticState._pending_self_imports.
+    context.semantic_state.add_deferred_import_alias(alias)
+    context.semantic_state.add_pending_self_import(alias, path)
     return ImportStatement(
         alias=alias,
         input_path=input_path,

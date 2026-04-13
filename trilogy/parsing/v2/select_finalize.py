@@ -48,6 +48,7 @@ from trilogy.core.models.author import (
     UndefinedConcept,
     UndefinedConceptFull,
 )
+from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.environment import UndefinedConceptException
 from trilogy.core.statements.author import (
     ConceptTransform,
@@ -211,7 +212,7 @@ def finalize_select_statement(
             select.local_concepts[adjusted.address] = adjusted
             merged[adjusted.address] = adjusted
             if adjusted.address in output_addresses:
-                raise SyntaxError(
+                raise InvalidSyntaxException(
                     f"Duplicate select output for {adjusted.address}; "
                     f"Line: {line_no or 'unknown'}"
                 )
@@ -226,7 +227,7 @@ def finalize_select_statement(
                 continue
             select.local_concepts[addr] = resolved
             if addr in output_addresses:
-                raise SyntaxError(
+                raise InvalidSyntaxException(
                     f"Duplicate select output for {addr}; Line: {line_no or 'unknown'}"
                 )
             output_addresses.add(addr)

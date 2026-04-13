@@ -882,6 +882,7 @@ state unpublished;"""
     )
 
     # validate round trip
+    basic.parse("key user_id int;")
     basic.parse(test2)
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 from datetime import date, datetime
 from typing import Any
 
@@ -450,14 +451,23 @@ def data_type(
     else:
         base = DataType(str(resolved).lower())
     if traits:
+        line = node.meta.line if node.meta else None
         for trait in traits:
             matched = context.types.get(trait)
             if matched is None:
-                raise fail(node, f"Invalid type (trait) {trait} for {base}")
+                known = set(context.environment.data_types.keys())
+                known.update(
+                    name for name, _ in context.semantic_state.pending_types()
+                )
+                similar = difflib.get_close_matches(trait, list(known))
+                hint = f" Did you mean: {', '.join(similar)}?" if similar else ""
+                raise TypeError(
+                    f"Invalid type (trait) {trait} for {base}, line {line}.{hint}"
+                )
             if not is_compatible_datatype(matched.type, base):
-                raise fail(
-                    node,
-                    f"Invalid type (trait) {trait} for {base}. Trait expects type {matched.type}, has {base}",
+                raise TypeError(
+                    f"Invalid type (trait) {trait} for {base}, line {line}. "
+                    f"Trait expects type {matched.type}, has {base}"
                 )
         return TraitDataType(type=base, traits=traits)
     return base
