@@ -13,6 +13,7 @@ venv/
 __pycache__/
 
 .pytest_cache/
+.pytest-*-lastfailed*.log
 AdventureWorksDW2019.bak
 
 .vscode/
