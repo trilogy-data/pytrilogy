@@ -43,28 +43,51 @@ def _union_is_exact_match(
     )
 
 
+def _condition_canonical_addresses(conditions: BuildWhereClause) -> set[str]:
+    return {c.canonical_address for c in conditions.row_arguments}
+
+
+def datasource_has_filter_sensitive_aggregate(
+    ds: BuildDatasource,
+    conditions: BuildWhereClause | None,
+) -> bool:
+    if not conditions or not any(c.is_aggregate for c in ds.output_concepts):
+        return False
+    condition_addresses = _condition_canonical_addresses(conditions)
+    output_addresses = {c.canonical_address for c in ds.output_concepts}
+    return not condition_addresses.issubset(output_addresses)
+
+
 def _datasource_is_exact_match(
     ds: BuildDatasource,
     criteria: SearchCriteria,
     conditions: BuildWhereClause | None,
     allow_intersection: bool = False,
+    allow_filter_application: bool = True,
 ) -> bool:
     if not conditions:
         return (
             not ds.non_partial_for
             or criteria == SearchCriteria.PARTIAL_INCLUDING_SCOPED
         )
-    # All outputs are scalar — filtering has no effect, safe in any context.
+    # Row filters still affect aggregates unless the datasource can apply them.
     if not ds.non_partial_for:
+        if datasource_has_filter_sensitive_aggregate(ds, conditions):
+            return False
+        condition_addresses = _condition_canonical_addresses(conditions)
+        ds_output_addresses = {c.canonical_address for c in ds.output_concepts}
+        if allow_filter_application and condition_addresses.issubset(
+            ds_output_addresses
+        ):
+            return True
         if allow_intersection:
             # When conditions are "covered" by another datasource's non_partial_for,
             # a datasource with no overlap is still an exact match (condition handled elsewhere).
             cond_concept_addresses = {
-                c.address
+                c.canonical_address
                 for atom in decompose_condition(conditions.conditional)
                 for c in atom.concept_arguments
             }
-            ds_output_addresses = {c.address for c in ds.output_concepts}
             if not cond_concept_addresses.intersection(ds_output_addresses):
                 return True
         return all(c.granularity == Granularity.SINGLE_ROW for c in ds.output_concepts)
@@ -91,13 +114,20 @@ def get_graph_exact_match(
     criteria: SearchCriteria,
     conditions: BuildWhereClause | None,
     allow_intersection: bool = False,
+    allow_filter_application: bool = True,
 ) -> set[str]:
     exact: set[str] = set()
     for node, ds in g.datasources.items():
         if isinstance(ds, BuildUnionDatasource):
             if _union_is_exact_match(ds, conditions):
                 exact.add(node)
-        elif _datasource_is_exact_match(ds, criteria, conditions, allow_intersection):
+        elif _datasource_is_exact_match(
+            ds,
+            criteria,
+            conditions,
+            allow_intersection,
+            allow_filter_application,
+        ):
             exact.add(node)
     return exact
 

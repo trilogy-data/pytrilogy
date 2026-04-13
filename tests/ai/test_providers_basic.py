@@ -100,6 +100,8 @@ def test_basic_google_completion():
             or "quota" in message.lower()
             or "rate limit" in message.lower()
         ):
-            pytest.skip(f"Skipping Google integration test due to quota/rate limit: {exc}")
+            pytest.skip(
+                f"Skipping Google integration test due to quota/rate limit: {exc}"
+            )
         raise
     validate_response(response)
