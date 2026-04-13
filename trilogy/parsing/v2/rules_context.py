@@ -35,7 +35,11 @@ class RuleContext:
     types: TypeLookup = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "concepts", ConceptLookup(self.semantic_state))
+        object.__setattr__(
+            self,
+            "concepts",
+            ConceptLookup(self.semantic_state, symbol_table=self.symbol_table),
+        )
         object.__setattr__(self, "types", TypeLookup(self.semantic_state))
 
     def _add_concept(

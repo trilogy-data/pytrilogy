@@ -146,9 +146,19 @@ class ConceptStatementPlan(StatementPlanBase):
         for addr in self.provided_addresses:
             namespace, _, name = addr.rpartition(".")
             hydrator.symbol_table.declare(addr, name or addr, namespace or "")
+        # Pre-declare body literal addresses so that concept bodies referencing
+        # not-yet-hydrated concepts (or wholly undeclared identifiers carried
+        # forward from v1's lazy lookup) resolve through the scoped placeholder
+        # path during _sort_and_create_concepts. Real declarations later
+        # displace the placeholder atomically via SemanticState.add.
+        self.dependencies = extract_dependencies(self.syntax, hydrator.environment)
+        for dep in self.dependencies:
+            ns, _, nm = dep.rpartition(".")
+            hydrator.symbol_table.declare(dep, nm or dep, ns or "")
 
     def bind(self, hydrator: "NativeHydrator") -> None:
-        self.dependencies = extract_dependencies(self.syntax, hydrator.environment)
+        if not self.dependencies:
+            self.dependencies = extract_dependencies(self.syntax, hydrator.environment)
 
     def hydrate(self, hydrator: "NativeHydrator") -> None:
         # Concepts are created during BIND via _sort_and_create_concepts
@@ -213,6 +223,27 @@ class ImportStatementPlan(StatementPlanBase):
         return self.output
 
 
+def _declare_inline_literals(
+    syntax: SyntaxNode,
+    hydrator: "NativeHydrator",
+    namespace: str,
+) -> None:
+    """Pre-declare every inline concept literal address as a scoped symbol.
+
+    Mirrors v1's lazy ``fail_on_missing=False`` lookup behavior without any
+    env mutation: select/rowset/multiselect bodies frequently reference
+    concepts (or typo'd identifiers) before their declaration is hydrated,
+    or that intentionally never resolve at all. Pre-declaring puts the
+    address in the symbol table so ``ConceptLookup`` returns a
+    non-durable scoped placeholder instead of raising. Real concepts
+    later in the parse displace the placeholder via ``SemanticState.add``.
+    """
+    for literal in find_concept_literals(syntax):
+        address = extract_concept_name_from_literal(literal, namespace)
+        ns, _, nm = address.rpartition(".")
+        hydrator.symbol_table.declare(address, nm or address, ns or namespace)
+
+
 @dataclass
 class SelectStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
@@ -225,6 +256,7 @@ class SelectStatementPlan(StatementPlanBase):
         for addr in self.inline_addresses:
             ns, _, nm = addr.rpartition(".")
             hydrator.symbol_table.declare(addr, nm or addr, ns or namespace)
+        _declare_inline_literals(self.syntax, hydrator, namespace)
 
     def hydrate(self, hydrator: "NativeHydrator") -> None:
         self.output = hydrator.hydrate_rule(self.syntax)
@@ -248,6 +280,7 @@ class MultiSelectStatementPlan(StatementPlanBase):
         for addr in self.inline_addresses:
             ns, _, nm = addr.rpartition(".")
             hydrator.symbol_table.declare(addr, nm or addr, ns or namespace)
+        _declare_inline_literals(self.syntax, hydrator, namespace)
 
     def hydrate(self, hydrator: "NativeHydrator") -> None:
         self.output = hydrator.hydrate_rule(self.syntax)
@@ -273,7 +306,12 @@ class FunctionDefinitionPlan(StatementPlanBase):
     def bind(self, hydrator: "NativeHydrator") -> None:
         # Register into env.functions during BIND so later concept plans
         # (hydrated inside _sort_and_create_concepts) can resolve @name refs.
-        with hydrator.symbol_table.function_scope(self.parameter_names):
+        # The pending overlay exposes scoped placeholders staged by
+        # ConceptLookup to v1 helpers (FunctionFactory / parsing.common)
+        # that read environment.concepts directly during the same hydration.
+        with hydrator.symbol_table.function_scope(
+            self.parameter_names
+        ), hydrator.semantic_state.pending_overlay_scope():
             self.output = hydrator.hydrate_rule(self.syntax)
         if self.output is None:
             return
