@@ -682,10 +682,9 @@ class BaseDialect:
                 ]
 
                 rval = self.WINDOW_FUNCTION_MAP[c.lineage.type](
-                    concept=self.render_concept_sql(
+                    concept=self.render_expr(
                         c.lineage.content,
                         cte=cte,
-                        alias=False,
                         raise_invalid=raise_invalid,
                     ),
                     window=",".join(rendered_over_components),
