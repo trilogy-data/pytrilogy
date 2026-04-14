@@ -130,7 +130,7 @@ def _validate_syntax(select: SelectStatement, context: RuleContext) -> None:
                         x.address,
                         x.metadata.line_number if x.metadata else None,
                     )
-    all_in_output = [x for x in select.output_components]
+    all_in_output = set(select.output_components)
     locally_derived = select.locally_derived
     if select.where_clause:
         for cref in select.where_clause.concept_arguments:
@@ -231,9 +231,7 @@ def finalize_select_statement(
                     f"Duplicate select output for {addr}; Line: {line_no or 'unknown'}"
                 )
             output_addresses.add(addr)
-    select.grain = _calculate_grain(
-        select, context, _merged_local_concepts(select, context)
-    )
+    select.grain = _calculate_grain(select, context, merged)
     _validate_syntax(select, context)
 
 
