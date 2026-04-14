@@ -40,8 +40,6 @@
 
     rowset_derivation_statement: ("rowset"i IDENTIFIER "<-" (multi_select_statement | select_statement)) | ("with"i IDENTIFIER "as"i (multi_select_statement | select_statement))
     
-    constant_derivation: CONST IDENTIFIER "<-" (literal | _constant_functions)
-
     concept_nullable_modifier: "?"
 
     // properties <key> (...) or properties <key1, key2> (...)
@@ -50,7 +48,7 @@
     properties_declaration: _PROPERTIES (prop_ident_list | IDENTIFIER) "(" inline_property_list ")"
     prop_ident_list: "<" IDENTIFIER ("," IDENTIFIER)* ","? ">"
 
-    concept:  (parameter_declaration | concept_declaration | concept_derivation | concept_property_declaration | constant_derivation | properties_declaration)
+    concept:  (parameter_declaration | concept_declaration | concept_derivation | concept_property_declaration |  properties_declaration)
     
     //concept property
     prop_ident: "<" IDENTIFIER ("," IDENTIFIER )* ","? ">" "." IDENTIFIER

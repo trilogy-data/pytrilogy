@@ -697,20 +697,28 @@ def transform_lambda(
     return context.functions[str(args[0])]
 
 
-def farray_transform(
+_ARRAY_LAMBDA_MAP: dict[SyntaxNodeKind, tuple[FunctionType, str]] = {
+    SyntaxNodeKind.FARRAY_TRANSFORM: (FunctionType.ARRAY_TRANSFORM, "transform"),
+    SyntaxNodeKind.FARRAY_FILTER: (FunctionType.ARRAY_FILTER, "filter"),
+}
+
+
+def farray_lambda(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> Function:
+    assert node.kind is not None
+    operator, label = _ARRAY_LAMBDA_MAP[node.kind]
     args = hydrated_children(node, hydrate)
     factory = args[1]
     if not len(factory.function_arguments) == 1:
-        raise fail(node, "Array transform lambda must have exactly 1 argument")
+        raise fail(node, f"Array {label} lambda must have exactly 1 argument")
     array_type = arg_to_datatype(args[0])
     if not isinstance(array_type, ArrayType):
         raise fail(
             node,
-            f"Array transform function must be applied to an array, not {array_type}",
+            f"Array {label} function must be applied to an array, not {array_type}",
         )
     binding = factory.function_arguments[0]
     return context.function_factory.create_function(
@@ -719,37 +727,7 @@ def farray_transform(
             binding,
             factory(ArgBinding(name=binding.name, datatype=array_type.value_data_type)),
         ],
-        FunctionType.ARRAY_TRANSFORM,
-        meta=core_meta(node.meta),
-    )
-
-
-def farray_filter(
-    node: SyntaxNode,
-    context: RuleContext,
-    hydrate: HydrateFunction,
-) -> Function:
-    from trilogy.core.exceptions import InvalidSyntaxException
-
-    args = hydrated_children(node, hydrate)
-    factory = args[1]
-    if not len(factory.function_arguments) == 1:
-        raise InvalidSyntaxException(
-            "Array filter function must have exactly one argument;"
-        )
-    array_type = arg_to_datatype(args[0])
-    if not isinstance(array_type, ArrayType):
-        raise InvalidSyntaxException(
-            f"Array filter function must be applied to an array, not {array_type}"
-        )
-    binding = factory.function_arguments[0]
-    return context.function_factory.create_function(
-        [
-            args[0],
-            binding,
-            factory(ArgBinding(name=binding.name, datatype=array_type.value_data_type)),
-        ],
-        FunctionType.ARRAY_FILTER,
+        operator,
         meta=core_meta(node.meta),
     )
 
@@ -818,8 +796,8 @@ FUNCTION_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.CHAINED_ACCESS: chained_access,
     # transform lambda
     SyntaxNodeKind.TRANSFORM_LAMBDA: transform_lambda,
-    SyntaxNodeKind.FARRAY_TRANSFORM: farray_transform,
-    SyntaxNodeKind.FARRAY_FILTER: farray_filter,
+    SyntaxNodeKind.FARRAY_TRANSFORM: farray_lambda,
+    SyntaxNodeKind.FARRAY_FILTER: farray_lambda,
     # custom function
     SyntaxNodeKind.CUSTOM_FUNCTION: custom_function,
 }
