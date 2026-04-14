@@ -622,6 +622,8 @@ class BaseDialect:
         raise_invalid: bool = False,
     ) -> str:
         result = None
+        if not isinstance(c, BuildConcept):
+            raise SyntaxError(f"Expected BuildConcept, got {type(c)} {c}")
         if c.pseudonyms:
             candidates = [y for y in [cte.get_concept(x) for x in c.pseudonyms] if y]
             logger.debug(

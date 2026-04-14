@@ -713,11 +713,28 @@ def window_item_to_concept(
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
-    if not isinstance(parent.content, ConceptRef):
+    if isinstance(
+        parent.content,
+        (
+            FilterItem,
+            AggregateWrapper,
+            FunctionCallWrapper,
+            WindowItem,
+            Function,
+            ListWrapper,
+            MapWrapper,
+            int,
+            str,
+            float,
+        ),
+    ):
+        bcontent = arbitrary_to_concept(parent.content, environment, namespace=namespace)
+    elif isinstance(parent.content, ConceptRef):
+        bcontent = environment.concepts[parent.content.address]
+    else:
         raise NotImplementedError(
-            f"Window function with non ref content {parent.content} not yet supported"
+            f"Window function with content type {type(parent.content)} not yet supported"
         )
-    bcontent = environment.concepts[parent.content.address]
     if isinstance(bcontent, UndefinedConcept):
         return UndefinedConcept(address=f"{namespace}.{name}", metadata=fmetadata)
     if bcontent.purpose == Purpose.METRIC:
@@ -740,7 +757,7 @@ def window_item_to_concept(
 
     final_grain = Grain.from_concepts(grain_components, environment)
     modifiers = get_upstream_modifiers(bcontent.concept_arguments, environment)
-    datatype = parent.content.datatype
+    datatype = bcontent.datatype
     if parent.type in (
         # WindowType.RANK,
         WindowType.ROW_NUMBER,
