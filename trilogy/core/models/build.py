@@ -1148,7 +1148,7 @@ class BuildWindowItem(DataTyped, BuildConceptArgs):
 
     @cached_property
     def concept_arguments(self) -> List[BuildConcept]:
-        output = [self.content]
+        output = get_concept_arguments(self.content)
         for order in self.order_by:
             output += order.concept_arguments
         for item in self.over:

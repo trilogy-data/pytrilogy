@@ -32,19 +32,20 @@ def resolve_window_parent_concepts(
 ) -> tuple[BuildConcept, List[BuildConcept]]:
     if not isinstance(concept.lineage, WINDOW_TYPES):
         raise ValueError
-    base = []
-    if concept.lineage.over:
-        base += concept.lineage.over
-    if concept.lineage.order_by:
-        for item in concept.lineage.order_by:
-            base += item.concept_arguments
+    base = concept.lineage.concept_arguments
     if concept.grain:
         for gitem in concept.grain.components:
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} appending grain item {gitem} to base"
             )
             base.append(environment.concepts[gitem])
-    return concept.lineage.content, unique(base, "address")
+    if concept.keys:
+        for item in concept.keys:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} appending key {item} to base"
+            )
+            base.append(environment.concepts[item])
+    return unique(base, "address")
 
 
 def gen_window_node(
@@ -57,7 +58,7 @@ def gen_window_node(
     history: History,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
-    base, parent_concepts = resolve_window_parent_concepts(concept, environment, depth)
+    parent_concepts = resolve_window_parent_concepts(concept, environment, depth)
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} generating window node for {concept} with parents {[x.address for x in parent_concepts]} and optional {local_optional}"
     )
@@ -65,52 +66,30 @@ def gen_window_node(
         x
         for x in local_optional
         if isinstance(x.lineage, WINDOW_TYPES)
-        and resolve_window_parent_concepts(x, environment, depth)[1] == parent_concepts
+        and resolve_window_parent_concepts(x, environment, depth) == parent_concepts
     ]
 
-    targets = [base]
-    # append in keys to get the right grain
-    if concept.keys:
-        for item in concept.keys:
-            if item in targets:
-                continue
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} appending search for key {item}"
-            )
-            targets.append(environment.concepts[item])
+
     additional_outputs = []
     if equivalent_optional:
         for x in equivalent_optional:
             assert isinstance(x.lineage, WINDOW_TYPES)
-            base, parents = resolve_window_parent_concepts(x, environment, depth)
+            parents = resolve_window_parent_concepts(x, environment, depth)
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} found equivalent optional {x} with parents {parents}"
             )
             additional_outputs.append(x)
-            # also append the base concept it's being grouped over
-            targets.append(base)
 
-    grain_equivalents = [
-        x
-        for x in local_optional
-        if x.keys
-        and all([key in targets for key in x.keys])
-        and x.grain == concept.grain
-    ]
 
-    for x in grain_equivalents:
-        if x.address in additional_outputs:
-            continue
-        targets.append(x)
-
+    output_targets = parent_concepts+additional_outputs+ [concept]
     # finally, the ones we'll need to enrich
-    non_equivalent_optional = [x for x in local_optional if x.address not in targets]
+    non_equivalent_optional = [x for x in local_optional if x.address not in output_targets]
 
     logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} resolving final parents {parent_concepts + targets}"
+        f"{padding(depth)}{LOGGER_PREFIX} resolving final parents {parent_concepts + output_targets}"
     )
     parent_node: StrategyNode = source_concepts(
-        mandatory_list=parent_concepts + targets,
+        mandatory_list=parent_concepts,
         environment=environment,
         g=g,
         depth=depth + 1,
@@ -137,8 +116,8 @@ def gen_window_node(
         )
         raise SyntaxError
     _window_node = WindowNode(
-        input_concepts=parent_concepts + targets,
-        output_concepts=[concept] + additional_outputs + parent_concepts + targets,
+        input_concepts=parent_concepts,
+        output_concepts=output_targets,
         environment=environment,
         parents=[
             parent_node,
@@ -150,13 +129,13 @@ def gen_window_node(
     _window_node.resolve()
 
     window_node = WhereSafetyNode(
-        input_concepts=[concept] + additional_outputs + parent_concepts + targets,
-        output_concepts=[concept] + additional_outputs + parent_concepts + targets,
+        input_concepts=output_targets,
+        output_concepts=output_targets,
         environment=environment,
         parents=[_window_node],
         preexisting_conditions=conditions.conditional if conditions else None,
         grain=BuildGrain.from_concepts(
-            concepts=[concept] + additional_outputs + parent_concepts + targets,
+            concepts=parent_concepts+output_targets,
             environment=environment,
         ),
     )
@@ -165,7 +144,7 @@ def gen_window_node(
             f"{padding(depth)}{LOGGER_PREFIX} no optional concepts, returning window node"
         )
         # prune outputs if we don't need join keys
-        window_node.set_output_concepts([concept] + additional_outputs + targets)
+        window_node.set_output_concepts(output_targets)
         return window_node
 
     missing_optional = [
@@ -185,7 +164,7 @@ def gen_window_node(
 
     return gen_enrichment_node(
         window_node,
-        join_keys=concepts_to_grain_concepts(targets, environment),
+        join_keys=concepts_to_grain_concepts(output_targets, environment),
         local_optional=local_optional,
         environment=environment,
         g=g,
