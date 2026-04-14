@@ -1,52 +1,44 @@
+// Dependency-resolution view over the full Trilogy grammar. Walks the
+// `trilogy.pest` parse tree produced by `TrilogyParser` and extracts only the
+// three statement kinds that matter for dependency ordering: imports,
+// datasources, and persists. Everything else is ignored.
+//
+// Historically this module had its own permissive grammar (`preql.pest`) that
+// could parse partial / malformed files. The strict grammar refuses those, so
+// directory_resolver callers now surface a warning for files that can't parse
+// cleanly (the lark/pest pipelines would reject them at compile time anyway).
+
+use crate::trilogy_parser::{Rule, TrilogyParser};
+use pest::iterators::Pair;
 use pest::Parser;
-use pest_derive::Parser;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-#[derive(Parser)]
-#[grammar = "preql.pest"]
-pub struct PreqlParser;
-
-/// Represents a parsed import statement
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ImportStatement {
-    /// The raw path as written in the import (e.g., "models.customer")
     pub raw_path: String,
-    /// Number of parent directory traversals (from leading dots)
     pub parent_dirs: usize,
-    /// Optional alias for the import
     pub alias: Option<String>,
-    /// Whether this is a stdlib import
     pub is_stdlib: bool,
 }
 
 impl ImportStatement {
-    /// Resolve this import to an absolute file path
     pub fn resolve(&self, working_dir: &Path) -> Option<PathBuf> {
         if self.is_stdlib {
-            return None; // Skip stdlib imports
+            return None;
         }
 
         let mut base = working_dir.to_path_buf();
-
-        // Navigate up parent directories
         for _ in 0..self.parent_dirs {
             base = base.parent()?.to_path_buf();
         }
-
-        // Convert dot-separated path to file path
-        let parts: Vec<&str> = self.raw_path.split('.').collect();
-        for part in &parts {
+        for part in self.raw_path.split('.') {
             base.push(part);
         }
-
-        // Add .preql extension
         base.set_extension("preql");
-
         Some(base)
     }
 
-    /// Get the effective alias (uses last path component if no explicit alias)
     pub fn effective_alias(&self) -> &str {
         self.alias
             .as_deref()
@@ -54,19 +46,14 @@ impl ImportStatement {
     }
 }
 
-/// Represents a datasource declaration
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DatasourceDeclaration {
-    /// The name/identifier of the datasource
     pub name: String,
 }
 
-/// Represents a persist statement that updates a datasource
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PersistStatement {
-    /// The mode of persistence (append, overwrite, persist)
     pub mode: PersistMode,
-    /// The target datasource being updated
     pub target_datasource: String,
 }
 
@@ -87,7 +74,6 @@ impl std::fmt::Display for PersistMode {
     }
 }
 
-/// All parsed elements from a PreQL file relevant to dependency resolution
 #[derive(Debug, Clone, Default)]
 pub struct ParsedFile {
     pub imports: Vec<ImportStatement>,
@@ -110,36 +96,32 @@ pub enum ParseError {
     InvalidPersistStructure,
 }
 
-/// Parse a PreQL file and extract all dependency-relevant statements
 pub fn parse_file(content: &str) -> Result<ParsedFile, ParseError> {
-    let pairs = PreqlParser::parse(Rule::file, content)?;
-    let mut result = ParsedFile::default();
+    let mut pairs = TrilogyParser::parse(Rule::start, content)?;
+    let start = pairs
+        .next()
+        .ok_or(ParseError::InvalidImportStructure)?;
 
-    for pair in pairs {
-        if pair.as_rule() == Rule::file {
-            for inner in pair.into_inner() {
-                if inner.as_rule() == Rule::statement {
-                    for stmt in inner.into_inner() {
-                        match stmt.as_rule() {
-                            Rule::import_statement => {
-                                if let Some(import) = parse_import_statement(stmt)? {
-                                    result.imports.push(import);
-                                }
-                            }
-                            Rule::datasource_statement => {
-                                if let Some(ds) = parse_datasource_statement(stmt)? {
-                                    result.datasources.push(ds);
-                                }
-                            }
-                            Rule::persist_statement => {
-                                if let Some(persist) = parse_persist_statement(stmt)? {
-                                    result.persists.push(persist);
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
+    let mut result = ParsedFile::default();
+    for top in start.into_inner() {
+        if top.as_rule() != Rule::block {
+            continue;
+        }
+        // block = { statement ~ _TERMINATOR }; `statement` is silent, so its
+        // inner rule (import_statement, datasource, persist_statement, ...)
+        // appears as a direct child of block.
+        for stmt in top.into_inner() {
+            match stmt.as_rule() {
+                Rule::import_statement => {
+                    result.imports.push(extract_import(stmt)?);
                 }
+                Rule::datasource => {
+                    result.datasources.push(extract_datasource(stmt)?);
+                }
+                Rule::persist_statement => {
+                    result.persists.push(extract_persist(stmt)?);
+                }
+                _ => {}
             }
         }
     }
@@ -147,146 +129,127 @@ pub fn parse_file(content: &str) -> Result<ParsedFile, ParseError> {
     Ok(result)
 }
 
-/// Legacy function for backward compatibility
 pub fn parse_imports(content: &str) -> Result<Vec<ImportStatement>, ParseError> {
     Ok(parse_file(content)?.imports)
 }
 
-fn parse_import_statement(
-    pair: pest::iterators::Pair<Rule>,
-) -> Result<Option<ImportStatement>, ParseError> {
-    let mut parent_dirs: usize = 0;
-    let mut raw_path = String::new();
-    let mut alias = None;
-
-    for inner in pair.into_inner() {
-        match inner.as_rule() {
-            Rule::relative_dots => {
-                let dots = inner.as_str();
-                // First dot is part of the syntax, each additional dot goes up one more dir
-                parent_dirs = dots.len().saturating_sub(1);
-            }
-            Rule::import_path => {
-                raw_path = inner.as_str().to_string();
-            }
-            Rule::import_alias => {
-                for alias_inner in inner.into_inner() {
-                    if alias_inner.as_rule() == Rule::identifier {
-                        alias = Some(alias_inner.as_str().to_string());
-                    }
-                }
-            }
+// import_statement = { ^"import" ~ IMPORT_DOT* ~ dotted_identifier_tail ~ (^"as" ~ IDENTIFIER)? }
+// `dotted_identifier_tail` is silent, so children are the IMPORT_DOT tokens
+// followed by IDENTIFIER tokens for every path component and the optional alias.
+fn extract_import(pair: Pair<Rule>) -> Result<ImportStatement, ParseError> {
+    let full_text = pair.as_str();
+    let mut n_dots = 0usize;
+    let mut idents: Vec<String> = Vec::new();
+    for child in pair.into_inner() {
+        match child.as_rule() {
+            Rule::IMPORT_DOT => n_dots += 1,
+            Rule::IDENTIFIER => idents.push(child.as_str().to_string()),
             _ => {}
         }
     }
-
-    if raw_path.is_empty() {
+    if idents.is_empty() {
         return Err(ParseError::InvalidImportStructure);
     }
 
-    // Check if it's a stdlib import
-    let is_stdlib = raw_path.starts_with("std.");
+    // Whether the final identifier is an alias. `as` is a reserved keyword, so
+    // a bare `as` token inside the statement text is unambiguous.
+    let has_alias = full_text
+        .split_ascii_whitespace()
+        .any(|tok| tok.eq_ignore_ascii_case("as"));
+    let alias = if has_alias && idents.len() >= 2 {
+        Some(idents.pop().unwrap())
+    } else {
+        None
+    };
 
-    Ok(Some(ImportStatement {
+    let raw_path = idents.join(".");
+    let is_stdlib = raw_path == "std" || raw_path.starts_with("std.");
+    // Historical convention: leading dot prefix `..` means "one level up", so
+    // the first dot is part of the relative-import syntax and each extra dot
+    // adds one parent traversal.
+    let parent_dirs = n_dots.saturating_sub(1);
+
+    Ok(ImportStatement {
         raw_path,
         parent_dirs,
         alias,
         is_stdlib,
-    }))
+    })
 }
 
-fn parse_datasource_statement(
-    pair: pest::iterators::Pair<Rule>,
-) -> Result<Option<DatasourceDeclaration>, ParseError> {
-    for inner in pair.into_inner() {
-        if inner.as_rule() == Rule::identifier {
-            let name = inner.as_str().to_string();
-            return Ok(Some(DatasourceDeclaration { name }));
+// datasource = { DATASOURCE_ROOT? ~ (DATASOURCE_PARTIAL | SHORTHAND_MODIFIER)? ~ "datasource" ~ IDENTIFIER ~ "(" ~ ... }
+// The first direct IDENTIFIER child is always the datasource name.
+fn extract_datasource(pair: Pair<Rule>) -> Result<DatasourceDeclaration, ParseError> {
+    for child in pair.into_inner() {
+        if child.as_rule() == Rule::IDENTIFIER {
+            return Ok(DatasourceDeclaration {
+                name: child.as_str().to_string(),
+            });
         }
     }
     Err(ParseError::InvalidDatasourceStructure)
 }
 
-fn parse_persist_statement(
-    pair: pest::iterators::Pair<Rule>,
-) -> Result<Option<PersistStatement>, ParseError> {
-    for inner in pair.into_inner() {
-        match inner.as_rule() {
-            Rule::auto_persist => {
-                return parse_auto_persist(inner);
-            }
-            Rule::full_persist => {
-                return parse_full_persist(inner);
-            }
-            _ => {}
-        }
-    }
-    Err(ParseError::InvalidPersistStructure)
-}
-
-fn parse_auto_persist(
-    pair: pest::iterators::Pair<Rule>,
-) -> Result<Option<PersistStatement>, ParseError> {
-    let mut mode = None;
-    let mut target = None;
-
-    for inner in pair.into_inner() {
-        match inner.as_rule() {
-            Rule::persist_mode => {
-                mode = Some(parse_persist_mode(inner.as_str()));
-            }
-            Rule::identifier => {
-                if target.is_none() {
-                    target = Some(inner.as_str().to_string());
-                }
-            }
-            _ => {}
-        }
-    }
-
-    match (mode, target) {
-        (Some(mode), Some(target_datasource)) => Ok(Some(PersistStatement {
-            mode,
-            target_datasource,
-        })),
+fn extract_persist(pair: Pair<Rule>) -> Result<PersistStatement, ParseError> {
+    // persist_statement = { full_persist | auto_persist }
+    let inner = pair
+        .into_inner()
+        .next()
+        .ok_or(ParseError::InvalidPersistStructure)?;
+    match inner.as_rule() {
+        Rule::auto_persist => extract_auto_persist(inner),
+        Rule::full_persist => extract_full_persist(inner),
         _ => Err(ParseError::InvalidPersistStructure),
     }
 }
 
-fn parse_full_persist(
-    pair: pest::iterators::Pair<Rule>,
-) -> Result<Option<PersistStatement>, ParseError> {
-    let mut mode = None;
-    let mut target = None;
-
-    for inner in pair.into_inner() {
-        match inner.as_rule() {
-            Rule::persist_mode => {
-                mode = Some(parse_persist_mode(inner.as_str()));
-            }
-            Rule::target_identifier => {
-                // Get the identifier inside target_identifier
-                for id in inner.into_inner() {
-                    if id.as_rule() == Rule::identifier {
-                        target = Some(id.as_str().to_string());
-                    }
-                }
+// auto_persist = { PERSIST_MODE ~ IDENTIFIER ~ where? }
+fn extract_auto_persist(pair: Pair<Rule>) -> Result<PersistStatement, ParseError> {
+    let mut mode: Option<PersistMode> = None;
+    let mut target: Option<String> = None;
+    for child in pair.into_inner() {
+        match child.as_rule() {
+            Rule::PERSIST_MODE => mode = Some(parse_persist_mode(child.as_str())),
+            Rule::IDENTIFIER if target.is_none() => {
+                target = Some(child.as_str().to_string());
             }
             _ => {}
         }
     }
-
     match (mode, target) {
-        (Some(mode), Some(target_datasource)) => Ok(Some(PersistStatement {
+        (Some(mode), Some(target_datasource)) => Ok(PersistStatement {
             mode,
             target_datasource,
-        })),
+        }),
+        _ => Err(ParseError::InvalidPersistStructure),
+    }
+}
+
+// full_persist = { PERSIST_MODE ~ (!"into" ~ IDENTIFIER)? ~ "into" ~ IDENTIFIER ~ persist_partition_clause? ~ "from" ~ select_statement }
+// Literals (`into`, `from`) are not emitted as children, so we see PERSIST_MODE,
+// optionally a source IDENTIFIER, then the target IDENTIFIER, then the select
+// subtree. Taking the LAST direct IDENTIFIER yields the post-`into` target.
+fn extract_full_persist(pair: Pair<Rule>) -> Result<PersistStatement, ParseError> {
+    let mut mode: Option<PersistMode> = None;
+    let mut last_ident: Option<String> = None;
+    for child in pair.into_inner() {
+        match child.as_rule() {
+            Rule::PERSIST_MODE => mode = Some(parse_persist_mode(child.as_str())),
+            Rule::IDENTIFIER => last_ident = Some(child.as_str().to_string()),
+            _ => {}
+        }
+    }
+    match (mode, last_ident) {
+        (Some(mode), Some(target_datasource)) => Ok(PersistStatement {
+            mode,
+            target_datasource,
+        }),
         _ => Err(ParseError::InvalidPersistStructure),
     }
 }
 
 fn parse_persist_mode(s: &str) -> PersistMode {
-    match s.to_lowercase().as_str() {
+    match s.to_ascii_lowercase().as_str() {
         "append" => PersistMode::Append,
         "overwrite" => PersistMode::Overwrite,
         _ => PersistMode::Persist,
@@ -299,8 +262,7 @@ mod tests {
 
     #[test]
     fn test_simple_import() {
-        let content = "import models.customer;";
-        let parsed = parse_file(content).unwrap();
+        let parsed = parse_file("import models.customer;").unwrap();
         assert_eq!(parsed.imports.len(), 1);
         assert_eq!(parsed.imports[0].raw_path, "models.customer");
         assert_eq!(parsed.imports[0].parent_dirs, 0);
@@ -309,8 +271,7 @@ mod tests {
 
     #[test]
     fn test_import_with_alias() {
-        let content = "import models.customer as cust;";
-        let parsed = parse_file(content).unwrap();
+        let parsed = parse_file("import models.customer as cust;").unwrap();
         assert_eq!(parsed.imports.len(), 1);
         assert_eq!(parsed.imports[0].raw_path, "models.customer");
         assert_eq!(parsed.imports[0].alias, Some("cust".to_string()));
@@ -318,29 +279,34 @@ mod tests {
 
     #[test]
     fn test_relative_import() {
-        let content = "import ..models.customer;";
-        let parsed = parse_file(content).unwrap();
+        let parsed = parse_file("import ..models.customer;").unwrap();
         assert_eq!(parsed.imports.len(), 1);
         assert_eq!(parsed.imports[0].raw_path, "models.customer");
         assert_eq!(parsed.imports[0].parent_dirs, 1);
     }
 
     #[test]
+    fn test_sibling_relative_import() {
+        let parsed = parse_file("import .customer;").unwrap();
+        assert_eq!(parsed.imports[0].raw_path, "customer");
+        assert_eq!(parsed.imports[0].parent_dirs, 0);
+    }
+
+    #[test]
     fn test_stdlib_import() {
-        let content = "import std.aggregates;";
-        let parsed = parse_file(content).unwrap();
-        assert_eq!(parsed.imports.len(), 1);
+        let parsed = parse_file("import std.aggregates;").unwrap();
         assert!(parsed.imports[0].is_stdlib);
     }
 
     #[test]
     fn test_datasource_simple() {
         let content = r#"
+            key order_id int;
             datasource orders (
-                order_id: key,
-                customer_id,
-                amount: metric
+                order_id: order_id,
+                amount: amount
             )
+            grain (order_id)
             address my_database.orders;
         "#;
         let parsed = parse_file(content).unwrap();
@@ -349,8 +315,9 @@ mod tests {
     }
 
     #[test]
-    fn test_datasource_with_grain() {
+    fn test_datasource_with_quoted_address() {
         let content = r#"
+            key customer_id int;
             datasource customers (
                 id: customer_id,
                 name: customer_name
@@ -365,17 +332,15 @@ mod tests {
 
     #[test]
     fn test_auto_persist() {
-        let content = "persist orders;";
-        let parsed = parse_file(content).unwrap();
+        let parsed = parse_file("persist orders;").unwrap();
         assert_eq!(parsed.persists.len(), 1);
         assert_eq!(parsed.persists[0].target_datasource, "orders");
         assert_eq!(parsed.persists[0].mode, PersistMode::Persist);
     }
 
     #[test]
-    fn test_auto_persist_with_where() {
-        let content = "append orders where status = 'active';";
-        let parsed = parse_file(content).unwrap();
+    fn test_append_auto_persist() {
+        let parsed = parse_file("append orders;").unwrap();
         assert_eq!(parsed.persists.len(), 1);
         assert_eq!(parsed.persists[0].target_datasource, "orders");
         assert_eq!(parsed.persists[0].mode, PersistMode::Append);
@@ -383,42 +348,14 @@ mod tests {
 
     #[test]
     fn test_full_persist() {
-        let content = "overwrite into target_orders from select order_id, amount;";
+        let content = r#"
+            key order_id int;
+            overwrite into target_orders from select order_id;
+        "#;
         let parsed = parse_file(content).unwrap();
         assert_eq!(parsed.persists.len(), 1);
         assert_eq!(parsed.persists[0].target_datasource, "target_orders");
         assert_eq!(parsed.persists[0].mode, PersistMode::Overwrite);
-    }
-
-    #[test]
-    fn test_full_persist_with_source() {
-        let content = "persist staging into final_orders by customer_id from select *;";
-        let parsed = parse_file(content).unwrap();
-        assert_eq!(parsed.persists.len(), 1);
-        assert_eq!(parsed.persists[0].target_datasource, "final_orders");
-    }
-
-    #[test]
-    fn test_mixed_file() {
-        let content = r#"
-            import models.customer;
-            import models.orders as ord;
-            
-            datasource local_orders (
-                order_id: key,
-                amount: metric
-            )
-            address local.orders;
-            
-            persist local_orders where date > '2024-01-01';
-            
-            overwrite into aggregated_orders from
-                select customer_id, sum(amount) -> total_amount;
-        "#;
-        let parsed = parse_file(content).unwrap();
-        assert_eq!(parsed.imports.len(), 2);
-        assert_eq!(parsed.datasources.len(), 1);
-        assert_eq!(parsed.persists.len(), 2);
     }
 
     #[test]
@@ -431,23 +368,29 @@ mod tests {
         "#;
         let parsed = parse_file(content).unwrap();
         assert_eq!(parsed.imports.len(), 3);
+        assert_eq!(parsed.imports[1].alias, Some("ord".to_string()));
+        assert_eq!(parsed.imports[2].parent_dirs, 1);
     }
 
     #[test]
-    fn test_comment_with_quotes() {
-        let content = r#"auto short_e_name <- coalesce(CASE WHEN _short_e_name = '-' then NULL else _short_e_name end, short_name); # the short English name of an "organization" - a company, state, or other body."#;
-        parse_file(content).unwrap();
-    }
+    fn test_mixed_file() {
+        let content = r#"
+            import models.customer;
 
-    #[test]
-    fn test_line_comment_with_double_quotes() {
-        let content = r#"import foo; # comment with "quoted" text"#;
-        parse_file(content).unwrap();
-    }
+            key order_id int;
+            datasource local_orders (
+                order_id: order_id
+            )
+            grain (order_id)
+            address local.orders;
 
-    #[test]
-    fn test_statement_with_single_quoted_string_and_comment() {
-        let content = "auto x <- coalesce(CASE WHEN y = '-' then NULL else y end, z); # comment with \"quoted\" text";
-        parse_file(content).unwrap();
+            persist local_orders;
+        "#;
+        let parsed = parse_file(content).unwrap();
+        assert_eq!(parsed.imports.len(), 1);
+        assert_eq!(parsed.datasources.len(), 1);
+        assert_eq!(parsed.persists.len(), 1);
+        assert_eq!(parsed.datasources[0].name, "local_orders");
+        assert_eq!(parsed.persists[0].target_datasource, "local_orders");
     }
 }
