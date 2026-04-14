@@ -15,6 +15,7 @@ from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators import gen_select_node
 from trilogy.core.processing.node_generators.select_merge_node import (
     SearchCriteria,
+    create_datasource_node,
     get_graph_partial_nodes,
     resolve_subgraphs,
 )
@@ -375,3 +376,69 @@ SELECT total_amount;
 
     assert '"cached_total"' not in generated, generated
     assert '"orders"."state" = \'GA\'' in generated, generated
+
+
+def test_partial_is_full_preexisting_conditions_restricted_to_non_partial_for():
+    """partial_is_full must not mark extra conditions as preexisting.
+
+    When query conditions are a strict superset of non_partial_for, preexisting_conditions
+    should be set to non_partial_for only, so the outer strategy still applies the extras.
+    """
+    env = Environment()
+    env.parse(
+        """
+key sale_id int;
+key item_id int;
+property sale_id.sale_year int;
+property item_id.item_price float;
+
+datasource sales (
+    sale_id: ~sale_id,
+    item_id: ~item_id,
+    sale_year: sale_year,
+)
+grain (sale_id, item_id)
+complete where sale_year = 2021
+address sales_table
+where sale_year = 2021;
+
+datasource items (
+    item_id: item_id,
+    item_price: item_price,
+)
+grain (item_id)
+address items_table;
+""",
+        persist=True,
+    )
+    build_env = env.materialize_for_select()
+    ds = build_env.datasources["sales"]
+    assert ds.non_partial_for is not None
+
+    # full conditions: year = 2021 (covered by non_partial_for) AND item_price > 100
+    # item_price is NOT in the sales datasource outputs
+    year_cond = BuildComparison(
+        left=build_env.concepts["sale_year"], right=2021, operator=ComparisonOperator.EQ
+    )
+    price_cond = BuildComparison(
+        left=build_env.concepts["item_price"], right=100, operator=ComparisonOperator.GT
+    )
+    full_conditions = BuildWhereClause(
+        conditional=BuildConditional(
+            left=year_cond, right=price_cond, operator=BooleanOperator.AND
+        )
+    )
+
+    node, _ = create_datasource_node(
+        datasource=ds,
+        all_concepts=[build_env.concepts["sale_id"], build_env.concepts["item_id"]],
+        accept_partial=True,
+        environment=build_env,
+        depth=0,
+        conditions=full_conditions,
+    )
+
+    # The extra item_price condition was never applied to the datasource;
+    # preexisting_conditions must reflect only what's actually baked in.
+    assert node.preexisting_conditions == ds.non_partial_for.conditional
+    assert node.preexisting_conditions != full_conditions.conditional
