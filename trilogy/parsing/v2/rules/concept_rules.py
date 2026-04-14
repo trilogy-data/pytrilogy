@@ -406,6 +406,28 @@ def show_statement(
     return ShowStatement(content=hydrate(node.children[0]))
 
 
+def concept_statement(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> ConceptDeclarationStatement:
+    declarations = node.child_nodes()
+    if len(declarations) != 1:
+        raise fail(
+            node,
+            f"Expected one child declaration under concept node, found {len(declarations)}",
+        )
+    output = hydrate(declarations[0])
+    if isinstance(output, list):
+        concept_value = output[0]
+    elif isinstance(output, Concept):
+        concept_value = output
+    else:
+        concept_value = output.concept
+    apply_source_location(concept_value, node.meta)
+    return ConceptDeclarationStatement(concept=concept_value)
+
+
 def concept_lit(
     node: SyntaxNode,
     context: RuleContext,
@@ -591,6 +613,7 @@ def prop_ident_wildcard(
 
 
 CONCEPT_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
+    SyntaxNodeKind.CONCEPT: concept_statement,
     SyntaxNodeKind.PARAMETER_DEFAULT: parameter_default,
     SyntaxNodeKind.PARAMETER_DECLARATION: parameter_declaration,
     SyntaxNodeKind.CONCEPT_DECLARATION: concept_declaration,

@@ -35,28 +35,18 @@ def require_token(syntax: SyntaxElement, kind: SyntaxTokenKind) -> SyntaxToken:
     return syntax
 
 
-def optional_node(
-    children: list[SyntaxElement], kind: SyntaxNodeKind
-) -> SyntaxNode | None:
-    found = [
-        child
-        for child in children
-        if isinstance(child, SyntaxNode) and child.kind == kind
-    ]
+def optional_node(node: SyntaxNode, kind: SyntaxNodeKind) -> SyntaxNode | None:
+    found = node.child_nodes(kind)
     if len(found) > 1:
         raise syntax_error(found[1], f"Expected at most one '{kind.value}' node")
     return found[0] if found else None
 
 
 def optional_token(
-    children: list[SyntaxElement],
+    node: SyntaxNode,
     kind: SyntaxTokenKind,
 ) -> SyntaxToken | None:
-    found = [
-        child
-        for child in children
-        if isinstance(child, SyntaxToken) and child.kind == kind
-    ]
+    found = node.child_tokens(kind)
     if len(found) > 1:
         raise syntax_error(found[1], f"Expected at most one '{kind.value}' token")
     return found[0] if found else None
@@ -95,9 +85,9 @@ class ParameterDeclarationSyntax:
         return cls(
             name=identifiers[0],
             datatype=only_child_node(node, SyntaxNodeKind.DATA_TYPE),
-            default=optional_node(children, SyntaxNodeKind.PARAMETER_DEFAULT),
-            metadata=optional_node(children, SyntaxNodeKind.METADATA),
-            nullable=optional_node(children, SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER),
+            default=optional_node(node, SyntaxNodeKind.PARAMETER_DEFAULT),
+            metadata=optional_node(node, SyntaxNodeKind.METADATA),
+            nullable=optional_node(node, SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER),
         )
 
 
@@ -117,8 +107,8 @@ class ConceptDeclarationSyntax:
             purpose=require_token(children[0], SyntaxTokenKind.PURPOSE),
             name=require_token(children[1], SyntaxTokenKind.IDENTIFIER),
             datatype=only_child_node(node, SyntaxNodeKind.DATA_TYPE),
-            metadata=optional_node(children, SyntaxNodeKind.METADATA),
-            nullable=optional_node(children, SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER),
+            metadata=optional_node(node, SyntaxNodeKind.METADATA),
+            nullable=optional_node(node, SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER),
         )
 
 
@@ -152,14 +142,14 @@ class ConceptPropertyDeclarationSyntax:
                 node, "Property declaration requires a declaration target"
             )
         return cls(
-            unique=optional_token(children, SyntaxTokenKind.UNIQUE),
+            unique=optional_token(node, SyntaxTokenKind.UNIQUE),
             property_token=require_token(
                 children[property_index], SyntaxTokenKind.PROPERTY
             ),
             declaration=children[declaration_index],
             datatype=only_child_node(node, SyntaxNodeKind.DATA_TYPE),
-            metadata=optional_node(children, SyntaxNodeKind.METADATA),
-            nullable=optional_node(children, SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER),
+            metadata=optional_node(node, SyntaxNodeKind.METADATA),
+            nullable=optional_node(node, SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER),
         )
 
 
@@ -184,7 +174,7 @@ class ConceptDerivationSyntax:
             purpose=children[0],
             name=children[1],
             source=children[2],
-            metadata=optional_node(children, SyntaxNodeKind.METADATA),
+            metadata=optional_node(node, SyntaxNodeKind.METADATA),
         )
 
 
@@ -205,7 +195,7 @@ class ConstantDerivationSyntax:
         return cls(
             name=require_token(children[1], SyntaxTokenKind.IDENTIFIER),
             source=children[2],
-            metadata=optional_node(children, SyntaxNodeKind.METADATA),
+            metadata=optional_node(node, SyntaxNodeKind.METADATA),
         )
 
 

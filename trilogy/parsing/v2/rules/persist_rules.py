@@ -5,7 +5,7 @@ from trilogy.core.enums import PersistMode
 from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import Address, Datasource
 from trilogy.core.statements.author import PersistStatement, SelectStatement
-from trilogy.parsing.v2.datasource_rules import DatasourcePartitionClause
+from trilogy.parsing.v2.rules.datasource_rules import DatasourcePartitionClause
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,
@@ -36,7 +36,7 @@ def auto_persist(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> PersistStatement:
-    from trilogy.parsing.v2.concept_rules import metadata_from_meta
+    from trilogy.parsing.v2.rules.concept_rules import metadata_from_meta
 
     args = hydrated_children(node, hydrate)
     persist_mode = args[0]
@@ -65,7 +65,7 @@ def full_persist(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> PersistStatement:
-    from trilogy.parsing.v2.concept_rules import metadata_from_meta
+    from trilogy.parsing.v2.rules.concept_rules import metadata_from_meta
 
     args = hydrated_children(node, hydrate)
     partition_clause = DatasourcePartitionClause([])

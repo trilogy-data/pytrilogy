@@ -26,16 +26,16 @@ from trilogy.core.statements.author import (
     ValidateStatement,
 )
 from trilogy.parsing.v2.function_syntax import FunctionDefinitionSyntax
-from trilogy.parsing.v2.import_rules import (
-    import_statement,
-    selective_import_statement,
-    self_import_statement,
-)
 from trilogy.parsing.v2.import_service import ImportRequest
 from trilogy.parsing.v2.model import HydrationDiagnostic
 from trilogy.parsing.v2.rowset_semantics import (
     apply_alias_updates,
     rowset_output_namespace,
+)
+from trilogy.parsing.v2.rules.import_rules import (
+    import_statement,
+    selective_import_statement,
+    self_import_statement,
 )
 from trilogy.parsing.v2.select_finalize import (
     finalize_select_tree as _v2_finalize_select_tree,
@@ -177,7 +177,7 @@ class ShowStatementPlan(StatementPlanBase):
     output: ShowStatement | None = None
 
     def hydrate(self, hydrator: "NativeHydrator") -> None:
-        self.output = hydrator.hydrate_show_statement(self.syntax)
+        self.output = hydrator.hydrate_rule(self.syntax)
 
     def validate(self, hydrator: "NativeHydrator") -> None:
         if self.output is None:

@@ -9,19 +9,18 @@ from trilogy.constants import Parsing
 from trilogy.core.functions import FunctionFactory
 from trilogy.core.models.author import Comment
 from trilogy.core.models.environment import Environment, Import
-from trilogy.core.statements.author import (
-    ConceptDeclarationStatement,
-    ShowStatement,
-)
+from trilogy.core.statements.author import ConceptDeclarationStatement
 from trilogy.parsing.helpers import comment_body
-from trilogy.parsing.v2.concept_rules import CONCEPT_NODE_HYDRATORS
-from trilogy.parsing.v2.conditional_rules import CONDITIONAL_NODE_HYDRATORS
-from trilogy.parsing.v2.expression_rules import EXPRESSION_NODE_HYDRATORS
-from trilogy.parsing.v2.function_rules import FUNCTION_NODE_HYDRATORS
-from trilogy.parsing.v2.import_rules import IMPORT_NODE_HYDRATORS
 from trilogy.parsing.v2.import_service import ImportHydrationService
+from trilogy.parsing.v2.rules.concept_rules import CONCEPT_NODE_HYDRATORS
+from trilogy.parsing.v2.rules.conditional_rules import CONDITIONAL_NODE_HYDRATORS
+from trilogy.parsing.v2.rules.expression_rules import EXPRESSION_NODE_HYDRATORS
+from trilogy.parsing.v2.rules.function_rules import FUNCTION_NODE_HYDRATORS
+from trilogy.parsing.v2.rules.import_rules import IMPORT_NODE_HYDRATORS
+from trilogy.parsing.v2.rules.select_rules import SELECT_NODE_HYDRATORS
+from trilogy.parsing.v2.rules.statement_rules import STATEMENT_NODE_HYDRATORS
+from trilogy.parsing.v2.rules.token_rules import TOKEN_HYDRATORS
 from trilogy.parsing.v2.rules_context import RuleContext
-from trilogy.parsing.v2.select_rules import SELECT_NODE_HYDRATORS
 from trilogy.parsing.v2.semantic_scope import SymbolTable
 from trilogy.parsing.v2.semantic_state import SemanticState
 from trilogy.parsing.v2.statement_planner import (
@@ -33,11 +32,6 @@ from trilogy.parsing.v2.statement_plans import (
     StatementPlan,
     StatementPlanBase,
     UnsupportedSyntaxError,
-)
-from trilogy.parsing.v2.statement_rules import STATEMENT_NODE_HYDRATORS
-from trilogy.parsing.v2.statements import (
-    hydrate_concept_statement,
-    hydrate_show_statement,
 )
 from trilogy.parsing.v2.symbols import (
     extract_concept_name_from_literal,
@@ -54,7 +48,6 @@ from trilogy.parsing.v2.syntax import (
     SyntaxTokenKind,
     syntax_name,
 )
-from trilogy.parsing.v2.token_rules import TOKEN_HYDRATORS
 
 __all__ = [
     "MAX_PARSE_DEPTH",
@@ -319,7 +312,7 @@ class NativeHydrator:
         concept_node = self.require_node(
             self.block_statement(block), SyntaxNodeKind.CONCEPT
         )
-        output = self.hydrate_concept_statement(concept_node)
+        output = self.hydrate_rule(concept_node)
         trailing = block.children[1:]
         # Match v1: a blank line between the concept and the next comment
         # detaches the comment, so it is preserved as a standalone element
@@ -344,19 +337,6 @@ class NativeHydrator:
                 comment_body(comment) for comment in comments
             )
         return output
-
-    def hydrate_concept_statement(
-        self,
-        concept_node: SyntaxNode,
-    ) -> ConceptDeclarationStatement:
-        self.require_node(concept_node, SyntaxNodeKind.CONCEPT)
-        return hydrate_concept_statement(
-            concept_node, self.rule_context(), self.hydrate_rule
-        )
-
-    def hydrate_show_statement(self, show_node: SyntaxNode) -> ShowStatement:
-        self.require_node(show_node, SyntaxNodeKind.SHOW_STATEMENT)
-        return hydrate_show_statement(show_node, self.hydrate_rule)
 
     def rule_context(self) -> RuleContext:
         return self._cached_rule_context
