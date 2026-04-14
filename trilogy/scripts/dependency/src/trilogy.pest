@@ -1,0 +1,752 @@
+// Full Trilogy grammar — alternative tokenizer to the lark grammar at
+// trilogy/parsing/trilogy.lark. Rule names mirror the lark grammar 1:1
+// so the existing NODE_KIND / TOKEN_KIND maps in trilogy/parsing/v2/syntax.py
+// apply without modification. Uppercase rule names emit SyntaxTokens;
+// lowercase emit SyntaxNodes.
+
+// =============================================================================
+// WHITESPACE + COMMENTS
+// =============================================================================
+// Comments are silently skipped everywhere. Lark's v2 grammar captures
+// PARSE_COMMENT only at top-level and end-of-block; we drop them — the v2
+// hydration treats comments as optional metadata.
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" | "\u{0c}" | "\u{0b}" }
+COMMENT    = _{
+      ("#"  ~ (!("\n" | EOI) ~ ANY)* ~ ("\n" | EOI))
+    | ("//" ~ (!("\n" | EOI) ~ ANY)* ~ ("\n" | EOI))
+    | ("/*" ~ (!"*/" ~ ANY)* ~ "*/")
+}
+
+// =============================================================================
+// ENTRY
+// =============================================================================
+start = { SOI ~ (block | show_statement)* ~ EOI }
+block = { statement ~ _TERMINATOR }
+_TERMINATOR = _{ ";" }
+
+statement = _{
+      function
+    | type_declaration
+    | multi_select_statement
+    | select_statement
+    | persist_statement
+    | rowset_derivation_statement
+    | selective_import_statement
+    | self_import_statement
+    | import_statement
+    | copy_statement
+    | merge_statement
+    | rawsql_statement
+    | validate_statement
+    | mock_statement
+    | publish_statement
+    | create_statement
+    | chart_statement
+    | datasource
+    | concept
+}
+
+// =============================================================================
+// CONCEPT DECLARATIONS
+// =============================================================================
+concept = {
+      parameter_declaration
+    | concept_property_declaration
+    | concept_derivation
+    | concept_declaration
+    | properties_declaration
+}
+
+parameter_default      = { ^"default" ~ literal }
+parameter_declaration  = { (^"parameter" | ^"param") ~ IDENTIFIER ~ data_type ~ concept_nullable_modifier? ~ parameter_default? ~ metadata? }
+concept_declaration    = { PURPOSE ~ IDENTIFIER ~ data_type ~ concept_nullable_modifier? ~ metadata? }
+concept_property_declaration = { UNIQUE? ~ PROPERTY ~ (prop_ident | prop_ident_wildcard | IDENTIFIER) ~ data_type ~ concept_nullable_modifier? ~ metadata? }
+concept_derivation     = { (PURPOSE | AUTO | PROPERTY) ~ (prop_ident | prop_ident_wildcard | IDENTIFIER) ~ "<-" ~ expr }
+
+concept_nullable_modifier = { "?" }
+
+inline_property        = { IDENTIFIER ~ data_type ~ concept_nullable_modifier? ~ metadata? }
+inline_property_list   = { inline_property ~ ("," ~ inline_property)* ~ ","? }
+properties_declaration = { ^"properties" ~ (prop_ident_list | IDENTIFIER) ~ "(" ~ inline_property_list ~ ")" }
+prop_ident_list        = { "<" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? ~ ">" }
+
+prop_ident             = { "<" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? ~ ">" ~ "." ~ IDENTIFIER }
+prop_ident_wildcard    = { "<" ~ "*" ~ ">" ~ "." ~ IDENTIFIER }
+
+// =============================================================================
+// DATASOURCE
+// =============================================================================
+datasource = {
+    DATASOURCE_ROOT? ~ (DATASOURCE_PARTIAL | SHORTHAND_MODIFIER)? ~ ^"datasource" ~ IDENTIFIER
+    ~ "(" ~ column_assignment_list ~ ")"
+    ~ grain_clause?
+    ~ whole_grain_clause?
+    ~ (address | query | file)
+    ~ where?
+    ~ datasource_update_trigger_clause?
+    ~ datasource_partition_clause?
+    ~ datasource_status_clause?
+}
+
+DATASOURCE_ROOT    = @{ ^"root" }
+DATASOURCE_PARTIAL = @{ ^"partial" }
+
+whole_grain_clause = { ^"complete" ~ where }
+grain_clause       = { ^"grain" ~ "(" ~ column_list ~ ")" }
+
+address = { ^"address" ~ (F_QUOTED_ADDRESS | QUOTED_ADDRESS | ADDRESS) }
+query   = { ^"query" ~ MULTILINE_STRING }
+file    = { ^"file" ~ ((F_FILE_PATH ~ ":" ~ F_FILE_PATH) | (FILE_PATH ~ ":" ~ FILE_PATH) | F_FILE_PATH | FILE_PATH) }
+
+STATE                    = @{ ^"state" }
+datasource_status_clause = { STATE ~ DATASOURCE_STATUS }
+DATASOURCE_STATUS        = @{ ^"published" | ^"unpublished" }
+
+DATASOURCE_UPDATE_TRIGGER = @{ ^"incremental" | ^"freshness" }
+datasource_update_trigger_clause = { DATASOURCE_UPDATE_TRIGGER ~ ^"by" ~ (column_list | FILE_PATH) }
+datasource_partition_clause      = { ^"partition" ~ ^"by" ~ column_list }
+
+concept_assignment = { SHORTHAND_MODIFIER* ~ IDENTIFIER }
+column_assignment  = {
+      (raw_column_assignment ~ ":" ~ concept_assignment)
+    | (QUOTED_IDENTIFIER ~ ":" ~ concept_assignment)
+    | (IDENTIFIER ~ ":" ~ concept_assignment)
+    | (expr ~ ":" ~ concept_assignment)
+    | concept_assignment
+}
+RAW_ENTRY               = @{ ^"raw" ~ WHITESPACE* ~ "(" }
+raw_column_assignment   = { RAW_ENTRY ~ MULTILINE_STRING ~ ")" }
+column_assignment_list  = { column_assignment ~ ("," ~ column_assignment)* ~ ","? }
+column_list             = { IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
+
+// =============================================================================
+// IMPORT STATEMENTS
+// =============================================================================
+import_statement           = { ^"import" ~ IMPORT_DOT* ~ dotted_identifier_tail ~ (^"as" ~ IDENTIFIER)? }
+selective_import_statement = { ^"from" ~ IMPORT_DOT* ~ dotted_identifier_tail ~ (^"as" ~ IDENTIFIER)? ~ ^"import" ~ import_concepts }
+self_import_statement      = { SELF_IMPORT ~ ^"import" ~ ^"as" ~ IDENTIFIER }
+
+import_concepts        = { IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
+dotted_identifier_tail = _{ IDENTIFIER ~ ("." ~ IDENTIFIER)* }
+
+IMPORT_DOT  = @{ "." }
+SELF_IMPORT = @{ ^"self" }
+
+// =============================================================================
+// PERSIST
+// =============================================================================
+persist_statement = { full_persist | auto_persist }
+
+PERSIST_MODE = @{ ^"append" | ^"overwrite" | ^"persist" }
+persist_partition_clause = { ^"by" ~ column_list }
+
+auto_persist = { PERSIST_MODE ~ IDENTIFIER ~ where? }
+
+full_persist = {
+    PERSIST_MODE
+    ~ (!^"into" ~ IDENTIFIER)?
+    ~ ^"into" ~ IDENTIFIER
+    ~ persist_partition_clause?
+    ~ ^"from" ~ select_statement
+}
+
+// =============================================================================
+// SELECT
+// =============================================================================
+from_clause = { ^"from" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
+
+select_statement = {
+    from_clause? ~ where? ~ ^"select" ~ select_list ~ where? ~ having? ~ order_by? ~ limit?
+}
+
+multi_select_statement = {
+    select_statement
+    ~ (^"merge" ~ select_statement)+
+    ~ ^"align" ~ align_clause
+    ~ (^"derive" ~ derive_clause)?
+    ~ where? ~ order_by? ~ limit?
+}
+
+align_item   = { IDENTIFIER ~ ":" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
+align_clause = { align_item ~ (^"and" ~ align_item)* ~ (^"and")? }
+
+derive_item   = { expr ~ "->" ~ IDENTIFIER }
+derive_clause = { derive_item ~ ("," ~ derive_item)* ~ ","? }
+
+merge_statement = { ^"merge" ~ WILDCARD_IDENTIFIER ~ ^"into" ~ SHORTHAND_MODIFIER? ~ WILDCARD_IDENTIFIER }
+
+rawsql_statement = { ^"raw_sql" ~ "(" ~ MULTILINE_STRING ~ ")" }
+
+VALIDATE_SCOPE    = @{ ^"concepts" | ^"datasources" | ^"datasource" | ^"concept" }
+validate_statement = {
+      (^"validate" ~ ^"all")
+    | (^"validate" ~ VALIDATE_SCOPE ~ (IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","?)?)
+}
+
+mock_statement = { ^"mock" ~ VALIDATE_SCOPE ~ (IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","?)? }
+
+PUBLISH_ACTION    = @{ ^"publish" | ^"unpublish" }
+publish_statement = { PUBLISH_ACTION ~ VALIDATE_SCOPE ~ IDENTIFIER }
+
+create_modifier_clause = { CREATE_IF_NOT_EXISTS | CREATE_OR_REPLACE }
+CREATE_IF_NOT_EXISTS   = @{ ^"if" ~ WHITESPACE+ ~ ^"not" ~ WHITESPACE+ ~ ^"exists" }
+CREATE_OR_REPLACE      = @{ ^"or" ~ WHITESPACE+ ~ ^"replace" }
+create_statement       = { ^"create" ~ create_modifier_clause? ~ VALIDATE_SCOPE ~ IDENTIFIER }
+
+COPY_TYPE       = @{ ^"csv" | ^"json" | ^"parquet" }
+copy_statement  = { ^"copy" ~ ^"into" ~ COPY_TYPE ~ (FILE_PATH | string_lit) ~ ^"from" ~ select_statement }
+
+// `barh` must precede `bar` in PEG ordered choice so pest doesn't consume
+// `bar` as a complete match and leave `h` for the next rule.
+CHART_TYPE       = @{ ^"line" | ^"barh" | ^"bar" | ^"point" | ^"area" | ^"headline" | ^"donut" | ^"heatmap" | ^"boxplot" | ^"treemap" }
+CHART_FIELD_NAME = @{ ^"x_axis" | ^"y_axis" | ^"color" | ^"size" | ^"group" | ^"trellis_row" | ^"trellis" | ^"geo" | ^"annotation" }
+CHART_BOOL_FIELD = @{ ^"hide_legend" | ^"show_title" }
+CHART_SCALE_FIELD = @{ ^"scale_x" | ^"scale_y" }
+SCALE_TYPE       = @{ ^"linear" | ^"log" | ^"sqrt" }
+
+chart_field_setting = { ^"set" ~ CHART_FIELD_NAME ~ ":" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
+chart_bool_setting  = { ^"set" ~ CHART_BOOL_FIELD }
+chart_scale_setting = { ^"set" ~ CHART_SCALE_FIELD ~ ":" ~ SCALE_TYPE }
+chart_setting       = _{ chart_scale_setting | chart_field_setting | chart_bool_setting }
+chart_statement     = { ^"chart" ~ CHART_TYPE ~ chart_setting* ~ ^"from" ~ select_statement }
+
+// =============================================================================
+// FUNCTION DEFINITIONS
+// =============================================================================
+function = { table_function | raw_function }
+
+function_binding_type    = { ":" ~ data_type }
+function_binding_default = { "=" ~ expr }
+function_binding_item    = { IDENTIFIER ~ function_binding_type? ~ function_binding_default? }
+function_binding_list    = { function_binding_item ~ ("," ~ function_binding_item)* ~ ","? }
+
+_DEF_TABLE     = @{ ^"def" ~ (" " | "\t" | "\r" | "\n")+ ~ ^"table" ~ (" " | "\t" | "\r" | "\n")+ }
+raw_function   = { ^"def" ~ IDENTIFIER ~ "(" ~ function_binding_list ~ ")" ~ "->" ~ expr }
+table_function = { _DEF_TABLE ~ IDENTIFIER ~ "(" ~ function_binding_list? ~ ")" ~ "->" ~ ^"select" ~ expr ~ subselect_where? ~ subselect_order? ~ subselect_limit? }
+
+// =============================================================================
+// TYPE DECLARATION
+// =============================================================================
+type_drop_clause = { ^"drop" ~ IDENTIFIER ~ ("|" ~ IDENTIFIER)* }
+type_declaration = { ^"type" ~ IDENTIFIER ~ data_type ~ ("|" ~ data_type)* ~ type_drop_clause? }
+
+// =============================================================================
+// ROWSET
+// =============================================================================
+rowset_derivation_statement = {
+      (^"rowset" ~ IDENTIFIER ~ "<-" ~ (multi_select_statement | select_statement))
+    | (^"with" ~ IDENTIFIER ~ ^"as" ~ (multi_select_statement | select_statement))
+}
+
+// =============================================================================
+// SHOW STATEMENT
+// =============================================================================
+show_category   = { CONCEPTS | DATASOURCES }
+CONCEPTS        = @{ ^"concepts" }
+DATASOURCES     = @{ ^"datasources" }
+show_statement  = { ^"show" ~ (show_category | validate_statement | select_statement | persist_statement) ~ _TERMINATOR }
+
+// =============================================================================
+// SELECT-RELATED
+// =============================================================================
+select_hide_modifier    = { "--" }
+select_partial_modifier = { "~" }
+select_item   = { (select_hide_modifier | select_partial_modifier)? ~ (select_transform | concept_lit) }
+select_list   = { select_item ~ ("," ~ !SELECT_LIST_STOP ~ select_item)* ~ ","? }
+select_transform = { expr ~ ("->" | ^"as") ~ IDENTIFIER ~ metadata? }
+
+metadata = { ^"metadata" ~ "(" ~ IDENTIFIER ~ "=" ~ string_lit ~ ")" }
+
+limit     = { ^"limit" ~ INT_DIGITS }
+INT_DIGITS = @{ ASCII_DIGIT+ }
+
+order_by  = { ^"order" ~ ^"by" ~ order_list }
+order_list = { _order_atom ~ ("," ~ _order_atom)* ~ ","? }
+ORDER_IDENTIFIER = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ".")* ~ (" " | "\t")+ }
+_order_atom = _{
+      (ORDER_IDENTIFIER ~ &((^"asc" | ^"desc" | ^"nulls") ~ !(ASCII_ALPHANUMERIC | "_")) ~ ordering)
+    | (expr ~ ordering)
+}
+
+ORDERING_DIRECTION = @{ ^"asc" | ^"desc" }
+NULLS_SORT         = @{ ^"first" | ^"last" | ^"auto" }
+ordering           = { ORDERING_DIRECTION? ~ (^"nulls" ~ NULLS_SORT)? }
+
+// =============================================================================
+// WHERE / HAVING / CONDITIONAL
+// =============================================================================
+where  = { ^"where" ~ conditional }
+having = { ^"having" ~ conditional }
+
+// The v2 hydration `conditional` uses right-associative munching:
+// Conditional(left=args[0], operator=args[1], right=munch(args[2:])).
+// We emit nested conditional nodes so AND/OR precedence is baked into the tree:
+// a AND b OR c  ->  conditional(conditional(a, AND, b), OR, c)
+// a OR b AND c  ->  conditional(a, OR, conditional(b, AND, c))
+conditional = { _and_conditional ~ (LOGICAL_OR ~ _and_conditional)* }
+_and_conditional = { _condition_unit ~ (LOGICAL_AND ~ _condition_unit)* }
+// expr first so `(x % 2) = 0` is parsed as a single comparison rather than
+// stopping at the parenthetical and leaving `= 0` for the outer rule.
+_condition_unit  = _{ expr | condition_parenthetical }
+
+condition_parenthetical = { CONDITION_NOT? ~ "(" ~ conditional ~ ")" }
+
+// Keyword boundary guard: not followed by identifier chars. Prevents `or`
+// from matching the "or" prefix of `order`, `and` from matching `android`, etc.
+KW_END        = _{ !(ASCII_ALPHANUMERIC | "_") }
+LOGICAL_OR    = @{ ^"or"  ~ KW_END }
+LOGICAL_AND   = @{ ^"and" ~ KW_END }
+CONDITION_NOT = @{ ^"not" ~ KW_END }
+
+// =============================================================================
+// EXPRESSIONS
+// =============================================================================
+// Lark: ?expr: comparison_root | between_root
+expr = _{ between_comparison | comparison }
+
+// ?comparison_root: sum_chain (COMPARISON_OPERATOR sum_chain)? -> comparison
+comparison = { sum_operator ~ (COMPARISON_OPERATOR ~ sum_operator)? }
+
+// ?between_root: sum_chain "between" sum_chain "and" sum_chain
+between_comparison = { sum_operator ~ ^"between" ~ sum_operator ~ ^"and" ~ sum_operator }
+
+// ?sum_chain: product_chain (PLUS_OR_MINUS product_chain)*
+sum_operator = { product_operator ~ (PLUS_OR_MINUS ~ product_operator)* }
+
+// ?product_chain: atom (MULTIPLY_DIVIDE_PERCENT atom)*
+product_operator = { access_chain ~ (MULTIPLY_DIVIDE_PERCENT ~ access_chain)* }
+
+// Access expressions are a post-atom wrapping. Parsed as a single chain so
+// _atom is parsed exactly once per position (avoids exponential backtracking).
+// The adapter rewrites the access_chain node name based on the suffix shape:
+//   no tails → unwrap to atom
+//   1 dot_tail → attr_access
+//   1 bracket_tail with int_lit → index_access
+//   1 bracket_tail with string_lit → map_key_access
+//   1 dcolon_tail → fcast
+//   multiple tails → chained_access (with a trailing fcast wrapping if needed)
+access_chain = { _atom ~ _access_tail* }
+_access_tail = _{ dot_tail | bracket_tail | dcolon_tail }
+dot_tail      = { "." ~ (string_lit | ATTR_NAME) }
+bracket_tail  = { "[" ~ (int_lit | string_lit) ~ "]" }
+dcolon_tail   = { "::" ~ data_type }
+
+// getattr(atom, "name") — still available as a distinct atom-level form.
+attr_access_paren = { ^"getattr" ~ "(" ~ expr ~ "," ~ string_lit ~ ")" }
+
+// _atom covers lark's ?atom alternatives (minus access). Order-sensitive in PEG.
+// filter_item must be first so the `X ? cond` short form is tried before
+// alternatives like literal/parenthetical that would otherwise consume X alone.
+_atom = _{
+      filter_item
+    | parenthetical
+    | expr_tuple
+    | literal
+    | attr_access_paren
+    | custom_function
+    | _constant_functions
+    | _static_functions
+    | _generic_functions
+    | _date_functions
+    | aggregate_by
+    | aggregate_functions
+    | window_item
+    | unnest
+    | union
+    | subselect
+    | fgroup
+    | concept_lit
+}
+
+// attr_access rule name matches lark; we rename attr_access_dot and attr_access_paren
+// in the adapter to "attr_access".
+ATTR_NAME = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+
+parenthetical = { "(" ~ expr ~ ")" }
+expr_tuple    = { "(" ~ expr ~ ("," ~ expr)+ ~ ","? ~ ")" | "(" ~ expr ~ "," ~ ")" }
+
+COMPARISON_OPERATOR = @{
+      (^"is" ~ WHITESPACE+ ~ ^"not" ~ WHITESPACE+)
+    | (^"is" ~ WHITESPACE+)
+    | (^"not" ~ WHITESPACE+ ~ ^"in" ~ WHITESPACE+)
+    | (^"in" ~ WHITESPACE+)
+    | "="
+    | ">="
+    | "<="
+    | "!="
+    | ">"
+    | "<"
+}
+
+PLUS_OR_MINUS = @{ "+" | ("-" ~ !">") | "||" | ^"like" | ^"ilike" }
+MULTIPLY_DIVIDE_PERCENT = @{ "**" | "*" | "/" | "%" }
+
+// subselect comparison support
+array_comparison = { (^"not" ~ WHITESPACE+ ~ ^"in") | ^"in" }
+subselect_comparison = {
+    expr ~ array_comparison ~ (
+          literal
+        | _constant_functions
+        | _static_functions
+        | _array_functions_only
+        | concept_lit
+        | filter_item
+        | window_item
+        | unnest
+        | fgroup
+        | expr_tuple
+        | parenthetical
+    )
+}
+
+_UNNEST    = _{ ^"unnest(" }
+unnest     = { _UNNEST ~ expr ~ ")" }
+
+_SUBSELECT = _{ ^"subselect(" }
+subselect_where = { ^"where" ~ conditional }
+subselect_order = { ^"order" ~ ^"by" ~ order_list }
+subselect_limit = { ^"limit" ~ INT_DIGITS }
+subselect       = { _SUBSELECT ~ expr ~ subselect_where? ~ subselect_order? ~ subselect_limit? ~ ")" }
+
+_UNION = _{ ^"union(" }
+union  = { _UNION ~ (expr ~ ",")* ~ expr ~ ")" }
+
+// =============================================================================
+// AGGREGATES
+// =============================================================================
+aggregate_all  = { "*" }
+aggregate_over = { ^"by" ~ (aggregate_all | over_list) }
+
+// Mirrors lark's single-token regex: /(group)\s+([a-zA-Z_][a-zA-Z0-9_.]*)/i
+// Emits "group <identname>" as a single string so the hydrator's
+// `str(args[0]).split(" ")[-1]` works unchanged.
+GROUP_TARGET = @{ ^"group" ~ (" " | "\t" | "\r" | "\n")+ ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ".")* }
+aggregate_by = { GROUP_TARGET ~ ^"by" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* }
+
+count          = { ^"count" ~ "(" ~ expr ~ ")" }
+count_distinct = { ^"count_distinct" ~ "(" ~ expr ~ ")" }
+sum            = { ^"sum" ~ "(" ~ expr ~ ")" }
+avg            = { ^"avg" ~ "(" ~ expr ~ ")" }
+max            = { ^"max" ~ "(" ~ expr ~ ")" }
+min            = { ^"min" ~ "(" ~ expr ~ ")" }
+array_agg      = { ^"array_agg" ~ "(" ~ expr ~ ")" }
+bool_and       = { ^"bool_and" ~ "(" ~ expr ~ ")" }
+bool_or        = { ^"bool_or" ~ "(" ~ expr ~ ")" }
+any            = { ^"any" ~ "(" ~ expr ~ ")" }
+
+aggregate_functions = {
+    (count_distinct | count | sum | avg | max | min | array_agg | bool_and | bool_or | any) ~ aggregate_over?
+}
+
+fgroup = { ^"group" ~ "(" ~ expr ~ ")" ~ aggregate_over? }
+
+// =============================================================================
+// FILTER
+// =============================================================================
+// PEG ordered-choice: longer prefixes first. `IDENTIFIER` would otherwise
+// match `upper` alone, commit, and fail at `?` before `_static_functions`
+// gets a chance to match `upper(...)`.
+filter_item = {
+      (^"filter" ~ IDENTIFIER ~ where)
+    | ((_static_functions | literal | ("(" ~ expr ~ ")") | IDENTIFIER) ~ "?" ~ conditional)
+}
+
+// =============================================================================
+// WINDOW FUNCTIONS
+// =============================================================================
+WINDOW_TYPE_LEGACY = @{
+    (^"row_number" | ^"rank" | ^"dense_rank" | ^"lag" | ^"lead" | ^"sum" | ^"avg" | ^"max" | ^"min" | ^"count")
+    ~ (" " | "\t")+
+}
+
+WINDOW_TYPE_SQL = @{
+    (^"row_number" | ^"rank" | ^"dense_rank" | ^"lag" | ^"lead")
+    ~ (" " | "\t")*
+    ~ "("
+}
+
+window_item_over   = { ^"over" ~ over_list }
+window_item_order  = { ^"order"? ~ ^"by" ~ order_list }
+
+window_sql_partition = { ^"partition" ~ ^"by" ~ over_list }
+window_sql_order     = { ^"order" ~ ^"by" ~ order_list }
+_WINDOW_OVER_PAREN   = _{ ^"over" ~ (" " | "\t")* ~ "(" }
+window_sql_over      = { _WINDOW_OVER_PAREN ~ window_sql_partition? ~ window_sql_order? ~ ")" }
+
+// Two-alternative form: PEG can't use LALR lookahead to decide whether
+// `int_lit` consumes an offset or belongs to the expr body. The explicit
+// int_lit path is tried first so `rank 2 x` stays an offset; `rank 1 by
+// x desc` falls back to the plain form with `1` as the expr literal.
+// The negative lookahead prevents alt 1 from consuming `1` as the offset
+// AND `by` as the expr (concept_lit greedily matches `by` as an identifier
+// because `by` can't be reserved — concepts like `id.by` use it as a name).
+WINDOW_LEGACY_KW = @{ (^"by" | ^"over" | ^"order") ~ !(ASCII_ALPHANUMERIC | "_" | ".") }
+window_item_legacy = {
+      WINDOW_TYPE_LEGACY ~ int_lit ~ !WINDOW_LEGACY_KW ~ expr ~ window_item_over? ~ window_item_order?
+    | WINDOW_TYPE_LEGACY ~ expr ~ window_item_over? ~ window_item_order?
+}
+window_item_sql    = { WINDOW_TYPE_SQL ~ expr ~ ("," ~ int_lit)? ~ ")" ~ window_sql_over? }
+window_item        = { window_item_sql | window_item_legacy }
+
+OVER_COMPONENT_REF = @{ "," ~ (" " | "\t")* ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ".")* }
+over_component = { OVER_COMPONENT_REF ~ (^"end")? }
+over_list = { concept_lit ~ over_component* }
+
+// =============================================================================
+// CAST
+// =============================================================================
+// Only the cast(expr as type) form here — the postfix `atom::type` form lives
+// in the access chain as `fcast_postfix` to avoid PEG left-recursion.
+fcast = { ^"cast" ~ "(" ~ expr ~ ^"as" ~ data_type ~ ")" }
+
+// =============================================================================
+// GENERIC FUNCTIONS
+// =============================================================================
+concat      = { ^"concat" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
+fcoalesce   = { ^"coalesce" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
+fgreatest   = { ^"greatest" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
+fleast      = { ^"least" ~ "(" ~ expr ~ ("," ~ expr)* ~ ")" }
+fcase_when  = { ^"when" ~ conditional ~ ^"then" ~ expr }
+fcase_else  = { ^"else" ~ expr }
+fcase_simple_when = { ^"when" ~ expr ~ ^"then" ~ expr }
+fcase_simple = { ^"case" ~ expr ~ fcase_simple_when+ ~ fcase_else? ~ ^"end" }
+fcase        = { ^"case" ~ fcase_when* ~ fcase_else? ~ ^"end" }
+len          = { ^"len" ~ "(" ~ expr ~ ")" }
+fnot         = { ^"not" ~ expr }
+fbool        = { ^"bool" ~ "(" ~ expr ~ ")" }
+fnullif      = { ^"nullif" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
+frecurse_edge = { ^"recurse_edge" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
+
+_generic_functions = _{
+    fcast | fcase_simple | fcase | concat | fcoalesce | fgreatest | fleast | fnullif | len | fnot | fbool | frecurse_edge
+}
+
+// =============================================================================
+// CONSTANT FUNCTIONS
+// =============================================================================
+CURRENT_DATE      = @{ ^"current_date()" }
+CURRENT_DATETIME  = @{ ^"current_datetime()" }
+CURRENT_TIMESTAMP = @{ ^"current_timestamp()" }
+fcurrent_date      = { CURRENT_DATE }
+fcurrent_datetime  = { CURRENT_DATETIME }
+fcurrent_timestamp = { CURRENT_TIMESTAMP }
+_constant_functions = _{ fcurrent_date | fcurrent_datetime | fcurrent_timestamp }
+
+// =============================================================================
+// STRING / MATH / ARRAY / MAP / GEO FUNCTIONS
+// =============================================================================
+like     = { ^"like" ~ "(" ~ expr ~ "," ~ string_lit ~ ")" }
+ilike    = { ^"ilike" ~ "(" ~ expr ~ "," ~ string_lit ~ ")" }
+upper    = { ^"upper" ~ "(" ~ expr ~ ")" }
+flower   = { ^"lower" ~ "(" ~ expr ~ ")" }
+fsplit   = { ^"split" ~ "(" ~ expr ~ "," ~ string_lit ~ ")" }
+fstrpos  = { ^"strpos" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
+fcontains = { ^"contains" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
+ftrim    = { ^"trim" ~ "(" ~ expr ~ ")" }
+fltrim   = { ^"ltrim" ~ "(" ~ expr ~ ")" }
+frtrim   = { ^"rtrim" ~ "(" ~ expr ~ ")" }
+freplace = { ^"replace" ~ "(" ~ expr ~ "," ~ expr ~ "," ~ expr ~ ")" }
+fsubstring = { ^"substring" ~ "(" ~ expr ~ "," ~ expr ~ "," ~ expr ~ ")" }
+fregexp_extract  = { ^"regexp_extract" ~ "(" ~ expr ~ "," ~ expr ~ ("," ~ int_lit)? ~ ")" }
+fregexp_contains = { ^"regexp_contains" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
+fregexp_replace  = { ^"regexp_replace" ~ "(" ~ expr ~ "," ~ expr ~ "," ~ expr ~ ")" }
+HASH_TYPE = @{ ^"md5" | ^"sha1" | ^"sha256" | ^"sha512" }
+fhash     = { ^"hash" ~ "(" ~ expr ~ "," ~ HASH_TYPE ~ ")" }
+fhex      = { ^"hex" ~ "(" ~ expr ~ ")" }
+
+_string_functions = _{
+    like | ilike | upper | flower | fsplit | fstrpos | fsubstring | fcontains
+  | ftrim | fltrim | frtrim | freplace | fregexp_extract | fregexp_contains | fregexp_replace | fhash | fhex
+}
+
+fadd   = { ^"add" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
+fsub   = { ^"subtract" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
+fmul   = { ^"multiply" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
+fdiv   = { ^"divide" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
+fmod   = { ^"mod" ~ "(" ~ expr ~ "," ~ (int_lit | concept_lit) ~ ")" }
+flog   = { ^"log" ~ "(" ~ expr ~ ("," ~ expr)? ~ ")" }
+fround = { ^"round" ~ "(" ~ expr ~ ("," ~ expr)? ~ ")" }
+ffloor = { ^"floor" ~ "(" ~ expr ~ ")" }
+fceil  = { ^"ceil" ~ "(" ~ expr ~ ")" }
+fabs   = { ^"abs" ~ "(" ~ expr ~ ")" }
+fsqrt  = { ^"sqrt" ~ "(" ~ expr ~ ")" }
+frandom = { ^"random" ~ "(" ~ expr ~ ")" }
+
+_math_functions = _{ fmul | fdiv | fadd | fsub | fround | ffloor | fceil | fmod | flog | fabs | fsqrt | frandom }
+
+farray_sum       = { ^"array_sum" ~ "(" ~ expr ~ ")" }
+farray_distinct  = { ^"array_distinct" ~ "(" ~ expr ~ ")" }
+farray_to_string = { ^"array_to_string" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
+farray_sort      = { ^"array_sort" ~ "(" ~ expr ~ ("," ~ ordering)? ~ ")" }
+transform_lambda = { "@" ~ IDENTIFIER }
+farray_transform = { ^"array_transform" ~ "(" ~ expr ~ "," ~ transform_lambda ~ ")" }
+farray_filter    = { ^"array_filter" ~ "(" ~ expr ~ "," ~ transform_lambda ~ ")" }
+fgenerate_array  = { ^"generate_array" ~ "(" ~ expr ~ "," ~ expr ~ "," ~ expr ~ ")" }
+
+_array_functions = _{
+    farray_sum | farray_distinct | farray_sort | farray_transform | farray_to_string | farray_filter | fgenerate_array
+}
+
+// Used inside subselect_comparison where access+window can conflict; mirrors lark's narrower set.
+_array_functions_only = _{ _array_functions }
+
+fmap_keys   = { ^"map_keys" ~ "(" ~ expr ~ ")" }
+fmap_values = { ^"map_values" ~ "(" ~ expr ~ ")" }
+_map_functions = _{ fmap_keys | fmap_values }
+
+fgeo_from_text = { ^"geo_from_text" ~ "(" ~ expr ~ ")" }
+fgeo_point     = { ^"geo_point" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
+fgeo_distance  = { ^"geo_distance" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
+fgeo_x         = { ^"geo_x" ~ "(" ~ expr ~ ")" }
+fgeo_y         = { ^"geo_y" ~ "(" ~ expr ~ ")" }
+fgeo_centroid  = { ^"geo_centroid" ~ "(" ~ expr ~ ")" }
+fgeo_transform = { ^"geo_transform" ~ "(" ~ expr ~ "," ~ expr ~ "," ~ expr ~ ")" }
+_geo_functions = _{ fgeo_from_text | fgeo_point | fgeo_distance | fgeo_x | fgeo_y | fgeo_centroid | fgeo_transform }
+
+// =============================================================================
+// DATE FUNCTIONS
+// =============================================================================
+fdate      = { ^"date" ~ "(" ~ expr ~ ")" }
+fdatetime  = { ^"datetime" ~ "(" ~ expr ~ ")" }
+ftimestamp = { ^"timestamp" ~ "(" ~ expr ~ ")" }
+fsecond    = { ^"second" ~ "(" ~ expr ~ ")" }
+fminute    = { ^"minute" ~ "(" ~ expr ~ ")" }
+fhour      = { ^"hour" ~ "(" ~ expr ~ ")" }
+fday       = { ^"day" ~ "(" ~ expr ~ ")" }
+fday_name  = { ^"day_name" ~ "(" ~ expr ~ ")" }
+fday_of_week = { ^"day_of_week" ~ "(" ~ expr ~ ")" }
+fweek      = { ^"week" ~ "(" ~ expr ~ ")" }
+fmonth     = { ^"month" ~ "(" ~ expr ~ ")" }
+fmonth_name = { ^"month_name" ~ "(" ~ expr ~ ")" }
+fformat_time = { ^"format_time" ~ "(" ~ expr ~ "," ~ string_lit ~ ")" }
+fparse_time  = { ^"parse_time" ~ "(" ~ expr ~ "," ~ string_lit ~ ")" }
+fquarter   = { ^"quarter" ~ "(" ~ expr ~ ")" }
+fyear      = { ^"year" ~ "(" ~ expr ~ ")" }
+
+DATE_PART = @{ ^"day_of_week" | ^"day" | ^"week" | ^"month" | ^"quarter" | ^"year" | ^"minute" | ^"hour" | ^"second" }
+fdate_trunc = { (^"date_trunc" | ^"date_truncate") ~ "(" ~ expr ~ "," ~ DATE_PART ~ ")" }
+fdate_part  = { ^"date_part" ~ "(" ~ expr ~ "," ~ DATE_PART ~ ")" }
+fdate_add   = { ^"date_add" ~ "(" ~ expr ~ "," ~ DATE_PART ~ "," ~ expr ~ ")" }
+fdate_sub   = { ^"date_sub" ~ "(" ~ expr ~ "," ~ DATE_PART ~ "," ~ expr ~ ")" }
+fdate_diff  = { ^"date_diff" ~ "(" ~ expr ~ "," ~ expr ~ "," ~ DATE_PART ~ ")" }
+fdate_spine = { ^"date_spine" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
+
+_date_functions = _{
+      fdate_trunc | fdate_part | fdate_add | fdate_sub | fdate_diff | fdate_spine
+    | fday_of_week | fday_name | fmonth_name | fformat_time | fparse_time
+    | fdate | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fweek | fmonth | fquarter | fyear
+}
+
+_static_functions = _{ _string_functions | _math_functions | _array_functions | _map_functions | _geo_functions }
+
+custom_function = { "@" ~ IDENTIFIER ~ "(" ~ ((expr ~ ",")* ~ expr ~ ","?)? ~ ")" }
+
+// =============================================================================
+// LITERALS
+// =============================================================================
+concept_lit = { IDENTIFIER }
+
+// int_lit / float_lit emit one nested token child so the v2 hydrator can
+// `int(str(child))` / `float(str(child))`. Atomic inner token carries the span.
+INT_LITERAL_PART   = @{ "-"? ~ ASCII_DIGIT+ }
+FLOAT_LITERAL_PART = @{ "-"? ~ ASCII_DIGIT* ~ "." ~ ASCII_DIGIT+ }
+int_lit   = ${ INT_LITERAL_PART ~ !("." ~ ASCII_DIGIT) ~ !(ASCII_ALPHA | "_") }
+float_lit = ${ FLOAT_LITERAL_PART ~ !(ASCII_ALPHA | "_") }
+
+// Keyword word-boundary: "null", "true", "false" must not prefix-match identifiers.
+// Compound atomic `${}` captures inner named rules as pairs — the hydrator for
+// bool_lit reads node.children[0], so we need BOOL_KW as a named inner token.
+BOOL_KW  = @{ ^"true" | ^"false" }
+bool_lit = ${ BOOL_KW ~ !(ASCII_ALPHANUMERIC | "_") }
+null_lit = ${ ^"null" ~ !(ASCII_ALPHANUMERIC | "_") }
+
+array_lit = { "[" ~ ((expr ~ ",")* ~ expr ~ ","?)? ~ "]" }
+tuple_lit = { "(" ~ (literal ~ ",")+ ~ literal? ~ ","? ~ ")" }
+map_lit   = { "{" ~ (literal ~ ":" ~ literal ~ ",")* ~ literal ~ ":" ~ literal ~ ","? ~ "}" }
+
+struct_lit = { ^"struct" ~ "(" ~ expr ~ "->" ~ IDENTIFIER ~ ("," ~ expr ~ "->" ~ IDENTIFIER)* ~ ","? ~ ")" }
+
+literal = { null_lit | string_lit | bool_lit | float_lit | int_lit | array_lit | map_lit | struct_lit | tuple_lit }
+
+// Strings
+MULTILINE_STRING = @{ "'''" ~ (!"'''" ~ ANY)* ~ "'''" }
+DOUBLE_STRING_CHARS = @{ ((!"\"" ~ !"\\" ~ ANY) | ("\\" ~ ANY))+ }
+SINGLE_STRING_CHARS = @{ ((!"'" ~ !"\\" ~ ANY) | ("\\" ~ ANY))+ }
+string_lit = ${
+      MULTILINE_STRING
+    | ("'" ~ SINGLE_STRING_CHARS? ~ "'")
+    | ("\"" ~ DOUBLE_STRING_CHARS? ~ "\"")
+}
+
+// =============================================================================
+// IDENTIFIERS + PATHS
+// =============================================================================
+IDENTIFIER          = @{ !RESERVED_KW ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ".")* }
+WILDCARD_IDENTIFIER = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | "-" | "." | "*")* }
+QUOTED_IDENTIFIER   = @{ "`" ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | "." | "-" | "*" | ":" | " ")* ~ "`" }
+QUOTED_ADDRESS      = @{ "`" ~ "'"? ~ (ASCII_ALPHA | "_" | "\\" | "/") ~ (ASCII_ALPHANUMERIC | "_" | "." | "\\" | "/" | "-" | "*" | ":" | " ")* ~ "'"? ~ "`" }
+F_QUOTED_ADDRESS    = @{ "f`" ~ (!"`" ~ ANY)* ~ "`" }
+ADDRESS             = { IDENTIFIER }
+
+// Reserved keywords that must not be parsed as identifiers. Limited to pure
+// SQL clauses/operators that never appear as identifier names in trilogy code.
+// `not` must be reserved so `concept_lit` can't absorb it as a bare
+// identifier inside an _atom — otherwise `births ? not (a or b)` short
+// circuits with concept_lit grabbing `not` and leaving `(a or b)`
+// unconsumed, instead of falling through to `condition_parenthetical`.
+// COMPARISON_OPERATOR / CONDITION_NOT / fnot / array_comparison all use
+// literal `^"not"` matches, which aren't affected by this reservation.
+RESERVED_KW = @{
+    (^"select" | ^"where" | ^"having" | ^"from" | ^"limit" | ^"and" | ^"or" | ^"not")
+    ~ !(ASCII_ALPHANUMERIC | "_" | ".")
+}
+
+// Lookahead used at select_list / order_list boundaries to prevent greedy
+// consumption of clause keywords after a trailing comma as an identifier.
+ORDER_BY_LA = @{
+    ^"order" ~ (" " | "\t" | "\r" | "\n")+ ~ ^"by"
+    ~ !(ASCII_ALPHANUMERIC | "_" | ".")
+}
+
+SELECT_LIST_STOP = @{
+    (   ORDER_BY_LA
+      | (^"merge" | ^"align" | ^"derive") ~ !(ASCII_ALPHANUMERIC | "_" | ".")
+    )
+}
+
+FILE_EXT    = _{ ^"py" | ^"csv" | ^"json" | ^"parquet" | ^"tsv" | ^"sql" }
+FILE_PATH   = @{ "`" ~ (!("." ~ FILE_EXT ~ "`") ~ !"`" ~ ANY)+ ~ "." ~ FILE_EXT ~ "`" }
+F_FILE_PATH = @{ "f`" ~ (!("." ~ FILE_EXT ~ "`") ~ !"`" ~ ANY)+ ~ "." ~ FILE_EXT ~ "`" }
+
+SHORTHAND_MODIFIER = @{ "~" | "?" }
+
+// =============================================================================
+// PURPOSE / KEYWORDS (order matters: priority-like)
+// =============================================================================
+PURPOSE  = @{ ^"key" | ^"metric" | ^"const" ~ ^"ant"? }
+PROPERTY = @{ ^"property" }
+UNIQUE   = @{ ^"unique" }
+AUTO     = @{ ^"auto" }
+
+// =============================================================================
+// TYPES
+// =============================================================================
+numeric_type = { ^"numeric" ~ "(" ~ int_lit ~ "," ~ int_lit ~ ")" }
+map_type     = { ^"map" ~ "<" ~ (data_type | IDENTIFIER) ~ "," ~ (data_type | IDENTIFIER) ~ ">" }
+struct_component = { IDENTIFIER ~ ":" ~ data_type ~ concept_nullable_modifier? ~ metadata? }
+struct_type  = { ^"struct" ~ "<" ~ ((struct_component | IDENTIFIER) ~ ",")* ~ (struct_component | IDENTIFIER) ~ ","? ~ ">" }
+list_type    = { (^"list" | ^"array") ~ "<" ~ (data_type | IDENTIFIER) ~ ">" }
+enum_type    = { ^"enum" ~ "<" ~ data_type ~ ">" ~ "[" ~ (string_lit | int_lit) ~ ("," ~ (string_lit | int_lit))* ~ ","? ~ "]" }
+
+// data_type: include composite types before the simple keyword list (order matters).
+data_type = {
+    (
+          numeric_type | map_type | struct_type | list_type | enum_type
+        | DATA_TYPE_SIMPLE
+    ) ~ ("::" ~ IDENTIFIER)?
+}
+DATA_TYPE_SIMPLE = @{
+      ^"string" | ^"bytes" | ^"geography" | ^"numeric" | ^"number" | ^"int" | ^"bigint"
+    | ^"datetime" | ^"timestamp" | ^"date" | ^"float" | ^"bool"
+    | ^"map" | ^"list" | ^"array" | ^"any"
+}

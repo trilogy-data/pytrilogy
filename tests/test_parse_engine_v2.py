@@ -1,14 +1,27 @@
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
 
+from trilogy.constants import CONFIG, ParserBackend
 from trilogy.core.enums import DatasourceState
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.models.environment import Environment
 from trilogy.parsing.parse_engine import parse_text as parse_text_v1
 from trilogy.parsing.parse_engine_v2 import SyntaxNode, parse_syntax, parse_text
 from trilogy.parsing.v2.syntax import SyntaxElement, SyntaxNodeKind, SyntaxTokenKind
+
+
+@contextmanager
+def _using_backend(backend: ParserBackend) -> Iterator[None]:
+    prev = CONFIG.parser_backend
+    CONFIG.parser_backend = backend
+    try:
+        yield
+    finally:
+        CONFIG.parser_backend = prev
+
 
 V2_PATH = Path(__file__).parents[1] / "trilogy" / "parsing" / "v2"
 
@@ -37,7 +50,14 @@ select missing_concept;
 
 
 def test_parse_syntax_translates_lark_token_names() -> None:
-    document = parse_syntax("# hello\nconst a <- 1;")
+    from trilogy.constants import CONFIG, ParserBackend
+
+    prev = CONFIG.parser_backend
+    CONFIG.parser_backend = ParserBackend.LARK
+    try:
+        document = parse_syntax("# hello\nconst a <- 1;")
+    finally:
+        CONFIG.parser_backend = prev
 
     comment = document.forms[0]
     assert comment.kind == SyntaxTokenKind.COMMENT
@@ -281,3 +301,84 @@ auto even_order_store_revenue <- sum(even_orders.revenue);
     assert "even_orders.revenue" in env.concepts
     assert "even_orders.local.revenue" not in env.concepts
     assert "local.even_order_store_revenue" in env.concepts
+
+
+def test_parse_text_v2_non_ascii_source_roundtrips() -> None:
+    # Pest reports byte offsets; the converter must translate them to char indices
+    # or any file containing multibyte UTF-8 blows up with IndexError on comment
+    # injection and produces wrong line/column for every later token.
+    env, output = parse_text(
+        "# comment with non-ascii: café ☕ π\nkey revenue float;\nauto doubled <- revenue * 2;\n",
+        Environment(),
+    )
+    assert "local.revenue" in env.concepts
+    assert "local.doubled" in env.concepts
+    assert env.concepts["local.doubled"].lineage is not None
+    assert len(output) >= 2
+
+
+def test_pest_parse_error_raises_invalid_syntax_exception() -> None:
+    with _using_backend(ParserBackend.PEST):
+        with pytest.raises(InvalidSyntaxException):
+            parse_text("this is not valid trilogy @#$", Environment())
+
+
+def test_lark_parse_error_keeps_rich_error_codes() -> None:
+    # The lark backend should still produce the numbered syntax hints even
+    # after the pest decoupling. Regression guard: if parse_text starts
+    # swallowing lark's UnexpectedToken again, these codes disappear.
+    with _using_backend(ParserBackend.LARK):
+        with pytest.raises(InvalidSyntaxException, match=r"Syntax \[201\]"):
+            parse_text("key revenue float;\nSELECT revenue + 1;", Environment())
+
+
+def _corpus_files() -> list[Path]:
+    root = Path(__file__).parents[1]
+    files: list[Path] = []
+    files.extend(sorted(root.glob("trilogy/std/*.preql")))
+    files.extend(sorted(root.glob("tests/modeling/**/*.preql")))
+    return files
+
+
+def test_lark_pest_corpus_parity() -> None:
+    # Guards against pest regressions. If lark fails (pre-existing grammar gaps,
+    # files that can't be parsed standalone, etc.) we can't compare — skip.
+    # Only complain when pest drifts from or underperforms a successful lark run.
+    files = _corpus_files()
+    assert files, "no corpus files discovered — glob patterns drifted"
+
+    mismatches: list[str] = []
+    compared = 0
+    for path in files:
+        try:
+            text = path.read_text()
+        except OSError:
+            continue
+        try:
+            with _using_backend(ParserBackend.LARK):
+                env_lark, _ = parse_text(text, Environment(working_path=path.parent))
+        except Exception:
+            continue
+        try:
+            with _using_backend(ParserBackend.PEST):
+                env_pest, _ = parse_text(text, Environment(working_path=path.parent))
+        except Exception as e:
+            mismatches.append(f"{path}: pest failed while lark succeeded: {e}")
+            continue
+        compared += 1
+        lark_concepts = set(env_lark.concepts.keys())
+        pest_concepts = set(env_pest.concepts.keys())
+        if lark_concepts != pest_concepts:
+            only_lark = sorted(lark_concepts - pest_concepts)[:5]
+            only_pest = sorted(pest_concepts - lark_concepts)[:5]
+            mismatches.append(
+                f"{path}: concept drift lark_only={only_lark} pest_only={only_pest}"
+            )
+        lark_ds = set(env_lark.datasources.keys())
+        pest_ds = set(env_pest.datasources.keys())
+        if lark_ds != pest_ds:
+            mismatches.append(
+                f"{path}: datasource drift lark={sorted(lark_ds)} pest={sorted(pest_ds)}"
+            )
+    assert compared > 0, "corpus parity compared zero files"
+    assert not mismatches, "\n".join(mismatches)

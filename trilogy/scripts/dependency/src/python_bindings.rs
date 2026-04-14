@@ -5,13 +5,22 @@ use std::path::PathBuf;
 use crate::graph::GraphCore;
 use crate::parser::parse_file;
 use crate::resolver::ImportResolver;
+use crate::trilogy_parser::{
+    parse_trilogy_syntax, parse_trilogy_syntax_count, parse_trilogy_syntax_tuple,
+    PestNode, PestToken,
+};
 
 /// Python module for PreQL import resolution
 #[pymodule]
 fn _preql_import_resolver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyImportResolver>()?;
     m.add_class::<PyGraphCore>()?;
+    m.add_class::<PestNode>()?;
+    m.add_class::<PestToken>()?;
     m.add_function(wrap_pyfunction!(parse_preql_file, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_trilogy_syntax, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_trilogy_syntax_tuple, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_trilogy_syntax_count, m)?)?;
     Ok(())
 }
 

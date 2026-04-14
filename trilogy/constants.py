@@ -111,6 +111,11 @@ class ParserVersion(Enum):
     V2 = "v2"
 
 
+class ParserBackend(Enum):
+    LARK = "lark"
+    PEST = "pest"
+
+
 # TODO: support loading from environments
 @dataclass
 class Config:
@@ -124,6 +129,7 @@ class Config:
     parsing: Parsing = field(default_factory=Parsing)
     generation: Generation = field(default_factory=Generation)
     parser_version: ParserVersion = ParserVersion.V2
+    parser_backend: ParserBackend = ParserBackend.PEST
 
     @property
     def show_comments(self) -> bool:
