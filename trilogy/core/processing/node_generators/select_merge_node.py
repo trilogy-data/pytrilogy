@@ -38,6 +38,10 @@ from trilogy.core.processing.condition_utility import (
     merge_conditions,
     merge_conditions_and_dedup,
 )
+from trilogy.core.processing.discovery_validation import (
+    ValidationResult,
+    validate_stack,
+)
 from trilogy.core.processing.node_generators.common import reinject_common_join_keys_v2
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
@@ -50,6 +54,7 @@ from trilogy.core.processing.nodes import (
     StrategyNode,
 )
 from trilogy.core.processing.utility import padding
+from trilogy.utility import unique
 
 if TYPE_CHECKING:
     from trilogy.core.processing.nodes.union_node import UnionNode
@@ -170,6 +175,81 @@ def _ds_mat_score(
             ds_name,
         )
     return (partial_count, 2, ds_name)
+
+
+def create_select_node(
+    ds_name: str,
+    subgraph: list[str],
+    accept_partial: bool,
+    g: ReferenceGraph,
+    environment: BuildEnvironment,
+    depth: int,
+    conditions: BuildWhereClause | None = None,
+) -> StrategyNode:
+    all_concepts = [
+        environment.canonical_concepts[extract_address(c)]
+        for c in subgraph
+        if c.startswith("c~")
+    ]
+
+    if all(c.derivation == Derivation.CONSTANT for c in all_concepts):
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} All concepts {[x.address for x in all_concepts]} are constants, returning constant node"
+        )
+        return ConstantNode(
+            output_concepts=all_concepts,
+            input_concepts=[],
+            environment=environment,
+            parents=[],
+            depth=depth,
+            # no partial for constants
+            partial_concepts=[],
+            force_group=False,
+            preexisting_conditions=conditions.conditional if conditions else None,
+        )
+
+    datasource: BuildDatasource | BuildUnionDatasource = g.datasources[ds_name]
+
+    if isinstance(datasource, BuildDatasource):
+        bcandidate, force_group = create_datasource_node(
+            datasource,
+            all_concepts,
+            accept_partial,
+            environment,
+            depth,
+            conditions=conditions,
+        )
+    elif isinstance(datasource, BuildUnionDatasource):
+        bcandidate, force_group = create_union_datasource(
+            datasource,
+            all_concepts,
+            accept_partial,
+            environment,
+            depth,
+            conditions=conditions,
+        )
+    else:
+        raise ValueError(f"Unknown datasource type {datasource}")
+
+    if force_group is True:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} source requires group before consumption."
+        )
+        candidate: StrategyNode = GroupNode(
+            output_concepts=all_concepts,
+            input_concepts=all_concepts,
+            environment=environment,
+            parents=[bcandidate],
+            depth=depth + 1,
+            partial_concepts=bcandidate.partial_concepts,
+            nullable_concepts=bcandidate.nullable_concepts,
+            preexisting_conditions=bcandidate.preexisting_conditions,
+            force_group=force_group,
+        )
+    else:
+        candidate = bcandidate
+
+    return candidate
 
 
 def deduplicate_datasources(
@@ -756,81 +836,6 @@ def create_union_datasource(
     )
 
 
-def create_select_node(
-    ds_name: str,
-    subgraph: list[str],
-    accept_partial: bool,
-    g: ReferenceGraph,
-    environment: BuildEnvironment,
-    depth: int,
-    conditions: BuildWhereClause | None = None,
-) -> StrategyNode:
-    all_concepts = [
-        environment.canonical_concepts[extract_address(c)]
-        for c in subgraph
-        if c.startswith("c~")
-    ]
-
-    if all(c.derivation == Derivation.CONSTANT for c in all_concepts):
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} All concepts {[x.address for x in all_concepts]} are constants, returning constant node"
-        )
-        return ConstantNode(
-            output_concepts=all_concepts,
-            input_concepts=[],
-            environment=environment,
-            parents=[],
-            depth=depth,
-            # no partial for constants
-            partial_concepts=[],
-            force_group=False,
-            preexisting_conditions=conditions.conditional if conditions else None,
-        )
-
-    datasource: BuildDatasource | BuildUnionDatasource = g.datasources[ds_name]
-
-    if isinstance(datasource, BuildDatasource):
-        bcandidate, force_group = create_datasource_node(
-            datasource,
-            all_concepts,
-            accept_partial,
-            environment,
-            depth,
-            conditions=conditions,
-        )
-    elif isinstance(datasource, BuildUnionDatasource):
-        bcandidate, force_group = create_union_datasource(
-            datasource,
-            all_concepts,
-            accept_partial,
-            environment,
-            depth,
-            conditions=conditions,
-        )
-    else:
-        raise ValueError(f"Unknown datasource type {datasource}")
-
-    if force_group is True:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} source requires group before consumption."
-        )
-        candidate: StrategyNode = GroupNode(
-            output_concepts=all_concepts,
-            input_concepts=all_concepts,
-            environment=environment,
-            parents=[bcandidate],
-            depth=depth + 1,
-            partial_concepts=bcandidate.partial_concepts,
-            nullable_concepts=bcandidate.nullable_concepts,
-            preexisting_conditions=bcandidate.preexisting_conditions,
-            force_group=force_group,
-        )
-    else:
-        candidate = bcandidate
-
-    return candidate
-
-
 def _source_concepts_via_graph(
     concepts: list[BuildConcept],
     g: ReferenceGraph,
@@ -878,16 +883,20 @@ def _source_concepts_via_graph(
     if not pruned:
         return []
     return [
-        create_select_node(
-            k,
-            subgraph,
-            g=pruned,
-            accept_partial=accept_partial,
-            environment=environment,
-            depth=depth,
-            conditions=select_conditions,
-        )
+        node
         for k, subgraph in sub_nodes.items()
+        if (
+            node := create_select_node(
+                k,
+                subgraph,
+                g=pruned,
+                accept_partial=accept_partial,
+                environment=environment,
+                depth=depth,
+                conditions=select_conditions,
+            )
+        )
+        is not None
     ]
 
 
@@ -1064,23 +1073,45 @@ def gen_select_merge_node(
         parents.extend(abstract_nodes)
 
     if len(parents) == 1:
-        return parents[0]
-    logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} Multiple parent DS nodes resolved - {[type(x) for x in parents]}, wrapping in merge"
-    )
+        candidate: StrategyNode = parents[0]
+    else:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} Multiple parent DS nodes resolved - {[type(x) for x in parents]}, wrapping in merge"
+        )
 
-    preexisting_conditions = None
-    if conditions and all(
-        x.preexisting_conditions and x.preexisting_conditions == conditions.conditional
-        for x in parents
-    ):
-        preexisting_conditions = conditions.conditional
+        preexisting_conditions = None
+        if conditions and all(
+            x.preexisting_conditions
+            and x.preexisting_conditions == conditions.conditional
+            for x in parents
+        ):
+            preexisting_conditions = conditions.conditional
 
-    return MergeNode(
-        output_concepts=all_concepts,
-        input_concepts=normals + abstract_props,
-        environment=environment,
-        depth=depth,
-        parents=parents,
-        preexisting_conditions=preexisting_conditions,
-    )
+        candidate = MergeNode(
+            output_concepts=all_concepts,
+            input_concepts=normals + abstract_props,
+            environment=environment,
+            depth=depth,
+            parents=parents,
+            preexisting_conditions=preexisting_conditions,
+        )
+
+    if conditions:
+        completion_mandatory = unique(
+            all_concepts + list(conditions.row_arguments), "address"
+        )
+        complete, _, _, _, _ = validate_stack(
+            environment,
+            [candidate],
+            all_concepts,
+            completion_mandatory,
+            conditions=conditions,
+            accept_partial=accept_partial,
+        )
+        if complete != ValidationResult.COMPLETE:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} candidate validation state was {complete}; returning None"
+            )
+            return None
+
+    return candidate

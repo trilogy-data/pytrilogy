@@ -375,6 +375,7 @@ def _search_concepts(
     # if we get a can
     if candidate:
         return candidate
+
     context = initialize_loop_context(
         mandatory_list=mandatory_list,
         environment=environment,
