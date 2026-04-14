@@ -2,6 +2,7 @@ mod parser;
 mod resolver;
 mod directory_resolver;
 mod graph;
+mod trilogy_parser;
 pub mod python_bindings;
 
 pub use parser::{

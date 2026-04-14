@@ -607,7 +607,7 @@ LARK_TOKEN_KIND: dict[str, SyntaxTokenKind] = {
 }
 
 
-@dataclass(frozen=True)
+@dataclass(slots=True)
 class SyntaxMeta:
     line: int | None
     column: int | None
@@ -630,7 +630,7 @@ class SyntaxMeta:
         )
 
 
-@dataclass(frozen=True)
+@dataclass(slots=True)
 class SyntaxToken:
     name: str
     value: str
@@ -645,7 +645,7 @@ class SyntaxToken:
         return self.value
 
 
-@dataclass(frozen=True)
+@dataclass(slots=True)
 class SyntaxNode:
     name: str
     children: tuple["SyntaxNode | SyntaxToken", ...]
