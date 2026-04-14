@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.models.author import Comment, CustomFunctionFactory
@@ -244,10 +244,13 @@ def _declare_inline_literals(
         hydrator.symbol_table.declare(address, nm or address, ns or namespace)
 
 
+_SelectLikeT = TypeVar("_SelectLikeT", SelectStatement, MultiSelectStatement)
+
+
 @dataclass
-class SelectStatementPlan(StatementPlanBase):
+class _SelectLikeStatementPlan(StatementPlanBase, Generic[_SelectLikeT]):
     syntax: SyntaxNode
-    output: SelectStatement | None = None
+    output: _SelectLikeT | None = None
     inline_addresses: list[str] = field(default_factory=list)
 
     def collect_symbols(self, hydrator: "NativeHydrator") -> None:
@@ -264,32 +267,16 @@ class SelectStatementPlan(StatementPlanBase):
     def validate(self, hydrator: "NativeHydrator") -> None:
         finalize_select_tree(self.output, hydrator)
 
-    def commit(self, hydrator: "NativeHydrator") -> SelectStatement | None:
+    def commit(self, hydrator: "NativeHydrator") -> _SelectLikeT | None:
         return self.output
 
 
-@dataclass
-class MultiSelectStatementPlan(StatementPlanBase):
-    syntax: SyntaxNode
-    output: MultiSelectStatement | None = None
-    inline_addresses: list[str] = field(default_factory=list)
+class SelectStatementPlan(_SelectLikeStatementPlan[SelectStatement]):
+    pass
 
-    def collect_symbols(self, hydrator: "NativeHydrator") -> None:
-        namespace = hydrator.environment.namespace or DEFAULT_NAMESPACE
-        self.inline_addresses = collect_inline_concept_addresses(self.syntax, namespace)
-        for addr in self.inline_addresses:
-            ns, _, nm = addr.rpartition(".")
-            hydrator.symbol_table.declare(addr, nm or addr, ns or namespace)
-        _declare_inline_literals(self.syntax, hydrator, namespace)
 
-    def hydrate(self, hydrator: "NativeHydrator") -> None:
-        self.output = hydrator.hydrate_rule(self.syntax)
-
-    def validate(self, hydrator: "NativeHydrator") -> None:
-        finalize_select_tree(self.output, hydrator)
-
-    def commit(self, hydrator: "NativeHydrator") -> MultiSelectStatement | None:
-        return self.output
+class MultiSelectStatementPlan(_SelectLikeStatementPlan[MultiSelectStatement]):
+    pass
 
 
 @dataclass

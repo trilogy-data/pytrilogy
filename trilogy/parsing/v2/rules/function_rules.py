@@ -356,33 +356,21 @@ def fcast(
     return context.function_factory.create_function(args, FunctionType.CAST)
 
 
-def fcurrent_date(
+_CURRENT_CONSTANT_MAP: dict[SyntaxNodeKind, FunctionType] = {
+    SyntaxNodeKind.FCURRENT_DATE: FunctionType.CURRENT_DATE,
+    SyntaxNodeKind.FCURRENT_DATETIME: FunctionType.CURRENT_DATETIME,
+    SyntaxNodeKind.FCURRENT_TIMESTAMP: FunctionType.CURRENT_TIMESTAMP,
+}
+
+
+def fcurrent_constant(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> Function:
+    assert node.kind is not None
     return context.function_factory.create_function(
-        args=[], operator=FunctionType.CURRENT_DATE
-    )
-
-
-def fcurrent_datetime(
-    node: SyntaxNode,
-    context: RuleContext,
-    hydrate: HydrateFunction,
-) -> Function:
-    return context.function_factory.create_function(
-        args=[], operator=FunctionType.CURRENT_DATETIME
-    )
-
-
-def fcurrent_timestamp(
-    node: SyntaxNode,
-    context: RuleContext,
-    hydrate: HydrateFunction,
-) -> Function:
-    return context.function_factory.create_function(
-        args=[], operator=FunctionType.CURRENT_TIMESTAMP
+        args=[], operator=_CURRENT_CONSTANT_MAP[node.kind]
     )
 
 
@@ -535,40 +523,24 @@ def subselect_limit(
 # --- Window handlers ---
 
 
-def window_item_over(
+_WINDOW_SINGLE_ARG_MAP: dict[
+    SyntaxNodeKind, type[WindowItemOver] | type[WindowItemOrder]
+] = {
+    SyntaxNodeKind.WINDOW_ITEM_OVER: WindowItemOver,
+    SyntaxNodeKind.WINDOW_ITEM_ORDER: WindowItemOrder,
+    SyntaxNodeKind.WINDOW_SQL_PARTITION: WindowItemOver,
+    SyntaxNodeKind.WINDOW_SQL_ORDER: WindowItemOrder,
+}
+
+
+def window_single_arg(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
-) -> WindowItemOver:
+) -> WindowItemOver | WindowItemOrder:
+    assert node.kind is not None
     args = hydrated_children(node, hydrate)
-    return WindowItemOver(contents=args[0])
-
-
-def window_item_order(
-    node: SyntaxNode,
-    context: RuleContext,
-    hydrate: HydrateFunction,
-) -> WindowItemOrder:
-    args = hydrated_children(node, hydrate)
-    return WindowItemOrder(contents=args[0])
-
-
-def window_sql_partition(
-    node: SyntaxNode,
-    context: RuleContext,
-    hydrate: HydrateFunction,
-) -> WindowItemOver:
-    args = hydrated_children(node, hydrate)
-    return WindowItemOver(contents=args[0])
-
-
-def window_sql_order(
-    node: SyntaxNode,
-    context: RuleContext,
-    hydrate: HydrateFunction,
-) -> WindowItemOrder:
-    args = hydrated_children(node, hydrate)
-    return WindowItemOrder(contents=args[0])
+    return _WINDOW_SINGLE_ARG_MAP[node.kind](contents=args[0])
 
 
 def window_sql_over(
@@ -632,29 +604,22 @@ def _parse_window_args(
     return wtype, concept, index, order_by, over
 
 
-def window_item_legacy(
+_WINDOW_ITEM_MISSING_FIELD_ERROR: dict[SyntaxNodeKind, str] = {
+    SyntaxNodeKind.WINDOW_ITEM_LEGACY: "Window statements must be on fields, not constants",
+    SyntaxNodeKind.WINDOW_ITEM_SQL: "Window function requires a field argument",
+}
+
+
+def window_item_from_args(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> WindowItem:
+    assert node.kind is not None
     args = hydrated_children(node, hydrate)
     wtype, concept, index, order_by, over = _parse_window_args(args, context)
     if not concept:
-        raise fail(node, "Window statements must be on fields, not constants")
-    return WindowItem(
-        type=wtype, content=concept.reference, over=over, order_by=order_by, index=index
-    )
-
-
-def window_item_sql(
-    node: SyntaxNode,
-    context: RuleContext,
-    hydrate: HydrateFunction,
-) -> WindowItem:
-    args = hydrated_children(node, hydrate)
-    wtype, concept, index, order_by, over = _parse_window_args(args, context)
-    if not concept:
-        raise fail(node, "Window function requires a field argument")
+        raise fail(node, _WINDOW_ITEM_MISSING_FIELD_ERROR[node.kind])
     return WindowItem(
         type=wtype, content=concept.reference, over=over, order_by=order_by, index=index
     )
@@ -820,9 +785,9 @@ FUNCTION_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.FREGEXP_EXTRACT: fregexp_extract,
     SyntaxNodeKind.FARRAY_SORT: farray_sort,
     SyntaxNodeKind.FCAST: fcast,
-    SyntaxNodeKind.FCURRENT_DATE: fcurrent_date,
-    SyntaxNodeKind.FCURRENT_DATETIME: fcurrent_datetime,
-    SyntaxNodeKind.FCURRENT_TIMESTAMP: fcurrent_timestamp,
+    SyntaxNodeKind.FCURRENT_DATE: fcurrent_constant,
+    SyntaxNodeKind.FCURRENT_DATETIME: fcurrent_constant,
+    SyntaxNodeKind.FCURRENT_TIMESTAMP: fcurrent_constant,
     SyntaxNodeKind.FNOT: fnot,
     # case
     SyntaxNodeKind.FCASE: fcase,
@@ -839,13 +804,13 @@ FUNCTION_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.SUBSELECT_LIMIT: subselect_limit,
     # window
     SyntaxNodeKind.WINDOW_ITEM: window_item,
-    SyntaxNodeKind.WINDOW_ITEM_LEGACY: window_item_legacy,
-    SyntaxNodeKind.WINDOW_ITEM_SQL: window_item_sql,
-    SyntaxNodeKind.WINDOW_ITEM_OVER: window_item_over,
-    SyntaxNodeKind.WINDOW_ITEM_ORDER: window_item_order,
+    SyntaxNodeKind.WINDOW_ITEM_LEGACY: window_item_from_args,
+    SyntaxNodeKind.WINDOW_ITEM_SQL: window_item_from_args,
+    SyntaxNodeKind.WINDOW_ITEM_OVER: window_single_arg,
+    SyntaxNodeKind.WINDOW_ITEM_ORDER: window_single_arg,
     SyntaxNodeKind.WINDOW_SQL_OVER: window_sql_over,
-    SyntaxNodeKind.WINDOW_SQL_PARTITION: window_sql_partition,
-    SyntaxNodeKind.WINDOW_SQL_ORDER: window_sql_order,
+    SyntaxNodeKind.WINDOW_SQL_PARTITION: window_single_arg,
+    SyntaxNodeKind.WINDOW_SQL_ORDER: window_single_arg,
     # access
     SyntaxNodeKind.INDEX_ACCESS: index_access,
     SyntaxNodeKind.MAP_KEY_ACCESS: map_key_access,
