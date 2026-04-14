@@ -670,9 +670,7 @@ def create_datasource_node(
             datasource.non_partial_for.conditional
             if partial_is_full and datasource.non_partial_for and conditions
             else (
-                conditions.conditional
-                if satisfies_conditions and conditions
-                else None
+                conditions.conditional if satisfies_conditions and conditions else None
             )
         ),
     )
