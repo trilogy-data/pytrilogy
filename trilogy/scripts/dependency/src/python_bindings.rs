@@ -3,7 +3,6 @@ use pyo3::types::{PyDict, PyList};
 use std::path::PathBuf;
 
 use crate::graph::GraphCore;
-use crate::parser::parse_file;
 use crate::resolver::ImportResolver;
 use crate::trilogy_parser::{
     parse_trilogy_syntax, parse_trilogy_syntax_count, parse_trilogy_syntax_tuple,
@@ -17,53 +16,10 @@ fn _preql_import_resolver(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyGraphCore>()?;
     m.add_class::<PestNode>()?;
     m.add_class::<PestToken>()?;
-    m.add_function(wrap_pyfunction!(parse_preql_file, m)?)?;
     m.add_function(wrap_pyfunction!(parse_trilogy_syntax, m)?)?;
     m.add_function(wrap_pyfunction!(parse_trilogy_syntax_tuple, m)?)?;
     m.add_function(wrap_pyfunction!(parse_trilogy_syntax_count, m)?)?;
     Ok(())
-}
-
-/// Parse a PreQL file and return imports, datasources, and persists
-#[pyfunction]
-fn parse_preql_file(py: Python<'_>, content: &str) -> PyResult<PyObject> {
-    let parsed = parse_file(content)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Parse error: {}", e)))?;
-
-    let result = PyDict::new_bound(py);
-
-    // Add imports
-    let imports = PyList::empty_bound(py);
-    for import in parsed.imports {
-        let import_dict = PyDict::new_bound(py);
-        import_dict.set_item("raw_path", import.raw_path)?;
-        import_dict.set_item("alias", import.alias)?;
-        import_dict.set_item("is_stdlib", import.is_stdlib)?;
-        import_dict.set_item("parent_dirs", import.parent_dirs)?;
-        imports.append(import_dict)?;
-    }
-    result.set_item("imports", imports)?;
-
-    // Add datasources
-    let datasources = PyList::empty_bound(py);
-    for ds in parsed.datasources {
-        let ds_dict = PyDict::new_bound(py);
-        ds_dict.set_item("name", ds.name)?;
-        datasources.append(ds_dict)?;
-    }
-    result.set_item("datasources", datasources)?;
-
-    // Add persists
-    let persists = PyList::empty_bound(py);
-    for persist in parsed.persists {
-        let persist_dict = PyDict::new_bound(py);
-        persist_dict.set_item("mode", persist.mode.to_string())?;
-        persist_dict.set_item("target_datasource", persist.target_datasource)?;
-        persists.append(persist_dict)?;
-    }
-    result.set_item("persists", persists)?;
-
-    Ok(result.into())
 }
 
 #[pyclass]

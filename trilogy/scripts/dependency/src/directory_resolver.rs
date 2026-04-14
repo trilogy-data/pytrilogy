@@ -337,7 +337,7 @@ mod tests {
             "incremental_opi.preql",
             r#"
             import order_product_items;
-            persist order_product_items where date = @load_date;
+            persist order_product_items where id = 1;
             "#,
         );
 
@@ -346,7 +346,7 @@ mod tests {
             "incremental_sales.preql",
             r#"
             import sales_reporting;
-            persist sales_reporting where date = @load_date;
+            persist sales_reporting where id = 1;
             "#,
         );
 
