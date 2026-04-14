@@ -44,12 +44,6 @@ _FUNCTION_INNER_KINDS = {
     SyntaxNodeKind.TABLE_FUNCTION,
 }
 
-_PERSIST_KINDS = {
-    SyntaxNodeKind.PERSIST_STATEMENT,
-    SyntaxNodeKind.AUTO_PERSIST,
-    SyntaxNodeKind.FULL_PERSIST,
-}
-
 
 def require_block_statement(block: SyntaxNode) -> SyntaxNode:
     """Return the statement node inside a BLOCK, raising on malformed blocks."""
@@ -106,29 +100,34 @@ class StatementPlanner:
         return UnsupportedStatementPlan(statement)
 
     def _plan_block_statement(self, statement: SyntaxNode) -> StatementPlan:
-        kind = statement.kind
-        if kind == SyntaxNodeKind.DATASOURCE:
-            return DatasourceStatementPlan(statement)
-        if kind == SyntaxNodeKind.MERGE_STATEMENT:
-            return MergeStatementPlan(statement)
-        if kind == SyntaxNodeKind.ROWSET_DERIVATION_STATEMENT:
-            return RowsetStatementPlan(statement)
-        if kind in _PERSIST_KINDS:
-            return PersistStatementPlan(statement)
-        if kind == SyntaxNodeKind.RAWSQL_STATEMENT:
-            return RawSQLStatementPlan(statement)
-        if kind == SyntaxNodeKind.TYPE_DECLARATION:
-            return TypeDeclarationPlan(statement)
-        if kind == SyntaxNodeKind.CREATE_STATEMENT:
-            return CreateStatementPlan(statement)
-        if kind == SyntaxNodeKind.VALIDATE_STATEMENT:
-            return ValidateStatementPlan(statement)
-        if kind == SyntaxNodeKind.MOCK_STATEMENT:
-            return MockStatementPlan(statement)
-        if kind == SyntaxNodeKind.PUBLISH_STATEMENT:
-            return PublishStatementPlan(statement)
-        if kind == SyntaxNodeKind.COPY_STATEMENT:
-            return CopyStatementPlan(statement)
-        if kind == SyntaxNodeKind.CHART_STATEMENT:
-            return ChartStatementPlan(statement)
-        return UnsupportedStatementPlan(statement)
+        match statement.kind:
+            case SyntaxNodeKind.DATASOURCE:
+                return DatasourceStatementPlan(statement)
+            case SyntaxNodeKind.MERGE_STATEMENT:
+                return MergeStatementPlan(statement)
+            case SyntaxNodeKind.ROWSET_DERIVATION_STATEMENT:
+                return RowsetStatementPlan(statement)
+            case (
+                SyntaxNodeKind.PERSIST_STATEMENT
+                | SyntaxNodeKind.AUTO_PERSIST
+                | SyntaxNodeKind.FULL_PERSIST
+            ):
+                return PersistStatementPlan(statement)
+            case SyntaxNodeKind.RAWSQL_STATEMENT:
+                return RawSQLStatementPlan(statement)
+            case SyntaxNodeKind.TYPE_DECLARATION:
+                return TypeDeclarationPlan(statement)
+            case SyntaxNodeKind.CREATE_STATEMENT:
+                return CreateStatementPlan(statement)
+            case SyntaxNodeKind.VALIDATE_STATEMENT:
+                return ValidateStatementPlan(statement)
+            case SyntaxNodeKind.MOCK_STATEMENT:
+                return MockStatementPlan(statement)
+            case SyntaxNodeKind.PUBLISH_STATEMENT:
+                return PublishStatementPlan(statement)
+            case SyntaxNodeKind.COPY_STATEMENT:
+                return CopyStatementPlan(statement)
+            case SyntaxNodeKind.CHART_STATEMENT:
+                return ChartStatementPlan(statement)
+            case _:
+                return UnsupportedStatementPlan(statement)

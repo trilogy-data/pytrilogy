@@ -21,7 +21,10 @@ from trilogy.parsing.v2.concept_factory import (
     arbitrary_to_concept_v2,
     unwrap_transformation_v2,
 )
-from trilogy.parsing.v2.concept_rules import metadata_from_meta, parse_concept_reference
+from trilogy.parsing.v2.rules.concept_rules import (
+    metadata_from_meta,
+    parse_concept_reference,
+)
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,

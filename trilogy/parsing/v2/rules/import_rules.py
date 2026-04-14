@@ -21,7 +21,7 @@ from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
 
 perf_logger = getLogger("trilogy.parse.performance")
 
-STDLIB_ROOT = Path(__file__).parent.parent.parent
+STDLIB_ROOT = Path(__file__).parent.parent.parent.parent
 
 
 def _resolve_import_path(

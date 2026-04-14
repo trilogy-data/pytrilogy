@@ -4,7 +4,7 @@ from typing import Any
 
 from trilogy.core.enums import ChartType
 from trilogy.core.statements.author import ChartConfig, ChartStatement, SelectStatement
-from trilogy.parsing.v2.concept_rules import metadata_from_meta
+from trilogy.parsing.v2.rules.concept_rules import metadata_from_meta
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,

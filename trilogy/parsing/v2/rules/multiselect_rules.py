@@ -18,7 +18,7 @@ from trilogy.parsing.v2.concept_factory import (
     align_item_to_concept_v2,
     derive_item_to_concept_v2,
 )
-from trilogy.parsing.v2.concept_rules import metadata_from_meta
+from trilogy.parsing.v2.rules.concept_rules import metadata_from_meta
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,

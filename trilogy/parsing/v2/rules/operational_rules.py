@@ -14,7 +14,7 @@ from trilogy.core.statements.author import (
     SelectStatement,
     ValidateStatement,
 )
-from trilogy.parsing.v2.concept_rules import metadata_from_meta
+from trilogy.parsing.v2.rules.concept_rules import metadata_from_meta
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,
@@ -115,12 +115,11 @@ def validate_statement(
 ) -> ValidateStatement:
     scope: ValidationScope | None = None
     targets: list[str] = []
-    for child in node.children:
-        if isinstance(child, SyntaxToken):
-            if child.kind == SyntaxTokenKind.VALIDATE_SCOPE:
-                scope = _parse_validate_scope(child)
-            elif child.kind == SyntaxTokenKind.IDENTIFIER:
-                targets.append(child.value)
+    for child in node.child_tokens():
+        if child.kind == SyntaxTokenKind.VALIDATE_SCOPE:
+            scope = _parse_validate_scope(child)
+        elif child.kind == SyntaxTokenKind.IDENTIFIER:
+            targets.append(child.value)
     if scope is None:
         return ValidateStatement(scope=ValidationScope.ALL, targets=None)
     return ValidateStatement(scope=scope, targets=targets or None)
@@ -133,12 +132,11 @@ def mock_statement(
 ) -> MockStatement:
     scope = ValidationScope.DATASOURCES
     targets: list[str] = []
-    for child in node.children:
-        if isinstance(child, SyntaxToken):
-            if child.kind == SyntaxTokenKind.VALIDATE_SCOPE:
-                scope = _parse_validate_scope(child)
-            elif child.kind == SyntaxTokenKind.IDENTIFIER:
-                targets.append(child.value)
+    for child in node.child_tokens():
+        if child.kind == SyntaxTokenKind.VALIDATE_SCOPE:
+            scope = _parse_validate_scope(child)
+        elif child.kind == SyntaxTokenKind.IDENTIFIER:
+            targets.append(child.value)
     return MockStatement(scope=scope, targets=targets)
 
 

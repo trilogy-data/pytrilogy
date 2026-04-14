@@ -644,27 +644,6 @@ class SyntaxToken:
     def __str__(self) -> str:
         return self.value
 
-    def lower(self) -> str:
-        return self.value.lower()
-
-    def capitalize(self) -> str:
-        return self.value.capitalize()
-
-    def strip(self) -> str:
-        return self.value.strip()
-
-    def split(self, *args: Any, **kwargs: Any) -> list[str]:
-        return self.value.split(*args, **kwargs)
-
-    def rsplit(self, *args: Any, **kwargs: Any) -> list[str]:
-        return self.value.rsplit(*args, **kwargs)
-
-    def startswith(self, *args: Any, **kwargs: Any) -> bool:
-        return self.value.startswith(*args, **kwargs)
-
-    def endswith(self, *args: Any, **kwargs: Any) -> bool:
-        return self.value.endswith(*args, **kwargs)
-
 
 @dataclass(frozen=True)
 class SyntaxNode:

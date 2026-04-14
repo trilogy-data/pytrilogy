@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.models.environment import Environment
-from trilogy.parsing.v2.concept_rules import parse_concept_reference
 from trilogy.parsing.v2.concept_syntax import (
     ConceptDeclarationSyntax,
     ConceptDerivationSyntax,
@@ -15,6 +14,7 @@ from trilogy.parsing.v2.concept_syntax import (
     PropertyWildcardSyntax,
 )
 from trilogy.parsing.v2.model import HydrationDiagnostic, HydrationError
+from trilogy.parsing.v2.rules.concept_rules import parse_concept_reference
 from trilogy.parsing.v2.syntax import (
     SyntaxElement,
     SyntaxNode,
@@ -219,23 +219,11 @@ def collect_properties_addresses(
         return []
     namespace = environment.namespace or DEFAULT_NAMESPACE
     result: list[str] = []
-    for child in inner.children:
-        if (
-            isinstance(child, SyntaxNode)
-            and child.kind == SyntaxNodeKind.INLINE_PROPERTY_LIST
-        ):
-            for prop in child.children:
-                if (
-                    isinstance(prop, SyntaxNode)
-                    and prop.kind == SyntaxNodeKind.INLINE_PROPERTY
-                ):
-                    for token in prop.children:
-                        if (
-                            isinstance(token, SyntaxToken)
-                            and token.kind == SyntaxTokenKind.IDENTIFIER
-                        ):
-                            result.append(_make_address(token.value, namespace))
-                            break
+    for child in inner.child_nodes(SyntaxNodeKind.INLINE_PROPERTY_LIST):
+        for prop in child.child_nodes(SyntaxNodeKind.INLINE_PROPERTY):
+            for token in prop.child_tokens(SyntaxTokenKind.IDENTIFIER):
+                result.append(_make_address(token.value, namespace))
+                break
     return result
 
 
