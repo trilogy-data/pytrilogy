@@ -1,7 +1,7 @@
 from pytest import raises
 
 from trilogy import Dialects
-from trilogy.core.exceptions import InvalidSyntaxException
+from trilogy.parsing.v2.model import HydrationError
 
 
 def test_array():
@@ -52,7 +52,7 @@ def test_array_filter():
     assert len(results) == 1
     assert results[0] == ([3, 3, 4, 5],)  # filtered_values
 
-    with raises(InvalidSyntaxException) as e:
+    with raises(HydrationError) as e:
         test_select_invalid = """
         const num<- 5;
 
@@ -60,10 +60,10 @@ def test_array_filter():
             array_filter(num, @filter) AS filtered_values,
         ;"""
         list(test_executor.execute_text(test_select_invalid)[0].fetchall())
-    assert (
-        str(e.value) == "Array filter function must be applied to an array, not INTEGER"
+    assert "Array filter function must be applied to an array, not INTEGER" in str(
+        e.value
     )
-    with raises(InvalidSyntaxException) as e:
+    with raises(HydrationError) as e:
 
         test_select_invalid = """
 
@@ -72,7 +72,7 @@ def test_array_filter():
             array_filter(num_list, @filter) AS filtered_values,
         ;"""
         list(test_executor.execute_text(test_select_invalid)[0].fetchall())
-    assert str(e.value) == "Array filter function must have exactly one argument;"
+    assert "Array filter lambda must have exactly 1 argument" in str(e.value)
 
 
 def test_transform():

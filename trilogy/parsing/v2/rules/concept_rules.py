@@ -56,7 +56,6 @@ from trilogy.parsing.v2.concept_syntax import (
     ConceptDeclarationSyntax,
     ConceptDerivationSyntax,
     ConceptPropertyDeclarationSyntax,
-    ConstantDerivationSyntax,
     ParameterDeclarationSyntax,
     PropertyIdentifierSyntax,
     PropertyWildcardSyntax,
@@ -342,24 +341,6 @@ def concept_derivation(
     return ConceptDerivationStatement(concept=concept_value)
 
 
-def constant_derivation(
-    node: SyntaxNode,
-    context: RuleContext,
-    hydrate: HydrateFunction,
-) -> Concept:
-    syntax = ConstantDerivationSyntax.from_node(node)
-    metadata = hydrate(syntax.metadata) if syntax.metadata else None
-    name = hydrate(syntax.name)
-    constant = hydrate(syntax.source)
-    return build_constant_derivation(
-        meta=node.meta,
-        name=name,
-        constant=constant,
-        metadata=metadata,
-        context=context,
-    )
-
-
 def build_constant_derivation(
     meta: Any | None,
     name: str,
@@ -613,7 +594,6 @@ CONCEPT_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.CONCEPT_DECLARATION: concept_declaration,
     SyntaxNodeKind.CONCEPT_PROPERTY_DECLARATION: concept_property_declaration,
     SyntaxNodeKind.CONCEPT_DERIVATION: concept_derivation,
-    SyntaxNodeKind.CONSTANT_DERIVATION: constant_derivation,
     SyntaxNodeKind.SHOW_CATEGORY: show_category,
     SyntaxNodeKind.SHOW_STATEMENT: show_statement,
     SyntaxNodeKind.CONCEPT_LITERAL: concept_lit,
