@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from trilogy.parsing.v2.concept_syntax import (
-    optional_node,
     require_node,
     syntax_error,
 )
@@ -57,7 +56,7 @@ class FunctionDefinitionSyntax:
         if name_token is None:
             raise syntax_error(node, "Function definition requires a name identifier")
 
-        binding_list = optional_node(node, SyntaxNodeKind.FUNCTION_BINDING_LIST)
+        binding_list = node.optional_node(SyntaxNodeKind.FUNCTION_BINDING_LIST)
         bindings: list[FunctionBindingSyntax] = []
         if binding_list is not None:
             for item in binding_list.child_nodes(SyntaxNodeKind.FUNCTION_BINDING_ITEM):

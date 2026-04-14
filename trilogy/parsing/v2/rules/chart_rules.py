@@ -14,7 +14,6 @@ from trilogy.parsing.v2.rules_context import (
 from trilogy.parsing.v2.syntax import (
     SyntaxNode,
     SyntaxNodeKind,
-    SyntaxToken,
     SyntaxTokenKind,
 )
 
@@ -38,9 +37,8 @@ def chart_field_setting(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> dict[str, Any]:
-    tokens = [c for c in node.children if isinstance(c, SyntaxToken)]
-    field_token = tokens[0]
-    field_name = field_token.value.lower()
+    tokens = node.child_tokens()
+    field_name = tokens[0].value.lower()
     idents = [t.value for t in tokens[1:]]
     key = _FIELD_MAP[field_name]
     if key in ("x_fields", "y_fields"):
@@ -53,7 +51,7 @@ def chart_bool_setting(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> dict[str, Any]:
-    tokens = [c for c in node.children if isinstance(c, SyntaxToken)]
+    tokens = node.child_tokens()
     return {_BOOL_MAP[tokens[0].value.lower()]: True}
 
 
@@ -62,7 +60,7 @@ def chart_scale_setting(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> dict[str, Any]:
-    tokens = [c for c in node.children if isinstance(c, SyntaxToken)]
+    tokens = node.child_tokens()
     return {_SCALE_MAP[tokens[0].value.lower()]: tokens[1].value.lower()}
 
 
@@ -83,20 +81,19 @@ def chart_statement(
     chart_type: ChartType | None = None
     settings: dict[str, Any] = {"x_fields": [], "y_fields": []}
     select: SelectStatement | None = None
-    for child in node.children:
-        if isinstance(child, SyntaxToken):
-            if child.kind == SyntaxTokenKind.CHART_TYPE:
-                chart_type = ChartType(hydrate(child))
-            continue
+    setting_kinds = {
+        SyntaxNodeKind.CHART_SETTING,
+        SyntaxNodeKind.CHART_FIELD_SETTING,
+        SyntaxNodeKind.CHART_BOOL_SETTING,
+        SyntaxNodeKind.CHART_SCALE_SETTING,
+    }
+    for token in node.child_tokens(SyntaxTokenKind.CHART_TYPE):
+        chart_type = ChartType(hydrate(token))
+    for child in node.child_nodes():
         if child.kind == SyntaxNodeKind.SELECT_STATEMENT:
             select = hydrate(child)
             continue
-        if child.kind in (
-            SyntaxNodeKind.CHART_SETTING,
-            SyntaxNodeKind.CHART_FIELD_SETTING,
-            SyntaxNodeKind.CHART_BOOL_SETTING,
-            SyntaxNodeKind.CHART_SCALE_SETTING,
-        ):
+        if child.kind in setting_kinds:
             piece = hydrate(child)
             for k, v in piece.items():
                 if k in ("x_fields", "y_fields"):

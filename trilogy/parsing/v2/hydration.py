@@ -289,14 +289,6 @@ class NativeHydrator:
     def block_statement(self, block: SyntaxNode) -> SyntaxNode:
         return require_block_statement(block)
 
-    def require_node(self, element: SyntaxElement, kind: SyntaxNodeKind) -> SyntaxNode:
-        if not isinstance(element, SyntaxNode) or element.kind != kind:
-            raise UnsupportedSyntaxError.from_syntax(
-                f"Expected syntax node '{kind.value}', got '{syntax_name(element)}'",
-                element,
-            )
-        return element
-
     def hydrate_comment(self, token: SyntaxToken) -> Comment:
         if token.kind != SyntaxTokenKind.COMMENT:
             raise UnsupportedSyntaxError.from_syntax(
@@ -309,9 +301,7 @@ class NativeHydrator:
         self,
         block: SyntaxNode,
     ) -> ConceptDeclarationStatement:
-        concept_node = self.require_node(
-            self.block_statement(block), SyntaxNodeKind.CONCEPT
-        )
+        concept_node = self.block_statement(block)
         output = self.hydrate_rule(concept_node)
         trailing = block.children[1:]
         # Match v1: a blank line between the concept and the next comment

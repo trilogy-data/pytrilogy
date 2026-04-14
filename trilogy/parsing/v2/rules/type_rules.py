@@ -11,7 +11,7 @@ from trilogy.parsing.v2.rules_context import (
     fail,
     hydrated_children,
 )
-from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind, SyntaxToken
+from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
 
 
 def type_drop_clause(
@@ -28,23 +28,17 @@ def type_declaration(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> TypeDeclaration:
-    name: str | None = None
-    datatypes: list[DataType] = []
-    drop_on: list[FunctionType] = []
-    for child in node.children:
-        hydrated = hydrate(child)
-        if name is None and isinstance(child, SyntaxToken):
-            name = str(hydrated)
-            continue
-        if (
-            isinstance(child, SyntaxNode)
-            and child.kind == SyntaxNodeKind.TYPE_DROP_CLAUSE
-        ):
-            drop_on = hydrated
-            continue
-        datatypes.append(hydrated)
-    if name is None:
+    name_tokens = node.child_tokens()
+    if not name_tokens:
         raise fail(node, "type declaration missing name identifier")
+    name = str(hydrate(name_tokens[0]))
+    drop_clause = node.optional_node(SyntaxNodeKind.TYPE_DROP_CLAUSE)
+    drop_on: list[FunctionType] = hydrate(drop_clause) if drop_clause else []
+    datatypes: list[DataType] = [
+        hydrate(child)
+        for child in node.child_nodes()
+        if child.kind != SyntaxNodeKind.TYPE_DROP_CLAUSE
+    ]
     final: DataType | list[DataType] = (
         datatypes[0] if len(datatypes) == 1 else datatypes
     )

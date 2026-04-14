@@ -452,18 +452,12 @@ def data_type(
     resolved: Any = None
     traits: list[str] = []
     for child in node.children:
-        if isinstance(child, SyntaxToken):
-            if child.value == "::":
-                continue
-            if resolved is None:
-                resolved = hydrate(child)
-            else:
-                traits.append(hydrate(child))
+        if isinstance(child, SyntaxToken) and child.value == "::":
+            continue
+        if resolved is None:
+            resolved = hydrate(child)
         else:
-            if resolved is None:
-                resolved = hydrate(child)
-            else:
-                traits.append(hydrate(child))
+            traits.append(hydrate(child))
     base: Any
     if isinstance(
         resolved,

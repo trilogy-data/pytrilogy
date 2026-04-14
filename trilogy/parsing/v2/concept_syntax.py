@@ -35,33 +35,6 @@ def require_token(syntax: SyntaxElement, kind: SyntaxTokenKind) -> SyntaxToken:
     return syntax
 
 
-def optional_node(node: SyntaxNode, kind: SyntaxNodeKind) -> SyntaxNode | None:
-    found = node.child_nodes(kind)
-    if len(found) > 1:
-        raise syntax_error(found[1], f"Expected at most one '{kind.value}' node")
-    return found[0] if found else None
-
-
-def optional_token(
-    node: SyntaxNode,
-    kind: SyntaxTokenKind,
-) -> SyntaxToken | None:
-    found = node.child_tokens(kind)
-    if len(found) > 1:
-        raise syntax_error(found[1], f"Expected at most one '{kind.value}' token")
-    return found[0] if found else None
-
-
-def only_child_node(parent: SyntaxNode, kind: SyntaxNodeKind) -> SyntaxNode:
-    found = parent.child_nodes(kind)
-    if len(found) != 1:
-        raise syntax_error(
-            parent,
-            f"Expected one child '{kind.value}' node, found {len(found)}",
-        )
-    return found[0]
-
-
 @dataclass(frozen=True)
 class ParameterDeclarationSyntax:
     name: SyntaxToken
@@ -73,21 +46,15 @@ class ParameterDeclarationSyntax:
     @classmethod
     def from_node(cls, node: SyntaxNode) -> "ParameterDeclarationSyntax":
         require_node(node, SyntaxNodeKind.PARAMETER_DECLARATION)
-        children = list(node.children)
-        identifiers = [
-            require_token(child, SyntaxTokenKind.IDENTIFIER)
-            for child in children
-            if isinstance(child, SyntaxToken)
-            and child.kind == SyntaxTokenKind.IDENTIFIER
-        ]
+        identifiers = node.child_tokens(SyntaxTokenKind.IDENTIFIER)
         if len(identifiers) != 1:
             raise syntax_error(node, "Parameter declaration requires one identifier")
         return cls(
             name=identifiers[0],
-            datatype=only_child_node(node, SyntaxNodeKind.DATA_TYPE),
-            default=optional_node(node, SyntaxNodeKind.PARAMETER_DEFAULT),
-            metadata=optional_node(node, SyntaxNodeKind.METADATA),
-            nullable=optional_node(node, SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER),
+            datatype=node.only_child_node(SyntaxNodeKind.DATA_TYPE),
+            default=node.optional_node(SyntaxNodeKind.PARAMETER_DEFAULT),
+            metadata=node.optional_node(SyntaxNodeKind.METADATA),
+            nullable=node.optional_node(SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER),
         )
 
 
@@ -102,13 +69,13 @@ class ConceptDeclarationSyntax:
     @classmethod
     def from_node(cls, node: SyntaxNode) -> "ConceptDeclarationSyntax":
         require_node(node, SyntaxNodeKind.CONCEPT_DECLARATION)
-        children = list(node.children)
+        children = node.children
         return cls(
             purpose=require_token(children[0], SyntaxTokenKind.PURPOSE),
             name=require_token(children[1], SyntaxTokenKind.IDENTIFIER),
-            datatype=only_child_node(node, SyntaxNodeKind.DATA_TYPE),
-            metadata=optional_node(node, SyntaxNodeKind.METADATA),
-            nullable=optional_node(node, SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER),
+            datatype=node.only_child_node(SyntaxNodeKind.DATA_TYPE),
+            metadata=node.optional_node(SyntaxNodeKind.METADATA),
+            nullable=node.optional_node(SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER),
         )
 
 
@@ -124,32 +91,22 @@ class ConceptPropertyDeclarationSyntax:
     @classmethod
     def from_node(cls, node: SyntaxNode) -> "ConceptPropertyDeclarationSyntax":
         require_node(node, SyntaxNodeKind.CONCEPT_PROPERTY_DECLARATION)
-        children = list(node.children)
-        property_index = next(
-            (
-                index
-                for index, child in enumerate(children)
-                if isinstance(child, SyntaxToken)
-                and child.kind == SyntaxTokenKind.PROPERTY
-            ),
-            None,
-        )
-        if property_index is None:
+        property_token = node.optional_token(SyntaxTokenKind.PROPERTY)
+        if property_token is None:
             raise syntax_error(node, "Property declaration requires a property token")
-        declaration_index = property_index + 1
+        children = node.children
+        declaration_index = children.index(property_token) + 1
         if declaration_index >= len(children):
             raise syntax_error(
                 node, "Property declaration requires a declaration target"
             )
         return cls(
-            unique=optional_token(node, SyntaxTokenKind.UNIQUE),
-            property_token=require_token(
-                children[property_index], SyntaxTokenKind.PROPERTY
-            ),
+            unique=node.optional_token(SyntaxTokenKind.UNIQUE),
+            property_token=property_token,
             declaration=children[declaration_index],
-            datatype=only_child_node(node, SyntaxNodeKind.DATA_TYPE),
-            metadata=optional_node(node, SyntaxNodeKind.METADATA),
-            nullable=optional_node(node, SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER),
+            datatype=node.only_child_node(SyntaxNodeKind.DATA_TYPE),
+            metadata=node.optional_node(SyntaxNodeKind.METADATA),
+            nullable=node.optional_node(SyntaxNodeKind.CONCEPT_NULLABLE_MODIFIER),
         )
 
 
@@ -163,7 +120,7 @@ class ConceptDerivationSyntax:
     @classmethod
     def from_node(cls, node: SyntaxNode) -> "ConceptDerivationSyntax":
         require_node(node, SyntaxNodeKind.CONCEPT_DERIVATION)
-        children = list(node.children)
+        children = node.children
         if len(children) < 3:
             raise syntax_error(
                 node, "Concept derivation requires purpose, name, and source"
@@ -174,7 +131,7 @@ class ConceptDerivationSyntax:
             purpose=children[0],
             name=children[1],
             source=children[2],
-            metadata=optional_node(node, SyntaxNodeKind.METADATA),
+            metadata=node.optional_node(SyntaxNodeKind.METADATA),
         )
 
 
@@ -187,7 +144,7 @@ class ConstantDerivationSyntax:
     @classmethod
     def from_node(cls, node: SyntaxNode) -> "ConstantDerivationSyntax":
         require_node(node, SyntaxNodeKind.CONSTANT_DERIVATION)
-        children = list(node.children)
+        children = node.children
         if len(children) < 3:
             raise syntax_error(
                 node, "Constant derivation requires const, name, and source"
@@ -195,7 +152,7 @@ class ConstantDerivationSyntax:
         return cls(
             name=require_token(children[1], SyntaxTokenKind.IDENTIFIER),
             source=children[2],
-            metadata=optional_node(node, SyntaxNodeKind.METADATA),
+            metadata=node.optional_node(SyntaxNodeKind.METADATA),
         )
 
 
