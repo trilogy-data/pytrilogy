@@ -665,9 +665,15 @@ def create_datasource_node(
         grain=datasource.grain,
         conditions=datasource_conditions,
         preexisting_conditions=(
-            conditions.conditional
-            if (partial_is_full or satisfies_conditions) and conditions
-            else None
+            # partial_is_full only means non_partial_for conditions are satisfied;
+            # any extra conditions in the query must still be applied externally.
+            datasource.non_partial_for.conditional
+            if partial_is_full and datasource.non_partial_for and conditions
+            else (
+                conditions.conditional
+                if satisfies_conditions and conditions
+                else None
+            )
         ),
     )
     return (
