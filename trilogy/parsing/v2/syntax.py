@@ -668,8 +668,8 @@ class SyntaxNode:
         nodes = self.child_nodes(kind)
         if len(nodes) != 1:
             expected = kind.value if kind else "node"
-            raise ValueError(
-                f"Expected one child {expected} under {syntax_name(self)}, found {len(nodes)}"
+            raise _syntax_error(
+                self, f"Expected one child '{expected}' node, found {len(nodes)}"
             )
         return nodes[0]
 
@@ -677,8 +677,20 @@ class SyntaxNode:
         nodes = self.child_nodes(kind)
         if not nodes:
             expected = kind.value if kind else "node"
-            raise ValueError(f"Expected child {expected} under {syntax_name(self)}")
+            raise _syntax_error(self, f"Expected child '{expected}' node")
         return nodes[0]
+
+    def optional_node(self, kind: SyntaxNodeKind) -> "SyntaxNode | None":
+        found = self.child_nodes(kind)
+        if len(found) > 1:
+            raise _syntax_error(found[1], f"Expected at most one '{kind.value}' node")
+        return found[0] if found else None
+
+    def optional_token(self, kind: SyntaxTokenKind) -> "SyntaxToken | None":
+        found = self.child_tokens(kind)
+        if len(found) > 1:
+            raise _syntax_error(found[1], f"Expected at most one '{kind.value}' token")
+        return found[0] if found else None
 
 
 SyntaxElement: TypeAlias = SyntaxNode | SyntaxToken
@@ -696,6 +708,12 @@ class SyntaxDocument:
     @property
     def forms(self) -> list[SyntaxElement]:
         return list(self.tree.children)
+
+
+def _syntax_error(syntax: SyntaxElement, message: str) -> Exception:
+    from trilogy.parsing.v2.model import HydrationDiagnostic, HydrationError
+
+    return HydrationError(HydrationDiagnostic.from_syntax(message, syntax))
 
 
 def syntax_from_parser(element: Any) -> SyntaxElement:

@@ -88,9 +88,7 @@ def multi_select_statement(
     having_node: SyntaxNode | None = None
     order_by_node: SyntaxNode | None = None
     limit_node: SyntaxNode | None = None
-    for child in node.children:
-        if not isinstance(child, SyntaxNode):
-            continue
+    for child in node.child_nodes():
         kind = child.kind
         if kind == SyntaxNodeKind.SELECT_STATEMENT:
             select_nodes.append(child)
