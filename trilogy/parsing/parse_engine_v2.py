@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from functools import lru_cache
 from logging import getLogger
 from pathlib import Path
 from typing import Any
@@ -34,10 +35,24 @@ __all__ = [
 ]
 
 
-def parse_syntax(text: str) -> SyntaxDocument:
-    if CONFIG.parser_backend == ParserBackend.PEST:
+# Cache SyntaxDocument by (text, backend). Parse trees are effectively immutable
+# once construction finishes (hydration only reads), so sharing cached instances
+# across parse_text calls is safe. Environments are *not* cached — they are
+# mutated during hydration and must be rebuilt each call. Bounded to avoid
+# unbounded memory growth on long-running processes.
+@lru_cache(maxsize=256)
+def _parse_syntax_cached(text: str, backend: str) -> SyntaxDocument:
+    if backend == ParserBackend.PEST.value:
         return parse_pest(text)
     return parse_lark(text)
+
+
+def parse_syntax(text: str) -> SyntaxDocument:
+    return _parse_syntax_cached(text, CONFIG.parser_backend.value)
+
+
+def clear_parse_cache() -> None:
+    _parse_syntax_cached.cache_clear()
 
 
 def parse_text_raw(text: str, environment: Environment | None = None) -> None:
