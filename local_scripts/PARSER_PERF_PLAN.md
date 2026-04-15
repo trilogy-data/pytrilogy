@@ -34,7 +34,7 @@ Baseline numbers (pre-P0, pest backend):
 | P0 | Fuse pest walk + comment injection | `trilogy/parsing/v2/pest_backend.py`, `trilogy/parsing/v2/syntax.py` | done |
 | P1 | Emit `SyntaxNode`/`SyntaxToken` directly from rust | `trilogy/scripts/dependency/src/trilogy_parser.rs`, `trilogy/parsing/v2/pest_backend.py` | done |
 | P2 | Process-level parse-tree cache | `trilogy/parsing/parse_engine_v2.py` | done |
-| P3 | Tighten `hydrate_rule` dispatch | `trilogy/parsing/v2/hydration.py` | pending |
+| P3 | Tighten `hydrate_rule` dispatch | `trilogy/parsing/v2/hydration.py` | done |
 | P4 | Flatten `SyntaxMeta` | `trilogy/parsing/v2/syntax.py` | pending |
 | P6 | Memoize `__build_concept(address, grain_key)` | `trilogy/core/models/build.py` | pending |
 | P7 | Cache undirected graph in Steiner path | `trilogy/core/processing/node_generators/node_merge_node.py` | pending |
@@ -102,6 +102,25 @@ Result on `profile_test_queries_parse.py` (parse_only x10):
 - `parse_syntax` cum: 0.038 s → 0.0003 s (~99% reduction, cache hits 11/12
   unique inputs on iter 2+)
 - `parse_only` wall: 0.190 s → 0.160 s (~16% faster vs P1, ~32% vs baseline)
+
+Full test suite: `pytest -m "not adventureworks_execution"` — 2144 passed,
+17 skipped.
+
+### P3 — 2026-04-15
+
+Tightened `hydrate_rule` / `hydrate_token` dispatch: replaced
+`isinstance(element, SyntaxToken)` with `type(element) is SyntaxToken`
+(concrete dataclasses, no subclassing), inlined `self.rule_context()` →
+`self._cached_rule_context` to drop a method call per rule, hoisted
+`element.kind` to a local, and switched `if handler:` to
+`if handler is not None:`. Nothing in the dispatch path allocates now
+beyond the handler call itself.
+
+Result on `profile_test_queries_parse.py` (parse_only x10):
+- `hydrate_rule` cum: 0.061 s → 0.055 s (~10% faster)
+- `parse_only` wall: 0.156 s → 0.148 s (~5% faster)
+- `isinstance` calls: 54,830 → 47,300 (~14% fewer, matches the 6330
+  hydrate_rule isinstances eliminated)
 
 Full test suite: `pytest -m "not adventureworks_execution"` — 2144 passed,
 17 skipped.
