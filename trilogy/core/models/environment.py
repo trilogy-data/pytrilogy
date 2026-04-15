@@ -632,8 +632,7 @@ class Environment:
         # as there may be new concepts
         iteration: list[tuple[str, Concept]] = list(source.concepts.all_items())
         for k, concept in iteration:
-            # skip internal namespace
-            if INTERNAL_NAMESPACE in concept.address:
+            if INTERNAL_NAMESPACE in concept.namespace:
                 continue
             # don't overwrite working path
             if concept.name == WORKING_PATH_CONCEPT:
@@ -860,29 +859,29 @@ class Environment:
         if self.frozen:
             raise ValueError("Environment is frozen, cannot merge concepts")
         replacements = {}
+        source_addr = source.address
+        target_addr = target.address
 
-        # exit early if we've run this
-        if source.address in self.alias_origin_lookup and not force:
-            if self.concepts[source.address] == target:
+        if source_addr in self.alias_origin_lookup and not force:
+            if self.concepts[source_addr] == target:
                 return False
 
-        self.alias_origin_lookup[source.address] = source
-        self.alias_origin_lookup[source.address].pseudonyms.add(target.address)
+        self.alias_origin_lookup[source_addr] = source
+        self.alias_origin_lookup[source_addr].pseudonyms.add(target_addr)
         for k, v in self.concepts.items():
+            v_addr = v.address
+            if v_addr == target_addr:
+                if source_addr != target_addr:
+                    v.pseudonyms.add(source_addr)
 
-            if v.address == target.address:
-                if source.address != target.address:
-                    v.pseudonyms.add(source.address)
-
-            if v.address == source.address:
+            if v_addr == source_addr:
                 replacements[k] = target
-            # we need to update keys and grains of all concepts
             else:
-                if source.address in v.sources or source.address in v.grain.components:
+                if source_addr in v.sources or source_addr in v.grain.components:
                     replacements[k] = v.with_merge(source, target, modifiers)
         self.concepts.update(replacements)
         for k, ds in self.datasources.items():
-            if source.address in ds.output_lcl:
+            if source_addr in ds.output_lcl:
                 ds.merge_concept(source, target, modifiers=modifiers)
 
         return True
