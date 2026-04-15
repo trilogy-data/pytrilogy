@@ -1,57 +1,33 @@
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
 from typing import Any
 
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.parsing.v2.errors import create_generic_syntax_error, create_syntax_error
-from trilogy.parsing.v2.syntax import SyntaxDocument, syntax_document_from_parser
+from trilogy.parsing.v2.syntax import (
+    LARK_NODE_KIND,
+    LARK_TOKEN_KIND,
+    SyntaxDocument,
+    SyntaxElement,
+    SyntaxMeta,
+    SyntaxNode,
+    SyntaxToken,
+    SyntaxTokenKind,
+)
 
 # Lark only captures comments via PARSE_COMMENT at three positions:
 #   start: ( block | show_statement | PARSE_COMMENT )*
 #   block: ... PARSE_COMMENT*
 #   inline_property_list: inline_property ("," PARSE_COMMENT? inline_property)* ...
-# Anywhere else, COMMENT is `%ignore`d and silently dropped. The pest tree must
-# match: only attach comments inside these node types or to a gobbler sibling.
+# Anywhere else, COMMENT is `%ignore`d and silently dropped. Pest also drops
+# comments at the grammar level, so the fused walker replicates lark's
+# gobbler behavior by re-scanning source gaps and injecting synthetic COMMENT
+# tokens into the nearest gobbler child or current gobbler node.
 _COMMENT_GOBBLERS: frozenset[str] = frozenset(
     {"start", "block", "inline_property_list"}
 )
-
-
-class _SyntheticPestComment:
-    __slots__ = (
-        "type",
-        "value",
-        "line",
-        "column",
-        "end_line",
-        "end_column",
-        "start_pos",
-        "end_pos",
-    )
-
-    def __init__(
-        self,
-        value: str,
-        line: int,
-        column: int,
-        end_line: int,
-        end_column: int,
-        start_pos: int,
-        end_pos: int,
-    ) -> None:
-        self.type = "PARSE_COMMENT"
-        self.value = value
-        self.line = line
-        self.column = column
-        self.end_line = end_line
-        self.end_column = end_column
-        self.start_pos = start_pos
-        self.end_pos = end_pos
-
-    @property
-    def meta(self) -> "_SyntheticPestComment":
-        return self
 
 
 def _scan_comments(text: str, start: int, end: int) -> list[tuple[int, int]]:
@@ -79,96 +55,129 @@ def _scan_comments(text: str, start: int, end: int) -> list[tuple[int, int]]:
     return spans
 
 
-def _make_comment(
+def _compute_line_starts(text: str) -> list[int]:
+    starts = [0]
+    for i, ch in enumerate(text):
+        if ch == "\n":
+            starts.append(i + 1)
+    return starts
+
+
+def _make_comment_token(
     text: str, line_starts: list[int], start: int, end: int
-) -> _SyntheticPestComment:
-    from bisect import bisect_right
-
-    def line_col(pos: int) -> tuple[int, int]:
-        idx = bisect_right(line_starts, pos) - 1
-        return idx + 1, pos - line_starts[idx] + 1
-
-    line, col = line_col(start)
-    end_line, end_col = line_col(end)
-    return _SyntheticPestComment(
+) -> SyntaxToken:
+    line_idx = bisect_right(line_starts, start) - 1
+    end_line_idx = bisect_right(line_starts, end) - 1
+    return SyntaxToken(
+        name="PARSE_COMMENT",
         value=text[start:end],
-        line=line,
-        column=col,
-        end_line=end_line,
-        end_column=end_col,
-        start_pos=start,
-        end_pos=end,
+        meta=SyntaxMeta(
+            line=line_idx + 1,
+            column=start - line_starts[line_idx] + 1,
+            end_line=end_line_idx + 1,
+            end_column=end - line_starts[end_line_idx] + 1,
+            start_pos=start,
+            end_pos=end,
+        ),
+        kind=SyntaxTokenKind.COMMENT,
     )
 
 
-def _walk_inject(node: Any, text: str, line_starts: list[int]) -> None:
-    children = getattr(node, "children", None)
-    if children is None:
-        return
-    snapshot = list(children)
-    for child in snapshot:
-        _walk_inject(child, text, line_starts)
-    node_start = getattr(node, "start_pos", None)
-    node_end = getattr(node, "end_pos", None)
-    if node_start is None or node_end is None:
-        return
-    node_is_gobbler = getattr(node, "data", None) in _COMMENT_GOBBLERS
-    new_children: list[Any] = []
-    cursor = node_start
-    prev_gobbler: Any = None
-    for child in snapshot:
-        cs = getattr(child, "start_pos", None)
-        ce = getattr(child, "end_pos", None)
-        if cs is None or ce is None:
-            new_children.append(child)
-            prev_gobbler = None
-            continue
-        gap = _scan_comments(text, cursor, cs)
-        _emit_comments(
-            gap, prev_gobbler, node_is_gobbler, new_children, text, line_starts
-        )
-        new_children.append(child)
-        cursor = ce
-        if getattr(child, "data", None) in _COMMENT_GOBBLERS:
-            prev_gobbler = child
-        else:
-            prev_gobbler = None
-    trailing = _scan_comments(text, cursor, node_end)
-    _emit_comments(
-        trailing, prev_gobbler, node_is_gobbler, new_children, text, line_starts
-    )
-    children[:] = new_children
-
-
-def _emit_comments(
+def _attach_comments(
     spans: list[tuple[int, int]],
-    prev_gobbler: Any,
-    node_is_gobbler: bool,
-    new_children: list[Any],
+    target_children: list[SyntaxElement] | None,
+    host_is_gobbler: bool,
+    current_children: list[SyntaxElement],
     text: str,
     line_starts: list[int],
 ) -> None:
-    if not spans:
+    if target_children is not None:
+        dest: list[SyntaxElement] = target_children
+    elif host_is_gobbler:
+        dest = current_children
+    else:
         return
-    if prev_gobbler is not None:
-        gc = getattr(prev_gobbler, "children", None)
-        if gc is not None:
-            for csp, cep in spans:
-                gc.append(_make_comment(text, line_starts, csp, cep))
-            return
-    if node_is_gobbler:
-        for csp, cep in spans:
-            new_children.append(_make_comment(text, line_starts, csp, cep))
+    for start, end in spans:
+        dest.append(_make_comment_token(text, line_starts, start, end))
 
 
-def _inject_pest_comments(tree: Any, text: str) -> None:
-    if not text:
-        return
-    line_starts = [0]
-    for i, ch in enumerate(text):
-        if ch == "\n":
-            line_starts.append(i + 1)
-    _walk_inject(tree, text, line_starts)
+def _pest_to_syntax(
+    element: Any,
+    text: str,
+    line_starts: list[int],
+) -> SyntaxElement:
+    """Single-pass walk: pest node/token -> SyntaxNode/SyntaxToken with
+    comment tokens injected at gobbler boundaries.
+
+    This fuses the old `_walk_inject` + `syntax_from_parser` passes. The
+    recursion appends children to a mutable list so trailing comments in the
+    parent scope can still be attached to a gobbler child after its recursive
+    build returns.
+    """
+    data = getattr(element, "data", None)
+    if data is None:
+        token_type = element.type
+        return SyntaxToken(
+            name=token_type,
+            value=element.value,
+            meta=SyntaxMeta.from_parser_meta(element),
+            kind=LARK_TOKEN_KIND.get(token_type),
+        )
+
+    children: list[SyntaxElement] = []
+    node_start = getattr(element, "start_pos", None)
+    node_end = getattr(element, "end_pos", None)
+    have_range = node_start is not None and node_end is not None
+    is_gobbler = data in _COMMENT_GOBBLERS
+    cursor = node_start if node_start is not None else 0
+    prev_gobbler_children: list[SyntaxElement] | None = None
+
+    for pest_child in element.children:
+        cs = getattr(pest_child, "start_pos", None)
+        ce = getattr(pest_child, "end_pos", None)
+        if have_range and cs is not None and cs > cursor:
+            spans = _scan_comments(text, cursor, cs)
+            if spans:
+                _attach_comments(
+                    spans,
+                    prev_gobbler_children,
+                    is_gobbler,
+                    children,
+                    text,
+                    line_starts,
+                )
+        sub = _pest_to_syntax(pest_child, text, line_starts)
+        children.append(sub)
+        if ce is not None:
+            cursor = ce
+        child_data = getattr(pest_child, "data", None)
+        if (
+            isinstance(sub, SyntaxNode)
+            and child_data is not None
+            and child_data in _COMMENT_GOBBLERS
+        ):
+            prev_gobbler_children = sub.children
+        else:
+            prev_gobbler_children = None
+
+    if have_range and node_end is not None and cursor < node_end:
+        trailing = _scan_comments(text, cursor, node_end)
+        if trailing:
+            _attach_comments(
+                trailing,
+                prev_gobbler_children,
+                is_gobbler,
+                children,
+                text,
+                line_starts,
+            )
+
+    return SyntaxNode(
+        name=data,
+        children=children,
+        meta=SyntaxMeta.from_parser_meta(element),
+        kind=LARK_NODE_KIND.get(data),
+    )
 
 
 _PEST_ERROR_POS_RE = re.compile(r"-->\s*(\d+):(\d+)")
@@ -240,5 +249,8 @@ def parse_pest(text: str) -> SyntaxDocument:
         tree = parse_trilogy_syntax(text)
     except ValueError as e:
         raise _diagnose_pest_error(text, str(e)) from e
-    _inject_pest_comments(tree, text)
-    return syntax_document_from_parser(text=text, tree=tree)
+    line_starts = _compute_line_starts(text)
+    syntax = _pest_to_syntax(tree, text, line_starts)
+    if not isinstance(syntax, SyntaxNode):
+        raise InvalidSyntaxException("pest root element is not a SyntaxNode")
+    return SyntaxDocument(text=text, tree=syntax)
