@@ -531,7 +531,7 @@ having
 order by survivors.passenger.last_name desc
 limit 5;"""
     sql = executor.generate_sql(cmd)[-1]
-    assert "GROUP BY" not in sql
+    assert "GROUP BY" not in sql, sql
     results = executor.execute_text(cmd)[-1].fetchall()
 
     assert len(results) == 5
