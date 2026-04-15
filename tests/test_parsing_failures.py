@@ -7,10 +7,8 @@ from trilogy.core.models.environment import (
     Environment,
     EnvironmentConfig,
 )
-from trilogy.parsing.parse_engine import (
-    NameShadowError,
-    parse_text,
-)
+from trilogy.parsing.exceptions import NameShadowError
+from trilogy.parsing.parse_engine_v2 import parse_text
 
 
 def test_import_shows_source():

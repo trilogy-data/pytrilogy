@@ -1,8 +1,9 @@
 from pathlib import Path
 from typing import Optional
 
-from trilogy.constants import CONFIG, ParserVersion, Parsing
+from trilogy.constants import Parsing
 from trilogy.core.models.environment import Environment
+from trilogy.parsing.parse_engine_v2 import parse_text as _parse_text
 
 
 def parse(
@@ -17,19 +18,7 @@ def parse_text(
     root: Path | None = None,
     parse_config: Parsing | None = None,
 ) -> tuple[Environment, list]:
-    if CONFIG.parser_version == ParserVersion.V2:
-        from trilogy.parsing.parse_engine_v2 import parse_text as parse_text_v2
-
-        return parse_text_v2(
-            input,
-            environment=environment,
-            root=root,
-            parse_config=parse_config,
-        )
-
-    from trilogy.parsing.parse_engine import parse_text as parse_text_v1
-
-    return parse_text_v1(
+    return _parse_text(
         input,
         environment=environment,
         root=root,

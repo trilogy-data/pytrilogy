@@ -22,7 +22,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from trilogy.constants import CONFIG, ParserVersion
 from trilogy.core.models.environment import Environment
 from trilogy.parser import parse_text
 
@@ -87,8 +86,6 @@ def _bench_file(label: str, path: Path, runs: int) -> dict[str, Any]:
 
 
 def run(runs: int, output: Path, label: str | None) -> dict:
-    if CONFIG.parser_version is not ParserVersion.V2:
-        CONFIG.parser_version = ParserVersion.V2
     files: list[dict[str, Any]] = []
     for corpus_label, rel in CORPUS:
         path = REPO_ROOT / rel
@@ -101,7 +98,7 @@ def run(runs: int, output: Path, label: str | None) -> dict:
         "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "git_sha": _git("rev-parse", "--short", "HEAD"),
         "git_branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
-        "parser": ParserVersion.V2.value,
+        "parser": "v2",
         "python": platform.python_version(),
         "platform": platform.platform(terse=True),
         "runs": runs,

@@ -14,6 +14,7 @@ from trilogy.core.enums import (
     Purpose,
     ShowCategory,
 )
+from trilogy.core.exceptions import MissingParameterException
 from trilogy.core.internal import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.models.author import (
     AggregateWrapper,
@@ -140,8 +141,8 @@ def parameter_declaration(
     )
     raw = context.environment.parameters.get(name, default)
     if raw is None:
-        raise fail(
-            node, f'This script requires parameter "{name}" to be set in environment.'
+        raise MissingParameterException(
+            f'This script requires parameter "{name}" to be set in environment.'
         )
     if datatype == DataType.INTEGER:
         parameter_value: Any = int(raw)

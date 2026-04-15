@@ -3,15 +3,6 @@ from pathlib import Path
 
 from pytest import fixture
 
-if os.environ.get("TRILOGY_FORCE_V1_PARSER") == "1":
-    from trilogy.constants import CONFIG, ParserVersion
-
-    CONFIG.parser_version = ParserVersion.V1
-elif os.environ.get("TRILOGY_FORCE_V2_PARSER") == "1":
-    from trilogy.constants import CONFIG, ParserVersion
-
-    CONFIG.parser_version = ParserVersion.V2
-
 from trilogy.core.enums import (
     ComparisonOperator,
     FunctionType,

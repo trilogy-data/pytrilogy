@@ -12,7 +12,7 @@ from trilogy import Dialects
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.core import DataType
 from trilogy.parsing.exceptions import ParseError
-from trilogy.parsing.parse_engine import parse_text
+from trilogy.parsing.parse_engine_v2 import parse_text
 
 # =============================================================================
 # COMPARISON TYPE CHECKING

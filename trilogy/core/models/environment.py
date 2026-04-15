@@ -23,7 +23,6 @@ from typing import (
     ValuesView,
 )
 
-from lark.tree import Meta
 from pydantic import TypeAdapter as _TypeAdapter
 
 from trilogy.constants import DEFAULT_NAMESPACE, ENV_CACHE_NAME, logger
@@ -59,6 +58,7 @@ from trilogy.core.models.datasource import Datasource, EnvironmentDatasourceDict
 
 if TYPE_CHECKING:
     from trilogy.core.models.build import BuildConcept, BuildEnvironment
+    from trilogy.parsing.helpers import Meta
 
 
 @dataclass

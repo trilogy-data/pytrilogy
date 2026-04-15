@@ -106,11 +106,6 @@ class Parsing:
     select_as_definition: bool = True
 
 
-class ParserVersion(Enum):
-    V1 = "v1"
-    V2 = "v2"
-
-
 class ParserBackend(Enum):
     LARK = "lark"
     PEST = "pest"
@@ -128,7 +123,6 @@ class Config:
     rendering: Rendering = field(default_factory=Rendering)
     parsing: Parsing = field(default_factory=Parsing)
     generation: Generation = field(default_factory=Generation)
-    parser_version: ParserVersion = ParserVersion.V2
     parser_backend: ParserBackend = ParserBackend.PEST
 
     @property

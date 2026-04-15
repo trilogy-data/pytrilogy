@@ -38,7 +38,7 @@ from trilogy.parsing.v2.rules_context import (
     fail,
     hydrated_children,
 )
-from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
+from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind, SyntaxTokenKind
 
 
 @dataclass
@@ -254,13 +254,21 @@ def address_node(
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> Any:
-    args = hydrated_children(node, hydrate)
-    raw = str(args[0])
-    if len(raw) >= 2 and raw[0] == "`" and raw[-1] == "`":
+    child = node.children[0]
+    raw = str(hydrate(child))
+    quoted = False
+    if (
+        isinstance(child, SyntaxNode) is False
+        and getattr(child, "kind", None) == SyntaxTokenKind.F_QUOTED_ADDRESS
+    ):
+        location = raw
+        quoted = True
+    elif len(raw) >= 2 and raw[0] == "`" and raw[-1] == "`":
         location = raw[1:-1]
+        quoted = True
     else:
         location = raw.strip("'\"")
-    return Address(location=location, type=AddressType.TABLE)
+    return Address(location=location, type=AddressType.TABLE, quoted=quoted)
 
 
 def query_node(

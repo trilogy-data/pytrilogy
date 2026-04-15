@@ -2,8 +2,6 @@ from dataclasses import replace as dc_replace
 from datetime import date, datetime
 from typing import Iterable, List, Mapping, Sequence, Tuple
 
-from lark.tree import Meta
-
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX
 from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
@@ -53,6 +51,7 @@ from trilogy.core.models.author import (
 from trilogy.core.models.core import DataType, arg_to_datatype
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import RowsetDerivationStatement, SelectStatement
+from trilogy.parsing.helpers import Meta
 from trilogy.utility import string_to_hash, unique
 
 ARBITRARY_INPUTS = (
