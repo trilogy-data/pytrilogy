@@ -33,7 +33,7 @@ Baseline numbers (pre-P0, pest backend):
 |---|---|---|---|
 | P0 | Fuse pest walk + comment injection | `trilogy/parsing/v2/pest_backend.py`, `trilogy/parsing/v2/syntax.py` | done |
 | P1 | Emit `SyntaxNode`/`SyntaxToken` directly from rust | `trilogy/scripts/dependency/src/trilogy_parser.rs`, `trilogy/parsing/v2/pest_backend.py` | done |
-| P2 | Process-level parse-tree cache | `trilogy/parsing/parse_engine_v2.py` | pending |
+| P2 | Process-level parse-tree cache | `trilogy/parsing/parse_engine_v2.py` | done |
 | P3 | Tighten `hydrate_rule` dispatch | `trilogy/parsing/v2/hydration.py` | pending |
 | P4 | Flatten `SyntaxMeta` | `trilogy/parsing/v2/syntax.py` | pending |
 | P6 | Memoize `__build_concept(address, grain_key)` | `trilogy/core/models/build.py` | pending |
@@ -85,6 +85,23 @@ Result on `profile_test_queries_parse.py` (parse_only x10):
 dead rust code (Python calls only `parse_trilogy_syntax_tuple`). Leaving
 them in place for now — removal requires a wheel rebuild and is decoupled
 from this P.
+
+Full test suite: `pytest -m "not adventureworks_execution"` — 2144 passed,
+17 skipped.
+
+### P2 — 2026-04-15
+
+Added an `lru_cache(maxsize=256)` keyed on `(text, backend)` in
+`parse_engine_v2._parse_syntax_cached`. Parse trees are effectively
+immutable after construction (verified: no `.children.append/insert/[]=`
+or attribute writes anywhere outside the walker), so sharing cached
+`SyntaxDocument` instances across `parse_text` calls is safe.
+`Environment` is **not** cached — it is mutated during hydration.
+
+Result on `profile_test_queries_parse.py` (parse_only x10):
+- `parse_syntax` cum: 0.038 s → 0.0003 s (~99% reduction, cache hits 11/12
+  unique inputs on iter 2+)
+- `parse_only` wall: 0.190 s → 0.160 s (~16% faster vs P1, ~32% vs baseline)
 
 Full test suite: `pytest -m "not adventureworks_execution"` — 2144 passed,
 17 skipped.
