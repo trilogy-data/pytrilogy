@@ -332,20 +332,24 @@ class NativeHydrator:
         return self._cached_rule_context
 
     def hydrate_rule(self, element: SyntaxElement) -> Any:
-        if isinstance(element, SyntaxToken):
+        # type() is faster than isinstance for the concrete dataclasses.
+        if type(element) is SyntaxToken:
             return self.hydrate_token(element)
-        handler = NODE_HYDRATORS.get(element.kind) if element.kind else None
-        if handler:
-            return handler(element, self.rule_context(), self.hydrate_rule)
-        if len(element.children) == 1 and element.kind in TRANSPARENT_NODES:
-            return self.hydrate_rule(element.children[0])
+        node: SyntaxNode = element  # type: ignore[assignment]
+        kind = node.kind
+        handler = NODE_HYDRATORS.get(kind) if kind is not None else None
+        if handler is not None:
+            return handler(node, self._cached_rule_context, self.hydrate_rule)
+        if kind in TRANSPARENT_NODES and len(node.children) == 1:
+            return self.hydrate_rule(node.children[0])
         raise UnsupportedSyntaxError.from_syntax(
-            f"No v2 hydrator for syntax node '{syntax_name(element)}'",
-            element,
+            f"No v2 hydrator for syntax node '{syntax_name(node)}'",
+            node,
         )
 
     def hydrate_token(self, token: SyntaxToken) -> Any:
-        handler = TOKEN_HYDRATORS.get(token.kind) if token.kind else None
-        if handler:
-            return handler(token, self.rule_context())
+        kind = token.kind
+        handler = TOKEN_HYDRATORS.get(kind) if kind is not None else None
+        if handler is not None:
+            return handler(token, self._cached_rule_context)
         return token.value
