@@ -6,6 +6,7 @@ from trilogy.core.enums import (
     AddressType,
     BooleanOperator,
     ComparisonOperator,
+    Modifier,
 )
 from trilogy.core.models.build import (
     BuildComparison,
@@ -111,9 +112,9 @@ def _best_enum_union(
             continue
 
         # Require at least one shared concept beyond the merge key
-        overlap = set(c.address for c in combo_list[0].output_concepts)
+        overlap = {col.concept.address for col in combo_list[0].columns}
         for ds in combo_list[1:]:
-            overlap &= {c.address for c in ds.output_concepts}
+            overlap &= {col.concept.address for col in ds.columns}
         if not (overlap - merge_key_addr):
             continue
 
@@ -128,20 +129,25 @@ def _best_enum_union(
 def get_union_sources(
     datasources: list[BuildDatasource], concepts: list[BuildConcept]
 ) -> List[list[BuildDatasource]]:
+    concept_addrs = {c.address for c in concepts}
     candidates: list[BuildDatasource] = []
+    _PARTIAL = Modifier.PARTIAL
 
+    # A candidate needs a non_partial_for clause and at least one partial column
+    # whose concept matches the request. A matching partial column is also a
+    # matching output column, so we don't need the separate output-overlap check
+    # the original did.
     for x in datasources:
-        if any([c.address in x.output_concepts for c in concepts]):
-            if (
-                any([c.address in x.partial_concepts for c in concepts])
-                and x.non_partial_for
-            ):
-                candidates.append(x)
-    assocs: dict[str, list[BuildDatasource]] = defaultdict(list[BuildDatasource])
-    for x in candidates:
         if not x.non_partial_for:
             continue
-        ca = x.non_partial_for.concept_arguments
+        for col in x.columns:
+            if _PARTIAL in col.modifiers and col.concept.address in concept_addrs:
+                candidates.append(x)
+                break
+
+    assocs: dict[str, list[BuildDatasource]] = defaultdict(list[BuildDatasource])
+    for x in candidates:
+        ca = x.non_partial_for.concept_arguments  # type: ignore[union-attr]
         if len(ca) == 1:
             assocs[ca[0].address].append(x)
         else:
