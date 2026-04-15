@@ -262,15 +262,13 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     ):
         source_addr = source.address
         target_addr = target.address
-        original = [c for c in self.columns if c.concept.address == source_addr]
-        early_exit_check = [
-            c for c in self.columns if c.concept.address == target_addr
-        ]
+        early_exit_check = [c for c in self.columns if c.concept.address == target_addr]
         if early_exit_check:
             logger.info(
                 f"No concept merge needed on merge of {source} to {target}, have {[x.concept.address for x in self.columns]}"
             )
             return None
+        original = [c for c in self.columns if c.concept.address == source_addr]
         if len(original) != 1:
             raise ValueError(
                 f"Expected exactly one column to merge, got {len(original)} for {source_addr}, {[x.alias for x in original]}"
