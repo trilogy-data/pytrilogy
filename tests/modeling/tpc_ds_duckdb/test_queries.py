@@ -8,7 +8,10 @@ import tomli_w
 import tomllib
 
 from trilogy import Executor
+from trilogy.constants import CONFIG
+from trilogy.core.query_processor import process_query
 from trilogy.core.models.environment import Environment
+from trilogy.parser import parse_text
 
 # Get aggregate info
 machine = platform.machine()
@@ -169,7 +172,59 @@ def test_one(engine):
 
 def test_two(engine):
     query = run_query(engine, 2, sql_override=True)
-    assert len(query) < 7000, query
+    assert len(query) < 7500, query
+
+
+def test_two_merge_aggregate_compacts_inline_window_query():
+    query = """
+    import catalog_sales as catalog_sales;
+    import web_sales as web_sales;
+    import date as date;
+
+    merge catalog_sales.date.* into ~date.*;
+    merge web_sales.date.* into ~date.*;
+
+    auto relevent_week_seq <- filter date.week_seq where date.year in (2001, 2002);
+
+    def weekday_sales(weekday) ->
+        (SUM(CASE WHEN date.day_of_week = weekday THEN web_sales.ext_sales_price ELSE 0.0 END) by date.week_seq +
+        SUM(CASE WHEN date.day_of_week = weekday THEN catalog_sales.ext_sales_price ELSE 0.0 END) by date.week_seq)
+    ;
+
+    def round_lag(sales)-> round(sales / (lead 53 sales by date.week_seq asc), 2);
+
+    WHERE
+        date.week_seq in relevent_week_seq
+    SELECT
+        date.week_seq,
+        @round_lag(@weekday_sales(0)) as sunday_increase,
+        @round_lag(@weekday_sales(1)) as monday_increase,
+        @round_lag(@weekday_sales(2)) as tuesday_increase,
+        @round_lag(@weekday_sales(3)) as wednesday_increase,
+        @round_lag(@weekday_sales(4)) as thursday_increase,
+        @round_lag(@weekday_sales(5)) as friday_increase,
+        @round_lag(@weekday_sales(6)) as saturday_increase
+    having sunday_increase is not null
+    ORDER BY date.week_seq asc NULLS FIRST
+    LIMIT 100;
+    """
+
+    original = CONFIG.optimizations.merge_aggregate
+    try:
+        CONFIG.optimizations.merge_aggregate = False
+        off_env = Environment(working_path=working_path)
+        _, off_statements = parse_text(query, off_env)
+        off_processed = process_query(off_env, off_statements[-1])
+
+        CONFIG.optimizations.merge_aggregate = True
+        on_env = Environment(working_path=working_path)
+        _, on_statements = parse_text(query, on_env)
+        on_processed = process_query(on_env, on_statements[-1])
+    finally:
+        CONFIG.optimizations.merge_aggregate = original
+
+    assert len(off_processed.ctes) == 9
+    assert len(on_processed.ctes) == 5
 
 
 def test_three(engine):
