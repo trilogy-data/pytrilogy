@@ -35,7 +35,7 @@ Baseline numbers (pre-P0, pest backend):
 | P1 | Emit `SyntaxNode`/`SyntaxToken` directly from rust | `trilogy/scripts/dependency/src/trilogy_parser.rs`, `trilogy/parsing/v2/pest_backend.py` | done |
 | P2 | Process-level parse-tree cache | `trilogy/parsing/parse_engine_v2.py` | done |
 | P3 | Tighten `hydrate_rule` dispatch | `trilogy/parsing/v2/hydration.py` | done |
-| P4 | Flatten `SyntaxMeta` | `trilogy/parsing/v2/syntax.py` | pending |
+| P4 | Flatten `SyntaxMeta` | `trilogy/parsing/v2/syntax.py` | done |
 | P6 | Memoize `__build_concept(address, grain_key)` | `trilogy/core/models/build.py` | pending |
 | P7 | Cache undirected graph in Steiner path | `trilogy/core/processing/node_generators/node_merge_node.py` | pending |
 | P8 | Reduce `ReferenceGraph.copy` in pruned graph | `trilogy/core/processing/node_generators/select_merge_node.py` | pending |
@@ -121,6 +121,31 @@ Result on `profile_test_queries_parse.py` (parse_only x10):
 - `parse_only` wall: 0.156 s → 0.148 s (~5% faster)
 - `isinstance` calls: 54,830 → 47,300 (~14% fewer, matches the 6330
   hydrate_rule isinstances eliminated)
+
+Full test suite: `pytest -m "not adventureworks_execution"` — 2144 passed,
+17 skipped.
+
+### P4 — 2026-04-15
+
+Deleted the `SyntaxMeta` dataclass and inlined its six position fields
+(`line`, `column`, `end_line`, `end_column`, `start_pos`, `end_pos`)
+directly onto `SyntaxNode` and `SyntaxToken`. `SyntaxMeta` survives as a
+type alias to the element type for backwards compat, and each class
+exposes a `meta` property returning `self` so existing consumers that
+read `element.meta.line` keep working without edits. The walker and
+`syntax_from_parser` now construct nodes/tokens with positional args —
+kwargs dispatch on a 9-field slots dataclass is ~2× slower than the
+positional form.
+
+One `meta is None` guard in `hydrate_concept_block` was tightened to a
+direct `end_line is None` check since the property path is never None.
+
+Result (micro-benchmark on TPC-DS query3, walker-only, 2000 iter):
+- `_tuple_to_syntax`: 117 µs → 84 µs (~28% faster)
+- `parse_pest` end-to-end: 635 µs → 575 µs (~9% faster)
+
+`profile_test_queries_parse.py` wall (parse_only x10, cache-dominated so
+the walker only runs once): 0.148 s → 0.140 s (~5% faster).
 
 Full test suite: `pytest -m "not adventureworks_execution"` — 2144 passed,
 17 skipped.

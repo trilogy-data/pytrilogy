@@ -10,7 +10,6 @@ from trilogy.parsing.v2.syntax import (
     LARK_TOKEN_KIND,
     SyntaxDocument,
     SyntaxElement,
-    SyntaxMeta,
     SyntaxNode,
     SyntaxToken,
     SyntaxTokenKind,
@@ -73,17 +72,15 @@ def _append_comment_tokens(
         end_line_idx = bisect_right(line_starts, e) - 1
         dest.append(
             SyntaxToken(
-                name="PARSE_COMMENT",
-                value=text[s:e],
-                meta=SyntaxMeta(
-                    line_idx + 1,
-                    s - line_starts[line_idx] + 1,
-                    end_line_idx + 1,
-                    e - line_starts[end_line_idx] + 1,
-                    s,
-                    e,
-                ),
-                kind=SyntaxTokenKind.COMMENT,
+                "PARSE_COMMENT",
+                text[s:e],
+                line_idx + 1,
+                s - line_starts[line_idx] + 1,
+                end_line_idx + 1,
+                e - line_starts[end_line_idx] + 1,
+                s,
+                e,
+                SyntaxTokenKind.COMMENT,
             )
         )
 
@@ -94,7 +91,6 @@ def _tuple_to_syntax(
     line_starts: list[int],
     _node_cls: type = SyntaxNode,
     _token_cls: type = SyntaxToken,
-    _meta_cls: type = SyntaxMeta,
     _node_kind: dict = LARK_NODE_KIND,
     _token_kind: dict = LARK_TOKEN_KIND,
     _gobblers: frozenset = _COMMENT_GOBBLERS,
@@ -105,20 +101,23 @@ def _tuple_to_syntax(
     Tuple layout from `parse_trilogy_syntax_tuple`:
       node:  (name, children_tuple, line, col, end_line, end_col, start_pos, end_pos)
       token: (name, value_str,      line, col, end_line, end_col, start_pos, end_pos)
-    Distinguished by whether element[1] is a tuple or a str. Subscript access
-    avoids the getattr overhead of the pyclass duck-typed path; default-arg
-    bindings hoist class and dict lookups into fast locals.
+    Position fields are stored directly on SyntaxNode/SyntaxToken — there is
+    no SyntaxMeta allocation. Default-arg bindings hoist class and dict
+    lookups into fast locals.
     """
     name = element[0]
     second = element[1]
     if type(second) is str:
         return _token_cls(
-            name=name,
-            value=second,
-            meta=_meta_cls(
-                element[2], element[3], element[4], element[5], element[6], element[7]
-            ),
-            kind=_token_kind.get(name),
+            name,
+            second,
+            element[2],
+            element[3],
+            element[4],
+            element[5],
+            element[6],
+            element[7],
+            _token_kind.get(name),
         )
 
     children: list[SyntaxElement] = []
@@ -158,12 +157,15 @@ def _tuple_to_syntax(
                 _append_comment_tokens(children, trailing, text, line_starts)
 
     return _node_cls(
-        name=name,
-        children=children,
-        meta=_meta_cls(
-            element[2], element[3], element[4], element[5], node_start, node_end
-        ),
-        kind=_node_kind.get(name),
+        name,
+        children,
+        element[2],
+        element[3],
+        element[4],
+        element[5],
+        node_start,
+        node_end,
+        _node_kind.get(name),
     )
 
 

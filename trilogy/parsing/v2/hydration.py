@@ -307,19 +307,18 @@ class NativeHydrator:
         # Match v1: a blank line between the concept and the next comment
         # detaches the comment, so it is preserved as a standalone element
         # rather than mutating the concept's description.
-        if concept_node.meta is None:
+        base_line = concept_node.end_line
+        if base_line is None:
             return output
-        base_line = concept_node.meta.end_line
         comments = []
         for x in trailing:
             if (
                 isinstance(x, SyntaxToken)
                 and x.kind == SyntaxTokenKind.COMMENT
-                and x.meta is not None
-                and x.meta.line == base_line
+                and x.line == base_line
             ):
                 comments.append(self.hydrate_comment(x))
-                base_line = x.meta.end_line
+                base_line = x.end_line
             else:
                 break
         if comments:
