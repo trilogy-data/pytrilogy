@@ -1,10 +1,11 @@
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any, Callable, List, Optional, Set
-
-from lark.tree import Meta
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Set
 
 from trilogy.constants import MagicConstants
+
+if TYPE_CHECKING:
+    from trilogy.parsing.helpers import Meta
 from trilogy.core.enums import (
     DatePart,
     FunctionClass,
@@ -1157,7 +1158,7 @@ class FunctionFactory:
         self,
         args: list[Any],
         operator: FunctionType,
-        meta: Meta | None = None,
+        meta: "Meta | None" = None,
     ):
         if operator not in FUNCTION_REGISTRY:
             raise ValueError(f"Function {operator} not in registry")

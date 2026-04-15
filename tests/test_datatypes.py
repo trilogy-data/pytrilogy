@@ -12,9 +12,7 @@ from trilogy.core.models.core import (
     TraitDataType,
     merge_datatypes,
 )
-from trilogy.parsing.parse_engine import (
-    parse_text,
-)
+from trilogy.parsing.parse_engine_v2 import parse_text
 
 
 def test_numeric():

@@ -1,7 +1,7 @@
 from pytest import raises
 
 from trilogy import Dialects
-from trilogy.parsing.parse_engine import parse_text
+from trilogy.parsing.parse_engine_v2 import parse_text
 
 
 def test_custom_type():

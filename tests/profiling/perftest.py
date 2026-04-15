@@ -4,7 +4,7 @@ from pathlib import Path
 from pstats import SortKey, Stats
 
 from trilogy.core.models.environment import Environment
-from trilogy.parsing.parse_engine import parse_text, parse_text_raw
+from trilogy.parsing.parse_engine_v2 import parse_text, parse_text_raw
 
 
 def parsetest():

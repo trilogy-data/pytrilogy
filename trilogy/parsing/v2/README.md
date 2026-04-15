@@ -1,14 +1,18 @@
-# Parser v2 Design
+# Parser Design
 
-Parser v2 separates syntax parsing from semantic enrichment. The parser should produce
+The parser separates syntax parsing from semantic enrichment. The parser should produce
 `SyntaxDocument` only; it should not read or mutate an `Environment`.
 
 ## Layers
 
 1. `parse_engine_v2.py`
-   - Owns the current parser adapter.
-   - Today this adapter uses Lark to produce a neutral `SyntaxDocument`.
-   - A future Rust parser should be able to produce the same syntax objects.
+   - Thin dispatcher: `parse_syntax` selects the active backend, `parse_text`
+     drives `TopLevelStatementParser` over the resulting `SyntaxDocument`.
+   - Backend-specific code lives in `v2/lark_backend.py` and
+     `v2/pest_backend.py`; shared error formatting lives in `v2/errors.py`.
+   - Pest is the default. Lark is imported lazily by `lark_backend.py` only
+     when `CONFIG.parser_backend == ParserBackend.LARK`, so the pest path
+     pays no Lark startup cost.
 
 2. `syntax.py`
    - Defines `SyntaxDocument`, `SyntaxNode`, `SyntaxToken`, `SyntaxMeta`, and
@@ -101,11 +105,11 @@ Parser v2 separates syntax parsing from semantic enrichment. The parser should p
      `replace_concept` record pending concepts without mutating the environment;
      `commit` is the durable concept write path.
    - Provides `pending_overlay_scope`, a read-only compatibility overlay for
-     remaining v1 helpers that still resolve concepts through the environment
-     concept dictionary. This keeps pending concepts visible to those helpers
-     without writing to `environment.concepts.data`.
-   - The overlay is a migration bridge, not the final target. New v2 helper code
-     should prefer `RuleContext.concepts` / `ConceptLookup` directly.
+     legacy helpers in `trilogy.parsing.common` that still resolve concepts
+     through the environment concept dictionary. This keeps pending concepts
+     visible to those helpers without writing to `environment.concepts.data`.
+   - The overlay is a compatibility bridge, not the final target. New helper
+     code should prefer `RuleContext.concepts` / `ConceptLookup` directly.
 
 13. `model.py` / `rules_context.py`
    - `model.py` defines v2 diagnostics and the `RecordingEnvironmentUpdate` shape.
@@ -152,32 +156,30 @@ Each top-level syntax form becomes a `StatementPlan`. Plans run through these ph
 
 ## Pending Overlay
 
-Parser v2 currently keeps same-parse concept definitions visible in two ways:
+The parser keeps same-parse concept definitions visible in two ways:
 
-- Native v2 rule code should use `RuleContext.concepts`, which reads pending
+- Native rule code should use `RuleContext.concepts`, which reads pending
   concepts from `SemanticState` before falling back to the environment.
-- Remaining v1-shaped helpers, such as concept factory helpers, select lineage,
-  and grain helpers, still read through `environment.concepts[...]`. During the
-  relevant hydration phases, `SemanticState.pending_overlay_scope` installs a
-  read-only overlay on the environment concept dictionary so those reads can see
-  pending concepts without mutating `environment.concepts.data`.
+- Legacy helpers in `trilogy.parsing.common` (concept factory helpers, select
+  lineage, grain helpers) still read through `environment.concepts[...]`.
+  During the relevant hydration phases, `SemanticState.pending_overlay_scope`
+  installs a read-only overlay on the environment concept dictionary so those
+  reads can see pending concepts without mutating `environment.concepts.data`.
 
-The overlay is intentionally a bridge. It keeps the current migration low-risk,
-but it is not a replacement for native v2 helper code. As more helpers move to
+The overlay is a bridge for the legacy helper surface. As more helpers move to
 `RuleContext.concepts`, the overlay surface should shrink and eventually be
 removed.
 
 Known concurrency limitation: the overlay stack currently lives on
 `EnvironmentConceptDict`. That is fine for the current serial parser test path,
 but overlapping parses against the same warmed `Environment` can observe each
-other's overlays. Before using parser v2 for concurrent independent query
-generation on a shared environment, either replace the overlay stack with a
-`ContextVar`-scoped implementation or remove the overlay by migrating the
-remaining v1 helper reads to native v2 helpers.
+other's overlays. Before running concurrent independent parses on a shared
+environment, either replace the overlay stack with a `ContextVar`-scoped
+implementation or finish migrating the legacy helper reads to native helpers.
 
 ## Current Coverage
 
-Current native coverage:
+Native coverage:
 
 - comments
 - concept declarations
@@ -192,33 +194,16 @@ Current native coverage:
 - imports (plain, selective, and self), resolved via `ImportHydrationService`
 - `show concepts` / `show datasources`
 
-Unported forms raise `UnsupportedSyntaxError`. That is deliberate. It prevents new v2
-work from silently falling back to the old Lark transformer or relying on a `to_lark`
-compatibility bridge.
+Unported grammar forms raise `UnsupportedSyntaxError` rather than silently
+falling back. The expression and declaration helpers still recurse into child
+syntax where their grammar requires it (e.g. ordered arithmetic chains); that
+recursion is targeted by rule family and stays below the statement boundary.
 
-The current expression and declaration helpers still recurse into child syntax where
-their grammar requires it, such as ordered arithmetic chains. That recursion is
-targeted by rule family and should stay below the statement boundary.
+## Adding Statement Families
 
-## Migration Rule
-
-Port one top-level statement family at a time. Add or specialize a `StatementPlan`
-for that family, then move the minimum expression helpers needed by that statement.
-Keep `parse_engine.py` available for comparison tests until v2 coverage is complete.
-
-## Next Migration Stage
-
-The next coverage push should focus on unsupported top-level statement families and
-grammar forms while preserving the staged concept model:
-
-1. Identify unsupported forms by running the parser comparison suite and searching
-   for `UnsupportedSyntaxError`.
-2. Add a small targeted fixture for one unsupported statement family.
-3. Add or extend the corresponding `StatementPlan`.
-4. Move only the rule helpers needed by that family into syntax-node-first v2 code.
-5. Prefer `RuleContext.concepts` for all concept reads. Use the pending overlay only
-   when calling a still-v1 helper would otherwise require an invasive rewrite.
-6. Add v1/v2 comparison coverage for the migrated family before moving on.
-
-Do not broaden the pending overlay as a default design pattern. Treat it as a
-compatibility boundary for already-identified v1 helper calls.
+When porting a new top-level form, add or specialize a `StatementPlan` for that
+family and move the minimum rule helpers it needs into syntax-node-first code.
+Prefer `RuleContext.concepts` for all concept reads; use the pending overlay
+only when calling a legacy helper would otherwise require an invasive rewrite.
+Do not broaden the pending overlay as a default design pattern — treat it as a
+compatibility boundary for already-identified legacy helper calls.

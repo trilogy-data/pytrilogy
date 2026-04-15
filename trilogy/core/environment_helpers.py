@@ -1,4 +1,5 @@
 import copy
+from typing import TYPE_CHECKING
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import ConceptSource, DatePart, FunctionType, Purpose
@@ -6,7 +7,9 @@ from trilogy.core.functions import FunctionFactory
 from trilogy.core.models.author import Concept, Function, Grain, Metadata, TraitDataType
 from trilogy.core.models.core import DataType, StructType, arg_to_datatype
 from trilogy.core.models.environment import Environment
-from trilogy.parsing.common import Meta
+
+if TYPE_CHECKING:
+    from trilogy.parsing.helpers import Meta
 
 
 def generate_date_concepts(concept: Concept, environment: Environment):
@@ -280,7 +283,7 @@ def remove_related_concepts(concept: Concept, environment: Environment):
 def generate_related_concepts(
     concept: Concept,
     environment: Environment,
-    meta: Meta | None = None,
+    meta: "Meta | None" = None,
 ):
     """Auto populate struct field concepts on struct types."""
     if isinstance(concept.datatype, StructType):

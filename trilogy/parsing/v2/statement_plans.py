@@ -25,6 +25,7 @@ from trilogy.core.statements.author import (
     TypeDeclaration,
     ValidateStatement,
 )
+from trilogy.parsing.exceptions import NameShadowError
 from trilogy.parsing.v2.function_syntax import FunctionDefinitionSyntax
 from trilogy.parsing.v2.import_service import ImportRequest
 from trilogy.parsing.v2.model import HydrationDiagnostic
@@ -262,7 +263,34 @@ class _SelectLikeStatementPlan(StatementPlanBase, Generic[_SelectLikeT]):
         _declare_inline_literals(self.syntax, hydrator, namespace)
 
     def hydrate(self, hydrator: "NativeHydrator") -> None:
+        parse_config = hydrator.parse_config
+        pre_keys: set[str] = (
+            set(hydrator.environment.concepts.keys())
+            if parse_config and parse_config.strict_name_shadow_enforcement
+            else set()
+        )
         self.output = hydrator.hydrate_rule(self.syntax)
+        if parse_config and parse_config.strict_name_shadow_enforcement:
+            self._check_name_shadow(pre_keys, hydrator)
+
+    def _check_name_shadow(
+        self, pre_keys: set[str], hydrator: "NativeHydrator"
+    ) -> None:
+        selects: list[SelectStatement] = []
+        if isinstance(self.output, SelectStatement):
+            selects.append(self.output)
+        elif isinstance(self.output, MultiSelectStatement):
+            selects.extend(self.output.selects)
+        for select in selects:
+            intersection = select.locally_derived.intersection(pre_keys)
+            if not intersection:
+                continue
+            shadowed = sorted(intersection)
+            raise NameShadowError(
+                f"Select statement creates new named concepts {shadowed} "
+                f"with identical name(s) to existing concept(s). "
+                f"Use new unique names for these."
+            )
 
     def validate(self, hydrator: "NativeHydrator") -> None:
         finalize_select_tree(self.output, hydrator)

@@ -8,7 +8,6 @@ from trilogy.constants import CONFIG, ParserBackend
 from trilogy.core.enums import DatasourceState
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.models.environment import Environment
-from trilogy.parsing.parse_engine import parse_text as parse_text_v1
 from trilogy.parsing.parse_engine_v2 import SyntaxNode, parse_syntax, parse_text
 from trilogy.parsing.v2.syntax import SyntaxElement, SyntaxNodeKind, SyntaxTokenKind
 
@@ -70,23 +69,6 @@ def test_parse_syntax_translates_lark_token_names() -> None:
     assert const_value.children[0].kind == SyntaxTokenKind.INT_LITERAL_PART
 
 
-def test_parse_text_v2_matches_v1_for_native_concept_statements() -> None:
-    text = """
-key id int;
-property id.name string;
-const name_count <- 1;
-auto adjusted_count <- name_count + 1;
-show concepts;
-"""
-
-    env_v1, output_v1 = parse_text_v1(text, Environment())
-    env_v2, output_v2 = parse_text(text, Environment())
-
-    assert [type(item) for item in output_v2] == [type(item) for item in output_v1]
-    assert set(env_v2.concepts.keys()) == set(env_v1.concepts.keys())
-    assert env_v2.concepts["local.adjusted_count"].lineage
-
-
 def test_parse_text_v2_supports_type_declaration() -> None:
     env, output = parse_text("type test int;", Environment())
     assert "test" in env.data_types
@@ -116,16 +98,11 @@ def test_parse_text_v2_type_declaration_rolls_back_on_failure() -> None:
     assert "missing_trait" not in env.data_types
 
 
-def test_v2_architecture_avoids_lark_or_v1_shims() -> None:
+def test_v2_architecture_avoids_lark_shims() -> None:
     combined = "\n".join(path.read_text() for path in V2_PATH.glob("*.py"))
 
     assert "to_lark" not in combined
     assert "Transformer" not in combined
-    for line in combined.splitlines():
-        if "trilogy.parsing.parse_engine" in line:
-            assert (
-                "parse_engine_v2" in line
-            ), f"v2 code references v1 parse_engine: {line.strip()}"
 
 
 def test_v2_node_hydrators_use_syntax_nodes_not_hydrated_args() -> None:

@@ -14,6 +14,7 @@ from trilogy.core.models.build import BuildComparison
 from trilogy.core.models.core import (
     DataType,
     TupleWrapper,
+    arg_to_datatype,
 )
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import (
@@ -25,10 +26,7 @@ from trilogy.core.statements.author import SelectStatement, ShowStatement
 from trilogy.core.statements.execute import ProcessedQuery
 from trilogy.dialect.base import BaseDialect
 from trilogy.parsing.common import atom_is_relevant
-from trilogy.parsing.parse_engine import (
-    arg_to_datatype,
-    parse_text,
-)
+from trilogy.parsing.parse_engine_v2 import parse_text
 
 
 def test_in():
