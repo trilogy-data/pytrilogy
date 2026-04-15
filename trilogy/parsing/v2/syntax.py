@@ -650,7 +650,10 @@ class SyntaxToken:
 @dataclass(slots=True)
 class SyntaxNode:
     name: str
-    children: tuple["SyntaxNode | SyntaxToken", ...]
+    # list rather than tuple so the pest fused walker (and any future
+    # post-pass) can append late-attached children (e.g. trailing comments
+    # appended to a gobbler ancestor after its recursive build returns).
+    children: list["SyntaxNode | SyntaxToken"]
     meta: SyntaxMeta | None = None
     kind: SyntaxNodeKind | None = None
 
@@ -724,7 +727,7 @@ def syntax_from_parser(element: Any) -> SyntaxElement:
     if data is not None:
         return SyntaxNode(
             name=data,
-            children=tuple(syntax_from_parser(child) for child in element.children),
+            children=[syntax_from_parser(child) for child in element.children],
             meta=SyntaxMeta.from_parser_meta(getattr(element, "meta", None)),
             kind=LARK_NODE_KIND.get(data),
         )
