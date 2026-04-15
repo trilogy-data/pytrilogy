@@ -624,6 +624,7 @@ class QueryDatasource:
     ordering: BuildOrderBy | None = None
 
     def __post_init__(self) -> None:
+        self.datasources = sorted(self.datasources, key=lambda ds: ds.identifier)
         unique_pairs: set[str] = set()
         for join in self.joins:
             if not isinstance(join, BaseJoin):

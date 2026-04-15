@@ -130,6 +130,28 @@ LOGGER_PREFIX = "[RENDERING]"
 
 WINDOW_ITEMS = (BuildWindowItem,)
 FILTER_ITEMS = (BuildFilterItem,)
+
+
+def _needs_arithmetic_parentheses(expr: Any) -> bool:
+    if isinstance(expr, BuildFunction):
+        return expr.operator in (
+            FunctionType.ADD,
+            FunctionType.SUBTRACT,
+            FunctionType.DIVIDE,
+            FunctionType.MULTIPLY,
+        )
+    return (
+        isinstance(expr, BuildConcept)
+        and expr.lineage is not None
+        and isinstance(expr.lineage, BuildFunction)
+        and expr.lineage.operator
+        in (
+            FunctionType.ADD,
+            FunctionType.SUBTRACT,
+            FunctionType.DIVIDE,
+            FunctionType.MULTIPLY,
+        )
+    )
 AGGREGATE_ITEMS = (BuildAggregateWrapper,)
 FUNCTION_ITEMS = (BuildFunction,)
 PARENTHETICAL_ITEMS = (BuildParenthetical,)
@@ -757,18 +779,7 @@ class BaseDialect:
                 args = []
                 types = []
                 for arg in c.lineage.arguments:
-                    if (
-                        isinstance(arg, BuildConcept)
-                        and arg.lineage
-                        and isinstance(arg.lineage, FUNCTION_ITEMS)
-                        and arg.lineage.operator
-                        in (
-                            FunctionType.ADD,
-                            FunctionType.SUBTRACT,
-                            FunctionType.DIVIDE,
-                            FunctionType.MULTIPLY,
-                        )
-                    ):
+                    if _needs_arithmetic_parentheses(arg):
                         args.append(
                             self.render_expr(
                                 BuildParenthetical(content=arg),
@@ -1044,18 +1055,7 @@ class BaseDialect:
         elif isinstance(e, FUNCTION_ITEMS):
             arguments = []
             for arg in e.arguments:
-                if (
-                    isinstance(arg, BuildConcept)
-                    and arg.lineage
-                    and isinstance(arg.lineage, FUNCTION_ITEMS)
-                    and arg.lineage.operator
-                    in (
-                        FunctionType.ADD,
-                        FunctionType.SUBTRACT,
-                        FunctionType.DIVIDE,
-                        FunctionType.MULTIPLY,
-                    )
-                ):
+                if _needs_arithmetic_parentheses(arg):
                     arguments.append(
                         self.render_expr(
                             BuildParenthetical(content=arg),

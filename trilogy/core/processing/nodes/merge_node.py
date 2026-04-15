@@ -206,7 +206,8 @@ class MergeNode(StrategyNode):
     ) -> List[BaseJoin | UnnestJoin]:
         # only finally, join between them for unique values
         dataset_list: List[QueryDatasource | BuildDatasource] = sorted(
-            final_datasets, key=lambda x: -len(x.grain.components)
+            final_datasets,
+            key=lambda x: (-len(x.grain.components), x.identifier),
         )
 
         logger.info(
@@ -255,7 +256,9 @@ class MergeNode(StrategyNode):
             final_joins, merged, self.logging_prefix, self.environment
         )
         # early exit if we can just return the parent
-        final_datasets: List[QueryDatasource | BuildDatasource] = list(merged.values())
+        final_datasets: List[QueryDatasource | BuildDatasource] = sorted(
+            merged.values(), key=lambda source: source.identifier
+        )
 
         existence_final = [
             x
