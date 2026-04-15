@@ -1,9 +1,9 @@
 query_id = "24"
-gen_length = 3836
+gen_length = 3864
 generated_sql = """
 
 WITH 
-cooperative as (
+yummy as (
 SELECT
     sum(\"store_sales_store_sales\".\"SS_NET_PAID\") as \"_virt_agg_sum_1360566110228423\"
 FROM
@@ -19,7 +19,7 @@ GROUP BY
     \"store_sales_customer_customers\".\"C_CUSTOMER_SK\",
     \"store_sales_store_sales\".\"SS_ITEM_SK\",
     \"store_sales_store_store\".\"S_STORE_SK\"),
-yummy as (
+questionable as (
 SELECT
     \"store_sales_customer_customers\".\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
     \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
@@ -39,19 +39,19 @@ GROUP BY
     1,
     2,
     3),
-abundant as (
+vacuous as (
 SELECT
-    avg(\"cooperative\".\"_virt_agg_sum_1360566110228423\") as \"avg_store_customer_sales\"
+    avg(\"yummy\".\"_virt_agg_sum_1360566110228423\") as \"avg_store_customer_sales\"
 FROM
-    \"cooperative\")
+    \"yummy\")
 SELECT
-    \"yummy\".\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
-    \"yummy\".\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
-    \"yummy\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    \"yummy\".\"peach_sales\" as \"peach_sales\"
+    \"questionable\".\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
+    \"questionable\".\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
+    \"questionable\".\"store_sales_store_name\" as \"store_sales_store_name\",
+    \"questionable\".\"peach_sales\" as \"peach_sales\"
 FROM
-    \"yummy\"
-    FULL JOIN \"abundant\" on 1=1
+    \"questionable\"
+    FULL JOIN \"vacuous\" on 1=1
 WHERE
-    \"yummy\".\"peach_sales\" > 0.05 * \"abundant\".\"avg_store_customer_sales\"
+    \"questionable\".\"peach_sales\" > 0.05 * \"vacuous\".\"avg_store_customer_sales\"
 """
