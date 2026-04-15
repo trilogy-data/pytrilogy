@@ -39,7 +39,7 @@ def profile_parse_only(iterations: int) -> cProfile.Profile:
     profiler.enable()
     for _ in range(iterations):
         env = _build_env()
-        parse(QUERY_TEXT,env)
+        parse(QUERY_TEXT, env)
     profiler.disable()
     return profiler
 
@@ -72,7 +72,7 @@ def dump(profiler: cProfile.Profile, outfile: Path, label: str) -> None:
 
 def main() -> None:
     warm = _build_env()
-    parse(QUERY_TEXT,warm)
+    parse(QUERY_TEXT, warm)
 
     iterations = 10
     print(f"Profiling parse_only x{iterations}...")
