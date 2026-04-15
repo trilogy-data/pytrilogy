@@ -37,7 +37,7 @@ Baseline numbers (pre-P0, pest backend):
 | P3 | Tighten `hydrate_rule` dispatch | `trilogy/parsing/v2/hydration.py` | done |
 | P4 | Flatten `SyntaxMeta` | `trilogy/parsing/v2/syntax.py` | done |
 | P6 | Cross-factory `_build_grain` cache | `trilogy/core/models/build.py` | done |
-| P7 | Cache undirected graph in Steiner path | `trilogy/core/processing/node_generators/node_merge_node.py` | pending |
+| P7 | Skip default weight writes + drop redundant `.copy()` in Steiner path | `trilogy/core/processing/node_generators/node_merge_node.py` | done |
 | P8 | Reduce `ReferenceGraph.copy` in pruned graph | `trilogy/core/processing/node_generators/select_merge_node.py` | pending |
 
 ## Constraints
@@ -173,6 +173,32 @@ Result on `tests/modeling/tpc_ds_duckdb/adhoc_perf.py` (25 iter):
 - `_build_grain` tottime: 0.198 s → 0.073 s (~63% faster)
 - `__build_concept` cum: 2.937 s → 2.141 s (~27% faster; children
   dominated by `_build_grain`)
+
+Full test suite: `pytest -m "not adventureworks_execution"` — 2144 passed,
+17 skipped.
+
+### P7 — 2026-04-15
+
+Pivoted from full undirected-graph caching (not straightforward because
+`search_graph` mutates across ambiguity-check iterations) to two
+targeted fixes in `determine_induced_minimal_nodes`:
+
+1. Dropped three redundant `.copy()` calls on results of `to_undirected`,
+   `steiner_tree`, and `subgraph` — each of those already returns a
+   fresh graph with an independent rust core and copied attrs, so the
+   extra `.copy()` was a full second clone.
+2. Skipped the per-edge `H.edges[edge]["weight"] = 1` default write.
+   The original loop wrote weight 1 to every edge through the layered
+   edge-view API (~874k `__setitem__` calls per 25-iter adhoc_perf run),
+   even though `_weight_triples` already treats a missing `weight` key
+   as 1.0. The replacement writes directly to `H._edge_attrs` only for
+   the rare BASIC non-ATTR_ACCESS case (weight 50).
+
+Result on `tests/modeling/tpc_ds_duckdb/adhoc_perf.py` (25 iter):
+- wall: 22.66 s → 20.79 s (~8% faster)
+- `determine_induced_minimal_nodes` cum: 6.189 s → 4.507 s (~27% faster)
+- `determine_induced_minimal_nodes` tottime: 0.647 s → 0.339 s (~48% faster)
+- `clone_graph` calls: 3000 → 2250 (the three dropped `.copy()`s)
 
 Full test suite: `pytest -m "not adventureworks_execution"` — 2144 passed,
 17 skipped.

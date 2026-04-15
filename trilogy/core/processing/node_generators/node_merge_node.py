@@ -109,28 +109,38 @@ def determine_induced_minimal_nodes(
     accept_partial: bool = False,
     synonyms: dict[str, str] = {},
 ) -> nx.DiGraph | None:
-    H: nx.Graph = nx.to_undirected(G).copy()
+    # to_undirected already returns a fresh graph with independent rust core
+    # and attrs; the extra .copy() is double work.
+    H: nx.Graph = nx.to_undirected(G)
     nodelist_set = set(nodelist)
 
-    # Add weights to edges based on target node's derivation type
+    # Add weights to edges based on target node's derivation type. The
+    # default weight is 1 (used by _weight_triples when `weight` key is
+    # missing), so we only write to _edge_attrs for the rare BASIC non
+    # ATTR_ACCESS case — avoids a per-edge __setitem__ through the layered
+    # edge-view API, which dominated this function's cost at ~874k calls
+    # per adhoc_perf run.
     g_concepts = G.concepts
+    H_edge_attrs = H._edge_attrs  # type: ignore[attr-defined]
     for edge in G.edges():
-        _, target = edge
+        target = edge[1]
         target_lookup = g_concepts.get(target)
-
-        weight = 1  # default weight
-        # If either node is BASIC, set higher weight
-        if target_lookup and target_lookup.derivation == Derivation.BASIC:
-            if (
+        if (
+            target_lookup is not None
+            and target_lookup.derivation == Derivation.BASIC
+            and not (
                 isinstance(target_lookup.lineage, BuildFunction)
                 and target_lookup.lineage.operator == FunctionType.ATTR_ACCESS
-            ):
-                weight = 1
+            )
+        ):
+            # H is undirected so the edge key is (min, max) order.
+            left, right = edge[0], target
+            key = (left, right) if left <= right else (right, left)
+            attrs = H_edge_attrs.get(key)
+            if attrs is None:
+                H_edge_attrs[key] = {"weight": 50}
             else:
-                # raise SyntaxError(target_lookup.lineage.operator)
-                weight = 50
-
-        H.edges[edge]["weight"] = weight
+                attrs["weight"] = 50
 
     nodes_to_remove = []
     derivations_to_remove = (
@@ -174,13 +184,14 @@ def determine_induced_minimal_nodes(
         # logger.debug(f"Removing paths {path_removals} from graph")
         H.remove_nodes_from(path_removals)
     # logger.debug(f"Graph after path removal {H.nodes}")
-    sG: nx.Graph = ax.steinertree.steiner_tree(H, nodelist, weight="weight").copy()
+    # steiner_tree/subgraph already return fresh graphs with independent cores.
+    sG: nx.Graph = ax.steinertree.steiner_tree(H, nodelist, weight="weight")
     if not sG.nodes:
         logger.debug(f"No Steiner tree found for nodes {nodelist}")
         return None
 
     logger.debug(f"Steiner tree found for nodes {nodelist} {sG.nodes}")
-    final = cast(ReferenceGraph, nx.subgraph(G, sG.nodes).copy())
+    final = cast(ReferenceGraph, nx.subgraph(G, sG.nodes))
 
     final_nodes = set(final.nodes)
     for edge in G.edges:
