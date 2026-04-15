@@ -29,7 +29,7 @@ WINDOW_TYPES = (BuildWindowItem,)
 
 def resolve_window_parent_concepts(
     concept: BuildConcept, environment: BuildEnvironment, depth: int
-) -> tuple[BuildConcept, List[BuildConcept]]:
+) -> List[BuildConcept]:
     if not isinstance(concept.lineage, WINDOW_TYPES):
         raise ValueError
     base = concept.lineage.concept_arguments
@@ -62,19 +62,19 @@ def gen_window_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} generating window node for {concept} with parents {[x.address for x in parent_concepts]} and optional {local_optional}"
     )
-    equivalent_optional = [
-        x
-        for x in local_optional
-        if isinstance(x.lineage, WINDOW_TYPES)
-        and resolve_window_parent_concepts(x, environment, depth) == parent_concepts
-    ]
 
 
     additional_outputs = []
-    if equivalent_optional:
-        for x in equivalent_optional:
-            assert isinstance(x.lineage, WINDOW_TYPES)
-            parents = resolve_window_parent_concepts(x, environment, depth)
+    for x in local_optional:
+        if not isinstance(x.lineage, WINDOW_TYPES):
+            continue
+        assert isinstance(x.lineage, WINDOW_TYPES)
+        parents = resolve_window_parent_concepts(x, environment, depth)
+
+
+        
+        matched = set([p.address for p in parents]) == set([p.address for p in parent_concepts])
+        if matched:
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} found equivalent optional {x} with parents {parents}"
             )
@@ -88,6 +88,7 @@ def gen_window_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} resolving final parents {parent_concepts + output_targets}"
     )
+
     parent_node: StrategyNode = source_concepts(
         mandatory_list=parent_concepts,
         environment=environment,
