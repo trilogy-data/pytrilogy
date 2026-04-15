@@ -1808,6 +1808,7 @@ class Factory:
         grain: Grain | None = None,
         pseudonym_map: dict[str, set[str]] | None = None,
         build_cache: dict[str, BuildConcept] | None = None,
+        grain_build_cache: dict[tuple, "BuildGrain"] | None = None,
     ):
         self.grain = grain or Grain()
         self.environment = environment
@@ -1817,6 +1818,13 @@ class Factory:
         self.local_non_build_concepts: dict[str, Concept] = {}
         self.pseudonym_map = pseudonym_map or get_canonical_pseudonyms(environment)
         self.build_cache = build_cache or {}
+        # Cross-factory cache for BuildGrain keyed on (frozenset(components),
+        # id(where_clause)). Same lifecycle as build_cache — propagated to
+        # sub-factories that share build_cache so all factories in a parse
+        # reuse the same normalized grains.
+        self.grain_build_cache: dict[tuple, BuildGrain] = (
+            {} if grain_build_cache is None else grain_build_cache
+        )
         self.build_grain = self.build(self.grain) if self.grain else None
 
     def instantiate_concept(
@@ -2442,19 +2450,36 @@ class Factory:
         return self._build_grain(base)
 
     def _build_grain(self, base: Grain) -> BuildGrain:
-        if base.where_clause:
-            factory = Factory(
-                environment=self.environment,
-                pseudonym_map=self.pseudonym_map,
-                build_cache=self.build_cache,
-            )
-            where = factory._build_where_clause(base.where_clause)
-        else:
-            where = None
+        # 99.9% of _build_grain calls have no where_clause; the normalized
+        # output is a pure function of (base.components, environment). Cache
+        # by frozenset(components) across factories sharing build_cache.
+        if not base.where_clause:
+            cache_key: tuple = (frozenset(base.components), None)
+            cached = self.grain_build_cache.get(cache_key)
+            if cached is not None:
+                return cached
+            normalized = set()
+            env_concepts = self.environment.concepts
+            for c in base.components:
+                if c in env_concepts:
+                    normalized.add(env_concepts[c].address)
+                else:
+                    normalized.add(c)
+            rval = BuildGrain(components=normalized, where_clause=None)
+            self.grain_build_cache[cache_key] = rval
+            return rval
+        factory = Factory(
+            environment=self.environment,
+            pseudonym_map=self.pseudonym_map,
+            build_cache=self.build_cache,
+            grain_build_cache=self.grain_build_cache,
+        )
+        where = factory._build_where_clause(base.where_clause)
         normalized = set()
+        env_concepts = self.environment.concepts
         for c in base.components:
-            if c in self.environment.concepts:
-                normalized.add(self.environment.concepts[c].address)
+            if c in env_concepts:
+                normalized.add(env_concepts[c].address)
             else:
                 normalized.add(c)
         return BuildGrain(components=normalized, where_clause=where)
@@ -2516,6 +2541,7 @@ class Factory:
             local_concepts=materialized,
             pseudonym_map=self.pseudonym_map,
             build_cache=self.build_cache,
+            grain_build_cache=self.grain_build_cache,
         )
         for k, v in base.local_concepts.items():
             materialized[k] = factory.build(v)
@@ -2525,6 +2551,7 @@ class Factory:
             local_concepts={},
             pseudonym_map=self.pseudonym_map,
             build_cache=self.build_cache,
+            grain_build_cache=self.grain_build_cache,
         )
         where_clause = (
             where_factory.build(base.where_clause) if base.where_clause else None
@@ -2743,6 +2770,11 @@ class Factory:
             # build_cache = self.build_cache,
             build_cache=(
                 self.build_cache if CONFIG.generation.datasource_build_cache else None
+            ),
+            grain_build_cache=(
+                self.grain_build_cache
+                if CONFIG.generation.datasource_build_cache
+                else None
             ),
         )
         # Filter out columns with undefined concepts (e.g., at max import depth)

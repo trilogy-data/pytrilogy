@@ -36,7 +36,7 @@ Baseline numbers (pre-P0, pest backend):
 | P2 | Process-level parse-tree cache | `trilogy/parsing/parse_engine_v2.py` | done |
 | P3 | Tighten `hydrate_rule` dispatch | `trilogy/parsing/v2/hydration.py` | done |
 | P4 | Flatten `SyntaxMeta` | `trilogy/parsing/v2/syntax.py` | done |
-| P6 | Memoize `__build_concept(address, grain_key)` | `trilogy/core/models/build.py` | pending |
+| P6 | Cross-factory `_build_grain` cache | `trilogy/core/models/build.py` | done |
 | P7 | Cache undirected graph in Steiner path | `trilogy/core/processing/node_generators/node_merge_node.py` | pending |
 | P8 | Reduce `ReferenceGraph.copy` in pruned graph | `trilogy/core/processing/node_generators/select_merge_node.py` | pending |
 
@@ -146,6 +146,33 @@ Result (micro-benchmark on TPC-DS query3, walker-only, 2000 iter):
 
 `profile_test_queries_parse.py` wall (parse_only x10, cache-dominated so
 the walker only runs once): 0.148 s → 0.140 s (~5% faster).
+
+Full test suite: `pytest -m "not adventureworks_execution"` — 2144 passed,
+17 skipped.
+
+### P6 — 2026-04-15
+
+Originally scoped as `__build_concept(address, grain_key)` memoization.
+Profiling that path showed the existing `local_concepts` check already
+catches ~1% of calls and — more importantly — the shared `build_cache`
+catches ~50% but only after the expensive work runs. The real opportunity
+turned up in `_build_grain`: 114k calls, only 214 unique by
+`(frozenset(components), where_clause_id)`, 99.9% without a where clause.
+
+Added a `grain_build_cache: dict[tuple, BuildGrain]` sibling to
+`build_cache` in `Factory.__init__`, propagated it to every sub-factory
+that already inherits `build_cache` (`_build_select_lineage` main +
+where, `_build_datasource` under `datasource_build_cache`, the internal
+where-factory inside `_build_grain`). Cache key is
+`(frozenset(base.components), None)` — the with-where path is 0.1% of
+calls and stays uncached to keep the key simple and correctness trivial.
+
+Result on `tests/modeling/tpc_ds_duckdb/adhoc_perf.py` (25 iter):
+- wall: 24.50 s → 22.66 s (~7.5% faster)
+- `_build_grain` cum: 1.251 s → 0.717 s (~43% faster)
+- `_build_grain` tottime: 0.198 s → 0.073 s (~63% faster)
+- `__build_concept` cum: 2.937 s → 2.141 s (~27% faster; children
+  dominated by `_build_grain`)
 
 Full test suite: `pytest -m "not adventureworks_execution"` — 2144 passed,
 17 skipped.
