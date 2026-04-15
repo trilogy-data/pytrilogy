@@ -453,13 +453,9 @@ def create_pruned_concept_graph(
         relevant_datasets, relevant_concepts, g_edges, g.datasources, depth, partial
     )
 
-    g.remove_nodes_from(
-        [
-            n
-            for n in g.nodes()
-            if n not in relevant_datasets and n not in relevant_concepts
-        ]
-    )
+    keep = set(relevant_datasets)
+    keep.update(relevant_concepts)
+    g.remove_nodes_from([n for n in g.nodes() if n not in keep])
 
     synonyms: dict[str, str] = {}
     for c in all_concepts:

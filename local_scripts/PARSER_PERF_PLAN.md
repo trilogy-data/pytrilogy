@@ -38,7 +38,7 @@ Baseline numbers (pre-P0, pest backend):
 | P4 | Flatten `SyntaxMeta` | `trilogy/parsing/v2/syntax.py` | done |
 | P6 | Cross-factory `_build_grain` cache | `trilogy/core/models/build.py` | done |
 | P7 | Skip default weight writes + drop redundant `.copy()` in Steiner path | `trilogy/core/processing/node_generators/node_merge_node.py` | done |
-| P8 | Reduce `ReferenceGraph.copy` in pruned graph | `trilogy/core/processing/node_generators/select_merge_node.py` | pending |
+| P8 | Speed up `get_union_sources` + drop list-based `in` in pruned graph | `trilogy/core/processing/node_generators/select_helpers/datasource_injection.py`, `trilogy/core/processing/node_generators/select_merge_node.py` | done |
 
 ## Constraints
 
@@ -199,6 +199,44 @@ Result on `tests/modeling/tpc_ds_duckdb/adhoc_perf.py` (25 iter):
 - `determine_induced_minimal_nodes` cum: 6.189 s → 4.507 s (~27% faster)
 - `determine_induced_minimal_nodes` tottime: 0.647 s → 0.339 s (~48% faster)
 - `clone_graph` calls: 3000 → 2250 (the three dropped `.copy()`s)
+
+Full test suite: `pytest -m "not adventureworks_execution"` — 2144 passed,
+17 skipped.
+
+### P8 — 2026-04-15
+
+Pivoted from graph-copy caching (the `.copy()` at the entry of
+`create_pruned_concept_graph` is not the hotspot — it was the operations
+on top). Profiling the post-P7 state showed `get_union_sources` was the
+single biggest tottime item in the run (0.945 s tottime, 1.524 s cumtime
+— ~30% of `create_pruned_concept_graph`'s cumtime) and drove millions of
+`BuildConcept.__eq__` calls.
+
+1. Rewrote `get_union_sources` in `select_helpers/datasource_injection.py`:
+   - Replaced `any([c.address in x.output_concepts for c in concepts])`
+     nested comprehensions with a single pass over each datasource's
+     `columns`, checking `col.concept.address in concept_addrs` (a
+     precomputed set).
+   - `output_concepts` / `partial_concepts` are `@property` methods that
+     rebuild fresh lists on every access — the original called them
+     inside `any()` inside a list comprehension per datasource. Dropped
+     those entirely in favour of iterating `columns` once and checking
+     `Modifier.PARTIAL in col.modifiers`.
+   - Dropped the redundant "output overlap" check since any partial
+     column that matches is also an output column. Same semantics in
+     fewer operations.
+   - Fixed `_best_enum_union`'s overlap computation the same way.
+2. In `create_pruned_concept_graph`, replaced `n not in relevant_datasets
+   and n not in relevant_concepts` (list scans) with a single `keep` set
+   membership check before `remove_nodes_from`.
+
+Result on `tests/modeling/tpc_ds_duckdb/adhoc_perf.py` (25 iter):
+- wall: 20.67 s → 18.79 s (~9% faster)
+- `create_pruned_concept_graph` cum: 5.312 s → 3.707 s (~30% faster)
+- `get_union_sources` tottime: 0.945 s → dropped out of top 20
+- `BuildConcept.__eq__` calls: 3.36 M → 0 in the hot path (fell out of
+  top 20 tottime)
+- function call count: 50.3 M → 46.2 M (4.1 M fewer calls)
 
 Full test suite: `pytest -m "not adventureworks_execution"` — 2144 passed,
 17 skipped.
