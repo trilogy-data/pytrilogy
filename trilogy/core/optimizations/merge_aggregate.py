@@ -1,5 +1,3 @@
-from enum import Enum
-
 from trilogy.core.enums import Derivation, SourceType
 from trilogy.core.models.build import (
     BuildWindowItem,
@@ -20,12 +18,6 @@ UNSAFE_DERIVATIONS = {
 }
 
 
-class MergeMode(Enum):
-    AGGREGATE = "aggregate"
-    BASIC = "basic"
-    WINDOW = "window"
-
-
 def has_unsafe_derivations(cte: CTE) -> bool:
     """Check if a CTE derives any concepts that can't be merged into an aggregate."""
     for concept in cte.output_columns:
@@ -34,70 +26,6 @@ def has_unsafe_derivations(cte: CTE) -> bool:
         if isinstance(concept.lineage, BuildWindowItem):
             return True
     return False
-
-
-def get_merge_mode(cte: CTE) -> MergeMode | None:
-    if cte.group_to_grain or cte.source.source_type == SourceType.GROUP:
-        return MergeMode.AGGREGATE
-    if cte.source.source_type == SourceType.WINDOW:
-        return MergeMode.WINDOW
-    if cte.source.source_type in (SourceType.BASIC, SourceType.SELECT):
-        return MergeMode.BASIC
-    return None
-
-
-def has_aggregate_without_source_map(cte: CTE) -> bool:
-    for concept in cte.output_columns:
-        if concept.derivation == Derivation.AGGREGATE and not cte.source_map.get(
-            concept.address
-        ):
-            return True
-    return False
-
-
-def parent_is_ineligible(parent: CTE, merge_mode: MergeMode) -> bool:
-    if merge_mode == MergeMode.AGGREGATE:
-        return parent.group_to_grain or parent.source.source_type in (
-            SourceType.GROUP,
-            SourceType.WINDOW,
-            SourceType.SUBSELECT,
-        )
-    if merge_mode == MergeMode.WINDOW:
-        return (
-            parent.group_to_grain
-            or parent.condition is not None
-            or parent.source.source_type
-            in (
-                SourceType.GROUP,
-                SourceType.FILTER,
-                SourceType.SUBSELECT,
-                SourceType.WINDOW,
-            )
-        )
-    return parent.source.source_type == SourceType.SUBSELECT
-
-
-def child_has_merge_blockers(cte: CTE, merge_mode: MergeMode) -> bool:
-    if merge_mode == MergeMode.WINDOW and cte.condition is not None:
-        return True
-    if merge_mode == MergeMode.BASIC and cte.condition is not None:
-        return True
-    return False
-
-
-def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
-    for column in cte.output_columns:
-        if column not in parent.output_columns:
-            parent.output_columns.append(column)
-
-    parent.output_columns = [
-        column for column in parent.output_columns if column.address in cte.output_lcl
-    ]
-
-    if merge_mode == MergeMode.AGGREGATE:
-        parent.group_to_grain = True
-    elif merge_mode == MergeMode.WINDOW:
-        parent.source.source_type = SourceType.WINDOW
 
 
 class MergeAggregate(OptimizationRule):
@@ -128,12 +56,8 @@ class MergeAggregate(OptimizationRule):
         if cte.joins:
             return False, None
 
-        merge_mode = get_merge_mode(cte)
-        if merge_mode is None:
-            return False, None
-
-        if child_has_merge_blockers(cte, merge_mode):
-            self.debug(f"CTE {cte.name} has child-specific merge blockers, skipping")
+        # Only optimize aggregate CTEs
+        if not cte.group_to_grain and cte.source.source_type != SourceType.GROUP:
             return False, None
 
         if not cte.parent_ctes:
@@ -153,7 +77,11 @@ class MergeAggregate(OptimizationRule):
         if isinstance(parent, (UnionCTE, RecursiveCTE)):
             self.debug(f"Parent {parent.name} is union/recursive, skipping")
             return False, None
-        if parent_is_ineligible(parent, merge_mode):
+        if parent.group_to_grain or parent.source.source_type in (
+            SourceType.GROUP,
+            SourceType.WINDOW,
+            SourceType.SUBSELECT,
+        ):
             self.debug(
                 f"Parent {parent.name} is ineligible type {parent.source.source_type}, skipping"
             )
@@ -164,21 +92,31 @@ class MergeAggregate(OptimizationRule):
             self.debug(f"Parent {parent.name} has multiple children, skipping")
             return False, None
 
-        if merge_mode == MergeMode.AGGREGATE:
-            if has_unsafe_derivations(parent):
-                self.log(f"Parent {parent.name} has unsafe derivations, skipping")
-                return False, None
-            if has_aggregate_without_source_map(parent):
+        # Parent must not have unsafe derivations
+        if has_unsafe_derivations(parent):
+            self.log(f"Parent {parent.name} has unsafe derivations, skipping")
+            return False, None
+        for x in parent.output_columns:
+            if x.derivation == Derivation.AGGREGATE and not parent.source_map.get(
+                x.address
+            ):
                 self.log(
                     f"Parent {parent.name} has aggregate derivations without source map, skipping"
                 )
                 return False, None
-
         self.log(
-            f"Merging {merge_mode.value} CTE {cte.name} into parent {parent.name} ({parent.source.source_type})."
+            f"Merging aggregate {cte.name} into parent {parent.name} ({parent.source.source_type})."
         )
 
-        apply_child_merge(parent, cte, merge_mode)
+        for x in cte.output_columns:
+            if x not in parent.output_columns:
+                parent.output_columns.append(x)
+
+        parent.output_columns = [
+            x for x in parent.output_columns if x.address in cte.output_columns
+        ]
+
+        parent.group_to_grain = True
         repoint_consumers(cte, parent, inverse_map)
 
         # Return merged map: old CTE name -> replacement CTE name
