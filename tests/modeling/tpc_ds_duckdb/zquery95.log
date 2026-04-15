@@ -1,9 +1,9 @@
 query_id = "95"
-gen_length = 4966
+gen_length = 4968
 generated_sql = """
 
 WITH 
-thoughtful as (
+questionable as (
 SELECT
     \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" as \"web_sales_order_number\",
     \"web_sales_web_sales\".\"WS_WAREHOUSE_SK\" as \"web_sales_warehouse_id\"
@@ -12,31 +12,31 @@ FROM
 GROUP BY
     1,
     2),
-cooperative as (
+abundant as (
 SELECT
-    \"thoughtful\".\"web_sales_order_number\" as \"web_sales_order_number\",
-    count(\"thoughtful\".\"web_sales_warehouse_id\") as \"_virt_agg_count_2435454530783120\"
+    \"questionable\".\"web_sales_order_number\" as \"web_sales_order_number\",
+    count(\"questionable\".\"web_sales_warehouse_id\") as \"_virt_agg_count_2435454530783120\"
 FROM
-    \"thoughtful\"
+    \"questionable\"
 GROUP BY
     1),
-questionable as (
-SELECT
-    CASE WHEN \"cooperative\".\"_virt_agg_count_2435454530783120\" > 1 THEN \"cooperative\".\"web_sales_order_number\" ELSE NULL END as \"multi_warehouse_order\"
-FROM
-    \"cooperative\"),
 uneven as (
+SELECT
+    CASE WHEN \"abundant\".\"_virt_agg_count_2435454530783120\" > 1 THEN \"abundant\".\"web_sales_order_number\" ELSE NULL END as \"multi_warehouse_order\"
+FROM
+    \"abundant\"),
+thoughtful as (
 SELECT
     CASE WHEN CASE WHEN WR_ORDER_NUMBER IS NOT NULL THEN 1 else 0 END is True THEN \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" ELSE NULL END as \"returned_orders\"
 FROM
     \"memory\".\"web_sales\" as \"web_sales_web_sales\"
     LEFT OUTER JOIN \"memory\".\"web_returns\" as \"web_sales_web_returns\" on \"web_sales_web_sales\".\"WS_ITEM_SK\" = \"web_sales_web_returns\".\"WR_ITEM_SK\" AND \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" = \"web_sales_web_returns\".\"WR_ORDER_NUMBER\"
 WHERE
-    CASE WHEN WR_ORDER_NUMBER IS NOT NULL THEN 1 else 0 END is True and \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select questionable.\"multi_warehouse_order\" from questionable where questionable.\"multi_warehouse_order\" is not null)
+    CASE WHEN WR_ORDER_NUMBER IS NOT NULL THEN 1 else 0 END is True and \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null)
 
 GROUP BY
     1),
-vacuous as (
+cooperative as (
 SELECT
     \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" as \"web_sales_order_number\",
     \"web_sales_web_sales\".\"WS_SHIP_ADDR_SK\" as \"web_sales_ship_address_id\",
@@ -45,14 +45,14 @@ SELECT
 FROM
     \"memory\".\"web_sales\" as \"web_sales_web_sales\"
 WHERE
-    \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select questionable.\"multi_warehouse_order\" from questionable where questionable.\"multi_warehouse_order\" is not null) and \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select uneven.\"returned_orders\" from uneven where uneven.\"returned_orders\" is not null)
+    \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null) and \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select thoughtful.\"returned_orders\" from thoughtful where thoughtful.\"returned_orders\" is not null)
 
 GROUP BY
     1,
     2,
     3,
     4),
-yummy as (
+concerned as (
 SELECT
     sum(\"web_sales_web_sales\".\"WS_EXT_SHIP_COST\") as \"total_shipping_cost\",
     sum(\"web_sales_web_sales\".\"WS_NET_PROFIT\") as \"total_net_profit\"
@@ -62,33 +62,33 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"web_sales_ship_date_date\" on \"web_sales_web_sales\".\"WS_SHIP_DATE_SK\" = \"web_sales_ship_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"web_sales_ship_address_customer_address\" on \"web_sales_web_sales\".\"WS_SHIP_ADDR_SK\" = \"web_sales_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) >= date '1999-02-01' and cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) <= date '1999-04-02' and \"web_sales_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"web_sales_web_site_web_site\".\"web_company_name\" = 'pri' and \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select questionable.\"multi_warehouse_order\" from questionable where questionable.\"multi_warehouse_order\" is not null) and \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select uneven.\"returned_orders\" from uneven where uneven.\"returned_orders\" is not null)
+    cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) >= date '1999-02-01' and cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) <= date '1999-04-02' and \"web_sales_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"web_sales_web_site_web_site\".\"web_company_name\" = 'pri' and \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null) and \"web_sales_web_sales\".\"WS_ORDER_NUMBER\" in (select thoughtful.\"returned_orders\" from thoughtful where thoughtful.\"returned_orders\" is not null)
 ),
-concerned as (
+juicy as (
 SELECT
-    \"vacuous\".\"web_sales_order_number\" as \"web_sales_order_number\"
+    \"cooperative\".\"web_sales_order_number\" as \"web_sales_order_number\"
 FROM
-    \"vacuous\"
-    INNER JOIN \"memory\".\"web_site\" as \"web_sales_web_site_web_site\" on \"vacuous\".\"web_sales_web_site_id\" = \"web_sales_web_site_web_site\".\"web_site_sk\"
-    INNER JOIN \"memory\".\"date_dim\" as \"web_sales_ship_date_date\" on \"vacuous\".\"web_sales_ship_date_id\" = \"web_sales_ship_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"customer_address\" as \"web_sales_ship_address_customer_address\" on \"vacuous\".\"web_sales_ship_address_id\" = \"web_sales_ship_address_customer_address\".\"CA_ADDRESS_SK\"
+    \"cooperative\"
+    INNER JOIN \"memory\".\"web_site\" as \"web_sales_web_site_web_site\" on \"cooperative\".\"web_sales_web_site_id\" = \"web_sales_web_site_web_site\".\"web_site_sk\"
+    INNER JOIN \"memory\".\"date_dim\" as \"web_sales_ship_date_date\" on \"cooperative\".\"web_sales_ship_date_id\" = \"web_sales_ship_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"customer_address\" as \"web_sales_ship_address_customer_address\" on \"cooperative\".\"web_sales_ship_address_id\" = \"web_sales_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) >= date '1999-02-01' and cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) <= date '1999-04-02' and \"web_sales_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"web_sales_web_site_web_site\".\"web_company_name\" = 'pri' and \"vacuous\".\"web_sales_order_number\" in (select questionable.\"multi_warehouse_order\" from questionable where questionable.\"multi_warehouse_order\" is not null) and \"vacuous\".\"web_sales_order_number\" in (select uneven.\"returned_orders\" from uneven where uneven.\"returned_orders\" is not null)
+    cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) >= date '1999-02-01' and cast(\"web_sales_ship_date_date\".\"D_DATE\" as date) <= date '1999-04-02' and \"web_sales_ship_address_customer_address\".\"CA_STATE\" = 'IL' and \"web_sales_web_site_web_site\".\"web_company_name\" = 'pri' and \"cooperative\".\"web_sales_order_number\" in (select uneven.\"multi_warehouse_order\" from uneven where uneven.\"multi_warehouse_order\" is not null) and \"cooperative\".\"web_sales_order_number\" in (select thoughtful.\"returned_orders\" from thoughtful where thoughtful.\"returned_orders\" is not null)
 
 GROUP BY
     1),
-young as (
+vacuous as (
 SELECT
-    count(\"concerned\".\"web_sales_order_number\") as \"order_count\"
+    count(\"juicy\".\"web_sales_order_number\") as \"order_count\"
 FROM
-    \"concerned\")
+    \"juicy\")
 SELECT
-    \"young\".\"order_count\" as \"order_count\",
-    \"yummy\".\"total_shipping_cost\" as \"total_shipping_cost\",
-    \"yummy\".\"total_net_profit\" as \"total_net_profit\"
+    \"vacuous\".\"order_count\" as \"order_count\",
+    \"concerned\".\"total_shipping_cost\" as \"total_shipping_cost\",
+    \"concerned\".\"total_net_profit\" as \"total_net_profit\"
 FROM
-    \"yummy\"
-    FULL JOIN \"young\" on 1=1
+    \"vacuous\"
+    FULL JOIN \"concerned\" on 1=1
 ORDER BY 
-    \"young\".\"order_count\" desc
+    \"vacuous\".\"order_count\" desc
 LIMIT (100)"""

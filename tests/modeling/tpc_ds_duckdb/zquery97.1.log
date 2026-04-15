@@ -1,20 +1,9 @@
 query_id = "97.1"
-gen_length = 3004
+gen_length = 3005
 generated_sql = """
 
 WITH 
-highfalutin as (
-SELECT
-    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"customer_id\",
-    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"item_id\",
-    \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
-FROM
-    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
-GROUP BY
-    1,
-    2,
-    3),
-thoughtful as (
+quizzical as (
 SELECT
     \"catalog_sales_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" as \"customer_id\",
     \"catalog_sales_catalog_sales\".\"CS_ITEM_SK\" as \"item_id\",
@@ -25,20 +14,31 @@ GROUP BY
     1,
     2,
     3),
+questionable as (
+SELECT
+    \"store_sales_store_sales\".\"SS_CUSTOMER_SK\" as \"customer_id\",
+    \"store_sales_store_sales\".\"SS_ITEM_SK\" as \"item_id\",
+    \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
+FROM
+    \"memory\".\"store_sales\" as \"store_sales_store_sales\"
+GROUP BY
+    1,
+    2,
+    3),
 uneven as (
 SELECT
     \"catalog_sales_date_date\".\"D_MONTH_SEQ\" as \"catalog_sales_date_month_seq\",
     \"store_sales_date_date\".\"D_MONTH_SEQ\" as \"store_sales_date_month_seq\",
-    ((cast(coalesce(\"customer_customers\".\"C_CUSTOMER_SK\",\"highfalutin\".\"customer_id\",\"thoughtful\".\"customer_id\") as string) || '-') || cast(coalesce(\"highfalutin\".\"item_id\",\"item_items\".\"I_ITEM_SK\",\"thoughtful\".\"item_id\") as string)) as \"customer_item\",
-    coalesce(\"customer_customers\".\"C_CUSTOMER_SK\",\"highfalutin\".\"customer_id\",\"thoughtful\".\"customer_id\") as \"customer_id\",
-    coalesce(\"highfalutin\".\"item_id\",\"item_items\".\"I_ITEM_SK\",\"thoughtful\".\"item_id\") as \"item_id\"
+    ((cast(coalesce(\"customer_customers\".\"C_CUSTOMER_SK\",\"questionable\".\"customer_id\",\"quizzical\".\"customer_id\") as string) || '-') || cast(coalesce(\"item_items\".\"I_ITEM_SK\",\"questionable\".\"item_id\",\"quizzical\".\"item_id\") as string)) as \"customer_item\",
+    coalesce(\"customer_customers\".\"C_CUSTOMER_SK\",\"questionable\".\"customer_id\",\"quizzical\".\"customer_id\") as \"customer_id\",
+    coalesce(\"item_items\".\"I_ITEM_SK\",\"questionable\".\"item_id\",\"quizzical\".\"item_id\") as \"item_id\"
 FROM
-    \"highfalutin\"
-    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"highfalutin\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
-    RIGHT OUTER JOIN \"memory\".\"item\" as \"item_items\" on \"highfalutin\".\"item_id\" = \"item_items\".\"I_ITEM_SK\"
-    FULL JOIN \"thoughtful\" on \"highfalutin\".\"customer_id\" = \"thoughtful\".\"customer_id\" AND coalesce(\"item_items\".\"I_ITEM_SK\", \"highfalutin\".\"item_id\") = \"thoughtful\".\"item_id\"
-    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"thoughtful\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
-    FULL JOIN \"memory\".\"customer\" as \"customer_customers\" on coalesce(\"thoughtful\".\"customer_id\", \"highfalutin\".\"customer_id\") = \"customer_customers\".\"C_CUSTOMER_SK\"
+    \"questionable\"
+    INNER JOIN \"memory\".\"date_dim\" as \"store_sales_date_date\" on \"questionable\".\"store_sales_date_id\" = \"store_sales_date_date\".\"D_DATE_SK\"
+    RIGHT OUTER JOIN \"memory\".\"item\" as \"item_items\" on \"questionable\".\"item_id\" = \"item_items\".\"I_ITEM_SK\"
+    FULL JOIN \"quizzical\" on \"questionable\".\"customer_id\" = \"quizzical\".\"customer_id\" AND coalesce(\"item_items\".\"I_ITEM_SK\", \"questionable\".\"item_id\") = \"quizzical\".\"item_id\"
+    LEFT OUTER JOIN \"memory\".\"date_dim\" as \"catalog_sales_date_date\" on \"quizzical\".\"catalog_sales_date_id\" = \"catalog_sales_date_date\".\"D_DATE_SK\"
+    FULL JOIN \"memory\".\"customer\" as \"customer_customers\" on coalesce(\"quizzical\".\"customer_id\", \"questionable\".\"customer_id\") = \"customer_customers\".\"C_CUSTOMER_SK\"
 GROUP BY
     1,
     2,

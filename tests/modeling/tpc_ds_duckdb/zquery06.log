@@ -1,9 +1,17 @@
 query_id = "06"
-gen_length = 2529
+gen_length = 2505
 generated_sql = """
 
 WITH 
-questionable as (
+highfalutin as (
+SELECT
+    \"item_items\".\"I_CATEGORY\" as \"item_category\",
+    avg(\"item_items\".\"I_CURRENT_PRICE\") as \"_virt_agg_avg_5942253052406187\"
+FROM
+    \"memory\".\"item\" as \"item_items\"
+GROUP BY
+    1),
+abundant as (
 SELECT
     \"item_items\".\"I_CATEGORY\" as \"item_category\",
     \"item_items\".\"I_ITEM_SK\" as \"item_id\",
@@ -22,23 +30,15 @@ FROM
     LEFT OUTER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"item_items\".\"I_ITEM_SK\" = \"store_sales_item_items\".\"I_ITEM_SK\"
 WHERE
     cast(\"store_sales_date_date\".\"D_YEAR\" as int) = 2001 and \"store_sales_item_items\".\"I_CATEGORY\" is not null and \"store_sales_date_date\".\"D_MOY\" = 1
-),
-abundant as (
+)
 SELECT
-    \"item_items\".\"I_CATEGORY\" as \"item_category\",
-    avg(\"item_items\".\"I_CURRENT_PRICE\") as \"_virt_agg_avg_5942253052406187\"
-FROM
-    \"memory\".\"item\" as \"item_items\"
-GROUP BY
-    1)
-SELECT
-    \"questionable\".\"store_sales_customer_address_state\" as \"store_sales_customer_address_state\",
+    \"abundant\".\"store_sales_customer_address_state\" as \"store_sales_customer_address_state\",
     sum(1) as \"customer_count\"
 FROM
-    \"questionable\"
-    INNER JOIN \"abundant\" on \"questionable\".\"item_category\" is not distinct from \"abundant\".\"item_category\"
+    \"abundant\"
+    INNER JOIN \"highfalutin\" on \"abundant\".\"item_category\" is not distinct from \"highfalutin\".\"item_category\"
 WHERE
-    \"questionable\".\"store_sales_date_year\" = 2001 and \"questionable\".\"store_sales_item_category\" is not null and \"questionable\".\"store_sales_date_month_of_year\" = 1 and \"questionable\".\"store_sales_item_current_price\" > 1.2 * \"abundant\".\"_virt_agg_avg_5942253052406187\"
+    \"abundant\".\"store_sales_date_year\" = 2001 and \"abundant\".\"store_sales_item_category\" is not null and \"abundant\".\"store_sales_date_month_of_year\" = 1 and \"abundant\".\"store_sales_item_current_price\" > 1.2 * \"highfalutin\".\"_virt_agg_avg_5942253052406187\"
 
 GROUP BY
     1
@@ -47,4 +47,4 @@ HAVING
 
 ORDER BY 
     \"customer_count\" asc nulls first,
-    \"questionable\".\"store_sales_customer_address_state\" asc nulls first"""
+    \"abundant\".\"store_sales_customer_address_state\" asc nulls first"""

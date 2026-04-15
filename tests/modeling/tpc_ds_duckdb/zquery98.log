@@ -1,5 +1,5 @@
 query_id = "98"
-gen_length = 2862
+gen_length = 2874
 generated_sql = """
 
 WITH 
@@ -20,14 +20,6 @@ WHERE
 ),
 cooperative as (
 SELECT
-    \"cheerful\".\"store_sales_item_class\" as \"store_sales_item_class\",
-    sum(\"cheerful\".\"store_sales_ext_sales_price\") as \"_virt_agg_sum_7595906549305205\"
-FROM
-    \"cheerful\"
-GROUP BY
-    1),
-thoughtful as (
-SELECT
     \"cheerful\".\"store_sales_item_category\" as \"store_sales_item_category\",
     \"cheerful\".\"store_sales_item_class\" as \"store_sales_item_class\",
     \"cheerful\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
@@ -42,21 +34,29 @@ GROUP BY
     2,
     3,
     4,
-    5)
+    5),
+thoughtful as (
 SELECT
-    \"thoughtful\".\"store_sales_item_name\" as \"store_sales_item_name\",
-    \"thoughtful\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    \"thoughtful\".\"store_sales_item_category\" as \"store_sales_item_category\",
-    \"thoughtful\".\"store_sales_item_class\" as \"store_sales_item_class\",
-    \"thoughtful\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    \"thoughtful\".\"item_revenue\" as \"item_revenue\",
-    \"thoughtful\".\"_virt_agg_sum_9873055619986236\" * 100.0 / (\"cooperative\".\"_virt_agg_sum_7595906549305205\") as \"revenueratio\"
+    \"cheerful\".\"store_sales_item_class\" as \"store_sales_item_class\",
+    sum(\"cheerful\".\"store_sales_ext_sales_price\") as \"_virt_agg_sum_7595906549305205\"
 FROM
-    \"thoughtful\"
-    INNER JOIN \"cooperative\" on \"thoughtful\".\"store_sales_item_class\" is not distinct from \"cooperative\".\"store_sales_item_class\"
+    \"cheerful\"
+GROUP BY
+    1)
+SELECT
+    \"cooperative\".\"store_sales_item_name\" as \"store_sales_item_name\",
+    \"cooperative\".\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    \"cooperative\".\"store_sales_item_category\" as \"store_sales_item_category\",
+    \"thoughtful\".\"store_sales_item_class\" as \"store_sales_item_class\",
+    \"cooperative\".\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    \"cooperative\".\"item_revenue\" as \"item_revenue\",
+    ( \"cooperative\".\"_virt_agg_sum_9873055619986236\" * 100.0 ) / (\"thoughtful\".\"_virt_agg_sum_7595906549305205\") as \"revenueratio\"
+FROM
+    \"cooperative\"
+    INNER JOIN \"thoughtful\" on \"cooperative\".\"store_sales_item_class\" is not distinct from \"thoughtful\".\"store_sales_item_class\"
 ORDER BY 
-    \"thoughtful\".\"store_sales_item_category\" asc nulls first,
+    \"cooperative\".\"store_sales_item_category\" asc nulls first,
     \"thoughtful\".\"store_sales_item_class\" asc nulls first,
-    \"thoughtful\".\"store_sales_item_name\" asc nulls first,
-    \"thoughtful\".\"store_sales_item_desc\" asc nulls first,
+    \"cooperative\".\"store_sales_item_name\" asc nulls first,
+    \"cooperative\".\"store_sales_item_desc\" asc nulls first,
     \"revenueratio\" asc nulls first"""
