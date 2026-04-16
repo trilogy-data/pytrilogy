@@ -728,7 +728,9 @@ def window_item_to_concept(
             float,
         ),
     ):
-        bcontent = arbitrary_to_concept(parent.content, environment, namespace=namespace)
+        bcontent = arbitrary_to_concept(
+            parent.content, environment, namespace=namespace
+        )
     elif isinstance(parent.content, ConceptRef):
         bcontent = environment.concepts[parent.content.address]
     else:

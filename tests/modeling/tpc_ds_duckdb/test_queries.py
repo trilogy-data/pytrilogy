@@ -9,8 +9,8 @@ import tomllib
 
 from trilogy import Executor
 from trilogy.constants import CONFIG
-from trilogy.core.query_processor import process_query
 from trilogy.core.models.environment import Environment
+from trilogy.core.query_processor import process_query
 from trilogy.parser import parse_text
 
 # Get aggregate info
