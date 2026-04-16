@@ -1,9 +1,9 @@
 query_id = "16"
-gen_length = 4284
+gen_length = 4300
 generated_sql = """
 
 WITH 
-cooperative as (
+thoughtful as (
 SELECT
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     \"cs_catalog_sales\".\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\"
@@ -19,20 +19,20 @@ FROM
     \"memory\".\"catalog_returns\" as \"cr_catalog_returns\"
 GROUP BY
     1),
-questionable as (
+cooperative as (
 SELECT
-    \"cooperative\".\"cs_order_number\" as \"cs_order_number\",
-    count(\"cooperative\".\"cs_warehouse_id\") as \"_virt_agg_count_7777088585630721\"
+    \"thoughtful\".\"cs_order_number\" as \"cs_order_number\",
+    count(\"thoughtful\".\"cs_warehouse_id\") as \"_virt_agg_count_7777088585630721\"
 FROM
-    \"cooperative\"
+    \"thoughtful\"
 GROUP BY
     1),
-abundant as (
+questionable as (
 SELECT
-    CASE WHEN \"questionable\".\"_virt_agg_count_7777088585630721\" > 1 THEN \"questionable\".\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
+    CASE WHEN \"cooperative\".\"_virt_agg_count_7777088585630721\" > 1 THEN \"cooperative\".\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
 FROM
-    \"questionable\"),
-thoughtful as (
+    \"cooperative\"),
+abundant as (
 SELECT
     \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
     \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" as \"cs_order_number\",
@@ -41,7 +41,7 @@ SELECT
 FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
 WHERE
-    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select quizzical.\"cr_order_number\" from quizzical where quizzical.\"cr_order_number\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select abundant.\"multi_warehouse_sales\" from abundant where abundant.\"multi_warehouse_sales\" is not null)
+    \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select quizzical.\"cr_order_number\" from quizzical where quizzical.\"cr_order_number\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select questionable.\"multi_warehouse_sales\" from questionable where questionable.\"multi_warehouse_sales\" is not null)
 
 GROUP BY
     1,
@@ -58,18 +58,18 @@ FROM
     RIGHT OUTER JOIN \"memory\".\"call_center\" as \"cs_call_center_call_center\" on \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" = \"cs_call_center_call_center\".\"CC_CALL_CENTER_SK\"
     RIGHT OUTER JOIN \"memory\".\"customer_address\" as \"cs_customer_address_customer_address\" on \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" = \"cs_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"cs_ship_date_date\".\"D_DATE\" as date) >= date '2002-02-01' and cast(\"cs_ship_date_date\".\"D_DATE\" as date) <= date '2002-04-02' and \"cs_customer_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select quizzical.\"cr_order_number\" from quizzical where quizzical.\"cr_order_number\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select abundant.\"multi_warehouse_sales\" from abundant where abundant.\"multi_warehouse_sales\" is not null)
+    cast(\"cs_ship_date_date\".\"D_DATE\" as date) >= date '2002-02-01' and cast(\"cs_ship_date_date\".\"D_DATE\" as date) <= date '2002-04-02' and \"cs_customer_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" not in (select quizzical.\"cr_order_number\" from quizzical where quizzical.\"cr_order_number\" is not null) and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" in (select questionable.\"multi_warehouse_sales\" from questionable where questionable.\"multi_warehouse_sales\" is not null)
 ),
 juicy as (
 SELECT
-    \"thoughtful\".\"cs_order_number\" as \"cs_order_number\"
+    \"abundant\".\"cs_order_number\" as \"cs_order_number\"
 FROM
-    \"thoughtful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"thoughtful\".\"cs_ship_date_id\" = \"cs_ship_date_date\".\"D_DATE_SK\"
-    RIGHT OUTER JOIN \"memory\".\"call_center\" as \"cs_call_center_call_center\" on \"thoughtful\".\"cs_call_center_id\" = \"cs_call_center_call_center\".\"CC_CALL_CENTER_SK\"
-    RIGHT OUTER JOIN \"memory\".\"customer_address\" as \"cs_customer_address_customer_address\" on \"thoughtful\".\"cs_customer_address_id\" = \"cs_customer_address_customer_address\".\"CA_ADDRESS_SK\"
+    \"abundant\"
+    INNER JOIN \"memory\".\"date_dim\" as \"cs_ship_date_date\" on \"abundant\".\"cs_ship_date_id\" = \"cs_ship_date_date\".\"D_DATE_SK\"
+    RIGHT OUTER JOIN \"memory\".\"call_center\" as \"cs_call_center_call_center\" on \"abundant\".\"cs_call_center_id\" = \"cs_call_center_call_center\".\"CC_CALL_CENTER_SK\"
+    RIGHT OUTER JOIN \"memory\".\"customer_address\" as \"cs_customer_address_customer_address\" on \"abundant\".\"cs_customer_address_id\" = \"cs_customer_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"cs_ship_date_date\".\"D_DATE\" as date) >= date '2002-02-01' and cast(\"cs_ship_date_date\".\"D_DATE\" as date) <= date '2002-04-02' and \"cs_customer_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"thoughtful\".\"cs_order_number\" not in (select quizzical.\"cr_order_number\" from quizzical where quizzical.\"cr_order_number\" is not null) and \"thoughtful\".\"cs_order_number\" in (select abundant.\"multi_warehouse_sales\" from abundant where abundant.\"multi_warehouse_sales\" is not null)
+    cast(\"cs_ship_date_date\".\"D_DATE\" as date) >= date '2002-02-01' and cast(\"cs_ship_date_date\".\"D_DATE\" as date) <= date '2002-04-02' and \"cs_customer_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and \"abundant\".\"cs_order_number\" not in (select quizzical.\"cr_order_number\" from quizzical where quizzical.\"cr_order_number\" is not null) and \"abundant\".\"cs_order_number\" in (select questionable.\"multi_warehouse_sales\" from questionable where questionable.\"multi_warehouse_sales\" is not null)
 
 GROUP BY
     1),
