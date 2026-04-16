@@ -22,6 +22,7 @@ UNSAFE_DERIVATIONS = {
 class MergeMode(Enum):
     AGGREGATE = "aggregate"
     WINDOW = "window"
+    BASIC = "basic"
 
 
 def has_unsafe_derivations(cte: CTE) -> bool:
@@ -39,6 +40,8 @@ def get_merge_mode(cte: CTE) -> MergeMode | None:
         return MergeMode.AGGREGATE
     if cte.source.source_type == SourceType.WINDOW:
         return MergeMode.WINDOW
+    if cte.source.source_type == SourceType.BASIC:
+        return MergeMode.BASIC
     return None
 
 
@@ -49,22 +52,31 @@ def parent_is_ineligible(parent: CTE, merge_mode: MergeMode) -> bool:
             SourceType.WINDOW,
             SourceType.SUBSELECT,
         )
-    # WINDOW
-    return (
-        parent.group_to_grain
-        or parent.condition is not None
-        or parent.source.source_type
-        in (
-            SourceType.GROUP,
-            SourceType.FILTER,
-            SourceType.SUBSELECT,
-            SourceType.WINDOW,
+    if merge_mode == MergeMode.WINDOW:
+        return (
+            parent.group_to_grain
+            or parent.condition is not None
+            or parent.source.source_type
+            in (
+                SourceType.GROUP,
+                SourceType.FILTER,
+                SourceType.SUBSELECT,
+                SourceType.WINDOW,
+            )
         )
+    # BASIC
+    return parent.group_to_grain or parent.source.source_type in (
+        SourceType.GROUP,
+        SourceType.WINDOW,
+        SourceType.SUBSELECT,
+        SourceType.UNNEST,
     )
 
 
 def child_has_merge_blockers(cte: CTE, merge_mode: MergeMode) -> bool:
     if merge_mode == MergeMode.WINDOW and cte.condition is not None:
+        return True
+    if merge_mode == MergeMode.BASIC and cte.condition is not None:
         return True
     return False
 
@@ -88,12 +100,16 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
         # by window expressions (e.g. inlined CASE branches or unmaterialized
         # aggregates). Don't prune — just extend.
         parent.source.source_type = SourceType.WINDOW
+    # BASIC merge: keep parent's source_type; child's basic projections render
+    # alongside parent's outputs. HideUnusedConcepts handles pruning later.
 
 
-class MergeAggregate(OptimizationRule):
-    """Merge a parent CTE into an aggregate or window child CTE.
+class CollapseSingleParent(OptimizationRule):
+    """Collapse a child CTE into its single parent by folding the parent's
+    datasources and conditions into the child's shape.
 
-    When the child CTE has a single parent that:
+    Handles three merge modes (AGGREGATE, WINDOW, BASIC). When the child CTE
+    has a single parent that:
     1. Is only used by this child (no other children)
     2. Doesn't derive window functions or other unsafe derivations
     3. Has compatible datasources
@@ -168,7 +184,7 @@ class MergeAggregate(OptimizationRule):
                     return False, None
 
         self.log(
-            f"Merging {merge_mode.value} CTE {cte.name} into parent {parent.name} ({parent.source.source_type})."
+            f"Collapsing {merge_mode.value} CTE {cte.name} into parent {parent.name} ({parent.source.source_type})."
         )
 
         apply_child_merge(parent, cte, merge_mode)

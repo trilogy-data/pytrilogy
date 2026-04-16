@@ -5,9 +5,9 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import CTE, RecursiveCTE, UnionCTE
 from trilogy.core.optimizations import (
+    CollapseSingleParent,
     HideUnusedConcepts,
     InlineDatasource,
-    MergeAggregate,
     MergeIrrelevantGroupBy,
     OptimizationRule,
     PredicatePushdown,
@@ -233,7 +233,7 @@ def optimize_ctes(
     REGISTERED_RULES: list["OptimizationRule"] = []
 
     if CONFIG.optimizations.merge_aggregate:
-        REGISTERED_RULES.append(MergeAggregate())
+        REGISTERED_RULES.append(CollapseSingleParent())
     if CONFIG.optimizations.merge_irrelevant_group_by:
         REGISTERED_RULES.append(MergeIrrelevantGroupBy())
     if CONFIG.optimizations.datasource_inlining:
