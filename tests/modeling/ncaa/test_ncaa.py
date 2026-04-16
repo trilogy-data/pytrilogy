@@ -155,16 +155,14 @@ def test_adhoc07():
     }, env.concepts["scoring_criteria"].grain.components
     generated = engine.generate_sql(text)[0]
 
-    # Regex pattern to validate the SQL CTE structure
-    target = r"""
-SELECT
-    "thoughtful"."player_full_name" as "player_full_name",
-    rank() over (order by "thoughtful"."eligible" desc,"thoughtful"."_virt_agg_sum_2295964629883628" / "thoughtful"."_virt_agg_count_6314412377293846" desc ) as "player_rank"
-FROM
-    "thoughtful"
-LIMIT (100)"""
-    assert target in generated, generated.strip()
-    # assert re.match(target, generated, re.VERBOSE)
+    # Validate the window's order-by references a CASE on the count and a
+    # sum/count ratio. The merge_aggregate optimization may fold the upstream
+    # MERGE CTE into the window, so we don't pin to a specific CTE name.
+    pattern = re.compile(
+        r'rank\(\) over \(order by CASE\s+WHEN\s+"\w+"\."_virt_agg_count_\d+"\s*>\s*10\s+THEN 1\s+ELSE 0\s+END desc,\s*"\w+"\."_virt_agg_sum_\d+"\s*/\s*"\w+"\."_virt_agg_count_\d+" desc\s*\) as "player_rank"',
+        re.MULTILINE,
+    )
+    assert pattern.search(generated), generated.strip()
 
 
 def test_adhoc08():

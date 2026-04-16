@@ -1,5 +1,5 @@
 query_id = "02"
-gen_length = 8539
+gen_length = 7368
 generated_sql = """
 
 WITH 
@@ -107,50 +107,31 @@ SELECT
     \"thoughtful\".\"_virt_agg_sum_3786397327987598\" as \"_virt_agg_sum_3786397327987598\",
     \"thoughtful\".\"_virt_agg_sum_6682953939002364\" as \"_virt_agg_sum_6682953939002364\",
     \"thoughtful\".\"_virt_agg_sum_7896161127148766\" as \"_virt_agg_sum_7896161127148766\",
-    \"thoughtful\".\"date_week_seq\" as \"date_week_seq\"
+    \"thoughtful\".\"date_week_seq\" as \"date_week_seq\",
+    lead(\"abundant\".\"_virt_agg_sum_3519299976956081\" + \"thoughtful\".\"_virt_agg_sum_7896161127148766\", 53) over (order by \"thoughtful\".\"date_week_seq\" asc ) as \"_virt_window_lead_5346265135928073\",
+    lead(\"abundant\".\"_virt_agg_sum_3779761887981962\" + \"thoughtful\".\"_virt_agg_sum_3079932419863940\", 53) over (order by \"thoughtful\".\"date_week_seq\" asc ) as \"_virt_window_lead_5047506802492570\",
+    lead(\"abundant\".\"_virt_agg_sum_6049806522712958\" + \"thoughtful\".\"_virt_agg_sum_193047061116391\", 53) over (order by \"thoughtful\".\"date_week_seq\" asc ) as \"_virt_window_lead_1232035352048767\",
+    lead(\"abundant\".\"_virt_agg_sum_6661126559046129\" + \"thoughtful\".\"_virt_agg_sum_3213454596292177\", 53) over (order by \"thoughtful\".\"date_week_seq\" asc ) as \"_virt_window_lead_7248091016207513\",
+    lead(\"abundant\".\"_virt_agg_sum_6783468671653233\" + \"thoughtful\".\"_virt_agg_sum_2134740275704210\", 53) over (order by \"thoughtful\".\"date_week_seq\" asc ) as \"_virt_window_lead_7880799421539275\",
+    lead(\"abundant\".\"_virt_agg_sum_6887868659441811\" + \"thoughtful\".\"_virt_agg_sum_3786397327987598\", 53) over (order by \"thoughtful\".\"date_week_seq\" asc ) as \"_virt_window_lead_9336737048407529\",
+    lead(\"abundant\".\"_virt_agg_sum_9225264685721065\" + \"thoughtful\".\"_virt_agg_sum_6682953939002364\", 53) over (order by \"thoughtful\".\"date_week_seq\" asc ) as \"_virt_window_lead_9732738319085028\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"abundant\" on \"thoughtful\".\"date_week_seq\" = \"abundant\".\"date_week_seq\"),
-juicy as (
+    INNER JOIN \"abundant\" on \"thoughtful\".\"date_week_seq\" = \"abundant\".\"date_week_seq\")
 SELECT
-    \"yummy\".\"_virt_agg_sum_193047061116391\" as \"_virt_agg_sum_193047061116391\",
-    \"yummy\".\"_virt_agg_sum_2134740275704210\" as \"_virt_agg_sum_2134740275704210\",
-    \"yummy\".\"_virt_agg_sum_3079932419863940\" as \"_virt_agg_sum_3079932419863940\",
-    \"yummy\".\"_virt_agg_sum_3213454596292177\" as \"_virt_agg_sum_3213454596292177\",
-    \"yummy\".\"_virt_agg_sum_3519299976956081\" as \"_virt_agg_sum_3519299976956081\",
-    \"yummy\".\"_virt_agg_sum_3779761887981962\" as \"_virt_agg_sum_3779761887981962\",
-    \"yummy\".\"_virt_agg_sum_3786397327987598\" as \"_virt_agg_sum_3786397327987598\",
-    \"yummy\".\"_virt_agg_sum_6049806522712958\" as \"_virt_agg_sum_6049806522712958\",
-    \"yummy\".\"_virt_agg_sum_6661126559046129\" as \"_virt_agg_sum_6661126559046129\",
-    \"yummy\".\"_virt_agg_sum_6682953939002364\" as \"_virt_agg_sum_6682953939002364\",
-    \"yummy\".\"_virt_agg_sum_6783468671653233\" as \"_virt_agg_sum_6783468671653233\",
-    \"yummy\".\"_virt_agg_sum_6887868659441811\" as \"_virt_agg_sum_6887868659441811\",
-    \"yummy\".\"_virt_agg_sum_7896161127148766\" as \"_virt_agg_sum_7896161127148766\",
-    \"yummy\".\"_virt_agg_sum_9225264685721065\" as \"_virt_agg_sum_9225264685721065\",
     \"yummy\".\"date_week_seq\" as \"date_week_seq\",
-    lead(\"yummy\".\"_virt_agg_sum_3519299976956081\" + \"yummy\".\"_virt_agg_sum_7896161127148766\", 53) over (order by \"yummy\".\"date_week_seq\" asc ) as \"_virt_window_lead_5346265135928073\",
-    lead(\"yummy\".\"_virt_agg_sum_3779761887981962\" + \"yummy\".\"_virt_agg_sum_3079932419863940\", 53) over (order by \"yummy\".\"date_week_seq\" asc ) as \"_virt_window_lead_5047506802492570\",
-    lead(\"yummy\".\"_virt_agg_sum_6049806522712958\" + \"yummy\".\"_virt_agg_sum_193047061116391\", 53) over (order by \"yummy\".\"date_week_seq\" asc ) as \"_virt_window_lead_1232035352048767\",
-    lead(\"yummy\".\"_virt_agg_sum_6661126559046129\" + \"yummy\".\"_virt_agg_sum_3213454596292177\", 53) over (order by \"yummy\".\"date_week_seq\" asc ) as \"_virt_window_lead_7248091016207513\",
-    lead(\"yummy\".\"_virt_agg_sum_6783468671653233\" + \"yummy\".\"_virt_agg_sum_2134740275704210\", 53) over (order by \"yummy\".\"date_week_seq\" asc ) as \"_virt_window_lead_7880799421539275\",
-    lead(\"yummy\".\"_virt_agg_sum_6887868659441811\" + \"yummy\".\"_virt_agg_sum_3786397327987598\", 53) over (order by \"yummy\".\"date_week_seq\" asc ) as \"_virt_window_lead_9336737048407529\",
-    lead(\"yummy\".\"_virt_agg_sum_9225264685721065\" + \"yummy\".\"_virt_agg_sum_6682953939002364\", 53) over (order by \"yummy\".\"date_week_seq\" asc ) as \"_virt_window_lead_9732738319085028\"
+    round(( \"yummy\".\"_virt_agg_sum_6049806522712958\" + \"yummy\".\"_virt_agg_sum_193047061116391\" ) / (\"yummy\".\"_virt_window_lead_1232035352048767\"),2) as \"sunday_increase\",
+    round(( \"yummy\".\"_virt_agg_sum_3779761887981962\" + \"yummy\".\"_virt_agg_sum_3079932419863940\" ) / (\"yummy\".\"_virt_window_lead_5047506802492570\"),2) as \"monday_increase\",
+    round(( \"yummy\".\"_virt_agg_sum_6783468671653233\" + \"yummy\".\"_virt_agg_sum_2134740275704210\" ) / (\"yummy\".\"_virt_window_lead_7880799421539275\"),2) as \"tuesday_increase\",
+    round(( \"yummy\".\"_virt_agg_sum_9225264685721065\" + \"yummy\".\"_virt_agg_sum_6682953939002364\" ) / (\"yummy\".\"_virt_window_lead_9732738319085028\"),2) as \"wednesday_increase\",
+    round(( \"yummy\".\"_virt_agg_sum_6887868659441811\" + \"yummy\".\"_virt_agg_sum_3786397327987598\" ) / (\"yummy\".\"_virt_window_lead_9336737048407529\"),2) as \"thursday_increase\",
+    round(( \"yummy\".\"_virt_agg_sum_6661126559046129\" + \"yummy\".\"_virt_agg_sum_3213454596292177\" ) / (\"yummy\".\"_virt_window_lead_7248091016207513\"),2) as \"friday_increase\",
+    round(( \"yummy\".\"_virt_agg_sum_3519299976956081\" + \"yummy\".\"_virt_agg_sum_7896161127148766\" ) / (\"yummy\".\"_virt_window_lead_5346265135928073\"),2) as \"saturday_increase\"
 FROM
-    \"yummy\")
-SELECT
-    \"juicy\".\"date_week_seq\" as \"date_week_seq\",
-    round(( ( \"juicy\".\"_virt_agg_sum_6049806522712958\" + \"juicy\".\"_virt_agg_sum_193047061116391\" ) / (\"juicy\".\"_virt_window_lead_1232035352048767\") ),2) as \"sunday_increase\",
-    round(( ( \"juicy\".\"_virt_agg_sum_3779761887981962\" + \"juicy\".\"_virt_agg_sum_3079932419863940\" ) / (\"juicy\".\"_virt_window_lead_5047506802492570\") ),2) as \"monday_increase\",
-    round(( ( \"juicy\".\"_virt_agg_sum_6783468671653233\" + \"juicy\".\"_virt_agg_sum_2134740275704210\" ) / (\"juicy\".\"_virt_window_lead_7880799421539275\") ),2) as \"tuesday_increase\",
-    round(( ( \"juicy\".\"_virt_agg_sum_9225264685721065\" + \"juicy\".\"_virt_agg_sum_6682953939002364\" ) / (\"juicy\".\"_virt_window_lead_9732738319085028\") ),2) as \"wednesday_increase\",
-    round(( ( \"juicy\".\"_virt_agg_sum_6887868659441811\" + \"juicy\".\"_virt_agg_sum_3786397327987598\" ) / (\"juicy\".\"_virt_window_lead_9336737048407529\") ),2) as \"thursday_increase\",
-    round(( ( \"juicy\".\"_virt_agg_sum_6661126559046129\" + \"juicy\".\"_virt_agg_sum_3213454596292177\" ) / (\"juicy\".\"_virt_window_lead_7248091016207513\") ),2) as \"friday_increase\",
-    round(( ( \"juicy\".\"_virt_agg_sum_3519299976956081\" + \"juicy\".\"_virt_agg_sum_7896161127148766\" ) / (\"juicy\".\"_virt_window_lead_5346265135928073\") ),2) as \"saturday_increase\"
-FROM
-    \"juicy\"
+    \"yummy\"
 WHERE
-    round(( ( \"juicy\".\"_virt_agg_sum_6049806522712958\" + \"juicy\".\"_virt_agg_sum_193047061116391\" ) / (\"juicy\".\"_virt_window_lead_1232035352048767\") ),2) is not null
+    round(( \"yummy\".\"_virt_agg_sum_6049806522712958\" + \"yummy\".\"_virt_agg_sum_193047061116391\" ) / (\"yummy\".\"_virt_window_lead_1232035352048767\"),2) is not null
 
 ORDER BY 
-    \"juicy\".\"date_week_seq\" asc nulls first
+    \"yummy\".\"date_week_seq\" asc nulls first
 LIMIT (100)"""
