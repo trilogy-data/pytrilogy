@@ -36,12 +36,51 @@ This repo contains [pytrilogy](https://github.com/trilogy-data/pytrilogy), the r
 
 **Install**
 ```bash
-pip install pytrilogy[cli]
+pip install pytrilogy[cli,serve]
 ```
 
-**Create a file hello.preql**
+### End-to-end demo: public model → refresh → studio UI
 
-Trilogy supports reusable functions and constants. 
+Go from zero to a queryable, persisted model in four commands. We'll pull a
+public DuckDB model (boulder bike share stations, hosted parquet), add a
+derived persisted datasource, refresh it, then explore it in Studio.
+
+```bash
+# 1. Pull a public model (fetches all source .preql + setup.sql + trilogy.toml).
+trilogy public fetch bike_data ./bike-demo
+cd bike-demo
+
+# 2. Add a derived datasource that persists daily averages to a local table.
+cat > station_daily.preql <<'EOF'
+import boulder_data as boulder;
+
+auto day <- date_trunc(boulder.timestamp, day);
+
+persist station_daily into station_daily_stats from
+SELECT
+    boulder.id,
+    boulder.name,
+    day,
+    avg(boulder.bikes) -> avg_bikes,
+    avg(boulder.free) -> avg_free
+;
+EOF
+
+# 3. Refresh — runs setup.sql, builds station_daily_stats, tracks watermarks.
+trilogy refresh .
+
+# 4. Launch the Studio UI against the live model (opens your browser).
+trilogy serve .
+```
+
+Browse other available models with `trilogy public list` (filter with
+`--engine duckdb` or `--tag benchmark`). Every model in
+[trilogy-public-models](https://github.com/trilogy-data/trilogy-public-models)
+is pullable.
+
+### Minimal hello world
+
+Trilogy supports reusable functions and constants.
 
 ```sql
 const prime <- unnest([2, 3, 5, 7, 11, 13, 17, 19, 23, 29]);
@@ -315,6 +354,16 @@ trilogy run "key x int; datasource test_source(i:x) grain(x) address test; selec
 ```bash
 trilogy fmt <path to trilogy file>
 ```
+
+**Browse and pull public models:**
+```bash
+trilogy public list [--engine duckdb] [--tag benchmark]
+trilogy public fetch <model-name> [--path <dir>] [--no-examples]
+```
+
+Fetches model source files, setup scripts, and a ready-to-use `trilogy.toml`
+from [trilogy-public-models](https://github.com/trilogy-data/trilogy-public-models)
+into a local directory so you can immediately `refresh` and `serve` it.
 
 #### Backend Configuration
 
