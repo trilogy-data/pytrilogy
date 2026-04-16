@@ -1,6 +1,16 @@
 from collections import defaultdict
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Union,
+    cast,
+)
 
 if TYPE_CHECKING:
     from trilogy.dialect.config import DialectConfig
@@ -39,6 +49,7 @@ from trilogy.core.models.build import (
     BuildComparison,
     BuildConcept,
     BuildConditional,
+    BuildExpr,
     BuildFilterItem,
     BuildFunction,
     BuildMultiSelectLineage,
@@ -795,7 +806,7 @@ class BaseDialect:
                     if _needs_arithmetic_parentheses(arg, c.lineage.operator):
                         args.append(
                             self.render_expr(
-                                BuildParenthetical(content=arg),
+                                BuildParenthetical(content=cast(BuildExpr, arg)),
                                 cte=cte,
                                 raise_invalid=raise_invalid,
                             )
@@ -1071,7 +1082,7 @@ class BaseDialect:
                 if _needs_arithmetic_parentheses(arg, e.operator):
                     arguments.append(
                         self.render_expr(
-                            BuildParenthetical(content=arg),
+                            BuildParenthetical(content=cast(BuildExpr, arg)),
                             cte=cte,
                             cte_map=cte_map,
                             raise_invalid=raise_invalid,

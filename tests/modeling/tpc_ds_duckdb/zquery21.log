@@ -1,5 +1,5 @@
 query_id = "21"
-gen_length = 2533
+gen_length = 2525
 generated_sql = """
 SELECT
     \"inventory_warehouse_warehouse\".\"w_warehouse_name\" as \"inventory_warehouse_name\",
@@ -28,10 +28,10 @@ HAVING
 	WHEN sum(CASE
 	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) < date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
 	ELSE 0
-	END) > 0 THEN (( sum(CASE
+	END) > 0 THEN (sum(CASE
 	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) >= date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
 	ELSE 0
-	END) * 1.0 )) / sum(CASE
+	END) * 1.0) / sum(CASE
 	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) < date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
 	ELSE 0
 	END)
@@ -40,10 +40,10 @@ HAVING
 	WHEN sum(CASE
 	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) < date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
 	ELSE 0
-	END) > 0 THEN (( sum(CASE
+	END) > 0 THEN (sum(CASE
 	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) >= date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
 	ELSE 0
-	END) * 1.0 )) / sum(CASE
+	END) * 1.0) / sum(CASE
 	WHEN cast(\"inventory_date_date\".\"D_DATE\" as date) < date '2000-03-11' THEN \"inventory_warehouse_inventory\".\"inv_quantity_on_hand\"
 	ELSE 0
 	END)

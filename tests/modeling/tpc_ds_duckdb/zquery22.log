@@ -1,5 +1,5 @@
 query_id = "22"
-gen_length = 6940
+gen_length = 6997
 generated_sql = """
 
 WITH 
@@ -57,16 +57,22 @@ FROM
 juicy as (
 SELECT
     \"cheerful\".\"inventory_item_brand_name\" as \"inventory_item_brand_name\",
-    \"cheerful\".\"inventory_item_class\" as \"inventory_item_class\",
     \"cheerful\".\"inventory_item_product_name\" as \"inventory_item_product_name\",
-    avg(\"cheerful\".\"inventory_quantity_on_hand\") as \"qoh2\"
+    avg(\"cheerful\".\"inventory_quantity_on_hand\") as \"qoh3\"
 FROM
     \"cheerful\"
 GROUP BY
     1,
-    2,
-    3),
-yummy as (
+    2),
+uneven as (
+SELECT
+    \"cheerful\".\"inventory_item_product_name\" as \"inventory_item_product_name\",
+    avg(\"cheerful\".\"inventory_quantity_on_hand\") as \"qoh4\"
+FROM
+    \"cheerful\"
+GROUP BY
+    1),
+abundant as (
 SELECT
     \"cheerful\".\"inventory_item_brand_name\" as \"i_brand\",
     \"cheerful\".\"inventory_item_category\" as \"i_category\",
@@ -80,67 +86,61 @@ GROUP BY
     2,
     3,
     4),
-abundant as (
+thoughtful as (
 SELECT
     \"cheerful\".\"inventory_item_brand_name\" as \"inventory_item_brand_name\",
+    \"cheerful\".\"inventory_item_class\" as \"inventory_item_class\",
     \"cheerful\".\"inventory_item_product_name\" as \"inventory_item_product_name\",
-    avg(\"cheerful\".\"inventory_quantity_on_hand\") as \"qoh3\"
+    avg(\"cheerful\".\"inventory_quantity_on_hand\") as \"qoh2\"
 FROM
     \"cheerful\"
 GROUP BY
     1,
-    2),
-thoughtful as (
-SELECT
-    \"cheerful\".\"inventory_item_product_name\" as \"inventory_item_product_name\",
-    avg(\"cheerful\".\"inventory_quantity_on_hand\") as \"qoh4\"
-FROM
-    \"cheerful\"
-GROUP BY
-    1),
+    2,
+    3),
 vacuous as (
 SELECT
-    \"cooperative\".\"null_category\" as \"i_category\",
+    \"cooperative\".\"null_category2\" as \"i_category\",
+    \"cooperative\".\"null_class\" as \"i_class\",
     \"juicy\".\"inventory_item_brand_name\" as \"i_brand\",
-    \"juicy\".\"inventory_item_class\" as \"i_class\",
     \"juicy\".\"inventory_item_product_name\" as \"i_product_name\",
-    \"juicy\".\"qoh2\" as \"qoh2\"
+    \"juicy\".\"qoh3\" as \"qoh3\"
 FROM
     \"juicy\"
     FULL JOIN \"cooperative\" on 1=1),
-uneven as (
-SELECT
-    \"abundant\".\"inventory_item_brand_name\" as \"i_brand\",
-    \"abundant\".\"inventory_item_product_name\" as \"i_product_name\",
-    \"abundant\".\"qoh3\" as \"qoh3\",
-    \"cooperative\".\"null_category2\" as \"i_category\",
-    \"cooperative\".\"null_class\" as \"i_class\"
-FROM
-    \"abundant\"
-    FULL JOIN \"cooperative\" on 1=1),
-questionable as (
+yummy as (
 SELECT
     \"cooperative\".\"null_brand\" as \"i_brand\",
     \"cooperative\".\"null_category3\" as \"i_category\",
     \"cooperative\".\"null_class2\" as \"i_class\",
+    \"uneven\".\"inventory_item_product_name\" as \"i_product_name\",
+    \"uneven\".\"qoh4\" as \"qoh4\"
+FROM
+    \"uneven\"
+    FULL JOIN \"cooperative\" on 1=1),
+questionable as (
+SELECT
+    \"cooperative\".\"null_category\" as \"i_category\",
+    \"thoughtful\".\"inventory_item_brand_name\" as \"i_brand\",
+    \"thoughtful\".\"inventory_item_class\" as \"i_class\",
     \"thoughtful\".\"inventory_item_product_name\" as \"i_product_name\",
-    \"thoughtful\".\"qoh4\" as \"qoh4\"
+    \"thoughtful\".\"qoh2\" as \"qoh2\"
 FROM
     \"thoughtful\"
     FULL JOIN \"cooperative\" on 1=1),
 abhorrent as (
 SELECT
-    coalesce(\"questionable\".\"i_brand\",\"sparkling\".\"i_brand\",\"uneven\".\"i_brand\",\"vacuous\".\"i_brand\",\"yummy\".\"i_brand\") as \"i_brand\",
-    coalesce(\"questionable\".\"i_category\",\"sparkling\".\"i_category\",\"uneven\".\"i_category\",\"vacuous\".\"i_category\",\"yummy\".\"i_category\") as \"i_category\",
-    coalesce(\"questionable\".\"i_class\",\"sparkling\".\"i_class\",\"uneven\".\"i_class\",\"vacuous\".\"i_class\",\"yummy\".\"i_class\") as \"i_class\",
-    coalesce(\"questionable\".\"i_product_name\",\"sparkling\".\"i_product_name\",\"uneven\".\"i_product_name\",\"vacuous\".\"i_product_name\",\"yummy\".\"i_product_name\") as \"i_product_name\",
-    coalesce(\"yummy\".\"qoh1\",\"vacuous\".\"qoh2\",\"uneven\".\"qoh3\",\"questionable\".\"qoh4\",\"sparkling\".\"qoh5\") as \"qoh_all\"
+    coalesce(\"abundant\".\"i_brand\",\"questionable\".\"i_brand\",\"sparkling\".\"i_brand\",\"vacuous\".\"i_brand\",\"yummy\".\"i_brand\") as \"i_brand\",
+    coalesce(\"abundant\".\"i_category\",\"questionable\".\"i_category\",\"sparkling\".\"i_category\",\"vacuous\".\"i_category\",\"yummy\".\"i_category\") as \"i_category\",
+    coalesce(\"abundant\".\"i_class\",\"questionable\".\"i_class\",\"sparkling\".\"i_class\",\"vacuous\".\"i_class\",\"yummy\".\"i_class\") as \"i_class\",
+    coalesce(\"abundant\".\"i_product_name\",\"questionable\".\"i_product_name\",\"sparkling\".\"i_product_name\",\"vacuous\".\"i_product_name\",\"yummy\".\"i_product_name\") as \"i_product_name\",
+    coalesce(\"abundant\".\"qoh1\",\"questionable\".\"qoh2\",\"vacuous\".\"qoh3\",\"yummy\".\"qoh4\",\"sparkling\".\"qoh5\") as \"qoh_all\"
 FROM
-    \"yummy\"
-    FULL JOIN \"vacuous\" on \"yummy\".\"i_brand\" is not distinct from \"vacuous\".\"i_brand\" AND \"yummy\".\"i_category\" is not distinct from \"vacuous\".\"i_category\" AND \"yummy\".\"i_class\" is not distinct from \"vacuous\".\"i_class\" AND \"yummy\".\"i_product_name\" is not distinct from \"vacuous\".\"i_product_name\"
-    FULL JOIN \"uneven\" on \"yummy\".\"i_brand\" is not distinct from \"uneven\".\"i_brand\" AND \"yummy\".\"i_category\" is not distinct from \"uneven\".\"i_category\" AND \"yummy\".\"i_class\" is not distinct from \"uneven\".\"i_class\" AND \"yummy\".\"i_product_name\" is not distinct from \"uneven\".\"i_product_name\"
-    FULL JOIN \"questionable\" on \"yummy\".\"i_brand\" is not distinct from \"questionable\".\"i_brand\" AND \"yummy\".\"i_category\" is not distinct from \"questionable\".\"i_category\" AND \"yummy\".\"i_class\" is not distinct from \"questionable\".\"i_class\" AND \"yummy\".\"i_product_name\" is not distinct from \"questionable\".\"i_product_name\"
-    FULL JOIN \"sparkling\" on \"yummy\".\"i_brand\" is not distinct from \"sparkling\".\"i_brand\" AND \"yummy\".\"i_category\" is not distinct from \"sparkling\".\"i_category\" AND \"yummy\".\"i_class\" is not distinct from \"sparkling\".\"i_class\" AND \"yummy\".\"i_product_name\" is not distinct from \"sparkling\".\"i_product_name\")
+    \"abundant\"
+    FULL JOIN \"questionable\" on \"abundant\".\"i_brand\" is not distinct from \"questionable\".\"i_brand\" AND \"abundant\".\"i_category\" is not distinct from \"questionable\".\"i_category\" AND \"abundant\".\"i_class\" is not distinct from \"questionable\".\"i_class\" AND \"abundant\".\"i_product_name\" is not distinct from \"questionable\".\"i_product_name\"
+    FULL JOIN \"vacuous\" on \"abundant\".\"i_brand\" is not distinct from \"vacuous\".\"i_brand\" AND \"abundant\".\"i_category\" is not distinct from \"vacuous\".\"i_category\" AND \"abundant\".\"i_class\" is not distinct from \"vacuous\".\"i_class\" AND \"abundant\".\"i_product_name\" is not distinct from \"vacuous\".\"i_product_name\"
+    FULL JOIN \"yummy\" on \"abundant\".\"i_brand\" is not distinct from \"yummy\".\"i_brand\" AND \"abundant\".\"i_category\" is not distinct from \"yummy\".\"i_category\" AND \"abundant\".\"i_class\" is not distinct from \"yummy\".\"i_class\" AND \"abundant\".\"i_product_name\" is not distinct from \"yummy\".\"i_product_name\"
+    FULL JOIN \"sparkling\" on \"abundant\".\"i_brand\" is not distinct from \"sparkling\".\"i_brand\" AND \"abundant\".\"i_category\" is not distinct from \"sparkling\".\"i_category\" AND \"abundant\".\"i_class\" is not distinct from \"sparkling\".\"i_class\" AND \"abundant\".\"i_product_name\" is not distinct from \"sparkling\".\"i_product_name\")
 SELECT
     \"abhorrent\".\"i_product_name\" as \"level0_i_product_name\",
     \"abhorrent\".\"i_brand\" as \"level0_i_brand\",
