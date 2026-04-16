@@ -75,7 +75,7 @@ def test_aggregate_filter_anonymous():
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(query)[0]
 
-    # After MergeAggregate optimization, aggregate selects directly from datasource
+    # After CollapseSingleParent optimization, aggregate selects directly from datasource
     pattern = r"""
 WITH\s+
 [a-z_]+\s+as\s+\(
@@ -158,7 +158,7 @@ def test_aggregate_filter_short_syntax():
     DebuggingHook()
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(query)[0]
-    # After MergeAggregate optimization, aggregate selects directly from datasource
+    # After CollapseSingleParent optimization, aggregate selects directly from datasource
     pattern = r"""
 WITH\s+
 [a-z_]+\s+as\s+\(
