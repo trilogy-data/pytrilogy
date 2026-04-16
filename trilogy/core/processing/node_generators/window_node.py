@@ -41,9 +41,7 @@ def resolve_window_parent_concepts(
             base.append(environment.concepts[gitem])
     if concept.keys:
         for item in concept.keys:
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} appending key {item} to base"
-            )
+            logger.info(f"{padding(depth)}{LOGGER_PREFIX} appending key {item} to base")
             base.append(environment.concepts[item])
     return unique(base, "address")
 
@@ -63,7 +61,6 @@ def gen_window_node(
         f"{padding(depth)}{LOGGER_PREFIX} generating window node for {concept} with parents {[x.address for x in parent_concepts]} and optional {local_optional}"
     )
 
-
     additional_outputs = []
     for x in local_optional:
         if not isinstance(x.lineage, WINDOW_TYPES):
@@ -71,19 +68,20 @@ def gen_window_node(
         assert isinstance(x.lineage, WINDOW_TYPES)
         parents = resolve_window_parent_concepts(x, environment, depth)
 
-
-        
-        matched = set([p.address for p in parents]) == set([p.address for p in parent_concepts])
+        matched = set([p.address for p in parents]) == set(
+            [p.address for p in parent_concepts]
+        )
         if matched:
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} found equivalent optional {x} with parents {parents}"
             )
             additional_outputs.append(x)
 
-
-    output_targets = parent_concepts+additional_outputs+ [concept]
+    output_targets = parent_concepts + additional_outputs + [concept]
     # finally, the ones we'll need to enrich
-    non_equivalent_optional = [x for x in local_optional if x.address not in output_targets]
+    non_equivalent_optional = [
+        x for x in local_optional if x.address not in output_targets
+    ]
 
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} resolving final parents {parent_concepts + output_targets}"
@@ -136,7 +134,7 @@ def gen_window_node(
         parents=[_window_node],
         preexisting_conditions=conditions.conditional if conditions else None,
         grain=BuildGrain.from_concepts(
-            concepts=parent_concepts+output_targets,
+            concepts=parent_concepts + output_targets,
             environment=environment,
         ),
     )

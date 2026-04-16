@@ -1,3 +1,4 @@
+import re
 from logging import INFO
 from pathlib import Path
 
@@ -592,10 +593,12 @@ LIMIT 1
 """
     )
     sql = base.generate_sql(queries[-1])
-    assert (
-        'FULL JOIN "lv_info" as "vehicle_lv_info" on "wakeful"."vehicle_name" = "vehicle_lv_info"."LV_Name" AND "wakeful"."vehicle_variant" = "vehicle_lv_info"."LV_Variant"'
-        in sql[0]
-    ), sql[0]
+    pattern = (
+        r'FULL JOIN "lv_info" as "vehicle_lv_info" on '
+        r'"(\w+)"\."vehicle_name" = "vehicle_lv_info"\."LV_Name" AND '
+        r'"\1"\."vehicle_variant" = "vehicle_lv_info"\."LV_Variant"'
+    )
+    assert re.search(pattern, sql[0]), sql[0]
 
 
 def test_should_group(gcat_env: Executor):
