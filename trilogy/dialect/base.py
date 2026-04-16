@@ -132,26 +132,39 @@ WINDOW_ITEMS = (BuildWindowItem,)
 FILTER_ITEMS = (BuildFilterItem,)
 
 
-def _needs_arithmetic_parentheses(expr: Any) -> bool:
+ARITHMETIC_OPERATORS = (
+    FunctionType.ADD,
+    FunctionType.SUBTRACT,
+    FunctionType.DIVIDE,
+    FunctionType.MULTIPLY,
+)
+# Infix parents that render as binary operators; arithmetic args must be
+# parenthesized for precedence. Non-infix function calls (abs, cast, sum)
+# already delimit their args with call parens and don't need extra wrapping.
+INFIX_PARENTS_REQUIRING_PARENS = ARITHMETIC_OPERATORS + (
+    FunctionType.MOD,
+    FunctionType.POWER,
+)
+
+
+def _needs_arithmetic_parentheses(
+    expr: Any, parent_operator: FunctionType | None = None
+) -> bool:
+    if (
+        parent_operator is not None
+        and parent_operator not in INFIX_PARENTS_REQUIRING_PARENS
+    ):
+        return False
     if isinstance(expr, BuildFunction):
-        return expr.operator in (
-            FunctionType.ADD,
-            FunctionType.SUBTRACT,
-            FunctionType.DIVIDE,
-            FunctionType.MULTIPLY,
-        )
+        return expr.operator in ARITHMETIC_OPERATORS
     return (
         isinstance(expr, BuildConcept)
         and expr.lineage is not None
         and isinstance(expr.lineage, BuildFunction)
-        and expr.lineage.operator
-        in (
-            FunctionType.ADD,
-            FunctionType.SUBTRACT,
-            FunctionType.DIVIDE,
-            FunctionType.MULTIPLY,
-        )
+        and expr.lineage.operator in ARITHMETIC_OPERATORS
     )
+
+
 AGGREGATE_ITEMS = (BuildAggregateWrapper,)
 FUNCTION_ITEMS = (BuildFunction,)
 PARENTHETICAL_ITEMS = (BuildParenthetical,)
@@ -779,7 +792,7 @@ class BaseDialect:
                 args = []
                 types = []
                 for arg in c.lineage.arguments:
-                    if _needs_arithmetic_parentheses(arg):
+                    if _needs_arithmetic_parentheses(arg, c.lineage.operator):
                         args.append(
                             self.render_expr(
                                 BuildParenthetical(content=arg),
@@ -1055,7 +1068,7 @@ class BaseDialect:
         elif isinstance(e, FUNCTION_ITEMS):
             arguments = []
             for arg in e.arguments:
-                if _needs_arithmetic_parentheses(arg):
+                if _needs_arithmetic_parentheses(arg, e.operator):
                     arguments.append(
                         self.render_expr(
                             BuildParenthetical(content=arg),

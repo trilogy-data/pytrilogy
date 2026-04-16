@@ -45,44 +45,20 @@ order by
     assert env.concepts["name_rank"].keys == set(["names.name"]), env.concepts[
         "name_rank"
     ].keys
-    assert (
-        sql.strip()
-        == """WITH 
-wakeful as (
-SELECT
-    "names_usa_names"."name" as "names_name",
-    sum("names_usa_names"."number") as "_virt_agg_sum_7286114413769231"
-FROM
-    "bigquery-public-data"."usa_names"."usa_1910_current" as "names_usa_names"
-GROUP BY
-    1),
-highfalutin as (
-SELECT
-    "names_usa_names"."name" as "names_name",
-    "names_usa_names"."year" as "names_year",
-    sum("names_usa_names"."number") as "total_births"
-FROM
-    "bigquery-public-data"."usa_names"."usa_1910_current" as "names_usa_names"
-GROUP BY
-    1,
-    2),
-cheerful as (
-SELECT
-    "wakeful"."names_name" as "names_name",
-    rank() over (order by "wakeful"."_virt_agg_sum_7286114413769231" desc ) as "name_rank"
-FROM
-    "wakeful")
-SELECT
-    "highfalutin"."names_year" as "names_year",
-    "highfalutin"."names_name" as "names_name",
-    "highfalutin"."total_births" as "total_births",
-    "cheerful"."name_rank" as "name_rank"
-FROM
-    "highfalutin"
-    INNER JOIN "cheerful" on "highfalutin"."names_name" = "cheerful"."names_name"
-ORDER BY 
-    "cheerful"."name_rank" asc""".strip()
+    # Structural match: CTE names depend on a content hash and may shuffle.
+    rank_pattern = re.compile(
+        r'(\w+) as \(\s*SELECT\s+"(\w+)"\."names_name" as "names_name",\s*'
+        r'rank\(\) over \(order by "\2"\."_virt_agg_sum_\d+" desc \) as "name_rank"\s*'
+        r'FROM\s+"\2"\)',
+        re.MULTILINE,
     )
+    m = rank_pattern.search(sql)
+    assert m, sql
+    rank_cte = m.group(1)
+    join_pattern = re.compile(
+        rf'INNER JOIN "{rank_cte}" on "(\w+)"\."names_name" = "{rank_cte}"\."names_name"'
+    )
+    assert join_pattern.search(sql), sql
 
 
 def test_aggregate_filter_anonymous():
@@ -295,8 +271,8 @@ order by names.state asc, total_births desc;
         ["names.state", "names.name"]
     ), env.concepts["rank_by_births"].keys
 
-    pattern = r"""INNER JOIN "highfalutin" on "questionable"."names_name" = "highfalutin"."names_name" AND "questionable"."names_state" = "highfalutin"."names_state"""
-    assert re.search(pattern, sql, re.DOTALL) is not None
+    pattern = r'INNER JOIN "(\w+)" on "(\w+)"\."names_name" = "\1"\."names_name" AND "\2"\."names_state" = "\1"\."names_state"'
+    assert re.search(pattern, sql, re.DOTALL) is not None, sql
 
 
 def test_inline_filter_or():

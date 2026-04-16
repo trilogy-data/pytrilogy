@@ -117,7 +117,7 @@ class SelectNode(StrategyNode):
         # force grain to datasource grain
         # so that we merge on the same grain
         if self.force_group is False:
-            grain = datasource.grain
+            grain = self.grain if self.grain else datasource.grain
         else:
             grain = self.grain or BuildGrain()
         return QueryDatasource(
