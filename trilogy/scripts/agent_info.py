@@ -175,6 +175,37 @@ trilogy ingest "orders,customers" duckdb --fks "orders.customer_id:customers.id"
 
 ---
 
+### trilogy public <subcommand> [options]
+
+Browse and pull Trilogy models published in
+[trilogy-public-models](https://github.com/trilogy-data/trilogy-public-models).
+
+**Subcommands:**
+- `list`: Print available models from the studio index.
+- `fetch <model>`: Download a model's source files into a local directory.
+
+**`trilogy public list` options:**
+- `--engine NAME`, `-e NAME`: Filter by engine (e.g. `duckdb`, `bigquery`).
+- `--tag NAME`, `-t NAME`: Filter by tag.
+
+**`trilogy public fetch <model>` options:**
+- `--path DIR`, `-p DIR`: Target directory (default `./<model>`).
+- `--no-examples`: Skip example scripts/dashboards.
+- `--force`, `-f`: Overwrite an existing non-empty target directory.
+
+Writes all components, a README.md from the model description, and a
+`trilogy.toml` with the engine dialect and any setup SQL preconfigured, so the
+directory is immediately usable with `trilogy refresh` / `trilogy serve`.
+
+**Example:**
+```bash
+trilogy public list --engine duckdb
+trilogy public fetch bike_data --path ./bike-demo
+cd bike-demo && trilogy refresh . && trilogy serve .
+```
+
+---
+
 ### trilogy serve <directory> [engine] [options]
 
 Start a FastAPI server to expose Trilogy models from a directory.
