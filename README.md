@@ -11,7 +11,7 @@ and adhoc analytics. It's great for humans - and even better for agents.
 The language - also called Trilogy - lets you write queries without manual joins, reuse and compose logic,
 and get type-checked, safe SQL for any supported backend.
 
-The surrounding ecosystem - CLI, studio, public models - let you move fast. 
+The rich surrounding ecosystem - CLI, studio, public models, python datasource integration - let you move fast. 
 
 ## Why Trilogy
 
