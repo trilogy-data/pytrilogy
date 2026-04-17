@@ -10,6 +10,7 @@ from trilogy.core.enums import (
     SourceType,
 )
 from trilogy.core.models.build import (
+    BuildAggregateWrapper,
     BuildConcept,
     BuildConditional,
     BuildDatasource,
@@ -637,6 +638,27 @@ def get_loop_iteration_targets(
         partial_concepts=partial,
         depth=depth,
     )
+
+    # A `by`-partitioned aggregate injected purely because it appears in the
+    # outer WHERE (i.e. not in the caller's mandatory outputs) is a scoped
+    # scalar subquery: its denominator is its own `by` grain, not the outer
+    # WHERE. Treat it as a scalar for partial-satisfaction so outer routing
+    # atoms do NOT propagate into its parent sourcing — otherwise a datasource
+    # whose `non_partial_for` matches the outer filter can be pulled in to
+    # satisfy the routing, bringing foreign join keys that silently restrict
+    # the aggregate's input rows.
+    mandatory_addresses = {c.address for c in mandatory}
+    if (
+        inject_row_args
+        and isinstance(priority_concept.lineage, BuildAggregateWrapper)
+        and priority_concept.lineage.by
+        and priority_concept.address not in mandatory_addresses
+    ):
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority {priority_concept.address} "
+            f"is a filter-scalar by-aggregate; dropping outer conditions for its scope"
+        )
+        conditions = None
 
     optional = generate_candidates_restrictive(
         priority_concept=priority_concept,
