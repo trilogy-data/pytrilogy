@@ -205,6 +205,10 @@ def concept_is_relevant(
         return True
     if concept.derivation in (Derivation.BASIC,):
         return any(concept_is_relevant(c, others) for c in concept.concept_arguments)
+    if concept.derivation == Derivation.WINDOW:
+        if all([c in others for c in concept.grain.components]):
+            return False
+        return any(concept_is_relevant(c, others) for c in concept.concept_arguments)
     if concept.granularity == Granularity.SINGLE_ROW:
         return False
     return True
