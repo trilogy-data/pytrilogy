@@ -120,9 +120,7 @@ def test_public_fetch_bike_data(patched_urlopen):
     runner = CliRunner()
     with tempfile.TemporaryDirectory() as tmpdir:
         target = Path(tmpdir) / "out"
-        result = runner.invoke(
-            cli, ["public", "fetch", "bike_data", "--path", str(target)]
-        )
+        result = runner.invoke(cli, ["public", "fetch", "bike_data", str(target)])
         assert result.exit_code == 0, result.output
         assert (target / "boulder_data.preql").exists()
         assert (target / "setup.sql").exists()
@@ -139,14 +137,7 @@ def test_public_fetch_no_examples(patched_urlopen):
         target = Path(tmpdir) / "out"
         result = runner.invoke(
             cli,
-            [
-                "public",
-                "fetch",
-                "bike_data",
-                "--path",
-                str(target),
-                "--no-examples",
-            ],
+            ["public", "fetch", "bike_data", str(target), "--no-examples"],
         )
         assert result.exit_code == 0, result.output
         assert (target / "boulder_data.preql").exists()
@@ -157,9 +148,7 @@ def test_public_fetch_missing_model(patched_urlopen):
     runner = CliRunner()
     with tempfile.TemporaryDirectory() as tmpdir:
         target = Path(tmpdir) / "out"
-        result = runner.invoke(
-            cli, ["public", "fetch", "nonexistent", "--path", str(target)]
-        )
+        result = runner.invoke(cli, ["public", "fetch", "nonexistent", str(target)])
         assert result.exit_code == 1
         assert "No public model" in result.output
 
@@ -170,9 +159,7 @@ def test_public_fetch_rejects_non_empty_dir(patched_urlopen):
         target = Path(tmpdir) / "out"
         target.mkdir()
         (target / "existing.preql").write_text("select 1;")
-        result = runner.invoke(
-            cli, ["public", "fetch", "bike_data", "--path", str(target)]
-        )
+        result = runner.invoke(cli, ["public", "fetch", "bike_data", str(target)])
         assert result.exit_code == 1
         assert "not empty" in result.output
 
@@ -185,7 +172,7 @@ def test_public_fetch_force_overwrites(patched_urlopen):
         (target / "existing.preql").write_text("select 1;")
         result = runner.invoke(
             cli,
-            ["public", "fetch", "bike_data", "--path", str(target), "--force"],
+            ["public", "fetch", "bike_data", str(target), "--force"],
         )
         assert result.exit_code == 0, result.output
         assert (target / "boulder_data.preql").exists()

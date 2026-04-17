@@ -1,0 +1,187 @@
+{
+  "name": "Flight Example",
+  "layout": [
+    {
+      "x": 4,
+      "y": 9,
+      "w": 6,
+      "h": 11,
+      "i": "0"
+    },
+    {
+      "x": 10,
+      "y": 15,
+      "w": 6,
+      "h": 5,
+      "i": "1"
+    },
+    {
+      "x": 4,
+      "y": 20,
+      "w": 12,
+      "h": 8,
+      "i": "2"
+    },
+    {
+      "x": 4,
+      "y": 6,
+      "w": 12,
+      "h": 3,
+      "i": "3"
+    },
+    {
+      "x": 4,
+      "y": 0,
+      "w": 12,
+      "h": 6,
+      "i": "4"
+    },
+    {
+      "x": 10,
+      "y": 9,
+      "w": 6,
+      "h": 6,
+      "i": "8"
+    }
+  ],
+  "gridItems": {
+    "0": {
+      "type": "chart",
+      "content": "select \r\n    aircraft.model.model, \r\n    aircraft.model.manufacturer, \r\n    count,\r\norder by count desc\r\nlimit 15;",
+      "name": "Chart 0",
+      "width": 427,
+      "height": 395,
+      "chartConfig": {
+        "chartType": "barh",
+        "xField": "count",
+        "yField": "aircraft_model_model",
+        "yField2": "",
+        "yAggregation": "sum",
+        "colorField": "aircraft_model_manufacturer",
+        "sizeField": "",
+        "groupField": "",
+        "trellisField": "",
+        "geoField": "",
+        "showDebug": false
+      },
+      "chartFilters": [],
+      "filters": [],
+      "conceptFilters": []
+    },
+    "1": {
+      "type": "chart",
+      "content": "select \r\n    destination.state,\r\n    count,\r\n    order by count desc\r\n;",
+      "name": "Destination",
+      "width": 427,
+      "height": 155,
+      "conceptFilters": [],
+      "filters": [],
+      "chartConfig": {
+        "chartType": "geo-map",
+        "xField": "",
+        "yField": "",
+        "yField2": "",
+        "yAggregation": "sum",
+        "colorField": "count",
+        "sizeField": "",
+        "groupField": "",
+        "trellisField": "",
+        "geoField": "destination_state",
+        "showDebug": true
+      },
+      "chartFilters": []
+    },
+    "2": {
+      "type": "table",
+      "content": "select\r\n    origin.full_name,\r\n    count,\r\n    aircraft.model.model,\r\n    sum(group(aircraft.model.seats) by id ) as total_seats,\r\n    aircraft.model.manufacturer,\r\n    carrier.name,\r\norder by \r\n    count desc",
+      "name": "Table 2",
+      "width": 863,
+      "height": 275,
+      "chartFilters": [],
+      "filters": [],
+      "conceptFilters": []
+    },
+    "3": {
+      "type": "chart",
+      "content": "select count,\r\nsum(\r\n    group(aircraft.model.seats) \r\nby id) as seats_flown,\r\ncount(carrier.name) as carrier_count,\r\ncount(\r\n    aircraft.model.model) as model_count",
+      "name": "Chart 3",
+      "width": 863,
+      "height": 75,
+      "chartConfig": {
+        "chartType": "headline",
+        "xField": "count",
+        "yField": "",
+        "yField2": "",
+        "yAggregation": "sum",
+        "colorField": "",
+        "sizeField": "",
+        "groupField": "",
+        "trellisField": "",
+        "geoField": "",
+        "showDebug": false
+      },
+      "conceptFilters": [],
+      "filters": [],
+      "chartFilters": []
+    },
+    "4": {
+      "type": "chart",
+      "content": "SELECT\r\n    dep_time.month_start,\r\n    carrier.name,\r\n    count,\r\norder by dep_time.month_start asc",
+      "name": "Chart 4",
+      "width": 863,
+      "height": 195,
+      "conceptFilters": [],
+      "filters": [],
+      "chartFilters": [],
+      "chartConfig": {
+        "chartType": "area",
+        "xField": "dep_time_month_start",
+        "yField": "count",
+        "yField2": "",
+        "yAggregation": "sum",
+        "colorField": "carrier_name",
+        "sizeField": "",
+        "groupField": "",
+        "trellisField": "",
+        "geoField": "",
+        "showDebug": false
+      }
+    },
+    "8": {
+      "type": "chart",
+      "content": "select \r\n    origin.state,\r\n    count,\r\n    order by count desc\r\n;",
+      "name": "Origin",
+      "width": 427,
+      "height": 195,
+      "chartFilters": [],
+      "filters": [],
+      "chartConfig": {
+        "chartType": "geo-map",
+        "xField": "",
+        "yField": "",
+        "yField2": "",
+        "yAggregation": "sum",
+        "colorField": "count",
+        "sizeField": "",
+        "groupField": "",
+        "trellisField": "",
+        "geoField": "origin_state",
+        "showDebug": true
+      },
+      "conceptFilters": []
+    }
+  },
+  "nextId": 9,
+  "createdAt": "2025-04-06T15:01:06.199Z",
+  "updatedAt": "2025-06-29T19:49:13.329Z",
+  "filter": " local.dep_delay > 0 \n",
+  "imports": [
+    {
+      "name": "flight",
+      "alias": ""
+    }
+  ],
+  "version": 1,
+  "state": "editing",
+  "description": ""
+}

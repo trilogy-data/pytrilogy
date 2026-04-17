@@ -263,7 +263,7 @@ def resolve_input_information(
         directory = PathlibPath.cwd()
         input_type = "query"
         input_name = "inline"
-        config = RuntimeConfig(startup_trilogy=[], startup_sql=[])
+        config = get_runtime_config(directory, config_path_input)
     return files, directory, input_type, input_name, config
 
 

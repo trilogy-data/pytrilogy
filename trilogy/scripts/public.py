@@ -126,7 +126,7 @@ def list_cmd(engine: str | None, tag: str | None) -> None:
             f"{_short_description(e.description)}"
         )
     click.echo()
-    click.echo("Fetch a model with: trilogy public fetch <name> [--path <dir>]")
+    click.echo("Fetch a model with: trilogy public fetch <name> [<path>]")
 
 
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
@@ -134,12 +134,11 @@ _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
 
 @public.command("fetch")
 @click.argument("model", type=str)
-@click.option(
-    "--path",
-    "-p",
+@click.argument(
+    "path",
     type=click.Path(file_okay=False, resolve_path=True),
+    required=False,
     default=None,
-    help="Target directory. Defaults to ./<model>.",
 )
 @click.option(
     "--examples/--no-examples",

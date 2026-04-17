@@ -1,0 +1,15 @@
+import flight;
+
+auto dep_date <-dep_time::date;
+
+auto flight_count <- count(id);
+
+
+datasource daily_airplane_usage (
+    dep_date,
+    aircraft.model.name,
+    flight_count
+)
+grain(dep_date, aircraft.model.name)
+file `./daily_airplane_usage.parquet`
+;

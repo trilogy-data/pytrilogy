@@ -1,0 +1,28 @@
+
+key code string;
+property code.manufacturer string; # uppercase manufacturer
+property code.model string;
+property code.type_id int;
+property code.engine_type_id int;
+property code.category_id int;
+property code.amateur int;
+property code.engines int;
+property code.seats int;
+property code.weight int;
+property code.speed int;
+
+datasource aircraft_model (
+	aircraft_model_code:code,
+	manufacturer:manufacturer,
+	model:model,
+	aircraft_type_id:type_id,
+	aircraft_engine_type_id:engine_type_id,
+	aircraft_category_id:category_id,
+	amateur:amateur,
+	engines:engines,
+	seats:seats,
+	weight:weight,
+	speed:speed,
+)
+grain (code)
+address aircraft_model;

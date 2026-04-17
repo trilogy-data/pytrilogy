@@ -195,7 +195,6 @@ def _preview_directory_refresh(
 ) -> tuple[bool, nx.DiGraph | None]:
     from trilogy.execution.config import apply_env_vars, load_env_file
     from trilogy.scripts.common import (
-        create_executor_for_script,
         merge_runtime_config,
         resolve_input_information,
     )
@@ -252,58 +251,53 @@ def _preview_directory_refresh(
     # Phase 1: parse all scripts to collect datasource metadata — no DB queries.
     # Within each executor context, directly match non-root freshness/incremental refs
     # against root output concepts — no cross-script namespace reconciliation needed.
+    # We use lightweight Environment parsing (no executor/engine/startup scripts)
+    # and skip files that contribute no datasources.
+    from trilogy.core.models.environment import Environment as Env
+    from trilogy.parsing.parse_engine_v2 import parse_text as lightweight_parse
+
     for file_path in script_files:
         node = ScriptNode(path=file_path)
-        executor = create_executor_for_script(
-            node,
-            cli_params.param,
-            cli_params.conn_args,
-            edialect,
-            cli_params.debug,
-            config,
-            cli_params.debug_file,
-        )
+        with open(file_path, "r") as handle:
+            raw_text = handle.read()
+        env = Env(working_path=str(file_path.parent))
         try:
-            with open(node.path, "r") as handle:
-                try:
-                    executor.parse_text(handle.read(), root=node.path)
-                except Exception as e:
-                    print_error(f"Error parsing {node.path}: {e}")
-                    raise Exit(1) from e
-            env = executor.environment
-            available_datasources.update(env.datasources)
-            needed_in_script: set[str] = set()
-            for ds_id, ds in env.datasources.items():
-                address_map.setdefault(ds_id, ds.safe_address)
-                ds_to_scripts[ds_id].append(node)
-                ds_is_root.setdefault(ds_id, ds.is_root)
-                if not ds.is_root:
-                    for ref in ds.freshness_by:
-                        needed_in_script.add(env.concepts[ref.address].address)
-                    for ref in ds.incremental_by:
-                        needed_in_script.add(env.concepts[ref.address].address)
-            if needed_in_script:
-                for ds in env.datasources.values():
-                    if ds.is_root:
-                        matching = {
-                            ref.address
-                            for ref in ds.output_concepts
-                            if ref.address in needed_in_script
-                        }
-                        if matching:
-                            root_addr_to_needed_concepts[ds.safe_address].update(
-                                matching
-                            )
-                            root_probe_candidates.setdefault(ds.safe_address, {})
-                            root_probe_name_candidates.setdefault(ds.safe_address, {})
-                            root_probe_candidates[ds.safe_address].setdefault(
-                                node, set()
-                            ).update(matching)
-                            root_probe_name_candidates[ds.safe_address].setdefault(
-                                node, set()
-                            ).update(env.concepts[ref].name for ref in matching)
-        finally:
-            executor.close()
+            env, _ = lightweight_parse(raw_text, environment=env, root=node.path)
+        except Exception as e:
+            print_error(f"Error parsing {node.path}: {e}")
+            raise Exit(1) from e
+        if not env.datasources:
+            print_info(f"Skipping {file_path.name} (no datasources)")
+            continue
+        available_datasources.update(env.datasources)
+        needed_in_script: set[str] = set()
+        for ds_id, ds in env.datasources.items():
+            address_map.setdefault(ds_id, ds.safe_address)
+            ds_to_scripts[ds_id].append(node)
+            ds_is_root.setdefault(ds_id, ds.is_root)
+            if not ds.is_root:
+                for ref in ds.freshness_by:
+                    needed_in_script.add(env.concepts[ref.address].address)
+                for ref in ds.incremental_by:
+                    needed_in_script.add(env.concepts[ref.address].address)
+        if needed_in_script:
+            for ds in env.datasources.values():
+                if ds.is_root:
+                    matching = {
+                        ref.address
+                        for ref in ds.output_concepts
+                        if ref.address in needed_in_script
+                    }
+                    if matching:
+                        root_addr_to_needed_concepts[ds.safe_address].update(matching)
+                        root_probe_candidates.setdefault(ds.safe_address, {})
+                        root_probe_name_candidates.setdefault(ds.safe_address, {})
+                        root_probe_candidates[ds.safe_address].setdefault(
+                            node, set()
+                        ).update(matching)
+                        root_probe_name_candidates[ds.safe_address].setdefault(
+                            node, set()
+                        ).update(env.concepts[ref].name for ref in matching)
 
     validate_force_sources(force_sources, available_datasources)
 

@@ -5,17 +5,20 @@
 [![Discord](https://img.shields.io/badge/DISCORD-CHAT-red?logo=discord)](https://discord.gg/Z4QSSuqGEd)
 [![PyPI version](https://badge.fury.io/py/pytrilogy.svg)](https://badge.fury.io/py/pytrilogy)
 
-Trilogy is a semantic SQL language for analytics.
+Trilogy is a batteries-included data-productivity toolkit to accelerate traditional SQL tasks - reporting, data processing,
+and adhoc analytics. It's great for humans - and even better for agents. 
 
-It lets you write queries without manual joins, reuse and compose logic,
+The language - also called Trilogy - lets you write queries without manual joins, reuse and compose logic,
 and get type-checked, safe SQL for any supported backend.
+
+The surrounding ecosystem - CLI, studio, public models - let you move fast. 
 
 ## Why Trilogy
 
-Analytics SQL can get hard to maintain - fast.
+SQL is easy to start with and hard to scale.
 
-Trilogy adds a lightweight semantic layer that makes queries reusable,
-refactorable, and safer at any scale. 
+Trilogy adds a lightweight semantic layer to keep the speed, but make it 
+faster at scale. 
 
 - No manual joins; no from clause
 - Reusable models, calculations, and functions
@@ -24,47 +27,55 @@ refactorable, and safer at any scale.
 - Easy to write - for humans and AI
 - Built-in semantic layer without boilerplate or YAML
 
-Trilogy is future proof - with the fast feedback loops agents crave -but is built for people first.
-
-This repo contains [pytrilogy](https://github.com/trilogy-data/pytrilogy), the reference implementation of the language.
-
-
-## Quick Start
-
-> [!TIP]
-> **Try it now:** [Open-source studio](https://trilogydata.dev/trilogy-studio-core/) | [Interactive demo](https://trilogydata.dev/demo/) | [Documentation](https://trilogydata.dev/)
+This repo contains [pytrilogy](https://github.com/trilogy-data/pytrilogy), the reference implementation of the core language and cli.
 
 **Install**
+To try it out, include both the CLI and serve dependencies.
+
 ```bash
 pip install pytrilogy[cli,serve]
 ```
 
-### End-to-end demo: public model → refresh → studio UI
+## Docs and Web
 
-Go from zero to a queryable, persisted model in four commands. We'll pull a
-public DuckDB model (boulder bike share stations, hosted parquet), add a
+> [!TIP]
+> **Try it now:** [Open-source studio](https://trilogydata.dev/trilogy-studio-core/) | [Interactive demo](https://trilogydata.dev/demo/) | [Documentation](https://trilogydata.dev/)
+
+
+### Quick Start
+
+Go from zero to a queryable, persisted model in seconds. We'll pull a
+public DuckDB model (some 2000s USA FAA airplane data, hosted parquet), add a
 derived persisted datasource, refresh it, then explore it in Studio.
 
 ```bash
 # 1. Pull a public model (fetches all source .preql + setup.sql + trilogy.toml).
-trilogy public fetch bike_data ./bike-demo
-cd bike-demo
+trilogy public fetch faa ./faa-demo
+cd faa-demo
 
-# 2. Add a derived datasource that persists daily averages to a local table.
-cat > station_daily.preql <<'EOF'
-import boulder_data as boulder;
+# Run a quick adhoc query
+trilogy run "import flight; select carrier.code, count(id) as flight_count order by flight_count desc;"
 
-auto day <- date_trunc(boulder.timestamp, day);
+# Plot it
+trilogy run "import flight; chart barh set y_axis:carrier.name set x_axis:flight_count from select carrier.name, count(id) as flight_count order by flight_count desc limit 10;"
 
-persist station_daily into station_daily_stats from
-SELECT
-    boulder.id,
-    boulder.name,
-    day,
-    avg(boulder.bikes) -> avg_bikes,
-    avg(boulder.free) -> avg_free
+# Add a derived datasource that persists daily plane counts to a local file
+python -c "
+open('reporting.preql', 'w').write('''import flight;
+
+auto flight_date <-flight.dep_time::date;
+
+auto flight_count <- count(id);
+
+datasource daily_airplane_usage (
+    flight_date,
+    flight.model.name,
+    flight_count
+)
+grain(flight_date, flight.model.name)
+file './daily_airplane_usage.parquet'
 ;
-EOF
+''')"
 
 # 3. Refresh — runs setup.sql, builds station_daily_stats, tracks watermarks.
 trilogy refresh .
@@ -78,7 +89,7 @@ Browse other available models with `trilogy public list` (filter with
 [trilogy-public-models](https://github.com/trilogy-data/trilogy-public-models)
 is pullable.
 
-### Minimal hello world
+### Feature Walkthrough
 
 Trilogy supports reusable functions and constants.
 
@@ -102,47 +113,8 @@ LIMIT 10;
 trilogy run hello.preql duckdb
 ```
 
-## What Trilogy Gives You
 
-- **Speed** - write less, faster. Concise but powerful syntax
-- **Efficiency** - easily reuse and compose functions and models, modeled after python
-- **Easy refactoring** - change and update tables without breaking queries, and easy testing snd static analysis
-- **Testability** - built-in testing patterns with query fixtures
-- **Straightforward** - for humans and LLMs alike
-
-Trilogy is especially powerful for data consumption, providing a rich metadata layer that makes creating, interpreting, and visualizing queries easy and expressive.
-
-
-We recommend starting with the free [studio](https://trilogydata.dev/trilogy-studio-core/) UI to explore Trilogy for most users. The SDK `pytrilogy` provides a CLI - similiar to DBT - that can be run locally to parse and execute trilogy model [.preql], or can be embedding larger python applications by importing the `trilogy` package.
-
-
-
-## Trilogy is Easy to Write
-For humans *and* AI. Enjoy flexible, one-shot query generation without any DB access or security risks. 
-
-(full code in the python API section.)
-
-```python
-query = text_to_query(
-    executor.environment,
-    "number of flights by month in 2005",
-    Provider.OPENAI,
-    "gpt-5-chat-latest",
-    api_key,
-)
-
-# get a ready to run query
-print(query)
-# typical output
-'''where local.dep_time.year = 2020  
-select
-    local.dep_time.month,
-    count(local.id2) as number_of_flights
-order by
-    local.dep_time.month asc;'''
-```
-
-## Goals
+## Principles
 
 Versus SQL, Trilogy aims to: 
 
@@ -159,6 +131,8 @@ Versus SQL, Trilogy aims to:
 **Maintain:**
 - Acceptable performance
 
+(we shoot for <~100-300ms of overhead for queyr planning, and optimized SQL generation)
+
 ## Backend Support
 
 | Backend | Status | Notes |
@@ -170,10 +144,9 @@ Versus SQL, Trilogy aims to:
 | **SQL Server** | Experimental | Limited testing |
 | **Presto** | Experimental | Limited testing |
 
+## Semantic Layer Intro
 
-## Examples
-
-### Hello World
+### Semantic models are compositions of types, keys, and properties
 
 Save the following code in a file named `hello.preql`
 
@@ -246,7 +219,7 @@ trilogy run hello.preql duckdb
 
 ![UI Preview](hello-world.png)
 
-### Python SDK Usage
+### Python SDK Intro
 
 Trilogy can be run directly in python through the core SDK. Trilogy code can be defined and parsed inline or parsed out of files.
 
@@ -358,7 +331,7 @@ trilogy fmt <path to trilogy file>
 **Browse and pull public models:**
 ```bash
 trilogy public list [--engine duckdb] [--tag benchmark]
-trilogy public fetch <model-name> [--path <dir>] [--no-examples]
+trilogy public fetch <model-name> [<dir>] [--no-examples]
 ```
 
 Fetches model source files, setup scripts, and a ready-to-use `trilogy.toml`
@@ -456,120 +429,7 @@ If you're interested in a more fleshed out standalone server or MCP server, plea
 
 ## Trilogy Syntax Reference 
 
-Not exhaustive - see [documentation](https://trilogydata.dev/) for more details.
-
-### Import
-```sql
-import [path] as [alias];
-```
-
-### Concepts
-
-**Types:**
-`string | int | float | bool | date | datetime | time | numeric(scale, precision) | timestamp | interval | array<[type]> | map<[type], [type]> | struct<name:[type], name:[type]>`
-
-**Key:**
-```sql
-key [name] [type];
-```
-
-**Property:**
-```sql
-property [key].[name] [type];
-property x.y int;
-
-# or multi-key
-property <[key],[key]>.[name] [type];
-property <x,y>.z int;
-```
-
-**Transformation:**
-```sql
-auto [name] <- [expression];
-auto x <- y + 1;
-```
-
-### Datasource
-```sql
-datasource <name>(
-    <column_and_concept_with_same_name>,
-    # or a mapping from column to concept
-    <column>:<concept>,
-    <column>:<concept>,
-)
-grain(<concept>, <concept>)
-address <table>;
-
-datasource orders(
-    order_id,
-    order_date,
-    total_rev: point_of_sale_rev,
-    customomer_id: customer.id
-)
-grain orders
-address orders;
-
-```
-
-### Queries
-
-**Basic SELECT:**
-```sql
-WHERE
-    <concept> = <value>
-SELECT
-    <concept>,
-    <concept>+1 -> <alias>,
-    ...
-HAVING
-    <alias> = <value2>
-ORDER BY
-    <concept> asc|desc
-;
-```
-
-**CTEs/Rowsets:**
-```sql
-with <alias> as
-WHERE
-    <concept> = <value>
-select
-    <concept>,
-    <concept>+1 -> <alias>,
-    ...
-
-select <alias>.<concept>;
-```
-
-### Data Operations
-
-**Persist to table:**
-```sql
-persist <alias> as <table_name> from
-<select>;
-```
-
-**Export to file:**
-```sql
-COPY INTO <TARGET_TYPE> '<target_path>' FROM SELECT
-    <concept>, ...
-ORDER BY
-    <concept>, ...
-;
-```
-
-**Show generated SQL:**
-```sql
-show <select>;
-```
-
-**Validate Model**
-```sql
-validate all
-validate concepts abc,def...
-validate datasources abc,def...
-```
-
+See [documentation](https://trilogydata.dev/) for more details.
 
 ## Contributing
 
