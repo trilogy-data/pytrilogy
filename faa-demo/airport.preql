@@ -1,0 +1,61 @@
+import std.geography;
+
+key id int;
+property id.code string;
+property id.site_number string;
+property id.fac_type string;
+property id.fac_use string;
+property id.faa_region string; # capitalized, FAA region; eg ASO | AWP | AEA | ASW | AGL | ANM | ANE | AAL | ALP
+property id.faa_dist string;
+property id.city string::city; # capitalized; eg NEW YORK or BURLIGNTON
+property id.county string;
+property id.state string::us_state_short; # short state name; eg VT
+property id.full_name string;
+property id.own_type string;
+property id.longitude float::longitude;
+property id.latitude float::latitude;
+property id.elevation int;
+property id.aero_cht string;
+property id.cbd_dist int;
+property id.cbd_dir string;
+property id.act_date string;
+property id.cert string;
+property id.fed_agree string;
+property id.cust_intl string;
+property id.c_ldg_rts string;
+property id.joint_use string;
+property id.mil_rts string;
+property id.cntl_twr string;
+property id.major string;
+auto count <- count(id);
+datasource airport (
+    id:id,
+    code:code,
+    site_number:site_number,
+    fac_type:fac_type,
+    fac_use:fac_use,
+    faa_region:?faa_region,
+    faa_dist:faa_dist,
+    city:city,
+    county:county,
+    state:?state,
+    full_name:full_name,
+    own_type:own_type,
+    longitude:longitude,
+    latitude:latitude,
+    elevation:elevation,
+    aero_cht:aero_cht,
+    cbd_dist:cbd_dist,
+    cbd_dir:?cbd_dir,
+    act_date:?act_date,
+    cert:?cert,
+    fed_agree:?fed_agree,
+    cust_intl:?cust_intl,
+    c_ldg_rts:?c_ldg_rts,
+    joint_use:?joint_use,
+    mil_rts:?mil_rts,
+    cntl_twr:cntl_twr,
+    major:major,
+)
+grain(id)
+address airport;

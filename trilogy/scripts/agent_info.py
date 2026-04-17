@@ -188,8 +188,8 @@ Browse and pull Trilogy models published in
 - `--engine NAME`, `-e NAME`: Filter by engine (e.g. `duckdb`, `bigquery`).
 - `--tag NAME`, `-t NAME`: Filter by tag.
 
-**`trilogy public fetch <model>` options:**
-- `--path DIR`, `-p DIR`: Target directory (default `./<model>`).
+**`trilogy public fetch <model> [<path>]` arguments/options:**
+- `<path>`: Optional target directory (default `./<model>`).
 - `--no-examples`: Skip example scripts/dashboards.
 - `--force`, `-f`: Overwrite an existing non-empty target directory.
 
@@ -200,7 +200,7 @@ directory is immediately usable with `trilogy refresh` / `trilogy serve`.
 **Example:**
 ```bash
 trilogy public list --engine duckdb
-trilogy public fetch bike_data --path ./bike-demo
+trilogy public fetch bike_data ./bike-demo
 cd bike-demo && trilogy refresh . && trilogy serve .
 ```
 

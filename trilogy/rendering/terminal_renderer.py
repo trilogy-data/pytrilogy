@@ -64,12 +64,12 @@ class TerminalRenderer(BaseRenderer):
         if not x_field or not y_field:
             return
 
-        x_vals = [row.get(x_field) for row in data]
-        y_vals = [row.get(y_field) for row in data]
+        x_vals = [row.get(x_field) for row in reversed(data)]
+        y_vals = [row.get(y_field) for row in reversed(data)]
 
-        plt.bar(x_vals, y_vals, orientation="horizontal")
-        plt.xlabel(y_field)
-        plt.ylabel(x_field)
+        plt.bar(y_vals, x_vals, orientation="horizontal")
+        plt.xlabel(x_field)
+        plt.ylabel(y_field)
 
     def _line_chart(self, data: list[dict], config: ChartConfig) -> Any:
         x_field = config.x_fields[0] if config.x_fields else None

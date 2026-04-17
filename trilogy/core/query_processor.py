@@ -49,6 +49,7 @@ from trilogy.core.optimization import optimize_ctes
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
 from trilogy.core.processing.nodes import History, SelectNode, StrategyNode
 from trilogy.core.statements.author import (
+    ChartConfig,
     ChartStatement,
     ConceptDeclarationStatement,
     CopyStatement,
@@ -628,23 +629,35 @@ def process_chart(
         environment=environment, statement=statement.select, hooks=hooks
     )
 
-    output_fields = {c.name for c in statement.select.output_components}
+    output_fields = {c.safe_address for c in statement.select.output_components}
     config = statement.config
 
-    for field in config.x_fields + config.y_fields:
-        if field not in output_fields:
+    def _resolve(f: str) -> str:
+        safe = f.replace(".", "_")
+        if safe not in output_fields:
             raise ValueError(
-                f"Chart field '{field}' not in select output: {output_fields}"
+                f"Chart field '{f}' not in select output: {output_fields}"
             )
+        return safe
 
-    optional_fields = [config.color_field, config.size_field, config.group_field]
-    for opt_field in optional_fields:
-        if opt_field is not None and opt_field not in output_fields:
-            raise ValueError(
-                f"Chart field '{opt_field}' not in select output: {output_fields}"
-            )
+    resolved = ChartConfig(
+        chart_type=config.chart_type,
+        x_fields=[_resolve(f) for f in config.x_fields],
+        y_fields=[_resolve(f) for f in config.y_fields],
+        color_field=_resolve(config.color_field) if config.color_field else None,
+        size_field=_resolve(config.size_field) if config.size_field else None,
+        group_field=_resolve(config.group_field) if config.group_field else None,
+        trellis_field=config.trellis_field,
+        trellis_row_field=config.trellis_row_field,
+        geo_field=config.geo_field,
+        annotation_field=config.annotation_field,
+        hide_legend=config.hide_legend,
+        show_title=config.show_title,
+        scale_x=config.scale_x,
+        scale_y=config.scale_y,
+    )
 
-    return ProcessedChartStatement(config=config, query=select)
+    return ProcessedChartStatement(config=resolved, query=select)
 
 
 def process_query(

@@ -1,0 +1,41 @@
+import aircraft as aircraft;
+import airport as origin;
+import airport as destination;
+import carrier as carrier;
+
+property id.flight_num string;
+property id.flight_time int;
+property id.dep_time datetime;
+property id.arr_time datetime;
+property id.dep_delay int;
+property id.arr_delay int;
+property id.taxi_out int;
+property id.taxi_in int;
+property id.distance int;
+property id.cancelled string; #capital string flag, Y or N
+property id.diverted string; #capital string flag, Y or N
+key id int; # Unique identifier for the flight 
+
+auto count <-count(id);
+auto total_distance <-sum(distance);
+
+datasource flight (
+	carrier:~carrier.code,
+	origin:origin.code,
+	destination:destination.code,
+	flight_num:flight_num,
+	flight_time:flight_time,
+	tail_num:aircraft.tail_num,
+	dep_time:dep_time,
+	arr_time:arr_time,
+	dep_delay:dep_delay,
+	arr_delay:arr_delay,
+	taxi_out:taxi_out,
+	taxi_in:taxi_in,
+	distance:distance,
+	cancelled:cancelled,
+	diverted:diverted,
+	id2:id,
+)
+grain (id)
+address flight;

@@ -1,0 +1,85 @@
+import std.geography;
+import std.date;
+import aircraft_model as model;
+key id int;
+property id.tail_num string;
+property id.serial string;
+property id.engine_code string;
+property id.year_built int::year;
+property id.type_id int;
+property id.engine_type_id int;
+property id.registrant_type_id int;
+property id.name string;
+property id.address1 string;
+property id.address2 string;
+property id.city string;
+property id.state string::us_state_short; # the state of the aricraft registration; unrelated to flights.
+property id.zip string;
+property id.region string;
+property id.county string;
+property id.country string::country; # the country of the aricraft registration; unrelated to flights.
+property id.certification string;
+property id.status_code string;
+property id.mode_s_code string;
+property id.fract_owner string;
+property id.last_action_date date;
+property id.cert_issue_date date;
+property id.air_worth_date date;
+datasource aircraft (
+    id:id,
+    tail_num:tail_num,
+    aircraft_serial:serial,
+    aircraft_model_code:~model.code,
+    aircraft_engine_code:?engine_code,
+    year_built:year_built,
+    aircraft_type_id:type_id,
+    aircraft_engine_type_id:engine_type_id,
+    registrant_type_id:registrant_type_id,
+    name:?name,
+    address1:?address1,
+    address2:?address2,
+    city:?city,
+    state:?state,
+    zip:?zip,
+    region:?region,
+    county:?county,
+    country:?country,
+    certification:?certification,
+    status_code:status_code,
+    mode_s_code:mode_s_code,
+    fract_owner:?fract_owner,
+    last_action_date:last_action_date,
+    cert_issue_date:?cert_issue_date,
+    air_worth_date:?air_worth_date,
+)
+grain (id)
+address aircraft;
+datasource aircraft_tail_num (
+    id:id,
+    tail_num:tail_num,
+    aircraft_serial:serial,
+    aircraft_model_code:~model.code,
+    aircraft_engine_code:?engine_code,
+    year_built:year_built,
+    aircraft_type_id:type_id,
+    aircraft_engine_type_id:engine_type_id,
+    registrant_type_id:registrant_type_id,
+    name:?name,
+    address1:?address1,
+    address2:?address2,
+    city:?city,
+    state:?state,
+    zip:?zip,
+    region:?region,
+    county:?county,
+    country:?country,
+    certification:?certification,
+    status_code:status_code,
+    mode_s_code:mode_s_code,
+    fract_owner:?fract_owner,
+    last_action_date:last_action_date,
+    cert_issue_date:?cert_issue_date,
+    air_worth_date:?air_worth_date,
+)
+grain (tail_num)
+address aircraft;
