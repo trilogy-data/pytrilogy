@@ -63,10 +63,13 @@ trilogy run "import flight; chart barh set y_axis:carrier.name set x_axis:flight
 python -c "
 open('reporting.preql', 'w').write('''import flight;
 
+# derive reusable concepts
 auto flight_date <-flight.dep_time::date;
 
+# this can be properties or metrics
 auto flight_count <- count(id);
 
+# datasources can be read from or written to
 datasource daily_airplane_usage (
     flight_date,
     flight.model.name,
@@ -80,7 +83,7 @@ file './daily_airplane_usage.parquet'
 # 3. Refresh — runs setup.sql, builds station_daily_stats, tracks watermarks.
 trilogy refresh .
 
-# 4. Launch the Studio UI against the live model (opens your browser).
+# 4. Launch the Studio UI against the live model (opens your browser) to explore + query
 trilogy serve .
 ```
 
@@ -89,22 +92,21 @@ Browse other available models with `trilogy public list` (filter with
 [trilogy-public-models](https://github.com/trilogy-data/trilogy-public-models)
 is pullable.
 
-### Feature Walkthrough
+### Key Features
 
-Trilogy supports reusable functions and constants.
-
+Trilogy supports reusable functions.
+Where clauses are automatically pushed down inside aggregates;
+having filters the otuside.
 ```sql
 const prime <- unnest([2, 3, 5, 7, 11, 13, 17, 19, 23, 29]);
 
 def cube_plus_one(x) -> (x * x * x + 1);
+def sum_plus_one(val)-> sum(val)+1;
 
 WHERE 
-    prime_cubed_plus_one % 7 = 0
+   (prime+1) % 4 = 0
 SELECT
-    prime,
-    @cube_plus_one(prime) as prime_cubed_plus_one
-ORDER BY
-    prime asc
+    @sum_plus_one(@cube_plus_one(prime)) as prime_cubed_plus_one_sum_plus_one
 LIMIT 10;
 ```
 
@@ -112,7 +114,6 @@ LIMIT 10;
 ```bash
 trilogy run hello.preql duckdb
 ```
-
 
 ## Principles
 
