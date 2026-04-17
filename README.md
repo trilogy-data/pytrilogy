@@ -61,7 +61,7 @@ trilogy run --import flight "select carrier.code, count(id) as flight_count orde
 trilogy run --import flight "chart barh set y_axis:carrier.name set x_axis:flight_count from select carrier.name, count(id) as flight_count order by flight_count desc limit 10;"
 
 # 3. Add a derived datasource by grabbing the hosted snippet
-trilogy file write reporting.preql --from-url https://raw.githubusercontent.com/trilogy-data/trilogy-public-models/main/duckdb/faa/examples/reporting.preql
+trilogy file write reporting.preql --from-url https://raw.githubusercontent.com/trilogy-data/trilogy-public-models/refs/heads/main/examples/duckdb/faa/example.preql
 
 # 4. Refresh — runs setup.sql, builds any managed assets, tracks watermarks.
 trilogy refresh .
