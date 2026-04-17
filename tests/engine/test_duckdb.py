@@ -1479,6 +1479,153 @@ select max_date, date, avg(score) as avg_id;"""
     assert results[0].avg_id == 35.0
 
 
+def test_filter_scalar_aggregate_not_restricted_by_staging():
+    """A by-aggregate used as a filter scalar must compute over its own
+    dimension scope, not be silently restricted by a staging datasource whose
+    `complete where` matches the outer filter.
+
+    Covers four permutations against the same items/sales model:
+      1. Baseline (no staging): filter-scalar avg(price) by category ranges
+         over the full items table.
+      2. With staging whose non_partial_for matches the outer WHERE: the filter
+         scalar must still range over the full items table (the bug).
+      3. Same aggregate used BOTH as SELECT output AND as filter scalar: the
+         filter-scalar sourcing is unfiltered, the SELECT-output sourcing is
+         filtered.
+      4. SELECT-level aggregate with matching outer WHERE: the filter *does*
+         apply (SELECT-level aggregates are not filter scalars).
+    """
+    DebuggingHook()
+
+    model = """
+key item_id int;
+property item_id.category string;
+property item_id.price int;
+
+key sale_id int;
+property sale_id.sale_year int;
+property sale_id.sale_item_id int;
+property sale_id.sale_item_price int;
+
+datasource items (
+    id: item_id,
+    category: category,
+    price: price
+) grain (item_id) address items_tbl;
+
+datasource sales (
+    id: sale_id,
+    year: sale_year,
+    item_id: sale_item_id,
+    item_price: sale_item_price
+) grain (sale_id) address sales_tbl;
+
+merge sale_item_id into ~item_id;
+"""
+
+    staging = """
+datasource staged_sales (
+    sale_id: ~sale_id,
+    sale_year: ~sale_year,
+    item_id: ~item_id,
+    category: ~category,
+    sale_item_price: ~sale_item_price
+) grain (sale_id) complete where sale_year = 2023
+address staged_sales_tbl;
+"""
+
+    def build_executor(include_staging: bool) -> Executor:
+        executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+        executor.execute_raw_sql(
+            "CREATE TABLE items_tbl (id INT, category VARCHAR, price INT)"
+        )
+        executor.execute_raw_sql(
+            "INSERT INTO items_tbl VALUES "
+            "(1,'A',10),(2,'A',20),(3,'A',100),(4,'B',30),(5,'B',40)"
+        )
+        executor.execute_raw_sql(
+            "CREATE TABLE sales_tbl (id INT, year INT, item_id INT, item_price INT)"
+        )
+        executor.execute_raw_sql(
+            "INSERT INTO sales_tbl VALUES "
+            "(1,2023,1,10),(2,2023,2,20),(3,2023,4,30),"
+            "(4,2023,5,40),(5,2022,3,100)"
+        )
+        executor.parse_text(model)
+        if include_staging:
+            executor.execute_raw_sql(
+                "CREATE TABLE staged_sales_tbl AS "
+                "SELECT s.id AS sale_id, s.year AS sale_year, "
+                "i.id AS item_id, i.category AS category, "
+                "s.item_price AS sale_item_price "
+                "FROM sales_tbl s JOIN items_tbl i ON s.item_id = i.id "
+                "WHERE s.year = 2023"
+            )
+            executor.parse_text(staging)
+        return executor
+
+    # Thresholds for avg(price) by category over the full items table:
+    #   A -> (10 + 20 + 100) / 3 = 43.33
+    #   B -> (30 + 40) / 2 = 35.0
+    # Only sale 4 (B, price 40) exceeds its threshold => count = 1.
+    # If the aggregate is incorrectly restricted to 2023 sales only, item 3
+    # (price 100) drops out and A's threshold falls to 15, pulling in sale 2
+    # (A, price 20) as well => count = 2 (bug).
+    filter_scalar_query = """
+where sale_year = 2023
+  and sale_item_price > avg(price) by category
+select count(sale_id) as sale_count;
+"""
+
+    def gen_sql(executor: Executor, query: str) -> str:
+        return executor.generate_sql(executor.parse_text(query)[-1])[0]
+
+    # 1. Baseline: no staging in scope. Must source from items_tbl + sales_tbl.
+    baseline = build_executor(include_staging=False)
+    sql = gen_sql(baseline, filter_scalar_query)
+    assert "items_tbl" in sql
+    assert "sales_tbl" in sql
+    assert "staged_sales_tbl" not in sql
+    result = baseline.execute_text(filter_scalar_query)[0].fetchall()
+    assert result[0].sale_count == 1
+
+    # 2. With staging in scope: aggregate must source items_tbl (full dim),
+    # not staged_sales_tbl (which would restrict it to year=2023).
+    staged = build_executor(include_staging=True)
+    sql = gen_sql(staged, filter_scalar_query)
+    assert "items_tbl" in sql, sql
+    assert "staged_sales_tbl" not in sql, sql
+    result = staged.execute_text(filter_scalar_query)[0].fetchall()
+    assert result[0].sale_count == 1
+
+    # 3. Same by-aggregate used as SELECT output AND filter scalar.
+    # Threshold for B = 35; sale 4 is the only one above that threshold.
+    mixed_query = """
+where sale_item_price > avg(price) by category
+  and category = 'B'
+select category, count(sale_id) as sale_count
+order by category asc;
+"""
+    sql = gen_sql(staged, mixed_query)
+    assert "items_tbl" in sql, sql
+    assert "staged_sales_tbl" not in sql, sql
+    result = staged.execute_text(mixed_query)[0].fetchall()
+    assert len(result) == 1
+    assert result[0].category == "B"
+    assert result[0].sale_count == 1
+
+    # 4. SELECT-level aggregate with outer WHERE — filter DOES apply, so the
+    # planner is free to source from the pre-filtered staging datasource.
+    select_level_query = """
+where sale_year = 2023
+select count(sale_id) as sale_count;
+"""
+    sql = gen_sql(staged, select_level_query)
+    assert "staged_sales_tbl" in sql, sql
+    result = staged.execute_text(select_level_query)[0].fetchall()
+    assert result[0].sale_count == 4
+
+
 def test_tuple_filtering():
     query = """
     key case_number int;
