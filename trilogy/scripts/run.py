@@ -25,6 +25,22 @@ def execute_script_for_run(
     return execute_script_with_stats(exec, node.path, run_statements=True)
 
 
+def _normalize_import(value: str) -> str:
+    """Convert a path-ish --import value into a trilogy import module name.
+
+    Accepts bare module names (``flight``), filenames (``flight.preql``), and
+    relative paths (``root/flight.preql``) and returns the dotted module name
+    trilogy expects (``flight``, ``root.flight``).
+    """
+    stripped = value.strip()
+    if stripped.endswith(".preql"):
+        stripped = stripped[: -len(".preql")]
+    stripped = stripped.replace("\\", "/").strip("/")
+    while stripped.startswith("./"):
+        stripped = stripped[2:]
+    return stripped.replace("/", ".")
+
+
 @argument("input", type=Path(), default=".")
 @argument("dialect", type=str, required=False)
 @option("--param", multiple=True, help="Environment parameters as key=value pairs")
@@ -43,6 +59,16 @@ def execute_script_for_run(
     multiple=True,
     help="Set env vars as KEY=VALUE or pass an env file path",
 )
+@option(
+    "--import",
+    "imports",
+    multiple=True,
+    help=(
+        "Prepend 'import <module>;' to an inline query. Accepts bare module "
+        "names (flight), filenames (flight.preql), or relative paths "
+        "(root/flight.preql). Repeatable."
+    ),
+)
 @argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
 def run(
@@ -53,10 +79,24 @@ def run(
     parallelism: int | None,
     config,
     env,
+    imports: tuple[str, ...],
     conn_args,
 ):
     """Execute a Trilogy script or query."""
     validate_dialect(dialect, "run")
+
+    if imports:
+        pathlib_input = PathlibPath(input)
+        if pathlib_input.exists():
+            from trilogy.scripts.display import print_error
+
+            print_error(
+                "--import only applies to inline queries, not file/directory inputs."
+            )
+            raise Exit(2)
+        prefix = "".join(f"import {_normalize_import(v)};\n" for v in imports)
+        input = prefix + input
+
     cli_params = CLIRuntimeParams(
         input=input,
         dialect=Dialects(dialect) if dialect else None,

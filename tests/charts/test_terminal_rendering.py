@@ -84,8 +84,8 @@ def test_terminal_multiple_y_fields():
 def test_terminal_barh_chart():
     config = ChartConfig(
         chart_type=ChartType.BARH,
-        x_fields=["category"],
-        y_fields=["value"],
+        x_fields=["value"],
+        y_fields=["category"],
     )
     data = [
         {"category": "a", "value": 10},

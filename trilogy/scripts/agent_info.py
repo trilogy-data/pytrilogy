@@ -65,6 +65,10 @@ Execute a Trilogy script or all scripts in a directory.
 - `--param KEY=VALUE`: Environment parameters (can be repeated)
 - `--parallelism N`, `-p N`: Max parallel workers for directory execution
 - `--config PATH`: Path to trilogy.toml configuration file
+- `--env KEY=VALUE`, `-e KEY=VALUE`: Set env vars (or pass an env file path)
+- `--import MODULE`: Prepend `import <module>;` to an inline query. Repeatable.
+  Accepts bare names (`flight`), filenames (`flight.preql`), or relative paths
+  (`root/flight.preql`, converted to dotted form).
 
 **Examples:**
 ```bash
@@ -79,6 +83,36 @@ trilogy run jobs/ duckdb -p 4
 
 # Run with parameters
 trilogy run report.preql duckdb --param date=2024-01-01 --param region=US
+
+# Inline query against a file's concepts (no manual `import` in the query)
+trilogy run --import flight.preql "select carrier, count(id);" duckdb
+```
+
+---
+
+### trilogy explore <path>
+
+Parse a `.preql` file and print the concepts, datasources, and imports
+available from its environment. Useful for agents and humans to discover
+what's queryable before writing a `trilogy run --import <path> "..."` query.
+No dialect or connection needed.
+
+**Arguments:**
+- `path` (required): Path to a `.preql` file.
+
+**Options:**
+- `--show {all|concepts|datasources|imports}`: Limit output to one section.
+- `--purpose NAME`: Filter concepts by purpose (`key`, `property`, `metric`,
+  `constant`, `rowset`).
+- `--grep TEXT`: Case-insensitive substring filter over concept addresses.
+- `--include-hidden`: Include concepts normally hidden from public view.
+- `--include-builtins`: Include internal/builtin concepts (hidden by default).
+
+**Examples:**
+```bash
+trilogy explore flight.preql
+trilogy explore flight.preql --show concepts --purpose metric
+trilogy explore flight.preql --grep carrier
 ```
 
 ---
@@ -141,6 +175,52 @@ Format a Trilogy script file.
 **Example:**
 ```bash
 trilogy fmt messy_script.preql
+```
+
+---
+
+### trilogy file <subcommand>
+
+CRUD+ operations over pluggable storage backends. Agent-loop friendly: all
+read/write/delete/move operations go through the CLI, so an agent with only
+CLI access can manage workspace files. Currently supports the local
+filesystem; future backends (GCS, S3, remote git models) will plug in via the
+same commands.
+
+**Subcommands:**
+- `list [path] [--recursive/-r] [--long/-l]`: List entries at PATH (default `.`).
+- `read <path>`: Write the file contents to stdout.
+- `write <path> [--content/-c TEXT] [--escapes/-e] [--from-file SRC] [--from-url URL] [--no-create] [--quiet]`:
+  Create or overwrite the file. If none of `--content`, `--from-file`, or
+  `--from-url` is given, reads bytes from stdin. Use `--escapes` with
+  `--content` to embed newlines as `\n` in a single-line string when working
+  from shells without heredoc support (cmd.exe, some CI runners).
+  `--from-url` fetches bytes from `http(s)://` or `file://` URLs — useful
+  for pulling a hosted snippet (raw GitHub / gist) into the workspace.
+- `delete <path> [--recursive/-r] [--force/-f]`: Delete a file or directory.
+- `move <src> <dst>`: Rename or move between paths on the same backend.
+- `exists <path>`: Prints `true`/`false`; exits non-zero if the path is missing.
+
+**Examples:**
+```bash
+# Inline content (cross-shell safe)
+trilogy file write scratch.preql --content "import flight; select count(id);"
+
+# Multi-line via --escapes (portable across bash, zsh, PowerShell, cmd.exe)
+trilogy file write scratch.preql -e -c "import flight;\nselect count(id);\n"
+
+# Update an existing script from a local file (CI/agent-friendly)
+trilogy file write reporting.preql --from-file snippets/reporting.preql
+
+# Pull a hosted snippet (raw GitHub URL)
+trilogy file write reporting.preql --from-url https://example.com/reporting.preql
+
+# Inspect and list
+trilogy file read reporting.preql
+trilogy file list . --recursive --long
+
+# Clean up
+trilogy file delete old_assets/ --recursive
 ```
 
 ---
