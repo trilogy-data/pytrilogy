@@ -263,8 +263,14 @@ INT_DIGITS = @{ ASCII_DIGIT+ }
 order_by  = { ^"order" ~ ^"by" ~ order_list }
 order_list = { _order_atom ~ ("," ~ _order_atom)* ~ ","? }
 ORDER_IDENTIFIER = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ".")* ~ (" " | "\t")+ }
+// Atomic so the word-boundary `!(ALNUM|_)` is checked immediately after the
+// keyword — otherwise pest skips intervening whitespace between the keyword
+// and the boundary check, letting `desc\n    limit` match and causing the
+// `expr ~ ordering` fallback to greedily consume the identifier as a window
+// function.
+ORDER_DIRECTION_LA = @{ (^"asc" | ^"desc" | ^"nulls") ~ !(ASCII_ALPHANUMERIC | "_") }
 _order_atom = _{
-      (ORDER_IDENTIFIER ~ &((^"asc" | ^"desc" | ^"nulls") ~ !(ASCII_ALPHANUMERIC | "_")) ~ ordering)
+      (ORDER_IDENTIFIER ~ &ORDER_DIRECTION_LA ~ ordering)
     | (expr ~ ordering)
 }
 

@@ -50,6 +50,25 @@ select
     assert "\\n" not in e.value.args[0]
 
 
+def test_trailing_comma_before_order_by():
+    """Trailing comma in select list before `order by` should not cause `desc` to be parsed as an order-by column."""
+    DebuggingHook()
+    x = Environment(working_path=Path(__file__).parent)
+
+    x = Dialects.DUCK_DB.default_executor(environment=x)
+
+    x.generate_sql(
+        """import flight;
+select
+    aircraft.aircraft_model.model,
+    aircraft.aircraft_model.manufacturer,
+    count,
+order by count desc
+limit 15;
+"""
+    )
+
+
 def test_hidden_field():
     """Make sure hidden fields are not included in select * expansions"""
     DebuggingHook()
