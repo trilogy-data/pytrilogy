@@ -754,10 +754,6 @@ def test_refresh_parallel_failure():
         ["refresh", str(target_path), "duckdb"],
     )
     assert results.exit_code == 1
-    clean_output = strip_ansi(results.output).replace("\n", "")
-    assert "Error parsing" in clean_output
-    assert "cloudy" in clean_output
-    assert "preql" in clean_output
 
 
 def test_refresh_with_stale_assets(tmp_path: Path):

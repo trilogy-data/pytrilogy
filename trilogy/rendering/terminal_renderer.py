@@ -67,7 +67,7 @@ class TerminalRenderer(BaseRenderer):
         x_vals = [row.get(x_field) for row in reversed(data)]
         y_vals = [row.get(y_field) for row in reversed(data)]
 
-        plt.bar(y_vals, x_vals, orientation="horizontal")
+        plt.bar(x_vals, y_vals, orientation="horizontal")
         plt.xlabel(x_field)
         plt.ylabel(y_field)
 
