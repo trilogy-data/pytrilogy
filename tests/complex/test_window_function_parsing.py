@@ -449,3 +449,31 @@ order by id asc;
             assert row.category_sum == 30
         else:
             assert row.category_sum == 20
+
+
+def test_window_with_derived_key_no_recursion() -> None:
+    """Regression: a window concept ordered by a BASIC-derived key used to be
+    included as a grain key by concept_is_relevant, which made gen_enrichment_node
+    re-request the window concept and recurse forever."""
+    exec = Dialects.DUCK_DB.default_executor()
+    model = """
+key id int;
+key start_time datetime;
+auto year <- year(start_time);
+
+datasource trips (
+    id: id,
+    start_time: start_time,
+)
+grain (id, start_time)
+address trips_tbl;
+"""
+    query = """
+select year, count(start_time) -> yearly_trips order by year asc;
+auto lagging_yearly_trips <- lag yearly_trips by year asc;
+auto diff <- yearly_trips - lagging_yearly_trips;
+select year, diff order by year asc;
+"""
+    exec.parse_text(model)
+    sqls = exec.generate_sql(query)
+    assert len(sqls) == 2
