@@ -47,9 +47,17 @@ def _http_get(url: str, timeout: float = 15.0) -> bytes:
         return resp.read()
 
 
+def _fetch_json(url: str, label: str) -> Any:
+    """Fetch JSON from *url*, converting network errors into a CLI exit."""
+    try:
+        return json.loads(_http_get(url).decode("utf-8"))
+    except (HTTPError, URLError, TimeoutError) as exc:
+        print_error(f"Failed to fetch {label}: {exc}")
+        raise click.exceptions.Exit(1) from exc
+
+
 def _fetch_index() -> list[ModelEntry]:
-    raw = _http_get(INDEX_URL)
-    data = json.loads(raw.decode("utf-8"))
+    data = _fetch_json(INDEX_URL, "index")
     entries: list[ModelEntry] = []
     for item in data.get("files", []):
         entries.append(
@@ -67,7 +75,7 @@ def _fetch_index() -> list[ModelEntry]:
 
 def _fetch_model_manifest(filename: str) -> dict[str, Any]:
     url = f"{STUDIO_BASE}/{filename}"
-    return json.loads(_http_get(url).decode("utf-8"))
+    return _fetch_json(url, f"manifest for {filename}")
 
 
 def _short_description(text: str, width: int = 60) -> str:
@@ -101,11 +109,7 @@ def public() -> None:
 @click.option("--tag", "-t", type=str, default=None, help="Filter by tag.")
 def list_cmd(engine: str | None, tag: str | None) -> None:
     """List available public models from the studio index."""
-    try:
-        entries = _fetch_index()
-    except (HTTPError, URLError, TimeoutError) as exc:
-        print_error(f"Failed to fetch index: {exc}")
-        raise click.exceptions.Exit(1) from exc
+    entries = _fetch_index()
 
     if engine:
         entries = [e for e in entries if e.engine == engine]
@@ -163,11 +167,7 @@ def fetch_cmd(model: str, path: str | None, examples: bool, force: bool) -> None
         print_error(f"Invalid model name: {model!r}")
         raise click.exceptions.Exit(1)
 
-    try:
-        entries = _fetch_index()
-    except (HTTPError, URLError, TimeoutError) as exc:
-        print_error(f"Failed to fetch index: {exc}")
-        raise click.exceptions.Exit(1) from exc
+    entries = _fetch_index()
 
     entry = next((e for e in entries if e.name == model), None)
     if entry is None:
@@ -175,11 +175,7 @@ def fetch_cmd(model: str, path: str | None, examples: bool, force: bool) -> None
         click.echo("Available models: " + ", ".join(e.name for e in entries))
         raise click.exceptions.Exit(1)
 
-    try:
-        manifest = _fetch_model_manifest(entry.filename)
-    except (HTTPError, URLError, TimeoutError) as exc:
-        print_error(f"Failed to fetch manifest for {model}: {exc}")
-        raise click.exceptions.Exit(1) from exc
+    manifest = _fetch_model_manifest(entry.filename)
 
     target_root = Path(path) if path else Path.cwd() / model
     if target_root.exists() and any(target_root.iterdir()) and not force:
