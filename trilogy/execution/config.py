@@ -68,6 +68,9 @@ DEFAULT_STUDIO_URL = "https://trilogydata.dev/trilogy-studio-core/"
 class AgentConfig:
     provider: Optional[Provider] = None
     model: Optional[str] = None
+    api_key_env: Optional[str] = None
+    max_iterations: int = 50
+    tool_output_limit: int = 8192
 
 
 @dataclass
@@ -170,6 +173,9 @@ def load_config_file(path: Path) -> RuntimeConfig:
     agent = AgentConfig(
         provider=agent_provider,
         model=agent_raw.get("model"),
+        api_key_env=agent_raw.get("api_key_env"),
+        max_iterations=int(agent_raw.get("max_iterations", 50)),
+        tool_output_limit=int(agent_raw.get("tool_output_limit", 8192)),
     )
 
     return RuntimeConfig(

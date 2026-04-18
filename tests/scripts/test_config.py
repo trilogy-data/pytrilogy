@@ -6,6 +6,7 @@ from click.exceptions import Exit
 from click.testing import CliRunner
 from pytest import raises
 
+from trilogy.ai.enums import Provider
 from trilogy.dialect.config import (
     BigQueryConfig,
     DuckDBConfig,
@@ -858,3 +859,53 @@ def test_nonexistent_file_error_before_dialect_error():
     assert result.exit_code != 0
     assert "does not exist" in result.output
     assert "No dialect specified" not in result.output
+
+
+def test_agent_config_defaults_when_section_missing():
+    with tempfile.TemporaryDirectory() as tmp:
+        toml_path = Path(tmp) / "trilogy.toml"
+        toml_path.write_text("")
+        config = load_config_file(toml_path)
+    assert config.agent.provider is None
+    assert config.agent.model is None
+    assert config.agent.api_key_env is None
+    assert config.agent.max_iterations == 50
+    assert config.agent.tool_output_limit == 8192
+
+
+def test_agent_config_populated():
+    content = """
+[agent]
+provider = "openai"
+model = "gpt-x"
+api_key_env = "MY_KEY"
+max_iterations = 12
+tool_output_limit = 1024
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        toml_path = Path(tmp) / "trilogy.toml"
+        toml_path.write_text(content)
+        config = load_config_file(toml_path)
+    assert config.agent.provider == Provider.OPENAI
+    assert config.agent.model == "gpt-x"
+    assert config.agent.api_key_env == "MY_KEY"
+    assert config.agent.max_iterations == 12
+    assert config.agent.tool_output_limit == 1024
+
+
+def test_agent_config_invalid_provider_raises():
+    content = '[agent]\nprovider = "claude"\n'
+    with tempfile.TemporaryDirectory() as tmp:
+        toml_path = Path(tmp) / "trilogy.toml"
+        toml_path.write_text(content)
+        with raises(ValueError, match="Unknown agent provider 'claude'"):
+            load_config_file(toml_path)
+
+
+def test_agent_config_provider_case_insensitive():
+    content = '[agent]\nprovider = "ANTHROPIC"\n'
+    with tempfile.TemporaryDirectory() as tmp:
+        toml_path = Path(tmp) / "trilogy.toml"
+        toml_path.write_text(content)
+        config = load_config_file(toml_path)
+    assert config.agent.provider == Provider.ANTHROPIC
