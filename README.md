@@ -80,7 +80,7 @@ import flight as flight;
 auto flight_date <- flight.dep_time::date;
 
 # this can be properties or metrics
-auto flight_count <- count(id);
+auto flight_count <- count(flight.id);
 
 # datasources can be read from or written to
 # use this to write to 
