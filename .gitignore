@@ -60,6 +60,8 @@ dependency_graph.png
 .claude
 *.pyd
 
+# trilogy testing
+faa-test/
 _preql_import_resolver/
 
 pglite_test.py

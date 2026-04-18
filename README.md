@@ -53,44 +53,53 @@ derived persisted datasource, refresh it, then explore it in Studio.
 trilogy public fetch faa ./faa-demo
 cd faa-demo
 
-# Run a quick adhoc query
-trilogy run "import flight; select carrier.code, count(id) as flight_count order by flight_count desc;"
+# Run a quick adhoc query (--import prepends the import for you — discover
+# what's available with `trilogy explore flight.preql`)
+trilogy run --import flight "select carrier.code, count(id) as flight_count order by flight_count desc;"
 
 # Plot it
-trilogy run "import flight; chart barh set y_axis:carrier.name set x_axis:flight_count from select carrier.name, count(id) as flight_count order by flight_count desc limit 10;"
+trilogy run --import flight "chart barh set y_axis:carrier.name set x_axis:flight_count from select carrier.name, count(id) as flight_count order by flight_count desc limit 10;"
 
-# Add a derived datasource that persists daily plane counts to a local file
-python -c "
-open('reporting.preql', 'w').write('''import flight;
+# 3. Add a derived datasource by grabbing the hosted snippet
+trilogy file write reporting.preql --from-url https://raw.githubusercontent.com/trilogy-data/trilogy-public-models/refs/heads/main/examples/duckdb/faa/example.preql
+
+# 4. Refresh — runs setup.sql, builds any managed assets, tracks watermarks.
+trilogy refresh .
+
+# 5. Launch the Studio UI against the live model (opens your browser) to explore + query
+trilogy serve .
+```
+
+The snippet fetched in step 3 looks like this — copy/paste it into your
+editor if you'd rather author it by hand:
+
+```trilogy
+import flight as flight;
 
 # derive reusable concepts
-auto flight_date <-flight.dep_time::date;
+auto flight_date <- flight.dep_time::date;
 
 # this can be properties or metrics
 auto flight_count <- count(id);
 
 # datasources can be read from or written to
+# use this to write to 
 datasource daily_airplane_usage (
     flight_date,
-    flight.model.name,
+    flight.aircraft.model.name,
     flight_count
 )
-grain(flight_date, flight.model.name)
-file './daily_airplane_usage.parquet'
+grain(flight_date, flight.aircraft.model.name)
+address daily_airplane_usage
 ;
-''')"
-
-# 3. Refresh — runs setup.sql, builds station_daily_stats, tracks watermarks.
-trilogy refresh .
-
-# 4. Launch the Studio UI against the live model (opens your browser) to explore + query
-trilogy serve .
 ```
 
 Browse other available models with `trilogy public list` (filter with
 `--engine duckdb` or `--tag benchmark`). Every model in
 [trilogy-public-models](https://github.com/trilogy-data/trilogy-public-models)
 is pullable.
+
+
 
 ### Key Features
 
@@ -338,6 +347,21 @@ trilogy public fetch <model-name> [<dir>] [--no-examples]
 Fetches model source files, setup scripts, and a ready-to-use `trilogy.toml`
 from [trilogy-public-models](https://github.com/trilogy-data/trilogy-public-models)
 into a local directory so you can immediately `refresh` and `serve` it.
+
+### Managing workspace files from the CLI
+
+`trilogy file` has shell-agnostic CRUD operations on the filesystem.
+
+```bash
+trilogy file list .                      # list entries (-r for recursive, -l for size)
+trilogy file read reporting.preql        # dump contents to stdout
+trilogy file write path --content "..."  # create/overwrite from a string
+trilogy file write path --from-file src  # copy from a local file
+trilogy file write path --from-url URL   # fetch from http(s):// or file:// URL
+trilogy file delete path --recursive     # remove a file or directory
+trilogy file move old.preql new.preql    # rename within a backend
+trilogy file exists path                 # exit 0 if present, 1 otherwise
+```
 
 #### Backend Configuration
 

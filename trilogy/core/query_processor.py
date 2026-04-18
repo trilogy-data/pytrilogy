@@ -635,9 +635,7 @@ def process_chart(
     def _resolve(f: str) -> str:
         safe = f.replace(".", "_")
         if safe not in output_fields:
-            raise ValueError(
-                f"Chart field '{f}' not in select output: {output_fields}"
-            )
+            raise ValueError(f"Chart field '{f}' not in select output: {output_fields}")
         return safe
 
     resolved = ChartConfig(
