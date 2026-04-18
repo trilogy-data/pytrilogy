@@ -90,8 +90,6 @@ def _component_target(component: dict[str, Any], root: Path) -> Path:
     url = component["url"]
     parsed = urlparse(url)
     filename = Path(parsed.path).name
-    if EXAMPLE_MARKER in parsed.path:
-        return root / "examples" / filename
     return root / filename
 
 

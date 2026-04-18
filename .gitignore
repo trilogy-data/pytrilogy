@@ -61,7 +61,7 @@ dependency_graph.png
 *.pyd
 
 # trilogy testing
-faa-test/
+faa-demo/
 _preql_import_resolver/
 
 pglite_test.py
