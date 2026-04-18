@@ -125,7 +125,7 @@ def test_public_fetch_bike_data(patched_urlopen):
         assert result.exit_code == 0, result.output
         assert (target / "boulder_data.preql").exists()
         assert (target / "setup.sql").exists()
-        assert (target / "examples" / "sample.json").exists()
+        assert (target / "sample.json").exists()
         assert (target / "README.md").read_text().startswith("## CityBikes data")
         config = (target / "trilogy.toml").read_text()
         assert 'dialect = "duck_db"' in config
