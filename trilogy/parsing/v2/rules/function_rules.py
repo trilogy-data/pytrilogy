@@ -342,22 +342,19 @@ def _resolve_bare_trait_cast_target(
         )
     base = matched.type
     if isinstance(base, list):
-        if len(base) == 1:
-            base = base[0]
+        upstream = arg_to_datatype(value)
+        if isinstance(upstream, TraitDataType):
+            upstream = upstream.type
+        compatible = [b for b in base if b == upstream]
+        if len(compatible) == 1:
+            base = compatible[0]
         else:
-            upstream = arg_to_datatype(value)
-            if isinstance(upstream, TraitDataType):
-                upstream = upstream.type
-            compatible = [b for b in base if b == upstream]
-            if len(compatible) == 1:
-                base = compatible[0]
-            else:
-                raise fail(
-                    node,
-                    f"Cannot cast {upstream} directly to trait '{name}' with "
-                    f"base types {base}; specify an explicit base (e.g. "
-                    f"`::<type>::{name}`).",
-                )
+            raise fail(
+                node,
+                f"Cannot cast {upstream} directly to trait '{name}' with "
+                f"base types {base}; specify an explicit base (e.g. "
+                f"`::<type>::{name}`).",
+            )
     return TraitDataType(type=base, traits=[name])
 
 

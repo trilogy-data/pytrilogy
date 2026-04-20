@@ -134,6 +134,35 @@ auto bad <- amount::not_a_trait;
         )
 
 
+def test_bare_trait_cast_trait_upstream():
+    env, _ = parse_text(
+        """
+type percent float;
+key amount float::percent;
+auto doubled <- amount::percent;
+"""
+    )
+    dtype = env.concepts["local.doubled"].datatype
+    assert isinstance(dtype, TraitDataType)
+    assert dtype.type == DataType.FLOAT
+    assert dtype.traits == ["percent"]
+
+
+def test_bare_trait_cast_trait_upstream_multi_base():
+    env, _ = parse_text(
+        """
+type flag int;
+type identifier int | string;
+key raw int::flag;
+auto as_id <- raw::identifier;
+"""
+    )
+    dtype = env.concepts["local.as_id"].datatype
+    assert isinstance(dtype, TraitDataType)
+    assert dtype.type == DataType.INTEGER
+    assert "identifier" in dtype.traits
+
+
 def test_bare_trait_cast_multi_base_picks_compatible():
     env, _ = parse_text(
         """
