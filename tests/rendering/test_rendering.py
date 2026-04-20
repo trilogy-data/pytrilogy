@@ -1141,6 +1141,25 @@ select
         assert rendered == expected[idx], rendered
 
 
+def test_render_function_trailing_comment():
+    basic = Environment()
+
+    env, commands = basic.parse(
+        """
+def add_thrice(x) -> x + x + x; # multiply x by three via addition
+"""
+    )
+    rendered = Renderer().to_string(commands[0])
+    assert (
+        rendered == "def add_thrice(x) -> x + x + x; # multiply x by three via addition"
+    ), rendered
+
+    # round-trip: re-parsing preserves the description
+    env2 = Environment()
+    _, commands2 = env2.parse(rendered)
+    assert commands2[0].meta.description == " multiply x by three via addition"
+
+
 def test_render_map():
     basic = Environment()
 

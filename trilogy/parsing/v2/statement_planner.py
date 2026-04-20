@@ -83,7 +83,7 @@ class StatementPlanner:
             if statement.kind == SyntaxNodeKind.CONCEPT:
                 return ConceptStatementPlan(syntax=form)
             if statement.kind == SyntaxNodeKind.FUNCTION:
-                return self._plan_function_block(statement)
+                return self._plan_function_block(form, statement)
             if statement.kind in _IMPORT_KINDS:
                 return ImportStatementPlan(statement)
             if statement.kind == SyntaxNodeKind.SELECT_STATEMENT:
@@ -93,10 +93,12 @@ class StatementPlanner:
             return self._plan_block_statement(statement)
         return UnsupportedStatementPlan(form)
 
-    def _plan_function_block(self, statement: SyntaxNode) -> StatementPlan:
+    def _plan_function_block(
+        self, block: SyntaxNode, statement: SyntaxNode
+    ) -> StatementPlan:
         inner = statement.children[0]
         if isinstance(inner, SyntaxNode) and inner.kind in _FUNCTION_INNER_KINDS:
-            return FunctionDefinitionPlan(inner)
+            return FunctionDefinitionPlan(syntax=inner, block=block)
         return UnsupportedStatementPlan(statement)
 
     def _plan_block_statement(self, statement: SyntaxNode) -> StatementPlan:

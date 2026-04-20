@@ -1,6 +1,7 @@
 
 
 type percent float; # Percentage value
+type categorical any; # Categorical value
 
 def calc_percent(a, b, digits=-1) -> 
     case 
