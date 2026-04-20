@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from trilogy.parsing.v2.errors import create_generic_syntax_error, create_syntax_error
 from trilogy.parsing.v2.syntax import SyntaxDocument, syntax_document_from_parser
+from trilogy.utility import safe_open
 
 if TYPE_CHECKING:
     from lark import Lark
@@ -23,7 +24,7 @@ def _get_parser() -> "Lark":
     if _PARSER is None:
         from lark import Lark
 
-        with open(_grammar_path(), "r") as f:
+        with safe_open(_grammar_path()) as f:
             _PARSER = Lark(
                 f.read(),
                 start="start",

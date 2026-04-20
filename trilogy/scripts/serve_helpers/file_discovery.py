@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from trilogy.utility import safe_open
+
 
 def find_preql_files(directory_path: Path) -> list[Path]:
     """Find all .preql files in the directory recursively.
@@ -126,7 +128,7 @@ def extract_description_from_file(file_path: Path) -> str:
     Returns:
         Description extracted from comments or a default description
     """
-    with open(file_path, "r") as f:
+    with safe_open(file_path) as f:
         content = f.read()
 
     model_name = file_path.stem
@@ -152,5 +154,5 @@ def read_file_content(file_path: Path) -> str:
     Returns:
         File content as string
     """
-    with open(file_path, "r") as f:
+    with safe_open(file_path) as f:
         return f.read()

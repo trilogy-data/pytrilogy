@@ -74,6 +74,7 @@ from trilogy.hooks.base_hook import BaseHook
 from trilogy.parser import parse_text
 from trilogy.render import get_dialect_generator
 from trilogy.staging import StagingConfig
+from trilogy.utility import safe_open
 
 ValidationDatasourceT = TypeVar("ValidationDatasourceT", Datasource, BuildDatasource)
 
@@ -624,7 +625,7 @@ class Executor(object):
         err = None
         for file in candidates:
             try:
-                with open(file, "r") as f:
+                with safe_open(file) as f:
                     command = f.read()
                     return self.parse_text_generator(
                         command, persist=persist, root=file
@@ -817,7 +818,7 @@ class Executor(object):
 
         final_params = None
         if isinstance(command, Path):
-            with open(command, "r") as f:
+            with safe_open(command) as f:
                 command = f.read()
         q = text(command)
         if variables:
@@ -888,7 +889,7 @@ class Executor(object):
         for file in candidates:
             if not file.exists():
                 continue
-            with open(file, "r") as f:
+            with safe_open(file) as f:
                 command = f.read()
             if file.suffix == ".sql":
                 return [self.execute_raw_sql(command)]

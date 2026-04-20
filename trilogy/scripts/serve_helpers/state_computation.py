@@ -16,6 +16,7 @@ from trilogy.scripts.serve_helpers.models import (
     StateSummary,
     WatermarkInfo,
 )
+from trilogy.utility import safe_open
 
 
 def compute_state_sync(
@@ -63,7 +64,7 @@ def compute_state_sync(
         config=config,
     )
 
-    with open(target_path) as f:
+    with safe_open(target_path) as f:
         exec.parse_text(f.read())
 
     state_store = BaseStateStore()

@@ -11,6 +11,7 @@ from trilogy.core.models.core import CONCRETE_TYPES
 from trilogy.core.models.datasource import ColumnAssignment
 from trilogy.core.validation.environment import validate_environment
 from trilogy.parsing.render import Renderer, safe_address
+from trilogy.utility import safe_open
 
 
 @dataclass
@@ -207,7 +208,7 @@ def validate_and_rewrite(
         raw = input
         env = Environment()
     else:
-        with open(input, "r") as f:
+        with safe_open(input) as f:
             raw = f.read()
         env = Environment(working_path=input.parent)
     if exec:
@@ -242,7 +243,7 @@ def validate_and_rewrite(
             new_text = iteration
         depth += 1
     if isinstance(input, Path):
-        with open(input, "w") as f:
+        with safe_open(input, "w") as f:
             f.write(new_text)
         return None
     else:

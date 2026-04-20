@@ -35,6 +35,7 @@ from trilogy.scripts.display import (
     show_statement_type,
     show_watermarks,
 )
+from trilogy.utility import safe_open
 
 
 def get_statement_type(statement: PROCESSED_STATEMENT_TYPES) -> str:
@@ -299,7 +300,7 @@ def execute_script_for_refresh(
     from trilogy.execution.state import create_refresh_plan
 
     validation = []
-    with open(node.path, "r") as f:
+    with safe_open(node.path) as f:
         statements = exec.parse_text(f.read(), root=node.path)
     for x in statements:
         if isinstance(x, ProcessedValidateStatement):

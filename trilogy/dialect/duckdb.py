@@ -22,6 +22,7 @@ from trilogy.core.enums import (
 from trilogy.core.models.core import CONCRETE_TYPES, DataType
 from trilogy.core.models.datasource import Address
 from trilogy.dialect.base import BaseDialect
+from trilogy.utility import safe_open
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
@@ -419,7 +420,7 @@ class DuckDBDialect(BaseDialect):
                 self.staging.prepare_executor_subdir(self.instance_id)
             return f"uv_run('{address.location}')"
         if address.type == AddressType.SQL:
-            with open(address.location, "r") as f:
+            with safe_open(address.location) as f:
                 sql_content = f.read().strip()
             return f"({sql_content})"
         return super().render_source(address)

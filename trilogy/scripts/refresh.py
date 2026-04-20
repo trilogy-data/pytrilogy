@@ -42,6 +42,7 @@ from trilogy.scripts.parallel_execution import (
     ParallelExecutionSummary,
     run_parallel_execution,
 )
+from trilogy.utility import safe_open
 
 
 def _collect_root_watermarks(
@@ -72,7 +73,7 @@ def _collect_root_watermarks(
         cli_params.debug_file,
     )
     try:
-        with open(owner_node.path, "r") as handle:
+        with safe_open(owner_node.path) as handle:
             executor.parse_text(handle.read(), root=owner_node.path)
         watermarks: dict[str, DatasourceWatermark] = {}
         for ds in executor.environment.datasources.values():
@@ -119,7 +120,7 @@ def _probe_owner_node(
         cli_params.debug_file,
     )
     try:
-        with open(owner_node.path, "r") as handle:
+        with safe_open(owner_node.path) as handle:
             executor.parse_text(handle.read(), root=owner_node.path)
         plan = create_refresh_plan(
             executor,
@@ -258,7 +259,7 @@ def _preview_directory_refresh(
 
     for file_path in script_files:
         node = ScriptNode(path=file_path)
-        with open(file_path, "r") as handle:
+        with safe_open(file_path) as handle:
             raw_text = handle.read()
         env = Env(working_path=str(file_path.parent))
         try:
@@ -627,7 +628,7 @@ def run_refresh_command(cli_params: CLIRuntimeParams) -> ParallelExecutionSummar
                 runtime_config,
                 cli_params.debug_file,
             )
-            with open(node.owner_script.path, "r") as handle:
+            with safe_open(node.owner_script.path) as handle:
                 executor.parse_text(handle.read(), root=node.owner_script.path)
             return executor
 
@@ -791,7 +792,7 @@ def refresh(
                         runtime_config,
                         cli_params.debug_file,
                     )
-                    with open(node.owner_script.path, "r") as handle:
+                    with safe_open(node.owner_script.path) as handle:
                         executor.parse_text(handle.read(), root=node.owner_script.path)
                     return executor
 
