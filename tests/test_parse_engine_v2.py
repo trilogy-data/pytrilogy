@@ -300,6 +300,17 @@ def test_pest_parse_error_raises_invalid_syntax_exception() -> None:
             parse_text("this is not valid trilogy @#$", Environment())
 
 
+def test_parse_error_does_not_mention_pest() -> None:
+    for backend in (ParserBackend.PEST, ParserBackend.LARK):
+        with _using_backend(backend):
+            with pytest.raises(InvalidSyntaxException) as exc_info:
+                parse_text("this is not valid trilogy @#$", Environment())
+            message = str(exc_info.value)
+            assert (
+                "pest" not in message.lower()
+            ), f"{backend.value} error leaked 'pest': {message!r}"
+
+
 def test_lark_parse_error_keeps_rich_error_codes() -> None:
     # The lark backend should still produce the numbered syntax hints even
     # after the pest decoupling. Regression guard: if parse_text starts

@@ -1,6 +1,8 @@
 
 
 type year int;
+type decade int;
+type century int;
 type month int;
 type month_name string;
 type week int;

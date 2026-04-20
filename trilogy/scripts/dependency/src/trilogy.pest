@@ -335,7 +335,10 @@ access_chain = { _atom ~ _access_tail* }
 _access_tail = _{ dot_tail | bracket_tail | dcolon_tail }
 dot_tail      = { "." ~ (string_lit | ATTR_NAME) }
 bracket_tail  = { "[" ~ (int_lit | string_lit) ~ "]" }
-dcolon_tail   = { "::" ~ data_type }
+// Allow a bare IDENTIFIER so users can cast straight to a registered trait
+// (e.g. `x::percent` rather than `x::float::percent`). data_type is tried
+// first so `float::percent` keeps the composed-trait shape.
+dcolon_tail   = { "::" ~ (data_type | IDENTIFIER) }
 
 // getattr(atom, "name") — still available as a distinct atom-level form.
 attr_access_paren = { ^"getattr" ~ "(" ~ expr ~ "," ~ string_lit ~ ")" }
@@ -503,7 +506,9 @@ over_list = { concept_lit ~ over_component* }
 // =============================================================================
 // Only the cast(expr as type) form here — the postfix `atom::type` form lives
 // in the access chain as `fcast_postfix` to avoid PEG left-recursion.
-fcast = { ^"cast" ~ "(" ~ expr ~ ^"as" ~ data_type ~ ")" }
+// `cast(expr as <type>)` — mirrors dcolon_tail in allowing a bare IDENTIFIER
+// so a registered trait (e.g. `percent`) can be used directly as the target.
+fcast = { ^"cast" ~ "(" ~ expr ~ ^"as" ~ (data_type | IDENTIFIER) ~ ")" }
 
 // =============================================================================
 // GENERIC FUNCTIONS

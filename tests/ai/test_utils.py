@@ -23,11 +23,13 @@ class TestParseRetryAfterMs:
         assert _parse_retry_after_ms("0.165") == 165
 
     def test_http_date_future(self):
-        future = datetime.now(timezone.utc) + timedelta(seconds=1)
+        # HTTP-date format has only second-level precision, so add a buffer
+        # large enough to survive sub-second truncation plus CI scheduling jitter.
+        future = datetime.now(timezone.utc) + timedelta(seconds=3)
         value = format_datetime(future, usegmt=True)
         result = _parse_retry_after_ms(value)
         assert result is not None
-        assert 0 < result <= 1500
+        assert 0 < result <= 3500
 
     def test_unparseable_returns_none(self):
         assert _parse_retry_after_ms("not-a-date-or-number") is None

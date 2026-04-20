@@ -366,8 +366,10 @@
     _math_functions: fmul | fdiv | fadd | fsub | fround | ffloor | fceil | fmod | flog | fabs | fsqrt | frandom
     
     //generic
-    _fcast_primary: "cast"i "(" expr "as"i data_type ")"
-    _fcast_alt: atom "::" data_type
+    // Allow a bare IDENTIFIER as a cast target (e.g. `x::percent`) so a
+    // registered trait can be used without naming its underlying base type.
+    _fcast_primary: "cast"i "(" expr "as"i (data_type | IDENTIFIER) ")"
+    _fcast_alt: atom "::" (data_type | IDENTIFIER)
     fcast: _fcast_primary | _fcast_alt
     concat: ("concat"i "(" (expr ",")* expr ")") 
     fcoalesce: "coalesce"i "(" (expr ",")* expr ")"

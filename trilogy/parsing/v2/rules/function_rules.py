@@ -322,6 +322,42 @@ def farray_sort(
     return context.function_factory.create_function(args, FunctionType.ARRAY_SORT)
 
 
+def _resolve_bare_trait_cast_target(
+    name: str,
+    value: Any,
+    node: SyntaxNode,
+    context: RuleContext,
+) -> TraitDataType:
+    # Grammar lets `::trait` / `cast(x as trait)` parse without naming a base
+    # type. Resolve the identifier against registered types and promote to a
+    # TraitDataType using the trait's declared base; downstream cast handling
+    # is unchanged from the explicit `float::trait` form. For multi-base traits,
+    # pick the base that matches the upstream value's datatype.
+    matched = context.types.get(name)
+    if matched is None:
+        raise fail(
+            node,
+            f"Unknown cast target '{name}': expected a data type or a "
+            f"registered trait.",
+        )
+    base = matched.type
+    if isinstance(base, list):
+        upstream = arg_to_datatype(value)
+        if isinstance(upstream, TraitDataType):
+            upstream = upstream.type
+        compatible = [b for b in base if b == upstream]
+        if len(compatible) == 1:
+            base = compatible[0]
+        else:
+            raise fail(
+                node,
+                f"Cannot cast {upstream} directly to trait '{name}' with "
+                f"base types {base}; specify an explicit base (e.g. "
+                f"`::<type>::{name}`).",
+            )
+    return TraitDataType(type=base, traits=[name])
+
+
 def fcast(
     node: SyntaxNode,
     context: RuleContext,
@@ -329,6 +365,9 @@ def fcast(
 ) -> Function:
     args = hydrated_children(node, hydrate)
     value, dtype = args[0], args[1]
+    if isinstance(dtype, str):
+        dtype = _resolve_bare_trait_cast_target(dtype, value, node, context)
+        args = [value, dtype]
     if isinstance(value, str):
         processed: Any
         match dtype:

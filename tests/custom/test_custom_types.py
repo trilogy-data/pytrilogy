@@ -1,7 +1,10 @@
 from pytest import raises
 
 from trilogy import Dialects
+from trilogy.core.models.author import TraitDataType
+from trilogy.core.models.core import DataType
 from trilogy.parsing.parse_engine_v2 import parse_text
+from trilogy.parsing.v2.model import HydrationError
 
 
 def test_custom_type():
@@ -101,6 +104,94 @@ def test_multi_type_custom_type():
 
     sql = dialects.generate_sql(parsed[-1])[0]
     assert "cast(cast(2 as int) as string)" in sql, sql
+
+
+def test_bare_trait_cast_infers_base_type():
+    env, _ = parse_text(
+        """
+type percent float;
+key amount float;
+key total float;
+auto ratio <- (amount / total)::percent;
+auto explicit_ratio <- (amount / total)::float::percent;
+auto via_cast <- cast(amount / total as percent);
+"""
+    )
+    for name in ("local.ratio", "local.explicit_ratio", "local.via_cast"):
+        dtype = env.concepts[name].datatype
+        assert isinstance(dtype, TraitDataType), f"{name}: {dtype}"
+        assert dtype.type == DataType.FLOAT
+        assert dtype.traits == ["percent"]
+
+
+def test_bare_trait_cast_unknown_name_raises():
+    with raises(HydrationError, match="Unknown cast target 'not_a_trait'"):
+        parse_text(
+            """
+key amount float;
+auto bad <- amount::not_a_trait;
+"""
+        )
+
+
+def test_bare_trait_cast_trait_upstream():
+    env, _ = parse_text(
+        """
+type percent float;
+key amount float::percent;
+auto doubled <- amount::percent;
+"""
+    )
+    dtype = env.concepts["local.doubled"].datatype
+    assert isinstance(dtype, TraitDataType)
+    assert dtype.type == DataType.FLOAT
+    assert dtype.traits == ["percent"]
+
+
+def test_bare_trait_cast_trait_upstream_multi_base():
+    env, _ = parse_text(
+        """
+type flag int;
+type identifier int | string;
+key raw int::flag;
+auto as_id <- raw::identifier;
+"""
+    )
+    dtype = env.concepts["local.as_id"].datatype
+    assert isinstance(dtype, TraitDataType)
+    assert dtype.type == DataType.INTEGER
+    assert "identifier" in dtype.traits
+
+
+def test_bare_trait_cast_multi_base_picks_compatible():
+    env, _ = parse_text(
+        """
+type identifier int | string;
+key raw_int int;
+key raw_str string;
+auto as_int <- raw_int::identifier;
+auto as_str <- raw_str::identifier;
+"""
+    )
+    int_dtype = env.concepts["local.as_int"].datatype
+    assert isinstance(int_dtype, TraitDataType)
+    assert int_dtype.type == DataType.INTEGER
+    assert int_dtype.traits == ["identifier"]
+    str_dtype = env.concepts["local.as_str"].datatype
+    assert isinstance(str_dtype, TraitDataType)
+    assert str_dtype.type == DataType.STRING
+    assert str_dtype.traits == ["identifier"]
+
+
+def test_bare_trait_cast_multi_base_no_match_rejects():
+    with raises(HydrationError, match="Cannot cast .* directly to trait"):
+        parse_text(
+            """
+type identifier int | string;
+key raw float;
+auto bad <- raw::identifier;
+"""
+        )
 
 
 def test_identifier():
