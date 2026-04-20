@@ -376,7 +376,7 @@ fn convert_pair(py: Python<'_>, pair: Pair<Rule>, idx: &LineIndex) -> PyResult<P
 pub fn parse_trilogy_syntax(py: Python<'_>, text: &str) -> PyResult<PyObject> {
     let idx = LineIndex::new(text);
     let mut pairs = TrilogyParser::parse(Rule::start, text).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Pest parse error: {}", e))
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e))
     })?;
     let start = pairs
         .next()
@@ -542,7 +542,7 @@ fn convert_pair_tuple<'py>(
 pub fn parse_trilogy_syntax_tuple(py: Python<'_>, text: &str) -> PyResult<PyObject> {
     let idx = LineIndex::new(text);
     let mut pairs = TrilogyParser::parse(Rule::start, text).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Pest parse error: {}", e))
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e))
     })?;
     let start = pairs
         .next()
@@ -556,7 +556,7 @@ pub fn parse_trilogy_syntax_tuple(py: Python<'_>, text: &str) -> PyResult<PyObje
 #[pyfunction]
 pub fn parse_trilogy_syntax_count(text: &str) -> PyResult<usize> {
     let mut pairs = TrilogyParser::parse(Rule::start, text).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Pest parse error: {}", e))
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e))
     })?;
     let start = pairs
         .next()
