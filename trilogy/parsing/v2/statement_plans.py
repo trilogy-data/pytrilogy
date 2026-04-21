@@ -549,31 +549,41 @@ class PublishStatementPlan(SimpleOperationalStatementPlan):
     output: PublishStatement | None = None
 
 
-_SelectOwningT = TypeVar("_SelectOwningT", CopyStatement, ChartStatement)
-
-
 @dataclass
-class _SelectOwningStatementPlan(StatementPlanBase, Generic[_SelectOwningT]):
+class CopyStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
-    output: _SelectOwningT | None = None
+    output: CopyStatement | None = None
 
     def hydrate(self, hydrator: "NativeHydrator") -> None:
         self.output = hydrator.hydrate_rule(self.syntax)
 
     def validate(self, hydrator: "NativeHydrator") -> None:
         if self.output is not None:
-            finalize_select_tree(self.output.select, hydrator)
+            if isinstance(self.output.select, ChartStatement):
+                for layer in self.output.select.layers:
+                    finalize_select_tree(layer.select, hydrator)
+            else:
+                finalize_select_tree(self.output.select, hydrator)
 
-    def commit(self, hydrator: "NativeHydrator") -> _SelectOwningT | None:
+    def commit(self, hydrator: "NativeHydrator") -> CopyStatement | None:
         return self.output
 
 
-class CopyStatementPlan(_SelectOwningStatementPlan[CopyStatement]):
-    pass
+@dataclass
+class ChartStatementPlan(StatementPlanBase):
+    syntax: SyntaxNode
+    output: ChartStatement | None = None
 
+    def hydrate(self, hydrator: "NativeHydrator") -> None:
+        self.output = hydrator.hydrate_rule(self.syntax)
 
-class ChartStatementPlan(_SelectOwningStatementPlan[ChartStatement]):
-    pass
+    def validate(self, hydrator: "NativeHydrator") -> None:
+        if self.output is not None:
+            for layer in self.output.layers:
+                finalize_select_tree(layer.select, hydrator)
+
+    def commit(self, hydrator: "NativeHydrator") -> ChartStatement | None:
+        return self.output
 
 
 @dataclass

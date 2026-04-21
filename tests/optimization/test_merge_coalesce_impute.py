@@ -94,16 +94,13 @@ def test_merge_coalesce_impute_no_group_by():
     from trilogy.hooks import DebuggingHook
 
     DebuggingHook(INFO)
-    query = (
-        _BASE_QUERY
-        + """
+    query = _BASE_QUERY + """
 where city = 'USBOS'
 select
     tree_id,
     diameter_at_breast_height
 ;
 """
-    )
     env, stmts = parse(query)
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(stmts[-1])[-1]
@@ -119,9 +116,7 @@ def test_union_sources_include_all_required_columns():
     If lat/long are pruned from the union CTE the query will generate invalid
     SQL (referencing columns that don't exist in the CTE) and fail to execute.
     """
-    query = (
-        _UNION_IMPUTE_QUERY
-        + """
+    query = _UNION_IMPUTE_QUERY + """
 select
     tree_id,
     city,
@@ -130,7 +125,6 @@ select
     longitude
 ;
 """
-    )
     executor = Dialects.DUCK_DB.default_executor()
     # Execute the query — if the union CTE is missing lat/long this raises
     rows = executor.execute_text(query)[-1].fetchall()

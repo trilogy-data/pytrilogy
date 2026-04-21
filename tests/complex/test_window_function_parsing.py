@@ -423,16 +423,14 @@ order by id asc;
 """
     exec = Dialects.DUCK_DB.default_executor()
     # Create test data
-    exec.execute_raw_sql(
-        """
+    exec.execute_raw_sql("""
         CREATE TABLE test_data AS SELECT * FROM (VALUES
             (1, 'A', 10),
             (2, 'A', 20),
             (3, 'B', 5),
             (4, 'B', 15)
         ) AS t(id, category, value)
-    """
-    )
+    """)
 
     # Verify the optimization occurred
     env = exec.environment

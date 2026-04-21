@@ -182,8 +182,7 @@ FUNCTION_GRAIN_MATCH_MAP = {
     FunctionType.MIN: lambda args, types: f"{args[0]}",
 }
 
-SQLITE_SQL_TEMPLATE = Template(
-    """{%- if output %}
+SQLITE_SQL_TEMPLATE = Template("""{%- if output %}
 {{output}}
 {% endif %}{%- if ctes %}
 WITH {% if recursive%}RECURSIVE{% endif %}{% for cte in ctes %}
@@ -213,18 +212,15 @@ ORDER BY {% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if limit is not none %}
 LIMIT ({{ limit }}){% endif %}{% endif %}
-"""
-)
+""")
 
-SQLITE_CREATE_TABLE_SQL_TEMPLATE = Template(
-    """
+SQLITE_CREATE_TABLE_SQL_TEMPLATE = Template("""
 CREATE TABLE {% if create_mode == "create_if_not_exists" %}IF NOT EXISTS {% endif %}{{ name }} (
 {%- for column in columns %}
     {{ column.name }} {{ type_map[column.name] }}{% if not loop.last %},{% endif %}
 {%- endfor %}
 );
-""".strip()
-)
+""".strip())
 
 DATATYPE_MAP: dict[DataType, str] = {
     DataType.STRING: "TEXT",

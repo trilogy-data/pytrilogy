@@ -6,8 +6,7 @@ from trilogy.parser import parse
 
 def test_rowset_imported_nested_namespace(tmp_path: Path) -> None:
     inner = tmp_path / "inner.preql"
-    inner.write_text(
-        """
+    inner.write_text("""
 key id int;
 property id.zip string;
 property id.state string;
@@ -19,8 +18,7 @@ datasource stores (
 )
 grain (id)
 address stores;
-"""
-    )
+""")
     env = Environment(working_path=tmp_path)
     env, _ = parse(
         """import inner as store;

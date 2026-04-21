@@ -134,7 +134,7 @@ def execute_queries_with_progress(
             show_statement_result(idx, total_queries, duration, bool(results))
             if results and not error:
                 if isinstance(results, ChartResult):
-                    print_chart_terminal(results.data, results.config)
+                    print_chart_terminal(results.data, results.statement)
                 else:
                     print_results_table(results)
 
@@ -160,7 +160,7 @@ def execute_queries_simple(
 
         if results and not error:
             if isinstance(results, ChartResult):
-                print_chart_terminal(results.data, results.config)
+                print_chart_terminal(results.data, results.statement)
             else:
                 print_results_table(results)
 

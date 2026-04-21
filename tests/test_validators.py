@@ -235,8 +235,7 @@ def test_type_check_edge_cases():
 
 def test_validate_datasource_fails_early_for_missing_grain_column():
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(
-        """
+    executor.execute_text("""
         key city string;
         property city.data_updated_through datetime;
 
@@ -247,8 +246,7 @@ def test_validate_datasource_fails_early_for_missing_grain_column():
         query '''
         SELECT 'USNYC' as city, TIMESTAMP '2024-01-01 00:00:00' as data_updated_through
         ''';
-        """
-    )
+        """)
 
     with pytest.raises(ModelValidationError) as exc_info:
         validate_environment(

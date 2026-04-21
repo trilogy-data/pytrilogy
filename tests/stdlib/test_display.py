@@ -8,8 +8,7 @@ from trilogy.hooks import DebuggingHook
 def test_calc_percent():
     DebuggingHook()
     duckdb = Dialects.DUCK_DB.default_executor()
-    all_results = duckdb.execute_query(
-        """
+    all_results = duckdb.execute_query("""
 import std.report;
 import std.money;
 import std.display;
@@ -45,8 +44,7 @@ SELECT
 order by
     order asc
     ;
-"""
-    )
+""")
 
     results = all_results.fetchall()
     assert len(results) == 3

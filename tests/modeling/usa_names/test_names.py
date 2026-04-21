@@ -199,13 +199,10 @@ order by
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(query)[0]
 
-    assert (
-        """FROM
+    assert """FROM
     "bigquery-public-data"."usa_names"."usa_1910_current" as "usa_names"
 GROUP BY
-    1),"""
-        in sql
-    ), sql
+    1),""" in sql, sql
 
 
 def test_multi_window():
@@ -368,8 +365,5 @@ LIMIT 15
         )
         is False
     )
-    assert (
-        """GROUP BY
-    1"""
-        in query
-    ), query
+    assert """GROUP BY
+    1""" in query, query

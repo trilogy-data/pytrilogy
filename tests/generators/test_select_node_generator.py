@@ -367,12 +367,10 @@ address cached_total;
     )
 
     executor = Dialects.DUCK_DB.default_executor(environment=env)
-    generated = executor.generate_sql(
-        """
+    generated = executor.generate_sql("""
 WHERE state = 'GA'
 SELECT total_amount;
-"""
-    )[-1]
+""")[-1]
 
     assert '"cached_total"' not in generated, generated
     assert '"orders"."state" = \'GA\'' in generated, generated

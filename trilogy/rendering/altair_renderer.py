@@ -1,8 +1,11 @@
 from typing import Any
 
-from trilogy.core.enums import ChartType
-from trilogy.core.statements.author import ChartConfig
-from trilogy.rendering.base import BaseRenderer
+from trilogy.core.enums import ChartPlaceKind, ChartType
+from trilogy.core.statements.execute import (
+    ProcessedChartLayer,
+    ProcessedChartStatement,
+)
+from trilogy.rendering.base import BaseRenderer, prettify_label
 
 try:
     import altair as alt
@@ -23,108 +26,97 @@ class AltairRenderer(BaseRenderer):
                 "Install `altair` via pip/uv to use."
             )
 
-    def render(self, config: ChartConfig, data: list[dict]) -> Any:
-        # Use pandas DataFrame for better type inference
-        df_data = pd.DataFrame(data)
-
-        chart_map = {
-            ChartType.BAR: self._bar_chart,
-            ChartType.LINE: self._line_chart,
-            ChartType.POINT: self._point_chart,
-            ChartType.AREA: self._area_chart,
-            ChartType.BARH: self._barh_chart,
-        }
-
-        chart_fn = chart_map.get(config.chart_type)
-        if chart_fn is None:
-            raise NotImplementedError(
-                f"Chart type '{config.chart_type.value}' not yet implemented"
-            )
-
-        return chart_fn(df_data, config)
-
-    def to_spec(self, config: ChartConfig, data: list[dict]) -> dict:
-        chart = self.render(config, data)
-        return chart.to_dict()
-
-    def _apply_common_options(self, chart: Any, config: ChartConfig) -> Any:
-        if config.hide_legend:
+    def render(
+        self,
+        statement: ProcessedChartStatement,
+        layer_data: list[list[dict]],
+    ) -> Any:
+        if len(layer_data) != len(statement.layers):
+            raise ValueError("Layer data count does not match layer count")
+        layer_charts: list[Any] = []
+        for layer, data in zip(statement.layers, layer_data):
+            layer_charts.append(self._render_layer(layer, data))
+        for placement in statement.placements:
+            layer_charts.append(self._render_placement(placement))
+        if not layer_charts:
+            return None
+        chart = layer_charts[0] if len(layer_charts) == 1 else alt.layer(*layer_charts)
+        if statement.hide_legend:
             chart = chart.configure_legend(disable=True)
         return chart
 
-    def _bar_chart(self, data: Any, config: ChartConfig) -> Any:
-        x = config.x_fields[0] if config.x_fields else None
-        y = config.y_fields[0] if config.y_fields else None
+    def to_spec(
+        self,
+        statement: ProcessedChartStatement,
+        layer_data: list[list[dict]],
+    ) -> dict:
+        return self.render(statement, layer_data).to_dict()
 
-        encoding = {}
-        if x:
-            encoding["x"] = x
-        if y:
-            encoding["y"] = y
-        if config.color_field:
-            encoding["color"] = config.color_field
+    def _render_layer(self, layer: ProcessedChartLayer, data: list[dict]) -> Any:
+        df = pd.DataFrame(data)
+        builders = {
+            ChartType.BAR: self._bar,
+            ChartType.BARH: self._barh,
+            ChartType.LINE: self._line,
+            ChartType.POINT: self._point,
+            ChartType.AREA: self._area,
+        }
+        build = builders.get(layer.layer_type)
+        if build is None:
+            raise NotImplementedError(
+                f"Chart type '{layer.layer_type.value}' not yet implemented"
+            )
+        return build(df, layer)
 
-        chart = alt.Chart(data).mark_bar().encode(**encoding)
-        return self._apply_common_options(chart, config)
+    def _render_placement(self, placement) -> Any:
+        datum_key = "y" if placement.kind == ChartPlaceKind.HLINE else "x"
+        encoding = {datum_key: alt.datum(placement.value)}
+        return alt.Chart().mark_rule().encode(**encoding)
 
-    def _barh_chart(self, data: Any, config: ChartConfig) -> Any:
-        x = config.x_fields[0] if config.x_fields else None
-        y = config.y_fields[0] if config.y_fields else None
+    def _encode(self, layer: ProcessedChartLayer) -> dict[str, Any]:
+        encoding: dict[str, Any] = {}
+        if layer.x_fields:
+            field = layer.x_fields[0]
+            encoding["x"] = alt.X(field, title=prettify_label(field))
+        if layer.y_fields:
+            field = layer.y_fields[0]
+            encoding["y"] = alt.Y(field, title=prettify_label(field))
+        if layer.color_field:
+            encoding["color"] = alt.Color(
+                layer.color_field, title=prettify_label(layer.color_field)
+            )
+        if layer.size_field:
+            encoding["size"] = alt.Size(
+                layer.size_field, title=prettify_label(layer.size_field)
+            )
+        return encoding
 
-        encoding = {}
-        if x:
-            encoding["y"] = x
-        if y:
-            encoding["x"] = y
-        if config.color_field:
-            encoding["color"] = config.color_field
+    def _bar(self, data: Any, layer: ProcessedChartLayer) -> Any:
+        return alt.Chart(data).mark_bar().encode(**self._encode(layer))
 
-        chart = alt.Chart(data).mark_bar().encode(**encoding)
-        return self._apply_common_options(chart, config)
+    def _barh(self, data: Any, layer: ProcessedChartLayer) -> Any:
+        encoding: dict[str, Any] = {}
+        if layer.y_fields:
+            field = layer.y_fields[0]
+            encoding["x"] = alt.X(field, title=prettify_label(field))
+        if layer.x_fields:
+            field = layer.x_fields[0]
+            encoding["y"] = alt.Y(field, title=prettify_label(field))
+        if layer.color_field:
+            encoding["color"] = alt.Color(
+                layer.color_field, title=prettify_label(layer.color_field)
+            )
+        if layer.size_field:
+            encoding["size"] = alt.Size(
+                layer.size_field, title=prettify_label(layer.size_field)
+            )
+        return alt.Chart(data).mark_bar().encode(**encoding)
 
-    def _line_chart(self, data: Any, config: ChartConfig) -> Any:
-        x = config.x_fields[0] if config.x_fields else None
-        y = config.y_fields[0] if config.y_fields else None
+    def _line(self, data: Any, layer: ProcessedChartLayer) -> Any:
+        return alt.Chart(data).mark_line().encode(**self._encode(layer))
 
-        encoding = {}
-        if x:
-            encoding["x"] = x
-        if y:
-            encoding["y"] = y
-        if config.color_field:
-            encoding["color"] = config.color_field
+    def _point(self, data: Any, layer: ProcessedChartLayer) -> Any:
+        return alt.Chart(data).mark_point().encode(**self._encode(layer))
 
-        chart = alt.Chart(data).mark_line().encode(**encoding)
-        return self._apply_common_options(chart, config)
-
-    def _point_chart(self, data: Any, config: ChartConfig) -> Any:
-        x = config.x_fields[0] if config.x_fields else None
-        y = config.y_fields[0] if config.y_fields else None
-
-        encoding = {}
-        if x:
-            encoding["x"] = x
-        if y:
-            encoding["y"] = y
-        if config.color_field:
-            encoding["color"] = config.color_field
-        if config.size_field:
-            encoding["size"] = config.size_field
-
-        chart = alt.Chart(data).mark_point().encode(**encoding)
-        return self._apply_common_options(chart, config)
-
-    def _area_chart(self, data: Any, config: ChartConfig) -> Any:
-        x = config.x_fields[0] if config.x_fields else None
-        y = config.y_fields[0] if config.y_fields else None
-
-        encoding = {}
-        if x:
-            encoding["x"] = x
-        if y:
-            encoding["y"] = y
-        if config.color_field:
-            encoding["color"] = config.color_field
-
-        chart = alt.Chart(data).mark_area().encode(**encoding)
-        return self._apply_common_options(chart, config)
+    def _area(self, data: Any, layer: ProcessedChartLayer) -> Any:
+        return alt.Chart(data).mark_area().encode(**self._encode(layer))

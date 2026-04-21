@@ -1,8 +1,11 @@
 from typing import Any
 
-from trilogy.core.enums import ChartType
-from trilogy.core.statements.author import ChartConfig
-from trilogy.rendering.base import BaseRenderer
+from trilogy.core.enums import ChartPlaceKind, ChartType
+from trilogy.core.statements.execute import (
+    ProcessedChartLayer,
+    ProcessedChartStatement,
+)
+from trilogy.rendering.base import BaseRenderer, prettify_label
 
 try:
     import plotext as plt
@@ -21,99 +24,102 @@ class TerminalRenderer(BaseRenderer):
                 "Install with: pip install plotext"
             )
 
-    def render(self, config: ChartConfig, data: list[dict]) -> str:
+    def render(
+        self,
+        statement: ProcessedChartStatement,
+        layer_data: list[list[dict]],
+    ) -> str:
         plt.clear_figure()
         plt.theme("clear")
 
-        chart_map = {
-            ChartType.BAR: self._bar_chart,
-            ChartType.LINE: self._line_chart,
-            ChartType.POINT: self._point_chart,
-            ChartType.AREA: self._area_chart,
-            ChartType.BARH: self._barh_chart,
+        builders = {
+            ChartType.BAR: self._bar,
+            ChartType.BARH: self._barh,
+            ChartType.LINE: self._line,
+            ChartType.POINT: self._point,
+            ChartType.AREA: self._area,
         }
 
-        chart_fn = chart_map.get(config.chart_type)
-        if chart_fn is None:
-            return f"Chart type '{config.chart_type.value}' not supported in terminal"
+        for layer, data in zip(statement.layers, layer_data):
+            build = builders.get(layer.layer_type)
+            if build is None:
+                return (
+                    f"Chart type '{layer.layer_type.value}' not supported in terminal"
+                )
+            build(data, layer)
 
-        chart_fn(data, config)
+        for placement in statement.placements:
+            self._placement(placement)
+
         return plt.build()
 
-    def to_spec(self, config: ChartConfig, data: list[dict]) -> dict:
-        return {"type": "terminal", "output": self.render(config, data)}
+    def to_spec(
+        self,
+        statement: ProcessedChartStatement,
+        layer_data: list[list[dict]],
+    ) -> dict:
+        return {"type": "terminal", "output": self.render(statement, layer_data)}
 
-    def _bar_chart(self, data: list[dict], config: ChartConfig) -> Any:
-        x_field = config.x_fields[0] if config.x_fields else None
-        y_field = config.y_fields[0] if config.y_fields else None
+    def _placement(self, placement: Any) -> None:
+        value = placement.value
+        if placement.kind == ChartPlaceKind.HLINE:
+            plt.horizontal_line(value)
+        elif placement.kind == ChartPlaceKind.VLINE:
+            plt.vertical_line(value)
 
-        if not x_field or not y_field:
+    def _bar(self, data: list[dict], layer: ProcessedChartLayer) -> None:
+        x = layer.x_fields[0] if layer.x_fields else None
+        y = layer.y_fields[0] if layer.y_fields else None
+        if not x or not y:
             return
+        plt.bar([row.get(x) for row in data], [row.get(y) for row in data])
+        plt.xlabel(prettify_label(x))
+        plt.ylabel(prettify_label(y))
 
-        x_vals = [row.get(x_field) for row in data]
-        y_vals = [row.get(y_field) for row in data]
-
-        plt.bar(x_vals, y_vals)
-        plt.xlabel(x_field)
-        plt.ylabel(y_field)
-
-    def _barh_chart(self, data: list[dict], config: ChartConfig) -> Any:
-        x_field = config.x_fields[0] if config.x_fields else None
-        y_field = config.y_fields[0] if config.y_fields else None
-
-        if not x_field or not y_field:
+    def _barh(self, data: list[dict], layer: ProcessedChartLayer) -> None:
+        x = layer.x_fields[0] if layer.x_fields else None
+        y = layer.y_fields[0] if layer.y_fields else None
+        if not x or not y:
             return
+        rev = list(reversed(data))
+        plt.bar(
+            [row.get(y) for row in rev],
+            [row.get(x) for row in rev],
+            orientation="horizontal",
+        )
+        plt.xlabel(prettify_label(x))
+        plt.ylabel(prettify_label(y))
 
-        x_vals = [row.get(x_field) for row in reversed(data)]
-        y_vals = [row.get(y_field) for row in reversed(data)]
-
-        # plotext only accepts strings as the first positional arg,
-        # so for barh (where y=categories, x=values) we swap the args
-        plt.bar(y_vals, x_vals, orientation="horizontal")
-        plt.xlabel(x_field)
-        plt.ylabel(y_field)
-
-    def _line_chart(self, data: list[dict], config: ChartConfig) -> Any:
-        x_field = config.x_fields[0] if config.x_fields else None
-        y_fields = config.y_fields if config.y_fields else []
-
-        if not x_field or not y_fields:
+    def _line(self, data: list[dict], layer: ProcessedChartLayer) -> None:
+        x = layer.x_fields[0] if layer.x_fields else None
+        ys = layer.y_fields or []
+        if not x or not ys:
             return
+        xs = [row.get(x) for row in data]
+        for y in ys:
+            plt.plot(xs, [row.get(y) for row in data], label=prettify_label(y))
+        plt.xlabel(prettify_label(x))
+        if len(ys) == 1:
+            plt.ylabel(prettify_label(ys[0]))
 
-        x_vals = [row.get(x_field) for row in data]
-
-        for y_field in y_fields:
-            y_vals = [row.get(y_field) for row in data]
-            plt.plot(x_vals, y_vals, label=y_field)
-
-        plt.xlabel(x_field)
-        if len(y_fields) == 1:
-            plt.ylabel(y_fields[0])
-
-    def _point_chart(self, data: list[dict], config: ChartConfig) -> Any:
-        x_field = config.x_fields[0] if config.x_fields else None
-        y_field = config.y_fields[0] if config.y_fields else None
-
-        if not x_field or not y_field:
+    def _point(self, data: list[dict], layer: ProcessedChartLayer) -> None:
+        x = layer.x_fields[0] if layer.x_fields else None
+        y = layer.y_fields[0] if layer.y_fields else None
+        if not x or not y:
             return
+        plt.scatter([row.get(x) for row in data], [row.get(y) for row in data])
+        plt.xlabel(prettify_label(x))
+        plt.ylabel(prettify_label(y))
 
-        x_vals = [row.get(x_field) for row in data]
-        y_vals = [row.get(y_field) for row in data]
-
-        plt.scatter(x_vals, y_vals)
-        plt.xlabel(x_field)
-        plt.ylabel(y_field)
-
-    def _area_chart(self, data: list[dict], config: ChartConfig) -> Any:
-        x_field = config.x_fields[0] if config.x_fields else None
-        y_field = config.y_fields[0] if config.y_fields else None
-
-        if not x_field or not y_field:
+    def _area(self, data: list[dict], layer: ProcessedChartLayer) -> None:
+        x = layer.x_fields[0] if layer.x_fields else None
+        y = layer.y_fields[0] if layer.y_fields else None
+        if not x or not y:
             return
-
-        x_vals = [row.get(x_field) for row in data]
-        y_vals = [row.get(y_field) for row in data]
-
-        plt.plot(x_vals, y_vals, fillx=True)
-        plt.xlabel(x_field)
-        plt.ylabel(y_field)
+        plt.plot(
+            [row.get(x) for row in data],
+            [row.get(y) for row in data],
+            fillx=True,
+        )
+        plt.xlabel(prettify_label(x))
+        plt.ylabel(prettify_label(y))

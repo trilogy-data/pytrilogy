@@ -3,7 +3,7 @@ from dataclasses import replace
 from math import ceil
 from typing import Dict, List, Optional, Set, Tuple, Union
 
-from trilogy.constants import CONFIG, logger
+from trilogy.constants import CONFIG, DEFAULT_NAMESPACE, logger
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import (
     BooleanOperator,
@@ -15,6 +15,7 @@ from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.author import (
+    ConceptRef,
     Conditional,
     Function,
     MultiSelectLineage,
@@ -49,7 +50,7 @@ from trilogy.core.optimization import optimize_ctes
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
 from trilogy.core.processing.nodes import History, SelectNode, StrategyNode
 from trilogy.core.statements.author import (
-    ChartConfig,
+    ChartLayer,
     ChartStatement,
     ConceptDeclarationStatement,
     CopyStatement,
@@ -59,6 +60,8 @@ from trilogy.core.statements.author import (
 )
 from trilogy.core.statements.execute import (
     MaterializedDataset,
+    ProcessedChartCopyStatement,
+    ProcessedChartLayer,
     ProcessedChartStatement,
     ProcessedCopyStatement,
     ProcessedQuery,
@@ -606,7 +609,17 @@ def process_copy(
     environment: Environment,
     statement: CopyStatement,
     hooks: List[BaseHook] | None = None,
-) -> ProcessedCopyStatement:
+) -> ProcessedCopyStatement | ProcessedChartCopyStatement:
+    if isinstance(statement.select, ChartStatement):
+        chart = process_chart(
+            environment=environment, statement=statement.select, hooks=hooks
+        )
+        return ProcessedChartCopyStatement(
+            target=statement.target,
+            target_type=statement.target_type,
+            options=dict(statement.options),
+            chart=chart,
+        )
     select = process_query(
         environment=environment, statement=statement.select, hooks=hooks
     )
@@ -617,6 +630,61 @@ def process_copy(
         **arg_dict,
         target=statement.target,
         target_type=statement.target_type,
+        options=dict(statement.options),
+    )
+
+
+def _binding_safe_address(binding, environment: Environment) -> str:
+    from trilogy.core.models.author import compute_safe_address
+
+    if binding.alias is not None:
+        namespace = environment.namespace or DEFAULT_NAMESPACE
+        return compute_safe_address(namespace, binding.alias)
+    if isinstance(binding.expr, ConceptRef):
+        return binding.expr.safe_address
+    raise ValueError(
+        f"Chart binding for role '{binding.role}' has a computed expression"
+        " without an alias"
+    )
+
+
+def _process_chart_layer(
+    environment: Environment,
+    layer: ChartLayer,
+    hooks: List[BaseHook] | None,
+) -> ProcessedChartLayer:
+    if layer.select is None:
+        raise ValueError("Chart layer is missing a resolved select statement")
+    select = process_query(environment=environment, statement=layer.select, hooks=hooks)
+    output_fields = {c.safe_address for c in layer.select.output_components}
+
+    role_map: Dict[str, str] = {}
+    for binding in layer.bindings:
+        safe = _binding_safe_address(binding, environment)
+        if safe not in output_fields:
+            raise ValueError(
+                f"Chart role '{binding.role}' resolves to '{safe}' which is"
+                f" not in select output: {output_fields}"
+            )
+        role_map[binding.role] = safe
+
+    def _single(role: str) -> str | None:
+        return role_map.get(role)
+
+    x_field = role_map.get("x_axis")
+    y_field = role_map.get("y_axis")
+    return ProcessedChartLayer(
+        layer_type=layer.layer_type,
+        query=select,
+        x_fields=[x_field] if x_field else [],
+        y_fields=[y_field] if y_field else [],
+        color_field=_single("color"),
+        size_field=_single("size"),
+        group_field=_single("group"),
+        x_trellis_field=_single("x_trellis"),
+        y_trellis_field=_single("y_trellis"),
+        geo_field=_single("geo"),
+        annotation_field=_single("annotation"),
     )
 
 
@@ -625,37 +693,17 @@ def process_chart(
     statement: ChartStatement,
     hooks: List[BaseHook] | None = None,
 ) -> ProcessedChartStatement:
-    select = process_query(
-        environment=environment, statement=statement.select, hooks=hooks
+    layers = [
+        _process_chart_layer(environment, layer, hooks) for layer in statement.layers
+    ]
+    return ProcessedChartStatement(
+        layers=layers,
+        placements=list(statement.placements),
+        hide_legend=statement.hide_legend,
+        show_title=statement.show_title,
+        scale_x=statement.scale_x,
+        scale_y=statement.scale_y,
     )
-
-    output_fields = {c.safe_address for c in statement.select.output_components}
-    config = statement.config
-
-    def _resolve(f: str) -> str:
-        safe = f.replace(".", "_")
-        if safe not in output_fields:
-            raise ValueError(f"Chart field '{f}' not in select output: {output_fields}")
-        return safe
-
-    resolved = ChartConfig(
-        chart_type=config.chart_type,
-        x_fields=[_resolve(f) for f in config.x_fields],
-        y_fields=[_resolve(f) for f in config.y_fields],
-        color_field=_resolve(config.color_field) if config.color_field else None,
-        size_field=_resolve(config.size_field) if config.size_field else None,
-        group_field=_resolve(config.group_field) if config.group_field else None,
-        trellis_field=config.trellis_field,
-        trellis_row_field=config.trellis_row_field,
-        geo_field=config.geo_field,
-        annotation_field=config.annotation_field,
-        hide_legend=config.hide_legend,
-        show_title=config.show_title,
-        scale_x=config.scale_x,
-        scale_y=config.scale_y,
-    )
-
-    return ProcessedChartStatement(config=resolved, query=select)
 
 
 def process_query(

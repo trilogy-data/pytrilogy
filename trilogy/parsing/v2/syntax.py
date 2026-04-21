@@ -219,6 +219,8 @@ class SyntaxNodeKind(str, Enum):
     FULL_PERSIST = "full_persist"
     PERSIST_PARTITION_CLAUSE = "persist_partition_clause"
     COPY_STATEMENT = "copy_statement"
+    COPY_OPTIONS = "copy_options"
+    COPY_OPTION = "copy_option"
     RAWSQL_STATEMENT = "rawsql_statement"
     VALIDATE_STATEMENT = "validate_statement"
     MOCK_STATEMENT = "mock_statement"
@@ -228,8 +230,11 @@ class SyntaxNodeKind(str, Enum):
     TYPE_DECLARATION = "type_declaration"
     TYPE_DROP_CLAUSE = "type_drop_clause"
     CHART_STATEMENT = "chart_statement"
-    CHART_SETTING = "chart_setting"
-    CHART_FIELD_SETTING = "chart_field_setting"
+    CHART_COMPONENT = "chart_component"
+    CHART_LAYER = "chart_layer"
+    CHART_LAYER_BODY = "chart_layer_body"
+    CHART_LAYER_BINDING = "chart_layer_binding"
+    CHART_PLACE = "chart_place"
     CHART_BOOL_SETTING = "chart_bool_setting"
     CHART_SCALE_SETTING = "chart_scale_setting"
     PROPERTIES_DECLARATION = "properties_declaration"
@@ -301,6 +306,7 @@ class SyntaxTokenKind(str, Enum):
     F_FILE_PATH = "f_file_path"
     F_QUOTED_ADDRESS = "f_quoted_address"
     CHART_TYPE = "chart_type"
+    CHART_PLACE_TYPE = "chart_place_type"
     VALIDATE_SCOPE = "validate_scope"
     COPY_TYPE = "copy_type"
     DATASOURCE_ROOT = "datasource_root"
@@ -532,6 +538,8 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "full_persist": SyntaxNodeKind.FULL_PERSIST,
     "persist_partition_clause": SyntaxNodeKind.PERSIST_PARTITION_CLAUSE,
     "copy_statement": SyntaxNodeKind.COPY_STATEMENT,
+    "copy_options": SyntaxNodeKind.COPY_OPTIONS,
+    "copy_option": SyntaxNodeKind.COPY_OPTION,
     "rawsql_statement": SyntaxNodeKind.RAWSQL_STATEMENT,
     "validate_statement": SyntaxNodeKind.VALIDATE_STATEMENT,
     "mock_statement": SyntaxNodeKind.MOCK_STATEMENT,
@@ -541,8 +549,11 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "type_declaration": SyntaxNodeKind.TYPE_DECLARATION,
     "type_drop_clause": SyntaxNodeKind.TYPE_DROP_CLAUSE,
     "chart_statement": SyntaxNodeKind.CHART_STATEMENT,
-    "chart_setting": SyntaxNodeKind.CHART_SETTING,
-    "chart_field_setting": SyntaxNodeKind.CHART_FIELD_SETTING,
+    "chart_component": SyntaxNodeKind.CHART_COMPONENT,
+    "chart_layer": SyntaxNodeKind.CHART_LAYER,
+    "chart_layer_body": SyntaxNodeKind.CHART_LAYER_BODY,
+    "chart_layer_binding": SyntaxNodeKind.CHART_LAYER_BINDING,
+    "chart_place": SyntaxNodeKind.CHART_PLACE,
     "chart_bool_setting": SyntaxNodeKind.CHART_BOOL_SETTING,
     "chart_scale_setting": SyntaxNodeKind.CHART_SCALE_SETTING,
     "properties_declaration": SyntaxNodeKind.PROPERTIES_DECLARATION,
@@ -576,7 +587,7 @@ LARK_TOKEN_KIND: dict[str, SyntaxTokenKind] = {
     "CONCEPTS": SyntaxTokenKind.CONCEPTS,
     "DATASOURCES": SyntaxTokenKind.DATASOURCES,
     "LINE_SEPARATOR": SyntaxTokenKind.LINE_SEPARATOR,
-    "__ANON_17": SyntaxTokenKind.INT_LITERAL_PART,
+    "__ANON_18": SyntaxTokenKind.INT_LITERAL_PART,
     "LOGICAL_AND": SyntaxTokenKind.LOGICAL_AND,
     "LOGICAL_OR": SyntaxTokenKind.LOGICAL_OR,
     "CONDITION_NOT": SyntaxTokenKind.CONDITION_NOT,
@@ -602,6 +613,7 @@ LARK_TOKEN_KIND: dict[str, SyntaxTokenKind] = {
     "F_FILE_PATH": SyntaxTokenKind.F_FILE_PATH,
     "F_QUOTED_ADDRESS": SyntaxTokenKind.F_QUOTED_ADDRESS,
     "CHART_TYPE": SyntaxTokenKind.CHART_TYPE,
+    "CHART_PLACE_TYPE": SyntaxTokenKind.CHART_PLACE_TYPE,
     "VALIDATE_SCOPE": SyntaxTokenKind.VALIDATE_SCOPE,
     "COPY_TYPE": SyntaxTokenKind.COPY_TYPE,
     "DATASOURCE_ROOT": SyntaxTokenKind.DATASOURCE_ROOT,

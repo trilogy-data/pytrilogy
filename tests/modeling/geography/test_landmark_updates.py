@@ -137,8 +137,7 @@ def test_multi_condition_resolution():
 
     DebuggingHook()
 
-    sql = executor.generate_sql(
-        """
+    sql = executor.generate_sql("""
 import tree_enrichment;
 
 where city = 'USNYC' and tree_category='deciduous'
@@ -146,8 +145,7 @@ select
     count(tree_id) as total_trees;
 
 
-"""
-    )
+""")
 
     assert "NVALID_REFERENCE_BUG" not in sql[-1], sql[-1]
 

@@ -142,8 +142,7 @@ class TestIsMissingSourceError:
 
 
 def test_last_update_time_watermarks(duckdb_engine: Executor):
-    duckdb_engine.execute_text(
-        """
+    duckdb_engine.execute_text("""
         key user_id int;
         property user_id.name string;
         property user_id.created_at datetime;
@@ -159,8 +158,7 @@ def test_last_update_time_watermarks(duckdb_engine: Executor):
         UNION ALL
         SELECT 2 as user_id, 'Bob' as name, '2024-01-02 11:00:00' as created_at
         ''';
-        """
-    )
+        """)
 
     datasource = duckdb_engine.environment.datasources["users"]
     watermarks = get_last_update_time_watermarks(datasource, duckdb_engine)
@@ -171,8 +169,7 @@ def test_last_update_time_watermarks(duckdb_engine: Executor):
 
 
 def test_incremental_key_watermarks(duckdb_engine: Executor):
-    duckdb_engine.execute_text(
-        """
+    duckdb_engine.execute_text("""
         key order_id int;
         property order_id.amount float;
         property order_id.order_date datetime;
@@ -191,8 +188,7 @@ def test_incremental_key_watermarks(duckdb_engine: Executor):
         SELECT 3 as order_id, 150.0 as amount, '2024-01-10 12:00:00' as order_date
         '''
         incremental by order_date;
-        """
-    )
+        """)
 
     datasource = duckdb_engine.environment.datasources["orders"]
     watermarks = get_incremental_key_watermarks(datasource, duckdb_engine)
@@ -203,8 +199,7 @@ def test_incremental_key_watermarks(duckdb_engine: Executor):
 
 
 def test_unique_key_hash_watermarks(duckdb_engine: Executor):
-    duckdb_engine.execute_text(
-        """
+    duckdb_engine.execute_text("""
         key product_id int;
         key store_id int;
         property product_id.product_name string;
@@ -226,8 +221,7 @@ def test_unique_key_hash_watermarks(duckdb_engine: Executor):
         UNION ALL
         SELECT 1 as product_id, 2 as store_id, 'Widget' as product_name, 'Store B' as store_name, 8 as stock_count
         ''';
-        """
-    )
+        """)
 
     datasource = duckdb_engine.environment.datasources["inventory"]
     watermarks = get_unique_key_hash_watermarks(datasource, duckdb_engine)
@@ -241,8 +235,7 @@ def test_unique_key_hash_watermarks(duckdb_engine: Executor):
 
 
 def test_base_state_store_incremental_by(duckdb_engine: Executor):
-    duckdb_engine.execute_text(
-        """
+    duckdb_engine.execute_text("""
         key transaction_id int;
         property transaction_id.timestamp datetime;
         property transaction_id.amount float;
@@ -259,8 +252,7 @@ def test_base_state_store_incremental_by(duckdb_engine: Executor):
         SELECT 2 as transaction_id, '2024-01-02 11:00:00' as timestamp, 75.0 as amount
         '''
         incremental by timestamp;
-        """
-    )
+        """)
 
     datasource = duckdb_engine.environment.datasources["transactions"]
     state_store = BaseStateStore()
@@ -277,8 +269,7 @@ def test_base_state_store_incremental_by(duckdb_engine: Executor):
 
 
 def test_base_state_store_key_hash(duckdb_engine: Executor):
-    duckdb_engine.execute_text(
-        """
+    duckdb_engine.execute_text("""
         key customer_id int;
         property customer_id.name string;
         property customer_id.email string;
@@ -294,8 +285,7 @@ def test_base_state_store_key_hash(duckdb_engine: Executor):
         UNION ALL
         SELECT 2 as customer_id, 'Bob' as name, 'bob@example.com' as email
         ''';
-        """
-    )
+        """)
 
     datasource = duckdb_engine.environment.datasources["customers"]
     state_store = BaseStateStore()
@@ -310,8 +300,7 @@ def test_base_state_store_key_hash(duckdb_engine: Executor):
 def test_base_state_store_update_time(duckdb_engine: Executor):
     # Create a physical table so we can test UPDATE_TIME watermarks
     # UPDATE_TIME is only available for physical tables, not queries
-    duckdb_engine.execute_text(
-        """
+    duckdb_engine.execute_text("""
         key event_row int;
         property event_row.event_type string;
         property event_row.event_count int;
@@ -329,8 +318,7 @@ def test_base_state_store_update_time(duckdb_engine: Executor):
         RAW_SQL('''
         INSERT INTO events_table VALUES (1, 'login', 100), (2, 'logout', 95)
         ''');
-        """
-    )
+        """)
 
     datasource = duckdb_engine.environment.datasources["events"]
     state_store = BaseStateStore()
@@ -344,8 +332,7 @@ def test_base_state_store_update_time(duckdb_engine: Executor):
 
 
 def test_empty_incremental_by(duckdb_engine: Executor):
-    duckdb_engine.execute_text(
-        """
+    duckdb_engine.execute_text("""
         key simple_id int;
 
         datasource simple (
@@ -355,8 +342,7 @@ def test_empty_incremental_by(duckdb_engine: Executor):
         query '''
         SELECT 1 as simple_id
         ''';
-        """
-    )
+        """)
 
     datasource = duckdb_engine.environment.datasources["simple"]
     watermarks = get_incremental_key_watermarks(datasource, duckdb_engine)
@@ -365,8 +351,7 @@ def test_empty_incremental_by(duckdb_engine: Executor):
 
 
 def test_no_key_columns(duckdb_engine: Executor):
-    duckdb_engine.execute_text(
-        """
+    duckdb_engine.execute_text("""
         key metric_id int;
         property metric_id.metric_name string;
         property metric_id.metric_value float;
@@ -380,8 +365,7 @@ def test_no_key_columns(duckdb_engine: Executor):
         query '''
         SELECT 1 as metric_id, 'cpu_usage' as metric_name, 75.5 as metric_value
         ''';
-        """
-    )
+        """)
 
     datasource = duckdb_engine.environment.datasources["metrics"]
     watermarks = get_unique_key_hash_watermarks(datasource, duckdb_engine)
@@ -392,8 +376,7 @@ def test_no_key_columns(duckdb_engine: Executor):
 
 
 def test_multiple_incremental_keys(duckdb_engine: Executor):
-    duckdb_engine.execute_text(
-        """
+    duckdb_engine.execute_text("""
         key record_id int;
         property record_id.updated_at datetime;
         property record_id.version int;
@@ -412,8 +395,7 @@ def test_multiple_incremental_keys(duckdb_engine: Executor):
         SELECT 3 as record_id, '2024-01-03 12:00:00' as updated_at, 3 as version
         '''
         incremental by updated_at, version;
-        """
-    )
+        """)
 
     datasource = duckdb_engine.environment.datasources["versioned_records"]
     watermarks = get_incremental_key_watermarks(datasource, duckdb_engine)
@@ -425,8 +407,7 @@ def test_multiple_incremental_keys(duckdb_engine: Executor):
 
 
 def test_watermark_all_assets(duckdb_engine: Executor):
-    duckdb_engine.execute_text(
-        """
+    duckdb_engine.execute_text("""
         key item_id int;
         property item_id.value string;
 
@@ -447,8 +428,7 @@ def test_watermark_all_assets(duckdb_engine: Executor):
         query '''
         SELECT 1 as item_id, 'a' as value
         ''';
-        """
-    )
+        """)
 
     state_store = BaseStateStore()
     watermarks = state_store.watermark_all_assets(
@@ -460,8 +440,7 @@ def test_watermark_all_assets(duckdb_engine: Executor):
 
 
 def test_get_stale_assets_incremental(duckdb_engine: Executor):
-    duckdb_engine.execute_text(
-        """
+    duckdb_engine.execute_text("""
         key event_id int;
         property event_id.event_ts datetime;
 
@@ -493,8 +472,7 @@ def test_get_stale_assets_incremental(duckdb_engine: Executor):
         INSERT INTO target_events_table
         SELECT 1 as event_id, TIMESTAMP '2024-01-10 12:00:00' as event_ts
         ''');
-        """
-    )
+        """)
 
     state_store = BaseStateStore()
     stale = state_store.get_stale_assets(
@@ -510,8 +488,7 @@ def test_get_stale_assets_incremental(duckdb_engine: Executor):
 
 
 def test_get_stale_assets_up_to_date(duckdb_engine: Executor):
-    duckdb_engine.execute_text(
-        """
+    duckdb_engine.execute_text("""
         key sync_id int;
         property sync_id.sync_ts datetime;
 
@@ -539,8 +516,7 @@ def test_get_stale_assets_up_to_date(duckdb_engine: Executor):
         INSERT INTO sync_target_table
         SELECT 1 as sync_id, TIMESTAMP '2024-01-10 12:00:00' as sync_ts
         ''');
-        """
-    )
+        """)
 
     state_store = BaseStateStore()
     stale = state_store.get_stale_assets(
@@ -553,8 +529,7 @@ def test_get_stale_assets_up_to_date(duckdb_engine: Executor):
 
 
 def test_get_stale_assets_empty_target(duckdb_engine: Executor):
-    duckdb_engine.execute_text(
-        """
+    duckdb_engine.execute_text("""
         key log_id int;
         property log_id.log_ts datetime;
 
@@ -577,8 +552,7 @@ def test_get_stale_assets_empty_target(duckdb_engine: Executor):
         incremental by log_ts;
 
         CREATE IF NOT EXISTS DATASOURCE log_target;
-        """
-    )
+        """)
 
     state_store = BaseStateStore()
     stale = state_store.get_stale_assets(
@@ -594,8 +568,7 @@ def test_get_stale_assets_empty_target(duckdb_engine: Executor):
 
 def test_update_datasource_full_refresh(duckdb_engine: Executor):
     """Test update_datasource with no filters (full refresh)."""
-    duckdb_engine.execute_text(
-        """
+    duckdb_engine.execute_text("""
         key item_id int;
         property item_id.item_name string;
 
@@ -618,8 +591,7 @@ def test_update_datasource_full_refresh(duckdb_engine: Executor):
         address target_items_table;
 
         CREATE IF NOT EXISTS DATASOURCE target_items;
-        """
-    )
+        """)
 
     datasource = duckdb_engine.environment.datasources["target_items"]
     duckdb_engine.update_datasource(datasource)
@@ -633,8 +605,7 @@ def test_update_datasource_full_refresh(duckdb_engine: Executor):
 def test_update_datasource_with_incremental_filter():
 
     duckdb_engine = Dialects.DUCK_DB.default_executor()
-    duckdb_engine.execute_text(
-        """
+    duckdb_engine.execute_text("""
         key record_id int;
         property record_id.created_ts datetime;
         property record_id.value string;
@@ -669,8 +640,7 @@ def test_update_datasource_with_incremental_filter():
         INSERT INTO target_records_table
         SELECT 1 as record_id, TIMESTAMP '2024-01-01 10:00:00' as created_ts, 'old' as value
         ''');
-        """
-    )
+        """)
 
     # Create UpdateKeys with filter for records after the existing one
     keys = UpdateKeys(
@@ -695,8 +665,7 @@ def test_update_datasource_with_incremental_filter():
 
 def test_update_datasource_integration_with_stale_assets():
     duckdb_engine = Dialects.DUCK_DB.default_executor()
-    duckdb_engine.execute_text(
-        """
+    duckdb_engine.execute_text("""
         key event_id int;
         property event_id.event_ts datetime;
         property event_id.event_data string;
@@ -731,8 +700,7 @@ def test_update_datasource_integration_with_stale_assets():
         INSERT INTO events_target_table
         SELECT 1 as event_id, TIMESTAMP '2024-01-01 10:00:00' as event_ts, 'data1' as event_data
         ''');
-        """
-    )
+        """)
 
     state_store = BaseStateStore()
     stale = state_store.get_stale_assets(
@@ -757,12 +725,10 @@ def test_update_datasource_integration_with_stale_assets():
 
 def test_update_keys_to_where_clause(duckdb_engine: Executor):
     """Test UpdateKeys.to_where_clause conversion."""
-    duckdb_engine.execute_text(
-        """
+    duckdb_engine.execute_text("""
         key id int;
         property id.ts datetime;
-        """
-    )
+        """)
 
     keys = UpdateKeys(
         keys={
@@ -781,12 +747,10 @@ def test_update_keys_to_where_clause(duckdb_engine: Executor):
 
 def test_update_keys_to_where_clause_empty(duckdb_engine: Executor):
     """Test UpdateKeys.to_where_clause with no values returns None."""
-    duckdb_engine.execute_text(
-        """
+    duckdb_engine.execute_text("""
         key id int;
         property id.ts datetime;
-        """
-    )
+        """)
 
     keys = UpdateKeys(
         keys={
@@ -804,13 +768,11 @@ def test_update_keys_to_where_clause_empty(duckdb_engine: Executor):
 
 def test_update_keys_to_where_clause_multiple(duckdb_engine: Executor):
     """Test UpdateKeys.to_where_clause with multiple keys."""
-    duckdb_engine.execute_text(
-        """
+    duckdb_engine.execute_text("""
         key id int;
         property id.ts datetime;
         property id.version int;
-        """
-    )
+        """)
 
     keys = UpdateKeys(
         keys={
@@ -838,8 +800,7 @@ def test_update_keys_to_where_clause_multiple(duckdb_engine: Executor):
 def test_freshness_watermarks():
     """Test get_freshness_watermarks returns max value of freshness column."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(
-        """
+    executor.execute_text("""
         key user_id int;
         property user_id.name string;
         property user_id.updated_at datetime;
@@ -856,8 +817,7 @@ def test_freshness_watermarks():
         SELECT 2 as user_id, 'Bob' as name, TIMESTAMP '2024-01-02 11:00:00' as updated_at
         '''
         freshness by updated_at;
-        """
-    )
+        """)
 
     datasource = executor.environment.datasources["users"]
     watermarks = get_freshness_watermarks(datasource, executor)
@@ -870,8 +830,7 @@ def test_freshness_watermarks():
 def test_freshness_stale_assets():
     """Test that freshness by correctly identifies stale assets."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(
-        """
+    executor.execute_text("""
         key record_id int;
         property record_id.data string;
         property record_id.updated_at datetime;
@@ -905,8 +864,7 @@ def test_freshness_stale_assets():
         INSERT INTO target_records_table
         SELECT 1 as record_id, 'a' as data, TIMESTAMP '2024-01-10 12:00:00' as updated_at
         ''');
-        """
-    )
+        """)
 
     state_store = BaseStateStore()
     stale = state_store.get_stale_assets(executor.environment, executor)
@@ -921,8 +879,7 @@ def test_freshness_stale_assets():
 def test_freshness_up_to_date():
     """Test that freshness by does not flag up-to-date assets."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(
-        """
+    executor.execute_text("""
         key item_id int;
         property item_id.modified_at datetime;
 
@@ -949,8 +906,7 @@ def test_freshness_up_to_date():
         INSERT INTO target_items_table
         SELECT 1 as item_id, TIMESTAMP '2024-01-10 12:00:00' as modified_at
         ''');
-        """
-    )
+        """)
 
     state_store = BaseStateStore()
     stale = state_store.get_stale_assets(executor.environment, executor)
@@ -961,8 +917,7 @@ def test_freshness_up_to_date():
 def test_freshness_empty_target():
     """Test that freshness by flags empty target as stale."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(
-        """
+    executor.execute_text("""
         key log_id int;
         property log_id.log_time datetime;
 
@@ -984,8 +939,7 @@ def test_freshness_empty_target():
         freshness by log_time;
 
         CREATE IF NOT EXISTS DATASOURCE target_logs;
-        """
-    )
+        """)
 
     state_store = BaseStateStore()
     stale = state_store.get_stale_assets(executor.environment, executor)
@@ -997,8 +951,7 @@ def test_freshness_empty_target():
 def test_freshness_watermarks_no_freshness_by():
     """Test get_freshness_watermarks returns empty when datasource has no freshness_by."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(
-        """
+    executor.execute_text("""
         key user_id int;
         property user_id.name string;
 
@@ -1010,8 +963,7 @@ def test_freshness_watermarks_no_freshness_by():
         query '''
         SELECT 1 as user_id, 'Alice' as name
         ''';
-        """
-    )
+        """)
 
     datasource = executor.environment.datasources["users"]
     # Datasource has no freshness_by
@@ -1024,8 +976,7 @@ def test_freshness_watermarks_no_freshness_by():
 def test_freshness_watermarks_missing_table():
     """Test get_freshness_watermarks handles missing table gracefully."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(
-        """
+    executor.execute_text("""
         key record_id int;
         property record_id.updated_at datetime;
 
@@ -1036,8 +987,7 @@ def test_freshness_watermarks_missing_table():
         grain (record_id)
         address nonexistent_table
         freshness by updated_at;
-        """
-    )
+        """)
 
     datasource = executor.environment.datasources["missing_records"]
     watermarks = get_freshness_watermarks(datasource, executor)
@@ -1051,8 +1001,7 @@ def test_freshness_watermarks_missing_table():
 def test_incremental_watermarks_missing_table():
     """Test get_incremental_key_watermarks handles missing table gracefully."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(
-        """
+    executor.execute_text("""
         key event_id int;
         property event_id.event_ts datetime;
 
@@ -1063,8 +1012,7 @@ def test_incremental_watermarks_missing_table():
         grain (event_id)
         address nonexistent_events_table
         incremental by event_ts;
-        """
-    )
+        """)
 
     datasource = executor.environment.datasources["missing_events"]
     watermarks = get_incremental_key_watermarks(datasource, executor)
@@ -1078,8 +1026,7 @@ def test_incremental_watermarks_missing_table():
 def test_unique_key_hash_watermarks_missing_table():
     """Test get_unique_key_hash_watermarks handles missing table gracefully."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(
-        """
+    executor.execute_text("""
         key item_id int;
         property item_id.name string;
 
@@ -1089,8 +1036,7 @@ def test_unique_key_hash_watermarks_missing_table():
         )
         grain (item_id)
         address nonexistent_items_table;
-        """
-    )
+        """)
 
     datasource = executor.environment.datasources["missing_items"]
     watermarks = get_unique_key_hash_watermarks(datasource, executor)
@@ -1104,8 +1050,7 @@ def test_unique_key_hash_watermarks_missing_table():
 def test_get_concept_max_watermarks():
     """get_concept_max_watermarks fetches MAX for given concept refs from a datasource."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(
-        """
+    executor.execute_text("""
         key gcm_id int;
         property gcm_id.gcm_ts datetime;
 
@@ -1119,8 +1064,7 @@ def test_get_concept_max_watermarks():
         UNION ALL
         SELECT 2 as gcm_id, TIMESTAMP '2024-01-20 12:00:00' as gcm_ts
         ''';
-        """
-    )
+        """)
 
     datasource = executor.environment.datasources["gcm_source"]
     watermarks = get_concept_max_watermarks(
@@ -1135,8 +1079,7 @@ def test_get_concept_max_watermarks():
 def test_root_auto_watermark_stale():
     """Root without freshness_by/incremental_by is auto-watermarked for consumer concepts."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(
-        """
+    executor.execute_text("""
         key raw_id int;
         property raw_id.raw_ts datetime;
         property raw_id.raw_data string;
@@ -1168,8 +1111,7 @@ def test_root_auto_watermark_stale():
         INSERT INTO raw_target_table
         SELECT 1 as raw_id, TIMESTAMP '2024-01-10 12:00:00' as raw_ts, 'a' as raw_data
         ''');
-        """
-    )
+        """)
 
     state_store = BaseStateStore()
     stale = state_store.get_stale_assets(executor.environment, executor)
@@ -1183,8 +1125,7 @@ def test_root_auto_watermark_stale():
 def test_root_auto_watermark_up_to_date():
     """Root without freshness_by/incremental_by is auto-watermarked; up-to-date target is not flagged."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(
-        """
+    executor.execute_text("""
         key rau_id int;
         property rau_id.rau_ts datetime;
 
@@ -1211,8 +1152,7 @@ def test_root_auto_watermark_up_to_date():
         INSERT INTO rau_target_table
         SELECT 1 as rau_id, TIMESTAMP '2024-01-10 12:00:00' as rau_ts
         ''');
-        """
-    )
+        """)
 
     state_store = BaseStateStore()
     stale = state_store.get_stale_assets(executor.environment, executor)
@@ -1256,8 +1196,7 @@ def test_run_freshness_probe_nonzero_exit_message(tmp_path):
 
 def test_get_stale_assets_probe_stale():
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(
-        """
+    executor.execute_text("""
         key pb_id int;
 
         datasource pb_source (pb_id: pb_id)
@@ -1265,8 +1204,7 @@ def test_get_stale_assets_probe_stale():
         address pb_source_table;
 
         CREATE IF NOT EXISTS DATASOURCE pb_source;
-        """
-    )
+        """)
 
     ds = executor.environment.datasources["pb_source"]
     executor.environment.datasources["pb_source"] = ds.model_copy(
@@ -1287,8 +1225,7 @@ def test_get_stale_assets_probe_stale():
 
 def test_get_stale_assets_probe_up_to_date():
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(
-        """
+    executor.execute_text("""
         key pb2_id int;
 
         datasource pb2_source (pb2_id: pb2_id)
@@ -1296,8 +1233,7 @@ def test_get_stale_assets_probe_up_to_date():
         address pb2_source_table;
 
         CREATE IF NOT EXISTS DATASOURCE pb2_source;
-        """
-    )
+        """)
 
     ds = executor.environment.datasources["pb2_source"]
     executor.environment.datasources["pb2_source"] = ds.model_copy(
@@ -1315,15 +1251,13 @@ def test_get_stale_assets_probe_up_to_date():
 def test_get_stale_assets_probe_skipped_for_root():
     """Probe is not run for root datasources."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(
-        """
+    executor.execute_text("""
         key pb3_id int;
 
         root datasource pb3_source (pb3_id: pb3_id)
         grain (pb3_id)
         query '''SELECT 1 as pb3_id''';
-        """
-    )
+        """)
 
     ds = executor.environment.datasources["pb3_source"]
     executor.environment.datasources["pb3_source"] = ds.model_copy(
@@ -1449,14 +1383,12 @@ def test_derived_freshness_stale():
     """Derived freshness concept: target behind roots -> stale."""
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(_DERIVED_TS_SETUP)
-    executor.execute_text(
-        """
+    executor.execute_text("""
         RAW_SQL('''
         INSERT INTO drv_target_table
         VALUES (1, TIMESTAMP '2024-01-10 00:00:00')
         ''');
-        """
-    )
+        """)
 
     state_store = BaseStateStore()
     stale = state_store.get_stale_assets(executor.environment, executor)
@@ -1471,14 +1403,12 @@ def test_derived_freshness_up_to_date():
     """Derived freshness concept: target matches roots -> not stale."""
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(_DERIVED_TS_SETUP)
-    executor.execute_text(
-        """
+    executor.execute_text("""
         RAW_SQL('''
         INSERT INTO drv_target_table
         VALUES (1, TIMESTAMP '2024-01-20 00:00:00')
         ''');
-        """
-    )
+        """)
 
     state_store = BaseStateStore()
     stale = state_store.get_stale_assets(executor.environment, executor)
@@ -1538,8 +1468,7 @@ def test_get_stale_assets_missing_parquet(tmp_path):
     executor = Dialects.DUCK_DB.default_executor()
     parquet_path = str(tmp_path / "output.parquet").replace("\\", "/")
 
-    executor.execute_text(
-        f"""
+    executor.execute_text(f"""
         key row_id int;
 
         root datasource src (
@@ -1553,8 +1482,7 @@ def test_get_stale_assets_missing_parquet(tmp_path):
         )
         grain (row_id)
         file `{parquet_path}`;
-        """
-    )
+        """)
 
     state_store = BaseStateStore()
     stale = state_store.get_stale_assets(
@@ -1599,8 +1527,7 @@ def test_freshness_watermarks_missing_column_parquet(tmp_path):
         f"COPY (SELECT 1 as id, 'hello' as value) TO '{parquet_path}' (FORMAT PARQUET)"
     )
 
-    executor.execute_text(
-        f"""
+    executor.execute_text(f"""
         key rec_id int;
         property rec_id.updated_at datetime;
 
@@ -1611,8 +1538,7 @@ def test_freshness_watermarks_missing_column_parquet(tmp_path):
         grain (rec_id)
         file `{parquet_path}`
         freshness by updated_at;
-        """
-    )
+        """)
 
     datasource = executor.environment.datasources["parquet_src"]
     watermarks = get_freshness_watermarks(datasource, executor)
@@ -1635,8 +1561,7 @@ def test_get_stale_assets_parquet_missing_column(tmp_path):
         f"COPY (SELECT 1 as event_id, TIMESTAMP '2024-06-01' as wrong_col) TO '{parquet_path}' (FORMAT PARQUET)"
     )
 
-    executor.execute_text(
-        f"""
+    executor.execute_text(f"""
         key event_id int;
         property event_id.updated_at datetime;
 
@@ -1654,8 +1579,7 @@ def test_get_stale_assets_parquet_missing_column(tmp_path):
         grain (event_id)
         file `{parquet_path}`
         freshness by updated_at;
-        """
-    )
+        """)
 
     state_store = BaseStateStore()
     stale = state_store.get_stale_assets(executor.environment, executor)

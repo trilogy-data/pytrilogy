@@ -54,8 +54,7 @@ FUNCTION_GRAIN_MATCH_MAP = {
 }
 
 
-SNOWFLAKE_SQL_TEMPLATE = Template(
-    """{%- if output %}
+SNOWFLAKE_SQL_TEMPLATE = Template("""{%- if output %}
 {{output}}
 {% endif %}{%- if ctes %}
 WITH {% if recursive%}RECURSIVE{% endif %}{% for cte in ctes %}
@@ -83,8 +82,7 @@ ORDER BY {% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if limit is not none %}
 LIMIT {{ limit }}{% endif %}{% endif %}
-"""
-)
+""")
 MAX_IDENTIFIER_LENGTH = 50
 
 

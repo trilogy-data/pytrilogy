@@ -58,7 +58,7 @@ cd faa-demo
 trilogy run --import flight "select carrier.code, count(id) as flight_count order by flight_count desc;"
 
 # Plot it
-trilogy run --import flight "chart barh set y_axis:carrier.name set x_axis:flight_count from select carrier.name, count(id) as flight_count order by flight_count desc limit 10;"
+trilogy run --import flight "chart layer barh ( y_axis <- carrier.name, x_axis <- flight_count ) from select carrier.name, count(id) as flight_count order by flight_count desc limit 10;"
 
 # 3. Add a derived datasource by grabbing the hosted snippet
 trilogy file write reporting.preql --from-url https://raw.githubusercontent.com/trilogy-data/trilogy-public-models/refs/heads/main/examples/duckdb/faa/example.preql

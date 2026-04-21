@@ -36,14 +36,12 @@ def test_sqlite_default_engine_file_support(tmp_path: Path):
 
 def test_date_diff_rendering():
     environment = Environment()
-    _, queries = environment.parse(
-        """
+    _, queries = environment.parse("""
     const today <- current_date();
 
     select today
     where date_add(current_date(), day, -30) < today;
-    """
-    )
+    """)
     executor = Dialects.SQLITE.default_executor(environment=environment)
     sql = executor.generate_sql(queries[-1])[0]
 
@@ -53,8 +51,7 @@ def test_date_diff_rendering():
 
 def test_string_functions():
     environment = Environment()
-    _, queries = environment.parse(
-        """
+    _, queries = environment.parse("""
     const greeting <- '  Hello, World!  ';
     select
         greeting,
@@ -71,8 +68,7 @@ def test_string_functions():
         greeting ilike '%WORLD%' -> contains_world_case_insensitive,
         contains(greeting, 'world') -> contains_function
     ;
-        """
-    )
+        """)
 
     executor = Dialects.SQLITE.default_executor(environment=environment)
     row = executor.execute_query(queries[-1]).fetchall()[0]
@@ -94,8 +90,7 @@ def test_string_functions():
 
 def test_math_functions():
     environment = Environment()
-    _, queries = environment.parse(
-        """
+    _, queries = environment.parse("""
     const revenue <- 100.50;
     const order_id <- 1;
 
@@ -115,8 +110,7 @@ def test_math_functions():
         order_add,
         rounded
     ;
-        """
-    )
+        """)
 
     executor = Dialects.SQLITE.default_executor(environment=environment)
     row = executor.execute_query(queries[-1]).fetchall()[0]
@@ -132,8 +126,7 @@ def test_math_functions():
 
 def test_date_functions():
     environment = Environment()
-    _, queries = environment.parse(
-        """
+    _, queries = environment.parse("""
     const order_id <- 1;
     const order_timestamp <- current_datetime();
     select
@@ -158,8 +151,7 @@ def test_date_functions():
         parse_time(format_time(order_timestamp, '%Y-%m-%d %H:%M:%S'), '%Y-%m-%d %H:%M:%S') -> order_timestamp_parse,
         date_diff(thirty_days_ago, order_timestamp, day) -> date_diff_days
     ;
-        """
-    )
+        """)
 
     executor = Dialects.SQLITE.default_executor(environment=environment)
     row = executor.execute_query(queries[-1]).fetchall()[0]
@@ -177,12 +169,10 @@ def test_date_functions():
 
 def test_date_part_quarter():
     environment = Environment()
-    _, queries = environment.parse(
-        """
+    _, queries = environment.parse("""
     const ts <- current_datetime();
     select date_part(ts, quarter) -> q;
-    """
-    )
+    """)
     executor = Dialects.SQLITE.default_executor(environment=environment)
     row = executor.execute_query(queries[-1]).fetchall()[0]
     assert 1 <= row.q <= 4
@@ -195,8 +185,7 @@ def test_date_part_unsupported():
 
 def test_date_truncate_parts():
     environment = Environment()
-    _, queries = environment.parse(
-        """
+    _, queries = environment.parse("""
     const ts <- current_datetime();
     select
         date_trunc(ts, day) -> trunc_day,
@@ -207,8 +196,7 @@ def test_date_truncate_parts():
         date_trunc(ts, week) -> trunc_week,
         date_trunc(ts, quarter) -> trunc_quarter
     ;
-    """
-    )
+    """)
     executor = Dialects.SQLITE.default_executor(environment=environment)
     row = executor.execute_query(queries[-1]).fetchall()[0]
     assert row.trunc_day is not None
@@ -285,8 +273,7 @@ def test_get_table_primary_keys_none():
 
 def test_aggregate_functions():
     executor = Dialects.SQLITE.default_executor()
-    results = executor.execute_text(
-        """
+    results = executor.execute_text("""
 key order_id int;
 property order_id.revenue float;
 property order_id.quantity int;
@@ -332,8 +319,7 @@ select
     any_premium,
     all_premium
 ;
-"""
-    )
+""")
 
     row = list(results[-1].fetchall())[0]
     assert row.total_revenue == 877.30

@@ -84,8 +84,8 @@ class ChartResult(ResultProtocol):
     """Result type for chart statements that preserves data for re-rendering."""
 
     chart: Any
-    data: list[dict]
-    config: Any  # ChartConfig
+    data: list[list[dict]]
+    statement: Any  # ProcessedChartStatement
 
     def __iter__(self):
         yield MockResultRow({"chart": self.chart})

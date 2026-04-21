@@ -193,22 +193,27 @@ CREATE_IF_NOT_EXISTS   = @{ ^"if" ~ WHITESPACE+ ~ ^"not" ~ WHITESPACE+ ~ ^"exist
 CREATE_OR_REPLACE      = @{ ^"or" ~ WHITESPACE+ ~ ^"replace" }
 create_statement       = { ^"create" ~ create_modifier_clause? ~ VALIDATE_SCOPE ~ IDENTIFIER }
 
-COPY_TYPE       = @{ ^"csv" | ^"json" | ^"parquet" }
-copy_statement  = { ^"copy" ~ ^"into" ~ COPY_TYPE ~ (FILE_PATH | string_lit) ~ ^"from" ~ select_statement }
+COPY_TYPE       = @{ ^"csv" | ^"json" | ^"parquet" | ^"png" | ^"svg" | ^"html" | ^"pdf" }
+copy_option     = { IDENTIFIER ~ "=" ~ literal }
+copy_options    = { "(" ~ copy_option ~ ("," ~ copy_option)* ~ ","? ~ ")" }
+copy_statement  = { ^"copy" ~ ^"into" ~ COPY_TYPE ~ (FILE_PATH | string_lit) ~ copy_options? ~ ^"from" ~ (chart_statement | select_statement) }
 
 // `barh` must precede `bar` in PEG ordered choice so pest doesn't consume
 // `bar` as a complete match and leave `h` for the next rule.
 CHART_TYPE       = @{ ^"line" | ^"barh" | ^"bar" | ^"point" | ^"area" | ^"headline" | ^"donut" | ^"heatmap" | ^"boxplot" | ^"treemap" }
-CHART_FIELD_NAME = @{ ^"x_axis" | ^"y_axis" | ^"color" | ^"size" | ^"group" | ^"trellis_row" | ^"trellis" | ^"geo" | ^"annotation" }
+CHART_PLACE_TYPE = @{ ^"hline" | ^"vline" }
 CHART_BOOL_FIELD = @{ ^"hide_legend" | ^"show_title" }
 CHART_SCALE_FIELD = @{ ^"scale_x" | ^"scale_y" }
 SCALE_TYPE       = @{ ^"linear" | ^"log" | ^"sqrt" }
 
-chart_field_setting = { ^"set" ~ CHART_FIELD_NAME ~ ":" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* ~ ","? }
-chart_bool_setting  = { ^"set" ~ CHART_BOOL_FIELD }
-chart_scale_setting = { ^"set" ~ CHART_SCALE_FIELD ~ ":" ~ SCALE_TYPE }
-chart_setting       = _{ chart_scale_setting | chart_field_setting | chart_bool_setting }
-chart_statement     = { ^"chart" ~ CHART_TYPE ~ chart_setting* ~ ^"from" ~ select_statement }
+chart_bool_setting   = { ^"set" ~ CHART_BOOL_FIELD }
+chart_scale_setting  = { ^"set" ~ CHART_SCALE_FIELD ~ ":" ~ SCALE_TYPE }
+chart_layer_binding  = { IDENTIFIER ~ "<-" ~ expr ~ (^"as" ~ IDENTIFIER)? }
+chart_layer_body     = { chart_layer_binding ~ ("," ~ chart_layer_binding)* ~ ","? }
+chart_layer          = { ^"layer" ~ CHART_TYPE ~ "(" ~ chart_layer_body ~ ")" ~ (^"from" ~ select_statement)? }
+chart_place          = { ^"place" ~ CHART_PLACE_TYPE ~ ^"at" ~ literal ~ (^"as" ~ IDENTIFIER)? }
+chart_component     = { chart_layer | chart_place | chart_scale_setting | chart_bool_setting }
+chart_statement     = { ^"chart" ~ chart_component+ }
 
 // =============================================================================
 // FUNCTION DEFINITIONS

@@ -8,8 +8,7 @@ import pytest
 from trilogy.scripts.serve_helpers.state_computation import compute_state_sync
 
 # A minimal DuckDB-compatible trilogy file with one root datasource.
-SIMPLE_PREQL = textwrap.dedent(
-    """\
+SIMPLE_PREQL = textwrap.dedent("""\
     key id int;
 
     root datasource raw (
@@ -17,12 +16,10 @@ SIMPLE_PREQL = textwrap.dedent(
     )
     grain (id)
     query '''select 1 as id''';
-"""
-)
+""")
 
 # Two datasources: root + a derived table that won't exist → stale/unknown.
-INCREMENTAL_PREQL = textwrap.dedent(
-    """\
+INCREMENTAL_PREQL = textwrap.dedent("""\
     key id int;
     property id.version int;
 
@@ -40,8 +37,7 @@ INCREMENTAL_PREQL = textwrap.dedent(
     grain (id)
     address derived_missing_table
     incremental by version;
-"""
-)
+""")
 
 
 # ── no-dialect error ──────────────────────────────────────────────────────────
