@@ -8,8 +8,9 @@ import subprocess
 import sys
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 import click
 from click import argument, option, pass_context
@@ -22,9 +23,10 @@ from trilogy.ai.providers.base import LLMProvider
 from trilogy.ai.providers.google import GoogleProvider
 from trilogy.ai.providers.openai import OpenAIProvider
 from trilogy.ai.providers.openrouter import OpenRouterProvider
-from trilogy.execution.config import AgentConfig
+from trilogy.execution.config import AgentConfig, apply_env_vars
 from trilogy.scripts.common import get_runtime_config
-from trilogy.scripts.display_core import print_info, print_success
+from trilogy.scripts.display_core import print_info, print_success, with_status
+from trilogy.scripts.environment import parse_env_vars
 
 DEFAULT_PROVIDER = Provider.ANTHROPIC
 DEFAULT_MODEL = "claude-opus-4-7"
@@ -188,12 +190,16 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
     if stdin_value is not None and not isinstance(stdin_value, str):
         return "trilogy error: 'stdin' must be a string or null."
     cmd = [sys.executable, "-m", "trilogy.scripts.trilogy", *raw_args]
+    child_env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
     try:
         completed = subprocess.run(
             cmd,
             input=stdin_value,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=child_env,
             timeout=600,
         )
     except subprocess.TimeoutExpired:
@@ -257,8 +263,21 @@ TOOL_HANDLERS: dict[str, Callable[[AgentState, dict], str]] = {
 }
 
 
-def _build_provider(cfg: AgentConfig, model_override: str | None) -> LLMProvider:
-    provider_enum = cfg.provider or DEFAULT_PROVIDER
+def _build_provider(
+    cfg: AgentConfig,
+    model_override: str | None,
+    provider_override: str | None = None,
+) -> LLMProvider:
+    if provider_override:
+        try:
+            provider_enum = Provider(provider_override.lower())
+        except ValueError as exc:
+            valid = ", ".join(p.value for p in Provider)
+            raise click.ClickException(
+                f"Unknown provider '{provider_override}'. Valid: {valid}."
+            ) from exc
+    else:
+        provider_enum = cfg.provider or DEFAULT_PROVIDER
     model = model_override or os.environ.get("TRILOGY_AGENT_MODEL") or cfg.model
     if not model:
         model = DEFAULT_MODEL if provider_enum == DEFAULT_PROVIDER else ""
@@ -308,10 +327,61 @@ def _dispatch(state: AgentState, call: LLMToolCall) -> str:
         return f"{call.name} raised {type(exc).__name__}: {exc}"
 
 
-def _run_turn(conv: Conversation, state: AgentState, max_iterations: int) -> None:
+ARG_PREVIEW_LIMIT = 80
+
+
+def _log_event(log_path: Path | None, event: dict[str, Any]) -> None:
+    if log_path is None:
+        return
+    event = {"ts": datetime.now(timezone.utc).isoformat(), **event}
+    with log_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(event, default=str) + "\n")
+
+
+def _format_call(call: LLMToolCall) -> str:
+    parts: list[str] = []
+    for key, value in (call.arguments or {}).items():
+        rendered = value if isinstance(value, str) else json.dumps(value)
+        if len(rendered) > ARG_PREVIEW_LIMIT:
+            rendered = rendered[: ARG_PREVIEW_LIMIT - 1] + "…"
+        parts.append(f"{key}={rendered}")
+    return f"→ {call.name}({', '.join(parts)})"
+
+
+def _status_message(call: LLMToolCall) -> str:
+    if call.name == "trilogy":
+        args = call.arguments.get("args") or []
+        if isinstance(args, list) and args:
+            return f"trilogy {' '.join(str(a) for a in args[:3])}"
+    return call.name
+
+
+def _run_turn(
+    conv: Conversation,
+    state: AgentState,
+    max_iterations: int,
+    log_path: Path | None = None,
+) -> None:
     options = LLMRequestOptions(tools=ALL_TOOLS, require_tool=True)
     for _ in range(max_iterations):
-        response = conv.get_response(options)
+        with with_status("Thinking"):
+            response = conv.get_response(options)
+        _log_event(
+            log_path,
+            {
+                "type": "llm_response",
+                "text": response.text,
+                "tool_calls": [
+                    {"name": c.name, "arguments": c.arguments}
+                    for c in response.tool_calls
+                ],
+                "usage": {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                },
+            },
+        )
         if not response.tool_calls:
             conv.add_message(
                 "You must call a tool. To finish, call return_control_to_user.",
@@ -319,7 +389,17 @@ def _run_turn(conv: Conversation, state: AgentState, max_iterations: int) -> Non
             )
             continue
         for call in response.tool_calls:
-            result = _dispatch(state, call)
+            print_info(_format_call(call))
+            _log_event(
+                log_path,
+                {"type": "tool_call", "name": call.name, "arguments": call.arguments},
+            )
+            with with_status(_status_message(call)):
+                result = _dispatch(state, call)
+            _log_event(
+                log_path,
+                {"type": "tool_result", "name": call.name, "result": result},
+            )
             payload = json.dumps({"tool": call.name, "result": result})
             conv.add_message(payload, role="user")
             if state.done:
@@ -338,6 +418,26 @@ def _run_turn(conv: Conversation, state: AgentState, max_iterations: int) -> Non
 )
 @option("--model", "-m", type=str, help="AI model to use (overrides trilogy.toml).")
 @option(
+    "--provider",
+    "-p",
+    type=str,
+    help="LLM provider: anthropic, openai, google, openrouter (overrides trilogy.toml).",
+)
+@option(
+    "--env",
+    "-e",
+    multiple=True,
+    help="Set env vars as KEY=VALUE or pass an env file path",
+)
+@option(
+    "--log-file",
+    "-l",
+    "log_file",
+    type=click.Path(dir_okay=False, writable=True),
+    default=None,
+    help="Append every LLM response + tool call/result as JSONL to this file.",
+)
+@option(
     "--interactive",
     "-i",
     is_flag=True,
@@ -349,6 +449,9 @@ def agent(
     command: str,
     context: tuple[str, ...],
     model: str | None,
+    provider: str | None,
+    env: tuple[str, ...],
+    log_file: str | None,
     interactive: bool,
 ) -> None:
     """Pass off a multi-step orchestration task to an AI agent.
@@ -361,18 +464,39 @@ def agent(
         trilogy agent "analyze sales trends and create a dashboard"
         trilogy agent -i "ingest new data and run validation tests"
     """
+    if env:
+        try:
+            apply_env_vars(parse_env_vars(env))
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
+
     runtime = get_runtime_config(Path.cwd())
     cfg = runtime.agent
-    provider = _build_provider(cfg, model)
+    llm_provider = _build_provider(cfg, model, provider)
 
-    conv = Conversation.create(provider, model_prompt=SYSTEM_PROMPT)
+    log_path: Path | None = None
+    if log_file:
+        log_path = Path(log_file)
+        log_path.write_text("", encoding="utf-8")
+        _log_event(
+            log_path,
+            {
+                "type": "session_start",
+                "provider": llm_provider.type.value,
+                "model": llm_provider.model,
+                "command": command,
+                "context_files": list(context),
+            },
+        )
+
+    conv = Conversation.create(llm_provider, model_prompt=SYSTEM_PROMPT)
     state = AgentState(tool_output_limit=cfg.tool_output_limit)
 
     context_block = _read_context_files(context)
     initial = f"{context_block}\n\n{command}" if context_block else command
     conv.add_message(initial, role="user")
 
-    _run_turn(conv, state, cfg.max_iterations)
+    _run_turn(conv, state, cfg.max_iterations, log_path)
     if state.farewell:
         print_success(state.farewell)
 
@@ -387,10 +511,11 @@ def agent(
         next_command = next_command.strip()
         if next_command in ("", "exit", "quit"):
             return
+        _log_event(log_path, {"type": "user_followup", "command": next_command})
         state.done = False
         state.farewell = ""
         state.todos = []
         conv.add_message(next_command, role="user")
-        _run_turn(conv, state, cfg.max_iterations)
+        _run_turn(conv, state, cfg.max_iterations, log_path)
         if state.farewell:
             print_success(state.farewell)
