@@ -168,20 +168,12 @@ def apply_fixes_to_statements(
 def rewrite_file_with_errors(
     statements: list[Any],
     errors: list[DatasourceColumnBindingError],
-    additional_reference_fixes: list[DatasourceReferenceFix] | None = None,
 ):
     renderer = Renderer()
-
     column_fixes, concept_fixes, reference_fixes = process_validation_errors(errors)
-
-    # Add any additional reference fixes provided
-    if additional_reference_fixes:
-        reference_fixes.extend(additional_reference_fixes)
-
     output = apply_fixes_to_statements(
         statements, column_fixes, concept_fixes, reference_fixes
     )
-
     return renderer.render_statement_string(output)
 
 
@@ -189,62 +181,62 @@ def rewrite_file_with_reference_merges(
     statements: list[Any], reference_fixes: list[DatasourceReferenceFix]
 ) -> str:
     renderer = Renderer()
-
     output = apply_fixes_to_statements(statements, [], [], reference_fixes)
-
     return renderer.render_statement_string(output)
 
 
-DEPTH_CUTOFF = 3
+ITERATION_CUTOFF = 3
 
 
-def validate_and_rewrite(
-    input: Path | str, exec: Executor | None = None, depth: int = 0
-) -> str | None:
-    if depth > DEPTH_CUTOFF:
-        print(f"Reached depth cutoff of {DEPTH_CUTOFF}, stopping.")
-        return None
-    if isinstance(input, str):
-        raw = input
-        env = Environment()
-    else:
+def validate_and_rewrite(input: Path | str, exec: Executor | None = None) -> str | None:
+    if isinstance(input, Path):
         with safe_open(input) as f:
             raw = f.read()
-        env = Environment(working_path=input.parent)
-    if exec:
-        env = exec.environment
-    env, statements = env.parse(raw)
+        working_path = input.parent
+    else:
+        raw = input
+        working_path = None
 
-    validation_results = validate_environment(env, exec=exec, generate_only=True)
+    new_text = raw
+    fixed_any = False
 
-    errors = [
-        x.result
-        for x in validation_results
-        if isinstance(x.result, DatasourceColumnBindingError)
-    ]
+    for iteration in range(ITERATION_CUTOFF + 1):
+        if exec:
+            env = exec.environment
+        elif working_path is not None:
+            env = Environment(working_path=working_path)
+        else:
+            env = Environment()
+        env, statements = env.parse(new_text)
 
-    if not errors:
+        validation_results = validate_environment(env, exec=exec, generate_only=True)
+        errors = [
+            x.result
+            for x in validation_results
+            if isinstance(x.result, DatasourceColumnBindingError)
+        ]
+
+        if not errors:
+            break
+
+        print(
+            f"Found {len(errors)} validation errors, attempting to fix, iteration {iteration}..."
+        )
+        for error in errors:
+            for item in error.errors:
+                print(f"- {item.format_failure()}")
+
+        new_text = rewrite_file_with_errors(statements, errors)
+        fixed_any = True
+    else:
+        print(f"Reached iteration limit of {ITERATION_CUTOFF}, stopping.")
+
+    if not fixed_any:
         print("No validation errors found")
         return None
-    print(
-        f"Found {len(errors)} validation errors, attempting to fix, current depth: {depth}..."
-    )
-    for error in errors:
-        for item in error.errors:
-            print(f"- {item.format_failure()}")
 
-    new_text = rewrite_file_with_errors(statements, errors)
-
-    while iteration := validate_and_rewrite(new_text, exec=exec, depth=depth + 1):
-        depth = depth + 1
-        if depth >= DEPTH_CUTOFF:
-            break
-        if iteration:
-            new_text = iteration
-        depth += 1
     if isinstance(input, Path):
         with safe_open(input, "w") as f:
             f.write(new_text)
         return None
-    else:
-        return new_text
+    return new_text
