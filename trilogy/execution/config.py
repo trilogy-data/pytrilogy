@@ -147,8 +147,9 @@ def load_config_file(path: Path) -> RuntimeConfig:
         engine_config = None
     setup: dict = config_data.get("setup", {})
 
-    # Parse env_file - can be a single string or list of strings
-    env_raw = engine_raw.get("env_file", [])
+    # Parse env_file - can be a single string or list of strings.
+    # Top-level; falls back to [engine].env_file for backwards compat.
+    env_raw = config_data.get("env_file", engine_raw.get("env_file", []))
     if isinstance(env_raw, str):
         env_files = [path.parent / env_raw]
     else:

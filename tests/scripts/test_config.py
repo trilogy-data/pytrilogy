@@ -570,9 +570,10 @@ def test_config_env_file_single():
         env_file.write_text("TRILOGY_CONFIG_TEST=from_env_file\n")
 
         config_content = """
+env_file = ".env.local"
+
 [engine]
 dialect = "duckdb"
-env_file = ".env.local"
 """
         config_file = tmppath / "trilogy.toml"
         config_file.write_text(config_content)
@@ -589,9 +590,10 @@ def test_config_env_file_list():
         tmppath = Path(tmpdir)
 
         config_content = """
+env_file = [".env", ".env.local"]
+
 [engine]
 dialect = "duckdb"
-env_file = [".env", ".env.local"]
 """
         config_file = tmppath / "trilogy.toml"
         config_file.write_text(config_content)
@@ -605,6 +607,41 @@ env_file = [".env", ".env.local"]
         assert len(config.env_files) == 2
         assert config.env_files[0] == tmppath / ".env"
         assert config.env_files[1] == tmppath / ".env.local"
+
+
+def test_config_env_file_legacy_engine_section():
+    """env_file under [engine] still works for backwards compat."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_content = """
+[engine]
+dialect = "duckdb"
+env_file = ".env.legacy"
+"""
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(config_content)
+        (tmppath / ".env.legacy").write_text("X=1\n")
+
+        config = load_config_file(config_file)
+        assert config.env_files == [tmppath / ".env.legacy"]
+
+
+def test_config_env_file_top_level_wins_over_engine():
+    """Top-level env_file takes precedence over [engine].env_file."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_content = """
+env_file = ".env.top"
+
+[engine]
+dialect = "duckdb"
+env_file = ".env.engine"
+"""
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(config_content)
+
+        config = load_config_file(config_file)
+        assert config.env_files == [tmppath / ".env.top"]
 
 
 def test_cli_env_option():
@@ -800,9 +837,10 @@ def test_env_file_and_cli_precedence():
         env_file.write_text(f"{test_key}=from_file\n")
 
         config_content = """
+env_file = ".env"
+
 [engine]
 dialect = "duckdb"
-env_file = ".env"
 """
         config_file = tmppath / "trilogy.toml"
         config_file.write_text(config_content)
