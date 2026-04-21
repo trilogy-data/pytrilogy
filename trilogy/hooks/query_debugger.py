@@ -14,6 +14,7 @@ from trilogy.core.models.execute import (
 from trilogy.core.processing.nodes import StrategyNode
 from trilogy.core.statements.author import SelectStatement
 from trilogy.hooks.base_hook import BaseHook
+from trilogy.utility import safe_open
 
 
 class PrintMode(Enum):
@@ -54,7 +55,7 @@ class DebuggingHook(BaseHook):
         self.messages.append(merged)
 
     def write(self):
-        with open(self.output_file, "w") as f:
+        with safe_open(self.output_file, "w") as f:
             f.write("\n".join(self.messages))
 
     def process_select_info(self, select: SelectStatement):

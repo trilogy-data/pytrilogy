@@ -20,6 +20,7 @@ from trilogy.scripts.dependency import (
     ScriptNode,
     create_script_nodes,
 )
+from trilogy.utility import safe_open
 
 
 class ExecutionMode(Enum):
@@ -542,7 +543,7 @@ def run_single_script_execution(
     if isinstance(base, StringIO):
         text = base.getvalue()
     else:
-        with open(base, "r") as raw:
+        with safe_open(base) as raw:
             text = raw.read()
 
     try:

@@ -274,7 +274,11 @@ class Renderer:
     @to_string.register
     def _(self, arg: FunctionDeclaration):
         args = ", ".join([self.to_string(x) for x in arg.args])
-        return f"def {arg.name}({args}) -> {self.to_string(arg.expr)};"
+        output = f"def {arg.name}({args}) -> {self.to_string(arg.expr)};"
+        if arg.meta and arg.meta.description:
+            lines = "\n#".join(arg.meta.description.split("\n"))
+            output += f" #{lines}"
+        return output
 
     @to_string.register
     def _(self, arg: Datasource):

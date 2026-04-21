@@ -19,6 +19,7 @@ from trilogy.dialect import (
 )
 from trilogy.dialect.enums import Dialects
 from trilogy.staging import StagingConfig
+from trilogy.utility import safe_open
 
 DEFAULT_PARALLELISM = 4
 DB_LOCATION_KEY = "db_location"
@@ -36,7 +37,7 @@ def load_env_file(env_file_path: Path) -> dict[str, str] | None:
     if not env_file_path.exists():
         logger.info(f"Environment file not found: {env_file_path}")
         return None
-    with open(env_file_path, "r") as f:
+    with safe_open(env_file_path) as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#"):
@@ -87,7 +88,7 @@ class RuntimeConfig:
 
 
 def load_config_file(path: Path) -> RuntimeConfig:
-    with open(path, "r") as f:
+    with safe_open(path) as f:
         toml_content = f.read()
     config_data = loads(toml_content)
 

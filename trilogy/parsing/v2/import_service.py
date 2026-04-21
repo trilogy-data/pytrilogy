@@ -13,6 +13,7 @@ from trilogy.core.models.environment import (
     Import,
 )
 from trilogy.core.statements.author import ImportStatement
+from trilogy.utility import safe_open
 
 if TYPE_CHECKING:
     from trilogy.parsing.v2.semantic_state import SemanticState
@@ -36,7 +37,7 @@ def _read_import_text(
         isinstance(environment.config.import_resolver, FileSystemImportResolver)
         or is_stdlib
     ):
-        with open(address, "r", encoding="utf-8") as f:
+        with safe_open(address) as f:
             return f.read()
     if isinstance(environment.config.import_resolver, DictImportResolver):
         if address not in environment.config.import_resolver.content:

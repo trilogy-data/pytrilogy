@@ -19,6 +19,7 @@ from trilogy.scripts.serve_helpers.models import (
     ModelImport,
     StoreModelIndex,
 )
+from trilogy.utility import safe_open
 
 
 def _get_model_description(directory_path: Path, trilogy_files: list[Path]) -> str:
@@ -40,7 +41,7 @@ def _get_model_description(directory_path: Path, trilogy_files: list[Path]) -> s
     readme_path = directory_path / "README.md"
     if readme_path.exists():
         try:
-            with open(readme_path, "r", encoding="utf-8") as f:
+            with safe_open(readme_path) as f:
                 content = f.read().strip()
                 # Return first non-empty line or first paragraph
                 if content:

@@ -303,15 +303,24 @@ class NativeHydrator:
     ) -> ConceptDeclarationStatement:
         concept_node = self.block_statement(block)
         output = self.hydrate_rule(concept_node)
-        trailing = block.children[1:]
-        # Match v1: a blank line between the concept and the next comment
+        description = self.trailing_description(block, concept_node)
+        if description is not None:
+            output.concept.metadata.description = description
+        return output
+
+    def trailing_description(
+        self,
+        block: SyntaxNode,
+        statement: SyntaxNode,
+    ) -> str | None:
+        # Match v1: a blank line between the statement and the next comment
         # detaches the comment, so it is preserved as a standalone element
-        # rather than mutating the concept's description.
-        base_line = concept_node.end_line
+        # rather than mutating the statement's description.
+        base_line = statement.end_line
         if base_line is None:
-            return output
+            return None
         comments = []
-        for x in trailing:
+        for x in block.children[1:]:
             if (
                 isinstance(x, SyntaxToken)
                 and x.kind == SyntaxTokenKind.COMMENT
@@ -321,11 +330,9 @@ class NativeHydrator:
                 base_line = x.end_line
             else:
                 break
-        if comments:
-            output.concept.metadata.description = "\n".join(
-                comment_body(comment) for comment in comments
-            )
-        return output
+        if not comments:
+            return None
+        return "\n".join(comment_body(c) for c in comments)
 
     def rule_context(self) -> RuleContext:
         return self._cached_rule_context

@@ -560,6 +560,7 @@ class FunctionDeclaration(HasUUID):
     name: str
     args: list[ArgBinding]
     expr: Expr
+    meta: Optional[Metadata] = field(default_factory=Metadata)
 
 
 @dataclass

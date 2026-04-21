@@ -128,6 +128,7 @@ from trilogy.core.table_processor import (
 from trilogy.core.utility import safe_quote
 from trilogy.dialect.common import render_join, render_unnest
 from trilogy.hooks.base_hook import BaseHook
+from trilogy.utility import safe_open
 
 
 def null_wrapper(lval: str, rval: str, modifiers: list[Modifier]) -> str:
@@ -545,7 +546,7 @@ class BaseDialect:
             return f"({address.location})"
         if address.is_file:
             if address.type == AddressType.SQL:
-                with open(address.location, "r", encoding="utf-8") as f:
+                with safe_open(address.location) as f:
                     return f"({f.read()})"
             return f"'{address.location}'"
         return self.safe_quote(address.location)

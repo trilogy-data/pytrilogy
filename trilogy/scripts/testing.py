@@ -31,6 +31,7 @@ from trilogy.scripts.parallel_execution import (
     run_parallel_execution,
 )
 from trilogy.scripts.refresh import run_refresh_command
+from trilogy.utility import safe_open
 
 FAILED_DEPENDENCY_ERROR = "Skipped due to failed dependency"
 
@@ -39,7 +40,7 @@ def execute_script_for_integration(
     exec: Executor, node: ScriptNode, quiet: bool = False
 ) -> ExecutionStats:
     """Execute a script for the 'integration' command (parse + validate)."""
-    with open(node.path, "r") as f:
+    with safe_open(node.path) as f:
         queries = exec.parse_text(f.read())
     stats = count_statement_stats(queries)
     validate_datasources(exec, mock=False, quiet=quiet)
@@ -52,7 +53,7 @@ def execute_script_for_unit(
     exec: Executor, node: ScriptNode, quiet: bool = False
 ) -> ExecutionStats:
     """Execute a script for the 'unit' command (parse + mock validate)."""
-    with open(node.path, "r") as f:
+    with safe_open(node.path) as f:
         queries = exec.parse_text(f.read())
     stats = count_statement_stats(queries)
     validate_datasources(exec, mock=True, quiet=quiet)
@@ -120,7 +121,7 @@ def _collect_refreshable_derived_datasources(
             cli_params.debug_file,
         )
         try:
-            with open(node.path, "r") as handle:
+            with safe_open(node.path) as handle:
                 executor.parse_text(handle.read(), root=node.path)
             datasources.update(
                 ds.identifier

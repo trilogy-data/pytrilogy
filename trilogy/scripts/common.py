@@ -27,6 +27,7 @@ from trilogy.scripts.display import (
     print_success,
 )
 from trilogy.scripts.environment import extra_to_kwargs, parse_env_params
+from trilogy.utility import safe_open
 
 # Configuration file name
 TRILOGY_CONFIG_NAME = "trilogy.toml"
@@ -515,7 +516,7 @@ def execute_script_with_stats(
     exec: Executor, script_path: PathlibPath, run_statements: bool = True
 ) -> ExecutionStats:
     """Parse and optionally execute a script, returning execution stats."""
-    with open(script_path, "r") as f:
+    with safe_open(script_path) as f:
         queries = exec.parse_text(f.read())
     stats = ExecutionStats()
     if run_statements:

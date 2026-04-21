@@ -10,16 +10,17 @@ from trilogy import parse
 from trilogy.parsing.render import Renderer
 from trilogy.scripts.common import handle_execution_exception
 from trilogy.scripts.display import print_success, show_formatting_result, with_status
+from trilogy.utility import safe_open
 
 
 def format_file(file_path: str) -> tuple[str, int, bool, str | None]:
     """Format a single file and return results."""
     try:
-        with open(file_path, "r") as f:
+        with safe_open(file_path) as f:
             script = f.read()
         _, queries = parse(script)
         r = Renderer()
-        with open(file_path, "w", newline="\n") as f:
+        with safe_open(file_path, "w", newline="\n") as f:
             f.write("\n".join([r.to_string(x) for x in queries]))
         return (file_path, len(queries), True, None)
     except Exception as e:

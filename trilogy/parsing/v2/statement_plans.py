@@ -310,6 +310,7 @@ class MultiSelectStatementPlan(_SelectLikeStatementPlan[MultiSelectStatement]):
 @dataclass
 class FunctionDefinitionPlan(StatementPlanBase):
     syntax: SyntaxNode
+    block: SyntaxNode | None = None
     output: FunctionDeclaration | None = None
     parameter_names: list[str] = field(default_factory=list)
 
@@ -330,6 +331,11 @@ class FunctionDefinitionPlan(StatementPlanBase):
             self.output = hydrator.hydrate_rule(self.syntax)
         if self.output is None:
             return
+        if self.block is not None:
+            statement = hydrator.block_statement(self.block)
+            description = hydrator.trailing_description(self.block, statement)
+            if description is not None and self.output.meta is not None:
+                self.output.meta.description = description
         hydrator.environment.functions[self.output.name] = CustomFunctionFactory(
             function=self.output.expr,
             namespace=hydrator.environment.namespace,

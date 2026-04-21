@@ -55,6 +55,7 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import Datasource, EnvironmentDatasourceDict
+from trilogy.utility import safe_open
 
 if TYPE_CHECKING:
     from trilogy.core.models.build import BuildConcept, BuildEnvironment
@@ -458,7 +459,7 @@ class Environment:
     def from_file(cls, path: str | Path) -> "Environment":
         if isinstance(path, str):
             path = Path(path)
-        with open(path, "r") as f:
+        with safe_open(path) as f:
             read = f.read()
         return Environment(working_path=path.parent, env_file_path=path).parse(read)[0]
 
@@ -708,7 +709,7 @@ class Environment:
             target = path
         if not env:
             try:
-                with open(target, "r", encoding="utf-8") as f:
+                with safe_open(target) as f:
                     text = f.read()
                 nenv = Environment(working_path=target.parent)
                 nenv.concepts.fail_on_missing = False
@@ -937,10 +938,10 @@ class LazyEnvironment(Environment):
 
         assert self.load_path is not None
         env = Environment(working_path=self.load_path.parent)
-        with open(self.load_path, "r") as f:
+        with safe_open(self.load_path) as f:
             env, _ = parse(f.read(), env)
         if self.setup_path.exists():
-            with open(self.setup_path, "r") as f2:
+            with safe_open(self.setup_path) as f2:
                 env, q = parse(f2.read(), env)
                 for q in q:
                     self.setup_queries.append(q)
