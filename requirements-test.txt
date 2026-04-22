@@ -20,4 +20,5 @@ maturin
 fastapi
 uvicorn
 altair
+vl-convert-python
 plotext
