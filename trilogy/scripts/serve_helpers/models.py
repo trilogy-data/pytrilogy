@@ -4,6 +4,23 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from trilogy.dialect.enums import Dialects
+
+# Wire-format type for /index.json `connection.type` — always a `Dialects`
+# value (e.g. `"duck_db"`, `"bigquery"`). Clients remap these to whatever
+# in-process runtime constructor they use; the server speaks one format.
+ConnectionType = Dialects
+
+
+class ConnectionSpec(BaseModel):
+    """Runtime connection advertised by the store on /index.json.
+
+    Non-secret fields only. Secrets are supplied per-user by the client.
+    """
+
+    type: ConnectionType
+    options: dict[str, str] = Field(default_factory=dict)
+
 
 class ImportFile(BaseModel):
     """Component file in a model import."""
@@ -39,6 +56,11 @@ class StoreIndex(BaseModel):
     name: str
     models: list[StoreModelIndex]
     project_name: str | None = None
+    connection: ConnectionSpec | None = None
+    # Paths (relative to the served directory, posix slashes) of files that
+    # the `[setup]` section of trilogy.toml marks as startup scripts. Clients
+    # tag the corresponding editors so they run on connection reset.
+    startup_scripts: list[str] = Field(default_factory=list)
 
 
 class FileWriteRequest(BaseModel):
