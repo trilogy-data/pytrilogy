@@ -243,6 +243,19 @@ def test_chart_copy_options_empty():
     assert _chart_copy_options({}) == ({}, {})
 
 
+def test_copy_chart_writes_png(tmp_path):
+    pytest.importorskip("vl_convert")
+    out = tmp_path / "chart.png"
+    list(_executor().execute_text(_SETUP + f"""
+            copy into png '{out.as_posix()}'
+              (width=400, height=300, scale=2)
+              from chart
+              layer bar ( x_axis <- category, y_axis <- value );
+            """))
+    assert out.exists()
+    assert out.stat().st_size > 0
+
+
 def test_copy_chart_requires_altair(tmp_path, monkeypatch):
     import trilogy.rendering.altair_renderer as ar
 
