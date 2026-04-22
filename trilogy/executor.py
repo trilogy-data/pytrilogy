@@ -97,7 +97,9 @@ def _chart_copy_options(
         )
     size_props = {k: options[k] for k in _CHART_COPY_SIZE_KEYS if k in options}
     save_kwargs = {
-        dest: options[src] for src, dest in _CHART_COPY_SAVE_KEYS.items() if src in options
+        dest: options[src]
+        for src, dest in _CHART_COPY_SAVE_KEYS.items()
+        if src in options
     }
     return size_props, save_kwargs
 

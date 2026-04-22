@@ -142,3 +142,46 @@ def test_explicit_from_select_rejects_alias():
         chart
           layer bar ( x_axis <- x, y_axis <- y * 2 as scaled_y ) from select x, y;
         """)
+
+
+def test_layer_order_by_and_limit():
+    chart = _parse(_SETUP + """
+    chart
+      layer bar ( x_axis <- x, y_axis <- y ) order by y desc limit 5;
+    """)
+    layer = chart.layers[0]
+    assert layer.select is not None
+    assert layer.select.limit == 5
+    assert layer.select.order_by is not None
+    assert len(layer.select.order_by.items) == 1
+
+
+def test_layer_limit_without_order():
+    chart = _parse(_SETUP + """
+    chart
+      layer bar ( x_axis <- x, y_axis <- y ) limit 3;
+    """)
+    assert chart.layers[0].select.limit == 3
+    assert chart.layers[0].select.order_by is None
+
+
+def test_chart_with_only_placements_raises():
+    with pytest.raises(HydrationError, match="at least one layer"):
+        _parse(_SETUP + """
+        chart
+          place hline at 5 as threshold;
+        """)
+
+
+def test_duplicate_copy_option_raises():
+    from trilogy.parser import parse
+
+    env = Environment()
+    with pytest.raises(HydrationError, match="Duplicate copy option"):
+        parse(
+            _SETUP + """
+        copy into png 'out.png' (width=100, width=200) from chart
+          layer bar ( x_axis <- x, y_axis <- y );
+        """,
+            env,
+        )

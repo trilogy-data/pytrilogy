@@ -171,7 +171,7 @@
     chart_scale_setting: "set"i CHART_SCALE_FIELD ":" SCALE_TYPE
     chart_layer_binding: IDENTIFIER "<-" expr ("as"i IDENTIFIER)?
     chart_layer_body: chart_layer_binding ("," chart_layer_binding)* ","?
-    chart_layer: "layer"i CHART_TYPE "(" chart_layer_body ")" ("from"i select_statement)?
+    chart_layer: "layer"i CHART_TYPE "(" chart_layer_body ")" ("from"i select_statement)? order_by? limit?
     chart_place: "place"i CHART_PLACE_TYPE "at"i literal ("as"i IDENTIFIER)?
 
     CHART_BOOL_FIELD: "hide_legend"i | "show_title"i

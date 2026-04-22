@@ -130,8 +130,17 @@ def chart_layer(
     body_node = node.first_child_node(SyntaxNodeKind.CHART_LAYER_BODY)
     binding_nodes = body_node.child_nodes(SyntaxNodeKind.CHART_LAYER_BINDING)
     explicit_select_node = node.optional_node(SyntaxNodeKind.SELECT_STATEMENT)
+    order_by_node = node.optional_node(SyntaxNodeKind.ORDER_BY)
+    limit_node = node.optional_node(SyntaxNodeKind.LIMIT)
     select: SelectStatement
     if explicit_select_node is not None:
+        offending = order_by_node or limit_node
+        if offending is not None:
+            raise fail(
+                offending,
+                "Layer-level `order by` / `limit` cannot be combined with"
+                " `from select ...` — put them inside the select instead.",
+            )
         hydrated = hydrate(explicit_select_node)
         if not isinstance(hydrated, SelectStatement):
             raise fail(explicit_select_node, "Chart layer select failed to hydrate")
@@ -157,6 +166,8 @@ def chart_layer(
         ]
         select = SelectStatement(
             selection=select_items,
+            order_by=hydrate(order_by_node) if order_by_node is not None else None,
+            limit=hydrate(limit_node).count if limit_node is not None else None,
             meta=metadata_from_meta(node.meta),
         )
     return ChartLayer(layer_type=layer_type, bindings=bindings, select=select)

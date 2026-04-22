@@ -187,6 +187,36 @@ def test_copy_chart_with_size_options_parses(tmp_path):
     assert stmts[0].options == {"width": 800, "height": 600, "scale": 2}
 
 
+def test_execute_chart_with_aggregate_binding_order_limit():
+    results = list(_executor().execute_text("""
+            key carrier_code string;
+            property carrier_code.name string;
+            key id int;
+
+            datasource flights (
+                id: id,
+                c: carrier_code,
+                cn: name
+            )
+            grain (id)
+            query '''
+            select 1 as id, 'AA' as c, 'American' as cn
+            union all select 2, 'AA', 'American'
+            union all select 3, 'DL', 'Delta'
+            union all select 4, 'UA', 'United'
+            ''';
+
+            chart
+              layer barh (
+                y_axis <- name,
+                x_axis <- count(id) as flight_count
+              ) order by flight_count desc limit 2;
+            """))
+    chart_results = [r for r in results if isinstance(r, ChartResult)]
+    assert len(chart_results[0].data[0]) == 2
+    assert chart_results[0].data[0][0]["flight_count"] == 2
+
+
 def test_copy_chart_rejects_unknown_option(tmp_path):
     exec_ = _executor()
     with pytest.raises(Exception, match="Unknown copy option"):
@@ -195,3 +225,43 @@ def test_copy_chart_rejects_unknown_option(tmp_path):
                   (dpi=300) from chart
                   layer bar ( x_axis <- category, y_axis <- value );
                 """))
+
+
+def test_copy_chart_accepts_scale_and_ppi_options(tmp_path):
+    from trilogy.executor import _chart_copy_options
+
+    size, save = _chart_copy_options(
+        {"width": 400, "height": 300, "scale": 2, "ppi": 150}
+    )
+    assert size == {"width": 400, "height": 300}
+    assert save == {"scale_factor": 2, "ppi": 150}
+
+
+def test_chart_copy_options_empty():
+    from trilogy.executor import _chart_copy_options
+
+    assert _chart_copy_options({}) == ({}, {})
+
+
+def test_copy_chart_requires_altair(tmp_path, monkeypatch):
+    import trilogy.rendering.altair_renderer as ar
+
+    monkeypatch.setattr(ar, "ALTAIR_AVAILABLE", False)
+    exec_ = _executor()
+    with pytest.raises(RuntimeError, match="requires altair"):
+        list(exec_.execute_text(_SETUP + f"""
+                copy into png '{(tmp_path / "chart.png").as_posix()}' from chart
+                  layer bar ( x_axis <- category, y_axis <- value );
+                """))
+
+
+def test_execute_chart_when_altair_unavailable(monkeypatch):
+    import trilogy.rendering.altair_renderer as ar
+
+    monkeypatch.setattr(ar, "ALTAIR_AVAILABLE", False)
+    results = list(_executor().execute_text(_SETUP + """
+            chart
+              layer bar ( x_axis <- category, y_axis <- value );
+            """))
+    chart_results = [r for r in results if isinstance(r, ChartResult)]
+    assert chart_results[0].chart is None
