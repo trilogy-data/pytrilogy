@@ -10,6 +10,40 @@ def _executor() -> Executor:
     return Executor(dialect=Dialects.DUCK_DB, engine=Dialects.DUCK_DB.default_engine())
 
 
+def _hooked_executor(hook):
+    return Executor(
+        dialect=Dialects.DUCK_DB,
+        engine=Dialects.DUCK_DB.default_engine(),
+        hooks=[hook],
+    )
+
+
+class _RecordingHook:
+    def __init__(self):
+        self.selects = []
+
+    def process_select_info(self, select):
+        self.selects.append(select)
+
+    def process_multiselect_info(self, select):
+        pass
+
+    def process_persist_info(self, persist):
+        pass
+
+    def process_rowset_info(self, rowset):
+        pass
+
+    def process_root_datasource(self, datasource):
+        pass
+
+    def process_root_cte(self, cte):
+        pass
+
+    def process_root_strategy_node(self, node):
+        pass
+
+
 _SETUP = """
 key category string;
 property category.value int;
@@ -241,6 +275,34 @@ def test_chart_copy_options_empty():
     from trilogy.executor import _chart_copy_options
 
     assert _chart_copy_options({}) == ({}, {})
+
+
+def test_chart_statement_invokes_select_hook():
+    hook = _RecordingHook()
+    list(_hooked_executor(hook).execute_text(_SETUP + """
+            chart
+              layer bar ( x_axis <- category, y_axis <- value );
+            """))
+    assert len(hook.selects) >= 1
+
+
+def test_copy_chart_invokes_select_hook_per_layer(tmp_path):
+    hook = _RecordingHook()
+    list(_hooked_executor(hook).parse_text_generator(_SETUP + f"""
+            copy into png '{(tmp_path / "chart.png").as_posix()}' from chart
+              layer bar ( x_axis <- category, y_axis <- value )
+              layer line ( x_axis <- category, y_axis <- value );
+            """))
+    assert len(hook.selects) == 2
+
+
+def test_copy_select_invokes_select_hook(tmp_path):
+    hook = _RecordingHook()
+    list(_hooked_executor(hook).parse_text_generator(_SETUP + f"""
+            copy into csv '{(tmp_path / "out.csv").as_posix()}' from
+              select category, value;
+            """))
+    assert len(hook.selects) >= 1
 
 
 def test_copy_chart_writes_png(tmp_path):
