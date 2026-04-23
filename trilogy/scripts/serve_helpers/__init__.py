@@ -12,7 +12,6 @@ from trilogy.scripts.serve_helpers.file_discovery import (
     get_safe_model_name,
 )
 from trilogy.scripts.serve_helpers.index_generation import (
-    find_file_content_by_name,
     find_model_by_name,
     generate_model_index,
 )
@@ -25,6 +24,7 @@ from trilogy.scripts.serve_helpers.jobs import (
 )
 from trilogy.scripts.serve_helpers.models import (
     AssetState,
+    ConnectionSpec,
     DirectoryListing,
     FileCreateRequest,
     FileListResponse,
@@ -42,6 +42,7 @@ from trilogy.scripts.serve_helpers.models import (
 from trilogy.scripts.serve_helpers.state_computation import compute_state_sync
 
 __all__ = [
+    "ConnectionSpec",
     "ImportFile",
     "ModelImport",
     "StoreIndex",
@@ -73,5 +74,4 @@ __all__ = [
     "get_safe_model_name",
     "generate_model_index",
     "find_model_by_name",
-    "find_file_content_by_name",
 ]

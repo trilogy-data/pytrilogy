@@ -803,7 +803,9 @@ class QueryDatasource:
     @property
     def identifier(self) -> str:
         filters = abs(hash(str(self.condition))) if self.condition else ""
-        grain = "_".join([str(c).replace(".", "_") for c in self.grain.components])
+        grain = "_".join(
+            [str(c).replace(".", "_") for c in sorted(self.grain.components)]
+        )
         group = ""
         if self.group_required:
             keys = [

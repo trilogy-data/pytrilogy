@@ -446,10 +446,10 @@ def create_executor_for_script(
     )
 
 
-def validate_datasources(
-    exec: Executor, mock: bool = False, quiet: bool = False
+def validate_environment(
+    executor: Executor, mock: bool = False, quiet: bool = False
 ) -> None:
-    """Validate datasources with consistent error handling.
+    """Validate the executor's environment (datasources + concepts) with consistent error handling.
 
     Args:
         exec: The executor instance
@@ -459,7 +459,7 @@ def validate_datasources(
     Raises:
         Exit: If validation fails
     """
-    datasources = exec.environment.datasources.keys()
+    datasources = executor.environment.datasources.keys()
     if not datasources:
         if not quiet:
             message = "unit" if mock else "integration"
@@ -467,15 +467,15 @@ def validate_datasources(
         return
 
     if mock:
-        exec.execute_text("mock datasources {};".format(", ".join(datasources)))
+        executor.execute_text("mock datasources {};".format(", ".join(datasources)))
 
     try:
-        exec.execute_text("validate datasources {};".format(", ".join(datasources)))
+        executor.execute_text("validate all;")
     except ModelValidationError as e:
         if not e.children:
-            print_error(f"Datasource validation failed: {e.message}")
+            print_error(f"Environment validation failed: {e.message}")
         for idx, child in enumerate(e.children or []):
-            print_error(f"Error {idx + 1}: {child.message}")
+            print_error(f"Environment validation error {idx + 1}: {child.message}")
         raise Exit(1) from e
 
 

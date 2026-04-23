@@ -23,6 +23,7 @@ from trilogy.utility import safe_open
 
 DEFAULT_PARALLELISM = 4
 DB_LOCATION_KEY = "db_location"
+DEFAULT_STUDIO_URL = "https://trilogydata.dev/trilogy-studio-core/"
 
 
 def resolve_db_location(raw: str, toml_parent: Path) -> str:
@@ -62,13 +63,18 @@ def apply_env_vars(env_vars: dict[str, str]) -> None:
         os.environ[key] = value
 
 
-DEFAULT_STUDIO_URL = "https://trilogydata.dev/trilogy-studio-core/"
-
-
 @dataclass
 class AgentConfig:
     provider: Optional[Provider] = None
     model: Optional[str] = None
+
+
+@dataclass
+class ServeConnectionConfig:
+    """Connection advertised to clients on /index.json. Non-secret fields only."""
+
+    type: str
+    options: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -83,6 +89,7 @@ class RuntimeConfig:
     env_files: list[Path] = field(default_factory=list)
     staging: StagingConfig = field(default_factory=StagingConfig)
     serve_studio_url: str = DEFAULT_STUDIO_URL
+    serve_connection: ServeConnectionConfig | None = None
     project_name: str | None = None
     agent: AgentConfig = field(default_factory=AgentConfig)
 
@@ -155,6 +162,18 @@ def load_config_file(path: Path) -> RuntimeConfig:
     serve_raw: dict = config_data.get("serve", {})
     serve_studio_url = serve_raw.get("studio_url", DEFAULT_STUDIO_URL)
 
+    serve_connection_raw: dict = serve_raw.get("connection", {})
+    serve_connection: ServeConnectionConfig | None = None
+    if serve_connection_raw:
+        conn_type = serve_connection_raw.get("type")
+        if not conn_type:
+            raise ValueError("[serve.connection] requires a 'type' field")
+        conn_options_raw = serve_connection_raw.get("options", {})
+        serve_connection = ServeConnectionConfig(
+            type=conn_type,
+            options={str(k): str(v) for k, v in conn_options_raw.items()},
+        )
+
     project_raw: dict = config_data.get("project", {})
     project_name: str | None = project_raw.get("name")
 
@@ -183,6 +202,7 @@ def load_config_file(path: Path) -> RuntimeConfig:
         env_files=env_files,
         staging=staging,
         serve_studio_url=serve_studio_url,
+        serve_connection=serve_connection,
         project_name=project_name,
         agent=agent,
     )

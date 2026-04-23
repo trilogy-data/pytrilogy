@@ -29,10 +29,18 @@ def create_test_app(
     base_url: str = "testserver",
     engine: str = "generic",
     port: int = 80,
+    startup_scripts: list[Path] | None = None,
 ):
     """Create a test FastAPI app using the same logic as serve.py."""
     app = FastAPI(title="Trilogy Model Server", version="1.0.0")
-    app = create_app(app, engine, directory_path, base_url, port)
+    app = create_app(
+        app,
+        engine,
+        directory_path,
+        base_url,
+        port,
+        startup_scripts=startup_scripts,
+    )
 
     return app
 
@@ -223,7 +231,7 @@ def test_serve_get_file_nested():
         app = create_test_app(tmppath)
         client = TestClient(app)
 
-        response = client.get("/files/models-core-base.preql")
+        response = client.get("/files/models/core/base.preql")
         assert response.status_code == 200
         assert response.text == content
 
@@ -383,6 +391,61 @@ def test_serve_localhost_url_when_host_is_0_0_0_0():
         assert data["components"][0]["url"] == "http://localhost:8100/files/test.preql"
 
 
+def test_serve_index_startup_scripts_empty_by_default():
+    """/index.json omits startup scripts when trilogy.toml has no [setup] section."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir) / "my_model"
+        tmppath.mkdir()
+        (tmppath / "model.preql").write_text("key id int;")
+
+        app = create_test_app(tmppath)
+        client = TestClient(app)
+
+        data = client.get("/index.json").json()
+        assert data["startup_scripts"] == []
+
+
+def test_serve_index_startup_scripts_populated():
+    """/index.json advertises setup scripts as posix paths relative to the served dir."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir) / "my_model"
+        tmppath.mkdir()
+        setup_dir = tmppath / "setup"
+        setup_dir.mkdir()
+        setup_file = setup_dir / "init.sql"
+        setup_file.write_text("CREATE TABLE base (id INT);")
+        (tmppath / "model.preql").write_text("key id int;")
+
+        # Exercise both absolute and relative inputs — relative paths are
+        # resolved against the served directory, matching how RuntimeConfig
+        # stores `startup_sql` / `startup_trilogy` after load_config_file.
+        app = create_test_app(
+            tmppath,
+            startup_scripts=[Path("setup/init.sql"), setup_file.resolve()],
+        )
+        client = TestClient(app)
+
+        data = client.get("/index.json").json()
+        # Both inputs resolve to the same posix-relative path; the client
+        # matches this string against editor `remotePath`.
+        assert data["startup_scripts"] == ["setup/init.sql", "setup/init.sql"]
+
+
+def test_serve_index_startup_scripts_outside_dir_skipped():
+    """Startup paths that resolve outside the served directory are dropped."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir) / "my_model"
+        tmppath.mkdir()
+        outside = Path(tmpdir) / "sibling.sql"
+        outside.write_text("select 1;")
+
+        app = create_test_app(tmppath, startup_scripts=[outside])
+        client = TestClient(app)
+
+        data = client.get("/index.json").json()
+        assert data["startup_scripts"] == []
+
+
 def test_serve_with_trilogy_toml_setup():
     """Test that setup scripts from trilogy.toml are marked with purpose='setup'."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -430,7 +493,7 @@ sql = ['setup/init.sql']
         setup = setup_components[0]
         assert setup["name"] == "setup/init"
         assert setup["type"] == "sql"
-        assert "setup-init.sql" in setup["url"]
+        assert "setup/init.sql" in setup["url"]
 
         # Verify source component
         source = source_components[0]
@@ -645,10 +708,9 @@ def test_serve_nested_csv_file():
         # Find the nested CSV
         csv_component = next(c for c in data["components"] if c["type"] == "csv")
         assert csv_component["name"] == "data/sales"
-        assert csv_component["url"] == "http://testserver/files/data-sales.csv"
+        assert csv_component["url"] == "http://testserver/files/data/sales.csv"
 
-        # Test fetching the file
-        response = client.get("/files/data-sales.csv")
+        response = client.get("/files/data/sales.csv")
         assert response.status_code == 200
         assert "2024-01-01,100" in response.text
 
@@ -720,6 +782,106 @@ def test_serve_cli():
     if cli_result.exception:
         raise cli_result.exception
     assert cli_result.exit_code == 0
+
+
+def test_serve_cli_uses_trilogy_toml_connection():
+    """Serving a directory whose trilogy.toml has [serve.connection] should
+    surface that connection through /index.json."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "model.preql").write_text("select 1;")
+        (tmppath / "trilogy.toml").write_text(
+            "[engine]\n"
+            'dialect = "duckdb"\n\n'
+            "[serve.connection]\n"
+            'type = "snowflake"\n\n'
+            "[serve.connection.options]\n"
+            'account = "acme"\n'
+            'warehouse = "wh"\n'
+        )
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("", 0))
+            port = s.getsockname()[1]
+
+        runner = CliRunner()
+        cli_result = None
+
+        def run_cli():
+            nonlocal cli_result
+            cli_result = runner.invoke(
+                cli,
+                [
+                    "serve",
+                    str(tmppath),
+                    "--port",
+                    str(port),
+                    "--host",
+                    "127.0.0.1",
+                    "--timeout",
+                    "5",
+                    "--no-browser",
+                    "--no-auth",
+                ],
+            )
+
+        thread = threading.Thread(target=run_cli, daemon=True)
+        thread.start()
+
+        base_url = f"http://127.0.0.1:{port}"
+        start = time.time()
+        server_ready = False
+        while time.time() - start < 3.0:
+            try:
+                urllib.request.urlopen(f"{base_url}/", timeout=1)
+                server_ready = True
+                break
+            except (urllib.error.URLError, ConnectionRefusedError):
+                time.sleep(0.1)
+        assert server_ready, "Server did not start in time"
+
+        with urllib.request.urlopen(f"{base_url}/index.json") as response:
+            data = json.loads(response.read().decode())
+
+        assert data["connection"] == {
+            "type": "snowflake",
+            "options": {"account": "acme", "warehouse": "wh"},
+        }
+
+        thread.join(timeout=6.0)
+        assert cli_result is not None
+        if cli_result.exception:
+            raise cli_result.exception
+
+
+def test_serve_cli_raises_on_invalid_trilogy_toml():
+    """Invalid trilogy.toml surfaces the error instead of silently starting
+    with defaults — misconfiguration should be loud, not swallowed."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "model.preql").write_text("select 1;")
+        (tmppath / "trilogy.toml").write_text(
+            "[serve.connection.options]\n" 'account = "acme"\n'
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "serve",
+                str(tmppath),
+                "--port",
+                "0",
+                "--host",
+                "127.0.0.1",
+                "--timeout",
+                "0.1",
+                "--no-browser",
+                "--no-auth",
+            ],
+        )
+        assert result.exit_code != 0
+        assert isinstance(result.exception, ValueError)
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────
@@ -974,6 +1136,51 @@ def test_index_falls_back_to_dir_name_without_project_name():
         data = client.get("/index.json").json()
         assert "my_model" in data["name"]
         assert data["project_name"] is None
+
+
+def test_index_defaults_connection_to_serving_engine():
+    """When no explicit `[serve.connection]` is configured, the index should
+    still advertise a connection derived from the engine dialect the server is
+    running, so the Studio client can run queries locally instead of landing
+    in the browse-only fallback."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        app = create_test_app(Path(tmpdir), engine="duck_db")
+        client = TestClient(app)
+        data = client.get("/index.json").json()
+        assert data["connection"] == {"type": "duck_db", "options": {}}
+
+
+def test_index_omits_connection_for_generic_engine():
+    """`generic` isn't a runtime the Studio client can construct, so we leave
+    `connection` null rather than advertise something nonexistent."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        app = create_test_app(Path(tmpdir), engine="generic")
+        client = TestClient(app)
+        data = client.get("/index.json").json()
+        assert data["connection"] is None
+
+
+def test_index_emits_connection_when_configured():
+    from fastapi import FastAPI
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        app = FastAPI()
+        create_app(
+            app,
+            "generic",
+            tmppath,
+            "localhost",
+            80,
+            connection_type="snowflake",
+            connection_options={"account": "acme", "warehouse": "wh"},
+        )
+        client = TestClient(app, raise_server_exceptions=False)
+        data = client.get("/index.json").json()
+        assert data["connection"] == {
+            "type": "snowflake",
+            "options": {"account": "acme", "warehouse": "wh"},
+        }
 
 
 # ── file CRUD endpoints ───────────────────────────────────────────────────────

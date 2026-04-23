@@ -6,13 +6,11 @@ from trilogy.execution.config import load_config_file
 from trilogy.scripts.common import TRILOGY_CONFIG_NAME
 from trilogy.scripts.serve_helpers.file_discovery import (
     extract_description_from_file,
-    find_all_model_files,
     find_csv_files,
     find_python_files,
     find_trilogy_files,
     get_relative_model_name,
     get_safe_model_name,
-    read_file_content,
 )
 from trilogy.scripts.serve_helpers.models import (
     ImportFile,
@@ -128,22 +126,19 @@ def find_model_by_name(
     # Generate description
     description = _get_model_description(directory_path, trilogy_files)
 
-    # Create components for each file
     components = []
 
-    # Add setup scripts first with purpose="setup"
     for setup_file in setup_scripts:
         setup_path = (
             setup_file if setup_file.is_absolute() else directory_path / setup_file
         )
         if setup_path.exists():
             file_model_name = get_relative_model_name(setup_path, directory_path)
-            safe_file_name = get_safe_model_name(file_model_name)
             file_ext = setup_path.suffix
 
             components.append(
                 ImportFile(
-                    url=f"{base_url}/files/{safe_file_name}{file_ext}",
+                    url=_file_url(base_url, setup_path, directory_path),
                     name=file_model_name,
                     alias="",
                     type="sql" if file_ext == ".sql" else "trilogy",
@@ -151,21 +146,18 @@ def find_model_by_name(
                 )
             )
 
-    # Add all trilogy files (preql and sql) with purpose="source"
     for trilogy_file in trilogy_files:
-        # Skip if already added as setup script
         if any(
             trilogy_file.samefile(s) if s.exists() else False for s in setup_scripts
         ):
             continue
 
         file_model_name = get_relative_model_name(trilogy_file, directory_path)
-        safe_file_name = get_safe_model_name(file_model_name)
         file_ext = trilogy_file.suffix
 
         components.append(
             ImportFile(
-                url=f"{base_url}/files/{safe_file_name}{file_ext}",
+                url=_file_url(base_url, trilogy_file, directory_path),
                 name=file_model_name,
                 alias="",
                 type="sql" if file_ext == ".sql" else "trilogy",
@@ -173,14 +165,12 @@ def find_model_by_name(
             )
         )
 
-    # Add CSV files with purpose="data"
     for csv_file in csv_files:
         file_model_name = get_relative_model_name(csv_file, directory_path)
-        safe_file_name = get_safe_model_name(file_model_name)
 
         components.append(
             ImportFile(
-                url=f"{base_url}/files/{safe_file_name}.csv",
+                url=_file_url(base_url, csv_file, directory_path),
                 name=file_model_name,
                 alias=file_model_name,
                 type="csv",
@@ -188,15 +178,13 @@ def find_model_by_name(
             )
         )
 
-    # Add Python files with purpose="source"
     python_files = find_python_files(directory_path)
     for python_file in python_files:
         file_model_name = get_relative_model_name(python_file, directory_path)
-        safe_file_name = get_safe_model_name(file_model_name)
 
         components.append(
             ImportFile(
-                url=f"{base_url}/files/{safe_file_name}.py",
+                url=_file_url(base_url, python_file, directory_path),
                 name=file_model_name,
                 alias="",
                 type="python",
@@ -212,13 +200,6 @@ def find_model_by_name(
     )
 
 
-def find_file_content_by_name(file_name: str, directory_path: Path) -> str | None:
-
-    target_parts = Path(file_name.replace("-", "/")).parts
-
-    for model_file in find_all_model_files(directory_path):
-        relative_parts = model_file.relative_to(directory_path).parts
-        if relative_parts == target_parts:
-            return read_file_content(model_file)
-
-    return None
+def _file_url(base_url: str, file_path: Path, directory_path: Path) -> str:
+    rel = str(file_path.relative_to(directory_path)).replace("\\", "/")
+    return f"{base_url}/files/{rel}"

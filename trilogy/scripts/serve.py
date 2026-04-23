@@ -10,7 +10,8 @@ from urllib.parse import quote
 
 from click import Path, argument, option, pass_context
 
-from trilogy.execution.config import load_config_file
+from trilogy.dialect.enums import Dialects
+from trilogy.execution.config import DEFAULT_STUDIO_URL, load_config_file
 from trilogy.scripts.common import find_trilogy_config
 from trilogy.scripts.serve_helpers import (
     find_all_model_files,
@@ -118,6 +119,9 @@ def create_app(
     token: str | None = None,
     config_path: PathlibPath | None = None,
     project_name: str | None = None,
+    connection_type: Dialects | str | None = None,
+    connection_options: dict[str, str] | None = None,
+    startup_scripts: list[PathlibPath] | None = None,
 ):
     # Normalize once so every closure (including compute_state_sync) sees the
     # same representation. Avoids Windows short-name vs full-name mismatches
@@ -131,6 +135,7 @@ def create_app(
     from fastapi.security import APIKeyHeader
 
     from trilogy.scripts.serve_helpers import (
+        ConnectionSpec,
         FileCreateRequest,
         FileListResponse,
         FileWriteRequest,
@@ -142,7 +147,6 @@ def create_app(
         cancel_job,
         compute_state_sync,
         create_job,
-        find_file_content_by_name,
         find_model_by_name,
         generate_model_index,
         get_job,
@@ -196,12 +200,49 @@ def create_app(
             },
         }
 
+    # Explicit `[serve.connection]` in trilogy.toml wins. Otherwise fall back
+    # to the serving engine dialect. The wire format is always a `Dialects`
+    # value (e.g. `"duck_db"`); clients are responsible for remapping.
+    def _resolve_dialect(value: Dialects | str) -> Dialects | None:
+        if isinstance(value, Dialects):
+            return value
+        try:
+            return Dialects(value)
+        except ValueError:
+            return None
+
+    if connection_type:
+        resolved = _resolve_dialect(connection_type)
+        connection_spec: ConnectionSpec | None = (
+            ConnectionSpec(type=resolved, options=connection_options or {})
+            if resolved
+            else None
+        )
+    else:
+        resolved = _resolve_dialect(engine)
+        connection_spec = ConnectionSpec(type=resolved) if resolved else None
+
+    # Resolve startup script paths to posix paths relative to the served
+    # directory. Files outside `directory_path` are silently skipped — they
+    # aren't reachable via /files, so the client couldn't tag them anyway.
+    resolved_startup_scripts: list[str] = []
+    for script in startup_scripts or []:
+        script_abs = script if script.is_absolute() else directory_path / script
+        try:
+            script_real = PathlibPath(os.path.realpath(script_abs))
+            rel = script_real.relative_to(directory_path)
+        except ValueError:
+            continue
+        resolved_startup_scripts.append(rel.as_posix())
+
     @router.get("/index.json", response_model=StoreIndex)
     async def get_index() -> StoreIndex:
         return StoreIndex(
             name=project_name or f"Trilogy Models - {directory_path.name}",
             models=generate_model_index(directory_path, base_url, engine),
             project_name=project_name,
+            connection=connection_spec,
+            startup_scripts=list(resolved_startup_scripts),
         )
 
     @router.get("/models/{model_name}.json", response_model=ModelImport)
@@ -211,12 +252,12 @@ def create_app(
             raise HTTPException(status_code=404, detail="Model not found")
         return model
 
-    @router.get("/files/{file_name}")
-    async def get_file(file_name: str):
-        content = find_file_content_by_name(file_name, directory_path)
-        if content is None:
+    @router.get("/files/{path:path}")
+    async def get_file(path: str):
+        target_path = _validate_write_path(path, directory_path)
+        if not target_path.exists():
             raise HTTPException(status_code=404, detail="File not found")
-        return PlainTextResponse(content=content)
+        return PlainTextResponse(content=target_path.read_text(encoding="utf-8"))
 
     @router.post("/files", status_code=201)
     async def create_file(request: FileCreateRequest):
@@ -408,17 +449,21 @@ def serve(
 
     # Load trilogy.toml for engine dialect and serve settings
     config_path = find_trilogy_config(directory_path)
-    studio_url = "https://trilogydata.dev/trilogy-studio-core"
+    studio_url = DEFAULT_STUDIO_URL
     project_name: str | None = None
+    connection_type: Dialects | str | None = None
+    connection_options: dict[str, str] = {}
+    startup_scripts: list[PathlibPath] = []
     if config_path:
-        try:
-            runtime_config = load_config_file(config_path)
-            if runtime_config.engine_dialect and engine == "generic":
-                engine = runtime_config.engine_dialect.value
-            studio_url = runtime_config.serve_studio_url
-            project_name = runtime_config.project_name
-        except Exception:
-            pass
+        runtime_config = load_config_file(config_path)
+        if runtime_config.engine_dialect and engine == "generic":
+            engine = runtime_config.engine_dialect.value
+        studio_url = runtime_config.serve_studio_url
+        project_name = runtime_config.project_name
+        if runtime_config.serve_connection:
+            connection_type = runtime_config.serve_connection.type
+            connection_options = runtime_config.serve_connection.options
+        startup_scripts = runtime_config.startup_sql + runtime_config.startup_trilogy
 
     if no_auth:
         token = None
@@ -444,6 +489,9 @@ def serve(
         token=token,
         config_path=config_path,
         project_name=project_name,
+        connection_type=connection_type,
+        connection_options=connection_options,
+        startup_scripts=startup_scripts,
     )
 
     # Generate Trilogy Studio URL

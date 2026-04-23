@@ -2,7 +2,6 @@ import tempfile
 from pathlib import Path
 
 from trilogy.scripts.serve_helpers.index_generation import (
-    find_file_content_by_name,
     find_model_by_name,
     generate_model_index,
 )
@@ -114,7 +113,7 @@ def test_find_model_by_name_nested():
         assert result.description == "Revenue report"
         assert (
             result.components[0].url
-            == "http://localhost:8100/files/finance-reports-revenue.preql"
+            == "http://localhost:8100/files/finance/reports/revenue.preql"
         )
 
 
@@ -151,60 +150,3 @@ def test_find_model_by_name_validates_components():
         assert component.alias == ""
         assert component.type == "trilogy"
         assert component.purpose == "source"
-
-
-def test_find_file_content_by_name_not_found():
-    """Test finding content for non-existent file."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmppath = Path(tmpdir)
-        result = find_file_content_by_name("nonexistent", tmppath)
-        assert result is None
-
-
-def test_find_file_content_by_name_root_level():
-    """Test finding content for root level file."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmppath = Path(tmpdir)
-        test_file = tmppath / "query.preql"
-        content = "select 1;\nselect 2;"
-        test_file.write_text(content)
-
-        result = find_file_content_by_name("query.preql", tmppath)
-        assert result == content
-
-
-def test_find_file_content_by_name_nested():
-    """Test finding content for nested file."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmppath = Path(tmpdir)
-        subdir = tmppath / "models" / "core"
-        subdir.mkdir(parents=True)
-        test_file = subdir / "base.preql"
-        content = "# Base model\nkey id int;"
-        test_file.write_text(content)
-
-        result = find_file_content_by_name("models/core/base.preql", tmppath)
-        assert result == content
-
-
-def test_find_file_content_by_name_empty_file():
-    """Test finding content for empty file."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmppath = Path(tmpdir)
-        test_file = tmppath / "empty.preql"
-        test_file.write_text("")
-
-        result = find_file_content_by_name("empty.preql", tmppath)
-        assert result == ""
-
-
-def test_find_file_content_by_name_large_file():
-    """Test finding content for a larger file."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmppath = Path(tmpdir)
-        test_file = tmppath / "large.preql"
-        content = "\n".join([f"select {i};" for i in range(100)])
-        test_file.write_text(content)
-
-        result = find_file_content_by_name("large.preql", tmppath)
-        assert result == content

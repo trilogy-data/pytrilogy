@@ -1,4 +1,9 @@
+import pytest
+from pydantic import ValidationError
+
+from trilogy.dialect.enums import Dialects
 from trilogy.scripts.serve_helpers.models import (
+    ConnectionSpec,
     ImportFile,
     ModelImport,
     StoreIndex,
@@ -120,6 +125,56 @@ def test_store_index_with_models():
     assert len(store.models) == 2
     assert store.models[0].name == "model1"
     assert store.models[1].name == "model2"
+
+
+def test_connection_spec_minimal():
+    spec = ConnectionSpec(type="duckdb")
+    assert spec.type == Dialects.DUCK_DB
+    assert spec.options == {}
+
+
+def test_connection_spec_with_options():
+    spec = ConnectionSpec(
+        type="snowflake", options={"account": "acme", "warehouse": "wh"}
+    )
+    assert spec.type == Dialects.SNOWFLAKE
+    assert spec.options == {"account": "acme", "warehouse": "wh"}
+
+
+@pytest.mark.parametrize(
+    "dialect",
+    list(Dialects),
+)
+def test_connection_spec_accepts_all_dialects(dialect):
+    assert ConnectionSpec(type=dialect.value).type == dialect
+
+
+def test_connection_spec_accepts_duckdb_alias():
+    assert ConnectionSpec(type="duckdb").type == Dialects.DUCK_DB
+
+
+def test_connection_spec_rejects_unknown_type():
+    with pytest.raises(ValidationError):
+        ConnectionSpec(type="not_a_dialect")  # type: ignore[arg-type]
+
+
+def test_store_index_with_connection():
+    store = StoreIndex(
+        name="Remote Store",
+        models=[],
+        connection=ConnectionSpec(type="duckdb"),
+    )
+    assert store.connection is not None
+    assert store.connection.type == Dialects.DUCK_DB
+    assert store.model_dump(mode="json")["connection"] == {
+        "type": "duck_db",
+        "options": {},
+    }
+
+
+def test_store_index_connection_defaults_to_none():
+    store = StoreIndex(name="Remote Store", models=[])
+    assert store.connection is None
 
 
 def test_models_are_json_serializable():

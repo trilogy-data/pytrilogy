@@ -20,7 +20,7 @@ from trilogy.scripts.common import (
     handle_execution_exception,
     merge_runtime_config,
     resolve_input_information,
-    validate_datasources,
+    validate_environment,
 )
 from trilogy.scripts.dependency import DependencyResolver, ScriptNode
 from trilogy.scripts.display import print_info
@@ -43,7 +43,7 @@ def execute_script_for_integration(
     with safe_open(node.path) as f:
         queries = exec.parse_text(f.read())
     stats = count_statement_stats(queries)
-    validate_datasources(exec, mock=False, quiet=quiet)
+    validate_environment(exec, mock=False, quiet=quiet)
     # Count datasources validated
     stats.validate_count = len(exec.environment.datasources)
     return stats
@@ -56,7 +56,7 @@ def execute_script_for_unit(
     with safe_open(node.path) as f:
         queries = exec.parse_text(f.read())
     stats = count_statement_stats(queries)
-    validate_datasources(exec, mock=True, quiet=quiet)
+    validate_environment(exec, mock=True, quiet=quiet)
     # Count datasources validated
     stats.validate_count = len(exec.environment.datasources)
     return stats
