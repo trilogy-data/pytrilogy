@@ -67,6 +67,9 @@ def apply_env_vars(env_vars: dict[str, str]) -> None:
 class AgentConfig:
     provider: Optional[Provider] = None
     model: Optional[str] = None
+    api_key_env: Optional[str] = None
+    max_iterations: int = 50
+    tool_output_limit: int = 8192
 
 
 @dataclass
@@ -152,8 +155,9 @@ def load_config_file(path: Path) -> RuntimeConfig:
         engine_config = None
     setup: dict = config_data.get("setup", {})
 
-    # Parse env_file - can be a single string or list of strings
-    env_raw = engine_raw.get("env_file", [])
+    # Parse env_file - can be a single string or list of strings.
+    # Top-level; falls back to [engine].env_file for backwards compat.
+    env_raw = config_data.get("env_file", engine_raw.get("env_file", []))
     if isinstance(env_raw, str):
         env_files = [path.parent / env_raw]
     else:
@@ -190,6 +194,9 @@ def load_config_file(path: Path) -> RuntimeConfig:
     agent = AgentConfig(
         provider=agent_provider,
         model=agent_raw.get("model"),
+        api_key_env=agent_raw.get("api_key_env"),
+        max_iterations=int(agent_raw.get("max_iterations", 50)),
+        tool_output_limit=int(agent_raw.get("tool_output_limit", 8192)),
     )
 
     return RuntimeConfig(
