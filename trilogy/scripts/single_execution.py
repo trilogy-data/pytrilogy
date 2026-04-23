@@ -189,18 +189,18 @@ def execute_run_mode(exec: Executor, queries: list[PROCESSED_STATEMENT_TYPES]) -
 
 
 def execute_integration_mode(exec: Executor) -> None:
-    """Execute integration tests (validate datasources without mocking)."""
-    from trilogy.scripts.common import validate_datasources
+    """Execute integration tests (validate environment without mocking)."""
+    from trilogy.scripts.common import validate_environment
 
-    validate_datasources(exec, mock=False, quiet=False)
+    validate_environment(exec, mock=False, quiet=False)
     print_success("Integration tests passed successfully!")
 
 
 def execute_unit_mode(exec: Executor) -> None:
-    """Execute unit tests (validate datasources with mocking)."""
-    from trilogy.scripts.common import validate_datasources
+    """Execute unit tests (validate environment with mocked datasources)."""
+    from trilogy.scripts.common import validate_environment
 
-    validate_datasources(exec, mock=True, quiet=False)
+    validate_environment(exec, mock=True, quiet=False)
     print_success("Unit tests passed successfully!")
 
 
