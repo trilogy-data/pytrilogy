@@ -784,6 +784,106 @@ def test_serve_cli():
     assert cli_result.exit_code == 0
 
 
+def test_serve_cli_uses_trilogy_toml_connection():
+    """Serving a directory whose trilogy.toml has [serve.connection] should
+    surface that connection through /index.json."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "model.preql").write_text("select 1;")
+        (tmppath / "trilogy.toml").write_text(
+            "[engine]\n"
+            'dialect = "duckdb"\n\n'
+            "[serve.connection]\n"
+            'type = "snowflake"\n\n'
+            "[serve.connection.options]\n"
+            'account = "acme"\n'
+            'warehouse = "wh"\n'
+        )
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("", 0))
+            port = s.getsockname()[1]
+
+        runner = CliRunner()
+        cli_result = None
+
+        def run_cli():
+            nonlocal cli_result
+            cli_result = runner.invoke(
+                cli,
+                [
+                    "serve",
+                    str(tmppath),
+                    "--port",
+                    str(port),
+                    "--host",
+                    "127.0.0.1",
+                    "--timeout",
+                    "5",
+                    "--no-browser",
+                    "--no-auth",
+                ],
+            )
+
+        thread = threading.Thread(target=run_cli, daemon=True)
+        thread.start()
+
+        base_url = f"http://127.0.0.1:{port}"
+        start = time.time()
+        server_ready = False
+        while time.time() - start < 3.0:
+            try:
+                urllib.request.urlopen(f"{base_url}/", timeout=1)
+                server_ready = True
+                break
+            except (urllib.error.URLError, ConnectionRefusedError):
+                time.sleep(0.1)
+        assert server_ready, "Server did not start in time"
+
+        with urllib.request.urlopen(f"{base_url}/index.json") as response:
+            data = json.loads(response.read().decode())
+
+        assert data["connection"] == {
+            "type": "snowflake",
+            "options": {"account": "acme", "warehouse": "wh"},
+        }
+
+        thread.join(timeout=6.0)
+        assert cli_result is not None
+        if cli_result.exception:
+            raise cli_result.exception
+
+
+def test_serve_cli_raises_on_invalid_trilogy_toml():
+    """Invalid trilogy.toml surfaces the error instead of silently starting
+    with defaults — misconfiguration should be loud, not swallowed."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        (tmppath / "model.preql").write_text("select 1;")
+        (tmppath / "trilogy.toml").write_text(
+            "[serve.connection.options]\n" 'account = "acme"\n'
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "serve",
+                str(tmppath),
+                "--port",
+                "0",
+                "--host",
+                "127.0.0.1",
+                "--timeout",
+                "0.1",
+                "--no-browser",
+                "--no-auth",
+            ],
+        )
+        assert result.exit_code != 0
+        assert isinstance(result.exception, ValueError)
+
+
 # ── helpers ────────────────────────────────────────────────────────────────────
 
 _TOKEN = "test-secret-token-abc"

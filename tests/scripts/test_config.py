@@ -16,7 +16,12 @@ from trilogy.dialect.config import (
     SQLServerConfig,
 )
 from trilogy.dialect.enums import Dialects
-from trilogy.execution.config import apply_env_vars, load_config_file, load_env_file
+from trilogy.execution.config import (
+    DEFAULT_STUDIO_URL,
+    apply_env_vars,
+    load_config_file,
+    load_env_file,
+)
 from trilogy.scripts.common import handle_execution_exception
 from trilogy.scripts.trilogy import cli
 
@@ -833,6 +838,74 @@ env_file = ".env"
                 os.environ.pop(test_key, None)
             else:
                 os.environ[test_key] = original_value
+
+
+def test_config_serve_defaults():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text('[engine]\ndialect = "duckdb"\n')
+
+        config = load_config_file(config_file)
+        assert config.serve_studio_url == DEFAULT_STUDIO_URL
+        assert config.serve_connection is None
+
+
+def test_config_serve_studio_url_override():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text('[serve]\nstudio_url = "https://studio.example.com/"\n')
+
+        config = load_config_file(config_file)
+        assert config.serve_studio_url == "https://studio.example.com/"
+
+
+def test_config_serve_connection_parses_type_and_options():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(
+            "[serve.connection]\n"
+            'type = "snowflake"\n\n'
+            "[serve.connection.options]\n"
+            'account = "acme"\n'
+            'warehouse = "wh"\n'
+        )
+
+        config = load_config_file(config_file)
+        assert config.serve_connection is not None
+        assert config.serve_connection.type == "snowflake"
+        assert config.serve_connection.options == {
+            "account": "acme",
+            "warehouse": "wh",
+        }
+
+
+def test_config_serve_connection_coerces_non_string_options():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text(
+            "[serve.connection]\n"
+            'type = "postgres"\n\n'
+            "[serve.connection.options]\n"
+            "port = 5432\n"
+        )
+
+        config = load_config_file(config_file)
+        assert config.serve_connection is not None
+        assert config.serve_connection.options == {"port": "5432"}
+
+
+def test_config_serve_connection_missing_type_raises():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+        config_file = tmppath / "trilogy.toml"
+        config_file.write_text("[serve.connection.options]\n" 'account = "acme"\n')
+
+        with raises(ValueError, match="type"):
+            load_config_file(config_file)
 
 
 def test_nonexistent_file_error_before_dialect_error():

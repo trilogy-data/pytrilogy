@@ -11,7 +11,7 @@ from urllib.parse import quote
 from click import Path, argument, option, pass_context
 
 from trilogy.dialect.enums import Dialects
-from trilogy.execution.config import load_config_file
+from trilogy.execution.config import DEFAULT_STUDIO_URL, load_config_file
 from trilogy.scripts.common import find_trilogy_config
 from trilogy.scripts.serve_helpers import (
     find_all_model_files,
@@ -449,26 +449,21 @@ def serve(
 
     # Load trilogy.toml for engine dialect and serve settings
     config_path = find_trilogy_config(directory_path)
-    studio_url = "https://trilogydata.dev/trilogy-studio-core"
+    studio_url = DEFAULT_STUDIO_URL
     project_name: str | None = None
     connection_type: Dialects | str | None = None
     connection_options: dict[str, str] = {}
     startup_scripts: list[PathlibPath] = []
     if config_path:
-        try:
-            runtime_config = load_config_file(config_path)
-            if runtime_config.engine_dialect and engine == "generic":
-                engine = runtime_config.engine_dialect.value
-            studio_url = runtime_config.serve_studio_url
-            project_name = runtime_config.project_name
-            if runtime_config.serve_connection:
-                connection_type = runtime_config.serve_connection.type
-                connection_options = runtime_config.serve_connection.options
-            startup_scripts = (
-                runtime_config.startup_sql + runtime_config.startup_trilogy
-            )
-        except Exception:
-            pass
+        runtime_config = load_config_file(config_path)
+        if runtime_config.engine_dialect and engine == "generic":
+            engine = runtime_config.engine_dialect.value
+        studio_url = runtime_config.serve_studio_url
+        project_name = runtime_config.project_name
+        if runtime_config.serve_connection:
+            connection_type = runtime_config.serve_connection.type
+            connection_options = runtime_config.serve_connection.options
+        startup_scripts = runtime_config.startup_sql + runtime_config.startup_trilogy
 
     if no_auth:
         token = None
