@@ -3,7 +3,7 @@
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from trilogy.core.statements.author import ChartConfig
+    from trilogy.core.statements.execute import ProcessedChartStatement
 
 from click import echo
 
@@ -220,7 +220,9 @@ def print_results_table(results: ResultSet) -> None:
         _print_fallback_table(results.rows, results.columns)
 
 
-def print_chart_terminal(data: list[dict], config: "ChartConfig") -> bool:
+def print_chart_terminal(
+    layer_data: list[list[dict]], statement: "ProcessedChartStatement"
+) -> bool:
     """Render chart to terminal using plotext. Returns True if rendered."""
     from trilogy.rendering.terminal_renderer import PLOTEXT_AVAILABLE
 
@@ -228,14 +230,14 @@ def print_chart_terminal(data: list[dict], config: "ChartConfig") -> bool:
         print_info("Install plotext for terminal charts: pip install plotext")
         return False
 
-    if not data:
+    if not any(layer_data):
         print_info("Chart produced no data")
         return True
 
     from trilogy.rendering.terminal_renderer import TerminalRenderer
 
     renderer = TerminalRenderer()
-    output = renderer.render(config, data)
+    output = renderer.render(statement, layer_data)
     echo(output)
     return True
 

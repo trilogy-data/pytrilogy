@@ -18,9 +18,7 @@ def runner() -> CliRunner:
 @pytest.fixture
 def sample_preql(tmp_path: Path) -> Path:
     path = tmp_path / "flight.preql"
-    path.write_text(
-        dedent(
-            """
+    path.write_text(dedent("""
             key id int;
             property id.carrier string;
             property id.distance int;
@@ -32,10 +30,7 @@ def sample_preql(tmp_path: Path) -> Path:
             )
             grain(id)
             query '''select 1 as id, 'AA' as carrier, 100 as distance''';
-            """
-        ).strip()
-        + "\n"
-    )
+            """).strip() + "\n")
     return path
 
 

@@ -227,8 +227,7 @@ def test_show_refresh_plan_rich(capsys):
 def test_refresh_stale_assets_on_approval_declined():
     """on_approval returning False should skip refresh."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(
-        """
+    executor.execute_text("""
         key item_id int;
         property item_id.name string;
         property item_id.updated_at datetime;
@@ -253,8 +252,7 @@ def test_refresh_stale_assets_on_approval_declined():
         freshness by updated_at;
 
         CREATE IF NOT EXISTS DATASOURCE target_items;
-        """
-    )
+        """)
 
     result = refresh_stale_assets(
         executor,
@@ -268,8 +266,7 @@ def test_refresh_stale_assets_on_approval_declined():
 def test_refresh_stale_assets_on_approval_accepted():
     """on_approval returning True should proceed with refresh."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(
-        """
+    executor.execute_text("""
         key item_id int;
         property item_id.name string;
         property item_id.updated_at datetime;
@@ -294,8 +291,7 @@ def test_refresh_stale_assets_on_approval_accepted():
         freshness by updated_at;
 
         CREATE IF NOT EXISTS DATASOURCE target_items;
-        """
-    )
+        """)
 
     result = refresh_stale_assets(
         executor,
@@ -309,8 +305,7 @@ def test_refresh_stale_assets_on_approval_accepted():
 def test_refresh_stale_assets_forced():
     """Test that force_sources forces rebuild regardless of staleness."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(
-        """
+    executor.execute_text("""
         key item_id int;
         property item_id.name string;
         property item_id.updated_at datetime;
@@ -340,8 +335,7 @@ def test_refresh_stale_assets_forced():
         INSERT INTO target_items_table
         SELECT 1 as item_id, 'Widget' as name, TIMESTAMP '2024-01-10 12:00:00' as updated_at
         ''');
-        """
-    )
+        """)
 
     refreshed_assets: list[tuple[str, str]] = []
 
@@ -493,8 +487,7 @@ def test_execute_refresh_mode_with_watermarks(capsys):
 
 def test_refresh_directory_interactive_aggregates_plan(tmp_path):
     source_file = tmp_path / "source.preql"
-    source_file.write_text(
-        """
+    source_file.write_text("""
 key event_id int;
 property event_id.event_ts datetime;
 
@@ -508,12 +501,10 @@ SELECT 1 as event_id, TIMESTAMP '2024-01-10 12:00:00' as event_ts
 UNION ALL
 SELECT 2 as event_id, TIMESTAMP '2024-01-15 12:00:00' as event_ts
 ''';
-"""
-    )
+""")
 
     base_file = tmp_path / "base.preql"
-    base_file.write_text(
-        """
+    base_file.write_text("""
 import source;
 
 datasource target_events (
@@ -523,15 +514,12 @@ datasource target_events (
 grain (event_id)
 address target_events_table
 incremental by event_ts;
-"""
-    )
+""")
 
     consumer_file = tmp_path / "consumer.preql"
-    consumer_file.write_text(
-        """
+    consumer_file.write_text("""
 import base;
-"""
-    )
+""")
 
     runner = CliRunner()
     with set_rich_mode(False), patch("click.confirm", return_value=False) as confirm:
@@ -607,8 +595,7 @@ def test_refresh_stale_assets_excludes_peer_stale_from_planner():
     """When multiple datasources are stale, each refresh hides the not-yet-refreshed
     peers from the query planner so it cannot route through stale/missing sources."""
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(
-        """
+    executor.execute_text("""
         key rec_id int;
         property rec_id.rec_ts datetime;
 
@@ -634,8 +621,7 @@ def test_refresh_stale_assets_excludes_peer_stale_from_planner():
         grain (rec_id)
         address rec_final_table
         incremental by rec_ts;
-        """
-    )
+        """)
 
     # Snapshot which datasources are visible in the environment at each update call.
     env_at_each_refresh: list[set[str]] = []
@@ -734,8 +720,7 @@ def test_phys_graph_dependent_scripts_edge_direction(tmp_path):
     (tmp_path / "base.preql").write_text(
         _STALE_DS_SCRIPT.format(dep="source", name="base")
     )
-    (tmp_path / "derived.preql").write_text(
-        """\
+    (tmp_path / "derived.preql").write_text("""\
 import base;
 
 datasource derived (
@@ -745,8 +730,7 @@ datasource derived (
 grain (ev_id)
 address derived_table
 incremental by ev_ts;
-"""
-    )
+""")
 
     cli_params = _make_cli_params(tmp_path)
     with patch("click.confirm", return_value=True):
@@ -882,8 +866,7 @@ def test_preview_directory_import_only_script_does_not_reprobe(tmp_path):
 def test_preview_directory_root_probe_uses_matching_namespace(tmp_path):
     """Root probes must run in a script whose concept namespace matches the target."""
     (tmp_path / "source.preql").write_text(_SOURCE_SCRIPT)
-    (tmp_path / "base.preql").write_text(
-        """\
+    (tmp_path / "base.preql").write_text("""\
 import source as src;
 
 datasource target_events (
@@ -893,8 +876,7 @@ datasource target_events (
 grain (src.ev_id)
 address target_events_table
 incremental by src.ev_ts;
-"""
-    )
+""")
 
     cli_params = _make_cli_params(tmp_path)
     approved, phys_graph = _preview_directory_refresh(cli_params, tmp_path)
@@ -909,8 +891,7 @@ def test_preview_directory_relative_input_matches_absolute_behavior(
 ):
     """Relative refresh paths should resolve to the same script ownership as absolute ones."""
     (tmp_path / "source.preql").write_text(_SOURCE_SCRIPT)
-    (tmp_path / "base.preql").write_text(
-        """\
+    (tmp_path / "base.preql").write_text("""\
 import source as src;
 
 datasource target_events (
@@ -920,8 +901,7 @@ datasource target_events (
 grain (src.ev_id)
 address target_events_table
 incremental by src.ev_ts;
-"""
-    )
+""")
 
     monkeypatch.chdir(tmp_path.parent)
     relative_input = Path(tmp_path.name)
@@ -941,8 +921,7 @@ incremental by src.ev_ts;
 def test_preview_directory_fails_when_root_probe_coverage_is_missing(tmp_path, capsys):
     """Silent root probe misses should fail validation instead of reporting up to date."""
     (tmp_path / "source.preql").write_text(_SOURCE_SCRIPT)
-    (tmp_path / "base.preql").write_text(
-        """\
+    (tmp_path / "base.preql").write_text("""\
 import source as src;
 
 datasource target_events (
@@ -952,8 +931,7 @@ datasource target_events (
 grain (src.ev_id)
 address target_events_table
 incremental by src.ev_ts;
-"""
-    )
+""")
 
     cli_params = _make_cli_params(tmp_path)
     with set_rich_mode(False), patch(

@@ -71,3 +71,8 @@ pglite_test.py
 scratch.txt
 
 uv.lock
+
+# local scratch / playground outputs
+scratch_*
+chart.png
+notes/

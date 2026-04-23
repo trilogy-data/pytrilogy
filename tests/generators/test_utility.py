@@ -17,14 +17,12 @@ from trilogy.core.processing.node_generators.common import (
 
 
 def test_concepts_to_grain_concepts():
-    env, _ = parse(
-        """
+    env, _ = parse("""
 key order_id int;
 key product_id int;
 property product_id.price float;
 property product_id.name string;
-                """
-    )
+                """)
     env = env.materialize_for_select()
     product = env.concepts["product_id"]
     price = env.concepts["price"]
@@ -43,13 +41,11 @@ property product_id.name string;
 
 
 def test_resolve_join_order():
-    env, _ = parse(
-        """
+    env, _ = parse("""
 key order_id int;
 key product_id int;
 property product_id.price float;       
-                """
-    )
+                """)
     env = env.materialize_for_select()
     test_case = []
     x = resolve_join_order(test_case)

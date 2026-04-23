@@ -40,6 +40,7 @@ from trilogy.core.statements.author import (
 )
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
+    ProcessedChartCopyStatement,
     ProcessedChartStatement,
     ProcessedCopyStatement,
     ProcessedCreateStatement,
@@ -77,6 +78,30 @@ from trilogy.staging import StagingConfig
 from trilogy.utility import safe_open
 
 ValidationDatasourceT = TypeVar("ValidationDatasourceT", Datasource, BuildDatasource)
+
+_CHART_COPY_SIZE_KEYS = {"width", "height"}
+_CHART_COPY_SAVE_KEYS = {"scale": "scale_factor", "ppi": "ppi"}
+_CHART_COPY_ALLOWED = _CHART_COPY_SIZE_KEYS | _CHART_COPY_SAVE_KEYS.keys()
+
+
+def _chart_copy_options(
+    options: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    if not options:
+        return {}, {}
+    unknown = set(options) - _CHART_COPY_ALLOWED
+    if unknown:
+        raise ValueError(
+            f"Unknown copy option(s) for chart output: {sorted(unknown)}."
+            f" Allowed: {sorted(_CHART_COPY_ALLOWED)}"
+        )
+    size_props = {k: options[k] for k in _CHART_COPY_SIZE_KEYS if k in options}
+    save_kwargs = {
+        dest: options[src]
+        for src, dest in _CHART_COPY_SAVE_KEYS.items()
+        if src in options
+    }
+    return size_props, save_kwargs
 
 
 class Executor(object):
@@ -499,24 +524,55 @@ class Executor(object):
             ["query"],
         )
 
+    def _run_chart_layers(self, query: ProcessedChartStatement) -> list[list[dict]]:
+        layer_data: list[list[dict]] = []
+        for layer in query.layers:
+            if layer.query is None:
+                layer_data.append([])
+                continue
+            sql = self.generator.compile_statement(layer.query)
+            result = self.execute_raw_sql(
+                sql, local_concepts=layer.query.local_concepts
+            )
+            if result is None:
+                layer_data.append([])
+                continue
+            layer_data.append(
+                [dict(zip(result.keys(), row)) for row in result.fetchall()]
+            )
+        return layer_data
+
     @execute_query.register
     def _(self, query: ProcessedChartStatement) -> ResultProtocol | None:
         from trilogy.rendering.altair_renderer import ALTAIR_AVAILABLE, AltairRenderer
 
-        sql = self.generator.compile_statement(query.query)
-        result = self.execute_raw_sql(sql, local_concepts=query.query.local_concepts)
-
-        if result is None:
-            return ChartResult(chart=None, data=[], config=query.config)
-
-        data = [dict(zip(result.keys(), row)) for row in result.fetchall()]
-
+        layer_data = self._run_chart_layers(query)
         chart = None
         if ALTAIR_AVAILABLE:
             renderer = AltairRenderer()
-            chart = renderer.render(query.config, data)
+            chart = renderer.render(query, layer_data)
 
-        return ChartResult(chart=chart, data=data, config=query.config)
+        return ChartResult(chart=chart, data=layer_data, statement=query)
+
+    @execute_query.register
+    def _(self, query: ProcessedChartCopyStatement) -> ResultProtocol | None:
+        from trilogy.rendering.altair_renderer import ALTAIR_AVAILABLE, AltairRenderer
+
+        if not ALTAIR_AVAILABLE:
+            raise RuntimeError(
+                "Copying a chart to a file requires altair. Install with 'pip install altair vl-convert-python'."
+            )
+        layer_data = self._run_chart_layers(query.chart)
+        renderer = AltairRenderer()
+        chart = renderer.render(query.chart, layer_data)
+        if chart is None:
+            raise RuntimeError("Chart renderer returned no chart to save.")
+        size_props, save_kwargs = _chart_copy_options(query.options)
+        if size_props:
+            chart = chart.properties(**size_props)
+        target = self._resolve_copy_target(query.target)
+        chart.save(target, format=query.target_type.value, **save_kwargs)
+        return MockResult([{"target": target}], ["target"])
 
     @singledispatchmethod
     def generate_sql(self, command) -> list[str]:

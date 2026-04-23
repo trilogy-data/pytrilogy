@@ -138,7 +138,7 @@ def core_meta(meta: SyntaxMeta | None) -> Any:
     return cast(Any, meta)
 
 
-def fail(node: SyntaxNode, message: str) -> HydrationError:
+def fail(node: SyntaxElement, message: str) -> HydrationError:
     return HydrationError(HydrationDiagnostic.from_syntax(message, node))
 
 

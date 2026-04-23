@@ -157,24 +157,29 @@
     
     // copy statement
 
-    COPY_TYPE: "csv"i | "json"i | "parquet"i
+    COPY_TYPE: "csv"i | "json"i | "parquet"i | "png"i | "svg"i | "html"i | "pdf"i
 
-    copy_statement: "copy"i "into"i COPY_TYPE (FILE_PATH | string_lit) "from"i select_statement
+    copy_option: IDENTIFIER "=" literal
+    copy_options: "(" copy_option ("," copy_option)* ","? ")"
+    copy_statement: "copy"i "into"i COPY_TYPE (FILE_PATH | string_lit) copy_options? "from"i (select_statement | chart_statement)
 
     // chart statement
     CHART_TYPE: "line"i | "bar"i | "barh"i | "point"i | "area"i | "headline"i | "donut"i | "heatmap"i | "boxplot"i | "treemap"i
+    CHART_PLACE_TYPE: "hline"i | "vline"i
 
-    chart_field_setting: "set"i CHART_FIELD_NAME ":" IDENTIFIER ("," IDENTIFIER)* ","?
     chart_bool_setting: "set"i CHART_BOOL_FIELD
     chart_scale_setting: "set"i CHART_SCALE_FIELD ":" SCALE_TYPE
+    chart_layer_binding: IDENTIFIER "<-" expr ("as"i IDENTIFIER)?
+    chart_layer_body: chart_layer_binding ("," chart_layer_binding)* ","?
+    chart_layer: "layer"i CHART_TYPE "(" chart_layer_body ")" ("from"i select_statement)? order_by? limit?
+    chart_place: "place"i CHART_PLACE_TYPE "at"i literal ("as"i IDENTIFIER)?
 
-    CHART_FIELD_NAME: "x_axis"i | "y_axis"i | "color"i | "size"i | "group"i | "trellis"i | "trellis_row"i | "geo"i | "annotation"i
     CHART_BOOL_FIELD: "hide_legend"i | "show_title"i
     CHART_SCALE_FIELD: "scale_x"i | "scale_y"i
     SCALE_TYPE: "linear"i | "log"i | "sqrt"i
 
-    chart_setting: chart_field_setting | chart_bool_setting | chart_scale_setting
-    chart_statement: "chart"i CHART_TYPE chart_setting* "from"i select_statement
+    chart_component: chart_layer | chart_place | chart_bool_setting | chart_scale_setting
+    chart_statement: "chart"i chart_component+
 
     // FUNCTION blocks
     function: raw_function | table_function

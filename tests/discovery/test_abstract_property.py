@@ -56,15 +56,13 @@ def test_abstract_property_sql_generation():
     assert materialized.grain.abstract, materialized
     assert materialized.granularity == Granularity.SINGLE_ROW, materialized
 
-    generated = exec.generate_sql(
-        """
+    generated = exec.generate_sql("""
 SELECT
     order_id,
     last_updated
 ORDER BY order_id
 ;
-"""
-    )[-1]
+""")[-1]
     assert "orders" in generated, generated
     assert "metadata" in generated, generated
 
@@ -75,15 +73,13 @@ def test_abstract_property_execution():
     exec = Dialects.DUCK_DB.default_executor()
     exec.parse_text(SETUP)
 
-    results = exec.execute_text(
-        """
+    results = exec.execute_text("""
 SELECT
     order_id,
     last_updated
 ORDER BY order_id
 ;
-"""
-    )[0].fetchall()
+""")[0].fetchall()
 
     assert len(results) == 2
     assert results[0][0] == 1

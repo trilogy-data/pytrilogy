@@ -1,226 +1,233 @@
 import pytest
 
-from trilogy.core.enums import ChartType
-from trilogy.core.statements.author import ChartConfig
+from trilogy.core.enums import ChartPlaceKind, ChartType
+from trilogy.core.models.author import ConceptRef
+from trilogy.core.models.core import DataType
+from trilogy.core.statements.author import ChartPlacement
+from trilogy.core.statements.execute import (
+    ProcessedChartLayer,
+    ProcessedChartStatement,
+    ProcessedQuery,
+)
 from trilogy.rendering.terminal_renderer import TerminalRenderer
 
 
-def test_terminal_bar_chart():
-    config = ChartConfig(
-        chart_type=ChartType.BAR,
-        x_fields=["category"],
-        y_fields=["value"],
+def _query_for(fields: dict[str, DataType]) -> ProcessedQuery:
+    output_columns = [
+        ConceptRef(address=f"local.{name}", datatype=dt) for name, dt in fields.items()
+    ]
+    return ProcessedQuery(output_columns=output_columns, ctes=[], base=None)  # type: ignore[arg-type]
+
+
+def _statement(
+    layer_type: ChartType,
+    x_fields: list[str] | None = None,
+    y_fields: list[str] | None = None,
+    placements: list[ChartPlacement] | None = None,
+    column_types: dict[str, DataType] | None = None,
+) -> ProcessedChartStatement:
+    layer = ProcessedChartLayer(
+        layer_type=layer_type,
+        x_fields=x_fields or [],
+        y_fields=y_fields or [],
+        query=_query_for(column_types) if column_types else None,
     )
+    return ProcessedChartStatement(layers=[layer], placements=placements or [])
+
+
+def test_terminal_bar_chart():
+    statement = _statement(ChartType.BAR, ["category"], ["value"])
     data = [
-        {"category": "a", "value": 10},
-        {"category": "b", "value": 20},
-        {"category": "c", "value": 30},
+        [
+            {"category": "a", "value": 10},
+            {"category": "b", "value": 20},
+            {"category": "c", "value": 30},
+        ]
     ]
 
-    renderer = TerminalRenderer()
-    output = renderer.render(config, data)
+    output = TerminalRenderer().render(statement, data)
 
     assert isinstance(output, str)
     assert len(output) > 0
 
 
 def test_terminal_line_chart():
-    config = ChartConfig(
-        chart_type=ChartType.LINE,
-        x_fields=["x"],
-        y_fields=["y"],
-    )
-    data = [
-        {"x": 1, "y": 10},
-        {"x": 2, "y": 20},
-        {"x": 3, "y": 30},
-    ]
+    statement = _statement(ChartType.LINE, ["x"], ["y"])
+    data = [[{"x": 1, "y": 10}, {"x": 2, "y": 20}, {"x": 3, "y": 30}]]
 
-    renderer = TerminalRenderer()
-    output = renderer.render(config, data)
+    output = TerminalRenderer().render(statement, data)
 
     assert isinstance(output, str)
     assert len(output) > 0
 
 
 def test_terminal_point_chart():
-    config = ChartConfig(
-        chart_type=ChartType.POINT,
-        x_fields=["x"],
-        y_fields=["y"],
-    )
-    data = [
-        {"x": 1, "y": 10},
-        {"x": 2, "y": 20},
-        {"x": 3, "y": 15},
-    ]
+    statement = _statement(ChartType.POINT, ["x"], ["y"])
+    data = [[{"x": 1, "y": 10}, {"x": 2, "y": 20}, {"x": 3, "y": 15}]]
 
-    renderer = TerminalRenderer()
-    output = renderer.render(config, data)
+    output = TerminalRenderer().render(statement, data)
 
     assert isinstance(output, str)
     assert len(output) > 0
 
 
 def test_terminal_multiple_y_fields():
-    config = ChartConfig(
-        chart_type=ChartType.LINE,
-        x_fields=["x"],
-        y_fields=["y1", "y2"],
-    )
+    statement = _statement(ChartType.LINE, ["x"], ["y1", "y2"])
     data = [
-        {"x": 1, "y1": 10, "y2": 15},
-        {"x": 2, "y1": 20, "y2": 25},
-        {"x": 3, "y1": 30, "y2": 35},
+        [
+            {"x": 1, "y1": 10, "y2": 15},
+            {"x": 2, "y1": 20, "y2": 25},
+            {"x": 3, "y1": 30, "y2": 35},
+        ]
     ]
 
-    renderer = TerminalRenderer()
-    output = renderer.render(config, data)
+    output = TerminalRenderer().render(statement, data)
 
     assert isinstance(output, str)
     assert len(output) > 0
 
 
 def test_terminal_barh_chart():
-    config = ChartConfig(
-        chart_type=ChartType.BARH,
-        x_fields=["value"],
-        y_fields=["category"],
-    )
-    data = [
-        {"category": "a", "value": 10},
-        {"category": "b", "value": 20},
-    ]
+    statement = _statement(ChartType.BARH, ["value"], ["category"])
+    data = [[{"category": "a", "value": 10}, {"category": "b", "value": 20}]]
 
-    renderer = TerminalRenderer()
-    output = renderer.render(config, data)
+    output = TerminalRenderer().render(statement, data)
 
     assert isinstance(output, str)
     assert len(output) > 0
 
 
 def test_terminal_area_chart():
-    config = ChartConfig(
-        chart_type=ChartType.AREA,
-        x_fields=["x"],
-        y_fields=["y"],
+    statement = _statement(ChartType.AREA, ["x"], ["y"])
+    data = [[{"x": 1, "y": 10}, {"x": 2, "y": 20}, {"x": 3, "y": 15}]]
+
+    output = TerminalRenderer().render(statement, data)
+
+    assert isinstance(output, str)
+    assert len(output) > 0
+
+
+@pytest.mark.parametrize(
+    "chart_type",
+    [ChartType.LINE, ChartType.POINT, ChartType.AREA],
+)
+def test_terminal_categorical_x_axis(chart_type):
+    statement = _statement(
+        chart_type,
+        ["name"],
+        ["count"],
+        column_types={"name": DataType.STRING, "count": DataType.INTEGER},
     )
     data = [
-        {"x": 1, "y": 10},
-        {"x": 2, "y": 20},
-        {"x": 3, "y": 15},
+        [
+            {"name": "United", "count": 10},
+            {"name": "Delta", "count": 20},
+            {"name": "American", "count": 15},
+        ]
     ]
 
-    renderer = TerminalRenderer()
-    output = renderer.render(config, data)
+    output = TerminalRenderer().render(statement, data)
+
+    assert isinstance(output, str)
+    assert len(output) > 0
+
+
+def test_terminal_multi_layer_subplots():
+    layer_a = ProcessedChartLayer(
+        layer_type=ChartType.BARH,
+        x_fields=["value"],
+        y_fields=["category"],
+        query=_query_for({"value": DataType.INTEGER, "category": DataType.STRING}),
+    )
+    layer_b = ProcessedChartLayer(
+        layer_type=ChartType.LINE,
+        x_fields=["value"],
+        y_fields=["category"],
+        query=_query_for({"value": DataType.INTEGER, "category": DataType.STRING}),
+    )
+    statement = ProcessedChartStatement(layers=[layer_a, layer_b])
+    data = [
+        [{"category": "A", "value": 10}, {"category": "B", "value": 20}],
+        [{"category": "A", "value": 15}, {"category": "B", "value": 25}],
+    ]
+
+    output = TerminalRenderer().render(statement, data)
+
+    assert isinstance(output, str)
+    assert len(output) > 0
+
+
+@pytest.mark.parametrize(
+    "chart_type",
+    [ChartType.LINE, ChartType.POINT, ChartType.AREA],
+)
+def test_terminal_numeric_x_axis_with_metadata(chart_type):
+    statement = _statement(
+        chart_type,
+        ["x"],
+        ["y"],
+        column_types={"x": DataType.FLOAT, "y": DataType.INTEGER},
+    )
+    data = [[{"x": 0.5, "y": 10}, {"x": 1.5, "y": 20}, {"x": 2.5, "y": 30}]]
+
+    output = TerminalRenderer().render(statement, data)
 
     assert isinstance(output, str)
     assert len(output) > 0
 
 
 def test_terminal_unsupported_chart_type():
-    config = ChartConfig(
-        chart_type=ChartType.HEATMAP,
-        x_fields=["x"],
-        y_fields=["y"],
-    )
-    data = [{"x": 1, "y": 10}]
+    statement = _statement(ChartType.HEATMAP, ["x"], ["y"])
+    data = [[{"x": 1, "y": 10}]]
 
-    renderer = TerminalRenderer()
-    output = renderer.render(config, data)
+    output = TerminalRenderer().render(statement, data)
 
     assert "not supported" in output.lower()
 
 
 def test_terminal_to_spec():
-    config = ChartConfig(
-        chart_type=ChartType.BAR,
-        x_fields=["category"],
-        y_fields=["value"],
-    )
-    data = [{"category": "a", "value": 10}]
+    statement = _statement(ChartType.BAR, ["category"], ["value"])
+    data = [[{"category": "a", "value": 10}]]
 
-    renderer = TerminalRenderer()
-    spec = renderer.to_spec(config, data)
+    spec = TerminalRenderer().to_spec(statement, data)
 
     assert spec["type"] == "terminal"
     assert "output" in spec
     assert isinstance(spec["output"], str)
 
 
-def test_terminal_bar_missing_fields():
-    config = ChartConfig(
-        chart_type=ChartType.BAR,
-        x_fields=[],
-        y_fields=[],
-    )
-    data = [{"category": "a", "value": 10}]
+@pytest.mark.parametrize(
+    "chart_type",
+    [ChartType.BAR, ChartType.BARH, ChartType.LINE, ChartType.POINT, ChartType.AREA],
+)
+def test_terminal_missing_fields(chart_type):
+    statement = _statement(chart_type, [], [])
+    data = [[{"x": 1, "y": 10}]]
 
-    renderer = TerminalRenderer()
-    output = renderer.render(config, data)
-
-    # Should still return something (empty chart)
-    assert isinstance(output, str)
-
-
-def test_terminal_barh_missing_fields():
-    config = ChartConfig(
-        chart_type=ChartType.BARH,
-        x_fields=[],
-        y_fields=[],
-    )
-    data = [{"category": "a", "value": 10}]
-
-    renderer = TerminalRenderer()
-    output = renderer.render(config, data)
+    output = TerminalRenderer().render(statement, data)
 
     assert isinstance(output, str)
 
 
-def test_terminal_line_missing_fields():
-    config = ChartConfig(
-        chart_type=ChartType.LINE,
-        x_fields=[],
-        y_fields=[],
+def test_terminal_placements():
+    statement = _statement(
+        ChartType.LINE,
+        ["x"],
+        ["y"],
+        placements=[
+            ChartPlacement(kind=ChartPlaceKind.HLINE, value=5),
+            ChartPlacement(kind=ChartPlaceKind.VLINE, value=2),
+        ],
     )
-    data = [{"x": 1, "y": 10}]
+    data = [[{"x": 1, "y": 10}, {"x": 2, "y": 20}]]
 
-    renderer = TerminalRenderer()
-    output = renderer.render(config, data)
+    output = TerminalRenderer().render(statement, data)
 
     assert isinstance(output, str)
-
-
-def test_terminal_point_missing_fields():
-    config = ChartConfig(
-        chart_type=ChartType.POINT,
-        x_fields=[],
-        y_fields=[],
-    )
-    data = [{"x": 1, "y": 10}]
-
-    renderer = TerminalRenderer()
-    output = renderer.render(config, data)
-
-    assert isinstance(output, str)
-
-
-def test_terminal_area_missing_fields():
-    config = ChartConfig(
-        chart_type=ChartType.AREA,
-        x_fields=[],
-        y_fields=[],
-    )
-    data = [{"x": 1, "y": 10}]
-
-    renderer = TerminalRenderer()
-    output = renderer.render(config, data)
-
-    assert isinstance(output, str)
+    assert len(output) > 0
 
 
 def test_plotext_not_available_raises():
-    """Test that TerminalRenderer raises ImportError when plotext not available."""
     import trilogy.rendering.terminal_renderer as tr
 
     original = tr.PLOTEXT_AVAILABLE
@@ -233,54 +240,36 @@ def test_plotext_not_available_raises():
 
 
 def test_print_chart_terminal_renders_chart(capsys):
-    """Test print_chart_terminal renders a chart to terminal."""
     from trilogy.scripts.display import print_chart_terminal
 
-    config = ChartConfig(
-        chart_type=ChartType.BAR,
-        x_fields=["category"],
-        y_fields=["value"],
-    )
-    data = [
-        {"category": "a", "value": 10},
-        {"category": "b", "value": 20},
-    ]
+    statement = _statement(ChartType.BAR, ["category"], ["value"])
+    data = [[{"category": "a", "value": 10}, {"category": "b", "value": 20}]]
 
-    result = print_chart_terminal(data, config)
+    result = print_chart_terminal(data, statement)
     assert result is True
 
     captured = capsys.readouterr()
     assert len(captured.out) > 0
 
 
-def test_print_chart_terminal_empty_data(capsys):
-    """Test print_chart_terminal handles empty data."""
+def test_print_chart_terminal_empty_data():
     from trilogy.scripts.display import print_chart_terminal
 
-    config = ChartConfig(
-        chart_type=ChartType.BAR,
-        x_fields=["x"],
-        y_fields=["y"],
-    )
+    statement = _statement(ChartType.BAR, ["x"], ["y"])
 
-    result = print_chart_terminal([], config)
+    result = print_chart_terminal([[]], statement)
     assert result is True
 
 
-def test_print_chart_terminal_plotext_unavailable(capsys):
-    """Test print_chart_terminal when plotext is not available."""
+def test_print_chart_terminal_plotext_unavailable():
     import trilogy.rendering.terminal_renderer as tr
     from trilogy.scripts.display import print_chart_terminal
 
     original = tr.PLOTEXT_AVAILABLE
     try:
         tr.PLOTEXT_AVAILABLE = False
-        config = ChartConfig(
-            chart_type=ChartType.BAR,
-            x_fields=["x"],
-            y_fields=["y"],
-        )
-        result = print_chart_terminal([{"x": 1, "y": 2}], config)
+        statement = _statement(ChartType.BAR, ["x"], ["y"])
+        result = print_chart_terminal([[{"x": 1, "y": 2}]], statement)
         assert result is False
     finally:
         tr.PLOTEXT_AVAILABLE = original

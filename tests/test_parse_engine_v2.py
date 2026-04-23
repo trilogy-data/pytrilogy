@@ -33,12 +33,10 @@ def walk_nodes(element: SyntaxElement) -> Iterator[SyntaxNode]:
 
 
 def test_parse_syntax_only_returns_syntax() -> None:
-    document = parse_syntax(
-        """
+    document = parse_syntax("""
 const a <- 1;
 select missing_concept;
-"""
-    )
+""")
 
     assert isinstance(document.tree, SyntaxNode)
     assert document.tree.name == "start"

@@ -40,7 +40,7 @@ snowflake = ["snowflake-sqlalchemy"]
 ai = ["httpx"]
 cli = ["rich", "plotext"]
 serve = ["fastapi", "uvicorn"]
-analysis = ["altair"]
+analysis = ["altair", "vl-convert-python"]
 
 
 [tool.setuptools.dynamic]

@@ -73,6 +73,7 @@ class ProcessedQueryPersist(ProcessedQuery, PersistQueryMixin):
 @dataclass
 class ProcessedCopyStatement(ProcessedQuery, CopyQueryMixin):
     column_aliases: dict[str, str] = field(default_factory=dict)
+    options: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -144,13 +145,41 @@ class ProcessedShowStatement:
 
 
 @dataclass
+class ProcessedChartLayer:
+    layer_type: "ChartType"
+    query: Optional[ProcessedQuery] = None
+    x_fields: list[str] = field(default_factory=list)
+    y_fields: list[str] = field(default_factory=list)
+    color_field: Optional[str] = None
+    size_field: Optional[str] = None
+    group_field: Optional[str] = None
+    x_trellis_field: Optional[str] = None
+    y_trellis_field: Optional[str] = None
+    geo_field: Optional[str] = None
+    annotation_field: Optional[str] = None
+
+
+@dataclass
 class ProcessedChartStatement:
-    config: "ChartConfig"
-    query: ProcessedQuery
+    layers: List[ProcessedChartLayer]
+    placements: List["ChartPlacement"] = field(default_factory=list)
+    hide_legend: bool = False
+    show_title: bool = False
+    scale_x: Optional[str] = None
+    scale_y: Optional[str] = None
+
+
+@dataclass
+class ProcessedChartCopyStatement(CopyQueryMixin):
+    chart: ProcessedChartStatement = field(
+        default_factory=lambda: ProcessedChartStatement(layers=[])
+    )
+    options: dict[str, Any] = field(default_factory=dict)
 
 
 # Import here to avoid circular import
-from trilogy.core.statements.author import ChartConfig  # noqa: E402
+from trilogy.core.enums import ChartType  # noqa: E402
+from trilogy.core.statements.author import ChartPlacement  # noqa: E402
 
 PROCESSED_STATEMENT_TYPES = (
     ProcessedCopyStatement
@@ -163,4 +192,5 @@ PROCESSED_STATEMENT_TYPES = (
     | ProcessedPublishStatement
     | ProcessedMockStatement
     | ProcessedChartStatement
+    | ProcessedChartCopyStatement
 )

@@ -112,8 +112,7 @@ DATATYPE_MAP: dict[DataType, str] = {
 }
 
 
-BQ_SQL_TEMPLATE = Template(
-    """{%- if output %}
+BQ_SQL_TEMPLATE = Template("""{%- if output %}
 {{output}}
 {% endif %}{%- if ctes %}
 WITH {% if recursive%}RECURSIVE{% endif %}{% for cte in ctes %}
@@ -140,12 +139,10 @@ ORDER BY {% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if limit is not none %}
 LIMIT {{ limit }}{% endif %}{% endif %}
-"""
-)
+""")
 
 
-BQ_CREATE_TABLE_SQL_TEMPLATE = Template(
-    """
+BQ_CREATE_TABLE_SQL_TEMPLATE = Template("""
 CREATE {% if create_mode == "create_or_replace" %}OR REPLACE TABLE{% elif create_mode == "create_if_not_exists" %}TABLE IF NOT EXISTS{% else %}TABLE{% endif %} {{ name}} (
 {%- for column in columns %}
     `{{ column.name }}` {{ type_map[column.name] }}{% if column.description %} OPTIONS(description='{{ column.description }}'){% endif %}{% if not loop.last %},{% endif %}
@@ -162,11 +159,9 @@ OPTIONS(
     description='{{ table_description }}'
 )
 {%- endif %};
-""".strip()
-)
+""".strip())
 
-PARTITIONED_INSERT_TEMPLATE = Template(
-    """
+PARTITIONED_INSERT_TEMPLATE = Template("""
 -- Step 1: materialize results
 CREATE TEMP TABLE {{ tmp_table }} AS SELECT * FROM  {{ target_table }} limit 0;
                                        
@@ -205,8 +200,7 @@ BEGIN
         SET i = i + 1;
     END WHILE;
 END;
-"""
-)
+""")
 
 MAX_IDENTIFIER_LENGTH = 50
 

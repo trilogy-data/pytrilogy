@@ -455,12 +455,20 @@ class IOType(Enum):
     CSV = "csv"
     JSON = "json"
     PARQUET = "parquet"
+    PNG = "png"
+    SVG = "svg"
+    HTML = "html"
+    PDF = "pdf"
 
     @classmethod
     def _missing_(cls, value):
         if isinstance(value, str) and value.lower() != value:
             return IOType(value.lower())
         return super()._missing_(value)
+
+    @property
+    def is_chart_format(self) -> bool:
+        return self in (IOType.PNG, IOType.SVG, IOType.HTML, IOType.PDF)
 
 
 class ValidationScope(Enum):
@@ -491,4 +499,15 @@ class ChartType(Enum):
     def _missing_(cls, value):
         if isinstance(value, str) and value.lower() != value:
             return ChartType(value.lower())
+        return super()._missing_(value)
+
+
+class ChartPlaceKind(Enum):
+    HLINE = "hline"
+    VLINE = "vline"
+
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str) and value.lower() != value:
+            return ChartPlaceKind(value.lower())
         return super()._missing_(value)

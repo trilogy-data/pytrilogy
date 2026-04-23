@@ -1,5 +1,5 @@
 # Datasource ingested from world_capitals
-# Generated on 2026-04-20 15:17:13.879897
+# Generated on 2026-04-21 21:13:38.380342
 import std.geography;
 
 key country string::country;

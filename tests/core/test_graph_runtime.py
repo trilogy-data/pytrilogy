@@ -359,8 +359,7 @@ def test_compare_mode_shadow_paths(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_compare_mode_query_smoke():
-    script = textwrap.dedent(
-        """
+    script = textwrap.dedent("""
         from trilogy import Dialects
         from trilogy.core.models.environment import Environment
 
@@ -389,8 +388,7 @@ def test_compare_mode_query_smoke():
         )[-1]
         assert "SELECT" in sql
         print(sql)
-        """
-    )
+        """)
     env = os.environ.copy()
     env["TRILOGY_GRAPH_COMPARE"] = "1"
     result = subprocess.run(

@@ -113,8 +113,7 @@ def test_incremental_refresh_appends_only_new_rows():
 
     # Simulate source gaining new data at version=3 by re-parsing with an extended root.
     executor.environment = Environment()
-    executor.parse_text(
-        """
+    executor.parse_text("""
 key id int;
 property id.value string;
 property id.version int;
@@ -133,8 +132,7 @@ datasource processed (id, value, version)
 grain (id)
 address schema_refresh_incremental
 incremental by version;
-"""
-    )
+""")
 
     result_v2 = refresh_stale_assets(executor)
     assert (

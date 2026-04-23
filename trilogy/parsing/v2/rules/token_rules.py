@@ -187,6 +187,10 @@ def PARSE_CHART_TYPE(token: SyntaxToken, context: RuleContext) -> str:
     return token.value.lower()
 
 
+def PARSE_CHART_PLACE_TYPE(token: SyntaxToken, context: RuleContext) -> str:
+    return token.value.lower()
+
+
 def PARSE_VALIDATE_SCOPE(token: SyntaxToken, context: RuleContext) -> str:
     return token.value.lower()
 
@@ -238,6 +242,7 @@ TOKEN_HYDRATORS: dict[SyntaxTokenKind, TokenHydrator] = {
     SyntaxTokenKind.F_FILE_PATH: PARSE_F_FILE_PATH,
     SyntaxTokenKind.F_QUOTED_ADDRESS: PARSE_F_QUOTED_ADDRESS,
     SyntaxTokenKind.CHART_TYPE: PARSE_CHART_TYPE,
+    SyntaxTokenKind.CHART_PLACE_TYPE: PARSE_CHART_PLACE_TYPE,
     SyntaxTokenKind.VALIDATE_SCOPE: PARSE_VALIDATE_SCOPE,
     SyntaxTokenKind.COPY_TYPE: PARSE_COPY_TYPE,
     SyntaxTokenKind.DATASOURCE_ROOT: PARSE_DATASOURCE_ROOT,

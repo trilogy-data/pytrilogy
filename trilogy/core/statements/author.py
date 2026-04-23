@@ -1,10 +1,11 @@
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import List, Literal, Mapping, Optional, Union
+from typing import Any, List, Literal, Mapping, Optional, Union
 
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
 from trilogy.core.enums import (
+    ChartPlaceKind,
     ChartType,
     ConceptSource,
     CreateMode,
@@ -369,7 +370,8 @@ class RawSQLStatement:
 class CopyStatement:
     target: str
     target_type: IOType
-    select: SelectStatement
+    select: Union[SelectStatement, "ChartStatement"]
+    options: dict[str, Any] = field(default_factory=dict)
     meta: Optional[Metadata] = field(default_factory=Metadata)
 
 
@@ -563,28 +565,48 @@ class FunctionDeclaration(HasUUID):
     meta: Optional[Metadata] = field(default_factory=Metadata)
 
 
+CHART_ROLES: tuple[str, ...] = (
+    "x_axis",
+    "y_axis",
+    "color",
+    "size",
+    "group",
+    "x_trellis",
+    "y_trellis",
+    "geo",
+    "annotation",
+)
+
+
 @dataclass
-class ChartConfig:
-    chart_type: ChartType
-    x_fields: list[str] = field(default_factory=list)
-    y_fields: list[str] = field(default_factory=list)
-    color_field: str | None = None
-    size_field: str | None = None
-    group_field: str | None = None
-    trellis_field: str | None = None
-    trellis_row_field: str | None = None
-    geo_field: str | None = None
-    annotation_field: str | None = None
-    hide_legend: bool = False
-    show_title: bool = False
-    scale_x: Literal["linear", "log", "sqrt"] | None = None
-    scale_y: Literal["linear", "log", "sqrt"] | None = None
+class ChartLayerBinding:
+    role: str
+    expr: Expr
+    alias: str | None = None
+
+
+@dataclass
+class ChartLayer:
+    layer_type: ChartType
+    bindings: list[ChartLayerBinding] = field(default_factory=list)
+    select: SelectStatement | None = None
+
+
+@dataclass
+class ChartPlacement:
+    kind: ChartPlaceKind
+    value: object
+    label: str | None = None
 
 
 @dataclass
 class ChartStatement:
-    config: ChartConfig
-    select: SelectStatement
+    layers: list[ChartLayer]
+    placements: list[ChartPlacement] = field(default_factory=list)
+    hide_legend: bool = False
+    show_title: bool = False
+    scale_x: Literal["linear", "log", "sqrt"] | None = None
+    scale_y: Literal["linear", "log", "sqrt"] | None = None
     meta: Optional[Metadata] = field(default_factory=Metadata)
 
 

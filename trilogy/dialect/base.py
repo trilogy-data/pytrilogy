@@ -108,6 +108,7 @@ from trilogy.core.statements.author import (
 )
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
+    ProcessedChartCopyStatement,
     ProcessedChartStatement,
     ProcessedCopyStatement,
     ProcessedCreateStatement,
@@ -429,8 +430,7 @@ FUNCTION_GRAIN_MATCH_MAP = {
 }
 
 
-GENERIC_SQL_TEMPLATE: Template = Template(
-    """{%- if ctes %}
+GENERIC_SQL_TEMPLATE: Template = Template("""{%- if ctes %}
 WITH {% if recursive%} RECURSIVE {% endif %}{% for cte in ctes %}
 {{cte.name}} as (
 {{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
@@ -454,12 +454,10 @@ HAVING
 ORDER BY{% for order in order_by %}
 \t{{ order }}{% if not loop.last %},{% endif %}{% endfor %}
 {% endif %}{% endif %}
-"""
-)
+""")
 
 
-CREATE_TABLE_SQL_TEMPLATE = Template(
-    """
+CREATE_TABLE_SQL_TEMPLATE = Template("""
 CREATE {% if create_mode == "create_or_replace" %}OR REPLACE TABLE{% elif create_mode == "create_if_not_exists" %}TABLE IF NOT EXISTS{% else %}TABLE{% endif %} {{ name }} (
 {%- for column in columns %}
     {{ column.name }} {{ type_map[column.name] }}{% if column.comment %} COMMENT '{{ column.comment }}'{% endif %}{% if not loop.last %},{% endif %}
@@ -472,8 +470,7 @@ PARTITIONED BY (
 {%- endfor %}
 )
 {%- endif %};
-""".strip()
-)
+""".strip())
 
 
 def safe_get_cte_value(
@@ -1479,13 +1476,20 @@ class BaseDialect:
             elif isinstance(statement, ChartStatement):
                 if hooks:
                     for hook in hooks:
-                        hook.process_select_info(statement.select)
+                        for layer in statement.layers:
+                            if layer.select is not None:
+                                hook.process_select_info(layer.select)
                 chart = process_chart(environment, statement, hooks=hooks)
                 output.append(chart)
             elif isinstance(statement, CopyStatement):
                 if hooks:
                     for hook in hooks:
-                        hook.process_select_info(statement.select)
+                        if isinstance(statement.select, ChartStatement):
+                            for layer in statement.select.layers:
+                                if layer.select is not None:
+                                    hook.process_select_info(layer.select)
+                        else:
+                            hook.process_select_info(statement.select)
                 copy = process_copy(environment, statement, hooks=hooks)
                 output.append(copy)
             elif isinstance(statement, SelectStatement):
@@ -1650,8 +1654,13 @@ class BaseDialect:
                 )
             return "\n".join(text)
         elif isinstance(query, ProcessedChartStatement):
-            # Chart statements compile their underlying query
-            return self.compile_statement(query.query)
+            return ";\n".join(
+                self.compile_statement(layer.query)
+                for layer in query.layers
+                if layer.query is not None
+            )
+        elif isinstance(query, ProcessedChartCopyStatement):
+            return self.compile_statement(query.chart)
 
         recursive = any(isinstance(x, RecursiveCTE) for x in query.ctes)
 

@@ -299,8 +299,7 @@ def test_concept_address_in_check():
 
 
 def test_rowset_with_filter_derivation():
-    env, statements = parse(
-        """
+    env, statements = parse("""
 key x int;
 
 datasource test (
@@ -319,8 +318,7 @@ auto avg_greater_ten <- avg(greater_than_ten.x) by *;
 
 select avg_greater_ten;
 
-"""
-    )
+""")
 
     lineage = env.concepts["avg_greater_ten"].lineage
     assert isinstance(lineage, AggregateWrapper)
@@ -361,8 +359,7 @@ def test_parenthetical(test_environment: Environment):
 
 
 def test_datasource_grain_application():
-    env, statements = parse(
-        """
+    env, statements = parse("""
 key x string;
 property x.part_1 string;
 property x.part_2 string;
@@ -386,8 +383,7 @@ address parts;
 
 
 
-"""
-    )
+""")
 
     test_grain = Grain.from_concepts(
         concepts=["x", "part_1", "part_2"], environment=env
@@ -398,8 +394,7 @@ address parts;
 
 
 def test_datasource_merge_generation():
-    env, statements = parse(
-        """
+    env, statements = parse("""
 key x string;
 property x.part_1 string;
 property x.part_2 string;
@@ -428,8 +423,7 @@ select x,
 ;
 
 
-"""
-    )
+""")
 
     q = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(statements[-1])[
         0

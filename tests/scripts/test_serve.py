@@ -726,8 +726,7 @@ def test_serve_cli():
 
 _TOKEN = "test-secret-token-abc"
 
-SIMPLE_PREQL = textwrap.dedent(
-    """\
+SIMPLE_PREQL = textwrap.dedent("""\
     key id int;
 
     root datasource raw (
@@ -735,8 +734,7 @@ SIMPLE_PREQL = textwrap.dedent(
     )
     grain (id)
     query '''select 1 as id''';
-"""
-)
+""")
 
 
 def _app_with_token(directory_path: Path, engine: str = "generic") -> TestClient:
