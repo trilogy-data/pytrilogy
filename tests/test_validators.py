@@ -5,7 +5,11 @@ import pytest
 
 from trilogy import Dialects
 from trilogy.core.enums import ValidationScope
-from trilogy.core.exceptions import DatasourceGrainValidationError, ModelValidationError
+from trilogy.core.exceptions import (
+    DatasourceColumnBindingError,
+    DatasourceGrainValidationError,
+    ModelValidationError,
+)
 from trilogy.core.models.core import (
     ArrayType,
     DataType,
@@ -260,6 +264,74 @@ def test_validate_datasource_fails_early_for_missing_grain_column():
         and "not present in datasource output: local.city" in child.message
         for child in exc_info.value.children or []
     )
+
+
+_MULTI_DATASOURCE_PREAMBLE = """
+    key aircraft_id int;
+    property aircraft_id.tail_num string;
+    key flight_id int;
+"""
+
+_AIRCRAFT_DATASOURCE = """
+    datasource aircraft (
+        aircraft_id: aircraft_id,
+        tail_num: tail_num,
+    )
+    grain (aircraft_id)
+    query '''
+    SELECT 1 AS aircraft_id, 'N1' AS tail_num UNION ALL
+    SELECT 2, 'N2' UNION ALL
+    SELECT 3, 'N3'
+    ''';
+"""
+
+
+def test_multi_datasource_complete_binding_cardinality_mismatch():
+    """A concept bound complete in two datasources must have matching
+    distinct cardinality — if one has fewer values, it should be marked partial."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_MULTI_DATASOURCE_PREAMBLE + _AIRCRAFT_DATASOURCE + """
+        datasource flight (
+            flight_id: flight_id,
+            tail_num: tail_num,
+        )
+        grain (flight_id)
+        query '''
+        SELECT 10 AS flight_id, 'N1' AS tail_num UNION ALL
+        SELECT 20, 'N1' UNION ALL
+        SELECT 30, 'N2'
+        ''';
+        """)
+
+    with pytest.raises(ModelValidationError) as exc_info:
+        validate_environment(executor.environment, exec=executor)
+
+    assert any(
+        isinstance(child, DatasourceColumnBindingError)
+        and "tail_num" in child.message
+        and "missing values in datasource flight" in child.message
+        and "not marked as partial" in child.message
+        for child in exc_info.value.children or []
+    )
+
+
+def test_multi_datasource_partial_binding_is_not_flagged():
+    """Marking the smaller binding as partial should suppress the mismatch error."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_MULTI_DATASOURCE_PREAMBLE + _AIRCRAFT_DATASOURCE + """
+        datasource flight (
+            flight_id: flight_id,
+            tail_num: ~tail_num,
+        )
+        grain (flight_id)
+        query '''
+        SELECT 10 AS flight_id, 'N1' AS tail_num UNION ALL
+        SELECT 20, 'N1' UNION ALL
+        SELECT 30, 'N2'
+        ''';
+        """)
+
+    validate_environment(executor.environment, exec=executor)
 
 
 def test_inferred_type_check():

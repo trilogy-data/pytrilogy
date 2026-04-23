@@ -1,5 +1,5 @@
 from trilogy import Environment, Executor
-from trilogy.core.enums import Derivation, Modifier, Purpose
+from trilogy.core.enums import Derivation, Modifier
 from trilogy.core.exceptions import (
     ConceptModelValidationError,
     DatasourceColumnBindingData,
@@ -12,18 +12,15 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.validation.common import ExpectationType, ValidationTest, easy_query
 
 
-def validate_property_concept(
-    concept: BuildConcept, exec: Executor | None = None
-) -> list[ValidationTest]:
-    return []
-
-
-def validate_key_concept(
+def validate_multi_datasource_concept(
     concept: BuildConcept,
     env: Environment,
     build_env: BuildEnvironment,
     exec: Executor | None = None,
 ):
+    """For any concept bound to multiple datasources with complete bindings,
+    verify the distinct cardinality matches across sources — any datasource
+    with fewer distinct values than the max should have been marked partial."""
     results: list[ValidationTest] = []
     seen: dict[str, int] = {}
 
@@ -31,7 +28,6 @@ def validate_key_concept(
     for datasource in build_env.datasources.values():
         if concept.address in [c.address for c in datasource.concepts]:
             count += 1
-    # if it only has one source, it's a key
     if count <= 1:
         return results
 
@@ -40,12 +36,10 @@ def validate_key_concept(
             assignment = [
                 x for x in datasource.columns if x.concept.address == concept.address
             ][0]
-            # if it's not a partial, skip it
             if not assignment.is_complete:
                 continue
             type_query = easy_query(
                 concepts=[
-                    # build_env.concepts[concept.address],
                     build_env.concepts[f"grain_check_{concept.safe_address}"],
                 ],
                 datasource=datasource,
@@ -91,7 +85,7 @@ def validate_key_concept(
                             actual_modifiers=concept.modifiers,
                         )
                     ],
-                    message=f"Key concept {concept.address} is missing values in datasource {datasource.name} (max cardinality in data {max_seen}, datasource has {seen[datasource.name]} values) but is not marked as partial.",
+                    message=f"Concept {concept.address} is missing values in datasource {datasource.name} (max cardinality in data {max_seen}, datasource has {seen[datasource.name]} values) but is not marked as partial.",
                 )
             results.append(
                 ValidationTest(
@@ -139,8 +133,5 @@ def validate_concept(
 ) -> list[ValidationTest]:
     base: list[ValidationTest] = []
     base += validate_datasources(concept, build_env)
-    if concept.purpose == Purpose.PROPERTY:
-        base += validate_property_concept(concept)
-    elif concept.purpose == Purpose.KEY:
-        base += validate_key_concept(concept, env, build_env, exec)
+    base += validate_multi_datasource_concept(concept, env, build_env, exec)
     return base

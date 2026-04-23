@@ -537,7 +537,7 @@ def resolve_subgraphs(
     canonical_map = {c.canonical_address: c.address for c in relevant}
     concepts: dict[str, BuildConcept] = g.concepts
     subgraphs: dict[str, list[str]] = {
-        ds: list(set(list(nx.all_neighbors(g, ds)))) for ds in datasources
+        ds: sorted(set(nx.all_neighbors(g, ds))) for ds in datasources
     }
     # filter pseudonym duplicates from each subgraph, keeping concept in relevant
     for ds in subgraphs:

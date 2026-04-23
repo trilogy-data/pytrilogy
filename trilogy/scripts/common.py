@@ -470,7 +470,7 @@ def validate_datasources(
         exec.execute_text("mock datasources {};".format(", ".join(datasources)))
 
     try:
-        exec.execute_text("validate datasources {};".format(", ".join(datasources)))
+        exec.execute_text("validate all;")
     except ModelValidationError as e:
         if not e.children:
             print_error(f"Datasource validation failed: {e.message}")
