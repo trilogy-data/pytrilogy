@@ -1508,6 +1508,167 @@ file [`{a.as_posix()}`, `{b.as_posix()}`];
     assert [tuple(r) for r in rows] == [(1, "alpha"), (2, "beta")]
 
 
+def test_file_unhappy_paths():
+    from trilogy.parsing.v2.model import HydrationError
+
+    # file IDENTIFIER — identifier is not defined anywhere
+    ex = Dialects.DUCK_DB.default_executor(environment=Environment())
+    with raises(HydrationError, match="Unknown reference 'MISSING'"):
+        ex.parse_text("""
+key id int;
+property id.name string;
+datasource things (id: id, name: name) grain (id) file MISSING;
+""")
+
+    # file IDENTIFIER — identifier resolves but is not a constant
+    ex2 = Dialects.DUCK_DB.default_executor(environment=Environment())
+    with raises(HydrationError, match="must reference a constant"):
+        ex2.parse_text("""
+key id int;
+property id.name string;
+auto derived <- 1 + 1;
+datasource things (id: id, name: name) grain (id) file derived;
+""")
+
+    # file [a.csv, b.parquet] — mixed extensions
+    ex3 = Dialects.DUCK_DB.default_executor(environment=Environment())
+    with raises(HydrationError, match="must share the same extension"):
+        ex3.parse_text("""
+key id int;
+property id.name string;
+datasource things (id: id, name: name) grain (id)
+file [`/tmp/a.csv`, `/tmp/b.parquet`];
+""")
+
+
+def test_address_helpers():
+    from trilogy.core.enums import AddressType
+    from trilogy.core.models.datasource import Address
+
+    # is_glob
+    assert Address(location="data/*.parquet", type=AddressType.PARQUET).is_glob
+    assert Address(location="data/?.parquet", type=AddressType.PARQUET).is_glob
+    assert Address(location="data/[ab].parquet", type=AddressType.PARQUET).is_glob
+    assert not Address(location="data/one.parquet", type=AddressType.PARQUET).is_glob
+
+    # all_locations — array and single forms
+    single = Address(location="a.parquet", type=AddressType.PARQUET)
+    assert single.all_locations == ["a.parquet"]
+
+    multi = Address(
+        location="a.parquet",
+        type=AddressType.PARQUET,
+        additional_locations=["b.parquet", "c.parquet"],
+    )
+    assert multi.all_locations == ["a.parquet", "b.parquet", "c.parquet"]
+
+
+def test_file_defensive_guards():
+    """Defensive checks in _build_file_from_paths / _resolve_const_paths / file_node
+    that the grammar already prevents; call the helpers directly so the error
+    branches aren't dead code on the coverage report."""
+    from trilogy.core.enums import FunctionType
+    from trilogy.parsing.v2.model import HydrationError
+    from trilogy.parsing.v2.rules.datasource_rules import (
+        FilePathList,
+        _build_file_from_paths,
+        _resolve_const_paths,
+        file_node,
+    )
+    from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
+
+    fake_node = SyntaxNode(name="file", children=[], kind=SyntaxNodeKind.FILE)
+
+    class _Ctx:
+        class environment:
+            working_path = "."
+            concepts: dict = {}
+
+    # Empty path list → "must share the same extension" (no suffixes in set).
+    with raises(HydrationError, match="must share the same extension"):
+        _build_file_from_paths(fake_node, _Ctx(), [])
+
+    # Unsupported extension → "Unsupported file type"
+    with raises(HydrationError, match="Unsupported file type"):
+        _build_file_from_paths(fake_node, _Ctx(), ["https://host/data.xyz"])
+
+    # _resolve_const_paths with unknown name → "Unknown reference"
+    class _Ctx2:
+        class environment:
+            working_path = "."
+
+            class concepts:
+                @staticmethod
+                def get(_):
+                    return None
+
+    with raises(HydrationError, match="Unknown reference 'NOPE'"):
+        _resolve_const_paths(fake_node, _Ctx2(), "NOPE")
+
+    # _resolve_const_paths with empty list const → "is empty"
+    from trilogy.core.enums import Purpose
+    from trilogy.core.models.author import Function
+    from trilogy.core.models.core import DataType
+
+    empty_fn = Function(
+        operator=FunctionType.CONSTANT,
+        arguments=[()],  # empty tuple bypasses parse-time empty-list rejection
+        output_datatype=DataType.STRING,
+        output_purpose=Purpose.CONSTANT,
+    )
+
+    class _EmptyConstCtx:
+        class environment:
+            working_path = "."
+
+            class concepts:
+                @staticmethod
+                def get(_):
+                    class _Concept:
+                        lineage = empty_fn
+                        purpose = "CONSTANT"
+
+                    return _Concept()
+
+    with raises(HydrationError, match="is empty"):
+        _resolve_const_paths(fake_node, _EmptyConstCtx(), "EMPTY")
+
+    # file_node with a synthesized empty FilePathList → "requires at least one path"
+    node_with_empty_list = SyntaxNode(
+        name="file",
+        children=[object()],  # placeholder; hydrate returns our FilePathList
+        kind=SyntaxNodeKind.FILE,
+    )
+    with raises(HydrationError, match="requires at least one path"):
+        file_node(node_with_empty_list, _Ctx(), lambda _child: FilePathList(paths=[]))
+
+
+def test_file_relative_path(tmp_path, monkeypatch):
+    """Relative paths in `file` should resolve against the environment's
+    working_path. Covers the relative-path branch of _process_file_path."""
+    import duckdb
+
+    (tmp_path / "data").mkdir()
+    p = tmp_path / "data" / "rel.parquet"
+    con = duckdb.connect()
+    con.execute(
+        f"COPY (SELECT 1 AS id, 'x' AS name) TO '{p.as_posix()}' (FORMAT PARQUET)"
+    )
+    con.close()
+
+    monkeypatch.chdir(tmp_path)
+    env = Environment(working_path=str(tmp_path))
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    executor.parse_text("""
+key id int;
+property id.name string;
+datasource t (id: id, name: name) grain (id)
+file `./data/rel.parquet`;
+""")
+    rows = executor.execute_query("select id, name;").fetchall()
+    assert [tuple(r) for r in rows] == [(1, "x")]
+
+
 def test_duckdb_date_add():
     executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
 
