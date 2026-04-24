@@ -5,11 +5,12 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from trilogy.constants import REMOTE_PREFIXES
+from trilogy.constants import DEFAULT_NAMESPACE, REMOTE_PREFIXES
 from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
     AddressType,
     DatasourceState,
+    FunctionType,
     Granularity,
     Modifier,
     Purpose,
@@ -19,10 +20,12 @@ from trilogy.core.models.author import (
     Comment,
     Concept,
     ConceptRef,
+    Function,
     Grain,
     Metadata,
     WhereClause,
 )
+from trilogy.core.models.core import ListWrapper
 from trilogy.core.models.datasource import (
     Address,
     ColumnAssignment,
@@ -74,11 +77,23 @@ class File:
         write_path: str | None = None,
         type: AddressType = AddressType.PARQUET,
         exists: bool = True,
+        additional_paths: list[str] | None = None,
     ):
         self.path = path
         self.write_path = write_path
         self.type = type
         self.exists = exists
+        self.additional_paths = additional_paths or []
+
+
+@dataclass
+class FilePathList:
+    paths: list[str]
+
+
+@dataclass
+class FileConstRef:
+    name: str
 
 
 class Query:
@@ -280,43 +295,128 @@ def query_node(
     return Query(text=str(args[0]))
 
 
+def file_path_list_node(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> FilePathList:
+    args = hydrated_children(node, hydrate)
+    return FilePathList(paths=[str(a) for a in args])
+
+
+def file_const_ref_node(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> FileConstRef:
+    args = hydrated_children(node, hydrate)
+    return FileConstRef(name=str(args[0]))
+
+
+def _resolve_const_paths(
+    node: SyntaxNode, context: RuleContext, name: str
+) -> list[str]:
+    lookup = f"{DEFAULT_NAMESPACE}.{name}" if "." not in name else name
+    concept = context.environment.concepts.get(lookup)
+    if concept is None:
+        raise fail(node, f"Unknown reference '{name}' in file — not defined.")
+    if (
+        not isinstance(concept.lineage, Function)
+        or concept.lineage.operator != FunctionType.CONSTANT
+    ):
+        raise fail(
+            node,
+            f"'{name}' in file must reference a constant, not {concept.purpose}.",
+        )
+    value = concept.lineage.arguments[0]
+    if isinstance(value, (list, tuple, ListWrapper)):
+        paths = [str(v) for v in value]
+    else:
+        paths = [str(value)]
+    if not paths:
+        raise fail(node, f"Constant '{name}' referenced by file is empty.")
+    return paths
+
+
+def _process_file_path(context: RuleContext, ipath: str) -> tuple[str, str, bool]:
+    is_cloud = ipath.startswith(REMOTE_PREFIXES)
+    is_glob = any(c in ipath for c in "*?[")
+    if is_cloud:
+        base = ipath
+        suffix = "." + ipath.rsplit(".", 1)[-1] if "." in ipath else ""
+    else:
+        path = Path(ipath)
+        if path.is_relative_to("."):
+            path = Path(context.environment.working_path) / path
+        base = str(path.resolve().absolute())
+        suffix = path.suffix
+    # Globs cannot be stat'd as a single file; trust the caller.
+    exists = is_cloud or is_glob or Path(base).exists()
+    return base, suffix, exists
+
+
+_FILE_TYPE_MAP = {
+    ".sql": AddressType.SQL,
+    ".py": AddressType.PYTHON_SCRIPT,
+    ".csv": AddressType.CSV,
+    ".tsv": AddressType.TSV,
+    ".parquet": AddressType.PARQUET,
+}
+
+
+def _build_file_from_paths(
+    node: SyntaxNode, context: RuleContext, paths: list[str]
+) -> File:
+    processed = [_process_file_path(context, p) for p in paths]
+    suffixes = {s for _, s, _ in processed}
+    if len(suffixes) != 1:
+        raise fail(
+            node,
+            f"All paths must share the same extension (got {sorted(suffixes)})",
+        )
+    suffix = next(iter(suffixes))
+    addr_type = _FILE_TYPE_MAP.get(suffix)
+    if addr_type is None:
+        raise fail(node, f"Unsupported file type {suffix}")
+    bases = [b for b, _, _ in processed]
+    exists = all(e for _, _, e in processed)
+    return File(
+        path=bases[0],
+        write_path=None,
+        type=addr_type,
+        exists=exists,
+        additional_paths=bases[1:] if len(bases) > 1 else [],
+    )
+
+
 def file_node(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
 ) -> File:
     args = hydrated_children(node, hydrate)
+
+    # Array form: file [ `a.parquet`, `b.parquet`, ... ]
+    if len(args) == 1 and isinstance(args[0], FilePathList):
+        if not args[0].paths:
+            raise fail(node, "file [...] requires at least one path")
+        return _build_file_from_paths(node, context, args[0].paths)
+
+    # Constant reference form: file URLS (a const list or single string)
+    if len(args) == 1 and isinstance(args[0], FileConstRef):
+        paths = _resolve_const_paths(node, context, args[0].name)
+        return _build_file_from_paths(node, context, paths)
+
     write_path: str | None = None
     if len(args) == 2:
         read_path, write_path = str(args[0]), str(args[1])
     else:
         read_path = str(args[0])
 
-    def process_path(ipath: str) -> tuple[str, str, bool]:
-        is_cloud = ipath.startswith(REMOTE_PREFIXES)
-        if is_cloud:
-            base = ipath
-            suffix = "." + ipath.rsplit(".", 1)[-1] if "." in ipath else ""
-        else:
-            path = Path(ipath)
-            if path.is_relative_to("."):
-                path = Path(context.environment.working_path) / path
-            base = str(path.resolve().absolute())
-            suffix = path.suffix
-        exists = is_cloud or Path(base).exists()
-        return base, suffix, exists
+    read_base, suffix, exists = _process_file_path(context, read_path)
+    write_base = _process_file_path(context, write_path)[0] if write_path else None
 
-    read_base, suffix, exists = process_path(read_path)
-    write_base = process_path(write_path)[0] if write_path else None
-
-    type_map = {
-        ".sql": AddressType.SQL,
-        ".py": AddressType.PYTHON_SCRIPT,
-        ".csv": AddressType.CSV,
-        ".tsv": AddressType.TSV,
-        ".parquet": AddressType.PARQUET,
-    }
-    addr_type = type_map.get(suffix)
+    addr_type = _FILE_TYPE_MAP.get(suffix)
     if addr_type is None:
         raise fail(node, f"Unsupported file type {suffix}")
     return File(path=read_base, write_path=write_base, type=addr_type, exists=exists)
@@ -413,6 +513,7 @@ def datasource_node(
                 write_location=val.write_path,
                 type=val.type,
                 exists=val.exists,
+                additional_locations=list(val.additional_paths),
             )
         elif isinstance(val, WhereClause):
             where = val
@@ -433,6 +534,9 @@ def datasource_node(
 
     if addr.is_file and not addr.exists:
         ds_status = DatasourceState.UNPOPULATED
+
+    if addr.is_file and partition_by:
+        addr.partition_columns = [c.address.split(".")[-1] for c in partition_by]
     if is_partial:
         for pc in columns:
             if Modifier.PARTIAL not in pc.modifiers:
@@ -493,6 +597,8 @@ DATASOURCE_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.ADDRESS: address_node,
     SyntaxNodeKind.QUERY: query_node,
     SyntaxNodeKind.FILE: file_node,
+    SyntaxNodeKind.FILE_PATH_LIST: file_path_list_node,
+    SyntaxNodeKind.FILE_CONST_REF: file_const_ref_node,
     SyntaxNodeKind.DATASOURCE: datasource_node,
     SyntaxNodeKind.WHOLE_GRAIN_CLAUSE: whole_grain_clause,
     SyntaxNodeKind.RAW_COLUMN_ASSIGNMENT: raw_column_assignment,

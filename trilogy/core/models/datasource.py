@@ -156,6 +156,14 @@ class Address:
     quoted: bool = False
     exists: bool = True
     type: AddressType = field(default=AddressType.TABLE)
+    # Names of hive-style partition columns for file sources (e.g. parquet glob
+    # trees laid out as ``col=value/``). Non-empty iff this address should be
+    # read with hive_partitioning enabled.
+    partition_columns: List[str] = field(default_factory=list)
+    # Additional file paths when the source is an explicit array (e.g.
+    # ``file [`a.parquet`, `b.parquet`]``). When non-empty, ``location`` holds
+    # the first entry and readers should emit an array call.
+    additional_locations: List[str] = field(default_factory=list)
 
     @property
     def is_query(self):
@@ -170,6 +178,16 @@ class Address:
             AddressType.PARQUET,
             AddressType.SQL,
         }
+
+    @property
+    def is_glob(self) -> bool:
+        return any(c in self.location for c in "*?[")
+
+    @property
+    def all_locations(self) -> List[str]:
+        if self.additional_locations:
+            return [self.location, *self.additional_locations]
+        return [self.location]
 
 
 @dataclass

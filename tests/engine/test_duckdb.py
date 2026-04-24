@@ -1354,6 +1354,160 @@ address `{nations_path}`;
     assert r.fetchall()[0].customer_count == 72
 
 
+def test_hive_partitioned_parquet_glob(tmp_path):
+    import duckdb
+
+    base = tmp_path / "sales"
+    con = duckdb.connect()
+    con.execute("""
+        CREATE TABLE sales AS
+        SELECT *
+        FROM (VALUES
+            ('2024-01-01', 'US', 10),
+            ('2024-01-02', 'US', 20),
+            ('2024-01-03', 'CA', 5),
+            ('2024-01-04', 'CA', 8),
+            ('2024-01-05', 'MX', 3)
+        ) t(sale_date, country, amount)
+        """)
+    con.execute(
+        f"COPY sales TO '{base.as_posix()}' (FORMAT PARQUET, PARTITION_BY (country))"
+    )
+    con.close()
+
+    glob_path = (base / "**" / "*.parquet").as_posix()
+
+    executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.parse_text(f"""
+key country string;
+key sale_date string;
+property <country, sale_date>.amount int;
+
+datasource sales (
+    sale_date: sale_date,
+    country: country,
+    amount: amount,
+)
+grain (country, sale_date)
+file `{glob_path}`
+partition by country;
+""")
+
+    ds = list(executor.environment.datasources.values())[0]
+    assert ds.address.partition_columns == ["country"]
+    assert ds.address.exists is True
+
+    sql = executor.generate_sql(
+        "select country, sum(amount) as total_amount order by country asc;"
+    )
+    assert any("hive_partitioning=true" in s for s in sql)
+
+    rows = executor.execute_query(
+        "select country, sum(amount) as total_amount order by country asc;"
+    ).fetchall()
+    assert [tuple(r) for r in rows] == [("CA", 13), ("MX", 3), ("US", 30)]
+
+    rows = executor.execute_query(
+        "where country = 'US' select sale_date, amount order by sale_date asc;"
+    ).fetchall()
+    assert [tuple(r) for r in rows] == [("2024-01-01", 10), ("2024-01-02", 20)]
+
+
+def test_file_const_ref(tmp_path):
+    import duckdb
+
+    a = tmp_path / "a.parquet"
+    b = tmp_path / "b.parquet"
+    con = duckdb.connect()
+    con.execute(
+        f"COPY (SELECT 1 AS id, 'alpha' AS name) TO '{a.as_posix()}' (FORMAT PARQUET)"
+    )
+    con.execute(
+        f"COPY (SELECT 2 AS id, 'beta' AS name) TO '{b.as_posix()}' (FORMAT PARQUET)"
+    )
+    con.close()
+
+    executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.parse_text(f"""
+const URLS <- ['{a.as_posix()}', '{b.as_posix()}'];
+
+key id int;
+property id.name string;
+
+datasource things (
+    id: id,
+    name: name,
+)
+grain (id)
+file URLS;
+""")
+
+    ds = [d for d in executor.environment.datasources.values() if d.name == "things"][0]
+    assert len(ds.address.all_locations) == 2
+    assert ds.address.additional_locations
+    rows = executor.execute_query("select id, name order by id asc;").fetchall()
+    assert [tuple(r) for r in rows] == [(1, "alpha"), (2, "beta")]
+
+    # Scalar const: single path
+    executor2: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor2.parse_text(f"""
+const ONE_URL <- '{a.as_posix()}';
+
+key id int;
+property id.name string;
+
+datasource things (
+    id: id,
+    name: name,
+)
+grain (id)
+file ONE_URL;
+""")
+    ds2 = [d for d in executor2.environment.datasources.values() if d.name == "things"][
+        0
+    ]
+    assert ds2.address.location.endswith("a.parquet")
+    assert ds2.address.additional_locations == []
+
+
+def test_file_path_array(tmp_path):
+    import duckdb
+
+    a = tmp_path / "a.parquet"
+    b = tmp_path / "b.parquet"
+    con = duckdb.connect()
+    con.execute(
+        f"COPY (SELECT 1 AS id, 'alpha' AS name) TO '{a.as_posix()}' (FORMAT PARQUET)"
+    )
+    con.execute(
+        f"COPY (SELECT 2 AS id, 'beta' AS name) TO '{b.as_posix()}' (FORMAT PARQUET)"
+    )
+    con.close()
+
+    executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.parse_text(f"""
+key id int;
+property id.name string;
+
+datasource things (
+    id: id,
+    name: name,
+)
+grain (id)
+file [`{a.as_posix()}`, `{b.as_posix()}`];
+""")
+
+    ds = list(executor.environment.datasources.values())[0]
+    assert len(ds.address.all_locations) == 2
+    assert ds.address.additional_locations  # array form active
+
+    sql = executor.generate_sql("select id, name order by id asc;")
+    assert "read_parquet([" in sql[0]
+
+    rows = executor.execute_query("select id, name order by id asc;").fetchall()
+    assert [tuple(r) for r in rows] == [(1, "alpha"), (2, "beta")]
+
+
 def test_duckdb_date_add():
     executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
 

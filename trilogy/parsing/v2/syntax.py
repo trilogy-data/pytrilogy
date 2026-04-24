@@ -249,6 +249,8 @@ class SyntaxNodeKind(str, Enum):
     ADDRESS = "address"
     QUERY = "query"
     FILE = "file"
+    FILE_PATH_LIST = "file_path_list"
+    FILE_CONST_REF = "file_const_ref"
     DATASOURCE_COLUMN_DEF = "datasource_column_def"
     DATASOURCE_COLUMN_LIST = "datasource_column_list"
     DATASOURCE_EXTRA = "datasource_extra"
@@ -532,6 +534,8 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "address": SyntaxNodeKind.ADDRESS,
     "query": SyntaxNodeKind.QUERY,
     "file": SyntaxNodeKind.FILE,
+    "file_path_list": SyntaxNodeKind.FILE_PATH_LIST,
+    "file_const_ref": SyntaxNodeKind.FILE_CONST_REF,
     "datasource": SyntaxNodeKind.DATASOURCE,
     "persist_statement": SyntaxNodeKind.PERSIST_STATEMENT,
     "auto_persist": SyntaxNodeKind.AUTO_PERSIST,

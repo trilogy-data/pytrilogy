@@ -77,7 +77,9 @@
 
     query: "query" MULTILINE_STRING
 
-    file: "file" ((F_FILE_PATH ":" F_FILE_PATH) | (FILE_PATH ":" FILE_PATH) | F_FILE_PATH | FILE_PATH)
+    file_path_list: "[" (F_FILE_PATH | FILE_PATH) ("," (F_FILE_PATH | FILE_PATH))* ","? "]"
+    file_const_ref: IDENTIFIER
+    file: "file" ((F_FILE_PATH ":" F_FILE_PATH) | (FILE_PATH ":" FILE_PATH) | F_FILE_PATH | FILE_PATH | file_path_list | file_const_ref)
     
     concept_assignment: SHORTHAND_MODIFIER* IDENTIFIER 
     
@@ -576,7 +578,7 @@
     
     _static_functions:  _string_functions | _math_functions | _array_functions | _map_functions | _geo_functions
 
-    custom_function:  "@" IDENTIFIER  "(" ((expr ",")* expr ","?)? ")"
+    custom_function:  "@" IDENTIFIER  "(" (expr ("," expr)* ","?)? ")"
 
     // base language constructs
     concept_lit:  IDENTIFIER
@@ -603,11 +605,11 @@
     
     float_lit: /\-?[0-9]*\.[0-9]+/
 
-    array_lit: "[" (expr ",")* expr ","? "]"()
+    array_lit: "[" (expr ("," expr)* ","?)? "]"()
 
     tuple_lit: "(" (literal ",")* literal ","? ")"
 
-    map_lit: "{" (literal ":" literal ",")* literal ":" literal ","? "}"
+    map_lit: "{" literal ":" literal ("," literal ":" literal)* ","? "}"
 
     _STRUCT.1: "struct("i
     _BINDING.1: "->"
@@ -623,7 +625,7 @@
 
     SHORTHAND_MODIFIER: /~|\?/
     struct_component: IDENTIFIER ":" data_type concept_nullable_modifier? metadata?
-    struct_type: "struct"i "<" ((struct_component | IDENTIFIER) ",")* (struct_component | IDENTIFIER) ","? ">" 
+    struct_type: "struct"i "<" (struct_component | IDENTIFIER) ("," (struct_component | IDENTIFIER))* ","? ">"
 
     list_type: ("list"i | "array"i) "<" (data_type | IDENTIFIER) ">"
 
