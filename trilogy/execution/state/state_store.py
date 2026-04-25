@@ -385,6 +385,20 @@ def create_refresh_plan(
     )
 
 
+class RefreshAssetError(RuntimeError):
+    """Raised when refreshing a specific asset fails. Wraps the underlying error
+    with the datasource id and refresh reason for clearer diagnostics."""
+
+    def __init__(self, datasource_id: str, reason: str, original: BaseException):
+        self.datasource_id = datasource_id
+        self.reason = reason
+        self.original = original
+        super().__init__(
+            f"Failed to refresh datasource '{datasource_id}' "
+            f"(stale because: {reason}): {type(original).__name__}: {original}"
+        )
+
+
 def execute_refresh_plan(
     executor: "Executor",
     plan: RefreshPlan,
@@ -407,9 +421,12 @@ def execute_refresh_plan(
             if on_refresh:
                 on_refresh(asset.datasource_id, asset.reason)
             datasource = executor.environment.datasources[asset.datasource_id]
-            sql = executor.update_datasource(
-                datasource, keys=asset.filters, dry_run=dry_run
-            )
+            try:
+                sql = executor.update_datasource(
+                    datasource, keys=asset.filters, dry_run=dry_run
+                )
+            except Exception as e:
+                raise RefreshAssetError(asset.datasource_id, asset.reason, e) from e
             if on_refresh_query and sql is not None:
                 on_refresh_query(asset.datasource_id, sql)
             refreshed += 1

@@ -1,6 +1,7 @@
 from trilogy.execution.state.cache import ColumnStatsCache, InMemoryColumnStatsCache
 from trilogy.execution.state.state_store import (
     BaseStateStore,
+    RefreshAssetError,
     RefreshPlan,
     RefreshResult,
     create_refresh_plan,
@@ -23,6 +24,7 @@ __all__ = [
     "ColumnStatsCache",
     "InMemoryColumnStatsCache",
     "BaseStateStore",
+    "RefreshAssetError",
     "RefreshPlan",
     "RefreshResult",
     "create_refresh_plan",

@@ -945,6 +945,77 @@ incremental by src.ev_ts;
     assert "root watermark concepts were planned but never collected" in captured.out
 
 
+def test_refresh_multiple_aggregate_persists_with_shared_count(tmp_path):
+    """Regression: refreshing several persisted aggregate datasources that share
+    the same `count` aggregate concept used to crash inside the planner with
+    KeyError 'c~local._virt_agg_count_..._@Grain<Abstract>' because
+    reinject_common_join_keys_v2 added a virtual aggregate concept node to the
+    pruned graph via add_edge without a corresponding entry in g.concepts."""
+    fixture_path = (
+        Path(__file__).parent
+        / "test_data"
+        / "refresh_aggregate_count"
+        / "aggregates.preql"
+    )
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.environment.working_path = str(fixture_path.parent)
+    executor.parse_text(fixture_path.read_text(), root=fixture_path)
+
+    result = refresh_stale_assets(
+        executor,
+        force_sources={
+            "flight_count_total",
+            "flight_count_by_year",
+            "flight_count_by_carrier",
+            "flight_count_by_origin",
+            "flight_count_by_date",
+        },
+        dry_run=True,
+    )
+    assert result.refreshed_count == 5
+
+
+def test_refresh_asset_error_includes_datasource_context():
+    """A failure inside update_datasource is wrapped with the asset id and
+    reason so users can tell which datasource broke without --debug."""
+    from trilogy.execution.state import RefreshAssetError, execute_refresh_plan
+    from trilogy.execution.state.state_store import RefreshPlan
+
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(STALE_SCRIPT)
+
+    boom = RuntimeError("planner exploded")
+
+    def raising(self, *args, **kwargs):
+        raise boom
+
+    plan = RefreshPlan(
+        stale_assets=[
+            StaleAsset(datasource_id="target_items", reason="forced rebuild")
+        ],
+        forced_assets=[],
+        watermarks={},
+        concept_max_watermarks={},
+        root_assets=0,
+        all_assets=0,
+    )
+
+    with patch(
+        "trilogy.executor.Executor.update_datasource",
+        new=raising,
+    ):
+        with pytest.raises(RefreshAssetError) as info:
+            execute_refresh_plan(executor, plan, dry_run=True)
+
+    err = info.value
+    assert err.datasource_id == "target_items"
+    assert err.reason == "forced rebuild"
+    assert err.original is boom
+    assert "target_items" in str(err)
+    assert "forced rebuild" in str(err)
+    assert "planner exploded" in str(err)
+
+
 def test_execute_physical_node_prints_refreshed_count(tmp_path, capsys):
     """execute_managed_node_for_refresh prints a summary after refreshing."""
     script = tmp_path / "test.preql"
