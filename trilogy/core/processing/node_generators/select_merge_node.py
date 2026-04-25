@@ -558,9 +558,7 @@ def resolve_subgraphs(
     concept_map: dict[str, set[str]] = {}
     non_partial_map: dict[str, set[str]] = {}
     for ds in datasources:
-        all_addrs = {
-            concepts[c].canonical_address for c in subgraphs[ds] if c in concepts
-        }
+        all_addrs = {concepts[c].canonical_address for c in subgraphs[ds]}
         concept_map[ds] = all_addrs
         non_partial_map[ds] = all_addrs - partial_canonical[ds]
 
